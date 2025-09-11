@@ -1,0 +1,338 @@
+using FluxIndex.Core.Application.Interfaces;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.ChatCompletion;
+using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
+using SharpToken;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace FluxIndex.Core.Application.Services.QueryOrchestration;
+
+/// <summary>
+/// Query orchestrator implementation using Microsoft Semantic Kernel
+/// </summary>
+public class SemanticKernelOrchestrator : IQueryOrchestrator
+{
+    private readonly Kernel _kernel;
+    private readonly IChatCompletionService _chatService;
+    private readonly ILogger<SemanticKernelOrchestrator> _logger;
+    private readonly GptEncoding _tokenizer;
+
+    public SemanticKernelOrchestrator(
+        string endpoint,
+        string apiKey,
+        string deploymentName,
+        ILogger<SemanticKernelOrchestrator>? logger = null)
+    {
+        _logger = logger ?? new NullLogger<SemanticKernelOrchestrator>();
+        
+        // Initialize Semantic Kernel with Azure OpenAI
+        var builder = Kernel.CreateBuilder();
+        builder.AddAzureOpenAIChatCompletion(
+            deploymentName: deploymentName,
+            endpoint: endpoint,
+            apiKey: apiKey);
+        
+        _kernel = builder.Build();
+        _chatService = _kernel.GetRequiredService<IChatCompletionService>();
+        
+        // Initialize tokenizer for token counting
+        _tokenizer = GptEncoding.GetEncoding("cl100k_base");
+    }
+
+    /// <summary>
+    /// Analyzes query complexity and recommends transformation strategy
+    /// </summary>
+    public async Task<QueryPlan> AnalyzeQueryAsync(
+        string query,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Analyzing query: {Query}", query);
+
+        var analysisPrompt = $"""
+            Analyze the following query and provide a structured analysis:
+            Query: {query}
+
+            Provide your analysis in JSON format with these fields:
+            - complexity: "simple", "moderate", "complex", or "veryComplex"
+            - intent: "factual", "procedural", "analytical", "exploratory", or "definitional"
+            - requiresMultiHop: true or false
+            - entities: array of key entities mentioned
+            - recommendedStrategy: "direct", "hyde", "multiQuery", "stepBack", or "adaptive"
+            - confidence: 0.0 to 1.0
+            - reasoning: brief explanation
+
+            Consider:
+            - Simple queries need direct retrieval
+            - Vague queries benefit from HyDE
+            - Complex queries need decomposition (multiQuery)
+            - Specific technical queries benefit from step-back generalization
+            """;
+
+        var response = await _chatService.GetChatMessageContentAsync(
+            analysisPrompt,
+            cancellationToken: cancellationToken);
+
+        var analysisJson = ExtractJson(response.Content ?? "{}");
+        var analysis = JsonSerializer.Deserialize<QueryAnalysisResult>(analysisJson);
+
+        return new QueryPlan
+        {
+            OriginalQuery = query,
+            Complexity = ParseComplexity(analysis?.Complexity ?? "moderate"),
+            Intent = ParseIntent(analysis?.Intent ?? "factual"),
+            RequiresMultiHop = analysis?.RequiresMultiHop ?? false,
+            DetectedEntities = analysis?.Entities ?? new List<string>(),
+            RecommendedStrategy = ParseStrategy(analysis?.RecommendedStrategy ?? "direct"),
+            ConfidenceScore = analysis?.Confidence ?? 0.7f,
+            Metadata = new Dictionary<string, object>
+            {
+                ["reasoning"] = analysis?.Reasoning ?? "",
+                ["tokenCount"] = _tokenizer.Encode(query).Count
+            }
+        };
+    }
+
+    /// <summary>
+    /// Transforms query using specified strategy
+    /// </summary>
+    public async Task<TransformedQuery> TransformQueryAsync(
+        string query,
+        QueryStrategy strategy,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Transforming query with strategy: {Strategy}", strategy);
+
+        var result = new TransformedQuery
+        {
+            OriginalQuery = query,
+            Strategy = strategy
+        };
+
+        switch (strategy)
+        {
+            case QueryStrategy.HyDE:
+                var hydeDoc = await GenerateHypotheticalDocumentAsync(query, cancellationToken);
+                result.PrimaryQuery = hydeDoc;
+                result.Queries = new List<string> { hydeDoc };
+                break;
+
+            case QueryStrategy.MultiQuery:
+                var subQueries = await DecomposeQueryAsync(query, 3, cancellationToken);
+                result.Queries = subQueries.ToList();
+                result.PrimaryQuery = query;
+                // Assign equal weights to sub-queries
+                foreach (var subQuery in subQueries)
+                {
+                    result.QueryWeights[subQuery] = 1.0f / subQueries.Count();
+                }
+                break;
+
+            case QueryStrategy.StepBack:
+                var stepBackQuery = await GenerateStepBackQueryAsync(query, cancellationToken);
+                result.PrimaryQuery = stepBackQuery;
+                result.Queries = new List<string> { stepBackQuery, query };
+                result.QueryWeights[stepBackQuery] = 0.6f;
+                result.QueryWeights[query] = 0.4f;
+                break;
+
+            case QueryStrategy.Adaptive:
+                // Combine multiple strategies based on query analysis
+                var plan = await AnalyzeQueryAsync(query, cancellationToken);
+                return await TransformQueryAsync(query, plan.RecommendedStrategy, cancellationToken);
+
+            case QueryStrategy.Direct:
+            default:
+                result.PrimaryQuery = query;
+                result.Queries = new List<string> { query };
+                break;
+        }
+
+        result.TransformationMetadata["tokenCount"] = _tokenizer.Encode(result.PrimaryQuery).Count;
+        return result;
+    }
+
+    /// <summary>
+    /// Generates a hypothetical document that would answer the query
+    /// </summary>
+    public async Task<string> GenerateHypotheticalDocumentAsync(
+        string query,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Generating HyDE document for query: {Query}", query);
+
+        var hydePrompt = $"""
+            Given this question: {query}
+
+            Write a detailed, factual document that would perfectly answer this question.
+            The document should:
+            1. Be written as if it's from an authoritative source
+            2. Include specific details and examples
+            3. Use technical terminology where appropriate
+            4. Be 200-300 words long
+            5. Focus on information that would be found in a knowledge base
+
+            Document:
+            """;
+
+        var response = await _chatService.GetChatMessageContentAsync(
+            hydePrompt,
+            cancellationToken: cancellationToken);
+
+        var hydeDocument = response.Content ?? "";
+        
+        _logger.LogDebug("Generated HyDE document with {TokenCount} tokens", 
+            _tokenizer.Encode(hydeDocument).Count);
+
+        return hydeDocument;
+    }
+
+    /// <summary>
+    /// Decomposes complex query into simpler sub-queries
+    /// </summary>
+    public async Task<IEnumerable<string>> DecomposeQueryAsync(
+        string query,
+        int maxQueries = 3,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Decomposing query into {MaxQueries} sub-queries", maxQueries);
+
+        var decomposePrompt = $"""
+            Break down this complex question into {maxQueries} simpler, independent questions:
+            Original question: {query}
+
+            Rules:
+            1. Each sub-question should be self-contained
+            2. Sub-questions should cover different aspects
+            3. Together they should help answer the original question
+            4. Make them specific and searchable
+
+            Provide the sub-questions in JSON format:
+            {{
+                "subQueries": ["question1", "question2", "question3"]
+            }}
+            """;
+
+        var response = await _chatService.GetChatMessageContentAsync(
+            decomposePrompt,
+            cancellationToken: cancellationToken);
+
+        var json = ExtractJson(response.Content ?? "{}");
+        var decomposition = JsonSerializer.Deserialize<QueryDecomposition>(json);
+
+        var subQueries = decomposition?.SubQueries ?? new List<string> { query };
+        
+        _logger.LogDebug("Decomposed into {Count} sub-queries", subQueries.Count);
+        
+        return subQueries.Take(maxQueries);
+    }
+
+    /// <summary>
+    /// Generates a step-back query for broader context
+    /// </summary>
+    public async Task<string> GenerateStepBackQueryAsync(
+        string query,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Generating step-back query");
+
+        var stepBackPrompt = $"""
+            Given this specific question: {query}
+
+            Generate a more general, high-level question that would provide background context.
+            The step-back question should:
+            1. Be broader in scope
+            2. Focus on underlying concepts or principles
+            3. Help understand the context of the specific question
+            4. Be a single, clear question
+
+            Examples:
+            Specific: "What is the boiling point of water at 2000m altitude?"
+            Step-back: "How does altitude affect the boiling point of liquids?"
+
+            Specific: "How to fix CORS error in React with Express backend?"
+            Step-back: "What is CORS and how do web browsers handle cross-origin requests?"
+
+            Step-back question:
+            """;
+
+        var response = await _chatService.GetChatMessageContentAsync(
+            stepBackPrompt,
+            cancellationToken: cancellationToken);
+
+        var stepBackQuery = response.Content?.Trim() ?? query;
+        
+        _logger.LogDebug("Generated step-back query: {Query}", stepBackQuery);
+        
+        return stepBackQuery;
+    }
+
+    // Helper methods
+
+    private string ExtractJson(string content)
+    {
+        // Try to extract JSON from the response
+        var startIndex = content.IndexOf('{');
+        var endIndex = content.LastIndexOf('}');
+        
+        if (startIndex >= 0 && endIndex > startIndex)
+        {
+            return content.Substring(startIndex, endIndex - startIndex + 1);
+        }
+        
+        return "{}";
+    }
+
+    private QueryComplexity ParseComplexity(string complexity) => complexity?.ToLower() switch
+    {
+        "simple" => QueryComplexity.Simple,
+        "moderate" => QueryComplexity.Moderate,
+        "complex" => QueryComplexity.Complex,
+        "verycomplex" => QueryComplexity.VeryComplex,
+        _ => QueryComplexity.Moderate
+    };
+
+    private QueryIntent ParseIntent(string intent) => intent?.ToLower() switch
+    {
+        "factual" => QueryIntent.Factual,
+        "procedural" => QueryIntent.Procedural,
+        "analytical" => QueryIntent.Analytical,
+        "exploratory" => QueryIntent.Exploratory,
+        "definitional" => QueryIntent.Definitional,
+        _ => QueryIntent.Factual
+    };
+
+    private QueryStrategy ParseStrategy(string strategy) => strategy?.ToLower() switch
+    {
+        "direct" => QueryStrategy.Direct,
+        "hyde" => QueryStrategy.HyDE,
+        "multiquery" => QueryStrategy.MultiQuery,
+        "stepback" => QueryStrategy.StepBack,
+        "adaptive" => QueryStrategy.Adaptive,
+        _ => QueryStrategy.Direct
+    };
+
+    // Internal DTOs for JSON deserialization
+
+    private class QueryAnalysisResult
+    {
+        public string? Complexity { get; set; }
+        public string? Intent { get; set; }
+        public bool RequiresMultiHop { get; set; }
+        public List<string> Entities { get; set; } = new();
+        public string? RecommendedStrategy { get; set; }
+        public float Confidence { get; set; }
+        public string? Reasoning { get; set; }
+    }
+
+    private class QueryDecomposition
+    {
+        public List<string> SubQueries { get; set; } = new();
+    }
+}

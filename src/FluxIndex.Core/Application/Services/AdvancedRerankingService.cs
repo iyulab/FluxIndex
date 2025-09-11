@@ -1,0 +1,612 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Domain.Entities;
+using Microsoft.Extensions.Logging;
+
+namespace FluxIndex.Core.Application.Services;
+
+/// <summary>
+/// 고급 재순위화 서비스 - Modern RAG 최적화를 위한 다층 재순위화
+/// </summary>
+public class AdvancedRerankingService : IAdvancedRerankingService
+{
+    private readonly ITextCompletionService _textCompletionService;
+    private readonly IMetadataEnrichmentService _metadataEnrichmentService;
+    private readonly ILogger<AdvancedRerankingService> _logger;
+
+    public AdvancedRerankingService(
+        ITextCompletionService textCompletionService,
+        IMetadataEnrichmentService metadataEnrichmentService,
+        ILogger<AdvancedRerankingService> logger)
+    {
+        _textCompletionService = textCompletionService;
+        _metadataEnrichmentService = metadataEnrichmentService;
+        _logger = logger;
+    }
+
+    /// <summary>
+    /// 고급 재순위화 실행
+    /// </summary>
+    public async Task<List<EnhancedSearchResult>> RerankAsync(
+        string query,
+        IEnumerable<SearchResult> initialResults,
+        RerankingStrategy strategy = RerankingStrategy.Adaptive,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Starting advanced reranking with strategy: {Strategy}", strategy);
+
+        var enhancedResults = await ConvertToEnhancedResultsAsync(initialResults, query, cancellationToken);
+
+        return strategy switch
+        {
+            RerankingStrategy.Semantic => await SemanticRerankingAsync(query, enhancedResults, cancellationToken),
+            RerankingStrategy.Quality => await QualityBasedRerankingAsync(query, enhancedResults, cancellationToken),
+            RerankingStrategy.Contextual => await ContextualRerankingAsync(query, enhancedResults, cancellationToken),
+            RerankingStrategy.Hybrid => await HybridRerankingAsync(query, enhancedResults, cancellationToken),
+            RerankingStrategy.LLM => await LLMBasedRerankingAsync(query, enhancedResults, cancellationToken),
+            RerankingStrategy.Adaptive => await AdaptiveRerankingAsync(query, enhancedResults, cancellationToken),
+            _ => enhancedResults.OrderByDescending(r => r.HybridScore).ToList()
+        };
+    }
+
+    /// <summary>
+    /// 의미적 재순위화 - 임베딩 유사도 중심
+    /// </summary>
+    private async Task<List<EnhancedSearchResult>> SemanticRerankingAsync(
+        string query,
+        List<EnhancedSearchResult> results,
+        CancellationToken cancellationToken)
+    {
+        _logger.LogDebug("Applying semantic reranking");
+
+        foreach (var result in results)
+        {
+            // 의미적 유사도 강화
+            var semanticScore = result.SimilarityScore;
+            
+            // 엔터티 매칭 보너스
+            var entityBonus = CalculateEntityMatchingBonus(query, result.Chunk.Metadata.Entities);
+            
+            // 토픽 관련성 보너스
+            var topicBonus = CalculateTopicRelevanceBonus(query, result.Chunk.Metadata.Topics);
+
+            result.RerankedScore = semanticScore * 0.7 + entityBonus * 0.2 + topicBonus * 0.1;
+            
+            result.ExplanationMetadata["semantic_factors"] = new
+            {
+                semantic_score = semanticScore,
+                entity_bonus = entityBonus,
+                topic_bonus = topicBonus
+            };
+        }
+
+        return results.OrderByDescending(r => r.RerankedScore).ToList();
+    }
+
+    /// <summary>
+    /// 품질 기반 재순위화 - 청크 품질 메트릭 중심
+    /// </summary>
+    private async Task<List<EnhancedSearchResult>> QualityBasedRerankingAsync(
+        string query,
+        List<EnhancedSearchResult> results,
+        CancellationToken cancellationToken)
+    {
+        _logger.LogDebug("Applying quality-based reranking");
+
+        foreach (var result in results)
+        {
+            var quality = result.Chunk.Quality;
+            
+            // 품질 점수 계산
+            var qualityScore = (
+                quality.ContentCompleteness * 0.25 +
+                quality.InformationDensity * 0.25 +
+                quality.Coherence * 0.2 +
+                quality.AuthorityScore * 0.15 +
+                quality.FreshnessScore * 0.15
+            );
+
+            // 사용자 피드백 반영
+            var feedbackScore = CalculateUserFeedbackScore(quality);
+            
+            // 최종 점수 = 초기 점수 * 품질 가중치
+            result.RerankedScore = result.HybridScore * (0.5 + qualityScore * 0.5) + feedbackScore * 0.1;
+            
+            result.ExplanationMetadata["quality_factors"] = new
+            {
+                quality_score = qualityScore,
+                feedback_score = feedbackScore,
+                completeness = quality.ContentCompleteness,
+                density = quality.InformationDensity,
+                coherence = quality.Coherence
+            };
+        }
+
+        return results.OrderByDescending(r => r.RerankedScore).ToList();
+    }
+
+    /// <summary>
+    /// 맥락적 재순위화 - 청크 관계 및 위치 고려
+    /// </summary>
+    private async Task<List<EnhancedSearchResult>> ContextualRerankingAsync(
+        string query,
+        List<EnhancedSearchResult> results,
+        CancellationToken cancellationToken)
+    {
+        _logger.LogDebug("Applying contextual reranking");
+
+        foreach (var result in results)
+        {
+            var baseScore = result.HybridScore;
+            
+            // 구조적 중요도 (섹션 레벨, 제목 포함 등)
+            var structuralImportance = CalculateStructuralImportance(result.Chunk.Metadata);
+            
+            // 관계 강화 점수
+            var relationshipScore = CalculateRelationshipScore(result.Chunk.Relationships, results);
+            
+            // 위치 기반 점수 (문서 시작/끝 부분 가중치)
+            var positionScore = CalculatePositionScore(result.Chunk);
+            
+            result.RerankedScore = baseScore * (1 + structuralImportance * 0.2) + 
+                                 relationshipScore * 0.15 + 
+                                 positionScore * 0.1;
+            
+            result.ExplanationMetadata["contextual_factors"] = new
+            {
+                structural_importance = structuralImportance,
+                relationship_score = relationshipScore,
+                position_score = positionScore
+            };
+        }
+
+        return results.OrderByDescending(r => r.RerankedScore).ToList();
+    }
+
+    /// <summary>
+    /// 하이브리드 재순위화 - 여러 전략 조합
+    /// </summary>
+    private async Task<List<EnhancedSearchResult>> HybridRerankingAsync(
+        string query,
+        List<EnhancedSearchResult> results,
+        CancellationToken cancellationToken)
+    {
+        _logger.LogDebug("Applying hybrid reranking");
+
+        // 각 전략 적용
+        var semanticResults = await SemanticRerankingAsync(query, CloneResults(results), cancellationToken);
+        var qualityResults = await QualityBasedRerankingAsync(query, CloneResults(results), cancellationToken);
+        var contextualResults = await ContextualRerankingAsync(query, CloneResults(results), cancellationToken);
+
+        // 점수 조합
+        foreach (var result in results)
+        {
+            var semanticScore = semanticResults.First(r => r.Chunk.Id == result.Chunk.Id).RerankedScore;
+            var qualityScore = qualityResults.First(r => r.Chunk.Id == result.Chunk.Id).RerankedScore;
+            var contextualScore = contextualResults.First(r => r.Chunk.Id == result.Chunk.Id).RerankedScore;
+
+            // 가중 평균 계산
+            result.RerankedScore = semanticScore * 0.4 + qualityScore * 0.35 + contextualScore * 0.25;
+            
+            result.ExplanationMetadata["hybrid_composition"] = new
+            {
+                semantic_score = semanticScore,
+                quality_score = qualityScore,
+                contextual_score = contextualScore,
+                final_score = result.RerankedScore
+            };
+        }
+
+        return results.OrderByDescending(r => r.RerankedScore).ToList();
+    }
+
+    /// <summary>
+    /// LLM 기반 재순위화 - 대화형 AI를 활용한 관련성 평가
+    /// </summary>
+    private async Task<List<EnhancedSearchResult>> LLMBasedRerankingAsync(
+        string query,
+        List<EnhancedSearchResult> results,
+        CancellationToken cancellationToken)
+    {
+        _logger.LogDebug("Applying LLM-based reranking");
+
+        if (_textCompletionService == null)
+        {
+            _logger.LogWarning("TextCompletionService not available, falling back to hybrid reranking");
+            return await HybridRerankingAsync(query, results, cancellationToken);
+        }
+
+        // 배치 크기로 나누어 처리 (토큰 제한 고려)
+        const int batchSize = 5;
+        var processedResults = new List<EnhancedSearchResult>();
+
+        for (int i = 0; i < results.Count; i += batchSize)
+        {
+            var batch = results.Skip(i).Take(batchSize).ToList();
+            var batchScores = await EvaluateBatchWithLLMAsync(query, batch, cancellationToken);
+            
+            for (int j = 0; j < batch.Count; j++)
+            {
+                batch[j].RerankedScore = batchScores[j];
+                batch[j].ExplanationMetadata["llm_evaluation"] = new
+                {
+                    original_score = batch[j].HybridScore,
+                    llm_score = batchScores[j],
+                    batch_index = i + j
+                };
+            }
+            
+            processedResults.AddRange(batch);
+        }
+
+        return processedResults.OrderByDescending(r => r.RerankedScore).ToList();
+    }
+
+    /// <summary>
+    /// 적응형 재순위화 - 쿼리 유형에 따라 최적 전략 자동 선택
+    /// </summary>
+    private async Task<List<EnhancedSearchResult>> AdaptiveRerankingAsync(
+        string query,
+        List<EnhancedSearchResult> results,
+        CancellationToken cancellationToken)
+    {
+        _logger.LogDebug("Applying adaptive reranking");
+
+        // 쿼리 분석
+        var queryAnalysis = AnalyzeQuery(query);
+        
+        // 최적 전략 선택
+        var selectedStrategy = SelectOptimalStrategy(queryAnalysis, results.Count);
+        
+        _logger.LogInformation("Selected reranking strategy: {Strategy} for query type: {QueryType}", 
+            selectedStrategy, queryAnalysis.Type);
+
+        var result = await RerankAsync(query, results.Select(r => new SearchResult
+        {
+            Chunk = r.Chunk,
+            Score = r.HybridScore
+        }), selectedStrategy, cancellationToken);
+
+        // 적응형 메타데이터 추가
+        foreach (var r in result)
+        {
+            r.ExplanationMetadata["adaptive_strategy"] = new
+            {
+                selected_strategy = selectedStrategy.ToString(),
+                query_analysis = queryAnalysis,
+                confidence = CalculateStrategyConfidence(queryAnalysis)
+            };
+        }
+
+        return result;
+    }
+
+    #region Private Helper Methods
+
+    private async Task<List<EnhancedSearchResult>> ConvertToEnhancedResultsAsync(
+        IEnumerable<SearchResult> results,
+        string query,
+        CancellationToken cancellationToken)
+    {
+        var enhancedResults = new List<EnhancedSearchResult>();
+
+        foreach (var result in results)
+        {
+            // 품질 평가
+            var quality = await _metadataEnrichmentService.EvaluateQualityAsync(
+                result.Chunk, query, cancellationToken);
+            result.Chunk.SetQuality(quality);
+
+            var enhanced = new EnhancedSearchResult
+            {
+                Chunk = result.Chunk,
+                SimilarityScore = result.Score,
+                BM25Score = result.Score, // 초기값으로 설정
+                HybridScore = result.Score,
+                RerankedScore = result.Score,
+                MatchedTerms = ExtractMatchedTerms(query, result.Chunk.Content),
+                RelatedChunks = result.Chunk.Relationships,
+                HighlightedContent = HighlightContent(result.Chunk.Content, query)
+            };
+
+            enhancedResults.Add(enhanced);
+        }
+
+        return enhancedResults;
+    }
+
+    private double CalculateEntityMatchingBonus(string query, List<string> entities)
+    {
+        var queryWords = query.ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var matchingEntities = entities.Count(e => 
+            queryWords.Any(w => e.Contains(w, StringComparison.OrdinalIgnoreCase)));
+        
+        return Math.Min(0.3, matchingEntities / (double)Math.Max(1, entities.Count));
+    }
+
+    private double CalculateTopicRelevanceBonus(string query, List<string> topics)
+    {
+        // 간단한 토픽-쿼리 관련성 계산
+        var queryLower = query.ToLowerInvariant();
+        var relevantTopics = topics.Count(t => queryLower.Contains(t.ToLowerInvariant()));
+        
+        return Math.Min(0.2, relevantTopics / (double)Math.Max(1, topics.Count));
+    }
+
+    private double CalculateUserFeedbackScore(ChunkQuality quality)
+    {
+        if (quality.PositiveFeedback + quality.NegativeFeedback == 0) return 0.0;
+        
+        var ratio = (double)quality.PositiveFeedback / 
+                   (quality.PositiveFeedback + quality.NegativeFeedback);
+        return (ratio - 0.5) * 0.2; // -0.1 ~ +0.1 범위
+    }
+
+    private double CalculateStructuralImportance(ChunkMetadata metadata)
+    {
+        var importance = metadata.ImportanceScore;
+        
+        // 섹션 레벨 보너스 (상위 섹션일수록 중요)
+        if (metadata.SectionLevel > 0)
+        {
+            importance += Math.Max(0, (4 - metadata.SectionLevel) / 10.0);
+        }
+        
+        // 제목 포함 보너스
+        if (!string.IsNullOrEmpty(metadata.SectionTitle))
+        {
+            importance += 0.1;
+        }
+        
+        return Math.Min(1.0, importance);
+    }
+
+    private double CalculateRelationshipScore(
+        List<ChunkRelationship> relationships,
+        List<EnhancedSearchResult> allResults)
+    {
+        if (!relationships.Any()) return 0.0;
+
+        // 관련 청크들의 점수 가중 평균
+        var relatedChunkIds = relationships.Select(r => r.TargetChunkId).ToHashSet();
+        var relatedResults = allResults.Where(r => relatedChunkIds.Contains(r.Chunk.Id));
+        
+        if (!relatedResults.Any()) return 0.0;
+
+        var weightedScore = relationships.Sum(rel =>
+        {
+            var relatedResult = allResults.FirstOrDefault(r => r.Chunk.Id == rel.TargetChunkId);
+            return relatedResult?.HybridScore * rel.Strength ?? 0.0;
+        });
+
+        return weightedScore / relationships.Count * 0.3; // 최대 30% 보너스
+    }
+
+    private double CalculatePositionScore(DocumentChunk chunk)
+    {
+        // 문서 시작 부분에 더 높은 가중치
+        var totalChunks = chunk.TotalChunks;
+        var position = chunk.ChunkIndex;
+        
+        if (totalChunks <= 1) return 0.0;
+        
+        // 첫 10% 또는 마지막 10%에 보너스
+        if (position < totalChunks * 0.1 || position > totalChunks * 0.9)
+        {
+            return 0.1;
+        }
+        
+        return 0.0;
+    }
+
+    private List<EnhancedSearchResult> CloneResults(List<EnhancedSearchResult> results)
+    {
+        // 간단한 클론 (실제로는 더 정교한 복사 필요)
+        return results.Select(r => new EnhancedSearchResult
+        {
+            Chunk = r.Chunk,
+            SimilarityScore = r.SimilarityScore,
+            BM25Score = r.BM25Score,
+            HybridScore = r.HybridScore,
+            RerankedScore = r.HybridScore, // 초기화
+            MatchedTerms = new List<string>(r.MatchedTerms),
+            RelatedChunks = new List<ChunkRelationship>(r.RelatedChunks),
+            HighlightedContent = r.HighlightedContent,
+            ExplanationMetadata = new Dictionary<string, object>()
+        }).ToList();
+    }
+
+    private async Task<List<double>> EvaluateBatchWithLLMAsync(
+        string query,
+        List<EnhancedSearchResult> batch,
+        CancellationToken cancellationToken)
+    {
+        var prompt = $@"주어진 쿼리에 대해 다음 텍스트들의 관련성을 0.0~1.0 사이의 점수로 평가해주세요.
+
+쿼리: {query}
+
+텍스트들:
+{string.Join("\n---\n", batch.Select((r, i) => $"[{i}] {r.Chunk.Content[..Math.Min(200, r.Chunk.Content.Length)]}"))}
+
+각 텍스트에 대해 점수만 반환해주세요. (예: 0.8, 0.6, 0.9, 0.4, 0.7)";
+
+        try
+        {
+            var response = await _textCompletionService.CompleteAsync(prompt, cancellationToken);
+            var scores = ParseLLMScores(response, batch.Count);
+            return scores;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "LLM-based scoring failed, using fallback scores");
+            return batch.Select(r => r.HybridScore).ToList();
+        }
+    }
+
+    private List<double> ParseLLMScores(string response, int expectedCount)
+    {
+        var scores = new List<double>();
+        var parts = response.Split(',', ' ', '\n').Where(p => !string.IsNullOrWhiteSpace(p));
+        
+        foreach (var part in parts.Take(expectedCount))
+        {
+            if (double.TryParse(part.Trim(), out var score))
+            {
+                scores.Add(Math.Max(0.0, Math.Min(1.0, score)));
+            }
+        }
+        
+        // 부족한 점수는 평균으로 채움
+        while (scores.Count < expectedCount)
+        {
+            scores.Add(scores.Any() ? scores.Average() : 0.5);
+        }
+        
+        return scores;
+    }
+
+    private QueryAnalysis AnalyzeQuery(string query)
+    {
+        var analysis = new QueryAnalysis();
+        
+        // 쿼리 길이 분석
+        analysis.Length = query.Length;
+        analysis.WordCount = query.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+        
+        // 쿼리 유형 분류
+        if (query.Contains("?") || query.StartsWith("what", StringComparison.OrdinalIgnoreCase) ||
+            query.StartsWith("how", StringComparison.OrdinalIgnoreCase))
+        {
+            analysis.Type = QueryType.Question;
+        }
+        else if (analysis.WordCount > 10)
+        {
+            analysis.Type = QueryType.Complex;
+        }
+        else if (analysis.WordCount <= 3)
+        {
+            analysis.Type = QueryType.Keyword;
+        }
+        else
+        {
+            analysis.Type = QueryType.Phrase;
+        }
+        
+        // 복잡도 계산
+        analysis.Complexity = CalculateQueryComplexity(query, analysis);
+        
+        return analysis;
+    }
+
+    private double CalculateQueryComplexity(string query, QueryAnalysis analysis)
+    {
+        var complexity = 0.0;
+        
+        // 단어 수 기반
+        complexity += Math.Min(0.4, analysis.WordCount / 20.0);
+        
+        // 특수 문자 및 연산자
+        if (query.Contains("AND") || query.Contains("OR") || query.Contains("NOT"))
+            complexity += 0.2;
+        
+        // 질문 형태
+        if (analysis.Type == QueryType.Question)
+            complexity += 0.3;
+            
+        // 전문 용어 감지 (간단한 휴리스틱)
+        var technicalTerms = new[] { "알고리즘", "데이터베이스", "아키텍처", "최적화" };
+        if (technicalTerms.Any(term => query.Contains(term, StringComparison.OrdinalIgnoreCase)))
+            complexity += 0.1;
+        
+        return Math.Min(1.0, complexity);
+    }
+
+    private RerankingStrategy SelectOptimalStrategy(QueryAnalysis analysis, int resultCount)
+    {
+        // 간단한 규칙 기반 선택
+        return analysis.Type switch
+        {
+            QueryType.Keyword when resultCount > 20 => RerankingStrategy.Quality,
+            QueryType.Question => RerankingStrategy.LLM,
+            QueryType.Complex when analysis.Complexity > 0.7 => RerankingStrategy.Hybrid,
+            QueryType.Phrase => RerankingStrategy.Semantic,
+            _ => RerankingStrategy.Contextual
+        };
+    }
+
+    private double CalculateStrategyConfidence(QueryAnalysis analysis)
+    {
+        // 전략 선택 신뢰도 계산
+        return analysis.Type switch
+        {
+            QueryType.Question => 0.9,
+            QueryType.Complex => 0.8,
+            QueryType.Keyword => 0.7,
+            QueryType.Phrase => 0.75,
+            _ => 0.6
+        };
+    }
+
+    private List<string> ExtractMatchedTerms(string query, string content)
+    {
+        var queryWords = query.ToLowerInvariant()
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var contentLower = content.ToLowerInvariant();
+        
+        return queryWords.Where(w => contentLower.Contains(w)).ToList();
+    }
+
+    private string HighlightContent(string content, string query)
+    {
+        var queryWords = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var highlighted = content;
+        
+        foreach (var word in queryWords)
+        {
+            highlighted = highlighted.Replace(word, $"**{word}**", StringComparison.OrdinalIgnoreCase);
+        }
+        
+        return highlighted;
+    }
+
+    #endregion
+}
+
+/// <summary>
+/// 재순위화 전략
+/// </summary>
+public enum RerankingStrategy
+{
+    Semantic,    // 의미적 유사도 중심
+    Quality,     // 품질 메트릭 중심
+    Contextual,  // 맥락 및 관계 중심
+    Hybrid,      // 여러 전략 조합
+    LLM,         // LLM 기반 평가
+    Adaptive     // 자동 전략 선택
+}
+
+/// <summary>
+/// 쿼리 분석 결과
+/// </summary>
+public class QueryAnalysis
+{
+    public QueryType Type { get; set; }
+    public int Length { get; set; }
+    public int WordCount { get; set; }
+    public double Complexity { get; set; }
+}
+
+/// <summary>
+/// 쿼리 유형
+/// </summary>
+public enum QueryType
+{
+    Keyword,   // 키워드 검색
+    Phrase,    // 구문 검색  
+    Question,  // 질문형
+    Complex    // 복합 쿼리
+}

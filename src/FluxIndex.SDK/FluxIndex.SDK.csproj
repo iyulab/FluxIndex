@@ -1,0 +1,28 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FluxIndex.Core\FluxIndex.Core.csproj" />
+    <ProjectReference Include="..\FluxIndex.AI.OpenAI\FluxIndex.AI.OpenAI.csproj" />
+    <ProjectReference Include="..\FluxIndex.Storage.PostgreSQL\FluxIndex.Storage.PostgreSQL.csproj" />
+    <ProjectReference Include="..\FluxIndex.Cache.Redis\FluxIndex.Cache.Redis.csproj" />
+    <ProjectReference Include="..\FluxIndex.Storage.SQLite\FluxIndex.Storage.SQLite.csproj" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.8" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.8" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="9.0.8" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.8" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.8" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="9.0.8" />
+    <PackageReference Include="FileFlux" Version="0.2.4" />
+  </ItemGroup>
+
+</Project>

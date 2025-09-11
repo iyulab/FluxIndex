@@ -1,0 +1,398 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Npgsql;
+using Pgvector;
+using Pgvector.EntityFrameworkCore;
+
+namespace FluxIndex.Storage.PostgreSQL;
+
+/// <summary>
+/// PostgreSQL 기반 벡터 저장소 구현
+/// </summary>
+public class PostgreSQLVectorStore : IVectorStore
+{
+    private readonly FluxIndexDbContext _context;
+    private readonly ILogger<PostgreSQLVectorStore> _logger;
+    private readonly PostgreSQLOptions _options;
+
+    public PostgreSQLVectorStore(
+        FluxIndexDbContext context,
+        ILogger<PostgreSQLVectorStore> logger,
+        PostgreSQLOptions options)
+    {
+        _context = context ?? throw new ArgumentNullException(nameof(context));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _options = options ?? throw new ArgumentNullException(nameof(options));
+    }
+
+    public async Task<string> StoreDocumentAsync(
+        Document document, 
+        CancellationToken cancellationToken = default)
+    {
+        if (document == null)
+            throw new ArgumentNullException(nameof(document));
+
+        _logger.LogDebug("Storing document {DocumentId} with {ChunkCount} chunks", 
+            document.Id, document.Chunks.Count);
+
+        // 문서 해시 계산
+        var contentHash = ComputeHash(document);
+
+        // 중복 체크
+        var existingDoc = await _context.Documents
+            .FirstOrDefaultAsync(d => d.ContentHash == contentHash, cancellationToken);
+
+        if (existingDoc != null && !_options.AllowDuplicates)
+        {
+            _logger.LogInformation("Document with same content already exists: {ExistingId}", 
+                existingDoc.ExternalId);
+            return existingDoc.ExternalId;
+        }
+
+        // 새 문서 생성
+        var vectorDoc = new VectorDocument
+        {
+            Id = Guid.NewGuid(),
+            ExternalId = document.Id,
+            Title = document.Metadata?.GetValueOrDefault("title")?.ToString(),
+            Source = document.Metadata?.GetValueOrDefault("source")?.ToString(),
+            ContentHash = contentHash,
+            Metadata = document.Metadata,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+
+        // 청크 생성
+        var vectorChunks = document.Chunks.Select((chunk, index) => new VectorChunk
+        {
+            Id = Guid.NewGuid(),
+            DocumentId = vectorDoc.Id,
+            ChunkIndex = index,
+            Content = chunk.Content,
+            Embedding = chunk.Embedding?.Vector,
+            TokenCount = chunk.TokenCount,
+            Metadata = chunk.Metadata,
+            CreatedAt = DateTime.UtcNow
+        }).ToList();
+
+        vectorDoc.Chunks = vectorChunks;
+
+        // 데이터베이스에 저장
+        _context.Documents.Add(vectorDoc);
+        await _context.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Successfully stored document {DocumentId} with {ChunkCount} chunks", 
+            document.Id, vectorChunks.Count);
+
+        return vectorDoc.ExternalId;
+    }
+
+    public async Task<IEnumerable<string>> StoreDocumentsBatchAsync(
+        IEnumerable<Document> documents, 
+        CancellationToken cancellationToken = default)
+    {
+        var documentList = documents.ToList();
+        if (!documentList.Any())
+            return Enumerable.Empty<string>();
+
+        _logger.LogInformation("Storing batch of {DocumentCount} documents", documentList.Count);
+
+        var storedIds = new List<string>();
+
+        // 트랜잭션으로 배치 처리
+        using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            foreach (var document in documentList)
+            {
+                var id = await StoreDocumentAsync(document, cancellationToken);
+                storedIds.Add(id);
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+            _logger.LogInformation("Successfully stored {DocumentCount} documents", storedIds.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to store document batch");
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+
+        return storedIds;
+    }
+
+    public async Task<IEnumerable<SearchResult>> SearchAsync(
+        float[] queryVector,
+        int topK = 10,
+        double threshold = 0.7,
+        Dictionary<string, object>? filter = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (queryVector == null || queryVector.Length == 0)
+            throw new ArgumentException("Query vector cannot be null or empty", nameof(queryVector));
+
+        _logger.LogDebug("Searching for top {TopK} results with threshold {Threshold}", topK, threshold);
+
+        var pgVector = new Vector(queryVector);
+        
+        // 벡터 검색 쿼리 구성
+        var query = _context.Chunks
+            .Where(c => c.Embedding != null)
+            .Select(c => new
+            {
+                Chunk = c,
+                Distance = c.Embedding!.CosineDistance(pgVector)
+            })
+            .Where(x => x.Distance <= (1 - threshold)) // Cosine distance to similarity
+            .OrderBy(x => x.Distance)
+            .Take(topK);
+
+        // 필터 적용
+        if (filter != null && filter.Any())
+        {
+            // JSONB 필터링 구현 (필요 시 확장)
+            // query = query.Where(x => x.Chunk.Metadata.Contains(filter));
+        }
+
+        var results = await query
+            .Include(x => x.Chunk.Document)
+            .ToListAsync(cancellationToken);
+
+        var searchResults = results.Select(r => new SearchResult
+        {
+            DocumentId = r.Chunk.Document.ExternalId,
+            ChunkIndex = r.Chunk.ChunkIndex,
+            Content = r.Chunk.Content,
+            Score = 1 - r.Distance, // Convert distance to similarity
+            Metadata = MergeMetadata(r.Chunk.Document.Metadata, r.Chunk.Metadata)
+        }).ToList();
+
+        _logger.LogInformation("Found {ResultCount} search results", searchResults.Count);
+        return searchResults;
+    }
+
+    public async Task<IEnumerable<SearchResult>> HybridSearchAsync(
+        string keyword,
+        float[]? queryVector = null,
+        int topK = 10,
+        double vectorWeight = 0.5,
+        Dictionary<string, object>? filter = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(keyword) && (queryVector == null || queryVector.Length == 0))
+            throw new ArgumentException("Either keyword or query vector must be provided");
+
+        _logger.LogDebug("Performing hybrid search with keyword '{Keyword}' and vector weight {Weight}", 
+            keyword, vectorWeight);
+
+        var results = new List<SearchResult>();
+
+        // 키워드 검색
+        if (!string.IsNullOrWhiteSpace(keyword))
+        {
+            var keywordResults = await _context.Chunks
+                .Where(c => EF.Functions.ILike(c.Content, $"%{keyword}%"))
+                .Include(c => c.Document)
+                .Select(c => new SearchResult
+                {
+                    DocumentId = c.Document.ExternalId,
+                    ChunkIndex = c.ChunkIndex,
+                    Content = c.Content,
+                    Score = 1.0, // 키워드 매칭은 1.0으로 설정
+                    Metadata = MergeMetadata(c.Document.Metadata, c.Metadata)
+                })
+                .Take(topK * 2) // 더 많이 가져와서 나중에 필터링
+                .ToListAsync(cancellationToken);
+
+            results.AddRange(keywordResults);
+        }
+
+        // 벡터 검색
+        if (queryVector != null && queryVector.Length > 0)
+        {
+            var vectorResults = await SearchAsync(queryVector, topK * 2, 0.5, filter, cancellationToken);
+            
+            // 결과 병합 및 점수 조정
+            foreach (var vr in vectorResults)
+            {
+                var existing = results.FirstOrDefault(r => 
+                    r.DocumentId == vr.DocumentId && r.ChunkIndex == vr.ChunkIndex);
+                
+                if (existing != null)
+                {
+                    // 이미 키워드 검색에서 찾은 경우, 점수 결합
+                    existing.Score = (existing.Score * (1 - vectorWeight)) + (vr.Score * vectorWeight);
+                }
+                else
+                {
+                    // 벡터 검색에서만 찾은 경우
+                    vr.Score *= vectorWeight;
+                    results.Add(vr);
+                }
+            }
+        }
+
+        // 점수로 정렬하고 상위 K개 반환
+        var finalResults = results
+            .OrderByDescending(r => r.Score)
+            .Take(topK)
+            .ToList();
+
+        _logger.LogInformation("Hybrid search returned {ResultCount} results", finalResults.Count);
+        return finalResults;
+    }
+
+    public async Task<Document?> GetDocumentAsync(
+        string documentId, 
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(documentId))
+            throw new ArgumentException("Document ID cannot be empty", nameof(documentId));
+
+        var vectorDoc = await _context.Documents
+            .Include(d => d.Chunks.OrderBy(c => c.ChunkIndex))
+            .FirstOrDefaultAsync(d => d.ExternalId == documentId, cancellationToken);
+
+        if (vectorDoc == null)
+        {
+            _logger.LogWarning("Document {DocumentId} not found", documentId);
+            return null;
+        }
+
+        var document = new Document(documentId)
+        {
+            Metadata = vectorDoc.Metadata
+        };
+
+        foreach (var chunk in vectorDoc.Chunks)
+        {
+            var docChunk = new DocumentChunk(chunk.Content, chunk.ChunkIndex)
+            {
+                TokenCount = chunk.TokenCount,
+                Metadata = chunk.Metadata
+            };
+
+            if (chunk.Embedding != null)
+            {
+                docChunk.Embedding = new EmbeddingVector(
+                    chunk.Embedding, 
+                    chunk.Metadata?.GetValueOrDefault("model")?.ToString() ?? "unknown");
+            }
+
+            document.AddChunk(docChunk);
+        }
+
+        return document;
+    }
+
+    public async Task<bool> DeleteDocumentAsync(
+        string documentId, 
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(documentId))
+            throw new ArgumentException("Document ID cannot be empty", nameof(documentId));
+
+        var document = await _context.Documents
+            .FirstOrDefaultAsync(d => d.ExternalId == documentId, cancellationToken);
+
+        if (document == null)
+        {
+            _logger.LogWarning("Document {DocumentId} not found for deletion", documentId);
+            return false;
+        }
+
+        _context.Documents.Remove(document);
+        await _context.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Successfully deleted document {DocumentId}", documentId);
+        return true;
+    }
+
+    public async Task<bool> UpdateEmbeddingAsync(
+        string documentId,
+        int chunkIndex,
+        float[] embedding,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(documentId))
+            throw new ArgumentException("Document ID cannot be empty", nameof(documentId));
+        
+        if (embedding == null || embedding.Length == 0)
+            throw new ArgumentException("Embedding cannot be null or empty", nameof(embedding));
+
+        var chunk = await _context.Chunks
+            .Include(c => c.Document)
+            .FirstOrDefaultAsync(c => 
+                c.Document.ExternalId == documentId && 
+                c.ChunkIndex == chunkIndex, 
+                cancellationToken);
+
+        if (chunk == null)
+        {
+            _logger.LogWarning("Chunk {ChunkIndex} in document {DocumentId} not found", 
+                chunkIndex, documentId);
+            return false;
+        }
+
+        chunk.Embedding = embedding;
+        chunk.Document.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        _logger.LogDebug("Updated embedding for chunk {ChunkIndex} in document {DocumentId}", 
+            chunkIndex, documentId);
+        return true;
+    }
+
+    public async Task<long> GetDocumentCountAsync(CancellationToken cancellationToken = default)
+    {
+        return await _context.Documents.LongCountAsync(cancellationToken);
+    }
+
+    public async Task<long> GetChunkCountAsync(CancellationToken cancellationToken = default)
+    {
+        return await _context.Chunks.LongCountAsync(cancellationToken);
+    }
+
+    private string ComputeHash(Document document)
+    {
+        var content = string.Join("\n", document.Chunks.Select(c => c.Content));
+        using var sha256 = SHA256.Create();
+        var bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(content));
+        return Convert.ToBase64String(bytes);
+    }
+
+    private Dictionary<string, object>? MergeMetadata(
+        Dictionary<string, object>? docMetadata, 
+        Dictionary<string, object>? chunkMetadata)
+    {
+        if (docMetadata == null && chunkMetadata == null)
+            return null;
+
+        var merged = new Dictionary<string, object>();
+
+        if (docMetadata != null)
+        {
+            foreach (var kvp in docMetadata)
+                merged[kvp.Key] = kvp.Value;
+        }
+
+        if (chunkMetadata != null)
+        {
+            foreach (var kvp in chunkMetadata)
+                merged[$"chunk_{kvp.Key}"] = kvp.Value;
+        }
+
+        return merged;
+    }
+}
