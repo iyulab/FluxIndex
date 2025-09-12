@@ -6,18 +6,11 @@ on:
     branches: [ main, develop ]
     paths:
       - 'src/Directory.Build.props'
-    # Dependabot 커밋 제외
-    paths-ignore:
-      - '.github/dependabot.yml'
   
   # Pull Request 시 빌드만 실행 (배포하지 않음)
   pull_request:
     branches: [ main, develop ]
     types: [ opened, synchronize, reopened ]
-    # Dependabot PR은 빌드만 실행
-    paths-ignore:
-      - '.github/dependabot.yml'
-      - '.github/workflows/**'
   
   # 수동 실행 가능
   workflow_dispatch:
