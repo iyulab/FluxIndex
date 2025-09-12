@@ -145,13 +145,13 @@ jobs:
     
     steps:
     - name: Download NuGet packages
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v5
       with:
         name: nuget-packages
         path: ./nupkgs
 
     - name: Download symbol packages
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v5
       with:
         name: symbol-packages
         path: ./nupkgs
