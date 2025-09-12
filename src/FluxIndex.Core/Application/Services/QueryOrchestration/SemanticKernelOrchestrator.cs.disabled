@@ -203,21 +203,19 @@ public class SemanticKernelOrchestrator : IQueryOrchestrator
     {
         _logger.LogInformation("Decomposing query into {MaxQueries} sub-queries", maxQueries);
 
-        var decomposePrompt = $"""
-            Break down this complex question into {maxQueries} simpler, independent questions:
-            Original question: {query}
+        var decomposePrompt = @$"Break down this complex question into {maxQueries} simpler, independent questions:
+Original question: {query}
 
-            Rules:
-            1. Each sub-question should be self-contained
-            2. Sub-questions should cover different aspects
-            3. Together they should help answer the original question
-            4. Make them specific and searchable
+Rules:
+1. Each sub-question should be self-contained
+2. Sub-questions should cover different aspects
+3. Together they should help answer the original question
+4. Make them specific and searchable
 
-            Provide the sub-questions in JSON format:
-            {{
-                "subQueries": ["question1", "question2", "question3"]
-            }}
-            """;
+Provide the sub-questions in JSON format:
+{{
+    ""subQueries"": [""question1"", ""question2"", ""question3""]
+}}";
 
         var response = await _chatService.GetChatMessageContentAsync(
             decomposePrompt,

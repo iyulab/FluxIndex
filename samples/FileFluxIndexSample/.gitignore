@@ -1,0 +1,27 @@
+# SQLite database files
+*.db
+*.db-shm
+*.db-wal
+fluxindex.db
+fluxindex_dev.db
+
+# Build outputs
+bin/
+obj/
+
+# User-specific files
+*.user
+*.suo
+
+# Visual Studio
+.vs/
+
+# BenchmarkDotNet
+BenchmarkDotNet.Artifacts/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Log files
+*.log

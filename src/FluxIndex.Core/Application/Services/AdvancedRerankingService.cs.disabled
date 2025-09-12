@@ -588,25 +588,3 @@ public enum RerankingStrategy
     LLM,         // LLM 기반 평가
     Adaptive     // 자동 전략 선택
 }
-
-/// <summary>
-/// 쿼리 분석 결과
-/// </summary>
-public class QueryAnalysis
-{
-    public QueryType Type { get; set; }
-    public int Length { get; set; }
-    public int WordCount { get; set; }
-    public double Complexity { get; set; }
-}
-
-/// <summary>
-/// 쿼리 유형
-/// </summary>
-public enum QueryType
-{
-    Keyword,   // 키워드 검색
-    Phrase,    // 구문 검색  
-    Question,  // 질문형
-    Complex    // 복합 쿼리
-}

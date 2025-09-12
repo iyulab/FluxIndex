@@ -373,7 +373,7 @@ public class HNSWParameterOptimizer : IVectorIndexOptimizer
 
     private HNSWParameters ApplyValidationFixes(HNSWParameters parameters, ParameterValidationResult validation)
     {
-        var fixed = parameters.Clone();
+        var fixedParams = parameters.Clone();
 
         // Apply suggested fixes
         foreach (var (parameter, value) in validation.Suggestions)
@@ -381,15 +381,15 @@ public class HNSWParameterOptimizer : IVectorIndexOptimizer
             switch (parameter)
             {
                 case "M":
-                    fixed.M = (int)value;
+                    fixedParams.M = (int)value;
                     break;
                 case "EfConstruction":
-                    fixed.EfConstruction = (int)value;
+                    fixedParams.EfConstruction = (int)value;
                     break;
             }
         }
 
-        return fixed;
+        return fixedParams;
     }
 
     private async Task<HNSWPerformanceProfile> EstimatePerformanceProfileAsync(

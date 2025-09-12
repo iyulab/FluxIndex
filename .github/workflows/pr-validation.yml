@@ -1,0 +1,136 @@
+name: PR Validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+env:
+  DOTNET_VERSION: '9.0.x'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
+  DOTNET_NOLOGO: true
+
+jobs:
+  validate-version:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Check if version was updated
+      id: version_check
+      run: |
+        # Get version from main branch
+        git fetch origin main
+        MAIN_VERSION=$(git show origin/main:src/Directory.Build.props | grep -oPm1 "(?<=<Version>)[^<]+") || echo "0.0.0"
+        
+        # Get version from PR branch
+        PR_VERSION=$(grep -oPm1 "(?<=<Version>)[^<]+" src/Directory.Build.props)
+        
+        echo "Main version: $MAIN_VERSION"
+        echo "PR version: $PR_VERSION"
+        
+        if [[ "$PR_VERSION" == "$MAIN_VERSION" ]]; then
+          echo "::warning::Version has not been updated in Directory.Build.props"
+        else
+          echo "Version updated from $MAIN_VERSION to $PR_VERSION"
+        fi
+
+  check-packages:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Check package compatibility
+      run: |
+        dotnet restore
+        dotnet list package --outdated
+        dotnet list package --vulnerable
+
+  validate-build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        configuration: [Debug, Release]
+    
+    steps:
+    - uses: actions/checkout@v4
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Restore
+      run: dotnet restore
+
+    - name: Build
+      run: dotnet build --configuration ${{ matrix.configuration }} --no-restore
+
+    - name: Test
+      run: dotnet test --configuration ${{ matrix.configuration }} --no-build --verbosity normal
+
+  validate-packages:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Restore
+      run: dotnet restore
+
+    - name: Build
+      run: dotnet build --configuration Release --no-restore
+
+    - name: Pack packages
+      run: |
+        mkdir -p ./pr-packages
+        
+        # Try to pack all packages
+        for project in src/**/*.csproj; do
+          if grep -q "<IsPackable>true</IsPackable>" "$project" 2>/dev/null || ! grep -q "<IsPackable>false</IsPackable>" "$project" 2>/dev/null; then
+            echo "Packing $project..."
+            dotnet pack "$project" \
+              --configuration Release \
+              --no-build \
+              --output ./pr-packages || true
+          fi
+        done
+        
+        # List packed packages
+        echo "Packed packages:"
+        ls -la ./pr-packages/
+
+    - name: Upload PR packages
+      uses: actions/upload-artifact@v4
+      with:
+        name: pr-packages
+        path: ./pr-packages/*.nupkg
+        if-no-files-found: warn
+
+  label-pr:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    
+    steps:
+    - uses: actions/checkout@v4
+      
+    - name: Label PR based on files changed
+      uses: actions/labeler@v5
+      with:
+        repo-token: "${{ secrets.GITHUB_TOKEN }}"
+        configuration-path: .github/labeler.yml

@@ -5,6 +5,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
+    <PackageId>FluxIndex.Extensions.FileFlux</PackageId>
+    <IsPackable>true</IsPackable>
+    <Description>FileFlux integration extensions for FluxIndex</Description>
+    <PackageTags>FluxIndex;FileFlux;Extensions;Document;Processing</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>

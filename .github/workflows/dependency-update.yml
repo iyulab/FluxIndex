@@ -1,0 +1,107 @@
+name: Dependency Updates
+
+on:
+  schedule:
+    # Run every Monday at 9 AM UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+env:
+  DOTNET_VERSION: '9.0.x'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
+  DOTNET_NOLOGO: true
+
+jobs:
+  check-updates:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Install dotnet-outdated tool
+      run: dotnet tool install --global dotnet-outdated-tool
+
+    - name: Check for outdated packages
+      id: check_outdated
+      run: |
+        echo "## Outdated Packages Report" > outdated-report.md
+        echo "" >> outdated-report.md
+        
+        for project in src/**/*.csproj; do
+          echo "### $(basename $project .csproj)" >> outdated-report.md
+          dotnet-outdated --output-format markdown "$project" >> outdated-report.md || true
+          echo "" >> outdated-report.md
+        done
+        
+        # Check if there are any updates
+        if grep -q "No outdated packages" outdated-report.md; then
+          echo "has_updates=false" >> $GITHUB_OUTPUT
+        else
+          echo "has_updates=true" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Create issue for updates
+      if: steps.check_outdated.outputs.has_updates == 'true'
+      uses: peter-evans/create-issue-from-file@v5
+      with:
+        title: "Weekly Dependency Update Report"
+        content-filepath: ./outdated-report.md
+        labels: |
+          dependencies
+          maintenance
+        assignees: ${{ github.repository_owner }}
+
+  security-audit:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Restore packages
+      run: dotnet restore
+
+    - name: Check for vulnerable packages
+      id: security_check
+      run: |
+        echo "## Security Vulnerability Report" > security-report.md
+        echo "" >> security-report.md
+        echo "Date: $(date)" >> security-report.md
+        echo "" >> security-report.md
+        
+        # Check for vulnerable packages
+        dotnet list package --vulnerable --include-transitive > vulnerabilities.txt 2>&1
+        
+        if grep -q "has no vulnerable packages" vulnerabilities.txt; then
+          echo "✅ No vulnerable packages found" >> security-report.md
+          echo "has_vulnerabilities=false" >> $GITHUB_OUTPUT
+        else
+          echo "⚠️ Vulnerable packages detected:" >> security-report.md
+          echo '```' >> security-report.md
+          cat vulnerabilities.txt >> security-report.md
+          echo '```' >> security-report.md
+          echo "has_vulnerabilities=true" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Create security issue
+      if: steps.security_check.outputs.has_vulnerabilities == 'true'
+      uses: peter-evans/create-issue-from-file@v5
+      with:
+        title: "⚠️ Security: Vulnerable Dependencies Detected"
+        content-filepath: ./security-report.md
+        labels: |
+          security
+          high-priority
+          dependencies
+        assignees: ${{ github.repository_owner }}

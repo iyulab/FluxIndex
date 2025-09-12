@@ -5,6 +5,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <Description>Core library for FluxIndex - included in main FluxIndex package</Description>
   </PropertyGroup>
 
   <ItemGroup>

@@ -19,7 +19,7 @@ public static class QueryOrchestratorExtensions
         this FluxIndexClientBuilder builder,
         string azureEndpoint,
         string apiKey,
-        string deploymentName = "gpt-4",
+        string deploymentName = "gpt-5-nano",
         Action<QueryOrchestratorOptions>? configure = null)
     {
         var options = new QueryOrchestratorOptions

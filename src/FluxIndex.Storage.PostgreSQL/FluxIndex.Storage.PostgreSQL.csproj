@@ -4,6 +4,11 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <PackageId>FluxIndex.Storage.PostgreSQL</PackageId>
+    <IsPackable>true</IsPackable>
+    <Description>PostgreSQL with pgvector storage provider for FluxIndex</Description>
+    <PackageTags>FluxIndex;PostgreSQL;pgvector;VectorStore;Storage</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>

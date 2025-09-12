@@ -1,0 +1,50 @@
+<Project>
+  <!-- Common Version Management -->
+  <PropertyGroup>
+    <!-- Package Version - Update this to trigger NuGet push in CI/CD -->
+    <Version>0.1.0-preview</Version>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <FileVersion>0.1.0.0</FileVersion>
+    
+    <!-- Package Metadata -->
+    <Authors>iyulab</Authors>
+    <Company>iyulab</Company>
+    <Product>FluxIndex</Product>
+    <Copyright>Copyright © 2025 FluxIndex</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/iyulab/FluxIndex</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/iyulab/FluxIndex</PackageProjectUrl>
+    <PackageIcon>icon.png</PackageIcon>
+    <PackageTags>RAG;VectorStore;Search;AI;Embeddings;FileFlux;Retrieval</PackageTags>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    
+    <!-- Build Configuration -->
+    <TargetFramework>net9.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    
+    <!-- NuGet Package Settings -->
+    <PackageOutputPath>$(MSBuildThisFileDirectory)..\nupkgs</PackageOutputPath>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    
+    <!-- Strong Naming (Optional) -->
+    <!--<SignAssembly>true</SignAssembly>
+    <AssemblyOriginatorKeyFile>$(MSBuildThisFileDirectory)..\fluxindex.snk</AssemblyOriginatorKeyFile>-->
+  </PropertyGroup>
+
+  <!-- Common Package References -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+  </ItemGroup>
+
+  <!-- Package Icon -->
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)..\assets\icon.png" Pack="true" PackagePath="\" Condition="Exists('$(MSBuildThisFileDirectory)..\assets\icon.png')" />
+  </ItemGroup>
+</Project>

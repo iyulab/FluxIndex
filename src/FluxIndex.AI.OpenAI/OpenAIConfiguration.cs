@@ -63,7 +63,7 @@ public class TextCompletionOptions
     /// <summary>
     /// Default model for text completion
     /// </summary>
-    public string Model { get; set; } = "gpt-4o-mini";
+    public string Model { get; set; } = "gpt-5-nano";
 
     /// <summary>
     /// Default maximum tokens for completions

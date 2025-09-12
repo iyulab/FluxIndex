@@ -4,7 +4,6 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageId>FluxIndex.AI.OpenAI</PackageId>
     <Title>FluxIndex OpenAI Integration</Title>
     <Description>Optional OpenAI adapter for FluxIndex RAG infrastructure. Provides implementations for ITextCompletionService and IEmbeddingService using OpenAI APIs.</Description>

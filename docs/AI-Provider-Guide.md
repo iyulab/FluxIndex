@@ -56,7 +56,7 @@ services.AddFluxIndexOpenAI(configuration);     // 선택적
 services.AddFluxIndexCore();
 services.AddFluxIndexOpenAI(builder => builder
     .WithAzureOpenAI("https://your-resource.openai.azure.com", "api-key")
-    .WithTextModel("gpt-4o")
+    .WithTextModel("gpt-5-nano")
     .WithEmbeddingModel("text-embedding-3-large"));
 ```
 
@@ -85,7 +85,7 @@ services.AddFluxIndexCore();  // 로컬 알고리즘만 사용
     "OpenAI": {
       "ApiKey": "your-openai-api-key",
       "TextCompletion": {
-        "Model": "gpt-4o-mini",
+        "Model": "gpt-5-nano",
         "MaxTokens": 500,
         "Temperature": 0.7
       },
@@ -115,7 +115,7 @@ public void ConfigureServices(IServiceCollection services)
     // 또는 fluent 설정
     services.AddFluxIndexOpenAI(builder => builder
         .WithApiKey("your-api-key")
-        .WithTextModel("gpt-4o-mini")
+        .WithTextModel("gpt-5-nano")
         .WithEmbeddingModel("text-embedding-3-small", 1536)
         .EnableDetailedLogging(true));
 }

@@ -1,0 +1,68 @@
+version: 2
+updates:
+  # NuGet packages
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
+    groups:
+      microsoft-extensions:
+        patterns:
+          - "Microsoft.Extensions.*"
+        update-types:
+          - "minor"
+          - "patch"
+      entity-framework:
+        patterns:
+          - "Microsoft.EntityFrameworkCore*"
+          - "Npgsql.EntityFrameworkCore*"
+        update-types:
+          - "minor"
+          - "patch"
+      test-dependencies:
+        patterns:
+          - "xunit*"
+          - "Moq*"
+          - "FluentAssertions*"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # Don't update major versions automatically
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    labels:
+      - "dependencies"
+      - "automated"
+    assignees:
+      - "fluxindex-team"
+    reviewers:
+      - "fluxindex-team"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    labels:
+      - "ci-cd"
+      - "dependencies"
+      - "automated"
+    assignees:
+      - "fluxindex-team"
+    reviewers:
+      - "fluxindex-team"
+    commit-message:
+      prefix: "ci"
+      include: "scope"

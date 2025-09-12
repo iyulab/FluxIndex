@@ -16,9 +16,9 @@ public class QueryOrchestratorOptions
     public string AzureOpenAIApiKey { get; set; } = string.Empty;
 
     /// <summary>
-    /// Azure OpenAI deployment name (e.g., "gpt-4", "gpt-35-turbo")
+    /// Azure OpenAI deployment name (e.g., "gpt-5-nano", "gpt-35-turbo")
     /// </summary>
-    public string DeploymentName { get; set; } = "gpt-4";
+    public string DeploymentName { get; set; } = "gpt-5-nano";
 
     /// <summary>
     /// Maximum tokens for HyDE document generation

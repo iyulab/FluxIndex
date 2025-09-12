@@ -1,5 +1,4 @@
 using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Core.Domain.ValueObjects;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;

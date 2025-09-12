@@ -5,14 +5,15 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
+    <PackageId>FluxIndex</PackageId>
+    <IsPackable>true</IsPackable>
+    <Description>FluxIndex - RAG infrastructure for indexing FileFlux chunks with hybrid search capabilities</Description>
+    <PackageTags>RAG;VectorStore;Search;AI;Embeddings;FileFlux;Retrieval</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\FluxIndex.Core\FluxIndex.Core.csproj" />
-    <ProjectReference Include="..\FluxIndex.AI.OpenAI\FluxIndex.AI.OpenAI.csproj" />
-    <ProjectReference Include="..\FluxIndex.Storage.PostgreSQL\FluxIndex.Storage.PostgreSQL.csproj" />
-    <ProjectReference Include="..\FluxIndex.Cache.Redis\FluxIndex.Cache.Redis.csproj" />
-    <ProjectReference Include="..\FluxIndex.Storage.SQLite\FluxIndex.Storage.SQLite.csproj" />
+    <ProjectReference Include="..\FluxIndex.Core\FluxIndex.Core.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\FluxIndex.Infrastructure\FluxIndex.Infrastructure.csproj" PrivateAssets="all" />
   </ItemGroup>
   
   <ItemGroup>

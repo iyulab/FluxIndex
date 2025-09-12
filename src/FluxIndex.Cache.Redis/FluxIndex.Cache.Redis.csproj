@@ -4,6 +4,11 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <PackageId>FluxIndex.Cache.Redis</PackageId>
+    <IsPackable>true</IsPackable>
+    <Description>Redis caching provider for FluxIndex</Description>
+    <PackageTags>FluxIndex;Redis;Cache;Distributed;Performance</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
