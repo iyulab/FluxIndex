@@ -1,13 +1,10 @@
 name: CI/CD Pipeline
 
 on:
-  # Directory.Build.props 파일 변경 시 트리거
+  # 모든 push와 PR에서 실행
   push:
     branches: [ main, develop ]
-    paths:
-      - 'src/Directory.Build.props'
   
-  # Pull Request 시 빌드만 실행 (배포하지 않음)
   pull_request:
     branches: [ main, develop ]
     types: [ opened, synchronize, reopened ]
@@ -58,6 +55,16 @@ jobs:
     - name: Build
       run: dotnet build --no-restore --configuration ${{ env.CONFIGURATION }}
 
+    - name: Run Tests
+      run: |
+        echo "Running tests..."
+        # 테스트 프로젝트가 있으면 실행
+        if find . -name "*.Tests.csproj" -o -name "*.Test.csproj" | grep -q .; then
+          dotnet test --no-build --configuration ${{ env.CONFIGURATION }} --verbosity normal
+        else
+          echo "No test projects found, skipping tests"
+        fi
+
     - name: Extract version
       id: version
       run: |
@@ -68,16 +75,24 @@ jobs:
     - name: Check if should publish
       id: check-publish
       run: |
-        # Dependabot PR인 경우 배포하지 않음
-        if [[ "${{ github.actor }}" == "dependabot[bot]" ]]; then
+        # PR이거나 Dependabot인 경우 배포하지 않음
+        if [[ "${{ github.event_name }}" == "pull_request" ]] || [[ "${{ github.actor }}" == "dependabot[bot]" ]]; then
           echo "should-publish=false" >> $GITHUB_OUTPUT
-          echo "Dependabot PR - Will not publish to NuGet"
-        # main 브랜치이고 Directory.Build.props가 변경되었거나 수동 실행으로 publish가 true인 경우
-        elif [[ "${{ github.ref }}" == "refs/heads/main" ]] && \
-             ([[ "${{ github.event_name }}" == "push" ]] || \
-              [[ "${{ github.event.inputs.publish }}" == "true" ]]); then
-          echo "should-publish=true" >> $GITHUB_OUTPUT
-          echo "Will publish to NuGet"
+          echo "PR or Dependabot - Will not publish to NuGet"
+        # main 브랜치이고 src/Directory.Build.props가 변경되었는지 확인
+        elif [[ "${{ github.ref }}" == "refs/heads/main" ]] && [[ "${{ github.event_name }}" == "push" ]]; then
+          # Directory.Build.props 파일이 변경되었는지 확인
+          if git diff HEAD~1 HEAD --name-only | grep -q "src/Directory.Build.props"; then
+            echo "should-publish=true" >> $GITHUB_OUTPUT
+            echo "Version changed - Will publish to NuGet"
+          # 수동 실행으로 publish가 true인 경우
+          elif [[ "${{ github.event.inputs.publish }}" == "true" ]]; then
+            echo "should-publish=true" >> $GITHUB_OUTPUT
+            echo "Manual publish - Will publish to NuGet"
+          else
+            echo "should-publish=false" >> $GITHUB_OUTPUT
+            echo "No version change - Will not publish to NuGet"
+          fi
         else
           echo "should-publish=false" >> $GITHUB_OUTPUT
           echo "Will not publish to NuGet"
@@ -133,7 +148,7 @@ jobs:
         echo "version-exists=false" >> $GITHUB_OUTPUT
 
     - name: Publish to NuGet
-      if: steps.check-publish.outputs.should-publish == 'true' && steps.version-check.outputs.version-exists != 'true'
+      if: success() && steps.check-publish.outputs.should-publish == 'true' && steps.version-check.outputs.version-exists != 'true'
       run: |
         for package in ./artifacts/*.nupkg; do
           echo "Publishing $package to NuGet.org"
@@ -144,7 +159,7 @@ jobs:
         done
 
     - name: Create GitHub Release
-      if: steps.check-publish.outputs.should-publish == 'true' && steps.version-check.outputs.version-exists != 'true'
+      if: success() && steps.check-publish.outputs.should-publish == 'true' && steps.version-check.outputs.version-exists != 'true'
       uses: softprops/action-gh-release@v2
       with:
         tag_name: v${{ steps.version.outputs.version }}
