@@ -5,7 +5,19 @@ on:
   push:
     branches: [ main, develop ]
     paths:
-      - 'Directory.Build.props'
+      - 'src/Directory.Build.props'
+    # Dependabot 커밋 제외
+    paths-ignore:
+      - '.github/dependabot.yml'
+  
+  # Pull Request 시 빌드만 실행 (배포하지 않음)
+  pull_request:
+    branches: [ main, develop ]
+    types: [ opened, synchronize, reopened ]
+    # Dependabot PR은 빌드만 실행
+    paths-ignore:
+      - '.github/dependabot.yml'
+      - '.github/workflows/**'
   
   # 수동 실행 가능
   workflow_dispatch:
@@ -56,17 +68,21 @@ jobs:
     - name: Extract version
       id: version
       run: |
-        VERSION=$(grep '<Version>' Directory.Build.props | sed 's/.*<Version>\(.*\)<\/Version>.*/\1/')
+        VERSION=$(grep '<Version>' src/Directory.Build.props | sed 's/.*<Version>\(.*\)<\/Version>.*/\1/')
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         echo "Extracted version: $VERSION"
 
     - name: Check if should publish
       id: check-publish
       run: |
+        # Dependabot PR인 경우 배포하지 않음
+        if [[ "${{ github.actor }}" == "dependabot[bot]" ]]; then
+          echo "should-publish=false" >> $GITHUB_OUTPUT
+          echo "Dependabot PR - Will not publish to NuGet"
         # main 브랜치이고 Directory.Build.props가 변경되었거나 수동 실행으로 publish가 true인 경우
-        if [[ "${{ github.ref }}" == "refs/heads/main" ]] && \
-           ([[ "${{ github.event_name }}" == "push" ]] || \
-            [[ "${{ github.event.inputs.publish }}" == "true" ]]); then
+        elif [[ "${{ github.ref }}" == "refs/heads/main" ]] && \
+             ([[ "${{ github.event_name }}" == "push" ]] || \
+              [[ "${{ github.event.inputs.publish }}" == "true" ]]); then
           echo "should-publish=true" >> $GITHUB_OUTPUT
           echo "Will publish to NuGet"
         else
