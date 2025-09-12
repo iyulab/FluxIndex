@@ -46,28 +46,3 @@ updates:
       prefix: "deps"
       include: "scope"
     
-  # GitHub Actions
-  - package-ecosystem: "github-actions"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-      timezone: "UTC"
-    open-pull-requests-limit: 1  # 한 번에 하나의 PR만 생성
-    groups:
-      # 모든 GitHub Actions 업데이트를 하나의 PR로 그룹화
-      github-actions:
-        patterns:
-          - "*"
-    labels:
-      - "ci-cd"
-      - "dependencies"
-      - "automated"
-    assignees:
-      - "fluxindex-team"
-    reviewers:
-      - "fluxindex-team"
-    commit-message:
-      prefix: "ci"
-      include: "scope"
