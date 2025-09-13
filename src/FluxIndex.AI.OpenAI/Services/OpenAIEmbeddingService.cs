@@ -15,7 +15,7 @@ namespace FluxIndex.AI.OpenAI.Services;
 /// </summary>
 public class OpenAIEmbeddingService : IEmbeddingService
 {
-    private readonly OpenAIClient _client;
+    private readonly AzureOpenAIClient _client;
     private readonly OpenAIConfiguration _config;
     private readonly IMemoryCache? _cache;
     private readonly ILogger<OpenAIEmbeddingService> _logger;
@@ -261,19 +261,21 @@ public class OpenAIEmbeddingService : IEmbeddingService
         return results.Where(r => r != null);
     }
 
-    private static OpenAIClient CreateOpenAIClient(OpenAIConfiguration config)
+    private static AzureOpenAIClient CreateOpenAIClient(OpenAIConfiguration config)
     {
         if (!string.IsNullOrEmpty(config.BaseUrl))
         {
             // Azure OpenAI or custom endpoint
-            var clientOptions = new OpenAIClientOptions();
-            return new OpenAIClient(new Uri(config.BaseUrl), new ApiKeyCredential(config.ApiKey), clientOptions);
+            var clientOptions = new AzureOpenAIClientOptions();
+            return new AzureOpenAIClient(new Uri(config.BaseUrl), new ApiKeyCredential(config.ApiKey), clientOptions);
         }
         else
         {
-            // Standard OpenAI API
-            var clientOptions = new OpenAIClientOptions();
-            return new OpenAIClient(config.ApiKey, clientOptions);
+            // Standard OpenAI API with Azure client
+            var clientOptions = new AzureOpenAIClientOptions();
+            // For standard OpenAI, use api.openai.com endpoint
+            var endpoint = new Uri("https://api.openai.com/v1");
+            return new AzureOpenAIClient(endpoint, new ApiKeyCredential(config.ApiKey), clientOptions);
         }
     }
 

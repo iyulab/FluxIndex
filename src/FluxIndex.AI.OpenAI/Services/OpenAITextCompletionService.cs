@@ -13,7 +13,7 @@ namespace FluxIndex.AI.OpenAI.Services;
 /// </summary>
 public class OpenAITextCompletionService : ITextCompletionService
 {
-    private readonly OpenAIClient _client;
+    private readonly AzureOpenAIClient _client;
     private readonly OpenAIConfiguration _config;
     private readonly ILogger<OpenAITextCompletionService> _logger;
 
@@ -124,19 +124,70 @@ public class OpenAITextCompletionService : ITextCompletionService
         }
     }
 
-    private static OpenAIClient CreateOpenAIClient(OpenAIConfiguration config)
+    public async Task<string> GenerateJsonCompletionAsync(
+        string prompt,
+        int maxTokens = 500,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _logger.LogDebug("Generating JSON completion for prompt length: {PromptLength}", prompt.Length);
+
+            // Add instruction to generate JSON
+            var jsonPrompt = $"{prompt}\n\nRespond with valid JSON only.";
+
+            var result = await GenerateCompletionAsync(jsonPrompt, maxTokens, 0.3f, cancellationToken);
+
+            // Validate JSON
+            try
+            {
+                using var doc = JsonDocument.Parse(result);
+                return result;
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning(ex, "Generated text is not valid JSON, attempting to fix");
+                // Try to extract JSON from the response
+                var jsonStart = result.IndexOf('{');
+                var jsonEnd = result.LastIndexOf('}');
+                if (jsonStart >= 0 && jsonEnd > jsonStart)
+                {
+                    var jsonText = result.Substring(jsonStart, jsonEnd - jsonStart + 1);
+                    using var doc = JsonDocument.Parse(jsonText);
+                    return jsonText;
+                }
+                throw new InvalidOperationException("Failed to generate valid JSON", ex);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "JSON completion failed");
+            throw;
+        }
+    }
+
+    public int CountTokens(string text)
+    {
+        // Simple approximation: average 4 characters per token
+        // For more accurate counting, use a tokenizer library like tiktoken
+        return (int)Math.Ceiling(text.Length / 4.0);
+    }
+
+    private static AzureOpenAIClient CreateOpenAIClient(OpenAIConfiguration config)
     {
         if (!string.IsNullOrEmpty(config.BaseUrl))
         {
             // Azure OpenAI or custom endpoint
-            var clientOptions = new OpenAIClientOptions();
-            return new OpenAIClient(new Uri(config.BaseUrl), new ApiKeyCredential(config.ApiKey), clientOptions);
+            var clientOptions = new AzureOpenAIClientOptions();
+            return new AzureOpenAIClient(new Uri(config.BaseUrl), new ApiKeyCredential(config.ApiKey), clientOptions);
         }
         else
         {
-            // Standard OpenAI API
-            var clientOptions = new OpenAIClientOptions();
-            return new OpenAIClient(config.ApiKey, clientOptions);
+            // Standard OpenAI API with Azure client
+            var clientOptions = new AzureOpenAIClientOptions();
+            // For standard OpenAI, use api.openai.com endpoint
+            var endpoint = new Uri("https://api.openai.com/v1");
+            return new AzureOpenAIClient(endpoint, new ApiKeyCredential(config.ApiKey), clientOptions);
         }
     }
 }

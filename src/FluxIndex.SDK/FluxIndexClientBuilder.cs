@@ -27,7 +27,7 @@ public class FluxIndexClientBuilder
         _indexerOptions = new IndexerOptions();
         
         // 기본 서비스 등록
-        _services.AddLogging(builder => builder.AddConsole());
+        _services.AddLogging();
         _services.AddMemoryCache();
     }
 
