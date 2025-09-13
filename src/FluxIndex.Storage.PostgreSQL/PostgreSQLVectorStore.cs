@@ -45,9 +45,9 @@ public class PostgreSQLVectorStore : IVectorStore
         {
             Id = Guid.NewGuid(),
             DocumentId = Guid.Parse(chunk.DocumentId), // Assume document already exists
-            ChunkIndex = chunk.Index,
+            ChunkIndex = chunk.ChunkIndex,
             Content = chunk.Content,
-            Embedding = chunk.Embedding?.Vector,
+            Embedding = chunk.Embedding,
             TokenCount = chunk.TokenCount,
             Metadata = chunk.Metadata,
             CreatedAt = DateTime.UtcNow

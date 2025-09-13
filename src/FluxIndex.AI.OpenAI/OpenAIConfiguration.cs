@@ -119,5 +119,10 @@ public class EmbeddingOptions
     /// <summary>
     /// Cache expiry time in hours
     /// </summary>
-    public int CacheExpiryHours { get; set; } = 24;\n\n    /// <summary>\n    /// Maximum tokens for input text\n    /// </summary>\n    public int MaxTokens { get; set; } = 8192;
+    public int CacheExpiryHours { get; set; } = 24;
+
+    /// <summary>
+    /// Maximum tokens for input text
+    /// </summary>
+    public int MaxTokens { get; set; } = 8192;
 }

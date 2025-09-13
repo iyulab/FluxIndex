@@ -1,6 +1,5 @@
 using Azure.AI.OpenAI;
 using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Core.Domain.ValueObjects;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;

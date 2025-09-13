@@ -592,27 +592,68 @@ public class DocumentChunk
 /// </summary>
 public class TestDocument
 {
+    /// <summary>
+    /// Gets or sets the document title
+    /// </summary>
     public string Title { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the document content
+    /// </summary>
     public string Content { get; set; } = string.Empty;
 }
 
+/// <summary>
+/// Embedding response from API
+/// </summary>
 public class EmbeddingResponse
 {
+    /// <summary>
+    /// Gets or sets the embedding data
+    /// </summary>
     [JsonPropertyName("data")]
     public List<EmbeddingData>? Data { get; set; }
 }
 
+/// <summary>
+/// Embedding data item
+/// </summary>
 public class EmbeddingData
 {
+    /// <summary>
+    /// Gets or sets the embedding vector
+    /// </summary>
     [JsonPropertyName("embedding")]
     public float[]? Embedding { get; set; }
 }
 
+/// <summary>
+/// Performance test results
+/// </summary>
 public class PerformanceResults
 {
+    /// <summary>
+    /// Gets or sets the average time
+    /// </summary>
     public double AverageTime { get; set; }
+
+    /// <summary>
+    /// Gets or sets the minimum time
+    /// </summary>
     public long MinTime { get; set; }
+
+    /// <summary>
+    /// Gets or sets the maximum time
+    /// </summary>
     public long MaxTime { get; set; }
+
+    /// <summary>
+    /// Gets or sets the 95th percentile time
+    /// </summary>
     public long P95Time { get; set; }
+
+    /// <summary>
+    /// Gets or sets the number of iterations
+    /// </summary>
     public int Iterations { get; set; }
 }

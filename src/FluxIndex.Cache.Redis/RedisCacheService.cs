@@ -236,7 +236,7 @@ public class RedisCacheService : ICacheService
 
         foreach (var pattern in patterns)
         {
-            await ClearAsync(pattern, cancellationToken);
+            await ClearByPatternAsync(pattern, cancellationToken);
         }
         
         _logger.LogInformation("Invalidated cache for document: {DocumentId}", documentId);
@@ -303,5 +303,27 @@ public class RedisCacheService : ICacheService
         using var sha256 = System.Security.Cryptography.SHA256.Create();
         var bytes = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(text));
         return Convert.ToBase64String(bytes).Replace("/", "_").Replace("+", "-");
+    }
+
+    private async Task ClearByPatternAsync(string pattern, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var server = _redis.GetServer(_redis.GetEndPoints().First());
+            var prefixedPattern = GetPrefixedKey(pattern);
+            var keys = server.Keys(_options.Database, prefixedPattern);
+
+            var database = _redis.GetDatabase(_options.Database);
+            foreach (var key in keys)
+            {
+                await database.KeyDeleteAsync(key);
+            }
+
+            _logger.LogDebug("Cleared {Count} keys matching pattern: {Pattern}", keys.LongCount(), pattern);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error clearing cache by pattern: {Pattern}", pattern);
+        }
     }
 }

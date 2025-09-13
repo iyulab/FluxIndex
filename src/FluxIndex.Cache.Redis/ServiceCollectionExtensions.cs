@@ -52,7 +52,7 @@ public static class ServiceCollectionExtensions
             {
                 var connection = ConnectionMultiplexer.Connect(configurationOptions);
                 logger.LogInformation("Successfully connected to Redis at {Endpoints}", 
-                    string.Join(", ", connection.GetEndPoints()));
+                    string.Join(", ", connection.GetEndPoints().Select(ep => ep.ToString())));
                 return connection;
             }
             catch (Exception ex)
