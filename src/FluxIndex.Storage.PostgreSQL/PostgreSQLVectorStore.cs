@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.Entities;
+using FluxIndex.Core.Domain.ValueObjects;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Npgsql;
@@ -34,8 +35,66 @@ public class PostgreSQLVectorStore : IVectorStore
         _options = options ?? throw new ArgumentNullException(nameof(options));
     }
 
+    public async Task<string> StoreAsync(DocumentChunk chunk, CancellationToken cancellationToken = default)
+    {
+        if (chunk == null)
+            throw new ArgumentNullException(nameof(chunk));
+
+        _logger.LogDebug("Storing chunk {ChunkId}", chunk.Id);
+
+        var vectorChunk = new VectorChunk
+        {
+            Id = Guid.NewGuid(),
+            DocumentId = Guid.Parse(chunk.DocumentId), // Assume document already exists
+            ChunkIndex = chunk.Index,
+            Content = chunk.Content,
+            Embedding = chunk.Embedding?.Vector,
+            TokenCount = chunk.TokenCount,
+            Metadata = chunk.Metadata,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _context.Chunks.Add(vectorChunk);
+        await _context.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Successfully stored chunk {ChunkId}", chunk.Id);
+        return vectorChunk.Id.ToString();
+    }
+
+    public async Task<IEnumerable<string>> StoreBatchAsync(IEnumerable<DocumentChunk> chunks, CancellationToken cancellationToken = default)
+    {
+        var chunkList = chunks.ToList();
+        if (!chunkList.Any())
+            return Enumerable.Empty<string>();
+
+        _logger.LogInformation("Storing batch of {ChunkCount} chunks", chunkList.Count);
+
+        var storedIds = new List<string>();
+        using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+
+        try
+        {
+            foreach (var chunk in chunkList)
+            {
+                var id = await StoreAsync(chunk, cancellationToken);
+                storedIds.Add(id);
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+            _logger.LogInformation("Successfully stored {ChunkCount} chunks", storedIds.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to store chunk batch");
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+
+        return storedIds;
+    }
+
     public async Task<string> StoreDocumentAsync(
-        Document document, 
+        Document document,
         CancellationToken cancellationToken = default)
     {
         if (document == null)
@@ -97,7 +156,7 @@ public class PostgreSQLVectorStore : IVectorStore
     }
 
     public async Task<IEnumerable<string>> StoreDocumentsBatchAsync(
-        IEnumerable<Document> documents, 
+        IEnumerable<Document> documents,
         CancellationToken cancellationToken = default)
     {
         var documentList = documents.ToList();
@@ -131,7 +190,222 @@ public class PostgreSQLVectorStore : IVectorStore
         return storedIds;
     }
 
-    public async Task<IEnumerable<SearchResult>> SearchAsync(
+    public async Task<IEnumerable<DocumentChunk>> SearchAsync(
+        float[] queryEmbedding,
+        int topK = 10,
+        float minScore = 0.0f,
+        CancellationToken cancellationToken = default)
+    {
+        if (queryEmbedding == null || queryEmbedding.Length == 0)
+            throw new ArgumentException("Query embedding cannot be null or empty", nameof(queryEmbedding));
+
+        _logger.LogDebug("Searching for top {TopK} results with minimum score {MinScore}", topK, minScore);
+
+        var pgVector = new Vector(queryEmbedding);
+
+        var query = _context.Chunks
+            .Where(c => c.Embedding != null)
+            .Select(c => new
+            {
+                Chunk = c,
+                Distance = c.Embedding!.CosineDistance(pgVector),
+                Score = 1.0 - c.Embedding!.CosineDistance(pgVector)
+            })
+            .Where(x => x.Score >= minScore)
+            .OrderByDescending(x => x.Score)
+            .Take(topK);
+
+        var results = await query
+            .Include(x => x.Chunk.Document)
+            .ToListAsync(cancellationToken);
+
+        var documentChunks = results.Select(r => {
+            var chunk = new DocumentChunk(r.Chunk.Content, r.Chunk.ChunkIndex)
+            {
+                Id = r.Chunk.Id.ToString(),
+                DocumentId = r.Chunk.Document.ExternalId,
+                TokenCount = r.Chunk.TokenCount,
+                Metadata = r.Chunk.Metadata
+            };
+
+            if (r.Chunk.Embedding != null)
+            {
+                chunk.Embedding = new EmbeddingVector(
+                    r.Chunk.Embedding,
+                    r.Chunk.Metadata?.GetValueOrDefault("model")?.ToString() ?? "unknown");
+            }
+
+            return chunk;
+        }).ToList();
+
+        _logger.LogInformation("Found {ResultCount} search results", documentChunks.Count);
+        return documentChunks;
+    }
+
+    public async Task<DocumentChunk?> GetAsync(string id, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+            throw new ArgumentException("Chunk ID cannot be empty", nameof(id));
+
+        var vectorChunk = await _context.Chunks
+            .Include(c => c.Document)
+            .FirstOrDefaultAsync(c => c.Id.ToString() == id, cancellationToken);
+
+        if (vectorChunk == null)
+            return null;
+
+        var chunk = new DocumentChunk(vectorChunk.Content, vectorChunk.ChunkIndex)
+        {
+            Id = vectorChunk.Id.ToString(),
+            DocumentId = vectorChunk.Document.ExternalId,
+            TokenCount = vectorChunk.TokenCount,
+            Metadata = vectorChunk.Metadata
+        };
+
+        if (vectorChunk.Embedding != null)
+        {
+            chunk.Embedding = new EmbeddingVector(
+                vectorChunk.Embedding,
+                vectorChunk.Metadata?.GetValueOrDefault("model")?.ToString() ?? "unknown");
+        }
+
+        return chunk;
+    }
+
+    public async Task<IEnumerable<DocumentChunk>> GetByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(documentId))
+            throw new ArgumentException("Document ID cannot be empty", nameof(documentId));
+
+        var vectorChunks = await _context.Chunks
+            .Include(c => c.Document)
+            .Where(c => c.Document.ExternalId == documentId)
+            .OrderBy(c => c.ChunkIndex)
+            .ToListAsync(cancellationToken);
+
+        return vectorChunks.Select(c => {
+            var chunk = new DocumentChunk(c.Content, c.ChunkIndex)
+            {
+                Id = c.Id.ToString(),
+                DocumentId = c.Document.ExternalId,
+                TokenCount = c.TokenCount,
+                Metadata = c.Metadata
+            };
+
+            if (c.Embedding != null)
+            {
+                chunk.Embedding = new EmbeddingVector(
+                    c.Embedding,
+                    c.Metadata?.GetValueOrDefault("model")?.ToString() ?? "unknown");
+            }
+
+            return chunk;
+        }).ToList();
+    }
+
+    public async Task<bool> DeleteAsync(string id, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+            throw new ArgumentException("Chunk ID cannot be empty", nameof(id));
+
+        var chunk = await _context.Chunks
+            .FirstOrDefaultAsync(c => c.Id.ToString() == id, cancellationToken);
+
+        if (chunk == null)
+        {
+            _logger.LogWarning("Chunk {ChunkId} not found for deletion", id);
+            return false;
+        }
+
+        _context.Chunks.Remove(chunk);
+        await _context.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Successfully deleted chunk {ChunkId}", id);
+        return true;
+    }
+
+    public async Task<bool> DeleteByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(documentId))
+            throw new ArgumentException("Document ID cannot be empty", nameof(documentId));
+
+        var chunks = await _context.Chunks
+            .Include(c => c.Document)
+            .Where(c => c.Document.ExternalId == documentId)
+            .ToListAsync(cancellationToken);
+
+        if (!chunks.Any())
+        {
+            _logger.LogWarning("No chunks found for document {DocumentId}", documentId);
+            return false;
+        }
+
+        _context.Chunks.RemoveRange(chunks);
+        await _context.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Successfully deleted {ChunkCount} chunks for document {DocumentId}", chunks.Count, documentId);
+        return true;
+    }
+
+    public async Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+            return false;
+
+        return await _context.Chunks
+            .AnyAsync(c => c.Id.ToString() == id, cancellationToken);
+    }
+
+    public async Task<DocumentChunk?> GetByIdAsync(string id, CancellationToken cancellationToken = default)
+    {
+        return await GetAsync(id, cancellationToken);
+    }
+
+    public async Task<bool> UpdateAsync(DocumentChunk chunk, CancellationToken cancellationToken = default)
+    {
+        if (chunk == null)
+            throw new ArgumentNullException(nameof(chunk));
+
+        if (string.IsNullOrWhiteSpace(chunk.Id))
+            throw new ArgumentException("Chunk ID cannot be empty", nameof(chunk));
+
+        var existingChunk = await _context.Chunks
+            .FirstOrDefaultAsync(c => c.Id.ToString() == chunk.Id, cancellationToken);
+
+        if (existingChunk == null)
+        {
+            _logger.LogWarning("Chunk {ChunkId} not found for update", chunk.Id);
+            return false;
+        }
+
+        existingChunk.Content = chunk.Content;
+        existingChunk.Embedding = chunk.Embedding?.Vector;
+        existingChunk.TokenCount = chunk.TokenCount;
+        existingChunk.Metadata = chunk.Metadata;
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        _logger.LogDebug("Updated chunk {ChunkId}", chunk.Id);
+        return true;
+    }
+
+    public async Task<int> CountAsync(CancellationToken cancellationToken = default)
+    {
+        return await _context.Chunks.CountAsync(cancellationToken);
+    }
+
+    public async Task<int> GetCountAsync(CancellationToken cancellationToken = default)
+    {
+        return await CountAsync(cancellationToken);
+    }
+
+    public async Task ClearAsync(CancellationToken cancellationToken = default)
+    {
+        await _context.Chunks.ExecuteDeleteAsync(cancellationToken);
+        _logger.LogInformation("Cleared all chunks from vector store");
+    }
+
+    public async Task<IEnumerable<SearchResult>> SearchDocumentsAsync(
         float[] queryVector,
         int topK = 10,
         double threshold = 0.7,

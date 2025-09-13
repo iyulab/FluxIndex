@@ -34,21 +34,21 @@ public class OpenAIEmbeddingService : IEmbeddingService
         _client = CreateOpenAIClient(_config);
     }
 
-    public async Task<EmbeddingVector> GenerateEmbeddingAsync(
-        string text, 
+    public async Task<float[]> GenerateEmbeddingAsync(
+        string text,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
             _logger.LogWarning("Empty or null text provided for embedding generation");
-            return new EmbeddingVector(Array.Empty<float>());
+            return Array.Empty<float>();
         }
 
         // Check cache first if enabled
         var cacheKey = GenerateCacheKey(text);
         if (_config.Embedding.EnableCaching && _cache != null)
         {
-            if (_cache.TryGetValue(cacheKey, out EmbeddingVector? cachedEmbedding) && cachedEmbedding != null)
+            if (_cache.TryGetValue(cacheKey, out float[]? cachedEmbedding) && cachedEmbedding != null)
             {
                 _logger.LogDebug("Embedding cache hit for text length: {Length}", text.Length);
                 return cachedEmbedding;
@@ -76,7 +76,7 @@ public class OpenAIEmbeddingService : IEmbeddingService
             if (embeddings.Data?.Count > 0)
             {
                 var embeddingData = embeddings.Data[0];
-                var vector = new EmbeddingVector(embeddingData.Embedding.ToArray());
+                var vector = embeddingData.Embedding.ToArray();
 
                 // Cache the result if enabled
                 if (_config.Embedding.EnableCaching && _cache != null)
@@ -91,13 +91,13 @@ public class OpenAIEmbeddingService : IEmbeddingService
                 }
 
                 _logger.LogDebug("Embedding generated successfully. Dimensions: {Dimensions}, Tokens used: {Tokens}",
-                    vector.Dimensions, embeddings.Usage?.TotalTokens ?? 0);
+                    vector.Length, embeddings.Usage?.TotalTokens ?? 0);
 
                 return vector;
             }
 
             _logger.LogWarning("No embedding data returned from OpenAI");
-            return new EmbeddingVector(Array.Empty<float>());
+            return Array.Empty<float>();
         }
         catch (ClientRequestException ex)
         {
@@ -112,14 +112,14 @@ public class OpenAIEmbeddingService : IEmbeddingService
         }
     }
 
-    public async Task<IEnumerable<EmbeddingVector>> GenerateBatchEmbeddingsAsync(
-        IEnumerable<string> texts, 
+    public async Task<IEnumerable<float[]>> GenerateEmbeddingsBatchAsync(
+        IEnumerable<string> texts,
         CancellationToken cancellationToken = default)
     {
         var textList = texts.ToList();
         _logger.LogInformation("Generating batch embeddings for {Count} texts", textList.Count);
 
-        var results = new List<EmbeddingVector>();
+        var results = new List<float[]>();
         var batchSize = _config.Embedding.BatchSize;
 
         // Process in batches to respect API limits
@@ -140,12 +140,37 @@ public class OpenAIEmbeddingService : IEmbeddingService
         return results;
     }
 
-    private async Task<IEnumerable<EmbeddingVector>> ProcessBatch(
-        IEnumerable<string> texts, 
+    public int GetEmbeddingDimension()
+    {
+        return _config.Embedding.Dimensions ?? 1536; // Default for text-embedding-3-small
+    }
+
+    public string GetModelName()
+    {
+        return _config.Embedding.Model;
+    }
+
+    public int GetMaxTokens()
+    {
+        return _config.Embedding.MaxTokens;
+    }
+
+    public async Task<int> CountTokensAsync(string text, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return 0;
+
+        // Simple approximation: 1 token ≈ 4 characters for English
+        // This is a rough estimate - for accurate counts you'd need tiktoken or similar
+        return text.Length / 4;
+    }
+
+    private async Task<IEnumerable<float[]>> ProcessBatch(
+        IEnumerable<string> texts,
         CancellationToken cancellationToken)
     {
         var textList = texts.ToList();
-        var results = new List<EmbeddingVector>();
+        var results = new List<float[]>();
         var uncachedTexts = new List<(string Text, int Index)>();
 
         // Check cache for each text if enabled
@@ -154,7 +179,7 @@ public class OpenAIEmbeddingService : IEmbeddingService
             for (int i = 0; i < textList.Count; i++)
             {
                 var cacheKey = GenerateCacheKey(textList[i]);
-                if (_cache.TryGetValue(cacheKey, out EmbeddingVector? cachedEmbedding) && cachedEmbedding != null)
+                if (_cache.TryGetValue(cacheKey, out float[]? cachedEmbedding) && cachedEmbedding != null)
                 {
                     results.Add(cachedEmbedding);
                 }
@@ -197,7 +222,7 @@ public class OpenAIEmbeddingService : IEmbeddingService
                 for (int i = 0; i < uncachedTexts.Count && i < embeddings.Data.Count; i++)
                 {
                     var embeddingData = embeddings.Data[i];
-                    var vector = new EmbeddingVector(embeddingData.Embedding.ToArray());
+                    var vector = embeddingData.Embedding.ToArray();
 
                     var (text, originalIndex) = uncachedTexts[i];
 
@@ -260,10 +285,10 @@ public class OpenAIEmbeddingService : IEmbeddingService
         return Convert.ToBase64String(hashBytes);
     }
 
-    private static int EstimateSize(EmbeddingVector vector)
+    private static int EstimateSize(float[] vector)
     {
         // Rough estimate: 4 bytes per float + overhead
-        return vector.Dimensions * 4 + 64;
+        return vector.Length * 4 + 64;
     }
 }
 
@@ -280,7 +305,7 @@ public static class EmbeddingServiceExtensions
         try
         {
             var result = await service.GenerateEmbeddingAsync("test");
-            return result.Dimensions > 0;
+            return result.Length > 0;
         }
         catch
         {
@@ -294,6 +319,6 @@ public static class EmbeddingServiceExtensions
     public static async Task<int> GetEmbeddingDimensionsAsync(this IEmbeddingService service)
     {
         var embedding = await service.GenerateEmbeddingAsync("test");
-        return embedding.Dimensions;
+        return embedding.Length;
     }
 }
