@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.Entities;
+using FluxIndex.Core.Domain.ValueObjects;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -371,6 +372,262 @@ public class SQLiteVectorStore : IVectorStore
         return await _context.Chunks.LongCountAsync(cancellationToken);
     }
 
+    // IVectorStore interface implementation
+    public async Task<string> StoreAsync(DocumentChunk chunk, CancellationToken cancellationToken = default)
+    {
+        if (chunk == null)
+            throw new ArgumentNullException(nameof(chunk));
+
+        _logger.LogDebug("Storing chunk {ChunkId} from document {DocumentId}", chunk.Id, chunk.DocumentId);
+
+        var sqliteChunk = new SQLiteChunk
+        {
+            Id = Guid.NewGuid(),
+            DocumentId = Guid.Parse(chunk.DocumentId), // Assuming DocumentId is a GUID string
+            ChunkIndex = chunk.ChunkIndex,
+            Content = chunk.Content,
+            TokenCount = chunk.TokenCount,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        sqliteChunk.SetEmbedding(chunk.Embedding?.Vector);
+        sqliteChunk.SetMetadata(chunk.Metadata?.ToDictionary() ?? new Dictionary<string, object>());
+
+        _context.Chunks.Add(sqliteChunk);
+        await _context.SaveChangesAsync(cancellationToken);
+
+        _logger.LogDebug("Successfully stored chunk {ChunkId}", chunk.Id);
+        return sqliteChunk.Id.ToString();
+    }
+
+    public async Task<IEnumerable<string>> StoreBatchAsync(IEnumerable<DocumentChunk> chunks, CancellationToken cancellationToken = default)
+    {
+        var chunkList = chunks.ToList();
+        if (!chunkList.Any())
+            return Enumerable.Empty<string>();
+
+        _logger.LogInformation("Storing batch of {ChunkCount} chunks", chunkList.Count);
+
+        var storedIds = new List<string>();
+
+        using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            foreach (var chunk in chunkList)
+            {
+                var id = await StoreAsync(chunk, cancellationToken);
+                storedIds.Add(id);
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+            _logger.LogInformation("Successfully stored {ChunkCount} chunks", storedIds.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to store chunk batch");
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+
+        return storedIds;
+    }
+
+    public async Task<DocumentChunk?> GetAsync(string id, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+            throw new ArgumentException("Chunk ID cannot be empty", nameof(id));
+
+        if (!Guid.TryParse(id, out var chunkId))
+            return null;
+
+        var sqliteChunk = await _context.Chunks
+            .Include(c => c.Document)
+            .FirstOrDefaultAsync(c => c.Id == chunkId, cancellationToken);
+
+        if (sqliteChunk == null)
+        {
+            _logger.LogWarning("Chunk {ChunkId} not found", id);
+            return null;
+        }
+
+        return ConvertToDocumentChunk(sqliteChunk);
+    }
+
+    public async Task<IEnumerable<DocumentChunk>> GetByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(documentId))
+            throw new ArgumentException("Document ID cannot be empty", nameof(documentId));
+
+        var chunks = await _context.Chunks
+            .Include(c => c.Document)
+            .Where(c => c.Document.ExternalId == documentId)
+            .OrderBy(c => c.ChunkIndex)
+            .ToListAsync(cancellationToken);
+
+        return chunks.Select(ConvertToDocumentChunk).ToList();
+    }
+
+    public async Task<IEnumerable<DocumentChunk>> SearchAsync(
+        float[] queryEmbedding,
+        int topK = 10,
+        float minScore = 0.0f,
+        CancellationToken cancellationToken = default)
+    {
+        if (queryEmbedding == null || queryEmbedding.Length == 0)
+            throw new ArgumentException("Query embedding cannot be null or empty", nameof(queryEmbedding));
+
+        _logger.LogDebug("Searching for top {TopK} chunks with minimum score {MinScore}", topK, minScore);
+
+        // SQLite doesn't support vector operations, so load all chunks into memory
+        var chunks = await _context.Chunks
+            .Include(c => c.Document)
+            .Where(c => c.EmbeddingJson != null)
+            .ToListAsync(cancellationToken);
+
+        // Calculate cosine similarity in memory
+        var results = new List<(SQLiteChunk chunk, float similarity)>();
+
+        foreach (var chunk in chunks)
+        {
+            var embedding = chunk.GetEmbedding();
+            if (embedding == null) continue;
+
+            var similarity = (float)CosineSimilarity(queryEmbedding, embedding);
+            if (similarity >= minScore)
+            {
+                results.Add((chunk, similarity));
+            }
+        }
+
+        // Return top K results
+        var topResults = results
+            .OrderByDescending(r => r.similarity)
+            .Take(topK)
+            .Select(r => ConvertToDocumentChunk(r.chunk))
+            .ToList();
+
+        _logger.LogInformation("Found {ResultCount} search results", topResults.Count);
+        return topResults;
+    }
+
+    public async Task<bool> DeleteAsync(string id, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+            throw new ArgumentException("Chunk ID cannot be empty", nameof(id));
+
+        if (!Guid.TryParse(id, out var chunkId))
+            return false;
+
+        var chunk = await _context.Chunks
+            .FirstOrDefaultAsync(c => c.Id == chunkId, cancellationToken);
+
+        if (chunk == null)
+        {
+            _logger.LogWarning("Chunk {ChunkId} not found for deletion", id);
+            return false;
+        }
+
+        _context.Chunks.Remove(chunk);
+        await _context.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Successfully deleted chunk {ChunkId}", id);
+        return true;
+    }
+
+    public async Task<bool> DeleteByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(documentId))
+            throw new ArgumentException("Document ID cannot be empty", nameof(documentId));
+
+        var chunks = await _context.Chunks
+            .Include(c => c.Document)
+            .Where(c => c.Document.ExternalId == documentId)
+            .ToListAsync(cancellationToken);
+
+        if (!chunks.Any())
+        {
+            _logger.LogWarning("No chunks found for document {DocumentId}", documentId);
+            return false;
+        }
+
+        _context.Chunks.RemoveRange(chunks);
+        await _context.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Successfully deleted {ChunkCount} chunks for document {DocumentId}", chunks.Count, documentId);
+        return true;
+    }
+
+    public async Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+            return false;
+
+        if (!Guid.TryParse(id, out var chunkId))
+            return false;
+
+        return await _context.Chunks
+            .AnyAsync(c => c.Id == chunkId, cancellationToken);
+    }
+
+    public async Task<DocumentChunk?> GetByIdAsync(string id, CancellationToken cancellationToken = default)
+    {
+        // This is the same as GetAsync for this implementation
+        return await GetAsync(id, cancellationToken);
+    }
+
+    public async Task<bool> UpdateAsync(DocumentChunk chunk, CancellationToken cancellationToken = default)
+    {
+        if (chunk == null)
+            throw new ArgumentNullException(nameof(chunk));
+
+        if (!Guid.TryParse(chunk.Id, out var chunkId))
+            return false;
+
+        var sqliteChunk = await _context.Chunks
+            .FirstOrDefaultAsync(c => c.Id == chunkId, cancellationToken);
+
+        if (sqliteChunk == null)
+        {
+            _logger.LogWarning("Chunk {ChunkId} not found for update", chunk.Id);
+            return false;
+        }
+
+        // Update chunk properties
+        sqliteChunk.Content = chunk.Content;
+        sqliteChunk.TokenCount = chunk.TokenCount;
+        sqliteChunk.SetEmbedding(chunk.Embedding?.Vector);
+        sqliteChunk.SetMetadata(chunk.Metadata?.ToDictionary() ?? new Dictionary<string, object>());
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        _logger.LogDebug("Updated chunk {ChunkId}", chunk.Id);
+        return true;
+    }
+
+    public async Task<int> CountAsync(CancellationToken cancellationToken = default)
+    {
+        return await _context.Chunks.CountAsync(cancellationToken);
+    }
+
+    public async Task<int> GetCountAsync(CancellationToken cancellationToken = default)
+    {
+        // This is the same as CountAsync for this implementation
+        return await CountAsync(cancellationToken);
+    }
+
+    public async Task ClearAsync(CancellationToken cancellationToken = default)
+    {
+        _logger.LogWarning("Clearing all chunks from SQLite vector store");
+
+        // Remove all chunks first (due to foreign key constraints)
+        await _context.Chunks.ExecuteDeleteAsync(cancellationToken);
+
+        // Then remove all documents
+        await _context.Documents.ExecuteDeleteAsync(cancellationToken);
+
+        _logger.LogInformation("Successfully cleared all data from SQLite vector store");
+    }
+
     private string ComputeHash(Document document)
     {
         var content = string.Join("\n", document.Chunks.Select(c => c.Content));
@@ -426,5 +683,26 @@ public class SQLiteVectorStore : IVectorStore
         }
 
         return merged;
+    }
+
+    private DocumentChunk ConvertToDocumentChunk(SQLiteChunk sqliteChunk)
+    {
+        var chunk = new DocumentChunk(sqliteChunk.Content, sqliteChunk.ChunkIndex)
+        {
+            Id = sqliteChunk.Id.ToString(),
+            DocumentId = sqliteChunk.Document.ExternalId,
+            TokenCount = sqliteChunk.TokenCount,
+            Metadata = new DocumentMetadata(sqliteChunk.GetMetadata() ?? new Dictionary<string, object>())
+        };
+
+        var embedding = sqliteChunk.GetEmbedding();
+        if (embedding != null)
+        {
+            chunk.Embedding = new EmbeddingVector(
+                embedding,
+                sqliteChunk.GetMetadata()?.GetValueOrDefault("model")?.ToString() ?? "unknown");
+        }
+
+        return chunk;
     }
 }

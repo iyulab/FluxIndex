@@ -7,7 +7,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.Entities;
-using FluxIndex.Core.Domain.ValueObjects;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Npgsql;
