@@ -27,7 +27,7 @@ public class Document
         Content = string.Empty;
     }
 
-    public static Document Create(string id = null)
+    public static Document Create(string? id = null)
     {
         return new Document
         {

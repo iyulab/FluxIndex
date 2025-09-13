@@ -269,10 +269,10 @@ public class SearchService
         string query,
         CancellationToken cancellationToken)
     {
-        var relationships = baseResult.Chunk.Relationships
+        var relationships = baseResult.Chunk.Relationships?
             .Where(r => r.Type == RelationshipType.Semantic || r.Type == RelationshipType.Reference)
             .OrderByDescending(r => r.Strength)
-            .Take(3); // 최대 3개 관련 청크
+            .Take(3) ?? Enumerable.Empty<ChunkRelationship>(); // 최대 3개 관련 청크
 
         foreach (var relationship in relationships)
         {

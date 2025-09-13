@@ -383,8 +383,9 @@ public class MetadataEnrichmentService : IMetadataEnrichmentService
 
         var avgWordsPerSentence = (double)words / sentences;
         var avgSyllablesPerWord = (double)syllables / words;
-        
-        return Math.Max(0.0, Math.Min(1.0, 
+
+        await Task.CompletedTask; // Placeholder for future async readability analysis
+        return Math.Max(0.0, Math.Min(1.0,
             (206.835 - (1.015 * avgWordsPerSentence) - (84.6 * avgSyllablesPerWord)) / 100.0));
     }
 
@@ -408,7 +409,7 @@ public class MetadataEnrichmentService : IMetadataEnrichmentService
     {
         // 간단한 토픽 분류 (실제로는 ML 모델 사용)
         var topics = new List<string>();
-        
+
         var topicKeywords = new Dictionary<string, string[]>
         {
             ["기술"] = new[] { "기술", "개발", "소프트웨어", "AI", "머신러닝", "데이터" },
@@ -425,6 +426,7 @@ public class MetadataEnrichmentService : IMetadataEnrichmentService
             }
         }
 
+        await Task.CompletedTask; // Placeholder for future async topic classification
         return topics;
     }
 
@@ -465,14 +467,15 @@ public class MetadataEnrichmentService : IMetadataEnrichmentService
     private async Task<string> SummarizeContentAsync(string content, int maxLength)
     {
         if (content.Length <= maxLength) return content;
-        
+
         // 간단한 요약: 첫 문장 추출
         var firstSentence = content.Split('.', '!', '?').FirstOrDefault()?.Trim();
+        await Task.CompletedTask; // Placeholder for future async summarization
         return firstSentence?.Substring(0, Math.Min(firstSentence.Length, maxLength)) ?? "";
     }
 
     private async Task<double> CalculateImportanceScoreAsync(
-        string content, 
+        string content,
         Dictionary<string, object>? documentMetadata)
     {
         var score = 0.5; // 기본 점수
@@ -486,6 +489,7 @@ public class MetadataEnrichmentService : IMetadataEnrichmentService
         var meaningfulWords = words.Count(w => w.Length > 3);
         score += Math.Min(0.2, meaningfulWords / (double)words.Length);
 
+        await Task.CompletedTask; // Placeholder for future async importance calculation
         return Math.Min(1.0, score);
     }
 

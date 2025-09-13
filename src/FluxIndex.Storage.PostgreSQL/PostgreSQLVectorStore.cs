@@ -121,10 +121,10 @@ public class PostgreSQLVectorStore : IVectorStore
         {
             Id = Guid.NewGuid(),
             ExternalId = document.Id,
-            Title = document.Metadata?.GetValueOrDefault("title")?.ToString(),
-            Source = document.Metadata?.GetValueOrDefault("source")?.ToString(),
+            Title = document.Metadata?.Properties.GetValueOrDefault("title")?.ToString(),
+            Source = document.Metadata?.Properties.GetValueOrDefault("source")?.ToString(),
             ContentHash = contentHash,
-            Metadata = document.Metadata,
+            Metadata = document.Metadata?.Properties ?? new Dictionary<string, object>(),
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -136,7 +136,7 @@ public class PostgreSQLVectorStore : IVectorStore
             DocumentId = vectorDoc.Id,
             ChunkIndex = index,
             Content = chunk.Content,
-            Embedding = chunk.Embedding?.Vector,
+            Embedding = chunk.Embedding,
             TokenCount = chunk.TokenCount,
             Metadata = chunk.Metadata,
             CreatedAt = DateTime.UtcNow
@@ -229,9 +229,7 @@ public class PostgreSQLVectorStore : IVectorStore
 
             if (r.Chunk.Embedding != null)
             {
-                chunk.Embedding = new EmbeddingVector(
-                    r.Chunk.Embedding,
-                    r.Chunk.Metadata?.GetValueOrDefault("model")?.ToString() ?? "unknown");
+                chunk.Embedding = r.Chunk.Embedding;
             }
 
             return chunk;
@@ -263,9 +261,7 @@ public class PostgreSQLVectorStore : IVectorStore
 
         if (vectorChunk.Embedding != null)
         {
-            chunk.Embedding = new EmbeddingVector(
-                vectorChunk.Embedding,
-                vectorChunk.Metadata?.GetValueOrDefault("model")?.ToString() ?? "unknown");
+            chunk.Embedding = vectorChunk.Embedding;
         }
 
         return chunk;
@@ -293,9 +289,7 @@ public class PostgreSQLVectorStore : IVectorStore
 
             if (c.Embedding != null)
             {
-                chunk.Embedding = new EmbeddingVector(
-                    c.Embedding,
-                    c.Metadata?.GetValueOrDefault("model")?.ToString() ?? "unknown");
+                chunk.Embedding = c.Embedding;
             }
 
             return chunk;
@@ -378,7 +372,7 @@ public class PostgreSQLVectorStore : IVectorStore
         }
 
         existingChunk.Content = chunk.Content;
-        existingChunk.Embedding = chunk.Embedding?.Vector;
+        existingChunk.Embedding = chunk.Embedding;
         existingChunk.TokenCount = chunk.TokenCount;
         existingChunk.Metadata = chunk.Metadata;
 
@@ -441,13 +435,24 @@ public class PostgreSQLVectorStore : IVectorStore
             .Include(x => x.Chunk.Document)
             .ToListAsync(cancellationToken);
 
-        var searchResults = results.Select(r => new SearchResult
-        {
-            DocumentId = r.Chunk.Document.ExternalId,
-            ChunkIndex = r.Chunk.ChunkIndex,
-            Content = r.Chunk.Content,
-            Score = 1 - r.Distance, // Convert distance to similarity
-            Metadata = MergeMetadata(r.Chunk.Document.Metadata, r.Chunk.Metadata)
+        var searchResults = results.Select(r => {
+            var chunk = new DocumentChunk(r.Chunk.Content, r.Chunk.ChunkIndex)
+            {
+                Id = r.Chunk.Id.ToString(),
+                DocumentId = r.Chunk.Document.ExternalId,
+                TokenCount = r.Chunk.TokenCount
+            };
+
+            if (r.Chunk.Embedding != null)
+            {
+                chunk.Embedding = r.Chunk.Embedding;
+            }
+
+            return new SearchResult
+            {
+                Chunk = chunk,
+                Score = (float)(1 - r.Distance) // Convert distance to similarity
+            };
         }).ToList();
 
         _logger.LogInformation("Found {ResultCount} search results", searchResults.Count);
@@ -473,19 +478,29 @@ public class PostgreSQLVectorStore : IVectorStore
         // 키워드 검색
         if (!string.IsNullOrWhiteSpace(keyword))
         {
-            var keywordResults = await _context.Chunks
+            var keywordChunks = await _context.Chunks
                 .Where(c => EF.Functions.ILike(c.Content, $"%{keyword}%"))
                 .Include(c => c.Document)
-                .Select(c => new SearchResult
-                {
-                    DocumentId = c.Document.ExternalId,
-                    ChunkIndex = c.ChunkIndex,
-                    Content = c.Content,
-                    Score = 1.0, // 키워드 매칭은 1.0으로 설정
-                    Metadata = MergeMetadata(c.Document.Metadata, c.Metadata)
-                })
                 .Take(topK * 2) // 더 많이 가져와서 나중에 필터링
                 .ToListAsync(cancellationToken);
+
+            var keywordResults = keywordChunks.Select(c => {
+                var chunk = new DocumentChunk(c.Content, c.ChunkIndex)
+                {
+                    Id = c.Id.ToString(),
+                    DocumentId = c.Document.ExternalId,
+                    TokenCount = c.TokenCount
+                };
+                if (c.Embedding != null)
+                {
+                    chunk.Embedding = c.Embedding;
+                }
+                return new SearchResult
+                {
+                    Chunk = chunk,
+                    Score = 1.0f // 키워드 매칭은 1.0으로 설정
+                };
+            }).ToList();
 
             results.AddRange(keywordResults);
         }
@@ -493,23 +508,28 @@ public class PostgreSQLVectorStore : IVectorStore
         // 벡터 검색
         if (queryVector != null && queryVector.Length > 0)
         {
-            var vectorResults = await SearchAsync(queryVector, topK * 2, 0.5, filter, cancellationToken);
-            
+            var vectorChunks = await SearchAsync(queryVector, topK * 2, 0.5f, cancellationToken);
+            var vectorResults = vectorChunks.Select(c => new SearchResult
+            {
+                Chunk = c,
+                Score = c.Score ?? 0.8f
+            }).ToList();
+
             // 결과 병합 및 점수 조정
             foreach (var vr in vectorResults)
             {
-                var existing = results.FirstOrDefault(r => 
+                var existing = results.FirstOrDefault(r =>
                     r.DocumentId == vr.DocumentId && r.ChunkIndex == vr.ChunkIndex);
-                
+
                 if (existing != null)
                 {
                     // 이미 키워드 검색에서 찾은 경우, 점수 결합
-                    existing.Score = (existing.Score * (1 - vectorWeight)) + (vr.Score * vectorWeight);
+                    existing.Score = (float)((existing.Score * (1 - vectorWeight)) + (vr.Score * vectorWeight));
                 }
                 else
                 {
                     // 벡터 검색에서만 찾은 경우
-                    vr.Score *= vectorWeight;
+                    vr.Score = (float)(vr.Score * vectorWeight);
                     results.Add(vr);
                 }
             }
@@ -542,10 +562,7 @@ public class PostgreSQLVectorStore : IVectorStore
             return null;
         }
 
-        var document = new Document(documentId)
-        {
-            Metadata = vectorDoc.Metadata
-        };
+        var document = Document.Create(documentId);
 
         foreach (var chunk in vectorDoc.Chunks)
         {
@@ -557,9 +574,7 @@ public class PostgreSQLVectorStore : IVectorStore
 
             if (chunk.Embedding != null)
             {
-                docChunk.Embedding = new EmbeddingVector(
-                    chunk.Embedding, 
-                    chunk.Metadata?.GetValueOrDefault("model")?.ToString() ?? "unknown");
+                docChunk.Embedding = chunk.Embedding;
             }
 
             document.AddChunk(docChunk);

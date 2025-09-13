@@ -313,6 +313,7 @@ public class SelfRAGService : ISelfRAGService
             relevanceScores.Add(relevance);
         }
 
+        await Task.CompletedTask;
         return relevanceScores.Average();
     }
 
@@ -337,6 +338,7 @@ public class SelfRAGService : ISelfRAGService
         var topicScore = AssessTopicCoverage(query, documents);
         completeness += topicScore * 0.3;
 
+        await Task.CompletedTask;
         return Math.Min(completeness, 1.0);
     }
 
@@ -502,8 +504,8 @@ public class SelfRAGService : ISelfRAGService
     }
 
     private async Task GenerateRefinementsForIssueAsync(
-        string originalQuery, 
-        QualityIssue issue, 
+        string originalQuery,
+        QualityIssue issue,
         QueryRefinementSuggestions suggestions,
         CancellationToken cancellationToken)
     {
@@ -543,6 +545,7 @@ public class SelfRAGService : ISelfRAGService
                 });
                 break;
         }
+        await Task.CompletedTask;
     }
 
     private async Task GenerateGeneralRefinementsAsync(
