@@ -2,6 +2,7 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services;
 using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Extensions.FileFlux.Interfaces;
+using FluxIndex.SDK;
 using FluxIndex.SDK.Interfaces;
 using Microsoft.Extensions.Logging;
 
@@ -57,7 +58,12 @@ public class SmartIndexer : ISmartIndexer
             }
 
             // Perform indexing
-            await _indexingService.IndexDocumentAsync(document, cancellationToken);
+            var options = new IndexingOptions
+            {
+                MaxChunkSize = 512,
+                OverlapSize = 50
+            };
+            await _indexingService.IndexDocumentAsync(document.FilePath, options, cancellationToken);
 
             // Update cache
             if (_cache != null && strategy == IndexingStrategy.HighQuality)
@@ -125,9 +131,9 @@ public class SmartIndexer : ISmartIndexer
             var qualityTarget = DetermineQualityTarget(metadata);
 
             // Get dataset characteristics
-            var stats = await _vectorStore.GetStatisticsAsync(cancellationToken);
-            var datasetSize = stats?.TotalDocuments ?? 1000;
-            var dimensions = stats?.VectorDimensions ?? 1536;
+            // Note: GetStatisticsAsync is not available in IVectorStore, using defaults
+            var datasetSize = 1000;  // Default estimate
+            var dimensions = 1536;   // Default embedding dimensions
 
             // Optimize HNSW parameters
             var optimizedParams = await _optimizer.OptimizeParametersAsync(
@@ -157,26 +163,26 @@ public class SmartIndexer : ISmartIndexer
         {
             case IndexingStrategy.HighQuality:
                 // Ensure high-quality indexing
-                document.Metadata["index_priority"] = "high";
-                document.Metadata["require_exact_match"] = "false";
+                document.Metadata.Properties["index_priority"] = "high";
+                document.Metadata.Properties["require_exact_match"] = "false";
                 break;
 
             case IndexingStrategy.Semantic:
                 // Optimize for semantic search
-                document.Metadata["search_type"] = "semantic";
-                document.Metadata["use_synonyms"] = "true";
+                document.Metadata.Properties["search_type"] = "semantic";
+                document.Metadata.Properties["use_synonyms"] = "true";
                 break;
 
             case IndexingStrategy.Hybrid:
                 // Balance between semantic and keyword
-                document.Metadata["search_type"] = "hybrid";
-                document.Metadata["hybrid_weight"] = "0.7";
+                document.Metadata.Properties["search_type"] = "hybrid";
+                document.Metadata.Properties["hybrid_weight"] = "0.7";
                 break;
 
             case IndexingStrategy.Keyword:
                 // Optimize for keyword search
-                document.Metadata["search_type"] = "keyword";
-                document.Metadata["tokenize_aggressive"] = "true";
+                document.Metadata.Properties["search_type"] = "keyword";
+                document.Metadata.Properties["tokenize_aggressive"] = "true";
                 break;
 
             case IndexingStrategy.Compressed:
