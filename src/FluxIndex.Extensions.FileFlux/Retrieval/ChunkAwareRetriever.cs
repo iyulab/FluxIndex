@@ -4,6 +4,7 @@ using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Extensions.FileFlux.Interfaces;
 using FluxIndex.Extensions.FileFlux.Strategies;
 using Microsoft.Extensions.Logging;
+using System;
 
 namespace FluxIndex.Extensions.FileFlux.Retrieval;
 
@@ -17,6 +18,7 @@ public class ChunkAwareRetriever : IChunkAwareRetriever
     private readonly IEmbeddingService _embeddingService;
     private readonly ISemanticCache? _cache;
     private readonly ILogger<ChunkAwareRetriever> _logger;
+    private ChunkingHint _defaultHint = new();
 
     public ChunkAwareRetriever(
         ISearchService searchService,
@@ -720,6 +722,173 @@ public class ChunkAwareRetriever : IChunkAwareRetriever
         {
             _logger.LogWarning(ex, "Cache update failed");
         }
+    }
+
+    // IChunkAwareRetriever interface methods
+    public async Task<IEnumerable<Document>> RetrieveAsync(
+        string query,
+        ChunkingHint hint,
+        int topK = 10,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogDebug("Retrieving documents with chunking hint for query: {Query}", query);
+
+        var options = new RetrievalOptions
+        {
+            TopK = topK,
+            MinScore = hint.MinQualityScore,
+            UseCache = true
+        };
+
+        // Add hint-specific properties
+        options.Properties["expand_with_overlap"] = hint.ExpandWithOverlap.ToString();
+        options.Properties["requires_reranking"] = hint.RequiresReranking.ToString();
+        options.Properties["chunking_strategy"] = hint.Strategy;
+        options.Properties["overlap_size"] = hint.OverlapSize.ToString();
+        options.Properties["use_semantic_search"] = hint.UseSemanticSearch.ToString();
+        options.Properties["use_keyword_search"] = hint.UseKeywordSearch.ToString();
+
+        // Determine search strategy based on hint
+        SearchStrategy strategy;
+        if (hint.UseSemanticSearch && hint.UseKeywordSearch)
+        {
+            strategy = SearchStrategy.Hybrid;
+        }
+        else if (hint.UseSemanticSearch)
+        {
+            strategy = SearchStrategy.Semantic;
+        }
+        else if (hint.UseKeywordSearch)
+        {
+            strategy = SearchStrategy.Keyword;
+        }
+        else
+        {
+            strategy = SearchStrategy.Hybrid; // Default fallback
+        }
+
+        options.Properties["search_strategy"] = strategy.ToString();
+
+        // Execute search with hint-optimized strategy
+        var results = await ExecuteStrategySearchAsync(query, strategy, options, cancellationToken);
+
+        // Apply hint-specific post-processing
+        results = await PostProcessWithHintAsync(results, hint, cancellationToken);
+
+        _logger.LogInformation("Retrieved {Count} documents with chunking hint", results.Count());
+        return results;
+    }
+
+    public void UpdateDefaultHint(ChunkingHint hint)
+    {
+        _defaultHint = hint ?? throw new ArgumentNullException(nameof(hint));
+        _logger.LogInformation("Updated default chunking hint: Strategy={Strategy}, ExpandWithOverlap={Expand}",
+            hint.Strategy, hint.ExpandWithOverlap);
+    }
+
+    public async Task<IEnumerable<Document>> GetAdjacentChunksAsync(
+        Document document,
+        int contextWindow = 1,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogDebug("Getting adjacent chunks for document {Id} with context window {Window}",
+            document.Id, contextWindow);
+
+        var adjacentChunks = new List<Document>();
+
+        try
+        {
+            var chunkIndex = GetChunkIndex(document);
+            var documentId = GetBaseDocumentId(document);
+
+            // Get chunks before and after current chunk
+            for (int offset = 1; offset <= contextWindow; offset++)
+            {
+                // Previous chunks
+                var prevChunk = await GetChunkAsync(documentId, chunkIndex - offset, cancellationToken);
+                if (prevChunk != null)
+                {
+                    adjacentChunks.Insert(0, prevChunk);
+                }
+
+                // Next chunks
+                var nextChunk = await GetChunkAsync(documentId, chunkIndex + offset, cancellationToken);
+                if (nextChunk != null)
+                {
+                    adjacentChunks.Add(nextChunk);
+                }
+            }
+
+            _logger.LogDebug("Found {Count} adjacent chunks", adjacentChunks.Count);
+            return adjacentChunks;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting adjacent chunks for document {Id}", document.Id);
+            return Enumerable.Empty<Document>();
+        }
+    }
+
+    private async Task<IEnumerable<Document>> PostProcessWithHintAsync(
+        IEnumerable<Document> results,
+        ChunkingHint hint,
+        CancellationToken cancellationToken)
+    {
+        var processed = results.ToList();
+
+        // Apply hint-specific processing
+        if (hint.ExpandWithOverlap)
+        {
+            var expandedResults = new List<Document>();
+
+            foreach (var doc in processed)
+            {
+                expandedResults.Add(doc);
+
+                // Get adjacent chunks if overlap is requested
+                var adjacent = await GetAdjacentChunksAsync(doc, 1, cancellationToken);
+                expandedResults.AddRange(adjacent);
+            }
+
+            processed = expandedResults.DistinctBy(d => d.Id).ToList();
+        }
+
+        // Apply quality filtering
+        if (hint.MinQualityScore > 0)
+        {
+            processed = processed.Where(d =>
+            {
+                if (d.Metadata.TryGetValue("quality_overall", out var qualityValue))
+                {
+                    return double.TryParse(qualityValue, out var quality) && quality >= hint.MinQualityScore;
+                }
+                return true; // Keep if no quality score available
+            }).ToList();
+        }
+
+        // Take top K based on hint
+        processed = processed.Take(hint.TopK).ToList();
+
+        // Add hint metadata
+        foreach (var doc in processed)
+        {
+            doc.Metadata["processing_hint"] = hint.Strategy;
+            doc.Metadata["overlap_processed"] = hint.ExpandWithOverlap.ToString();
+        }
+
+        return processed;
+    }
+
+    private string GetBaseDocumentId(Document document)
+    {
+        // Extract base document ID (remove chunk suffix if present)
+        var id = document.Id;
+        var lastUnderscore = id.LastIndexOf('_');
+        if (lastUnderscore > 0 && int.TryParse(id.Substring(lastUnderscore + 1), out _))
+        {
+            return id.Substring(0, lastUnderscore);
+        }
+        return id;
     }
 
     private enum SearchStrategy

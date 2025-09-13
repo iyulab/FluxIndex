@@ -1,7 +1,6 @@
 using FileFlux;
 using FluxIndex.Core.Domain.Entities;
 using FluxIndex.SDK;
-using FluxIndex.SDK.Search;
 using Microsoft.Extensions.Logging;
 using System.Runtime.CompilerServices;
 

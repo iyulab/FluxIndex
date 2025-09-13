@@ -9,6 +9,9 @@ using Spectre.Console;
 
 namespace RealQualityTest;
 
+/// <summary>
+/// Simple quality test for FluxIndex functionality
+/// </summary>
 public class SimpleQualityTest
 {
     private readonly HttpClient _httpClient;
@@ -17,6 +20,11 @@ public class SimpleQualityTest
     private readonly TestDatabase _db;
     private readonly Dictionary<string, float[]> _embeddingCache;
 
+    /// <summary>
+    /// Initializes a new instance of the SimpleQualityTest class
+    /// </summary>
+    /// <param name="apiKey">OpenAI API key</param>
+    /// <param name="config">Configuration instance</param>
     public SimpleQualityTest(string apiKey, IConfiguration config)
     {
         _apiKey = apiKey;
@@ -32,6 +40,9 @@ public class SimpleQualityTest
         _embeddingCache = new Dictionary<string, float[]>();
     }
 
+    /// <summary>
+    /// Runs the quality test asynchronously
+    /// </summary>
     public async Task RunTestAsync()
     {
         AnsiConsole.Write(new FigletText("FluxIndex Test").Color(Color.Cyan1));
@@ -300,7 +311,7 @@ public class SimpleQualityTest
             }
             else
             {
-                results.Add(null); // Placeholder
+                results.Add(null!); // Placeholder
                 uncachedTexts.Add((i, texts[i]));
             }
         }
@@ -502,15 +513,29 @@ public class SimpleQualityTest
 }
 
 // Database Models
+/// <summary>
+/// Test database context for quality testing
+/// </summary>
 public class TestDatabase : DbContext
 {
+    /// <summary>
+    /// Gets or sets the document chunks
+    /// </summary>
     public DbSet<DocumentChunk> Chunks { get; set; }
     
+    /// <summary>
+    /// Configures the database context
+    /// </summary>
+    /// <param name="optionsBuilder">Options builder</param>
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         optionsBuilder.UseSqlite("Data Source=quality_test.db");
     }
     
+    /// <summary>
+    /// Configures the database model
+    /// </summary>
+    /// <param name="modelBuilder">Model builder</param>
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<DocumentChunk>()
@@ -521,17 +546,50 @@ public class TestDatabase : DbContext
     }
 }
 
+/// <summary>
+/// Document chunk entity for testing
+/// </summary>
 public class DocumentChunk
 {
+    /// <summary>
+    /// Gets or sets the chunk ID
+    /// </summary>
     public int Id { get; set; }
+
+    /// <summary>
+    /// Gets or sets the document title
+    /// </summary>
     public string? DocumentTitle { get; set; }
+
+    /// <summary>
+    /// Gets or sets the content
+    /// </summary>
     public string Content { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the chunk index
+    /// </summary>
     public int ChunkIndex { get; set; }
+
+    /// <summary>
+    /// Gets or sets the start position
+    /// </summary>
     public int StartPosition { get; set; }
+
+    /// <summary>
+    /// Gets or sets the end position
+    /// </summary>
     public int EndPosition { get; set; }
+
+    /// <summary>
+    /// Gets or sets the embedding data
+    /// </summary>
     public float[]? Embedding { get; set; }
 }
 
+/// <summary>
+/// Test document class
+/// </summary>
 public class TestDocument
 {
     public string Title { get; set; } = string.Empty;

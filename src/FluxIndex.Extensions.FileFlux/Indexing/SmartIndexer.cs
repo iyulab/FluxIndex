@@ -2,6 +2,7 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services;
 using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Extensions.FileFlux.Interfaces;
+using FluxIndex.SDK.Interfaces;
 using Microsoft.Extensions.Logging;
 
 namespace FluxIndex.Extensions.FileFlux.Indexing;
