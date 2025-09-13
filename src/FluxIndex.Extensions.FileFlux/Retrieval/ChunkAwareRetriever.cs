@@ -484,20 +484,20 @@ public class ChunkAwareRetriever : IChunkAwareRetriever
 
     private void EnhanceRetrievalMetadata(Document document, SearchStrategy strategy)
     {
-        document.Metadata["retrieval_strategy"] = strategy.ToString();
-        document.Metadata["retrieval_timestamp"] = DateTime.UtcNow.ToString("O");
+        document.Metadata.Properties["retrieval_strategy"] = strategy.ToString();
+        document.Metadata.Properties["retrieval_timestamp"] = DateTime.UtcNow.ToString("O");
         
         // Add strategy-specific enhancements
         switch (strategy)
         {
             case SearchStrategy.Semantic:
-                document.Metadata["retrieval_type"] = "semantic_enhanced";
+                document.Metadata.Properties["retrieval_type"] = "semantic_enhanced";
                 break;
             case SearchStrategy.Keyword:
-                document.Metadata["retrieval_type"] = "keyword_matched";
+                document.Metadata.Properties["retrieval_type"] = "keyword_matched";
                 break;
             case SearchStrategy.Hybrid:
-                document.Metadata["retrieval_type"] = "hybrid_optimized";
+                document.Metadata.Properties["retrieval_type"] = "hybrid_optimized";
                 break;
         }
     }
@@ -506,10 +506,10 @@ public class ChunkAwareRetriever : IChunkAwareRetriever
     {
         // Analyze metadata to determine best expansion strategy
         var hasOverlap = documents.Any(d => 
-            d.Metadata.GetValueOrDefault("expand_with_overlap", "false") == "true");
+            d.Metadata.Properties.GetValueOrDefault("expand_with_overlap", "false")?.ToString() == "true");
         
         var avgCompleteness = documents
-            .Select(d => d.Metadata.GetValueOrDefault("quality_completeness", "1.0"))
+            .Select(d => d.Metadata.Properties.GetValueOrDefault("quality_completeness", "1.0")?.ToString() ?? "1.0")
             .Select(v => double.TryParse(v, out var score) ? score : 1.0)
             .Average();
 
@@ -583,9 +583,9 @@ public class ChunkAwareRetriever : IChunkAwareRetriever
         var scores = results.Select(r =>
         {
             var qualityScore = 0.5;
-            if (r.Metadata.TryGetValue("quality_overall", out var quality))
+            if (r.Metadata.Properties.TryGetValue("quality_overall", out var quality))
             {
-                double.TryParse(quality, out qualityScore);
+                double.TryParse(quality?.ToString(), out qualityScore);
             }
 
             // Simple keyword match score
@@ -616,9 +616,9 @@ public class ChunkAwareRetriever : IChunkAwareRetriever
             var score = 0.0;
             
             // Quality score
-            if (r.Metadata.TryGetValue("quality_overall", out var quality))
+            if (r.Metadata.Properties.TryGetValue("quality_overall", out var quality))
             {
-                score += double.TryParse(quality, out var q) ? q : 0.5;
+                score += double.TryParse(quality?.ToString(), out var q) ? q : 0.5;
             }
 
             // Relevance (simple keyword match)
@@ -639,9 +639,9 @@ public class ChunkAwareRetriever : IChunkAwareRetriever
 
     private int GetChunkIndex(Document document)
     {
-        if (document.Metadata.TryGetValue("chunk_index", out var index))
+        if (document.Metadata.Properties.TryGetValue("chunk_index", out var index))
         {
-            if (int.TryParse(index, out var chunkIndex))
+            if (int.TryParse(index?.ToString(), out var chunkIndex))
                 return chunkIndex;
         }
         return 0;
@@ -662,9 +662,18 @@ public class ChunkAwareRetriever : IChunkAwareRetriever
                 0,
                 cancellationToken);
 
-            return results.FirstOrDefault(r =>
-                r.Id.StartsWith(documentId) &&
-                r.Metadata.GetValueOrDefault("chunk_index", "-1") == chunkIndex.ToString());
+            var chunk = results.FirstOrDefault(r =>
+                r.Chunk.DocumentId == documentId &&
+                r.Chunk.ChunkIndex == chunkIndex);
+
+            if (chunk != null)
+            {
+                // Convert chunk to Document for compatibility
+                var document = Document.Create(documentId, chunk.Chunk.Content, new DocumentMetadata());
+                document.Metadata.Properties["chunk_index"] = chunkIndex.ToString();
+                return document;
+            }
+            return null;
         }
         catch
         {
@@ -714,7 +723,8 @@ public class ChunkAwareRetriever : IChunkAwareRetriever
         {
             await _cache.SetAsync(
                 query,
-                results,
+                results.Cast<object>(),
+                new CacheMetadata { Query = query },
                 TimeSpan.FromMinutes(options.CacheDurationMinutes),
                 cancellationToken);
         }
@@ -858,9 +868,9 @@ public class ChunkAwareRetriever : IChunkAwareRetriever
         {
             processed = processed.Where(d =>
             {
-                if (d.Metadata.TryGetValue("quality_overall", out var qualityValue))
+                if (d.Metadata.Properties.TryGetValue("quality_overall", out var qualityValue))
                 {
-                    return double.TryParse(qualityValue, out var quality) && quality >= hint.MinQualityScore;
+                    return double.TryParse(qualityValue?.ToString(), out var quality) && quality >= hint.MinQualityScore;
                 }
                 return true; // Keep if no quality score available
             }).ToList();
@@ -872,8 +882,8 @@ public class ChunkAwareRetriever : IChunkAwareRetriever
         // Add hint metadata
         foreach (var doc in processed)
         {
-            doc.Metadata["processing_hint"] = hint.Strategy;
-            doc.Metadata["overlap_processed"] = hint.ExpandWithOverlap.ToString();
+            doc.Metadata.Properties["processing_hint"] = hint.Strategy;
+            doc.Metadata.Properties["overlap_processed"] = hint.ExpandWithOverlap.ToString();
         }
 
         return processed;

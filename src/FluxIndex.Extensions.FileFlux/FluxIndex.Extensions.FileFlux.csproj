@@ -12,14 +12,15 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\FluxIndex.Core\FluxIndex.Core.csproj" />
-    <ProjectReference Include="..\FluxIndex.SDK\FluxIndex.SDK.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
+    <PackageReference Include="FileFlux" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="System.Text.Json" />
-    <PackageReference Include="FileFlux" />
+  </ItemGroup>
+
+  <!-- Project references to FluxIndex components -->
+  <ItemGroup>
+    <ProjectReference Include="..\FluxIndex.Core\FluxIndex.Core.csproj" />
+    <ProjectReference Include="..\FluxIndex.SDK\FluxIndex.SDK.csproj" />
   </ItemGroup>
 
 </Project>

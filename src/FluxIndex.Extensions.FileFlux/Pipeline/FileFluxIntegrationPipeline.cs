@@ -234,8 +234,8 @@ public class FileFluxIntegrationPipeline : IFileFluxIntegrationPipeline
                 var strategy = _strategyInferrer.InferStrategy(metadata);
                 strategies[doc.Id] = strategy;
                 
-                // Store strategy in document metadata
-                doc.Metadata["inferred_strategy"] = strategy.ToString();
+                // Store strategy in document properties
+                doc.Properties["inferred_strategy"] = strategy.ToString();
             }
 
             _statistics.AdaptationTime = stopwatch.Elapsed;
@@ -271,23 +271,24 @@ public class FileFluxIntegrationPipeline : IFileFluxIntegrationPipeline
             
             // Enhance metadata
             var enhancedMetadata = await _enhancer.EnhanceAsync(
-                doc.Metadata,
+                doc.Properties,
                 doc.Content,
                 strategy,
                 cancellationToken);
 
             // Create enhanced document
-            var enhancedDoc = Document.Create(
-                doc.Content,
-                enhancedMetadata,
-                doc.EmbeddingVector);
+            var enhancedDoc = Document.Create(doc.Content, enhancedMetadata);
+            if (doc.EmbeddingVector != null)
+            {
+                enhancedDoc.SetEmbedding(doc.EmbeddingVector);
+            }
             
             enhanced.Add(enhancedDoc);
         }
 
         _statistics.EnhancementTime = stopwatch.Elapsed;
-        _statistics.MetadataFieldsAdded = enhanced.Sum(d => d.Metadata.Count) - 
-                                          documents.Sum(d => d.Metadata.Count);
+        _statistics.MetadataFieldsAdded = enhanced.Sum(d => d.Properties.Count) -
+                                          documents.Sum(d => d.Properties.Count);
 
         _logger.LogDebug("Enhanced {Count} documents in {Time}ms",
             enhanced.Count, stopwatch.ElapsedMilliseconds);

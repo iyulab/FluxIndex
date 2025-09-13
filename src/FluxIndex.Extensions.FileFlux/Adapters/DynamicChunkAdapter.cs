@@ -131,21 +131,27 @@ public class DynamicChunkAdapter : IFileFluxAdapter
             var metadata = ExtractMetadata(chunk);
             var metadataDict = ConvertMetadataToDict(metadata);
 
-            // Create document
-            var document = Document.Create(content, metadataDict);
-            document.Id = id;
-
             // Add indexing strategy as metadata
             var strategy = DetermineStrategy(metadata);
-            document.Metadata["indexing_strategy"] = strategy.ToString();
-            document.Metadata["source"] = "FileFlux";
+            metadataDict["indexing_strategy"] = strategy.ToString();
+            metadataDict["source"] = "FileFlux";
 
             // Add quality metrics if available
             if (metadata.QualityScore.HasValue)
             {
-                document.Score = (float)metadata.QualityScore.Value;
-                document.Metadata["quality_score"] = metadata.QualityScore.Value.ToString("F2");
+                metadataDict["quality_score"] = metadata.QualityScore.Value.ToString("F2");
             }
+
+            // Create document (Id is auto-generated and read-only)
+            var documentMetadata = new DocumentMetadata(
+                filename: metadataDict.GetValueOrDefault("source_file", "unknown"),
+                contentType: metadataDict.GetValueOrDefault("content_type", "text"),
+                language: metadataDict.GetValueOrDefault("language", "ko"),
+                author: metadataDict.GetValueOrDefault("author", ""),
+                model: metadataDict.GetValueOrDefault("model", ""),
+                createdAt: DateTime.UtcNow);
+            var document = Document.Create(content, documentMetadata);
+
 
             return document;
         }

@@ -54,23 +54,17 @@ public class FileFluxIntegration : IFileFluxIntegration
         
         foreach (var chunk in chunks)
         {
-            var fluxChunk = new DocumentChunk(
-                content: chunk.Content,
-                metadata: new ChunkMetadata
-                {
-                    ChunkIndex = chunk.ChunkIndex,
-                    StartPosition = chunk.StartPosition,
-                    EndPosition = chunk.EndPosition,
-                    TokenCount = EstimateTokens(chunk.Content),
-                    CharacterCount = chunk.Content.Length
-                }
-            );
+            var fluxChunk = new DocumentChunk(chunk.Content, chunk.ChunkIndex);
+            fluxChunk.TokenCount = EstimateTokens(chunk.Content);
+            fluxChunk.AddProperty("StartPosition", chunk.StartPosition);
+            fluxChunk.AddProperty("EndPosition", chunk.EndPosition);
+            fluxChunk.AddProperty("CharacterCount", chunk.Content.Length);
 
             // 품질 점수 계산 (시뮬레이션)
             if (options.EnableQualityScoring)
             {
                 var quality = CalculateChunkQuality(chunk);
-                fluxChunk.Metadata.Properties["quality_score"] = quality;
+                fluxChunk.AddProperty("quality_score", quality);
                 totalQuality += quality;
             }
 
@@ -79,7 +73,7 @@ public class FileFluxIntegration : IFileFluxIntegration
             {
                 foreach (var prop in chunk.Properties)
                 {
-                    fluxChunk.Metadata.Properties[$"fileflux_{prop.Key}"] = prop.Value;
+                    fluxChunk.AddProperty($"fileflux_{prop.Key}", prop.Value);
                 }
             }
 
@@ -87,9 +81,10 @@ public class FileFluxIntegration : IFileFluxIntegration
         }
 
         // FluxIndex로 인덱싱
-        var documentId = await _fluxIndex.IndexDocumentAsync(
-            Path.GetFileNameWithoutExtension(filePath),
+        var documentId = await _fluxIndex.IndexChunksAsync(
             fluxIndexChunks,
+            Path.GetFileNameWithoutExtension(filePath),
+            null,
             cancellationToken);
 
         return new ProcessingResult
@@ -98,7 +93,7 @@ public class FileFluxIntegration : IFileFluxIntegration
             DocumentId = documentId,
             ChunkCount = fluxIndexChunks.Count,
             AverageQualityScore = options.EnableQualityScoring ? totalQuality / fluxIndexChunks.Count : 0,
-            MetadataCount = fluxIndexChunks.Sum(c => c.Metadata.Properties.Count)
+            MetadataCount = fluxIndexChunks.Sum(c => c.Properties.Count)
         };
     }
 
@@ -112,15 +107,9 @@ public class FileFluxIntegration : IFileFluxIntegration
         var chunkIndex = 0;
         await foreach (var chunk in _fileFlux.ProcessStreamAsync(filePath, cancellationToken))
         {
-            var fluxChunk = new DocumentChunk(
-                content: chunk.Content,
-                metadata: new ChunkMetadata
-                {
-                    ChunkIndex = chunkIndex,
-                    TokenCount = EstimateTokens(chunk.Content),
-                    CharacterCount = chunk.Content.Length
-                }
-            );
+            var fluxChunk = new DocumentChunk(chunk.Content, chunkIndex);
+            fluxChunk.TokenCount = EstimateTokens(chunk.Content);
+            fluxChunk.AddProperty("CharacterCount", chunk.Content.Length);
 
             var quality = options.EnableQualityScoring ? CalculateChunkQuality(chunk) : 0;
             
@@ -129,7 +118,7 @@ public class FileFluxIntegration : IFileFluxIntegration
                 ChunkIndex = chunkIndex++,
                 CurrentChunk = fluxChunk,
                 QualityScore = quality,
-                TokenCount = fluxChunk.Metadata.TokenCount,
+                TokenCount = fluxChunk.TokenCount,
                 Status = ProcessingStatus.InProgress
             };
         }
@@ -147,17 +136,22 @@ public class FileFluxIntegration : IFileFluxIntegration
         int topK = 10,
         CancellationToken cancellationToken = default)
     {
-        var results = await _fluxIndex.AdvancedSearchAsync(
+        var results = await _fluxIndex.SearchAsync(
             query,
-            topK: topK,
-            rerankingStrategy: strategy,
-            cancellationToken: cancellationToken);
+            topK,
+            0.5f,
+            null,
+            cancellationToken);
 
         return results.Select(r => new SearchResult
         {
-            Chunk = r.Chunk,
-            Score = r.RerankedScore,
-            Metadata = r.Chunk.Metadata
+            Chunk = new DocumentChunk(r.Content, r.ChunkIndex)
+            {
+                Id = r.Id,
+                DocumentId = r.DocumentId
+            },
+            Score = r.Score,
+            Metadata = new ChunkMetadata()
         }).ToList();
     }
 
