@@ -13,7 +13,7 @@ namespace FluxIndex.Extensions.FileFlux.Retrieval;
 /// </summary>
 public class ChunkAwareRetriever : IChunkAwareRetriever
 {
-    private readonly ISearchService _searchService;
+    private readonly SearchService _searchService;
     private readonly IVectorStore _vectorStore;
     private readonly IEmbeddingService _embeddingService;
     private readonly ISemanticCache? _cache;
@@ -21,7 +21,7 @@ public class ChunkAwareRetriever : IChunkAwareRetriever
     private ChunkingHint _defaultHint = new();
 
     public ChunkAwareRetriever(
-        ISearchService searchService,
+        SearchService searchService,
         IVectorStore vectorStore,
         IEmbeddingService embeddingService,
         ILogger<ChunkAwareRetriever> logger,

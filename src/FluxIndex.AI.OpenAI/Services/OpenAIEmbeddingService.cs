@@ -1,8 +1,10 @@
+using Azure;
 using Azure.AI.OpenAI;
 using FluxIndex.Core.Application.Interfaces;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using OpenAI.Embeddings;
 using System.ClientModel;
 using System.Security.Cryptography;
 using System.Text;
@@ -15,7 +17,7 @@ namespace FluxIndex.AI.OpenAI.Services;
 /// </summary>
 public class OpenAIEmbeddingService : IEmbeddingService
 {
-    private readonly AzureOpenAIClient _client;
+    private readonly EmbeddingClient _client;
     private readonly OpenAIConfiguration _config;
     private readonly IMemoryCache? _cache;
     private readonly ILogger<OpenAIEmbeddingService> _logger;
@@ -30,7 +32,8 @@ public class OpenAIEmbeddingService : IEmbeddingService
         _cache = cache;
 
         // Initialize OpenAI client
-        _client = CreateOpenAIClient(_config);
+        var azureClient = CreateOpenAIClient(_config);
+        _client = azureClient.GetEmbeddingClient(_config.Embedding.Model);
     }
 
     public async Task<float[]> GenerateEmbeddingAsync(
@@ -58,24 +61,15 @@ public class OpenAIEmbeddingService : IEmbeddingService
         {
             _logger.LogDebug("Generating embedding for text length: {Length}", text.Length);
 
-            var embeddingsOptions = new EmbeddingsOptions
-            {
-                DeploymentName = _config.Embedding.Model,
-                Input = { text }
-            };
+            var options = new EmbeddingGenerationOptions();
 
             if (_config.Embedding.Dimensions.HasValue)
             {
-                embeddingsOptions.Dimensions = _config.Embedding.Dimensions.Value;
+                options.Dimensions = _config.Embedding.Dimensions.Value;
             }
 
-            var response = await _client.GetEmbeddingsAsync(embeddingsOptions, cancellationToken);
-            var embeddings = response.Value;
-
-            if (embeddings.Data?.Count > 0)
-            {
-                var embeddingData = embeddings.Data[0];
-                var vector = embeddingData.Embedding.ToArray();
+            var embedding = await _client.GenerateEmbeddingAsync(text, options, cancellationToken);
+            var vector = embedding.Value.ToFloats().ToArray();
 
                 // Cache the result if enabled
                 if (_config.Embedding.EnableCaching && _cache != null)
@@ -89,19 +83,14 @@ public class OpenAIEmbeddingService : IEmbeddingService
                     _logger.LogDebug("Embedding cached for {Hours} hours", _config.Embedding.CacheExpiryHours);
                 }
 
-                _logger.LogDebug("Embedding generated successfully. Dimensions: {Dimensions}, Tokens used: {Tokens}",
-                    vector.Length, embeddings.Usage?.TotalTokens ?? 0);
+                _logger.LogDebug("Embedding generated successfully. Dimensions: {Dimensions}",
+                    vector.Length);
 
                 return vector;
-            }
-
-            _logger.LogWarning("No embedding data returned from OpenAI");
-            return Array.Empty<float>();
         }
-        catch (ClientRequestException ex)
+        catch (ClientResultException ex)
         {
-            _logger.LogError(ex, "OpenAI API request failed with status {StatusCode}: {Message}",
-                ex.Status, ex.Message);
+            _logger.LogError(ex, "OpenAI API request failed: {Message}", ex.Message);
             throw new InvalidOperationException($"Embedding generation request failed: {ex.Message}", ex);
         }
         catch (Exception ex)
@@ -154,14 +143,14 @@ public class OpenAIEmbeddingService : IEmbeddingService
         return _config.Embedding.MaxTokens;
     }
 
-    public async Task<int> CountTokensAsync(string text, CancellationToken cancellationToken = default)
+    public Task<int> CountTokensAsync(string text, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(text))
-            return 0;
+            return Task.FromResult(0);
 
         // Simple approximation: 1 token ≈ 4 characters for English
         // This is a rough estimate - for accurate counts you'd need tiktoken or similar
-        return text.Length / 4;
+        return Task.FromResult(text.Length / 4);
     }
 
     private async Task<IEnumerable<float[]>> ProcessBatch(
@@ -199,29 +188,21 @@ public class OpenAIEmbeddingService : IEmbeddingService
         {
             try
             {
-                var embeddingsOptions = new EmbeddingsOptions
-                {
-                    DeploymentName = _config.Embedding.Model
-                };
-
-                foreach (var (text, _) in uncachedTexts)
-                {
-                    embeddingsOptions.Input.Add(text);
-                }
+                var options = new EmbeddingGenerationOptions();
 
                 if (_config.Embedding.Dimensions.HasValue)
                 {
-                    embeddingsOptions.Dimensions = _config.Embedding.Dimensions.Value;
+                    options.Dimensions = _config.Embedding.Dimensions.Value;
                 }
 
-                var response = await _client.GetEmbeddingsAsync(embeddingsOptions, cancellationToken);
-                var embeddings = response.Value;
+                var textInputs = uncachedTexts.Select(t => t.Text).ToList();
+                var embeddingCollection = await _client.GenerateEmbeddingsAsync(textInputs, options, cancellationToken);
+                var embeddings = embeddingCollection.Value.ToList();
 
                 // Process results
-                for (int i = 0; i < uncachedTexts.Count && i < embeddings.Data.Count; i++)
+                for (int i = 0; i < uncachedTexts.Count && i < embeddings.Count; i++)
                 {
-                    var embeddingData = embeddings.Data[i];
-                    var vector = embeddingData.Embedding.ToArray();
+                    var vector = embeddings[i].ToFloats().ToArray();
 
                     var (text, originalIndex) = uncachedTexts[i];
 
@@ -248,8 +229,8 @@ public class OpenAIEmbeddingService : IEmbeddingService
                     }
                 }
 
-                _logger.LogDebug("Generated {Count} new embeddings, tokens used: {Tokens}",
-                    uncachedTexts.Count, embeddings.Usage?.TotalTokens ?? 0);
+                _logger.LogDebug("Generated {Count} new embeddings",
+                    uncachedTexts.Count);
             }
             catch (Exception ex)
             {
@@ -267,7 +248,7 @@ public class OpenAIEmbeddingService : IEmbeddingService
         {
             // Azure OpenAI or custom endpoint
             var clientOptions = new AzureOpenAIClientOptions();
-            return new AzureOpenAIClient(new Uri(config.BaseUrl), new ApiKeyCredential(config.ApiKey), clientOptions);
+            return new AzureOpenAIClient(new Uri(config.BaseUrl), new AzureKeyCredential(config.ApiKey), clientOptions);
         }
         else
         {
@@ -275,7 +256,7 @@ public class OpenAIEmbeddingService : IEmbeddingService
             var clientOptions = new AzureOpenAIClientOptions();
             // For standard OpenAI, use api.openai.com endpoint
             var endpoint = new Uri("https://api.openai.com/v1");
-            return new AzureOpenAIClient(endpoint, new ApiKeyCredential(config.ApiKey), clientOptions);
+            return new AzureOpenAIClient(endpoint, new AzureKeyCredential(config.ApiKey), clientOptions);
         }
     }
 

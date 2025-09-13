@@ -2,6 +2,7 @@ using FluxIndex.AI.OpenAI.Services;
 using FluxIndex.Core.Application.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 
 namespace FluxIndex.AI.OpenAI;

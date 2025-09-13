@@ -1,9 +1,11 @@
+using Azure;
 using Azure.AI.OpenAI;
 using FluxIndex.Core.Application.Interfaces;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using System.Text.Json;
+using OpenAI.Chat;
 using System.ClientModel;
+using System.Text.Json;
 
 namespace FluxIndex.AI.OpenAI.Services;
 
@@ -13,7 +15,7 @@ namespace FluxIndex.AI.OpenAI.Services;
 /// </summary>
 public class OpenAITextCompletionService : ITextCompletionService
 {
-    private readonly AzureOpenAIClient _client;
+    private readonly ChatClient _client;
     private readonly OpenAIConfiguration _config;
     private readonly ILogger<OpenAITextCompletionService> _logger;
 
@@ -24,8 +26,9 @@ public class OpenAITextCompletionService : ITextCompletionService
         _config = configuration.Value;
         _logger = logger;
 
-        // Initialize OpenAI client based on configuration
-        _client = CreateOpenAIClient(_config);
+        // Initialize OpenAI client
+        var azureClient = CreateOpenAIClient(_config);
+        _client = azureClient.GetChatClient(_config.TextCompletion.Model);
     }
 
     public async Task<string> GenerateCompletionAsync(
@@ -38,42 +41,42 @@ public class OpenAITextCompletionService : ITextCompletionService
         {
             _logger.LogDebug("Generating completion for prompt length: {PromptLength}", prompt.Length);
 
-            var chatCompletionsOptions = new ChatCompletionsOptions
+            var messages = new List<ChatMessage>
             {
-                DeploymentName = _config.TextCompletion.Model,
-                MaxTokens = maxTokens > 0 ? maxTokens : _config.TextCompletion.MaxTokens,
+                new UserChatMessage(prompt)
+            };
+
+            var options = new ChatCompletionOptions
+            {
+                MaxOutputTokenCount = maxTokens > 0 ? maxTokens : _config.TextCompletion.MaxTokens,
                 Temperature = temperature >= 0 ? temperature : _config.TextCompletion.Temperature,
                 TopP = _config.TextCompletion.TopP,
                 FrequencyPenalty = _config.TextCompletion.FrequencyPenalty,
-                PresencePenalty = _config.TextCompletion.PresencePenalty,
-                Messages =
-                {
-                    new ChatRequestUserMessage(prompt)
-                }
+                PresencePenalty = _config.TextCompletion.PresencePenalty
             };
 
             if (_config.EnableDetailedLogging)
             {
                 _logger.LogDebug("Request options: {Options}", JsonSerializer.Serialize(new
                 {
-                    Model = chatCompletionsOptions.DeploymentName,
-                    MaxTokens = chatCompletionsOptions.MaxTokens,
-                    Temperature = chatCompletionsOptions.Temperature,
+                    Model = _config.TextCompletion.Model,
+                    MaxTokens = options.MaxOutputTokenCount,
+                    Temperature = options.Temperature,
                     PromptLength = prompt.Length
                 }));
             }
 
-            var response = await _client.GetChatCompletionsAsync(chatCompletionsOptions, cancellationToken);
+            var response = await _client.CompleteChatAsync(messages, options, cancellationToken);
             var completion = response.Value;
 
-            if (completion.Choices?.Count > 0)
+            if (completion.Content?.Count > 0)
             {
-                var result = completion.Choices[0].Message?.Content ?? string.Empty;
-                
+                var result = completion.Content[0].Text ?? string.Empty;
+
                 _logger.LogDebug("Completion generated successfully. Length: {Length}, Tokens used: {InputTokens}/{OutputTokens}",
                     result.Length,
-                    completion.Usage?.PromptTokens ?? 0,
-                    completion.Usage?.CompletionTokens ?? 0);
+                    completion.Usage?.InputTokenCount ?? 0,
+                    completion.Usage?.OutputTokenCount ?? 0);
 
                 if (_config.EnableDetailedLogging)
                 {
@@ -83,13 +86,12 @@ public class OpenAITextCompletionService : ITextCompletionService
                 return result;
             }
 
-            _logger.LogWarning("No completion choices returned from OpenAI");
+            _logger.LogWarning("No completion content returned from OpenAI");
             return string.Empty;
         }
-        catch (ClientRequestException ex)
+        catch (ClientResultException ex)
         {
-            _logger.LogError(ex, "OpenAI API request failed with status {StatusCode}: {Message}",
-                ex.Status, ex.Message);
+            _logger.LogError(ex, "OpenAI API request failed: {Message}", ex.Message);
             throw new InvalidOperationException($"Text completion request failed: {ex.Message}", ex);
         }
         catch (Exception ex)
@@ -179,7 +181,7 @@ public class OpenAITextCompletionService : ITextCompletionService
         {
             // Azure OpenAI or custom endpoint
             var clientOptions = new AzureOpenAIClientOptions();
-            return new AzureOpenAIClient(new Uri(config.BaseUrl), new ApiKeyCredential(config.ApiKey), clientOptions);
+            return new AzureOpenAIClient(new Uri(config.BaseUrl), new AzureKeyCredential(config.ApiKey), clientOptions);
         }
         else
         {
@@ -187,7 +189,7 @@ public class OpenAITextCompletionService : ITextCompletionService
             var clientOptions = new AzureOpenAIClientOptions();
             // For standard OpenAI, use api.openai.com endpoint
             var endpoint = new Uri("https://api.openai.com/v1");
-            return new AzureOpenAIClient(endpoint, new ApiKeyCredential(config.ApiKey), clientOptions);
+            return new AzureOpenAIClient(endpoint, new AzureKeyCredential(config.ApiKey), clientOptions);
         }
     }
 }
