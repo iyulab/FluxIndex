@@ -321,6 +321,7 @@ public class SearchService
     {
         // 중복 제거 (청크 ID 기준)
         var unique = results
+            .Where(r => r.Chunk?.Id != null)
             .GroupBy(r => r.Chunk.Id)
             .Select(g => g.OrderByDescending(r => r.RerankedScore).First())
             .OrderByDescending(r => r.RerankedScore)

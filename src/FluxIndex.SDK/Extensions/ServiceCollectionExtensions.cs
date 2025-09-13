@@ -151,7 +151,7 @@ public static class ServiceCollectionExtensions
         var options = new OpenAIOptions();
         configure(options);
         // TODO: OpenAI implementation
-        services.AddSingleton<IEmbeddingService>(sp => new MockEmbeddingService());
+        services.AddSingleton<FluxIndex.Core.Application.Interfaces.IEmbeddingService>(sp => new MockEmbeddingService());
         return services;
     }
 
@@ -163,7 +163,7 @@ public static class ServiceCollectionExtensions
         var options = new AzureOpenAIOptions();
         configure(options);
         // TODO: Azure OpenAI implementation
-        services.AddSingleton<IEmbeddingService>(sp => new MockEmbeddingService());
+        services.AddSingleton<FluxIndex.Core.Application.Interfaces.IEmbeddingService>(sp => new MockEmbeddingService());
         return services;
     }
 

@@ -61,14 +61,14 @@ public class SQLiteVectorStore : IVectorStore
         {
             Id = Guid.NewGuid(),
             ExternalId = document.Id,
-            Title = document.Metadata?.GetValueOrDefault("title")?.ToString(),
-            Source = document.Metadata?.GetValueOrDefault("source")?.ToString(),
+            Title = document.Metadata?.Properties.GetValueOrDefault("title")?.ToString(),
+            Source = document.Metadata?.Properties.GetValueOrDefault("source")?.ToString(),
             ContentHash = contentHash,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
         
-        sqliteDoc.SetMetadata(document.Metadata);
+        sqliteDoc.SetMetadata(document.Metadata?.Properties ?? new Dictionary<string, object>());
 
         // 청크 생성
         var sqliteChunks = document.Chunks.Select((chunk, index) => 
@@ -83,7 +83,7 @@ public class SQLiteVectorStore : IVectorStore
                 CreatedAt = DateTime.UtcNow
             };
             
-            sqliteChunk.SetEmbedding(chunk.Embedding?.Vector);
+            sqliteChunk.SetEmbedding(chunk.Embedding);
             sqliteChunk.SetMetadata(chunk.Metadata);
             
             return sqliteChunk;
@@ -173,18 +173,29 @@ public class SQLiteVectorStore : IVectorStore
         var topResults = results
             .OrderByDescending(r => r.similarity)
             .Take(topK)
-            .Select(r => new SearchResult
-            {
-                DocumentId = r.chunk.Document.ExternalId,
-                ChunkIndex = r.chunk.ChunkIndex,
-                Content = r.chunk.Content,
-                Score = r.similarity,
-                Metadata = MergeMetadata(r.chunk.Document.GetMetadata(), r.chunk.GetMetadata())
-            })
             .ToList();
 
-        _logger.LogInformation("Found {ResultCount} search results", topResults.Count);
-        return topResults;
+        var searchResultsList = topResults.Select(r => {
+            var chunk = new DocumentChunk(r.chunk.Content, r.chunk.ChunkIndex)
+            {
+                Id = r.chunk.Id.ToString(),
+                DocumentId = r.chunk.Document.ExternalId,
+                TokenCount = r.chunk.TokenCount
+            };
+            var embedding = r.chunk.GetEmbedding();
+            if (embedding != null)
+            {
+                chunk.Embedding = embedding;
+            }
+            return new SearchResult
+            {
+                Chunk = chunk,
+                Score = (float)r.similarity
+            };
+        }).ToList();
+
+        _logger.LogInformation("Found {ResultCount} search results", searchResultsList.Count);
+        return searchResultsList;
     }
 
     public async Task<IEnumerable<SearchResult>> HybridSearchAsync(
@@ -206,19 +217,30 @@ public class SQLiteVectorStore : IVectorStore
         // 키워드 검색
         if (!string.IsNullOrWhiteSpace(keyword))
         {
-            var keywordResults = await _context.Chunks
+            var keywordChunks = await _context.Chunks
                 .Where(c => EF.Functions.Like(c.Content, $"%{keyword}%"))
                 .Include(c => c.Document)
-                .Select(c => new SearchResult
-                {
-                    DocumentId = c.Document.ExternalId,
-                    ChunkIndex = c.ChunkIndex,
-                    Content = c.Content,
-                    Score = 1.0, // 키워드 매칭은 1.0으로 설정
-                    Metadata = MergeMetadata(c.Document.GetMetadata(), c.GetMetadata())
-                })
                 .Take(topK * 2)
                 .ToListAsync(cancellationToken);
+
+            var keywordResults = keywordChunks.Select(c => {
+                var chunk = new DocumentChunk(c.Content, c.ChunkIndex)
+                {
+                    Id = c.Id.ToString(),
+                    DocumentId = c.Document.ExternalId,
+                    TokenCount = c.TokenCount
+                };
+                var embedding = c.GetEmbedding();
+                if (embedding != null)
+                {
+                    chunk.Embedding = embedding;
+                }
+                return new SearchResult
+                {
+                    Chunk = chunk,
+                    Score = 1.0f // 키워드 매칭은 1.0으로 설정
+                };
+            }).ToList();
 
             results.AddRange(keywordResults);
         }
@@ -237,12 +259,12 @@ public class SQLiteVectorStore : IVectorStore
                 if (existing != null)
                 {
                     // 이미 키워드 검색에서 찾은 경우, 점수 결합
-                    existing.Score = (existing.Score * (1 - vectorWeight)) + (vr.Score * vectorWeight);
+                    existing.Score = (float)((existing.Score * (1 - vectorWeight)) + (vr.Score * vectorWeight));
                 }
                 else
                 {
                     // 벡터 검색에서만 찾은 경우
-                    vr.Score *= vectorWeight;
+                    vr.Score = (float)(vr.Score * vectorWeight);
                     results.Add(vr);
                 }
             }
@@ -275,10 +297,7 @@ public class SQLiteVectorStore : IVectorStore
             return null;
         }
 
-        var document = new Document(documentId)
-        {
-            Metadata = sqliteDoc.GetMetadata()
-        };
+        var document = Document.Create(documentId);
 
         foreach (var chunk in sqliteDoc.Chunks)
         {
@@ -291,9 +310,7 @@ public class SQLiteVectorStore : IVectorStore
             var embedding = chunk.GetEmbedding();
             if (embedding != null)
             {
-                docChunk.Embedding = new EmbeddingVector(
-                    embedding, 
-                    chunk.GetMetadata()?.GetValueOrDefault("model")?.ToString() ?? "unknown");
+                docChunk.Embedding = embedding;
             }
 
             document.AddChunk(docChunk);
@@ -389,7 +406,7 @@ public class SQLiteVectorStore : IVectorStore
             CreatedAt = DateTime.UtcNow
         };
 
-        sqliteChunk.SetEmbedding(chunk.Embedding?.Vector);
+        sqliteChunk.SetEmbedding(chunk.Embedding);
         sqliteChunk.SetMetadata(chunk.Metadata?.ToDictionary() ?? new Dictionary<string, object>());
 
         _context.Chunks.Add(sqliteChunk);
@@ -594,7 +611,7 @@ public class SQLiteVectorStore : IVectorStore
         // Update chunk properties
         sqliteChunk.Content = chunk.Content;
         sqliteChunk.TokenCount = chunk.TokenCount;
-        sqliteChunk.SetEmbedding(chunk.Embedding?.Vector);
+        sqliteChunk.SetEmbedding(chunk.Embedding);
         sqliteChunk.SetMetadata(chunk.Metadata?.ToDictionary() ?? new Dictionary<string, object>());
 
         await _context.SaveChangesAsync(cancellationToken);
@@ -691,15 +708,13 @@ public class SQLiteVectorStore : IVectorStore
             Id = sqliteChunk.Id.ToString(),
             DocumentId = sqliteChunk.Document.ExternalId,
             TokenCount = sqliteChunk.TokenCount,
-            Metadata = new DocumentMetadata(sqliteChunk.GetMetadata() ?? new Dictionary<string, object>())
+            Metadata = sqliteChunk.GetMetadata()
         };
 
         var embedding = sqliteChunk.GetEmbedding();
         if (embedding != null)
         {
-            chunk.Embedding = new EmbeddingVector(
-                embedding,
-                sqliteChunk.GetMetadata()?.GetValueOrDefault("model")?.ToString() ?? "unknown");
+            chunk.Embedding = embedding;
         }
 
         return chunk;

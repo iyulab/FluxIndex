@@ -59,6 +59,7 @@ public class EmbeddingOptions
     public int MaxRetries { get; set; } = 3;
     public TimeSpan RetryDelay { get; set; } = TimeSpan.FromSeconds(1);
     public bool EnableCache { get; set; } = true;
+    public Dictionary<string, object> ProviderSpecificOptions { get; set; } = new();
 }
 
 /// <summary>
@@ -108,6 +109,7 @@ public class CacheOptions
     public bool EnableSearchCache { get; set; } = true;
     public int MaxCacheSize { get; set; } = 1000;
     public TimeSpan CacheDuration { get; set; } = TimeSpan.FromHours(1);
+    public TimeSpan CacheTTL { get; set; } = TimeSpan.FromHours(1);
     public string CacheProvider { get; set; } = "Memory";
     public string RedisConnectionString { get; set; } = string.Empty;
 }

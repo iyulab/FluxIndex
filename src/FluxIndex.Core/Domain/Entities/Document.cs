@@ -18,8 +18,9 @@ public class Document
     public DateTime UpdatedAt { get; private set; }
     public DocumentStatus Status { get; private set; }
 
-    private Document() 
+    private Document()
     {
+        Id = string.Empty;
         Chunks = new List<DocumentChunk>();
         Metadata = new DocumentMetadata();
         FileName = string.Empty;

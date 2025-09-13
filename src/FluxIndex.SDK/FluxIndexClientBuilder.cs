@@ -111,9 +111,9 @@ public class FluxIndexClientBuilder
     /// </summary>
     public FluxIndexClientBuilder WithChunking(string strategy = "Auto", int chunkSize = 512, int chunkOverlap = 64)
     {
-        _options.Chunking.Strategy = strategy;
-        _options.Chunking.ChunkSize = chunkSize;
-        _options.Chunking.ChunkOverlap = chunkOverlap;
+        _options.Indexing.ChunkingDefaults.Strategy = strategy;
+        _options.Indexing.ChunkingDefaults.MaxChunkSize = chunkSize;
+        _options.Indexing.ChunkingDefaults.OverlapSize = chunkOverlap;
         
         _indexerOptions.ChunkSize = chunkSize;
         _indexerOptions.ChunkOverlap = chunkOverlap;

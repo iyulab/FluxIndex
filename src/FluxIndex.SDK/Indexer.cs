@@ -91,10 +91,7 @@ public class Indexer
         _logger.LogInformation("Indexing chunks as document: {DocumentId}", documentId);
 
         // Create document
-        var document = new Document(documentId)
-        {
-            Metadata = metadata ?? new Dictionary<string, object>()
-        };
+        var document = Document.Create(documentId);
 
         // Add chunks to document
         foreach (var chunk in chunks)
@@ -151,8 +148,7 @@ public class Indexer
         // Delete existing chunks
         await _vectorStore.DeleteByDocumentIdAsync(documentId, cancellationToken);
 
-        // Update document
-        updatedDocument.Id = documentId;
+        // Update document (Id should already match documentId)
         await _documentRepository.UpdateAsync(updatedDocument, cancellationToken);
 
         // Process new chunks

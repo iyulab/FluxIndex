@@ -1,11 +1,14 @@
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.Entities;
+using FluxIndex.SDK.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using CoreSearchResult = FluxIndex.Core.Application.Interfaces.SearchResult;
 
 namespace FluxIndex.SDK;
 
@@ -58,7 +61,8 @@ public class FluxIndexClient : IFluxIndexClient
         Dictionary<string, object>? filter = null,
         CancellationToken cancellationToken = default)
     {
-        return await _retriever.SearchAsync(query, maxResults, minScore, filter, cancellationToken);
+        var coreResults = await _retriever.SearchAsync(query, maxResults, minScore, filter, cancellationToken);
+        return ConvertToSDKSearchResults(coreResults);
     }
 
     /// <summary>
@@ -72,7 +76,8 @@ public class FluxIndexClient : IFluxIndexClient
         Dictionary<string, object>? filter = null,
         CancellationToken cancellationToken = default)
     {
-        return await _retriever.HybridSearchAsync(keyword, query, maxResults, vectorWeight, filter, cancellationToken);
+        var coreResults = await _retriever.HybridSearchAsync(keyword, query, maxResults, vectorWeight, filter, cancellationToken);
+        return ConvertToSDKSearchResults(coreResults);
     }
 
     /// <summary>
@@ -167,6 +172,25 @@ public class FluxIndexClient : IFluxIndexClient
             DefaultChunkOverlap = indexerStats.DefaultChunkOverlap,
             EmbeddingModel = indexerStats.EmbeddingModel
         };
+    }
+
+    /// <summary>
+    /// Convert Core SearchResult to SDK SearchResult
+    /// </summary>
+    private IEnumerable<SearchResult> ConvertToSDKSearchResults(IEnumerable<CoreSearchResult> coreResults)
+    {
+        return coreResults.Select(cr => new SearchResult
+        {
+            Id = cr.ChunkId,
+            DocumentId = cr.DocumentId,
+            Content = cr.Content,
+            Score = cr.Score,
+            ChunkIndex = cr.ChunkIndex,
+            Metadata = new DocumentMetadata
+            {
+                FileName = cr.FileName
+            }
+        });
     }
 }
 

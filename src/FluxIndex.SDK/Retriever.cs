@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using CoreSearchResult = FluxIndex.Core.Application.Interfaces.SearchResult;
 
 namespace FluxIndex.SDK;
 
@@ -45,7 +46,7 @@ public class Retriever
     /// <summary>
     /// 벡터 유사도 검색
     /// </summary>
-    public async Task<IEnumerable<SearchResult>> SearchAsync(
+    public async Task<IEnumerable<CoreSearchResult>> SearchAsync(
         string query,
         int maxResults = 10,
         float minScore = 0.5f,
@@ -58,7 +59,7 @@ public class Retriever
         if (_cacheService != null)
         {
             var cacheKey = GenerateCacheKey(query, maxResults, minScore, filter);
-            var cachedResults = await _cacheService.GetAsync<List<SearchResult>>(cacheKey, cancellationToken);
+            var cachedResults = await _cacheService.GetAsync<List<CoreSearchResult>>(cacheKey, cancellationToken);
             if (cachedResults != null)
             {
                 _logger.LogDebug("Cache hit for query: {Query}", query);
@@ -77,14 +78,12 @@ public class Retriever
             cancellationToken);
 
         // Convert to search results
-        var results = chunks.Select(chunk => new SearchResult
+        var results = chunks.Select(chunk => new CoreSearchResult
         {
-            DocumentId = chunk.DocumentId,
-            ChunkId = chunk.Id,
-            Content = chunk.Content,
+            Chunk = chunk,
             Score = chunk.Score ?? 0,
-            ChunkIndex = chunk.ChunkIndex,
-            Metadata = chunk.Metadata
+            FileName = chunk.DocumentId,
+            Metadata = new FluxIndex.Core.Domain.Entities.DocumentMetadata()
         }).ToList();
 
         // Apply metadata filter if provided
@@ -107,7 +106,7 @@ public class Retriever
     /// <summary>
     /// 하이브리드 검색 (키워드 + 벡터) with RRF fusion
     /// </summary>
-    public async Task<IEnumerable<SearchResult>> HybridSearchAsync(
+    public async Task<IEnumerable<CoreSearchResult>> HybridSearchAsync(
         string keyword,
         string query,
         int maxResults = 10,
@@ -124,7 +123,7 @@ public class Retriever
         var keywordResults = await KeywordSearchAsync(keyword, maxResults * 2, filter, cancellationToken);
 
         // Use RRF fusion if weights are equal, otherwise use weighted fusion
-        IEnumerable<SearchResult> combinedResults;
+        IEnumerable<CoreSearchResult> combinedResults;
         
         if (Math.Abs(vectorWeight - 0.5f) < 0.01f) // Equal weights, use RRF
         {
@@ -155,7 +154,7 @@ public class Retriever
     /// <summary>
     /// 키워드 기반 검색
     /// </summary>
-    public async Task<IEnumerable<SearchResult>> KeywordSearchAsync(
+    public async Task<IEnumerable<CoreSearchResult>> KeywordSearchAsync(
         string keyword,
         int maxResults = 10,
         Dictionary<string, object>? filter = null,
@@ -166,7 +165,7 @@ public class Retriever
         // Search in document repository
         var documents = await _documentRepository.SearchByKeywordAsync(keyword, maxResults, cancellationToken);
         
-        var results = new List<SearchResult>();
+        var results = new List<CoreSearchResult>();
         foreach (var doc in documents)
         {
             // Get chunks for each document
@@ -176,13 +175,11 @@ public class Retriever
             var matchingChunks = chunks.Where(c => 
                 c.Content.Contains(keyword, StringComparison.OrdinalIgnoreCase));
             
-            results.AddRange(matchingChunks.Select(chunk => new SearchResult
+            results.AddRange(matchingChunks.Select(chunk => new CoreSearchResult
             {
-                DocumentId = doc.Id,
-                ChunkId = chunk.Id,
-                Content = chunk.Content,
+                Chunk = chunk,
                 Score = CalculateKeywordScore(chunk.Content, keyword),
-                ChunkIndex = chunk.ChunkIndex,
+                FileName = doc.FileName,
                 Metadata = doc.Metadata
             }));
         }
@@ -248,7 +245,7 @@ public class Retriever
     /// <summary>
     /// 유사 문서 찾기
     /// </summary>
-    public async Task<IEnumerable<SearchResult>> FindSimilarAsync(
+    public async Task<IEnumerable<CoreSearchResult>> FindSimilarAsync(
         string documentId,
         int maxResults = 10,
         float minScore = 0.5f,
@@ -259,12 +256,12 @@ public class Retriever
         // Get document chunks
         var chunks = await _vectorStore.GetByDocumentIdAsync(documentId, cancellationToken);
         if (!chunks.Any())
-            return Enumerable.Empty<SearchResult>();
+            return Enumerable.Empty<CoreSearchResult>();
 
         // Use first chunk's embedding for similarity search
         var firstChunk = chunks.First();
         if (firstChunk.Embedding == null)
-            return Enumerable.Empty<SearchResult>();
+            return Enumerable.Empty<CoreSearchResult>();
 
         // Search for similar chunks
         var similarChunks = await _vectorStore.SearchAsync(
@@ -276,14 +273,12 @@ public class Retriever
         // Filter out chunks from the same document
         var results = similarChunks
             .Where(c => c.DocumentId != documentId)
-            .Select(chunk => new SearchResult
+            .Select(chunk => new CoreSearchResult
             {
-                DocumentId = chunk.DocumentId,
-                ChunkId = chunk.Id,
-                Content = chunk.Content,
+                Chunk = chunk,
                 Score = chunk.Score ?? 0,
-                ChunkIndex = chunk.ChunkIndex,
-                Metadata = chunk.Metadata
+                FileName = chunk.DocumentId,
+                Metadata = new FluxIndex.Core.Domain.Entities.DocumentMetadata()
             })
             .Take(maxResults);
 
@@ -308,16 +303,16 @@ public class Retriever
         };
     }
 
-    private List<SearchResult> ApplyFilter(List<SearchResult> results, Dictionary<string, object> filter)
+    private List<CoreSearchResult> ApplyFilter(List<CoreSearchResult> results, Dictionary<string, object> filter)
     {
         return results.Where(r =>
         {
-            if (r.Metadata == null) return false;
-            
+            if (r.Metadata == null || r.Metadata.Properties == null) return false;
+
             foreach (var kvp in filter)
             {
-                if (!r.Metadata.ContainsKey(kvp.Key) || 
-                    !r.Metadata[kvp.Key].Equals(kvp.Value))
+                if (!r.Metadata.Properties.ContainsKey(kvp.Key) ||
+                    !r.Metadata.Properties[kvp.Key].Equals(kvp.Value))
                 {
                     return false;
                 }
@@ -340,14 +335,14 @@ public class Retriever
         return (float)count / content.Split(' ').Length;
     }
 
-    private IEnumerable<SearchResult> CombineResults(
-        IEnumerable<SearchResult> vectorResults,
-        IEnumerable<SearchResult> keywordResults,
+    private IEnumerable<CoreSearchResult> CombineResults(
+        IEnumerable<CoreSearchResult> vectorResults,
+        IEnumerable<CoreSearchResult> keywordResults,
         float vectorWeight)
     {
         var keywordWeight = 1 - vectorWeight;
-        var combined = new Dictionary<string, SearchResult>();
-        
+        var combined = new Dictionary<string, CoreSearchResult>();
+
         // Add vector results
         foreach (var result in vectorResults)
         {
@@ -355,7 +350,7 @@ public class Retriever
             combined[key] = result;
             combined[key].Score *= vectorWeight;
         }
-        
+
         // Combine with keyword results
         foreach (var result in keywordResults)
         {
@@ -370,7 +365,7 @@ public class Retriever
                 combined[key] = result;
             }
         }
-        
+
         return combined.Values.OrderByDescending(r => r.Score);
     }
 
@@ -380,7 +375,7 @@ public class Retriever
         return $"search:{query}:{maxResults}:{minScore}:{filterStr}";
     }
 
-    private IEnumerable<RankedResult> ConvertToRankedResults(IEnumerable<SearchResult> searchResults, string source)
+    private IEnumerable<RankedResult> ConvertToRankedResults(IEnumerable<CoreSearchResult> searchResults, string source)
     {
         return searchResults.Select((r, index) => new RankedResult
         {
@@ -391,21 +386,45 @@ public class Retriever
             Score = r.Score,
             Rank = index + 1,
             Source = source,
-            Metadata = r.Metadata
+            Metadata = r.Metadata.Properties
         });
     }
 
-    private IEnumerable<SearchResult> ConvertFromRankedResults(IEnumerable<RankedResult> rankedResults)
+    private IEnumerable<CoreSearchResult> ConvertFromRankedResults(IEnumerable<RankedResult> rankedResults)
     {
-        return rankedResults.Select(r => new SearchResult
+        return rankedResults.Select(r => new CoreSearchResult
         {
-            DocumentId = r.DocumentId,
-            ChunkId = r.ChunkId,
-            Content = r.Content,
+            Chunk = new DocumentChunk(r.Content, 0)
+            {
+                Id = r.ChunkId,
+                DocumentId = r.DocumentId
+            },
             Score = r.Score,
-            ChunkIndex = 0, // Will need to be fetched from chunk if needed
-            Metadata = r.Metadata
+            FileName = r.DocumentId,
+            Metadata = CreateMetadataFromDictionary(r.Metadata)
         });
+    }
+
+    private FluxIndex.Core.Domain.Entities.DocumentMetadata CreateMetadataFromDictionary(Dictionary<string, object>? metadata)
+    {
+        var result = new FluxIndex.Core.Domain.Entities.DocumentMetadata();
+
+        if (metadata != null)
+        {
+            foreach (var kvp in metadata)
+            {
+                if (kvp.Value is string stringValue)
+                {
+                    result.AddCustomField(kvp.Key, stringValue);
+                }
+                else
+                {
+                    result.Properties[kvp.Key] = kvp.Value;
+                }
+            }
+        }
+
+        return result;
     }
 }
 
