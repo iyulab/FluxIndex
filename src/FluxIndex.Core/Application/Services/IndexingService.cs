@@ -58,7 +58,7 @@ public class IndexingService
             for (int i = 0; i < totalChunks; i++)
             {
                 var chunk = chunksList[i];
-                chunk.DocumentId = document.Id;
+                // DocumentId should already be set when chunk was created
                 
                 // Enrich metadata with contextual information
                 var previousContent = i > 0 ? chunksList[i - 1].Content : null;

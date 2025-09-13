@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using FluxIndex.Core.Domain.Entities;
 
 namespace FluxIndex.Core.Application.Interfaces;
 
@@ -11,8 +10,8 @@ namespace FluxIndex.Core.Application.Interfaces;
 /// </summary>
 public interface IEmbeddingService
 {
-    Task<EmbeddingVector> GenerateEmbeddingAsync(string text, CancellationToken cancellationToken = default);
-    Task<IEnumerable<EmbeddingVector>> GenerateEmbeddingsBatchAsync(IEnumerable<string> texts, CancellationToken cancellationToken = default);
+    Task<float[]> GenerateEmbeddingAsync(string text, CancellationToken cancellationToken = default);
+    Task<IEnumerable<float[]>> GenerateEmbeddingsBatchAsync(IEnumerable<string> texts, CancellationToken cancellationToken = default);
     int GetEmbeddingDimension();
     string GetModelName();
     int GetMaxTokens();

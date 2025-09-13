@@ -9,6 +9,9 @@ namespace FluxIndex.Core.Domain.Entities;
 public class Document
 {
     public string Id { get; private set; }
+    public string FileName { get; private set; }
+    public string FilePath { get; private set; }
+    public string Content { get; private set; }
     public DocumentMetadata Metadata { get; private set; }
     public List<DocumentChunk> Chunks { get; private set; }
     public DateTime CreatedAt { get; private set; }
@@ -19,6 +22,9 @@ public class Document
     {
         Chunks = new List<DocumentChunk>();
         Metadata = new DocumentMetadata();
+        FileName = string.Empty;
+        FilePath = string.Empty;
+        Content = string.Empty;
     }
 
     public static Document Create(string id = null)
@@ -54,6 +60,24 @@ public class Document
     public void MarkAsFailed(string reason)
     {
         Status = DocumentStatus.Failed;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void SetFileName(string fileName)
+    {
+        FileName = fileName ?? string.Empty;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void SetFilePath(string filePath)
+    {
+        FilePath = filePath ?? string.Empty;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void SetContent(string content)
+    {
+        Content = content ?? string.Empty;
         UpdatedAt = DateTime.UtcNow;
     }
 }

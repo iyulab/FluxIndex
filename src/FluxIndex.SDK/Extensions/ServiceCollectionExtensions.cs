@@ -3,6 +3,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using FluxIndex.SDK.Configuration;
 using FluxIndex.SDK.Interfaces;
+using FluxIndex.SDK.Services;
+using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Services;
 
 namespace FluxIndex.SDK.Extensions;
 
@@ -117,4 +120,87 @@ public static class ServiceCollectionExtensions
         
         return services;
     }
+
+    /// <summary>
+    /// PostgreSQL 벡터 저장소 추가
+    /// </summary>
+    public static IServiceCollection AddPostgreSQLVectorStore(this IServiceCollection services, string connectionString)
+    {
+        // TODO: PostgreSQL implementation
+        services.AddSingleton<IVectorStore, InMemoryVectorStore>();
+        return services;
+    }
+
+    /// <summary>
+    /// SQLite 벡터 저장소 추가
+    /// </summary>
+    public static IServiceCollection AddSQLiteVectorStore(this IServiceCollection services, Action<SQLiteOptions> configure)
+    {
+        var options = new SQLiteOptions();
+        configure(options);
+        // TODO: SQLite implementation
+        services.AddSingleton<IVectorStore, InMemoryVectorStore>();
+        return services;
+    }
+
+    /// <summary>
+    /// OpenAI 임베딩 서비스 추가
+    /// </summary>
+    public static IServiceCollection AddOpenAIEmbedding(this IServiceCollection services, Action<OpenAIOptions> configure)
+    {
+        var options = new OpenAIOptions();
+        configure(options);
+        // TODO: OpenAI implementation
+        services.AddSingleton<IEmbeddingService>(sp => new MockEmbeddingService());
+        return services;
+    }
+
+    /// <summary>
+    /// Azure OpenAI 임베딩 서비스 추가
+    /// </summary>
+    public static IServiceCollection AddAzureOpenAIEmbedding(this IServiceCollection services, Action<AzureOpenAIOptions> configure)
+    {
+        var options = new AzureOpenAIOptions();
+        configure(options);
+        // TODO: Azure OpenAI implementation
+        services.AddSingleton<IEmbeddingService>(sp => new MockEmbeddingService());
+        return services;
+    }
+
+    /// <summary>
+    /// Redis 캐시 서비스 추가
+    /// </summary>
+    public static IServiceCollection AddRedisCache(this IServiceCollection services, Action<RedisCacheOptions> configure)
+    {
+        var options = new RedisCacheOptions();
+        configure(options);
+        // TODO: Redis implementation
+        services.AddSingleton<ICacheService, InMemoryCacheService>();
+        return services;
+    }
+}
+
+public class SQLiteOptions
+{
+    public string ConnectionString { get; set; } = "Data Source=fluxindex.db";
+    public bool UseInMemory { get; set; }
+    public bool AutoMigrate { get; set; }
+}
+
+public class OpenAIOptions
+{
+    public string ApiKey { get; set; } = string.Empty;
+    public string ModelName { get; set; } = "text-embedding-3-small";
+}
+
+public class AzureOpenAIOptions
+{
+    public string ApiKey { get; set; } = string.Empty;
+    public string Endpoint { get; set; } = string.Empty;
+    public string DeploymentName { get; set; } = string.Empty;
+}
+
+public class RedisCacheOptions
+{
+    public string ConnectionString { get; set; } = string.Empty;
 }

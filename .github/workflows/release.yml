@@ -1,10 +1,14 @@
-name: CI/CD Pipeline
+name: Release & Publish to NuGet
 
 on:
-  # 모든 push와 PR에서 실행
+  # Directory.Build.props 파일이 변경될 때만 실행 (버전 업데이트 시)
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
+    paths:
+      - 'Directory.Build.props'
+      - '.github/workflows/release.yml'  # 워크플로우 자체가 변경될 때도 실행
   
+  # PR에서는 모든 변경사항에 대해 빌드 및 테스트 실행
   pull_request:
     branches: [ main, develop ]
     types: [ opened, synchronize, reopened ]
@@ -68,31 +72,25 @@ jobs:
     - name: Extract version
       id: version
       run: |
-        VERSION=$(grep '<Version>' src/Directory.Build.props | sed 's/.*<Version>\(.*\)<\/Version>.*/\1/')
+        VERSION=$(grep '<Version>' Directory.Build.props | sed 's/.*<Version>\(.*\)<\/Version>.*/\1/')
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         echo "Extracted version: $VERSION"
 
     - name: Check if should publish
       id: check-publish
       run: |
-        # PR이거나 Dependabot인 경우 배포하지 않음
-        if [[ "${{ github.event_name }}" == "pull_request" ]] || [[ "${{ github.actor }}" == "dependabot[bot]" ]]; then
+        # PR인 경우 배포하지 않음 (빌드와 테스트만 실행)
+        if [[ "${{ github.event_name }}" == "pull_request" ]]; then
           echo "should-publish=false" >> $GITHUB_OUTPUT
-          echo "PR or Dependabot - Will not publish to NuGet"
-        # main 브랜치이고 src/Directory.Build.props가 변경되었는지 확인
+          echo "PR - Will not publish to NuGet (build and test only)"
+        # main 브랜치에 Directory.Build.props가 변경되어 push된 경우
         elif [[ "${{ github.ref }}" == "refs/heads/main" ]] && [[ "${{ github.event_name }}" == "push" ]]; then
-          # Directory.Build.props 파일이 변경되었는지 확인
-          if git diff HEAD~1 HEAD --name-only | grep -q "src/Directory.Build.props"; then
-            echo "should-publish=true" >> $GITHUB_OUTPUT
-            echo "Version changed - Will publish to NuGet"
-          # 수동 실행으로 publish가 true인 경우
-          elif [[ "${{ github.event.inputs.publish }}" == "true" ]]; then
-            echo "should-publish=true" >> $GITHUB_OUTPUT
-            echo "Manual publish - Will publish to NuGet"
-          else
-            echo "should-publish=false" >> $GITHUB_OUTPUT
-            echo "No version change - Will not publish to NuGet"
-          fi
+          echo "should-publish=true" >> $GITHUB_OUTPUT
+          echo "Directory.Build.props changed on main - Will publish to NuGet"
+        # 수동 실행으로 publish가 true인 경우
+        elif [[ "${{ github.event.inputs.publish }}" == "true" ]]; then
+          echo "should-publish=true" >> $GITHUB_OUTPUT
+          echo "Manual publish - Will publish to NuGet"
         else
           echo "should-publish=false" >> $GITHUB_OUTPUT
           echo "Will not publish to NuGet"
@@ -173,13 +171,13 @@ jobs:
         body: |
           ## FluxIndex v${{ steps.version.outputs.version }}
           
-          ### 📦 NuGet Packages
-          - [FluxIndex.Core](https://www.nuget.org/packages/FluxIndex.Core/${{ steps.version.outputs.version }})
-          - [FluxIndex.SDK](https://www.nuget.org/packages/FluxIndex.SDK/${{ steps.version.outputs.version }})
-          - [FluxIndex.AI.OpenAI](https://www.nuget.org/packages/FluxIndex.AI.OpenAI/${{ steps.version.outputs.version }})
-          - [FluxIndex.Storage.PostgreSQL](https://www.nuget.org/packages/FluxIndex.Storage.PostgreSQL/${{ steps.version.outputs.version }})
-          - [FluxIndex.Storage.SQLite](https://www.nuget.org/packages/FluxIndex.Storage.SQLite/${{ steps.version.outputs.version }})
-          - [FluxIndex.Cache.Redis](https://www.nuget.org/packages/FluxIndex.Cache.Redis/${{ steps.version.outputs.version }})
+          ### 📦 NuGet Package
+          - [FluxIndex](https://www.nuget.org/packages/FluxIndex/${{ steps.version.outputs.version }}) - Main package with core RAG infrastructure
+          
+          ### 📋 Optional Extension Packages
+          - FluxIndex.AI.* - AI provider integrations (coming soon)
+          - FluxIndex.Storage.* - Storage provider integrations (coming soon)
+          - FluxIndex.Extensions.* - Additional extensions (coming soon)
           
           ### 🔄 Changes
           See the full changelog below.

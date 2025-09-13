@@ -165,7 +165,7 @@ public enum SearchStrategy
 /// <summary>
 /// 검색 결과 (성능 피드백용)
 /// </summary>
-public class SearchResult
+public class QueryAnalysisResult
 {
     public int ResultCount { get; set; }
     public double RelevanceScore { get; set; }

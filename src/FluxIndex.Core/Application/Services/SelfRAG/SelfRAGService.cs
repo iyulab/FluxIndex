@@ -371,9 +371,10 @@ public class SelfRAGService : ISelfRAGService
         foreach (var doc in documents.Take(10))
         {
             // 메타데이터에서 신뢰성 지표 확인
-            if (doc.Metadata.ContainsKey("source_reliability"))
+            if (doc.Metadata.Properties.ContainsKey("source_reliability"))
             {
-                if (double.TryParse(doc.Metadata["source_reliability"], out var reliability))
+                if (doc.Metadata.Properties["source_reliability"] is string reliabilityStr && 
+                    double.TryParse(reliabilityStr, out var reliability))
                 {
                     credibilityScore = (credibilityScore + reliability) / 2;
                 }
@@ -390,9 +391,10 @@ public class SelfRAGService : ISelfRAGService
 
         foreach (var doc in documents.Take(10))
         {
-            if (doc.Metadata.ContainsKey("last_modified"))
+            if (doc.Metadata.Properties.ContainsKey("last_modified"))
             {
-                if (DateTime.TryParse(doc.Metadata["last_modified"], out var lastModified))
+                if (doc.Metadata.Properties["last_modified"] is string dateStr && 
+                    DateTime.TryParse(dateStr, out var lastModified))
                 {
                     var daysSinceModified = (DateTime.UtcNow - lastModified).TotalDays;
                     var docFreshness = Math.Max(0.0, 1.0 - (daysSinceModified / 365.0)); // 1년 이내면 신선
@@ -577,7 +579,7 @@ public class SelfRAGService : ISelfRAGService
                 Each version should be on a separate line.
                 """;
 
-            var completion = await _textCompletion!.GenerateCompletionAsync(prompt, cancellationToken);
+            var completion = await _textCompletion!.GenerateCompletionAsync(prompt, 500, 0.7f, cancellationToken);
             var refinedQueries = completion.Split('\n', StringSplitOptions.RemoveEmptyEntries)
                 .Where(q => !string.IsNullOrWhiteSpace(q))
                 .Take(3)

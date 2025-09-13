@@ -6,7 +6,8 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <IsPackable>false</IsPackable>
-    <Description>Infrastructure library for FluxIndex - included in main FluxIndex package</Description>
+    <PackageId>FluxIndex.Infrastructure</PackageId>
+    <Description>Infrastructure library for FluxIndex</Description>
   </PropertyGroup>
 
 </Project>

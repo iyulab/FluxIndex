@@ -365,3 +365,6 @@ FodyWeavers.xsd
 CLAUDE.local.md
 claudedocs/
 appsettings.Development.json
+
+.env.local
+nupkgs/

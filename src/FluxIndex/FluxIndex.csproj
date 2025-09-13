@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>true</IsPackable>
+    <PackageId>FluxIndex</PackageId>
+    <Description>FluxIndex - Complete RAG infrastructure for document indexing and retrieval with vector store support</Description>
+    <PackageTags>RAG;VectorStore;Search;AI;Embeddings;FileFlux;Retrieval</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Include Core, Infrastructure, and SDK as dependencies -->
+    <ProjectReference Include="..\FluxIndex.Core\FluxIndex.Core.csproj" />
+    <ProjectReference Include="..\FluxIndex.Infrastructure\FluxIndex.Infrastructure.csproj" />
+    <ProjectReference Include="..\FluxIndex.SDK\FluxIndex.SDK.csproj" />
+  </ItemGroup>
+
+</Project>

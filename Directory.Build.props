@@ -2,9 +2,9 @@
   <!-- Common Version Management -->
   <PropertyGroup>
     <!-- Package Version - Update this to trigger NuGet push in CI/CD -->
-    <Version>0.1.0-preview</Version>
-    <AssemblyVersion>0.1.0.0</AssemblyVersion>
-    <FileVersion>0.1.0.0</FileVersion>
+    <Version>0.1.1</Version>
+    <AssemblyVersion>0.1.1.0</AssemblyVersion>
+    <FileVersion>0.1.1.0</FileVersion>
     
     <!-- Package Metadata -->
     <Authors>iyulab</Authors>
@@ -30,7 +30,7 @@
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     
     <!-- NuGet Package Settings -->
-    <PackageOutputPath>$(MSBuildThisFileDirectory)..\nupkgs</PackageOutputPath>
+    <PackageOutputPath>$(MSBuildThisFileDirectory)nupkgs</PackageOutputPath>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     
     <!-- Strong Naming (Optional) -->
@@ -40,11 +40,11 @@
 
   <!-- Common Package References -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
   </ItemGroup>
 
   <!-- Package Icon -->
   <ItemGroup>
-    <None Include="$(MSBuildThisFileDirectory)..\assets\icon.png" Pack="true" PackagePath="\" Condition="Exists('$(MSBuildThisFileDirectory)..\assets\icon.png')" />
+    <None Include="$(MSBuildThisFileDirectory)assets\icon.png" Pack="true" PackagePath="\" Condition="Exists('$(MSBuildThisFileDirectory)assets\icon.png')" />
   </ItemGroup>
 </Project>

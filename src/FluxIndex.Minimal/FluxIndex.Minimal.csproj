@@ -1,17 +1,19 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
+
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>true</IsPackable>
     <PackageId>FluxIndex</PackageId>
-    <Version>0.1.0-preview</Version>
-    <Authors>FluxIndex Team</Authors>
-    <Description>FluxIndex - RAG infrastructure (minimal test package)</Description>
-    <PackageTags>RAG;VectorStore;Search;AI</PackageTags>
-    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <AssemblyName>FluxIndex</AssemblyName>
+    <Description>FluxIndex - RAG infrastructure for document indexing and retrieval with FileFlux integration</Description>
   </PropertyGroup>
-  
+
   <ItemGroup>
-    <PackageReference Include="FileFlux" Version="0.2.4" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.8" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.8" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
+
 </Project>

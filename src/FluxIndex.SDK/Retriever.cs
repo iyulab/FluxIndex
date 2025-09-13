@@ -1,7 +1,7 @@
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services;
 using FluxIndex.Core.Domain.Entities;
-using FluxIndex.Core.Domain.ValueObjects;
+using FluxIndex.SDK.Services;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
@@ -409,18 +409,6 @@ public class Retriever
     }
 }
 
-/// <summary>
-/// 검색 결과
-/// </summary>
-public class SearchResult
-{
-    public string DocumentId { get; set; } = string.Empty;
-    public string ChunkId { get; set; } = string.Empty;
-    public string Content { get; set; } = string.Empty;
-    public float Score { get; set; }
-    public int ChunkIndex { get; set; }
-    public Dictionary<string, object>? Metadata { get; set; }
-}
 
 /// <summary>
 /// Retriever 옵션

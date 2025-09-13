@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using FileFlux.Core.Models;
+using FluxIndex.Core.Domain.Entities;
 
 namespace FluxIndex.SDK.Interfaces;
 

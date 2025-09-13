@@ -1,11 +1,8 @@
-using FluxIndex.AI.OpenAI;
-using FluxIndex.Cache.Redis;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services;
-using FluxIndex.Core.Infrastructure;
 using FluxIndex.SDK.Configuration;
-using FluxIndex.Storage.PostgreSQL;
-using FluxIndex.Storage.SQLite;
+using FluxIndex.SDK.Services;
+using FluxIndex.SDK.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System;

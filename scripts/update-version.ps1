@@ -33,7 +33,7 @@ $FileVersion = "$Version.0"
 Write-Host "Updating version to: $FullVersion" -ForegroundColor Green
 
 # Update Directory.Build.props
-$propsFile = "src\Directory.Build.props"
+$propsFile = "Directory.Build.props"
 if (-not (Test-Path $propsFile)) {
     Write-Error "Directory.Build.props not found at: $propsFile"
     exit 1
@@ -55,28 +55,14 @@ $content | Set-Content $propsFile -NoNewline
 
 Write-Host "✅ Updated Directory.Build.props" -ForegroundColor Green
 
-# Update root Directory.Build.props if it exists
-$rootPropsFile = "Directory.Build.props"
-if (Test-Path $rootPropsFile) {
-    $rootContent = Get-Content $rootPropsFile -Raw
-    $rootContent = $rootContent -replace '<Version>.*?</Version>', "<Version>$FullVersion</Version>"
-    $rootContent = $rootContent -replace '<AssemblyVersion>.*?</AssemblyVersion>', "<AssemblyVersion>$AssemblyVersion</AssemblyVersion>"
-    $rootContent = $rootContent -replace '<FileVersion>.*?</FileVersion>', "<FileVersion>$FileVersion</FileVersion>"
-    $rootContent | Set-Content $rootPropsFile -NoNewline
-    Write-Host "✅ Updated root Directory.Build.props" -ForegroundColor Green
-}
-
 # Show git diff
 Write-Host "`nChanges made:" -ForegroundColor Yellow
-git diff src/Directory.Build.props
+git diff Directory.Build.props
 
 # Commit changes if requested
 if ($CommitChanges) {
     Write-Host "`nCommitting changes..." -ForegroundColor Yellow
-    git add src/Directory.Build.props
-    if (Test-Path $rootPropsFile) {
-        git add $rootPropsFile
-    }
+    git add Directory.Build.props
     
     $commitMessage = "chore: bump version to $FullVersion"
     git commit -m $commitMessage

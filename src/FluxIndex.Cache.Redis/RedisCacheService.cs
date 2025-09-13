@@ -69,7 +69,7 @@ public class RedisCacheService : ICacheService
         }
     }
 
-    public async Task<bool> SetAsync<T>(
+    public async Task SetAsync<T>(
         string key, 
         T value, 
         TimeSpan? expiration = null, 
@@ -98,13 +98,10 @@ public class RedisCacheService : ICacheService
             {
                 _logger.LogWarning("Failed to cache value for key: {Key}", key);
             }
-            
-            return result;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error caching value for key: {Key}", key);
-            return false;
         }
     }
 
@@ -149,30 +146,24 @@ public class RedisCacheService : ICacheService
         }
     }
 
-    public async Task<bool> ClearAsync(string? pattern = null, CancellationToken cancellationToken = default)
+    public async Task ClearAsync(CancellationToken cancellationToken = default)
     {
         try
         {
             var server = _redis.GetServer(_redis.GetEndPoints().First());
-            var searchPattern = string.IsNullOrWhiteSpace(pattern) 
-                ? $"{_options.KeyPrefix}:*" 
-                : GetPrefixedKey(pattern);
+            var searchPattern = $"{_options.KeyPrefix}:*";
             
             var keys = server.Keys(_options.Database, searchPattern).ToArray();
             
             if (keys.Any())
             {
                 await _database.KeyDeleteAsync(keys);
-                _logger.LogInformation("Cleared {Count} cached items matching pattern: {Pattern}", 
-                    keys.Length, searchPattern);
+                _logger.LogInformation("Cleared {Count} cached items", keys.Length);
             }
-            
-            return true;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error clearing cache with pattern: {Pattern}", pattern);
-            return false;
+            _logger.LogError(ex, "Error clearing cache");
         }
     }
 
@@ -201,7 +192,7 @@ public class RedisCacheService : ICacheService
         return await GetAsync<List<SearchResult>>(cacheKey, cancellationToken);
     }
 
-    public async Task<bool> CacheEmbeddingAsync(
+    public async Task CacheEmbeddingAsync(
         string text,
         float[] embedding,
         TimeSpan? expiration = null,
@@ -214,7 +205,7 @@ public class RedisCacheService : ICacheService
             throw new ArgumentException("Embedding cannot be null or empty", nameof(embedding));
 
         var cacheKey = $"embedding:{ComputeHash(text)}";
-        return await SetAsync(cacheKey, embedding, expiration, cancellationToken);
+        await SetAsync(cacheKey, embedding, expiration, cancellationToken);
     }
 
     public async Task<float[]?> GetCachedEmbeddingAsync(

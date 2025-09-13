@@ -9,24 +9,20 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- FluxIndex 프로젝트 참조 -->
-    <ProjectReference Include="..\..\src\FluxIndex.SDK\FluxIndex.SDK.csproj" />
-    <ProjectReference Include="..\..\src\FluxIndex.Extensions.FileFlux\FluxIndex.Extensions.FileFlux.csproj" />
-    <ProjectReference Include="..\..\src\FluxIndex.AI.OpenAI\FluxIndex.AI.OpenAI.csproj" />
-    <ProjectReference Include="..\..\src\FluxIndex.Storage.SQLite\FluxIndex.Storage.SQLite.csproj" />
-    <!-- PostgreSQL 참조 제거, SQLite로 변경 -->
+    <!-- FluxIndex 패키지 참조 (로컬 NuGet) -->
+    <PackageReference Include="FluxIndex" />
   </ItemGroup>
 
   <ItemGroup>
     <!-- External packages -->
-    <PackageReference Include="FileFlux" Version="*" />
-    <PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.8" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.8" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="9.0.8" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.8" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.8" />
-    <PackageReference Include="Spectre.Console" Version="0.49.1" />
-    <PackageReference Include="BenchmarkDotNet" Version="0.14.0" />
+    <PackageReference Include="FileFlux" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" />
+    <PackageReference Include="Spectre.Console" />
+    <PackageReference Include="BenchmarkDotNet" />
   </ItemGroup>
 
   <ItemGroup>

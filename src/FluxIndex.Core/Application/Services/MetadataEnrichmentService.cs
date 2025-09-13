@@ -148,7 +148,7 @@ public class MetadataEnrichmentService : IMetadataEnrichmentService
         quality.ContextualRelevance = EvaluateContextualRelevance(chunk);
 
         // 권위도 점수 (메타데이터 기반)
-        quality.AuthorityScore = EvaluateAuthorityScore(chunk.Metadata);
+        quality.AuthorityScore = EvaluateAuthorityScore(chunk.ChunkMetadata);
 
         // 최신성 점수
         quality.FreshnessScore = EvaluateFreshnessScore(chunk.CreatedAt);
@@ -255,7 +255,7 @@ public class MetadataEnrichmentService : IMetadataEnrichmentService
 
     private bool IsHierarchicalRelationship(DocumentChunk source, DocumentChunk candidate)
     {
-        return source.Metadata.SectionLevel != candidate.Metadata.SectionLevel &&
+        return source.ChunkMetadata.SectionLevel != candidate.ChunkMetadata.SectionLevel &&
                source.DocumentId == candidate.DocumentId;
     }
 

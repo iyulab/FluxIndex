@@ -8,26 +8,40 @@ namespace FluxIndex.Core.Domain.Entities;
 /// </summary>
 public class DocumentChunk
 {
-    public string Id { get; private set; }
-    public string DocumentId { get; private set; }
+    public string Id { get; set; }
+    public string DocumentId { get; set; }
     public string Content { get; private set; }
     public int ChunkIndex { get; private set; }
     public int TotalChunks { get; private set; }
-    public EmbeddingVector Embedding { get; private set; }
+    public float[]? Embedding { get; set; }
     public Dictionary<string, object> Properties { get; private set; }
     public DateTime CreatedAt { get; private set; }
+    public int TokenCount { get; set; }
+    public float? Score { get; set; }
+    public Dictionary<string, object>? Metadata { get; set; }
     
     // Modern RAG 메타데이터
-    public ChunkMetadata Metadata { get; private set; }
+    public ChunkMetadata ChunkMetadata { get; private set; }
     public List<ChunkRelationship> Relationships { get; private set; }
     public ChunkQuality Quality { get; private set; }
 
     private DocumentChunk()
     {
+        Id = Guid.NewGuid().ToString();
+        DocumentId = string.Empty;
+        Content = string.Empty;
         Properties = new Dictionary<string, object>();
         Relationships = new List<ChunkRelationship>();
-        Metadata = new ChunkMetadata();
+        ChunkMetadata = new ChunkMetadata();
         Quality = new ChunkQuality();
+        Metadata = new Dictionary<string, object>();
+    }
+
+    public DocumentChunk(string content, int chunkIndex) : this()
+    {
+        Content = content;
+        ChunkIndex = chunkIndex;
+        CreatedAt = DateTime.UtcNow;
     }
 
     public static DocumentChunk Create(
@@ -60,6 +74,12 @@ public class DocumentChunk
 
     public void SetEmbedding(EmbeddingVector embedding)
     {
+        if (embedding == null) throw new ArgumentNullException(nameof(embedding));
+        Embedding = embedding.Values;
+    }
+
+    public void SetEmbedding(float[] embedding)
+    {
         Embedding = embedding ?? throw new ArgumentNullException(nameof(embedding));
     }
 
@@ -73,7 +93,7 @@ public class DocumentChunk
 
     public void SetMetadata(ChunkMetadata metadata)
     {
-        Metadata = metadata ?? throw new ArgumentNullException(nameof(metadata));
+        ChunkMetadata = metadata ?? throw new ArgumentNullException(nameof(metadata));
     }
 
     public void AddRelationship(ChunkRelationship relationship)
@@ -181,7 +201,7 @@ public class ChunkQuality
 /// </summary>
 public class EnhancedSearchResult
 {
-    public DocumentChunk Chunk { get; set; } = new();
+    public DocumentChunk? Chunk { get; set; }
     public double SimilarityScore { get; set; }
     public double BM25Score { get; set; }
     public double HybridScore { get; set; }

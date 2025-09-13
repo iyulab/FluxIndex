@@ -53,21 +53,17 @@ public class SearchService
 
         // Convert to search results
         var results = new List<SearchResult>();
-        foreach (var (chunk, score) in searchResults)
+        foreach (var chunk in searchResults)
         {
             var document = await _documentRepository.GetByIdAsync(chunk.DocumentId, cancellationToken);
             if (document != null)
             {
                 results.Add(new SearchResult
                 {
-                    DocumentId = document.Id,
-                    ChunkId = chunk.Id,
-                    Content = chunk.Content,
-                    Score = score,
+                    Chunk = chunk,
+                    Score = chunk.Score ?? 0,
                     FileName = document.FileName,
-                    Metadata = document.Metadata,
-                    ChunkIndex = chunk.ChunkIndex,
-                    TotalChunks = chunk.TotalChunks
+                    Metadata = document.Metadata
                 });
             }
         }
@@ -104,7 +100,7 @@ public class SearchService
 
         // Convert to search results, excluding self
         var results = new List<SearchResult>();
-        foreach (var (chunk, score) in searchResults)
+        foreach (var chunk in searchResults)
         {
             if (chunk.DocumentId == documentId) continue; // Skip self
 
@@ -113,14 +109,10 @@ public class SearchService
             {
                 results.Add(new SearchResult
                 {
-                    DocumentId = document.Id,
-                    ChunkId = chunk.Id,
-                    Content = chunk.Content,
-                    Score = score,
+                    Chunk = chunk,
+                    Score = chunk.Score ?? 0,
                     FileName = document.FileName,
-                    Metadata = document.Metadata,
-                    ChunkIndex = chunk.ChunkIndex,
-                    TotalChunks = chunk.TotalChunks
+                    Metadata = document.Metadata
                 });
             }
 
@@ -355,19 +347,4 @@ public class SearchService
     }
 
     #endregion
-}
-
-public class SearchResult
-{
-    public DocumentChunk Chunk { get; set; } = new();
-    public float Score { get; set; }
-    
-    // Backward compatibility properties
-    public string DocumentId => Chunk.DocumentId;
-    public string ChunkId => Chunk.Id;
-    public string Content => Chunk.Content;
-    public string FileName { get; set; } = string.Empty;
-    public DocumentMetadata Metadata { get; set; } = new();
-    public int ChunkIndex => Chunk.ChunkIndex;
-    public int TotalChunks => Chunk.TotalChunks;
 }

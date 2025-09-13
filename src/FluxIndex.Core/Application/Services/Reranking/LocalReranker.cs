@@ -179,9 +179,9 @@ public class LocalReranker : IReranker
             var queryWeight = queryTf > 0 ? 1 + Math.Log(queryTf) : 0;
             var contentWeight = contentTf > 0 ? 1 + Math.Log(contentTf) : 0;
 
-            similarity += queryWeight * contentWeight;
-            queryNorm += queryWeight * queryWeight;
-            contentNorm += contentWeight * contentWeight;
+            similarity += (float)(queryWeight * contentWeight);
+            queryNorm += (float)(queryWeight * queryWeight);
+            contentNorm += (float)(contentWeight * contentWeight);
         }
 
         if (queryNorm == 0 || contentNorm == 0)
@@ -228,7 +228,7 @@ public class LocalReranker : IReranker
         try
         {
             var contentEmbedding = await _embeddingService.GenerateEmbeddingAsync(content, cancellationToken);
-            return CalculateCosineSimilarity(queryEmbedding, contentEmbedding.Values);
+            return CalculateCosineSimilarity(queryEmbedding, contentEmbedding);
         }
         catch (Exception ex)
         {
@@ -267,7 +267,7 @@ public class LocalReranker : IReranker
         try
         {
             var embedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
-            return embedding.Values;
+            return embedding;
         }
         catch (Exception ex)
         {

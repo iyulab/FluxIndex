@@ -46,7 +46,7 @@ internal class InMemoryCacheService : ICacheService
         return Task.FromResult<T?>(null);
     }
 
-    public Task<bool> SetAsync<T>(
+    public Task SetAsync<T>(
         string key, 
         T value, 
         TimeSpan? expiration = null, 
@@ -60,7 +60,7 @@ internal class InMemoryCacheService : ICacheService
         _cache.Set(key, value, options);
         _logger.LogDebug("Cached value for key: {Key}", key);
         
-        return Task.FromResult(true);
+        return Task.CompletedTask;
     }
 
     public Task<bool> RemoveAsync(string key, CancellationToken cancellationToken = default)
@@ -75,12 +75,12 @@ internal class InMemoryCacheService : ICacheService
         return Task.FromResult(_cache.TryGetValue(key, out _));
     }
 
-    public Task<bool> ClearAsync(string? pattern = null, CancellationToken cancellationToken = default)
+    public Task ClearAsync(CancellationToken cancellationToken = default)
     {
-        // In-memory cache doesn't support pattern-based clearing
+        // In-memory cache doesn't support full clearing without disposing
         // This would require maintaining a list of all keys
-        _logger.LogWarning("Pattern-based clearing is not supported in memory cache");
-        return Task.FromResult(false);
+        _logger.LogWarning("Full clearing is not supported in default memory cache");
+        return Task.CompletedTask;
     }
 
     public async Task<IEnumerable<SearchResult>> CacheSearchResultsAsync(
@@ -104,14 +104,14 @@ internal class InMemoryCacheService : ICacheService
         return results;
     }
 
-    public Task<bool> CacheEmbeddingAsync(
+    public async Task CacheEmbeddingAsync(
         string text,
         float[] embedding,
         TimeSpan? expiration = null,
         CancellationToken cancellationToken = default)
     {
         var cacheKey = $"embedding:{ComputeHash(text)}";
-        return SetAsync(cacheKey, embedding, expiration ?? TimeSpan.FromHours(24), cancellationToken);
+        await SetAsync(cacheKey, embedding, expiration ?? TimeSpan.FromHours(24), cancellationToken);
     }
 
     public Task<float[]?> GetCachedEmbeddingAsync(

@@ -15,6 +15,7 @@ public class DocumentMetadata
     public string Version { get; private set; }
     public DateTime? PublishedDate { get; private set; }
     public Dictionary<string, string> CustomFields { get; private set; }
+    public Dictionary<string, object> Properties { get; private set; }
 
     public DocumentMetadata()
     {
@@ -24,6 +25,7 @@ public class DocumentMetadata
         Language = "ko";
         Version = string.Empty;
         CustomFields = new Dictionary<string, string>();
+        Properties = new Dictionary<string, object>();
     }
 
     public DocumentMetadata(
@@ -41,6 +43,7 @@ public class DocumentMetadata
         Version = version ?? string.Empty;
         PublishedDate = publishedDate;
         CustomFields = new Dictionary<string, string>();
+        Properties = new Dictionary<string, object>();
     }
 
     public void AddCustomField(string key, string value)
