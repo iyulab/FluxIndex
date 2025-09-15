@@ -237,7 +237,7 @@ public class MetadataExtractor
                     var value = prop.GetValue(chunk);
                     if (value != null && !metadata.Properties.ContainsKey(prop.Name))
                     {
-                        metadata.Properties[prop.Name] = value;
+                        metadata.Properties[prop.Name] = value!;
                     }
                 }
             }

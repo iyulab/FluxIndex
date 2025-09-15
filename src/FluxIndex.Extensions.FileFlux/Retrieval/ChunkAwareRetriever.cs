@@ -297,7 +297,8 @@ public class ChunkAwareRetriever : IChunkAwareRetriever
                 return await ExecuteHybridSearchAsync(query, options, cancellationToken);
             
             default:
-                return await _searchService.SearchAsync(query, options.TopK, cancellationToken);
+                var results = await _searchService.SearchAsync(query, options.TopK, (float)options.MinScore, cancellationToken);
+                return results.Select(r => ConvertChunkToDocument(r.Chunk));
         }
     }
 
@@ -313,16 +314,17 @@ public class ChunkAwareRetriever : IChunkAwareRetriever
         var results = await _vectorStore.SearchAsync(
             queryEmbedding,
             options.TopK * 2, // Over-retrieve for reranking
-            options.MinScore,
+            (float)options.MinScore,
             cancellationToken);
 
-        // Apply semantic-specific filtering
-        return results.Where(r => 
+        // Apply semantic-specific filtering and convert to Documents
+        return results.Where(r =>
         {
-            var metadata = r.Metadata;
-            return metadata.GetValueOrDefault("requires_semantic_search", "false") != "false" ||
-                   metadata.GetValueOrDefault("search_type", "") == "semantic";
-        }).Take(options.TopK);
+            var metadata = r.ChunkMetadata;
+            return metadata != null && metadata.ImportanceScore > 0.5;
+        })
+        .Take(options.TopK)
+        .Select(r => ConvertChunkToDocument(r));
     }
 
     private async Task<IEnumerable<Document>> ExecuteKeywordSearchAsync(
@@ -335,15 +337,18 @@ public class ChunkAwareRetriever : IChunkAwareRetriever
         var results = await _searchService.SearchAsync(
             query,
             options.TopK * 3, // Over-retrieve for keyword matching
+            (float)options.MinScore,
             cancellationToken);
 
-        // Apply keyword-specific filtering
+        // Apply keyword-specific filtering and convert to Documents
         return results.Where(r =>
         {
             var content = r.Content.ToLower();
             var queryTerms = query.ToLower().Split(' ');
             return queryTerms.Any(term => content.Contains(term));
-        }).Take(options.TopK);
+        })
+        .Take(options.TopK)
+        .Select(r => ConvertSearchResultToDocument(r));
     }
 
     private async Task<IEnumerable<Document>> ExecuteHybridSearchAsync(
@@ -438,13 +443,13 @@ public class ChunkAwareRetriever : IChunkAwareRetriever
         var metadata = document.Metadata;
         
         // Check expansion hints
-        if (metadata.GetValueOrDefault("expand_with_overlap", "false") == "true")
+        if ((string?)metadata.GetValueOrDefault("expand_with_overlap", "false") == "true")
             return true;
         
         // Check completeness
         if (metadata.TryGetValue("quality_completeness", out var completeness))
         {
-            if (double.TryParse(completeness, out var score) && score < 0.7)
+            if (double.TryParse(completeness?.ToString() ?? "", out var score) && score < 0.7)
                 return true;
         }
 
@@ -459,7 +464,7 @@ public class ChunkAwareRetriever : IChunkAwareRetriever
         var windowSize = 1;
         if (document.Metadata.TryGetValue("context_window_size", out var windowValue))
         {
-            int.TryParse(windowValue, out windowSize);
+            int.TryParse(windowValue?.ToString() ?? "", out windowSize);
         }
 
         // Get surrounding chunks
@@ -476,10 +481,12 @@ public class ChunkAwareRetriever : IChunkAwareRetriever
         var expandedContent = string.Join("\n\n", context.Select(c => c.Document.Content));
         
         // Create expanded document
-        return Document.Create(
-            expandedContent,
-            document.Metadata,
-            document.EmbeddingVector);
+        var expandedDoc = Document.Create(expandedContent, document.Metadata);
+        if (document.EmbeddingVector != null)
+        {
+            expandedDoc.SetEmbedding(document.EmbeddingVector);
+        }
+        return expandedDoc;
     }
 
     private void EnhanceRetrievalMetadata(Document document, SearchStrategy strategy)
@@ -663,15 +670,13 @@ public class ChunkAwareRetriever : IChunkAwareRetriever
                 cancellationToken);
 
             var chunk = results.FirstOrDefault(r =>
-                r.Chunk.DocumentId == documentId &&
-                r.Chunk.ChunkIndex == chunkIndex);
+                r.DocumentId == documentId &&
+                r.ChunkIndex == chunkIndex);
 
             if (chunk != null)
             {
                 // Convert chunk to Document for compatibility
-                var document = Document.Create(documentId, chunk.Chunk.Content, new DocumentMetadata());
-                document.Metadata.Properties["chunk_index"] = chunkIndex.ToString();
-                return document;
+                return ConvertChunkToDocument(chunk);
             }
             return null;
         }
@@ -787,6 +792,28 @@ public class ChunkAwareRetriever : IChunkAwareRetriever
 
         _logger.LogInformation("Retrieved {Count} documents with chunking hint", results.Count());
         return results;
+    }
+
+    private Document ConvertChunkToDocument(DocumentChunk chunk)
+    {
+        var doc = Document.Create();
+        doc.SetContent(chunk.Content);
+        doc.Properties["chunk_id"] = chunk.Id;
+        doc.Properties["chunk_index"] = chunk.ChunkIndex.ToString();
+        doc.Properties["document_id"] = chunk.DocumentId;
+        if (chunk.Embedding != null)
+        {
+            doc.SetEmbedding(chunk.Embedding);
+        }
+        return doc;
+    }
+
+    private Document ConvertSearchResultToDocument(FluxIndex.Core.Application.Interfaces.SearchResult result)
+    {
+        var doc = ConvertChunkToDocument(result.Chunk);
+        doc.Properties["score"] = result.Score.ToString();
+        doc.Properties["file_name"] = result.FileName;
+        return doc;
     }
 
     public void UpdateDefaultHint(ChunkingHint hint)

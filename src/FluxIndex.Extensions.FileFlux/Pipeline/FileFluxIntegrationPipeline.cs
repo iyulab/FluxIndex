@@ -277,7 +277,12 @@ public class FileFluxIntegrationPipeline : IFileFluxIntegrationPipeline
                 cancellationToken);
 
             // Create enhanced document
-            var enhancedDoc = Document.Create(doc.Content, enhancedMetadata);
+            var metadata = new DocumentMetadata();
+            foreach (var kvp in enhancedMetadata)
+            {
+                metadata.AddCustomField(kvp.Key, kvp.Value);
+            }
+            var enhancedDoc = Document.Create(doc.Content, metadata);
             if (doc.EmbeddingVector != null)
             {
                 enhancedDoc.SetEmbedding(doc.EmbeddingVector);
@@ -387,7 +392,8 @@ public class FileFluxIntegrationPipeline : IFileFluxIntegrationPipeline
                 var query = ExtractTestQuery(doc);
                 var retrieved = await _retriever.RetrieveAsync(
                     query,
-                    new RetrievalOptions { TopK = 5 },
+                    new ChunkingHint { TopK = 5 },
+                    5,
                     cancellationToken);
 
                 // Check if document was retrieved

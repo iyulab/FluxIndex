@@ -89,4 +89,28 @@ public class DocumentMetadata
         PublishedDate = publishedDate;
         return this;
     }
+
+    public bool TryGetValue(string key, out object value)
+    {
+        if (Properties.TryGetValue(key, out value!))
+            return true;
+
+        if (CustomFields.TryGetValue(key, out var stringValue))
+        {
+            value = stringValue;
+            return true;
+        }
+
+        value = null!;
+        return false;
+    }
+
+    public object? GetValueOrDefault(string key, object? defaultValue = null)
+    {
+        if (Properties.TryGetValue(key, out var value))
+            return value;
+        if (CustomFields.TryGetValue(key, out var stringValue))
+            return stringValue;
+        return defaultValue;
+    }
 }

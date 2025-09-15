@@ -144,13 +144,22 @@ public class DynamicChunkAdapter : IFileFluxAdapter
 
             // Create document (Id is auto-generated and read-only)
             var documentMetadata = new DocumentMetadata(
-                filename: metadataDict.GetValueOrDefault("source_file", "unknown"),
-                contentType: metadataDict.GetValueOrDefault("content_type", "text"),
-                language: metadataDict.GetValueOrDefault("language", "ko"),
-                author: metadataDict.GetValueOrDefault("author", ""),
+                brand: metadataDict.GetValueOrDefault("brand", ""),
                 model: metadataDict.GetValueOrDefault("model", ""),
-                createdAt: DateTime.UtcNow);
-            var document = Document.Create(content, documentMetadata);
+                category: metadataDict.GetValueOrDefault("category", "text"),
+                language: metadataDict.GetValueOrDefault("language", "ko"),
+                version: metadataDict.GetValueOrDefault("version", ""),
+                publishedDate: DateTime.UtcNow);
+
+            // Add custom fields to metadata
+            foreach (var kvp in metadataDict)
+            {
+                documentMetadata.Properties[kvp.Key] = kvp.Value;
+            }
+
+            var document = Document.Create(id);
+            document.SetContent(content);
+            document.UpdateMetadata(documentMetadata);
 
 
             return document;

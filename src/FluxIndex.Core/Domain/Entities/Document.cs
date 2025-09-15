@@ -17,6 +17,8 @@ public class Document
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
     public DocumentStatus Status { get; private set; }
+    public Dictionary<string, string> Properties { get; private set; }
+    public float[]? EmbeddingVector { get; private set; }
 
     private Document()
     {
@@ -26,6 +28,7 @@ public class Document
         FileName = string.Empty;
         FilePath = string.Empty;
         Content = string.Empty;
+        Properties = new Dictionary<string, string>();
     }
 
     public static Document Create(string? id = null)
@@ -35,7 +38,22 @@ public class Document
             Id = id ?? Guid.NewGuid().ToString(),
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
-            Status = DocumentStatus.Pending
+            Status = DocumentStatus.Pending,
+            Properties = new Dictionary<string, string>()
+        };
+    }
+
+    public static Document Create(string content, DocumentMetadata metadata)
+    {
+        return new Document
+        {
+            Id = Guid.NewGuid().ToString(),
+            Content = content ?? string.Empty,
+            Metadata = metadata ?? new DocumentMetadata(),
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+            Status = DocumentStatus.Pending,
+            Properties = new Dictionary<string, string>()
         };
     }
 
@@ -79,6 +97,12 @@ public class Document
     public void SetContent(string content)
     {
         Content = content ?? string.Empty;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void SetEmbedding(float[] embeddingVector)
+    {
+        EmbeddingVector = embeddingVector;
         UpdatedAt = DateTime.UtcNow;
     }
 }

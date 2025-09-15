@@ -189,8 +189,9 @@ public class SmartIndexer : ISmartIndexer
                 // Apply compression if possible
                 if (document.Content.Length > 1000)
                 {
-                    document.Content = await CompressContentAsync(document.Content, cancellationToken);
-                    document.Metadata["compressed"] = "true";
+                    var compressedContent = await CompressContentAsync(document.Content, cancellationToken);
+                    document.SetContent(compressedContent);
+                    document.Metadata.Properties["compressed"] = "true";
                 }
                 break;
         }
@@ -227,14 +228,15 @@ public class SmartIndexer : ISmartIndexer
         {
             await _cache.SetAsync(
                 document.Content,
-                new CacheEntry
+                new[] { new CacheEntry
                 {
                     DocumentId = document.Id,
                     Content = document.Content,
-                    Metadata = document.Metadata,
+                    Metadata = ConvertMetadataToDictionary(document.Metadata),
                     Timestamp = DateTime.UtcNow
-                },
-                TimeSpan.FromHours(24),
+                }},
+                metadata: null,
+                expiry: TimeSpan.FromHours(24),
                 cancellationToken);
         }
         catch (Exception ex)
@@ -251,8 +253,8 @@ public class SmartIndexer : ISmartIndexer
         return documents.GroupBy(doc =>
         {
             var size = doc.Content.Length;
-            var hasCode = doc.Metadata.GetValueOrDefault("has_code_blocks", "false");
-            var language = doc.Metadata.GetValueOrDefault("has_non_ascii", "false");
+            var hasCode = doc.Metadata.Properties.ContainsKey("has_code_blocks") ? doc.Metadata.Properties["has_code_blocks"].ToString() : "false";
+            var language = doc.Metadata.Properties.ContainsKey("has_non_ascii") ? doc.Metadata.Properties["has_non_ascii"].ToString() : "false";
 
             // Create group key based on characteristics
             var sizeCategory = size switch
@@ -275,8 +277,8 @@ public class SmartIndexer : ISmartIndexer
 
         // Calculate group statistics
         var avgSize = documents.Average(d => d.Content.Length);
-        var hasNonAscii = documents.Any(d => 
-            d.Metadata.GetValueOrDefault("has_non_ascii", "false") == "true");
+        var hasNonAscii = documents.Any(d =>
+            d.Metadata.Properties.ContainsKey("has_non_ascii") && d.Metadata.Properties["has_non_ascii"].ToString() == "true");
 
         // Apply group-level optimizations
         if (_optimizer != null && documents.Count > 10)
@@ -297,8 +299,8 @@ public class SmartIndexer : ISmartIndexer
             // Store optimization hint for the group
             foreach (var doc in documents)
             {
-                doc.Metadata["hnsw_m"] = parameters.M.ToString();
-                doc.Metadata["hnsw_ef"] = parameters.EfSearch.ToString();
+                doc.Metadata.Properties["hnsw_m"] = parameters.M.ToString();
+                doc.Metadata.Properties["hnsw_ef"] = parameters.EfSearch.ToString();
             }
         }
 
@@ -390,6 +392,31 @@ public class SmartIndexer : ISmartIndexer
         public string Content { get; set; } = string.Empty;
         public Dictionary<string, string> Metadata { get; set; } = new();
         public DateTime Timestamp { get; set; }
+    }
+
+    private Dictionary<string, string> ConvertMetadataToDictionary(FluxIndex.Core.Domain.Entities.DocumentMetadata metadata)
+    {
+        var dict = new Dictionary<string, string>();
+
+        if (!string.IsNullOrWhiteSpace(metadata.Brand))
+            dict["Brand"] = metadata.Brand;
+        if (!string.IsNullOrWhiteSpace(metadata.Model))
+            dict["Model"] = metadata.Model;
+        if (!string.IsNullOrWhiteSpace(metadata.Category))
+            dict["Category"] = metadata.Category;
+        if (!string.IsNullOrWhiteSpace(metadata.Language))
+            dict["Language"] = metadata.Language;
+        if (!string.IsNullOrWhiteSpace(metadata.Version))
+            dict["Version"] = metadata.Version;
+        if (metadata.PublishedDate.HasValue)
+            dict["PublishedDate"] = metadata.PublishedDate.Value.ToString("yyyy-MM-dd");
+
+        foreach (var kvp in metadata.CustomFields)
+        {
+            dict[kvp.Key] = kvp.Value;
+        }
+
+        return dict;
     }
 }
 

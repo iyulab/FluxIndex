@@ -271,7 +271,7 @@ public class RedisCacheService : ICacheService
             if (info != null && info.Any())
             {
                 var statsSection = info.FirstOrDefault(s => s.Key == "Stats");
-                if (statsSection.Any())
+                if (statsSection != null && statsSection.Any())
                 {
                     foreach (var stat in statsSection)
                     {

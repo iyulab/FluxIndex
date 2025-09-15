@@ -235,7 +235,8 @@ public class SearchService
         CancellationToken cancellationToken)
     {
         var baseChunk = baseResult.Chunk;
-        
+        if (baseChunk == null) return;
+
         // 이전 청크
         if (baseChunk.ChunkIndex > 0)
         {
@@ -269,7 +270,7 @@ public class SearchService
         string query,
         CancellationToken cancellationToken)
     {
-        var relationships = baseResult.Chunk.Relationships?
+        var relationships = baseResult.Chunk?.Relationships?
             .Where(r => r.Type == RelationshipType.Semantic || r.Type == RelationshipType.Reference)
             .OrderByDescending(r => r.Strength)
             .Take(3) ?? Enumerable.Empty<ChunkRelationship>(); // 최대 3개 관련 청크
@@ -322,7 +323,7 @@ public class SearchService
         // 중복 제거 (청크 ID 기준)
         var unique = results
             .Where(r => r.Chunk?.Id != null)
-            .GroupBy(r => r.Chunk.Id)
+            .GroupBy(r => r.Chunk!.Id)
             .Select(g => g.OrderByDescending(r => r.RerankedScore).First())
             .OrderByDescending(r => r.RerankedScore)
             .Take(maxResults)

@@ -157,6 +157,11 @@ public class CacheResult
 public class CacheMetadata
 {
     /// <summary>
+    /// The original query string
+    /// </summary>
+    public string? Query { get; set; }
+
+    /// <summary>
     /// Type of search that generated these results
     /// </summary>
     public string? SearchType { get; set; }

@@ -83,7 +83,7 @@ public class Indexer
     /// </summary>
     public async Task<string> IndexChunksAsync(
         IEnumerable<DocumentChunk> chunks,
-        string documentId = null,
+        string? documentId = null,
         Dictionary<string, object>? metadata = null,
         CancellationToken cancellationToken = default)
     {
