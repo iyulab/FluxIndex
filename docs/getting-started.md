@@ -29,10 +29,10 @@ dotnet run
 dotnet new console -n MyRAGApp
 cd MyRAGApp
 
-# 검증된 패키지들
-dotnet add package Microsoft.EntityFrameworkCore.Sqlite
-dotnet add package Spectre.Console
-dotnet add package System.Net.Http
+# 통합된 패키지들
+dotnet add package FluxIndex        # 핵심 RAG 인프라 (이전 FluxIndex.Core)
+dotnet add package FluxIndex.SDK    # 편리한 API 클라이언트
+dotnet add package FluxIndex.AI.OpenAI # OpenAI 통합
 ```
 
 ## 🔧 2단계: 실제 검증된 설정
@@ -187,73 +187,41 @@ public class SimpleQualityTest
 ### 3. 간단한 FluxIndex 클라이언트 예제
 ```csharp
 using FluxIndex.SDK;
-using FluxIndex.Core.Domain.Entities;
 
 // 1. FluxIndex 클라이언트 생성
 var client = new FluxIndexClientBuilder()
-    .ConfigureVectorStore(VectorStoreType.InMemory)
-    .ConfigureEmbeddingService<MockEmbeddingService>() // 실제 사용시 OpenAI 설정
+    .UseOpenAI("your-api-key", "text-embedding-ada-002") // 또는 Mock 모드
+    .UseSQLiteInMemory()
+    .UseMemoryCache()
     .Build();
 
 // 2. 문서 준비 및 인덱싱
-var documents = new[]
-{
-    new Document
-    {
-        Id = "doc1",
-        Content = "FluxIndex는 고성능 RAG 인프라입니다. 벡터 검색과 키워드 검색을 지원합니다.",
-        Metadata = new Dictionary<string, object>
-        {
-            ["category"] = "introduction",
-            ["source"] = "documentation"
-        }
-    },
-    new Document
-    {
-        Id = "doc2",
-        Content = "Clean Architecture를 따르며 AI Provider에 중립적입니다.",
-        Metadata = new Dictionary<string, object>
-        {
-            ["category"] = "architecture",
-            ["source"] = "documentation"
-        }
-    },
-    new Document
-    {
-        Id = "doc3",
-        Content = "PostgreSQL, SQLite, Redis 등 다양한 스토리지를 지원합니다.",
-        Metadata = new Dictionary<string, object>
-        {
-            ["category"] = "features",
-            ["source"] = "documentation"
-        }
-    }
-};
+var document1 = Document.Create("doc1");
+document1.AddChunk(new DocumentChunk("FluxIndex는 고성능 RAG 인프라입니다. 벡터 검색과 키워드 검색을 지원합니다.", 0));
+
+var document2 = Document.Create("doc2");
+document2.AddChunk(new DocumentChunk("Clean Architecture를 따르며 AI Provider에 중립적입니다.", 0));
+
+var document3 = Document.Create("doc3");
+document3.AddChunk(new DocumentChunk("PostgreSQL, SQLite, Redis 등 다양한 스토리지를 지원합니다.", 0));
 
 Console.WriteLine("📚 문서 인덱싱 중...");
-await client.Indexer.IndexDocumentsAsync(documents);
-Console.WriteLine($"✅ {documents.Length}개 문서 인덱싱 완료!\n");
+await client.Indexer.IndexDocumentAsync(document1);
+await client.Indexer.IndexDocumentAsync(document2);
+await client.Indexer.IndexDocumentAsync(document3);
+Console.WriteLine("✅ 3개 문서 인덱싱 완료!\n");
 
 // 3. 검색 수행
-var results = await client.Retriever.SearchAsync(
-    "고성능 RAG",
-    new SearchOptions
-    {
-        TopK = 3,
-        MinimumScore = 0.5f
-    }
-);
+var results = await client.Retriever.SearchAsync("고성능 RAG", maxResults: 3);
 
 // 결과 출력
-foreach (var doc in results.Documents)
+foreach (var result in results)
 {
-    Console.WriteLine($"📄 [{doc.Score:F2}] {doc.Content}");
-    Console.WriteLine($"   카테고리: {doc.Metadata["category"]}\n");
+    Console.WriteLine($"📄 [{result.Score:F2}] {result.Chunk.Content}");
 }
 
 // 예상 출력:
 // 📄 [0.89] FluxIndex는 고성능 RAG 인프라입니다. 벡터 검색과 키워드 검색을 지원합니다.
-//    카테고리: introduction
 ```
 
 ## 🎯 4단계: 실행 및 검증된 결과
@@ -332,28 +300,24 @@ echo "OPENAI_API_KEY=your-api-key" > .env.local
 
 ```csharp
 using FluxIndex.SDK;
-using FluxIndex.AI.OpenAI;
 
 // OpenAI 연동 FluxIndex 클라이언트
 var client = new FluxIndexClientBuilder()
-    .ConfigureVectorStore(VectorStoreType.SQLite, options =>
-    {
-        options.ConnectionString = "Data Source=test.db";
-    })
-    .ConfigureEmbeddingService(config => config.UseOpenAI(
-        Environment.GetEnvironmentVariable("OPENAI_API_KEY"),
-        model: "text-embedding-3-small"
-    ))
+    .UseOpenAI(Environment.GetEnvironmentVariable("OPENAI_API_KEY"), "text-embedding-ada-002")
+    .UseSQLite("test.db")
+    .UseMemoryCache()
     .Build();
 
 // 실제 문서 인덱싱 및 검색
-var documents = new[]
-{
-    new Document { Id = "1", Content = "Machine learning tutorial..." },
-    new Document { Id = "2", Content = "Deep learning fundamentals..." }
-};
+var doc1 = Document.Create("1");
+doc1.AddChunk(new DocumentChunk("Machine learning tutorial...", 0));
 
-await client.Indexer.IndexDocumentsAsync(documents);
+var doc2 = Document.Create("2");
+doc2.AddChunk(new DocumentChunk("Deep learning fundamentals...", 0));
+
+await client.Indexer.IndexDocumentAsync(doc1);
+await client.Indexer.IndexDocumentAsync(doc2);
+
 var results = await client.Retriever.SearchAsync("machine learning");
 
 // 예상 결과: 평균 유사도 0.638, 473ms 응답시간
@@ -382,35 +346,26 @@ var result = await integration.ProcessAndIndexAsync("document.pdf");
 ### PostgreSQL + pgvector 사용
 ```csharp
 var client = new FluxIndexClientBuilder()
-    .ConfigureVectorStore(VectorStoreType.PostgreSQL, options =>
-    {
-        options.ConnectionString = "Host=localhost;Database=fluxindex;Username=user;Password=pass";
-        options.VectorDimension = 1536;  // OpenAI ada-002
-        options.CreateIndexIfNotExists = true;
-    })
-    .ConfigureEmbeddingService(config => config.UseOpenAI(apiKey))
+    .UseOpenAI(apiKey, "text-embedding-ada-002")
+    .UsePostgreSQL("Host=localhost;Database=fluxindex;Username=user;Password=pass")
+    .UseMemoryCache()
     .Build();
 ```
 
 ### Azure OpenAI 사용
 ```csharp
 var client = new FluxIndexClientBuilder()
-    .ConfigureEmbeddingService(config => config.UseAzureOpenAI(
-        endpoint: "https://your-resource.openai.azure.com/",
-        apiKey: "your-azure-api-key",
-        deploymentName: "text-embedding-ada-002"
-    ))
+    .UseAzureOpenAI("https://your-resource.openai.azure.com/", "your-azure-api-key", "text-embedding-ada-002")
+    .UseSQLiteInMemory()
     .Build();
 ```
 
 ### Redis 캐싱 추가
 ```csharp
 var client = new FluxIndexClientBuilder()
-    .ConfigureCache(CacheType.Redis, options =>
-    {
-        options.ConnectionString = "localhost:6379";
-        options.ExpirationMinutes = 60;
-    })
+    .UseOpenAI(apiKey)
+    .UseSQLiteInMemory()
+    .UseRedisCache("localhost:6379")
     .Build();
 ```
 

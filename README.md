@@ -1,9 +1,9 @@
 # FluxIndex
 
 [![CI/CD Pipeline](https://github.com/iyulab/FluxIndex/actions/workflows/release.yml/badge.svg)](https://github.com/iyulab/FluxIndex/actions/workflows/release.yml)
-[![NuGet](https://img.shields.io/nuget/v/FluxIndex.Core.svg?label=FluxIndex.Core)](https://www.nuget.org/packages/FluxIndex.Core/)
+[![NuGet](https://img.shields.io/nuget/v/FluxIndex.svg?label=FluxIndex)](https://www.nuget.org/packages/FluxIndex/)
 [![NuGet](https://img.shields.io/nuget/v/FluxIndex.SDK.svg?label=FluxIndex.SDK)](https://www.nuget.org/packages/FluxIndex.SDK/)
-[![NuGet Downloads](https://img.shields.io/nuget/dt/FluxIndex.Core.svg)](https://www.nuget.org/packages/FluxIndex.Core/)
+[![NuGet Downloads](https://img.shields.io/nuget/dt/FluxIndex.svg)](https://www.nuget.org/packages/FluxIndex/)
 [![License](https://img.shields.io/github/license/iyulab/FluxIndex)](LICENSE)
 
 **프로덕션 검증된 RAG 인프라** - 지능형 청킹, 하이브리드 검색, AI Provider 중립적
@@ -23,13 +23,15 @@
 ```csharp
 // 1. FluxIndex 클라이언트 구성
 var client = new FluxIndexClientBuilder()
-    .ConfigureVectorStore(VectorStoreType.SQLite) // 실제 검증된 저장소
-    .ConfigureEmbeddingService<MockEmbeddingService>() // AI Provider 중립적
+    .UseOpenAI(apiKey, "text-embedding-ada-002") // AI Provider 선택
+    .UseSQLiteInMemory() // 실제 검증된 저장소
+    .UseMemoryCache() // 캐싱 활성화
     .Build();
 
 // 2. 지능형 청킹 및 인덱싱 (문장 경계 기반)
-var documents = CreateDocuments(); // 실제 문서
-await client.Indexer.IndexDocumentsAsync(documents);
+var document = Document.Create("doc1");
+document.AddChunk(new DocumentChunk("실제 문서 내용", 0));
+await client.Indexer.IndexDocumentAsync(document);
 
 // 3. 캐싱 + 배치 처리로 최적화된 검색
 var results = await client.Retriever.SearchAsync("machine learning");
@@ -73,9 +75,9 @@ dotnet run  # OpenAI API 키 필요
 ### 설치
 
 ```bash
-# 현재 구현된 패키지들
-dotnet add package FluxIndex.Core
-dotnet add package FluxIndex.SDK
+# 통합된 핵심 패키지들
+dotnet add package FluxIndex        # 핵심 RAG 인프라 (이전 FluxIndex.Core)
+dotnet add package FluxIndex.SDK    # 편리한 API 클라이언트
 
 # AI Provider (선택적)
 dotnet add package FluxIndex.AI.OpenAI
@@ -92,59 +94,35 @@ dotnet add package FluxIndex.Cache.Redis
 
 ```csharp
 using FluxIndex.SDK;
-using FluxIndex.Core.Models;
 
 // 1. FluxIndex 클라이언트 생성
 var client = new FluxIndexClientBuilder()
-    .ConfigureVectorStore(VectorStoreType.InMemory)
-    .ConfigureEmbeddingService(config => 
-    {
-        config.UseOpenAI("your-api-key");
-    })
-    .ConfigureSearchOptions(options => 
-    {
-        options.TopK = 10;
-        options.MinimumScore = 0.7f;
-    })
+    .UseOpenAI("your-api-key", "text-embedding-ada-002")
+    .UseSQLiteInMemory()
+    .UseMemoryCache()
+    .WithChunking("Auto", 512, 50)
+    .WithSearchOptions(maxResults: 10, minScore: 0.7f)
     .Build();
 
 // 2. 문서 인덱싱
-var documents = new[]
-{
-    new Document
-    {
-        Id = "doc1",
-        Content = "냉장고 온도는 2-4도로 설정하세요.",
-        Metadata = new Dictionary<string, object>
-        {
-            ["category"] = "가전제품",
-            ["device"] = "냉장고"
-        }
-    },
-    new Document
-    {
-        Id = "doc2",
-        Content = "야채실 습도는 85-90%가 적절합니다.",
-        Metadata = new Dictionary<string, object>
-        {
-            ["category"] = "가전제품",
-            ["device"] = "냉장고"
-        }
-    }
-};
+var document1 = Document.Create("doc1");
+document1.AddChunk(new DocumentChunk("냉장고 온도는 2-4도로 설정하세요.", 0));
 
-await client.Indexer.IndexDocumentsAsync(documents);
+var document2 = Document.Create("doc2");
+document2.AddChunk(new DocumentChunk("야채실 습도는 85-90%가 적절합니다.", 0));
+
+await client.Indexer.IndexDocumentAsync(document1);
+await client.Indexer.IndexDocumentAsync(document2);
 
 // 3. 검색 수행
 var searchResults = await client.Retriever.SearchAsync(
     "냉장고 온도 설정",
-    new SearchOptions { TopK = 5 }
+    maxResults: 5
 );
 
-foreach (var result in searchResults.Documents)
+foreach (var result in searchResults)
 {
-    Console.WriteLine($"[{result.Score:F2}] {result.Content}");
-    Console.WriteLine($"  Device: {result.Metadata["device"]}");
+    Console.WriteLine($"[{result.Score:F2}] {result.Chunk.Content}");
 }
 ```
 
@@ -153,22 +131,21 @@ foreach (var result in searchResults.Documents)
 ```csharp
 // OpenAI 사용
 var client = new FluxIndexClientBuilder()
-    .ConfigureEmbeddingService(config => config.UseOpenAI(apiKey))
+    .UseOpenAI(apiKey, "text-embedding-ada-002")
+    .UseSQLiteInMemory()
     .Build();
 
 // Azure OpenAI 사용
 var client = new FluxIndexClientBuilder()
-    .ConfigureEmbeddingService(config => config.UseAzureOpenAI(
-        endpoint: "https://your.openai.azure.com/",
-        apiKey: azureApiKey,
-        deploymentName: "text-embedding-ada-002"
-    ))
+    .UseAzureOpenAI("https://your.openai.azure.com/", azureApiKey, "text-embedding-ada-002")
+    .UseSQLiteInMemory()
     .Build();
 
-// 로컬 전용 (AI 없이 키워드 검색만)
+// PostgreSQL 벡터 스토어 사용
 var client = new FluxIndexClientBuilder()
-    .ConfigureVectorStore(VectorStoreType.InMemory)
-    .UseLocalSearchOnly() // BM25, TF-IDF 등 로컬 알고리즘만 사용
+    .UseOpenAI(apiKey)
+    .UsePostgreSQL("Host=localhost;Database=fluxindex;Username=user;Password=pass")
+    .UseRedisCache("localhost:6379")
     .Build();
 ```
 
@@ -203,12 +180,13 @@ FluxIndex Retriever는 쿼리에 따라 **자동으로 최적 전략 선택**:
 
 | 패키지 | 버전 | 다운로드 | 설명 |
 |--------|------|----------|------|
-| [FluxIndex.Core](https://www.nuget.org/packages/FluxIndex.Core/) | ![NuGet](https://img.shields.io/nuget/v/FluxIndex.Core.svg) | ![Downloads](https://img.shields.io/nuget/dt/FluxIndex.Core.svg) | 핵심 RAG 인프라 |
+| [FluxIndex](https://www.nuget.org/packages/FluxIndex/) | ![NuGet](https://img.shields.io/nuget/v/FluxIndex.svg) | ![Downloads](https://img.shields.io/nuget/dt/FluxIndex.svg) | 핵심 RAG 인프라 (통합됨) |
 | [FluxIndex.SDK](https://www.nuget.org/packages/FluxIndex.SDK/) | ![NuGet](https://img.shields.io/nuget/v/FluxIndex.SDK.svg) | ![Downloads](https://img.shields.io/nuget/dt/FluxIndex.SDK.svg) | 편리한 API 클라이언트 |
 | [FluxIndex.AI.OpenAI](https://www.nuget.org/packages/FluxIndex.AI.OpenAI/) | ![NuGet](https://img.shields.io/nuget/v/FluxIndex.AI.OpenAI.svg) | ![Downloads](https://img.shields.io/nuget/dt/FluxIndex.AI.OpenAI.svg) | OpenAI/Azure 통합 |
 | [FluxIndex.Storage.PostgreSQL](https://www.nuget.org/packages/FluxIndex.Storage.PostgreSQL/) | ![NuGet](https://img.shields.io/nuget/v/FluxIndex.Storage.PostgreSQL.svg) | ![Downloads](https://img.shields.io/nuget/dt/FluxIndex.Storage.PostgreSQL.svg) | PostgreSQL + pgvector |
 | [FluxIndex.Storage.SQLite](https://www.nuget.org/packages/FluxIndex.Storage.SQLite/) | ![NuGet](https://img.shields.io/nuget/v/FluxIndex.Storage.SQLite.svg) | ![Downloads](https://img.shields.io/nuget/dt/FluxIndex.Storage.SQLite.svg) | SQLite 스토리지 |
 | [FluxIndex.Cache.Redis](https://www.nuget.org/packages/FluxIndex.Cache.Redis/) | ![NuGet](https://img.shields.io/nuget/v/FluxIndex.Cache.Redis.svg) | ![Downloads](https://img.shields.io/nuget/dt/FluxIndex.Cache.Redis.svg) | Redis 캐싱 |
+| [FluxIndex.Extensions.FileFlux](https://www.nuget.org/packages/FluxIndex.Extensions.FileFlux/) | ![NuGet](https://img.shields.io/nuget/v/FluxIndex.Extensions.FileFlux.svg) | ![Downloads](https://img.shields.io/nuget/dt/FluxIndex.Extensions.FileFlux.svg) | FileFlux 통합 |
 
 ## 📖 문서
 
