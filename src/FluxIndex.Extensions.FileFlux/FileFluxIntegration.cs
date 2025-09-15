@@ -1,5 +1,5 @@
 using FileFlux;
-using FluxIndex.Core.Domain.Entities;
+using FluxIndex.Domain.Entities;
 using FluxIndex.SDK;
 using Microsoft.Extensions.Logging;
 using System.Runtime.CompilerServices;

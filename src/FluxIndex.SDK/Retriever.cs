@@ -1,6 +1,6 @@
-using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Core.Application.Services;
-using FluxIndex.Core.Domain.Entities;
+using FluxIndex.Application.Interfaces;
+using FluxIndex.Application.Services;
+using FluxIndex.Domain.Entities;
 using FluxIndex.SDK.Services;
 using Microsoft.Extensions.Logging;
 using System;
@@ -8,7 +8,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using CoreSearchResult = FluxIndex.Core.Application.Interfaces.SearchResult;
+using CoreSearchResult = FluxIndex.Application.Interfaces.SearchResult;
 
 namespace FluxIndex.SDK;
 
@@ -83,7 +83,7 @@ public class Retriever
             Chunk = chunk,
             Score = chunk.Score ?? 0,
             FileName = chunk.DocumentId,
-            Metadata = new FluxIndex.Core.Domain.Entities.DocumentMetadata()
+            Metadata = new FluxIndex.Domain.Entities.DocumentMetadata()
         }).ToList();
 
         // Apply metadata filter if provided
@@ -278,7 +278,7 @@ public class Retriever
                 Chunk = chunk,
                 Score = chunk.Score ?? 0,
                 FileName = chunk.DocumentId,
-                Metadata = new FluxIndex.Core.Domain.Entities.DocumentMetadata()
+                Metadata = new FluxIndex.Domain.Entities.DocumentMetadata()
             })
             .Take(maxResults);
 
@@ -405,9 +405,9 @@ public class Retriever
         });
     }
 
-    private FluxIndex.Core.Domain.Entities.DocumentMetadata CreateMetadataFromDictionary(Dictionary<string, object>? metadata)
+    private FluxIndex.Domain.Entities.DocumentMetadata CreateMetadataFromDictionary(Dictionary<string, object>? metadata)
     {
-        var result = new FluxIndex.Core.Domain.Entities.DocumentMetadata();
+        var result = new FluxIndex.Domain.Entities.DocumentMetadata();
 
         if (metadata != null)
         {

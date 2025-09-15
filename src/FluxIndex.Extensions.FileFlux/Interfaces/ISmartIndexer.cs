@@ -1,4 +1,4 @@
-using FluxIndex.Core.Domain.Entities;
+using FluxIndex.Domain.Entities;
 
 namespace FluxIndex.Extensions.FileFlux.Interfaces;
 

@@ -1,6 +1,6 @@
-using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Core.Application.Services;
-using FluxIndex.Core.Domain.Entities;
+using FluxIndex.Application.Interfaces;
+using FluxIndex.Application.Services;
+using FluxIndex.Domain.Entities;
 using FluxIndex.Extensions.FileFlux.Interfaces;
 using FluxIndex.Extensions.FileFlux.Strategies;
 using Microsoft.Extensions.Logging;
@@ -808,7 +808,7 @@ public class ChunkAwareRetriever : IChunkAwareRetriever
         return doc;
     }
 
-    private Document ConvertSearchResultToDocument(FluxIndex.Core.Application.Interfaces.SearchResult result)
+    private Document ConvertSearchResultToDocument(FluxIndex.Application.Interfaces.SearchResult result)
     {
         var doc = ConvertChunkToDocument(result.Chunk);
         doc.Properties["score"] = result.Score.ToString();

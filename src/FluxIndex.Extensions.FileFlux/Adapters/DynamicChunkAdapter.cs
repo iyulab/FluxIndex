@@ -1,6 +1,6 @@
 using System.Collections;
 using System.Reflection;
-using FluxIndex.Core.Domain.Entities;
+using FluxIndex.Domain.Entities;
 using FluxIndex.Extensions.FileFlux.Interfaces;
 using Microsoft.Extensions.Logging;
 

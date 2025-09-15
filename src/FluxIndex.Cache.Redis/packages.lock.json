@@ -139,7 +139,7 @@
         "resolved": "9.0.0",
         "contentHash": "hyJB4UlpAi19Xr9AXzu2NuagKC4lPfHObNMEAA0HmqFz2rX7wKgzeYzO/jM/eBHDhnUGFFEjk5cOoJaxqg5J4A=="
       },
-      "fluxindex.core": {
+      "fluxindex": {
         "type": "Project",
         "dependencies": {
           "FileFlux": "[0.2.4, )",

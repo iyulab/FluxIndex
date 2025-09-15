@@ -1,5 +1,5 @@
 using FluxIndex.AI.OpenAI.Services;
-using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Application.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;

@@ -1,6 +1,6 @@
 using Azure;
 using Azure.AI.OpenAI;
-using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Application.Interfaces;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OpenAI.Chat;

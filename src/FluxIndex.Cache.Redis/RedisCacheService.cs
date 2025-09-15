@@ -4,8 +4,8 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Core.Domain.Entities;
+using FluxIndex.Application.Interfaces;
+using FluxIndex.Domain.Entities;
 using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 

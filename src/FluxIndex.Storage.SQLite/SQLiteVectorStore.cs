@@ -5,8 +5,8 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Core.Domain.Entities;
+using FluxIndex.Application.Interfaces;
+using FluxIndex.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 

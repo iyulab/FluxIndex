@@ -1,4 +1,4 @@
-using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Application.Interfaces;
 using FluxIndex.Extensions.FileFlux.Interfaces;
 using FluxIndex.Extensions.FileFlux.Strategies;
 using Microsoft.Extensions.Logging;

@@ -6,16 +6,15 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <PackageId>FluxIndex.SDK</PackageId>
-    <IsPackable>false</IsPackable>
-    <Description>FluxIndex - RAG infrastructure for indexing FileFlux chunks with hybrid search capabilities</Description>
-    <PackageTags>RAG;VectorStore;Search;AI;Embeddings;FileFlux;Retrieval</PackageTags>
+    <IsPackable>true</IsPackable>
+    <Description>FluxIndex SDK - Infrastructure and high-level API for FluxIndex RAG system</Description>
+    <PackageTags>RAG;VectorStore;Search;AI;Embeddings;FileFlux;Retrieval;SDK</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\FluxIndex.Core\FluxIndex.Core.csproj" PrivateAssets="all" />
-    <ProjectReference Include="..\FluxIndex.Infrastructure\FluxIndex.Infrastructure.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\FluxIndex\FluxIndex.csproj" />
   </ItemGroup>
-  
+
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />

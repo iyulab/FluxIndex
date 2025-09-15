@@ -1,4 +1,4 @@
-using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Application.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;

@@ -7,15 +7,16 @@
     <LangVersion>latest</LangVersion>
     <IsPackable>true</IsPackable>
     <PackageId>FluxIndex</PackageId>
-    <Description>FluxIndex - Complete RAG infrastructure for document indexing and retrieval with vector store support</Description>
+    <Description>FluxIndex - Core RAG infrastructure for document indexing and retrieval with vector store support</Description>
     <PackageTags>RAG;VectorStore;Search;AI;Embeddings;FileFlux;Retrieval</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Include Core, Infrastructure, and SDK as dependencies -->
-    <ProjectReference Include="..\FluxIndex.Core\FluxIndex.Core.csproj" />
-    <ProjectReference Include="..\FluxIndex.Infrastructure\FluxIndex.Infrastructure.csproj" />
-    <ProjectReference Include="..\FluxIndex.SDK\FluxIndex.SDK.csproj" />
+    <PackageReference Include="FileFlux" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime.Managed" />
   </ItemGroup>
 
 </Project>

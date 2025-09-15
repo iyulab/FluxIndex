@@ -1,4 +1,4 @@
-using FluxIndex.Core.Domain.Entities;
+using FluxIndex.Domain.Entities;
 using FluxIndex.Extensions.FileFlux.Retrieval;
 using FluxIndex.Extensions.FileFlux.Pipeline;
 

@@ -1,6 +1,6 @@
-using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Core.Application.Services;
-using FluxIndex.Core.Domain.Entities;
+using FluxIndex.Application.Interfaces;
+using FluxIndex.Application.Services;
+using FluxIndex.Domain.Entities;
 using FluxIndex.Extensions.FileFlux.Interfaces;
 using FluxIndex.SDK;
 using FluxIndex.SDK.Interfaces;
@@ -394,7 +394,7 @@ public class SmartIndexer : ISmartIndexer
         public DateTime Timestamp { get; set; }
     }
 
-    private Dictionary<string, string> ConvertMetadataToDictionary(FluxIndex.Core.Domain.Entities.DocumentMetadata metadata)
+    private Dictionary<string, string> ConvertMetadataToDictionary(FluxIndex.Domain.Entities.DocumentMetadata metadata)
     {
         var dict = new Dictionary<string, string>();
 

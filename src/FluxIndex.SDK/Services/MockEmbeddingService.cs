@@ -1,4 +1,4 @@
-using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Application.Interfaces;
 using System;
 using System.Collections.Generic;
 using System.Linq;
