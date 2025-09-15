@@ -8,11 +8,10 @@
     <IsPackable>true</IsPackable>
     <PackageId>FluxIndex</PackageId>
     <Description>FluxIndex - Core RAG infrastructure for document indexing and retrieval with vector store support</Description>
-    <PackageTags>RAG;VectorStore;Search;AI;Embeddings;FileFlux;Retrieval</PackageTags>
+    <PackageTags>RAG;VectorStore;Search;AI;Embeddings;Retrieval</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="FileFlux" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime" />

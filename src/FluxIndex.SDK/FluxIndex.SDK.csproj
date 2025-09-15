@@ -8,7 +8,7 @@
     <PackageId>FluxIndex.SDK</PackageId>
     <IsPackable>true</IsPackable>
     <Description>FluxIndex SDK - Infrastructure and high-level API for FluxIndex RAG system</Description>
-    <PackageTags>RAG;VectorStore;Search;AI;Embeddings;FileFlux;Retrieval;SDK</PackageTags>
+    <PackageTags>RAG;VectorStore;Search;AI;Embeddings;Retrieval;SDK</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,11 +19,7 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.Options" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Console" />
-    <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
     <PackageReference Include="Microsoft.Extensions.Http" />
-    <PackageReference Include="FileFlux" />
   </ItemGroup>
 
 </Project>

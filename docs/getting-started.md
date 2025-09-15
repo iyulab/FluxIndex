@@ -1,65 +1,83 @@
-# FluxIndex 빠른 시작 가이드
+# FluxIndex 빠른 시작 가이드 v0.1.4
 
-**실제 검증된 예제로 5분 안에 RAG 시스템 구축**
+**모듈형 RAG 시스템으로 최소 의존성 5분 시작**
 
-> 이 가이드의 모든 예제는 samples/RealQualityTest에서 실제 동작이 검증되었습니다.
+> Clean Architecture + 의존성 분리 완료, 필요한 기능만 선택적 사용
 
 ## 📋 전제 조건
 
 - .NET 9.0 SDK 이상
-- OpenAI API 키 (실제 품질 테스트용) - 또는 Mock 모드로 테스트
+- OpenAI API 키 (선택적 - AI Provider 사용시만)
 - SQLite (자동 설치, 별도 설정 불요)
 
-## 🚀 1단계: 검증된 프로젝트 복제 또는 새 프로젝트
+## 🚀 1단계: 새 프로젝트 생성
 
-### 옵션 1: 검증된 예제 실행 (추천)
-```bash
-git clone https://github.com/iyulab/FluxIndex.git
-cd FluxIndex/samples/RealQualityTest
-
-# OpenAI API 키 설정
-export OPENAI_API_KEY="your-api-key"
-
-# 실행 (검증된 성과: 평균 유사도 0.638, 473ms 응답시간)
-dotnet run
-```
-
-### 옵션 2: 새 프로젝트 생성
+### ⚡ 최소 의존성으로 시작 (추천)
 ```bash
 dotnet new console -n MyRAGApp
 cd MyRAGApp
 
-# 통합된 패키지들
-dotnet add package FluxIndex        # 핵심 RAG 인프라 (이전 FluxIndex.Core)
-dotnet add package FluxIndex.SDK    # 편리한 API 클라이언트
-dotnet add package FluxIndex.AI.OpenAI # OpenAI 통합
+# 1. 핵심 패키지 (FileFlux 없음)
+dotnet add package FluxIndex        # 코어 RAG 인프라 (최소 의존성)
+dotnet add package FluxIndex.SDK    # 편리한 통합 API
+
+# 2. AI Provider (하나 선택)
+dotnet add package FluxIndex.AI.OpenAI    # OpenAI + Azure OpenAI
+
+# 3. 저장소 (하나 선택)
+dotnet add package FluxIndex.Storage.SQLite      # 가벼운 개발용
 ```
 
-## 🔧 2단계: 실제 검증된 설정
+### 🎯 선택적 고급 기능
+```bash
+# PostgreSQL 사용시 (프로덕션)
+dotnet add package FluxIndex.Storage.PostgreSQL
 
-### appsettings.json (samples/RealQualityTest에서 검증됨)
+# Redis 캐싱 사용시 (분산 환경)
+dotnet add package FluxIndex.Cache.Redis
+
+# 문서 파싱 필요시만 (FileFlux Extension)
+dotnet add package FluxIndex.Extensions.FileFlux
+```
+
+### 📂 기존 예제 실행
+```bash
+git clone https://github.com/iyulab/FluxIndex.git
+cd FluxIndex/samples/RealQualityTest
+
+export OPENAI_API_KEY="your-api-key"
+dotnet run  # 실제 검증된 예제
+```
+
+## 🔧 2단계: 모듈형 설정
+
+### ⚡ 최소 설정 (appsettings.json)
 ```json
 {
   "OpenAI": {
     "ApiKey": "",
-    "EmbeddingModel": "text-embedding-3-small",
-    "CompletionModel": "gpt-4o-mini",
-    "MaxTokens": 4096,
-    "Temperature": 0.0
+    "EmbeddingModel": "text-embedding-3-small"
   },
-  "Database": {
-    "ConnectionString": "Data Source=quality_test.db"
+  "FluxIndex": {
+    "Storage": "SQLite",
+    "ConnectionString": "Data Source=fluxindex.db",
+    "Cache": "Memory"
+  }
+}
+```
+
+### 🏗️ 프로덕션 설정 (PostgreSQL + Redis)
+```json
+{
+  "OpenAI": {
+    "ApiKey": "",
+    "EmbeddingModel": "text-embedding-3-small"
   },
-  "TestSettings": {
-    "TestDocumentsPath": "TestDocuments",
-    "MaxDocuments": 10,
-    "TestQueries": [
-      "What is machine learning?",
-      "How do neural networks work?",
-      "Explain deep learning",
-      "What are transformers in AI?",
-      "How to implement backpropagation?"
-    ]
+  "FluxIndex": {
+    "Storage": "PostgreSQL",
+    "ConnectionString": "Host=localhost;Database=fluxindex;Username=user;Password=pass",
+    "Cache": "Redis",
+    "RedisConnection": "localhost:6379"
   }
 }
 ```

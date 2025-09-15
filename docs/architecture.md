@@ -1,40 +1,49 @@
-# FluxIndex 아키텍처 가이드
+# FluxIndex 아키텍처 가이드 v0.1.4
 
 ## 개요
 
-FluxIndex는 **실제 검증된 RAG 인프라**로, Clean Architecture 원칙을 따르며 프로덕션 환경에서 검증된 성능을 제공합니다. 통합된 패키지 구조로 더욱 간편한 사용성을 제공합니다.
+FluxIndex는 **Clean Architecture 기반 모듈형 RAG 인프라**로, 의존성 최적화와 확장성을 제공합니다. v0.1.4에서는 완전한 의존성 분리를 통해 최소 패키지 크기와 선택적 기능 설치를 지원합니다.
 
-**검증된 성과**: 평균 유사도 0.638, 100% 검색 정확도, 473ms 응답시간
+**v0.1.4 아키텍처 혁신**: FileFlux 완전 분리 + 모듈형 설계
 
-## 통합된 패키지 아키텍처
+## v0.1.4 의존성 분리 아키텍처
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│               Presentation Layer                     │
+│               SDK Layer                             │
 │             (FluxIndex.SDK) ✅                      │
-│  FluxIndexClient, Builder Pattern, Minimal API     │
+│  FluxIndexClient, Builder Pattern                  │
 ├─────────────────────────────────────────────────────┤
-│              Provider Packages                      │
+│              Provider Packages (선택적)             │
 │  ✅ FluxIndex.AI.OpenAI    ✅ FluxIndex.Storage.*   │
-│  ✅ FluxIndex.Cache.Redis  ✅ FluxIndex.Extensions  │
+│  ✅ FluxIndex.Cache.Redis  🔶 FluxIndex.Extensions  │
 ├─────────────────────────────────────────────────────┤
 │              Core Infrastructure                     │
-│              (FluxIndex) ✅ 통합됨                  │
-│   Application + Domain + Infrastructure 통합        │
+│              (FluxIndex) ✅ FileFlux 분리됨         │
+│   Domain + Application + 최소 Infrastructure       │
 ├─────────────────────────────────────────────────────┤
-│                Domain Layer                          │
-│        ✅ Document, DocumentChunk 엔티티             │
-│        ✅ 코사인 유사도, 검색 로직                   │
+│            Extensions (완전 분리)                    │
+│      FluxIndex.Extensions.FileFlux ✅               │
+│      FileFlux 통합 (유일한 FileFlux 의존성)         │
 └─────────────────────────────────────────────────────┘
 ```
 
-**범례**: ✅ 구현완료 및 검증됨  🔶 기본 구현됨  ❌ 미구현
+### 🎯 의존성 분리 핵심
+- **FluxIndex**: FileFlux 완전 제거, 최소 의존성
+- **FluxIndex.SDK**: FileFlux 완전 제거, 경량 API
+- **FluxIndex.Extensions.FileFlux**: FileFlux 통합 유일 지점
 
-### 1. 통합된 Core Package (FluxIndex) ✅
+## 1. 경량 Core Package (FluxIndex) ✅
 
-**FluxIndex 통합 패키지 구조** - 이전 FluxIndex.Core의 모든 기능 통합
+**v0.1.4 최소 의존성 구조**
 
 ```csharp
+// FluxIndex 패키지 의존성 (FileFlux 완전 제거)
+<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+<PackageReference Include="Microsoft.Extensions.Caching.Memory" />
+<PackageReference Include="Microsoft.ML.OnnxRuntime" />
+<PackageReference Include="Microsoft.ML.OnnxRuntime.Managed" />
+
 // Domain Entities (FluxIndex 패키지 내부)
 namespace FluxIndex.Domain.Entities
 {
@@ -53,25 +62,23 @@ namespace FluxIndex.Domain.Entities
         public int ChunkIndex { get; set; }
         public string DocumentId { get; set; }
         public EmbeddingVector? Embedding { get; set; }
-        public int TokenCount { get; set; }
     }
 }
 
-// Application Services (FluxIndex 패키지 내부)
+// Application Services (최소 구현)
 namespace FluxIndex.Application.Services
 {
     public class IndexingService { /*...*/ }
     public class SearchService { /*...*/ }
-    public class BM25Service { /*...*/ }
-    public class RankFusionService { /*...*/ }
+    public class LocalEmbeddingService { /*...*/ } // ONNX 기반
 }
 ```
 
-**통합 구조의 이점:**
-- ✅ 단일 패키지로 모든 핵심 기능 제공
-- ✅ Clean Architecture 계층 분리 유지
-- ✅ 종속성 관리 단순화
-- ✅ 배포 및 버전 관리 일원화
+**v0.1.4 경량화 이점:**
+- ✅ FileFlux 의존성 0개 - 최소 패키지 크기
+- ✅ Microsoft.Extensions + ML.OnnxRuntime만 사용
+- ✅ 로컬 임베딩 모델 지원 (ONNX)
+- ✅ 선택적 기능 확장 가능
 
 ### 2. SDK Layer (FluxIndex.SDK) ✅
 
@@ -201,57 +208,69 @@ namespace FluxIndex.Extensions.FileFlux
 - ✅ 표준 인터페이스를 통한 일관성 보장
 - ✅ 의존성 주입을 통한 느슨한 결합
 
-## 패키지 간 의존성 관계
+## v0.1.4 의존성 관계 재설계
 
 ```
-FluxIndex.SDK
+FluxIndex.SDK (FileFlux 없음)
     ↓ (depends on)
-FluxIndex (Core)
+FluxIndex (Core, FileFlux 완전 분리)
     ↑ (extended by)
-┌─────────────────┬─────────────────┬─────────────────┐
-│ FluxIndex.AI.*  │ FluxIndex.Storage.* │ FluxIndex.Cache.* │
-│ - OpenAI        │ - PostgreSQL    │ - Redis         │
-│                 │ - SQLite        │                 │
-└─────────────────┴─────────────────┴─────────────────┘
+┌─────────────────┬─────────────────┬─────────────────┬──────────────────┐
+│ FluxIndex.AI.*  │FluxIndex.Storage│ FluxIndex.Cache │ FluxIndex.Extensions │
+│ - OpenAI        │ - PostgreSQL    │ - Redis         │ - FileFlux ⭐      │
+│ (최소 deps)     │ - SQLite        │ (최소 deps)     │ (유일한 FileFlux)  │
+└─────────────────┴─────────────────┴─────────────────┴──────────────────┘
 ```
 
-**의존성 원칙:**
-- ✅ Provider 패키지들은 FluxIndex Core만 참조
-- ✅ SDK는 모든 패키지를 통합하여 편의성 제공
-- ✅ 각 Provider는 서로 독립적 (결합도 최소화)
-- ✅ 인터페이스 기반 의존성 주입으로 유연성 확보
+**v0.1.4 의존성 혁신:**
+- ✅ **완전 분리**: FluxIndex ↔ FileFlux 의존성 0
+- ✅ **선택적 통합**: Extensions에서만 FileFlux 사용
+- ✅ **최소 패키지**: 필요한 기능만 설치
+- ✅ **전이적 종속성 제거**: 각 패키지 최적화된 deps
 
-## 사용 시나리오별 패키지 조합
+## v0.1.4 모듈형 패키지 조합
 
-### 1. 기본 RAG 시스템
+### 1. ⚡ 최소 의존성 (추천)
 ```bash
-dotnet add package FluxIndex
+dotnet add package FluxIndex.SDK        # 통합 API (FileFlux 없음)
+dotnet add package FluxIndex.AI.OpenAI  # AI Provider
+# → 최소 패키지 크기, 빠른 설치
+```
+
+### 2. 🏗️ 프로덕션 환경
+```bash
 dotnet add package FluxIndex.SDK
 dotnet add package FluxIndex.AI.OpenAI
+dotnet add package FluxIndex.Storage.PostgreSQL  # 확장성
+dotnet add package FluxIndex.Cache.Redis         # 성능
+# → 엔터프라이즈급 RAG
 ```
 
-### 2. 프로덕션 환경
+### 3. 📄 고급 문서 처리 (FileFlux Extension)
 ```bash
-dotnet add package FluxIndex
 dotnet add package FluxIndex.SDK
 dotnet add package FluxIndex.AI.OpenAI
-dotnet add package FluxIndex.Storage.PostgreSQL
-dotnet add package FluxIndex.Cache.Redis
+dotnet add package FluxIndex.Extensions.FileFlux  # PDF, DOCX, etc.
+# → PDF, DOCX, XLSX 자동 파싱
 ```
 
-### 3. 파일 처리 포함
+### 4. 🔬 로컬 개발/테스트
 ```bash
-dotnet add package FluxIndex
+dotnet add package FluxIndex.SDK
+# → ONNX 로컬 임베딩, SQLite 저장소
+# → 인터넷 연결 없이 개발 가능
+```
+
+### 5. 🎯 선택적 고급 기능
+```bash
+# 기본
 dotnet add package FluxIndex.SDK
 dotnet add package FluxIndex.AI.OpenAI
-dotnet add package FluxIndex.Extensions.FileFlux
-```
 
-### 4. 로컬 개발/테스트
-```bash
-dotnet add package FluxIndex
-dotnet add package FluxIndex.SDK
-# AI Provider 없이 로컬 알고리즘만 사용
+# 필요시 추가
+dotnet add package FluxIndex.Storage.PostgreSQL  # 프로덕션 DB
+dotnet add package FluxIndex.Cache.Redis         # 분산 캐싱
+dotnet add package FluxIndex.Extensions.FileFlux # 문서 처리
 ```
 
 ## 성능 및 확장성
