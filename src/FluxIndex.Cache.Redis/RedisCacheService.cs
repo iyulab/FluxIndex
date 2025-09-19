@@ -4,8 +4,8 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using FluxIndex.Application.Interfaces;
-using FluxIndex.Domain.Entities;
+using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 
@@ -114,18 +114,45 @@ public class RedisCacheService : ICacheService
         {
             var prefixedKey = GetPrefixedKey(key);
             var result = await _database.KeyDeleteAsync(prefixedKey);
-            
+
             if (result)
             {
                 _logger.LogDebug("Successfully removed cached value for key: {Key}", key);
             }
-            
+
             return result;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error removing cached value for key: {Key}", key);
             return false;
+        }
+    }
+
+    public async Task<long> RemoveByPatternAsync(string pattern, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(pattern))
+            throw new ArgumentException("Pattern cannot be empty", nameof(pattern));
+
+        try
+        {
+            var server = _redis.GetServer(_redis.GetEndPoints().First());
+            var prefixedPattern = GetPrefixedKey(pattern);
+            var keys = server.Keys(_options.Database, prefixedPattern).ToArray();
+
+            if (keys.Length > 0)
+            {
+                var removedCount = await _database.KeyDeleteAsync(keys);
+                _logger.LogDebug("Removed {Count} keys matching pattern: {Pattern}", removedCount, pattern);
+                return removedCount;
+            }
+
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error removing keys by pattern: {Pattern}", pattern);
+            return 0;
         }
     }
 
@@ -167,21 +194,19 @@ public class RedisCacheService : ICacheService
         }
     }
 
-    public async Task<IEnumerable<SearchResult>> CacheSearchResultsAsync(
+    public async Task CacheSearchResultsAsync(
         string queryKey,
         IEnumerable<SearchResult> results,
         TimeSpan? expiration = null,
         CancellationToken cancellationToken = default)
     {
         var resultList = results.ToList();
-        
+
         if (!resultList.Any())
-            return resultList;
+            return;
 
         var cacheKey = $"search:{queryKey}";
         await SetAsync(cacheKey, resultList, expiration, cancellationToken);
-        
-        return resultList;
     }
 
     public async Task<IEnumerable<SearchResult>?> GetCachedSearchResultsAsync(

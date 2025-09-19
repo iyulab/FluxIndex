@@ -1,5 +1,7 @@
 using FluxIndex.Application.Interfaces;
 using FluxIndex.Application.Services;
+using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Domain.ValueObjects;
 using FluxIndex.SDK.Configuration;
 using FluxIndex.SDK.Services;
 using FluxIndex.SDK.Extensions;
@@ -163,6 +165,81 @@ public class FluxIndexClientBuilder
     {
         _services.AddLogging(configure);
         return this;
+    }
+
+    /// <summary>
+    /// 시맨틱 캐싱 활성화 - Redis 벡터 캐시를 통한 쿼리 유사도 기반 캐싱
+    /// </summary>
+    public FluxIndexClientBuilder WithSemanticCaching(string redisConnectionString, Action<FluxIndex.Core.Domain.ValueObjects.CacheOptions>? configure = null)
+    {
+        var options = FluxIndex.Core.Domain.ValueObjects.CacheOptions.Default;
+        configure?.Invoke(options);
+        options.RedisConnectionString = redisConnectionString;
+
+        _services.Configure<FluxIndex.Core.Domain.ValueObjects.CacheOptions>(opts =>
+        {
+            opts.DefaultSimilarityThreshold = options.DefaultSimilarityThreshold;
+            opts.DefaultExpiry = options.DefaultExpiry;
+            opts.MaxCacheSize = options.MaxCacheSize;
+            opts.RedisConnectionString = options.RedisConnectionString;
+            opts.CacheKeyPrefix = options.CacheKeyPrefix;
+            opts.EnableStatistics = options.EnableStatistics;
+            opts.EnableCompression = options.EnableCompression;
+            opts.BatchSize = options.BatchSize;
+            opts.EnableWarmup = options.EnableWarmup;
+            opts.EnableAutoOptimization = options.EnableAutoOptimization;
+            opts.OptimizationInterval = options.OptimizationInterval;
+            opts.MaxMemoryUsageBytes = options.MaxMemoryUsageBytes;
+        });
+
+        // Redis 연결 설정
+        _services.AddStackExchangeRedisCache(redisOptions =>
+        {
+            redisOptions.Configuration = redisConnectionString;
+        });
+
+        // Redis Multiplexer 등록
+        _services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(provider =>
+        {
+            return StackExchange.Redis.ConnectionMultiplexer.Connect(redisConnectionString);
+        });
+
+        // 시맨틱 캐시 서비스 등록
+        _services.AddSingleton<ISemanticCacheService, FluxIndex.Cache.Redis.Services.RedisSemanticCacheService>();
+
+        return this;
+    }
+
+    /// <summary>
+    /// 개발용 시맨틱 캐싱 활성화 - 로컬 Redis 및 최적화된 설정
+    /// </summary>
+    public FluxIndexClientBuilder WithSemanticCachingForDevelopment(string redisConnectionString = "localhost:6379")
+    {
+        return WithSemanticCaching(redisConnectionString, options =>
+        {
+            options.DefaultExpiry = TimeSpan.FromMinutes(30);
+            options.MaxCacheSize = 1000;
+            options.EnableStatistics = true;
+            options.EnableWarmup = false;
+            options.EnableAutoOptimization = false;
+        });
+    }
+
+    /// <summary>
+    /// 운영용 시맨틱 캐싱 활성화 - 고성능 및 최적화 설정
+    /// </summary>
+    public FluxIndexClientBuilder WithSemanticCachingForProduction(string redisConnectionString)
+    {
+        return WithSemanticCaching(redisConnectionString, options =>
+        {
+            options.DefaultExpiry = TimeSpan.FromHours(24);
+            options.MaxCacheSize = 50000;
+            options.EnableStatistics = true;
+            options.EnableCompression = true;
+            options.EnableWarmup = true;
+            options.EnableAutoOptimization = true;
+            options.OptimizationInterval = TimeSpan.FromHours(6);
+        });
     }
 
     /// <summary>
