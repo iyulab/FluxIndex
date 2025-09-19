@@ -11,17 +11,18 @@
     <PackageVersion Include="Microsoft.Extensions.Configuration" Version="9.0.8" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.9" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="9.0.9" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.8" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.9" />
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="9.0.8" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.9" />
     <PackageVersion Include="Microsoft.Extensions.Options" Version="9.0.9" />
-    <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="9.0.8" />
+    <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="9.0.9" />
     <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="9.0.9" />
     <PackageVersion Include="Microsoft.Extensions.Caching.Abstractions" Version="9.0.9" />
     <PackageVersion Include="Microsoft.Extensions.Http" Version="9.0.9" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="9.0.8" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.9" />
     <PackageVersion Include="System.Text.Json" Version="9.0.9" />
+    <PackageVersion Include="WebFlux" Version="0.1.1" />
   </ItemGroup>
   <!-- Entity Framework Core Packages -->
   <ItemGroup>
@@ -45,8 +46,9 @@
   </ItemGroup>
   <!-- Document Processing -->
   <ItemGroup>
-    <PackageVersion Include="FileFlux" Version="0.2.4" />
+    <PackageVersion Include="FileFlux" Version="0.2.9" />
     <PackageVersion Include="FileFlux.Core" Version="0.2.4" />
+    <PackageVersion Include="HtmlAgilityPack" Version="1.12.3" />
   </ItemGroup>
   <!-- Testing Packages -->
   <ItemGroup>
@@ -59,7 +61,7 @@
   </ItemGroup>
   <!-- Build/Development Packages -->
   <ItemGroup>
-    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />
+    <!-- <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" /> -->
   </ItemGroup>
   <!-- Testing/Sample Packages -->
   <ItemGroup>

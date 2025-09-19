@@ -1,0 +1,27 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>true</IsPackable>
+    <PackageId>FluxIndex.Extensions.WebFlux</PackageId>
+    <Description>FluxIndex.Extensions.WebFlux - Web content processing integration for FluxIndex using WebFlux library</Description>
+    <PackageTags>RAG;WebFlux;Crawling;WebContent;FluxIndex;AI</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+    <PackageReference Include="Microsoft.Extensions.Http" />
+    <PackageReference Include="HtmlAgilityPack" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FluxIndex\FluxIndex.csproj" />
+    <ProjectReference Include="..\FluxIndex.SDK\FluxIndex.SDK.csproj" />
+  </ItemGroup>
+
+</Project>

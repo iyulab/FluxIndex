@@ -166,6 +166,15 @@ public class FluxIndexClientBuilder
     }
 
     /// <summary>
+    /// 고급 서비스 구성 - 확장 패키지에서 사용
+    /// </summary>
+    public FluxIndexClientBuilder ConfigureServices(Action<IServiceCollection> configure)
+    {
+        configure?.Invoke(_services);
+        return this;
+    }
+
+    /// <summary>
     /// FluxIndexClient 빌드
     /// </summary>
     public IFluxIndexClient Build()
