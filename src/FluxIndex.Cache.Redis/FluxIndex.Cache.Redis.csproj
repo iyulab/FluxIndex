@@ -4,20 +4,19 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <LangVersion>latest</LangVersion>
-    <PackageId>FluxIndex.Cache.Redis</PackageId>
-    <IsPackable>true</IsPackable>
-    <Description>Redis caching provider for FluxIndex</Description>
-    <PackageTags>FluxIndex;Redis;Cache;Distributed;Performance</PackageTags>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <AssemblyName>FluxIndex.Cache.Redis</AssemblyName>
+    <RootNamespace>FluxIndex.Cache.Redis</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="StackExchange.Redis" />
-    <PackageReference Include="Microsoft.Extensions.Caching.Abstractions" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
-    <PackageReference Include="Microsoft.Extensions.Options" />
+    <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
+    <PackageReference Include="System.Text.Json" />
   </ItemGroup>
 
   <ItemGroup>

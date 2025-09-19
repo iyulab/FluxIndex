@@ -1,89 +1,240 @@
-using FluxIndex.Core.Domain.ValueObjects;
-using FluxIndex.Core.Domain.Entities;
+using FluxIndex.Core.Domain.Models;
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace FluxIndex.Core.Application.Interfaces;
 
 /// <summary>
-/// 시맨틱 유사도 기반 쿼리 캐싱 서비스
-/// 쿼리 임베딩을 활용하여 의미적으로 유사한 이전 검색 결과를 빠르게 반환
+/// 시맨틱 캐싱 서비스 인터페이스
+/// 쿼리 유사도 기반으로 검색 결과를 캐싱하여 성능 향상
 /// </summary>
 public interface ISemanticCacheService
 {
     /// <summary>
-    /// 쿼리와 유사한 캐시된 응답을 검색
+    /// 캐시에서 유사한 쿼리의 결과 검색
     /// </summary>
     /// <param name="query">검색 쿼리</param>
-    /// <param name="similarityThreshold">유사도 임계값 (0.0-1.0)</param>
+    /// <param name="similarityThreshold">유사도 임계값 (기본값: 0.95)</param>
     /// <param name="cancellationToken">취소 토큰</param>
-    /// <returns>캐시 결과 또는 null (캐시 미스)</returns>
-    Task<CacheResult?> GetCachedResponseAsync(
+    /// <returns>캐시된 검색 결과 또는 null</returns>
+    Task<CachedSearchResult?> GetCachedResultAsync(
         string query,
         float similarityThreshold = 0.95f,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// 쿼리와 응답을 캐시에 저장
+    /// 검색 결과를 캐시에 저장
     /// </summary>
     /// <param name="query">원본 쿼리</param>
-    /// <param name="response">생성된 응답</param>
-    /// <param name="searchResults">검색 결과 목록</param>
-    /// <param name="expiry">캐시 만료 시간 (null이면 기본값 사용)</param>
+    /// <param name="results">검색 결과</param>
+    /// <param name="metadata">추가 메타데이터</param>
+    /// <param name="ttl">캐시 생존 시간 (기본값: 1시간)</param>
     /// <param name="cancellationToken">취소 토큰</param>
-    Task CacheResponseAsync(
+    Task SetCachedResultAsync(
         string query,
-        string response,
-        List<SearchResult>? searchResults = null,
-        TimeSpan? expiry = null,
+        IReadOnlyList<DocumentChunk> results,
+        SearchMetadata? metadata = null,
+        TimeSpan? ttl = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// 배치로 여러 쿼리-응답 쌍을 캐시에 저장
+    /// 특정 쿼리 패턴의 캐시 무효화
     /// </summary>
-    /// <param name="cacheEntries">캐시할 항목들</param>
+    /// <param name="pattern">무효화할 쿼리 패턴</param>
     /// <param name="cancellationToken">취소 토큰</param>
-    Task CacheBatchAsync(
-        IEnumerable<CacheEntry> cacheEntries,
+    Task InvalidateCacheAsync(
+        string pattern,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// 캐시 통계 정보 조회
+    /// 캐시 통계 조회
     /// </summary>
     /// <param name="cancellationToken">취소 토큰</param>
-    /// <returns>캐시 통계</returns>
-    Task<CacheStatistics> GetStatisticsAsync(CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// 패턴에 매칭되는 캐시 항목들을 무효화
-    /// </summary>
-    /// <param name="pattern">무효화할 패턴 (예: "product:*")</param>
-    /// <param name="cancellationToken">취소 토큰</param>
-    Task InvalidateCacheAsync(string pattern, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// 자주 사용되는 쿼리들로 캐시를 미리 워밍업
-    /// </summary>
-    /// <param name="commonQueries">인기 쿼리 목록</param>
-    /// <param name="cancellationToken">취소 토큰</param>
-    /// <returns>워밍업 성공 여부</returns>
-    Task<bool> WarmupCacheAsync(
-        IEnumerable<string> commonQueries,
+    /// <returns>캐시 통계 정보</returns>
+    Task<CacheStatistics> GetCacheStatisticsAsync(
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// 캐시 크기 및 메모리 사용량 최적화
+    /// 캐시 워밍업 (사전에 인기 있는 쿼리들을 캐시에 로드)
+    /// </summary>
+    /// <param name="popularQueries">인기 쿼리 목록</param>
+    /// <param name="cancellationToken">취소 토큰</param>
+    Task WarmupCacheAsync(
+        IReadOnlyList<string> popularQueries,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 캐시 압축 및 정리
     /// </summary>
     /// <param name="cancellationToken">취소 토큰</param>
-    Task OptimizeCacheAsync(CancellationToken cancellationToken = default);
+    Task CompactCacheAsync(
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
-/// 캐시할 항목 정보
+/// 캐시된 검색 결과
 /// </summary>
-public class CacheEntry
+public class CachedSearchResult
 {
-    public string Query { get; init; } = string.Empty;
-    public string Response { get; init; } = string.Empty;
-    public List<SearchResult> SearchResults { get; init; } = new();
-    public TimeSpan? Expiry { get; init; }
-    public Dictionary<string, object> Metadata { get; init; } = new();
+    /// <summary>
+    /// 원본 쿼리
+    /// </summary>
+    public string OriginalQuery { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 매칭된 캐시 쿼리
+    /// </summary>
+    public string CachedQuery { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 유사도 점수
+    /// </summary>
+    public float SimilarityScore { get; set; }
+
+    /// <summary>
+    /// 검색 결과
+    /// </summary>
+    public IReadOnlyList<DocumentChunk> Results { get; set; } = Array.Empty<DocumentChunk>();
+
+    /// <summary>
+    /// 검색 메타데이터
+    /// </summary>
+    public SearchMetadata? Metadata { get; set; }
+
+    /// <summary>
+    /// 캐시 생성 시간
+    /// </summary>
+    public DateTime CachedAt { get; set; }
+
+    /// <summary>
+    /// 캐시 히트 횟수
+    /// </summary>
+    public int HitCount { get; set; }
+
+    /// <summary>
+    /// 마지막 액세스 시간
+    /// </summary>
+    public DateTime LastAccessedAt { get; set; }
+}
+
+/// <summary>
+/// 검색 메타데이터
+/// </summary>
+public class SearchMetadata
+{
+    /// <summary>
+    /// 검색 시간 (밀리초)
+    /// </summary>
+    public long SearchTimeMs { get; set; }
+
+    /// <summary>
+    /// 검색된 총 문서 수
+    /// </summary>
+    public int TotalDocuments { get; set; }
+
+    /// <summary>
+    /// 사용된 검색 알고리즘
+    /// </summary>
+    public string SearchAlgorithm { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 검색 품질 점수
+    /// </summary>
+    public float QualityScore { get; set; }
+
+    /// <summary>
+    /// 추가 속성
+    /// </summary>
+    public Dictionary<string, object> AdditionalProperties { get; set; } = new();
+}
+
+/// <summary>
+/// 캐시 통계
+/// </summary>
+public class CacheStatistics
+{
+    /// <summary>
+    /// 총 캐시 엔트리 수
+    /// </summary>
+    public long TotalEntries { get; set; }
+
+    /// <summary>
+    /// 캐시 히트 수
+    /// </summary>
+    public long CacheHits { get; set; }
+
+    /// <summary>
+    /// 캐시 미스 수
+    /// </summary>
+    public long CacheMisses { get; set; }
+
+    /// <summary>
+    /// 캐시 히트율
+    /// </summary>
+    public float HitRate => (CacheHits + CacheMisses) > 0
+        ? (float)CacheHits / (CacheHits + CacheMisses)
+        : 0f;
+
+    /// <summary>
+    /// 평균 응답 시간 (밀리초)
+    /// </summary>
+    public float AverageResponseTimeMs { get; set; }
+
+    /// <summary>
+    /// 캐시 크기 (바이트)
+    /// </summary>
+    public long CacheSizeBytes { get; set; }
+
+    /// <summary>
+    /// 만료된 엔트리 수
+    /// </summary>
+    public long ExpiredEntries { get; set; }
+
+    /// <summary>
+    /// 평균 유사도 점수
+    /// </summary>
+    public float AverageSimilarityScore { get; set; }
+
+    /// <summary>
+    /// 최고 성능 쿼리들
+    /// </summary>
+    public IReadOnlyList<QueryPerformance> TopPerformingQueries { get; set; } = Array.Empty<QueryPerformance>();
+
+    /// <summary>
+    /// 통계 수집 시간
+    /// </summary>
+    public DateTime CollectedAt { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// 쿼리 성능 정보
+/// </summary>
+public class QueryPerformance
+{
+    /// <summary>
+    /// 쿼리
+    /// </summary>
+    public string Query { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 히트 횟수
+    /// </summary>
+    public int HitCount { get; set; }
+
+    /// <summary>
+    /// 평균 유사도
+    /// </summary>
+    public float AverageSimilarity { get; set; }
+
+    /// <summary>
+    /// 평균 응답 시간 (밀리초)
+    /// </summary>
+    public float AverageResponseTimeMs { get; set; }
+
+    /// <summary>
+    /// 마지막 사용 시간
+    /// </summary>
+    public DateTime LastUsedAt { get; set; }
 }

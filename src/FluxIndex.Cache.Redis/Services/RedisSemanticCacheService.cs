@@ -1,182 +1,190 @@
+using FluxIndex.Cache.Redis.Configuration;
 using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Core.Domain.Entities;
-using FluxIndex.Core.Domain.ValueObjects;
+using FluxIndex.Core.Domain.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Text;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace FluxIndex.Cache.Redis.Services;
 
 /// <summary>
 /// Redis 기반 시맨틱 캐시 서비스
-/// 벡터 유사도 검색을 통해 의미적으로 유사한 쿼리의 캐시 결과를 반환
+/// 쿼리 임베딩 벡터의 유사도를 계산하여 캐시 히트 판정
 /// </summary>
-public class RedisSemanticCacheService : ISemanticCacheService, IDisposable
+public class RedisSemanticCacheService : ISemanticCacheService
 {
     private readonly IDatabase _database;
-    private readonly IConnectionMultiplexer _redis;
+    private readonly IServer _server;
     private readonly IEmbeddingService _embeddingService;
+    private readonly RedisSemanticCacheOptions _options;
     private readonly ILogger<RedisSemanticCacheService> _logger;
-    private readonly CacheOptions _options;
     private readonly SemaphoreSlim _semaphore;
-    private readonly Timer _optimizationTimer;
 
-    private bool _disposed = false;
+    private const string CACHE_KEY_PREFIX = "semantic_cache:";
+    private const string EMBEDDING_KEY_PREFIX = "embedding:";
+    private const string STATS_KEY = "cache_stats";
+    private const string QUERY_INDEX_KEY = "query_index";
 
     public RedisSemanticCacheService(
         IConnectionMultiplexer redis,
         IEmbeddingService embeddingService,
-        IOptions<CacheOptions> options,
+        IOptions<RedisSemanticCacheOptions> options,
         ILogger<RedisSemanticCacheService> logger)
     {
-        _redis = redis ?? throw new ArgumentNullException(nameof(redis));
-        _database = _redis.GetDatabase();
+        _database = redis.GetDatabase(options.Value.DatabaseNumber);
+        _server = redis.GetServers().FirstOrDefault()
+            ?? throw new InvalidOperationException("No Redis servers available");
         _embeddingService = embeddingService ?? throw new ArgumentNullException(nameof(embeddingService));
         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _semaphore = new SemaphoreSlim(_options.MaxParallelism, _options.MaxParallelism);
 
-        // 동시성 제어용 세마포어
-        _semaphore = new SemaphoreSlim(_options.BatchSize, _options.BatchSize);
-
-        // 자동 최적화 타이머 설정
-        if (_options.EnableAutoOptimization)
-        {
-            _optimizationTimer = new Timer(
-                async _ => await OptimizeCacheAsync(),
-                null,
-                _options.OptimizationInterval,
-                _options.OptimizationInterval);
-        }
-        else
-        {
-            _optimizationTimer = null!;
-        }
-
-        _logger.LogInformation("RedisSemanticCacheService initialized with options: {Options}",
-            JsonSerializer.Serialize(_options, new JsonSerializerOptions { WriteIndented = true }));
+        ValidateOptions();
     }
 
     /// <summary>
-    /// 쿼리와 유사한 캐시된 응답을 검색
+    /// 캐시에서 유사한 쿼리의 결과 검색
     /// </summary>
-    public async Task<CacheResult?> GetCachedResponseAsync(
+    public async Task<CachedSearchResult?> GetCachedResultAsync(
         string query,
         float similarityThreshold = 0.95f,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(query))
-            throw new ArgumentException("Query cannot be null or empty", nameof(query));
+            throw new ArgumentException("Query cannot be empty", nameof(query));
 
-        await _semaphore.WaitAsync(cancellationToken);
+        var stopwatch = Stopwatch.StartNew();
+
         try
         {
-            var startTime = DateTime.UtcNow;
+            await _semaphore.WaitAsync(cancellationToken);
 
-            // 1. 정확히 일치하는 쿼리 먼저 확인 (빠른 경로)
-            var exactMatch = await CheckExactMatchAsync(query, cancellationToken);
-            if (exactMatch != null)
+            _logger.LogDebug("Searching cache for query: {Query}", query);
+
+            // 1. 쿼리 임베딩 생성
+            var queryEmbedding = await _embeddingService.CreateEmbeddingAsync(query, cancellationToken);
+
+            // 2. 캐시된 쿼리들의 임베딩과 유사도 계산
+            var bestMatch = await FindBestMatchAsync(queryEmbedding, similarityThreshold, cancellationToken);
+
+            if (bestMatch == null)
             {
-                _logger.LogDebug("Exact cache hit for query: {Query}", query);
-                await UpdateCacheStatisticsAsync(true, DateTime.UtcNow - startTime);
-                return exactMatch;
+                await RecordCacheMissAsync();
+                _logger.LogDebug("Cache miss for query: {Query}", query);
+                return null;
             }
 
-            // 2. 시맨틱 유사도 검색
-            var semanticMatch = await FindSemanticMatchAsync(query, similarityThreshold, cancellationToken);
-            if (semanticMatch != null)
+            // 3. 캐시된 결과 로드
+            var cachedResult = await LoadCachedResultAsync(bestMatch.Value.CachedQuery, cancellationToken);
+            if (cachedResult == null)
             {
-                _logger.LogDebug("Semantic cache hit for query: {Query} (similarity: {Similarity})",
-                    query, semanticMatch.SimilarityScore);
-                await UpdateCacheStatisticsAsync(true, DateTime.UtcNow - startTime);
-                return semanticMatch;
+                await RecordCacheMissAsync();
+                return null;
             }
 
-            _logger.LogDebug("Cache miss for query: {Query}", query);
-            await UpdateCacheStatisticsAsync(false, DateTime.UtcNow - startTime);
+            // 4. 통계 업데이트
+            await RecordCacheHitAsync(bestMatch.Value.CachedQuery, stopwatch.ElapsedMilliseconds);
+
+            cachedResult.OriginalQuery = query;
+            cachedResult.SimilarityScore = bestMatch.Value.Similarity;
+            cachedResult.HitCount++;
+            cachedResult.LastAccessedAt = DateTime.UtcNow;
+
+            _logger.LogInformation("Cache hit for query '{Query}' -> '{CachedQuery}' (similarity: {Similarity:F3})",
+                query, bestMatch.Value.CachedQuery, bestMatch.Value.Similarity);
+
+            return cachedResult;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving cached result for query: {Query}", query);
+            await RecordCacheMissAsync();
             return null;
         }
         finally
         {
             _semaphore.Release();
+            stopwatch.Stop();
         }
     }
 
     /// <summary>
-    /// 쿼리와 응답을 캐시에 저장
+    /// 검색 결과를 캐시에 저장
     /// </summary>
-    public async Task CacheResponseAsync(
+    public async Task SetCachedResultAsync(
         string query,
-        string response,
-        List<SearchResult>? searchResults = null,
-        TimeSpan? expiry = null,
+        IReadOnlyList<DocumentChunk> results,
+        SearchMetadata? metadata = null,
+        TimeSpan? ttl = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(query))
-            throw new ArgumentException("Query cannot be null or empty", nameof(query));
+            throw new ArgumentException("Query cannot be empty", nameof(query));
 
-        await _semaphore.WaitAsync(cancellationToken);
+        if (results == null)
+            throw new ArgumentNullException(nameof(results));
+
         try
         {
+            await _semaphore.WaitAsync(cancellationToken);
+
+            _logger.LogDebug("Caching results for query: {Query}", query);
+
             // 1. 쿼리 임베딩 생성
-            var embedding = await _embeddingService.CreateEmbeddingAsync(query, cancellationToken);
+            var queryEmbedding = await _embeddingService.CreateEmbeddingAsync(query, cancellationToken);
 
-            // 2. 캐시 키 생성
-            var cacheKey = GenerateCacheKey(query);
-            var exactKey = GenerateExactKey(query);
-
-            // 3. 캐시 데이터 구성
-            var cacheData = new
+            // 2. 캐시 결과 객체 생성
+            var cachedResult = new CachedSearchResult
             {
-                Query = query,
-                Response = response,
-                SearchResults = searchResults ?? new List<SearchResult>(),
+                OriginalQuery = query,
+                CachedQuery = query,
+                SimilarityScore = 1.0f,
+                Results = results,
+                Metadata = metadata,
                 CachedAt = DateTime.UtcNow,
-                Expiry = expiry ?? _options.DefaultExpiry,
-                Embedding = embedding.ToArray(),
-                EmbeddingDimension = embedding.Length,
-                Metadata = new CacheMetadata
-                {
-                    CacheKey = cacheKey,
-                    Source = "RedisSemanticCache",
-                    EmbeddingDimension = embedding.Length,
-                    UsageCount = 0,
-                    LastUsedAt = DateTime.UtcNow
-                }
+                HitCount = 0,
+                LastAccessedAt = DateTime.UtcNow
             };
 
-            var serializedData = JsonSerializer.Serialize(cacheData);
+            // 3. Redis에 저장
+            var tasks = new List<Task>();
+            var expiry = ttl ?? _options.DefaultTtl;
 
-            // 4. Redis에 저장 (Hash + Vector Index)
-            var tasks = new List<Task>
-            {
-                // Hash로 데이터 저장
-                _database.HashSetAsync(cacheKey, new HashEntry[]
-                {
-                    new("query", query),
-                    new("response", response),
-                    new("data", serializedData),
-                    new("cached_at", DateTimeOffset.UtcNow.ToUnixTimeSeconds()),
-                    new("embedding", JsonSerializer.Serialize(embedding.ToArray()))
-                }),
+            // 캐시 결과 저장
+            var cacheKey = CACHE_KEY_PREFIX + query;
+            var resultJson = JsonSerializer.Serialize(cachedResult, GetJsonOptions());
+            tasks.Add(_database.StringSetAsync(cacheKey, resultJson, expiry));
 
-                // 정확 매치용 키 저장
-                _database.StringSetAsync(exactKey, cacheKey, expiry ?? _options.DefaultExpiry)
-            };
+            // 임베딩 벡터 저장
+            var embeddingKey = EMBEDDING_KEY_PREFIX + query;
+            var embeddingBytes = SerializeEmbedding(queryEmbedding);
+            tasks.Add(_database.StringSetAsync(embeddingKey, embeddingBytes, expiry));
 
-            // TTL 설정
-            if (expiry.HasValue || _options.DefaultExpiry > TimeSpan.Zero)
-            {
-                tasks.Add(_database.KeyExpireAsync(cacheKey, expiry ?? _options.DefaultExpiry));
-            }
+            // 쿼리 인덱스에 추가
+            tasks.Add(_database.SetAddAsync(QUERY_INDEX_KEY, query));
 
             await Task.WhenAll(tasks);
 
-            _logger.LogDebug("Cached response for query: {Query} with key: {CacheKey}", query, cacheKey);
+            // 4. 캐시 크기 제한 확인 및 정리
+            if (_options.MaxCacheEntries > 0)
+            {
+                _ = Task.Run(() => EnforceCacheSizeLimitAsync(cancellationToken), cancellationToken);
+            }
+
+            _logger.LogInformation("Cached results for query: {Query} (results: {Count}, TTL: {TTL})",
+                query, results.Count, expiry);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to cache response for query: {Query}", query);
+            _logger.LogError(ex, "Error caching results for query: {Query}", query);
             throw;
         }
         finally
@@ -186,419 +194,413 @@ public class RedisSemanticCacheService : ISemanticCacheService, IDisposable
     }
 
     /// <summary>
-    /// 배치로 여러 쿼리-응답 쌍을 캐시에 저장
-    /// </summary>
-    public async Task CacheBatchAsync(
-        IEnumerable<CacheEntry> cacheEntries,
-        CancellationToken cancellationToken = default)
-    {
-        var entries = cacheEntries.ToList();
-        if (!entries.Any())
-            return;
-
-        _logger.LogInformation("Batch caching {Count} entries", entries.Count);
-
-        // 배치 크기만큼 나누어 처리
-        var batches = entries.Chunk(_options.BatchSize);
-
-        foreach (var batch in batches)
-        {
-            var tasks = batch.Select(entry => CacheResponseAsync(
-                entry.Query,
-                entry.Response,
-                entry.SearchResults,
-                entry.Expiry,
-                cancellationToken));
-
-            await Task.WhenAll(tasks);
-        }
-
-        _logger.LogInformation("Completed batch caching of {Count} entries", entries.Count);
-    }
-
-    /// <summary>
-    /// 캐시 통계 정보 조회
-    /// </summary>
-    public async Task<CacheStatistics> GetStatisticsAsync(CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            var statsKey = $"{_options.CacheKeyPrefix}stats";
-            var stats = await _database.HashGetAllAsync(statsKey);
-            var statsDict = stats.ToDictionary(x => x.Name.ToString(), x => x.Value.ToString());
-
-            // 캐시된 항목 수 계산
-            var pattern = $"{_options.CacheKeyPrefix}*";
-            var server = _redis.GetServer(_redis.GetEndPoints().First());
-            var keys = server.Keys(pattern: pattern).ToList();
-
-            var totalQueries = long.Parse(statsDict.GetValueOrDefault("total_queries", "0"));
-            var cacheHits = long.Parse(statsDict.GetValueOrDefault("cache_hits", "0"));
-            var cacheMisses = totalQueries - cacheHits;
-
-            return new CacheStatistics
-            {
-                TotalQueries = totalQueries,
-                CacheHits = cacheHits,
-                CacheMisses = cacheMisses,
-                AverageResponseTime = TimeSpan.FromMilliseconds(
-                    double.Parse(statsDict.GetValueOrDefault("avg_response_time_ms", "0"))),
-                CacheResponseTime = TimeSpan.FromMilliseconds(
-                    double.Parse(statsDict.GetValueOrDefault("cache_response_time_ms", "0"))),
-                CachedItemsCount = keys.Count,
-                MemoryUsageBytes = await CalculateMemoryUsageAsync(),
-                AverageSimilarityScore = float.Parse(statsDict.GetValueOrDefault("avg_similarity", "0")),
-                CollectionPeriod = TimeSpan.FromHours(24),
-                AdditionalMetrics = new Dictionary<string, object>
-                {
-                    ["redis_memory_usage"] = await GetRedisMemoryInfoAsync(),
-                    ["active_connections"] = _redis.GetDatabase().Multiplexer.GetCounters().Interactive.CompletedSynchronously
-                }
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to get cache statistics");
-            return new CacheStatistics();
-        }
-    }
-
-    /// <summary>
-    /// 패턴에 매칭되는 캐시 항목들을 무효화
+    /// 특정 쿼리 패턴의 캐시 무효화
     /// </summary>
     public async Task InvalidateCacheAsync(string pattern, CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(pattern))
+            return;
+
         try
         {
-            var fullPattern = $"{_options.CacheKeyPrefix}{pattern}";
-            var server = _redis.GetServer(_redis.GetEndPoints().First());
-            var keys = server.Keys(pattern: fullPattern).ToArray();
+            var keys = _server.Keys(_database.Database, CACHE_KEY_PREFIX + pattern, pageSize: 1000);
+            var keyArray = keys.ToArray();
 
-            if (keys.Any())
+            if (keyArray.Length == 0)
+                return;
+
+            var tasks = new List<Task>();
+            foreach (var key in keyArray)
             {
-                await _database.KeyDeleteAsync(keys);
-                _logger.LogInformation("Invalidated {Count} cache entries matching pattern: {Pattern}",
-                    keys.Length, pattern);
+                var query = key.ToString().Substring(CACHE_KEY_PREFIX.Length);
+                tasks.Add(_database.KeyDeleteAsync(key));
+                tasks.Add(_database.KeyDeleteAsync(EMBEDDING_KEY_PREFIX + query));
+                tasks.Add(_database.SetRemoveAsync(QUERY_INDEX_KEY, query));
             }
+
+            await Task.WhenAll(tasks);
+
+            _logger.LogInformation("Invalidated {Count} cache entries matching pattern: {Pattern}",
+                keyArray.Length, pattern);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to invalidate cache with pattern: {Pattern}", pattern);
+            _logger.LogError(ex, "Error invalidating cache pattern: {Pattern}", pattern);
             throw;
         }
     }
 
     /// <summary>
-    /// 자주 사용되는 쿼리들로 캐시를 미리 워밍업
+    /// 캐시 통계 조회
     /// </summary>
-    public async Task<bool> WarmupCacheAsync(
-        IEnumerable<string> commonQueries,
-        CancellationToken cancellationToken = default)
+    public async Task<CacheStatistics> GetCacheStatisticsAsync(CancellationToken cancellationToken = default)
     {
-        if (!_options.EnableWarmup)
-        {
-            _logger.LogInformation("Cache warmup is disabled");
-            return false;
-        }
-
-        var queries = commonQueries.ToList();
-        _logger.LogInformation("Starting cache warmup with {Count} queries", queries.Count);
-
         try
         {
-            var successCount = 0;
-            foreach (var query in queries)
+            var stats = new CacheStatistics { CollectedAt = DateTime.UtcNow };
+
+            // Redis에서 통계 정보 수집
+            var statsData = await _database.HashGetAllAsync(STATS_KEY);
+            var statsDict = statsData.ToDictionary(x => x.Name!, x => x.Value!);
+
+            if (statsDict.TryGetValue("cache_hits", out var hits))
+                stats.CacheHits = (long)hits;
+
+            if (statsDict.TryGetValue("cache_misses", out var misses))
+                stats.CacheMisses = (long)misses;
+
+            if (statsDict.TryGetValue("avg_response_time", out var avgTime))
+                stats.AverageResponseTimeMs = (float)avgTime;
+
+            if (statsDict.TryGetValue("avg_similarity", out var avgSim))
+                stats.AverageSimilarityScore = (float)avgSim;
+
+            // 캐시 엔트리 수 계산
+            stats.TotalEntries = (long)await _database.SetLengthAsync(QUERY_INDEX_KEY);
+
+            // 캐시 크기 추정 (샘플링 기반)
+            var sampleKeys = _server.Keys(_database.Database, CACHE_KEY_PREFIX + "*", pageSize: 100).Take(50);
+            long totalSize = 0;
+            int sampleCount = 0;
+
+            foreach (var key in sampleKeys)
             {
-                if (cancellationToken.IsCancellationRequested)
-                    break;
-
-                // 이미 캐시된 쿼리는 건너뛰기
-                var existingCache = await GetCachedResponseAsync(query, 0.99f, cancellationToken);
-                if (existingCache != null)
-                    continue;
-
-                // 워밍업을 위한 더미 응답 생성 (실제로는 검색 서비스 호출 필요)
-                var warmupResponse = $"Warmup response for: {query}";
-                await CacheResponseAsync(query, warmupResponse, null, TimeSpan.FromHours(1), cancellationToken);
-                successCount++;
+                var size = await _database.StringLengthAsync(key);
+                totalSize += size;
+                sampleCount++;
             }
 
-            _logger.LogInformation("Cache warmup completed. {Success}/{Total} queries warmed up",
-                successCount, queries.Count);
-            return true;
+            if (sampleCount > 0)
+            {
+                var avgSize = totalSize / sampleCount;
+                stats.CacheSizeBytes = avgSize * stats.TotalEntries;
+            }
+
+            // 최고 성능 쿼리들 (향후 구현 가능)
+            stats.TopPerformingQueries = Array.Empty<QueryPerformance>();
+
+            return stats;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Cache warmup failed");
-            return false;
+            _logger.LogError(ex, "Error collecting cache statistics");
+            return new CacheStatistics { CollectedAt = DateTime.UtcNow };
         }
     }
 
     /// <summary>
-    /// 캐시 크기 및 메모리 사용량 최적화
+    /// 캐시 워밍업
     /// </summary>
-    public async Task OptimizeCacheAsync(CancellationToken cancellationToken = default)
+    public async Task WarmupCacheAsync(IReadOnlyList<string> popularQueries, CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Starting cache optimization");
+        if (popularQueries == null || popularQueries.Count == 0)
+            return;
 
-        try
+        _logger.LogInformation("Starting cache warmup with {Count} popular queries", popularQueries.Count);
+
+        var tasks = popularQueries.Select(async query =>
         {
-            // 1. 만료된 키 정리
-            await CleanupExpiredKeysAsync();
-
-            // 2. LRU 기반 정리 (캐시 크기 초과시)
-            await EnforceCacheSizeLimitAsync();
-
-            // 3. 메모리 사용량 확인 및 정리
-            await OptimizeMemoryUsageAsync();
-
-            _logger.LogInformation("Cache optimization completed");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Cache optimization failed");
-        }
-    }
-
-    #region Private Methods
-
-    private async Task<CacheResult?> CheckExactMatchAsync(string query, CancellationToken cancellationToken)
-    {
-        var exactKey = GenerateExactKey(query);
-        var cacheKey = await _database.StringGetAsync(exactKey);
-
-        if (!cacheKey.HasValue)
-            return null;
-
-        return await LoadCacheResultAsync(cacheKey!, query, 1.0f, CacheHitType.Exact);
-    }
-
-    private async Task<CacheResult?> FindSemanticMatchAsync(
-        string query,
-        float threshold,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            // 쿼리 임베딩 생성
-            var queryEmbedding = await _embeddingService.CreateEmbeddingAsync(query, cancellationToken);
-
-            // Redis Vector Search (RediSearch 필요)
-            // 현재는 간단한 구현으로 대체
-            var pattern = $"{_options.CacheKeyPrefix}cache:*";
-            var server = _redis.GetServer(_redis.GetEndPoints().First());
-            var keys = server.Keys(pattern: pattern).Take(100); // 최대 100개 검사
-
-            CacheResult? bestMatch = null;
-            float bestSimilarity = 0f;
-
-            foreach (var key in keys)
+            try
             {
-                var embeddingJson = await _database.HashGetAsync(key, "embedding");
-                if (!embeddingJson.HasValue)
-                    continue;
+                // 이미 캐시된 쿼리는 스킵
+                var exists = await _database.KeyExistsAsync(CACHE_KEY_PREFIX + query);
+                if (exists)
+                    return;
 
-                var cachedEmbedding = JsonSerializer.Deserialize<float[]>(embeddingJson!)!;
-                var similarity = CalculateCosineSimilarity(queryEmbedding.ToArray(), cachedEmbedding);
+                // 임베딩만 미리 계산해서 저장 (실제 검색 결과는 없음)
+                var embedding = await _embeddingService.CreateEmbeddingAsync(query, cancellationToken);
+                var embeddingKey = EMBEDDING_KEY_PREFIX + query;
+                var embeddingBytes = SerializeEmbedding(embedding);
 
-                if (similarity >= threshold && similarity > bestSimilarity)
+                await _database.StringSetAsync(embeddingKey, embeddingBytes, _options.DefaultTtl);
+                await _database.SetAddAsync(QUERY_INDEX_KEY, query);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to warmup query: {Query}", query);
+            }
+        });
+
+        await Task.WhenAll(tasks);
+        _logger.LogInformation("Cache warmup completed");
+    }
+
+    /// <summary>
+    /// 캐시 압축 및 정리
+    /// </summary>
+    public async Task CompactCacheAsync(CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Starting cache compaction");
+
+        try
+        {
+            // 1. 만료된 키들 정리
+            var queryKeys = await _database.SetMembersAsync(QUERY_INDEX_KEY);
+            var expiredQueries = new List<RedisValue>();
+
+            foreach (var query in queryKeys)
+            {
+                var cacheKey = CACHE_KEY_PREFIX + query;
+                var exists = await _database.KeyExistsAsync(cacheKey);
+                if (!exists)
                 {
-                    var cacheResult = await LoadCacheResultAsync(key!, query, similarity, CacheHitType.Semantic);
-                    if (cacheResult != null)
-                    {
-                        bestMatch = cacheResult;
-                        bestSimilarity = similarity;
-                    }
+                    expiredQueries.Add(query);
                 }
             }
 
-            return bestMatch;
+            if (expiredQueries.Count > 0)
+            {
+                await _database.SetRemoveAsync(QUERY_INDEX_KEY, expiredQueries.ToArray());
+
+                var cleanupTasks = expiredQueries.Select(async query =>
+                {
+                    await _database.KeyDeleteAsync(EMBEDDING_KEY_PREFIX + query);
+                });
+                await Task.WhenAll(cleanupTasks);
+
+                _logger.LogInformation("Cleaned up {Count} expired cache entries", expiredQueries.Count);
+            }
+
+            // 2. 캐시 크기 제한 적용
+            if (_options.MaxCacheEntries > 0)
+            {
+                await EnforceCacheSizeLimitAsync(cancellationToken);
+            }
+
+            _logger.LogInformation("Cache compaction completed");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error in semantic search for query: {Query}", query);
-            return null;
+            _logger.LogError(ex, "Error during cache compaction");
+            throw;
         }
     }
 
-    private async Task<CacheResult?> LoadCacheResultAsync(
-        string cacheKey,
-        string currentQuery,
-        float similarity,
-        CacheHitType hitType)
+    /// <summary>
+    /// 최적 매치 검색
+    /// </summary>
+    private async Task<(string CachedQuery, float Similarity)?> FindBestMatchAsync(
+        float[] queryEmbedding,
+        float similarityThreshold,
+        CancellationToken cancellationToken)
     {
+        var cachedQueries = await _database.SetMembersAsync(QUERY_INDEX_KEY);
+        if (cachedQueries.Length == 0)
+            return null;
+
+        var bestMatch = (CachedQuery: string.Empty, Similarity: 0f);
+
+        // 병렬로 유사도 계산
+        var semaphore = new SemaphoreSlim(_options.MaxParallelism);
+        var tasks = cachedQueries.Select(async cachedQuery =>
+        {
+            await semaphore.WaitAsync(cancellationToken);
+            try
+            {
+                var embeddingKey = EMBEDDING_KEY_PREFIX + (string)cachedQuery;
+                var embeddingBytes = await _database.StringGetAsync(embeddingKey);
+
+                if (!embeddingBytes.HasValue)
+                    return (CachedQuery: string.Empty, Similarity: 0f);
+
+                var cachedEmbedding = DeserializeEmbedding(embeddingBytes!);
+                var similarity = CalculateCosineSimilarity(queryEmbedding, cachedEmbedding);
+
+                return (CachedQuery: (string)cachedQuery!, Similarity: similarity);
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        });
+
+        var results = await Task.WhenAll(tasks);
+        semaphore.Dispose();
+
+        foreach (var result in results)
+        {
+            if (result.Similarity > bestMatch.Similarity && result.Similarity >= similarityThreshold)
+            {
+                bestMatch = result;
+            }
+        }
+
+        return bestMatch.Similarity >= similarityThreshold ? bestMatch : null;
+    }
+
+    /// <summary>
+    /// 캐시된 결과 로드
+    /// </summary>
+    private async Task<CachedSearchResult?> LoadCachedResultAsync(string query, CancellationToken cancellationToken)
+    {
+        var cacheKey = CACHE_KEY_PREFIX + query;
+        var resultJson = await _database.StringGetAsync(cacheKey);
+
+        if (!resultJson.HasValue)
+            return null;
+
         try
         {
-            var dataJson = await _database.HashGetAsync(cacheKey, "data");
-            if (!dataJson.HasValue)
-                return null;
-
-            var cacheData = JsonSerializer.Deserialize<JsonElement>(dataJson!);
-
-            var searchResults = JsonSerializer.Deserialize<List<SearchResult>>(
-                cacheData.GetProperty("SearchResults").GetRawText()) ?? new List<SearchResult>();
-
-            var metadata = JsonSerializer.Deserialize<CacheMetadata>(
-                cacheData.GetProperty("Metadata").GetRawText()) ?? new CacheMetadata();
-
-            // 사용 통계 업데이트
-            metadata.UpdateUsageStats();
-
-            return CacheResult.Create(
-                cacheData.GetProperty("Response").GetString() ?? "",
-                searchResults,
-                similarity,
-                cacheData.GetProperty("Query").GetString() ?? "",
-                metadata,
-                cacheData.TryGetProperty("Expiry", out var expiryElement)
-                    ? TimeSpan.Parse(expiryElement.GetString() ?? "24:00:00")
-                    : null,
-                hitType);
+            return JsonSerializer.Deserialize<CachedSearchResult>(resultJson!, GetJsonOptions());
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to load cache result from key: {CacheKey}", cacheKey);
+            _logger.LogWarning(ex, "Failed to deserialize cached result for query: {Query}", query);
             return null;
         }
     }
 
+    /// <summary>
+    /// 코사인 유사도 계산
+    /// </summary>
     private static float CalculateCosineSimilarity(float[] vector1, float[] vector2)
     {
         if (vector1.Length != vector2.Length)
             return 0f;
 
-        float dotProduct = 0f;
-        float norm1 = 0f;
-        float norm2 = 0f;
+        var dotProduct = 0f;
+        var magnitude1 = 0f;
+        var magnitude2 = 0f;
 
         for (int i = 0; i < vector1.Length; i++)
         {
             dotProduct += vector1[i] * vector2[i];
-            norm1 += vector1[i] * vector1[i];
-            norm2 += vector2[i] * vector2[i];
+            magnitude1 += vector1[i] * vector1[i];
+            magnitude2 += vector2[i] * vector2[i];
         }
 
-        if (norm1 == 0f || norm2 == 0f)
-            return 0f;
-
-        return dotProduct / (float)(Math.Sqrt(norm1) * Math.Sqrt(norm2));
+        var magnitudeProduct = (float)(Math.Sqrt(magnitude1) * Math.Sqrt(magnitude2));
+        return magnitudeProduct == 0f ? 0f : dotProduct / magnitudeProduct;
     }
 
-    private string GenerateCacheKey(string query)
+    /// <summary>
+    /// 임베딩 벡터 직렬화
+    /// </summary>
+    private static byte[] SerializeEmbedding(float[] embedding)
     {
-        var hash = query.GetHashCode();
-        return $"{_options.CacheKeyPrefix}cache:{hash:X8}";
+        var bytes = new byte[embedding.Length * sizeof(float)];
+        Buffer.BlockCopy(embedding, 0, bytes, 0, bytes.Length);
+        return bytes;
     }
 
-    private string GenerateExactKey(string query)
+    /// <summary>
+    /// 임베딩 벡터 역직렬화
+    /// </summary>
+    private static float[] DeserializeEmbedding(byte[] bytes)
     {
-        var hash = query.GetHashCode();
-        return $"{_options.CacheKeyPrefix}exact:{hash:X8}";
+        var embedding = new float[bytes.Length / sizeof(float)];
+        Buffer.BlockCopy(bytes, 0, embedding, 0, bytes.Length);
+        return embedding;
     }
 
-    private async Task UpdateCacheStatisticsAsync(bool isHit, TimeSpan responseTime)
+    /// <summary>
+    /// 캐시 히트 기록
+    /// </summary>
+    private async Task RecordCacheHitAsync(string query, long responseTimeMs)
     {
-        if (!_options.EnableStatistics)
-            return;
-
         try
         {
-            var statsKey = $"{_options.CacheKeyPrefix}stats";
-            var tasks = new List<Task>
-            {
-                _database.HashIncrementAsync(statsKey, "total_queries", 1)
-            };
+            await _database.HashIncrementAsync(STATS_KEY, "cache_hits", 1);
 
-            if (isHit)
+            // 평균 응답 시간 업데이트 (이동 평균)
+            var currentAvg = await _database.HashGetAsync(STATS_KEY, "avg_response_time");
+            var currentHits = await _database.HashGetAsync(STATS_KEY, "cache_hits");
+
+            if (currentAvg.HasValue && currentHits.HasValue)
             {
-                tasks.Add(_database.HashIncrementAsync(statsKey, "cache_hits", 1));
-                tasks.Add(_database.HashSetAsync(statsKey, "cache_response_time_ms", responseTime.TotalMilliseconds));
+                var newAvg = ((float)currentAvg * ((long)currentHits - 1) + responseTimeMs) / (long)currentHits;
+                await _database.HashSetAsync(STATS_KEY, "avg_response_time", newAvg);
             }
             else
             {
-                tasks.Add(_database.HashSetAsync(statsKey, "avg_response_time_ms", responseTime.TotalMilliseconds));
+                await _database.HashSetAsync(STATS_KEY, "avg_response_time", responseTimeMs);
             }
-
-            await Task.WhenAll(tasks);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to update cache statistics");
+            _logger.LogWarning(ex, "Failed to record cache hit statistics");
         }
     }
 
-    private async Task<long> CalculateMemoryUsageAsync()
+    /// <summary>
+    /// 캐시 미스 기록
+    /// </summary>
+    private async Task RecordCacheMissAsync()
     {
         try
         {
-            var info = await _database.ExecuteAsync("MEMORY", "USAGE", $"{_options.CacheKeyPrefix}*");
-            return (long)info;
+            await _database.HashIncrementAsync(STATS_KEY, "cache_misses", 1);
         }
-        catch
+        catch (Exception ex)
         {
-            return 0; // Redis가 MEMORY 명령을 지원하지 않는 경우
+            _logger.LogWarning(ex, "Failed to record cache miss statistics");
         }
     }
 
-    private async Task<string> GetRedisMemoryInfoAsync()
+    /// <summary>
+    /// 캐시 크기 제한 적용
+    /// </summary>
+    private async Task EnforceCacheSizeLimitAsync(CancellationToken cancellationToken)
     {
         try
         {
-            var server = _redis.GetServer(_redis.GetEndPoints().First());
-            var info = await server.InfoAsync("memory");
-            return info.FirstOrDefault()?.FirstOrDefault(x => x.Key == "used_memory_human").Value ?? "N/A";
+            var queryCount = await _database.SetLengthAsync(QUERY_INDEX_KEY);
+            if (queryCount <= _options.MaxCacheEntries)
+                return;
+
+            var excessCount = queryCount - _options.MaxCacheEntries;
+            _logger.LogInformation("Cache size ({Current}) exceeds limit ({Limit}), removing {Excess} oldest entries",
+                queryCount, _options.MaxCacheEntries, excessCount);
+
+            // LRU 방식으로 오래된 엔트리 제거 (간단한 구현)
+            var queries = await _database.SetMembersAsync(QUERY_INDEX_KEY);
+            var toRemove = queries.Take((int)excessCount);
+
+            var removeTasks = toRemove.Select(async query =>
+            {
+                await _database.KeyDeleteAsync(CACHE_KEY_PREFIX + query);
+                await _database.KeyDeleteAsync(EMBEDDING_KEY_PREFIX + query);
+                await _database.SetRemoveAsync(QUERY_INDEX_KEY, query);
+            });
+
+            await Task.WhenAll(removeTasks);
         }
-        catch
+        catch (Exception ex)
         {
-            return "N/A";
+            _logger.LogWarning(ex, "Failed to enforce cache size limit");
         }
     }
 
-    private async Task CleanupExpiredKeysAsync()
+    /// <summary>
+    /// JSON 직렬화 옵션
+    /// </summary>
+    private static JsonSerializerOptions GetJsonOptions()
     {
-        // Redis의 자동 만료 기능을 사용하므로 별도 구현 불필요
-        // 필요시 SCAN을 통해 만료된 키 수동 정리 가능
-        await Task.CompletedTask;
-    }
-
-    private async Task EnforceCacheSizeLimitAsync()
-    {
-        var pattern = $"{_options.CacheKeyPrefix}cache:*";
-        var server = _redis.GetServer(_redis.GetEndPoints().First());
-        var keys = server.Keys(pattern: pattern).ToList();
-
-        if (keys.Count <= _options.MaxCacheSize)
-            return;
-
-        // LRU 방식으로 오래된 키들 제거
-        var keysToRemove = keys.Take(keys.Count - _options.MaxCacheSize).ToArray();
-        await _database.KeyDeleteAsync(keysToRemove);
-
-        _logger.LogInformation("Removed {Count} cache entries to enforce size limit", keysToRemove.Length);
-    }
-
-    private async Task OptimizeMemoryUsageAsync()
-    {
-        var currentUsage = await CalculateMemoryUsageAsync();
-        if (currentUsage > _options.MaxMemoryUsageBytes)
+        return new JsonSerializerOptions
         {
-            _logger.LogWarning("Memory usage {Current} exceeds limit {Limit}, starting aggressive cleanup",
-                currentUsage, _options.MaxMemoryUsageBytes);
-
-            // 공격적인 정리 실행
-            await EnforceCacheSizeLimitAsync();
-        }
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            WriteIndented = false
+        };
     }
 
-    #endregion
+    /// <summary>
+    /// 설정 유효성 검증
+    /// </summary>
+    private void ValidateOptions()
+    {
+        if (_options.DefaultTtl <= TimeSpan.Zero)
+            throw new ArgumentException("DefaultTtl must be positive");
 
+        if (_options.MaxParallelism <= 0)
+            throw new ArgumentException("MaxParallelism must be positive");
+    }
+
+    /// <summary>
+    /// 리소스 정리
+    /// </summary>
     public void Dispose()
     {
-        if (!_disposed)
-        {
-            _optimizationTimer?.Dispose();
-            _semaphore?.Dispose();
-            _disposed = true;
-        }
+        _semaphore?.Dispose();
     }
 }
+

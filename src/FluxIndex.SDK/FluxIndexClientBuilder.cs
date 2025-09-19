@@ -5,6 +5,7 @@ using FluxIndex.Core.Domain.ValueObjects;
 using FluxIndex.SDK.Configuration;
 using FluxIndex.SDK.Services;
 using FluxIndex.SDK.Extensions;
+using FluxIndex.Cache.Redis.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System;
@@ -170,42 +171,21 @@ public class FluxIndexClientBuilder
     /// <summary>
     /// 시맨틱 캐싱 활성화 - Redis 벡터 캐시를 통한 쿼리 유사도 기반 캐싱
     /// </summary>
-    public FluxIndexClientBuilder WithSemanticCaching(string redisConnectionString, Action<FluxIndex.Core.Domain.ValueObjects.CacheOptions>? configure = null)
+    public FluxIndexClientBuilder WithSemanticCaching(string redisConnectionString, Action<FluxIndex.Cache.Redis.Configuration.RedisSemanticCacheOptions>? configure = null)
     {
-        var options = FluxIndex.Core.Domain.ValueObjects.CacheOptions.Default;
-        configure?.Invoke(options);
-        options.RedisConnectionString = redisConnectionString;
-
-        _services.Configure<FluxIndex.Core.Domain.ValueObjects.CacheOptions>(opts =>
+        // Redis 시맨틱 캐시 등록
+        if (configure != null)
         {
-            opts.DefaultSimilarityThreshold = options.DefaultSimilarityThreshold;
-            opts.DefaultExpiry = options.DefaultExpiry;
-            opts.MaxCacheSize = options.MaxCacheSize;
-            opts.RedisConnectionString = options.RedisConnectionString;
-            opts.CacheKeyPrefix = options.CacheKeyPrefix;
-            opts.EnableStatistics = options.EnableStatistics;
-            opts.EnableCompression = options.EnableCompression;
-            opts.BatchSize = options.BatchSize;
-            opts.EnableWarmup = options.EnableWarmup;
-            opts.EnableAutoOptimization = options.EnableAutoOptimization;
-            opts.OptimizationInterval = options.OptimizationInterval;
-            opts.MaxMemoryUsageBytes = options.MaxMemoryUsageBytes;
-        });
-
-        // Redis 연결 설정
-        _services.AddStackExchangeRedisCache(redisOptions =>
+            _services.AddRedisSemanticCache(options =>
+            {
+                options.ConnectionString = redisConnectionString;
+                configure(options);
+            });
+        }
+        else
         {
-            redisOptions.Configuration = redisConnectionString;
-        });
-
-        // Redis Multiplexer 등록
-        _services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(provider =>
-        {
-            return StackExchange.Redis.ConnectionMultiplexer.Connect(redisConnectionString);
-        });
-
-        // 시맨틱 캐시 서비스 등록
-        _services.AddSingleton<ISemanticCacheService, FluxIndex.Cache.Redis.Services.RedisSemanticCacheService>();
+            _services.AddRedisSemanticCache(redisConnectionString);
+        }
 
         return this;
     }
@@ -217,11 +197,11 @@ public class FluxIndexClientBuilder
     {
         return WithSemanticCaching(redisConnectionString, options =>
         {
-            options.DefaultExpiry = TimeSpan.FromMinutes(30);
-            options.MaxCacheSize = 1000;
-            options.EnableStatistics = true;
-            options.EnableWarmup = false;
-            options.EnableAutoOptimization = false;
+            options.DefaultTtl = TimeSpan.FromMinutes(30);
+            options.MaxCacheEntries = 1000;
+            options.EnableMetrics = true;
+            options.EnableAutoCompaction = false;
+            options.EnableDetailedLogging = true;
         });
     }
 
@@ -232,13 +212,13 @@ public class FluxIndexClientBuilder
     {
         return WithSemanticCaching(redisConnectionString, options =>
         {
-            options.DefaultExpiry = TimeSpan.FromHours(24);
-            options.MaxCacheSize = 50000;
-            options.EnableStatistics = true;
-            options.EnableCompression = true;
-            options.EnableWarmup = true;
-            options.EnableAutoOptimization = true;
-            options.OptimizationInterval = TimeSpan.FromHours(6);
+            options.DefaultTtl = TimeSpan.FromHours(24);
+            options.MaxCacheEntries = 50000;
+            options.EnableMetrics = true;
+            options.EnableVectorCompression = true;
+            options.EnableAutoCompaction = true;
+            options.AutoCompactionInterval = TimeSpan.FromHours(6);
+            options.EnableDetailedLogging = false;
         });
     }
 
