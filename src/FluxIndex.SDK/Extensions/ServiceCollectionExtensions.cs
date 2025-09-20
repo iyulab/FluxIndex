@@ -4,8 +4,8 @@ using Microsoft.Extensions.DependencyInjection;
 using FluxIndex.SDK.Configuration;
 using FluxIndex.SDK.Interfaces;
 using FluxIndex.SDK.Services;
-using FluxIndex.Application.Interfaces;
-using FluxIndex.Application.Services;
+using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Services;
 
 namespace FluxIndex.SDK.Extensions;
 
@@ -32,10 +32,13 @@ public static class ServiceCollectionExtensions
         // 인터페이스 구현체는 아직 구현되지 않았으므로 주석 처리
         // 추후 구현체 완성 시 주석 해제
         
+        // 핵심 검색 서비스 등록
+        services.AddScoped<ISparseRetriever, BM25SparseRetriever>();
+        services.AddScoped<IHybridSearchService, HybridSearchService>();
+
         // services.AddScoped<IVectorStore, PostgresVectorStore>();
         // services.AddScoped<IEmbeddingService, OpenAIEmbeddingService>();
         // services.AddScoped<IIndexingService, DefaultIndexingService>();
-        // services.AddScoped<ISearchService, HybridSearchService>();
         
         // 캐싱 서비스
         if (options.Cache.EnableEmbeddingCache || options.Cache.EnableSearchCache)

@@ -1,6 +1,5 @@
-using FluxIndex.Application.Interfaces;
-using FluxIndex.Application.Services;
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Services;
 using FluxIndex.Core.Domain.ValueObjects;
 using FluxIndex.SDK.Configuration;
 using FluxIndex.SDK.Services;
@@ -246,6 +245,10 @@ public class FluxIndexClientBuilder
         _services.AddSingleton<IDocumentRepository, InMemoryDocumentRepository>();
         _services.AddSingleton(_retrieverOptions);
         _services.AddSingleton(_indexerOptions);
+
+        // Register hybrid search services
+        _services.AddScoped<ISparseRetriever, BM25SparseRetriever>();
+        _services.AddScoped<IHybridSearchService, HybridSearchService>();
         
         // Build service provider
         var serviceProvider = _services.BuildServiceProvider();
@@ -257,8 +260,10 @@ public class FluxIndexClientBuilder
         var chunkingService = serviceProvider.GetRequiredService<IChunkingService>();
         var cacheService = serviceProvider.GetService<ICacheService>();
         var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
-        
+
         var rankFusionService = serviceProvider.GetService<IRankFusionService>() ?? new RankFusionService();
+        var hybridSearchService = serviceProvider.GetService<IHybridSearchService>();
+        var semanticCacheService = serviceProvider.GetService<ISemanticCacheService>();
         
         var retriever = new Retriever(
             vectorStore,
@@ -283,7 +288,9 @@ public class FluxIndexClientBuilder
         return new FluxIndexClient(
             retriever,
             indexer,
-            loggerFactory.CreateLogger<FluxIndexClient>()
+            loggerFactory.CreateLogger<FluxIndexClient>(),
+            semanticCacheService,
+            hybridSearchService
         );
     }
 

@@ -1,4 +1,3 @@
-using FluxIndex.Application.Interfaces;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.ValueObjects;
 using FluxIndex.Domain.Entities;
@@ -23,22 +22,30 @@ public class FluxIndexClient : IFluxIndexClient
     private readonly Retriever _retriever;
     private readonly Indexer _indexer;
     private readonly ISemanticCacheService? _cacheService;
+    private readonly IHybridSearchService? _hybridSearchService;
     private readonly ILogger<FluxIndexClient> _logger;
 
     public FluxIndexClient(
         Retriever retriever,
         Indexer indexer,
         ILogger<FluxIndexClient>? logger = null,
-        ISemanticCacheService? cacheService = null)
+        ISemanticCacheService? cacheService = null,
+        IHybridSearchService? hybridSearchService = null)
     {
         _retriever = retriever;
         _indexer = indexer;
         _cacheService = cacheService;
+        _hybridSearchService = hybridSearchService;
         _logger = logger ?? new NullLogger<FluxIndexClient>();
 
         if (_cacheService != null)
         {
             _logger.LogInformation("FluxIndexClient initialized with semantic caching enabled");
+        }
+
+        if (_hybridSearchService != null)
+        {
+            _logger.LogInformation("FluxIndexClient initialized with hybrid search enabled");
         }
     }
 
@@ -136,7 +143,7 @@ public class FluxIndexClient : IFluxIndexClient
     }
 
     /// <summary>
-    /// 하이브리드 검색 (Retriever 위임)
+    /// 하이브리드 검색 (기존 Retriever 위임)
     /// </summary>
     public async Task<IEnumerable<SearchResult>> HybridSearchAsync(
         string keyword,
@@ -148,6 +155,42 @@ public class FluxIndexClient : IFluxIndexClient
     {
         var coreResults = await _retriever.HybridSearchAsync(keyword, query, maxResults, vectorWeight, filter, cancellationToken);
         return ConvertToSDKSearchResults(coreResults);
+    }
+
+    /// <summary>
+    /// 새로운 하이브리드 검색 (HybridSearchService 사용)
+    /// </summary>
+    public async Task<IReadOnlyList<HybridSearchResult>> HybridSearchV2Async(
+        string query,
+        HybridSearchOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (_hybridSearchService == null)
+        {
+            throw new InvalidOperationException("HybridSearchService is not configured. Please configure it using the FluxIndexClientBuilder.");
+        }
+
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            throw new ArgumentException("Query cannot be null or empty", nameof(query));
+        }
+
+        try
+        {
+            var startTime = DateTime.UtcNow;
+            var results = await _hybridSearchService.SearchAsync(query, options, cancellationToken);
+            var duration = DateTime.UtcNow - startTime;
+
+            _logger.LogInformation("Hybrid search completed: query='{Query}', results={Count}, duration={Duration}ms",
+                query, results.Count, duration.TotalMilliseconds);
+
+            return results;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Hybrid search failed: query='{Query}'", query);
+            throw;
+        }
     }
 
     /// <summary>

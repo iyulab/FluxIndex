@@ -86,7 +86,10 @@
         "contentHash": "qEePWsaq9LoEEIqhbGe6D5J8c9IqQOUuTzzV6wn1POlfdLkJliZY3OlB0j0f17uMWlqZYjH7txj+2YbyrIA8Yg=="
       },
       "fluxindex.core": {
-        "type": "Project"
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Extensions.Logging.Abstractions": "[9.0.9, )"
+        }
       },
       "Microsoft.Extensions.Caching.Abstractions": {
         "type": "CentralTransitive",

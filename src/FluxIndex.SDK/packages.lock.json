@@ -136,7 +136,10 @@
         }
       },
       "fluxindex.core": {
-        "type": "Project"
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Extensions.Logging.Abstractions": "[9.0.9, )"
+        }
       },
       "Microsoft.Extensions.Caching.Abstractions": {
         "type": "CentralTransitive",
