@@ -6,9 +6,9 @@
     📦 버전 업데이트: 아래 Version을 변경하고 main 브랜치에 push하면 자동으로 NuGet에 배포됩니다.
     🔄 워크플로우: .github/workflows/build-and-release.yml 참조
     -->
-    <Version>0.1.4</Version>
-    <AssemblyVersion>0.1.4.0</AssemblyVersion>
-    <FileVersion>0.1.4.0</FileVersion>
+    <Version>0.2.0</Version>
+    <AssemblyVersion>0.2.0.0</AssemblyVersion>
+    <FileVersion>0.2.0.0</FileVersion>
     
     <!-- Package Metadata -->
     <Authors>iyulab</Authors>
@@ -42,9 +42,34 @@
     <AssemblyOriginatorKeyFile>$(MSBuildThisFileDirectory)..\fluxindex.snk</AssemblyOriginatorKeyFile>-->
   </PropertyGroup>
 
+  <!-- Central Package Management -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
   <!-- Common Package References -->
   <ItemGroup>
     <!-- <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" /> -->
+  </ItemGroup>
+
+  <!-- Central Package Versions -->
+  <ItemGroup>
+    <!-- Testing packages -->
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageVersion Include="xunit" Version="2.9.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageVersion Include="coverlet.collector" Version="6.0.2" />
+    <PackageVersion Include="FluentAssertions" Version="6.12.2" />
+    <PackageVersion Include="Moq" Version="4.20.72" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration" Version="9.0.8" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="9.0.9" />
+
+    <!-- Core dependencies -->
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="9.0.9" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="9.0.8" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="9.0.9" />
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="9.0.9" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="9.0.9" />
   </ItemGroup>
 
   <!-- Package Icon -->

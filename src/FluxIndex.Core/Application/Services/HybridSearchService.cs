@@ -7,6 +7,8 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using DomainHybridSearchResult = FluxIndex.Core.Domain.Models.HybridSearchResult;
+using DomainHybridSearchOptions = FluxIndex.Core.Domain.Models.HybridSearchOptions;
 
 namespace FluxIndex.Core.Application.Services;
 
@@ -231,7 +233,7 @@ public class HybridSearchService : IHybridSearchService
 
             // 벡터 검색 실행
             var vectorResults = await _vectorStore.SearchSimilarAsync(
-                embedding.Values,
+                embedding,
                 options.VectorOptions.MaxResults,
                 options.VectorOptions.MinScore,
                 cancellationToken);

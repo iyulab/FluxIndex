@@ -31,6 +31,16 @@ public interface IVectorStore
     Task<DocumentChunk?> GetChunkAsync(string chunkId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// 여러 문서 청크를 ID로 조회
+    /// </summary>
+    Task<IReadOnlyList<DocumentChunk>> GetChunksByIdsAsync(IEnumerable<string> chunkIds, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 특정 문서의 모든 청크 조회
+    /// </summary>
+    Task<IReadOnlyList<DocumentChunk>> GetDocumentChunksAsync(string documentId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// 문서 청크 삭제
     /// </summary>
     Task<bool> DeleteAsync(string chunkId, CancellationToken cancellationToken = default);

@@ -37,7 +37,7 @@ public class VectorSearchResult
 /// <summary>
 /// 희소(키워드) 검색 결과
 /// </summary>
-public class SparseSearchResult
+public record SparseSearchResult
 {
     /// <summary>
     /// 문서 청크
@@ -218,6 +218,7 @@ public class VectorSearchOptions
     /// </summary>
     public bool EnablePhraseSearch { get; set; } = true;
 }
+
 
 /// <summary>
 /// 부울 연산자

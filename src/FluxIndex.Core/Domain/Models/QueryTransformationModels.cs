@@ -253,7 +253,27 @@ public enum QueryType
     /// <summary>
     /// 의견/평가
     /// </summary>
-    Evaluative
+    Evaluative,
+
+    /// <summary>
+    /// 구문 검색
+    /// </summary>
+    Phrase,
+
+    /// <summary>
+    /// 불리언 검색
+    /// </summary>
+    Boolean,
+
+    /// <summary>
+    /// 키워드 검색
+    /// </summary>
+    Keyword,
+
+    /// <summary>
+    /// 자연어 검색
+    /// </summary>
+    Natural
 }
 
 /// <summary>

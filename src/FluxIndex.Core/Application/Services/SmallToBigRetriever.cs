@@ -815,7 +815,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         return expandedChunks;
     }
 
-    private Task<List<DocumentChunk>> ExpandSequentiallyAsync(
+    private async Task<List<DocumentChunk>> ExpandSequentiallyAsync(
         DocumentChunk primaryChunk,
         int maxChunks,
         CancellationToken cancellationToken)
