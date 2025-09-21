@@ -25,10 +25,33 @@ public interface IAdvancedRerankingService
 /// </summary>
 public enum RerankingStrategy
 {
-    Semantic,    // 의미적 유사도 중심
-    Quality,     // 품질 메트릭 중심
-    Contextual,  // 맥락 및 관계 중심
-    Hybrid,      // 여러 전략 조합
-    LLM,         // LLM 기반 평가
-    Adaptive     // 자동 전략 선택
+    /// <summary>
+    /// 의미적 유사도 중심
+    /// </summary>
+    Semantic,
+
+    /// <summary>
+    /// 품질 메트릭 중심
+    /// </summary>
+    Quality,
+
+    /// <summary>
+    /// 맥락 및 관계 중심
+    /// </summary>
+    Contextual,
+
+    /// <summary>
+    /// 여러 전략 조합
+    /// </summary>
+    Hybrid,
+
+    /// <summary>
+    /// LLM 기반 평가
+    /// </summary>
+    LLM,
+
+    /// <summary>
+    /// 자동 전략 선택
+    /// </summary>
+    Adaptive
 }

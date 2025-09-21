@@ -56,11 +56,34 @@ public interface IBM25Service
 /// </summary>
 public class BM25Result
 {
+    /// <summary>
+    /// Document identifier
+    /// </summary>
     public string DocumentId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Chunk identifier
+    /// </summary>
     public string ChunkId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Content text
+    /// </summary>
     public string Content { get; set; } = string.Empty;
+
+    /// <summary>
+    /// BM25 score
+    /// </summary>
     public float Score { get; set; }
+
+    /// <summary>
+    /// Document length
+    /// </summary>
     public int DocumentLength { get; set; }
+
+    /// <summary>
+    /// Term frequencies
+    /// </summary>
     public Dictionary<string, int> TermFrequencies { get; set; } = new();
     public Dictionary<string, object>? Metadata { get; set; }
 }

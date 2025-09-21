@@ -1,5 +1,4 @@
 using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Storage.PostgreSQL.Configuration;
 using FluxIndex.Storage.PostgreSQL.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -34,13 +33,13 @@ public static class ServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddPostgreSQLVectorStore(
         this IServiceCollection services,
-        Action<PostgreSQLVectorStoreOptions> configure)
+        Action<PostgreSQLOptions> configure)
     {
         services.Configure(configure);
 
         services.AddDbContext<PostgreSQLVectorContext>((serviceProvider, options) =>
         {
-            var postgresOptions = serviceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<PostgreSQLVectorStoreOptions>>().Value;
+            var postgresOptions = serviceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<PostgreSQLOptions>>().Value;
             options.UseNpgsql(postgresOptions.ConnectionString, npgsqlOptions =>
                 npgsqlOptions.UseVector());
         });
@@ -57,12 +56,12 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        services.Configure<PostgreSQLVectorStoreOptions>(
+        services.Configure<PostgreSQLOptions>(
             configuration.GetSection("PostgreSQLVectorStore"));
 
         services.AddDbContext<PostgreSQLVectorContext>((serviceProvider, options) =>
         {
-            var postgresOptions = serviceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<PostgreSQLVectorStoreOptions>>().Value;
+            var postgresOptions = serviceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<PostgreSQLOptions>>().Value;
             options.UseNpgsql(postgresOptions.ConnectionString, npgsqlOptions =>
                 npgsqlOptions.UseVector());
         });
@@ -92,13 +91,13 @@ public static class ServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddPostgreSQLVectorIndexBenchmark(
         this IServiceCollection services,
-        Action<PostgreSQLVectorStoreOptions> configure)
+        Action<PostgreSQLOptions> configure)
     {
         services.Configure(configure);
 
         services.AddSingleton<IVectorIndexBenchmark>(serviceProvider =>
         {
-            var postgresOptions = serviceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<PostgreSQLVectorStoreOptions>>().Value;
+            var postgresOptions = serviceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<PostgreSQLOptions>>().Value;
             return new PostgreSQLVectorIndexBenchmark(
                 postgresOptions.ConnectionString,
                 serviceProvider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<PostgreSQLVectorIndexBenchmark>>());
@@ -114,12 +113,12 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        services.Configure<PostgreSQLVectorStoreOptions>(
+        services.Configure<PostgreSQLOptions>(
             configuration.GetSection("PostgreSQLVectorStore"));
 
         services.AddSingleton<IVectorIndexBenchmark>(serviceProvider =>
         {
-            var postgresOptions = serviceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<PostgreSQLVectorStoreOptions>>().Value;
+            var postgresOptions = serviceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<PostgreSQLOptions>>().Value;
             return new PostgreSQLVectorIndexBenchmark(
                 postgresOptions.ConnectionString,
                 serviceProvider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<PostgreSQLVectorIndexBenchmark>>());
