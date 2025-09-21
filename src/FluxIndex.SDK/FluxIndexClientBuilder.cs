@@ -222,6 +222,49 @@ public class FluxIndexClientBuilder
     }
 
     /// <summary>
+    /// RAG 품질 평가 시스템 활성화
+    /// </summary>
+    public FluxIndexClientBuilder WithEvaluationSystem(string? datasetBasePath = null)
+    {
+        // 평가 시스템 서비스 등록
+        _services.AddScoped<IRAGEvaluationService, RAGEvaluationService>();
+        _services.AddScoped<IGoldenDatasetManager>(sp =>
+            new GoldenDatasetManager(sp.GetRequiredService<ILogger<GoldenDatasetManager>>(), datasetBasePath));
+        _services.AddScoped<IQualityGateService, QualityGateService>();
+        _services.AddScoped<IEvaluationJobManager, EvaluationJobManager>();
+
+        return this;
+    }
+
+    /// <summary>
+    /// 개발용 평가 시스템 (로컬 데이터셋 포함)
+    /// </summary>
+    public FluxIndexClientBuilder WithEvaluationSystemForDevelopment()
+    {
+        var datasetPath = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FluxIndex", "datasets");
+        return WithEvaluationSystem(datasetPath);
+    }
+
+    /// <summary>
+    /// 운영용 평가 시스템 (고성능 설정)
+    /// </summary>
+    public FluxIndexClientBuilder WithEvaluationSystemForProduction(string datasetBasePath)
+    {
+        WithEvaluationSystem(datasetBasePath);
+
+        // 운영용 추가 설정
+        _services.Configure<EvaluationConfiguration>(config =>
+        {
+            config.Timeout = TimeSpan.FromMinutes(10);
+            config.EnableFaithfulnessEvaluation = true;
+            config.EnableAnswerRelevancyEvaluation = true;
+            config.EnableContextEvaluation = true;
+        });
+
+        return this;
+    }
+
+    /// <summary>
     /// 고급 서비스 구성 - 확장 패키지에서 사용
     /// </summary>
     public FluxIndexClientBuilder ConfigureServices(Action<IServiceCollection> configure)
@@ -246,9 +289,16 @@ public class FluxIndexClientBuilder
         _services.AddSingleton(_retrieverOptions);
         _services.AddSingleton(_indexerOptions);
 
+        // Register in-memory chunk hierarchy repository for SDK
+        _services.AddScoped<IChunkHierarchyRepository, InMemoryChunkHierarchyRepository>();
+
         // Register hybrid search services
         _services.AddScoped<ISparseRetriever, BM25SparseRetriever>();
         _services.AddScoped<IHybridSearchService, HybridSearchService>();
+
+        // Register Small-to-Big services
+        _services.AddScoped<ISmallToBigRetriever, SmallToBigRetriever>();
+        _services.AddMemoryCache(); // For query complexity caching
         
         // Build service provider
         var serviceProvider = _services.BuildServiceProvider();
@@ -264,6 +314,7 @@ public class FluxIndexClientBuilder
         var rankFusionService = serviceProvider.GetService<IRankFusionService>() ?? new RankFusionService();
         var hybridSearchService = serviceProvider.GetService<IHybridSearchService>();
         var semanticCacheService = serviceProvider.GetService<ISemanticCacheService>();
+        var smallToBigRetriever = serviceProvider.GetService<ISmallToBigRetriever>();
         
         var retriever = new Retriever(
             vectorStore,
@@ -290,7 +341,8 @@ public class FluxIndexClientBuilder
             indexer,
             loggerFactory.CreateLogger<FluxIndexClient>(),
             semanticCacheService,
-            hybridSearchService
+            hybridSearchService,
+            smallToBigRetriever
         );
     }
 

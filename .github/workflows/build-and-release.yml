@@ -1,0 +1,167 @@
+name: Build & Release
+
+on:
+  # Directory.Build.props 파일이 변경될 때만 실행 (버전 관리)
+  push:
+    branches: [ main ]
+    paths:
+      - 'Directory.Build.props'
+
+  # 수동 실행 가능
+  workflow_dispatch:
+    inputs:
+      force_publish:
+        description: 'Force publish to NuGet (even if version exists)'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  DOTNET_VERSION: '9.0.x'
+  CONFIGURATION: 'Release'
+
+jobs:
+  build-test-release:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Cache NuGet packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.nuget/packages
+        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', 'Directory.Build.props') }}
+        restore-keys: |
+          ${{ runner.os }}-nuget-
+
+    # Extract version from Directory.Build.props
+    - name: Extract version
+      id: version
+      run: |
+        VERSION=$(grep '<Version>' Directory.Build.props | sed 's/.*<Version>\(.*\)<\/Version>.*/\1/')
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "📦 Version: $VERSION"
+
+    # Restore, Build, Test
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Build
+      run: dotnet build --no-restore --configuration ${{ env.CONFIGURATION }}
+
+    - name: Run tests
+      run: |
+        if find . -name "*.Tests.csproj" -o -name "*.Test.csproj" | grep -q .; then
+          echo "🧪 Running tests..."
+          dotnet test --no-build --configuration ${{ env.CONFIGURATION }} --verbosity normal
+        else
+          echo "⚠️ No test projects found"
+        fi
+
+    # Create NuGet packages
+    - name: Create packages
+      run: |
+        echo "📦 Creating NuGet packages..."
+        dotnet pack --configuration ${{ env.CONFIGURATION }} \
+          --no-build \
+          --output ./packages \
+          /p:Version=${{ steps.version.outputs.version }}
+
+    # Check if version already exists on NuGet
+    - name: Check version on NuGet
+      id: version_check
+      run: |
+        VERSION=${{ steps.version.outputs.version }}
+        echo "🔍 Checking if version $VERSION exists on NuGet..."
+
+        # Check main FluxIndex package
+        RESPONSE=$(curl -s "https://api.nuget.org/v3-flatcontainer/fluxindex/index.json" || echo '{"versions":[]}')
+
+        if echo "$RESPONSE" | grep -q "\"$VERSION\""; then
+          echo "version_exists=true" >> $GITHUB_OUTPUT
+          echo "⚠️ Version $VERSION already exists on NuGet"
+        else
+          echo "version_exists=false" >> $GITHUB_OUTPUT
+          echo "✅ Version $VERSION is new"
+        fi
+
+    # Publish to NuGet (only if version doesn't exist or force_publish is true)
+    - name: Publish to NuGet
+      if: steps.version_check.outputs.version_exists == 'false' || github.event.inputs.force_publish == 'true'
+      run: |
+        echo "🚀 Publishing packages to NuGet..."
+        for package in ./packages/*.nupkg; do
+          echo "Publishing $(basename $package)..."
+          dotnet nuget push $package \
+            --api-key ${{ secrets.NUGET_API_KEY }} \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+        done
+
+    # Create GitHub Release
+    - name: Create GitHub Release
+      if: (steps.version_check.outputs.version_exists == 'false' || github.event.inputs.force_publish == 'true') && success()
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: v${{ steps.version.outputs.version }}
+        name: FluxIndex v${{ steps.version.outputs.version }}
+        draft: false
+        prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+        generate_release_notes: true
+        files: |
+          ./packages/*.nupkg
+          ./packages/*.snupkg
+        body: |
+          ## 🎉 FluxIndex v${{ steps.version.outputs.version }}
+
+          ### 📦 NuGet Packages
+          - **FluxIndex.Core** - Core RAG infrastructure
+          - **FluxIndex.SDK** - Main SDK package
+          - **FluxIndex.Storage.*** - Storage providers
+          - **FluxIndex.AI.*** - AI service providers
+
+          ### 📋 Installation
+          ```bash
+          dotnet add package FluxIndex.SDK --version ${{ steps.version.outputs.version }}
+          ```
+
+          ### 🔄 Changes
+          See the release notes below for detailed changes.
+
+    # Upload packages as artifacts
+    - name: Upload packages
+      uses: actions/upload-artifact@v4
+      with:
+        name: nuget-packages-v${{ steps.version.outputs.version }}
+        path: ./packages/*
+        retention-days: 30
+
+    # Build summary
+    - name: Summary
+      if: always()
+      run: |
+        echo "## 🏗️ Build Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
+        echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+        echo "| 📦 Version | \`${{ steps.version.outputs.version }}\` |" >> $GITHUB_STEP_SUMMARY
+        echo "| 🏁 Status | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| 🚀 Published | ${{ (steps.version_check.outputs.version_exists == 'false' || github.event.inputs.force_publish == 'true') && 'Yes' || 'No' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| 🎯 .NET | ${{ env.DOTNET_VERSION }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| 🔧 Config | ${{ env.CONFIGURATION }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| 🌿 Branch | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| 👤 Actor | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        if [[ "${{ steps.version_check.outputs.version_exists }}" == "true" && "${{ github.event.inputs.force_publish }}" != "true" ]]; then
+          echo "ℹ️ **Note**: Version already exists on NuGet, skipped publishing" >> $GITHUB_STEP_SUMMARY
+        fi

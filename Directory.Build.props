@@ -1,7 +1,11 @@
 <Project>
   <!-- Common Version Management -->
   <PropertyGroup>
-    <!-- Package Version - Update this to trigger NuGet push in CI/CD -->
+    <!--
+    🚀 CI/CD Trigger: Directory.Build.props가 변경될 때만 워크플로우 실행됩니다.
+    📦 버전 업데이트: 아래 Version을 변경하고 main 브랜치에 push하면 자동으로 NuGet에 배포됩니다.
+    🔄 워크플로우: .github/workflows/build-and-release.yml 참조
+    -->
     <Version>0.1.4</Version>
     <AssemblyVersion>0.1.4.0</AssemblyVersion>
     <FileVersion>0.1.4.0</FileVersion>

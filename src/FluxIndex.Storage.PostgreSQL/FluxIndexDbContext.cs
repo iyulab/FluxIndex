@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using FluxIndex.Storage.PostgreSQL.Entities;
 using Npgsql.EntityFrameworkCore.PostgreSQL;
 using Pgvector.EntityFrameworkCore;
 using System;
@@ -17,6 +18,8 @@ public class FluxIndexDbContext : DbContext
 
     public DbSet<VectorDocument> Documents { get; set; }
     public DbSet<VectorChunk> Chunks { get; set; }
+    public DbSet<ChunkHierarchyEntity> ChunkHierarchies { get; set; }
+    public DbSet<ChunkRelationshipEntity> ChunkRelationships { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -158,4 +161,11 @@ public class VectorChunk
     public DateTime CreatedAt { get; set; }
     
     public VectorDocument Document { get; set; } = null!;
+}
+
+/// <summary>
+/// DocumentChunk 별칭 (기존 VectorChunk와의 호환성)
+/// </summary>
+public class DocumentChunk : VectorChunk
+{
 }

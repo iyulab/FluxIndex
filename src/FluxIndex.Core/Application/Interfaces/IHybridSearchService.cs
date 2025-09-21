@@ -56,6 +56,14 @@ public interface IHybridSearchService
         IReadOnlyList<string> testQueries,
         IReadOnlyList<IReadOnlyList<string>> groundTruth,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// ID로 청크 조회 (Small-to-Big 컨텍스트 확장용)
+    /// </summary>
+    /// <param name="chunkId">청크 ID</param>
+    /// <param name="cancellationToken">취소 토큰</param>
+    /// <returns>청크 데이터</returns>
+    Task<DocumentChunk?> GetChunkByIdAsync(string chunkId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>

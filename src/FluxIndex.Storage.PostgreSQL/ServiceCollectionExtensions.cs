@@ -1,4 +1,5 @@
-using FluxIndex.Application.Interfaces;
+using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Storage.PostgreSQL.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -46,6 +47,10 @@ public static class ServiceCollectionExtensions
         
         // Vector Store 등록
         services.AddScoped<IVectorStore, PostgreSQLVectorStore>();
+
+        // Repository 등록
+        services.AddScoped<IDocumentRepository, DocumentRepository>();
+        services.AddScoped<IChunkHierarchyRepository, ChunkHierarchyRepository>();
         
         // 자동 마이그레이션 설정
         if (options.AutoMigrate)

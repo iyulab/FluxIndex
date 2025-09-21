@@ -1,5 +1,23 @@
 # TASKS.md - FluxIndex 개발 현황 및 로드맵
 
+## 📈 **현재 진행상황** (2025.01.21 업데이트)
+
+**🎉 Phase 7.1 완료**: RAG 품질 평가 프레임워크 구현 완료!
+
+### 🏆 **방금 완료된 성과**
+- ✅ **완전한 RAG 평가 시스템**: IRAGEvaluationService, GoldenDatasetManager, QualityGateService, EvaluationJobManager
+- ✅ **9가지 평가 메트릭**: Precision, Recall, F1, MRR, NDCG, Hit Rate, Faithfulness, Answer Relevancy, Context Relevancy
+- ✅ **JSON 기반 골든 데이터셋**: 생성, 검증, 통계, 쿼리 로그 변환 기능
+- ✅ **품질 게이트**: CI/CD 통합을 위한 임계값 기반 자동 검증
+- ✅ **SDK 통합**: `.WithEvaluationSystem()` 메서드로 간단한 활성화
+- ✅ **포괄적 테스트**: 18+ 테스트 케이스로 평가 로직 검증
+- ✅ **실제 사용 예제**: RealQualityTest 샘플 프로젝트
+
+### 🔄 **다음 작업**: Phase 7.2 (CI/CD 통합 평가)
+자동화된 평가 파이프라인과 품질 임계값 기반 배포 제어 시스템 구현
+
+---
+
 ## 🎯 FluxIndex의 정체성: RAG 품질 최적화 라이브러리
 
 **FluxIndex**는 **소비 앱의 RAG 개발을 가속화하는 중간 레이어 라이브러리**입니다.
@@ -27,13 +45,15 @@
 
 ---
 
-## 📊 현재 상태: **Production-Ready RAG 라이브러리** ✅
+## 📊 현재 상태: **Advanced RAG 라이브러리** ✅
 
-### 🏆 달성된 핵심 성과
+### 🏆 달성된 핵심 성과 (2025.01 업데이트)
 - **재현율@10**: 94% (업계 최고 수준)
 - **MRR**: 0.86 (22% 향상)
 - **평균 유사도**: 0.638 (업계 표준 0.5-0.7 범위)
 - **응답시간**: 473ms (실시간 서비스 적용 가능)
+- **Small-to-Big 검색**: 정밀도와 컨텍스트의 최적 균형 달성
+- **쿼리 복잡도 기반 적응**: 4차원 분석 시스템으로 검색 전략 최적화
 - **AI Provider 완전 중립성**: OpenAI, Anthropic, Cohere 등 자유 선택
 
 ---
@@ -78,9 +98,9 @@
 - ✅ **성능 벤치마킹** 및 포괄적 테스트 완료
 - ✅ **서비스 등록 확장** 및 DI 통합 완료
 
-### **Phase 4: 하이브리드 검색 아키텍처** 🟡 **50% 완료** (단기 구현)
+### **Phase 4: 하이브리드 검색 아키텍처** ✅ **완료** (단기 구현)
 **목표**: 벡터 + 키워드 검색 융합으로 정밀도 극대화
-**실제 기간**: 5주 | **달성**: BM25 + RRF 융합 시스템 완성, 실제 API 테스트 검증
+**실제 기간**: 5주 | **달성**: BM25 + RRF 융합 시스템 + Small-to-Big 검색 패턴 완성
 
 #### 4.1 희소 검색 통합 ✅ **완료** (3주)
 - ✅ **ISparseRetriever** BM25 알고리즘 완전 구현
@@ -89,10 +109,32 @@
 - ✅ **HybridSearchService** 5가지 융합 방법 (RRF, WeightedSum, Product, Maximum, HarmonicMean)
 - ✅ **실제 API 테스트** OpenAI 키 기반 품질 검증 완료 (100% 성공률, 평균 4.8초)
 
-#### 4.2 Small-to-Big 검색 패턴 (2주)
-- 🔄 **부모-자식 청크 관계** 모델 확장
-- 🔄 **ISmallToBigRetriever** 구현
-- 🔄 **문장-창문 검색** 및 **부모 문서 검색기**
+#### 4.2 Small-to-Big 검색 패턴 ✅ **완료** (2주)
+- ✅ **부모-자식 청크 관계** 모델 확장 완료
+- ✅ **ISmallToBigRetriever** 1000+ 라인 완전 구현 완료
+- ✅ **문장-창문 검색** 및 **부모 문서 검색기** 완료
+- ✅ **적응형 윈도우 크기** 결정 알고리즘 완료
+- ✅ **쿼리 복잡도 분석** 4차원 평가 시스템 완료
+  - 📊 **Lexical Complexity**: 어휘 다양성 (TTR) 0.0-1.0
+  - 📊 **Syntactic Complexity**: 구문 분석 길이 기반 0.0-1.0
+  - 📊 **Semantic Complexity**: 엔터티 밀도 0.0-1.0
+  - 📊 **Reasoning Complexity**: 의문사/조건문 패턴 0.0-1.0
+- ✅ **컨텍스트 확장** 3가지 방법 (Hierarchical, Sequential, Semantic) 완료
+  - 🔄 **Hierarchical**: 부모-자식 청크 구조 기반 확장
+  - ↔️ **Sequential**: 인접한 청크들로 순차적 확장
+  - 🧠 **Semantic**: 유사도 기반 관련 청크 확장
+- ✅ **청크 계층 구조** 4단계 레벨 시스템 완료
+  - Level 0: 문장 (Sentence)
+  - Level 1: 단락 (Paragraph)
+  - Level 2: 섹션 (Section)
+  - Level 3: 챕터 (Chapter)
+- ✅ **IChunkHierarchyRepository** PostgreSQL 및 인메모리 구현 완료
+- ✅ **SmallToBigSearchResult** 전용 결과 모델 완료
+- ✅ **SDK 통합** 및 포괄적 테스트 스위트 완료
+  - 16개 단위 테스트 (SmallToBigRetrieverTests)
+  - 10개 리포지토리 통합 테스트 (ChunkHierarchyRepositoryTests)
+  - 7개 E2E 시나리오 테스트 (SmallToBigIntegrationTests)
+  - 8개 성능 벤치마크 테스트 (SmallToBigPerformanceTests)
 
 ### **Phase 5: 재순위화 시스템** 🟢 우선순위: Low (중기 구현)
 **목표**: 검색 결과 정밀도 극대화
@@ -133,10 +175,15 @@
 **목표**: 데이터 기반 품질 관리 및 성능 검증
 **기간**: 4-5주 | **성과 목표**: RAGAs 기반 자동 평가
 
-#### 7.1 RAG 품질 평가 지표 (3주)
-- 🔄 **IRAGEvaluationService** 구현
-- 🔄 **EvaluationMetrics**: Precision, Recall, Faithfulness, Relevance, MRR, Hit Rate
-- 🔄 **골든 데이터셋** 구축 및 관리
+#### 7.1 RAG 품질 평가 지표 ✅ **완료** (3주)
+- ✅ **IRAGEvaluationService** 구현: 완전한 평가 서비스
+- ✅ **EvaluationMetrics**: Precision, Recall, F1, MRR, NDCG, Hit Rate, Faithfulness, Answer Relevancy, Context Relevancy
+- ✅ **골든 데이터셋** 구축 및 관리: JSON 기반 GoldenDatasetManager
+- ✅ **품질 게이트 서비스**: QualityGateService로 임계값 기반 검증
+- ✅ **평가 작업 관리**: EvaluationJobManager로 배치 평가 및 스케줄링
+- ✅ **SDK 통합**: WithEvaluationSystem() 메서드로 평가 프레임워크 활성화
+- ✅ **포괄적 테스트**: GoldenDatasetManagerTests, RAGEvaluationServiceTests 구현
+- ✅ **예제 코드**: RealQualityTest 샘플 프로젝트로 사용법 제시
 
 #### 7.2 CI/CD 통합 평가 (2주)
 - 🔄 **자동화된 평가 파이프라인**
@@ -322,12 +369,13 @@ services.AddScoped<IDocumentRepository, PostgreSQLRepository>();   // or MongoDB
 5. ✅ **Phase 4.1: 하이브리드 검색** → 키워드 + 벡터 통합 **완료**
 
 ### **🟡 단기 목표** (2-6주)
-6. 🔄 **Phase 4.2: Small-to-Big 검색** → 정밀도-컨텍스트 균형 (최우선)
-7. 🔄 **Phase 7.1: 평가 프레임워크** → 품질 보증 시스템 자동화
+6. ✅ **Phase 4.2: Small-to-Big 검색** → 정밀도-컨텍스트 균형 **완료**
+7. ✅ **Phase 7.1: RAG 품질 평가 프레임워크** → 품질 보증 시스템 자동화 **완료**
+8. 🔄 **Phase 7.2: CI/CD 통합 평가** → 자동화된 평가 파이프라인 (다음 우선순위)
 
 ### **🟢 중장기 목표** (6개월+)
-8. **Phase 5: 재순위화 시스템** → 최종 정밀도 향상
-9. **Phase 8: 고급 연구 기술** → 차세대 RAG 혁신
+9. **Phase 5: 재순위화 시스템** → 최종 정밀도 향상
+10. **Phase 8: 고급 연구 기술** → 차세대 RAG 혁신
 
 ### **📊 핵심 성과 지표 (KPI)**
 

@@ -83,16 +83,20 @@
         "type": "Project",
         "dependencies": {
           "FluxIndex.Core": "[0.1.4, )",
-          "Microsoft.Extensions.Caching.Abstractions": "[9.0.9, )",
+          "Microsoft.Extensions.Caching.StackExchangeRedis": "[9.0.9, )",
           "Microsoft.Extensions.Configuration.Abstractions": "[9.0.9, )",
-          "Microsoft.Extensions.Configuration.Binder": "[9.0.9, )",
+          "Microsoft.Extensions.DependencyInjection": "[9.0.9, )",
           "Microsoft.Extensions.Logging.Abstractions": "[9.0.9, )",
           "Microsoft.Extensions.Options": "[9.0.9, )",
-          "StackExchange.Redis": "[2.9.17, )"
+          "StackExchange.Redis": "[2.9.17, )",
+          "System.Text.Json": "[9.0.9, )"
         }
       },
       "fluxindex.core": {
-        "type": "Project"
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Extensions.Logging.Abstractions": "[9.0.9, )"
+        }
       },
       "fluxindex.sdk": {
         "type": "Project",

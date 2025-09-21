@@ -1,6 +1,7 @@
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.ValueObjects;
 using FluxIndex.Domain.Entities;
+using FluxIndex.SDK.Models;
 using FluxIndex.SDK.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -23,6 +24,7 @@ public class FluxIndexClient : IFluxIndexClient
     private readonly Indexer _indexer;
     private readonly ISemanticCacheService? _cacheService;
     private readonly IHybridSearchService? _hybridSearchService;
+    private readonly ISmallToBigRetriever? _smallToBigRetriever;
     private readonly ILogger<FluxIndexClient> _logger;
 
     public FluxIndexClient(
@@ -30,12 +32,14 @@ public class FluxIndexClient : IFluxIndexClient
         Indexer indexer,
         ILogger<FluxIndexClient>? logger = null,
         ISemanticCacheService? cacheService = null,
-        IHybridSearchService? hybridSearchService = null)
+        IHybridSearchService? hybridSearchService = null,
+        ISmallToBigRetriever? smallToBigRetriever = null)
     {
         _retriever = retriever;
         _indexer = indexer;
         _cacheService = cacheService;
         _hybridSearchService = hybridSearchService;
+        _smallToBigRetriever = smallToBigRetriever;
         _logger = logger ?? new NullLogger<FluxIndexClient>();
 
         if (_cacheService != null)
@@ -46,6 +50,11 @@ public class FluxIndexClient : IFluxIndexClient
         if (_hybridSearchService != null)
         {
             _logger.LogInformation("FluxIndexClient initialized with hybrid search enabled");
+        }
+
+        if (_smallToBigRetriever != null)
+        {
+            _logger.LogInformation("FluxIndexClient initialized with Small-to-Big retrieval enabled");
         }
     }
 
@@ -393,6 +402,76 @@ public class FluxIndexClient : IFluxIndexClient
     }
 
     /// <summary>
+    /// Small-to-Big 검색 - 정밀 검색 후 컨텍스트 확장
+    /// </summary>
+    public async Task<IEnumerable<SmallToBigSearchResult>> SmallToBigSearchAsync(
+        string query,
+        SmallToBigSearchOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (_smallToBigRetriever == null)
+        {
+            _logger.LogWarning("Small-to-Big retriever is not configured");
+            return Enumerable.Empty<SmallToBigSearchResult>();
+        }
+
+        try
+        {
+            var coreOptions = options?.ToCoreOptions() ?? new Core.Domain.Models.SmallToBigOptions();
+            var results = await _smallToBigRetriever.SearchAsync(query, coreOptions, cancellationToken);
+
+            return results.Select(r => new SmallToBigSearchResult
+            {
+                PrimaryChunk = ConvertToSDKChunk(r.PrimaryChunk),
+                ContextChunks = r.ContextChunks.Select(ConvertToSDKChunk).ToList(),
+                RelevanceScore = r.RelevanceScore,
+                WindowSize = r.WindowSize,
+                ExpansionReason = r.ExpansionReason,
+                ContextQuality = r.ContextQuality,
+                CombinedText = r.CombinedText
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Small-to-Big search failed for query: {Query}", query);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// 쿼리 복잡도 분석
+    /// </summary>
+    public async Task<QueryComplexityResult?> AnalyzeQueryComplexityAsync(
+        string query,
+        CancellationToken cancellationToken = default)
+    {
+        if (_smallToBigRetriever == null)
+        {
+            _logger.LogWarning("Small-to-Big retriever is not configured");
+            return null;
+        }
+
+        try
+        {
+            var analysis = await _smallToBigRetriever.AnalyzeQueryComplexityAsync(query, cancellationToken);
+
+            return new QueryComplexityResult
+            {
+                OverallComplexity = analysis.OverallComplexity,
+                LexicalComplexity = analysis.LexicalComplexity,
+                SemanticComplexity = analysis.SemanticComplexity,
+                RecommendedWindowSize = analysis.RecommendedWindowSize,
+                AnalysisConfidence = analysis.AnalysisConfidence
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Query complexity analysis failed for: {Query}", query);
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Convert cached SearchResult to SDK SearchResult
     /// </summary>
     private IEnumerable<SearchResult> ConvertCachedToSDKSearchResults(List<Core.Domain.Entities.SearchResult> cachedResults)
@@ -406,6 +485,22 @@ public class FluxIndexClient : IFluxIndexClient
             ChunkIndex = cr.ChunkIndex,
             Metadata = new DocumentMetadata()
         });
+    }
+
+    /// <summary>
+    /// Core DocumentChunk를 SDK DocumentChunk로 변환
+    /// </summary>
+    private DocumentChunk ConvertToSDKChunk(Core.Domain.Models.DocumentChunk coreChunk)
+    {
+        return new DocumentChunk
+        {
+            Id = coreChunk.Id,
+            DocumentId = coreChunk.DocumentId,
+            Content = coreChunk.Content,
+            ChunkIndex = coreChunk.ChunkIndex,
+            TokenCount = coreChunk.TokenCount,
+            Metadata = coreChunk.Metadata ?? new Dictionary<string, object>()
+        };
     }
 }
 

@@ -708,6 +708,27 @@ public class HybridSearchService : IHybridSearchService
     }
 
     #endregion
+
+    /// <summary>
+    /// ID로 청크 조회 (Small-to-Big 컨텍스트 확장용)
+    /// </summary>
+    public async Task<DocumentChunk?> GetChunkByIdAsync(string chunkId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(chunkId))
+            return null;
+
+        try
+        {
+            // VectorStore를 통해 청크 조회
+            var chunks = await _vectorStore.GetChunksByIdsAsync(new[] { chunkId }, cancellationToken);
+            return chunks.FirstOrDefault();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "청크 조회 실패: {ChunkId}", chunkId);
+            return null;
+        }
+    }
 }
 
 #region Helper Classes
