@@ -1,10 +1,11 @@
-using FluxIndex.Core.Domain.Models;
+using FluxIndex.Domain.Models;
 using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using SearchStrategy = FluxIndex.Domain.Models.SearchStrategy;
 
-namespace FluxIndex.Core.Application.Interfaces;
+namespace FluxIndex.Core.Interfaces;
 
 /// <summary>
 /// 하이브리드 검색 서비스 인터페이스 - 벡터 + 키워드 융합 검색
@@ -41,7 +42,7 @@ public interface IHybridSearchService
     /// <param name="query">검색 쿼리</param>
     /// <param name="cancellationToken">취소 토큰</param>
     /// <returns>추천 검색 전략</returns>
-    Task<SearchStrategy> RecommendSearchStrategyAsync(
+    Task<FluxIndex.Domain.Models.SearchStrategy> RecommendSearchStrategyAsync(
         string query,
         CancellationToken cancellationToken = default);
 
@@ -63,6 +64,6 @@ public interface IHybridSearchService
     /// <param name="chunkId">청크 ID</param>
     /// <param name="cancellationToken">취소 토큰</param>
     /// <returns>청크 데이터</returns>
-    Task<DocumentChunk?> GetChunkByIdAsync(string chunkId, CancellationToken cancellationToken = default);
+    Task<FluxIndex.Domain.Entities.DocumentChunk?> GetChunkByIdAsync(string chunkId, CancellationToken cancellationToken = default);
 }
 

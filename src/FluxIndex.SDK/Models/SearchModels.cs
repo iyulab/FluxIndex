@@ -40,7 +40,7 @@ public class SearchResult
     public float Score { get; set; }
     public float? VectorScore { get; set; }
     public float? KeywordScore { get; set; }
-    public DocumentMetadata Metadata { get; set; } = new();
+    public Dictionary<string, object> Metadata { get; set; } = new();
     public Dictionary<string, object> Highlights { get; set; } = new();
     public int ChunkIndex { get; set; }
 }

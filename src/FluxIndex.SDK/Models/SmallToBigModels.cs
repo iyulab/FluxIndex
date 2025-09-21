@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using DocumentChunk = FluxIndex.Core.Domain.Models.DocumentChunk;
 
 namespace FluxIndex.SDK.Models;
 

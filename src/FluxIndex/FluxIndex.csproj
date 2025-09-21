@@ -14,8 +14,6 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
-    <PackageReference Include="Microsoft.ML.OnnxRuntime" />
-    <PackageReference Include="Microsoft.ML.OnnxRuntime.Managed" />
   </ItemGroup>
 
 </Project>

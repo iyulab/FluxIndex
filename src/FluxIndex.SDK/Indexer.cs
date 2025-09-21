@@ -1,5 +1,6 @@
-using FluxIndex.Application.Interfaces;
-using FluxIndex.Domain.Entities;
+using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Domain.Entities;
+using FluxIndex.Core.Domain.Models;
 using FluxIndex.SDK.Services;
 using Microsoft.Extensions.Logging;
 using System;
@@ -61,10 +62,11 @@ public class Indexer
             }
 
             // Generate embeddings for chunks
-            await GenerateEmbeddingsAsync(chunks, cancellationToken);
+            chunks = await GenerateEmbeddingsAsync(chunks, cancellationToken);
 
             // Store chunks in vector store
-            await _vectorStore.StoreBatchAsync(chunks, cancellationToken);
+            var chunkEmbeddingPairs = chunks.Select(c => (c, c.Embedding ?? new float[0])).ToList();
+            await _vectorStore.StoreBatchAsync(chunkEmbeddingPairs, cancellationToken);
 
             _logger.LogInformation("Successfully indexed document {DocumentId} with {ChunkCount} chunks", 
                 document.Id, chunks.Count);
@@ -91,12 +93,11 @@ public class Indexer
         _logger.LogInformation("Indexing chunks as document: {DocumentId}", documentId);
 
         // Create document
-        var document = Document.Create(documentId);
+        var document = new Document { Id = documentId, CreatedAt = DateTime.UtcNow };
 
         // Add chunks to document
         foreach (var chunk in chunks)
         {
-            chunk.DocumentId = documentId;
             document.AddChunk(chunk);
         }
 
@@ -146,7 +147,7 @@ public class Indexer
         _logger.LogInformation("Updating document: {DocumentId}", documentId);
 
         // Delete existing chunks
-        await _vectorStore.DeleteByDocumentIdAsync(documentId, cancellationToken);
+        await _vectorStore.DeleteDocumentAsync(documentId, cancellationToken);
 
         // Update document (Id should already match documentId)
         await _documentRepository.UpdateAsync(updatedDocument, cancellationToken);
@@ -155,8 +156,9 @@ public class Indexer
         var chunks = updatedDocument.Chunks.ToList();
         if (chunks.Any())
         {
-            await GenerateEmbeddingsAsync(chunks, cancellationToken);
-            await _vectorStore.StoreBatchAsync(chunks, cancellationToken);
+            chunks = await GenerateEmbeddingsAsync(chunks, cancellationToken);
+            var chunkEmbeddingPairs = chunks.Select(c => (c, c.Embedding ?? new float[0])).ToList();
+            await _vectorStore.StoreBatchAsync(chunkEmbeddingPairs, cancellationToken);
         }
 
         _logger.LogInformation("Successfully updated document {DocumentId}", documentId);
@@ -179,24 +181,29 @@ public class Indexer
             throw new InvalidOperationException($"Document {documentId} not found");
 
         // Get current max chunk index
-        var existingChunks = await _vectorStore.GetByDocumentIdAsync(documentId, cancellationToken);
+        var existingChunks = await _vectorStore.GetDocumentChunksAsync(documentId, cancellationToken);
         var maxIndex = existingChunks.Any() ? existingChunks.Max(c => c.ChunkIndex) : -1;
 
         // Create new chunks
         var newChunks = new List<DocumentChunk>();
         foreach (var text in chunkTexts)
         {
-            var chunk = new DocumentChunk(text, ++maxIndex)
+            var chunk = new DocumentChunk
             {
+                Id = Guid.NewGuid().ToString(),
                 DocumentId = documentId,
-                TokenCount = EstimateTokenCount(text)
+                Content = text,
+                ChunkIndex = ++maxIndex,
+                TokenCount = EstimateTokenCount(text),
+                Metadata = new Dictionary<string, object>()
             };
             newChunks.Add(chunk);
         }
 
         // Generate embeddings and store
-        await GenerateEmbeddingsAsync(newChunks, cancellationToken);
-        await _vectorStore.StoreBatchAsync(newChunks, cancellationToken);
+        newChunks = await GenerateEmbeddingsAsync(newChunks, cancellationToken);
+        var chunkEmbeddingPairs = newChunks.Select(c => (c, c.Embedding ?? new float[0])).ToList();
+        await _vectorStore.StoreBatchAsync(chunkEmbeddingPairs, cancellationToken);
 
         _logger.LogInformation("Successfully added {Count} chunks to document {DocumentId}", 
             newChunks.Count, documentId);
@@ -214,7 +221,7 @@ public class Indexer
         try
         {
             // Delete chunks from vector store
-            await _vectorStore.DeleteByDocumentIdAsync(documentId, cancellationToken);
+            await _vectorStore.DeleteDocumentAsync(documentId, cancellationToken);
 
             // Delete document from repository
             var deleted = await _documentRepository.DeleteAsync(documentId, cancellationToken);
@@ -263,17 +270,16 @@ public class Indexer
             throw new InvalidOperationException($"Document {documentId} not found");
 
         // Get existing chunks
-        var chunks = await _vectorStore.GetByDocumentIdAsync(documentId, cancellationToken);
+        var chunks = await _vectorStore.GetDocumentChunksAsync(documentId, cancellationToken);
         
         // Regenerate embeddings
         var chunksList = chunks.ToList();
-        await GenerateEmbeddingsAsync(chunksList, cancellationToken);
+        chunksList = await GenerateEmbeddingsAsync(chunksList, cancellationToken);
 
-        // Update chunks in vector store
-        foreach (var chunk in chunksList)
-        {
-            await _vectorStore.UpdateAsync(chunk, cancellationToken);
-        }
+        // Update chunks in vector store by re-storing them
+        await _vectorStore.DeleteDocumentAsync(documentId, cancellationToken);
+        var chunkEmbeddingPairs = chunksList.Select(c => (c, c.Embedding ?? new float[0])).ToList();
+        await _vectorStore.StoreBatchAsync(chunkEmbeddingPairs, cancellationToken);
 
         _logger.LogInformation("Successfully reindexed document {DocumentId} with {ChunkCount} chunks", 
             documentId, chunksList.Count);
@@ -285,20 +291,20 @@ public class Indexer
     public async Task<IndexingStatistics> GetStatisticsAsync(CancellationToken cancellationToken = default)
     {
         var docCount = await _documentRepository.GetCountAsync(cancellationToken);
-        var chunkCount = await _vectorStore.GetCountAsync(cancellationToken);
+        var storeStats = await _vectorStore.GetStatisticsAsync(cancellationToken);
 
         return new IndexingStatistics
         {
             TotalDocuments = docCount,
-            TotalChunks = chunkCount,
-            AverageChunksPerDocument = docCount > 0 ? (double)chunkCount / docCount : 0,
+            TotalChunks = storeStats.TotalChunks,
+            AverageChunksPerDocument = docCount > 0 ? (double)storeStats.TotalChunks / docCount : 0,
             DefaultChunkSize = _options.ChunkSize,
             DefaultChunkOverlap = _options.ChunkOverlap,
             EmbeddingModel = _embeddingService.GetType().Name
         };
     }
 
-    private async Task GenerateEmbeddingsAsync(
+    private async Task<List<DocumentChunk>> GenerateEmbeddingsAsync(
         List<DocumentChunk> chunks,
         CancellationToken cancellationToken)
     {
@@ -311,9 +317,20 @@ public class Indexer
                 await semaphore.WaitAsync(cancellationToken);
                 try
                 {
-                    var embedding = await _embeddingService.GenerateEmbeddingAsync(
+                    var embedding = await _embeddingService.CreateEmbeddingAsync(
                         chunk.Content, cancellationToken);
-                    chunk.Embedding = embedding;
+                    return new DocumentChunk
+                    {
+                        Id = chunk.Id,
+                        DocumentId = chunk.DocumentId,
+                        Content = chunk.Content,
+                        ChunkIndex = chunk.ChunkIndex,
+                        TokenCount = chunk.TokenCount,
+                        Metadata = chunk.Metadata,
+                        Embedding = embedding,
+                        Score = chunk.Score,
+                        CreatedAt = chunk.CreatedAt
+                    };
                 }
                 finally
                 {
@@ -321,17 +338,31 @@ public class Indexer
                 }
             });
 
-            await Task.WhenAll(tasks);
+            var results = await Task.WhenAll(tasks);
+            return results.ToList();
         }
         else
         {
             // Sequential embedding generation
+            var result = new List<DocumentChunk>();
             foreach (var chunk in chunks)
             {
-                var embedding = await _embeddingService.GenerateEmbeddingAsync(
+                var embedding = await _embeddingService.CreateEmbeddingAsync(
                     chunk.Content, cancellationToken);
-                chunk.Embedding = embedding;
+                result.Add(new DocumentChunk
+                {
+                    Id = chunk.Id,
+                    DocumentId = chunk.DocumentId,
+                    Content = chunk.Content,
+                    ChunkIndex = chunk.ChunkIndex,
+                    TokenCount = chunk.TokenCount,
+                    Metadata = chunk.Metadata,
+                    Embedding = embedding,
+                    Score = chunk.Score,
+                    CreatedAt = chunk.CreatedAt
+                });
             }
+            return result;
         }
     }
 

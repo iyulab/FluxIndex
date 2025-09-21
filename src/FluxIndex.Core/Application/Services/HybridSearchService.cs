@@ -1,5 +1,5 @@
-using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Core.Domain.Models;
+using FluxIndex.Core.Interfaces;
+using FluxIndex.Domain.Models;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
@@ -7,10 +7,11 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using DomainHybridSearchResult = FluxIndex.Core.Domain.Models.HybridSearchResult;
-using DomainHybridSearchOptions = FluxIndex.Core.Domain.Models.HybridSearchOptions;
+using DomainHybridSearchResult = FluxIndex.Domain.Models.HybridSearchResult;
+using DomainHybridSearchOptions = FluxIndex.Domain.Models.HybridSearchOptions;
+using SearchStrategy = FluxIndex.Domain.Models.SearchStrategy;
 
-namespace FluxIndex.Core.Application.Services;
+namespace FluxIndex.Core.Services;
 
 /// <summary>
 /// 하이브리드 검색 서비스 - 벡터 + 키워드 융합 검색
@@ -143,7 +144,7 @@ public class HybridSearchService : IHybridSearchService
     /// <summary>
     /// 검색 전략 추천
     /// </summary>
-    public async Task<SearchStrategy> RecommendSearchStrategyAsync(
+    public async Task<FluxIndex.Domain.Models.SearchStrategy> RecommendSearchStrategyAsync(
         string query,
         CancellationToken cancellationToken = default)
     {
@@ -229,16 +230,37 @@ public class HybridSearchService : IHybridSearchService
         try
         {
             // 쿼리 임베딩 생성
-            var embedding = await _embeddingService.CreateEmbeddingAsync(query, cancellationToken);
+            var embedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
 
             // 벡터 검색 실행
-            var vectorResults = await _vectorStore.SearchSimilarAsync(
+            var vectorResults = await _vectorStore.SearchAsync(
                 embedding,
                 options.VectorOptions.MaxResults,
-                options.VectorOptions.MinScore,
+                (float)options.VectorOptions.MinScore,
                 cancellationToken);
 
-            return vectorResults;
+            // DocumentChunk 엔티티를 VectorSearchResult로 변환
+            var results = vectorResults.Select((chunk, index) => new VectorSearchResult
+            {
+                DocumentChunk = new FluxIndex.Domain.Models.DocumentChunk
+                {
+                    Id = chunk.Id,
+                    DocumentId = chunk.DocumentId,
+                    Content = chunk.Content,
+                    ChunkIndex = chunk.ChunkIndex,
+                    TotalChunks = chunk.TotalChunks,
+                    Embedding = chunk.Embedding,
+                    Score = chunk.Score,
+                    TokenCount = chunk.TokenCount,
+                    Metadata = chunk.Metadata,
+                    CreatedAt = chunk.CreatedAt
+                },
+                Score = chunk.Score,
+                Rank = index + 1,
+                Distance = 1.0 - chunk.Score // 점수를 거리로 변환
+            }).ToList();
+
+            return results;
         }
         catch (Exception ex)
         {
@@ -622,15 +644,15 @@ public class HybridSearchService : IHybridSearchService
         };
     }
 
-    private FluxIndex.Core.Domain.Models.QueryType DetermineQueryType(string query)
+    private FluxIndex.Domain.Models.QueryType DetermineQueryType(string query)
     {
         if (query.Contains('"'))
-            return FluxIndex.Core.Domain.Models.QueryType.Phrase;
+            return FluxIndex.Domain.Models.QueryType.Phrase;
         if (query.Contains(" AND ") || query.Contains(" OR "))
-            return FluxIndex.Core.Domain.Models.QueryType.Boolean;
+            return FluxIndex.Domain.Models.QueryType.Boolean;
         if (query.Split(' ').Length <= 3)
-            return FluxIndex.Core.Domain.Models.QueryType.Keyword;
-        return FluxIndex.Core.Domain.Models.QueryType.Natural;
+            return FluxIndex.Domain.Models.QueryType.Keyword;
+        return FluxIndex.Domain.Models.QueryType.Natural;
     }
 
     private double CalculateComplexity(string query, string[] tokens)
@@ -714,7 +736,7 @@ public class HybridSearchService : IHybridSearchService
     /// <summary>
     /// ID로 청크 조회 (Small-to-Big 컨텍스트 확장용)
     /// </summary>
-    public async Task<DocumentChunk?> GetChunkByIdAsync(string chunkId, CancellationToken cancellationToken = default)
+    public async Task<FluxIndex.Domain.Entities.DocumentChunk?> GetChunkByIdAsync(string chunkId, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(chunkId))
             return null;

@@ -206,7 +206,7 @@ public static class TextCompletionServiceExtensions
     {
         try
         {
-            var result = await service.GenerateCompletionAsync("Test", maxTokens: 10, temperature: 0);
+            var result = await service.CompleteAsync("Test");
             return !string.IsNullOrEmpty(result);
         }
         catch

@@ -1,112 +1,152 @@
-using System;
-using System.Collections.Generic;
+using FluxIndex.Domain.Models;
 
 namespace FluxIndex.Domain.Entities;
 
 /// <summary>
-/// 문서 도메인 엔티티 - 청킹된 데이터의 논리적 그룹
+/// 문서 엔티티
 /// </summary>
 public class Document
 {
-    public string Id { get; private set; }
-    public string FileName { get; private set; }
-    public string FilePath { get; private set; }
-    public string Content { get; private set; }
-    public DocumentMetadata Metadata { get; private set; }
-    public List<DocumentChunk> Chunks { get; private set; }
-    public DateTime CreatedAt { get; private set; }
-    public DateTime UpdatedAt { get; private set; }
-    public DocumentStatus Status { get; private set; }
-    public Dictionary<string, string> Properties { get; private set; }
-    public float[]? EmbeddingVector { get; private set; }
+    public string Id { get; set; } = string.Empty;
+    public string FileName { get; set; } = string.Empty;
+    public string FilePath { get; set; } = string.Empty;
+    public string Content { get; set; } = string.Empty;
+    public string ContentHash { get; set; } = string.Empty;
+    public DocumentStatus Status { get; set; } = DocumentStatus.Pending;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    public Dictionary<string, object> Metadata { get; set; } = new();
+    public List<DocumentChunk> Chunks { get; set; } = new();
 
-    private Document()
+    /// <summary>
+    /// 문서 생성 팩토리 메서드
+    /// </summary>
+    public static Document Create(string id)
     {
-        Id = string.Empty;
-        Chunks = new List<DocumentChunk>();
-        Metadata = new DocumentMetadata();
-        FileName = string.Empty;
-        FilePath = string.Empty;
-        Content = string.Empty;
-        Properties = new Dictionary<string, string>();
-    }
+        if (string.IsNullOrWhiteSpace(id))
+            throw new ArgumentException("Document ID cannot be empty", nameof(id));
 
-    public static Document Create(string? id = null)
-    {
         return new Document
         {
-            Id = id ?? Guid.NewGuid().ToString(),
+            Id = id,
             CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow,
-            Status = DocumentStatus.Pending,
-            Properties = new Dictionary<string, string>()
+            UpdatedAt = DateTime.UtcNow
         };
     }
 
-    public static Document Create(string content, DocumentMetadata metadata)
-    {
-        return new Document
-        {
-            Id = Guid.NewGuid().ToString(),
-            Content = content ?? string.Empty,
-            Metadata = metadata ?? new DocumentMetadata(),
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow,
-            Status = DocumentStatus.Pending,
-            Properties = new Dictionary<string, string>()
-        };
-    }
-
-    public void AddChunk(DocumentChunk chunk)
-    {
-        if (chunk == null) throw new ArgumentNullException(nameof(chunk));
-        Chunks.Add(chunk);
-        UpdatedAt = DateTime.UtcNow;
-    }
-
+    /// <summary>
+    /// 메타데이터 업데이트
+    /// </summary>
     public void UpdateMetadata(DocumentMetadata metadata)
     {
-        Metadata = metadata ?? throw new ArgumentNullException(nameof(metadata));
+        ArgumentNullException.ThrowIfNull(metadata);
+
+        // DocumentMetadata의 속성들을 Dictionary로 변환
+        Metadata["Brand"] = metadata.Brand;
+        Metadata["Model"] = metadata.Model;
+        Metadata["Category"] = metadata.Category;
+        Metadata["Language"] = metadata.Language;
+        Metadata["Version"] = metadata.Version;
+        if (metadata.PublishedDate.HasValue)
+            Metadata["PublishedDate"] = metadata.PublishedDate.Value;
+
+        // CustomFields 추가
+        foreach (var field in metadata.CustomFields)
+        {
+            Metadata[field.Key] = field.Value;
+        }
+
         UpdatedAt = DateTime.UtcNow;
     }
 
+    /// <summary>
+    /// 문서를 인덱싱 완료로 표시
+    /// </summary>
     public void MarkAsIndexed()
     {
         Status = DocumentStatus.Indexed;
         UpdatedAt = DateTime.UtcNow;
     }
 
-    public void MarkAsFailed(string reason)
+    /// <summary>
+    /// 문서를 실패로 표시
+    /// </summary>
+    public void MarkAsFailed()
     {
         Status = DocumentStatus.Failed;
         UpdatedAt = DateTime.UtcNow;
     }
 
-    public void SetFileName(string fileName)
+    /// <summary>
+    /// 청크 추가
+    /// </summary>
+    public void AddChunk(DocumentChunk chunk)
     {
-        FileName = fileName ?? string.Empty;
+        // DocumentChunk의 속성이 init-only이므로 새로운 인스턴스를 생성해야 함
+        if (chunk.DocumentId != Id)
+        {
+            var newChunk = new DocumentChunk
+            {
+                Id = chunk.Id,
+                DocumentId = Id,
+                Content = chunk.Content,
+                ChunkIndex = chunk.ChunkIndex,
+                Embedding = chunk.Embedding,
+                Score = chunk.Score,
+                TokenCount = chunk.TokenCount,
+                Metadata = chunk.Metadata,
+                CreatedAt = chunk.CreatedAt
+            };
+            Chunks.Add(newChunk);
+        }
+        else
+        {
+            Chunks.Add(chunk);
+        }
+    }
+
+    /// <summary>
+    /// 청크 제거
+    /// </summary>
+    public bool RemoveChunk(string chunkId)
+    {
+        return Chunks.RemoveAll(c => c.Id == chunkId) > 0;
+    }
+
+    /// <summary>
+    /// 상태 업데이트
+    /// </summary>
+    public void UpdateStatus(DocumentStatus status)
+    {
+        Status = status;
         UpdatedAt = DateTime.UtcNow;
     }
 
-    public void SetFilePath(string filePath)
+    /// <summary>
+    /// 메타데이터 추가/업데이트
+    /// </summary>
+    public void SetMetadata(string key, object value)
     {
-        FilePath = filePath ?? string.Empty;
+        Metadata[key] = value;
         UpdatedAt = DateTime.UtcNow;
     }
 
-    public void SetContent(string content)
+    /// <summary>
+    /// 메타데이터 조회
+    /// </summary>
+    public T? GetMetadata<T>(string key)
     {
-        Content = content ?? string.Empty;
-        UpdatedAt = DateTime.UtcNow;
-    }
-
-    public void SetEmbedding(float[] embeddingVector)
-    {
-        EmbeddingVector = embeddingVector;
-        UpdatedAt = DateTime.UtcNow;
+        if (Metadata.TryGetValue(key, out var value) && value is T typedValue)
+        {
+            return typedValue;
+        }
+        return default;
     }
 }
 
+/// <summary>
+/// 문서 상태
+/// </summary>
 public enum DocumentStatus
 {
     Pending,

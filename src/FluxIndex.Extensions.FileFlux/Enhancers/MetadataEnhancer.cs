@@ -346,9 +346,9 @@ public class MetadataEnhancer
         
         return strategy switch
         {
-            ChunkingStrategy.Intelligent => "OnnxCrossEncoder",
+            ChunkingStrategy.Intelligent => "Local",
             ChunkingStrategy.Smart => "CompositeReranker",
-            ChunkingStrategy.Semantic => "OnnxCrossEncoder",
+            ChunkingStrategy.Semantic => "Local",
             ChunkingStrategy.FixedSize => "LocalReranker",
             ChunkingStrategy.Paragraph => "LocalReranker",
             _ => "CompositeReranker"

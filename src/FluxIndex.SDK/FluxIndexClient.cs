@@ -1,6 +1,7 @@
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.ValueObjects;
-using FluxIndex.Domain.Entities;
+using FluxIndex.Core.Domain.Models;
+using FluxIndex.Core.Domain.Entities;
 using FluxIndex.SDK.Models;
 using FluxIndex.SDK.Services;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,7 +11,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using CoreSearchResult = FluxIndex.Application.Interfaces.SearchResult;
+// Removed legacy SearchResult alias - using Core types only
 
 namespace FluxIndex.SDK;
 
@@ -98,14 +99,14 @@ public class FluxIndexClient : IFluxIndexClient
             // 1. 시맨틱 캐시 확인
             if (_cacheService != null)
             {
-                var cachedResult = await _cacheService.GetCachedResponseAsync(query, 0.95f, cancellationToken);
+                var cachedResult = await _cacheService.GetCachedResultAsync(query, 0.95f, cancellationToken);
                 if (cachedResult != null)
                 {
-                    _logger.LogInformation("Cache hit for query: '{Query}' (similarity: {Similarity:F3}, hit_type: {HitType})",
-                        query, cachedResult.SimilarityScore, cachedResult.HitType);
+                    _logger.LogInformation("Cache hit for query: '{Query}' (similarity: {Similarity:F3})",
+                        query, cachedResult.SimilarityScore);
 
                     // 캐시된 검색 결과를 SDK 형식으로 변환
-                    return ConvertCachedToSDKSearchResults(cachedResult.SearchResults);
+                    return ConvertCachedToSDKSearchResults(cachedResult.Results);
                 }
 
                 _logger.LogDebug("Cache miss for query: '{Query}' - proceeding with retrieval", query);
@@ -118,19 +119,21 @@ public class FluxIndexClient : IFluxIndexClient
             // 3. 결과 캐싱 (검색 결과가 있는 경우만)
             if (_cacheService != null && sdkResults.Any())
             {
-                var searchResultsForCache = sdkResults.Select(r => new Core.Domain.Entities.SearchResult
+                var searchResultsForCache = sdkResults.Select(r => new DocumentChunk
                 {
                     Id = r.Id,
                     DocumentId = r.DocumentId,
                     Content = r.Content,
-                    Score = r.Score,
-                    ChunkIndex = r.ChunkIndex
+                    ChunkIndex = r.ChunkIndex,
+                    TokenCount = 0,
+                    Metadata = new Dictionary<string, object>(),
+                    Score = r.Score
                 }).ToList();
 
-                await _cacheService.CacheResponseAsync(
+                await _cacheService.SetCachedResultAsync(
                     query,
-                    $"Found {sdkResults.Count} results",
                     searchResultsForCache,
+                    null, // 기본 메타데이터
                     null, // 기본 만료 시간 사용
                     cancellationToken);
 
@@ -187,7 +190,8 @@ public class FluxIndexClient : IFluxIndexClient
         try
         {
             var startTime = DateTime.UtcNow;
-            var results = await _hybridSearchService.SearchAsync(query, options, cancellationToken);
+            var coreOptions = ConvertToCore(options);
+            var results = await _hybridSearchService.SearchAsync(query, coreOptions, cancellationToken);
             var duration = DateTime.UtcNow - startTime;
 
             _logger.LogInformation("Hybrid search completed: query='{Query}', results={Count}, duration={Duration}ms",
@@ -284,12 +288,12 @@ public class FluxIndexClient : IFluxIndexClient
         var indexerStats = await _indexer.GetStatisticsAsync(cancellationToken);
 
         // 시맨틱 캐시 통계 수집
-        CacheStatistics? cacheStats = null;
+        Core.Application.Interfaces.CacheStatistics? cacheStats = null;
         if (_cacheService != null)
         {
             try
             {
-                cacheStats = await _cacheService.GetStatisticsAsync(cancellationToken);
+                cacheStats = await _cacheService.GetCacheStatisticsAsync(cancellationToken);
             }
             catch (Exception ex)
             {
@@ -311,9 +315,9 @@ public class FluxIndexClient : IFluxIndexClient
             // 시맨틱 캐시 통계 추가
             SemanticCacheEnabled = _cacheService != null,
             CacheHitRate = cacheStats?.HitRate ?? 0f,
-            CacheResponseTime = cacheStats?.CacheResponseTime ?? TimeSpan.Zero,
-            CachedItemsCount = cacheStats?.CachedItemsCount ?? 0,
-            CacheMemoryUsageMB = cacheStats != null ? cacheStats.MemoryUsageBytes / 1024 / 1024 : 0
+            CacheResponseTime = cacheStats?.AverageResponseTimeMs ?? 0,
+            CachedItemsCount = cacheStats?.TotalEntries ?? 0,
+            CacheMemoryUsageMB = cacheStats != null ? cacheStats.CacheSizeBytes / 1024.0 / 1024.0 : 0
         };
     }
 
@@ -327,7 +331,18 @@ public class FluxIndexClient : IFluxIndexClient
 
         try
         {
-            return await _cacheService.GetStatisticsAsync(cancellationToken);
+            var stats = await _cacheService.GetCacheStatisticsAsync(cancellationToken);
+            return new FluxIndex.Core.Domain.ValueObjects.CacheStatistics
+            {
+                TotalQueries = stats.TotalEntries,
+                CacheHits = stats.CacheHits,
+                CacheMisses = stats.CacheMisses,
+                CachedItemsCount = stats.TotalEntries,
+                MemoryUsageBytes = 0, // Application interface doesn't expose this
+                AverageResponseTime = TimeSpan.Zero, // Application interface doesn't expose this
+                CacheResponseTime = TimeSpan.Zero, // Application interface doesn't expose this
+                AverageSimilarityScore = 0.0f // Application interface doesn't expose this
+            };
         }
         catch (Exception ex)
         {
@@ -351,7 +366,8 @@ public class FluxIndexClient : IFluxIndexClient
 
         try
         {
-            return await _cacheService.WarmupCacheAsync(commonQueries, cancellationToken);
+            await _cacheService.WarmupCacheAsync(commonQueries.ToList(), cancellationToken);
+            return true;
         }
         catch (Exception ex)
         {
@@ -373,7 +389,7 @@ public class FluxIndexClient : IFluxIndexClient
 
         try
         {
-            await _cacheService.OptimizeCacheAsync(cancellationToken);
+            await _cacheService.CompactCacheAsync(cancellationToken);
             _logger.LogInformation("Cache optimization completed successfully");
         }
         catch (Exception ex)
@@ -383,21 +399,17 @@ public class FluxIndexClient : IFluxIndexClient
     }
 
     /// <summary>
-    /// Convert Core SearchResult to SDK SearchResult
+    /// Convert VectorSearchResult to SDK SearchResult
     /// </summary>
-    private IEnumerable<SearchResult> ConvertToSDKSearchResults(IEnumerable<CoreSearchResult> coreResults)
+    private IEnumerable<SearchResult> ConvertToSDKSearchResults(IEnumerable<VectorSearchResult> vectorResults)
     {
-        return coreResults.Select(cr => new SearchResult
+        return vectorResults.Select(vr => new SearchResult
         {
-            Id = cr.ChunkId,
-            DocumentId = cr.DocumentId,
-            Content = cr.Content,
-            Score = cr.Score,
-            ChunkIndex = cr.ChunkIndex,
-            Metadata = new DocumentMetadata
-            {
-                FileName = cr.FileName
-            }
+            Id = vr.DocumentChunk.Id,
+            DocumentId = vr.DocumentChunk.DocumentId,
+            Content = vr.DocumentChunk.Content,
+            Score = (float)vr.Score,
+            ChunkIndex = vr.DocumentChunk.ChunkIndex
         });
     }
 
@@ -474,7 +486,7 @@ public class FluxIndexClient : IFluxIndexClient
     /// <summary>
     /// Convert cached SearchResult to SDK SearchResult
     /// </summary>
-    private IEnumerable<SearchResult> ConvertCachedToSDKSearchResults(List<Core.Domain.Entities.SearchResult> cachedResults)
+    private IEnumerable<SearchResult> ConvertCachedToSDKSearchResults(IReadOnlyList<DocumentChunk> cachedResults)
     {
         return cachedResults.Select(cr => new SearchResult
         {
@@ -483,23 +495,34 @@ public class FluxIndexClient : IFluxIndexClient
             Content = cr.Content,
             Score = cr.Score,
             ChunkIndex = cr.ChunkIndex,
-            Metadata = new DocumentMetadata()
+            Metadata = cr.Metadata ?? new Dictionary<string, object>()
         });
     }
 
     /// <summary>
     /// Core DocumentChunk를 SDK DocumentChunk로 변환
     /// </summary>
-    private DocumentChunk ConvertToSDKChunk(Core.Domain.Models.DocumentChunk coreChunk)
+    private DocumentChunk ConvertToSDKChunk(DocumentChunk coreChunk)
     {
-        return new DocumentChunk
+        return coreChunk; // Direct return since we're using Core types only
+    }
+
+    /// <summary>
+    /// SDK HybridSearchOptions를 Core HybridSearchOptions로 변환
+    /// </summary>
+    private Core.Domain.Models.HybridSearchOptions ConvertToCore(HybridSearchOptions sdkOptions)
+    {
+        return new Core.Domain.Models.HybridSearchOptions
         {
-            Id = coreChunk.Id,
-            DocumentId = coreChunk.DocumentId,
-            Content = coreChunk.Content,
-            ChunkIndex = coreChunk.ChunkIndex,
-            TokenCount = coreChunk.TokenCount,
-            Metadata = coreChunk.Metadata ?? new Dictionary<string, object>()
+            MaxResults = sdkOptions.TopK,
+            VectorWeight = (double)sdkOptions.VectorWeight,
+            SparseWeight = (double)sdkOptions.KeywordWeight,
+            FusionMethod = sdkOptions.RerankingStrategy switch
+            {
+                RerankingStrategy.WeightedAverage => Core.Domain.Models.FusionMethod.WeightedSum,
+                RerankingStrategy.ReciprocalRankFusion => Core.Domain.Models.FusionMethod.RRF,
+                _ => Core.Domain.Models.FusionMethod.RRF
+            }
         };
     }
 }
@@ -538,4 +561,11 @@ public class ClientStatistics
     public int DefaultChunkSize { get; set; }
     public int DefaultChunkOverlap { get; set; }
     public string EmbeddingModel { get; set; } = string.Empty;
+
+    // 시맨틱 캐시 관련 속성
+    public bool SemanticCacheEnabled { get; set; }
+    public float CacheHitRate { get; set; }
+    public double CacheResponseTime { get; set; }
+    public long CachedItemsCount { get; set; }
+    public double CacheMemoryUsageMB { get; set; }
 }

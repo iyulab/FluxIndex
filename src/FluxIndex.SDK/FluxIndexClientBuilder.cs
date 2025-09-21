@@ -6,6 +6,7 @@ using FluxIndex.SDK.Services;
 using FluxIndex.SDK.Extensions;
 using FluxIndex.Cache.Redis.Extensions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using System;
 
@@ -222,16 +223,17 @@ public class FluxIndexClientBuilder
     }
 
     /// <summary>
-    /// RAG 품질 평가 시스템 활성화
+    /// RAG 품질 평가 시스템 활성화 (소비자가 IRAGEvaluationService 구현체 제공 필요)
     /// </summary>
     public FluxIndexClientBuilder WithEvaluationSystem(string? datasetBasePath = null)
     {
-        // 평가 시스템 서비스 등록
-        _services.AddScoped<IRAGEvaluationService, RAGEvaluationService>();
+        // 평가 시스템 인프라만 등록 (AI 구현체는 소비자 제공)
         _services.AddScoped<IGoldenDatasetManager>(sp =>
             new GoldenDatasetManager(sp.GetRequiredService<ILogger<GoldenDatasetManager>>(), datasetBasePath));
         _services.AddScoped<IQualityGateService, QualityGateService>();
         _services.AddScoped<IEvaluationJobManager, EvaluationJobManager>();
+
+        // 소비자가 IRAGEvaluationService 구현체를 직접 주입해야 함
 
         return this;
     }
@@ -252,14 +254,14 @@ public class FluxIndexClientBuilder
     {
         WithEvaluationSystem(datasetBasePath);
 
-        // 운영용 추가 설정
-        _services.Configure<EvaluationConfiguration>(config =>
-        {
-            config.Timeout = TimeSpan.FromMinutes(10);
-            config.EnableFaithfulnessEvaluation = true;
-            config.EnableAnswerRelevancyEvaluation = true;
-            config.EnableContextEvaluation = true;
-        });
+        // 운영용 추가 설정 (EvaluationConfiguration 미구현으로 주석 처리)
+        // _services.Configure<EvaluationConfiguration>(config =>
+        // {
+        //     config.Timeout = TimeSpan.FromMinutes(10);
+        //     config.EnableFaithfulnessEvaluation = true;
+        //     config.EnableAnswerRelevancyEvaluation = true;
+        //     config.EnableContextEvaluation = true;
+        // });
 
         return this;
     }
@@ -388,8 +390,8 @@ public class FluxIndexClientBuilder
                 });
                 break;
             default:
-                // Default to mock embedding for testing
-                _services.AddSingleton<IEmbeddingService, MockEmbeddingService>();
+                // No default implementation - consumer must provide IEmbeddingService
+                throw new InvalidOperationException("IEmbeddingService must be configured. Use UseOpenAI() or provide custom implementation.");
                 break;
         }
     }
@@ -415,8 +417,8 @@ public class FluxIndexClientBuilder
 
     private void ConfigureChunkingService()
     {
-        _services.AddSingleton<IChunkingService>(sp => 
-            new SimpleChunkingService(
+        _services.AddSingleton<IChunkingService>(sp =>
+            new SDK.Services.SimpleChunkingService(
                 _indexerOptions.ChunkSize,
                 _indexerOptions.ChunkOverlap
             )

@@ -1,6 +1,7 @@
 using System;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Caching.Memory;
 using FluxIndex.SDK.Configuration;
 using FluxIndex.SDK.Interfaces;
 using FluxIndex.SDK.Services;
@@ -154,7 +155,7 @@ public static class ServiceCollectionExtensions
         var options = new OpenAIOptions();
         configure(options);
         // TODO: OpenAI implementation
-        services.AddSingleton<FluxIndex.Application.Interfaces.IEmbeddingService>(sp => new MockEmbeddingService());
+        // Consumer must provide IEmbeddingService implementation
         return services;
     }
 
@@ -166,7 +167,7 @@ public static class ServiceCollectionExtensions
         var options = new AzureOpenAIOptions();
         configure(options);
         // TODO: Azure OpenAI implementation
-        services.AddSingleton<FluxIndex.Application.Interfaces.IEmbeddingService>(sp => new MockEmbeddingService());
+        // Consumer must provide IEmbeddingService implementation
         return services;
     }
 

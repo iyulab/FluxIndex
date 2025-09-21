@@ -1,10 +1,10 @@
-using FluxIndex.Core.Domain.Models;
+using FluxIndex.Domain.Models;
 using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace FluxIndex.Core.Application.Interfaces;
+namespace FluxIndex.Core.Interfaces;
 
 /// <summary>
 /// 희소(Sparse) 검색 인터페이스 - BM25 키워드 검색

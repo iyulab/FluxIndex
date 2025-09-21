@@ -1,6 +1,6 @@
 using Azure;
 using Azure.AI.OpenAI;
-using FluxIndex.Application.Interfaces;
+using FluxIndex.Core.Application.Interfaces;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -36,7 +36,7 @@ public class OpenAIEmbeddingService : IEmbeddingService
         _client = azureClient.GetEmbeddingClient(_config.Embedding.Model);
     }
 
-    public async Task<float[]> GenerateEmbeddingAsync(
+    public async Task<float[]> CreateEmbeddingAsync(
         string text,
         CancellationToken cancellationToken = default)
     {
@@ -100,7 +100,7 @@ public class OpenAIEmbeddingService : IEmbeddingService
         }
     }
 
-    public async Task<IEnumerable<float[]>> GenerateEmbeddingsBatchAsync(
+    public async Task<float[][]> CreateEmbeddingsAsync(
         IEnumerable<string> texts,
         CancellationToken cancellationToken = default)
     {
@@ -125,23 +125,28 @@ public class OpenAIEmbeddingService : IEmbeddingService
         }
 
         _logger.LogDebug("Batch embedding generation completed for {Total} texts", results.Count);
-        return results;
+        return results.ToArray();
     }
 
-    public int GetEmbeddingDimension()
+    public int Dimensions => _config.Embedding.Dimensions ?? 1536; // Default for text-embedding-3-small
+
+    public string ModelName => _config.Embedding.Model;
+
+    // Helper methods for backwards compatibility
+    public async Task<float[]> GenerateEmbeddingAsync(string text, CancellationToken cancellationToken = default)
     {
-        return _config.Embedding.Dimensions ?? 1536; // Default for text-embedding-3-small
+        return await CreateEmbeddingAsync(text, cancellationToken);
     }
 
-    public string GetModelName()
+    public async Task<IEnumerable<float[]>> GenerateEmbeddingsBatchAsync(IEnumerable<string> texts, CancellationToken cancellationToken = default)
     {
-        return _config.Embedding.Model;
+        var result = await CreateEmbeddingsAsync(texts, cancellationToken);
+        return result;
     }
 
-    public int GetMaxTokens()
-    {
-        return _config.Embedding.MaxTokens;
-    }
+    public int GetEmbeddingDimension() => Dimensions;
+    public string GetModelName() => ModelName;
+    public int GetMaxTokens() => _config.Embedding.MaxTokens;
 
     public Task<int> CountTokensAsync(string text, CancellationToken cancellationToken = default)
     {

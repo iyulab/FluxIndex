@@ -1,5 +1,5 @@
-using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Core.Domain.Models;
+using FluxIndex.Core.Interfaces;
+using FluxIndex.Domain.Models;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Concurrent;
@@ -9,7 +9,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace FluxIndex.Core.Application.Services;
+namespace FluxIndex.Core.Services;
 
 /// <summary>
 /// BM25 기반 희소 검색 구현체

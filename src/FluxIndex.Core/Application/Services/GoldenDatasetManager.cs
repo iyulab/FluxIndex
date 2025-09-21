@@ -1,5 +1,5 @@
-using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Core.Domain.Models;
+using FluxIndex.Core.Interfaces;
+using FluxIndex.Domain.Models;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
@@ -9,7 +9,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace FluxIndex.Core.Application.Services;
+namespace FluxIndex.Core.Services;
 
 /// <summary>
 /// 골든 데이터셋 관리 서비스

@@ -1,7 +1,7 @@
 using System;
 using System.ComponentModel.DataAnnotations;
 
-namespace FluxIndex.Core.Application.Options;
+namespace FluxIndex.Core.Options;
 
 /// <summary>
 /// 메타데이터 추출 서비스 설정 옵션

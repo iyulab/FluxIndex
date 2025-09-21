@@ -1,6 +1,6 @@
 using System;
 
-namespace FluxIndex.Core.Application.Options;
+namespace FluxIndex.Core.Options;
 
 /// <summary>
 /// 쿼리 변환 일반 옵션

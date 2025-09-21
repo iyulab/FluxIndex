@@ -3,15 +3,15 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using FluxIndex.Application.Interfaces;
-using FluxIndex.Domain.Entities;
+using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 
 namespace FluxIndex.SDK.Services;
 
 /// <summary>
-/// 메모리 기반 캐시 서비스 구현 (기본값)
+/// 메모리 기반 캐시 서비스 구현 (Core 인터페이스)
 /// </summary>
 internal class InMemoryCacheService : ICacheService
 {
@@ -47,14 +47,14 @@ internal class InMemoryCacheService : ICacheService
     }
 
     public Task SetAsync<T>(
-        string key, 
-        T value, 
-        TimeSpan? expiration = null, 
-        CancellationToken cancellationToken = default) 
+        string key,
+        T value,
+        TimeSpan? expiry = null,
+        CancellationToken cancellationToken = default)
         where T : class
     {
-        var options = expiration.HasValue
-            ? new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = expiration }
+        var options = expiry.HasValue
+            ? new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = expiry }
             : _defaultOptions;
         
         _cache.Set(key, value, options);
@@ -70,84 +70,31 @@ internal class InMemoryCacheService : ICacheService
         return Task.FromResult(true);
     }
 
-    public Task<bool> ExistsAsync(string key, CancellationToken cancellationToken = default)
+    public Task<long> RemoveByPatternAsync(string pattern, CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(_cache.TryGetValue(key, out _));
-    }
-
-    public Task ClearAsync(CancellationToken cancellationToken = default)
-    {
-        // In-memory cache doesn't support full clearing without disposing
-        // This would require maintaining a list of all keys
-        _logger.LogWarning("Full clearing is not supported in default memory cache");
-        return Task.CompletedTask;
-    }
-
-    public async Task<IEnumerable<SearchResult>> CacheSearchResultsAsync(
-        string queryKey,
-        IEnumerable<SearchResult> results,
-        TimeSpan? expiration = null,
-        CancellationToken cancellationToken = default)
-    {
-        var resultList = results.ToList();
-        var cacheKey = $"search:{queryKey}";
-        await SetAsync(cacheKey, resultList, expiration ?? TimeSpan.FromMinutes(5), cancellationToken);
-        return resultList;
-    }
-
-    public async Task<IEnumerable<SearchResult>?> GetCachedSearchResultsAsync(
-        string queryKey,
-        CancellationToken cancellationToken = default)
-    {
-        var cacheKey = $"search:{queryKey}";
-        var results = await GetAsync<List<SearchResult>>(cacheKey, cancellationToken);
-        return results;
-    }
-
-    public async Task CacheEmbeddingAsync(
-        string text,
-        float[] embedding,
-        TimeSpan? expiration = null,
-        CancellationToken cancellationToken = default)
-    {
-        var cacheKey = $"embedding:{ComputeHash(text)}";
-        await SetAsync(cacheKey, embedding, expiration ?? TimeSpan.FromHours(24), cancellationToken);
-    }
-
-    public Task<float[]?> GetCachedEmbeddingAsync(
-        string text,
-        CancellationToken cancellationToken = default)
-    {
-        var cacheKey = $"embedding:{ComputeHash(text)}";
-        return GetAsync<float[]>(cacheKey, cancellationToken);
-    }
-
-    public Task InvalidateDocumentCacheAsync(
-        string documentId,
-        CancellationToken cancellationToken = default)
-    {
-        // In-memory cache doesn't support pattern-based invalidation
-        _logger.LogWarning("Document cache invalidation is not fully supported in memory cache");
-        return Task.CompletedTask;
-    }
-
-    public Task<long> GetCacheSizeAsync(CancellationToken cancellationToken = default)
-    {
-        // Memory cache doesn't expose size information
+        // In-memory cache doesn't support pattern-based removal
+        _logger.LogWarning("Pattern-based removal is not supported in memory cache");
         return Task.FromResult(0L);
     }
 
-    public Task<IDictionary<string, object>> GetCacheStatsAsync(
+    public async Task CacheSearchResultsAsync(
+        string query,
+        IEnumerable<Core.Domain.Entities.SearchResult> results,
+        TimeSpan? expiry = null,
         CancellationToken cancellationToken = default)
     {
-        var stats = new Dictionary<string, object>
-        {
-            ["type"] = "InMemory",
-            ["sliding_expiration"] = _defaultOptions.SlidingExpiration?.ToString() ?? "N/A",
-            ["absolute_expiration"] = _defaultOptions.AbsoluteExpirationRelativeToNow?.ToString() ?? "N/A"
-        };
-        
-        return Task.FromResult<IDictionary<string, object>>(stats);
+        var cacheKey = $"search:{ComputeHash(query)}";
+        var resultList = results.ToList();
+        await SetAsync(cacheKey, resultList, expiry ?? TimeSpan.FromMinutes(5), cancellationToken);
+    }
+
+    public async Task<IEnumerable<Core.Domain.Entities.SearchResult>?> GetCachedSearchResultsAsync(
+        string query,
+        CancellationToken cancellationToken = default)
+    {
+        var cacheKey = $"search:{ComputeHash(query)}";
+        var results = await GetAsync<List<Core.Domain.Entities.SearchResult>>(cacheKey, cancellationToken);
+        return results;
     }
 
     private string ComputeHash(string text)

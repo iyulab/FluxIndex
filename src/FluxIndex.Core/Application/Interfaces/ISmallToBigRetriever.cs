@@ -1,10 +1,10 @@
-using FluxIndex.Core.Domain.Models;
+using FluxIndex.Domain.Models;
 using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace FluxIndex.Core.Application.Interfaces;
+namespace FluxIndex.Core.Interfaces;
 
 /// <summary>
 /// Small-to-Big 검색 인터페이스 - 정밀 검색과 컨텍스트 확장

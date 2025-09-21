@@ -2,6 +2,19 @@
   "version": 2,
   "dependencies": {
     "net9.0": {
+      "Microsoft.Extensions.Caching.Memory": {
+        "type": "Direct",
+        "requested": "[9.0.9, )",
+        "resolved": "9.0.9",
+        "contentHash": "ln31BtsDsBQxykJgxuCtiUXWRET9FmqeEq0BpPIghkYtGpDDVs8ZcLHAjCCzbw6aGoLek4Z7JaDjSO/CjOD0iw==",
+        "dependencies": {
+          "Microsoft.Extensions.Caching.Abstractions": "9.0.9",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "9.0.9",
+          "Microsoft.Extensions.Logging.Abstractions": "9.0.9",
+          "Microsoft.Extensions.Options": "9.0.9",
+          "Microsoft.Extensions.Primitives": "9.0.9"
+        }
+      },
       "Microsoft.Extensions.Caching.StackExchangeRedis": {
         "type": "Direct",
         "requested": "[9.0.9, )",
@@ -103,29 +116,17 @@
         "resolved": "5.0.1",
         "contentHash": "qEePWsaq9LoEEIqhbGe6D5J8c9IqQOUuTzzV6wn1POlfdLkJliZY3OlB0j0f17uMWlqZYjH7txj+2YbyrIA8Yg=="
       },
-      "System.Memory": {
-        "type": "Transitive",
-        "resolved": "4.5.5",
-        "contentHash": "XIWiDvKPXaTveaB7HVganDlOCRoj03l+jrwNvcge/t8vhGYKvqV+dMv6G4SAX2NoNmN0wZfVPTAlFwZcZvVOUw=="
-      },
-      "System.Numerics.Tensors": {
-        "type": "Transitive",
-        "resolved": "9.0.0",
-        "contentHash": "hyJB4UlpAi19Xr9AXzu2NuagKC4lPfHObNMEAA0HmqFz2rX7wKgzeYzO/jM/eBHDhnUGFFEjk5cOoJaxqg5J4A=="
-      },
       "fluxindex": {
         "type": "Project",
         "dependencies": {
           "Microsoft.Extensions.Caching.Memory": "[9.0.9, )",
-          "Microsoft.Extensions.Logging.Abstractions": "[9.0.9, )",
-          "Microsoft.ML.OnnxRuntime": "[1.22.1, )",
-          "Microsoft.ML.OnnxRuntime.Managed": "[1.22.2, )"
+          "Microsoft.Extensions.Logging.Abstractions": "[9.0.9, )"
         }
       },
       "fluxindex.cache.redis": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.Core": "[0.1.4, )",
+          "FluxIndex": "[0.2.0, )",
           "Microsoft.Extensions.Caching.StackExchangeRedis": "[9.0.9, )",
           "Microsoft.Extensions.Configuration.Abstractions": "[9.0.9, )",
           "Microsoft.Extensions.DependencyInjection": "[9.0.9, )",
@@ -138,6 +139,8 @@
       "fluxindex.core": {
         "type": "Project",
         "dependencies": {
+          "FluxIndex": "[0.2.0, )",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "[9.0.9, )",
           "Microsoft.Extensions.Logging.Abstractions": "[9.0.9, )"
         }
       },
@@ -147,19 +150,6 @@
         "resolved": "9.0.9",
         "contentHash": "NgtRHOdPrAEacfjXLSrH/SRrSqGf6Vaa6d16mW2yoyJdg7AJr0BnBvxkv7PkCm/CHVyzojTK7Y+oUDEulqY1Qw==",
         "dependencies": {
-          "Microsoft.Extensions.Primitives": "9.0.9"
-        }
-      },
-      "Microsoft.Extensions.Caching.Memory": {
-        "type": "CentralTransitive",
-        "requested": "[9.0.9, )",
-        "resolved": "9.0.9",
-        "contentHash": "ln31BtsDsBQxykJgxuCtiUXWRET9FmqeEq0BpPIghkYtGpDDVs8ZcLHAjCCzbw6aGoLek4Z7JaDjSO/CjOD0iw==",
-        "dependencies": {
-          "Microsoft.Extensions.Caching.Abstractions": "9.0.9",
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "9.0.9",
-          "Microsoft.Extensions.Logging.Abstractions": "9.0.9",
-          "Microsoft.Extensions.Options": "9.0.9",
           "Microsoft.Extensions.Primitives": "9.0.9"
         }
       },
@@ -219,25 +209,6 @@
           "Microsoft.Extensions.DependencyInjection.Abstractions": "9.0.9",
           "Microsoft.Extensions.Options": "9.0.9",
           "Microsoft.Extensions.Primitives": "9.0.9"
-        }
-      },
-      "Microsoft.ML.OnnxRuntime": {
-        "type": "CentralTransitive",
-        "requested": "[1.22.1, )",
-        "resolved": "1.22.1",
-        "contentHash": "oKRyzajMIB18Z9gmC9CyDPgyo5Yu/ZYZ/w3mF6NwqC0YHOZisGytdAaK3fvUFLZ5XDRZTDzzr+Nqx/clRtdCcA==",
-        "dependencies": {
-          "Microsoft.ML.OnnxRuntime.Managed": "1.22.1"
-        }
-      },
-      "Microsoft.ML.OnnxRuntime.Managed": {
-        "type": "CentralTransitive",
-        "requested": "[1.22.2, )",
-        "resolved": "1.22.2",
-        "contentHash": "ow6AZt5GaU/pS5GNtzU86gfzMN496PTPxWGv3832CD0AkwQ3B4ZHhoBah4+IxZXc55VOwK73ba4BeEVHE1aP0Q==",
-        "dependencies": {
-          "System.Memory": "4.5.5",
-          "System.Numerics.Tensors": "9.0.0"
         }
       },
       "System.Text.Json": {

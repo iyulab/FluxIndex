@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using FluxIndex.Core.Domain.Models;
+using FluxIndex.Domain.Models;
 
-namespace FluxIndex.Core.Application.Interfaces;
+namespace FluxIndex.Core.Interfaces;
 
 /// <summary>
 /// 벡터 인덱스 벤치마킹 서비스 인터페이스

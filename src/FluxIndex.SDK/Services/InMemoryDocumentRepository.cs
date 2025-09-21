@@ -1,5 +1,6 @@
-using FluxIndex.Application.Interfaces;
-using FluxIndex.Domain.Entities;
+using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Domain.Entities;
+using FluxIndex.Core.Domain.Models;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -10,7 +11,7 @@ using System.Threading.Tasks;
 namespace FluxIndex.SDK.Services;
 
 /// <summary>
-/// 메모리 기반 문서 리포지토리 구현
+/// 메모리 기반 문서 리포지토리 구현 (Core 인터페이스)
 /// </summary>
 public class InMemoryDocumentRepository : IDocumentRepository
 {
@@ -59,11 +60,6 @@ public class InMemoryDocumentRepository : IDocumentRepository
     public Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default)
     {
         return Task.FromResult(_documents.ContainsKey(id));
-    }
-
-    public Task<int> CountAsync(CancellationToken cancellationToken = default)
-    {
-        return Task.FromResult(_documents.Count);
     }
 
     public Task<int> GetCountAsync(CancellationToken cancellationToken = default)

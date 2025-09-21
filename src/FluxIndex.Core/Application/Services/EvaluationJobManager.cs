@@ -1,5 +1,5 @@
-using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Core.Domain.Models;
+using FluxIndex.Core.Interfaces;
+using FluxIndex.Domain.Models;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Concurrent;
@@ -8,7 +8,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace FluxIndex.Core.Application.Services;
+namespace FluxIndex.Core.Services;
 
 /// <summary>
 /// 평가 작업 관리 서비스

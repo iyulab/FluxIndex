@@ -1,31 +1,76 @@
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace FluxIndex.Core.Application.Interfaces;
+namespace FluxIndex.Core.Interfaces;
 
 /// <summary>
-/// 텍스트 완성 서비스 인터페이스 (LLM 기반 평가용)
+/// Abstraction for text completion services - to be implemented by consuming applications
+/// FluxIndex does not provide text completion implementation, only the interface
+/// This can be implemented using OpenAI, Azure OpenAI, Claude, local models, etc.
 /// </summary>
 public interface ITextCompletionService
 {
     /// <summary>
-    /// 주어진 프롬프트에 대한 텍스트 완성 생성
+    /// Generates a completion for the given prompt
     /// </summary>
-    Task<string> CompleteAsync(string prompt, CancellationToken cancellationToken = default);
+    /// <param name="prompt">The prompt to complete</param>
+    /// <param name="maxTokens">Maximum tokens to generate</param>
+    /// <param name="temperature">Sampling temperature (0.0 - 1.0)</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Generated text completion</returns>
+    Task<string> GenerateCompletionAsync(
+        string prompt,
+        int maxTokens = 500,
+        float temperature = 0.7f,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Generates a JSON completion with structured output
+    /// </summary>
+    /// <param name="prompt">The prompt requesting JSON output</param>
+    /// <param name="maxTokens">Maximum tokens to generate</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Generated JSON string</returns>
+    Task<string> GenerateJsonCompletionAsync(
+        string prompt,
+        int maxTokens = 500,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Counts tokens in the given text
+    /// </summary>
+    /// <param name="text">Text to count tokens for</param>
+    /// <returns>Number of tokens</returns>
+    int CountTokens(string text);
 }
 
 /// <summary>
-/// 테스트용 모의 텍스트 완성 서비스
+/// Optional: Mock implementation for testing without text completion service
 /// </summary>
 public class MockTextCompletionService : ITextCompletionService
 {
-    public Task<string> CompleteAsync(string prompt, CancellationToken cancellationToken = default)
+    public Task<string> GenerateCompletionAsync(
+        string prompt,
+        int maxTokens = 500,
+        float temperature = 0.7f,
+        CancellationToken cancellationToken = default)
     {
-        // 평가용 기본 점수 반환
-        if (prompt.Contains("faithfulness") || prompt.Contains("relevancy"))
-        {
-            return Task.FromResult("0.8");
-        }
-        return Task.FromResult("Mock response");
+        // Simple mock response for testing
+        return Task.FromResult($"Mock response for: {prompt.Substring(0, System.Math.Min(50, prompt.Length))}...");
+    }
+
+    public Task<string> GenerateJsonCompletionAsync(
+        string prompt,
+        int maxTokens = 500,
+        CancellationToken cancellationToken = default)
+    {
+        // Return minimal valid JSON
+        return Task.FromResult("{}");
+    }
+
+    public int CountTokens(string text)
+    {
+        // Rough approximation: 1 token ≈ 4 characters
+        return text.Length / 4;
     }
 }

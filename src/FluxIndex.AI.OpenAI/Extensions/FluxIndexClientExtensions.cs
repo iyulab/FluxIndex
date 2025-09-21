@@ -1,9 +1,10 @@
 using FluxIndex.AI.OpenAI.Integration;
 using FluxIndex.AI.OpenAI.Services;
 using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Core.Application.Options;
-using FluxIndex.Domain.Entities;
+// using FluxIndex.Core.Application.Options; // Options may be in different namespace
+using FluxIndex.Core.Domain.Entities;
 using FluxIndex.SDK;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System;

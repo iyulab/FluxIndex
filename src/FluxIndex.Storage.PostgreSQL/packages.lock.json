@@ -298,9 +298,18 @@
         "resolved": "7.0.0",
         "contentHash": "qmeeYNROMsONF6ndEZcIQ+VxR4Q/TX/7uIVLJqtwIWL7dDWeh0l1UIqgo4wYyjG//5lUNhwkLDSFl+pAWO6oiA=="
       },
+      "fluxindex": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Extensions.Caching.Memory": "[9.0.9, )",
+          "Microsoft.Extensions.Logging.Abstractions": "[9.0.9, )"
+        }
+      },
       "fluxindex.core": {
         "type": "Project",
         "dependencies": {
+          "FluxIndex": "[0.2.0, )",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "[9.0.9, )",
           "Microsoft.Extensions.Logging.Abstractions": "[9.0.9, )"
         }
       },

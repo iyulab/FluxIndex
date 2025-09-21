@@ -1,5 +1,6 @@
-using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Core.Domain.Models;
+using FluxIndex.Core.Interfaces;
+using FluxIndex.Domain.Models;
+using DocumentChunkEntity = FluxIndex.Domain.Entities.DocumentChunk;
 // IMemoryCache는 Core 프로젝트에서 사용하지 않음
 using Microsoft.Extensions.Logging;
 using System;
@@ -11,7 +12,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace FluxIndex.Core.Application.Services;
+namespace FluxIndex.Core.Services;
 
 /// <summary>
 /// Small-to-Big 검색 구현체 - 정밀 검색과 컨텍스트 확장
@@ -268,9 +269,24 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         ContextExpansionOptions? expansionOptions = null,
         CancellationToken cancellationToken = default)
     {
+        // Models.DocumentChunk를 Entities.DocumentChunk로 변환
+        var primaryChunkEntity = new DocumentChunkEntity
+        {
+            Id = primaryChunk.Id,
+            DocumentId = primaryChunk.DocumentId,
+            Content = primaryChunk.Content,
+            ChunkIndex = primaryChunk.ChunkIndex,
+            TotalChunks = primaryChunk.TotalChunks,
+            Embedding = primaryChunk.Embedding,
+            Score = primaryChunk.Score,
+            TokenCount = primaryChunk.TokenCount,
+            Metadata = primaryChunk.Metadata,
+            CreatedAt = primaryChunk.CreatedAt
+        };
+
         expansionOptions ??= new ContextExpansionOptions();
         var stopwatch = Stopwatch.StartNew();
-        var expandedChunks = new List<DocumentChunk>();
+        var expandedChunks = new List<DocumentChunkEntity>();
         var expansionBreakdown = new Dictionary<ExpansionMethod, int>();
 
         _logger.LogDebug("컨텍스트 확장 시작: {ChunkId}, 윈도우 크기: {WindowSize}", primaryChunk.Id, windowSize);
@@ -280,7 +296,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
             // 1. 계층적 확장 (부모-자식 관계)
             if (expansionOptions.EnableHierarchicalExpansion)
             {
-                var hierarchicalChunks = await ExpandHierarchicallyAsync(primaryChunk, windowSize / 3, cancellationToken);
+                var hierarchicalChunks = await ExpandHierarchicallyAsync(primaryChunkEntity, windowSize / 3, cancellationToken);
                 expandedChunks.AddRange(hierarchicalChunks);
                 expansionBreakdown[ExpansionMethod.Hierarchical] = hierarchicalChunks.Count;
             }
@@ -288,7 +304,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
             // 2. 순차적 확장 (인접 청크)
             if (expansionOptions.EnableSequentialExpansion)
             {
-                var sequentialChunks = await ExpandSequentiallyAsync(primaryChunk, windowSize / 2, cancellationToken);
+                var sequentialChunks = await ExpandSequentiallyAsync(primaryChunkEntity, windowSize / 2, cancellationToken);
                 expandedChunks.AddRange(sequentialChunks);
                 expansionBreakdown[ExpansionMethod.Sequential] = sequentialChunks.Count;
             }
@@ -297,7 +313,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
             if (expansionOptions.EnableSemanticExpansion)
             {
                 var semanticChunks = await ExpandSemanticallyAsync(
-                    primaryChunk, windowSize / 4, expansionOptions.SemanticSimilarityThreshold, cancellationToken);
+                    primaryChunkEntity, windowSize / 4, expansionOptions.SemanticSimilarityThreshold, cancellationToken);
                 expandedChunks.AddRange(semanticChunks);
                 expansionBreakdown[ExpansionMethod.Semantic] = semanticChunks.Count;
             }
@@ -310,8 +326,8 @@ public class SmallToBigRetriever : ISmallToBigRetriever
 
             // 5. 품질 필터링
             var qualityFiltered = expandedChunks
-                .Where(c => EvaluateChunkQuality(c, primaryChunk) >= expansionOptions.QualityThreshold)
-                .OrderByDescending(c => EvaluateChunkQuality(c, primaryChunk))
+                .Where(c => EvaluateChunkQuality(c, primaryChunkEntity) >= expansionOptions.QualityThreshold)
+                .OrderByDescending(c => EvaluateChunkQuality(c, primaryChunkEntity))
                 .Take(windowSize)
                 .ToList();
 
@@ -319,10 +335,34 @@ public class SmallToBigRetriever : ISmallToBigRetriever
 
             var result = new ContextExpansionResult
             {
-                OriginalChunk = primaryChunk,
-                ExpandedChunks = qualityFiltered,
+                OriginalChunk = new FluxIndex.Domain.Models.DocumentChunk
+                {
+                    Id = primaryChunk.Id,
+                    DocumentId = primaryChunk.DocumentId,
+                    Content = primaryChunk.Content,
+                    ChunkIndex = primaryChunk.ChunkIndex,
+                    TotalChunks = primaryChunk.TotalChunks,
+                    Embedding = primaryChunk.Embedding,
+                    Score = primaryChunk.Score,
+                    TokenCount = primaryChunk.TokenCount,
+                    Metadata = primaryChunk.Metadata,
+                    CreatedAt = primaryChunk.CreatedAt
+                },
+                ExpandedChunks = qualityFiltered.Select(chunk => new FluxIndex.Domain.Models.DocumentChunk
+                {
+                    Id = chunk.Id,
+                    DocumentId = chunk.DocumentId,
+                    Content = chunk.Content,
+                    ChunkIndex = chunk.ChunkIndex,
+                    TotalChunks = chunk.TotalChunks,
+                    Embedding = chunk.Embedding,
+                    Score = chunk.Score,
+                    TokenCount = chunk.TokenCount,
+                    Metadata = chunk.Metadata,
+                    CreatedAt = chunk.CreatedAt
+                }).ToList(),
                 ExpansionBreakdown = expansionBreakdown,
-                ExpansionQuality = CalculateExpansionQuality(qualityFiltered, primaryChunk),
+                ExpansionQuality = CalculateExpansionQuality(qualityFiltered, primaryChunkEntity),
                 ExpansionTimeMs = stopwatch.Elapsed.TotalMilliseconds
             };
 
@@ -477,7 +517,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
 
     private async Task<SmallToBigResult> CreateSmallToBigResultAsync(
         string query,
-        DocumentChunk primaryChunk,
+        DocumentChunkEntity primaryChunk,
         int windowSize,
         SmallToBigOptions options,
         QueryComplexityAnalysis complexityAnalysis,
@@ -778,12 +818,12 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         return Math.Min(1.0, relationshipRatio / 2.0); // 청크당 평균 2개 관계가 최적
     }
 
-    private async Task<List<DocumentChunk>> ExpandHierarchicallyAsync(
-        DocumentChunk primaryChunk,
+    private async Task<List<DocumentChunkEntity>> ExpandHierarchicallyAsync(
+        DocumentChunkEntity primaryChunk,
         int maxChunks,
         CancellationToken cancellationToken)
     {
-        var expandedChunks = new List<DocumentChunk>();
+        var expandedChunks = new List<DocumentChunkEntity>();
 
         try
         {
@@ -815,17 +855,17 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         return expandedChunks;
     }
 
-    private async Task<List<DocumentChunk>> ExpandSequentiallyAsync(
-        DocumentChunk primaryChunk,
+    private async Task<List<DocumentChunkEntity>> ExpandSequentiallyAsync(
+        DocumentChunkEntity primaryChunk,
         int maxChunks,
         CancellationToken cancellationToken)
     {
-        var expandedChunks = new List<DocumentChunk>();
+        var expandedChunks = new List<DocumentChunkEntity>();
 
         try
         {
             // GetChunksByDocumentIdAsync는 현재 IHybridSearchService에 없으므로 단순 구현
-            var allChunks = new List<DocumentChunk> { primaryChunk };
+            var allChunks = new List<DocumentChunkEntity> { primaryChunk };
             var sortedChunks = allChunks.OrderBy(c => c.ChunkIndex).ToList();
 
             var primaryIndex = sortedChunks.FindIndex(c => c.Id == primaryChunk.Id);
@@ -852,13 +892,13 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         return expandedChunks;
     }
 
-    private async Task<List<DocumentChunk>> ExpandSemanticallyAsync(
-        DocumentChunk primaryChunk,
+    private async Task<List<DocumentChunkEntity>> ExpandSemanticallyAsync(
+        DocumentChunkEntity primaryChunk,
         int maxChunks,
         double similarityThreshold,
         CancellationToken cancellationToken)
     {
-        var expandedChunks = new List<DocumentChunk>();
+        var expandedChunks = new List<DocumentChunkEntity>();
 
         try
         {
@@ -888,9 +928,9 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         return expandedChunks;
     }
 
-    private List<DocumentChunk> DeduplicateChunks(List<DocumentChunk> chunks, double threshold)
+    private List<DocumentChunkEntity> DeduplicateChunks(List<DocumentChunkEntity> chunks, double threshold)
     {
-        var deduplicated = new List<DocumentChunk>();
+        var deduplicated = new List<DocumentChunkEntity>();
 
         foreach (var chunk in chunks)
         {
@@ -904,7 +944,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         return deduplicated;
     }
 
-    private double EvaluateChunkQuality(DocumentChunk chunk, DocumentChunk primaryChunk)
+    private double EvaluateChunkQuality(DocumentChunkEntity chunk, DocumentChunkEntity primaryChunk)
     {
         var similarity = CalculateSemanticSimilarity(chunk.Content, primaryChunk.Content);
         var lengthScore = Math.Min(1.0, chunk.Content.Length / 500.0); // 적절한 길이 선호
@@ -913,7 +953,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         return (similarity * 0.5) + (lengthScore * 0.3) + (freshnessScore * 0.2);
     }
 
-    private double CalculateExpansionQuality(List<DocumentChunk> expandedChunks, DocumentChunk primaryChunk)
+    private double CalculateExpansionQuality(List<DocumentChunkEntity> expandedChunks, DocumentChunkEntity primaryChunk)
     {
         if (!expandedChunks.Any()) return 0.0;
 

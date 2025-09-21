@@ -10,12 +10,12 @@ public class DocumentChunk
 {
     public string Id { get; set; }
     public string DocumentId { get; set; }
-    public string Content { get; private set; }
-    public int ChunkIndex { get; private set; }
-    public int TotalChunks { get; private set; }
+    public string Content { get; set; }
+    public int ChunkIndex { get; set; }
+    public int TotalChunks { get; set; }
     public float[]? Embedding { get; set; }
     public Dictionary<string, object> Properties { get; private set; }
-    public DateTime CreatedAt { get; private set; }
+    public DateTime CreatedAt { get; set; }
     public int TokenCount { get; set; }
     public float? Score { get; set; }
     public Dictionary<string, object>? Metadata { get; set; }
@@ -25,7 +25,7 @@ public class DocumentChunk
     public List<ChunkRelationship> Relationships { get; private set; }
     public ChunkQuality Quality { get; private set; }
 
-    private DocumentChunk()
+    public DocumentChunk()
     {
         Id = Guid.NewGuid().ToString();
         DocumentId = string.Empty;

@@ -1,10 +1,10 @@
-using FluxIndex.Core.Domain.Models;
+using FluxIndex.Domain.Models;
 using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace FluxIndex.Core.Application.Interfaces;
+namespace FluxIndex.Core.Interfaces;
 
 /// <summary>
 /// 시맨틱 캐싱 서비스 인터페이스
@@ -53,7 +53,7 @@ public interface ISemanticCacheService
     /// </summary>
     /// <param name="cancellationToken">취소 토큰</param>
     /// <returns>캐시 통계 정보</returns>
-    Task<CacheStatistics> GetCacheStatisticsAsync(
+    Task<SemanticCacheStatistics> GetCacheStatisticsAsync(
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -151,9 +151,9 @@ public class SearchMetadata
 }
 
 /// <summary>
-/// 캐시 통계
+/// 시맨틱 캐시 통계
 /// </summary>
-public class CacheStatistics
+public class SemanticCacheStatistics
 {
     /// <summary>
     /// 총 캐시 엔트리 수
