@@ -63,8 +63,24 @@ jobs:
         if find . -name "*.Tests.csproj" -o -name "*.Test.csproj" | grep -q .; then
           echo "🧪 Running tests..."
           echo "⚠️ Excluding FluxIndex.Cache.Redis.Tests due to Docker dependency issues in CI"
-          dotnet test --no-build --configuration ${{ env.CONFIGURATION }} --verbosity normal \
-            --filter "FullyQualifiedName!~FluxIndex.Cache.Redis.Tests"
+
+          # Find all test projects except Redis cache tests
+          TEST_PROJECTS=$(find . -name "*.Tests.csproj" -o -name "*.Test.csproj" | grep -v "FluxIndex.Cache.Redis.Tests")
+
+          if [ -n "$TEST_PROJECTS" ]; then
+            echo "Running test projects:"
+            echo "$TEST_PROJECTS"
+
+            # Run each test project individually
+            echo "$TEST_PROJECTS" | while read -r project; do
+              if [ -n "$project" ]; then
+                echo "🔸 Testing: $project"
+                dotnet test "$project" --no-build --configuration ${{ env.CONFIGURATION }} --verbosity normal
+              fi
+            done
+          else
+            echo "⚠️ No test projects found after exclusions"
+          fi
         else
           echo "⚠️ No test projects found"
         fi
