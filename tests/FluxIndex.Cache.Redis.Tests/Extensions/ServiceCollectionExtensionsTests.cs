@@ -2,9 +2,12 @@ using FluxIndex.Cache.Redis.Configuration;
 using FluxIndex.Cache.Redis.Extensions;
 using FluxIndex.Core.Application.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 using System;
+using System.Linq;
+using System.Threading;
 using Testcontainers.Redis;
 using Xunit;
 using Xunit.Abstractions;
@@ -240,24 +243,31 @@ public class ServiceCollectionExtensionsTests : IAsyncLifetime
 
     private class MockEmbeddingService : IEmbeddingService
     {
-        public Task<Core.Domain.Models.EmbeddingVector> GenerateEmbeddingAsync(string text, System.Threading.CancellationToken cancellationToken = default)
+        public Task<float[]> GenerateEmbeddingAsync(string text, CancellationToken cancellationToken = default)
         {
             var vector = new float[384]; // Standard embedding size
             for (int i = 0; i < vector.Length; i++)
             {
                 vector[i] = 0.1f; // Simple mock vector
             }
-            return Task.FromResult(Core.Domain.Models.EmbeddingVector.Create(vector));
+            return Task.FromResult(vector);
         }
 
-        public Task<Core.Domain.Models.EmbeddingVector[]> GenerateEmbeddingsAsync(string[] texts, System.Threading.CancellationToken cancellationToken = default)
+        public Task<IEnumerable<float[]>> GenerateEmbeddingsBatchAsync(IEnumerable<string> texts, CancellationToken cancellationToken = default)
         {
-            var results = new Core.Domain.Models.EmbeddingVector[texts.Length];
-            for (int i = 0; i < texts.Length; i++)
-            {
-                results[i] = Core.Domain.Models.EmbeddingVector.Create(new float[384]);
-            }
-            return Task.FromResult(results);
+            var results = texts.Select(_ => new float[384]).ToArray();
+            return Task.FromResult<IEnumerable<float[]>>(results);
+        }
+
+        public int GetEmbeddingDimension() => 384;
+
+        public string GetModelName() => "mock-model";
+
+        public int GetMaxTokens() => 8192;
+
+        public Task<int> CountTokensAsync(string text, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(text.Length / 4); // Simple approximation
         }
     }
 }

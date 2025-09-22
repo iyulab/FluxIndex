@@ -126,7 +126,7 @@
         "dependencies": {
           "FluxIndex": "[0.2.0, )",
           "FluxIndex.Core": "[0.2.0, )",
-          "Microsoft.Extensions.Http": "[9.0.0, )"
+          "Microsoft.Extensions.Http": "[9.0.9, )"
         }
       },
       "HtmlAgilityPack": {
@@ -202,7 +202,7 @@
       },
       "Microsoft.Extensions.Http": {
         "type": "CentralTransitive",
-        "requested": "[9.0.0, )",
+        "requested": "[9.0.9, )",
         "resolved": "9.0.9",
         "contentHash": "dTmh5Rj4/WpirsN1PDs8YhyaodgtzxWqPKaT+B3Zn72uHKLJOuxIt06HTea126eEDWHYSLNN61I4snw7PuerFg==",
         "dependencies": {
