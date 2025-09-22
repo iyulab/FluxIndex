@@ -218,6 +218,11 @@ public class ServiceCollectionExtensionsTests : RedisTestBase
         // Assert
         var serviceProvider = services.BuildServiceProvider();
 
+        // Verify all required dependencies are registered
+        Assert.NotNull(serviceProvider.GetService<IConnectionMultiplexer>());
+        Assert.NotNull(serviceProvider.GetService<IEmbeddingService>());
+        Assert.NotNull(serviceProvider.GetService<IOptions<RedisSemanticCacheOptions>>());
+
         // Should only have one semantic cache service registered (TryAdd behavior)
         var semanticCacheServices = serviceProvider.GetServices<ISemanticCacheService>();
         Assert.Single(semanticCacheServices);
@@ -244,6 +249,11 @@ public class ServiceCollectionExtensionsTests : RedisTestBase
         });
 
         var serviceProvider = services.BuildServiceProvider();
+
+        // Verify all dependencies are available before getting the service
+        Assert.NotNull(serviceProvider.GetService<IConnectionMultiplexer>());
+        Assert.NotNull(serviceProvider.GetService<IEmbeddingService>());
+        Assert.NotNull(serviceProvider.GetService<IOptions<RedisSemanticCacheOptions>>());
 
         // Act
         var semanticCache = serviceProvider.GetRequiredService<ISemanticCacheService>();

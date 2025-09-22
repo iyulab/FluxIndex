@@ -57,7 +57,14 @@ public static class ServiceCollectionExtensions
         // Redis 연결 등록
         services.AddSingleton<IConnectionMultiplexer>(provider =>
         {
-            return ConnectionMultiplexer.Connect(options.ConnectionString);
+            try
+            {
+                return ConnectionMultiplexer.Connect(options.ConnectionString);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to connect to Redis with connection string: {options.ConnectionString}", ex);
+            }
         });
 
         // Redis 캐시 옵션 등록
