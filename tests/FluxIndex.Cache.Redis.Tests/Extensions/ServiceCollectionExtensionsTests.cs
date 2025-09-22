@@ -33,6 +33,9 @@ public class ServiceCollectionExtensionsTests : RedisTestBase
         var services = new ServiceCollection();
         services.AddLogging();
 
+        // Add required IEmbeddingService dependency
+        services.AddSingleton<IEmbeddingService, MockEmbeddingService>();
+
         // Act
         services.AddRedisSemanticCache(ConnectionString);
 
@@ -58,6 +61,9 @@ public class ServiceCollectionExtensionsTests : RedisTestBase
         // Arrange
         var services = new ServiceCollection();
         services.AddLogging();
+
+        // Add required IEmbeddingService dependency
+        services.AddSingleton<IEmbeddingService, MockEmbeddingService>();
 
         // Act
         services.AddRedisSemanticCache(options =>
@@ -90,6 +96,9 @@ public class ServiceCollectionExtensionsTests : RedisTestBase
         var services = new ServiceCollection();
         services.AddLogging();
 
+        // Add required IEmbeddingService dependency
+        services.AddSingleton<IEmbeddingService, MockEmbeddingService>();
+
         // Pre-register Redis connection
         services.AddSingleton<IConnectionMultiplexer>(provider =>
             ConnectionMultiplexer.Connect(ConnectionString));
@@ -121,6 +130,9 @@ public class ServiceCollectionExtensionsTests : RedisTestBase
         // Arrange
         var services = new ServiceCollection();
         services.AddLogging();
+
+        // Add required IEmbeddingService dependency
+        services.AddSingleton<IEmbeddingService, MockEmbeddingService>();
 
         // Act
         services.AddRedisDistributedCacheWithSemanticCache(
@@ -191,6 +203,9 @@ public class ServiceCollectionExtensionsTests : RedisTestBase
         // Arrange
         var services = new ServiceCollection();
         services.AddLogging();
+
+        // Add required IEmbeddingService dependency
+        services.AddSingleton<IEmbeddingService, MockEmbeddingService>();
 
         // Act
         services.AddRedisSemanticCache(ConnectionString);
