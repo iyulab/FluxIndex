@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace FluxIndex.Core.Interfaces;
+namespace FluxIndex.Core.Application.Interfaces;
 
 /// <summary>
 /// 희소(Sparse) 검색 인터페이스 - BM25 키워드 검색

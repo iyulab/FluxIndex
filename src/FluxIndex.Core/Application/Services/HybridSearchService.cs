@@ -1,4 +1,4 @@
-using FluxIndex.Core.Interfaces;
+using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Domain.Models;
 using Microsoft.Extensions.Logging;
 using System;
@@ -250,14 +250,14 @@ public class HybridSearchService : IHybridSearchService
                     ChunkIndex = chunk.ChunkIndex,
                     TotalChunks = chunk.TotalChunks,
                     Embedding = chunk.Embedding,
-                    Score = chunk.Score,
+                    Score = chunk.Score ?? 0f,
                     TokenCount = chunk.TokenCount,
                     Metadata = chunk.Metadata,
                     CreatedAt = chunk.CreatedAt
                 },
-                Score = chunk.Score,
+                Score = chunk.Score ?? 0f,
                 Rank = index + 1,
-                Distance = 1.0 - chunk.Score // 점수를 거리로 변환
+                Distance = 1.0 - (chunk.Score ?? 0f) // 점수를 거리로 변환
             }).ToList();
 
             return results;

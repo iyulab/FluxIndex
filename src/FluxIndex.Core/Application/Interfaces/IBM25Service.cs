@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace FluxIndex.Core.Interfaces;
+namespace FluxIndex.Core.Application.Interfaces;
 
 /// <summary>
 /// Service for BM25 (Best Matching 25) keyword-based ranking algorithm

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using FluxIndex.Core.Interfaces;
+using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Domain.Entities;
 using Microsoft.Extensions.Logging;
 using DomainSearchResult = FluxIndex.Domain.Entities.SearchResult;
@@ -38,7 +38,7 @@ public class SearchService
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public async Task<IEnumerable<FluxIndex.Core.Interfaces.SearchResult>> SearchAsync(
+    public async Task<IEnumerable<FluxIndex.Core.Application.Interfaces.SearchResult>> SearchAsync(
         string query,
         int topK = 10,
         float minScore = 0.0f,
@@ -53,13 +53,13 @@ public class SearchService
         var searchResults = await _vectorStore.SearchAsync(queryEmbedding, topK, minScore, cancellationToken);
 
         // Convert to search results
-        var results = new List<FluxIndex.Core.Interfaces.SearchResult>();
+        var results = new List<FluxIndex.Core.Application.Interfaces.SearchResult>();
         foreach (var chunk in searchResults)
         {
             var document = await _documentRepository.GetByIdAsync(chunk.DocumentId, cancellationToken);
             if (document != null)
             {
-                results.Add(new FluxIndex.Core.Interfaces.SearchResult
+                results.Add(new FluxIndex.Core.Application.Interfaces.SearchResult
                 {
                     Chunk = chunk,
                     Score = chunk.Score ?? 0,
@@ -73,7 +73,7 @@ public class SearchService
         return results;
     }
 
-    public async Task<IEnumerable<FluxIndex.Core.Interfaces.SearchResult>> FindSimilarAsync(
+    public async Task<IEnumerable<FluxIndex.Core.Application.Interfaces.SearchResult>> FindSimilarAsync(
         string documentId,
         int topK = 10,
         float minScore = 0.8f,
@@ -88,7 +88,7 @@ public class SearchService
         if (firstChunk?.Embedding == null)
         {
             _logger.LogWarning("No chunks found for document {DocumentId}", documentId);
-            return Enumerable.Empty<FluxIndex.Core.Interfaces.SearchResult>();
+            return Enumerable.Empty<FluxIndex.Core.Application.Interfaces.SearchResult>();
         }
 
         // Search for similar documents
@@ -100,7 +100,7 @@ public class SearchService
         );
 
         // Convert to search results, excluding self
-        var results = new List<FluxIndex.Core.Interfaces.SearchResult>();
+        var results = new List<FluxIndex.Core.Application.Interfaces.SearchResult>();
         foreach (var chunk in searchResults)
         {
             if (chunk.DocumentId == documentId) continue; // Skip self
@@ -108,7 +108,7 @@ public class SearchService
             var document = await _documentRepository.GetByIdAsync(chunk.DocumentId, cancellationToken);
             if (document != null)
             {
-                results.Add(new FluxIndex.Core.Interfaces.SearchResult
+                results.Add(new FluxIndex.Core.Application.Interfaces.SearchResult
                 {
                     Chunk = chunk,
                     Score = chunk.Score ?? 0,
@@ -208,8 +208,8 @@ public class SearchService
 
     #region Private Helper Methods
 
-    private IEnumerable<FluxIndex.Core.Interfaces.SearchResult> ApplyMetadataFilters(
-        IEnumerable<FluxIndex.Core.Interfaces.SearchResult> results,
+    private IEnumerable<FluxIndex.Core.Application.Interfaces.SearchResult> ApplyMetadataFilters(
+        IEnumerable<FluxIndex.Core.Application.Interfaces.SearchResult> results,
         Dictionary<string, object>? filters)
     {
         if (filters == null || !filters.Any())

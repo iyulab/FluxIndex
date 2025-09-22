@@ -71,7 +71,7 @@ public class SimpleHybridTest
         }
     }
 
-    private async Task IndexTestDocumentsAsync(IFluxIndexClient client)
+    private async Task IndexTestDocumentsAsync(FluxIndexContext client)
     {
         AnsiConsole.MarkupLine("[blue]테스트 문서 인덱싱 중...[/]");
 
@@ -103,7 +103,7 @@ public class SimpleHybridTest
         AnsiConsole.MarkupLine($"[green]{testDocuments.Length}개 문서 인덱싱 완료![/]");
     }
 
-    private async Task IndexDocumentAsync(IFluxIndexClient client, string docId, string content)
+    private async Task IndexDocumentAsync(FluxIndexContext client, string docId, string content)
     {
         try
         {
@@ -118,7 +118,7 @@ public class SimpleHybridTest
         }
     }
 
-    private async Task ExecuteBasicSearchTestAsync(IFluxIndexClient client)
+    private async Task ExecuteBasicSearchTestAsync(FluxIndexContext client)
     {
         AnsiConsole.Rule("[yellow]기본 벡터 검색 테스트[/]");
 
@@ -174,7 +174,7 @@ public class SimpleHybridTest
         }
     }
 
-    private async Task ExecuteBasicHybridSearchAsync(IFluxIndexClient client)
+    private async Task ExecuteBasicHybridSearchAsync(FluxIndexContext client)
     {
         AnsiConsole.Rule("[yellow]기본 하이브리드 검색 테스트[/]");
 

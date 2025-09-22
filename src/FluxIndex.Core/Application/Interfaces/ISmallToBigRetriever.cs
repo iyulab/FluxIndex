@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace FluxIndex.Core.Interfaces;
+namespace FluxIndex.Core.Application.Interfaces;
 
 /// <summary>
 /// Small-to-Big 검색 인터페이스 - 정밀 검색과 컨텍스트 확장

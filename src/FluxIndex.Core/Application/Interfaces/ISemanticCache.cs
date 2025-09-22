@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace FluxIndex.Core.Interfaces;
+namespace FluxIndex.Core.Application.Interfaces;
 
 /// <summary>
 /// Interface for semantic caching that stores query results based on semantic similarity

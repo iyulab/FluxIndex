@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Spectre.Console;
+using TestDocument = RealQualityTest.StandaloneTestDocument;
 
 namespace RealQualityTest;
 
@@ -503,7 +504,7 @@ public class StandaloneHybridTest
 }
 
 // 데이터 모델들
-public record TestDocument(string Id, string Content, string[] Terms);
+public record StandaloneTestDocument(string Id, string Content, string[] Terms);
 public record TestQuery(string Query, string[] ExpectedResults);
 
 public class SearchResult

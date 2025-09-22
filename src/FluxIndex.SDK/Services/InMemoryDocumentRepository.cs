@@ -1,6 +1,6 @@
 using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Core.Domain.Entities;
-using FluxIndex.Core.Domain.Models;
+using FluxIndex.Domain.Entities;
+using FluxIndex.Domain.Models;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -60,6 +60,11 @@ public class InMemoryDocumentRepository : IDocumentRepository
     public Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default)
     {
         return Task.FromResult(_documents.ContainsKey(id));
+    }
+
+    public Task<int> CountAsync(CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(_documents.Count);
     }
 
     public Task<int> GetCountAsync(CancellationToken cancellationToken = default)

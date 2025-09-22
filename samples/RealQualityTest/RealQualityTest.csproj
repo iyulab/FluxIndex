@@ -23,6 +23,15 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove="EvaluationExample.cs" />
+    <Compile Remove="HybridSearchQualityTest.cs" />
+    <Compile Remove="SimpleHybridTest.cs" />
+    <Compile Remove="SimpleQualityTest.cs" />
+    <Compile Remove="SimpleTestRunner.cs" />
+    <Compile Remove="StandaloneHybridTest.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

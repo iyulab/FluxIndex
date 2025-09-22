@@ -1,9 +1,11 @@
 using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Core.Domain.ValueObjects;
-using FluxIndex.Core.Domain.Models;
-using FluxIndex.Core.Domain.Entities;
+using FluxIndex.Domain.ValueObjects;
+using FluxIndex.Domain.Models;
+using FluxIndex.Domain.Entities;
 using FluxIndex.SDK.Models;
 using FluxIndex.SDK.Services;
+using DocumentChunkEntity = FluxIndex.Domain.Entities.DocumentChunk;
+using DocumentChunkModel = FluxIndex.Domain.Models.DocumentChunk;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System;
@@ -16,36 +18,38 @@ using System.Threading.Tasks;
 namespace FluxIndex.SDK;
 
 /// <summary>
-/// FluxIndex 클라이언트 - Retriever와 Indexer를 통한 간편한 진입점
+/// FluxIndex 컨텍스트 - Retriever와 Indexer를 통한 간편한 진입점
 /// 시맨틱 캐싱을 통한 성능 최적화 지원
 /// </summary>
-public class FluxIndexClient : IFluxIndexClient
+public class FluxIndexContext : IFluxIndexContext
 {
     private readonly Retriever _retriever;
     private readonly Indexer _indexer;
     private readonly ISemanticCacheService? _cacheService;
     private readonly IHybridSearchService? _hybridSearchService;
     private readonly ISmallToBigRetriever? _smallToBigRetriever;
-    private readonly ILogger<FluxIndexClient> _logger;
+    private readonly ILogger<FluxIndexContext> _logger;
 
-    public FluxIndexClient(
+    public FluxIndexContext(
         Retriever retriever,
         Indexer indexer,
-        ILogger<FluxIndexClient>? logger = null,
+        IServiceProvider serviceProvider,
+        ILogger<FluxIndexContext>? logger = null,
         ISemanticCacheService? cacheService = null,
         IHybridSearchService? hybridSearchService = null,
         ISmallToBigRetriever? smallToBigRetriever = null)
     {
         _retriever = retriever;
         _indexer = indexer;
+        ServiceProvider = serviceProvider;
         _cacheService = cacheService;
         _hybridSearchService = hybridSearchService;
         _smallToBigRetriever = smallToBigRetriever;
-        _logger = logger ?? new NullLogger<FluxIndexClient>();
+        _logger = logger ?? new NullLogger<FluxIndexContext>();
 
         if (_cacheService != null)
         {
-            _logger.LogInformation("FluxIndexClient initialized with semantic caching enabled");
+            _logger.LogInformation("FluxIndexContext initialized with semantic caching enabled");
         }
 
         if (_hybridSearchService != null)
@@ -70,11 +74,16 @@ public class FluxIndexClient : IFluxIndexClient
     public Indexer Indexer => _indexer;
 
     /// <summary>
-    /// FluxIndexClient 빌더 생성
+    /// ServiceProvider 접근자
     /// </summary>
-    public static FluxIndexClientBuilder CreateBuilder()
+    public IServiceProvider ServiceProvider { get; }
+
+    /// <summary>
+    /// FluxIndexContext 빌더 생성
+    /// </summary>
+    public static FluxIndexContextBuilder CreateBuilder()
     {
-        return new FluxIndexClientBuilder();
+        return new FluxIndexContextBuilder();
     }
 
     // Convenience methods - delegate to Retriever
@@ -119,7 +128,7 @@ public class FluxIndexClient : IFluxIndexClient
             // 3. 결과 캐싱 (검색 결과가 있는 경우만)
             if (_cacheService != null && sdkResults.Any())
             {
-                var searchResultsForCache = sdkResults.Select(r => new DocumentChunk
+                var searchResultsForCache = sdkResults.Select(r => new DocumentChunkModel
                 {
                     Id = r.Id,
                     DocumentId = r.DocumentId,
@@ -250,7 +259,7 @@ public class FluxIndexClient : IFluxIndexClient
     /// 청크 인덱싱 (Indexer 위임)
     /// </summary>
     public async Task<string> IndexChunksAsync(
-        IEnumerable<DocumentChunk> chunks,
+        IEnumerable<DocumentChunkModel> chunks,
         string? documentId = null,
         Dictionary<string, object>? metadata = null,
         CancellationToken cancellationToken = default)
@@ -265,7 +274,7 @@ public class FluxIndexClient : IFluxIndexClient
         string documentId,
         CancellationToken cancellationToken = default)
     {
-        return await _indexer.DeleteDocumentAsync(documentId, cancellationToken);
+        return await _indexer.DeleteByDocumentIdAsync(documentId, cancellationToken);
     }
 
     /// <summary>
@@ -287,19 +296,19 @@ public class FluxIndexClient : IFluxIndexClient
         var retrieverStats = await _retriever.GetStatisticsAsync(cancellationToken);
         var indexerStats = await _indexer.GetStatisticsAsync(cancellationToken);
 
-        // 시맨틱 캐시 통계 수집
-        Core.Application.Interfaces.CacheStatistics? cacheStats = null;
-        if (_cacheService != null)
-        {
-            try
-            {
-                cacheStats = await _cacheService.GetCacheStatisticsAsync(cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to get cache statistics");
-            }
-        }
+        // 시맨틱 캐시 통계 수집 (임시 비활성화)
+        // Core.Application.Interfaces.CacheStatistics? cacheStats = null;
+        // if (_cacheService != null)
+        // {
+        //     try
+        //     {
+        //         cacheStats = await _cacheService.GetCacheStatisticsAsync(cancellationToken);
+        //     }
+        //     catch (Exception ex)
+        //     {
+        //         _logger.LogWarning(ex, "Failed to get cache statistics");
+        //     }
+        // }
 
         return new ClientStatistics
         {
@@ -312,19 +321,19 @@ public class FluxIndexClient : IFluxIndexClient
             DefaultChunkOverlap = indexerStats.DefaultChunkOverlap,
             EmbeddingModel = indexerStats.EmbeddingModel,
 
-            // 시맨틱 캐시 통계 추가
+            // 시맨틱 캐시 통계 추가 (임시 비활성화)
             SemanticCacheEnabled = _cacheService != null,
-            CacheHitRate = cacheStats?.HitRate ?? 0f,
-            CacheResponseTime = cacheStats?.AverageResponseTimeMs ?? 0,
-            CachedItemsCount = cacheStats?.TotalEntries ?? 0,
-            CacheMemoryUsageMB = cacheStats != null ? cacheStats.CacheSizeBytes / 1024.0 / 1024.0 : 0
+            CacheHitRate = 0f, // cacheStats?.HitRate ?? 0f,
+            CacheResponseTime = 0, // cacheStats?.AverageResponseTimeMs ?? 0,
+            CachedItemsCount = 0, // cacheStats?.TotalEntries ?? 0,
+            CacheMemoryUsageMB = 0 // cacheStats != null ? cacheStats.CacheSizeBytes / 1024.0 / 1024.0 : 0
         };
     }
 
     /// <summary>
     /// 시맨틱 캐시 통계 조회
     /// </summary>
-    public async Task<FluxIndex.Core.Domain.ValueObjects.CacheStatistics?> GetCacheStatisticsAsync(CancellationToken cancellationToken = default)
+    public async Task<FluxIndex.Domain.ValueObjects.CacheStatistics?> GetCacheStatisticsAsync(CancellationToken cancellationToken = default)
     {
         if (_cacheService == null)
             return null;
@@ -332,7 +341,7 @@ public class FluxIndexClient : IFluxIndexClient
         try
         {
             var stats = await _cacheService.GetCacheStatisticsAsync(cancellationToken);
-            return new FluxIndex.Core.Domain.ValueObjects.CacheStatistics
+            return new FluxIndex.Domain.ValueObjects.CacheStatistics
             {
                 TotalQueries = stats.TotalEntries,
                 CacheHits = stats.CacheHits,
@@ -429,13 +438,13 @@ public class FluxIndexClient : IFluxIndexClient
 
         try
         {
-            var coreOptions = options?.ToCoreOptions() ?? new Core.Domain.Models.SmallToBigOptions();
+            var coreOptions = options?.ToCoreOptions() ?? new Domain.Models.SmallToBigOptions();
             var results = await _smallToBigRetriever.SearchAsync(query, coreOptions, cancellationToken);
 
             return results.Select(r => new SmallToBigSearchResult
             {
-                PrimaryChunk = ConvertToSDKChunk(r.PrimaryChunk),
-                ContextChunks = r.ContextChunks.Select(ConvertToSDKChunk).ToList(),
+                PrimaryChunk = r.PrimaryChunk,
+                ContextChunks = r.ContextChunks.ToList(),
                 RelevanceScore = r.RelevanceScore,
                 WindowSize = r.WindowSize,
                 ExpansionReason = r.ExpansionReason,
@@ -486,7 +495,7 @@ public class FluxIndexClient : IFluxIndexClient
     /// <summary>
     /// Convert cached SearchResult to SDK SearchResult
     /// </summary>
-    private IEnumerable<SearchResult> ConvertCachedToSDKSearchResults(IReadOnlyList<DocumentChunk> cachedResults)
+    private IEnumerable<SearchResult> ConvertCachedToSDKSearchResults(IReadOnlyList<DocumentChunkModel> cachedResults)
     {
         return cachedResults.Select(cr => new SearchResult
         {
@@ -502,45 +511,79 @@ public class FluxIndexClient : IFluxIndexClient
     /// <summary>
     /// Core DocumentChunk를 SDK DocumentChunk로 변환
     /// </summary>
-    private DocumentChunk ConvertToSDKChunk(DocumentChunk coreChunk)
+    private DocumentChunkModel ConvertToSDKChunk(DocumentChunkEntity coreChunk)
     {
-        return coreChunk; // Direct return since we're using Core types only
+        var sdkChunk = DocumentChunkModel.Create(
+            coreChunk.DocumentId,
+            coreChunk.Content,
+            coreChunk.ChunkIndex,
+            1, // totalChunks - default value
+            coreChunk.Embedding,
+            0f, // score - default value
+            coreChunk.TokenCount,
+            coreChunk.Metadata);
+
+        // 새 인스턴스를 생성하여 ID 설정
+        return new DocumentChunkModel
+        {
+            Id = coreChunk.Id,
+            DocumentId = sdkChunk.DocumentId,
+            Content = sdkChunk.Content,
+            ChunkIndex = sdkChunk.ChunkIndex,
+            TotalChunks = sdkChunk.TotalChunks,
+            Embedding = sdkChunk.Embedding,
+            Score = sdkChunk.Score,
+            TokenCount = sdkChunk.TokenCount,
+            Metadata = sdkChunk.Metadata,
+            CreatedAt = sdkChunk.CreatedAt
+        };
+    }
+
+    private DocumentChunkEntity ConvertToEntityChunk(DocumentChunkModel modelChunk)
+    {
+        return DocumentChunkEntity.Create(
+            modelChunk.DocumentId,
+            modelChunk.Content,
+            modelChunk.ChunkIndex,
+            modelChunk.TotalChunks
+        );
     }
 
     /// <summary>
     /// SDK HybridSearchOptions를 Core HybridSearchOptions로 변환
     /// </summary>
-    private Core.Domain.Models.HybridSearchOptions ConvertToCore(HybridSearchOptions sdkOptions)
+    private Domain.Models.HybridSearchOptions ConvertToCore(HybridSearchOptions sdkOptions)
     {
-        return new Core.Domain.Models.HybridSearchOptions
+        return new Domain.Models.HybridSearchOptions
         {
             MaxResults = sdkOptions.TopK,
             VectorWeight = (double)sdkOptions.VectorWeight,
             SparseWeight = (double)sdkOptions.KeywordWeight,
             FusionMethod = sdkOptions.RerankingStrategy switch
             {
-                RerankingStrategy.WeightedAverage => Core.Domain.Models.FusionMethod.WeightedSum,
-                RerankingStrategy.ReciprocalRankFusion => Core.Domain.Models.FusionMethod.RRF,
-                _ => Core.Domain.Models.FusionMethod.RRF
+                RerankingStrategy.WeightedAverage => Domain.Models.FusionMethod.WeightedSum,
+                RerankingStrategy.ReciprocalRankFusion => Domain.Models.FusionMethod.RRF,
+                _ => Domain.Models.FusionMethod.RRF
             }
         };
     }
 }
 
 /// <summary>
-/// FluxIndex 클라이언트 인터페이스
+/// FluxIndex 컨텍스트 인터페이스
 /// </summary>
-public interface IFluxIndexClient
+public interface IFluxIndexContext
 {
     Retriever Retriever { get; }
     Indexer Indexer { get; }
+    IServiceProvider ServiceProvider { get; }
     
     // Convenience methods
     Task<IEnumerable<SearchResult>> SearchAsync(string query, int maxResults = 10, float minScore = 0.5f, Dictionary<string, object>? filter = null, CancellationToken cancellationToken = default);
     Task<IEnumerable<SearchResult>> HybridSearchAsync(string keyword, string query, int maxResults = 10, float vectorWeight = 0.7f, Dictionary<string, object>? filter = null, CancellationToken cancellationToken = default);
     Task<Document?> GetDocumentAsync(string documentId, CancellationToken cancellationToken = default);
     Task<string> IndexAsync(Document document, CancellationToken cancellationToken = default);
-    Task<string> IndexChunksAsync(IEnumerable<DocumentChunk> chunks, string? documentId = null, Dictionary<string, object>? metadata = null, CancellationToken cancellationToken = default);
+    Task<string> IndexChunksAsync(IEnumerable<DocumentChunkModel> chunks, string? documentId = null, Dictionary<string, object>? metadata = null, CancellationToken cancellationToken = default);
     Task<bool> DeleteDocumentAsync(string documentId, CancellationToken cancellationToken = default);
     Task UpdateDocumentAsync(string documentId, Document updatedDocument, CancellationToken cancellationToken = default);
     Task<ClientStatistics> GetStatisticsAsync(CancellationToken cancellationToken = default);

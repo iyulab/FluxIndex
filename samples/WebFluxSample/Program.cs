@@ -1,8 +1,6 @@
 using FluxIndex.SDK;
 using FluxIndex.Extensions.WebFlux;
-using FluxIndex.Extensions.WebFlux.Models;
 using Microsoft.Extensions.Logging;
-using WebFluxIndexingStatus = FluxIndex.Extensions.WebFlux.IndexingStatus;
 
 namespace WebFluxSample;
 
@@ -15,72 +13,52 @@ class Program
 
         try
         {
-            // Create FluxIndex client with WebFlux integration
-            var client = new FluxIndexClientBuilder()
-                .UseSQLiteInMemory()                    // Use SQLite in-memory for testing
-                .UseWebFluxWithMockAI()                 // Add WebFlux with mock AI services
-                .WithChunking("Auto", 512, 64)          // Configure chunking
-                .WithLogging(builder =>
+            // Create FluxIndex context with WebFlux integration
+            var context = new FluxIndexContextBuilder()
+                .UseSQLite("webflux_sample.db")
+                .UseInMemoryEmbedding()
+                .UseWebFlux(options =>
                 {
-                    builder.AddConsole();
-                    builder.SetMinimumLevel(LogLevel.Information);
+                    options.MaxChunkSize = 1024;
+                    options.ChunkOverlap = 128;
+                    options.ChunkingStrategy = "Smart";
+                    options.IncludeImages = false;
                 })
+                .WithLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Information))
                 .Build();
 
-            Console.WriteLine("✅ FluxIndex client initialized with WebFlux support");
+            Console.WriteLine("✅ FluxIndex context initialized with WebFlux support");
 
             // Test website URLs
             var testUrls = new[]
             {
-                "https://docs.microsoft.com/en-us/dotnet/",
-                "https://github.com/microsoft/semantic-kernel",
-                "https://learn.microsoft.com/en-us/azure/"
+                "https://example.com",
+                "https://httpbin.org/html"
             };
 
-            // Index a single website with progress tracking
-            Console.WriteLine("\\n📄 Indexing single website with progress...");
+            Console.WriteLine($"\n📄 Testing WebFlux integration...");
 
+            // Test 1: Single URL processing
+            Console.WriteLine($"\n🔗 Test 1: Processing single URL");
             try
             {
-                await foreach (var progress in client.IndexWebsiteWithProgressAsync(testUrls[0]))
-                {
-                    Console.WriteLine($"🔄 {progress.Status}: {progress.Message}");
+                var documentId = await context.IndexWebContentAsync(
+                    testUrls[0],
+                    WebFluxOptions.Default);
 
-                    if (progress.Status == WebFluxIndexingStatus.Completed)
-                    {
-                        Console.WriteLine($"✅ Completed! Document ID: {progress.DocumentId}");
-                        Console.WriteLine($"📊 Chunks processed: {progress.ChunksProcessed}");
-                        Console.WriteLine($"⏱️ Duration: {progress.Duration?.TotalSeconds:F1}s");
-                    }
-                    else if (progress.Status == WebFluxIndexingStatus.Failed)
-                    {
-                        Console.WriteLine($"❌ Failed: {progress.Message}");
-                        if (progress.Error != null)
-                        {
-                            Console.WriteLine($"   Error: {progress.Error.Message}");
-                        }
-                    }
-                }
+                Console.WriteLine($"✅ Successfully indexed website. Document ID: {documentId}");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ Error indexing website: {ex.Message}");
+                Console.WriteLine($"❌ Error processing single URL: {ex.Message}");
             }
 
-            // Index multiple websites
-            Console.WriteLine("\\n📄 Indexing multiple websites...");
-
+            // Test 2: Multiple URLs processing
+            Console.WriteLine($"\n🔗 Test 2: Processing multiple URLs");
             try
             {
-                var documentIds = await client.IndexWebsitesAsync(
-                    testUrls.Take(2),
-                    new CrawlOptions
-                    {
-                        MaxDepth = 2,
-                        MaxPages = 10,
-                        DelayBetweenRequests = TimeSpan.FromMilliseconds(1000)
-                    },
-                    maxConcurrency: 2);
+                var webFlux = context.GetWebFluxIntegration();
+                var documentIds = await webFlux.IndexMultipleUrlsAsync(testUrls, WebFluxOptions.LargeContent);
 
                 Console.WriteLine($"✅ Successfully indexed {documentIds.Count()} websites");
                 foreach (var docId in documentIds)
@@ -90,20 +68,29 @@ class Program
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"❌ Error indexing multiple websites: {ex.Message}");
+                Console.WriteLine($"❌ Error processing multiple URLs: {ex.Message}");
             }
 
-            // Test search functionality
-            Console.WriteLine("\\n🔍 Testing search functionality...");
-
+            // Test 3: Search functionality
+            Console.WriteLine("\n🔍 Test 3: Testing search functionality...");
             try
             {
-                var searchResults = await client.SearchAsync("Microsoft Azure cloud services");
+                var searchResults = await context.Retriever.SearchAsync("example");
 
-                Console.WriteLine($"📊 Found {searchResults.Count} results:");
+                Console.WriteLine($"📊 Found {searchResults.Count()} results:");
                 foreach (var result in searchResults.Take(3))
                 {
-                    Console.WriteLine($"   📄 Score: {result.Score:F3} | Content: {result.Content.Substring(0, Math.Min(100, result.Content.Length))}...");
+                    var contentPreview = result.DocumentChunk.Content.Length > 100
+                        ? result.DocumentChunk.Content.Substring(0, 100) + "..."
+                        : result.DocumentChunk.Content;
+
+                    Console.WriteLine($"   📄 Score: {result.Score:F3} | Content: {contentPreview}");
+
+                    // Display metadata if available
+                    if (result.DocumentChunk.Metadata?.ContainsKey("webflux_title") == true)
+                    {
+                        Console.WriteLine($"      🏷️ Title: {result.DocumentChunk.Metadata["webflux_title"]}");
+                    }
                 }
             }
             catch (Exception ex)
@@ -111,7 +98,26 @@ class Program
                 Console.WriteLine($"❌ Error searching: {ex.Message}");
             }
 
-            Console.WriteLine("\\n🎉 Sample completed successfully!");
+            // Test 4: WebFlux configuration options
+            Console.WriteLine("\n⚙️ Test 4: Testing different WebFlux configurations");
+            try
+            {
+                // Deep crawl configuration (would crawl multiple pages)
+                var deepCrawlOptions = WebFluxOptions.DeepCrawl;
+                Console.WriteLine($"   🕷️ Deep crawl config: MaxDepth={deepCrawlOptions.MaxDepth}, Strategy={deepCrawlOptions.ChunkingStrategy}");
+
+                // Large content configuration
+                var largeContentOptions = WebFluxOptions.LargeContent;
+                Console.WriteLine($"   📄 Large content config: ChunkSize={largeContentOptions.MaxChunkSize}, Images={largeContentOptions.IncludeImages}");
+
+                Console.WriteLine("   ✅ Configuration options validated");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"❌ Error testing configurations: {ex.Message}");
+            }
+
+            Console.WriteLine("\n🎉 WebFlux integration sample completed successfully!");
         }
         catch (Exception ex)
         {
@@ -119,7 +125,7 @@ class Program
             Console.WriteLine($"Stack trace: {ex.StackTrace}");
         }
 
-        Console.WriteLine("\\nPress any key to exit...");
+        Console.WriteLine("\nPress any key to exit...");
         Console.ReadKey();
     }
 }

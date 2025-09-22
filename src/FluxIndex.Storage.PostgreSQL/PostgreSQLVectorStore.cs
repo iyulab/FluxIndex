@@ -1,19 +1,15 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Core.Domain.Models;
+using FluxIndex.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Pgvector;
 using Pgvector.EntityFrameworkCore;
 
 namespace FluxIndex.Storage.PostgreSQL;
 
 /// <summary>
-/// PostgreSQL 기반 벡터 저장소 구현 (Core 인터페이스)
+/// PostgreSQL with pgvector storage implementation for FluxIndex
 /// </summary>
 public class PostgreSQLVectorStore : IVectorStore
 {
@@ -24,288 +20,204 @@ public class PostgreSQLVectorStore : IVectorStore
     public PostgreSQLVectorStore(
         FluxIndexDbContext context,
         ILogger<PostgreSQLVectorStore> logger,
-        PostgreSQLOptions options)
+        IOptions<PostgreSQLOptions> options)
     {
-        _context = context ?? throw new ArgumentNullException(nameof(context));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _options = options ?? throw new ArgumentNullException(nameof(options));
+        _context = context;
+        _logger = logger;
+        _options = options.Value;
     }
 
-    public async Task<string> StoreAsync(DocumentChunk chunk, float[] embedding, CancellationToken cancellationToken = default)
+    public async Task<string> StoreAsync(DocumentChunk chunk, CancellationToken cancellationToken = default)
     {
-        if (chunk == null)
-            throw new ArgumentNullException(nameof(chunk));
-
-        _logger.LogDebug("Storing chunk {ChunkId}", chunk.Id);
-
-        var vectorChunk = new VectorChunk
+        var id = Guid.NewGuid().ToString();
+        var entity = new VectorEntity
         {
-            Id = Guid.NewGuid(),
-            DocumentChunkId = Guid.Parse(chunk.DocumentId), // 문서 ID 사용
+            Id = Guid.Parse(id),
+            DocumentId = chunk.DocumentId,
             ChunkIndex = chunk.ChunkIndex,
             Content = chunk.Content,
-            ContentHash = ComputeHash(chunk.Content),
+            Embedding = new Vector(chunk.Embedding.ToArray()),
             TokenCount = chunk.TokenCount,
-            Metadata = chunk.Metadata,
-            Embedding = new Vector(embedding),
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            Metadata = chunk.Metadata
         };
 
-        _context.Chunks.Add(vectorChunk);
+        _context.Vectors.Add(entity);
         await _context.SaveChangesAsync(cancellationToken);
-
-        _logger.LogDebug("Successfully stored chunk {ChunkId}", chunk.Id);
-        return vectorChunk.Id.ToString();
+        return id;
     }
 
-    public async Task<IReadOnlyList<string>> StoreBatchAsync(
-        IReadOnlyList<(DocumentChunk chunk, float[] embedding)> items,
-        CancellationToken cancellationToken = default)
+    public async Task<IEnumerable<string>> StoreBatchAsync(IEnumerable<DocumentChunk> chunks, CancellationToken cancellationToken = default)
     {
-        if (items == null || !items.Any())
-            return new List<string>();
-
-        _logger.LogInformation("Storing batch of {Count} chunks", items.Count);
-
-        var storedIds = new List<string>();
-        using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
-
-        try
+        var ids = new List<string>();
+        foreach (var chunk in chunks)
         {
-            foreach (var (chunk, embedding) in items)
-            {
-                var vectorChunk = new VectorChunk
-                {
-                    Id = Guid.NewGuid(),
-                    DocumentChunkId = Guid.Parse(chunk.DocumentId),
-                    ChunkIndex = chunk.ChunkIndex,
-                    Content = chunk.Content,
-                    ContentHash = ComputeHash(chunk.Content),
-                    TokenCount = chunk.TokenCount,
-                    Metadata = chunk.Metadata,
-                    Embedding = new Vector(embedding),
-                    CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow
-                };
-
-                _context.Chunks.Add(vectorChunk);
-                storedIds.Add(vectorChunk.Id.ToString());
-            }
-
-            await _context.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
-            _logger.LogInformation("Successfully stored {Count} chunks", storedIds.Count);
+            var id = await StoreAsync(chunk, cancellationToken);
+            ids.Add(id);
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to store chunk batch");
-            await transaction.RollbackAsync(cancellationToken);
-            throw;
-        }
-
-        return storedIds;
+        return ids;
     }
 
-    public async Task<IReadOnlyList<VectorSearchResult>> SearchSimilarAsync(
-        float[] queryEmbedding,
-        int maxResults = 10,
-        double minScore = 0.0,
-        CancellationToken cancellationToken = default)
+    public async Task<DocumentChunk?> GetAsync(string id, CancellationToken cancellationToken = default)
     {
-        if (queryEmbedding == null || queryEmbedding.Length == 0)
-            throw new ArgumentException("Query embedding cannot be null or empty", nameof(queryEmbedding));
+        var entity = await _context.Vectors
+            .FirstOrDefaultAsync(v => v.Id == Guid.Parse(id), cancellationToken);
 
-        _logger.LogDebug("Searching for top {MaxResults} results with minimum score {MinScore}", maxResults, minScore);
-
-        var pgVector = new Vector(queryEmbedding);
-
-        var query = _context.Chunks
-            .Where(c => c.Embedding != null)
-            .Select(c => new
-            {
-                Chunk = c,
-                Distance = c.Embedding!.CosineDistance(pgVector),
-                Score = 1.0 - c.Embedding!.CosineDistance(pgVector)
-            })
-            .Where(x => x.Score >= minScore)
-            .OrderByDescending(x => x.Score)
-            .Take(maxResults);
-
-        var results = await query.ToListAsync(cancellationToken);
-
-        var searchResults = results.Select((r, index) => {
-            var chunk = new DocumentChunk
-            {
-                Id = r.Chunk.Id.ToString(),
-                DocumentId = r.Chunk.DocumentChunkId.ToString(),
-                Content = r.Chunk.Content,
-                ChunkIndex = r.Chunk.ChunkIndex,
-                TokenCount = r.Chunk.TokenCount,
-                Metadata = r.Chunk.Metadata ?? new Dictionary<string, object>()
-            };
-
-            return new VectorSearchResult
-            {
-                DocumentChunk = chunk,
-                Score = r.Score,
-                Rank = index + 1,
-                Distance = r.Distance,
-                Metadata = new Dictionary<string, object>()
-            };
-        }).ToList();
-
-        return searchResults;
-    }
-
-    public async Task<DocumentChunk?> GetChunkAsync(string chunkId, CancellationToken cancellationToken = default)
-    {
-        if (!Guid.TryParse(chunkId, out var id))
-            return null;
-
-        var vectorChunk = await _context.Chunks
-            .FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
-
-        if (vectorChunk == null)
-            return null;
+        if (entity == null) return null;
 
         return new DocumentChunk
         {
-            Id = vectorChunk.Id.ToString(),
-            DocumentId = vectorChunk.DocumentChunkId.ToString(),
-            Content = vectorChunk.Content,
-            ChunkIndex = vectorChunk.ChunkIndex,
-            TokenCount = vectorChunk.TokenCount,
-            Metadata = vectorChunk.Metadata ?? new Dictionary<string, object>()
+            Id = entity.Id.ToString(),
+            DocumentId = entity.DocumentId,
+            ChunkIndex = entity.ChunkIndex,
+            Content = entity.Content,
+            Embedding = entity.Embedding.ToArray(),
+            TokenCount = entity.TokenCount,
+            Metadata = entity.Metadata
         };
     }
 
-    public async Task<IReadOnlyList<DocumentChunk>> GetChunksByIdsAsync(
-        IEnumerable<string> chunkIds,
-        CancellationToken cancellationToken = default)
+    public async Task<IEnumerable<DocumentChunk>> GetByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default)
     {
-        var guids = chunkIds
-            .Where(id => Guid.TryParse(id, out _))
-            .Select(Guid.Parse)
-            .ToList();
-
-        if (!guids.Any())
-            return new List<DocumentChunk>();
-
-        var vectorChunks = await _context.Chunks
-            .Where(c => guids.Contains(c.Id))
+        var entities = await _context.Vectors
+            .Where(v => v.DocumentId == documentId)
+            .OrderBy(v => v.ChunkIndex)
             .ToListAsync(cancellationToken);
 
-        return vectorChunks.Select(vc => new DocumentChunk
+        return entities.Select(e => new DocumentChunk
         {
-            Id = vc.Id.ToString(),
-            DocumentId = vc.DocumentChunkId.ToString(),
-            Content = vc.Content,
-            ChunkIndex = vc.ChunkIndex,
-            TokenCount = vc.TokenCount,
-            Metadata = vc.Metadata ?? new Dictionary<string, object>()
-        }).ToList();
+            Id = e.Id.ToString(),
+            DocumentId = e.DocumentId,
+            ChunkIndex = e.ChunkIndex,
+            Content = e.Content,
+            Embedding = e.Embedding.ToArray(),
+            TokenCount = e.TokenCount,
+            Metadata = e.Metadata
+        });
     }
 
-    public async Task<IReadOnlyList<DocumentChunk>> GetDocumentChunksAsync(
-        string documentId,
-        CancellationToken cancellationToken = default)
+    public async Task<IEnumerable<DocumentChunk>> GetChunksByIdsAsync(IEnumerable<string> ids, CancellationToken cancellationToken = default)
     {
-        if (!Guid.TryParse(documentId, out var docId))
-            return new List<DocumentChunk>();
-
-        var vectorChunks = await _context.Chunks
-            .Where(c => c.DocumentChunkId == docId)
-            .OrderBy(c => c.ChunkIndex)
+        var guids = ids.Select(Guid.Parse).ToList();
+        var entities = await _context.Vectors
+            .Where(v => guids.Contains(v.Id))
             .ToListAsync(cancellationToken);
 
-        return vectorChunks.Select(vc => new DocumentChunk
+        return entities.Select(e => new DocumentChunk
         {
-            Id = vc.Id.ToString(),
-            DocumentId = vc.DocumentChunkId.ToString(),
-            Content = vc.Content,
-            ChunkIndex = vc.ChunkIndex,
-            TokenCount = vc.TokenCount,
-            Metadata = vc.Metadata ?? new Dictionary<string, object>()
-        }).ToList();
+            Id = e.Id.ToString(),
+            DocumentId = e.DocumentId,
+            ChunkIndex = e.ChunkIndex,
+            Content = e.Content,
+            Embedding = e.Embedding.ToArray(),
+            TokenCount = e.TokenCount,
+            Metadata = e.Metadata
+        });
     }
 
-    public async Task<bool> DeleteAsync(string chunkId, CancellationToken cancellationToken = default)
+    public async Task<IEnumerable<DocumentChunk>> SearchAsync(
+        float[] queryEmbedding,
+        int topK = 10,
+        float minScore = 0.0f,
+        CancellationToken cancellationToken = default)
     {
-        if (!Guid.TryParse(chunkId, out var id))
-            return false;
+        var queryVector = new Vector(queryEmbedding);
 
-        var vectorChunk = await _context.Chunks
-            .FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
+        var results = await _context.Vectors
+            .OrderBy(v => v.Embedding.CosineDistance(queryVector))
+            .Take(topK)
+            .Select(v => new DocumentChunk
+            {
+                Id = v.Id.ToString(),
+                DocumentId = v.DocumentId,
+                ChunkIndex = v.ChunkIndex,
+                Content = v.Content,
+                Embedding = v.Embedding.ToArray(),
+                TokenCount = v.TokenCount,
+                Metadata = v.Metadata
+            })
+            .ToListAsync(cancellationToken);
 
-        if (vectorChunk == null)
-            return false;
+        return results;
+    }
 
-        _context.Chunks.Remove(vectorChunk);
+    public async Task<bool> DeleteAsync(string id, CancellationToken cancellationToken = default)
+    {
+        var entity = await _context.Vectors
+            .FirstOrDefaultAsync(v => v.Id == Guid.Parse(id), cancellationToken);
+
+        if (entity == null) return false;
+
+        _context.Vectors.Remove(entity);
         await _context.SaveChangesAsync(cancellationToken);
-
-        _logger.LogDebug("Deleted chunk {ChunkId}", chunkId);
         return true;
     }
 
-    public async Task<int> DeleteDocumentAsync(string documentId, CancellationToken cancellationToken = default)
+    public async Task<bool> DeleteByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default)
     {
-        if (!Guid.TryParse(documentId, out var docId))
-            return 0;
-
-        var chunks = await _context.Chunks
-            .Where(c => c.DocumentChunkId == docId)
+        var entities = await _context.Vectors
+            .Where(v => v.DocumentId == documentId)
             .ToListAsync(cancellationToken);
 
-        if (!chunks.Any())
-            return 0;
+        if (!entities.Any()) return false;
 
-        _context.Chunks.RemoveRange(chunks);
+        _context.Vectors.RemoveRange(entities);
         await _context.SaveChangesAsync(cancellationToken);
-
-        _logger.LogInformation("Deleted {Count} chunks for document {DocumentId}", chunks.Count, documentId);
-        return chunks.Count;
+        return true;
     }
 
-    public async Task<VectorStoreStatistics> GetStatisticsAsync(CancellationToken cancellationToken = default)
+    public async Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default)
     {
-        var totalChunks = await _context.Chunks.CountAsync(cancellationToken);
-        var totalDocuments = await _context.Chunks
-            .Select(c => c.DocumentChunkId)
-            .Distinct()
-            .CountAsync(cancellationToken);
-
-        var vectorDimension = await _context.Chunks
-            .Where(c => c.Embedding != null)
-            .Select(c => c.Embedding!.Dim)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        return new VectorStoreStatistics
-        {
-            TotalDocuments = totalDocuments,
-            TotalChunks = totalChunks,
-            VectorDimension = vectorDimension,
-            IndexSizeMB = 0, // TODO: 실제 인덱스 크기 계산
-            LastUpdated = DateTime.UtcNow
-        };
+        return await _context.Vectors
+            .AnyAsync(v => v.Id == Guid.Parse(id), cancellationToken);
     }
 
-    public async Task OptimizeIndexAsync(CancellationToken cancellationToken = default)
+    public async Task<DocumentChunk?> GetByIdAsync(string id, CancellationToken cancellationToken = default)
     {
-        // PostgreSQL에서 pgvector 인덱스 최적화
-        _logger.LogInformation("Optimizing vector index");
-
-        await _context.Database.ExecuteSqlRawAsync(
-            "VACUUM ANALYZE chunks;",
-            cancellationToken);
-
-        _logger.LogInformation("Vector index optimization completed");
+        return await GetAsync(id, cancellationToken);
     }
 
-    private string ComputeHash(string content)
+    public async Task<bool> UpdateAsync(DocumentChunk chunk, CancellationToken cancellationToken = default)
     {
-        using var sha256 = System.Security.Cryptography.SHA256.Create();
-        var bytes = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(content));
-        return Convert.ToBase64String(bytes);
+        var entity = await _context.Vectors
+            .FirstOrDefaultAsync(v => v.Id == Guid.Parse(chunk.Id), cancellationToken);
+
+        if (entity == null) return false;
+
+        entity.Content = chunk.Content;
+        entity.Embedding = new Vector(chunk.Embedding.ToArray());
+        entity.TokenCount = chunk.TokenCount;
+        entity.Metadata = chunk.Metadata;
+
+        await _context.SaveChangesAsync(cancellationToken);
+        return true;
     }
+
+    public async Task<int> CountAsync(CancellationToken cancellationToken = default)
+    {
+        return await _context.Vectors.CountAsync(cancellationToken);
+    }
+
+    public async Task<int> GetCountAsync(CancellationToken cancellationToken = default)
+    {
+        return await CountAsync(cancellationToken);
+    }
+
+    public async Task ClearAsync(CancellationToken cancellationToken = default)
+    {
+        await _context.Database.ExecuteSqlRawAsync("TRUNCATE TABLE vectors", cancellationToken);
+    }
+}
+
+/// <summary>
+/// Vector entity for PostgreSQL storage
+/// </summary>
+public class VectorEntity
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string DocumentId { get; set; } = string.Empty;
+    public int ChunkIndex { get; set; }
+    public string Content { get; set; } = string.Empty;
+    public Vector Embedding { get; set; } = new Vector(Array.Empty<float>());
+    public int TokenCount { get; set; }
+    public Dictionary<string, object> Metadata { get; set; } = new();
 }

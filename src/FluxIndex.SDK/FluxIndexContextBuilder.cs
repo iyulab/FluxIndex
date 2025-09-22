@@ -1,10 +1,9 @@
 using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Core.Application.Services;
-using FluxIndex.Core.Domain.ValueObjects;
+using FluxIndex.Domain.ValueObjects;
 using FluxIndex.SDK.Configuration;
 using FluxIndex.SDK.Services;
 using FluxIndex.SDK.Extensions;
-using FluxIndex.Cache.Redis.Extensions;
+// using FluxIndex.Cache.Redis.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
@@ -13,16 +12,16 @@ using System;
 namespace FluxIndex.SDK;
 
 /// <summary>
-/// FluxIndexClient 빌더 - Fluent API로 Retriever와 Indexer 구성
+/// FluxIndexContext 빌더 - Fluent API로 Retriever와 Indexer 구성
 /// </summary>
-public class FluxIndexClientBuilder
+public class FluxIndexContextBuilder
 {
     private readonly IServiceCollection _services;
     private readonly FluxIndexOptions _options;
     private readonly RetrieverOptions _retrieverOptions;
     private readonly IndexerOptions _indexerOptions;
 
-    public FluxIndexClientBuilder()
+    public FluxIndexContextBuilder()
     {
         _services = new ServiceCollection();
         _options = new FluxIndexOptions();
@@ -37,7 +36,7 @@ public class FluxIndexClientBuilder
     /// <summary>
     /// PostgreSQL 벡터 저장소 사용
     /// </summary>
-    public FluxIndexClientBuilder UsePostgreSQL(string connectionString)
+    public FluxIndexContextBuilder UsePostgreSQL(string connectionString)
     {
         _options.VectorStore.Provider = "PostgreSQL";
         _options.VectorStore.ConnectionString = connectionString;
@@ -47,7 +46,7 @@ public class FluxIndexClientBuilder
     /// <summary>
     /// SQLite 벡터 저장소 사용 (로컬 개발용)
     /// </summary>
-    public FluxIndexClientBuilder UseSQLite(string databasePath = "fluxindex.db")
+    public FluxIndexContextBuilder UseSQLite(string databasePath = "fluxindex.db")
     {
         _options.VectorStore.Provider = "SQLite";
         _options.VectorStore.ConnectionString = $"Data Source={databasePath}";
@@ -57,7 +56,7 @@ public class FluxIndexClientBuilder
     /// <summary>
     /// SQLite 인메모리 벡터 저장소 사용 (테스트용)
     /// </summary>
-    public FluxIndexClientBuilder UseSQLiteInMemory()
+    public FluxIndexContextBuilder UseSQLiteInMemory()
     {
         _options.VectorStore.Provider = "SQLite";
         _options.VectorStore.ConnectionString = "Data Source=:memory:";
@@ -67,7 +66,7 @@ public class FluxIndexClientBuilder
     /// <summary>
     /// OpenAI 임베딩 서비스 사용
     /// </summary>
-    public FluxIndexClientBuilder UseOpenAI(string apiKey, string model = "text-embedding-3-small")
+    public FluxIndexContextBuilder UseOpenAI(string apiKey, string model = "text-embedding-3-small")
     {
         _options.Embedding.Provider = "OpenAI";
         _options.Embedding.ApiKey = apiKey;
@@ -78,7 +77,7 @@ public class FluxIndexClientBuilder
     /// <summary>
     /// Azure OpenAI 임베딩 서비스 사용
     /// </summary>
-    public FluxIndexClientBuilder UseAzureOpenAI(string endpoint, string apiKey, string deploymentName)
+    public FluxIndexContextBuilder UseAzureOpenAI(string endpoint, string apiKey, string deploymentName)
     {
         _options.Embedding.Provider = "AzureOpenAI";
         _options.Embedding.ApiKey = apiKey;
@@ -88,9 +87,18 @@ public class FluxIndexClientBuilder
     }
 
     /// <summary>
+    /// 인메모리 임베딩 서비스 사용 (테스트용)
+    /// </summary>
+    public FluxIndexContextBuilder UseInMemoryEmbedding()
+    {
+        _options.Embedding.Provider = "InMemory";
+        return this;
+    }
+
+    /// <summary>
     /// Redis 캐시 사용
     /// </summary>
-    public FluxIndexClientBuilder UseRedisCache(string connectionString)
+    public FluxIndexContextBuilder UseRedisCache(string connectionString)
     {
         _options.Cache.CacheProvider = "Redis";
         _options.Cache.RedisConnectionString = connectionString;
@@ -101,7 +109,7 @@ public class FluxIndexClientBuilder
     /// <summary>
     /// 메모리 캐시 사용
     /// </summary>
-    public FluxIndexClientBuilder UseMemoryCache(int maxCacheSize = 1000)
+    public FluxIndexContextBuilder UseMemoryCache(int maxCacheSize = 1000)
     {
         _options.Cache.CacheProvider = "Memory";
         _options.Cache.MaxCacheSize = maxCacheSize;
@@ -112,7 +120,7 @@ public class FluxIndexClientBuilder
     /// <summary>
     /// 청킹 옵션 설정
     /// </summary>
-    public FluxIndexClientBuilder WithChunking(string strategy = "Auto", int chunkSize = 512, int chunkOverlap = 64)
+    public FluxIndexContextBuilder WithChunking(string strategy = "Auto", int chunkSize = 512, int chunkOverlap = 64)
     {
         _options.Indexing.ChunkingDefaults.Strategy = strategy;
         _options.Indexing.ChunkingDefaults.MaxChunkSize = chunkSize;
@@ -128,7 +136,7 @@ public class FluxIndexClientBuilder
     /// <summary>
     /// 검색 옵션 설정
     /// </summary>
-    public FluxIndexClientBuilder WithSearchOptions(int defaultMaxResults = 10, float defaultMinScore = 0.5f)
+    public FluxIndexContextBuilder WithSearchOptions(int defaultMaxResults = 10, float defaultMinScore = 0.5f)
     {
         _options.Search.DefaultMaxResults = defaultMaxResults;
         _options.Search.DefaultMinScore = defaultMinScore;
@@ -142,7 +150,7 @@ public class FluxIndexClientBuilder
     /// <summary>
     /// 캐시 기간 설정
     /// </summary>
-    public FluxIndexClientBuilder WithCacheDuration(TimeSpan duration)
+    public FluxIndexContextBuilder WithCacheDuration(TimeSpan duration)
     {
         _options.Cache.CacheTTL = duration;
         _retrieverOptions.CacheDuration = duration;
@@ -152,7 +160,7 @@ public class FluxIndexClientBuilder
     /// <summary>
     /// 병렬 처리 옵션 설정
     /// </summary>
-    public FluxIndexClientBuilder WithParallelProcessing(bool enabled = true, int maxParallelism = 4)
+    public FluxIndexContextBuilder WithParallelProcessing(bool enabled = true, int maxParallelism = 4)
     {
         _indexerOptions.ParallelEmbedding = enabled;
         _indexerOptions.MaxParallelEmbedding = maxParallelism;
@@ -162,7 +170,7 @@ public class FluxIndexClientBuilder
     /// <summary>
     /// 로깅 구성
     /// </summary>
-    public FluxIndexClientBuilder WithLogging(Action<ILoggingBuilder> configure)
+    public FluxIndexContextBuilder WithLogging(Action<ILoggingBuilder> configure)
     {
         _services.AddLogging(configure);
         return this;
@@ -171,7 +179,8 @@ public class FluxIndexClientBuilder
     /// <summary>
     /// 시맨틱 캐싱 활성화 - Redis 벡터 캐시를 통한 쿼리 유사도 기반 캐싱
     /// </summary>
-    public FluxIndexClientBuilder WithSemanticCaching(string redisConnectionString, Action<FluxIndex.Cache.Redis.Configuration.RedisSemanticCacheOptions>? configure = null)
+    /*
+    public FluxIndexContextBuilder WithSemanticCaching(string redisConnectionString, Action<FluxIndex.Cache.Redis.Configuration.RedisSemanticCacheOptions>? configure = null)
     {
         // Redis 시맨틱 캐시 등록
         if (configure != null)
@@ -189,11 +198,13 @@ public class FluxIndexClientBuilder
 
         return this;
     }
+    */
 
     /// <summary>
     /// 개발용 시맨틱 캐싱 활성화 - 로컬 Redis 및 최적화된 설정
     /// </summary>
-    public FluxIndexClientBuilder WithSemanticCachingForDevelopment(string redisConnectionString = "localhost:6379")
+    /*
+    public FluxIndexContextBuilder WithSemanticCachingForDevelopment(string redisConnectionString = "localhost:6379")
     {
         return WithSemanticCaching(redisConnectionString, options =>
         {
@@ -204,11 +215,13 @@ public class FluxIndexClientBuilder
             options.EnableDetailedLogging = true;
         });
     }
+    */
 
     /// <summary>
     /// 운영용 시맨틱 캐싱 활성화 - 고성능 및 최적화 설정
     /// </summary>
-    public FluxIndexClientBuilder WithSemanticCachingForProduction(string redisConnectionString)
+    /*
+    public FluxIndexContextBuilder WithSemanticCachingForProduction(string redisConnectionString)
     {
         return WithSemanticCaching(redisConnectionString, options =>
         {
@@ -221,17 +234,18 @@ public class FluxIndexClientBuilder
             options.EnableDetailedLogging = false;
         });
     }
+    */
 
     /// <summary>
     /// RAG 품질 평가 시스템 활성화 (소비자가 IRAGEvaluationService 구현체 제공 필요)
     /// </summary>
-    public FluxIndexClientBuilder WithEvaluationSystem(string? datasetBasePath = null)
+    public FluxIndexContextBuilder WithEvaluationSystem(string? datasetBasePath = null)
     {
         // 평가 시스템 인프라만 등록 (AI 구현체는 소비자 제공)
-        _services.AddScoped<IGoldenDatasetManager>(sp =>
-            new GoldenDatasetManager(sp.GetRequiredService<ILogger<GoldenDatasetManager>>(), datasetBasePath));
-        _services.AddScoped<IQualityGateService, QualityGateService>();
-        _services.AddScoped<IEvaluationJobManager, EvaluationJobManager>();
+        // _services.AddScoped<IGoldenDatasetManager>(sp =>
+        //     new GoldenDatasetManager(sp.GetRequiredService<ILogger<GoldenDatasetManager>>(), datasetBasePath));
+        // _services.AddScoped<IQualityGateService, QualityGateService>();
+        // _services.AddScoped<IEvaluationJobManager, EvaluationJobManager>();
 
         // 소비자가 IRAGEvaluationService 구현체를 직접 주입해야 함
 
@@ -241,7 +255,7 @@ public class FluxIndexClientBuilder
     /// <summary>
     /// 개발용 평가 시스템 (로컬 데이터셋 포함)
     /// </summary>
-    public FluxIndexClientBuilder WithEvaluationSystemForDevelopment()
+    public FluxIndexContextBuilder WithEvaluationSystemForDevelopment()
     {
         var datasetPath = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FluxIndex", "datasets");
         return WithEvaluationSystem(datasetPath);
@@ -250,7 +264,7 @@ public class FluxIndexClientBuilder
     /// <summary>
     /// 운영용 평가 시스템 (고성능 설정)
     /// </summary>
-    public FluxIndexClientBuilder WithEvaluationSystemForProduction(string datasetBasePath)
+    public FluxIndexContextBuilder WithEvaluationSystemForProduction(string datasetBasePath)
     {
         WithEvaluationSystem(datasetBasePath);
 
@@ -269,16 +283,16 @@ public class FluxIndexClientBuilder
     /// <summary>
     /// 고급 서비스 구성 - 확장 패키지에서 사용
     /// </summary>
-    public FluxIndexClientBuilder ConfigureServices(Action<IServiceCollection> configure)
+    public FluxIndexContextBuilder ConfigureServices(Action<IServiceCollection> configure)
     {
         configure?.Invoke(_services);
         return this;
     }
 
     /// <summary>
-    /// FluxIndexClient 빌드
+    /// FluxIndexContext 빌드
     /// </summary>
-    public IFluxIndexClient Build()
+    public IFluxIndexContext Build()
     {
         // Configure services based on options
         ConfigureVectorStore();
@@ -294,12 +308,12 @@ public class FluxIndexClientBuilder
         // Register in-memory chunk hierarchy repository for SDK
         _services.AddScoped<IChunkHierarchyRepository, InMemoryChunkHierarchyRepository>();
 
-        // Register hybrid search services
-        _services.AddScoped<ISparseRetriever, BM25SparseRetriever>();
-        _services.AddScoped<IHybridSearchService, HybridSearchService>();
+        // Register hybrid search services (구현체 추후 추가)
+        // _services.AddScoped<ISparseRetriever, BM25SparseRetriever>();
+        // _services.AddScoped<IHybridSearchService, HybridSearchService>();
 
-        // Register Small-to-Big services
-        _services.AddScoped<ISmallToBigRetriever, SmallToBigRetriever>();
+        // Register Small-to-Big services (구현체 추후 추가)
+        // _services.AddScoped<ISmallToBigRetriever, SmallToBigRetriever>();
         _services.AddMemoryCache(); // For query complexity caching
         
         // Build service provider
@@ -313,7 +327,7 @@ public class FluxIndexClientBuilder
         var cacheService = serviceProvider.GetService<ICacheService>();
         var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
 
-        var rankFusionService = serviceProvider.GetService<IRankFusionService>() ?? new RankFusionService();
+        var rankFusionService = serviceProvider.GetService<IRankFusionService>(); // ?? new RankFusionService();
         var hybridSearchService = serviceProvider.GetService<IHybridSearchService>();
         var semanticCacheService = serviceProvider.GetService<ISemanticCacheService>();
         var smallToBigRetriever = serviceProvider.GetService<ISmallToBigRetriever>();
@@ -337,11 +351,12 @@ public class FluxIndexClientBuilder
             loggerFactory.CreateLogger<Indexer>()
         );
         
-        // Create and return client
-        return new FluxIndexClient(
+        // Create and return context
+        return new FluxIndexContext(
             retriever,
             indexer,
-            loggerFactory.CreateLogger<FluxIndexClient>(),
+            serviceProvider,
+            loggerFactory.CreateLogger<FluxIndexContext>(),
             semanticCacheService,
             hybridSearchService,
             smallToBigRetriever

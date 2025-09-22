@@ -1,6 +1,6 @@
 using FluxIndex.Cache.Redis.Configuration;
 using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Core.Domain.Models;
+using FluxIndex.Domain.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
@@ -70,7 +70,7 @@ public class RedisSemanticCacheService : ISemanticCacheService
             _logger.LogDebug("Searching cache for query: {Query}", query);
 
             // 1. 쿼리 임베딩 생성
-            var queryEmbedding = await _embeddingService.CreateEmbeddingAsync(query, cancellationToken);
+            var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
 
             // 2. 캐시된 쿼리들의 임베딩과 유사도 계산
             var bestMatch = await FindBestMatchAsync(queryEmbedding, similarityThreshold, cancellationToken);
@@ -139,7 +139,7 @@ public class RedisSemanticCacheService : ISemanticCacheService
             _logger.LogDebug("Caching results for query: {Query}", query);
 
             // 1. 쿼리 임베딩 생성
-            var queryEmbedding = await _embeddingService.CreateEmbeddingAsync(query, cancellationToken);
+            var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
 
             // 2. 캐시 결과 객체 생성
             var cachedResult = new CachedSearchResult
@@ -233,11 +233,11 @@ public class RedisSemanticCacheService : ISemanticCacheService
     /// <summary>
     /// 캐시 통계 조회
     /// </summary>
-    public async Task<CacheStatistics> GetCacheStatisticsAsync(CancellationToken cancellationToken = default)
+    public async Task<SemanticCacheStatistics> GetCacheStatisticsAsync(CancellationToken cancellationToken = default)
     {
         try
         {
-            var stats = new CacheStatistics { CollectedAt = DateTime.UtcNow };
+            var stats = new SemanticCacheStatistics { CollectedAt = DateTime.UtcNow };
 
             // Redis에서 통계 정보 수집
             var statsData = await _database.HashGetAllAsync(STATS_KEY);
@@ -284,7 +284,7 @@ public class RedisSemanticCacheService : ISemanticCacheService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error collecting cache statistics");
-            return new CacheStatistics { CollectedAt = DateTime.UtcNow };
+            return new SemanticCacheStatistics { CollectedAt = DateTime.UtcNow };
         }
     }
 
@@ -308,7 +308,7 @@ public class RedisSemanticCacheService : ISemanticCacheService
                     return;
 
                 // 임베딩만 미리 계산해서 저장 (실제 검색 결과는 없음)
-                var embedding = await _embeddingService.CreateEmbeddingAsync(query, cancellationToken);
+                var embedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
                 var embeddingKey = EMBEDDING_KEY_PREFIX + query;
                 var embeddingBytes = SerializeEmbedding(embedding);
 

@@ -3,7 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluxIndex.Domain.Entities;
 
-namespace FluxIndex.Core.Interfaces;
+namespace FluxIndex.Core.Application.Interfaces;
 
 /// <summary>
 /// 메타데이터 풍부화 서비스 인터페이스

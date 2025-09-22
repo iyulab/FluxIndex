@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using FluxIndex.Core.Interfaces;
+using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Domain.Entities;
 using Microsoft.Extensions.Logging;
 

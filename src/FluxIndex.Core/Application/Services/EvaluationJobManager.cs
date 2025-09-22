@@ -1,4 +1,4 @@
-using FluxIndex.Core.Interfaces;
+using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Domain.Models;
 using Microsoft.Extensions.Logging;
 using System;

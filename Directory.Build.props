@@ -32,44 +32,30 @@
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
-    
+
     <!-- NuGet Package Settings -->
     <PackageOutputPath>$(MSBuildThisFileDirectory)nupkgs</PackageOutputPath>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+
+    <!-- Suppress NuGet warnings for package management -->
+    <NoWarn>$(NoWarn);NU1506;NU1507;NU1605;NU1107</NoWarn>
+    <!-- Suppress XML documentation warnings -->
+    <NoWarn>$(NoWarn);CS1591;CS1587</NoWarn>
+    <!-- Suppress nullable reference warnings for simplified development -->
+    <NoWarn>$(NoWarn);CS8601;CS8604;CS8618;CS8600</NoWarn>
+    <!-- Suppress async method warnings for methods that don't need await -->
+    <NoWarn>$(NoWarn);CS1998</NoWarn>
+    <!-- Suppress unreachable code warnings for commented code sections -->
+    <NoWarn>$(NoWarn);CS0162</NoWarn>
     
     <!-- Strong Naming (Optional) -->
     <!--<SignAssembly>true</SignAssembly>
     <AssemblyOriginatorKeyFile>$(MSBuildThisFileDirectory)..\fluxindex.snk</AssemblyOriginatorKeyFile>-->
   </PropertyGroup>
 
-  <!-- Central Package Management -->
-  <PropertyGroup>
-    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
-  </PropertyGroup>
-
   <!-- Common Package References -->
   <ItemGroup>
     <!-- <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" /> -->
-  </ItemGroup>
-
-  <!-- Central Package Versions -->
-  <ItemGroup>
-    <!-- Testing packages -->
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
-    <PackageVersion Include="xunit" Version="2.9.2" />
-    <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
-    <PackageVersion Include="coverlet.collector" Version="6.0.2" />
-    <PackageVersion Include="FluentAssertions" Version="6.12.2" />
-    <PackageVersion Include="Moq" Version="4.20.72" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration" Version="9.0.8" />
-    <PackageVersion Include="Microsoft.Extensions.Options" Version="9.0.9" />
-
-    <!-- Core dependencies -->
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="9.0.9" />
-    <PackageVersion Include="Microsoft.Extensions.Logging" Version="9.0.8" />
-    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="9.0.9" />
-    <PackageVersion Include="Microsoft.Extensions.Http" Version="9.0.9" />
-    <PackageVersion Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="9.0.9" />
   </ItemGroup>
 
   <!-- Package Icon -->

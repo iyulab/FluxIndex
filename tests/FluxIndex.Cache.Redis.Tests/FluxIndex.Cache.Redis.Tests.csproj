@@ -24,7 +24,7 @@
     <PackageReference Include="Microsoft.Extensions.Options" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="StackExchange.Redis" />
-    <PackageReference Include="Testcontainers.Redis" Version="3.11.0" />
+    <PackageReference Include="Testcontainers.Redis" />
   </ItemGroup>
 
   <ItemGroup>

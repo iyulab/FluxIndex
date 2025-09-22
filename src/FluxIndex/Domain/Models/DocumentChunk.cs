@@ -29,6 +29,11 @@ public class DocumentChunk
     public int ChunkIndex { get; init; }
 
     /// <summary>
+    /// 전체 청크 수
+    /// </summary>
+    public int TotalChunks { get; init; }
+
+    /// <summary>
     /// 임베딩 벡터
     /// </summary>
     public float[]? Embedding { get; init; }
@@ -60,6 +65,7 @@ public class DocumentChunk
         string documentId,
         string content,
         int chunkIndex,
+        int totalChunks = 1,
         float[]? embedding = null,
         float score = 0f,
         int tokenCount = 0,
@@ -71,6 +77,7 @@ public class DocumentChunk
             DocumentId = documentId,
             Content = content,
             ChunkIndex = chunkIndex,
+            TotalChunks = totalChunks,
             Embedding = embedding,
             Score = score,
             TokenCount = tokenCount,
@@ -87,11 +94,12 @@ public class DocumentChunk
         string content,
         int chunkIndex,
         EmbeddingVector embeddingVector,
+        int totalChunks = 1,
         float score = 0f,
         int tokenCount = 0,
         Dictionary<string, object>? metadata = null)
     {
-        return Create(documentId, content, chunkIndex, embeddingVector.Values, score, tokenCount, metadata);
+        return Create(documentId, content, chunkIndex, totalChunks, embeddingVector.Values, score, tokenCount, metadata);
     }
 
     /// <summary>
@@ -111,6 +119,7 @@ public class DocumentChunk
             DocumentId = DocumentId,
             Content = Content,
             ChunkIndex = ChunkIndex,
+            TotalChunks = TotalChunks,
             Embedding = Embedding,
             Score = Score,
             TokenCount = TokenCount,
@@ -130,6 +139,7 @@ public class DocumentChunk
             DocumentId = DocumentId,
             Content = Content,
             ChunkIndex = ChunkIndex,
+            TotalChunks = TotalChunks,
             Embedding = Embedding,
             Score = newScore,
             TokenCount = TokenCount,

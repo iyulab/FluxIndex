@@ -3,7 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluxIndex.Domain.Entities;
 
-namespace FluxIndex.Core.Interfaces;
+namespace FluxIndex.Core.Application.Interfaces;
 
 /// <summary>
 /// 문서 리포지토리 인터페이스

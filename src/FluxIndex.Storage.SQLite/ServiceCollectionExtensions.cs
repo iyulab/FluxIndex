@@ -1,4 +1,5 @@
 using FluxIndex.Core.Application.Interfaces;
+using Microsoft.Extensions.Options;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -96,10 +97,26 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         Action<SQLiteOptions> configureOptions)
     {
-        var options = new SQLiteOptions();
-        configureOptions(options);
-        
-        return services.AddSQLiteVectorStore(options);
+        // Configure options
+        services.Configure(configureOptions);
+
+        // Use existing SQLiteOptions registration
+        services.AddDbContext<SQLiteDbContext>((serviceProvider, dbOptions) =>
+        {
+            var options = serviceProvider.GetRequiredService<IOptions<SQLiteOptions>>().Value;
+            dbOptions.UseSqlite(options.GetConnectionString(), sqliteOptions =>
+            {
+                sqliteOptions.CommandTimeout(options.CommandTimeout);
+            });
+        }, ServiceLifetime.Scoped);
+
+        // Vector Store 등록
+        services.AddScoped<IVectorStore, SQLiteVectorStore>();
+
+        // 자동 마이그레이션 설정
+        services.AddHostedService<SQLiteMigrationService>();
+
+        return services;
     }
 }
 

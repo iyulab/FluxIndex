@@ -1,6 +1,6 @@
 using FluxIndex.Domain.Entities;
 
-namespace FluxIndex.Core.Interfaces;
+namespace FluxIndex.Core.Application.Interfaces;
 
 /// <summary>
 /// 검색 결과

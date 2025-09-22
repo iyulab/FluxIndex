@@ -4,7 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Core.Domain.Entities;
+using FluxIndex.Domain.Entities;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 
@@ -79,7 +79,7 @@ internal class InMemoryCacheService : ICacheService
 
     public async Task CacheSearchResultsAsync(
         string query,
-        IEnumerable<Core.Domain.Entities.SearchResult> results,
+        IEnumerable<FluxIndex.Domain.Entities.SearchResult> results,
         TimeSpan? expiry = null,
         CancellationToken cancellationToken = default)
     {
@@ -88,13 +88,30 @@ internal class InMemoryCacheService : ICacheService
         await SetAsync(cacheKey, resultList, expiry ?? TimeSpan.FromMinutes(5), cancellationToken);
     }
 
-    public async Task<IEnumerable<Core.Domain.Entities.SearchResult>?> GetCachedSearchResultsAsync(
+    public async Task<IEnumerable<FluxIndex.Domain.Entities.SearchResult>?> GetCachedSearchResultsAsync(
         string query,
         CancellationToken cancellationToken = default)
     {
         var cacheKey = $"search:{ComputeHash(query)}";
-        var results = await GetAsync<List<Core.Domain.Entities.SearchResult>>(cacheKey, cancellationToken);
+        var results = await GetAsync<List<Domain.Entities.SearchResult>>(cacheKey, cancellationToken);
         return results;
+    }
+
+    public Task<bool> ExistsAsync(string key, CancellationToken cancellationToken = default)
+    {
+        var exists = _cache.TryGetValue(key, out _);
+        _logger.LogDebug("Cache key exists check for: {Key} = {Exists}", key, exists);
+        return Task.FromResult(exists);
+    }
+
+    public Task ClearAsync(CancellationToken cancellationToken = default)
+    {
+        if (_cache is MemoryCache memoryCache)
+        {
+            memoryCache.Compact(1.0);
+        }
+        _logger.LogDebug("Cache cleared");
+        return Task.CompletedTask;
     }
 
     private string ComputeHash(string text)

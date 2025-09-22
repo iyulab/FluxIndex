@@ -1,8 +1,5 @@
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
+using FluxIndex.SDK;
 using Microsoft.Extensions.Logging;
-using RealQualityTest;
-using Spectre.Console;
 
 namespace RealQualityTest;
 
@@ -10,111 +7,79 @@ class Program
 {
     static async Task Main(string[] args)
     {
-        // .env.local 파일 로드
-        LoadEnvironmentFile();
+        Console.WriteLine("🧪 FluxIndex Quality Test Sample");
+        Console.WriteLine("================================");
 
-        // 설정 빌더
-        var configuration = new ConfigurationBuilder()
-            .SetBasePath(Directory.GetCurrentDirectory())
-            .AddJsonFile("appsettings.json", optional: true)
-            .AddEnvironmentVariables()
-            .Build();
-
-        // 서비스 컨테이너 설정
-        var services = new ServiceCollection();
-        services.AddSingleton<IConfiguration>(configuration);
-        services.AddLogging(builder =>
-        {
-            builder.AddConsole();
-            builder.SetMinimumLevel(LogLevel.Information);
-        });
-
-        // 테스트 서비스 등록
-        services.AddTransient<SimpleQualityTest>();
-        services.AddTransient<HybridSearchQualityTest>();
-        services.AddTransient<SimpleHybridTest>();
-
-        var serviceProvider = services.BuildServiceProvider();
-
-        // 앱 실행
         try
         {
-            AnsiConsole.Write(new FigletText("FluxIndex Quality Test").Centered().Color(Color.Cyan1));
-            AnsiConsole.WriteLine();
+            // Create FluxIndex context
+            var context = new FluxIndexContextBuilder()
+                .UseSQLite("quality_test.db")
+                .UseInMemoryEmbedding()
+                .WithLogging(builder => builder.AddConsole())
+                .Build();
 
-            // API 키 확인
-            var apiKey = configuration["OPENAI_API_KEY"];
-            if (string.IsNullOrEmpty(apiKey))
+            Console.WriteLine("✅ FluxIndex context initialized");
+
+            // Create sample documents
+            var sampleDocuments = new[]
             {
-                AnsiConsole.MarkupLine("[red]OPENAI_API_KEY가 설정되지 않았습니다. .env.local 파일을 확인하세요.[/]");
-                return;
+                new FluxIndex.Domain.Entities.Document
+                {
+                    Id = "doc1",
+                    FileName = "sample1.txt",
+                    Content = "This is a sample document about artificial intelligence and machine learning technologies.",
+                    Metadata = new Dictionary<string, object> { {"category", "technology"} }
+                },
+                new FluxIndex.Domain.Entities.Document
+                {
+                    Id = "doc2",
+                    FileName = "sample2.txt",
+                    Content = "FluxIndex is a powerful RAG infrastructure library for building search applications.",
+                    Metadata = new Dictionary<string, object> { {"category", "software"} }
+                },
+                new FluxIndex.Domain.Entities.Document
+                {
+                    Id = "doc3",
+                    FileName = "sample3.txt",
+                    Content = "Vector databases enable semantic search capabilities using embedding vectors.",
+                    Metadata = new Dictionary<string, object> { {"category", "database"} }
+                }
+            };
+
+            // Index documents
+            Console.WriteLine("\n📄 Indexing sample documents...");
+            foreach (var doc in sampleDocuments)
+            {
+                await context.Indexer.IndexDocumentAsync(doc);
+                Console.WriteLine($"   ✅ Indexed: {doc.FileName}");
             }
 
-            // 테스트 메뉴 선택
-            var choice = AnsiConsole.Prompt(
-                new SelectionPrompt<string>()
-                    .Title("실행할 테스트를 선택하세요:")
-                    .AddChoices(new[] {
-                        "기존 품질 테스트",
-                        "하이브리드 검색 테스트",
-                        "간단한 하이브리드 테스트",
-                        "모든 테스트 실행"
-                    }));
+            // Test search functionality
+            Console.WriteLine("\n🔍 Testing search functionality...");
+            var queries = new[] { "artificial intelligence", "vector search", "FluxIndex" };
 
-            switch (choice)
+            foreach (var query in queries)
             {
-                case "기존 품질 테스트":
-                    var simpleTest = serviceProvider.GetRequiredService<SimpleQualityTest>();
-                    await simpleTest.RunTestAsync();
-                    break;
+                Console.WriteLine($"\n   Query: \"{query}\"");
+                var results = await context.Retriever.SearchAsync(query);
 
-                case "하이브리드 검색 테스트":
-                    var hybridTest = serviceProvider.GetRequiredService<HybridSearchQualityTest>();
-                    await hybridTest.RunHybridSearchQualityTestAsync();
-                    break;
-
-                case "간단한 하이브리드 테스트":
-                    var simpleHybridTest = serviceProvider.GetRequiredService<SimpleHybridTest>();
-                    await simpleHybridTest.RunSimpleHybridTestAsync();
-                    break;
-
-                case "모든 테스트 실행":
-                    var allSimpleTest = serviceProvider.GetRequiredService<SimpleQualityTest>();
-                    await allSimpleTest.RunTestAsync();
-
-                    AnsiConsole.WriteLine();
-                    AnsiConsole.Rule("[yellow]하이브리드 검색 테스트 시작[/]");
-                    AnsiConsole.WriteLine();
-
-                    var allHybridTest = serviceProvider.GetRequiredService<HybridSearchQualityTest>();
-                    await allHybridTest.RunHybridSearchQualityTestAsync();
-                    break;
+                Console.WriteLine($"   📊 Found {results.Count()} results:");
+                foreach (var result in results.Take(2))
+                {
+                    Console.WriteLine($"      📄 Score: {result.Score:F3} | Content: {result.DocumentChunk.Content.Substring(0, Math.Min(80, result.DocumentChunk.Content.Length))}...");
+                }
             }
+
+            Console.WriteLine("\n🎉 Quality test completed successfully!");
         }
         catch (Exception ex)
         {
-            AnsiConsole.WriteException(ex);
-            Environment.Exit(1);
+            Console.WriteLine($"💥 Error: {ex.Message}");
+            Console.WriteLine($"Stack trace: {ex.StackTrace}");
         }
-    }
 
-    private static void LoadEnvironmentFile()
-    {
-        var envFile = Path.Combine(Directory.GetCurrentDirectory(), ".env.local");
-        if (File.Exists(envFile))
-        {
-            var lines = File.ReadAllLines(envFile);
-            foreach (var line in lines)
-            {
-                if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#"))
-                    continue;
-
-                var parts = line.Split('=', 2);
-                if (parts.Length == 2)
-                {
-                    Environment.SetEnvironmentVariable(parts[0].Trim(), parts[1].Trim());
-                }
-            }
-        }
+        Console.WriteLine("\nPress any key to exit...");
+        Console.ReadKey();
     }
 }

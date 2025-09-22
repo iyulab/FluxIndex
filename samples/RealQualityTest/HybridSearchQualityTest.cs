@@ -1,7 +1,6 @@
 using FluxIndex.SDK;
 using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Core.Application.Services;
-using FluxIndex.Core.Domain.Models;
+using FluxIndex.Domain.Entities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -13,6 +12,16 @@ using System.Linq;
 using System.Threading.Tasks;
 
 namespace RealQualityTest;
+
+// 임시 FusionMethod enum 정의
+public enum FusionMethod
+{
+    RRF,
+    WeightedSum,
+    Product,
+    Maximum,
+    HarmonicMean
+}
 
 /// <summary>
 /// 하이브리드 검색 품질 테스트 - 실제 OpenAI API 사용
@@ -65,7 +74,7 @@ public class HybridSearchQualityTest
         }
     }
 
-    private async Task<IFluxIndexClient> SetupFluxIndexClientAsync()
+    private async Task<FluxIndexContext> SetupFluxIndexClientAsync()
     {
         AnsiConsole.Write(new Panel("FluxIndex 클라이언트 설정 중...")
             .BorderColor(Color.Blue).Header("초기화"));
@@ -94,7 +103,7 @@ public class HybridSearchQualityTest
         return client;
     }
 
-    private async Task IndexTestDocumentsAsync(IFluxIndexClient client)
+    private async Task IndexTestDocumentsAsync(FluxIndexContext client)
     {
         AnsiConsole.Write(new Panel("테스트 문서 인덱싱 중...")
             .BorderColor(Color.Yellow).Header("인덱싱"));
@@ -145,7 +154,7 @@ public class HybridSearchQualityTest
         _logger.LogInformation("테스트 문서 {Count}개 인덱싱 완료", testDocuments.Count);
     }
 
-    private async Task ExecuteHybridSearchTestsAsync(IFluxIndexClient client)
+    private async Task ExecuteHybridSearchTestsAsync(FluxIndexContext client)
     {
         AnsiConsole.Write(new Panel("하이브리드 검색 테스트 실행 중...")
             .BorderColor(Color.Green).Header("하이브리드 검색"));
@@ -199,7 +208,7 @@ public class HybridSearchQualityTest
         DisplayHybridSearchSummary(results);
     }
 
-    private async Task CompareFusionMethodsAsync(IFluxIndexClient client)
+    private async Task CompareFusionMethodsAsync(FluxIndexContext client)
     {
         AnsiConsole.Write(new Panel("융합 방법 비교 테스트...")
             .BorderColor(Color.Purple).Header("융합 방법 비교"));
@@ -255,7 +264,7 @@ public class HybridSearchQualityTest
         DisplayFusionComparisonSummary(comparisonResults);
     }
 
-    private async Task RunPerformanceBenchmarkAsync(IFluxIndexClient client)
+    private async Task RunPerformanceBenchmarkAsync(FluxIndexContext client)
     {
         AnsiConsole.Write(new Panel("성능 벤치마크 실행 중...")
             .BorderColor(Color.Orange3).Header("성능 테스트"));

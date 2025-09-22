@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace FluxIndex.Core.Interfaces;
+namespace FluxIndex.Core.Application.Interfaces;
 
 /// <summary>
 /// Service for fusing multiple ranked result sets using various fusion algorithms

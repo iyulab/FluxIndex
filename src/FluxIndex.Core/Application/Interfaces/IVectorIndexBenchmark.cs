@@ -4,7 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluxIndex.Domain.Models;
 
-namespace FluxIndex.Core.Interfaces;
+namespace FluxIndex.Core.Application.Interfaces;
 
 /// <summary>
 /// 벡터 인덱스 벤치마킹 서비스 인터페이스

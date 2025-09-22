@@ -1,8 +1,10 @@
 using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Core.Application.Services;
-using FluxIndex.Core.Domain.Entities;
-using FluxIndex.Core.Domain.Models;
+using FluxIndex.Domain.Entities;
+using FluxIndex.Domain.Models;
 using FluxIndex.SDK.Services;
+using DocumentChunkEntity = FluxIndex.Domain.Entities.DocumentChunk;
+using DocumentChunkModel = FluxIndex.Domain.Models.DocumentChunk;
+using RankedResultCore = FluxIndex.Core.Application.Interfaces.RankedResult;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
@@ -39,7 +41,7 @@ public class Retriever
         _embeddingService = embeddingService;
         _options = options;
         _cacheService = cacheService;
-        _rankFusionService = rankFusionService ?? new RankFusionService();
+        _rankFusionService = rankFusionService; // ?? new RankFusionService();
         _logger = logger ?? new NullLogger<Retriever>();
     }
 
@@ -68,17 +70,24 @@ public class Retriever
         }
 
         // Generate embedding for query
-        var queryEmbedding = await _embeddingService.CreateEmbeddingAsync(query, cancellationToken);
+        var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
 
         // Search in vector store
-        var searchResults = await _vectorStore.SearchSimilarAsync(
+        var searchResults = await _vectorStore.SearchAsync(
             queryEmbedding,
             maxResults,
             minScore,
             cancellationToken);
 
-        // Results are already VectorSearchResult from the vector store
-        var results = searchResults.ToList();
+        // Convert DocumentChunks to VectorSearchResults
+        var results = searchResults.Select(chunk => new VectorSearchResult
+        {
+            DocumentChunk = ConvertToModelChunk(chunk),
+            Score = 1.0f, // Default score since IVectorStore doesn't provide it
+            Rank = 0,
+            Distance = 0,
+            Metadata = chunk.Metadata
+        }).ToList();
 
         // Apply metadata filter if provided
         if (filter != null && filter.Any())
@@ -121,7 +130,7 @@ public class Retriever
         
         if (Math.Abs(vectorWeight - 0.5f) < 0.01f) // Equal weights, use RRF
         {
-            var resultSets = new Dictionary<string, IEnumerable<RankedResult>>
+            var resultSets = new Dictionary<string, IEnumerable<RankedResultCore>>
             {
                 ["vector"] = ConvertToRankedResults(vectorResults, "vector"),
                 ["keyword"] = ConvertToRankedResults(keywordResults, "keyword")
@@ -132,7 +141,7 @@ public class Retriever
         }
         else // Use weighted fusion
         {
-            var resultSets = new Dictionary<string, (IEnumerable<RankedResult> results, float weight)>
+            var resultSets = new Dictionary<string, (IEnumerable<RankedResultCore> results, float weight)>
             {
                 ["vector"] = (ConvertToRankedResults(vectorResults, "vector"), vectorWeight),
                 ["keyword"] = (ConvertToRankedResults(keywordResults, "keyword"), 1 - vectorWeight)
@@ -163,7 +172,7 @@ public class Retriever
         foreach (var doc in documents)
         {
             // Get chunks for each document
-            var chunks = await _vectorStore.GetDocumentChunksAsync(doc.Id, cancellationToken);
+            var chunks = await _vectorStore.GetByDocumentIdAsync(doc.Id, cancellationToken);
             
             // Filter chunks containing keyword
             var matchingChunks = chunks.Where(c => 
@@ -171,7 +180,7 @@ public class Retriever
             
             results.AddRange(matchingChunks.Select(chunk => new VectorSearchResult
             {
-                DocumentChunk = chunk,
+                DocumentChunk = ConvertToModelChunk(chunk),
                 Score = CalculateKeywordScore(chunk.Content, keyword),
                 Rank = 0,
                 Distance = 0,
@@ -210,7 +219,7 @@ public class Retriever
         if (document != null)
         {
             // Get chunks
-            var chunks = await _vectorStore.GetDocumentChunksAsync(documentId, cancellationToken);
+            var chunks = await _vectorStore.GetByDocumentIdAsync(documentId, cancellationToken);
             foreach (var chunk in chunks.OrderBy(c => c.ChunkIndex))
             {
                 document.AddChunk(chunk);
@@ -229,12 +238,12 @@ public class Retriever
     /// <summary>
     /// 청크 ID로 조회
     /// </summary>
-    public async Task<DocumentChunk?> GetChunkAsync(
+    public async Task<DocumentChunkEntity?> GetChunkAsync(
         string chunkId,
         CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("Getting chunk: {ChunkId}", chunkId);
-        return await _vectorStore.GetChunkAsync(chunkId, cancellationToken);
+        return await _vectorStore.GetByIdAsync(chunkId, cancellationToken);
     }
 
     /// <summary>
@@ -249,7 +258,7 @@ public class Retriever
         _logger.LogInformation("Finding similar documents to: {DocumentId}", documentId);
 
         // Get document chunks
-        var chunks = await _vectorStore.GetDocumentChunksAsync(documentId, cancellationToken);
+        var chunks = await _vectorStore.GetByDocumentIdAsync(documentId, cancellationToken);
         if (!chunks.Any())
             return Enumerable.Empty<VectorSearchResult>();
 
@@ -259,16 +268,24 @@ public class Retriever
             return Enumerable.Empty<VectorSearchResult>();
 
         // Search for similar chunks
-        var similarChunks = await _vectorStore.SearchSimilarAsync(
+        var similarDocumentChunks = await _vectorStore.SearchAsync(
             firstChunk.Embedding,
             maxResults + chunks.Count(), // Get extra to filter out same document
             minScore,
             cancellationToken);
 
-        // Filter out chunks from the same document
-        var results = similarChunks
-            .Where(c => c.DocumentChunk.DocumentId != documentId)
-            .Take(maxResults);
+        // Convert to VectorSearchResult and filter out chunks from the same document
+        var results = similarDocumentChunks
+            .Where(c => c.DocumentId != documentId)
+            .Take(maxResults)
+            .Select(chunk => new VectorSearchResult
+            {
+                DocumentChunk = ConvertToModelChunk(chunk),
+                Score = 1.0f, // Default score
+                Rank = 0,
+                Distance = 0,
+                Metadata = chunk.Metadata
+            });
 
         return results;
     }
@@ -279,13 +296,13 @@ public class Retriever
     public async Task<RetrievalStatistics> GetStatisticsAsync(CancellationToken cancellationToken = default)
     {
         var docCount = await _documentRepository.GetCountAsync(cancellationToken);
-        var vectorStats = await _vectorStore.GetStatisticsAsync(cancellationToken);
+        var chunkCount = await _vectorStore.CountAsync(cancellationToken);
 
         return new RetrievalStatistics
         {
-            TotalDocuments = vectorStats.TotalDocuments,
-            TotalChunks = vectorStats.TotalChunks,
-            AverageChunksPerDocument = vectorStats.TotalDocuments > 0 ? (double)vectorStats.TotalChunks / vectorStats.TotalDocuments : 0,
+            TotalDocuments = docCount,
+            TotalChunks = chunkCount,
+            AverageChunksPerDocument = docCount > 0 ? (double)chunkCount / docCount : 0,
             CacheEnabled = _cacheService != null,
             VectorStoreProvider = _vectorStore.GetType().Name
         };
@@ -376,26 +393,40 @@ public class Retriever
         return $"search:{query}:{maxResults}:{minScore}:{filterStr}";
     }
 
-    private IEnumerable<RankedResult> ConvertToRankedResults(IEnumerable<VectorSearchResult> searchResults, string source)
+    private DocumentChunkModel ConvertToModelChunk(DocumentChunkEntity entityChunk)
     {
-        return searchResults.Select((r, index) => new RankedResult
+        return DocumentChunkModel.Create(
+            entityChunk.DocumentId,
+            entityChunk.Content,
+            entityChunk.ChunkIndex,
+            entityChunk.TotalChunks,
+            entityChunk.Embedding,
+            0f, // score
+            entityChunk.TokenCount,
+            entityChunk.Metadata
+        );
+    }
+
+    private IEnumerable<RankedResultCore> ConvertToRankedResults(IEnumerable<VectorSearchResult> searchResults, string source)
+    {
+        return searchResults.Select((r, index) => new RankedResultCore
         {
             Id = r.DocumentChunk.Id,
             DocumentId = r.DocumentChunk.DocumentId,
             ChunkId = r.DocumentChunk.Id,
             Content = r.DocumentChunk.Content,
-            Score = r.Score,
+            Score = (float)r.Score,
             Rank = index + 1,
             Source = source,
             Metadata = r.Metadata
         });
     }
 
-    private IEnumerable<VectorSearchResult> ConvertFromRankedResults(IEnumerable<RankedResult> rankedResults)
+    private IEnumerable<VectorSearchResult> ConvertFromRankedResults(IEnumerable<RankedResultCore> rankedResults)
     {
         return rankedResults.Select(r => new VectorSearchResult
         {
-            DocumentChunk = new DocumentChunk
+            DocumentChunk = ConvertToModelChunk(new DocumentChunkEntity
             {
                 Id = r.ChunkId,
                 DocumentId = r.DocumentId,
@@ -403,8 +434,8 @@ public class Retriever
                 ChunkIndex = 0,
                 TokenCount = 0,
                 Metadata = r.Metadata ?? new Dictionary<string, object>()
-            },
-            Score = r.Score,
+            }),
+            Score = (float)r.Score,
             Rank = r.Rank,
             Distance = 0,
             Metadata = r.Metadata ?? new Dictionary<string, object>()

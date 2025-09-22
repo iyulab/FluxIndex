@@ -1,4 +1,4 @@
-using FluxIndex.Core.Interfaces;
+using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Domain.Models;
 using DocumentChunkEntity = FluxIndex.Domain.Entities.DocumentChunk;
 // IMemoryCache는 Core 프로젝트에서 사용하지 않음
@@ -81,8 +81,23 @@ public class SmallToBigRetriever : ISmallToBigRetriever
 
             var expansionTasks = preciseResults.Take(options.MaxResults).Select(async result =>
             {
+                // Models.DocumentChunk를 Entities.DocumentChunk로 변환
+                var entityChunk = new DocumentChunkEntity
+                {
+                    Id = result.Chunk.Id,
+                    DocumentId = result.Chunk.DocumentId,
+                    Content = result.Chunk.Content,
+                    ChunkIndex = result.Chunk.ChunkIndex,
+                    TotalChunks = result.Chunk.TotalChunks,
+                    Embedding = result.Chunk.Embedding,
+                    Score = result.Chunk.Score,
+                    TokenCount = result.Chunk.TokenCount,
+                    Metadata = result.Chunk.Metadata,
+                    CreatedAt = result.Chunk.CreatedAt
+                };
+
                 return await CreateSmallToBigResultAsync(
-                    query, result.Chunk, optimalWindowSize, options, complexityAnalysis, cancellationToken);
+                    query, entityChunk, optimalWindowSize, options, complexityAnalysis, cancellationToken);
             });
 
             var expandedArray = await Task.WhenAll(expansionTasks);
@@ -337,16 +352,16 @@ public class SmallToBigRetriever : ISmallToBigRetriever
             {
                 OriginalChunk = new FluxIndex.Domain.Models.DocumentChunk
                 {
-                    Id = primaryChunk.Id,
-                    DocumentId = primaryChunk.DocumentId,
-                    Content = primaryChunk.Content,
-                    ChunkIndex = primaryChunk.ChunkIndex,
-                    TotalChunks = primaryChunk.TotalChunks,
-                    Embedding = primaryChunk.Embedding,
-                    Score = primaryChunk.Score,
-                    TokenCount = primaryChunk.TokenCount,
-                    Metadata = primaryChunk.Metadata,
-                    CreatedAt = primaryChunk.CreatedAt
+                    Id = primaryChunkEntity.Id,
+                    DocumentId = primaryChunkEntity.DocumentId,
+                    Content = primaryChunkEntity.Content,
+                    ChunkIndex = primaryChunkEntity.ChunkIndex,
+                    TotalChunks = primaryChunkEntity.TotalChunks,
+                    Embedding = primaryChunkEntity.Embedding,
+                    Score = primaryChunkEntity.Score ?? 0f,
+                    TokenCount = primaryChunkEntity.TokenCount,
+                    Metadata = primaryChunkEntity.Metadata,
+                    CreatedAt = primaryChunkEntity.CreatedAt
                 },
                 ExpandedChunks = qualityFiltered.Select(chunk => new FluxIndex.Domain.Models.DocumentChunk
                 {
@@ -356,7 +371,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
                     ChunkIndex = chunk.ChunkIndex,
                     TotalChunks = chunk.TotalChunks,
                     Embedding = chunk.Embedding,
-                    Score = chunk.Score,
+                    Score = chunk.Score ?? 0f,
                     TokenCount = chunk.TokenCount,
                     Metadata = chunk.Metadata,
                     CreatedAt = chunk.CreatedAt
@@ -523,8 +538,21 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         QueryComplexityAnalysis complexityAnalysis,
         CancellationToken cancellationToken)
     {
-        // 확장 전략 결정
-        var strategy = await RecommendExpansionStrategyAsync(query, primaryChunk, cancellationToken);
+        // 확장 전략 결정 (Entities를 Models로 변환)
+        var modelChunkForStrategy = new FluxIndex.Domain.Models.DocumentChunk
+        {
+            Id = primaryChunk.Id,
+            DocumentId = primaryChunk.DocumentId,
+            Content = primaryChunk.Content,
+            ChunkIndex = primaryChunk.ChunkIndex,
+            TotalChunks = primaryChunk.TotalChunks,
+            Embedding = primaryChunk.Embedding,
+            Score = primaryChunk.Score ?? 0f,
+            TokenCount = primaryChunk.TokenCount,
+            Metadata = primaryChunk.Metadata,
+            CreatedAt = primaryChunk.CreatedAt
+        };
+        var strategy = await RecommendExpansionStrategyAsync(query, modelChunkForStrategy, cancellationToken);
 
         // 컨텍스트 확장
         var expansionOptions = new ContextExpansionOptions
@@ -536,14 +564,29 @@ public class SmallToBigRetriever : ISmallToBigRetriever
             DeduplicationThreshold = options.DeduplicationThreshold
         };
 
-        var expansionResult = await ExpandContextAsync(primaryChunk, windowSize, expansionOptions, cancellationToken);
+        // Entities.DocumentChunk를 Models.DocumentChunk로 변환
+        var modelsChunk = new FluxIndex.Domain.Models.DocumentChunk
+        {
+            Id = primaryChunk.Id,
+            DocumentId = primaryChunk.DocumentId,
+            Content = primaryChunk.Content,
+            ChunkIndex = primaryChunk.ChunkIndex,
+            TotalChunks = primaryChunk.TotalChunks,
+            Embedding = primaryChunk.Embedding,
+            Score = primaryChunk.Score ?? 0f,
+            TokenCount = primaryChunk.TokenCount,
+            Metadata = primaryChunk.Metadata,
+            CreatedAt = primaryChunk.CreatedAt
+        };
+
+        var expansionResult = await ExpandContextAsync(modelsChunk, windowSize, expansionOptions, cancellationToken);
 
         // Small-to-Big 결과 구성
         var result = new SmallToBigResult
         {
-            PrimaryChunk = primaryChunk,
+            PrimaryChunk = modelsChunk,
             ContextChunks = expansionResult.ExpandedChunks,
-            RelevanceScore = CalculateOverallRelevance(primaryChunk, expansionResult.ExpandedChunks, query),
+            RelevanceScore = CalculateOverallRelevance(modelsChunk, expansionResult.ExpandedChunks, query),
             WindowSize = windowSize,
             ExpansionReason = strategy.Reasoning,
             Strategy = strategy,
@@ -1002,6 +1045,27 @@ public class SmallToBigRetriever : ISmallToBigRetriever
     }
 
     private double CalculateContextDiversity(List<DocumentChunk> chunks)
+    {
+        if (chunks.Count <= 1) return 0.0;
+
+        var totalSimilarity = 0.0;
+        var pairCount = 0;
+
+        for (int i = 0; i < chunks.Count; i++)
+        {
+            for (int j = i + 1; j < chunks.Count; j++)
+            {
+                var similarity = CalculateSemanticSimilarity(chunks[i].Content, chunks[j].Content);
+                totalSimilarity += similarity;
+                pairCount++;
+            }
+        }
+
+        var avgSimilarity = pairCount > 0 ? totalSimilarity / pairCount : 0.0;
+        return 1.0 - avgSimilarity; // 유사도가 낮을수록 다양성이 높음
+    }
+
+    private double CalculateContextDiversity(List<DocumentChunkEntity> chunks)
     {
         if (chunks.Count <= 1) return 0.0;
 

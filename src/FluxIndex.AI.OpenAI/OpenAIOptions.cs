@@ -1,55 +1,42 @@
 namespace FluxIndex.AI.OpenAI;
 
 /// <summary>
-/// OpenAI 서비스 설정 옵션
+/// Configuration options for OpenAI services
 /// </summary>
 public class OpenAIOptions
 {
     /// <summary>
-    /// OpenAI 또는 Azure OpenAI API 키
+    /// OpenAI API key
     /// </summary>
     public string ApiKey { get; set; } = string.Empty;
-    
+
     /// <summary>
-    /// Azure OpenAI 엔드포인트 (Azure 사용 시)
-    /// 예: https://your-resource.openai.azure.com/
+    /// Azure OpenAI endpoint (optional, leave empty for OpenAI API)
     /// </summary>
-    public string? AzureEndpoint { get; set; }
-    
+    public string? Endpoint { get; set; }
+
     /// <summary>
-    /// Azure OpenAI 배포 이름 (Azure 사용 시)
+    /// Model name for embeddings (e.g., "text-embedding-3-small")
     /// </summary>
-    public string? DeploymentName { get; set; }
-    
+    public string ModelName { get; set; } = "text-embedding-3-small";
+
     /// <summary>
-    /// 임베딩 모델 이름
-    /// OpenAI: text-embedding-3-small, text-embedding-3-large, text-embedding-ada-002
-    /// Azure: deployment name을 사용
+    /// Maximum tokens per request
     /// </summary>
-    public string EmbeddingModel { get; set; } = "text-embedding-3-small";
-    
+    public int MaxTokens { get; set; } = 8192;
+
     /// <summary>
-    /// 최대 토큰 수
+    /// Embedding dimensions (optional, model default if null)
     /// </summary>
-    public int MaxTokens { get; set; } = 8191;
-    
+    public int? Dimensions { get; set; }
+
     /// <summary>
-    /// 배치 처리 크기
+    /// Request timeout in seconds
     /// </summary>
-    public int BatchSize { get; set; } = 100;
-    
+    public int TimeoutSeconds { get; set; } = 30;
+
     /// <summary>
-    /// 최대 재시도 횟수
+    /// Maximum retry attempts
     /// </summary>
     public int MaxRetries { get; set; } = 3;
-    
-    /// <summary>
-    /// 최대 동시 요청 수
-    /// </summary>
-    public int MaxConcurrentRequests { get; set; } = 10;
-    
-    /// <summary>
-    /// Rate limit 지연 시간 (밀리초)
-    /// </summary>
-    public int RateLimitDelay { get; set; } = 1000;
 }

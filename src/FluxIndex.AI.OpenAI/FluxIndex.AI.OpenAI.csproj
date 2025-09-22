@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
@@ -14,16 +14,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\FluxIndex\FluxIndex.csproj" />
+    <ProjectReference Include="..\FluxIndex.Core\FluxIndex.Core.csproj" />
   </ItemGroup>
   
   <ItemGroup>
     <PackageReference Include="Azure.AI.OpenAI" />
-    <PackageReference Include="Microsoft.Extensions.Options" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
-    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
-    <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
   </ItemGroup>
 
 </Project>

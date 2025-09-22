@@ -5,7 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using SearchStrategy = FluxIndex.Domain.Models.SearchStrategy;
 
-namespace FluxIndex.Core.Interfaces;
+namespace FluxIndex.Core.Application.Interfaces;
 
 /// <summary>
 /// 하이브리드 검색 서비스 인터페이스 - 벡터 + 키워드 융합 검색

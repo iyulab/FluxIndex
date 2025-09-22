@@ -13,13 +13,12 @@
 
   <ItemGroup>
     <PackageReference Include="FileFlux" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
-    <PackageReference Include="System.Text.Json" />
   </ItemGroup>
 
-  <!-- Project references to FluxIndex components -->
+  <!-- Project references to FluxIndex Core -->
   <ItemGroup>
-    <ProjectReference Include="..\FluxIndex\FluxIndex.csproj" />
+    <ProjectReference Include="..\FluxIndex.Core\FluxIndex.Core.csproj" />
+    <ProjectReference Include="..\FluxIndex.SDK\FluxIndex.SDK.csproj" />
   </ItemGroup>
 
 </Project>
