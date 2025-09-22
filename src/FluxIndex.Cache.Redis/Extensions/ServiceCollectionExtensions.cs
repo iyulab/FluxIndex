@@ -55,7 +55,7 @@ public static class ServiceCollectionExtensions
         configureOptions(options);
 
         // Redis 연결 등록
-        services.AddSingleton<IConnectionMultiplexer>(provider =>
+        services.TryAddSingleton<IConnectionMultiplexer>(provider =>
         {
             try
             {
