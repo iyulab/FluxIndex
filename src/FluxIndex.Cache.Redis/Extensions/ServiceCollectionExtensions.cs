@@ -23,6 +23,12 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         string connectionString)
     {
+        if (services == null)
+            throw new ArgumentNullException(nameof(services));
+
+        if (connectionString == null)
+            throw new ArgumentNullException(nameof(connectionString));
+
         return services.AddRedisSemanticCache(options =>
         {
             options.ConnectionString = connectionString;

@@ -6,9 +6,9 @@
     📦 버전 업데이트: 아래 Version을 변경하고 main 브랜치에 push하면 자동으로 NuGet에 배포됩니다.
     🔄 워크플로우: .github/workflows/build-and-release.yml 참조
     -->
-    <Version>0.2.0</Version>
-    <AssemblyVersion>0.2.0.0</AssemblyVersion>
-    <FileVersion>0.2.0.0</FileVersion>
+    <Version>0.2.1</Version>
+    <AssemblyVersion>0.2.1.0</AssemblyVersion>
+    <FileVersion>0.2.1.0</FileVersion>
     
     <!-- Package Metadata -->
     <Authors>iyulab</Authors>

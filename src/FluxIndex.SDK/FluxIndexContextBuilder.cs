@@ -3,6 +3,8 @@ using FluxIndex.Domain.ValueObjects;
 using FluxIndex.SDK.Configuration;
 using FluxIndex.SDK.Services;
 using FluxIndex.SDK.Extensions;
+using FluxIndex.AI.OpenAI;
+using FluxIndex.Storage.SQLite;
 // using FluxIndex.Cache.Redis.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Caching.Memory;
@@ -176,6 +178,7 @@ public class FluxIndexContextBuilder
         return this;
     }
 
+
     /// <summary>
     /// 시맨틱 캐싱 활성화 - Redis 벡터 캐시를 통한 쿼리 유사도 기반 캐싱
     /// </summary>
@@ -315,41 +318,58 @@ public class FluxIndexContextBuilder
         // Register Small-to-Big services (구현체 추후 추가)
         // _services.AddScoped<ISmallToBigRetriever, SmallToBigRetriever>();
         _services.AddMemoryCache(); // For query complexity caching
-        
+
+        // Register Retriever and Indexer as services (needed for Extensions)
+        _services.AddScoped<Retriever>(serviceProvider =>
+        {
+            var vectorStore = serviceProvider.GetRequiredService<IVectorStore>();
+            var documentRepository = serviceProvider.GetRequiredService<IDocumentRepository>();
+            var embeddingService = serviceProvider.GetRequiredService<IEmbeddingService>();
+            var cacheService = serviceProvider.GetService<ICacheService>();
+            var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
+            var rankFusionService = serviceProvider.GetService<IRankFusionService>();
+
+            return new Retriever(
+                vectorStore,
+                documentRepository,
+                embeddingService,
+                _retrieverOptions,
+                cacheService,
+                rankFusionService,
+                loggerFactory.CreateLogger<Retriever>()
+            );
+        });
+
+        _services.AddScoped<Indexer>(serviceProvider =>
+        {
+            var vectorStore = serviceProvider.GetRequiredService<IVectorStore>();
+            var documentRepository = serviceProvider.GetRequiredService<IDocumentRepository>();
+            var embeddingService = serviceProvider.GetRequiredService<IEmbeddingService>();
+            var chunkingService = serviceProvider.GetRequiredService<IChunkingService>();
+            var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
+
+            return new Indexer(
+                vectorStore,
+                documentRepository,
+                embeddingService,
+                chunkingService,
+                _indexerOptions,
+                loggerFactory.CreateLogger<Indexer>()
+            );
+        });
+
         // Build service provider
         var serviceProvider = _services.BuildServiceProvider();
-        
-        // Create Retriever and Indexer
-        var vectorStore = serviceProvider.GetRequiredService<IVectorStore>();
-        var documentRepository = serviceProvider.GetRequiredService<IDocumentRepository>();
-        var embeddingService = serviceProvider.GetRequiredService<IEmbeddingService>();
-        var chunkingService = serviceProvider.GetRequiredService<IChunkingService>();
-        var cacheService = serviceProvider.GetService<ICacheService>();
-        var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
 
-        var rankFusionService = serviceProvider.GetService<IRankFusionService>(); // ?? new RankFusionService();
+        // Get Retriever and Indexer from DI
+        var retriever = serviceProvider.GetRequiredService<Retriever>();
+        var indexer = serviceProvider.GetRequiredService<Indexer>();
+
+        // Get additional services
+        var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
         var hybridSearchService = serviceProvider.GetService<IHybridSearchService>();
         var semanticCacheService = serviceProvider.GetService<ISemanticCacheService>();
         var smallToBigRetriever = serviceProvider.GetService<ISmallToBigRetriever>();
-        
-        var retriever = new Retriever(
-            vectorStore,
-            documentRepository,
-            embeddingService,
-            _retrieverOptions,
-            cacheService,
-            rankFusionService,
-            loggerFactory.CreateLogger<Retriever>()
-        );
-        
-        var indexer = new Indexer(
-            vectorStore,
-            documentRepository,
-            embeddingService,
-            chunkingService,
-            _indexerOptions,
-            loggerFactory.CreateLogger<Indexer>()
-        );
         
         // Create and return context
         return new FluxIndexContext(
@@ -390,18 +410,18 @@ public class FluxIndexContextBuilder
         switch (_options.Embedding.Provider?.ToLower())
         {
             case "openai":
-                _services.AddOpenAIEmbedding(options =>
+                FluxIndex.AI.OpenAI.ServiceCollectionExtensions.AddOpenAIEmbedding(_services, options =>
                 {
                     options.ApiKey = _options.Embedding.ApiKey;
                     options.ModelName = _options.Embedding.ModelName;
                 });
                 break;
             case "azureopenai":
-                _services.AddAzureOpenAIEmbedding(options =>
+                FluxIndex.AI.OpenAI.ServiceCollectionExtensions.AddAzureOpenAIEmbedding(_services, options =>
                 {
                     options.ApiKey = _options.Embedding.ApiKey;
-                    options.DeploymentName = _options.Embedding.ModelName;
-                    options.Endpoint = _options.Embedding.ProviderSpecificOptions["Endpoint"]?.ToString() ?? "";
+                    options.ModelName = _options.Embedding.ModelName;
+                    options.Endpoint = _options.Embedding.ProviderSpecificOptions.TryGetValue("Endpoint", out var endpoint) ? endpoint?.ToString() : "";
                 });
                 break;
             default:

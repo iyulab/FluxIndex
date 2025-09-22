@@ -15,7 +15,7 @@
     <PackageReference Include="FileFlux" />
   </ItemGroup>
 
-  <!-- Project references to FluxIndex Core -->
+  <!-- Project references to FluxIndex Core and SDK -->
   <ItemGroup>
     <ProjectReference Include="..\FluxIndex.Core\FluxIndex.Core.csproj" />
     <ProjectReference Include="..\FluxIndex.SDK\FluxIndex.SDK.csproj" />

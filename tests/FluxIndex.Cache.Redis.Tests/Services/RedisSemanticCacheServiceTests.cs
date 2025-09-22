@@ -1,5 +1,6 @@
 using FluxIndex.Cache.Redis.Configuration;
 using FluxIndex.Cache.Redis.Services;
+using FluxIndex.Cache.Redis.Tests.Infrastructure;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Domain.Models;
 using Microsoft.Extensions.Logging;
@@ -10,7 +11,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Testcontainers.Redis;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -19,35 +19,23 @@ namespace FluxIndex.Cache.Redis.Tests.Services;
 /// <summary>
 /// Redis 시맨틱 캐시 서비스 테스트
 /// </summary>
-public class RedisSemanticCacheServiceTests : IAsyncLifetime
+public class RedisSemanticCacheServiceTests : RedisTestBase
 {
-    private readonly ITestOutputHelper _output;
-    private readonly RedisContainer _redisContainer;
     private IDatabase? _redis;
     private RedisSemanticCacheService? _cacheService;
 
-    public RedisSemanticCacheServiceTests(ITestOutputHelper output)
+    public RedisSemanticCacheServiceTests(ITestOutputHelper output) : base(output)
     {
-        _output = output;
-        _redisContainer = new RedisBuilder()
-            .WithImage("redis:7-alpine")
-            .WithPortBinding(6379, true)
-            .Build();
     }
 
-    public async Task InitializeAsync()
+    protected override async Task OnDockerInitializedAsync()
     {
-        await _redisContainer.StartAsync();
-
-        var connectionString = _redisContainer.GetConnectionString();
-        _output.WriteLine($"Redis connection string: {connectionString}");
-
-        var redis = await ConnectionMultiplexer.ConnectAsync(connectionString);
+        var redis = await ConnectionMultiplexer.ConnectAsync(ConnectionString);
         _redis = redis.GetDatabase();
 
         var options = Microsoft.Extensions.Options.Options.Create(new RedisSemanticCacheOptions
         {
-            ConnectionString = connectionString,
+            ConnectionString = ConnectionString,
             KeyPrefix = "test:fluxindex:semantic:",
             DefaultSimilarityThreshold = 0.95f,
             DefaultTtl = TimeSpan.FromMinutes(5)
@@ -66,10 +54,10 @@ public class RedisSemanticCacheServiceTests : IAsyncLifetime
             logger.Object);
     }
 
-    public async Task DisposeAsync()
+    protected override Task OnDockerDisposingAsync()
     {
         _cacheService?.Dispose();
-        await _redisContainer.DisposeAsync();
+        return Task.CompletedTask;
     }
 
     private static float[] CreateMockEmbedding(string text)
@@ -104,9 +92,12 @@ public class RedisSemanticCacheServiceTests : IAsyncLifetime
         return vector;
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetCachedResultAsync_WithNewQuery_ReturnsNull()
     {
+        // Skip test if Docker is not available
+        SkipIfDockerNotAvailable();
+
         // Arrange
         var query = "새로운 테스트 쿼리";
 
@@ -117,9 +108,12 @@ public class RedisSemanticCacheServiceTests : IAsyncLifetime
         Assert.Null(result);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SetAndGetCachedResult_ShouldWorkCorrectly()
     {
+        // Skip test if Docker is not available
+        SkipIfDockerNotAvailable();
+
         // Arrange
         var query = "테스트 쿼리";
         var results = new List<DocumentChunk>
@@ -143,9 +137,12 @@ public class RedisSemanticCacheServiceTests : IAsyncLifetime
         Assert.True(cachedResult.SimilarityScore >= 0.9f);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetCacheStatisticsAsync_ShouldReturnStatistics()
     {
+        // Skip test if Docker is not available
+        SkipIfDockerNotAvailable();
+
         // Arrange & Act
         var statistics = await _cacheService!.GetCacheStatisticsAsync();
 
@@ -154,9 +151,12 @@ public class RedisSemanticCacheServiceTests : IAsyncLifetime
         Assert.True(statistics.TotalEntries >= 0);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task InvalidateCacheAsync_ShouldWork()
     {
+        // Skip test if Docker is not available
+        SkipIfDockerNotAvailable();
+
         // Arrange
         var query = "무효화 테스트 쿼리";
         var results = new List<DocumentChunk> { new DocumentChunk { Content = "내용", ChunkIndex = 0 } };
@@ -171,9 +171,12 @@ public class RedisSemanticCacheServiceTests : IAsyncLifetime
         Assert.Null(cachedResult);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task CompactCacheAsync_ShouldNotThrow()
     {
+        // Skip test if Docker is not available
+        SkipIfDockerNotAvailable();
+
         // Act & Assert - Should not throw
         await _cacheService!.CompactCacheAsync();
     }

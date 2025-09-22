@@ -1,82 +1,54 @@
 using FluxIndex.Extensions.WebFlux;
+using FluxIndex.SDK;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace FluxIndex.SDK;
+namespace FluxIndex.Extensions.WebFlux;
 
 /// <summary>
-/// Extension methods for integrating WebFlux with FluxIndex SDK
+/// Extension methods for integrating WebFlux with FluxIndex
 /// </summary>
-public static class WebFluxExtensions
+public static class WebFluxServiceCollectionExtensions
 {
     /// <summary>
-    /// Adds WebFlux web content processing to FluxIndex
+    /// Adds WebFlux web content processing services to the service collection
     /// </summary>
-    /// <param name="builder">FluxIndex context builder</param>
-    /// <returns>Builder for chaining</returns>
-    public static FluxIndexContextBuilder UseWebFlux(this FluxIndexContextBuilder builder)
+    /// <param name="services">Service collection</param>
+    /// <param name="configureOptions">Optional configuration action for WebFlux options</param>
+    /// <returns>Service collection for chaining</returns>
+    public static IServiceCollection AddWebFlux(this IServiceCollection services, Action<WebFluxOptions>? configureOptions = null)
     {
-        return builder.ConfigureServices(services => services.AddWebFluxIntegration());
-    }
+        // Configure options if provided
+        if (configureOptions != null)
+        {
+            services.Configure(configureOptions);
+        }
 
+        // Register WebFlux web content processor
+        services.AddTransient<IWebContentProcessor, DefaultWebContentProcessor>();
+
+        // Register WebFlux integration service
+        services.AddScoped<WebFluxIntegration>();
+
+        return services;
+    }
+}
+
+/// <summary>
+/// Extension methods for FluxIndexContextBuilder to add WebFlux integration
+/// </summary>
+public static class FluxIndexContextBuilderExtensions
+{
     /// <summary>
-    /// Adds WebFlux with custom processing options
+    /// Adds WebFlux integration to FluxIndex context
     /// </summary>
     /// <param name="builder">FluxIndex context builder</param>
-    /// <param name="configureOptions">Configuration action for WebFlux options</param>
-    /// <returns>Builder for chaining</returns>
-    public static FluxIndexContextBuilder UseWebFlux(
-        this FluxIndexContextBuilder builder,
-        Action<WebFluxOptions> configureOptions)
+    /// <param name="configureOptions">Optional configuration action for WebFlux options</param>
+    /// <returns>FluxIndex context builder for chaining</returns>
+    public static FluxIndexContextBuilder UseWebFlux(this FluxIndexContextBuilder builder, Action<WebFluxOptions>? configureOptions = null)
     {
         return builder.ConfigureServices(services =>
         {
-            services.AddWebFluxIntegration(configureOptions);
+            services.AddWebFlux(configureOptions);
         });
-    }
-
-    /// <summary>
-    /// Get WebFlux integration service from FluxIndex context
-    /// </summary>
-    /// <param name="context">FluxIndex context</param>
-    /// <returns>WebFlux integration service</returns>
-    public static WebFluxIntegration GetWebFluxIntegration(this IFluxIndexContext context)
-    {
-        return context.ServiceProvider.GetRequiredService<WebFluxIntegration>();
-    }
-
-    /// <summary>
-    /// Index web content directly from FluxIndex context
-    /// </summary>
-    /// <param name="context">FluxIndex context</param>
-    /// <param name="url">URL to process</param>
-    /// <param name="options">WebFlux processing options</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Document ID of indexed content</returns>
-    public static async Task<string> IndexWebContentAsync(
-        this IFluxIndexContext context,
-        string url,
-        WebFluxOptions? options = null,
-        CancellationToken cancellationToken = default)
-    {
-        var webFlux = context.GetWebFluxIntegration();
-        return await webFlux.IndexWebContentAsync(url, options, cancellationToken);
-    }
-
-    /// <summary>
-    /// Index multiple URLs directly from FluxIndex context
-    /// </summary>
-    /// <param name="context">FluxIndex context</param>
-    /// <param name="urls">URLs to process</param>
-    /// <param name="options">WebFlux processing options</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Document IDs of indexed content</returns>
-    public static async Task<IEnumerable<string>> IndexMultipleUrlsAsync(
-        this IFluxIndexContext context,
-        IEnumerable<string> urls,
-        WebFluxOptions? options = null,
-        CancellationToken cancellationToken = default)
-    {
-        var webFlux = context.GetWebFluxIntegration();
-        return await webFlux.IndexMultipleUrlsAsync(urls, options, cancellationToken);
     }
 }

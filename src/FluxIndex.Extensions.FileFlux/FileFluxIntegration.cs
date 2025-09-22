@@ -11,16 +11,16 @@ namespace FluxIndex.Extensions.FileFlux;
 public class FileFluxIntegration
 {
     private readonly IDocumentProcessor _fileFlux;
-    private readonly FluxIndexContext _fluxIndex;
+    private readonly Indexer _indexer;
     private readonly ILogger<FileFluxIntegration> _logger;
 
     public FileFluxIntegration(
         IDocumentProcessor fileFlux,
-        FluxIndexContext fluxIndex,
+        Indexer indexer,
         ILogger<FileFluxIntegration> logger)
     {
         _fileFlux = fileFlux;
-        _fluxIndex = fluxIndex;
+        _indexer = indexer;
         _logger = logger;
     }
 
@@ -87,7 +87,7 @@ public class FileFluxIntegration
         document.Metadata["source_file"] = filePath;
         document.Metadata["source_type"] = "file";
 
-        var documentId = await _fluxIndex.Indexer.IndexDocumentAsync(
+        var documentId = await _indexer.IndexDocumentAsync(
             document: document,
             cancellationToken: cancellationToken);
 

@@ -2,52 +2,32 @@ using FluxIndex.Extensions.FileFlux;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
-namespace FluxIndex.SDK;
+namespace FluxIndex.Extensions.FileFlux;
 
 /// <summary>
-/// Extension methods for integrating FileFlux with FluxIndex SDK
+/// Extension methods for integrating FileFlux with FluxIndex
 /// </summary>
-public static class FileFluxExtensions
+public static class FileFluxServiceCollectionExtensions
 {
     /// <summary>
-    /// Adds FileFlux integration to FluxIndex
-    /// </summary>
-    /// <param name="builder">FluxIndex context builder</param>
-    /// <returns>Builder for chaining</returns>
-    public static FluxIndexContextBuilder UseFileFlux(this FluxIndexContextBuilder builder)
-    {
-        return builder.ConfigureServices(services => services.AddFileFluxIntegration());
-    }
-
-    /// <summary>
-    /// Adds FileFlux integration with custom options
-    /// </summary>
-    /// <param name="builder">FluxIndex context builder</param>
-    /// <param name="configureOptions">Configuration action for FileFlux options</param>
-    /// <returns>Builder for chaining</returns>
-    public static FluxIndexContextBuilder UseFileFlux(
-        this FluxIndexContextBuilder builder,
-        Action<FileFluxOptions> configureOptions)
-    {
-        return builder.ConfigureServices(services =>
-        {
-            services.Configure(configureOptions);
-            services.AddFileFluxIntegration();
-        });
-    }
-
-    /// <summary>
-    /// Internal service registration method
+    /// Adds FileFlux integration services to the service collection
     /// </summary>
     /// <param name="services">Service collection</param>
+    /// <param name="configureOptions">Optional configuration action for FileFlux options</param>
     /// <returns>Service collection for chaining</returns>
-    private static IServiceCollection AddFileFluxIntegration(this IServiceCollection services)
+    public static IServiceCollection AddFileFlux(this IServiceCollection services, Action<FileFluxOptions>? configureOptions = null)
     {
+        // Configure options if provided
+        if (configureOptions != null)
+        {
+            services.Configure(configureOptions);
+        }
+
         // Register FileFlux document processor
         services.AddTransient<IDocumentProcessor, DefaultDocumentProcessor>();
 
         // Register FileFlux integration service
-        services.AddTransient<FileFluxIntegration>();
+        services.AddScoped<FileFluxIntegration>();
 
         return services;
     }

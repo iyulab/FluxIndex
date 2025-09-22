@@ -9,14 +9,17 @@ namespace FluxIndex.Extensions.WebFlux;
 /// </summary>
 public class WebFluxIntegration
 {
-    private readonly FluxIndexContext _fluxIndexContext;
+    private readonly IWebContentProcessor _webContentProcessor;
+    private readonly Indexer _indexer;
     private readonly ILogger<WebFluxIntegration> _logger;
 
     public WebFluxIntegration(
-        FluxIndexContext fluxIndexContext,
+        IWebContentProcessor webContentProcessor,
+        Indexer indexer,
         ILogger<WebFluxIntegration> logger)
     {
-        _fluxIndexContext = fluxIndexContext;
+        _webContentProcessor = webContentProcessor;
+        _indexer = indexer;
         _logger = logger;
     }
 
@@ -36,7 +39,7 @@ public class WebFluxIntegration
         {
             var document = await ProcessWebContentToDocumentAsync(url, options, cancellationToken);
 
-            var documentId = await _fluxIndexContext.Indexer.IndexDocumentAsync(document, cancellationToken);
+            var documentId = await _indexer.IndexDocumentAsync(document, cancellationToken);
 
             _logger.LogInformation("Successfully indexed web content. DocumentId: {DocumentId}, Chunks: {ChunkCount}",
                 documentId, document.Chunks?.Count ?? 0);
@@ -84,7 +87,7 @@ public class WebFluxIntegration
         try
         {
             // Simplified implementation for web content processing
-            var content = await ProcessWebContentSimpleAsync(url, crawlOptions, cancellationToken);
+            var content = await _webContentProcessor.ProcessWebContentAsync(url, crawlOptions, cancellationToken);
 
             if (!string.IsNullOrEmpty(content))
             {
@@ -313,9 +316,9 @@ public class WebFluxOptions
 }
 
 /// <summary>
-/// Internal crawl options class - placeholder until WebFlux API is verified
+/// Crawl options class - placeholder until WebFlux API is verified
 /// </summary>
-internal class CrawlOptions
+public class CrawlOptions
 {
     public int MaxDepth { get; set; } = 1;
     public bool FollowExternalLinks { get; set; } = false;
@@ -323,4 +326,61 @@ internal class CrawlOptions
     public int? MaxChunkSize { get; set; } = 512;
     public int? ChunkOverlap { get; set; } = 64;
     public bool IncludeImages { get; set; } = false;
+}
+
+/// <summary>
+/// Interface for web content processing
+/// </summary>
+public interface IWebContentProcessor
+{
+    Task<string> ProcessWebContentAsync(string url, CrawlOptions options, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Default implementation of IWebContentProcessor
+/// </summary>
+public class DefaultWebContentProcessor : IWebContentProcessor
+{
+    private readonly ILogger<DefaultWebContentProcessor> _logger;
+
+    public DefaultWebContentProcessor(ILogger<DefaultWebContentProcessor> logger)
+    {
+        _logger = logger;
+    }
+
+    public async Task<string> ProcessWebContentAsync(string url, CrawlOptions options, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Processing web content from: {Url}", url);
+
+        try
+        {
+            using var httpClient = new HttpClient();
+            httpClient.Timeout = TimeSpan.FromMinutes(5);
+
+            var response = await httpClient.GetAsync(url, cancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            var content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            // Simple HTML content extraction (basic implementation)
+            // In real implementation, this would use actual WebFlux library
+            var cleanContent = ExtractTextFromHtml(content);
+
+            _logger.LogInformation("Successfully processed web content. Length: {Length} characters", cleanContent.Length);
+            return cleanContent;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to process web content from: {Url}", url);
+            throw;
+        }
+    }
+
+    private static string ExtractTextFromHtml(string html)
+    {
+        // Very basic HTML tag removal - replace with proper HTML parser in real implementation
+        var text = System.Text.RegularExpressions.Regex.Replace(html, "<[^>]*>", " ");
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " ");
+        return text.Trim();
+    }
 }

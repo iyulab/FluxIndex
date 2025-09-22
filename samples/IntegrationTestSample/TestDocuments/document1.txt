@@ -1,0 +1,17 @@
+FluxIndex RAG Infrastructure Guide
+
+FluxIndex is a comprehensive RAG (Retrieval-Augmented Generation) infrastructure library designed for .NET applications. It provides a clean architecture approach to building search and retrieval systems.
+
+Key Features:
+- Vector database integration with PostgreSQL and SQLite
+- OpenAI embedding services with caching
+- FileFlux integration for document processing
+- WebFlux integration for web content indexing
+- Hybrid search capabilities combining vector and traditional search
+- Clean architecture with dependency injection
+
+The library follows SOLID principles and provides a fluent API for easy configuration and usage. It supports both local and cloud-based AI services, making it suitable for various deployment scenarios.
+
+Performance considerations include optimized chunking strategies, intelligent caching mechanisms, and scalable storage solutions. The system can handle large document collections while maintaining fast search response times.
+
+Quality features include comprehensive testing, logging, and monitoring capabilities. The library provides detailed metrics and analytics for search performance optimization.

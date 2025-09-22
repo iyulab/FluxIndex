@@ -1,5 +1,6 @@
 using FluxIndex.Cache.Redis.Configuration;
 using FluxIndex.Cache.Redis.Extensions;
+using FluxIndex.Cache.Redis.Tests.Infrastructure;
 using FluxIndex.Core.Application.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -8,7 +9,6 @@ using StackExchange.Redis;
 using System;
 using System.Linq;
 using System.Threading;
-using Testcontainers.Redis;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -17,41 +17,24 @@ namespace FluxIndex.Cache.Redis.Tests.Extensions;
 /// <summary>
 /// 서비스 컬렉션 확장 메서드 테스트
 /// </summary>
-public class ServiceCollectionExtensionsTests : IAsyncLifetime
+public class ServiceCollectionExtensionsTests : RedisTestBase
 {
-    private readonly ITestOutputHelper _output;
-    private readonly RedisContainer _redisContainer;
-    private string _connectionString = string.Empty;
-
-    public ServiceCollectionExtensionsTests(ITestOutputHelper output)
+    public ServiceCollectionExtensionsTests(ITestOutputHelper output) : base(output)
     {
-        _output = output;
-        _redisContainer = new RedisBuilder()
-            .WithImage("redis:7-alpine")
-            .WithPortBinding(6379, true)
-            .Build();
     }
 
-    public async Task InitializeAsync()
-    {
-        await _redisContainer.StartAsync();
-        _connectionString = _redisContainer.GetConnectionString();
-    }
-
-    public async Task DisposeAsync()
-    {
-        await _redisContainer.DisposeAsync();
-    }
-
-    [Fact]
+    [SkippableFact]
     public void AddRedisSemanticCache_WithConnectionString_RegistersServices()
     {
+        // Skip test if Docker is not available
+        SkipIfDockerNotAvailable();
+
         // Arrange
         var services = new ServiceCollection();
         services.AddLogging();
 
         // Act
-        services.AddRedisSemanticCache(_connectionString);
+        services.AddRedisSemanticCache(ConnectionString);
 
         // Assert
         var serviceProvider = services.BuildServiceProvider();
@@ -63,12 +46,15 @@ public class ServiceCollectionExtensionsTests : IAsyncLifetime
 
         // Verify options are configured
         var options = serviceProvider.GetRequiredService<IOptions<RedisSemanticCacheOptions>>();
-        Assert.Equal(_connectionString, options.Value.ConnectionString);
+        Assert.Equal(ConnectionString, options.Value.ConnectionString);
     }
 
-    [Fact]
+    [SkippableFact]
     public void AddRedisSemanticCache_WithOptionsAction_RegistersServicesWithCustomConfiguration()
     {
+        // Skip test if Docker is not available
+        SkipIfDockerNotAvailable();
+
         // Arrange
         var services = new ServiceCollection();
         services.AddLogging();
@@ -76,7 +62,7 @@ public class ServiceCollectionExtensionsTests : IAsyncLifetime
         // Act
         services.AddRedisSemanticCache(options =>
         {
-            options.ConnectionString = _connectionString;
+            options.ConnectionString = ConnectionString;
             options.KeyPrefix = "custom:test:";
             options.DefaultSimilarityThreshold = 0.8f;
             options.MaxCacheEntries = 5000;
@@ -87,28 +73,31 @@ public class ServiceCollectionExtensionsTests : IAsyncLifetime
         var serviceProvider = services.BuildServiceProvider();
 
         var configuredOptions = serviceProvider.GetRequiredService<IOptions<RedisSemanticCacheOptions>>();
-        Assert.Equal(_connectionString, configuredOptions.Value.ConnectionString);
+        Assert.Equal(ConnectionString, configuredOptions.Value.ConnectionString);
         Assert.Equal("custom:test:", configuredOptions.Value.KeyPrefix);
         Assert.Equal(0.8f, configuredOptions.Value.DefaultSimilarityThreshold);
         Assert.Equal(5000, configuredOptions.Value.MaxCacheEntries);
         Assert.Equal(TimeSpan.FromMinutes(45), configuredOptions.Value.DefaultTtl);
     }
 
-    [Fact]
+    [SkippableFact]
     public void AddRedisSemanticCacheWithExistingConnection_RegistersSemanticCacheOnly()
     {
+        // Skip test if Docker is not available
+        SkipIfDockerNotAvailable();
+
         // Arrange
         var services = new ServiceCollection();
         services.AddLogging();
 
         // Pre-register Redis connection
         services.AddSingleton<IConnectionMultiplexer>(provider =>
-            ConnectionMultiplexer.Connect(_connectionString));
+            ConnectionMultiplexer.Connect(ConnectionString));
 
         // Act
         services.AddRedisSemanticCacheWithExistingConnection(options =>
         {
-            options.ConnectionString = _connectionString;
+            options.ConnectionString = ConnectionString;
             options.KeyPrefix = "existing:";
         });
 
@@ -123,16 +112,19 @@ public class ServiceCollectionExtensionsTests : IAsyncLifetime
         Assert.Equal("existing:", options.Value.KeyPrefix);
     }
 
-    [Fact]
+    [SkippableFact]
     public void AddRedisDistributedCacheWithSemanticCache_RegistersBothServices()
     {
+        // Skip test if Docker is not available
+        SkipIfDockerNotAvailable();
+
         // Arrange
         var services = new ServiceCollection();
         services.AddLogging();
 
         // Act
         services.AddRedisDistributedCacheWithSemanticCache(
-            _connectionString,
+            ConnectionString,
             configureCache: cacheOptions =>
             {
                 cacheOptions.InstanceName = "TestInstance";
@@ -163,12 +155,13 @@ public class ServiceCollectionExtensionsTests : IAsyncLifetime
     {
         // Act & Assert
         Assert.Throws<ArgumentNullException>(() =>
-            ((IServiceCollection)null!).AddRedisSemanticCache(_connectionString));
+            ((IServiceCollection)null!).AddRedisSemanticCache("test-connection-string"));
     }
 
     [Fact]
     public void AddRedisSemanticCache_WithNullConnectionString_ThrowsArgumentNullException()
     {
+        // This test doesn't need Docker - testing argument validation only
         // Arrange
         var services = new ServiceCollection();
 
@@ -180,6 +173,7 @@ public class ServiceCollectionExtensionsTests : IAsyncLifetime
     [Fact]
     public void AddRedisSemanticCache_WithNullOptionsAction_ThrowsArgumentNullException()
     {
+        // This test doesn't need Docker - testing argument validation only
         // Arrange
         var services = new ServiceCollection();
 
@@ -188,18 +182,21 @@ public class ServiceCollectionExtensionsTests : IAsyncLifetime
             services.AddRedisSemanticCache((Action<RedisSemanticCacheOptions>)null!));
     }
 
-    [Fact]
+    [SkippableFact]
     public void Multiple_AddRedisSemanticCache_Calls_DoNotDuplicate()
     {
+        // Skip test if Docker is not available
+        SkipIfDockerNotAvailable();
+
         // Arrange
         var services = new ServiceCollection();
         services.AddLogging();
 
         // Act
-        services.AddRedisSemanticCache(_connectionString);
+        services.AddRedisSemanticCache(ConnectionString);
         services.AddRedisSemanticCache(options =>
         {
-            options.ConnectionString = _connectionString;
+            options.ConnectionString = ConnectionString;
             options.KeyPrefix = "second:";
         });
 
@@ -211,9 +208,12 @@ public class ServiceCollectionExtensionsTests : IAsyncLifetime
         Assert.Single(semanticCacheServices);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task RegisteredSemanticCacheService_CanBeUsed()
     {
+        // Skip test if Docker is not available
+        SkipIfDockerNotAvailable();
+
         // Arrange
         var services = new ServiceCollection();
         services.AddLogging();
@@ -224,7 +224,7 @@ public class ServiceCollectionExtensionsTests : IAsyncLifetime
 
         services.AddRedisSemanticCache(options =>
         {
-            options.ConnectionString = _connectionString;
+            options.ConnectionString = ConnectionString;
             options.KeyPrefix = "integration:test:";
         });
 

@@ -14,6 +14,8 @@
   <ItemGroup>
     <ProjectReference Include="..\FluxIndex\FluxIndex.csproj" />
     <ProjectReference Include="..\FluxIndex.Core\FluxIndex.Core.csproj" />
+    <ProjectReference Include="..\FluxIndex.AI.OpenAI\FluxIndex.AI.OpenAI.csproj" />
+    <ProjectReference Include="..\FluxIndex.Storage.SQLite\FluxIndex.Storage.SQLite.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,9 +1,10 @@
+using OpenAI;
+using OpenAI.Embeddings;
 using Azure.AI.OpenAI;
 using FluxIndex.Core.Application.Interfaces;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using OpenAI.Embeddings;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -30,8 +31,7 @@ public class OpenAIEmbeddingService : IEmbeddingService
         _cache = cache;
 
         // Initialize OpenAI client
-        var azureClient = CreateOpenAIClient(_options);
-        _client = azureClient.GetEmbeddingClient(_options.ModelName);
+        _client = CreateEmbeddingClient(_options);
     }
 
     public async Task<float[]> GenerateEmbeddingAsync(
@@ -112,19 +112,20 @@ public class OpenAIEmbeddingService : IEmbeddingService
         return Task.FromResult(tokenCount);
     }
 
-    private AzureOpenAIClient CreateOpenAIClient(OpenAIOptions options)
+    private EmbeddingClient CreateEmbeddingClient(OpenAIOptions options)
     {
         if (string.IsNullOrEmpty(options.Endpoint))
         {
             // Use OpenAI API
-            return new AzureOpenAIClient(new Uri("https://api.openai.com/v1"),
-                new System.ClientModel.ApiKeyCredential(options.ApiKey));
+            var openAIClient = new OpenAIClient(options.ApiKey);
+            return openAIClient.GetEmbeddingClient(options.ModelName);
         }
         else
         {
             // Use Azure OpenAI
-            return new AzureOpenAIClient(new Uri(options.Endpoint),
+            var azureClient = new AzureOpenAIClient(new Uri(options.Endpoint),
                 new System.ClientModel.ApiKeyCredential(options.ApiKey));
+            return azureClient.GetEmbeddingClient(options.ModelName);
         }
     }
 
