@@ -118,30 +118,60 @@ public class SQLiteVectorStore : IVectorStore
         float minScore = 0.0f,
         CancellationToken cancellationToken = default)
     {
-        // Load all vectors for in-memory search
+        // Load all vectors for optimized in-memory search
         var entities = await _context.Vectors
             .Where(v => v.Embedding != null)
+            .Select(v => new { v.Id, v.DocumentId, v.ChunkIndex, v.Content, v.Embedding, v.TokenCount, v.Metadata })
             .ToListAsync(cancellationToken);
 
-        // Simple cosine similarity search in memory
-        var results = entities
-            .Select(e => new
+        if (!entities.Any()) return Enumerable.Empty<DocumentChunk>();
+
+        // Pre-compute query magnitude for optimization
+        var queryMagnitude = ComputeMagnitude(queryEmbedding);
+        if (queryMagnitude == 0) return Enumerable.Empty<DocumentChunk>();
+
+        // Optimized similarity computation with early termination
+        var candidates = new List<(float score, object entity)>();
+        var threshold = minScore;
+
+        foreach (var entity in entities)
+        {
+            if (entity.Embedding == null) continue;
+
+            var score = FastCosineSimilarity(queryEmbedding, entity.Embedding, queryMagnitude);
+
+            if (score >= threshold)
             {
-                Entity = e,
-                Score = CosineSimilarity(queryEmbedding, e.Embedding!)
-            })
-            .Where(r => r.Score >= minScore)
-            .OrderByDescending(r => r.Score)
+                candidates.Add((score, entity));
+
+                // Dynamic threshold adjustment for better performance
+                if (candidates.Count > topK * 2)
+                {
+                    candidates.Sort((a, b) => b.score.CompareTo(a.score));
+                    candidates = candidates.Take(topK).ToList();
+                    threshold = candidates.Last().score;
+                }
+            }
+        }
+
+        // Final sorting and selection
+        var results = candidates
+            .OrderByDescending(c => c.score)
             .Take(topK)
-            .Select(r => new DocumentChunk
+            .Select(c =>
             {
-                Id = r.Entity.Id,
-                DocumentId = r.Entity.DocumentId,
-                ChunkIndex = r.Entity.ChunkIndex,
-                Content = r.Entity.Content,
-                Embedding = r.Entity.Embedding,
-                TokenCount = r.Entity.TokenCount,
-                Metadata = r.Entity.Metadata
+                var e = c.entity;
+                var entityType = e.GetType();
+                return new DocumentChunk
+                {
+                    Id = (string)entityType.GetProperty("Id")!.GetValue(e)!,
+                    DocumentId = (string)entityType.GetProperty("DocumentId")!.GetValue(e)!,
+                    ChunkIndex = (int)entityType.GetProperty("ChunkIndex")!.GetValue(e)!,
+                    Content = (string)entityType.GetProperty("Content")!.GetValue(e)!,
+                    Embedding = (float[])entityType.GetProperty("Embedding")!.GetValue(e)!,
+                    TokenCount = (int)entityType.GetProperty("TokenCount")!.GetValue(e)!,
+                    Metadata = (Dictionary<string, object>?)entityType.GetProperty("Metadata")!.GetValue(e)
+                };
             });
 
         return results;
@@ -232,6 +262,40 @@ public class SQLiteVectorStore : IVectorStore
 
         var magnitude = (float)Math.Sqrt(magnitudeA) * (float)Math.Sqrt(magnitudeB);
         return magnitude == 0 ? 0 : dotProduct / magnitude;
+    }
+
+    /// <summary>
+    /// Optimized cosine similarity computation when query magnitude is pre-computed
+    /// </summary>
+    private static float FastCosineSimilarity(float[] query, float[] candidate, float queryMagnitude)
+    {
+        if (query.Length != candidate.Length || queryMagnitude == 0) return 0f;
+
+        float dotProduct = 0f;
+        float candidateMagnitude = 0f;
+
+        // Single loop for both dot product and candidate magnitude
+        for (int i = 0; i < query.Length; i++)
+        {
+            dotProduct += query[i] * candidate[i];
+            candidateMagnitude += candidate[i] * candidate[i];
+        }
+
+        candidateMagnitude = (float)Math.Sqrt(candidateMagnitude);
+        return candidateMagnitude == 0 ? 0 : dotProduct / (queryMagnitude * candidateMagnitude);
+    }
+
+    /// <summary>
+    /// Pre-compute vector magnitude for optimization
+    /// </summary>
+    private static float ComputeMagnitude(float[] vector)
+    {
+        float sum = 0f;
+        for (int i = 0; i < vector.Length; i++)
+        {
+            sum += vector[i] * vector[i];
+        }
+        return (float)Math.Sqrt(sum);
     }
 }
 

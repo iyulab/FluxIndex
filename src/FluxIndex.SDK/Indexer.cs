@@ -1,10 +1,10 @@
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Domain.Entities;
 using FluxIndex.Domain.Models;
-using FluxIndex.SDK.Services;
 using DocumentChunkEntity = FluxIndex.Domain.Entities.DocumentChunk;
 using DocumentChunkModel = FluxIndex.Domain.Models.DocumentChunk;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -309,22 +309,53 @@ public class Indexer
         List<DocumentChunkEntity> chunks,
         CancellationToken cancellationToken)
     {
-        if (_options.ParallelEmbedding && chunks.Count > 1)
+        if (chunks.Count == 0) return chunks;
+
+        // 배치 임베딩 API 사용 (성능 최적화)
+        try
         {
-            // Parallel embedding generation
-            var semaphore = new SemaphoreSlim(_options.MaxParallelEmbedding);
-            var tasks = chunks.Select(async chunk =>
+            var texts = chunks.Select(c => c.Content).ToList();
+            var embeddings = await _embeddingService.GenerateEmbeddingsBatchAsync(texts, cancellationToken);
+            var embeddingArray = embeddings.ToArray();
+
+            // 임베딩을 청크에 할당
+            for (int i = 0; i < chunks.Count && i < embeddingArray.Length; i++)
             {
-                await semaphore.WaitAsync(cancellationToken);
-                try
+                chunks[i] = new DocumentChunkEntity
                 {
-                    var embedding = await _embeddingService.GenerateEmbeddingAsync(
-                        chunk.Content, cancellationToken);
-                    return new DocumentChunkEntity
+                    Id = chunks[i].Id,
+                    DocumentId = chunks[i].DocumentId,
+                    Content = chunks[i].Content,
+                    ChunkIndex = chunks[i].ChunkIndex,
+                    Embedding = embeddingArray[i],
+                    TokenCount = chunks[i].TokenCount,
+                    Metadata = chunks[i].Metadata
+                };
+            }
+
+            _logger.LogInformation("배치 임베딩 생성 완료: {Count}개 청크", chunks.Count);
+            return chunks;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "배치 임베딩 실패, 개별 처리로 대체");
+
+            // Fallback: 개별 임베딩 생성 (기존 병렬 처리 방식)
+            if (_options.ParallelEmbedding && chunks.Count > 1)
+            {
+                var semaphore = new SemaphoreSlim(_options.MaxParallelEmbedding);
+                var tasks = chunks.Select(async chunk =>
+                {
+                    await semaphore.WaitAsync(cancellationToken);
+                    try
                     {
-                        Id = chunk.Id,
-                        DocumentId = chunk.DocumentId,
-                        Content = chunk.Content,
+                        var embedding = await _embeddingService.GenerateEmbeddingAsync(
+                            chunk.Content, cancellationToken);
+                        return new DocumentChunkEntity
+                        {
+                            Id = chunk.Id,
+                            DocumentId = chunk.DocumentId,
+                            Content = chunk.Content,
                         ChunkIndex = chunk.ChunkIndex,
                         TokenCount = chunk.TokenCount,
                         Metadata = chunk.Metadata,
@@ -364,6 +395,7 @@ public class Indexer
                 });
             }
             return result;
+        }
         }
     }
 

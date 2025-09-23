@@ -1,4 +1,5 @@
 using FluxIndex.Domain.Models;
+using EvaluationThresholds = FluxIndex.Domain.Models.QualityThresholds;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -63,7 +64,7 @@ public interface IRAGEvaluationService
     /// </summary>
     Task<bool> ValidateQualityThresholdsAsync(
         BatchEvaluationResult evaluationResult,
-        QualityThresholds thresholds,
+        EvaluationThresholds thresholds,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -129,7 +130,7 @@ public interface IQualityGateService
     Task<QualityGateResult> ExecuteQualityGateAsync(
         string systemVersion,
         string datasetId,
-        QualityThresholds thresholds,
+        EvaluationThresholds thresholds,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -163,7 +164,7 @@ public interface IEvaluationJobManager
         string name,
         string datasetId,
         EvaluationConfiguration configuration,
-        QualityThresholds thresholds,
+        EvaluationThresholds thresholds,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -248,7 +249,7 @@ public class QualityGateResult
     public bool Passed { get; set; }
     public string SystemVersion { get; set; } = string.Empty;
     public BatchEvaluationResult EvaluationResult { get; set; } = new();
-    public QualityThresholds AppliedThresholds { get; set; } = new();
+    public EvaluationThresholds AppliedThresholds { get; set; } = new();
     public List<string> FailedCriteria { get; set; } = new();
     public Dictionary<string, object> Summary { get; set; } = new();
     public DateTime ExecutedAt { get; set; } = DateTime.UtcNow;

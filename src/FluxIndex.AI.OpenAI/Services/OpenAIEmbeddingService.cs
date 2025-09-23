@@ -88,13 +88,90 @@ public class OpenAIEmbeddingService : IEmbeddingService
         CancellationToken cancellationToken = default)
     {
         var textList = texts.ToList();
-        var embeddings = new List<float[]>();
+        if (!textList.Any()) return Array.Empty<float[]>();
 
-        foreach (var text in textList)
+        var embeddings = new List<float[]>();
+        var uncachedTexts = new List<(int index, string text)>();
+        var cachedResults = new Dictionary<int, float[]>();
+
+        // 1. Check cache for all texts
+        for (int i = 0; i < textList.Count; i++)
         {
-            var embedding = await GenerateEmbeddingAsync(text, cancellationToken);
-            embeddings.Add(embedding);
+            var text = textList[i];
+            if (string.IsNullOrWhiteSpace(text)) continue;
+
+            var cacheKey = GenerateCacheKey(text);
+            if (_cache?.TryGetValue(cacheKey, out float[]? cachedEmbedding) == true && cachedEmbedding != null)
+            {
+                cachedResults[i] = cachedEmbedding;
+                _logger.LogDebug("Cache hit for embedding batch item {Index}", i);
+            }
+            else
+            {
+                uncachedTexts.Add((i, text));
+            }
         }
+
+        // 2. Generate embeddings for uncached texts in optimized batches
+        if (uncachedTexts.Any())
+        {
+            // Process in batches of 50 for better performance
+            const int batchSize = 50;
+            for (int batchStart = 0; batchStart < uncachedTexts.Count; batchStart += batchSize)
+            {
+                var batch = uncachedTexts.Skip(batchStart).Take(batchSize).ToList();
+                var batchTexts = batch.Select(x => x.text).ToList();
+
+                try
+                {
+                    // Single API call for batch - major performance improvement
+                    var response = await _client.GenerateEmbeddingsAsync(batchTexts, new EmbeddingGenerationOptions(), cancellationToken);
+
+                    for (int i = 0; i < batch.Count && i < response.Value.Count; i++)
+                    {
+                        var embedding = response.Value[i].ToFloats().ToArray();
+                        var originalIndex = batch[i].index;
+                        cachedResults[originalIndex] = embedding;
+
+                        // Cache with aggressive caching strategy
+                        if (_cache != null)
+                        {
+                            var cacheKey = GenerateCacheKey(batch[i].text);
+                            _cache.Set(cacheKey, embedding, TimeSpan.FromHours(24));
+                        }
+                    }
+
+                    _logger.LogDebug("Batch embedding successful: {Count} items", batch.Count);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Batch embedding failed, using individual calls");
+
+                    // Fallback to individual calls only when necessary
+                    foreach (var (index, text) in batch)
+                    {
+                        var embedding = await GenerateEmbeddingAsync(text, cancellationToken);
+                        cachedResults[index] = embedding;
+                    }
+                }
+            }
+        }
+
+        // 3. Reconstruct results in original order
+        for (int i = 0; i < textList.Count; i++)
+        {
+            if (cachedResults.ContainsKey(i))
+            {
+                embeddings.Add(cachedResults[i]);
+            }
+            else
+            {
+                embeddings.Add(Array.Empty<float>());
+            }
+        }
+
+        _logger.LogInformation("Batch embeddings: {Total} texts, {Cached} cached, {Generated} generated",
+            textList.Count, textList.Count - uncachedTexts.Count, uncachedTexts.Count);
 
         return embeddings;
     }

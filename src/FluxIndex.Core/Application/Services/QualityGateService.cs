@@ -1,5 +1,6 @@
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Domain.Models;
+using EvaluationThresholds = FluxIndex.Domain.Models.QualityThresholds;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
@@ -34,7 +35,7 @@ public class QualityGateService : IQualityGateService
     public async Task<QualityGateResult> ExecuteQualityGateAsync(
         string systemVersion,
         string datasetId,
-        QualityThresholds thresholds,
+        EvaluationThresholds thresholds,
         CancellationToken cancellationToken = default)
     {
         var result = new QualityGateResult
@@ -240,7 +241,7 @@ public class QualityGateService : IQualityGateService
         return await _evaluationService.EvaluateBatchAsync(dataset, evaluationConfig, cancellationToken);
     }
 
-    private List<string> IdentifyFailedCriteria(BatchEvaluationResult result, QualityThresholds thresholds)
+    private List<string> IdentifyFailedCriteria(BatchEvaluationResult result, EvaluationThresholds thresholds)
     {
         var failedCriteria = new List<string>();
 
@@ -279,7 +280,7 @@ public class QualityGateService : IQualityGateService
 
     private Dictionary<string, object> GenerateQualityGateSummary(
         BatchEvaluationResult result,
-        QualityThresholds thresholds,
+        EvaluationThresholds thresholds,
         bool passed)
     {
         return new Dictionary<string, object>

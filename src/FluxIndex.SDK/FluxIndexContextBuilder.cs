@@ -1,5 +1,6 @@
 using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Domain.ValueObjects;
+using FluxIndex.Core.Application.Services;
+using FluxIndex.Core.Services;
 using FluxIndex.SDK.Configuration;
 using FluxIndex.SDK.Services;
 using FluxIndex.SDK.Extensions;
@@ -116,6 +117,17 @@ public class FluxIndexContextBuilder
         _options.Cache.CacheProvider = "Memory";
         _options.Cache.MaxCacheSize = maxCacheSize;
         _options.Cache.EnableSearchCache = true;
+        return this;
+    }
+
+    /// <summary>
+    /// 품질 모니터링 시스템 활성화
+    /// </summary>
+    public FluxIndexContextBuilder WithQualityMonitoring(bool enableRealTimeAlerts = true)
+    {
+        _services.AddSingleton<IQualityMonitoringService, QualityMonitoringService>();
+        _options.QualityMonitoring.EnableMonitoring = true;
+        _options.QualityMonitoring.EnableRealTimeAlerts = enableRealTimeAlerts;
         return this;
     }
 
@@ -311,13 +323,17 @@ public class FluxIndexContextBuilder
         // Register in-memory chunk hierarchy repository for SDK
         _services.AddScoped<IChunkHierarchyRepository, InMemoryChunkHierarchyRepository>();
 
-        // Register hybrid search services (구현체 추후 추가)
-        // _services.AddScoped<ISparseRetriever, BM25SparseRetriever>();
-        // _services.AddScoped<IHybridSearchService, HybridSearchService>();
+        // Register hybrid search services
+        _services.AddScoped<ISparseRetriever, BM25SparseRetriever>();
+        _services.AddScoped<IHybridSearchService, HybridSearchService>();
 
-        // Register Small-to-Big services (구현체 추후 추가)
-        // _services.AddScoped<ISmallToBigRetriever, SmallToBigRetriever>();
+        // Register Small-to-Big services
+        _services.AddScoped<ISmallToBigRetriever, SmallToBigRetriever>();
         _services.AddMemoryCache(); // For query complexity caching
+
+        // Register Adaptive Search services
+        _services.AddScoped<IQueryComplexityAnalyzer, QueryComplexityAnalyzer>();
+        _services.AddScoped<IAdaptiveSearchService, AdaptiveSearchService>();
 
         // Register Retriever and Indexer as services (needed for Extensions)
         _services.AddScoped<Retriever>(serviceProvider =>
@@ -370,7 +386,8 @@ public class FluxIndexContextBuilder
         var hybridSearchService = serviceProvider.GetService<IHybridSearchService>();
         var semanticCacheService = serviceProvider.GetService<ISemanticCacheService>();
         var smallToBigRetriever = serviceProvider.GetService<ISmallToBigRetriever>();
-        
+        var qualityMonitoringService = serviceProvider.GetService<IQualityMonitoringService>();
+
         // Create and return context
         return new FluxIndexContext(
             retriever,
@@ -379,7 +396,8 @@ public class FluxIndexContextBuilder
             loggerFactory.CreateLogger<FluxIndexContext>(),
             semanticCacheService,
             hybridSearchService,
-            smallToBigRetriever
+            smallToBigRetriever,
+            qualityMonitoringService
         );
     }
 

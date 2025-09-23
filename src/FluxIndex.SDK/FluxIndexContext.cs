@@ -2,12 +2,12 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Domain.ValueObjects;
 using FluxIndex.Domain.Models;
 using FluxIndex.Domain.Entities;
+using MonitoringThresholds = FluxIndex.Core.Application.Interfaces.QualityThresholds;
 using FluxIndex.SDK.Models;
-using FluxIndex.SDK.Services;
 using DocumentChunkEntity = FluxIndex.Domain.Entities.DocumentChunk;
 using DocumentChunkModel = FluxIndex.Domain.Models.DocumentChunk;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -28,6 +28,7 @@ public class FluxIndexContext : IFluxIndexContext
     private readonly ISemanticCacheService? _cacheService;
     private readonly IHybridSearchService? _hybridSearchService;
     private readonly ISmallToBigRetriever? _smallToBigRetriever;
+    private readonly IQualityMonitoringService? _qualityMonitor;
     private readonly ILogger<FluxIndexContext> _logger;
 
     public FluxIndexContext(
@@ -37,7 +38,8 @@ public class FluxIndexContext : IFluxIndexContext
         ILogger<FluxIndexContext>? logger = null,
         ISemanticCacheService? cacheService = null,
         IHybridSearchService? hybridSearchService = null,
-        ISmallToBigRetriever? smallToBigRetriever = null)
+        ISmallToBigRetriever? smallToBigRetriever = null,
+        IQualityMonitoringService? qualityMonitor = null)
     {
         _retriever = retriever;
         _indexer = indexer;
@@ -45,11 +47,18 @@ public class FluxIndexContext : IFluxIndexContext
         _cacheService = cacheService;
         _hybridSearchService = hybridSearchService;
         _smallToBigRetriever = smallToBigRetriever;
+        _qualityMonitor = qualityMonitor;
         _logger = logger ?? new NullLogger<FluxIndexContext>();
 
         if (_cacheService != null)
         {
             _logger.LogInformation("FluxIndexContext initialized with semantic caching enabled");
+        }
+
+        if (_qualityMonitor != null)
+        {
+            _logger.LogInformation("FluxIndexContext initialized with quality monitoring enabled");
+            _ = _qualityMonitor.StartMonitoringAsync();
         }
 
         if (_hybridSearchService != null)
@@ -94,7 +103,7 @@ public class FluxIndexContext : IFluxIndexContext
     public async Task<IEnumerable<SearchResult>> SearchAsync(
         string query,
         int maxResults = 10,
-        float minScore = 0.5f,
+        float minScore = 0.2f, // Lowered from 0.5f for better recall
         Dictionary<string, object>? filter = null,
         CancellationToken cancellationToken = default)
     {
@@ -114,8 +123,23 @@ public class FluxIndexContext : IFluxIndexContext
                     _logger.LogInformation("Cache hit for query: '{Query}' (similarity: {Similarity:F3})",
                         query, cachedResult.SimilarityScore);
 
-                    // 캐시된 검색 결과를 SDK 형식으로 변환
-                    return ConvertCachedToSDKSearchResults(cachedResult.Results);
+                    var cachedResults = ConvertCachedToSDKSearchResults(cachedResult.Results);
+
+                    // 품질 모니터링 (캐시 히트)
+                    if (_qualityMonitor != null)
+                    {
+                        var responseTime = DateTime.UtcNow - startTime;
+                        var metadata = new Dictionary<string, object>
+                        {
+                            ["cache_hit"] = true,
+                            ["search_strategy"] = "cached"
+                        };
+
+                        var coreCachedResults = cachedResults.Select(ConvertToCore).ToList();
+                        _ = _qualityMonitor.EvaluateSearchQualityAsync(query, coreCachedResults, responseTime, metadata, cancellationToken);
+                    }
+
+                    return cachedResults;
                 }
 
                 _logger.LogDebug("Cache miss for query: '{Query}' - proceeding with retrieval", query);
@@ -150,6 +174,20 @@ public class FluxIndexContext : IFluxIndexContext
             }
 
             var duration = DateTime.UtcNow - startTime;
+
+            // 품질 모니터링 (실제 검색)
+            if (_qualityMonitor != null)
+            {
+                var metadata = new Dictionary<string, object>
+                {
+                    ["cache_hit"] = false,
+                    ["search_strategy"] = "vector"
+                };
+
+                var coreSearchResults = sdkResults.Select(ConvertToCore).ToList();
+                _ = _qualityMonitor.EvaluateSearchQualityAsync(query, coreSearchResults, duration, metadata, cancellationToken);
+            }
+
             _logger.LogInformation("Search completed: query='{Query}', results={Count}, duration={Duration}ms",
                 query, sdkResults.Count, duration.TotalMilliseconds);
 
@@ -158,6 +196,22 @@ public class FluxIndexContext : IFluxIndexContext
         catch (Exception ex)
         {
             var duration = DateTime.UtcNow - startTime;
+
+            // 품질 모니터링 (검색 실패)
+            if (_qualityMonitor != null)
+            {
+                var failedResults = new List<SearchResult>();
+                var metadata = new Dictionary<string, object>
+                {
+                    ["cache_hit"] = false,
+                    ["search_strategy"] = "vector",
+                    ["error"] = ex.Message
+                };
+
+                var coreFailedResults = failedResults.Select(ConvertToCore).ToList();
+                _ = _qualityMonitor.EvaluateSearchQualityAsync(query, coreFailedResults, duration, metadata, cancellationToken);
+            }
+
             _logger.LogError(ex, "Search failed: query='{Query}', duration={Duration}ms", query, duration.TotalMilliseconds);
             throw;
         }
@@ -183,7 +237,7 @@ public class FluxIndexContext : IFluxIndexContext
     /// </summary>
     public async Task<IReadOnlyList<HybridSearchResult>> HybridSearchV2Async(
         string query,
-        HybridSearchOptions? options = null,
+        FluxIndex.Domain.Models.HybridSearchOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         if (_hybridSearchService == null)
@@ -199,8 +253,7 @@ public class FluxIndexContext : IFluxIndexContext
         try
         {
             var startTime = DateTime.UtcNow;
-            var coreOptions = ConvertToCore(options);
-            var results = await _hybridSearchService.SearchAsync(query, coreOptions, cancellationToken);
+            var results = await _hybridSearchService.SearchAsync(query, options, cancellationToken);
             var duration = DateTime.UtcNow - startTime;
 
             _logger.LogInformation("Hybrid search completed: query='{Query}', results={Count}, duration={Duration}ms",
@@ -550,6 +603,77 @@ public class FluxIndexContext : IFluxIndexContext
     }
 
     /// <summary>
+    /// 실시간 품질 대시보드 조회
+    /// </summary>
+    public async Task<QualityDashboard?> GetQualityDashboardAsync(
+        TimeSpan? timeWindow = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (_qualityMonitor == null)
+        {
+            _logger.LogWarning("Quality monitoring is not enabled");
+            return null;
+        }
+
+        var window = timeWindow ?? TimeSpan.FromHours(1);
+        return await _qualityMonitor.GetRealTimeMetricsAsync(window, cancellationToken);
+    }
+
+    /// <summary>
+    /// 품질 경고 조회
+    /// </summary>
+    public async Task<IReadOnlyList<QualityAlert>?> GetQualityAlertsAsync(
+        AlertSeverity? severity = null,
+        TimeSpan? timeWindow = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (_qualityMonitor == null)
+        {
+            _logger.LogWarning("Quality monitoring is not enabled");
+            return null;
+        }
+
+        return await _qualityMonitor.GetQualityAlertsAsync(severity, timeWindow, cancellationToken);
+    }
+
+    /// <summary>
+    /// 품질 트렌드 분석
+    /// </summary>
+    public async Task<QualityTrends?> GetQualityTrendsAsync(
+        TimeSpan? period = null,
+        TimeSpan? granularity = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (_qualityMonitor == null)
+        {
+            _logger.LogWarning("Quality monitoring is not enabled");
+            return null;
+        }
+
+        var analysisWindow = period ?? TimeSpan.FromHours(6);
+        var dataGranularity = granularity ?? TimeSpan.FromMinutes(30);
+
+        return await _qualityMonitor.AnalyzeQualityTrendsAsync(analysisWindow, dataGranularity, cancellationToken);
+    }
+
+    /// <summary>
+    /// 품질 임계값 설정
+    /// </summary>
+    public async Task SetQualityThresholdsAsync(
+        MonitoringThresholds thresholds,
+        CancellationToken cancellationToken = default)
+    {
+        if (_qualityMonitor == null)
+        {
+            _logger.LogWarning("Quality monitoring is not enabled");
+            return;
+        }
+
+        await _qualityMonitor.SetQualityThresholdsAsync(thresholds, cancellationToken);
+        _logger.LogInformation("Quality thresholds updated successfully");
+    }
+
+    /// <summary>
     /// SDK HybridSearchOptions를 Core HybridSearchOptions로 변환
     /// </summary>
     private Domain.Models.HybridSearchOptions ConvertToCore(HybridSearchOptions sdkOptions)
@@ -567,6 +691,30 @@ public class FluxIndexContext : IFluxIndexContext
             }
         };
     }
+    /// <summary>
+    /// SDK SearchResult를 Core SearchResult로 변환
+    /// </summary>
+    private static Core.Application.Interfaces.SearchResult ConvertToCore(SearchResult sdkResult)
+    {
+        // SDK SearchResult lacks the DocumentChunk object needed for Core SearchResult
+        // For now, create a basic conversion that maintains compatibility
+        var documentChunk = new DocumentChunkEntity
+        {
+            Id = sdkResult.Id,
+            DocumentId = sdkResult.DocumentId,
+            Content = sdkResult.Content,
+            ChunkIndex = sdkResult.ChunkIndex,
+            TotalChunks = 1 // Default value since SDK doesn't track this
+        };
+
+        return new Core.Application.Interfaces.SearchResult
+        {
+            Chunk = documentChunk,
+            Score = sdkResult.Score,
+            FileName = string.Empty, // Default value since SDK doesn't track this
+            Metadata = sdkResult.Metadata
+        };
+    }
 }
 
 /// <summary>
@@ -581,6 +729,7 @@ public interface IFluxIndexContext
     // Convenience methods
     Task<IEnumerable<SearchResult>> SearchAsync(string query, int maxResults = 10, float minScore = 0.5f, Dictionary<string, object>? filter = null, CancellationToken cancellationToken = default);
     Task<IEnumerable<SearchResult>> HybridSearchAsync(string keyword, string query, int maxResults = 10, float vectorWeight = 0.7f, Dictionary<string, object>? filter = null, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<HybridSearchResult>> HybridSearchV2Async(string query, FluxIndex.Domain.Models.HybridSearchOptions? options = null, CancellationToken cancellationToken = default);
     Task<Document?> GetDocumentAsync(string documentId, CancellationToken cancellationToken = default);
     Task<string> IndexAsync(Document document, CancellationToken cancellationToken = default);
     Task<string> IndexChunksAsync(IEnumerable<DocumentChunkModel> chunks, string? documentId = null, Dictionary<string, object>? metadata = null, CancellationToken cancellationToken = default);
@@ -589,6 +738,12 @@ public interface IFluxIndexContext
     Task<ClientStatistics> GetStatisticsAsync(CancellationToken cancellationToken = default);
     Task<int> GetDocumentCountAsync(CancellationToken cancellationToken = default);
     Task<int> GetChunkCountAsync(CancellationToken cancellationToken = default);
+
+    // Quality Monitoring APIs
+    Task<QualityDashboard?> GetQualityDashboardAsync(TimeSpan? timeWindow = null, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<QualityAlert>?> GetQualityAlertsAsync(AlertSeverity? severity = null, TimeSpan? timeWindow = null, CancellationToken cancellationToken = default);
+    Task<QualityTrends?> GetQualityTrendsAsync(TimeSpan? period = null, TimeSpan? granularity = null, CancellationToken cancellationToken = default);
+    Task SetQualityThresholdsAsync(MonitoringThresholds thresholds, CancellationToken cancellationToken = default);
 }
 
 /// <summary>

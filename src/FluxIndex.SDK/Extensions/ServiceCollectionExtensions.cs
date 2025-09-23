@@ -6,6 +6,7 @@ using FluxIndex.SDK.Configuration;
 using FluxIndex.SDK.Interfaces;
 using FluxIndex.SDK.Services;
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Services;
 
 namespace FluxIndex.SDK.Extensions;
 
@@ -32,9 +33,9 @@ public static class ServiceCollectionExtensions
         // 인터페이스 구현체는 아직 구현되지 않았으므로 주석 처리
         // 추후 구현체 완성 시 주석 해제
         
-        // 핵심 검색 서비스 등록 (구현체는 추후 추가)
-        // services.AddScoped<ISparseRetriever, BM25SparseRetriever>();
-        // services.AddScoped<IHybridSearchService, HybridSearchService>();
+        // 핵심 검색 서비스 등록
+        services.AddScoped<ISparseRetriever, BM25SparseRetriever>();
+        services.AddScoped<IHybridSearchService, HybridSearchService>();
 
         // services.AddScoped<IVectorStore, PostgresVectorStore>();
         // services.AddScoped<IEmbeddingService, OpenAIEmbeddingService>();
@@ -129,7 +130,8 @@ public static class ServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddPostgreSQLVectorStore(this IServiceCollection services, string connectionString)
     {
-        // TODO: PostgreSQL implementation
+        // NOTE: PostgreSQL implementation available in FluxIndex.Storage.PostgreSQL package
+        // For now, using in-memory store as fallback
         services.AddSingleton<IVectorStore, InMemoryVectorStore>();
         return services;
     }
@@ -141,7 +143,8 @@ public static class ServiceCollectionExtensions
     {
         var options = new SQLiteOptions();
         configure(options);
-        // TODO: SQLite implementation
+        // NOTE: SQLite implementation available in FluxIndex.Storage.SQLite package
+        // For now, using in-memory store as fallback
         services.AddSingleton<IVectorStore, InMemoryVectorStore>();
         return services;
     }
@@ -153,8 +156,8 @@ public static class ServiceCollectionExtensions
     {
         var options = new OpenAIOptions();
         configure(options);
-        // TODO: OpenAI implementation
-        // Consumer must provide IEmbeddingService implementation
+        // NOTE: OpenAI implementation available in FluxIndex.AI.OpenAI package
+        // Consumer must provide IEmbeddingService implementation or use the extension package
         return services;
     }
 
@@ -165,8 +168,8 @@ public static class ServiceCollectionExtensions
     {
         var options = new AzureOpenAIOptions();
         configure(options);
-        // TODO: Azure OpenAI implementation
-        // Consumer must provide IEmbeddingService implementation
+        // NOTE: Azure OpenAI implementation available in FluxIndex.AI.OpenAI package
+        // Consumer must provide IEmbeddingService implementation or use the extension package
         return services;
     }
 
@@ -177,7 +180,8 @@ public static class ServiceCollectionExtensions
     {
         var options = new RedisCacheOptions();
         configure(options);
-        // TODO: Redis implementation
+        // NOTE: Redis implementation available in FluxIndex.Cache.Redis package
+        // For now, using in-memory cache as fallback
         services.AddSingleton<ICacheService, InMemoryCacheService>();
         return services;
     }

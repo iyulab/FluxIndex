@@ -122,20 +122,36 @@ public class PostgreSQLVectorStore : IVectorStore
     {
         var queryVector = new Vector(queryEmbedding);
 
-        var results = await _context.Vectors
+        // Get more results than needed to apply similarity filtering
+        var candidates = await _context.Vectors
             .OrderBy(v => v.Embedding.CosineDistance(queryVector))
-            .Take(topK)
-            .Select(v => new DocumentChunk
+            .Take(topK * 3) // Get 3x results to filter by similarity
+            .Select(v => new
             {
-                Id = v.Id.ToString(),
-                DocumentId = v.DocumentId,
-                ChunkIndex = v.ChunkIndex,
-                Content = v.Content,
-                Embedding = v.Embedding.ToArray(),
-                TokenCount = v.TokenCount,
-                Metadata = v.Metadata
+                Distance = v.Embedding.CosineDistance(queryVector),
+                Chunk = new DocumentChunk
+                {
+                    Id = v.Id.ToString(),
+                    DocumentId = v.DocumentId,
+                    ChunkIndex = v.ChunkIndex,
+                    Content = v.Content,
+                    Embedding = v.Embedding.ToArray(),
+                    TokenCount = v.TokenCount,
+                    Metadata = v.Metadata
+                }
             })
             .ToListAsync(cancellationToken);
+
+        // Convert cosine distance (0-2) to cosine similarity (1-0) and filter
+        var results = candidates
+            .Select(c => new {
+                Chunk = c.Chunk,
+                Similarity = 1.0 - c.Distance // Convert distance to similarity
+            })
+            .Where(r => r.Similarity >= minScore)
+            .OrderByDescending(r => r.Similarity)
+            .Take(topK)
+            .Select(r => r.Chunk);
 
         return results;
     }

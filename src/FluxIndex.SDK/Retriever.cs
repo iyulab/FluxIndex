@@ -1,11 +1,11 @@
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Domain.Entities;
 using FluxIndex.Domain.Models;
-using FluxIndex.SDK.Services;
 using DocumentChunkEntity = FluxIndex.Domain.Entities.DocumentChunk;
 using DocumentChunkModel = FluxIndex.Domain.Models.DocumentChunk;
 using RankedResultCore = FluxIndex.Core.Application.Interfaces.RankedResult;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -51,7 +51,7 @@ public class Retriever
     public async Task<IEnumerable<VectorSearchResult>> SearchAsync(
         string query,
         int maxResults = 10,
-        float minScore = 0.5f,
+        float minScore = 0.2f, // Lowered from 0.5f for better recall
         Dictionary<string, object>? filter = null,
         CancellationToken cancellationToken = default)
     {

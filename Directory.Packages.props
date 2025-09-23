@@ -26,6 +26,7 @@
     <PackageVersion Include="WebFlux" Version="0.1.1" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="9.0.9" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="9.0.9" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.UserSecrets" Version="9.0.9" />
     <PackageVersion Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="9.0.9" />
   </ItemGroup>
   <!-- Entity Framework Core Packages -->

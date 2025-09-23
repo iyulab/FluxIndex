@@ -32,6 +32,11 @@ public class FluxIndexOptions
     /// 캐싱 설정
     /// </summary>
     public CacheOptions Cache { get; set; } = new();
+
+    /// <summary>
+    /// 품질 모니터링 설정
+    /// </summary>
+    public QualityMonitoringOptions QualityMonitoring { get; set; } = new();
 }
 
 /// <summary>
@@ -112,4 +117,16 @@ public class CacheOptions
     public TimeSpan CacheTTL { get; set; } = TimeSpan.FromHours(1);
     public string CacheProvider { get; set; } = "Memory";
     public string RedisConnectionString { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// 품질 모니터링 옵션
+/// </summary>
+public class QualityMonitoringOptions
+{
+    public bool EnableMonitoring { get; set; } = false;
+    public bool EnableRealTimeAlerts { get; set; } = false;
+    public TimeSpan MetricsInterval { get; set; } = TimeSpan.FromMinutes(1);
+    public TimeSpan AlertCheckInterval { get; set; } = TimeSpan.FromMinutes(5);
+    public int MaxMetricsHistory { get; set; } = 1440; // 24 hours at 1 minute intervals
 }

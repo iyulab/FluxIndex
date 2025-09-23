@@ -1,5 +1,6 @@
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Domain.Models;
+using EvaluationThresholds = FluxIndex.Domain.Models.QualityThresholds;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Concurrent;
@@ -41,7 +42,7 @@ public class EvaluationJobManager : IEvaluationJobManager
         string name,
         string datasetId,
         EvaluationConfiguration configuration,
-        QualityThresholds thresholds,
+        EvaluationThresholds thresholds,
         CancellationToken cancellationToken = default)
     {
         try

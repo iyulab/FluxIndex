@@ -87,7 +87,7 @@ public class EvaluationConfiguration
     public bool EnableFaithfulnessEvaluation { get; set; } = true;
     public bool EnableAnswerRelevancyEvaluation { get; set; } = true;
     public bool EnableContextEvaluation { get; set; } = true;
-    public string LLMModel { get; set; } = "gpt-4o-mini";
+    public string LLMModel { get; set; } = "gpt-5-nano";
     public double Temperature { get; set; } = 0.1;
     public TimeSpan Timeout { get; set; } = TimeSpan.FromMinutes(5);
     public Dictionary<string, object> CustomSettings { get; set; } = new();

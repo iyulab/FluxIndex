@@ -80,7 +80,7 @@ public class HybridSearchQualityTest
             .BorderColor(Color.Blue).Header("초기화"));
 
         var apiKey = _configuration["OPENAI_API_KEY"];
-        var model = _configuration["OPENAI_MODEL"] ?? "gpt-4o-mini";
+        var model = _configuration["OPENAI_MODEL"] ?? "gpt-5-nano";
         var embeddingModel = _configuration["OPENAI_EMBEDDING_MODEL"] ?? "text-embedding-3-small";
 
         if (string.IsNullOrEmpty(apiKey))

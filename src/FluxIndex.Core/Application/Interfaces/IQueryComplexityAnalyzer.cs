@@ -23,7 +23,7 @@ public interface IQueryComplexityAnalyzer
     /// <summary>
     /// 쿼리 유형별 성능 통계 업데이트
     /// </summary>
-    Task UpdatePerformanceAsync(string query, QueryAnalysis analysis, SearchResult result, CancellationToken cancellationToken = default);
+    Task UpdatePerformanceAsync(string query, QueryAnalysis analysis, QueryAnalysisResult result, CancellationToken cancellationToken = default);
 }
 
 /// <summary>

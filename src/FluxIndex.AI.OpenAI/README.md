@@ -37,7 +37,7 @@ FluxIndex의 OpenAI/Azure OpenAI 기반 메타데이터 추출 기능을 제공�
 {
   "OpenAI": {
     "ApiKey": "your-openai-api-key",
-    "Model": "gpt-4",
+    "Model": "gpt-5-nano",
     "MaxTokens": 1000,
     "Temperature": 0.3
   },
@@ -62,7 +62,7 @@ var client = new FluxIndexClientBuilder()
     .WithAIMetadataExtraction(options =>
     {
         options.ApiKey = "your-openai-api-key";
-        options.Model = "gpt-4";
+        options.Model = "gpt-5-nano";
         options.Temperature = 0.3f;
     })
     .Build();
@@ -115,7 +115,7 @@ var client = new FluxIndexClientBuilder()
     .WithAzureAIMetadataExtraction(
         apiKey: "your-azure-openai-key",
         resourceUrl: "https://your-resource.openai.azure.com",
-        deploymentName: "gpt-4-deployment"
+        deploymentName: "gpt-5-nano"
     )
     .Build();
 ```
@@ -174,7 +174,7 @@ services.Configure<OpenAIOptions>(options =>
 {
     options.ApiKey = "your-api-key";
     options.BaseUrl = "https://api.openai.com"; // 또는 Azure URL
-    options.Model = "gpt-4";
+    options.Model = "gpt-5-nano";
     options.MaxTokens = 1500;
     options.Temperature = 0.3f;
     options.TopP = 1.0f;
