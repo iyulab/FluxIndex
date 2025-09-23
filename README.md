@@ -8,7 +8,7 @@
 
 RAG(Retrieval-Augmented Generation) 시스템 구축을 위한 .NET 라이브러리
 
-> **v0.1.4**: 하이브리드 검색, 평가 프레임워크, AI provider 중립성 지원
+> **v0.2.1**: 고도화된 RAG 평가 시스템, Small-to-Big 검색, 컨텍스트 확장 기능
 
 ## 🎯 개요
 
@@ -19,16 +19,18 @@ FluxIndex는 문서 인덱싱과 검색에 특화된 RAG 라이브러리입니�
 ```
 
 ### 주요 기능
-- **하이브리드 검색**: 벡터 검색과 키워드 검색 결합
+- **하이브리드 검색**: 벡터(HNSW) + 키워드(BM25) 융합 검색
+- **Small-to-Big**: 정밀 검색 후 4단계 컨텍스트 확장
+- **고도화된 평가**: 9가지 지표로 RAG 성능 측정
 - **AI Provider 중립성**: OpenAI, 커스텀 서비스 등 자유 선택
 - **모듈형 아키텍처**: 필요한 구성 요소만 선택적 사용
-- **평가 프레임워크**: 검색 품질 측정 및 개선
-- **Clean Architecture**: 의존성 역전과 테스트 가능한 설계
+- **성능 최적화**: 시맨틱 캐싱, 자동 파라미터 튜닝
 
 ### 범위
-- ✅ 문서 인덱싱 및 검색
-- ✅ 임베딩 및 벡터 저장
-- ✅ 검색 품질 평가
+- ✅ 문서 인덱싱 및 하이브리드 검색
+- ✅ 임베딩 및 벡터 저장 (HNSW)
+- ✅ RAG 성능 평가 시스템
+- ✅ 컨텍스트 확장 및 재순위화
 - ❌ 웹 서버 구현
 - ❌ 사용자 인증
 - ❌ 배포 인프라
@@ -93,7 +95,7 @@ foreach (var result in results)
 }
 ```
 
-### 평가 시스템
+### RAG 평가 시스템
 
 ```csharp
 // 평가 프레임워크 활성화
@@ -103,12 +105,16 @@ var client = new FluxIndexClientBuilder()
     .WithEvaluationSystem()  // 평가 시스템 추가
     .Build();
 
-// 평가 서비스 사용
+// 9가지 평가 지표로 RAG 성능 측정
 var evaluationService = serviceProvider.GetService<IRAGEvaluationService>();
 var result = await evaluationService.EvaluateQueryAsync(query, chunks, answer, goldenItem);
 
-Console.WriteLine($"Precision: {result.Precision:F3}");
-Console.WriteLine($"Recall: {result.Recall:F3}");
+Console.WriteLine($"Precision@K: {result.Precision:F3}");
+Console.WriteLine($"Recall@K: {result.Recall:F3}");
+Console.WriteLine($"MRR: {result.MRR:F3}");
+Console.WriteLine($"Faithfulness: {result.Faithfulness:F3}");
+Console.WriteLine($"Answer Relevancy: {result.AnswerRelevancy:F3}");
+Console.WriteLine($"Context Precision: {result.ContextPrecision:F3}");
 ```
 
 ### 커스텀 AI 서비스
@@ -126,15 +132,17 @@ var client = new FluxIndexClientBuilder()
 
 ---
 
-## 🔍 검색 방식
+## 🔍 검색 시스템
 
-FluxIndex는 다양한 검색 전략을 제공합니다:
+FluxIndex는 고도화된 검색 전략을 제공합니다:
 
-- **키워드 검색**: BM25 알고리즘 기반
-- **벡터 검색**: 임베딩 유사도 기반
-- **하이브리드 검색**: 벡터와 키워드 결합
-- **재순위화**: 다양한 전략으로 결과 개선
-- **Small-to-Big**: 정밀 검색 후 컨텍스트 확장
+- **키워드 검색**: BM25 알고리즘 기반 정확한 용어 매칭
+- **벡터 검색**: HNSW 인덱스 기반 의미 유사도 검색
+- **하이브리드 검색**: RRF(Reciprocal Rank Fusion) 기반 결과 융합
+- **Small-to-Big**: 4단계 계층적 컨텍스트 확장
+- **재순위화**: Local/Cross-encoder 기반 결과 개선
+- **쿼리 변환**: HyDE, QuOTE 등 고급 검색 기법
+- **시맨틱 캐싱**: 중복 검색 요청 최적화
 
 ---
 
@@ -165,10 +173,11 @@ services.AddScoped<ICacheService, RedisCacheService>();
 ## ✨ 주요 특징
 
 - **모듈형 설계**: 필요한 구성 요소만 선택적 설치
-- **AI 중립성**: 다양한 AI 서비스 지원
+- **AI 중립성**: 다양한 AI 서비스 지원 (OpenAI, 커스텀 등)
 - **확장 가능**: 인터페이스 기반으로 새로운 구현체 추가 가능
-- **평가 도구**: 검색 품질 측정 및 개선 도구 제공
+- **평가 도구**: 9가지 지표로 RAG 성능 측정 및 개선
 - **Clean Architecture**: 테스트 가능하고 유지보수 용이한 설계
+- **성능 최적화**: HNSW 인덱스, 시맨틱 캐싱, 자동 튜닝
 
 ---
 
