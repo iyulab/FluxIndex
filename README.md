@@ -46,34 +46,85 @@ FluxIndex는 문서 인덱싱과 검색에 특화된 RAG 라이브러리입니�
 - ❌ **웹 크롤링**: URL 추출 (WebFlux 담당)
 - ❌ **웹 서버**: API 구현 (소비앱 담당)
 - ❌ **인증 시스템**: 사용자 관리 (소비앱 담당)
+- ❌ **AI 프로바이더**: 소비앱 담당, 단 FluxIndex.AI.* 로 편의 제공
 
 ---
 
 ## 📋 설치
 
-### 필수 패키지
+### 핵심 패키지
+
+| 패키지명 | 필수 여부 | 설명 |
+|---------|----------|------|
+| `FluxIndex.SDK` | 필수 | 통합 API 클라이언트 |
+| `FluxIndex.Storage.*` | 택1 필수 | 벡터 저장소 (SQLite/PostgreSQL 중 선택) |
+
+### AI 프로바이더 (선택사항)
+
+| 패키지명 | 설명 |
+|---------|------|
+| `FluxIndex.AI.OpenAI` | OpenAI/Azure OpenAI 연동 편의 제공 |
+
+> 💡 **AI 프로바이더**: 직접 `IEmbeddingService`, `ITextCompletionService` 구현 가능
+
+### 저장소 선택 (택1 필수)
+
+| 패키지명 | 설명 |
+|---------|------|
+| `FluxIndex.Storage.SQLite` | SQLite 벡터 저장소 (개발용) |
+| `FluxIndex.Storage.PostgreSQL` | PostgreSQL+pgvector (프로덕션용) |
+
+### 캐시 시스템 (선택사항)
+
+| 패키지명 | 설명 |
+|---------|------|
+| `FluxIndex.Cache.Redis` | Redis 기반 캐시 (기본: 메모리 캐시) |
+
+### 확장 기능 (선택사항)
+
+| 패키지명 | 설명 |
+|---------|------|
+| `FluxIndex.Extensions.FileFlux` | PDF/DOC/TXT 파일 처리 및 청킹 |
+| `FluxIndex.Extensions.WebFlux` | 웹페이지 크롤링 및 콘텐츠 추출 |
+
+### 설치 예제
+
+#### 최소 구성 (로컬 개발)
 ```bash
-# 핵심 라이브러리
+# 필수: SDK + 저장소
 dotnet add package FluxIndex.SDK
-
-# AI 서비스 (하나 선택)
-dotnet add package FluxIndex.AI.OpenAI
-
-# 저장소 (하나 선택)
-dotnet add package FluxIndex.Storage.SQLite      # 개발용
-dotnet add package FluxIndex.Storage.PostgreSQL  # 프로덕션용
+dotnet add package FluxIndex.Storage.SQLite
 ```
 
-### 확장 패키지 (선택사항)
+#### 커스텀 AI 구성
 ```bash
-# 파일 처리
-dotnet add package FluxIndex.Extensions.FileFlux
+# 필수 패키지
+dotnet add package FluxIndex.SDK
+dotnet add package FluxIndex.Storage.PostgreSQL
 
-# 웹 콘텐츠 처리
-dotnet add package FluxIndex.Extensions.WebFlux
+# 커스텀 AI 서비스 구현
+services.AddScoped<IEmbeddingService, MyCustomEmbeddingService>();
+services.AddScoped<ITextCompletionService, MyCustomLLMService>();
+```
 
-# 캐싱
+#### 편의 패키지 활용
+```bash
+# OpenAI 편의 패키지 사용
+dotnet add package FluxIndex.SDK
+dotnet add package FluxIndex.AI.OpenAI
+dotnet add package FluxIndex.Storage.PostgreSQL
 dotnet add package FluxIndex.Cache.Redis
+```
+
+#### 풀 기능 구성
+```bash
+# 모든 확장 기능 포함
+dotnet add package FluxIndex.SDK
+dotnet add package FluxIndex.AI.OpenAI
+dotnet add package FluxIndex.Storage.PostgreSQL
+dotnet add package FluxIndex.Cache.Redis
+dotnet add package FluxIndex.Extensions.FileFlux
+dotnet add package FluxIndex.Extensions.WebFlux
 ```
 
 ---
@@ -197,12 +248,3 @@ services.AddScoped<ICacheService, RedisCacheService>();
 
 - **[TASKS.md](./TASKS.md)**: 완료된 기능과 개발 로드맵
 - **[samples/](./samples/)**: 사용 예제 및 테스트 코드
-
-## 🤝 기여
-
-- 버그 리포트: [GitHub Issues](https://github.com/iyulab/FluxIndex/issues)
-- 기능 제안 및 개선사항 환영
-
-## 📄 라이선스
-
-이 프로젝트는 [MIT 라이선스](LICENSE)로 배포됩니다.
