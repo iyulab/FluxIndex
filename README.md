@@ -1,14 +1,14 @@
 # FluxIndex
 
-[![CI/CD Pipeline](https://github.com/iyulab/FluxIndex/actions/workflows/build-and-release.yml/badge.svg)](https://github.com/iyulab/FluxIndex/actions/workflows/build-and-release.yml)
-[![NuGet](https://img.shields.io/nuget/v/FluxIndex.svg?label=FluxIndex)](https://www.nuget.org/packages/FluxIndex/)
+[![CI/CD](https://github.com/iyulab/FluxIndex/actions/workflows/build-and-release.yml/badge.svg)](https://github.com/iyulab/FluxIndex/actions/workflows/build-and-release.yml)
 [![NuGet](https://img.shields.io/nuget/v/FluxIndex.SDK.svg?label=FluxIndex.SDK)](https://www.nuget.org/packages/FluxIndex.SDK/)
-[![NuGet Downloads](https://img.shields.io/nuget/dt/FluxIndex.svg)](https://www.nuget.org/packages/FluxIndex/)
 [![License](https://img.shields.io/github/license/iyulab/FluxIndex)](LICENSE)
 
 RAG(Retrieval-Augmented Generation) 시스템 구축을 위한 .NET 라이브러리
 
-> **v0.2.1**: 고도화된 RAG 평가 시스템, Small-to-Big 검색, 컨텍스트 확장 기능
+> **v0.2.3**: 완전한 테스트 커버리지, 모듈형 아키텍처, 포괄적인 문서화 완료 🚀
+>
+> **📖 새로운 기능**: [단계별 튜토리얼](./docs/tutorial.md) | [빠른 참조 가이드](./docs/cheat-sheet.md) | [완전한 문서 허브](./docs/README.md)
 
 ## 🎯 개요
 
@@ -46,7 +46,7 @@ FluxIndex는 문서 인덱싱과 검색에 특화된 RAG 라이브러리입니�
 - ❌ **웹 크롤링**: URL 추출 (WebFlux 담당)
 - ❌ **웹 서버**: API 구현 (소비앱 담당)
 - ❌ **인증 시스템**: 사용자 관리 (소비앱 담당)
-- ❌ **AI 프로바이더**: 소비앱 담당, 단 FluxIndex.AI.* 로 편의 제공
+- ❌ **AI 프로바이더**: 소비앱 담당, FluxIndex.AI.* 주요 공급자 통합 제공
 
 ---
 
@@ -129,69 +129,34 @@ dotnet add package FluxIndex.Extensions.WebFlux
 
 ---
 
-## 💡 사용법
-
-### 기본 설정
+## 💡 시작하기
 
 ```csharp
 using FluxIndex.SDK;
+using Microsoft.Extensions.DependencyInjection;
 
-// 클라이언트 설정
-var client = new FluxIndexClientBuilder()
-    .UseOpenAI("your-api-key", "text-embedding-3-small")
-    .UseSQLiteInMemory()
-    .Build();
+// 설정
+var services = new ServiceCollection();
+services.AddFluxIndex()
+    .UseSQLiteVectorStore()              // 저장소
+    .UseOpenAIEmbedding(apiKey: "...");  // AI (선택적)
 
-// 문서 인덱싱
-var document = Document.Create("doc1");
-document.AddChunk(new DocumentChunk("문서 내용 첫 번째 청크", 0));
-document.AddChunk(new DocumentChunk("문서 내용 두 번째 청크", 1));
+var client = services.BuildServiceProvider()
+    .GetRequiredService<FluxIndexClient>();
 
-await client.Indexer.IndexDocumentAsync(document);
+// 인덱싱
+await client.Indexer.IndexDocumentAsync(
+    "FluxIndex는 .NET RAG 라이브러리입니다.", "doc-001");
 
 // 검색
-var results = await client.Retriever.SearchAsync("검색 질의");
-
+var results = await client.Retriever.SearchAsync("RAG 라이브러리");
 foreach (var result in results)
 {
-    Console.WriteLine($"점수: {result.Score:F3} | {result.Chunk.Content}");
+    Console.WriteLine($"{result.Score:F2}: {result.Content}");
 }
 ```
 
-### RAG 평가 시스템
-
-```csharp
-// 평가 프레임워크 활성화
-var client = new FluxIndexClientBuilder()
-    .UseOpenAI("your-api-key")
-    .UseSQLiteInMemory()
-    .WithEvaluationSystem()  // 평가 시스템 추가
-    .Build();
-
-// 9가지 평가 지표로 RAG 성능 측정
-var evaluationService = serviceProvider.GetService<IRAGEvaluationService>();
-var result = await evaluationService.EvaluateQueryAsync(query, chunks, answer, goldenItem);
-
-Console.WriteLine($"Precision@K: {result.Precision:F3}");
-Console.WriteLine($"Recall@K: {result.Recall:F3}");
-Console.WriteLine($"MRR: {result.MRR:F3}");
-Console.WriteLine($"Faithfulness: {result.Faithfulness:F3}");
-Console.WriteLine($"Answer Relevancy: {result.AnswerRelevancy:F3}");
-Console.WriteLine($"Context Precision: {result.ContextPrecision:F3}");
-```
-
-### 커스텀 AI 서비스
-
-```csharp
-// 커스텀 AI 서비스 구현 후 등록
-services.AddScoped<IEmbeddingService, YourCustomEmbeddingService>();
-services.AddScoped<ITextCompletionService, YourLLMService>();
-
-var client = new FluxIndexClientBuilder()
-    .UseCustomAI()
-    .UsePostgreSQL("connection-string")
-    .Build();
-```
+> **📖 상세 가이드**: [튜토리얼](./docs/tutorial.md) | [치트시트](./docs/cheat-sheet.md) | [샘플 코드](./samples/)
 
 ---
 
@@ -244,7 +209,27 @@ services.AddScoped<ICacheService, RedisCacheService>();
 
 ---
 
-## 📖 추가 정보
+## 📚 문서 및 학습 자료
 
-- **[TASKS.md](./TASKS.md)**: 완료된 기능과 개발 로드맵
-- **[samples/](./samples/)**: 사용 예제 및 테스트 코드
+### 🚀 빠른 시작
+- **[📖 튜토리얼](./docs/tutorial.md)** - 단계별 학습 가이드 (추천)
+- **[⚡ 치트시트](./docs/cheat-sheet.md)** - 빠른 참조용 코드 패턴
+- **[🏃 빠른 시작](./docs/getting-started.md)** - 5분만에 시작하기
+
+### 📋 상세 문서
+- **[🏗️ 아키텍처 가이드](./docs/architecture.md)** - Clean Architecture 설계 원칙
+- **[🧠 RAG 시스템 가이드](./docs/FLUXINDEX_RAG_SYSTEM.md)** - 고급 RAG 패턴
+- **[📁 문서 허브](./docs/README.md)** - 모든 문서 목록 및 학습 경로
+
+### 💻 실습 자료
+- **[📂 샘플 코드](./samples/)** - 다양한 실전 사용 사례
+- **[🧪 테스트 코드](./tests/)** - 단위 테스트 및 통합 테스트
+- **[📋 개발 로드맵](./TASKS.md)** - 완료된 기능과 향후 계획
+
+### 🎯 추천 학습 경로
+
+**초보자**: [튜토리얼](./docs/tutorial.md) → [치트시트](./docs/cheat-sheet.md) → [샘플 코드](./samples/PackageTestSample/)
+
+**중급자**: [하이브리드 검색](./docs/tutorial.md#4-하이브리드-검색) → [아키텍처](./docs/architecture.md) → [실전 예제](./samples/RealQualityTest/)
+
+**고급자**: [RAG 시스템](./docs/FLUXINDEX_RAG_SYSTEM.md) → [Core 라이브러리](./src/FluxIndex.Core/) → 커스터마이징
