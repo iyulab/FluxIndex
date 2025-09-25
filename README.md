@@ -6,10 +6,6 @@
 
 RAG(Retrieval-Augmented Generation) 시스템 구축을 위한 .NET 라이브러리
 
-> **v0.2.3**: 완전한 테스트 커버리지, 모듈형 아키텍처, 포괄적인 문서화 완료 🚀
->
-> **📖 새로운 기능**: [단계별 튜토리얼](./docs/tutorial.md) | [빠른 참조 가이드](./docs/cheat-sheet.md) | [완전한 문서 허브](./docs/README.md)
-
 ## 🎯 개요
 
 FluxIndex는 문서 인덱싱과 검색에 특화된 RAG 라이브러리입니다. 복잡한 인프라 구성 없이 벡터 검색과 키워드 검색을 결합한 하이브리드 검색을 제공합니다.
@@ -42,8 +38,8 @@ FluxIndex는 문서 인덱싱과 검색에 특화된 RAG 라이브러리입니�
 - ✅ **확장성**: AI Provider 중립 및 전략 플러그인
 
 ### 🚫 다른 라이브러리 책임
-- ❌ **파일 처리**: PDF/DOC 파싱 (FileFlux 담당)
-- ❌ **웹 크롤링**: URL 추출 (WebFlux 담당)
+- ❌ **파일 처리**: PDF/DOC 파싱 (FileFlux 담당, FluxIndex.Extensions.FileFlux로 통합 지원)
+- ❌ **웹 크롤링**: URL 추출 (WebFlux 담당, FluxIndex.Extensions.WebFlux로 통합 지원)
 - ❌ **웹 서버**: API 구현 (소비앱 담당)
 - ❌ **인증 시스템**: 사용자 관리 (소비앱 담당)
 - ❌ **AI 프로바이더**: 소비앱 담당, FluxIndex.AI.* 주요 공급자 통합 제공
@@ -133,18 +129,30 @@ dotnet add package FluxIndex.Extensions.WebFlux
 
 ```csharp
 using FluxIndex.SDK;
+using FluxIndex.Extensions.FileFlux;
 using Microsoft.Extensions.DependencyInjection;
 
-// 설정
+// 기본 설정
 var services = new ServiceCollection();
 services.AddFluxIndex()
     .UseSQLiteVectorStore()              // 저장소
     .UseOpenAIEmbedding(apiKey: "...");  // AI (선택적)
 
-var client = services.BuildServiceProvider()
-    .GetRequiredService<FluxIndexClient>();
+// FileFlux 확장 (파일 처리)
+services.AddFileFlux(options =>
+{
+    options.DefaultChunkingStrategy = "Auto";
+    options.DefaultMaxChunkSize = 512;
+});
 
-// 인덱싱
+var serviceProvider = services.BuildServiceProvider();
+var client = serviceProvider.GetRequiredService<FluxIndexClient>();
+var fileFlux = serviceProvider.GetRequiredService<FileFluxIntegration>();
+
+// 파일 인덱싱 (FileFlux 확장 사용)
+var documentId = await fileFlux.ProcessAndIndexAsync("document.pdf");
+
+// 텍스트 인덱싱 (기본 방식)
 await client.Indexer.IndexDocumentAsync(
     "FluxIndex는 .NET RAG 라이브러리입니다.", "doc-001");
 

@@ -1,0 +1,22 @@
+FluxIndex FileFlux Integration Test Document
+
+This is a comprehensive test document for verifying the FileFlux integration with FluxIndex.
+
+Section 1: Introduction
+FileFlux is a document processing library that transforms documents into structured chunks optimized for RAG systems. The integration with FluxIndex allows seamless processing and indexing of various document formats.
+
+Section 2: Features
+- Automatic chunking strategies
+- Multiple file format support
+- Memory-efficient processing
+- Streaming API for large files
+- Context preservation
+
+Section 3: Technical Details
+The FileFlux integration uses the latest v0.2.11 API to process documents. It supports various chunking strategies including Auto, Smart, MemoryOptimizedIntelligent, and others. The processed chunks are then converted to FluxIndex document chunks and indexed.
+
+Section 4: Testing
+This document tests the complete pipeline from file processing to indexing and retrieval. The integration should properly handle text processing, metadata preservation, and search functionality.
+
+Conclusion
+The FileFlux integration provides a powerful bridge between document processing and vector search capabilities in FluxIndex.

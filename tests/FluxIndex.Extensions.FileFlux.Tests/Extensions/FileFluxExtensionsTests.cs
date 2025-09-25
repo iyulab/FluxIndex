@@ -93,7 +93,7 @@ public class FileFluxExtensionsTests
 
         // Assert
         Assert.Equal("Auto", options.Strategy);
-        Assert.Equal(512, options.MaxSize);
+        Assert.Equal(512, options.MaxChunkSize);
         Assert.Equal(64, options.OverlapSize);
     }
 }

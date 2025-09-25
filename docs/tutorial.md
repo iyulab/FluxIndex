@@ -186,24 +186,37 @@ dotnet add package FluxIndex.Extensions.FileFlux
 ```
 
 ```csharp
-// FileFlux와 통합 설정
+using FluxIndex.Extensions.FileFlux;
+
+// FluxIndex 기본 설정
 services.AddFluxIndex()
     .UseSQLiteVectorStore()
-    .UseOpenAIEmbedding(config.GetSection("OpenAI"))
-    .UseFileFlux(options =>
-    {
-        options.ChunkingStrategy = ChunkingStrategy.Semantic;
-        options.MaxChunkSize = 1024;
-        options.OverlapSize = 128;
-    });
+    .UseOpenAIEmbedding(config.GetSection("OpenAI"));
+
+// FileFlux 확장 추가 (주의: AddFileFlux로 변경됨)
+services.AddFileFlux(options =>
+{
+    options.DefaultChunkingStrategy = "Semantic";
+    options.DefaultMaxChunkSize = 1024;
+    options.DefaultOverlapSize = 128;
+});
+
+var serviceProvider = services.BuildServiceProvider();
+var client = serviceProvider.GetRequiredService<FluxIndexClient>();
+var fileFlux = serviceProvider.GetRequiredService<FileFluxIntegration>();
 
 // PDF, DOCX, TXT 파일 인덱싱
-var fileResults = await client.Indexer.IndexFileAsync(
+var documentId = await fileFlux.ProcessAndIndexAsync(
     filePath: "documents/manual.pdf",
-    documentId: "manual-001"
+    options: new ProcessingOptions
+    {
+        ChunkingStrategy = "Semantic",
+        MaxChunkSize = 1024,
+        OverlapSize = 128
+    }
 );
 
-Console.WriteLine($"처리된 청크 수: {fileResults.ProcessedChunks}");
+Console.WriteLine($"인덱싱된 문서 ID: {documentId}");
 ```
 
 ### 웹 페이지 처리

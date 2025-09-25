@@ -1,33 +1,33 @@
 # FluxIndex Integration Test Report
 
 ## Test Summary
-- **Date**: 2025-09-22 17:22:57
+- **Date**: 2025-09-25 10:28:24
 - **Total Tests**: 4
-- **Passed**: 3
-- **Failed**: 1
-- **Success Rate**: 75.0%
+- **Passed**: 4
+- **Failed**: 0
+- **Success Rate**: 100.0%
 
 ## Test Results
 
 ### File Processing Pipeline
 - **Status**: ✅ PASS
-- **Duration**: 4620ms
-- **Details**: Processed 3/3 files
+- **Duration**: 2119ms
+- **Details**: Processed 4/4 files
 
 ### Web Processing Pipeline
 - **Status**: ✅ PASS
-- **Duration**: 4678ms
+- **Duration**: 4179ms
 - **Details**: Processed 3/3 URLs
 
 ### Search Performance
 - **Status**: ✅ PASS
-- **Duration**: 392ms
-- **Details**: Average search time: 392.29ms (5 queries)
+- **Duration**: 376ms
+- **Details**: Average search time: 376.32ms (5 queries)
 
 ### Search Quality
-- **Status**: ❌ FAIL
+- **Status**: ✅ PASS
 - **Duration**: 0ms
-- **Details**: Average relevance score: 0.63 (3 test cases)
+- **Details**: Average relevance score: 0.74 (3 test cases)
 
 ## Pipeline Assessment
 

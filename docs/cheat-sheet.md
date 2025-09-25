@@ -117,15 +117,24 @@ services.AddFluxIndex()
 ### PDF, DOCX 처리
 
 ```csharp
-// FileFlux 설정
+using FluxIndex.Extensions.FileFlux;
+
+// FluxIndex 기본 설정
 services.AddFluxIndex()
-    .UseFileFlux(options => {
-        options.ChunkingStrategy = ChunkingStrategy.Semantic;
-        options.MaxChunkSize = 1024;
-    });
+    .UseSQLiteVectorStore();
+
+// FileFlux 확장 추가
+services.AddFileFlux(options => {
+    options.DefaultChunkingStrategy = "Semantic";
+    options.DefaultMaxChunkSize = 1024;
+    options.DefaultOverlapSize = 128;
+});
+
+var serviceProvider = services.BuildServiceProvider();
+var fileFlux = serviceProvider.GetRequiredService<FileFluxIntegration>();
 
 // 파일 인덱싱
-await client.Indexer.IndexFileAsync("document.pdf", "pdf-001");
+var documentId = await fileFlux.ProcessAndIndexAsync("document.pdf");
 ```
 
 ### 웹페이지 처리
@@ -207,12 +216,14 @@ services.AddLogging(builder => builder.AddConsole());
 services.AddFluxIndex()
     .UsePostgreSQLVectorStore(config.GetSection("Database"))
     .UseOpenAIEmbedding(config.GetSection("OpenAI"))
-    .UseRedisCache(config.GetConnectionString("Redis"))
-    .UseFileFlux(options => {
-        options.ChunkingStrategy = ChunkingStrategy.Semantic;
-        options.MaxChunkSize = 1024;
-        options.OverlapSize = 128;
-    });
+    .UseRedisCache(config.GetConnectionString("Redis"));
+
+// FileFlux 확장 추가
+services.AddFileFlux(options => {
+    options.DefaultChunkingStrategy = "Semantic";
+    options.DefaultMaxChunkSize = 1024;
+    options.DefaultOverlapSize = 128;
+});
 ```
 
 ### 에러 처리

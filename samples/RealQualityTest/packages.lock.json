@@ -14,9 +14,9 @@
       },
       "FileFlux": {
         "type": "Direct",
-        "requested": "[0.2.9, )",
-        "resolved": "0.2.9",
-        "contentHash": "hFtpkwNXcVpJycnwntILlLhvZM+WdspiT/dMJyhAKfu+G4ZIhmSGYDz7L0JO6UjElosAgK0ejz97T9B7GoV9sA=="
+        "requested": "[0.2.11, )",
+        "resolved": "0.2.11",
+        "contentHash": "q/hatlaLKBixEj3qtdokDMdYkZPO6KGwmbsTTScPcTu26qVVA/HnNKAwNlgO3YVqKHuMI5BHolaUb8MijM8PsA=="
       },
       "Microsoft.EntityFrameworkCore.Sqlite": {
         "type": "Direct",
@@ -309,29 +309,29 @@
         "type": "Project",
         "dependencies": {
           "Azure.AI.OpenAI": "[2.1.0, )",
-          "FluxIndex.Core": "[0.2.0, )"
+          "FluxIndex.Core": "[0.2.3, )"
         }
       },
       "fluxindex.core": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex": "[0.2.0, )"
+          "FluxIndex": "[0.2.3, )"
         }
       },
       "fluxindex.sdk": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex": "[0.2.0, )",
-          "FluxIndex.AI.OpenAI": "[0.2.0, )",
-          "FluxIndex.Core": "[0.2.0, )",
-          "FluxIndex.Storage.SQLite": "[0.2.0, )",
+          "FluxIndex": "[0.2.3, )",
+          "FluxIndex.AI.OpenAI": "[0.2.3, )",
+          "FluxIndex.Core": "[0.2.3, )",
+          "FluxIndex.Storage.SQLite": "[0.2.3, )",
           "Microsoft.Extensions.Http": "[9.0.9, )"
         }
       },
       "fluxindex.storage.sqlite": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.Core": "[0.2.0, )",
+          "FluxIndex.Core": "[0.2.3, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[9.0.9, )",
           "Microsoft.Extensions.Configuration.Binder": "[9.0.9, )",
           "Microsoft.Extensions.Hosting.Abstractions": "[9.0.9, )"
@@ -456,7 +456,7 @@
       },
       "Microsoft.Extensions.Logging": {
         "type": "CentralTransitive",
-        "requested": "[9.0.0, )",
+        "requested": "[9.0.9, )",
         "resolved": "9.0.9",
         "contentHash": "MaCB0Y9hNDs4YLu3HCJbo199WnJT8xSgajG1JYGANz9FkseQ5f3v/llu3HxLI6mjDlu7pa7ps9BLPWjKzsAAzQ==",
         "dependencies": {

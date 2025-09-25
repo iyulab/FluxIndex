@@ -351,12 +351,27 @@ dotnet add package FluxIndex.Extensions.FileFlux
 
 ```csharp
 using FluxIndex.Extensions.FileFlux;
+using Microsoft.Extensions.DependencyInjection;
 
-// FileFlux 통합 서비스
-var integration = services.GetService<FileFluxIntegration>();
-var result = await integration.ProcessAndIndexAsync("document.pdf");
+// FluxIndex 기본 설정
+services.AddFluxIndex()
+    .UseSQLiteVectorStore()
+    .UseOpenAIEmbedding(apiKey);
 
-// 다양한 파일 형식 지원: PDF, DOCX, XLSX 등
+// FileFlux 확장 추가 (주의: AddFileFlux로 변경됨)
+services.AddFileFlux(options => {
+    options.DefaultChunkingStrategy = "Auto";
+    options.DefaultMaxChunkSize = 512;
+    options.DefaultOverlapSize = 64;
+});
+
+var serviceProvider = services.BuildServiceProvider();
+var fileFlux = serviceProvider.GetRequiredService<FileFluxIntegration>();
+
+// 파일 인덱싱
+var documentId = await fileFlux.ProcessAndIndexAsync("document.pdf");
+
+// 다양한 파일 형식 지원: PDF, DOCX, TXT, MD 등
 ```
 
 ## 🎨 고급 설정

@@ -1,6 +1,7 @@
 using FluxIndex.Extensions.FileFlux;
 using Microsoft.Extensions.Logging;
 using Moq;
+using System.Linq;
 using Xunit;
 
 namespace FluxIndex.Extensions.FileFlux.Tests.Services;
@@ -25,24 +26,28 @@ public class DocumentProcessorIntegrationTests
     {
         // Arrange
         var mockProcessor = new Mock<IDocumentProcessor>();
-        var expectedChunks = new List<IDocumentChunk>
+        var expectedChunks = new List<DocumentChunk>
         {
-            new TestDocumentChunk("Test content 1", 0),
-            new TestDocumentChunk("Test content 2", 1)
+            new DocumentChunk { Content = "Test content 1", ChunkIndex = 0, StartPosition = 0, EndPosition = 13 },
+            new DocumentChunk { Content = "Test content 2", ChunkIndex = 1, StartPosition = 0, EndPosition = 13 }
         };
 
         mockProcessor.Setup(p => p.ProcessAsync(It.IsAny<string>(), It.IsAny<ChunkingOptions>()))
-                    .ReturnsAsync(expectedChunks);
+                    .Returns(CreateAsyncEnumerable(expectedChunks));
 
         var options = new ChunkingOptions
         {
             Strategy = "Auto",
-            MaxSize = 512,
+            MaxChunkSize = 512,
             OverlapSize = 64
         };
 
         // Act
-        var result = await mockProcessor.Object.ProcessAsync("test.txt", options);
+        var result = new List<DocumentChunk>();
+        await foreach (var chunk in mockProcessor.Object.ProcessAsync("test.txt", options))
+        {
+            result.Add(chunk);
+        }
 
         // Assert
         Assert.NotNull(result);
@@ -59,7 +64,7 @@ public class DocumentProcessorIntegrationTests
 
         // Assert
         Assert.Equal("Auto", options.Strategy);
-        Assert.Equal(512, options.MaxSize);
+        Assert.Equal(512, options.MaxChunkSize);
         Assert.Equal(64, options.OverlapSize);
     }
 
@@ -76,9 +81,9 @@ public class DocumentProcessorIntegrationTests
     }
 
     /// <summary>
-    /// Test implementation of IDocumentChunk
+    /// Test implementation of document chunk for testing purposes
     /// </summary>
-    private class TestDocumentChunk : IDocumentChunk
+    private class TestDocumentChunk
     {
         public string Content { get; }
         public int ChunkIndex { get; }
@@ -94,5 +99,14 @@ public class DocumentProcessorIntegrationTests
             EndPosition = content.Length;
             Properties = new Dictionary<string, object>();
         }
+    }
+
+    private static async IAsyncEnumerable<DocumentChunk> CreateAsyncEnumerable(List<DocumentChunk> chunks)
+    {
+        foreach (var chunk in chunks)
+        {
+            yield return chunk;
+        }
+        await Task.CompletedTask; // Avoid CS1998
     }
 }

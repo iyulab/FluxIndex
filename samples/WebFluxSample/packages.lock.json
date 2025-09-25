@@ -285,37 +285,37 @@
         "type": "Project",
         "dependencies": {
           "Azure.AI.OpenAI": "[2.1.0, )",
-          "FluxIndex.Core": "[0.2.0, )"
+          "FluxIndex.Core": "[0.2.3, )"
         }
       },
       "fluxindex.core": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex": "[0.2.0, )"
+          "FluxIndex": "[0.2.3, )"
         }
       },
       "fluxindex.extensions.webflux": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.Core": "[0.2.0, )",
-          "FluxIndex.SDK": "[0.2.0, )",
+          "FluxIndex.Core": "[0.2.3, )",
+          "FluxIndex.SDK": "[0.2.3, )",
           "WebFlux": "[0.1.1, )"
         }
       },
       "fluxindex.sdk": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex": "[0.2.0, )",
-          "FluxIndex.AI.OpenAI": "[0.2.0, )",
-          "FluxIndex.Core": "[0.2.0, )",
-          "FluxIndex.Storage.SQLite": "[0.2.0, )",
+          "FluxIndex": "[0.2.3, )",
+          "FluxIndex.AI.OpenAI": "[0.2.3, )",
+          "FluxIndex.Core": "[0.2.3, )",
+          "FluxIndex.Storage.SQLite": "[0.2.3, )",
           "Microsoft.Extensions.Http": "[9.0.9, )"
         }
       },
       "fluxindex.storage.sqlite": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.Core": "[0.2.0, )",
+          "FluxIndex.Core": "[0.2.3, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[9.0.9, )",
           "Microsoft.Extensions.Configuration.Binder": "[9.0.9, )",
           "Microsoft.Extensions.Hosting.Abstractions": "[9.0.9, )"
@@ -459,7 +459,7 @@
       },
       "Microsoft.Extensions.Logging": {
         "type": "CentralTransitive",
-        "requested": "[9.0.0, )",
+        "requested": "[9.0.9, )",
         "resolved": "9.0.9",
         "contentHash": "MaCB0Y9hNDs4YLu3HCJbo199WnJT8xSgajG1JYGANz9FkseQ5f3v/llu3HxLI6mjDlu7pa7ps9BLPWjKzsAAzQ==",
         "dependencies": {
