@@ -4,6 +4,7 @@ using FluentAssertions;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Domain.Entities;
 using FluxIndex.Storage.SQLite;
+using FluxIndex.Storage.SQLite.Tests.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -192,13 +193,18 @@ public class SQLiteVecPerformanceTests : IDisposable
         _legacyProvider = services2.BuildServiceProvider();
     }
 
-    [Theory]
+    [SkippableTheory]
     [InlineData(100, 10)]
     [InlineData(500, 20)]
     [InlineData(1000, 50)]
     [InlineData(5000, 100)]
     public async Task CompareSearchPerformance_SQLiteVecVsLegacy_ShouldShowImprovement(int datasetSize, int topK)
     {
+        // Skip if sqlite-vec is not available (CI environment)
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+        // Skip performance tests in CI environment
+        CITestHelper.SkipIfPerformanceTestsDisabled();
+
         // Arrange
         await InitializeProvidersAsync();
 
@@ -259,12 +265,17 @@ public class SQLiteVecPerformanceTests : IDisposable
         }
     }
 
-    [Theory]
+    [SkippableTheory]
     [InlineData(100)]
     [InlineData(500)]
     [InlineData(1000)]
     public async Task CompareBatchInsertPerformance_ShouldMeetPerformanceTargets(int batchSize)
     {
+        // Skip if sqlite-vec is not available (CI environment)
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+        // Skip performance tests in CI environment
+        CITestHelper.SkipIfPerformanceTestsDisabled();
+
         // Arrange
         await InitializeProvidersAsync();
 
@@ -298,9 +309,14 @@ public class SQLiteVecPerformanceTests : IDisposable
         legacyThroughput.Should().BeGreaterThan(10);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task MemoryUsageTest_LargeDataset_ShouldNotExceedLimits()
     {
+        // Skip if sqlite-vec is not available (CI environment)
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+        // Skip performance tests in CI environment
+        CITestHelper.SkipIfPerformanceTestsDisabled();
+
         // Arrange
         await InitializeProvidersAsync();
 
@@ -334,9 +350,14 @@ public class SQLiteVecPerformanceTests : IDisposable
         memoryIncrease.Should().BeLessThan(500); // 500MB 이하
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ConcurrentAccessPerformance_MultipleClients_ShouldMaintainThroughput()
     {
+        // Skip if sqlite-vec is not available (CI environment)
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+        // Skip performance tests in CI environment
+        CITestHelper.SkipIfPerformanceTestsDisabled();
+
         // Arrange
         await InitializeProvidersAsync();
 

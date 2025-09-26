@@ -368,3 +368,13 @@ appsettings.Development.json
 
 .env.local
 nupkgs/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment files in all directories
+**/.env
+**/.env.local
+**/.env.*.local

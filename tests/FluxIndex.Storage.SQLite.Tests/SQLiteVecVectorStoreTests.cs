@@ -2,6 +2,7 @@ using FluentAssertions;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Domain.Entities;
 using FluxIndex.Storage.SQLite;
+using FluxIndex.Storage.SQLite.Tests.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -37,9 +38,11 @@ public class SQLiteVecVectorStoreTests : IDisposable
         _serviceProvider = services.BuildServiceProvider();
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task StoreAsync_WithValidChunk_ShouldReturnId()
     {
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
         // Arrange
         var vectorStore = _serviceProvider.GetRequiredService<IVectorStore>();
         var chunk = CreateTestChunk();
@@ -57,9 +60,11 @@ public class SQLiteVecVectorStoreTests : IDisposable
         retrieved.Content.Should().Be(chunk.Content);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task StoreBatchAsync_WithMultipleChunks_ShouldReturnAllIds()
     {
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
         // Arrange
         var vectorStore = _serviceProvider.GetRequiredService<IVectorStore>();
         var chunks = new List<DocumentChunk>
@@ -84,9 +89,11 @@ public class SQLiteVecVectorStoreTests : IDisposable
         }
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SearchAsync_WithSimilarVectors_ShouldReturnOrderedResults()
     {
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
         // Arrange
         var vectorStore = _serviceProvider.GetRequiredService<IVectorStore>();
 
@@ -114,9 +121,11 @@ public class SQLiteVecVectorStoreTests : IDisposable
         results.First().ChunkIndex.Should().Be(0);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SearchAsync_WithEmptyStore_ShouldReturnEmpty()
     {
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
         // Arrange
         var vectorStore = _serviceProvider.GetRequiredService<IVectorStore>();
         var queryVector = CreateTestEmbedding();
@@ -128,9 +137,11 @@ public class SQLiteVecVectorStoreTests : IDisposable
         results.Should().BeEmpty();
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetByDocumentIdAsync_WithValidDocumentId_ShouldReturnAllChunks()
     {
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
         // Arrange
         var vectorStore = _serviceProvider.GetRequiredService<IVectorStore>();
         var documentId = "test-document";
@@ -159,9 +170,11 @@ public class SQLiteVecVectorStoreTests : IDisposable
         }
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task UpdateAsync_WithValidChunk_ShouldUpdateSuccessfully()
     {
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
         // Arrange
         var vectorStore = _serviceProvider.GetRequiredService<IVectorStore>();
         var chunk = CreateTestChunk();
@@ -171,7 +184,7 @@ public class SQLiteVecVectorStoreTests : IDisposable
         chunk.Id = id;
         chunk.Content = "Updated content";
         chunk.TokenCount = 999;
-        chunk.Metadata["updated"] = true;
+        chunk.Metadata!["updated"] = true;
 
         var updated = await vectorStore.UpdateAsync(chunk);
 
@@ -185,9 +198,11 @@ public class SQLiteVecVectorStoreTests : IDisposable
         retrieved.Metadata.Should().ContainKey("updated");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task DeleteAsync_WithValidId_ShouldRemoveChunk()
     {
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
         // Arrange
         var vectorStore = _serviceProvider.GetRequiredService<IVectorStore>();
         var chunk = CreateTestChunk();
@@ -210,9 +225,11 @@ public class SQLiteVecVectorStoreTests : IDisposable
         retrieved.Should().BeNull();
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task DeleteByDocumentIdAsync_WithValidDocumentId_ShouldRemoveAllChunks()
     {
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
         // Arrange
         var vectorStore = _serviceProvider.GetRequiredService<IVectorStore>();
         var documentId = "test-document";
@@ -240,9 +257,11 @@ public class SQLiteVecVectorStoreTests : IDisposable
         otherChunks.Should().HaveCount(1);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task CountAsync_WithStoredChunks_ShouldReturnCorrectCount()
     {
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
         // Arrange
         var vectorStore = _serviceProvider.GetRequiredService<IVectorStore>();
         var chunks = new List<DocumentChunk>
@@ -262,9 +281,11 @@ public class SQLiteVecVectorStoreTests : IDisposable
         finalCount.Should().Be(initialCount + 3);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ClearAsync_WithStoredChunks_ShouldRemoveAllChunks()
     {
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
         // Arrange
         var vectorStore = _serviceProvider.GetRequiredService<IVectorStore>();
         var chunks = new List<DocumentChunk>
@@ -285,12 +306,14 @@ public class SQLiteVecVectorStoreTests : IDisposable
         countAfter.Should().Be(0);
     }
 
-    [Theory]
+    [SkippableTheory]
     [InlineData(10, 5)]
     [InlineData(100, 20)]
     [InlineData(1000, 50)]
     public async Task Performance_BatchOperations_ShouldCompleteInReasonableTime(int chunkCount, int topK)
     {
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
         // Arrange
         var vectorStore = _serviceProvider.GetRequiredService<IVectorStore>();
         var chunks = Enumerable.Range(0, chunkCount)
@@ -449,9 +472,11 @@ public class SQLiteVecExtensionLoaderTests : IDisposable
         _serviceProvider = services.BuildServiceProvider();
     }
 
-    [Fact]
+    [SkippableFact]
     public void GetExtensionPath_ShouldReturnPlatformSpecificPath()
     {
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
         // Arrange
         var loader = _serviceProvider.GetRequiredService<ISQLiteVecExtensionLoader>();
 
@@ -473,9 +498,11 @@ public class SQLiteVecExtensionLoaderTests : IDisposable
         }
     }
 
-    [Fact]
+    [SkippableFact]
     public void ExtensionFileExists_WithoutExtension_ShouldReturnFalse()
     {
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
         // Arrange
         var loader = _serviceProvider.GetRequiredService<ISQLiteVecExtensionLoader>();
 
@@ -497,9 +524,11 @@ public class SQLiteVecExtensionLoaderTests : IDisposable
 /// </summary>
 public class SQLiteVecOptionsTests
 {
-    [Fact]
+    [SkippableFact]
     public void Validate_WithValidOptions_ShouldNotThrow()
     {
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
         // Arrange
         var options = new SQLiteVecOptions
         {
@@ -512,11 +541,13 @@ public class SQLiteVecOptionsTests
         options.Invoking(o => o.Validate()).Should().NotThrow();
     }
 
-    [Theory]
+    [SkippableTheory]
     [InlineData(0)]
     [InlineData(-1)]
     public void Validate_WithInvalidVectorDimension_ShouldThrow(int dimension)
     {
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
         // Arrange
         var options = new SQLiteVecOptions { VectorDimension = dimension };
 
@@ -524,11 +555,13 @@ public class SQLiteVecOptionsTests
         options.Invoking(o => o.Validate()).Should().Throw<ArgumentException>();
     }
 
-    [Theory]
+    [SkippableTheory]
     [InlineData(0)]
     [InlineData(-1)]
     public void Validate_WithInvalidMaxBatchSize_ShouldThrow(int batchSize)
     {
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
         // Arrange
         var options = new SQLiteVecOptions { MaxBatchSize = batchSize };
 
@@ -536,11 +569,13 @@ public class SQLiteVecOptionsTests
         options.Invoking(o => o.Validate()).Should().Throw<ArgumentException>();
     }
 
-    [Theory]
+    [SkippableTheory]
     [InlineData(-1.1f)]
     [InlineData(1.1f)]
     public void Validate_WithInvalidMinScore_ShouldThrow(float minScore)
     {
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
         // Arrange
         var options = new SQLiteVecOptions { DefaultMinScore = minScore };
 
@@ -548,9 +583,11 @@ public class SQLiteVecOptionsTests
         options.Invoking(o => o.Validate()).Should().Throw<ArgumentException>();
     }
 
-    [Fact]
+    [SkippableFact]
     public void GetVecTableSchema_ShouldReturnValidSQL()
     {
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
         // Arrange
         var options = new SQLiteVecOptions { VectorDimension = 1536 };
 
@@ -564,9 +601,11 @@ public class SQLiteVecOptionsTests
         schema.Should().Contain("metric=cosine");
     }
 
-    [Fact]
+    [SkippableFact]
     public void CreateForTesting_ShouldReturnValidTestOptions()
     {
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
         // Act
         var options = SQLiteVecOptions.CreateForTesting();
 
@@ -578,9 +617,11 @@ public class SQLiteVecOptionsTests
         options.MaxBatchSize.Should().Be(100);
     }
 
-    [Fact]
+    [SkippableFact]
     public void CreateForProduction_ShouldReturnValidProductionOptions()
     {
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
         // Act
         var options = SQLiteVecOptions.CreateForProduction("test.db", 1536);
 

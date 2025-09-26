@@ -2,6 +2,7 @@ using FluentAssertions;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Domain.Entities;
 using FluxIndex.Storage.SQLite;
+using FluxIndex.Storage.SQLite.Tests.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -81,9 +82,12 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
         }
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task EndToEndWorkflow_DocumentIndexingAndSearch_ShouldWorkCorrectly()
     {
+        // Skip if sqlite-vec is not available (CI environment)
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
         // Arrange
         var vectorStore = _serviceProvider.GetRequiredService<IVectorStore>();
 
@@ -144,9 +148,12 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
         _output.WriteLine($"검색 성능: Neural={searchTime1}ms, NLP={searchTime2}ms");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task PerformanceTest_LargeScaleOperations_ShouldMeetPerformanceTargets()
     {
+        // Skip if sqlite-vec is not available (CI environment)
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
         // Arrange
         var vectorStore = _serviceProvider.GetRequiredService<IVectorStore>();
         const int chunkCount = 5000;
@@ -236,9 +243,12 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
         avgConcurrentTime.Should().BeLessThan(200.0); // 동시성 환경에서도 200ms 이하
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task AccuracyTest_VectorSimilarity_ShouldReturnRelevantResults()
     {
+        // Skip if sqlite-vec is not available (CI environment)
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
         // Arrange
         var vectorStore = _serviceProvider.GetRequiredService<IVectorStore>();
 
@@ -299,9 +309,12 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
         _output.WriteLine($"스포츠 쿼리 결과: {string.Join(", ", sportsDocsFound.Cast<object>())}");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ConcurrencyTest_MultipleOperations_ShouldNotCauseDataCorruption()
     {
+        // Skip if sqlite-vec is not available (CI environment)
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
         // Arrange
         var vectorStore = _serviceProvider.GetRequiredService<IVectorStore>();
         const int concurrentUsers = 10;

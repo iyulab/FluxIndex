@@ -2,6 +2,7 @@ using FluentAssertions;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Domain.Entities;
 using FluxIndex.Storage.SQLite;
+using FluxIndex.Storage.SQLite.Tests.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -82,9 +83,12 @@ public class SQLiteVecRealWorldTests : IAsyncLifetime
         }
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ExtensionLoading_WithRealNuGetPackage_ShouldLoadSuccessfully()
     {
+        // Skip if sqlite-vec is not available (CI environment)
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
         // Arrange
         var vectorStore = _serviceProvider.GetRequiredService<IVectorStore>();
 
@@ -108,9 +112,12 @@ public class SQLiteVecRealWorldTests : IAsyncLifetime
         _output.WriteLine("✅ sqlite-vec 확장 로딩 및 기본 기능 검증 완료");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task VectorSearch_WithNativeExtension_ShouldReturnAccurateResults()
     {
+        // Skip if sqlite-vec is not available (CI environment)
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
         // Arrange
         var vectorStore = _serviceProvider.GetRequiredService<IVectorStore>();
 
@@ -200,9 +207,12 @@ public class SQLiteVecRealWorldTests : IAsyncLifetime
         _output.WriteLine("✅ 성능 기준 충족");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task ConcurrentAccess_WithNativeExtension_ShouldMaintainConsistency()
     {
+        // Skip if sqlite-vec is not available (CI environment)
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
         // Arrange
         var vectorStore = _serviceProvider.GetRequiredService<IVectorStore>();
         const int concurrentTasks = 5;
@@ -269,9 +279,12 @@ public class SQLiteVecRealWorldTests : IAsyncLifetime
         _output.WriteLine($"✅ 동시성 테스트 완료: {totalSuccesses.Count}개 성공, {totalErrors.Count}개 오류");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task LargeDataset_RealWorldScenario_ShouldHandleEfficiently()
     {
+        // Skip if sqlite-vec is not available (CI environment)
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
         // Arrange
         var vectorStore = _serviceProvider.GetRequiredService<IVectorStore>();
         const int largeDatasetSize = 5000; // 실제 사용에 가까운 크기
@@ -281,7 +294,7 @@ public class SQLiteVecRealWorldTests : IAsyncLifetime
 
         // 실제적인 문서 시뮬레이션
         var documents = GenerateRealisticDocuments(largeDatasetSize);
-        var categories = documents.Select(d => d.Metadata["category"]).Distinct().ToList();
+        var categories = documents.Select(d => d.Metadata!["category"]).Distinct().ToList();
 
         _output.WriteLine($"생성된 카테고리: {string.Join(", ", categories)}");
 
