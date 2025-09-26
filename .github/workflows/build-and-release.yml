@@ -83,14 +83,38 @@ jobs:
           echo "⚠️ No test projects found"
         fi
 
-    # Create NuGet packages
+    # Create NuGet packages (only src projects)
     - name: Create packages
       run: |
-        echo "📦 Creating NuGet packages..."
-        dotnet pack --configuration ${{ env.CONFIGURATION }} \
-          --no-build \
-          --output ./packages \
-          /p:Version=${{ steps.version.outputs.version }}
+        echo "📦 Creating NuGet packages for src projects only..."
+        echo "🔍 Scanning src directory for packable projects..."
+
+        # Ensure packages directory exists
+        mkdir -p ./packages
+
+        # Pack only projects in src folder and verify they are packable
+        PACKAGED_COUNT=0
+        for proj in src/**/*.csproj; do
+          if [[ -f "$proj" ]]; then
+            PROJECT_NAME=$(basename "$proj" .csproj)
+            echo "📦 Packing $PROJECT_NAME..."
+
+            # Check if project is packable before attempting to pack
+            if dotnet pack "$proj" --configuration ${{ env.CONFIGURATION }} \
+              --no-build \
+              --output ./packages \
+              --verbosity minimal \
+              /p:Version=${{ steps.version.outputs.version }}; then
+              PACKAGED_COUNT=$((PACKAGED_COUNT + 1))
+              echo "✅ Successfully packaged $PROJECT_NAME"
+            else
+              echo "⚠️ Failed to package $PROJECT_NAME (might be non-packable)"
+            fi
+          fi
+        done
+
+        echo "📊 Summary: $PACKAGED_COUNT packages created"
+        ls -la ./packages/ || echo "No packages directory found"
 
     # Check if version already exists on NuGet
     - name: Check version on NuGet

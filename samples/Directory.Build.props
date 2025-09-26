@@ -1,0 +1,26 @@
+<Project>
+  <!-- Samples-specific build configuration -->
+  <PropertyGroup>
+    <!-- Samples are never packable -->
+    <IsPackable>false</IsPackable>
+
+    <!-- Disable documentation generation for samples -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <!-- Samples are console applications by default (except Shared) -->
+    <OutputType Condition="'$(OutputType)' == '' AND '$(MSBuildProjectName)' != 'Shared'">Exe</OutputType>
+
+    <!-- Disable unnecessary warnings for samples -->
+    <NoWarn>$(NoWarn);CS1591;CS1587</NoWarn>
+
+    <!-- Sample-specific build settings -->
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+
+  <!-- Common sample dependencies -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+  </ItemGroup>
+</Project>

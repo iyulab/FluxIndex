@@ -6,9 +6,9 @@
     📦 버전 업데이트: 아래 Version을 변경하고 main 브랜치에 push하면 자동으로 NuGet에 배포됩니다.
     🔄 워크플로우: .github/workflows/build-and-release.yml 참조
     -->
-    <Version>0.2.5</Version>
-    <AssemblyVersion>0.2.5.0</AssemblyVersion>
-    <FileVersion>0.2.5.0</FileVersion>
+    <Version>0.2.6</Version>
+    <AssemblyVersion>0.2.6.0</AssemblyVersion>
+    <FileVersion>0.2.6.0</FileVersion>
     
     <!-- Package Metadata -->
     <Authors>iyulab</Authors>
@@ -61,5 +61,51 @@
   <!-- Package Icon -->
   <ItemGroup>
     <None Include="$(MSBuildThisFileDirectory)assets\icon.png" Pack="true" PackagePath="\" Condition="Exists('$(MSBuildThisFileDirectory)assets\icon.png')" />
+  </ItemGroup>
+
+  <!-- Exclude samples and tests from packaging -->
+  <!-- Use more robust path checking with MSBuildProjectDirectory -->
+  <PropertyGroup Condition="$(MSBuildProjectDirectory.Contains('\samples\')) OR $(MSBuildProjectDirectory.Contains('/samples/'))">
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <!-- Exclude any project with Test in name or in tests folder -->
+  <PropertyGroup Condition="$(MSBuildProjectName.Contains('Test')) OR $(MSBuildProjectDirectory.Contains('\tests\')) OR $(MSBuildProjectDirectory.Contains('/tests/'))">
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <!-- Only src projects are packable -->
+  <PropertyGroup Condition="!$(MSBuildProjectDirectory.Contains('\src\')) AND !$(MSBuildProjectDirectory.Contains('/src/'))">
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!-- Source projects specific settings -->
+  <PropertyGroup Condition="$(MSBuildProjectDirectory.Contains('\src\')) OR $(MSBuildProjectDirectory.Contains('/src/'))">
+    <!-- All src projects are packable by default -->
+    <IsPackable>true</IsPackable>
+    <!-- Enable documentation generation for library projects -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Library-specific build settings -->
+    <WarningLevel>5</WarningLevel>
+    <!-- Package metadata for all src projects -->
+    <PackageDescription>$(Description)</PackageDescription>
+  </PropertyGroup>
+
+  <!-- Include README.md in packages if it exists (for src projects only) -->
+  <ItemGroup Condition="($(MSBuildProjectDirectory.Contains('\src\')) OR $(MSBuildProjectDirectory.Contains('/src/'))) AND Exists('$(MSBuildThisFileDirectory)README.md')">
+    <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <!-- Set PackageReadmeFile for src projects if README exists -->
+  <PropertyGroup Condition="($(MSBuildProjectDirectory.Contains('\src\')) OR $(MSBuildProjectDirectory.Contains('/src/'))) AND Exists('$(MSBuildThisFileDirectory)README.md')">
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <!-- Common source project dependencies (for src projects only) -->
+  <ItemGroup Condition="$(MSBuildProjectDirectory.Contains('\src\')) OR $(MSBuildProjectDirectory.Contains('/src/'))">
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 </Project>

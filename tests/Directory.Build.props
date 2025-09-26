@@ -1,0 +1,32 @@
+<Project>
+  <!-- Tests-specific build configuration -->
+  <PropertyGroup>
+    <!-- Tests are never packable -->
+    <IsPackable>false</IsPackable>
+
+    <!-- Disable documentation generation for tests -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <!-- Test-specific build settings -->
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <WarningLevel>4</WarningLevel>
+
+    <!-- Disable unnecessary warnings for tests -->
+    <NoWarn>$(NoWarn);CS1591;CS1587;CS8618</NoWarn>
+  </PropertyGroup>
+
+  <!-- Common test dependencies -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Testing" />
+  </ItemGroup>
+
+  <!-- Test runtime settings -->
+  <ItemGroup>
+    <None Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

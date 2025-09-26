@@ -369,10 +369,12 @@ appsettings.Development.json
 .env.local
 nupkgs/
 
-# Database files
+# Database files (but not project folders)
 *.db
 *.sqlite
 *.sqlite3
+# Allow SQLite project folder
+!src/FluxIndex.Storage.SQLite/
 
 # Environment files in all directories
 **/.env
