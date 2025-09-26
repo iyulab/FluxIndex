@@ -1,14 +1,14 @@
-# FluxIndex 빠른 시작 가이드 v0.2.1
+# FluxIndex 빠른 시작 가이드 v0.2.5
 
 **고도화된 RAG 시스템으로 5분 시작**
 
-> 하이브리드 검색, 평가 시스템, Small-to-Big 검색 완비
+> 하이브리드 검색, sqlite-vec 네이티브 벡터 검색, 평가 시스템 완비
 
 ## 📋 전제 조건
 
 - .NET 9.0 SDK 이상
 - OpenAI API 키 (선택적 - AI Provider 사용시만)
-- SQLite (자동 설치, 별도 설정 불요)
+- SQLite + sqlite-vec (자동 설치, 네이티브 벡터 검색)
 
 ## 🚀 1단계: 새 프로젝트 생성
 
@@ -41,12 +41,25 @@ dotnet add package FluxIndex.Extensions.FileFlux
 ```
 
 ### 📂 기존 예제 실행
+
+**🚀 RealWorldDemo (sqlite-vec + OpenAI API 연동)**:
 ```bash
 git clone https://github.com/iyulab/FluxIndex.git
-cd FluxIndex/samples/RealQualityTest
+cd FluxIndex/samples/FluxIndex.RealWorldDemo
 
+# .env.local 파일 생성
+echo "OPENAI_API_KEY=your-api-key" > .env.local
+echo "OPENAI_MODEL=gpt-3.5-turbo" >> .env.local
+echo "OPENAI_EMBEDDING_MODEL=text-embedding-3-small" >> .env.local
+
+dotnet run  # sqlite-vec 네이티브 벡터 검색 실행
+```
+
+**📊 통합 테스트**:
+```bash
+cd FluxIndex/samples/RealQualityTest
 export OPENAI_API_KEY="your-api-key"
-dotnet run  # 실제 검증된 예제
+dotnet run  # 품질 평가 및 성능 측정
 ```
 
 ## 🔧 2단계: 모듈형 설정
@@ -355,7 +368,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 // FluxIndex 기본 설정
 services.AddFluxIndex()
-    .UseSQLiteVectorStore()
+    .AddSQLiteVectorStore()
     .UseOpenAIEmbedding(apiKey);
 
 // FileFlux 확장 추가 (주의: AddFileFlux로 변경됨)

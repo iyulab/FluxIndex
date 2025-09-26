@@ -347,40 +347,41 @@
         "type": "Project",
         "dependencies": {
           "Azure.AI.OpenAI": "[2.1.0, )",
-          "FluxIndex.Core": "[0.2.3, )"
+          "FluxIndex.Core": "[0.2.5, )"
         }
       },
       "fluxindex.core": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex": "[0.2.3, )"
+          "FluxIndex": "[0.2.5, )"
         }
       },
       "fluxindex.extensions.fileflux": {
         "type": "Project",
         "dependencies": {
           "FileFlux": "[0.2.11, )",
-          "FluxIndex.Core": "[0.2.3, )",
-          "FluxIndex.SDK": "[0.2.3, )"
+          "FluxIndex.Core": "[0.2.5, )",
+          "FluxIndex.SDK": "[0.2.5, )"
         }
       },
       "fluxindex.sdk": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex": "[0.2.3, )",
-          "FluxIndex.AI.OpenAI": "[0.2.3, )",
-          "FluxIndex.Core": "[0.2.3, )",
-          "FluxIndex.Storage.SQLite": "[0.2.3, )",
+          "FluxIndex": "[0.2.5, )",
+          "FluxIndex.AI.OpenAI": "[0.2.5, )",
+          "FluxIndex.Core": "[0.2.5, )",
+          "FluxIndex.Storage.SQLite": "[0.2.5, )",
           "Microsoft.Extensions.Http": "[9.0.9, )"
         }
       },
       "fluxindex.storage.sqlite": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.Core": "[0.2.3, )",
+          "FluxIndex.Core": "[0.2.5, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[9.0.9, )",
           "Microsoft.Extensions.Configuration.Binder": "[9.0.9, )",
-          "Microsoft.Extensions.Hosting.Abstractions": "[9.0.9, )"
+          "Microsoft.Extensions.Hosting.Abstractions": "[9.0.9, )",
+          "sqlite-vec": "[0.1.7-alpha.2.1, )"
         }
       },
       "Azure.AI.OpenAI": {
@@ -555,6 +556,12 @@
           "Microsoft.Extensions.Options": "9.0.9",
           "Microsoft.Extensions.Primitives": "9.0.9"
         }
+      },
+      "sqlite-vec": {
+        "type": "CentralTransitive",
+        "requested": "[0.1.7-alpha.2.1, )",
+        "resolved": "0.1.7-alpha.2.1",
+        "contentHash": "JCN6wMW9cX7e6tO6BZRBEdLT1qq8cRlQ5AdPvl6ZRjTKOJ2JjQXYI+wIAMb4EOXiDbbpt0IIv5rkkbPOMlrkRQ=="
       },
       "System.Text.Json": {
         "type": "CentralTransitive",

@@ -39,7 +39,7 @@ var services = new ServiceCollection();
 
 // FluxIndex 기본 설정
 services.AddFluxIndex()
-    .UseSQLiteVectorStore()                    // 인메모리 저장소
+    .AddSQLiteVectorStore()                    // 인메모리 저장소
     .UseInMemoryCache();                       // 기본 캐싱
 
 var provider = services.BuildServiceProvider();
@@ -108,7 +108,7 @@ foreach (var result in results)
 
 // 서비스 등록
 services.AddFluxIndex()
-    .UseSQLiteVectorStore()
+    .AddSQLiteVectorStore()
     .UseOpenAIEmbedding(configuration.GetSection("OpenAI"));
 ```
 
@@ -116,7 +116,7 @@ services.AddFluxIndex()
 
 ```csharp
 services.AddFluxIndex()
-    .UseSQLiteVectorStore()
+    .AddSQLiteVectorStore()
     .UseAzureOpenAIEmbedding(options =>
     {
         options.Endpoint = "https://your-resource.openai.azure.com/";
@@ -190,7 +190,7 @@ using FluxIndex.Extensions.FileFlux;
 
 // FluxIndex 기본 설정
 services.AddFluxIndex()
-    .UseSQLiteVectorStore()
+    .AddSQLiteVectorStore()
     .UseOpenAIEmbedding(config.GetSection("OpenAI"));
 
 // FileFlux 확장 추가 (주의: AddFileFlux로 변경됨)
@@ -251,7 +251,7 @@ dotnet add package FluxIndex.Cache.Redis
 ```csharp
 // Redis 캐싱으로 성능 향상
 services.AddFluxIndex()
-    .UseSQLiteVectorStore()
+    .AddSQLiteVectorStore()
     .UseOpenAIEmbedding(config.GetSection("OpenAI"))
     .UseRedisCache("localhost:6379");
 

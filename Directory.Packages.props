@@ -50,7 +50,7 @@
   <!-- Document Processing -->
   <ItemGroup>
     <PackageVersion Include="FileFlux" Version="0.2.11" />
-    <PackageVersion Include="FileFlux.Core" Version="0.2.4" />
+    <PackageVersion Include="FileFlux.Core" Version="0.2.5" />
     <PackageVersion Include="HtmlAgilityPack" Version="1.12.3" />
   </ItemGroup>
   <!-- Testing Packages -->
@@ -73,5 +73,9 @@
   <ItemGroup>
     <PackageVersion Include="Spectre.Console" Version="0.51.1" />
     <PackageVersion Include="BenchmarkDotNet" Version="0.14.0" />
+  </ItemGroup>
+  <!-- SQLite Extensions -->
+  <ItemGroup>
+    <PackageVersion Include="sqlite-vec" Version="0.1.7-alpha.2.1" />
   </ItemGroup>
 </Project>

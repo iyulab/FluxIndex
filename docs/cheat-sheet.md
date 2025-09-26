@@ -31,7 +31,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 var services = new ServiceCollection();
 services.AddFluxIndex()
-    .UseSQLiteVectorStore()     // 인메모리 저장소
+    .AddSQLiteVectorStore()     // 인메모리 저장소
     .UseInMemoryCache();        // 기본 캐시
 
 var client = services.BuildServiceProvider()
@@ -89,7 +89,7 @@ var hybridResults = await client.Retriever.SearchAsync(
 
 // 코드
 services.AddFluxIndex()
-    .UseSQLiteVectorStore()
+    .AddSQLiteVectorStore()
     .UseOpenAIEmbedding(config.GetSection("OpenAI"));
 ```
 
@@ -108,7 +108,7 @@ services.AddFluxIndex()
 
 ```csharp
 services.AddFluxIndex()
-    .UseSQLiteVectorStore()
+    .AddSQLiteVectorStore()
     .UseRedisCache("localhost:6379");
 ```
 
@@ -121,7 +121,7 @@ using FluxIndex.Extensions.FileFlux;
 
 // FluxIndex 기본 설정
 services.AddFluxIndex()
-    .UseSQLiteVectorStore();
+    .AddSQLiteVectorStore();
 
 // FileFlux 확장 추가
 services.AddFileFlux(options => {

@@ -19,12 +19,14 @@ FluxIndex는 문서 인덱싱과 검색에 특화된 RAG 라이브러리입니�
 - **선택적 증강**: AI 기반 메타데이터 추출 (카테고리, 요약, 키워드)
 - **계층적 청킹**: Small-to-Big 4단계 계층 자동 구성
 - **관계 분석**: 청크 간 의미적/계층적 관계 자동 구축
+- **네이티브 벡터**: sqlite-vec, pgvector 등 고성능 벡터 저장소 지원
 
 ### 🔍 Search 기능 (전략적 검색)
 - **다중 전략**: 벡터(HNSW) + 하이브리드(BM25) + 그래프 검색
 - **적응형 검색**: 쿼리 복잡도에 따른 최적 전략 자동 선택
 - **재순위화**: RRF, Cross-encoder, LLM-as-Judge 다단계 정제
 - **성능 최적화**: 95% 유사도 시맨틱 캐싱, HNSW 자동 튜닝
+- **네이티브 검색**: sqlite-vec의 vec0 테이블을 통한 고성능 벡터 검색
 
 ### 🔧 자동 최적화
 - **지속적 학습**: 쿼리 패턴 기반 성능 자동 향상
@@ -67,8 +69,10 @@ FluxIndex는 문서 인덱싱과 검색에 특화된 RAG 라이브러리입니�
 
 | 패키지명 | 설명 |
 |---------|------|
-| `FluxIndex.Storage.SQLite` | SQLite 벡터 저장소 (개발용) |
+| `FluxIndex.Storage.SQLite` | SQLite 벡터 저장소 (개발용, sqlite-vec 지원) |
 | `FluxIndex.Storage.PostgreSQL` | PostgreSQL+pgvector (프로덕션용) |
+
+> 💡 **sqlite-vec**: SQLite 저장소는 네이티브 벡터 검색을 위한 sqlite-vec 확장을 지원합니다.
 
 ### 캐시 시스템 (선택사항)
 
@@ -135,7 +139,7 @@ using Microsoft.Extensions.DependencyInjection;
 // 기본 설정
 var services = new ServiceCollection();
 services.AddFluxIndex()
-    .UseSQLiteVectorStore()              // 저장소
+    .AddSQLiteVectorStore()              // 저장소
     .UseOpenAIEmbedding(apiKey: "...");  // AI (선택적)
 
 // FileFlux 확장 (파일 처리)
@@ -231,12 +235,13 @@ services.AddScoped<ICacheService, RedisCacheService>();
 
 ### 💻 실습 자료
 - **[📂 샘플 코드](./samples/)** - 다양한 실전 사용 사례
+  - **[🚀 RealWorldDemo](./samples/FluxIndex.RealWorldDemo/)** - sqlite-vec를 활용한 실제 OpenAI API 연동 데모
 - **[🧪 테스트 코드](./tests/)** - 단위 테스트 및 통합 테스트
 - **[📋 개발 로드맵](./TASKS.md)** - 완료된 기능과 향후 계획
 
 ### 🎯 추천 학습 경로
 
-**초보자**: [튜토리얼](./docs/tutorial.md) → [치트시트](./docs/cheat-sheet.md) → [샘플 코드](./samples/PackageTestSample/)
+**초보자**: [튜토리얼](./docs/tutorial.md) → [치트시트](./docs/cheat-sheet.md) → [RealWorldDemo](./samples/FluxIndex.RealWorldDemo/)
 
 **중급자**: [하이브리드 검색](./docs/tutorial.md#4-하이브리드-검색) → [아키텍처](./docs/architecture.md) → [실전 예제](./samples/RealQualityTest/)
 

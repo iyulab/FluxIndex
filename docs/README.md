@@ -15,6 +15,7 @@ FluxIndex RAG 라이브러리의 완전한 문서 모음
 
 ### 실습 자료
 - **[샘플 코드](../samples/)** - 다양한 실전 사용 사례
+  - **[RealWorldDemo](../samples/FluxIndex.RealWorldDemo/)**: sqlite-vec + OpenAI API 실제 연동 데모
   - **[IntegrationTestSample](../samples/IntegrationTestSample/)**: FileFlux/WebFlux 완전 통합 테스트
   - **[RealQualityTest](../samples/RealQualityTest/)**: RAG 품질 평가 및 성능 측정
   - **[WebFluxSample](../samples/WebFluxSample/)**: 웹 콘텐츠 처리 데모
@@ -25,7 +26,7 @@ FluxIndex RAG 라이브러리의 완전한 문서 모음
 ### 초보자
 1. [튜토리얼](tutorial.md) 1-3장: 기본 설정부터 AI 연동까지
 2. [치트시트](cheat-sheet.md): 핵심 패턴 숙지
-3. [IntegrationTestSample](../samples/IntegrationTestSample/): 완전한 통합 예제 실행
+3. [RealWorldDemo](../samples/FluxIndex.RealWorldDemo/): sqlite-vec 실제 API 연동 체험
 
 ### 중급자
 1. [튜토리얼](tutorial.md) 4-6장: 하이브리드 검색과 성능 최적화
@@ -73,7 +74,7 @@ FluxIndex RAG 라이브러리의 완전한 문서 모음
 - **적응형 전략**: 쿼리 복잡도에 따른 자동 최적화
 
 ### Q: 어떤 저장소를 선택해야 하나요?
-- **개발/테스트**: SQLite (설정 불필요)
+- **개발/테스트**: SQLite + sqlite-vec (네이티브 벡터 검색)
 - **프로덕션**: PostgreSQL + pgvector (확장성)
 - **메모리**: InMemory (임시 사용)
 
