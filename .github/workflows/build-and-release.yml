@@ -19,6 +19,9 @@ on:
 env:
   DOTNET_VERSION: '9.0.x'
   CONFIGURATION: 'Release'
+  # Ensure CI environment is detected
+  CI: 'true'
+  GITHUB_ACTIONS: 'true'
   # Skip problematic tests in CI environment
   SKIP_DOCKER_TESTS: 'true'
   # SQLite-vec and performance tests are now skipped by default

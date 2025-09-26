@@ -38,10 +38,22 @@ public static class CITestHelper
         if (_isSqliteVecAvailable.HasValue)
             return !_isSqliteVecAvailable.Value;
 
+        // Force skip in CI environments unless explicitly enabled
+        if (IsCIEnvironment())
+        {
+            var enableSqliteVec = Environment.GetEnvironmentVariable("ENABLE_SQLITEVEC_TESTS");
+            if (string.IsNullOrEmpty(enableSqliteVec) ||
+                (!enableSqliteVec.Equals("true", StringComparison.OrdinalIgnoreCase) && enableSqliteVec != "1"))
+            {
+                _isSqliteVecAvailable = false;
+                return true;
+            }
+        }
+
         // Check for environment variables that indicate SQLite-vec should be explicitly enabled
-        var enableSqliteVec = Environment.GetEnvironmentVariable("ENABLE_SQLITEVEC_TESTS");
-        if (!string.IsNullOrEmpty(enableSqliteVec) &&
-            (enableSqliteVec.Equals("true", StringComparison.OrdinalIgnoreCase) || enableSqliteVec == "1"))
+        var enableSqliteVecLocal = Environment.GetEnvironmentVariable("ENABLE_SQLITEVEC_TESTS");
+        if (!string.IsNullOrEmpty(enableSqliteVecLocal) &&
+            (enableSqliteVecLocal.Equals("true", StringComparison.OrdinalIgnoreCase) || enableSqliteVecLocal == "1"))
         {
             _isSqliteVecAvailable = true;
             return false;

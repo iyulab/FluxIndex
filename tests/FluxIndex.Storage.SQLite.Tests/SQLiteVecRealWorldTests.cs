@@ -47,6 +47,13 @@ public class SQLiteVecRealWorldTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
+        // Skip if sqlite-vec is not available (CI environment)
+        if (CITestHelper.ShouldSkipSqliteVec())
+        {
+            _output.WriteLine("SQLite-vec tests are disabled - skipping initialization");
+            return;
+        }
+
         // 호스팅 서비스 시작 (데이터베이스 초기화 및 sqlite-vec 로드)
         var hostedServices = _serviceProvider.GetServices<IHostedService>();
         foreach (var service in hostedServices)
@@ -156,12 +163,16 @@ public class SQLiteVecRealWorldTests : IAsyncLifetime
         _output.WriteLine("✅ 네이티브 벡터 검색 정확도 검증 완료");
     }
 
-    [Theory]
+    [SkippableTheory]
     [InlineData(100, 5)]
     [InlineData(500, 10)]
     [InlineData(1000, 20)]
     public async Task PerformanceTest_NativeVsMemory_ShouldShowImprovement(int datasetSize, int topK)
     {
+        // Skip if sqlite-vec is not available
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+        CITestHelper.SkipIfPerformanceTestsDisabled();
+
         // Arrange
         var vectorStore = _serviceProvider.GetRequiredService<IVectorStore>();
         var testData = GenerateTestDataset(datasetSize);

@@ -49,6 +49,12 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
+        // Skip if sqlite-vec is not available (CI environment)
+        if (CITestHelper.ShouldSkipSqliteVec())
+        {
+            return;
+        }
+
         // 호스팅 서비스 시작 (데이터베이스 초기화)
         var hostedServices = _serviceProvider.GetServices<IHostedService>();
         foreach (var service in hostedServices)
