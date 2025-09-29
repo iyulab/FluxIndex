@@ -60,10 +60,17 @@ jobs:
 
     # Restore, Build, Test
     - name: Restore dependencies
-      run: dotnet restore
+      run: |
+        echo "📦 Restoring packages with central package management..."
+        # Force clean restore to avoid any cached issues
+        dotnet restore --verbosity minimal --force
+        echo "✅ Package restore completed"
 
     - name: Build
-      run: dotnet build --no-restore --configuration ${{ env.CONFIGURATION }}
+      run: |
+        echo "🔨 Building solution..."
+        dotnet build --no-restore --configuration ${{ env.CONFIGURATION }} --verbosity minimal
+        echo "✅ Build completed successfully"
 
     - name: Run tests
       run: |
