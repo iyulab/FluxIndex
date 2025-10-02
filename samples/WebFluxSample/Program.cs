@@ -19,10 +19,10 @@ class Program
                 .UseInMemoryEmbedding()
                 .UseWebFlux(options =>
                 {
-                    options.MaxChunkSize = 1024;
-                    options.ChunkOverlap = 128;
-                    options.ChunkingStrategy = "Smart";
-                    options.IncludeImages = false;
+                    options.DefaultMaxChunkSize = 1024;
+                    options.DefaultChunkOverlap = 128;
+                    options.DefaultChunkingStrategy = WebFlux.Core.Options.ChunkingStrategyType.Smart;
+                    options.DefaultIncludeImages = false;
                 })
                 .WithLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Information))
                 .Build();
@@ -44,7 +44,11 @@ class Program
             {
                 var documentId = await context.IndexWebContentAsync(
                     testUrls[0],
-                    WebFluxOptions.Default);
+                    new WebFluxProcessingOptions
+                    {
+                        MaxChunkSize = 512,
+                        ChunkOverlap = 50
+                    });
 
                 Console.WriteLine($"✅ Successfully indexed website. Document ID: {documentId}");
             }
@@ -58,7 +62,11 @@ class Program
             try
             {
                 var webFlux = context.GetWebFluxIntegration();
-                var documentIds = await webFlux.IndexMultipleUrlsAsync(testUrls, WebFluxOptions.LargeContent);
+                var documentIds = await webFlux.IndexMultipleUrlsAsync(testUrls, new WebFluxProcessingOptions
+                {
+                    MaxChunkSize = 1024,
+                    ChunkOverlap = 100
+                });
 
                 Console.WriteLine($"✅ Successfully indexed {documentIds.Count()} websites");
                 foreach (var docId in documentIds)
@@ -102,13 +110,22 @@ class Program
             Console.WriteLine("\n⚙️ Test 4: Testing different WebFlux configurations");
             try
             {
-                // Deep crawl configuration (would crawl multiple pages)
-                var deepCrawlOptions = WebFluxOptions.DeepCrawl;
-                Console.WriteLine($"   🕷️ Deep crawl config: MaxDepth={deepCrawlOptions.MaxDepth}, Strategy={deepCrawlOptions.ChunkingStrategy}");
+                // Semantic strategy configuration
+                var semanticOptions = new WebFluxProcessingOptions
+                {
+                    ChunkingStrategy = WebFlux.Core.Options.ChunkingStrategyType.Semantic,
+                    MaxChunkSize = 512
+                };
+                Console.WriteLine($"   🧠 Semantic config: Strategy={semanticOptions.ChunkingStrategy}, ChunkSize={semanticOptions.MaxChunkSize}");
 
                 // Large content configuration
-                var largeContentOptions = WebFluxOptions.LargeContent;
-                Console.WriteLine($"   📄 Large content config: ChunkSize={largeContentOptions.MaxChunkSize}, Images={largeContentOptions.IncludeImages}");
+                var largeContentOptions = new WebFluxProcessingOptions
+                {
+                    ChunkingStrategy = WebFlux.Core.Options.ChunkingStrategyType.MemoryOptimized,
+                    MaxChunkSize = 2048,
+                    IncludeImages = false
+                };
+                Console.WriteLine($"   📄 Large content config: Strategy={largeContentOptions.ChunkingStrategy}, ChunkSize={largeContentOptions.MaxChunkSize}, Images={largeContentOptions.IncludeImages}");
 
                 Console.WriteLine("   ✅ Configuration options validated");
             }

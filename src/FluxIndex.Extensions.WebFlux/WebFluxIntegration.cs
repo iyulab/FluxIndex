@@ -1,6 +1,9 @@
 using FluxIndex.Domain.Entities;
 using FluxIndex.SDK;
 using Microsoft.Extensions.Logging;
+using WebFlux.Core.Interfaces;
+using WebFlux.Core.Models;
+using WebFlux.Core.Options;
 
 namespace FluxIndex.Extensions.WebFlux;
 
@@ -12,26 +15,34 @@ public class WebFluxIntegration
     private readonly IWebContentProcessor _webContentProcessor;
     private readonly Indexer _indexer;
     private readonly ILogger<WebFluxIntegration> _logger;
+    private readonly WebFluxOptions _options;
 
     public WebFluxIntegration(
         IWebContentProcessor webContentProcessor,
         Indexer indexer,
-        ILogger<WebFluxIntegration> logger)
+        ILogger<WebFluxIntegration> logger,
+        Microsoft.Extensions.Options.IOptions<WebFluxOptions>? options = null)
     {
         _webContentProcessor = webContentProcessor;
         _indexer = indexer;
         _logger = logger;
+        _options = options?.Value ?? new WebFluxOptions();
     }
 
     /// <summary>
-    /// Process and index web content from a URL
+    /// Process and index web content from a URL using WebFlux 0.1.2 API
     /// </summary>
     public async Task<string> IndexWebContentAsync(
         string url,
-        WebFluxOptions? options = null,
+        WebFluxProcessingOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        options ??= WebFluxOptions.Default;
+        options ??= new WebFluxProcessingOptions
+        {
+            ChunkingStrategy = _options.DefaultChunkingStrategy,
+            MaxChunkSize = _options.DefaultMaxChunkSize,
+            ChunkOverlap = _options.DefaultChunkOverlap
+        };
 
         _logger.LogInformation("Processing web content from URL: {Url}", url);
 
@@ -58,19 +69,23 @@ public class WebFluxIntegration
     /// </summary>
     public async Task<Document> ProcessWebContentToDocumentAsync(
         string url,
-        WebFluxOptions? options = null,
+        WebFluxProcessingOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        options ??= WebFluxOptions.Default;
-
-        var crawlOptions = new CrawlOptions
+        options ??= new WebFluxProcessingOptions
         {
-            MaxDepth = options.MaxDepth,
-            FollowExternalLinks = options.FollowExternalLinks,
-            ChunkingStrategy = options.ChunkingStrategy,
+            ChunkingStrategy = _options.DefaultChunkingStrategy,
+            MaxChunkSize = _options.DefaultMaxChunkSize,
+            ChunkOverlap = _options.DefaultChunkOverlap
+        };
+
+        var chunkingOptions = new ChunkingOptions
+        {
+            Strategy = options.ChunkingStrategy,
             MaxChunkSize = options.MaxChunkSize,
             ChunkOverlap = options.ChunkOverlap,
-            IncludeImages = options.IncludeImages
+            IncludeImageDescriptions = options.IncludeImages,
+            IncludeMetadata = true
         };
 
         var chunks = new List<DocumentChunk>();
@@ -79,34 +94,27 @@ public class WebFluxIntegration
             ["source_url"] = url,
             ["source_type"] = "web",
             ["processed_at"] = DateTime.UtcNow,
-            ["webflux_version"] = "0.1.1"
+            ["webflux_version"] = "0.1.2"
         };
 
-        // Use the WebFlux library to process web content
-        // This is a placeholder implementation until the exact WebFlux API is verified
-        try
+        // Use WebFlux streaming API
+        if (_options.UseStreamingApi)
         {
-            // Simplified implementation for web content processing
-            var content = await _webContentProcessor.ProcessWebContentAsync(url, crawlOptions, cancellationToken);
-
-            if (!string.IsNullOrEmpty(content))
+            await foreach (var webChunk in _webContentProcessor.ProcessWebsiteAsync(url, null, chunkingOptions, cancellationToken))
             {
-                // Create chunks from the processed content
-                var chunkSize = crawlOptions.MaxChunkSize ?? 512;
-                var overlap = crawlOptions.ChunkOverlap ?? 64;
-
-                for (int i = 0; i < content.Length; i += chunkSize - overlap)
-                {
-                    var chunkContent = content.Substring(i, Math.Min(chunkSize, content.Length - i));
-                    var documentChunk = ConvertToDocumentChunk(chunkContent, chunks.Count);
-                    chunks.Add(documentChunk);
-                }
+                var documentChunk = ConvertToDocumentChunk(webChunk, chunks.Count, url);
+                chunks.Add(documentChunk);
             }
         }
-        catch (Exception ex)
+        else
         {
-            _logger.LogWarning("Failed to process web content: {Error}", ex.Message);
-            throw;
+            // Use non-streaming API
+            var webChunks = await _webContentProcessor.ProcessUrlAsync(url, chunkingOptions, cancellationToken);
+            foreach (var webChunk in webChunks)
+            {
+                var documentChunk = ConvertToDocumentChunk(webChunk, chunks.Count, url);
+                chunks.Add(documentChunk);
+            }
         }
 
         if (chunks.Count == 0)
@@ -138,11 +146,11 @@ public class WebFluxIntegration
     }
 
     /// <summary>
-    /// Batch process multiple URLs
+    /// Batch process multiple URLs using WebFlux API
     /// </summary>
     public async Task<IEnumerable<string>> IndexMultipleUrlsAsync(
         IEnumerable<string> urls,
-        WebFluxOptions? options = null,
+        WebFluxProcessingOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         var documentIds = new List<string>();
@@ -163,54 +171,85 @@ public class WebFluxIntegration
         return documentIds;
     }
 
-    /// <summary>
-    /// Simple web content processing method - placeholder until WebFlux API is verified
-    /// </summary>
-    private async Task<string> ProcessWebContentSimpleAsync(string url, CrawlOptions crawlOptions, CancellationToken cancellationToken)
+    private DocumentChunk ConvertToDocumentChunk(WebContentChunk webChunk, int chunkIndex, string sourceUrl)
     {
-        // This is a simplified implementation for demonstration
-        // In a real implementation, this would use the WebFlux IWebContentProcessor
-        using var httpClient = new HttpClient();
-        httpClient.Timeout = TimeSpan.FromSeconds(30);
-
-        try
+        var chunk = new DocumentChunk(webChunk.Content ?? string.Empty, chunkIndex)
         {
-            var response = await httpClient.GetStringAsync(url, cancellationToken);
-
-            // Basic HTML stripping (very simple implementation)
-            // Real implementation would use WebFlux for proper content extraction
-            var content = System.Text.RegularExpressions.Regex.Replace(response, "<[^>]*>", " ");
-            content = System.Text.RegularExpressions.Regex.Replace(content, @"\s+", " ").Trim();
-
-            return content;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to fetch content from URL: {Url}", url);
-            return string.Empty;
-        }
-    }
-
-    private DocumentChunk ConvertToDocumentChunk(string content, int chunkIndex, Dictionary<string, object>? metadata = null)
-    {
-        var chunk = new DocumentChunk(content ?? string.Empty, chunkIndex)
-        {
-            TokenCount = EstimateTokenCount(content ?? string.Empty),
+            TokenCount = EstimateTokenCount(webChunk.Content ?? string.Empty),
             CreatedAt = DateTime.UtcNow
         };
 
-        // Add WebFlux metadata to chunk
-        if (metadata != null)
+        // Map WebFlux metadata to FluxIndex
+        if (chunk.Metadata == null)
+            chunk.Metadata = new Dictionary<string, object>();
+
+        chunk.Metadata["wf_chunk_id"] = webChunk.Id;
+        chunk.Metadata["wf_sequence_number"] = webChunk.SequenceNumber;
+        chunk.Metadata["wf_source_url"] = webChunk.SourceUrl;
+        chunk.Metadata["wf_quality_score"] = webChunk.QualityScore;
+        chunk.Metadata["wf_chunk_type"] = webChunk.Type.ToString();
+
+        // Map title if available
+        if (!string.IsNullOrEmpty(webChunk.Title))
         {
-            foreach (var kvp in metadata)
+            chunk.Metadata["wf_title"] = webChunk.Title;
+        }
+
+        // Map WebFlux metadata
+        if (webChunk.Metadata != null)
+        {
+            if (!string.IsNullOrEmpty(webChunk.Metadata.Title))
+                chunk.Metadata["wf_page_title"] = webChunk.Metadata.Title;
+
+            if (!string.IsNullOrEmpty(webChunk.Metadata.Description))
+                chunk.Metadata["wf_description"] = webChunk.Metadata.Description;
+
+            if (webChunk.Metadata.PublishedDate.HasValue)
+                chunk.Metadata["wf_published_date"] = webChunk.Metadata.PublishedDate.Value;
+
+            if (webChunk.Metadata.ModifiedDate.HasValue)
+                chunk.Metadata["wf_modified_date"] = webChunk.Metadata.ModifiedDate.Value;
+
+            if (!string.IsNullOrEmpty(webChunk.Metadata.Author))
+                chunk.Metadata["wf_author"] = webChunk.Metadata.Author;
+
+            if (webChunk.Metadata.Keywords != null && webChunk.Metadata.Keywords.Any())
+                chunk.Metadata["wf_keywords"] = string.Join(", ", webChunk.Metadata.Keywords);
+        }
+
+        // Map chunking strategy info
+        if (webChunk.StrategyInfo != null)
+        {
+            chunk.Metadata["wf_strategy"] = webChunk.StrategyInfo.StrategyName;
+            if (webChunk.StrategyInfo.Parameters != null && webChunk.StrategyInfo.Parameters.Any())
             {
-                chunk.AddProperty($"webflux_{kvp.Key}", kvp.Value);
+                foreach (var param in webChunk.StrategyInfo.Parameters)
+                {
+                    chunk.Metadata[$"wf_param_{param.Key}"] = param.Value;
+                }
             }
         }
 
-        // Add additional metadata
-        if (chunk.Metadata == null)
-            chunk.Metadata = new Dictionary<string, object>();
+        // Map tags
+        if (webChunk.Tags != null && webChunk.Tags.Any())
+        {
+            chunk.Metadata["wf_tags"] = string.Join(", ", webChunk.Tags);
+        }
+
+        // Map related images
+        if (webChunk.RelatedImageUrls != null && webChunk.RelatedImageUrls.Any())
+        {
+            chunk.Metadata["wf_images"] = string.Join(", ", webChunk.RelatedImageUrls);
+        }
+
+        // Preserve additional metadata
+        if (webChunk.AdditionalMetadata != null)
+        {
+            foreach (var prop in webChunk.AdditionalMetadata)
+            {
+                chunk.Metadata[$"wf_{prop.Key}"] = prop.Value;
+            }
+        }
 
         chunk.Metadata["content_type"] = "text/html";
         chunk.Metadata["source_type"] = "web";
@@ -251,24 +290,45 @@ public class WebFluxIntegration
 }
 
 /// <summary>
-/// Configuration options for WebFlux integration
+/// Configuration options for WebFlux integration with FluxIndex
 /// </summary>
 public class WebFluxOptions
 {
     /// <summary>
-    /// Maximum crawling depth (default: 1 for single page)
+    /// Default chunking strategy for content processing (Auto, Smart, Semantic, Intelligent, MemoryOptimized, Paragraph, FixedSize)
     /// </summary>
-    public int MaxDepth { get; set; } = 1;
+    public ChunkingStrategyType DefaultChunkingStrategy { get; set; } = ChunkingStrategyType.Auto;
 
     /// <summary>
-    /// Whether to follow external links (default: false)
+    /// Default maximum size of each content chunk in tokens
     /// </summary>
-    public bool FollowExternalLinks { get; set; } = false;
+    public int DefaultMaxChunkSize { get; set; } = 512;
 
+    /// <summary>
+    /// Default overlap size between chunks in tokens
+    /// </summary>
+    public int DefaultChunkOverlap { get; set; } = 50;
+
+    /// <summary>
+    /// Whether to include image processing (default: false, requires IImageToTextService)
+    /// </summary>
+    public bool DefaultIncludeImages { get; set; } = false;
+
+    /// <summary>
+    /// Enable streaming API for memory-efficient processing of large websites
+    /// </summary>
+    public bool UseStreamingApi { get; set; } = true;
+}
+
+/// <summary>
+/// Processing options for individual WebFlux operations
+/// </summary>
+public class WebFluxProcessingOptions
+{
     /// <summary>
     /// Chunking strategy for content processing
     /// </summary>
-    public string ChunkingStrategy { get; set; } = "Smart";
+    public ChunkingStrategyType ChunkingStrategy { get; set; } = ChunkingStrategyType.Auto;
 
     /// <summary>
     /// Maximum size of each content chunk
@@ -278,109 +338,10 @@ public class WebFluxOptions
     /// <summary>
     /// Overlap size between chunks
     /// </summary>
-    public int ChunkOverlap { get; set; } = 64;
+    public int ChunkOverlap { get; set; } = 50;
 
     /// <summary>
     /// Whether to include image processing
     /// </summary>
     public bool IncludeImages { get; set; } = false;
-
-    /// <summary>
-    /// Default configuration
-    /// </summary>
-    public static WebFluxOptions Default => new();
-
-    /// <summary>
-    /// Configuration for deep crawling
-    /// </summary>
-    public static WebFluxOptions DeepCrawl => new()
-    {
-        MaxDepth = 3,
-        FollowExternalLinks = false,
-        ChunkingStrategy = "Intelligent",
-        MaxChunkSize = 1024,
-        ChunkOverlap = 128
-    };
-
-    /// <summary>
-    /// Configuration for large content processing
-    /// </summary>
-    public static WebFluxOptions LargeContent => new()
-    {
-        MaxDepth = 1,
-        ChunkingStrategy = "Auto",
-        MaxChunkSize = 2048,
-        ChunkOverlap = 256,
-        IncludeImages = true
-    };
-}
-
-/// <summary>
-/// Crawl options class - placeholder until WebFlux API is verified
-/// </summary>
-public class CrawlOptions
-{
-    public int MaxDepth { get; set; } = 1;
-    public bool FollowExternalLinks { get; set; } = false;
-    public string ChunkingStrategy { get; set; } = "Smart";
-    public int? MaxChunkSize { get; set; } = 512;
-    public int? ChunkOverlap { get; set; } = 64;
-    public bool IncludeImages { get; set; } = false;
-}
-
-/// <summary>
-/// Interface for web content processing
-/// </summary>
-public interface IWebContentProcessor
-{
-    Task<string> ProcessWebContentAsync(string url, CrawlOptions options, CancellationToken cancellationToken = default);
-}
-
-/// <summary>
-/// Default implementation of IWebContentProcessor
-/// </summary>
-public class DefaultWebContentProcessor : IWebContentProcessor
-{
-    private readonly ILogger<DefaultWebContentProcessor> _logger;
-
-    public DefaultWebContentProcessor(ILogger<DefaultWebContentProcessor> logger)
-    {
-        _logger = logger;
-    }
-
-    public async Task<string> ProcessWebContentAsync(string url, CrawlOptions options, CancellationToken cancellationToken = default)
-    {
-        _logger.LogInformation("Processing web content from: {Url}", url);
-
-        try
-        {
-            using var httpClient = new HttpClient();
-            httpClient.Timeout = TimeSpan.FromMinutes(5);
-
-            var response = await httpClient.GetAsync(url, cancellationToken);
-            response.EnsureSuccessStatusCode();
-
-            var content = await response.Content.ReadAsStringAsync(cancellationToken);
-
-            // Simple HTML content extraction (basic implementation)
-            // In real implementation, this would use actual WebFlux library
-            var cleanContent = ExtractTextFromHtml(content);
-
-            _logger.LogInformation("Successfully processed web content. Length: {Length} characters", cleanContent.Length);
-            return cleanContent;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to process web content from: {Url}", url);
-            throw;
-        }
-    }
-
-    private static string ExtractTextFromHtml(string html)
-    {
-        // Very basic HTML tag removal - replace with proper HTML parser in real implementation
-        var text = System.Text.RegularExpressions.Regex.Replace(html, "<[^>]*>", " ");
-        text = System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " ");
-        return text.Trim();
-    }
 }

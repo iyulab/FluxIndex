@@ -4,9 +4,9 @@
     "net9.0": {
       "FileFlux": {
         "type": "Direct",
-        "requested": "[0.2.11, )",
-        "resolved": "0.2.11",
-        "contentHash": "q/hatlaLKBixEj3qtdokDMdYkZPO6KGwmbsTTScPcTu26qVVA/HnNKAwNlgO3YVqKHuMI5BHolaUb8MijM8PsA=="
+        "requested": "[0.2.12, )",
+        "resolved": "0.2.12",
+        "contentHash": "mJizQTO8peAX8N/fgJlnf2vrtEMxlumZzsf8cqRzceNqFQcp13UgF4s67DSiylAh7IWYJZokCLLgtCdBMFbOMg=="
       },
       "Microsoft.Extensions.DependencyInjection.Abstractions": {
         "type": "Direct",
@@ -228,7 +228,7 @@
         "type": "Project",
         "dependencies": {
           "Azure.AI.OpenAI": "[2.1.0, )",
-          "FluxIndex.Core": "[0.2.6, )",
+          "FluxIndex.Core": "[0.2.7, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[9.0.9, )",
           "Microsoft.Extensions.Logging.Abstractions": "[9.0.9, )"
         }
@@ -236,7 +236,7 @@
       "fluxindex.core": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex": "[0.2.6, )",
+          "FluxIndex": "[0.2.7, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[9.0.9, )",
           "Microsoft.Extensions.Logging.Abstractions": "[9.0.9, )"
         }
@@ -244,10 +244,10 @@
       "fluxindex.sdk": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex": "[0.2.6, )",
-          "FluxIndex.AI.OpenAI": "[0.2.6, )",
-          "FluxIndex.Core": "[0.2.6, )",
-          "FluxIndex.Storage.SQLite": "[0.2.6, )",
+          "FluxIndex": "[0.2.7, )",
+          "FluxIndex.AI.OpenAI": "[0.2.7, )",
+          "FluxIndex.Core": "[0.2.7, )",
+          "FluxIndex.Storage.SQLite": "[0.2.7, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[9.0.9, )",
           "Microsoft.Extensions.Http": "[9.0.9, )",
           "Microsoft.Extensions.Logging.Abstractions": "[9.0.9, )"
@@ -256,7 +256,7 @@
       "fluxindex.storage.sqlite": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.Core": "[0.2.6, )",
+          "FluxIndex.Core": "[0.2.7, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[9.0.9, )",
           "Microsoft.Extensions.Configuration.Binder": "[9.0.9, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[9.0.9, )",

@@ -18,7 +18,7 @@ public static class FluxIndexContextBuilderExtensions
     {
         return builder.ConfigureServices(services =>
         {
-            services.AddFileFlux(configureOptions);
+            services.AddFileFluxIntegration(configureOptions);
         });
     }
 }

@@ -1,5 +1,6 @@
 using FluxIndex.Extensions.FileFlux;
 using FluxIndex.SDK;
+using FileFlux.Domain;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -48,9 +49,9 @@ public class FileFluxExtensionsTests
         var options = new FileFluxOptions();
 
         // Assert
-        Assert.Equal("Auto", options.DefaultChunkingStrategy);
-        Assert.Equal(512, options.DefaultMaxChunkSize);
-        Assert.Equal(64, options.DefaultOverlapSize);
+        Assert.Equal(ChunkingStrategies.Auto, options.DefaultChunkingStrategy);
+        Assert.Equal(1024, options.DefaultMaxChunkSize);
+        Assert.Equal(128, options.DefaultOverlapSize);
     }
 
     [Theory]
@@ -80,9 +81,9 @@ public class FileFluxExtensionsTests
         var options = new ProcessingOptions();
 
         // Assert
-        Assert.Equal("Auto", options.ChunkingStrategy);
-        Assert.Equal(512, options.MaxChunkSize);
-        Assert.Equal(64, options.OverlapSize);
+        Assert.Equal(ChunkingStrategies.Auto, options.ChunkingStrategy);
+        Assert.Equal(1024, options.MaxChunkSize);
+        Assert.Equal(128, options.OverlapSize);
     }
 
     [Fact]
@@ -92,8 +93,8 @@ public class FileFluxExtensionsTests
         var options = new ChunkingOptions();
 
         // Assert
-        Assert.Equal("Auto", options.Strategy);
-        Assert.Equal(512, options.MaxChunkSize);
-        Assert.Equal(64, options.OverlapSize);
+        Assert.Equal(ChunkingStrategies.Auto, options.Strategy);
+        Assert.Equal(1024, options.MaxChunkSize);
+        Assert.Equal(128, options.OverlapSize);
     }
 }

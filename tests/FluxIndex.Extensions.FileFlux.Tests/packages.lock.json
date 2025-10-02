@@ -10,9 +10,9 @@
       },
       "FileFlux": {
         "type": "Direct",
-        "requested": "[0.2.11, )",
-        "resolved": "0.2.11",
-        "contentHash": "q/hatlaLKBixEj3qtdokDMdYkZPO6KGwmbsTTScPcTu26qVVA/HnNKAwNlgO3YVqKHuMI5BHolaUb8MijM8PsA=="
+        "requested": "[0.2.12, )",
+        "resolved": "0.2.12",
+        "contentHash": "mJizQTO8peAX8N/fgJlnf2vrtEMxlumZzsf8cqRzceNqFQcp13UgF4s67DSiylAh7IWYJZokCLLgtCdBMFbOMg=="
       },
       "FluentAssertions": {
         "type": "Direct",
@@ -370,7 +370,7 @@
       "fluxindex.extensions.fileflux": {
         "type": "Project",
         "dependencies": {
-          "FileFlux": "[0.2.11, )",
+          "FileFlux": "[0.2.12, )",
           "FluxIndex.Core": "[0.2.7, )",
           "FluxIndex.SDK": "[0.2.7, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[9.0.9, )",

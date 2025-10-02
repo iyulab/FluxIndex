@@ -1,4 +1,5 @@
 using FluxIndex.Extensions.WebFlux;
+using WebFlux.Core.Options;
 using Xunit;
 
 namespace FluxIndex.Extensions.WebFlux.Tests;
@@ -15,80 +16,52 @@ public class WebFluxOptionsTests
         var options = new WebFluxOptions();
 
         // Assert
-        Assert.Equal(1, options.MaxDepth);
-        Assert.False(options.FollowExternalLinks);
-        Assert.Equal("Smart", options.ChunkingStrategy);
-        Assert.Equal(512, options.MaxChunkSize);
-        Assert.Equal(64, options.ChunkOverlap);
-        Assert.False(options.IncludeImages);
-    }
-
-    [Fact]
-    public void Default_ShouldReturnDefaultConfiguration()
-    {
-        // Act
-        var defaultOptions = WebFluxOptions.Default;
-
-        // Assert
-        Assert.Equal(1, defaultOptions.MaxDepth);
-        Assert.False(defaultOptions.FollowExternalLinks);
-        Assert.Equal("Smart", defaultOptions.ChunkingStrategy);
-        Assert.Equal(512, defaultOptions.MaxChunkSize);
-        Assert.Equal(64, defaultOptions.ChunkOverlap);
-        Assert.False(defaultOptions.IncludeImages);
-    }
-
-    [Fact]
-    public void DeepCrawl_ShouldReturnDeepCrawlConfiguration()
-    {
-        // Act
-        var deepCrawlOptions = WebFluxOptions.DeepCrawl;
-
-        // Assert
-        Assert.Equal(3, deepCrawlOptions.MaxDepth);
-        Assert.False(deepCrawlOptions.FollowExternalLinks);
-        Assert.Equal("Intelligent", deepCrawlOptions.ChunkingStrategy);
-        Assert.Equal(1024, deepCrawlOptions.MaxChunkSize);
-        Assert.Equal(128, deepCrawlOptions.ChunkOverlap);
-    }
-
-    [Fact]
-    public void LargeContent_ShouldReturnLargeContentConfiguration()
-    {
-        // Act
-        var largeContentOptions = WebFluxOptions.LargeContent;
-
-        // Assert
-        Assert.Equal(1, largeContentOptions.MaxDepth);
-        Assert.Equal("Auto", largeContentOptions.ChunkingStrategy);
-        Assert.Equal(2048, largeContentOptions.MaxChunkSize);
-        Assert.Equal(256, largeContentOptions.ChunkOverlap);
-        Assert.True(largeContentOptions.IncludeImages);
+        Assert.Equal(ChunkingStrategyType.Auto, options.DefaultChunkingStrategy);
+        Assert.Equal(512, options.DefaultMaxChunkSize);
+        Assert.Equal(50, options.DefaultChunkOverlap);
+        Assert.False(options.DefaultIncludeImages);
+        Assert.True(options.UseStreamingApi);
     }
 
     [Theory]
-    [InlineData(1, false, "Smart", 512, 64, false)]
-    [InlineData(3, true, "Intelligent", 1024, 128, true)]
-    [InlineData(5, false, "Auto", 2048, 256, false)]
-    public void SetProperties_ShouldUpdateValues(int maxDepth, bool followExternal, string strategy, int maxChunk, int overlap, bool includeImages)
+    [InlineData(ChunkingStrategyType.Smart, 1024, 128, true, false)]
+    [InlineData(ChunkingStrategyType.Intelligent, 512, 64, false, true)]
+    [InlineData(ChunkingStrategyType.Semantic, 2048, 256, true, true)]
+    public void SetProperties_ShouldUpdateValues(
+        ChunkingStrategyType strategy,
+        int maxChunk,
+        int overlap,
+        bool includeImages,
+        bool useStreaming)
     {
         // Arrange
         var options = new WebFluxOptions();
 
         // Act
-        options.MaxDepth = maxDepth;
-        options.FollowExternalLinks = followExternal;
-        options.ChunkingStrategy = strategy;
-        options.MaxChunkSize = maxChunk;
-        options.ChunkOverlap = overlap;
-        options.IncludeImages = includeImages;
+        options.DefaultChunkingStrategy = strategy;
+        options.DefaultMaxChunkSize = maxChunk;
+        options.DefaultChunkOverlap = overlap;
+        options.DefaultIncludeImages = includeImages;
+        options.UseStreamingApi = useStreaming;
 
         // Assert
-        Assert.Equal(maxDepth, options.MaxDepth);
-        Assert.Equal(followExternal, options.FollowExternalLinks);
-        Assert.Equal(strategy, options.ChunkingStrategy);
-        Assert.Equal(maxChunk, options.MaxChunkSize);
-        Assert.Equal(overlap, options.ChunkOverlap);
-        Assert.Equal(includeImages, options.IncludeImages);
+        Assert.Equal(strategy, options.DefaultChunkingStrategy);
+        Assert.Equal(maxChunk, options.DefaultMaxChunkSize);
+        Assert.Equal(overlap, options.DefaultChunkOverlap);
+        Assert.Equal(includeImages, options.DefaultIncludeImages);
+        Assert.Equal(useStreaming, options.UseStreamingApi);
+    }
+
+    [Fact]
+    public void WebFluxProcessingOptions_ShouldSetDefaults()
+    {
+        // Act
+        var options = new WebFluxProcessingOptions();
+
+        // Assert
+        Assert.Equal(ChunkingStrategyType.Auto, options.ChunkingStrategy);
+        Assert.Equal(512, options.MaxChunkSize);
+        Assert.Equal(50, options.ChunkOverlap);
+        Assert.False(options.IncludeImages);
     }
 }

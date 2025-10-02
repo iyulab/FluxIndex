@@ -1,4 +1,6 @@
 using FluxIndex.Extensions.FileFlux;
+using FileFlux;
+using FileFlux.Domain;
 using Microsoft.Extensions.Logging;
 using Moq;
 using System.Linq;
@@ -26,32 +28,38 @@ public class DocumentProcessorIntegrationTests
     {
         // Arrange
         var mockProcessor = new Mock<IDocumentProcessor>();
-        var expectedChunks = new List<DocumentChunk>
+        var expectedChunks = new[]
         {
-            new DocumentChunk { Content = "Test content 1", ChunkIndex = 0, StartPosition = 0, EndPosition = 13 },
-            new DocumentChunk { Content = "Test content 2", ChunkIndex = 1, StartPosition = 0, EndPosition = 13 }
+            new DocumentChunk
+            {
+                Content = "Test content 1",
+                Index = 0,
+                Location = new SourceLocation { StartChar = 0, EndChar = 13 }
+            },
+            new DocumentChunk
+            {
+                Content = "Test content 2",
+                Index = 1,
+                Location = new SourceLocation { StartChar = 0, EndChar = 13 }
+            }
         };
 
-        mockProcessor.Setup(p => p.ProcessAsync(It.IsAny<string>(), It.IsAny<ChunkingOptions>()))
-                    .Returns(CreateAsyncEnumerable(expectedChunks));
+        mockProcessor.Setup(p => p.ProcessAsync(It.IsAny<string>(), It.IsAny<ChunkingOptions>(), It.IsAny<CancellationToken>()))
+                    .ReturnsAsync(expectedChunks);
 
         var options = new ChunkingOptions
         {
-            Strategy = "Auto",
-            MaxChunkSize = 512,
-            OverlapSize = 64
+            Strategy = ChunkingStrategies.Auto,
+            MaxChunkSize = 1024,
+            OverlapSize = 128
         };
 
         // Act
-        var result = new List<DocumentChunk>();
-        await foreach (var chunk in mockProcessor.Object.ProcessAsync("test.txt", options))
-        {
-            result.Add(chunk);
-        }
+        var result = await mockProcessor.Object.ProcessAsync("test.txt", options);
 
         // Assert
         Assert.NotNull(result);
-        Assert.Equal(2, result.Count);
+        Assert.Equal(2, result.Length);
         Assert.Equal("Test content 1", result[0].Content);
         Assert.Equal("Test content 2", result[1].Content);
     }
@@ -63,9 +71,9 @@ public class DocumentProcessorIntegrationTests
         var options = new ChunkingOptions();
 
         // Assert
-        Assert.Equal("Auto", options.Strategy);
-        Assert.Equal(512, options.MaxChunkSize);
-        Assert.Equal(64, options.OverlapSize);
+        Assert.Equal(ChunkingStrategies.Auto, options.Strategy);
+        Assert.Equal(1024, options.MaxChunkSize);
+        Assert.Equal(128, options.OverlapSize);
     }
 
     [Fact]
@@ -75,38 +83,9 @@ public class DocumentProcessorIntegrationTests
         var options = new ProcessingOptions();
 
         // Assert
-        Assert.Equal("Auto", options.ChunkingStrategy);
-        Assert.Equal(512, options.MaxChunkSize);
-        Assert.Equal(64, options.OverlapSize);
+        Assert.Equal(ChunkingStrategies.Auto, options.ChunkingStrategy);
+        Assert.Equal(1024, options.MaxChunkSize);
+        Assert.Equal(128, options.OverlapSize);
     }
 
-    /// <summary>
-    /// Test implementation of document chunk for testing purposes
-    /// </summary>
-    private class TestDocumentChunk
-    {
-        public string Content { get; }
-        public int ChunkIndex { get; }
-        public int StartPosition { get; }
-        public int EndPosition { get; }
-        public Dictionary<string, object>? Properties { get; }
-
-        public TestDocumentChunk(string content, int chunkIndex)
-        {
-            Content = content;
-            ChunkIndex = chunkIndex;
-            StartPosition = 0;
-            EndPosition = content.Length;
-            Properties = new Dictionary<string, object>();
-        }
-    }
-
-    private static async IAsyncEnumerable<DocumentChunk> CreateAsyncEnumerable(List<DocumentChunk> chunks)
-    {
-        foreach (var chunk in chunks)
-        {
-            yield return chunk;
-        }
-        await Task.CompletedTask; // Avoid CS1998
-    }
 }

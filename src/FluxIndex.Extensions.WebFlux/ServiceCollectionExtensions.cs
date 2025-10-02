@@ -1,4 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
+using WebFlux.Core.Interfaces;
+using WebFlux.Extensions;
 
 namespace FluxIndex.Extensions.WebFlux;
 
@@ -10,33 +12,19 @@ public static class ServiceCollectionExtensions
     /// <summary>
     /// Add WebFlux integration services to the service collection
     /// </summary>
-    public static IServiceCollection AddWebFluxIntegration(this IServiceCollection services)
+    public static IServiceCollection AddWebFluxIntegration(this IServiceCollection services, Action<WebFluxOptions>? configureOptions = null)
     {
-        // Register FluxIndex WebFlux integration
-        // Note: Actual WebFlux services would be registered here when API is verified
-        services.AddScoped<WebFluxIntegration>();
+        // Register WebFlux services (uses WebFlux 0.1.2 API)
+        services.AddWebFluxCore();
 
-        return services;
-    }
-
-    /// <summary>
-    /// Add WebFlux integration with custom configuration
-    /// </summary>
-    public static IServiceCollection AddWebFluxIntegration(
-        this IServiceCollection services,
-        Action<WebFluxOptions> configureOptions)
-    {
-        // Register FluxIndex WebFlux integration
-        // Note: Actual WebFlux services would be registered here when API is verified
-        services.AddScoped<WebFluxIntegration>();
-
-        // Configure options if provided
+        // Configure FluxIndex-specific options
         if (configureOptions != null)
         {
-            var options = new WebFluxOptions();
-            configureOptions(options);
-            services.AddSingleton(options);
+            services.Configure(configureOptions);
         }
+
+        // Register WebFlux integration service for FluxIndex
+        services.AddScoped<WebFluxIntegration>();
 
         return services;
     }
