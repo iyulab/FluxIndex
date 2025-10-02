@@ -1,35 +1,35 @@
-# FluxIndex 튜토리얼
+# FluxIndex Tutorial
 
-소비 앱에서 FluxIndex RAG 라이브러리를 활용하는 간결한 단계별 가이드
+A comprehensive guide to using FluxIndex RAG library in your .NET applications.
 
-## 목차
+## Table of Contents
 
-1. [기본 설정](#1-기본-설정)
-2. [간단한 인덱싱과 검색](#2-간단한-인덱싱과-검색)
-3. [AI Provider 연동](#3-ai-provider-연동)
-4. [하이브리드 검색](#4-하이브리드-검색)
-5. [문서 파일 처리](#5-문서-파일-처리)
-6. [성능 최적화](#6-성능-최적화)
+1. [Basic Setup](#1-basic-setup)
+2. [Indexing and Searching](#2-indexing-and-searching)
+3. [AI Provider Integration](#3-ai-provider-integration)
+4. [Hybrid Search](#4-hybrid-search)
+5. [Document Processing](#5-document-processing)
+6. [Performance Optimization](#6-performance-optimization)
 
 ---
 
-## 1. 기본 설정
+## 1. Basic Setup
 
-### 패키지 설치
+### Package Installation
 
 ```bash
-# 필수 패키지
+# Required packages
 dotnet add package FluxIndex.SDK
 
-# 저장소 (하나 선택)
-dotnet add package FluxIndex.Storage.SQLite      # 개발용
-dotnet add package FluxIndex.Storage.PostgreSQL  # 프로덕션용
+# Storage provider (choose one)
+dotnet add package FluxIndex.Storage.SQLite      # For development
+dotnet add package FluxIndex.Storage.PostgreSQL  # For production
 
-# AI Provider (선택적)
+# AI Provider (optional)
 dotnet add package FluxIndex.AI.OpenAI
 ```
 
-### 최소 설정
+### Minimal Configuration
 
 ```csharp
 using FluxIndex.SDK;
@@ -37,10 +37,10 @@ using Microsoft.Extensions.DependencyInjection;
 
 var services = new ServiceCollection();
 
-// FluxIndex 기본 설정
+// Configure FluxIndex
 services.AddFluxIndex()
-    .AddSQLiteVectorStore()                    // 인메모리 저장소
-    .UseInMemoryCache();                       // 기본 캐싱
+    .AddSQLiteVectorStore()
+    .UseInMemoryCache();
 
 var provider = services.BuildServiceProvider();
 var client = provider.GetRequiredService<FluxIndexClient>();
@@ -48,53 +48,53 @@ var client = provider.GetRequiredService<FluxIndexClient>();
 
 ---
 
-## 2. 간단한 인덱싱과 검색
+## 2. Indexing and Searching
 
-### 문서 인덱싱
+### Indexing Documents
 
 ```csharp
-// 단일 문서 인덱싱
+// Index a single document
 var docId = await client.Indexer.IndexDocumentAsync(
-    content: "FluxIndex는 .NET RAG 라이브러리입니다.",
+    content: "FluxIndex is a .NET RAG library.",
     documentId: "doc-001"
 );
 
-// 메타데이터와 함께 인덱싱
+// Index with metadata
 var docWithMeta = await client.Indexer.IndexDocumentAsync(
-    content: "AI와 머신러닝에 대한 상세한 설명...",
+    content: "Detailed explanation about AI and machine learning...",
     documentId: "doc-002",
     metadata: new Dictionary<string, object>
     {
         ["category"] = "AI",
-        ["author"] = "홍길동",
+        ["author"] = "John Doe",
         ["created"] = DateTime.Now
     }
 );
 ```
 
-### 기본 검색
+### Basic Search
 
 ```csharp
-// 간단한 검색
+// Simple search
 var results = await client.Retriever.SearchAsync(
-    query: "RAG 라이브러리",
+    query: "RAG library",
     topK: 5
 );
 
 foreach (var result in results)
 {
-    Console.WriteLine($"문서: {result.DocumentId}");
-    Console.WriteLine($"내용: {result.Content}");
-    Console.WriteLine($"점수: {result.Score:F2}");
+    Console.WriteLine($"Document: {result.DocumentId}");
+    Console.WriteLine($"Content: {result.Content}");
+    Console.WriteLine($"Score: {result.Score:F2}");
     Console.WriteLine("---");
 }
 ```
 
 ---
 
-## 3. AI Provider 연동
+## 3. AI Provider Integration
 
-### OpenAI 설정
+### OpenAI Configuration
 
 ```csharp
 // appsettings.json
@@ -106,13 +106,13 @@ foreach (var result in results)
   }
 }
 
-// 서비스 등록
+// Service registration
 services.AddFluxIndex()
     .AddSQLiteVectorStore()
     .UseOpenAIEmbedding(configuration.GetSection("OpenAI"));
 ```
 
-### Azure OpenAI 사용
+### Azure OpenAI
 
 ```csharp
 services.AddFluxIndex()
@@ -125,76 +125,76 @@ services.AddFluxIndex()
     });
 ```
 
-### 임베딩 벡터로 검색
+### Semantic Search with Embeddings
 
 ```csharp
-// AI 임베딩 기반 검색 (의미적 유사도)
+// AI embedding-based search (semantic similarity)
 var semanticResults = await client.Retriever.SearchAsync(
-    query: "인공지능과 자연어처리의 연관성",
+    query: "relationship between AI and natural language processing",
     topK: 10,
     options: new SearchOptions
     {
-        UseEmbedding = true,        // 벡터 검색 활성화
-        MinScore = 0.7f            // 최소 유사도 설정
+        UseEmbedding = true,
+        MinScore = 0.7f
     }
 );
 ```
 
 ---
 
-## 4. 하이브리드 검색
+## 4. Hybrid Search
 
-### 키워드 + 의미 검색 결합
+### Combining Keyword and Semantic Search
 
 ```csharp
-// 하이브리드 검색 설정
+// Hybrid search configuration
 var hybridResults = await client.Retriever.SearchAsync(
-    query: "머신러닝 알고리즘",
+    query: "machine learning algorithms",
     topK: 10,
     options: new SearchOptions
     {
         SearchStrategy = SearchStrategy.Hybrid,
-        VectorWeight = 0.7f,       // 의미 검색 가중치
-        KeywordWeight = 0.3f       // 키워드 검색 가중치
+        VectorWeight = 0.7f,
+        KeywordWeight = 0.3f
     }
 );
 ```
 
-### 적응형 검색 (권장)
+### Adaptive Search (Recommended)
 
 ```csharp
-// 쿼리 복잡도에 따라 자동으로 검색 전략 선택
+// Automatically selects search strategy based on query complexity
 var adaptiveResults = await client.Retriever.SearchAsync(
-    query: "딥러닝과 신경망의 차이점을 설명하고 실제 응용 사례를 제시해주세요",
+    query: "Explain the differences between deep learning and neural networks with real-world examples",
     topK: 10,
     options: new SearchOptions
     {
-        SearchStrategy = SearchStrategy.Adaptive  // 자동 전략 선택
+        SearchStrategy = SearchStrategy.Adaptive
     }
 );
 ```
 
 ---
 
-## 5. 문서 파일 처리
+## 5. Document Processing
 
-### FileFlux Extension 사용
+### FileFlux Extension
 
 ```bash
-# 문서 처리 패키지 추가
+# Add document processing package
 dotnet add package FluxIndex.Extensions.FileFlux
 ```
 
 ```csharp
 using FluxIndex.Extensions.FileFlux;
 
-// FluxIndex 기본 설정
+// Configure FluxIndex
 services.AddFluxIndex()
     .AddSQLiteVectorStore()
     .UseOpenAIEmbedding(config.GetSection("OpenAI"));
 
-// FileFlux 확장 추가 (주의: AddFileFlux로 변경됨)
-services.AddFileFlux(options =>
+// Add FileFlux extension
+services.AddFileFluxIntegration(options =>
 {
     options.DefaultChunkingStrategy = "Semantic";
     options.DefaultMaxChunkSize = 1024;
@@ -205,7 +205,7 @@ var serviceProvider = services.BuildServiceProvider();
 var client = serviceProvider.GetRequiredService<FluxIndexClient>();
 var fileFlux = serviceProvider.GetRequiredService<FileFluxIntegration>();
 
-// PDF, DOCX, TXT 파일 인덱싱
+// Index PDF, DOCX, TXT files
 var documentId = await fileFlux.ProcessAndIndexAsync(
     filePath: "documents/manual.pdf",
     options: new ProcessingOptions
@@ -216,82 +216,80 @@ var documentId = await fileFlux.ProcessAndIndexAsync(
     }
 );
 
-Console.WriteLine($"인덱싱된 문서 ID: {documentId}");
+Console.WriteLine($"Indexed document ID: {documentId}");
 ```
 
-### 웹 페이지 처리
+### WebFlux Extension
 
 ```bash
 dotnet add package FluxIndex.Extensions.WebFlux
 ```
 
 ```csharp
-// 웹 페이지 크롤링 및 인덱싱
-var webResults = await client.Indexer.IndexWebPageAsync(
-    url: "https://example.com/article",
-    documentId: "web-001",
-    options: new WebCrawlOptions
-    {
-        MaxDepth = 1,
-        FollowExternalLinks = false
-    }
-);
+using FluxIndex.Extensions.WebFlux;
+
+// Configure WebFlux
+services.AddWebFluxIntegration(options =>
+{
+    options.DefaultMaxChunkSize = 512;
+    options.DefaultChunkOverlap = 50;
+});
 ```
 
 ---
 
-## 6. 성능 최적화
+## 6. Performance Optimization
 
-### 캐싱 설정
+### Caching
 
 ```bash
 dotnet add package FluxIndex.Cache.Redis
 ```
 
 ```csharp
-// Redis 캐싱으로 성능 향상
+// Redis caching for performance
 services.AddFluxIndex()
     .AddSQLiteVectorStore()
     .UseOpenAIEmbedding(config.GetSection("OpenAI"))
     .UseRedisCache("localhost:6379");
 
-// 캐시 활용한 검색
+// Search with caching
 var cachedResults = await client.Retriever.SearchAsync(
-    query: "자주 검색되는 내용",
+    query: "frequently searched content",
     topK: 5,
     options: new SearchOptions
     {
-        UseCache = true,           // 캐시 활용
+        UseCache = true,
         CacheTTL = TimeSpan.FromHours(1)
     }
 );
 ```
 
-### 배치 인덱싱
+### Batch Indexing
 
 ```csharp
-// 대량 문서 효율적 처리
+// Efficient bulk document processing
 var documents = new[]
 {
-    new IndexRequest("문서 내용 1", "doc-001"),
-    new IndexRequest("문서 내용 2", "doc-002"),
-    new IndexRequest("문서 내용 3", "doc-003")
+    new IndexRequest("Document content 1", "doc-001"),
+    new IndexRequest("Document content 2", "doc-002"),
+    new IndexRequest("Document content 3", "doc-003")
 };
 
 var batchResults = await client.Indexer.IndexBatchAsync(
     documents: documents,
     options: new IndexingOptions
     {
-        BatchSize = 100,           // 배치 크기
-        MaxParallelism = 4         // 병렬 처리 수
+        BatchSize = 100,
+        MaxParallelism = 4
     }
 );
 ```
 
-### PostgreSQL 프로덕션 설정
+### PostgreSQL Production Setup
 
 ```csharp
-// 프로덕션 환경 설정
+// Production environment configuration
 services.AddFluxIndex()
     .UsePostgreSQLVectorStore(options =>
     {
@@ -305,7 +303,7 @@ services.AddFluxIndex()
 
 ---
 
-## 실전 예제: 완전한 RAG 시스템
+## Complete RAG System Example
 
 ```csharp
 using FluxIndex.SDK;
@@ -313,35 +311,37 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
-// 설정 로드
+// Load configuration
 var config = new ConfigurationBuilder()
     .AddJsonFile("appsettings.json")
     .AddEnvironmentVariables()
     .Build();
 
-// 서비스 등록
+// Register services
 var services = new ServiceCollection();
 services.AddLogging(builder => builder.AddConsole());
 
 services.AddFluxIndex()
     .UsePostgreSQLVectorStore(config.GetSection("Database"))
     .UseOpenAIEmbedding(config.GetSection("OpenAI"))
-    .UseRedisCache(config.GetConnectionString("Redis"))
-    .UseFileFlux();
+    .UseRedisCache(config.GetConnectionString("Redis"));
+
+services.AddFileFluxIntegration();
 
 var provider = services.BuildServiceProvider();
 var client = provider.GetRequiredService<FluxIndexClient>();
+var fileFlux = provider.GetRequiredService<FileFluxIntegration>();
 var logger = provider.GetRequiredService<ILogger<Program>>();
 
-// 1. 문서 인덱싱
-logger.LogInformation("문서 인덱싱 시작...");
-await client.Indexer.IndexFileAsync("docs/manual.pdf", "manual");
+// 1. Index documents
+logger.LogInformation("Starting document indexing...");
+await fileFlux.ProcessAndIndexAsync("docs/manual.pdf");
 
-// 2. 사용자 질의 처리
-var userQuery = "제품 설치 방법을 알려주세요";
-logger.LogInformation("사용자 질의: {Query}", userQuery);
+// 2. Process user query
+var userQuery = "How do I install the product?";
+logger.LogInformation("User query: {Query}", userQuery);
 
-// 3. 적응형 검색으로 관련 문서 검색
+// 3. Search with adaptive strategy
 var searchResults = await client.Retriever.SearchAsync(
     query: userQuery,
     topK: 5,
@@ -352,22 +352,22 @@ var searchResults = await client.Retriever.SearchAsync(
     }
 );
 
-// 4. 결과 표시
-logger.LogInformation("검색된 문서 {Count}개", searchResults.Count());
+// 4. Display results
+logger.LogInformation("Found {Count} documents", searchResults.Count());
 foreach (var result in searchResults)
 {
-    logger.LogInformation("문서: {DocumentId}, 점수: {Score:F2}",
+    logger.LogInformation("Document: {DocumentId}, Score: {Score:F2}",
         result.DocumentId, result.Score);
 }
 ```
 
 ---
 
-## 다음 단계
+## Next Steps
 
-1. **고급 기능**: [Architecture Guide](architecture.md)에서 내부 구조 학습
-2. **성능 튜닝**: 벤치마크와 최적화 전략
-3. **실제 예제**: `samples/` 디렉토리의 다양한 사용 사례 참고
-4. **API 문서**: 각 패키지별 상세 API 참조
+1. **Advanced Features**: Learn about internal architecture in the [Architecture Guide](architecture.md)
+2. **Performance Tuning**: Benchmarks and optimization strategies
+3. **Real Examples**: Explore various use cases in the `samples/` directory
+4. **API Documentation**: Detailed API reference for each package
 
-FluxIndex를 사용한 RAG 시스템 구축을 시작해보세요! 🚀
+Start building your RAG system with FluxIndex! 🚀
