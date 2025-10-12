@@ -357,8 +357,8 @@ public class AdaptiveSearchService : IAdaptiveSearchService
         var hybridOptions = new FluxIndex.Domain.Models.HybridSearchOptions
         {
             MaxResults = options.MaxResults,
-            VectorWeight = 0.7f,
-            SparseWeight = 0.3f
+            VectorWeight = 0.6f,  // 0.7 → 0.6으로 재조정 (벡터/키워드 밸런싱)
+            SparseWeight = 0.4f   // 0.3 → 0.4로 증가 (키워드 검색 강화)
         };
 
         var results = await _hybridSearchService.SearchAsync(query, hybridOptions, cancellationToken);

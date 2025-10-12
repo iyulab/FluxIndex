@@ -245,16 +245,16 @@
       },
       "Polly": {
         "type": "Transitive",
-        "resolved": "8.6.3",
-        "contentHash": "8X6mWAGDrgTHyqDthifiv9QGR+FgnRe13/sPhSR4ZbhXCqUDJuLrVqunB39LLbf87TXZ+06dMdopd6LpY4oK0w==",
+        "resolved": "8.6.4",
+        "contentHash": "uuBsDoBw0oYrMe3uTWRjkT2sIkKh+ZZnnDrLb4Z+QANfeA4+7FJacx6E8CY5GAxXRoSgFrvUADEAQ7DPF6fGiw==",
         "dependencies": {
-          "Polly.Core": "8.6.3"
+          "Polly.Core": "8.6.4"
         }
       },
       "Polly.Core": {
         "type": "Transitive",
-        "resolved": "8.6.3",
-        "contentHash": "xRlcE+1FidqIfZ7zxBT6klSblJ/7MAJq1x5yvYoLnwNhs8Xc2gp3Srf8wHG2NpFxVBqrldc3svhkMPJjSzTmzw=="
+        "resolved": "8.6.4",
+        "contentHash": "4AWqYnQ2TME0E+Mzovt1Uu+VyvpR84ymUldMcPw7Mbj799Phaag14CKrMtlJGx5jsvYP+S3oR1QmysgmXoD5cw=="
       },
       "Polly.Extensions.Http": {
         "type": "Transitive",
@@ -379,7 +379,7 @@
         "type": "Project",
         "dependencies": {
           "Azure.AI.OpenAI": "[2.1.0, )",
-          "FluxIndex.Core": "[0.2.7, )",
+          "FluxIndex.Core": "[0.2.8, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[9.0.9, )",
           "Microsoft.Extensions.Logging.Abstractions": "[9.0.9, )"
         }
@@ -387,7 +387,7 @@
       "fluxindex.core": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex": "[0.2.7, )",
+          "FluxIndex": "[0.2.8, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[9.0.9, )",
           "Microsoft.Extensions.Logging.Abstractions": "[9.0.9, )"
         }
@@ -395,20 +395,20 @@
       "fluxindex.extensions.webflux": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.Core": "[0.2.7, )",
-          "FluxIndex.SDK": "[0.2.7, )",
+          "FluxIndex.Core": "[0.2.8, )",
+          "FluxIndex.SDK": "[0.2.8, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[9.0.9, )",
           "Microsoft.Extensions.Logging.Abstractions": "[9.0.9, )",
-          "WebFlux": "[0.1.2, )"
+          "WebFlux": "[0.1.3, )"
         }
       },
       "fluxindex.sdk": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex": "[0.2.7, )",
-          "FluxIndex.AI.OpenAI": "[0.2.7, )",
-          "FluxIndex.Core": "[0.2.7, )",
-          "FluxIndex.Storage.SQLite": "[0.2.7, )",
+          "FluxIndex": "[0.2.8, )",
+          "FluxIndex.AI.OpenAI": "[0.2.8, )",
+          "FluxIndex.Core": "[0.2.8, )",
+          "FluxIndex.Storage.SQLite": "[0.2.8, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[9.0.9, )",
           "Microsoft.Extensions.Http": "[9.0.9, )",
           "Microsoft.Extensions.Logging.Abstractions": "[9.0.9, )"
@@ -417,7 +417,7 @@
       "fluxindex.storage.sqlite": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.Core": "[0.2.7, )",
+          "FluxIndex.Core": "[0.2.8, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[9.0.9, )",
           "Microsoft.Extensions.Configuration.Binder": "[9.0.9, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[9.0.9, )",
@@ -439,8 +439,8 @@
       "HtmlAgilityPack": {
         "type": "CentralTransitive",
         "requested": "[1.12.3, )",
-        "resolved": "1.12.3",
-        "contentHash": "NyckYLSQBI5fB9YH5XN94EGfidD5FgaKnfmGqApKQYBaf3fFmv9KGodl5kvUZg/QLz+/M4rE7vwUig25eA8PqQ=="
+        "resolved": "1.12.4",
+        "contentHash": "ljqvBabvFwKoLniuoQKO8b5bJfJweKLs4fUNS/V5dsvpo0A8MlJqxxn9XVmP2DaskbUXty6IYaWAi1SArGIMeQ=="
       },
       "Microsoft.EntityFrameworkCore": {
         "type": "CentralTransitive",
@@ -666,11 +666,11 @@
       },
       "WebFlux": {
         "type": "CentralTransitive",
-        "requested": "[0.1.2, )",
-        "resolved": "0.1.2",
-        "contentHash": "fYS/U+wQHEIEeh2KVToG8hS0ixTB6WlYZ4kVRpa1qy2rtkg63hfuKM6DN4Z8QpeG859+zJIwQoBHHKDx1iZmrg==",
+        "requested": "[0.1.3, )",
+        "resolved": "0.1.3",
+        "contentHash": "8JJotkRVAqNkOIM81Nbi88t5kLJEz5KzhWajv50Larve8KbudsyjL/EbqkOWey9KuxO6gYE6Fs7tgL+FvWmm5w==",
         "dependencies": {
-          "HtmlAgilityPack": "1.12.3",
+          "HtmlAgilityPack": "1.12.4",
           "Markdig": "0.42.0",
           "Microsoft.Extensions.Caching.Abstractions": "9.0.9",
           "Microsoft.Extensions.Caching.Memory": "9.0.9",
@@ -683,7 +683,7 @@
           "Microsoft.Extensions.Logging": "9.0.9",
           "Microsoft.Extensions.Logging.Abstractions": "9.0.9",
           "Microsoft.Playwright": "1.55.0",
-          "Polly": "8.6.3",
+          "Polly": "8.6.4",
           "Polly.Extensions.Http": "3.0.0",
           "System.Text.Json": "9.0.9",
           "System.Threading.Channels": "9.0.9",
