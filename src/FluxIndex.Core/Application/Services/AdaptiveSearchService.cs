@@ -121,9 +121,9 @@ public class AdaptiveSearchService : IAdaptiveSearchService
             _logger.LogDebug("선택된 전략: {Strategy}, 이유: {Reasons}",
                 strategy, string.Join(", ", strategyReasons));
 
-            // 4. 검색 실행
+            // 4. 검색 실행 (Fallback 전략 포함)
             var searchStopwatch = Stopwatch.StartNew();
-            var searchResults = await ExecuteSearchWithStrategy(query, strategy, options, cancellationToken);
+            var searchResults = await ExecuteSearchWithFallback(query, strategy, options, strategyReasons, cancellationToken);
             searchStopwatch.Stop();
 
             // 5. A/B 테스트 처리
@@ -298,6 +298,126 @@ public class AdaptiveSearchService : IAdaptiveSearchService
         return _queryAnalyzer.RecommendStrategy(analysis);
     }
 
+
+    /// <summary>
+    /// Fallback 전략을 적용한 검색 실행
+    /// Vector → Hybrid → Keyword 순차 시도로 Zero-Result 방지
+    /// </summary>
+    private async Task<IEnumerable<Document>> ExecuteSearchWithFallback(
+        string query,
+        SearchStrategy primaryStrategy,
+        AdaptiveSearchOptions options,
+        List<string> strategyReasons,
+        CancellationToken cancellationToken)
+    {
+        // 1차 시도: 주 전략으로 검색
+        var results = await ExecuteSearchWithStrategy(query, primaryStrategy, options, cancellationToken);
+        var resultCount = results.Count();
+
+        // 결과가 충분하면 반환
+        int minResults = Math.Max(1, options.MaxResults / 3); // 최소 목표: MaxResults의 1/3
+        if (resultCount >= minResults)
+        {
+            _logger.LogDebug("주 전략 성공: {Strategy}, {Count}개 결과", primaryStrategy, resultCount);
+            return results;
+        }
+
+        _logger.LogWarning("주 전략 결과 부족: {Strategy}, {Count}/{MinCount}개",
+            primaryStrategy, resultCount, minResults);
+
+        // 2차 시도: Fallback 전략 정의
+        var fallbackStrategies = GetFallbackStrategies(primaryStrategy);
+
+        foreach (var fallbackStrategy in fallbackStrategies)
+        {
+            try
+            {
+                _logger.LogInformation("Fallback 시도: {Strategy}", fallbackStrategy);
+
+                var fallbackResults = await ExecuteSearchWithStrategy(query, fallbackStrategy, options, cancellationToken);
+                var fallbackCount = fallbackResults.Count();
+
+                if (fallbackCount > resultCount)
+                {
+                    _logger.LogInformation("Fallback 성공: {Strategy}, {Count}개 결과",
+                        fallbackStrategy, fallbackCount);
+
+                    strategyReasons.Add($"Fallback 적용: {primaryStrategy} → {fallbackStrategy} ({resultCount} → {fallbackCount}개)");
+                    return fallbackResults;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Fallback 전략 실패: {Strategy}", fallbackStrategy);
+            }
+        }
+
+        // 3차 시도: Zero-Result 방지 - minScore 완화하여 재시도
+        if (resultCount == 0 && options.MinScore > 0.0)
+        {
+            _logger.LogWarning("Zero-Result 감지, minScore 완화 재시도");
+
+            var relaxedOptions = new AdaptiveSearchOptions
+            {
+                MaxResults = options.MaxResults,
+                MinScore = 0.0f, // 임계값 제거
+                UseCache = false,
+                ForceStrategy = SearchStrategy.Hybrid // 하이브리드로 강제
+            };
+
+            var relaxedResults = await ExecuteHybridSearch(query, relaxedOptions, cancellationToken);
+            if (relaxedResults.Any())
+            {
+                strategyReasons.Add($"Zero-Result 방지: minScore 완화 ({options.MinScore:F2} → 0.0)");
+                _logger.LogInformation("Zero-Result 방지 성공: {Count}개 결과", relaxedResults.Count());
+                return relaxedResults;
+            }
+        }
+
+        // 모든 시도 실패: 원본 결과 반환 (빈 결과 포함)
+        _logger.LogWarning("모든 Fallback 전략 실패, 원본 결과 반환: {Count}개", resultCount);
+        strategyReasons.Add($"Fallback 실패: {resultCount}개 결과만 반환");
+        return results;
+    }
+
+    /// <summary>
+    /// 전략별 Fallback 체인 정의
+    /// </summary>
+    private List<SearchStrategy> GetFallbackStrategies(SearchStrategy primary)
+    {
+        return primary switch
+        {
+            SearchStrategy.DirectVector => new List<SearchStrategy>
+            {
+                SearchStrategy.Hybrid,      // Vector 실패 → Hybrid
+                SearchStrategy.KeywordOnly  // Hybrid 실패 → Keyword
+            },
+            SearchStrategy.KeywordOnly => new List<SearchStrategy>
+            {
+                SearchStrategy.Hybrid,      // Keyword 실패 → Hybrid
+                SearchStrategy.DirectVector // Hybrid 실패 → Vector
+            },
+            SearchStrategy.Hybrid => new List<SearchStrategy>
+            {
+                SearchStrategy.DirectVector, // Hybrid 실패 → Vector
+                SearchStrategy.KeywordOnly   // Vector 실패 → Keyword
+            },
+            SearchStrategy.TwoStage => new List<SearchStrategy>
+            {
+                SearchStrategy.Hybrid,
+                SearchStrategy.DirectVector
+            },
+            SearchStrategy.MultiQuery => new List<SearchStrategy>
+            {
+                SearchStrategy.Hybrid,
+                SearchStrategy.DirectVector
+            },
+            _ => new List<SearchStrategy>
+            {
+                SearchStrategy.Hybrid
+            }
+        };
+    }
 
     private async Task<IEnumerable<Document>> ExecuteSearchWithStrategy(
         string query,
