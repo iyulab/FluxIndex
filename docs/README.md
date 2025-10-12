@@ -1,109 +1,237 @@
-# FluxIndex 문서
+# FluxIndex Documentation
 
-FluxIndex RAG 라이브러리의 완전한 문서 모음
+Complete documentation for the FluxIndex RAG library.
 
-## 📚 문서 목록
+## Quick Navigation
 
-### 시작하기
-- **[튜토리얼](tutorial.md)** - 소비 앱에서 FluxIndex를 활용하는 단계별 가이드
-- **[치트시트](cheat-sheet.md)** - 빠른 참조를 위한 핵심 코드 패턴
-- **[빠른 시작](getting-started.md)** - 5분만에 RAG 시스템 구축하기
+### Getting Started
+- [Getting Started](getting-started.md) - 5-minute setup guide
+- [Tutorial](tutorial.md) - Comprehensive usage examples
+- [Cheat Sheet](cheat-sheet.md) - Quick reference
 
-### 심화 학습
-- **[아키텍처 가이드](architecture.md)** - Clean Architecture와 설계 원칙
-- **[RAG 시스템 가이드](FLUXINDEX_RAG_SYSTEM.md)** - RAG 구현 상세 설명
+### Advanced Topics
+- [Architecture](architecture.md) - Clean architecture design
+- [RAG System](FLUXINDEX_RAG_SYSTEM.md) - Advanced RAG patterns
 
-### 실습 자료
-- **[샘플 코드](../samples/)** - 다양한 실전 사용 사례
-  - **[RealWorldDemo](../samples/FluxIndex.RealWorldDemo/)**: sqlite-vec + OpenAI API 실제 연동 데모
-  - **[IntegrationTestSample](../samples/IntegrationTestSample/)**: FileFlux/WebFlux 완전 통합 테스트
-  - **[RealQualityTest](../samples/RealQualityTest/)**: RAG 품질 평가 및 성능 측정
-  - **[WebFluxSample](../samples/WebFluxSample/)**: 웹 콘텐츠 처리 데모
-- **[테스트 코드](../tests/)** - 단위 테스트 및 통합 테스트
+### Practical Resources
+- [Examples](../samples/) - Working code samples
+- [Benchmarks](../benchmarks/FluxIndex.Benchmarks/BENCHMARK_RESULTS.md) - Performance metrics
+- [Tests](../tests/) - Unit and integration tests
 
-## 🎯 학습 경로
+## Learning Path
 
-### 초보자
-1. [튜토리얼](tutorial.md) 1-3장: 기본 설정부터 AI 연동까지
-2. [치트시트](cheat-sheet.md): 핵심 패턴 숙지
-3. [RealWorldDemo](../samples/FluxIndex.RealWorldDemo/): sqlite-vec 실제 API 연동 체험
+### Beginners
+1. Start with [Getting Started](getting-started.md) for initial setup
+2. Follow [Tutorial chapters 1-2](tutorial.md#1-setup-and-configuration) for basics
+3. Use [Cheat Sheet](cheat-sheet.md) for quick reference
+4. Try [RealWorldDemo](../samples/FluxIndex.RealWorldDemo/) sample
 
-### 중급자
-1. [튜토리얼](tutorial.md) 4-6장: 하이브리드 검색과 성능 최적화
-2. [아키텍처 가이드](architecture.md): 내부 구조 이해
-3. [샘플 코드](../samples/RealQualityTest/): 실전 RAG 시스템
+### Intermediate
+1. Learn [Search Strategies](tutorial.md#3-search-strategies)
+2. Understand [Document Processing](tutorial.md#4-document-processing)
+3. Study [Architecture Guide](architecture.md)
+4. Explore [FileFlux](../samples/FileFluxIndexSample/) sample
 
-### 고급자
-1. [RAG 시스템 가이드](FLUXINDEX_RAG_SYSTEM.md): 고급 RAG 패턴
-2. [테스트 코드](../tests/): 확장 및 커스터마이징
-3. Core 라이브러리 직접 활용
+### Advanced
+1. Master [Performance Optimization](tutorial.md#5-performance-optimization)
+2. Review [Production Deployment](tutorial.md#6-production-deployment)
+3. Deep dive into [RAG System Guide](FLUXINDEX_RAG_SYSTEM.md)
+4. Extend with custom implementations
 
-## 🔍 주제별 가이드
+## Feature Overview
 
-### 기본 사용법
-- [기본 설정](tutorial.md#1-기본-설정)
-- [인덱싱과 검색](tutorial.md#2-간단한-인덱싱과-검색)
-- [빠른 시작 패턴](cheat-sheet.md#-빠른-시작)
+### Core Capabilities
+- **Vector Search** - Semantic similarity with SQLite-vec or pgvector
+- **Keyword Search** - BM25 algorithm for exact matching
+- **Hybrid Search** - Reciprocal Rank Fusion combining both
+- **Adaptive Search** - Auto-select strategy by query complexity
 
-### AI Provider 연동
-- [OpenAI 설정](tutorial.md#openai-설정)
-- [Azure OpenAI](tutorial.md#azure-openai-사용)
-- [임베딩 벡터 검색](tutorial.md#임베딩-벡터로-검색)
+### AI Integration
+- **OpenAI** - GPT embeddings and completions
+- **Azure OpenAI** - Enterprise Azure deployment support
+- **Custom AI** - Implement IEmbeddingService for any provider
 
-### 고급 검색
-- [하이브리드 검색](tutorial.md#4-하이브리드-검색)
-- [적응형 검색](tutorial.md#적응형-검색-권장)
-- [검색 전략](cheat-sheet.md#검색-전략)
+### Document Processing
+- **FileFlux** - PDF, DOCX, TXT processing
+- **WebFlux** - Web page crawling and extraction
+- **Batch Operations** - Efficient bulk indexing
 
-### 파일 처리
-- [PDF, DOCX 처리](tutorial.md#fileflux-extension-사용)
-- [웹페이지 크롤링](tutorial.md#웹-페이지-처리)
-- [배치 인덱싱](tutorial.md#배치-인덱싱)
+### Performance Features
+- **Semantic Caching** - Redis-based similarity caching
+- **Connection Pooling** - Database connection optimization
+- **Parallel Processing** - Multi-threaded batch operations
 
-### 성능 최적화
-- [Redis 캐싱](tutorial.md#캐싱-설정)
-- [PostgreSQL 설정](tutorial.md#postgresql-프로덕션-설정)
-- [성능 팁](cheat-sheet.md#-성능-팁)
+## Common Use Cases
 
-## 💡 자주 묻는 질문
+### Knowledge Base Search
+```csharp
+var client = new FluxIndexClientBuilder()
+    .UseSQLite("kb.db")
+    .UseOpenAI(apiKey)
+    .Build();
 
-### Q: FluxIndex와 다른 RAG 라이브러리의 차이점은?
-- **AI Provider 중립성**: OpenAI 외에도 커스텀 AI 서비스 지원
-- **Clean Architecture**: 확장 가능한 모듈형 설계
-- **하이브리드 검색**: 벡터 + 키워드 검색 결합
-- **적응형 전략**: 쿼리 복잡도에 따른 자동 최적화
+// Index documentation
+await fileFlux.ProcessAndIndexAsync("docs/manual.pdf");
 
-### Q: 어떤 저장소를 선택해야 하나요?
-- **개발/테스트**: SQLite + sqlite-vec (네이티브 벡터 검색)
-- **프로덕션**: PostgreSQL + pgvector (확장성)
-- **메모리**: InMemory (임시 사용)
+// Search
+var results = await client.Retriever.SearchAsync("installation guide", topK: 5);
+```
 
-### Q: AI Provider 없이 사용할 수 있나요?
-네, FluxIndex.Core는 AI Provider 없이도 동작합니다:
-- BM25 키워드 검색
-- TF-IDF 벡터화
-- 로컬 재순위화
+### FAQ System
+```csharp
+// Index FAQs
+await client.Indexer.IndexDocumentAsync(
+    content: "Q: How to install? A: Run dotnet add package FluxIndex.SDK",
+    documentId: "faq-001",
+    metadata: new { category = "installation" }
+);
 
-### Q: 성능 최적화 방법은?
-1. Redis 캐싱 활용
-2. 배치 인덱싱 사용
-3. PostgreSQL 벡터 인덱스 최적화
-4. 적절한 청킹 전략 선택
+// Semantic search
+var results = await client.Retriever.SearchAsync("setup instructions", topK: 3);
+```
 
-## 🔗 추가 리소스
+### Document Analysis
+```csharp
+// Index large document set
+var files = Directory.GetFiles("research", "*.pdf");
+foreach (var file in files)
+{
+    await fileFlux.ProcessAndIndexAsync(file);
+}
 
-- **GitHub 저장소**: [iyulab/FluxIndex](https://github.com/iyulab/FluxIndex)
-- **NuGet 패키지**: [FluxIndex.SDK](https://www.nuget.org/packages/FluxIndex.SDK/)
-- **이슈 트래킹**: [GitHub Issues](https://github.com/iyulab/FluxIndex/issues)
-- **CI/CD 상태**: ![Build Status](https://github.com/iyulab/FluxIndex/actions/workflows/build-and-release.yml/badge.svg)
+// Analyze with complex query
+var results = await client.Retriever.SearchAsync(
+    query: "impact of AI on healthcare",
+    topK: 10,
+    options: new SearchOptions { SearchStrategy = SearchStrategy.Adaptive }
+);
+```
 
-## 📖 문서 기여
+## Configuration Examples
 
-문서 개선에 기여하고 싶으시다면:
-1. [GitHub 저장소](https://github.com/iyulab/FluxIndex) 포크
-2. `docs/` 디렉토리 수정
-3. Pull Request 제출
+### Development Setup
+```csharp
+var client = new FluxIndexClientBuilder()
+    .UseSQLite("dev.db")
+    .Build();
+```
+
+### Production Setup
+```csharp
+var client = new FluxIndexClientBuilder()
+    .UsePostgreSQL(connectionString)
+    .UseOpenAI(apiKey)
+    .UseRedisCache("localhost:6379")
+    .Build();
+```
+
+### Hybrid with Custom AI
+```csharp
+services.AddFluxIndex()
+    .AddPostgreSQLVectorStore()
+    .AddSingleton<IEmbeddingService, CustomEmbeddingService>()
+    .UseRedisCache();
+```
+
+## Performance Benchmarks
+
+Based on .NET 9.0, Intel i7-1360P, [full results](../benchmarks/FluxIndex.Benchmarks/BENCHMARK_RESULTS.md):
+
+| Operation | Size | Time | Notes |
+|-----------|------|------|-------|
+| Batch Indexing | 1K chunks | 24ms | 8-thread parallelism |
+| Batch Indexing | 10K chunks | 188ms | 3.5 KB/chunk |
+| Search | 1K chunks | 0.6ms | Keyword + Vector |
+| Cache Hit | Semantic | <5ms | 95% similarity |
+
+## Troubleshooting
+
+### Common Issues
+
+**OpenAI API Errors**
+- Check API key validity
+- Verify model availability
+- Monitor rate limits
+- Use retry logic
+
+**Database Locks**
+- Enable WAL mode for SQLite
+- Use PostgreSQL for production
+- Check connection pooling
+
+**Memory Issues**
+- Reduce batch size
+- Use pagination for large results
+- Monitor GC collections
+
+**Slow Search**
+- Enable Redis caching
+- Optimize chunk sizes (512-1024 tokens)
+- Use appropriate search strategy
+- Check database indexes
+
+### Debug Tips
+
+```csharp
+// Enable logging
+services.AddLogging(builder => builder.AddConsole());
+
+// Check performance metrics
+var results = await client.Retriever.SearchAsync(query, topK: 10);
+Console.WriteLine($"Time: {results.Performance.TotalTime.TotalMilliseconds}ms");
+Console.WriteLine($"Cache: {results.Performance.CacheHit}");
+Console.WriteLine($"Strategy: {results.UsedStrategy}");
+```
+
+## API Quick Reference
+
+### FluxIndexClient
+```csharp
+client.Indexer.IndexDocumentAsync(content, documentId)
+client.Indexer.IndexBatchAsync(documents)
+client.Retriever.SearchAsync(query, topK, options)
+```
+
+### Search Options
+```csharp
+new SearchOptions
+{
+    SearchStrategy = SearchStrategy.Adaptive,
+    VectorWeight = 0.7f,
+    KeywordWeight = 0.3f,
+    MinScore = 0.7f,
+    UseCache = true
+}
+```
+
+### Builder Pattern
+```csharp
+new FluxIndexClientBuilder()
+    .UseSQLite(path)
+    .UsePostgreSQL(connString)
+    .UseOpenAI(apiKey, model)
+    .UseAzureOpenAI(endpoint, apiKey, deployment)
+    .UseRedisCache(connString)
+    .Build()
+```
+
+## Additional Resources
+
+- **GitHub**: [iyulab/FluxIndex](https://github.com/iyulab/FluxIndex)
+- **NuGet**: [FluxIndex.SDK](https://www.nuget.org/packages/FluxIndex.SDK/)
+- **Issues**: [GitHub Issues](https://github.com/iyulab/FluxIndex/issues)
+- **CI/CD**: [Build Status](https://github.com/iyulab/FluxIndex/actions)
+
+## Contributing
+
+Contributions welcome! See [development roadmap](../TASKS.md) for planned features.
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests
+5. Submit a pull request
 
 ---
 
-**FluxIndex와 함께 강력한 RAG 시스템을 구축해보세요!** 🚀
+**Start building your RAG system with FluxIndex!** 🚀

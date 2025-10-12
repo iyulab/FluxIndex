@@ -4,95 +4,61 @@
 [![NuGet](https://img.shields.io/nuget/v/FluxIndex.SDK.svg?label=FluxIndex.SDK)](https://www.nuget.org/packages/FluxIndex.SDK/)
 [![License](https://img.shields.io/github/license/iyulab/FluxIndex)](LICENSE)
 
-A .NET library for building RAG (Retrieval-Augmented Generation) systems with vector search and hybrid search capabilities.
+.NET 9.0 RAG library for building retrieval-augmented generation systems with vector and hybrid search.
 
 ## Overview
 
-FluxIndex is a RAG infrastructure library that provides document indexing and retrieval functionality for .NET 9.0 applications. It combines vector search with keyword search to enable semantic and exact-match retrieval.
+FluxIndex provides document indexing and semantic retrieval for .NET applications. It combines vector embeddings with keyword search using clean architecture principles and modular design.
 
 ## Features
 
-- **Vector Search**: Semantic similarity search using embeddings
-- **Keyword Search**: BM25-based exact term matching
-- **Hybrid Search**: Combines vector and keyword search with Reciprocal Rank Fusion (RRF)
-- **Multiple Storage Backends**: SQLite (with sqlite-vec), PostgreSQL (with pgvector)
-- **AI Provider Agnostic**: Use OpenAI, Azure OpenAI, or custom embedding services
-- **Document Processing**: Integrate with FileFlux for PDF/DOCX/TXT processing
-- **Web Content**: Integrate with WebFlux for web page crawling and extraction
-- **Caching**: In-memory or Redis-based caching for performance
-- **Clean Architecture**: Modular design with dependency injection
+- **Vector Search** - Semantic similarity using embeddings (SQLite-vec, pgvector)
+- **Keyword Search** - BM25 algorithm for exact term matching
+- **Hybrid Search** - Combines vector + keyword with Reciprocal Rank Fusion
+- **Adaptive Search** - Automatic strategy selection based on query complexity
+- **Storage Options** - SQLite (dev), PostgreSQL (production)
+- **AI Agnostic** - Works with OpenAI, Azure OpenAI, or custom services
+- **Document Processing** - FileFlux integration for PDF/DOCX/TXT
+- **Web Crawling** - WebFlux integration for web content extraction
+- **Semantic Caching** - Redis-based similarity caching
+- **Clean Architecture** - Modular DI-based design
 
 ## Installation
 
-### Required Packages
-
 ```bash
-# Core SDK
+# Minimal setup (local development)
 dotnet add package FluxIndex.SDK
+dotnet add package FluxIndex.Storage.SQLite
 
-# Storage provider (choose one)
-dotnet add package FluxIndex.Storage.SQLite      # For development
-dotnet add package FluxIndex.Storage.PostgreSQL  # For production
-```
-
-### Optional Packages
-
-```bash
-# AI provider integration (or implement custom IEmbeddingService)
+# Production setup
+dotnet add package FluxIndex.SDK
 dotnet add package FluxIndex.AI.OpenAI
-
-# Caching
+dotnet add package FluxIndex.Storage.PostgreSQL
 dotnet add package FluxIndex.Cache.Redis
 
-# Document processing extensions
+# Document processing (optional)
 dotnet add package FluxIndex.Extensions.FileFlux
 dotnet add package FluxIndex.Extensions.WebFlux
 ```
 
 ## Quick Start
 
-### Basic Setup
-
 ```csharp
 using FluxIndex.SDK;
-using Microsoft.Extensions.DependencyInjection;
 
-var services = new ServiceCollection();
+// Setup
+var client = new FluxIndexClientBuilder()
+    .UseSQLite("fluxindex.db")
+    .UseOpenAI("your-api-key")
+    .Build();
 
-// Configure FluxIndex
-services.AddFluxIndex()
-    .AddSQLiteVectorStore()              // Storage
-    .UseOpenAIEmbedding(apiKey: "...");  // AI service (optional)
-
-var serviceProvider = services.BuildServiceProvider();
-var client = serviceProvider.GetRequiredService<FluxIndexClient>();
-```
-
-### Indexing Documents
-
-```csharp
-// Index a text document
+// Index
 await client.Indexer.IndexDocumentAsync(
-    content: "FluxIndex is a .NET RAG library for building retrieval systems.",
+    content: "FluxIndex is a .NET RAG library.",
     documentId: "doc-001"
 );
 
-// Index with metadata
-await client.Indexer.IndexDocumentAsync(
-    content: "Document content...",
-    documentId: "doc-002",
-    metadata: new Dictionary<string, object>
-    {
-        ["category"] = "technical",
-        ["author"] = "John Doe"
-    }
-);
-```
-
-### Searching
-
-```csharp
-// Semantic search
+// Search
 var results = await client.Retriever.SearchAsync(
     query: "RAG library",
     topK: 5
@@ -100,165 +66,54 @@ var results = await client.Retriever.SearchAsync(
 
 foreach (var result in results)
 {
-    Console.WriteLine($"Score: {result.Score:F2}");
-    Console.WriteLine($"Content: {result.Content}");
+    Console.WriteLine($"{result.Score:F2}: {result.Content}");
 }
 ```
 
-### Hybrid Search
+## Performance
 
-```csharp
-var results = await client.Retriever.SearchAsync(
-    query: "machine learning algorithms",
-    topK: 10,
-    options: new SearchOptions
-    {
-        SearchStrategy = SearchStrategy.Hybrid,
-        VectorWeight = 0.7f,
-        KeywordWeight = 0.3f
-    }
-);
-```
+Based on [benchmarks](./benchmarks/FluxIndex.Benchmarks/BENCHMARK_RESULTS.md) with .NET 9.0 on Intel i7-1360P:
 
-## Document Processing
+| Operation | Dataset | Performance |
+|-----------|---------|-------------|
+| Batch Indexing | 1,000 chunks | 24ms |
+| Batch Indexing | 10,000 chunks | 188ms |
+| Search | 1,000 chunks | 0.6-0.7ms |
+| Optimal Parallelism | 8 threads | 10% improvement |
 
-### FileFlux Integration
+## Advanced Usage
 
-```bash
-dotnet add package FluxIndex.Extensions.FileFlux
-```
+See [Tutorial](./docs/tutorial.md) for detailed examples:
 
-```csharp
-using FluxIndex.Extensions.FileFlux;
-
-// Configure FileFlux
-services.AddFluxIndex()
-    .AddSQLiteVectorStore()
-    .UseOpenAIEmbedding(apiKey);
-
-services.AddFileFluxIntegration(options =>
-{
-    options.DefaultChunkingStrategy = "Auto";
-    options.DefaultMaxChunkSize = 1024;
-    options.DefaultOverlapSize = 128;
-});
-
-var serviceProvider = services.BuildServiceProvider();
-var fileFlux = serviceProvider.GetRequiredService<FileFluxIntegration>();
-
-// Process and index files
-var documentId = await fileFlux.ProcessAndIndexAsync("document.pdf");
-```
-
-### WebFlux Integration
-
-```bash
-dotnet add package FluxIndex.Extensions.WebFlux
-```
-
-```csharp
-using FluxIndex.Extensions.WebFlux;
-
-services.AddWebFluxIntegration(options =>
-{
-    options.DefaultMaxChunkSize = 512;
-    options.DefaultChunkOverlap = 50;
-});
-```
-
-## Architecture
-
-FluxIndex follows Clean Architecture principles with the following structure:
-
-```
-FluxIndex.Core          # Domain models and application interfaces
-FluxIndex.SDK           # Client API and builder
-FluxIndex.AI.*          # AI service adapters (OpenAI, etc.)
-FluxIndex.Storage.*     # Storage implementations (SQLite, PostgreSQL)
-FluxIndex.Cache.*       # Caching implementations (Redis, Memory)
-FluxIndex.Extensions.*  # Document processing integrations
-```
-
-### Dependency Injection
-
-All components are registered through dependency injection and can be replaced with custom implementations:
-
-```csharp
-services.AddScoped<IEmbeddingService, CustomEmbeddingService>();
-services.AddScoped<IVectorStore, CustomVectorStore>();
-services.AddScoped<ICacheService, CustomCacheService>();
-```
-
-## Configuration
-
-### Using OpenAI
-
-```csharp
-var client = new FluxIndexClientBuilder()
-    .UseOpenAI("your-api-key", "text-embedding-3-small")
-    .UseSQLite("fluxindex.db")
-    .UseMemoryCache()
-    .Build();
-```
-
-### Using Azure OpenAI
-
-```csharp
-var client = new FluxIndexClientBuilder()
-    .UseAzureOpenAI(
-        endpoint: "https://your-resource.openai.azure.com/",
-        apiKey: "your-api-key",
-        deploymentName: "text-embedding-ada-002"
-    )
-    .UseSQLite("fluxindex.db")
-    .Build();
-```
-
-### Using PostgreSQL
-
-```csharp
-var client = new FluxIndexClientBuilder()
-    .UseOpenAI("your-api-key")
-    .UsePostgreSQL("Host=localhost;Database=fluxindex;Username=user;Password=pass")
-    .UseRedisCache("localhost:6379")
-    .Build();
-```
-
-## Search Strategies
-
-FluxIndex provides multiple search strategies:
-
-- **Vector Search**: Semantic similarity using HNSW indexing
-- **Keyword Search**: BM25 algorithm for exact term matching
-- **Hybrid Search**: Combines vector and keyword results using RRF
-- **Adaptive Search**: Automatically selects strategy based on query complexity
+- **Hybrid Search** - Combine vector and keyword search
+- **Adaptive Search** - Automatic strategy selection
+- **Document Processing** - FileFlux/WebFlux integration
+- **Semantic Caching** - Redis-based query caching
+- **Batch Operations** - Efficient bulk indexing
 
 ## Documentation
 
-- **[Getting Started Guide](./docs/getting-started.md)** - Step-by-step setup instructions
-- **[Tutorial](./docs/tutorial.md)** - Comprehensive usage examples
-- **[Architecture Guide](./docs/architecture.md)** - Clean Architecture design principles
-- **[RAG System Guide](./docs/FLUXINDEX_RAG_SYSTEM.md)** - Advanced RAG patterns
-- **[Cheat Sheet](./docs/cheat-sheet.md)** - Quick reference
+- [Getting Started](./docs/getting-started.md) - Setup and configuration
+- [Tutorial](./docs/tutorial.md) - Comprehensive examples
+- [Architecture](./docs/architecture.md) - Design principles
+- [Cheat Sheet](./docs/cheat-sheet.md) - Quick reference
 
 ## Examples
 
-See the [samples](./samples/) directory for complete working examples:
-
-- **[RealWorldDemo](./samples/FluxIndex.RealWorldDemo/)** - OpenAI API integration with sqlite-vec
-- **[FileFluxSample](./samples/FileFluxIndexSample/)** - Document processing integration
-- **[WebFluxSample](./samples/WebFluxSample/)** - Web content extraction
+- [RealWorldDemo](./samples/FluxIndex.RealWorldDemo/) - OpenAI + SQLite integration
+- [FileFluxSample](./samples/FileFluxIndexSample/) - PDF/DOCX processing
+- [WebFluxSample](./samples/WebFluxSample/) - Web crawling
 
 ## Requirements
 
-- .NET 9.0 SDK or later
-- SQLite or PostgreSQL database
-- OpenAI API key (optional, for AI-powered embeddings)
+- .NET 9.0 or later
+- SQLite or PostgreSQL
+- OpenAI API key (optional)
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE) file.
 
 ## Contributing
 
-Contributions are welcome! Please see the [development roadmap](./TASKS.md) for planned features and current status.
+See [development roadmap](./TASKS.md) for planned features.
