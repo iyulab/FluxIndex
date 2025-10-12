@@ -442,6 +442,10 @@ public class FluxIndexContextBuilder
                     options.Endpoint = _options.Embedding.ProviderSpecificOptions.TryGetValue("Endpoint", out var endpoint) ? endpoint?.ToString() : "";
                 });
                 break;
+            case "inmemory":
+                // In-memory embedding service for testing (generates random embeddings)
+                _services.AddSingleton<IEmbeddingService, InMemoryEmbeddingService>();
+                break;
             default:
                 // No default implementation - consumer must provide IEmbeddingService
                 throw new InvalidOperationException("IEmbeddingService must be configured. Use UseOpenAI() or provide custom implementation.");

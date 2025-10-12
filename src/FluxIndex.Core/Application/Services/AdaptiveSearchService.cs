@@ -19,6 +19,7 @@ public class AdaptiveSearchService : IAdaptiveSearchService
     private readonly IHybridSearchService _hybridSearchService;
     private readonly ISmallToBigRetriever _smallToBigRetriever;
     private readonly IQueryComplexityAnalyzer _queryAnalyzer;
+    private readonly ISemanticCacheService? _semanticCache;
     private readonly ILogger<AdaptiveSearchService> _logger;
 
     // 전략별 성능 통계 캐시
@@ -26,22 +27,33 @@ public class AdaptiveSearchService : IAdaptiveSearchService
     private readonly ConcurrentDictionary<QueryType, SearchStrategy> _optimalStrategies;
     private readonly ConcurrentDictionary<string, AdaptiveSearchResult> _searchCache;
 
+    // 캐시 성능 통계
+    private long _totalSearches = 0;
+    private long _cacheHits = 0;
+
     public AdaptiveSearchService(
         IHybridSearchService hybridSearchService,
         ISmallToBigRetriever smallToBigRetriever,
         IQueryComplexityAnalyzer queryAnalyzer,
-        ILogger<AdaptiveSearchService> logger)
+        ILogger<AdaptiveSearchService> logger,
+        ISemanticCacheService? semanticCache = null)
     {
         _hybridSearchService = hybridSearchService ?? throw new ArgumentNullException(nameof(hybridSearchService));
         _smallToBigRetriever = smallToBigRetriever ?? throw new ArgumentNullException(nameof(smallToBigRetriever));
         _queryAnalyzer = queryAnalyzer ?? throw new ArgumentNullException(nameof(queryAnalyzer));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _semanticCache = semanticCache;
 
         _strategyMetrics = new ConcurrentDictionary<SearchStrategy, StrategyMetrics>();
         _optimalStrategies = new ConcurrentDictionary<QueryType, SearchStrategy>();
         _searchCache = new ConcurrentDictionary<string, AdaptiveSearchResult>();
 
         InitializeDefaultStrategies();
+
+        if (_semanticCache != null)
+        {
+            _logger.LogInformation("시맨틱 캐시 활성화됨");
+        }
     }
 
     /// <summary>
@@ -62,36 +74,100 @@ public class AdaptiveSearchService : IAdaptiveSearchService
 
         try
         {
-            // 1. 캐시 확인
-            if (options.UseCache)
+            Interlocked.Increment(ref _totalSearches);
+
+            // 1. 시맨틱 캐시 확인 (0.95 유사도 임계값)
+            if (options.UseCache && _semanticCache != null)
             {
-                var cacheKey = GenerateCacheKey(query, options);
-                if (_searchCache.TryGetValue(cacheKey, out var cachedResult))
+                try
                 {
-                    _logger.LogDebug("캐시 히트: {Query}", query);
-                    // 캐시된 결과의 복사본 반환 (원본 수정 방지)
-                    var cachedCopy = new AdaptiveSearchResult
+                    var cachedResult = await _semanticCache.GetCachedResultAsync(
+                        query,
+                        similarityThreshold: 0.95f,
+                        cancellationToken);
+
+                    if (cachedResult != null)
                     {
-                        Documents = cachedResult.Documents,
-                        UsedStrategy = cachedResult.UsedStrategy,
-                        QueryAnalysis = cachedResult.QueryAnalysis,
-                        Performance = new SearchPerformanceMetrics
+                        Interlocked.Increment(ref _cacheHits);
+
+                        var hitRate = (double)_cacheHits / _totalSearches;
+                        _logger.LogInformation("🎯 시맨틱 캐시 히트: {Query} (유사도: {Similarity:F3}, 히트율: {HitRate:P1})",
+                            query, cachedResult.SimilarityScore, hitRate);
+
+                        // 캐시된 DocumentChunk를 Document 객체로 변환
+                        var documents = cachedResult.Results
+                            .Select(chunk => CreateDocumentFromChunk(chunk))
+                            .ToList();
+
+                        // 전략 결정 (메타데이터에서 가져오거나 기본값 사용)
+                        var cachedStrategy = cachedResult.Metadata?.SearchAlgorithm switch
                         {
-                            TotalTime = cachedResult.Performance.TotalTime,
-                            AnalysisTime = cachedResult.Performance.AnalysisTime,
-                            SearchTime = cachedResult.Performance.SearchTime,
-                            PostProcessingTime = cachedResult.Performance.PostProcessingTime,
-                            ResultCount = cachedResult.Performance.ResultCount,
-                            AverageRelevanceScore = cachedResult.Performance.AverageRelevanceScore,
-                            CacheHit = true, // 캐시 히트 표시
-                            ResourceUsage = cachedResult.Performance.ResourceUsage
-                        },
-                        StrategyReasons = cachedResult.StrategyReasons,
-                        ABTestInfo = cachedResult.ABTestInfo,
-                        ConfidenceScore = cachedResult.ConfidenceScore,
-                        Metadata = cachedResult.Metadata
-                    };
-                    return cachedCopy;
+                            "DirectVector" => SearchStrategy.DirectVector,
+                            "KeywordOnly" => SearchStrategy.KeywordOnly,
+                            "Hybrid" => SearchStrategy.Hybrid,
+                            "TwoStage" => SearchStrategy.TwoStage,
+                            _ => SearchStrategy.Hybrid
+                        };
+
+                        return new AdaptiveSearchResult
+                        {
+                            Documents = documents,
+                            UsedStrategy = cachedStrategy,
+                            QueryAnalysis = new QueryAnalysis
+                            {
+                                Type = QueryType.SimpleKeyword,
+                                Complexity = ComplexityLevel.Simple,
+                                ConfidenceScore = cachedResult.SimilarityScore
+                            },
+                            Performance = new SearchPerformanceMetrics
+                            {
+                                TotalTime = TimeSpan.FromMilliseconds(5), // 캐시 히트는 매우 빠름
+                                AnalysisTime = TimeSpan.Zero,
+                                SearchTime = TimeSpan.Zero,
+                                PostProcessingTime = TimeSpan.Zero,
+                                ResultCount = documents.Count,
+                                AverageRelevanceScore = 0.95,
+                                CacheHit = true,
+                                ResourceUsage = new Dictionary<string, object>
+                                {
+                                    ["cache_hit"] = true,
+                                    ["cached_query"] = cachedResult.OriginalQuery,
+                                    ["similarity_score"] = cachedResult.SimilarityScore,
+                                    ["cache_hit_rate"] = hitRate
+                                }
+                            },
+                            StrategyReasons = new List<string>
+                            {
+                                $"시맨틱 캐시 히트 (유사도: {cachedResult.SimilarityScore:F3})",
+                                $"원본 쿼리: {cachedResult.OriginalQuery}"
+                            },
+                            ConfidenceScore = cachedResult.SimilarityScore,
+                            Metadata = new Dictionary<string, object>
+                            {
+                                ["cached"] = true,
+                                ["cache_age"] = (DateTime.UtcNow - cachedResult.CachedAt).TotalSeconds
+                            }
+                        };
+                    }
+
+                    var missRate = 1.0 - ((double)_cacheHits / _totalSearches);
+                    _logger.LogDebug("시맨틱 캐시 미스: {Query} (현재 히트율: {HitRate:P1})", query, 1.0 - missRate);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "시맨틱 캐시 조회 실패, 일반 검색 진행: {Query}", query);
+                }
+            }
+            else if (options.UseCache && _semanticCache == null)
+            {
+                _logger.LogDebug("시맨틱 캐시가 구성되지 않음, in-memory 캐시 사용");
+
+                // Fallback: in-memory 캐시
+                var cacheKey = GenerateCacheKey(query, options);
+                if (_searchCache.TryGetValue(cacheKey, out var memCachedResult))
+                {
+                    _logger.LogDebug("In-memory 캐시 히트: {Query}", query);
+                    return memCachedResult;
                 }
             }
 
@@ -170,8 +246,55 @@ public class AdaptiveSearchService : IAdaptiveSearchService
             // 7. 캐시 저장
             if (options.UseCache)
             {
-                var cacheKey = GenerateCacheKey(query, options);
-                _searchCache.TryAdd(cacheKey, result);
+                if (_semanticCache != null && result.Performance.ResultCount > 0)
+                {
+                    try
+                    {
+                        // DocumentChunk 목록 생성 (Document → DocumentChunk 변환)
+                        var documentChunks = searchResults
+                            .Select(doc => new FluxIndex.Domain.Models.DocumentChunk
+                            {
+                                Id = doc.Metadata.ContainsKey("chunk_id")
+                                    ? doc.Metadata["chunk_id"]?.ToString() ?? doc.Id
+                                    : doc.Id,
+                                DocumentId = doc.Id,
+                                Content = doc.Metadata.ContainsKey("chunk_content")
+                                    ? doc.Metadata["chunk_content"]?.ToString() ?? ""
+                                    : "",
+                                Score = doc.Metadata.ContainsKey("relevance_score")
+                                    ? Convert.ToSingle(doc.Metadata["relevance_score"])
+                                    : 0.0f,
+                                Metadata = doc.Metadata
+                            })
+                            .ToList();
+
+                        // 시맨틱 캐시에 저장 (TTL 1시간)
+                        await _semanticCache.SetCachedResultAsync(
+                            query,
+                            documentChunks.AsReadOnly(),
+                            new SearchMetadata
+                            {
+                                SearchTimeMs = (long)result.Performance.SearchTime.TotalMilliseconds,
+                                TotalDocuments = result.Performance.ResultCount,
+                                SearchAlgorithm = strategy.ToString(),
+                                QualityScore = (float)result.Performance.AverageRelevanceScore
+                            },
+                            TimeSpan.FromHours(1),
+                            cancellationToken);
+
+                        _logger.LogDebug("시맨틱 캐시 저장 완료: {Query}, {Count}개 결과", query, result.Performance.ResultCount);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "시맨틱 캐시 저장 실패: {Query}", query);
+                    }
+                }
+                else
+                {
+                    // Fallback: in-memory 캐시
+                    var cacheKey = GenerateCacheKey(query, options);
+                    _searchCache.TryAdd(cacheKey, result);
+                }
             }
 
             // 8. 성능 통계 업데이트
@@ -253,6 +376,38 @@ public class AdaptiveSearchService : IAdaptiveSearchService
 
         await Task.CompletedTask;
         return report;
+    }
+
+    /// <summary>
+    /// 시맨틱 캐시 통계 조회
+    /// </summary>
+    public async Task<Dictionary<string, object>> GetCacheStatisticsAsync(CancellationToken cancellationToken = default)
+    {
+        var stats = new Dictionary<string, object>
+        {
+            ["total_searches"] = _totalSearches,
+            ["cache_hits"] = _cacheHits,
+            ["cache_misses"] = _totalSearches - _cacheHits,
+            ["hit_rate"] = _totalSearches > 0 ? (double)_cacheHits / _totalSearches : 0.0,
+            ["semantic_cache_enabled"] = _semanticCache != null
+        };
+
+        // Redis 캐시 통계 추가
+        if (_semanticCache != null)
+        {
+            try
+            {
+                var redisCacheStats = await _semanticCache.GetCacheStatisticsAsync(cancellationToken);
+                stats["redis_cache_statistics"] = redisCacheStats;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Redis 캐시 통계 조회 실패");
+                stats["redis_cache_error"] = ex.Message;
+            }
+        }
+
+        return stats;
     }
 
     #region Private Methods
@@ -672,11 +827,16 @@ public class AdaptiveSearchService : IAdaptiveSearchService
             .OrderByDescending(kvp => kvp.Value.AverageSatisfaction)
             .FirstOrDefault().Key;
 
+        // 실제 캐시 히트율 계산
+        var actualCacheHitRate = _totalSearches > 0
+            ? (double)_cacheHits / _totalSearches
+            : 0.0;
+
         return new OverallStatistics
         {
             TotalSearches = totalSearches,
             AverageProcessingTime = TimeSpan.FromMilliseconds(allMetrics.Average(m => m.AverageProcessingTime.TotalMilliseconds)),
-            CacheHitRate = 0.15, // 실제로는 캐시 통계로부터 계산
+            CacheHitRate = actualCacheHitRate,
             OverallSatisfaction = allMetrics.Average(m => m.AverageSatisfaction),
             MostUsedStrategy = mostUsedStrategy,
             BestPerformingStrategy = bestPerformingStrategy

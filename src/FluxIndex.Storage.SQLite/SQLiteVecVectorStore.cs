@@ -133,7 +133,9 @@ public class SQLiteVecVectorStore : IVectorStore
         try
         {
             var ids = new List<string>();
+            var vectorBatch = new List<(string Id, float[] Embedding)>();
 
+            // 1단계: 메타데이터 엔티티 준비 (메모리 작업)
             foreach (var chunk in chunks)
             {
                 var id = Guid.NewGuid().ToString();
@@ -153,14 +155,22 @@ public class SQLiteVecVectorStore : IVectorStore
 
                 _context.VectorChunks.Add(chunkEntity);
 
-                // 벡터 저장 (나중에 배치로 처리)
+                // 벡터 배치에 추가 (아직 DB 삽입 안 함)
                 if (chunk.Embedding != null && _sqliteVecAvailable)
                 {
-                    await _context.StoreVectorInVecTableAsync(id, chunk.Embedding, cancellationToken);
+                    vectorBatch.Add((id, chunk.Embedding));
                 }
             }
 
+            // 2단계: 메타데이터 일괄 저장 (EF Core 최적화된 배치 INSERT)
             await _context.SaveChangesAsync(cancellationToken);
+
+            // 3단계: 벡터 배치 삽입 (단일 SQL 문으로 최적화)
+            if (vectorBatch.Any())
+            {
+                await StoreBatchVectorsAsync(vectorBatch, cancellationToken);
+            }
+
             await transaction.CommitAsync(cancellationToken);
 
             return ids;
@@ -168,6 +178,46 @@ public class SQLiteVecVectorStore : IVectorStore
         catch
         {
             await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// 벡터 배치 삽입 최적화 (단일 SQL 문으로 처리)
+    /// </summary>
+    private async Task StoreBatchVectorsAsync(List<(string Id, float[] Embedding)> vectorBatch, CancellationToken cancellationToken)
+    {
+        if (!vectorBatch.Any()) return;
+
+        try
+        {
+            // VALUES clause 구성 (최대 999개 제한 - SQLite 제약)
+            const int maxBatchSize = 999;
+            for (int i = 0; i < vectorBatch.Count; i += maxBatchSize)
+            {
+                var batch = vectorBatch.Skip(i).Take(maxBatchSize).ToList();
+                var valuesClauses = new List<string>();
+                var parameters = new List<object>();
+
+                int paramIndex = 0;
+                foreach (var (id, embedding) in batch)
+                {
+                    var vectorString = "[" + string.Join(",", embedding.Select(f => f.ToString("F6"))) + "]";
+                    valuesClauses.Add($"({{{paramIndex}}}, {{{paramIndex + 1}}})");
+                    parameters.Add(id);
+                    parameters.Add(vectorString);
+                    paramIndex += 2;
+                }
+
+                var sql = $"INSERT OR REPLACE INTO chunk_embeddings (chunk_id, embedding) VALUES {string.Join(", ", valuesClauses)}";
+                await _context.Database.ExecuteSqlRawAsync(sql, parameters.ToArray(), cancellationToken);
+
+                _logger.LogDebug("배치 벡터 삽입 완료: {Count}개", batch.Count);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "배치 벡터 삽입 실패");
             throw;
         }
     }

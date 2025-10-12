@@ -32,14 +32,27 @@ public static class ServiceCollectionExtensions
         // 폴백용 로더도 등록
         services.AddScoped<NoOpSQLiteVecExtensionLoader>();
 
-        // SQLiteVecDbContext 등록
+        // SQLiteVecDbContext 등록 (연결 풀링 및 성능 최적화)
         services.AddDbContext<SQLiteVecDbContext>((serviceProvider, dbOptions) =>
         {
             var options = serviceProvider.GetRequiredService<IOptions<SQLiteVecOptions>>().Value;
             dbOptions.UseSqlite(options.GetConnectionString(), sqliteOptions =>
             {
+                // CommandTimeout 설정 (장시간 쿼리 대비)
                 sqliteOptions.CommandTimeout(options.CommandTimeout);
             });
+
+            // 쿼리 추적 비활성화 (읽기 전용 작업 성능 향상 - 20-30%)
+            dbOptions.UseQueryTrackingBehavior(Microsoft.EntityFrameworkCore.QueryTrackingBehavior.NoTracking);
+
+            // 민감한 데이터 로깅 비활성화 (프로덕션 보안)
+            dbOptions.EnableSensitiveDataLogging(false);
+
+            // 개발 환경에서만 상세 오류 활성화
+            #if DEBUG
+            dbOptions.EnableDetailedErrors(true);
+            dbOptions.EnableSensitiveDataLogging(true);
+            #endif
         }, ServiceLifetime.Scoped);
 
         // 폴백용 기존 SQLite 벡터 저장소 등록
@@ -332,10 +345,32 @@ internal class SQLiteVecMigrationService : IHostedService
                     "PRAGMA mmap_size=268435456", // 256MB
                     cancellationToken);
 
-                // 캐시 크기 증가
+                // 캐시 크기 증가 (negative = KB)
                 await context.Database.ExecuteSqlRawAsync(
-                    "PRAGMA cache_size=10000", // 10000 pages
+                    "PRAGMA cache_size=-20000", // 20MB (20000 KB)
                     cancellationToken);
+
+                // Temp 저장소를 메모리로 (중간 결과 성능 향상)
+                await context.Database.ExecuteSqlRawAsync(
+                    "PRAGMA temp_store=MEMORY",
+                    cancellationToken);
+
+                // 페이지 크기 최적화 (벡터 데이터에 적합)
+                await context.Database.ExecuteSqlRawAsync(
+                    "PRAGMA page_size=4096",
+                    cancellationToken);
+
+                // Busy timeout 설정 (Lock 경합 시 재시도)
+                await context.Database.ExecuteSqlRawAsync(
+                    "PRAGMA busy_timeout=5000", // 5초
+                    cancellationToken);
+
+                // Auto vacuum 설정 (파일 크기 자동 관리)
+                await context.Database.ExecuteSqlRawAsync(
+                    "PRAGMA auto_vacuum=INCREMENTAL",
+                    cancellationToken);
+
+                _logger.LogInformation("SQLite 성능 최적화 설정 완료: WAL 모드, 20MB 캐시, 256MB mmap, Temp=Memory");
             }
 
             _logger.LogInformation("SQLite-vec 데이터베이스 초기화 완료");
