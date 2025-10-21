@@ -63,7 +63,9 @@ jobs:
       run: |
         echo "📦 Restoring packages with central package management..."
         # Force clean restore to avoid any cached issues
-        dotnet restore --verbosity minimal --force
+        # --force-evaluate: Re-evaluate all packages and update lock files
+        # --ignore-failed-sources: Continue even if some sources fail
+        dotnet restore --verbosity minimal --force --force-evaluate --ignore-failed-sources
         echo "✅ Package restore completed"
 
     - name: Build

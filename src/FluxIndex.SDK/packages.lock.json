@@ -236,7 +236,7 @@
         "type": "Project",
         "dependencies": {
           "Azure.AI.OpenAI": "[2.1.0, )",
-          "FluxIndex.Core": "[0.2.9, )",
+          "FluxIndex.Core": "[0.2.10, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[9.0.10, )",
           "Microsoft.Extensions.Logging.Abstractions": "[9.0.10, )"
         }
@@ -244,7 +244,7 @@
       "fluxindex.core": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex": "[0.2.9, )",
+          "FluxIndex": "[0.2.10, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[9.0.10, )",
           "Microsoft.Extensions.Logging.Abstractions": "[9.0.10, )"
         }
@@ -252,7 +252,7 @@
       "fluxindex.storage.sqlite": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.Core": "[0.2.9, )",
+          "FluxIndex.Core": "[0.2.10, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[9.0.10, )",
           "Microsoft.Extensions.Configuration.Binder": "[9.0.10, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[9.0.10, )",
