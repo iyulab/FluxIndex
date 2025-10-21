@@ -6,34 +6,34 @@
   <!-- Microsoft.Extensions Packages -->
   <ItemGroup>
     <PackageVersion Include="Microsoft.Extensions.Configuration.FileExtensions" Version="9.0.9" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="9.0.9" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.9" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration" Version="9.0.9" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.9" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="9.0.9" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.9" />
-    <PackageVersion Include="Microsoft.Extensions.Logging" Version="9.0.9" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.9" />
-    <PackageVersion Include="Microsoft.Extensions.Options" Version="9.0.9" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="9.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration" Version="9.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="9.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="9.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="9.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="9.0.9" />
-    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="9.0.9" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="9.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Caching.Abstractions" Version="9.0.9" />
-    <PackageVersion Include="Microsoft.Extensions.Http" Version="9.0.9" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="9.0.9" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.9" />
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="9.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="9.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.10" />
     <PackageVersion Include="System.Text.Json" Version="9.0.9" />
     <PackageVersion Include="WebFlux" Version="0.1.3" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="9.0.9" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="9.0.9" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="9.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="9.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.UserSecrets" Version="9.0.9" />
-    <PackageVersion Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="9.0.9" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="9.0.10" />
   </ItemGroup>
   <!-- Entity Framework Core Packages -->
   <ItemGroup>
     <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="9.0.0" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.9" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.9" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.9" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.10" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.10" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.10" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
     <PackageVersion Include="Pgvector.EntityFrameworkCore" Version="0.2.2" />
   </ItemGroup>
@@ -44,11 +44,11 @@
   </ItemGroup>
   <!-- Storage/Cache Packages -->
   <ItemGroup>
-    <PackageVersion Include="StackExchange.Redis" Version="2.9.25" />
+    <PackageVersion Include="StackExchange.Redis" Version="2.9.32" />
   </ItemGroup>
   <!-- Document Processing -->
   <ItemGroup>
-    <PackageVersion Include="FileFlux" Version="0.2.12" />
+    <PackageVersion Include="FileFlux" Version="0.3.0" />
     <PackageVersion Include="FileFlux.Core" Version="0.2.5" />
     <PackageVersion Include="HtmlAgilityPack" Version="1.12.3" />
   </ItemGroup>
@@ -58,20 +58,21 @@
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
     <PackageVersion Include="Xunit.SkippableFact" Version="1.5.23" />
     <PackageVersion Include="Moq" Version="4.20.72" />
-    <PackageVersion Include="FluentAssertions" Version="8.7.0" />
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageVersion Include="FluentAssertions" Version="8.7.1" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.0.0" />
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Testing" Version="9.0.9" />
-    <PackageVersion Include="Testcontainers.Redis" Version="4.7.0" />
-    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.7.0" />
+    <PackageVersion Include="Testcontainers.Redis" Version="4.8.0" />
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.8.0" />
   </ItemGroup>
   <!-- Build/Development Packages -->
   <ItemGroup>
     <!-- <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" /> -->
+    <PackageVersion Include="DotNetEnv" Version="3.1.1" />
   </ItemGroup>
   <!-- Testing/Sample Packages -->
   <ItemGroup>
-    <PackageVersion Include="Spectre.Console" Version="0.51.1" />
+    <PackageVersion Include="Spectre.Console" Version="0.52.0" />
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.4" />
   </ItemGroup>
   <!-- SQLite Extensions -->

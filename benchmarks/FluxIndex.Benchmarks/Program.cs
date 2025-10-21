@@ -10,8 +10,29 @@ namespace FluxIndex.Benchmarks;
 /// </summary>
 class Program
 {
-    static void Main(string[] args)
+    static async Task Main(string[] args)
     {
+        // API 설정 검증 모드
+        if (args.Length > 0 && args[0].Equals("verify", StringComparison.OrdinalIgnoreCase))
+        {
+            await VerifyApiConfig.RunVerification();
+            return;
+        }
+
+        // Quick Baseline 측정 모드
+        if (args.Length > 0 && args[0].Equals("baseline", StringComparison.OrdinalIgnoreCase))
+        {
+            await QuickBaseline.RunQuickBaseline();
+            return;
+        }
+
+        // Cache Effectiveness 측정 모드
+        if (args.Length > 0 && args[0].Equals("cache", StringComparison.OrdinalIgnoreCase))
+        {
+            await CacheEffectiveness.RunCacheTest();
+            return;
+        }
+
         // BenchmarkDotNet configuration
         var config = DefaultConfig.Instance;
 
@@ -33,6 +54,11 @@ class Program
         Console.WriteLine();
         Console.WriteLine("사용법:");
         Console.WriteLine("  dotnet run -c Release -- [options]");
+        Console.WriteLine();
+        Console.WriteLine("Quick Performance Tests:");
+        Console.WriteLine("  dotnet run -- verify               # .env.local 및 OpenAI API 연결 테스트");
+        Console.WriteLine("  dotnet run -- baseline             # 빠른 baseline 성능 측정 (5회 반복)");
+        Console.WriteLine("  dotnet run -- cache                # 임베딩 캐시 효과 측정 (Phase 7.3)");
         Console.WriteLine();
         Console.WriteLine("벤치마크 선택:");
         Console.WriteLine("  --filter *SearchPerformance*   # 검색 성능 벤치마크만 실행");

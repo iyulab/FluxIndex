@@ -47,47 +47,48 @@ Complete documentation for the FluxIndex RAG library.
 - **Adaptive Search** - Auto-select strategy by query complexity
 
 ### AI Integration
-- **OpenAI** - GPT embeddings and completions
+- **OpenAI** - GPT embeddings and completions (text-embedding-3-small)
 - **Azure OpenAI** - Enterprise Azure deployment support
 - **Custom AI** - Implement IEmbeddingService for any provider
 
 ### Document Processing
-- **FileFlux** - PDF, DOCX, TXT processing
-- **WebFlux** - Web page crawling and extraction
-- **Batch Operations** - Efficient bulk indexing
+- **FileFlux** - PDF, DOCX, TXT processing with chunking strategies
+- **WebFlux** - Web page crawling and extraction with rate limiting
+- **Batch Operations** - Efficient bulk indexing with parallelism
 
 ### Performance Features
-- **Semantic Caching** - Redis-based similarity caching
+- **Embedding Cache** - In-memory cache for repeated queries (100% improvement)
+- **Semantic Caching** - Redis-based similarity caching for related queries
 - **Connection Pooling** - Database connection optimization
-- **Parallel Processing** - Multi-threaded batch operations
+- **Parallel Processing** - Multi-threaded batch operations (optimal: 8 threads)
 
 ## Common Use Cases
 
 ### Knowledge Base Search
 ```csharp
-var client = new FluxIndexClientBuilder()
+var context = FluxIndexContext.CreateBuilder()
     .UseSQLite("kb.db")
-    .UseOpenAI(apiKey)
+    .UseOpenAI(apiKey, "text-embedding-3-small")
     .Build();
 
 // Index documentation
 await fileFlux.ProcessAndIndexAsync("docs/manual.pdf");
 
-// Search
-var results = await client.Retriever.SearchAsync("installation guide", topK: 5);
+// Search with adaptive strategy
+var results = await context.Retriever.SearchAsync("installation guide", maxResults: 5);
 ```
 
 ### FAQ System
 ```csharp
 // Index FAQs
-await client.Indexer.IndexDocumentAsync(
+await context.Indexer.IndexDocumentAsync(
     content: "Q: How to install? A: Run dotnet add package FluxIndex.SDK",
     documentId: "faq-001",
-    metadata: new { category = "installation" }
+    metadata: new Dictionary<string, object> { ["category"] = "installation" }
 );
 
 // Semantic search
-var results = await client.Retriever.SearchAsync("setup instructions", topK: 3);
+var results = await context.Retriever.SearchAsync("setup instructions", maxResults: 3);
 ```
 
 ### Document Analysis
@@ -99,11 +100,10 @@ foreach (var file in files)
     await fileFlux.ProcessAndIndexAsync(file);
 }
 
-// Analyze with complex query
-var results = await client.Retriever.SearchAsync(
+// Analyze with complex query using adaptive strategy
+var results = await context.Retriever.SearchAsync(
     query: "impact of AI on healthcare",
-    topK: 10,
-    options: new SearchOptions { SearchStrategy = SearchStrategy.Adaptive }
+    maxResults: 10
 );
 ```
 
@@ -111,26 +111,27 @@ var results = await client.Retriever.SearchAsync(
 
 ### Development Setup
 ```csharp
-var client = new FluxIndexClientBuilder()
+var context = FluxIndexContext.CreateBuilder()
     .UseSQLite("dev.db")
     .Build();
 ```
 
 ### Production Setup
 ```csharp
-var client = new FluxIndexClientBuilder()
+var context = FluxIndexContext.CreateBuilder()
     .UsePostgreSQL(connectionString)
-    .UseOpenAI(apiKey)
+    .UseOpenAI(apiKey, "text-embedding-3-small")
     .UseRedisCache("localhost:6379")
     .Build();
 ```
 
 ### Hybrid with Custom AI
 ```csharp
-services.AddFluxIndex()
-    .AddPostgreSQLVectorStore()
-    .AddSingleton<IEmbeddingService, CustomEmbeddingService>()
-    .UseRedisCache();
+var context = FluxIndexContext.CreateBuilder()
+    .UsePostgreSQL(connectionString)
+    .UseCustomEmbedding<CustomEmbeddingService>()
+    .UseRedisCache("localhost:6379")
+    .Build();
 ```
 
 ## Performance Benchmarks
@@ -140,9 +141,16 @@ Based on .NET 9.0, Intel i7-1360P, [full results](../benchmarks/FluxIndex.Benchm
 | Operation | Size | Time | Notes |
 |-----------|------|------|-------|
 | Batch Indexing | 1K chunks | 24ms | 8-thread parallelism |
-| Batch Indexing | 10K chunks | 188ms | 3.5 KB/chunk |
-| Search | 1K chunks | 0.6ms | Keyword + Vector |
-| Cache Hit | Semantic | <5ms | 95% similarity |
+| Batch Indexing | 10K chunks | 188ms | 3.5 KB/chunk average |
+| Vector Search | 1K chunks | 0.6-0.7ms | In-memory embeddings |
+| Embedding Cache Hit | Repeated query | 100% faster | Eliminates API calls (1036ms → 0ms) |
+| Hybrid Search | 100 chunks | 383ms avg | With OpenAI API embedding |
+| Semantic Cache Hit | Similar query | <5ms | Redis, 95% similarity threshold |
+
+**Optimization Results**:
+- Embedding cache provides 100% improvement for exact query matches
+- Expected 30% latency reduction with 30% cache hit rate in production
+- Optimal parallelism: 8 threads for batch indexing operations
 
 ## Troubleshooting
 
@@ -185,34 +193,37 @@ Console.WriteLine($"Strategy: {results.UsedStrategy}");
 
 ## API Quick Reference
 
-### FluxIndexClient
+### FluxIndexContext
 ```csharp
-client.Indexer.IndexDocumentAsync(content, documentId)
-client.Indexer.IndexBatchAsync(documents)
-client.Retriever.SearchAsync(query, topK, options)
-```
+// Indexing
+context.Indexer.IndexDocumentAsync(content, documentId, metadata)
+context.Indexer.IndexBatchAsync(documents, parallelism)
 
-### Search Options
-```csharp
-new SearchOptions
-{
-    SearchStrategy = SearchStrategy.Adaptive,
-    VectorWeight = 0.7f,
-    KeywordWeight = 0.3f,
-    MinScore = 0.7f,
-    UseCache = true
-}
+// Searching
+context.Retriever.SearchAsync(query, maxResults, cancellationToken)
 ```
 
 ### Builder Pattern
 ```csharp
-new FluxIndexClientBuilder()
-    .UseSQLite(path)
+FluxIndexContext.CreateBuilder()
+    .UseSQLite(path)                                    // or UseSQLiteInMemory()
     .UsePostgreSQL(connString)
-    .UseOpenAI(apiKey, model)
+    .UseOpenAI(apiKey, model)                          // "text-embedding-3-small"
     .UseAzureOpenAI(endpoint, apiKey, deployment)
     .UseRedisCache(connString)
     .Build()
+```
+
+### Search Results
+```csharp
+var results = await context.Retriever.SearchAsync(query, maxResults: 10);
+
+foreach (var result in results)
+{
+    Console.WriteLine($"Score: {result.Score:F2}");
+    Console.WriteLine($"Content: {result.DocumentChunk.Content}");
+    Console.WriteLine($"Metadata: {result.DocumentChunk.Metadata}");
+}
 ```
 
 ## Additional Resources

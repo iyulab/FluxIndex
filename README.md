@@ -16,6 +16,7 @@ FluxIndex provides document indexing and semantic retrieval for .NET application
 - **Keyword Search** - BM25 algorithm for exact term matching
 - **Hybrid Search** - Combines vector + keyword with Reciprocal Rank Fusion
 - **Adaptive Search** - Automatic strategy selection based on query complexity
+- **Embedding Cache** - In-memory cache for repeated queries (100% improvement)
 - **Storage Options** - SQLite (dev), PostgreSQL (production)
 - **AI Agnostic** - Works with OpenAI, Azure OpenAI, or custom services
 - **Document Processing** - FileFlux integration for PDF/DOCX/TXT
@@ -46,27 +47,28 @@ dotnet add package FluxIndex.Extensions.WebFlux
 ```csharp
 using FluxIndex.SDK;
 
-// Setup
-var client = new FluxIndexClientBuilder()
+// Setup with SQLite and OpenAI
+var context = FluxIndexContext.CreateBuilder()
     .UseSQLite("fluxindex.db")
-    .UseOpenAI("your-api-key")
+    .UseOpenAI("your-api-key", "text-embedding-3-small")
     .Build();
 
-// Index
-await client.Indexer.IndexDocumentAsync(
-    content: "FluxIndex is a .NET RAG library.",
+// Index documents
+await context.Indexer.IndexDocumentAsync(
+    content: "FluxIndex is a .NET RAG library for semantic search.",
     documentId: "doc-001"
 );
 
-// Search
-var results = await client.Retriever.SearchAsync(
-    query: "RAG library",
-    topK: 5
+// Search with adaptive strategy
+var results = await context.Retriever.SearchAsync(
+    query: "RAG library for .NET",
+    maxResults: 5
 );
 
 foreach (var result in results)
 {
-    Console.WriteLine($"{result.Score:F2}: {result.Content}");
+    Console.WriteLine($"Score: {result.Score:F2}");
+    Console.WriteLine($"Content: {result.DocumentChunk.Content}");
 }
 ```
 
@@ -74,22 +76,32 @@ foreach (var result in results)
 
 Based on [benchmarks](./benchmarks/FluxIndex.Benchmarks/BENCHMARK_RESULTS.md) with .NET 9.0 on Intel i7-1360P:
 
-| Operation | Dataset | Performance |
-|-----------|---------|-------------|
-| Batch Indexing | 1,000 chunks | 24ms |
-| Batch Indexing | 10,000 chunks | 188ms |
-| Search | 1,000 chunks | 0.6-0.7ms |
-| Optimal Parallelism | 8 threads | 10% improvement |
+| Operation | Dataset | Performance | Notes |
+|-----------|---------|-------------|-------|
+| Batch Indexing | 1,000 chunks | 24ms | 8-thread parallelism |
+| Batch Indexing | 10,000 chunks | 188ms | 3.5 KB/chunk |
+| Vector Search | 1,000 chunks | 0.6-0.7ms | In-memory embeddings |
+| Embedding Cache Hit | Repeated query | 100% faster | Eliminates API calls |
+| Hybrid Search | 100 chunks | 383ms avg | With OpenAI API |
+| Semantic Cache | Similar query | <5ms | 95% similarity threshold |
+
+**Optimization Features**:
+- In-memory embedding cache for repeated queries
+- Semantic caching with Redis for similar queries
+- Optimal parallelism: 8 threads for batch operations
+- Expected 30% latency reduction with realistic cache hit rates
 
 ## Advanced Usage
 
 See [Tutorial](./docs/tutorial.md) for detailed examples:
 
-- **Hybrid Search** - Combine vector and keyword search
-- **Adaptive Search** - Automatic strategy selection
-- **Document Processing** - FileFlux/WebFlux integration
-- **Semantic Caching** - Redis-based query caching
-- **Batch Operations** - Efficient bulk indexing
+- **Hybrid Search** - Combine vector and keyword search with RRF
+- **Adaptive Search** - Automatic strategy selection based on query complexity
+- **Embedding Cache** - In-memory cache for repeated queries
+- **Semantic Caching** - Redis-based similarity caching for related queries
+- **Document Processing** - FileFlux integration for PDF/DOCX/TXT
+- **Web Crawling** - WebFlux integration for web content extraction
+- **Batch Operations** - Efficient bulk indexing with parallelism
 
 ## Documentation
 

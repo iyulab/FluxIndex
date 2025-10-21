@@ -7,10 +7,14 @@ using FluxIndex.SDK.Extensions;
 using FluxIndex.AI.OpenAI;
 using FluxIndex.Storage.SQLite;
 // using FluxIndex.Cache.Redis.Extensions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using System;
+
+// Note: We're using FluxIndex.Core.Application.Interfaces.IEmbeddingService internally
+// Fully qualified names used where ambiguity exists
 
 namespace FluxIndex.SDK;
 
@@ -62,7 +66,8 @@ public class FluxIndexContextBuilder
     public FluxIndexContextBuilder UseSQLiteInMemory()
     {
         _options.VectorStore.Provider = "SQLite";
-        _options.VectorStore.ConnectionString = "Data Source=:memory:";
+        // Shared cache mode for in-memory database to allow multiple connections
+        _options.VectorStore.ConnectionString = "Data Source=:memory:;Mode=Memory;Cache=Shared";
         return this;
     }
 
@@ -96,6 +101,87 @@ public class FluxIndexContextBuilder
     {
         _options.Embedding.Provider = "InMemory";
         return this;
+    }
+
+    /// <summary>
+    /// DI 기반 임베딩 서비스 사용 (Interface Provider Pattern)
+    /// 소비자가 제공한 IEmbeddingService 구현체를 직접 등록
+    /// </summary>
+    public FluxIndexContextBuilder UseEmbeddingService(FluxIndex.Core.Application.Interfaces.IEmbeddingService embeddingService)
+    {
+        if (embeddingService == null)
+            throw new ArgumentNullException(nameof(embeddingService));
+
+        // Provider를 "Custom"으로 설정하여 ConfigureEmbeddingService에서 자동 등록 방지
+        _options.Embedding.Provider = "Custom";
+
+        // 소비자가 제공한 IEmbeddingService 인스턴스를 직접 등록
+        _services.AddSingleton<FluxIndex.Core.Application.Interfaces.IEmbeddingService>(embeddingService);
+
+        return this;
+    }
+
+    /// <summary>
+    /// AI 공급자 자동 선택 (provider/model 형식 지원)
+    /// 예: "openai/gpt-4", "anthropic/claude-sonnet-4-5", "azure/deployment-name"
+    /// </summary>
+    public FluxIndexContextBuilder UseAIProvider(string modelSpec, string apiKey, Dictionary<string, object>? options = null)
+    {
+        var (provider, modelName) = ParseModelSpec(modelSpec);
+
+        return provider.ToLowerInvariant() switch
+        {
+            "openai" => UseOpenAI(apiKey, modelName),
+
+            "anthropic" => throw new NotImplementedException(
+                "Anthropic embedding support is not yet implemented. " +
+                "Currently, only OpenAI and Azure OpenAI are supported for embeddings."),
+
+            "azure" => UseAzureProviderWithOptions(apiKey, modelName, options),
+
+            "google" => throw new NotImplementedException(
+                "Google (Gemini) embedding support is not yet implemented. " +
+                "Currently, only OpenAI and Azure OpenAI are supported for embeddings."),
+
+            _ => throw new ArgumentException($"Unknown AI provider: {provider}. Supported providers: openai, azure")
+        };
+    }
+
+    /// <summary>
+    /// Azure provider helper method
+    /// </summary>
+    private FluxIndexContextBuilder UseAzureProviderWithOptions(string apiKey, string modelName, Dictionary<string, object>? options)
+    {
+        var endpoint = options?.TryGetValue("endpoint", out var ep) == true ? ep?.ToString() : null;
+        if (string.IsNullOrEmpty(endpoint))
+            throw new ArgumentException("Azure endpoint is required. Provide it in options dictionary with key 'endpoint'.");
+        return UseAzureOpenAI(endpoint!, apiKey, modelName);
+    }
+
+    /// <summary>
+    /// 모델 스펙 파싱: "provider/model-name" → (provider, modelName)
+    /// </summary>
+    private (string provider, string modelName) ParseModelSpec(string modelSpec)
+    {
+        if (string.IsNullOrWhiteSpace(modelSpec))
+            throw new ArgumentException("Model specification cannot be empty", nameof(modelSpec));
+
+        var parts = modelSpec.Split('/', 2);
+        if (parts.Length != 2)
+            throw new ArgumentException(
+                $"Invalid model specification format: '{modelSpec}'. " +
+                "Expected format: 'provider/model-name' (e.g., 'openai/gpt-4', 'anthropic/claude-sonnet-4-5')",
+                nameof(modelSpec));
+
+        var provider = parts[0].Trim();
+        var modelName = parts[1].Trim();
+
+        if (string.IsNullOrWhiteSpace(provider) || string.IsNullOrWhiteSpace(modelName))
+            throw new ArgumentException(
+                $"Invalid model specification: '{modelSpec}'. Both provider and model name must be non-empty.",
+                nameof(modelSpec));
+
+        return (provider, modelName);
     }
 
     /// <summary>
@@ -377,6 +463,22 @@ public class FluxIndexContextBuilder
         // Build service provider
         var serviceProvider = _services.BuildServiceProvider();
 
+        // Debug: Direct console output to bypass logging configuration
+        Console.WriteLine($"=== DEBUG BUILD: VectorStore.Provider = '{_options.VectorStore.Provider}' ===");
+        Console.WriteLine($"=== DEBUG BUILD: Provider?.ToLower() = '{_options.VectorStore.Provider?.ToLower()}' ===");
+        Console.WriteLine($"=== DEBUG BUILD: Checking if provider == 'sqlite': {_options.VectorStore.Provider?.ToLower() == "sqlite"} ===");
+
+        // Initialize database if using SQLite (console app support)
+        if (_options.VectorStore.Provider?.ToLower() == "sqlite")
+        {
+            Console.WriteLine("=== DEBUG BUILD: Condition TRUE, calling InitializeDatabaseSync() ===");
+            InitializeDatabaseSync(serviceProvider);
+        }
+        else
+        {
+            Console.WriteLine("=== DEBUG BUILD: Condition FALSE, NOT calling InitializeDatabaseSync() ===");
+        }
+
         // Get Retriever and Indexer from DI
         var retriever = serviceProvider.GetRequiredService<Retriever>();
         var indexer = serviceProvider.GetRequiredService<Indexer>();
@@ -401,22 +503,143 @@ public class FluxIndexContextBuilder
         );
     }
 
+    /// <summary>
+    /// SQLite 데이터베이스 초기화 (콘솔 앱 지원을 위해 동기 초기화)
+    /// IHostedService는 IHost를 사용하는 앱에서만 자동 실행되므로,
+    /// 콘솔 앱에서는 명시적으로 데이터베이스를 초기화해야 함
+    /// </summary>
+    private void InitializeDatabaseSync(IServiceProvider serviceProvider)
+    {
+        try
+        {
+            Console.WriteLine("=== DEBUG InitDB: Entry ===");
+
+            using var scope = serviceProvider.CreateScope();
+            Console.WriteLine("=== DEBUG InitDB: Scope created ===");
+
+            // Debug: Check what services are actually registered
+            Console.WriteLine("=== DEBUG InitDB: Checking registered services ===");
+            var optionsService = scope.ServiceProvider.GetService<Microsoft.Extensions.Options.IOptions<FluxIndex.Storage.SQLite.SQLiteOptions>>();
+            Console.WriteLine($"=== DEBUG InitDB: IOptions<SQLiteOptions> available: {optionsService != null} ===");
+            if (optionsService != null)
+            {
+                Console.WriteLine($"=== DEBUG InitDB: SQLiteOptions.DatabasePath: {optionsService.Value?.DatabasePath} ===");
+                Console.WriteLine($"=== DEBUG InitDB: SQLiteOptions.UseInMemory: {optionsService.Value?.UseInMemory} ===");
+                Console.WriteLine($"=== DEBUG InitDB: SQLiteOptions.GetConnectionString(): {optionsService.Value?.GetConnectionString()} ===");
+            }
+
+            // Try to get context with GetRequiredService to see exact error
+            SQLiteDbContext? context = null;
+            try
+            {
+                context = scope.ServiceProvider.GetRequiredService<SQLiteDbContext>();
+                Console.WriteLine($"=== DEBUG InitDB: SQLiteDbContext resolved successfully ===");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"=== DEBUG InitDB: FAILED to resolve SQLiteDbContext: {ex.GetType().Name}: {ex.Message} ===");
+                if (ex.InnerException != null)
+                {
+                    Console.WriteLine($"=== DEBUG InitDB: Inner exception: {ex.InnerException.Message} ===");
+                }
+                return;
+            }
+
+            var connectionString = context.Database.GetConnectionString();
+            Console.WriteLine($"=== DEBUG InitDB: Connection string: {connectionString} ===");
+
+            // 데이터베이스 생성 및 마이그레이션
+            Console.WriteLine("=== DEBUG InitDB: Calling EnsureCreated() ===");
+            var created = context.Database.EnsureCreated();
+            Console.WriteLine($"=== DEBUG InitDB: EnsureCreated() result: {created} ===");
+
+            // 추가 초기화 (필요시)
+            var options = scope.ServiceProvider.GetService<Microsoft.Extensions.Options.IOptions<FluxIndex.Storage.SQLite.SQLiteOptions>>();
+            Console.WriteLine($"=== DEBUG InitDB: SQLiteOptions resolved: {options?.Value != null}, UseInMemory: {options?.Value?.UseInMemory ?? false} ===");
+
+            if (options?.Value != null && !options.Value.UseInMemory)
+            {
+                // WAL 모드 활성화 (성능 향상)
+                Console.WriteLine("=== DEBUG InitDB: Setting WAL mode ===");
+                RelationalDatabaseFacadeExtensions.ExecuteSqlRaw(context.Database, "PRAGMA journal_mode=WAL");
+
+                // 동기화 모드 설정 (성능과 안정성 균형)
+                Console.WriteLine("=== DEBUG InitDB: Setting synchronous mode ===");
+                RelationalDatabaseFacadeExtensions.ExecuteSqlRaw(context.Database, "PRAGMA synchronous=NORMAL");
+
+                Console.WriteLine("=== DEBUG InitDB: SQLite database initialized with WAL mode ===");
+            }
+            else
+            {
+                Console.WriteLine("=== DEBUG InitDB: SQLite database initialized (basic/in-memory mode) ===");
+            }
+
+            Console.WriteLine("=== DEBUG InitDB: Completed successfully ===");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"=== DEBUG InitDB: EXCEPTION: {ex.GetType().Name}: {ex.Message} ===");
+            Console.WriteLine($"=== DEBUG InitDB: Stack trace: {ex.StackTrace} ===");
+            throw;
+        }
+    }
+
     private void ConfigureVectorStore()
     {
+        Console.WriteLine($"=== DEBUG ConfigVectorStore: Provider = '{_options.VectorStore.Provider?.ToLower()}' ===");
+
         switch (_options.VectorStore.Provider?.ToLower())
         {
             case "postgresql":
+                Console.WriteLine("=== DEBUG ConfigVectorStore: Adding PostgreSQL ===");
                 _services.AddPostgreSQLVectorStore(_options.VectorStore.ConnectionString);
                 break;
             case "sqlite":
+                Console.WriteLine($"=== DEBUG ConfigVectorStore: Adding SQLite with ConnectionString = '{_options.VectorStore.ConnectionString}' ===");
                 _services.AddSQLiteVectorStore(options =>
                 {
-                    options.ConnectionString = _options.VectorStore.ConnectionString;
-                    options.UseInMemory = _options.VectorStore.ConnectionString.Contains(":memory:");
+                    // Parse connection string to extract database path
+                    // Format: "Data Source=path/to/db.db" or "Data Source=:memory:" or "Data Source=:memory:;Mode=Memory;Cache=Shared"
+                    var connStr = _options.VectorStore.ConnectionString;
+                    var isInMemory = connStr.Contains(":memory:");
+
+                    if (isInMemory)
+                    {
+                        options.UseInMemory = true;
+                        // Store full connection string in DatabasePath for shared cache support
+                        options.DatabasePath = connStr;
+                    }
+                    else
+                    {
+                        // Extract path from "Data Source=..." format
+                        var dataSourcePrefix = "Data Source=";
+                        var startIndex = connStr.IndexOf(dataSourcePrefix, StringComparison.OrdinalIgnoreCase);
+                        if (startIndex >= 0)
+                        {
+                            var path = connStr.Substring(startIndex + dataSourcePrefix.Length).Trim();
+                            // Remove any trailing semicolons or parameters
+                            var semicolonIndex = path.IndexOf(';');
+                            if (semicolonIndex >= 0)
+                            {
+                                path = path.Substring(0, semicolonIndex).Trim();
+                            }
+                            options.DatabasePath = path;
+                        }
+                        else
+                        {
+                            // Fallback: use connection string as-is (shouldn't happen)
+                            options.DatabasePath = connStr;
+                        }
+                        options.UseInMemory = false;
+                    }
+
                     options.AutoMigrate = true;
+                    Console.WriteLine($"=== DEBUG ConfigVectorStore: SQLiteOptions configured - DatabasePath: {options.DatabasePath}, UseInMemory: {options.UseInMemory}, AutoMigrate: {options.AutoMigrate} ===");
                 });
+                Console.WriteLine("=== DEBUG ConfigVectorStore: AddSQLiteVectorStore completed ===");
                 break;
             default:
+                Console.WriteLine("=== DEBUG ConfigVectorStore: Using InMemory (default) ===");
                 // Default to in-memory for testing
                 _services.AddSingleton<IVectorStore, InMemoryVectorStore>();
                 break;
@@ -446,9 +669,13 @@ public class FluxIndexContextBuilder
                 // In-memory embedding service for testing (generates random embeddings)
                 _services.AddSingleton<IEmbeddingService, InMemoryEmbeddingService>();
                 break;
+            case "custom":
+                // Custom embedding service already registered via UseEmbeddingService()
+                // Do nothing - service is already in DI container
+                break;
             default:
                 // No default implementation - consumer must provide IEmbeddingService
-                throw new InvalidOperationException("IEmbeddingService must be configured. Use UseOpenAI() or provide custom implementation.");
+                throw new InvalidOperationException("IEmbeddingService must be configured. Use UseOpenAI(), UseEmbeddingService(), or provide custom implementation.");
                 break;
         }
     }

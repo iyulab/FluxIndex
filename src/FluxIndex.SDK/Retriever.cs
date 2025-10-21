@@ -15,7 +15,7 @@ using System.Threading.Tasks;
 namespace FluxIndex.SDK;
 
 /// <summary>
-/// Retriever - 벡터 검색 및 문서 조회 담당
+/// Retriever - 벡터 검색 및 문서 조회 담당 (Phase 3: DX 개선으로 이벤트 및 진행률 모니터링 지원)
 /// </summary>
 public class Retriever
 {
@@ -26,6 +26,26 @@ public class Retriever
     private readonly IRankFusionService _rankFusionService;
     private readonly ILogger<Retriever> _logger;
     private readonly RetrieverOptions _options;
+
+    // Phase 7.3: In-memory embedding cache for same-query optimization
+    private readonly Dictionary<string, float[]> _embeddingCache = new();
+    private readonly object _embeddingCacheLock = new();
+
+    // Phase 3: 이벤트 기반 모니터링
+    /// <summary>
+    /// 검색 시작 시 발생하는 이벤트
+    /// </summary>
+    public event EventHandler<SearchStartedEventArgs>? SearchStarted;
+
+    /// <summary>
+    /// 검색 완료 시 발생하는 이벤트
+    /// </summary>
+    public event EventHandler<SearchCompletedEventArgs>? SearchCompleted;
+
+    /// <summary>
+    /// 검색 실패 시 발생하는 이벤트
+    /// </summary>
+    public event EventHandler<SearchFailedEventArgs>? SearchFailed;
 
     public Retriever(
         IVectorStore vectorStore,
@@ -55,55 +75,231 @@ public class Retriever
         Dictionary<string, object>? filter = null,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Searching for: {Query}", query);
+        return await SearchAsync(query, null, maxResults, minScore, filter, cancellationToken);
+    }
 
-        // Check cache first
-        if (_cacheService != null)
+    /// <summary>
+    /// 벡터 유사도 검색 (Phase 3: 진행률 모니터링 지원)
+    /// </summary>
+    public async Task<IEnumerable<VectorSearchResult>> SearchAsync(
+        string query,
+        IProgress<SearchProgress>? progress,
+        int maxResults = 10,
+        float minScore = 0.2f,
+        Dictionary<string, object>? filter = null,
+        CancellationToken cancellationToken = default)
+    {
+        var queryId = Guid.NewGuid().ToString();
+        var startTime = DateTime.UtcNow;
+
+        try
         {
-            var cacheKey = GenerateCacheKey(query, maxResults, minScore, filter);
-            var cachedResults = await _cacheService.GetAsync<List<VectorSearchResult>>(cacheKey, cancellationToken);
-            if (cachedResults != null)
+            // Phase 3: 이벤트 발생 - 검색 시작
+            SearchStarted?.Invoke(this, new SearchStartedEventArgs
             {
-                _logger.LogDebug("Cache hit for query: {Query}", query);
-                return cachedResults;
+                QueryId = queryId,
+                Query = query,
+                SearchType = "Vector",
+                TopK = maxResults,
+                StartedAt = startTime
+            });
+
+            _logger.LogInformation("Searching for: {Query}", query);
+
+            // Phase 3: 진행률 보고 - 시작 (0%)
+            progress?.Report(new SearchProgress
+            {
+                QueryId = queryId,
+                Query = query,
+                CurrentStep = 0,
+                TotalSteps = 5,
+                ProgressPercentage = 0,
+                Status = "Starting",
+                Message = "Checking cache"
+            });
+
+            // Check cache first
+            if (_cacheService != null)
+            {
+                var cacheKey = GenerateCacheKey(query, maxResults, minScore, filter);
+                var cachedResults = await _cacheService.GetAsync<List<VectorSearchResult>>(cacheKey, cancellationToken);
+                if (cachedResults != null)
+                {
+                    _logger.LogDebug("Cache hit for query: {Query}", query);
+
+                    // Phase 3: 진행률 보고 - 캐시 히트 (100%)
+                    progress?.Report(new SearchProgress
+                    {
+                        QueryId = queryId,
+                        Query = query,
+                        CurrentStep = 5,
+                        TotalSteps = 5,
+                        ProgressPercentage = 100,
+                        Status = "Completed",
+                        Message = "Retrieved from cache",
+                        ResultsFound = cachedResults.Count
+                    });
+
+                    // Phase 3: 이벤트 발생 - 검색 완료 (캐시)
+                    SearchCompleted?.Invoke(this, new SearchCompletedEventArgs
+                    {
+                        QueryId = queryId,
+                        Query = query,
+                        SearchType = "Vector",
+                        ResultsFound = cachedResults.Count,
+                        RequestedTopK = maxResults,
+                        ProcessingTime = DateTime.UtcNow - startTime
+                    });
+
+                    return cachedResults;
+                }
             }
+
+            // Phase 3: 진행률 보고 - 임베딩 생성 (25%)
+            progress?.Report(new SearchProgress
+            {
+                QueryId = queryId,
+                Query = query,
+                CurrentStep = 1,
+                TotalSteps = 5,
+                ProgressPercentage = 25,
+                Status = "Processing",
+                Message = "Generating query embedding"
+            });
+
+            // Phase 7.3: Check embedding cache first
+            float[] queryEmbedding;
+            lock (_embeddingCacheLock)
+            {
+                if (_embeddingCache.TryGetValue(query, out var cachedEmbedding))
+                {
+                    queryEmbedding = cachedEmbedding;
+                    _logger.LogDebug("Embedding cache hit for query: {Query}", query);
+                }
+                else
+                {
+                    queryEmbedding = null!;
+                }
+            }
+
+            // Generate embedding for query if not cached
+            if (queryEmbedding == null)
+            {
+                queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
+
+                // Phase 7.3: Cache the embedding
+                lock (_embeddingCacheLock)
+                {
+                    if (!_embeddingCache.ContainsKey(query))
+                    {
+                        _embeddingCache[query] = queryEmbedding;
+                        _logger.LogDebug("Cached embedding for query: {Query}", query);
+
+                        // Limit cache size to prevent memory issues (keep last 1000 queries)
+                        if (_embeddingCache.Count > 1000)
+                        {
+                            var oldestKey = _embeddingCache.Keys.First();
+                            _embeddingCache.Remove(oldestKey);
+                        }
+                    }
+                }
+            }
+
+            // Phase 3: 진행률 보고 - 벡터 검색 (50%)
+            progress?.Report(new SearchProgress
+            {
+                QueryId = queryId,
+                Query = query,
+                CurrentStep = 2,
+                TotalSteps = 5,
+                ProgressPercentage = 50,
+                Status = "Searching",
+                Message = "Searching vector store"
+            });
+
+            // Search in vector store
+            var searchResults = await _vectorStore.SearchAsync(
+                queryEmbedding,
+                maxResults,
+                minScore,
+                cancellationToken);
+
+            // Convert DocumentChunks to VectorSearchResults
+            var results = searchResults.Select(chunk => new VectorSearchResult
+            {
+                DocumentChunk = ConvertToModelChunk(chunk),
+                Score = 1.0f, // Default score since IVectorStore doesn't provide it
+                Rank = 0,
+                Distance = 0,
+                Metadata = chunk.Metadata
+            }).ToList();
+
+            // Phase 3: 진행률 보고 - 필터링 (75%)
+            progress?.Report(new SearchProgress
+            {
+                QueryId = queryId,
+                Query = query,
+                CurrentStep = 3,
+                TotalSteps = 5,
+                ProgressPercentage = 75,
+                Status = "Filtering",
+                Message = "Applying metadata filters",
+                ResultsFound = results.Count
+            });
+
+            // Apply metadata filter if provided
+            if (filter != null && filter.Any())
+            {
+                results = ApplyFilter(results, filter);
+            }
+
+            // Cache results
+            if (_cacheService != null && results.Any())
+            {
+                var cacheKey = GenerateCacheKey(query, maxResults, minScore, filter);
+                await _cacheService.SetAsync(cacheKey, results, _options.CacheDuration, cancellationToken);
+            }
+
+            // Phase 3: 진행률 보고 - 완료 (100%)
+            progress?.Report(new SearchProgress
+            {
+                QueryId = queryId,
+                Query = query,
+                CurrentStep = 5,
+                TotalSteps = 5,
+                ProgressPercentage = 100,
+                Status = "Completed",
+                Message = $"Found {results.Count} results",
+                ResultsFound = results.Count
+            });
+
+            _logger.LogInformation("Found {Count} results for query: {Query}", results.Count, query);
+
+            // Phase 3: 이벤트 발생 - 검색 완료
+            SearchCompleted?.Invoke(this, new SearchCompletedEventArgs
+            {
+                QueryId = queryId,
+                Query = query,
+                SearchType = "Vector",
+                ResultsFound = results.Count,
+                RequestedTopK = maxResults,
+                ProcessingTime = DateTime.UtcNow - startTime
+            });
+
+            return results;
         }
-
-        // Generate embedding for query
-        var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
-
-        // Search in vector store
-        var searchResults = await _vectorStore.SearchAsync(
-            queryEmbedding,
-            maxResults,
-            minScore,
-            cancellationToken);
-
-        // Convert DocumentChunks to VectorSearchResults
-        var results = searchResults.Select(chunk => new VectorSearchResult
+        catch (Exception ex)
         {
-            DocumentChunk = ConvertToModelChunk(chunk),
-            Score = 1.0f, // Default score since IVectorStore doesn't provide it
-            Rank = 0,
-            Distance = 0,
-            Metadata = chunk.Metadata
-        }).ToList();
-
-        // Apply metadata filter if provided
-        if (filter != null && filter.Any())
-        {
-            results = ApplyFilter(results, filter);
+            // Phase 3: 이벤트 발생 - 검색 실패
+            SearchFailed?.Invoke(this, new SearchFailedEventArgs
+            {
+                QueryId = queryId,
+                Query = query,
+                ErrorMessage = ex.Message,
+                Exception = ex
+            });
+            throw;
         }
-
-        // Cache results
-        if (_cacheService != null && results.Any())
-        {
-            var cacheKey = GenerateCacheKey(query, maxResults, minScore, filter);
-            await _cacheService.SetAsync(cacheKey, results, _options.CacheDuration, cancellationToken);
-        }
-
-        _logger.LogInformation("Found {Count} results for query: {Query}", results.Count, query);
-        return results;
     }
 
     /// <summary>
@@ -117,41 +313,170 @@ public class Retriever
         Dictionary<string, object>? filter = null,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Hybrid search - keyword: {Keyword}, query: {Query}", keyword, query);
+        return await HybridSearchAsync(keyword, query, null, maxResults, vectorWeight, filter, cancellationToken);
+    }
 
-        // Perform vector search
-        var vectorResults = await SearchAsync(query, maxResults * 2, 0, filter, cancellationToken);
+    /// <summary>
+    /// 하이브리드 검색 (키워드 + 벡터) with RRF fusion (Phase 3: 진행률 모니터링 지원)
+    /// </summary>
+    public async Task<IEnumerable<VectorSearchResult>> HybridSearchAsync(
+        string keyword,
+        string query,
+        IProgress<SearchProgress>? progress,
+        int maxResults = 10,
+        float vectorWeight = 0.7f,
+        Dictionary<string, object>? filter = null,
+        CancellationToken cancellationToken = default)
+    {
+        var queryId = Guid.NewGuid().ToString();
+        var startTime = DateTime.UtcNow;
 
-        // Perform keyword search
-        var keywordResults = await KeywordSearchAsync(keyword, maxResults * 2, filter, cancellationToken);
-
-        // Use RRF fusion if weights are equal, otherwise use weighted fusion
-        IEnumerable<VectorSearchResult> combinedResults;
-        
-        if (Math.Abs(vectorWeight - 0.5f) < 0.01f) // Equal weights, use RRF
+        try
         {
-            var resultSets = new Dictionary<string, IEnumerable<RankedResultCore>>
+            // Phase 3: 이벤트 발생 - 검색 시작
+            SearchStarted?.Invoke(this, new SearchStartedEventArgs
             {
-                ["vector"] = ConvertToRankedResults(vectorResults, "vector"),
-                ["keyword"] = ConvertToRankedResults(keywordResults, "keyword")
-            };
-            
-            var fusedResults = _rankFusionService.FuseWithRRF(resultSets, k: 60, topN: maxResults);
-            combinedResults = ConvertFromRankedResults(fusedResults);
-        }
-        else // Use weighted fusion
-        {
-            var resultSets = new Dictionary<string, (IEnumerable<RankedResultCore> results, float weight)>
-            {
-                ["vector"] = (ConvertToRankedResults(vectorResults, "vector"), vectorWeight),
-                ["keyword"] = (ConvertToRankedResults(keywordResults, "keyword"), 1 - vectorWeight)
-            };
-            
-            var fusedResults = _rankFusionService.FuseWithWeights(resultSets, topN: maxResults);
-            combinedResults = ConvertFromRankedResults(fusedResults);
-        }
+                QueryId = queryId,
+                Query = $"Hybrid: {keyword} | {query}",
+                SearchType = "Hybrid",
+                TopK = maxResults,
+                StartedAt = startTime,
+                Parameters = new Dictionary<string, object>
+                {
+                    ["keyword"] = keyword,
+                    ["query"] = query,
+                    ["vectorWeight"] = vectorWeight
+                }
+            });
 
-        return combinedResults;
+            _logger.LogInformation("Hybrid search - keyword: {Keyword}, query: {Query}", keyword, query);
+
+            // Phase 3: 진행률 보고 - 시작 (0%)
+            progress?.Report(new SearchProgress
+            {
+                QueryId = queryId,
+                Query = $"Hybrid: {keyword} | {query}",
+                CurrentStep = 0,
+                TotalSteps = 4,
+                ProgressPercentage = 0,
+                Status = "Starting",
+                Message = "Starting hybrid search"
+            });
+
+            // Phase 3: 진행률 보고 - 벡터 검색 (25%)
+            progress?.Report(new SearchProgress
+            {
+                QueryId = queryId,
+                Query = $"Hybrid: {keyword} | {query}",
+                CurrentStep = 1,
+                TotalSteps = 4,
+                ProgressPercentage = 25,
+                Status = "Vector Search",
+                Message = "Performing vector similarity search"
+            });
+
+            // Perform vector search
+            var vectorResults = await SearchAsync(query, maxResults * 2, 0, filter, cancellationToken);
+
+            // Phase 3: 진행률 보고 - 키워드 검색 (50%)
+            progress?.Report(new SearchProgress
+            {
+                QueryId = queryId,
+                Query = $"Hybrid: {keyword} | {query}",
+                CurrentStep = 2,
+                TotalSteps = 4,
+                ProgressPercentage = 50,
+                Status = "Keyword Search",
+                Message = "Performing keyword search"
+            });
+
+            // Perform keyword search
+            var keywordResults = await KeywordSearchAsync(keyword, maxResults * 2, filter, cancellationToken);
+
+            // Phase 3: 진행률 보고 - 결과 통합 (75%)
+            progress?.Report(new SearchProgress
+            {
+                QueryId = queryId,
+                Query = $"Hybrid: {keyword} | {query}",
+                CurrentStep = 3,
+                TotalSteps = 4,
+                ProgressPercentage = 75,
+                Status = "Fusion",
+                Message = "Fusing results with RRF/weighted fusion"
+            });
+
+            // Use RRF fusion if weights are equal, otherwise use weighted fusion
+            IEnumerable<VectorSearchResult> combinedResults;
+
+            if (Math.Abs(vectorWeight - 0.5f) < 0.01f) // Equal weights, use RRF
+            {
+                var resultSets = new Dictionary<string, IEnumerable<RankedResultCore>>
+                {
+                    ["vector"] = ConvertToRankedResults(vectorResults, "vector"),
+                    ["keyword"] = ConvertToRankedResults(keywordResults, "keyword")
+                };
+
+                var fusedResults = _rankFusionService.FuseWithRRF(resultSets, k: 60, topN: maxResults);
+                combinedResults = ConvertFromRankedResults(fusedResults);
+            }
+            else // Use weighted fusion
+            {
+                var resultSets = new Dictionary<string, (IEnumerable<RankedResultCore> results, float weight)>
+                {
+                    ["vector"] = (ConvertToRankedResults(vectorResults, "vector"), vectorWeight),
+                    ["keyword"] = (ConvertToRankedResults(keywordResults, "keyword"), 1 - vectorWeight)
+                };
+
+                var fusedResults = _rankFusionService.FuseWithWeights(resultSets, topN: maxResults);
+                combinedResults = ConvertFromRankedResults(fusedResults);
+            }
+
+            var finalResults = combinedResults.ToList();
+
+            // Phase 3: 진행률 보고 - 완료 (100%)
+            progress?.Report(new SearchProgress
+            {
+                QueryId = queryId,
+                Query = $"Hybrid: {keyword} | {query}",
+                CurrentStep = 4,
+                TotalSteps = 4,
+                ProgressPercentage = 100,
+                Status = "Completed",
+                Message = $"Found {finalResults.Count} hybrid results",
+                ResultsFound = finalResults.Count
+            });
+
+            // Phase 3: 이벤트 발생 - 검색 완료
+            SearchCompleted?.Invoke(this, new SearchCompletedEventArgs
+            {
+                QueryId = queryId,
+                Query = $"Hybrid: {keyword} | {query}",
+                SearchType = "Hybrid",
+                ResultsFound = finalResults.Count,
+                RequestedTopK = maxResults,
+                ProcessingTime = DateTime.UtcNow - startTime,
+                Metadata = new Dictionary<string, object>
+                {
+                    ["vectorResults"] = vectorResults.Count(),
+                    ["keywordResults"] = keywordResults.Count(),
+                    ["vectorWeight"] = vectorWeight
+                }
+            });
+
+            return finalResults;
+        }
+        catch (Exception ex)
+        {
+            // Phase 3: 이벤트 발생 - 검색 실패
+            SearchFailed?.Invoke(this, new SearchFailedEventArgs
+            {
+                QueryId = queryId,
+                Query = $"Hybrid: {keyword} | {query}",
+                ErrorMessage = ex.Message,
+                Exception = ex
+            });
+            throw;
+        }
     }
 
     /// <summary>
@@ -163,38 +488,154 @@ public class Retriever
         Dictionary<string, object>? filter = null,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Keyword search: {Keyword}", keyword);
+        return await KeywordSearchAsync(keyword, null, maxResults, filter, cancellationToken);
+    }
 
-        // Search in document repository
-        var documents = await _documentRepository.SearchByKeywordAsync(keyword, maxResults, cancellationToken);
-        
-        var results = new List<VectorSearchResult>();
-        foreach (var doc in documents)
+    /// <summary>
+    /// 키워드 기반 검색 (Phase 3: 진행률 모니터링 지원)
+    /// </summary>
+    public async Task<IEnumerable<VectorSearchResult>> KeywordSearchAsync(
+        string keyword,
+        IProgress<SearchProgress>? progress,
+        int maxResults = 10,
+        Dictionary<string, object>? filter = null,
+        CancellationToken cancellationToken = default)
+    {
+        var queryId = Guid.NewGuid().ToString();
+        var startTime = DateTime.UtcNow;
+
+        try
         {
-            // Get chunks for each document
-            var chunks = await _vectorStore.GetByDocumentIdAsync(doc.Id, cancellationToken);
-            
-            // Filter chunks containing keyword
-            var matchingChunks = chunks.Where(c => 
-                c.Content.Contains(keyword, StringComparison.OrdinalIgnoreCase));
-            
-            results.AddRange(matchingChunks.Select(chunk => new VectorSearchResult
+            // Phase 3: 이벤트 발생 - 검색 시작
+            SearchStarted?.Invoke(this, new SearchStartedEventArgs
             {
-                DocumentChunk = ConvertToModelChunk(chunk),
-                Score = CalculateKeywordScore(chunk.Content, keyword),
-                Rank = 0,
-                Distance = 0,
-                Metadata = doc.Metadata.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)
-            }));
-        }
+                QueryId = queryId,
+                Query = keyword,
+                SearchType = "Keyword",
+                TopK = maxResults,
+                StartedAt = startTime
+            });
 
-        // Apply filter if provided
-        if (filter != null && filter.Any())
+            _logger.LogInformation("Keyword search: {Keyword}", keyword);
+
+            // Phase 3: 진행률 보고 - 시작 (0%)
+            progress?.Report(new SearchProgress
+            {
+                QueryId = queryId,
+                Query = keyword,
+                CurrentStep = 0,
+                TotalSteps = 5,
+                ProgressPercentage = 0,
+                Status = "Starting",
+                Message = "Starting keyword search"
+            });
+
+            // Phase 3: 진행률 보고 - 문서 검색 (25%)
+            progress?.Report(new SearchProgress
+            {
+                QueryId = queryId,
+                Query = keyword,
+                CurrentStep = 1,
+                TotalSteps = 5,
+                ProgressPercentage = 25,
+                Status = "Searching",
+                Message = "Searching document repository"
+            });
+
+            // Search in document repository
+            var documents = await _documentRepository.SearchByKeywordAsync(keyword, maxResults, cancellationToken);
+
+            // Phase 3: 진행률 보고 - 청크 처리 (50%)
+            progress?.Report(new SearchProgress
+            {
+                QueryId = queryId,
+                Query = keyword,
+                CurrentStep = 2,
+                TotalSteps = 5,
+                ProgressPercentage = 50,
+                Status = "Processing",
+                Message = $"Processing {documents.Count()} documents for matching chunks"
+            });
+
+            var results = new List<VectorSearchResult>();
+            foreach (var doc in documents)
+            {
+                // Get chunks for each document
+                var chunks = await _vectorStore.GetByDocumentIdAsync(doc.Id, cancellationToken);
+
+                // Filter chunks containing keyword
+                var matchingChunks = chunks.Where(c =>
+                    c.Content.Contains(keyword, StringComparison.OrdinalIgnoreCase));
+
+                results.AddRange(matchingChunks.Select(chunk => new VectorSearchResult
+                {
+                    DocumentChunk = ConvertToModelChunk(chunk),
+                    Score = CalculateKeywordScore(chunk.Content, keyword),
+                    Rank = 0,
+                    Distance = 0,
+                    Metadata = doc.Metadata.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)
+                }));
+            }
+
+            // Phase 3: 진행률 보고 - 필터링 (75%)
+            progress?.Report(new SearchProgress
+            {
+                QueryId = queryId,
+                Query = keyword,
+                CurrentStep = 3,
+                TotalSteps = 5,
+                ProgressPercentage = 75,
+                Status = "Filtering",
+                Message = "Applying metadata filters and sorting",
+                ResultsFound = results.Count
+            });
+
+            // Apply filter if provided
+            if (filter != null && filter.Any())
+            {
+                results = ApplyFilter(results, filter);
+            }
+
+            var finalResults = results.OrderByDescending(r => r.Score).Take(maxResults).ToList();
+
+            // Phase 3: 진행률 보고 - 완료 (100%)
+            progress?.Report(new SearchProgress
+            {
+                QueryId = queryId,
+                Query = keyword,
+                CurrentStep = 5,
+                TotalSteps = 5,
+                ProgressPercentage = 100,
+                Status = "Completed",
+                Message = $"Found {finalResults.Count} keyword matches",
+                ResultsFound = finalResults.Count
+            });
+
+            // Phase 3: 이벤트 발생 - 검색 완료
+            SearchCompleted?.Invoke(this, new SearchCompletedEventArgs
+            {
+                QueryId = queryId,
+                Query = keyword,
+                SearchType = "Keyword",
+                ResultsFound = finalResults.Count,
+                RequestedTopK = maxResults,
+                ProcessingTime = DateTime.UtcNow - startTime
+            });
+
+            return finalResults;
+        }
+        catch (Exception ex)
         {
-            results = ApplyFilter(results, filter);
+            // Phase 3: 이벤트 발생 - 검색 실패
+            SearchFailed?.Invoke(this, new SearchFailedEventArgs
+            {
+                QueryId = queryId,
+                Query = keyword,
+                ErrorMessage = ex.Message,
+                Exception = ex
+            });
+            throw;
         }
-
-        return results.OrderByDescending(r => r.Score).Take(maxResults);
     }
 
     /// <summary>

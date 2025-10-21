@@ -101,3 +101,35 @@ public enum IndexingState
     Cancelled,
     Paused
 }
+
+/// <summary>
+/// 검색 진행 상황 (Phase 3: DX 개선)
+/// </summary>
+public class SearchProgress
+{
+    public string QueryId { get; set; } = string.Empty;
+    public string Query { get; set; } = string.Empty;
+    public int CurrentStep { get; set; }
+    public int TotalSteps { get; set; }
+    public float ProgressPercentage { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
+    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+    public int ResultsFound { get; set; }
+}
+
+/// <summary>
+/// 배치 작업 진행 상황 (Phase 3: DX 개선)
+/// </summary>
+public class BatchProgress
+{
+    public string BatchId { get; set; } = string.Empty;
+    public int CurrentItem { get; set; }
+    public int TotalItems { get; set; }
+    public float ProgressPercentage { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
+    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+    public int SuccessfulItems { get; set; }
+    public int FailedItems { get; set; }
+}

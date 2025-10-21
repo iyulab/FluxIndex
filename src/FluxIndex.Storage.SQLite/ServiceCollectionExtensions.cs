@@ -213,8 +213,8 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         Action<SQLiteOptions> configureOptions)
     {
-        // Configure options
-        services.Configure(configureOptions);
+        // Configure options with generic type parameter
+        services.Configure<SQLiteOptions>(configureOptions);
 
         // Use existing SQLiteOptions registration
         services.AddDbContext<SQLiteDbContext>((serviceProvider, dbOptions) =>

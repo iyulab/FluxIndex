@@ -35,7 +35,7 @@ dotnet add package FluxIndex.Cache.Redis
 ```csharp
 using FluxIndex.SDK;
 
-var client = new FluxIndexClientBuilder()
+var context = FluxIndexContext.CreateBuilder()
     .UseSQLite("fluxindex.db")
     .Build();
 ```
@@ -43,13 +43,13 @@ var client = new FluxIndexClientBuilder()
 ### 2. Index Documents
 
 ```csharp
-await client.Indexer.IndexDocumentAsync(
-    content: "FluxIndex is a .NET RAG library.",
+await context.Indexer.IndexDocumentAsync(
+    content: "FluxIndex is a .NET RAG library for semantic search.",
     documentId: "doc-001"
 );
 
-await client.Indexer.IndexDocumentAsync(
-    content: "It supports vector and keyword search.",
+await context.Indexer.IndexDocumentAsync(
+    content: "It supports vector, keyword, and hybrid search strategies.",
     documentId: "doc-002"
 );
 ```
@@ -57,14 +57,15 @@ await client.Indexer.IndexDocumentAsync(
 ### 3. Search
 
 ```csharp
-var results = await client.Retriever.SearchAsync(
-    query: "RAG library",
-    topK: 5
+var results = await context.Retriever.SearchAsync(
+    query: "RAG library for .NET",
+    maxResults: 5
 );
 
 foreach (var result in results)
 {
-    Console.WriteLine($"{result.Score:F2}: {result.Content}");
+    Console.WriteLine($"Score: {result.Score:F2}");
+    Console.WriteLine($"Content: {result.DocumentChunk.Content}");
 }
 ```
 
@@ -73,7 +74,7 @@ foreach (var result in results)
 ### Using OpenAI Embeddings
 
 ```csharp
-var client = new FluxIndexClientBuilder()
+var context = FluxIndexContext.CreateBuilder()
     .UseSQLite("fluxindex.db")
     .UseOpenAI("your-api-key", "text-embedding-3-small")
     .Build();
@@ -82,7 +83,7 @@ var client = new FluxIndexClientBuilder()
 ### Using Azure OpenAI
 
 ```csharp
-var client = new FluxIndexClientBuilder()
+var context = FluxIndexContext.CreateBuilder()
     .UseSQLite("fluxindex.db")
     .UseAzureOpenAI(
         endpoint: "https://your-resource.openai.azure.com/",
@@ -95,9 +96,9 @@ var client = new FluxIndexClientBuilder()
 ### Production Configuration
 
 ```csharp
-var client = new FluxIndexClientBuilder()
+var context = FluxIndexContext.CreateBuilder()
     .UsePostgreSQL("Host=localhost;Database=fluxindex;Username=user;Password=pass")
-    .UseOpenAI("your-api-key")
+    .UseOpenAI("your-api-key", "text-embedding-3-small")
     .UseRedisCache("localhost:6379")
     .Build();
 ```
@@ -106,15 +107,21 @@ var client = new FluxIndexClientBuilder()
 
 ```csharp
 using Microsoft.Extensions.DependencyInjection;
+using FluxIndex.SDK;
 
+// Register FluxIndexContext as singleton
 var services = new ServiceCollection();
 
-services.AddFluxIndex()
-    .AddSQLiteVectorStore()
-    .UseOpenAIEmbedding(apiKey: "your-api-key");
+services.AddSingleton<IFluxIndexContext>(provider =>
+{
+    return FluxIndexContext.CreateBuilder()
+        .UseSQLite("fluxindex.db")
+        .UseOpenAI("your-api-key", "text-embedding-3-small")
+        .Build();
+});
 
-var provider = services.BuildServiceProvider();
-var client = provider.GetRequiredService<FluxIndexClient>();
+var serviceProvider = services.BuildServiceProvider();
+var context = serviceProvider.GetRequiredService<IFluxIndexContext>();
 ```
 
 ## Document Processing
@@ -153,59 +160,19 @@ services.AddWebFluxIntegration();
 
 ## Search Strategies
 
-### Keyword Search (BM25)
+FluxIndex supports multiple search strategies. The default is **Adaptive**, which automatically selects the best approach.
+
+### Basic Search (Adaptive - Recommended)
 
 ```csharp
-var results = await client.Retriever.SearchAsync(
-    query: "exact terms",
-    topK: 10,
-    options: new SearchOptions
-    {
-        SearchStrategy = SearchStrategy.KeywordOnly
-    }
+// Automatically selects best strategy based on query complexity
+var results = await context.Retriever.SearchAsync(
+    query: "How does machine learning work?",
+    maxResults: 10
 );
 ```
 
-### Vector Search (Semantic)
-
-```csharp
-var results = await client.Retriever.SearchAsync(
-    query: "similar meaning",
-    topK: 10,
-    options: new SearchOptions
-    {
-        SearchStrategy = SearchStrategy.DirectVector
-    }
-);
-```
-
-### Hybrid Search (Recommended)
-
-```csharp
-var results = await client.Retriever.SearchAsync(
-    query: "machine learning",
-    topK: 10,
-    options: new SearchOptions
-    {
-        SearchStrategy = SearchStrategy.Hybrid,
-        VectorWeight = 0.7f,
-        KeywordWeight = 0.3f
-    }
-);
-```
-
-### Adaptive Search (Auto-select)
-
-```csharp
-var results = await client.Retriever.SearchAsync(
-    query: "complex query here",
-    topK: 10,
-    options: new SearchOptions
-    {
-        SearchStrategy = SearchStrategy.Adaptive
-    }
-);
-```
+For more advanced search strategies (Keyword, Vector, Hybrid), see the [Tutorial](./tutorial.md#3-search-strategies).
 
 ## Environment Variables
 
@@ -222,9 +189,9 @@ $env:OPENAI_API_KEY="your-api-key"
 
 ```csharp
 var apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
-var client = new FluxIndexClientBuilder()
+var context = FluxIndexContext.CreateBuilder()
     .UseSQLite("fluxindex.db")
-    .UseOpenAI(apiKey)
+    .UseOpenAI(apiKey, "text-embedding-3-small")
     .Build();
 ```
 
@@ -248,9 +215,12 @@ var config = new ConfigurationBuilder()
     .AddJsonFile("appsettings.json")
     .Build();
 
-var client = new FluxIndexClientBuilder()
+var context = FluxIndexContext.CreateBuilder()
     .UseSQLite(config["FluxIndex:ConnectionString"])
-    .UseOpenAI(config["FluxIndex:OpenAI:ApiKey"])
+    .UseOpenAI(
+        config["FluxIndex:OpenAI:ApiKey"],
+        config["FluxIndex:OpenAI:Model"]
+    )
     .Build();
 ```
 
@@ -258,26 +228,13 @@ var client = new FluxIndexClientBuilder()
 
 ### SQLite Database Locked
 
-```csharp
-var client = new FluxIndexClientBuilder()
-    .UseSQLite("fluxindex.db", options =>
-    {
-        options.EnableWAL = true;  // Write-Ahead Logging
-        options.BusyTimeout = 5000;
-    })
-    .Build();
-```
-
-### OpenAI Rate Limits
+SQLite uses WAL (Write-Ahead Logging) mode by default in FluxIndex. If you still encounter locks:
 
 ```csharp
-var client = new FluxIndexClientBuilder()
-    .UseSQLite("fluxindex.db")
-    .UseOpenAI(apiKey, options =>
-    {
-        options.MaxRetries = 3;
-        options.RetryDelay = TimeSpan.FromSeconds(1);
-    })
+// Ensure only one FluxIndexContext instance per database file
+// Or use PostgreSQL for multi-instance scenarios
+var context = FluxIndexContext.CreateBuilder()
+    .UsePostgreSQL(connectionString)  // Better for production
     .Build();
 ```
 
@@ -286,13 +243,22 @@ var client = new FluxIndexClientBuilder()
 ```csharp
 // Process in smaller batches
 var documents = GetLargeDocumentList();
-var batchSize = 100;
+var batchSize = 1000;  // Optimal batch size based on benchmarks
 
 for (int i = 0; i < documents.Count; i += batchSize)
 {
-    var batch = documents.Skip(i).Take(batchSize);
-    await client.Indexer.IndexBatchAsync(batch);
+    var batch = documents.Skip(i).Take(batchSize).ToList();
+    await context.Indexer.IndexBatchAsync(batch, parallelism: 8);
 }
+```
+
+### OpenAI API Rate Limits
+
+Embedding cache in FluxIndex automatically reduces API calls for repeated queries. For additional rate limiting:
+
+```csharp
+// Add delays between batches if needed
+await Task.Delay(TimeSpan.FromSeconds(1));
 ```
 
 ## Next Steps

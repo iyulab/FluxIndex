@@ -380,3 +380,5 @@ nupkgs/
 **/.env
 **/.env.local
 **/.env.*.local
+
+DEV_NOTE.md

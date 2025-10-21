@@ -63,8 +63,14 @@ public class SQLiteOptions
     public string GetConnectionString()
     {
         if (UseInMemory)
+        {
+            // If DatabasePath contains additional parameters (e.g., ;Mode=Memory;Cache=Shared), use it as-is
+            if (DatabasePath.Contains(';'))
+                return DatabasePath;
+
             return "Data Source=:memory:";
-        
+        }
+
         return $"Data Source={DatabasePath}";
     }
 }

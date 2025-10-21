@@ -1,3 +1,4 @@
+﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
@@ -56,6 +57,10 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FluxIndex.Storage.PostgreSQL.Tests", "tests\FluxIndex.Storage.PostgreSQL.Tests\FluxIndex.Storage.PostgreSQL.Tests.csproj", "{49B10928-AA06-3660-1AD2-65CEC914A647}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FluxIndex.Storage.SQLite.Tests", "tests\FluxIndex.Storage.SQLite.Tests\FluxIndex.Storage.SQLite.Tests.csproj", "{622A743A-D13E-2AA5-420B-B3C9571B83A6}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FluxIndex.SDK.Tests", "tests\FluxIndex.SDK.Tests\FluxIndex.SDK.Tests.csproj", "{0FD81020-BCF5-4C54-BB14-C2D372384E0C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -283,6 +288,18 @@ Global
 		{622A743A-D13E-2AA5-420B-B3C9571B83A6}.Release|x64.Build.0 = Release|Any CPU
 		{622A743A-D13E-2AA5-420B-B3C9571B83A6}.Release|x86.ActiveCfg = Release|Any CPU
 		{622A743A-D13E-2AA5-420B-B3C9571B83A6}.Release|x86.Build.0 = Release|Any CPU
+		{0FD81020-BCF5-4C54-BB14-C2D372384E0C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0FD81020-BCF5-4C54-BB14-C2D372384E0C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0FD81020-BCF5-4C54-BB14-C2D372384E0C}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{0FD81020-BCF5-4C54-BB14-C2D372384E0C}.Debug|x64.Build.0 = Debug|Any CPU
+		{0FD81020-BCF5-4C54-BB14-C2D372384E0C}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{0FD81020-BCF5-4C54-BB14-C2D372384E0C}.Debug|x86.Build.0 = Debug|Any CPU
+		{0FD81020-BCF5-4C54-BB14-C2D372384E0C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0FD81020-BCF5-4C54-BB14-C2D372384E0C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0FD81020-BCF5-4C54-BB14-C2D372384E0C}.Release|x64.ActiveCfg = Release|Any CPU
+		{0FD81020-BCF5-4C54-BB14-C2D372384E0C}.Release|x64.Build.0 = Release|Any CPU
+		{0FD81020-BCF5-4C54-BB14-C2D372384E0C}.Release|x86.ActiveCfg = Release|Any CPU
+		{0FD81020-BCF5-4C54-BB14-C2D372384E0C}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -306,6 +323,7 @@ Global
 		{FA5EDFB5-4450-B002-A305-7C8ECBF60839} = {2487EFC8-BA79-468E-B661-4A0B306050B3}
 		{49B10928-AA06-3660-1AD2-65CEC914A647} = {2487EFC8-BA79-468E-B661-4A0B306050B3}
 		{622A743A-D13E-2AA5-420B-B3C9571B83A6} = {2487EFC8-BA79-468E-B661-4A0B306050B3}
+		{0FD81020-BCF5-4C54-BB14-C2D372384E0C} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {021AFA3C-88FB-4C88-B3BF-F0F7B5CE92C4}

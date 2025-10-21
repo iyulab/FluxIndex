@@ -9,11 +9,13 @@
 
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" />
+    <PackageReference Include="DotNetEnv" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\FluxIndex.SDK\FluxIndex.SDK.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.Storage.SQLite\FluxIndex.Storage.SQLite.csproj" />
+    <ProjectReference Include="..\..\src\FluxIndex.AI.OpenAI\FluxIndex.AI.OpenAI.csproj" />
   </ItemGroup>
 
 </Project>

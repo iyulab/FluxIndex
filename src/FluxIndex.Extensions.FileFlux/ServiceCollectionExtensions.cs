@@ -1,5 +1,6 @@
 using FileFlux;
 using FileFlux.Domain;
+using FileFlux.Infrastructure.Quality;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace FluxIndex.Extensions.FileFlux;
@@ -17,8 +18,12 @@ public static class FileFluxServiceCollectionExtensions
     /// <returns>Service collection for chaining</returns>
     public static IServiceCollection AddFileFluxIntegration(this IServiceCollection services, Action<FileFluxOptions>? configureOptions = null)
     {
-        // Register FileFlux services (uses FileFlux 0.2.12 API) - using FileFlux's own extension method
+        // Register FileFlux services (uses FileFlux 0.3.0 API) - using FileFlux's own extension method
         services.AddFileFlux();
+
+        // Register FileFlux quality analyzer for document quality analysis and QA generation (FileFlux 0.3.0)
+        services.AddScoped<ChunkQualityEngine>();
+        services.AddScoped<IDocumentQualityAnalyzer, DocumentQualityAnalyzer>();
 
         // Configure FluxIndex-specific options
         if (configureOptions != null)
@@ -54,8 +59,20 @@ public class FileFluxOptions
     public int DefaultOverlapSize { get; set; } = 128;
 
     /// <summary>
-    /// Enable streaming API for memory-efficient processing of large files
+    /// Enable streaming API for memory-efficient processing of large files (recommended for files > 10MB)
     /// </summary>
-    public bool UseStreamingApi { get; set; } = false;
+    public bool UseStreamingApi { get; set; } = true;
+
+    /// <summary>
+    /// Enable immediate indexing for ultra-large files (chunks indexed in batches during processing)
+    /// Only applies when UseStreamingApi is true
+    /// </summary>
+    public bool EnableImmediateIndexing { get; set; } = false;
+
+    /// <summary>
+    /// Batch size for immediate indexing (default: 100 chunks)
+    /// Only applies when EnableImmediateIndexing is true
+    /// </summary>
+    public int ImmediateIndexingBatchSize { get; set; } = 100;
 }
 

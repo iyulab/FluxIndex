@@ -20,7 +20,7 @@ Comprehensive guide for using FluxIndex in production .NET applications.
 ```csharp
 using FluxIndex.SDK;
 
-var client = new FluxIndexClientBuilder()
+var context = FluxIndexContext.CreateBuilder()
     .UseSQLite("fluxindex.db")
     .Build();
 ```
@@ -28,7 +28,7 @@ var client = new FluxIndexClientBuilder()
 ### With AI Embeddings
 
 ```csharp
-var client = new FluxIndexClientBuilder()
+var context = FluxIndexContext.CreateBuilder()
     .UseSQLite("fluxindex.db")
     .UseOpenAI(apiKey: "your-api-key", model: "text-embedding-3-small")
     .Build();
@@ -37,9 +37,9 @@ var client = new FluxIndexClientBuilder()
 ### Production Setup
 
 ```csharp
-var client = new FluxIndexClientBuilder()
+var context = FluxIndexContext.CreateBuilder()
     .UsePostgreSQL("Host=localhost;Database=fluxindex;Username=user;Password=pass")
-    .UseOpenAI("your-api-key")
+    .UseOpenAI("your-api-key", "text-embedding-3-small")
     .UseRedisCache("localhost:6379")
     .Build();
 ```
@@ -48,15 +48,20 @@ var client = new FluxIndexClientBuilder()
 
 ```csharp
 using Microsoft.Extensions.DependencyInjection;
+using FluxIndex.SDK;
 
 var services = new ServiceCollection();
 
-services.AddFluxIndex()
-    .AddSQLiteVectorStore()
-    .UseOpenAIEmbedding(apiKey: "your-api-key");
+services.AddSingleton<IFluxIndexContext>(provider =>
+{
+    return FluxIndexContext.CreateBuilder()
+        .UseSQLite("fluxindex.db")
+        .UseOpenAI("your-api-key", "text-embedding-3-small")
+        .Build();
+});
 
-var provider = services.BuildServiceProvider();
-var client = provider.GetRequiredService<FluxIndexClient>();
+var serviceProvider = services.BuildServiceProvider();
+var context = serviceProvider.GetRequiredService<IFluxIndexContext>();
 ```
 
 ---
@@ -66,7 +71,7 @@ var client = provider.GetRequiredService<FluxIndexClient>();
 ### Single Document Indexing
 
 ```csharp
-var documentId = await client.Indexer.IndexDocumentAsync(
+var documentId = await context.Indexer.IndexDocumentAsync(
     content: "FluxIndex is a .NET RAG library for semantic search.",
     documentId: "doc-001"
 );
@@ -75,7 +80,7 @@ var documentId = await client.Indexer.IndexDocumentAsync(
 ### Indexing with Metadata
 
 ```csharp
-await client.Indexer.IndexDocumentAsync(
+await context.Indexer.IndexDocumentAsync(
     content: "Document content here...",
     documentId: "doc-002",
     metadata: new Dictionary<string, object>
@@ -92,43 +97,52 @@ await client.Indexer.IndexDocumentAsync(
 ### Batch Indexing
 
 ```csharp
-var documents = new[]
-{
-    new { Content = "First document", Id = "doc-1" },
-    new { Content = "Second document", Id = "doc-2" },
-    new { Content = "Third document", Id = "doc-3" }
-};
+// Prepare document entities
+var documents = new List<Document>();
 
-foreach (var doc in documents)
+for (int i = 0; i < 100; i++)
 {
-    await client.Indexer.IndexDocumentAsync(doc.Content, doc.Id);
+    var doc = new Document
+    {
+        Id = $"doc-{i:D3}",
+        CreatedAt = DateTime.UtcNow
+    };
+
+    doc.AddChunk(new DocumentChunk
+    {
+        Id = $"chunk-{i:D3}",
+        DocumentId = doc.Id,
+        Content = $"Content for document {i}",
+        ChunkIndex = 0,
+        TotalChunks = 1
+    });
+
+    documents.Add(doc);
 }
 
-// Or use batch operation (faster)
-var requests = documents.Select(d =>
-    new IndexRequest(d.Content, d.Id)
-).ToList();
+// Batch indexing with optimal parallelism (based on benchmarks: 8 threads)
+await context.Indexer.IndexBatchAsync(documents, parallelism: 8);
 
-await client.Indexer.IndexBatchAsync(requests);
+// Expected performance: 24ms for 1K chunks, 188ms for 10K chunks
 ```
 
 ### Basic Search
 
 ```csharp
-var results = await client.Retriever.SearchAsync(
-    query: "RAG library",
-    topK: 5
+var results = await context.Retriever.SearchAsync(
+    query: "RAG library for .NET",
+    maxResults: 5
 );
 
 foreach (var result in results)
 {
-    Console.WriteLine($"Document: {result.DocumentId}");
+    Console.WriteLine($"Document: {result.DocumentChunk.DocumentId}");
     Console.WriteLine($"Score: {result.Score:F2}");
-    Console.WriteLine($"Content: {result.Content}");
+    Console.WriteLine($"Content: {result.DocumentChunk.Content}");
 
-    if (result.Metadata.ContainsKey("title"))
+    if (result.DocumentChunk.Metadata.ContainsKey("title"))
     {
-        Console.WriteLine($"Title: {result.Metadata["title"]}");
+        Console.WriteLine($"Title: {result.DocumentChunk.Metadata["title"]}");
     }
 
     Console.WriteLine("---");
@@ -139,103 +153,76 @@ foreach (var result in results)
 
 ## 3. Search Strategies
 
-### Keyword Search (BM25)
+FluxIndex provides multiple search strategies. The **Adaptive** strategy (default) automatically selects the best approach based on query characteristics.
 
-Best for exact term matching and known keywords.
+### Adaptive Search (Recommended - Default)
 
-```csharp
-var results = await client.Retriever.SearchAsync(
-    query: "exact phrase search",
-    topK: 10,
-    options: new SearchOptions
-    {
-        SearchStrategy = SearchStrategy.KeywordOnly,
-        MinScore = 0.5f
-    }
-);
-```
-
-### Vector Search (Semantic)
-
-Best for meaning-based similarity.
+Automatically analyzes query complexity and selects the optimal strategy.
 
 ```csharp
-var results = await client.Retriever.SearchAsync(
-    query: "machine learning algorithms",
-    topK: 10,
-    options: new SearchOptions
-    {
-        SearchStrategy = SearchStrategy.DirectVector,
-        MinScore = 0.7f
-    }
-);
-```
-
-### Hybrid Search (Recommended)
-
-Combines keyword and semantic search for best results.
-
-```csharp
-var results = await client.Retriever.SearchAsync(
-    query: "neural network implementation",
-    topK: 10,
-    options: new SearchOptions
-    {
-        SearchStrategy = SearchStrategy.Hybrid,
-        VectorWeight = 0.7f,      // 70% semantic
-        KeywordWeight = 0.3f,     // 30% keyword
-        MinScore = 0.6f
-    }
-);
-```
-
-### Adaptive Search (Auto-select)
-
-Automatically selects the best strategy based on query complexity.
-
-```csharp
-var results = await client.Retriever.SearchAsync(
+// Simple usage - Adaptive strategy is applied by default
+var results = await context.Retriever.SearchAsync(
     query: "How do neural networks learn from data?",
-    topK: 10,
-    options: new SearchOptions
-    {
-        SearchStrategy = SearchStrategy.Adaptive
-    }
+    maxResults: 10
 );
+
+// Adaptive strategy automatically selects:
+// - Keyword search for simple, exact-match queries
+// - Vector search for complex semantic queries
+// - Hybrid search for balanced needs
 ```
 
-### Two-Stage Search (Small-to-Big)
+### Hybrid Search
 
-Retrieves small chunks, then expands to surrounding context.
+Combines BM25 keyword search with vector semantic search using Reciprocal Rank Fusion (RRF).
 
 ```csharp
-var results = await client.Retriever.SearchAsync(
-    query: "detailed explanation needed",
-    topK: 5,
-    options: new SearchOptions
-    {
-        SearchStrategy = SearchStrategy.TwoStage,
-        ExpandContext = true,
-        ContextWindow = 2  // Expand 2 chunks before/after
-    }
+var results = await context.Retriever.SearchAsync(
+    query: "neural network implementation details",
+    maxResults: 10
 );
+
+// Hybrid search provides:
+// - Keyword matching for exact technical terms
+// - Semantic understanding for conceptual queries
+// - Best balance of precision and recall
 ```
 
-### Filtering Results
+### Performance Optimization
+
+FluxIndex includes automatic performance optimizations:
+
+**Embedding Cache** (Phase 7.3):
+- In-memory cache for repeated queries
+- 100% performance improvement for cache hits
+- Eliminates redundant OpenAI API calls
+- Expected 30% latency reduction in production
 
 ```csharp
-var results = await client.Retriever.SearchAsync(
-    query: "machine learning",
-    topK: 10,
-    options: new SearchOptions
-    {
-        SearchStrategy = SearchStrategy.Hybrid,
-        Filter = result =>
-            result.Metadata.ContainsKey("category") &&
-            result.Metadata["category"].ToString() == "AI",
-        MinScore = 0.7f
-    }
-);
+// First query - generates embedding via API (~1000ms)
+var results1 = await context.Retriever.SearchAsync("RAG library", maxResults: 5);
+
+// Same query - retrieves from cache (<1ms)
+var results2 = await context.Retriever.SearchAsync("RAG library", maxResults: 5);
+
+// Cache automatically manages:
+// - Up to 1000 queries (LRU eviction)
+// - Thread-safe concurrent access
+// - Exact string matching
+```
+
+**Redis Semantic Cache** (Optional):
+```csharp
+// Enable Redis for similar query caching
+var context = FluxIndexContext.CreateBuilder()
+    .UseSQLite("fluxindex.db")
+    .UseOpenAI(apiKey, "text-embedding-3-small")
+    .UseRedisCache("localhost:6379")
+    .Build();
+
+// Similar queries share cached results (95% similarity threshold)
+await context.Retriever.SearchAsync("What is RAG?", maxResults: 5);       // Cache miss
+await context.Retriever.SearchAsync("Explain RAG systems", maxResults: 5); // Cache hit (~95% similar)
 ```
 
 ---
@@ -335,96 +322,74 @@ foreach (var url in urls)
 
 ## 5. Performance Optimization
 
-### Semantic Caching (Redis)
+### Built-in Optimizations
+
+FluxIndex includes automatic performance optimizations enabled by default:
+
+**1. Embedding Cache (In-Memory)**
+- Caches query embeddings to eliminate redundant API calls
+- 100% latency improvement for repeated queries
+- Thread-safe with LRU eviction (1000 query limit)
+- No configuration required - works automatically
+
+**2. SQLite WAL Mode**
+- Write-Ahead Logging enabled by default
+- Reduces database lock contention
+- Improves concurrent read/write performance
+
+**3. Optimal Parallelism**
+- Batch indexing uses 8 threads by default (based on benchmarks)
+- Can be customized via `parallelism` parameter
+
+### Semantic Caching with Redis (Optional)
+
+Add Redis for similarity-based caching across similar queries:
 
 ```bash
 dotnet add package FluxIndex.Cache.Redis
 ```
 
 ```csharp
-var client = new FluxIndexClientBuilder()
+var context = FluxIndexContext.CreateBuilder()
     .UseSQLite("fluxindex.db")
-    .UseOpenAI(apiKey)
+    .UseOpenAI(apiKey, "text-embedding-3-small")
     .UseRedisCache("localhost:6379")
     .Build();
 
-// Search with caching
-var results = await client.Retriever.SearchAsync(
-    query: "frequently asked question",
-    topK: 5,
-    options: new SearchOptions
-    {
-        UseCache = true,
-        CacheTTL = TimeSpan.FromHours(1),
-        SimilarityThreshold = 0.95f  // Cache hit threshold
-    }
-);
+// Redis caches similar queries (95% similarity threshold)
+await context.Retriever.SearchAsync("What is RAG?", maxResults: 5);
+await context.Retriever.SearchAsync("Explain RAG", maxResults: 5); // Cache hit
 ```
 
 ### Batch Processing
 
-Based on benchmarks, optimal batch size is 1,000-5,000 chunks with 8 threads.
+Optimal configuration based on benchmarks:
 
 ```csharp
 var documents = LoadLargeDocumentSet();
 
-// Efficient batch indexing
-await client.Indexer.IndexBatchAsync(
+// Efficient batch indexing with optimal settings
+await context.Indexer.IndexBatchAsync(
     documents: documents,
-    options: new IndexingOptions
-    {
-        BatchSize = 1000,
-        MaxParallelism = 8,
-        UseCache = true
-    }
+    parallelism: 8  // Optimal thread count from benchmarks
 );
 
-// Expected performance: ~24ms for 1K chunks, ~188ms for 10K chunks
+// Expected performance:
+// - 1K chunks: ~24ms
+// - 10K chunks: ~188ms
+// - Vector search: 0.6-0.7ms per query
 ```
 
 ### Connection Pooling (PostgreSQL)
 
-```csharp
-services.AddFluxIndex()
-    .UsePostgreSQLVectorStore(options =>
-    {
-        options.ConnectionString = "Host=localhost;Database=fluxindex;...";
-        options.EnablePooling = true;
-        options.MinPoolSize = 5;
-        options.MaxPoolSize = 20;
-        options.ConnectionTimeout = 30;
-    })
-    .UseOpenAIEmbedding(apiKey)
-    .UseRedisCache("localhost:6379");
-```
-
-### Query Optimization
+For production environments with PostgreSQL:
 
 ```csharp
-// Use adaptive search for varying query types
-var results = await client.Retriever.SearchAsync(
-    query: userQuery,
-    topK: 10,
-    options: new SearchOptions
-    {
-        SearchStrategy = SearchStrategy.Adaptive,  // Auto-selects best strategy
-        UseCache = true,                           // Enable semantic caching
-        MinScore = 0.7f,                           // Filter low-quality results
-        UseReranking = true                        // Optional: rerank results
-    }
-);
-```
-
-### Monitoring Performance
-
-```csharp
-var results = await client.Retriever.SearchAsync(query, topK: 10);
-
-// Access performance metrics
-Console.WriteLine($"Total time: {results.Performance.TotalTime.TotalMilliseconds}ms");
-Console.WriteLine($"Cache hit: {results.Performance.CacheHit}");
-Console.WriteLine($"Results: {results.Performance.ResultCount}");
-Console.WriteLine($"Strategy: {results.UsedStrategy}");
+var context = FluxIndexContext.CreateBuilder()
+    .UsePostgreSQL("Host=localhost;Database=fluxindex;Username=user;Password=pass;Pooling=true;MinPoolSize=5;MaxPoolSize=20")
+    .UseOpenAI(apiKey, "text-embedding-3-small")
+    .UseRedisCache("localhost:6379")
+    .Build();
 ```
 
 ---
@@ -454,16 +419,19 @@ services.AddLogging(builder =>
 });
 
 // FluxIndex with production settings
-services.AddFluxIndex()
-    .UsePostgreSQLVectorStore(config.GetSection("Database"))
-    .UseOpenAIEmbedding(config.GetSection("OpenAI"))
-    .UseRedisCache(config.GetConnectionString("Redis"));
+services.AddSingleton<IFluxIndexContext>(provider =>
+{
+    return FluxIndexContext.CreateBuilder()
+        .UsePostgreSQL(config.GetConnectionString("Database"))
+        .UseOpenAI(
+            config["OpenAI:ApiKey"],
+            config["OpenAI:Model"] ?? "text-embedding-3-small"
+        )
+        .UseRedisCache(config.GetConnectionString("Redis"))
+        .Build();
+});
 
-// Document processing
-services.AddFileFluxIntegration(config.GetSection("FileFlux"));
-services.AddWebFluxIntegration(config.GetSection("WebFlux"));
-
-var provider = services.BuildServiceProvider();
+var serviceProvider = services.BuildServiceProvider();
 ```
 
 ### appsettings.json
@@ -507,22 +475,18 @@ var provider = services.BuildServiceProvider();
 ```csharp
 try
 {
-    var results = await client.Retriever.SearchAsync(query, topK: 10);
+    var results = await context.Retriever.SearchAsync(query, maxResults: 10);
 }
-catch (OpenAIException ex)
+catch (Exception ex) when (ex.Message.Contains("OpenAI"))
 {
     logger.LogError(ex, "OpenAI API error: {Message}", ex.Message);
-    // Fallback to keyword-only search
-    var fallbackResults = await client.Retriever.SearchAsync(
-        query,
-        topK: 10,
-        options: new SearchOptions { SearchStrategy = SearchStrategy.KeywordOnly }
-    );
+    // Embedding cache helps reduce API failures for repeated queries
+    // Retry with exponential backoff or use fallback
 }
-catch (DatabaseException ex)
+catch (Exception ex)
 {
-    logger.LogError(ex, "Database error: {Message}", ex.Message);
-    // Retry or alert
+    logger.LogError(ex, "Search error: {Message}", ex.Message);
+    // Handle other errors
 }
 ```
 
@@ -530,21 +494,18 @@ catch (DatabaseException ex)
 
 ```csharp
 services.AddHealthChecks()
-    .AddCheck("fluxindex-database", () =>
+    .AddCheck("fluxindex", () =>
     {
         try
         {
-            var count = client.Indexer.GetDocumentCount();
-            return HealthCheckResult.Healthy($"Database accessible: {count} documents");
+            // Verify FluxIndexContext is operational
+            var context = serviceProvider.GetRequiredService<IFluxIndexContext>();
+            return HealthCheckResult.Healthy("FluxIndex operational");
         }
-        catch
+        catch (Exception ex)
         {
-            return HealthCheckResult.Unhealthy("Database not accessible");
+            return HealthCheckResult.Unhealthy("FluxIndex unavailable", ex);
         }
-    })
-    .AddCheck("fluxindex-cache", () =>
-    {
-        // Check Redis connection
     });
 ```
 
@@ -575,14 +536,30 @@ services.AddHealthChecks()
 
 ## Performance Expectations
 
-Based on benchmarks (.NET 9.0, Intel i7-1360P):
+Based on Phase 7.3 benchmarks (.NET 9.0, Intel i7-1360P):
 
-- **Batch Indexing**: 24ms/1K chunks, 188ms/10K chunks
-- **Search**: 0.6-0.7ms/1K chunks
-- **Optimal Parallelism**: 8 threads
-- **Cache Hit Rate**: 60-80% with semantic caching
+**Indexing Performance**:
+- Batch indexing (1K chunks): 24ms with 8-thread parallelism
+- Batch indexing (10K chunks): 188ms (3.5 KB/chunk average)
+- Expected throughput: ~50K chunks/second
 
-See [full benchmarks](../benchmarks/FluxIndex.Benchmarks/BENCHMARK_RESULTS.md) for details.
+**Search Performance**:
+- Vector search: 0.6-0.7ms per query (in-memory embeddings)
+- Hybrid search with OpenAI API: 383ms average (100 chunks)
+- Embedding cache hit: 100% improvement (1036ms → <1ms)
+- Redis semantic cache hit: <5ms (95% similarity threshold)
+
+**Cache Effectiveness**:
+- Embedding cache for exact matches: 100% latency reduction
+- Expected production improvement: 30% with 30% cache hit rate
+- Semantic cache for similar queries: 95%+ latency reduction
+
+**Optimal Settings**:
+- Thread parallelism: 8 threads for batch operations
+- Chunk size: 512-1024 tokens per chunk
+- Embedding cache: 1000 queries (LRU eviction)
+
+See [full benchmarks](../benchmarks/FluxIndex.Benchmarks/BENCHMARK_RESULTS.md) and [Phase 7.3 results](../benchmarks/FluxIndex.Benchmarks/PHASE_7.3_RESULTS.md) for details.
 
 ---
 

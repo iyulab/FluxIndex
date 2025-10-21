@@ -14,7 +14,7 @@ using System.Threading.Tasks;
 namespace FluxIndex.SDK;
 
 /// <summary>
-/// Indexer - 문서 인덱싱 및 저장 담당
+/// Indexer - 문서 인덱싱 및 저장 담당 (Phase 3: DX 개선으로 이벤트 및 진행률 모니터링 지원)
 /// </summary>
 public class Indexer
 {
@@ -24,6 +24,32 @@ public class Indexer
     private readonly IChunkingService _chunkingService;
     private readonly ILogger<Indexer> _logger;
     private readonly IndexerOptions _options;
+
+    // Phase 3: 이벤트 기반 모니터링
+    /// <summary>
+    /// 인덱싱 시작 시 발생하는 이벤트
+    /// </summary>
+    public event EventHandler<IndexingStartedEventArgs>? IndexingStarted;
+
+    /// <summary>
+    /// 인덱싱 완료 시 발생하는 이벤트
+    /// </summary>
+    public event EventHandler<IndexingCompletedEventArgs>? IndexingCompleted;
+
+    /// <summary>
+    /// 인덱싱 실패 시 발생하는 이벤트
+    /// </summary>
+    public event EventHandler<IndexingFailedEventArgs>? IndexingFailed;
+
+    /// <summary>
+    /// 배치 작업 시작 시 발생하는 이벤트
+    /// </summary>
+    public event EventHandler<BatchStartedEventArgs>? BatchStarted;
+
+    /// <summary>
+    /// 배치 작업 완료 시 발생하는 이벤트
+    /// </summary>
+    public event EventHandler<BatchCompletedEventArgs>? BatchCompleted;
 
     public Indexer(
         IVectorStore vectorStore,
@@ -48,20 +74,80 @@ public class Indexer
         Document document,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Indexing document: {DocumentId}", document.Id);
+        return await IndexDocumentAsync(document, null, cancellationToken);
+    }
+
+    /// <summary>
+    /// 문서 인덱싱 (Phase 3: 진행률 모니터링 지원)
+    /// </summary>
+    /// <param name="document">인덱싱할 문서</param>
+    /// <param name="progress">진행률 보고 객체 (선택)</param>
+    /// <param name="cancellationToken">취소 토큰</param>
+    public async Task<string> IndexDocumentAsync(
+        Document document,
+        IProgress<IndexingProgress>? progress,
+        CancellationToken cancellationToken = default)
+    {
+        var jobId = Guid.NewGuid().ToString();
+        var startTime = DateTime.UtcNow;
+        _logger.LogInformation("Indexing document: {DocumentId}, JobId: {JobId}", document.Id, jobId);
 
         try
         {
+            // Phase 3: 이벤트 발생 - 인덱싱 시작
+            var chunks = document.Chunks.ToList();
+            IndexingStarted?.Invoke(this, new IndexingStartedEventArgs
+            {
+                JobId = jobId,
+                DocumentId = document.Id,
+                TotalChunks = chunks.Count,
+                StartedAt = startTime
+            });
+
+            // Phase 3: 진행률 보고 - 초기화
+            progress?.Report(new IndexingProgress
+            {
+                JobId = jobId,
+                DocumentId = document.Id,
+                CurrentChunk = 0,
+                TotalChunks = chunks.Count,
+                ProgressPercentage = 0,
+                Status = "Starting",
+                Message = "Saving document metadata"
+            });
+
             // Save document metadata
             await _documentRepository.AddAsync(document, cancellationToken);
 
             // Process chunks
-            var chunks = document.Chunks.ToList();
             if (!chunks.Any())
             {
                 _logger.LogWarning("Document {DocumentId} has no chunks", document.Id);
+
+                IndexingCompleted?.Invoke(this, new IndexingCompletedEventArgs
+                {
+                    JobId = jobId,
+                    DocumentId = document.Id,
+                    ChunksIndexed = 0,
+                    TotalChunks = 0,
+                    Success = true,
+                    ProcessingTime = DateTime.UtcNow - startTime
+                });
+
                 return document.Id;
             }
+
+            // Phase 3: 진행률 보고 - 청크 처리 시작
+            progress?.Report(new IndexingProgress
+            {
+                JobId = jobId,
+                DocumentId = document.Id,
+                CurrentChunk = 0,
+                TotalChunks = chunks.Count,
+                ProgressPercentage = 10,
+                Status = "Processing",
+                Message = $"Processing {chunks.Count} chunks"
+            });
 
             // Convert to Entity chunks first
             var entityChunks = new List<DocumentChunkEntity>();
@@ -70,20 +156,77 @@ public class Indexer
                 entityChunks.Add(chunk);
             }
 
+            // Phase 3: 진행률 보고 - 임베딩 생성
+            progress?.Report(new IndexingProgress
+            {
+                JobId = jobId,
+                DocumentId = document.Id,
+                CurrentChunk = 0,
+                TotalChunks = chunks.Count,
+                ProgressPercentage = 30,
+                Status = "Embedding",
+                Message = "Generating embeddings"
+            });
+
             // Generate embeddings for entity chunks
             var embeddedEntityChunks = await GenerateEmbeddingsAsync(entityChunks, cancellationToken);
+
+            // Phase 3: 진행률 보고 - 벡터 스토어 저장
+            progress?.Report(new IndexingProgress
+            {
+                JobId = jobId,
+                DocumentId = document.Id,
+                CurrentChunk = chunks.Count,
+                TotalChunks = chunks.Count,
+                ProgressPercentage = 80,
+                Status = "Storing",
+                Message = "Storing in vector store"
+            });
 
             // Store in vector store
             await _vectorStore.StoreBatchAsync(embeddedEntityChunks, cancellationToken);
 
-            _logger.LogInformation("Successfully indexed document {DocumentId} with {ChunkCount} chunks", 
+            // Phase 3: 진행률 보고 - 완료
+            progress?.Report(new IndexingProgress
+            {
+                JobId = jobId,
+                DocumentId = document.Id,
+                CurrentChunk = chunks.Count,
+                TotalChunks = chunks.Count,
+                ProgressPercentage = 100,
+                Status = "Completed",
+                Message = "Indexing completed successfully"
+            });
+
+            _logger.LogInformation("Successfully indexed document {DocumentId} with {ChunkCount} chunks",
                 document.Id, chunks.Count);
+
+            // Phase 3: 이벤트 발생 - 인덱싱 완료
+            IndexingCompleted?.Invoke(this, new IndexingCompletedEventArgs
+            {
+                JobId = jobId,
+                DocumentId = document.Id,
+                ChunksIndexed = chunks.Count,
+                TotalChunks = chunks.Count,
+                Success = true,
+                ProcessingTime = DateTime.UtcNow - startTime
+            });
 
             return document.Id;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to index document {DocumentId}", document.Id);
+
+            // Phase 3: 이벤트 발생 - 인덱싱 실패
+            IndexingFailed?.Invoke(this, new IndexingFailedEventArgs
+            {
+                JobId = jobId,
+                DocumentId = document.Id,
+                ErrorMessage = ex.Message,
+                Exception = ex
+            });
+
             throw;
         }
     }
@@ -122,15 +265,109 @@ public class Indexer
         int parallelism = 4,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Batch indexing {Count} documents", documents.Count());
+        return await IndexBatchAsync(documents, null, parallelism, cancellationToken);
+    }
+
+    /// <summary>
+    /// 배치 인덱싱 (Phase 3: 진행률 모니터링 지원)
+    /// </summary>
+    /// <param name="documents">인덱싱할 문서 목록</param>
+    /// <param name="progress">배치 진행률 보고 객체 (선택)</param>
+    /// <param name="parallelism">병렬 처리 수준</param>
+    /// <param name="cancellationToken">취소 토큰</param>
+    public async Task<IEnumerable<string>> IndexBatchAsync(
+        IEnumerable<Document> documents,
+        IProgress<BatchProgress>? progress,
+        int parallelism = 4,
+        CancellationToken cancellationToken = default)
+    {
+        var batchId = Guid.NewGuid().ToString();
+        var startTime = DateTime.UtcNow;
+        var documentList = documents.ToList();
+        var totalDocuments = documentList.Count;
+
+        _logger.LogInformation("Batch indexing {Count} documents, BatchId: {BatchId}", totalDocuments, batchId);
+
+        // Phase 3: 이벤트 발생 - 배치 시작
+        BatchStarted?.Invoke(this, new BatchStartedEventArgs
+        {
+            BatchId = batchId,
+            TotalItems = totalDocuments,
+            BatchType = "IndexBatch",
+            StartedAt = startTime
+        });
+
+        // Phase 3: 진행률 보고 - 초기화
+        progress?.Report(new BatchProgress
+        {
+            BatchId = batchId,
+            CurrentItem = 0,
+            TotalItems = totalDocuments,
+            ProgressPercentage = 0,
+            Status = "Starting",
+            Message = $"Starting batch indexing of {totalDocuments} documents",
+            SuccessfulItems = 0,
+            FailedItems = 0
+        });
 
         var semaphore = new SemaphoreSlim(parallelism);
-        var tasks = documents.Select(async doc =>
+        var completedCount = 0;
+        var successCount = 0;
+        var failedCount = 0;
+        var lockObject = new object();
+
+        var tasks = documentList.Select(async doc =>
         {
             await semaphore.WaitAsync(cancellationToken);
             try
             {
-                return await IndexDocumentAsync(doc, cancellationToken);
+                var result = await IndexDocumentAsync(doc, cancellationToken);
+
+                // Phase 3: 진행률 업데이트 (성공)
+                lock (lockObject)
+                {
+                    completedCount++;
+                    successCount++;
+
+                    progress?.Report(new BatchProgress
+                    {
+                        BatchId = batchId,
+                        CurrentItem = completedCount,
+                        TotalItems = totalDocuments,
+                        ProgressPercentage = (float)completedCount / totalDocuments * 100,
+                        Status = "Processing",
+                        Message = $"Indexed document {doc.Id} ({completedCount}/{totalDocuments})",
+                        SuccessfulItems = successCount,
+                        FailedItems = failedCount
+                    });
+                }
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to index document {DocumentId} in batch {BatchId}", doc.Id, batchId);
+
+                // Phase 3: 진행률 업데이트 (실패)
+                lock (lockObject)
+                {
+                    completedCount++;
+                    failedCount++;
+
+                    progress?.Report(new BatchProgress
+                    {
+                        BatchId = batchId,
+                        CurrentItem = completedCount,
+                        TotalItems = totalDocuments,
+                        ProgressPercentage = (float)completedCount / totalDocuments * 100,
+                        Status = "Processing",
+                        Message = $"Failed to index document {doc.Id} ({completedCount}/{totalDocuments})",
+                        SuccessfulItems = successCount,
+                        FailedItems = failedCount
+                    });
+                }
+
+                return string.Empty; // Return empty for failed documents
             }
             finally
             {
@@ -139,9 +376,34 @@ public class Indexer
         });
 
         var results = await Task.WhenAll(tasks);
-        _logger.LogInformation("Batch indexing completed. Indexed {Count} documents", results.Length);
 
-        return results;
+        // Phase 3: 진행률 보고 - 완료
+        progress?.Report(new BatchProgress
+        {
+            BatchId = batchId,
+            CurrentItem = totalDocuments,
+            TotalItems = totalDocuments,
+            ProgressPercentage = 100,
+            Status = "Completed",
+            Message = $"Batch indexing completed: {successCount} succeeded, {failedCount} failed",
+            SuccessfulItems = successCount,
+            FailedItems = failedCount
+        });
+
+        _logger.LogInformation("Batch indexing completed. Indexed {Success}/{Total} documents (BatchId: {BatchId})",
+            successCount, totalDocuments, batchId);
+
+        // Phase 3: 이벤트 발생 - 배치 완료
+        BatchCompleted?.Invoke(this, new BatchCompletedEventArgs
+        {
+            BatchId = batchId,
+            TotalItems = totalDocuments,
+            SuccessfulItems = successCount,
+            FailedItems = failedCount,
+            TotalProcessingTime = DateTime.UtcNow - startTime
+        });
+
+        return results.Where(r => !string.IsNullOrEmpty(r));
     }
 
     /// <summary>

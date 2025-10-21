@@ -15,6 +15,8 @@ public class SQLiteVectorStore : IVectorStore
     private readonly SQLiteDbContext _context;
     private readonly ILogger<SQLiteVectorStore> _logger;
     private readonly SQLiteOptions _options;
+    private bool _initialized = false;
+    private readonly SemaphoreSlim _initLock = new SemaphoreSlim(1, 1);
 
     public SQLiteVectorStore(
         SQLiteDbContext context,
@@ -26,8 +28,28 @@ public class SQLiteVectorStore : IVectorStore
         _options = options.Value;
     }
 
+    private async Task EnsureInitializedAsync(CancellationToken cancellationToken = default)
+    {
+        if (_initialized) return;
+
+        await _initLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (_initialized) return;
+
+            await _context.Database.EnsureCreatedAsync(cancellationToken);
+            _initialized = true;
+        }
+        finally
+        {
+            _initLock.Release();
+        }
+    }
+
     public async Task<string> StoreAsync(DocumentChunk chunk, CancellationToken cancellationToken = default)
     {
+        await EnsureInitializedAsync(cancellationToken);
+
         var id = Guid.NewGuid().ToString();
         var entity = new VectorEntity
         {
