@@ -4,104 +4,53 @@
 [![NuGet](https://img.shields.io/nuget/v/FluxIndex.SDK.svg?label=FluxIndex.SDK)](https://www.nuget.org/packages/FluxIndex.SDK/)
 [![License](https://img.shields.io/github/license/iyulab/FluxIndex)](LICENSE)
 
-.NET 9.0 RAG library for building retrieval-augmented generation systems with vector and hybrid search.
+**RAG library for .NET 9.0** - Build semantic search and retrieval systems with vector + keyword hybrid search.
 
-## Overview
+## Key Features
 
-FluxIndex provides document indexing and semantic retrieval for .NET applications. It combines vector embeddings with keyword search using clean architecture principles and modular design.
-
-## Features
-
-- **Vector Search** - Semantic similarity using embeddings (SQLite-vec, pgvector)
-- **Keyword Search** - BM25 algorithm for exact term matching
-- **Hybrid Search** - Combines vector + keyword with Reciprocal Rank Fusion
-- **Adaptive Search** - Automatic strategy selection based on query complexity
-- **Embedding Cache** - In-memory cache for repeated queries (100% improvement)
-- **Storage Options** - SQLite (dev), PostgreSQL (production)
-- **AI Agnostic** - Works with OpenAI, Azure OpenAI, or custom services
-- **Document Processing** - FileFlux integration for PDF/DOCX/TXT
-- **Web Crawling** - WebFlux integration for web content extraction
-- **Semantic Caching** - Redis-based similarity caching
-- **Clean Architecture** - Modular DI-based design
-
-## Installation
-
-```bash
-# Minimal setup (local development)
-dotnet add package FluxIndex.SDK
-dotnet add package FluxIndex.Storage.SQLite
-
-# Production setup
-dotnet add package FluxIndex.SDK
-dotnet add package FluxIndex.AI.OpenAI
-dotnet add package FluxIndex.Storage.PostgreSQL
-dotnet add package FluxIndex.Cache.Redis
-
-# Document processing (optional)
-dotnet add package FluxIndex.Extensions.FileFlux
-dotnet add package FluxIndex.Extensions.WebFlux
-```
+- **Hybrid Search** - Vector (semantic) + Keyword (BM25) with automatic strategy selection
+- **High Performance** - Embedding cache (100% faster), batch indexing (24ms/1K chunks)
+- **Multiple Storage** - SQLite, PostgreSQL with pgvector
+- **AI Flexibility** - OpenAI, Azure OpenAI, or custom embedding services
+- **Document Processing** - PDF/DOCX/TXT via FileFlux, web crawling via WebFlux
+- **Production Ready** - Redis caching, clean architecture, .NET 9.0
 
 ## Quick Start
+
+```bash
+dotnet add package FluxIndex.SDK
+dotnet add package FluxIndex.Storage.SQLite
+```
 
 ```csharp
 using FluxIndex.SDK;
 
-// Setup with SQLite and OpenAI
+// 1. Setup
 var context = FluxIndexContext.CreateBuilder()
     .UseSQLite("fluxindex.db")
     .UseOpenAI("your-api-key", "text-embedding-3-small")
     .Build();
 
-// Index documents
+// 2. Index
 await context.Indexer.IndexDocumentAsync(
-    content: "FluxIndex is a .NET RAG library for semantic search.",
-    documentId: "doc-001"
-);
+    "FluxIndex is a RAG library for .NET", "doc-001");
 
-// Search with adaptive strategy
-var results = await context.Retriever.SearchAsync(
-    query: "RAG library for .NET",
-    maxResults: 5
-);
-
-foreach (var result in results)
-{
-    Console.WriteLine($"Score: {result.Score:F2}");
-    Console.WriteLine($"Content: {result.DocumentChunk.Content}");
-}
+// 3. Search
+var results = await context.Retriever.SearchAsync("RAG library", maxResults: 5);
 ```
+
+👉 **See [Tutorial](./docs/tutorial.md) for complete examples and best practices**
 
 ## Performance
 
-Based on [benchmarks](./benchmarks/FluxIndex.Benchmarks/BENCHMARK_RESULTS.md) with .NET 9.0 on Intel i7-1360P:
+| Operation | Performance | Notes |
+|-----------|-------------|-------|
+| Batch Indexing | 24ms/1K chunks | 8-thread parallelism |
+| Vector Search | 0.6ms/query | In-memory embeddings |
+| Embedding Cache | 100% faster | Eliminates API calls |
+| Semantic Cache | <5ms | Redis, 95% similarity |
 
-| Operation | Dataset | Performance | Notes |
-|-----------|---------|-------------|-------|
-| Batch Indexing | 1,000 chunks | 24ms | 8-thread parallelism |
-| Batch Indexing | 10,000 chunks | 188ms | 3.5 KB/chunk |
-| Vector Search | 1,000 chunks | 0.6-0.7ms | In-memory embeddings |
-| Embedding Cache Hit | Repeated query | 100% faster | Eliminates API calls |
-| Hybrid Search | 100 chunks | 383ms avg | With OpenAI API |
-| Semantic Cache | Similar query | <5ms | 95% similarity threshold |
-
-**Optimization Features**:
-- In-memory embedding cache for repeated queries
-- Semantic caching with Redis for similar queries
-- Optimal parallelism: 8 threads for batch operations
-- Expected 30% latency reduction with realistic cache hit rates
-
-## Advanced Usage
-
-See [Tutorial](./docs/tutorial.md) for detailed examples:
-
-- **Hybrid Search** - Combine vector and keyword search with RRF
-- **Adaptive Search** - Automatic strategy selection based on query complexity
-- **Embedding Cache** - In-memory cache for repeated queries
-- **Semantic Caching** - Redis-based similarity caching for related queries
-- **Document Processing** - FileFlux integration for PDF/DOCX/TXT
-- **Web Crawling** - WebFlux integration for web content extraction
-- **Batch Operations** - Efficient bulk indexing with parallelism
+Full benchmarks: [BENCHMARK_RESULTS.md](./benchmarks/FluxIndex.Benchmarks/BENCHMARK_RESULTS.md)
 
 ## Documentation
 

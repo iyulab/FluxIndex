@@ -6,10 +6,12 @@ Comprehensive guide for using FluxIndex in production .NET applications.
 
 1. [Setup and Configuration](#1-setup-and-configuration)
 2. [Basic Indexing and Search](#2-basic-indexing-and-search)
+   - Real-World Scenarios (Support Chatbot, Document Q&A, Code Search)
 3. [Search Strategies](#3-search-strategies)
 4. [Document Processing](#4-document-processing)
 5. [Performance Optimization](#5-performance-optimization)
 6. [Production Deployment](#6-production-deployment)
+7. [Troubleshooting Common Issues](#troubleshooting-common-issues)
 
 ---
 
@@ -79,6 +81,8 @@ var documentId = await context.Indexer.IndexDocumentAsync(
 
 ### Indexing with Metadata
 
+Metadata enables powerful filtering and organization capabilities:
+
 ```csharp
 await context.Indexer.IndexDocumentAsync(
     content: "Document content here...",
@@ -92,6 +96,38 @@ await context.Indexer.IndexDocumentAsync(
         ["tags"] = new[] { "rag", "search", "dotnet" }
     }
 );
+```
+
+**Real-World Example - Support Ticket System**:
+```csharp
+// Index support tickets with rich metadata
+await context.Indexer.IndexDocumentAsync(
+    content: ticket.Description,
+    documentId: $"ticket-{ticket.Id}",
+    metadata: new Dictionary<string, object>
+    {
+        ["ticket_id"] = ticket.Id,
+        ["customer_id"] = ticket.CustomerId,
+        ["status"] = ticket.Status,
+        ["priority"] = ticket.Priority,
+        ["category"] = ticket.Category,
+        ["created_at"] = ticket.CreatedAt,
+        ["resolved_at"] = ticket.ResolvedAt,
+        ["assigned_to"] = ticket.AssignedAgent
+    }
+);
+
+// Search with metadata filtering
+var similarTickets = await context.Retriever.SearchAsync(
+    query: "email authentication not working",
+    maxResults: 10
+);
+
+// Filter results by metadata in your application logic
+var openTickets = similarTickets
+    .Where(r => r.DocumentChunk.Metadata["status"].ToString() == "open")
+    .Where(r => r.DocumentChunk.Metadata["category"].ToString() == "authentication")
+    .ToList();
 ```
 
 ### Batch Indexing
@@ -146,6 +182,210 @@ foreach (var result in results)
     }
 
     Console.WriteLine("---");
+}
+```
+
+### Real-World Scenarios
+
+**Scenario 1: Customer Support RAG System**
+
+Complete example of a support chatbot with context-aware responses:
+
+```csharp
+public class SupportChatbot
+{
+    private readonly IFluxIndexContext _context;
+    private readonly ITextCompletionService _llm;
+
+    public async Task<string> AnswerQuestion(string userQuestion, string customerId)
+    {
+        // 1. Retrieve relevant knowledge base articles
+        var relevantDocs = await _context.Retriever.SearchAsync(
+            query: userQuestion,
+            maxResults: 5
+        );
+
+        // 2. Build context from retrieved documents
+        var context = string.Join("\n\n", relevantDocs.Select(r =>
+            $"[{r.DocumentChunk.Metadata["title"]}]\n{r.DocumentChunk.Content}"
+        ));
+
+        // 3. Generate response using LLM with retrieved context
+        var prompt = $@"
+Based on the following knowledge base articles, answer the customer's question.
+
+Knowledge Base:
+{context}
+
+Customer Question: {userQuestion}
+
+Provide a helpful, accurate response based on the knowledge base.
+If the answer isn't in the knowledge base, say so clearly.
+";
+
+        var response = await _llm.GenerateCompletionAsync(prompt);
+        return response;
+    }
+}
+
+// Usage
+var chatbot = new SupportChatbot(context, llmService);
+var answer = await chatbot.AnswerQuestion(
+    "How do I reset my password?",
+    customerId: "customer-123"
+);
+Console.WriteLine(answer);
+```
+
+**Scenario 2: Document Q&A System**
+
+Building a system to answer questions from company documents:
+
+```csharp
+public class DocumentQASystem
+{
+    private readonly IFluxIndexContext _context;
+
+    // Index company documents (policies, manuals, wikis)
+    public async Task IndexCompanyDocuments(string documentsDirectory)
+    {
+        var files = Directory.GetFiles(documentsDirectory, "*.pdf", SearchOption.AllDirectories);
+
+        var fileFlux = new FileFluxIntegration(_context);
+
+        foreach (var file in files)
+        {
+            var relativePath = Path.GetRelativePath(documentsDirectory, file);
+            var category = Path.GetDirectoryName(relativePath) ?? "general";
+
+            await fileFlux.ProcessAndIndexAsync(file, new ProcessingOptions
+            {
+                Metadata = new Dictionary<string, object>
+                {
+                    ["file_path"] = relativePath,
+                    ["category"] = category,
+                    ["indexed_at"] = DateTime.UtcNow,
+                    ["document_type"] = "company_policy"
+                }
+            });
+
+            Console.WriteLine($"Indexed: {relativePath}");
+        }
+    }
+
+    // Answer questions with source citations
+    public async Task<(string Answer, List<string> Sources)> AskQuestion(string question)
+    {
+        var results = await _context.Retriever.SearchAsync(
+            query: question,
+            maxResults: 5
+        );
+
+        var sources = results
+            .Select(r => r.DocumentChunk.Metadata["file_path"].ToString())
+            .Distinct()
+            .ToList();
+
+        var contextText = string.Join("\n\n---\n\n", results.Select((r, i) =>
+            $"[Source {i + 1}: {r.DocumentChunk.Metadata["file_path"]}]\n{r.DocumentChunk.Content}"
+        ));
+
+        // Generate answer using LLM with citations
+        var answer = $"Based on {sources.Count} company documents:\n\n{contextText}";
+
+        return (answer, sources);
+    }
+}
+
+// Usage
+var qaSystem = new DocumentQASystem(context);
+
+// Initial indexing
+await qaSystem.IndexCompanyDocuments("./company-docs");
+
+// Query the system
+var (answer, sources) = await qaSystem.AskQuestion(
+    "What is our remote work policy?"
+);
+
+Console.WriteLine($"Answer: {answer}");
+Console.WriteLine($"\nSources: {string.Join(", ", sources)}");
+```
+
+**Scenario 3: Code Search and Documentation**
+
+Search through your codebase for implementation examples:
+
+```csharp
+public class CodebaseSearch
+{
+    private readonly IFluxIndexContext _context;
+
+    public async Task IndexCodebase(string projectPath)
+    {
+        var codeFiles = Directory.GetFiles(projectPath, "*.cs", SearchOption.AllDirectories)
+            .Where(f => !f.Contains("bin") && !f.Contains("obj"))
+            .ToList();
+
+        foreach (var file in codeFiles)
+        {
+            var code = await File.ReadAllTextAsync(file);
+            var relativePath = Path.GetRelativePath(projectPath, file);
+            var namespaceName = ExtractNamespace(code);
+
+            await _context.Indexer.IndexDocumentAsync(
+                content: code,
+                documentId: relativePath,
+                metadata: new Dictionary<string, object>
+                {
+                    ["file_path"] = relativePath,
+                    ["namespace"] = namespaceName,
+                    ["language"] = "csharp",
+                    ["indexed_at"] = DateTime.UtcNow,
+                    ["lines_of_code"] = code.Split('\n').Length
+                }
+            );
+        }
+    }
+
+    public async Task<List<CodeExample>> FindImplementationExamples(string query)
+    {
+        var results = await _context.Retriever.SearchAsync(
+            query: query,
+            maxResults: 10
+        );
+
+        return results.Select(r => new CodeExample
+        {
+            FilePath = r.DocumentChunk.Metadata["file_path"].ToString(),
+            Code = r.DocumentChunk.Content,
+            Namespace = r.DocumentChunk.Metadata["namespace"].ToString(),
+            Relevance = r.Score
+        }).ToList();
+    }
+
+    private string ExtractNamespace(string code)
+    {
+        var match = Regex.Match(code, @"namespace\s+([\w\.]+)");
+        return match.Success ? match.Groups[1].Value : "global";
+    }
+}
+
+// Usage
+var codeSearch = new CodebaseSearch(context);
+
+// Index your codebase
+await codeSearch.IndexCodebase("./src");
+
+// Find examples
+var examples = await codeSearch.FindImplementationExamples(
+    "how to implement repository pattern with entity framework"
+);
+
+foreach (var example in examples)
+{
+    Console.WriteLine($"\nFile: {example.FilePath} (Relevance: {example.Relevance:F2})");
+    Console.WriteLine(example.Code);
 }
 ```
 
@@ -560,6 +800,205 @@ Based on Phase 7.3 benchmarks (.NET 9.0, Intel i7-1360P):
 - Embedding cache: 1000 queries (LRU eviction)
 
 See [full benchmarks](../benchmarks/FluxIndex.Benchmarks/BENCHMARK_RESULTS.md) and [Phase 7.3 results](../benchmarks/FluxIndex.Benchmarks/PHASE_7.3_RESULTS.md) for details.
+
+---
+
+## Troubleshooting Common Issues
+
+### Issue 1: Slow Search Performance
+
+**Symptoms**: Search queries take >1 second even with cache
+
+**Solutions**:
+```csharp
+// 1. Verify embedding cache is working
+var sw = System.Diagnostics.Stopwatch.StartNew();
+var results1 = await context.Retriever.SearchAsync("test query", maxResults: 5);
+sw.Stop();
+Console.WriteLine($"First query: {sw.ElapsedMilliseconds}ms");
+
+sw.Restart();
+var results2 = await context.Retriever.SearchAsync("test query", maxResults: 5);
+sw.Stop();
+Console.WriteLine($"Cached query: {sw.ElapsedMilliseconds}ms");
+
+// 2. Check if you're using in-memory embeddings (recommended)
+// In production, ensure EmbeddingService caches embeddings in memory
+
+// 3. Enable Redis for semantic caching
+var context = FluxIndexContext.CreateBuilder()
+    .UseSQLite("fluxindex.db")
+    .UseOpenAI(apiKey, "text-embedding-3-small")
+    .UseRedisCache("localhost:6379")  // Add this
+    .Build();
+
+// 4. Optimize batch size for indexing
+await context.Indexer.IndexBatchAsync(documents, parallelism: 8);
+```
+
+### Issue 2: Out of Memory with Large Document Sets
+
+**Symptoms**: Application crashes or slows down during large batch indexing
+
+**Solutions**:
+```csharp
+// Process in smaller batches
+var allDocuments = GetLargeDocumentList();
+var batchSize = 1000;  // Adjust based on available memory
+
+for (int i = 0; i < allDocuments.Count; i += batchSize)
+{
+    var batch = allDocuments.Skip(i).Take(batchSize).ToList();
+    await context.Indexer.IndexBatchAsync(batch, parallelism: 8);
+
+    Console.WriteLine($"Processed batch {i / batchSize + 1} of {Math.Ceiling((double)allDocuments.Count / batchSize)}");
+
+    // Optional: Add small delay to prevent resource exhaustion
+    await Task.Delay(100);
+}
+```
+
+### Issue 3: OpenAI API Rate Limits
+
+**Symptoms**: Errors like "Rate limit exceeded" during indexing or search
+
+**Solutions**:
+```csharp
+// 1. Implement retry logic with exponential backoff
+public async Task<float[]> GenerateEmbeddingWithRetry(string text)
+{
+    int maxRetries = 3;
+    int delayMs = 1000;
+
+    for (int i = 0; i < maxRetries; i++)
+    {
+        try
+        {
+            return await embeddingService.GenerateEmbeddingAsync(text);
+        }
+        catch (Exception ex) when (ex.Message.Contains("rate limit"))
+        {
+            if (i == maxRetries - 1) throw;
+
+            await Task.Delay(delayMs * (int)Math.Pow(2, i));
+        }
+    }
+
+    throw new Exception("Failed after retries");
+}
+
+// 2. Reduce parallelism for batch operations
+await context.Indexer.IndexBatchAsync(documents, parallelism: 4);  // Lower from 8
+
+// 3. Add delays between batches
+foreach (var batch in batches)
+{
+    await context.Indexer.IndexBatchAsync(batch, parallelism: 4);
+    await Task.Delay(TimeSpan.FromSeconds(1));  // Rate limiting delay
+}
+```
+
+### Issue 4: SQLite Database Locked Errors
+
+**Symptoms**: "Database is locked" errors during concurrent operations
+
+**Solutions**:
+```csharp
+// 1. Ensure only one FluxIndexContext instance per database file
+// Incorrect: Creating multiple instances
+var context1 = FluxIndexContext.CreateBuilder().UseSQLite("db.db").Build();
+var context2 = FluxIndexContext.CreateBuilder().UseSQLite("db.db").Build();  // ❌ Don't do this
+
+// Correct: Single instance, register as singleton in DI
+services.AddSingleton<IFluxIndexContext>(provider =>
+{
+    return FluxIndexContext.CreateBuilder()
+        .UseSQLite("fluxindex.db")
+        .Build();
+});
+
+// 2. For production with high concurrency, use PostgreSQL instead
+var context = FluxIndexContext.CreateBuilder()
+    .UsePostgreSQL(connectionString)  // Better for concurrent access
+    .UseOpenAI(apiKey, "text-embedding-3-small")
+    .Build();
+```
+
+### Issue 5: Poor Search Relevance
+
+**Symptoms**: Search returns irrelevant results or misses obvious matches
+
+**Solutions**:
+```csharp
+// 1. Ensure you're using appropriate chunk sizes
+// Too large: Loss of granularity
+// Too small: Loss of context
+services.AddFileFluxIntegration(options =>
+{
+    options.DefaultMaxChunkSize = 1024;  // Recommended: 512-1024 tokens
+    options.DefaultOverlapSize = 128;    // Recommended: 10-15% of chunk size
+});
+
+// 2. Verify embeddings are being generated
+var results = await context.Retriever.SearchAsync("test", maxResults: 5);
+foreach (var result in results)
+{
+    Console.WriteLine($"Score: {result.Score:F4}");  // Should be 0.0-1.0 range
+    Console.WriteLine($"Content: {result.DocumentChunk.Content}");
+}
+
+// 3. Try different search strategies explicitly
+// If default adaptive isn't working well, experiment with:
+// - Hybrid search for technical terms + concepts
+// - Vector search for pure semantic similarity
+// - Keyword search for exact term matching
+
+// 4. Add more context to queries
+// Instead of: "authentication"
+// Use: "how does user authentication work in our system?"
+```
+
+### Issue 6: Missing Search Results
+
+**Symptoms**: Expected documents don't appear in search results
+
+**Solutions**:
+```csharp
+// 1. Verify documents are actually indexed
+// Check document count in database
+
+// 2. Increase maxResults to see if results exist but are ranked low
+var results = await context.Retriever.SearchAsync("query", maxResults: 50);
+
+// 3. Check if metadata filtering is too restrictive
+var allResults = await context.Retriever.SearchAsync("query", maxResults: 100);
+// Then filter in application code instead of database
+
+// 4. Verify document content was properly extracted
+// Print indexed content to confirm it matches expectations
+```
+
+### Issue 7: Cache Not Working
+
+**Symptoms**: Every query takes the same time, no cache performance improvement
+
+**Solutions**:
+```csharp
+// 1. Verify exact query strings match (cache uses exact string matching)
+var query1 = "How does RAG work?";
+var query2 = "How does RAG work?";  // Must be identical
+var query3 = "how does rag work?";  // ❌ Different case won't hit cache
+
+// 2. For similar query matching, use Redis semantic cache
+var context = FluxIndexContext.CreateBuilder()
+    .UseSQLite("fluxindex.db")
+    .UseOpenAI(apiKey, "text-embedding-3-small")
+    .UseRedisCache("localhost:6379")  // Enables semantic caching
+    .Build();
+
+// 3. Verify cache isn't being cleared between requests
+// Ensure FluxIndexContext is registered as Singleton, not Transient/Scoped
+```
 
 ---
 
