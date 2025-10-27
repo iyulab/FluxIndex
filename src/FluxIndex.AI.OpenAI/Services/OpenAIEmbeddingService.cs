@@ -44,6 +44,21 @@ public class OpenAIEmbeddingService : IEmbeddingService
             return Array.Empty<float>();
         }
 
+        // Token count validation and logging
+        var estimatedTokens = text.Length / 4;
+        _logger.LogInformation("=== EMBEDDING REQUEST: {Length} chars (~{Tokens} tokens) ===",
+            text.Length, estimatedTokens);
+
+        if (estimatedTokens > 8000)
+        {
+            var preview = text.Substring(0, Math.Min(200, text.Length));
+            _logger.LogError("=== TOKEN LIMIT EXCEEDED: ~{Tokens} tokens (max: 8192) ===", estimatedTokens);
+            _logger.LogError("=== TEXT PREVIEW: {Preview}... ===", preview);
+            throw new InvalidOperationException(
+                $"Text too large for embedding: ~{estimatedTokens} tokens (max: 8192). " +
+                "This indicates a chunking pipeline failure. Text length: {text.Length} chars");
+        }
+
         // Check cache first if enabled
         var cacheKey = GenerateCacheKey(text);
         if (_cache != null)
@@ -65,6 +80,8 @@ public class OpenAIEmbeddingService : IEmbeddingService
 
             var response = await _client.GenerateEmbeddingAsync(text, options, cancellationToken);
             var embedding = response.Value.ToFloats().ToArray();
+
+            _logger.LogInformation("=== EMBEDDING SUCCESS: Generated for ~{Tokens} tokens ===", estimatedTokens);
 
             // Cache the result if caching is enabled
             if (_cache != null)
@@ -115,6 +132,8 @@ public class OpenAIEmbeddingService : IEmbeddingService
         // 2. Generate embeddings for uncached texts in optimized batches
         if (uncachedTexts.Any())
         {
+            _logger.LogInformation("=== BATCH EMBEDDING: Processing {Count} uncached texts ===", uncachedTexts.Count);
+
             // Process in batches of 50 for better performance
             const int batchSize = 50;
             for (int batchStart = 0; batchStart < uncachedTexts.Count; batchStart += batchSize)
@@ -122,10 +141,27 @@ public class OpenAIEmbeddingService : IEmbeddingService
                 var batch = uncachedTexts.Skip(batchStart).Take(batchSize).ToList();
                 var batchTexts = batch.Select(x => x.text).ToList();
 
+                // Log each chunk size in the batch
+                for (int i = 0; i < batchTexts.Count; i++)
+                {
+                    var tokens = batchTexts[i].Length / 4;
+                    _logger.LogInformation("=== BATCH CHUNK {Index}/{Total}: {Length} chars (~{Tokens} tokens) ===",
+                        i + 1, batchTexts.Count, batchTexts[i].Length, tokens);
+
+                    if (tokens > 8000)
+                    {
+                        _logger.LogError("=== BATCH CHUNK {Index} EXCEEDS LIMIT: ~{Tokens} tokens ===", i + 1, tokens);
+                    }
+                }
+
                 try
                 {
+                    _logger.LogInformation("=== CALLING OpenAI GenerateEmbeddingsAsync with {Count} texts ===", batchTexts.Count);
+
                     // Single API call for batch - major performance improvement
                     var response = await _client.GenerateEmbeddingsAsync(batchTexts, new EmbeddingGenerationOptions(), cancellationToken);
+
+                    _logger.LogInformation("=== BATCH EMBEDDING SUCCESS: Generated {Count} embeddings ===", response.Value.Count);
 
                     for (int i = 0; i < batch.Count && i < response.Value.Count; i++)
                     {

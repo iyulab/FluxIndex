@@ -117,8 +117,21 @@ public class WebFluxIntegration
             {
                 // Use non-streaming API
                 var webChunks = await _webContentProcessor.ProcessUrlAsync(url, chunkingOptions, cancellationToken);
+
+                _logger.LogInformation("=== WEBFLUX CHUNKING: Generated {Count} chunks from URL ===", webChunks.Count);
+
                 foreach (var webChunk in webChunks)
                 {
+                    var estimatedTokens = webChunk.Content.Length / 4;
+                    _logger.LogInformation("=== WEBFLUX CHUNK {Seq}/{Total}: {Length} chars (~{Tokens} tokens, quality: {Quality}) ===",
+                        webChunk.SequenceNumber, webChunks.Count, webChunk.Content.Length, estimatedTokens, webChunk.QualityScore);
+
+                    if (estimatedTokens > 8000)
+                    {
+                        _logger.LogWarning("=== WEBFLUX CHUNK {Seq} EXCEEDS TOKEN LIMIT: ~{Tokens} tokens ===",
+                            webChunk.SequenceNumber, estimatedTokens);
+                    }
+
                     var documentChunk = ConvertToDocumentChunk(webChunk, chunks.Count, url);
                     chunks.Add(documentChunk);
                 }

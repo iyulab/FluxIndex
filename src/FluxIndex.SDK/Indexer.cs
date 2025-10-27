@@ -149,12 +149,66 @@ public class Indexer
                 Message = $"Processing {chunks.Count} chunks"
             });
 
-            // Convert to Entity chunks first
+            // Convert to Entity chunks first with automatic oversized chunk splitting
+            Console.WriteLine($"=== INDEXER: Converting {chunks.Count} DocumentChunks to entities ===");
+            _logger.LogInformation("=== INDEXER: Converting {Count} DocumentChunks to entities ===", chunks.Count);
+
             var entityChunks = new List<DocumentChunkEntity>();
+            var chunkIndex = 0;
+
             foreach (var chunk in chunks)
             {
-                entityChunks.Add(chunk);
+                var estimatedTokens = chunk.Content.Length / 4;
+                Console.WriteLine($"=== INDEXER CHUNK {chunk.ChunkIndex}/{chunks.Count}: {chunk.Content.Length} chars (~{estimatedTokens} tokens) ===");
+                _logger.LogInformation("=== INDEXER CHUNK {Index}/{Total}: {Length} chars (~{Tokens} tokens) ===",
+                    chunk.ChunkIndex, chunks.Count, chunk.Content.Length, estimatedTokens);
+
+                // SAFETY: Split oversized chunks automatically (WebFlux chunking bug workaround)
+                if (estimatedTokens > 8000)
+                {
+                    Console.WriteLine($"=== INDEXER: Chunk {chunk.ChunkIndex} EXCEEDS TOKEN LIMIT (~{estimatedTokens} tokens) - Auto-splitting ===");
+                    _logger.LogWarning("Chunk {Index} exceeds token limit (~{Tokens} tokens) - splitting into smaller chunks",
+                        chunk.ChunkIndex, estimatedTokens);
+
+                    // Split into chunks of ~2000 tokens (8000 chars) to be safe
+                    const int maxChunkChars = 8000; // ~2000 tokens
+                    var content = chunk.Content;
+                    var subChunkCount = (int)Math.Ceiling((double)content.Length / maxChunkChars);
+
+                    for (int i = 0; i < subChunkCount; i++)
+                    {
+                        var startPos = i * maxChunkChars;
+                        var length = Math.Min(maxChunkChars, content.Length - startPos);
+                        var subContent = content.Substring(startPos, length);
+
+                        var subChunk = DocumentChunkEntity.Create(
+                            chunk.DocumentId,
+                            subContent,
+                            chunkIndex++,
+                            chunks.Count // Will be adjusted later
+                        );
+                        // Copy metadata if exists
+                        if (chunk.Metadata != null)
+                        {
+                            subChunk.Metadata = chunk.Metadata;
+                        }
+
+                        entityChunks.Add(subChunk);
+                        Console.WriteLine($"=== INDEXER: Created sub-chunk {i + 1}/{subChunkCount}: {subContent.Length} chars (~{subContent.Length / 4} tokens) ===");
+                    }
+
+                    _logger.LogInformation("Split oversized chunk {Index} into {SubChunks} smaller chunks",
+                        chunk.ChunkIndex, subChunkCount);
+                }
+                else
+                {
+                    // Normal sized chunk - add directly
+                    entityChunks.Add(chunk);
+                    chunkIndex++;
+                }
             }
+
+            Console.WriteLine($"=== INDEXER: Total entity chunks after splitting: {entityChunks.Count} (original: {chunks.Count}) ===");
 
             // Phase 3: 진행률 보고 - 임베딩 생성
             progress?.Report(new IndexingProgress
@@ -167,6 +221,8 @@ public class Indexer
                 Status = "Embedding",
                 Message = "Generating embeddings"
             });
+
+            _logger.LogInformation("=== INDEXER: Converted {Count} entities, calling GenerateEmbeddingsAsync ===", entityChunks.Count);
 
             // Generate embeddings for entity chunks
             var embeddedEntityChunks = await GenerateEmbeddingsAsync(entityChunks, cancellationToken);
@@ -577,6 +633,21 @@ public class Indexer
         try
         {
             var texts = chunks.Select(c => c.Content).ToList();
+            _logger.LogInformation("=== INDEXER GenerateEmbeddings: Extracted {Count} texts from chunks ===", texts.Count);
+
+            for (int i = 0; i < texts.Count; i++)
+            {
+                var tokens = texts[i].Length / 4;
+                _logger.LogInformation("=== INDEXER TEXT {Index}/{Total}: {Length} chars (~{Tokens} tokens) ===",
+                    i, texts.Count, texts[i].Length, tokens);
+
+                if (tokens > 8000)
+                {
+                    _logger.LogError("=== INDEXER TEXT {Index} EXCEEDS LIMIT: ~{Tokens} tokens ===", i, tokens);
+                }
+            }
+
+            _logger.LogInformation("=== INDEXER: Calling GenerateEmbeddingsBatchAsync with {Count} texts ===", texts.Count);
             var embeddings = await _embeddingService.GenerateEmbeddingsBatchAsync(texts, cancellationToken);
             var embeddingArray = embeddings.ToArray();
 
