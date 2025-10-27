@@ -416,6 +416,7 @@ public class FluxIndexContextBuilder
         // Register hybrid search services
         _services.AddScoped<ISparseRetriever, BM25SparseRetriever>();
         _services.AddScoped<IHybridSearchService, HybridSearchService>();
+        _services.AddScoped<IRankFusionService, RankFusionService>();
 
         // Register Small-to-Big services
         _services.AddScoped<ISmallToBigRetriever, SmallToBigRetriever>();
