@@ -8,6 +8,7 @@ using DocumentChunkEntity = FluxIndex.Domain.Entities.DocumentChunk;
 using DocumentChunkModel = FluxIndex.Domain.Models.DocumentChunk;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -21,7 +22,7 @@ namespace FluxIndex.SDK;
 /// FluxIndex 컨텍스트 - Retriever와 Indexer를 통한 간편한 진입점
 /// 시맨틱 캐싱을 통한 성능 최적화 지원
 /// </summary>
-public class FluxIndexContext : IFluxIndexContext
+public class FluxIndexContext : IFluxIndexContext, IDisposable
 {
     private readonly Retriever _retriever;
     private readonly Indexer _indexer;
@@ -30,6 +31,7 @@ public class FluxIndexContext : IFluxIndexContext
     private readonly ISmallToBigRetriever? _smallToBigRetriever;
     private readonly IQualityMonitoringService? _qualityMonitor;
     private readonly ILogger<FluxIndexContext> _logger;
+    private bool _disposed = false;
 
     public FluxIndexContext(
         Retriever retriever,
@@ -714,6 +716,74 @@ public class FluxIndexContext : IFluxIndexContext
             FileName = string.Empty, // Default value since SDK doesn't track this
             Metadata = sdkResult.Metadata
         };
+    }
+
+    /// <summary>
+    /// Dispose pattern implementation for proper resource cleanup
+    /// ✅ Issue #3 fix: Ensures SQLite connections are properly closed
+    /// </summary>
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (_disposed)
+            return;
+
+        if (disposing)
+        {
+            try
+            {
+                // 1. Stop quality monitoring if enabled
+                if (_qualityMonitor != null)
+                {
+                    try
+                    {
+                        _qualityMonitor.StopMonitoringAsync().GetAwaiter().GetResult();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to stop quality monitoring");
+                    }
+                }
+
+                // 2. Dispose VectorStore (DbContext) to close DB connections
+                if (ServiceProvider.GetService(typeof(IVectorStore)) is IDisposable vectorStore)
+                {
+                    vectorStore.Dispose();
+                }
+
+                // 3. Dispose SQLite DbContext explicitly
+                var dbContextType = Type.GetType("FluxIndex.Storage.SQLite.SQLiteDbContext, FluxIndex.Storage.SQLite");
+                if (dbContextType != null)
+                {
+                    var dbContext = ServiceProvider.GetService(dbContextType) as DbContext;
+                    if (dbContext != null)
+                    {
+                        // Close connection explicitly before disposing
+                        dbContext.Database.CloseConnection();
+                        dbContext.Dispose();
+                    }
+                }
+
+                // 4. Dispose ServiceProvider
+                if (ServiceProvider is IDisposable disposableProvider)
+                {
+                    disposableProvider.Dispose();
+                }
+
+                _logger.LogInformation("FluxIndexContext disposed successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error disposing FluxIndexContext");
+            }
+        }
+
+        _disposed = true;
     }
 }
 
