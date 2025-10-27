@@ -34,10 +34,14 @@ public class FluxIndexContextBuilder
         _options = new FluxIndexOptions();
         _retrieverOptions = new RetrieverOptions();
         _indexerOptions = new IndexerOptions();
-        
+
         // 기본 서비스 등록
         _services.AddLogging();
         _services.AddMemoryCache();
+
+        // ✅ Default to InMemory embedding for better developer experience
+        // This allows developers to test FluxIndex without requiring external API keys
+        _options.Embedding.Provider = "InMemory";
     }
 
     /// <summary>
@@ -674,8 +678,9 @@ public class FluxIndexContextBuilder
                 // Do nothing - service is already in DI container
                 break;
             default:
-                // No default implementation - consumer must provide IEmbeddingService
-                throw new InvalidOperationException("IEmbeddingService must be configured. Use UseOpenAI(), UseEmbeddingService(), or provide custom implementation.");
+                // ✅ Fallback to InMemory embedding if no provider specified
+                // This should not happen since constructor sets InMemory as default
+                _services.AddSingleton<IEmbeddingService, InMemoryEmbeddingService>();
                 break;
         }
     }

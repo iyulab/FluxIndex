@@ -68,6 +68,47 @@ public class Indexer
     }
 
     /// <summary>
+    /// 간편 API: 문자열 콘텐츠로 직접 문서 인덱싱
+    /// README 예제 코드와 호환되는 간단한 인터페이스 제공
+    /// </summary>
+    /// <param name="content">인덱싱할 문서 내용</param>
+    /// <param name="documentId">문서 ID</param>
+    /// <param name="metadata">메타데이터 (선택)</param>
+    /// <param name="cancellationToken">취소 토큰</param>
+    /// <returns>인덱싱된 문서 ID</returns>
+    public async Task<string> IndexDocumentAsync(
+        string content,
+        string documentId,
+        Dictionary<string, object>? metadata = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+            throw new ArgumentException("Content cannot be empty", nameof(content));
+        if (string.IsNullOrWhiteSpace(documentId))
+            throw new ArgumentException("Document ID cannot be empty", nameof(documentId));
+
+        // Create Document entity
+        var document = Document.Create(documentId);
+        document.Content = content;
+
+        // Add metadata if provided
+        if (metadata != null)
+        {
+            foreach (var (key, value) in metadata)
+            {
+                document.SetMetadata(key, value);
+            }
+        }
+
+        // Create single chunk from content
+        var chunk = DocumentChunkEntity.Create(documentId, content, 0, 1);
+        document.AddChunk(chunk);
+
+        // Use existing indexing logic
+        return await IndexDocumentAsync(document, cancellationToken);
+    }
+
+    /// <summary>
     /// 문서 인덱싱
     /// </summary>
     public async Task<string> IndexDocumentAsync(
