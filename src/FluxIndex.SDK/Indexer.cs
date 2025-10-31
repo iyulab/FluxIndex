@@ -975,6 +975,191 @@ public class Indexer
 
         return null;
     }
+
+    /// <summary>
+    /// 여러 문서의 메타데이터를 배치로 추출
+    /// </summary>
+    /// <param name="documents">문서 목록 (DocumentId, Content)</param>
+    /// <param name="schema">메타데이터 스키마</param>
+    /// <param name="strategy">추출 전략</param>
+    /// <param name="maxConcurrency">최대 병렬 처리 수</param>
+    /// <param name="progressCallback">진행 상황 콜백</param>
+    /// <param name="cancellationToken">취소 토큰</param>
+    /// <returns>배치 추출 결과</returns>
+    public async Task<BatchMetadataExtractionResult> ExtractMetadataBatchAsync(
+        IEnumerable<(string DocumentId, string Content)> documents,
+        MetadataSchema schema = MetadataSchema.General,
+        MetadataExtractionStrategy strategy = MetadataExtractionStrategy.Smart,
+        int maxConcurrency = 4,
+        IProgress<BatchMetadataExtractionProgress>? progressCallback = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (_metadataExtractor == null)
+        {
+            throw new InvalidOperationException(
+                "Metadata extractor is not configured. Use WithOpenAIMetadataExtractor() or WithCustomMetadataExtractor() in the builder.");
+        }
+
+        var docList = documents.ToList();
+        if (!docList.Any())
+        {
+            throw new ArgumentException("Document list cannot be empty", nameof(documents));
+        }
+
+        _logger.LogInformation("Starting batch metadata extraction for {Count} documents", docList.Count);
+
+        // Create batch request
+        var request = new BatchMetadataExtractionRequest
+        {
+            MaxConcurrency = maxConcurrency,
+            ContinueOnError = true,
+            Items = docList.Select(doc => new MetadataExtractionItem
+            {
+                DocumentId = doc.DocumentId,
+                Content = doc.Content,
+                Schema = schema,
+                Strategy = strategy
+            }).ToList()
+        };
+
+        // Extract metadata options from IndexerOptions
+        var indexingOptions = new IndexingOptions();
+        if (_options.CustomOptions != null)
+        {
+            foreach (var (key, value) in _options.CustomOptions)
+            {
+                indexingOptions.CustomOptions[key] = value;
+            }
+        }
+
+        var minConfidence = indexingOptions.GetMinMetadataConfidence();
+        var customPrompt = indexingOptions.GetCustomMetadataPrompt();
+
+        var extractionOptions = new AIMetadataExtractionOptions
+        {
+            Strategy = strategy,
+            MinConfidence = minConfidence,
+            CustomPrompt = customPrompt
+        };
+
+        // Call batch extraction with progress reporting
+        var result = await _metadataExtractor.ExtractBatchWithProgressAsync(
+            request,
+            extractionOptions,
+            progressCallback,
+            cancellationToken);
+
+        _logger.LogInformation(
+            "Batch metadata extraction completed: {Successful}/{Total} documents succeeded",
+            result.SuccessfulItems, result.TotalItems);
+
+        return result;
+    }
+
+    /// <summary>
+    /// 여러 문서를 인덱싱하고 메타데이터를 자동 추출 (배치 모드)
+    /// </summary>
+    /// <param name="documents">문서 목록 (DocumentId, Content, Metadata)</param>
+    /// <param name="options">인덱싱 옵션</param>
+    /// <param name="progressCallback">진행 상황 콜백</param>
+    /// <param name="cancellationToken">취소 토큰</param>
+    /// <returns>배치 인덱싱 결과</returns>
+    public async Task<BatchIndexingResult> IndexDocumentsBatchAsync(
+        IEnumerable<(string DocumentId, string Content, Dictionary<string, object>? Metadata)> documents,
+        IndexingOptions? options = null,
+        IProgress<BatchProgress>? progressCallback = null,
+        CancellationToken cancellationToken = default)
+    {
+        var docList = documents.ToList();
+        if (!docList.Any())
+        {
+            throw new ArgumentException("Document list cannot be empty", nameof(documents));
+        }
+
+        options ??= new IndexingOptions();
+
+        _logger.LogInformation("Starting batch document indexing for {Count} documents", docList.Count);
+
+        var result = new BatchIndexingResult
+        {
+            TotalDocuments = docList.Count
+        };
+
+        var startTime = DateTime.UtcNow;
+
+        // Report initial progress
+        progressCallback?.Report(new BatchProgress
+        {
+            BatchId = result.BatchId,
+            TotalItems = docList.Count,
+            Status = "Processing",
+            Message = "Starting batch document indexing..."
+        });
+
+        for (int i = 0; i < docList.Count; i++)
+        {
+            var (documentId, content, metadata) = docList[i];
+
+            try
+            {
+                // Index document with automatic metadata extraction
+                await IndexDocumentAsync(content, documentId, metadata, cancellationToken);
+
+                result.SuccessfulDocuments++;
+
+                // Report progress
+                progressCallback?.Report(new BatchProgress
+                {
+                    BatchId = result.BatchId,
+                    CurrentItem = i + 1,
+                    TotalItems = docList.Count,
+                    SuccessfulItems = result.SuccessfulDocuments,
+                    FailedItems = result.FailedDocuments,
+                    Status = "Processing",
+                    Message = $"Indexed document {i + 1}/{docList.Count}: {documentId}"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to index document: {DocumentId}", documentId);
+
+                result.FailedDocuments++;
+                result.Results.Add(new IndexingResult
+                {
+                    DocumentId = documentId,
+                    Success = false,
+                    Errors = new List<IndexingError>
+                    {
+                        new IndexingError
+                        {
+                            Message = ex.Message,
+                            ErrorCode = "INDEXING_FAILED"
+                        }
+                    }
+                });
+            }
+        }
+
+        result.TotalProcessingTime = DateTime.UtcNow - startTime;
+
+        // Report final progress
+        progressCallback?.Report(new BatchProgress
+        {
+            BatchId = result.BatchId,
+            CurrentItem = docList.Count,
+            TotalItems = docList.Count,
+            SuccessfulItems = result.SuccessfulDocuments,
+            FailedItems = result.FailedDocuments,
+            Status = "Completed",
+            Message = $"Batch indexing completed: {result.SuccessfulDocuments} succeeded, {result.FailedDocuments} failed"
+        });
+
+        _logger.LogInformation(
+            "Batch document indexing completed: {Successful}/{Total} documents succeeded, Time={Time}ms",
+            result.SuccessfulDocuments, result.TotalDocuments, result.TotalProcessingTime.TotalMilliseconds);
+
+        return result;
+    }
 }
 
 /// <summary>

@@ -781,4 +781,279 @@ Return ONLY valid JSON. Example:
             }
         };
     }
+
+    public async Task<BatchMetadataExtractionResult> ExtractBatchWithProgressAsync(
+        BatchMetadataExtractionRequest request,
+        AIMetadataExtractionOptions? options = null,
+        IProgress<BatchMetadataExtractionProgress>? progressCallback = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (request == null)
+            throw new ArgumentNullException(nameof(request));
+        if (request.Items == null || request.Items.Count == 0)
+            throw new ArgumentException("Batch request must contain at least one item", nameof(request));
+
+        options ??= new AIMetadataExtractionOptions();
+
+        var result = new BatchMetadataExtractionResult
+        {
+            BatchId = request.BatchId,
+            StartedAt = DateTime.UtcNow,
+            TotalItems = request.Items.Count
+        };
+
+        var startTime = DateTime.UtcNow;
+
+        // Report initial progress
+        progressCallback?.Report(new BatchMetadataExtractionProgress
+        {
+            BatchId = request.BatchId,
+            CurrentItemIndex = 0,
+            TotalItems = request.Items.Count,
+            Status = BatchExtractionStatus.Processing,
+            Message = "Starting batch metadata extraction..."
+        });
+
+        _logger.LogInformation("Starting batch metadata extraction: {BatchId}, {ItemCount} items",
+            request.BatchId, request.Items.Count);
+
+        // Create semaphore for concurrency control
+        using var semaphore = new System.Threading.SemaphoreSlim(request.MaxConcurrency);
+
+        var tasks = request.Items.Select(async (item, index) =>
+        {
+            await semaphore.WaitAsync(cancellationToken);
+            try
+            {
+                var itemStartTime = DateTime.UtcNow;
+
+                // Report progress for current item
+                progressCallback?.Report(new BatchMetadataExtractionProgress
+                {
+                    BatchId = request.BatchId,
+                    CurrentItemIndex = index + 1,
+                    TotalItems = request.Items.Count,
+                    Status = BatchExtractionStatus.Processing,
+                    CurrentDocumentId = item.DocumentId,
+                    SuccessfulItems = result.SuccessfulItems,
+                    FailedItems = result.FailedItems,
+                    Message = $"Processing document {index + 1}/{request.Items.Count}: {item.DocumentId}",
+                    EstimatedTimeRemaining = CalculateEstimatedTime(
+                        startTime, index + 1, request.Items.Count)
+                });
+
+                try
+                {
+                    // Determine schema and strategy for this item
+                    var itemSchema = item.Schema ?? MetadataSchema.General;
+                    var itemStrategy = item.Strategy ?? options.Strategy;
+                    var itemOptions = new AIMetadataExtractionOptions
+                    {
+                        Strategy = itemStrategy,
+                        MinConfidence = options.MinConfidence,
+                        CustomPrompt = options.CustomPrompt,
+                        MaxRetries = options.MaxRetries,
+                        RetryDelayMs = options.RetryDelayMs,
+                        TimeoutMs = options.TimeoutMs,
+                        MaxTokens = options.MaxTokens,
+                        CacheTTL = options.CacheTTL
+                    };
+
+                    // Generate cache key
+                    var cacheKey = GenerateCacheKey(item.Content, itemSchema);
+
+                    // Extract metadata with caching
+                    var metadata = await ExtractWithCacheAsync(
+                        item.Content,
+                        cacheKey,
+                        itemSchema,
+                        itemOptions,
+                        cancellationToken);
+
+                    var itemResult = new MetadataExtractionItemResult
+                    {
+                        DocumentId = item.DocumentId,
+                        Success = true,
+                        Metadata = metadata,
+                        ProcessingTime = DateTime.UtcNow - itemStartTime,
+                        Timestamp = DateTime.UtcNow
+                    };
+
+                    lock (result)
+                    {
+                        result.ItemResults.Add(itemResult);
+                        result.SuccessfulItems++;
+                    }
+
+                    _logger.LogDebug("Successfully extracted metadata for document: {DocumentId}", item.DocumentId);
+
+                    return itemResult;
+                }
+                catch (Exception ex) when (request.ContinueOnError)
+                {
+                    _logger.LogWarning(ex, "Failed to extract metadata for document: {DocumentId}", item.DocumentId);
+
+                    var itemResult = new MetadataExtractionItemResult
+                    {
+                        DocumentId = item.DocumentId,
+                        Success = false,
+                        ErrorMessage = ex.Message,
+                        ProcessingTime = DateTime.UtcNow - itemStartTime,
+                        Timestamp = DateTime.UtcNow
+                    };
+
+                    lock (result)
+                    {
+                        result.ItemResults.Add(itemResult);
+                        result.FailedItems++;
+                    }
+
+                    return itemResult;
+                }
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        }).ToList();
+
+        // Wait for all tasks to complete
+        try
+        {
+            await Task.WhenAll(tasks);
+        }
+        catch (Exception ex) when (!request.ContinueOnError)
+        {
+            _logger.LogError(ex, "Batch metadata extraction failed: {BatchId}", request.BatchId);
+
+            result.CompletedAt = DateTime.UtcNow;
+
+            // Report final error status
+            progressCallback?.Report(new BatchMetadataExtractionProgress
+            {
+                BatchId = request.BatchId,
+                CurrentItemIndex = request.Items.Count,
+                TotalItems = request.Items.Count,
+                Status = BatchExtractionStatus.Failed,
+                SuccessfulItems = result.SuccessfulItems,
+                FailedItems = result.FailedItems,
+                Message = $"Batch extraction failed: {ex.Message}"
+            });
+
+            throw;
+        }
+
+        result.CompletedAt = DateTime.UtcNow;
+
+        // Calculate statistics
+        result.Statistics = CalculateBatchStatistics(result.ItemResults);
+
+        // Report final progress
+        var finalStatus = result.FailedItems == 0
+            ? BatchExtractionStatus.Completed
+            : result.SuccessfulItems > 0
+                ? BatchExtractionStatus.PartiallyCompleted
+                : BatchExtractionStatus.Failed;
+
+        progressCallback?.Report(new BatchMetadataExtractionProgress
+        {
+            BatchId = request.BatchId,
+            CurrentItemIndex = request.Items.Count,
+            TotalItems = request.Items.Count,
+            Status = finalStatus,
+            SuccessfulItems = result.SuccessfulItems,
+            FailedItems = result.FailedItems,
+            Message = $"Batch extraction completed: {result.SuccessfulItems} succeeded, {result.FailedItems} failed"
+        });
+
+        _logger.LogInformation(
+            "Batch metadata extraction completed: {BatchId}, Success={Success}, Failed={Failed}, Time={Time}ms",
+            request.BatchId, result.SuccessfulItems, result.FailedItems, result.ProcessingTime.TotalMilliseconds);
+
+        return result;
+    }
+
+    private TimeSpan? CalculateEstimatedTime(DateTime startTime, int completedItems, int totalItems)
+    {
+        if (completedItems == 0)
+            return null;
+
+        var elapsed = DateTime.UtcNow - startTime;
+        var averageTimePerItem = elapsed.TotalSeconds / completedItems;
+        var remainingItems = totalItems - completedItems;
+        var estimatedSeconds = averageTimePerItem * remainingItems;
+
+        return TimeSpan.FromSeconds(estimatedSeconds);
+    }
+
+    private BatchMetadataStatistics CalculateBatchStatistics(List<MetadataExtractionItemResult> results)
+    {
+        var successfulResults = results.Where(r => r.Success && r.Metadata != null).ToList();
+
+        if (successfulResults.Count == 0)
+        {
+            return new BatchMetadataStatistics();
+        }
+
+        var statistics = new BatchMetadataStatistics
+        {
+            AverageConfidence = successfulResults.Average(r => r.Metadata!.OverallConfidence),
+            AverageProcessingTime = TimeSpan.FromMilliseconds(
+                successfulResults.Average(r => r.ProcessingTime.TotalMilliseconds))
+        };
+
+        // Calculate topic frequency
+        var topicFrequency = new Dictionary<string, int>();
+        foreach (var result in successfulResults)
+        {
+            foreach (var topic in result.Metadata!.Topics)
+            {
+                if (!string.IsNullOrWhiteSpace(topic))
+                {
+                    topicFrequency[topic] = topicFrequency.GetValueOrDefault(topic, 0) + 1;
+                }
+            }
+        }
+        statistics.TopTopics = topicFrequency
+            .OrderByDescending(kv => kv.Value)
+            .Take(10)
+            .ToDictionary(kv => kv.Key, kv => kv.Value);
+
+        // Calculate keyword frequency
+        var keywordFrequency = new Dictionary<string, int>();
+        foreach (var result in successfulResults)
+        {
+            foreach (var keyword in result.Metadata!.Keywords)
+            {
+                if (!string.IsNullOrWhiteSpace(keyword))
+                {
+                    keywordFrequency[keyword] = keywordFrequency.GetValueOrDefault(keyword, 0) + 1;
+                }
+            }
+        }
+        statistics.TopKeywords = keywordFrequency
+            .OrderByDescending(kv => kv.Value)
+            .Take(20)
+            .ToDictionary(kv => kv.Key, kv => kv.Value);
+
+        // Calculate document type distribution
+        var docTypeDistribution = successfulResults
+            .GroupBy(r => r.Metadata!.DocumentType ?? "unknown")
+            .ToDictionary(g => g.Key, g => g.Count());
+        statistics.DocumentTypeDistribution = docTypeDistribution;
+
+        // Calculate language distribution
+        var languageDistribution = successfulResults
+            .GroupBy(r => r.Metadata!.Language ?? "unknown")
+            .ToDictionary(g => g.Key, g => g.Count());
+        statistics.LanguageDistribution = languageDistribution;
+
+        // Calculate extraction method distribution
+        var methodDistribution = successfulResults
+            .GroupBy(r => r.Metadata!.ExtractionMethod ?? "unknown")
+            .ToDictionary(g => g.Key, g => g.Count());
+        statistics.ExtractionMethodDistribution = methodDistribution;
+
+        return statistics;
+    }
 }

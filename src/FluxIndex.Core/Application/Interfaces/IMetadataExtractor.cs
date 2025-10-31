@@ -55,6 +55,20 @@ public interface IMetadataExtractor
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// 배치 메타데이터 추출 (진행 상황 보고 지원)
+    /// </summary>
+    /// <param name="request">배치 추출 요청</param>
+    /// <param name="options">추출 옵션</param>
+    /// <param name="progressCallback">진행 상황 콜백</param>
+    /// <param name="cancellationToken">취소 토큰</param>
+    /// <returns>배치 추출 결과</returns>
+    Task<BatchMetadataExtractionResult> ExtractBatchWithProgressAsync(
+        BatchMetadataExtractionRequest request,
+        AIMetadataExtractionOptions? options = null,
+        IProgress<BatchMetadataExtractionProgress>? progressCallback = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// 콘텐츠 기반 캐시 키 생성
     /// 콘텐츠 해시 + 스키마로 고유한 캐시 키 생성
     /// </summary>
