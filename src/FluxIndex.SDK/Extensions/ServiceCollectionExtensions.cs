@@ -198,6 +198,7 @@ public class OpenAIOptions
 {
     public string ApiKey { get; set; } = string.Empty;
     public string ModelName { get; set; } = "text-embedding-3-small";
+    public bool IsAzure { get; set; }
 }
 
 public class AzureOpenAIOptions

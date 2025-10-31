@@ -1,4 +1,6 @@
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Interfaces;
+using FluxIndex.Core.Models;
 using FluxIndex.Domain.Entities;
 using FluxIndex.Domain.Models;
 using DocumentChunkEntity = FluxIndex.Domain.Entities.DocumentChunk;
@@ -22,6 +24,7 @@ public class Indexer
     private readonly IDocumentRepository _documentRepository;
     private readonly IEmbeddingService _embeddingService;
     private readonly IChunkingService _chunkingService;
+    private readonly IMetadataExtractor? _metadataExtractor;
     private readonly ILogger<Indexer> _logger;
     private readonly IndexerOptions _options;
 
@@ -57,12 +60,14 @@ public class Indexer
         IEmbeddingService embeddingService,
         IChunkingService chunkingService,
         IndexerOptions options,
-        ILogger<Indexer>? logger = null)
+        ILogger<Indexer>? logger = null,
+        IMetadataExtractor? metadataExtractor = null)
     {
         _vectorStore = vectorStore;
         _documentRepository = documentRepository;
         _embeddingService = embeddingService;
         _chunkingService = chunkingService;
+        _metadataExtractor = metadataExtractor;
         _options = options;
         _logger = logger ?? new NullLogger<Indexer>();
     }
@@ -156,6 +161,64 @@ public class Indexer
                 Status = "Starting",
                 Message = "Saving document metadata"
             });
+
+            // Phase 3: AI 메타데이터 추출 (선택적)
+            if (_metadataExtractor != null && !string.IsNullOrEmpty(document.Content))
+            {
+                try
+                {
+                    _logger.LogInformation("Extracting AI metadata for document {DocumentId}", document.Id);
+
+                    // IndexingOptions에서 AI 메타데이터 설정 확인
+                    var indexingOptions = new IndexingOptions();
+                    if (_options.CustomOptions != null)
+                    {
+                        foreach (var (key, value) in _options.CustomOptions)
+                        {
+                            indexingOptions.CustomOptions[key] = value;
+                        }
+                    }
+
+                    if (indexingOptions.ShouldExtractAIMetadata())
+                    {
+                        var schema = indexingOptions.GetMetadataSchema();
+                        var strategy = indexingOptions.GetMetadataExtractionStrategy();
+                        var minConfidence = indexingOptions.GetMinMetadataConfidence();
+                        var customPrompt = indexingOptions.GetCustomMetadataPrompt();
+
+                        var extractionOptions = new AIMetadataExtractionOptions
+                        {
+                            Strategy = strategy,
+                            MinConfidence = minConfidence,
+                            CustomPrompt = customPrompt
+                        };
+
+                        // 캐시 키 생성
+                        var cacheKey = _metadataExtractor.GenerateCacheKey(document.Content, schema);
+
+                        // AI 메타데이터 추출 (캐싱 지원)
+                        var extractedMetadata = await _metadataExtractor.ExtractWithCacheAsync(
+                            document.Content,
+                            cacheKey,
+                            schema,
+                            extractionOptions,
+                            cancellationToken);
+
+                        // IndexingResult에 메타데이터 저장 (Document.Metadata에 포함)
+                        document.SetMetadata("AIExtractedMetadata", extractedMetadata);
+                        document.SetMetadata("MetadataExtractionMethod", extractedMetadata.ExtractionMethod);
+                        document.SetMetadata("MetadataConfidence", extractedMetadata.OverallConfidence);
+
+                        _logger.LogInformation("AI metadata extracted: confidence={Confidence}, topics={Topics}",
+                            extractedMetadata.OverallConfidence, extractedMetadata.Topics.Length);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to extract AI metadata for document {DocumentId}, continuing without it", document.Id);
+                    // Continue indexing without AI metadata
+                }
+            }
 
             // Save document metadata
             await _documentRepository.AddAsync(document, cancellationToken);
@@ -802,6 +865,116 @@ public class Indexer
         // Simple estimation: ~4 characters per token
         return text.Length / 4;
     }
+
+    /// <summary>
+    /// Update document metadata (supports user corrections to AI-extracted metadata)
+    /// </summary>
+    /// <param name="documentId">Document ID</param>
+    /// <param name="metadata">Updated metadata dictionary</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    public async Task UpdateDocumentMetadataAsync(
+        string documentId,
+        Dictionary<string, object> metadata,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(documentId))
+            throw new ArgumentException("Document ID cannot be empty", nameof(documentId));
+        if (metadata == null || metadata.Count == 0)
+            throw new ArgumentException("Metadata cannot be null or empty", nameof(metadata));
+
+        _logger.LogInformation("Updating metadata for document {DocumentId}", documentId);
+
+        // Get existing document
+        var document = await _documentRepository.GetByIdAsync(documentId, cancellationToken);
+        if (document == null)
+        {
+            throw new InvalidOperationException($"Document with ID '{documentId}' not found");
+        }
+
+        // Update metadata
+        foreach (var (key, value) in metadata)
+        {
+            document.SetMetadata(key, value);
+        }
+
+        // Mark metadata source as User-corrected
+        document.SetMetadata("MetadataSource", "UserCorrected");
+        document.SetMetadata("MetadataLastUpdated", DateTime.UtcNow);
+
+        // Save updated document
+        await _documentRepository.UpdateAsync(document, cancellationToken);
+
+        _logger.LogInformation("Metadata updated successfully for document {DocumentId}", documentId);
+    }
+
+    /// <summary>
+    /// Correct AI-extracted metadata for a document
+    /// </summary>
+    /// <param name="documentId">Document ID</param>
+    /// <param name="correctedMetadata">Corrected ExtractedMetadata instance</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    public async Task CorrectExtractedMetadataAsync(
+        string documentId,
+        ExtractedMetadata correctedMetadata,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(documentId))
+            throw new ArgumentException("Document ID cannot be empty", nameof(documentId));
+        if (correctedMetadata == null)
+            throw new ArgumentNullException(nameof(correctedMetadata));
+
+        _logger.LogInformation("Correcting extracted metadata for document {DocumentId}", documentId);
+
+        // Get existing document
+        var document = await _documentRepository.GetByIdAsync(documentId, cancellationToken);
+        if (document == null)
+        {
+            throw new InvalidOperationException($"Document with ID '{documentId}' not found");
+        }
+
+        // Update ExtractedMetadata
+        correctedMetadata.Source = MetadataSource.User;
+        correctedMetadata.ExtractionMethod = "User-Corrected";
+        correctedMetadata.OverallConfidence = 1.0f; // User corrections are 100% confident
+
+        document.SetMetadata("AIExtractedMetadata", correctedMetadata);
+        document.SetMetadata("MetadataExtractionMethod", "User-Corrected");
+        document.SetMetadata("MetadataConfidence", 1.0f);
+        document.SetMetadata("MetadataLastUpdated", DateTime.UtcNow);
+
+        // Save updated document
+        await _documentRepository.UpdateAsync(document, cancellationToken);
+
+        _logger.LogInformation("Extracted metadata corrected successfully for document {DocumentId}", documentId);
+    }
+
+    /// <summary>
+    /// Get current extracted metadata for a document
+    /// </summary>
+    /// <param name="documentId">Document ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>ExtractedMetadata if available, null otherwise</returns>
+    public async Task<ExtractedMetadata?> GetExtractedMetadataAsync(
+        string documentId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(documentId))
+            throw new ArgumentException("Document ID cannot be empty", nameof(documentId));
+
+        var document = await _documentRepository.GetByIdAsync(documentId, cancellationToken);
+        if (document == null)
+        {
+            return null;
+        }
+
+        if (document.Metadata.TryGetValue("AIExtractedMetadata", out var metadataObj) &&
+            metadataObj is ExtractedMetadata extractedMetadata)
+        {
+            return extractedMetadata;
+        }
+
+        return null;
+    }
 }
 
 /// <summary>
@@ -814,6 +987,7 @@ public class IndexerOptions
     public bool ParallelEmbedding { get; set; } = true;
     public int MaxParallelEmbedding { get; set; } = 4;
     public ChunkingStrategy ChunkingStrategy { get; set; } = ChunkingStrategy.Auto;
+    public Dictionary<string, object>? CustomOptions { get; set; }
 }
 
 /// <summary>

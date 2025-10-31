@@ -1,5 +1,6 @@
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services;
+using FluxIndex.Core.Models;
 using FluxIndex.Core.Services;
 using FluxIndex.SDK.Configuration;
 using FluxIndex.SDK.Services;
@@ -229,11 +230,70 @@ public class FluxIndexContextBuilder
         _options.Indexing.ChunkingDefaults.Strategy = strategy;
         _options.Indexing.ChunkingDefaults.MaxChunkSize = chunkSize;
         _options.Indexing.ChunkingDefaults.OverlapSize = chunkOverlap;
-        
+
         _indexerOptions.ChunkSize = chunkSize;
         _indexerOptions.ChunkOverlap = chunkOverlap;
         _indexerOptions.ChunkingStrategy = Enum.Parse<ChunkingStrategy>(strategy, true);
-        
+
+        return this;
+    }
+
+    /// <summary>
+    /// AI 메타데이터 추출 활성화 (OpenAI 기반)
+    /// </summary>
+    public FluxIndexContextBuilder WithOpenAIMetadataExtractor(
+        string apiKey,
+        string? endpoint = null,
+        MetadataSchema schema = MetadataSchema.General,
+        MetadataExtractionStrategy strategy = MetadataExtractionStrategy.Smart,
+        float minConfidence = 0.6f)
+    {
+        // Register OpenAI metadata extraction services
+        _services.AddOpenAIMetadataExtractor(options =>
+        {
+            options.ApiKey = apiKey;
+            if (!string.IsNullOrEmpty(endpoint))
+            {
+                options.Endpoint = endpoint;
+            }
+        });
+
+        // Configure IndexingOptions with AI metadata settings
+        _indexerOptions.CustomOptions["EnableAIMetadataExtraction"] = true;
+        _indexerOptions.CustomOptions["MetadataSchema"] = schema.ToString();
+        _indexerOptions.CustomOptions["MetadataExtractionStrategy"] = strategy.ToString();
+        _indexerOptions.CustomOptions["MinMetadataConfidence"] = minConfidence;
+
+        return this;
+    }
+
+    /// <summary>
+    /// AI 메타데이터 추출 활성화 (커스텀 프롬프트 사용)
+    /// </summary>
+    public FluxIndexContextBuilder WithCustomMetadataExtractor(
+        string apiKey,
+        string customPrompt,
+        string? endpoint = null,
+        MetadataExtractionStrategy strategy = MetadataExtractionStrategy.Smart,
+        float minConfidence = 0.6f)
+    {
+        // Register OpenAI metadata extraction services
+        _services.AddOpenAIMetadataExtractor(options =>
+        {
+            options.ApiKey = apiKey;
+            if (!string.IsNullOrEmpty(endpoint))
+            {
+                options.Endpoint = endpoint;
+            }
+        });
+
+        // Configure IndexingOptions with custom metadata settings
+        _indexerOptions.CustomOptions["EnableAIMetadataExtraction"] = true;
+        _indexerOptions.CustomOptions["MetadataSchema"] = MetadataSchema.Custom.ToString();
+        _indexerOptions.CustomOptions["MetadataExtractionStrategy"] = strategy.ToString();
+        _indexerOptions.CustomOptions["MinMetadataConfidence"] = minConfidence;
+        _indexerOptions.CustomOptions["CustomMetadataPrompt"] = customPrompt;
+
         return this;
     }
 
@@ -455,13 +515,17 @@ public class FluxIndexContextBuilder
             var chunkingService = serviceProvider.GetRequiredService<IChunkingService>();
             var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
 
+            // Get optional IMetadataExtractor if registered
+            var metadataExtractor = serviceProvider.GetService<FluxIndex.Core.Interfaces.IMetadataExtractor>();
+
             return new Indexer(
                 vectorStore,
                 documentRepository,
                 embeddingService,
                 chunkingService,
                 _indexerOptions,
-                loggerFactory.CreateLogger<Indexer>()
+                loggerFactory.CreateLogger<Indexer>(),
+                metadataExtractor
             );
         });
 
