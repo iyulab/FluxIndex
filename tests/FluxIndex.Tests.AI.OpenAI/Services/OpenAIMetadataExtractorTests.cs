@@ -1,5 +1,5 @@
 using FluxIndex.AI.OpenAI.Services;
-using FluxIndex.Core.Interfaces;
+using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Models;
 using FluentAssertions;
 using Microsoft.Extensions.Caching.Memory;
@@ -34,8 +34,7 @@ public class OpenAIMetadataExtractorTests
         // Arrange
         var content = "This is a test document about AI.";
         var mockResponse = @"{
-            ""title"": ""AI Document"",
-            ""summary"": ""A document about AI"",
+            ""description"": ""A document about AI"",
             ""keywords"": [""AI"", ""test""],
             ""topics"": [""artificial intelligence""],
             ""language"": ""en"",
@@ -44,7 +43,7 @@ public class OpenAIMetadataExtractorTests
         }";
 
         _mockCompletionService
-            .Setup(x => x.CompleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(mockResponse);
 
         // Act
@@ -52,8 +51,7 @@ public class OpenAIMetadataExtractorTests
 
         // Assert
         result.Should().NotBeNull();
-        result.Title.Should().Be("AI Document");
-        result.Summary.Should().Be("A document about AI");
+        result.Description.Should().Be("A document about AI");
         result.Keywords.Should().Contain("AI");
         result.Topics.Should().Contain("artificial intelligence");
         result.Language.Should().Be("en");
@@ -97,15 +95,14 @@ public class OpenAIMetadataExtractorTests
         var content = "Test content";
         var cacheKey = "test-key";
         var mockResponse = @"{
-            ""title"": ""Test"",
-            ""summary"": ""Summary"",
+            ""description"": ""Summary"",
             ""keywords"": [],
             ""topics"": [],
             ""overallConfidence"": 0.8
         }";
 
         _mockCompletionService
-            .Setup(x => x.CompleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(mockResponse);
 
         // Act
@@ -113,7 +110,7 @@ public class OpenAIMetadataExtractorTests
 
         // Assert
         result.Should().NotBeNull();
-        _mockCompletionService.Verify(x => x.CompleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        _mockCompletionService.Verify(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -123,15 +120,14 @@ public class OpenAIMetadataExtractorTests
         var content = "Test content";
         var cacheKey = "test-key";
         var mockResponse = @"{
-            ""title"": ""Test"",
-            ""summary"": ""Summary"",
+            ""description"": ""Summary"",
             ""keywords"": [],
             ""topics"": [],
             ""overallConfidence"": 0.8
         }";
 
         _mockCompletionService
-            .Setup(x => x.CompleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(mockResponse);
 
         // Act
@@ -141,7 +137,7 @@ public class OpenAIMetadataExtractorTests
         // Assert
         result1.Should().NotBeNull();
         result2.Should().NotBeNull();
-        _mockCompletionService.Verify(x => x.CompleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        _mockCompletionService.Verify(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -150,15 +146,14 @@ public class OpenAIMetadataExtractorTests
         // Arrange
         var content = "Test content";
         var mockResponse = @"{
-            ""title"": ""Test"",
-            ""summary"": ""Summary"",
+            ""description"": ""Summary"",
             ""keywords"": [],
             ""topics"": [],
             ""overallConfidence"": 0.8
         }";
 
         _mockCompletionService
-            .Setup(x => x.CompleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(mockResponse);
 
         // Act - Test different schemas
@@ -169,7 +164,7 @@ public class OpenAIMetadataExtractorTests
 
         // Assert
         _mockCompletionService.Verify(
-            x => x.CompleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
             Times.Exactly(4));
     }
 
@@ -183,15 +178,14 @@ public class OpenAIMetadataExtractorTests
             Strategy = MetadataExtractionStrategy.Fast
         };
         var mockResponse = @"{
-            ""title"": ""Test"",
-            ""summary"": ""Summary"",
+            ""description"": ""Summary"",
             ""keywords"": [],
             ""topics"": [],
             ""overallConfidence"": 0.8
         }";
 
         _mockCompletionService
-            .Setup(x => x.CompleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(mockResponse);
 
         // Act
@@ -212,15 +206,14 @@ public class OpenAIMetadataExtractorTests
             Strategy = MetadataExtractionStrategy.Deep
         };
         var mockResponse = @"{
-            ""title"": ""Test"",
-            ""summary"": ""Summary"",
+            ""description"": ""Summary"",
             ""keywords"": [],
             ""topics"": [],
             ""overallConfidence"": 0.8
         }";
 
         _mockCompletionService
-            .Setup(x => x.CompleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(mockResponse);
 
         // Act
@@ -309,7 +302,7 @@ public class OpenAIMetadataExtractorTests
         // Arrange
         var content = "Test content";
         _mockCompletionService
-            .Setup(x => x.CompleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("API error"));
 
         // Act
@@ -318,7 +311,7 @@ public class OpenAIMetadataExtractorTests
         // Assert
         await act.Should().ThrowAsync<HttpRequestException>();
         _mockCompletionService.Verify(
-            x => x.CompleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
             Times.AtLeast(1)); // Should retry
     }
 
@@ -349,7 +342,7 @@ public class OpenAIMetadataExtractorTests
         cts.Cancel();
 
         _mockCompletionService
-            .Setup(x => x.CompleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new OperationCanceledException());
 
         // Act

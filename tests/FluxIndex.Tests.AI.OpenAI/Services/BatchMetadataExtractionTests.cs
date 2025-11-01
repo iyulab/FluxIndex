@@ -1,5 +1,5 @@
 using FluxIndex.AI.OpenAI.Services;
-using FluxIndex.Core.Interfaces;
+using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Models;
 using FluentAssertions;
 using Microsoft.Extensions.Caching.Memory;
@@ -44,8 +44,7 @@ public class BatchMetadataExtractionTests
         };
 
         var mockResponse = @"{
-            ""title"": ""Test"",
-            ""summary"": ""Summary"",
+            ""description"": ""Summary"",
             ""keywords"": [""test""],
             ""topics"": [""testing""],
             ""language"": ""en"",
@@ -54,7 +53,7 @@ public class BatchMetadataExtractionTests
         }";
 
         _mockCompletionService
-            .Setup(x => x.CompleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(mockResponse);
 
         // Act
@@ -92,7 +91,7 @@ public class BatchMetadataExtractionTests
         }";
 
         _mockCompletionService
-            .Setup(x => x.CompleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(mockResponse);
 
         var progressReports = new List<BatchMetadataExtractionProgress>();
@@ -237,7 +236,7 @@ public class BatchMetadataExtractionTests
         }";
 
         _mockCompletionService
-            .Setup(x => x.CompleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(mockResponse);
 
         // Act
@@ -359,7 +358,7 @@ public class BatchMetadataExtractionTests
         }";
 
         _mockCompletionService
-            .Setup(x => x.CompleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(mockResponse);
 
         var progressReports = new List<BatchMetadataExtractionProgress>();
@@ -407,7 +406,7 @@ public class BatchMetadataExtractionTests
         }";
 
         _mockCompletionService
-            .Setup(x => x.CompleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(mockResponse);
 
         // Act
