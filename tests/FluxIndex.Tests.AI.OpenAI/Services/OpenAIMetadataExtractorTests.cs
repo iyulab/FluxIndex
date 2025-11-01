@@ -1,9 +1,12 @@
+using FluxIndex.AI.OpenAI;
 using FluxIndex.AI.OpenAI.Services;
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Interfaces;
 using FluxIndex.Core.Models;
 using FluentAssertions;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
 
@@ -12,6 +15,7 @@ namespace FluxIndex.Tests.AI.OpenAI.Services;
 public class OpenAIMetadataExtractorTests
 {
     private readonly Mock<ITextCompletionService> _mockCompletionService;
+    private readonly Mock<IRuleBasedMetadataExtractor> _mockRuleBasedExtractor;
     private readonly Mock<ILogger<OpenAIMetadataExtractor>> _mockLogger;
     private readonly IMemoryCache _cache;
     private readonly OpenAIMetadataExtractor _extractor;
@@ -19,13 +23,31 @@ public class OpenAIMetadataExtractorTests
     public OpenAIMetadataExtractorTests()
     {
         _mockCompletionService = new Mock<ITextCompletionService>();
+        _mockRuleBasedExtractor = new Mock<IRuleBasedMetadataExtractor>();
         _mockLogger = new Mock<ILogger<OpenAIMetadataExtractor>>();
         _cache = new MemoryCache(new MemoryCacheOptions());
 
+        // Setup default rule-based extractor behavior
+        _mockRuleBasedExtractor
+            .Setup(x => x.ExtractAsync(It.IsAny<string>(), It.IsAny<MetadataSchema>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ExtractedMetadata
+            {
+                Keywords = new[] { "fallback" },
+                Topics = new[] { "fallback" },
+                OverallConfidence = 0.5f
+            });
+
+        var options = Options.Create(new OpenAIOptions
+        {
+            ApiKey = "test-api-key",
+            ModelName = "text-embedding-3-small"
+        });
+
         _extractor = new OpenAIMetadataExtractor(
-            _mockCompletionService.Object,
-            _cache,
-            _mockLogger.Object);
+            options,
+            _mockRuleBasedExtractor.Object,
+            _mockLogger.Object,
+            _cache);
     }
 
     [Fact]
@@ -323,7 +345,7 @@ public class OpenAIMetadataExtractorTests
         var invalidJson = "This is not valid JSON";
 
         _mockCompletionService
-            .Setup(x => x.CompleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(invalidJson);
 
         // Act
