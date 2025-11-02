@@ -68,14 +68,14 @@
       "fluxindex.core": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex": "[0.2.13, )",
+          "FluxIndex": "[0.2.14, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[9.0.10, )",
           "Microsoft.Extensions.Logging.Abstractions": "[9.0.10, )"
         }
       },
       "Microsoft.Extensions.Caching.Abstractions": {
         "type": "CentralTransitive",
-        "requested": "[9.0.9, )",
+        "requested": "[9.0.10, )",
         "resolved": "9.0.10",
         "contentHash": "cL6iTxgJ4u5zP3eFOdBiDAtmE/B2WKTRhyJfEne7n6qvHpsMwwIDxljs210mWSO1ucBy7lR1Lo7/7kjeZeLcqQ==",
         "dependencies": {
