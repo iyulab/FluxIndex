@@ -10,7 +10,7 @@
 
   <ItemGroup>
     <PackageReference Include="Moq" />
-    <PackageReference Include="FileFlux" />
+    <!-- FileFlux is already referenced through FluxIndex.Extensions.FileFlux project -->
   </ItemGroup>
 
   <ItemGroup>

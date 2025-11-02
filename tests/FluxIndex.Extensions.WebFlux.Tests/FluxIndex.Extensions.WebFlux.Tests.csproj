@@ -10,7 +10,7 @@
 
   <ItemGroup>
     <PackageReference Include="Moq" />
-    <PackageReference Include="WebFlux" />
+    <!-- WebFlux is already referenced through FluxIndex.Extensions.WebFlux project -->
   </ItemGroup>
 
   <ItemGroup>
