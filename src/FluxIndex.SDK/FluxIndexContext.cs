@@ -473,7 +473,8 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
             DocumentId = vr.DocumentChunk.DocumentId,
             Content = vr.DocumentChunk.Content,
             Score = (float)vr.Score,
-            ChunkIndex = vr.DocumentChunk.ChunkIndex
+            ChunkIndex = vr.DocumentChunk.ChunkIndex,
+            Metadata = vr.DocumentChunk.Metadata ?? new Dictionary<string, object>()
         });
     }
 
