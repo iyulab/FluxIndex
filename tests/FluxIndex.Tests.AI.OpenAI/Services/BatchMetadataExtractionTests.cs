@@ -12,42 +12,13 @@ using Xunit;
 
 namespace FluxIndex.Tests.AI.OpenAI.Services;
 
-public class BatchMetadataExtractionTests
+public class BatchMetadataExtractionTests : IClassFixture<OpenAITestFixture>
 {
-    private readonly Mock<ITextCompletionService> _mockCompletionService;
-    private readonly Mock<IRuleBasedMetadataExtractor> _mockRuleBasedExtractor;
-    private readonly Mock<ILogger<OpenAIMetadataExtractor>> _mockLogger;
-    private readonly IMemoryCache _cache;
-    private readonly OpenAIMetadataExtractor _extractor;
+    private readonly OpenAITestFixture _fixture;
 
-    public BatchMetadataExtractionTests()
+    public BatchMetadataExtractionTests(OpenAITestFixture fixture)
     {
-        _mockCompletionService = new Mock<ITextCompletionService>();
-        _mockRuleBasedExtractor = new Mock<IRuleBasedMetadataExtractor>();
-        _mockLogger = new Mock<ILogger<OpenAIMetadataExtractor>>();
-        _cache = new MemoryCache(new MemoryCacheOptions());
-
-        // Setup default rule-based extractor behavior
-        _mockRuleBasedExtractor
-            .Setup(x => x.ExtractAsync(It.IsAny<string>(), It.IsAny<MetadataSchema>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ExtractedMetadata
-            {
-                Keywords = new[] { "fallback" },
-                Topics = new[] { "fallback" },
-                OverallConfidence = 0.5f
-            });
-
-        var options = Options.Create(new OpenAIOptions
-        {
-            ApiKey = "test-api-key",
-            ModelName = "text-embedding-3-small"
-        });
-
-        _extractor = new OpenAIMetadataExtractor(
-            options,
-            _mockRuleBasedExtractor.Object,
-            _mockLogger.Object,
-            _cache);
+        _fixture = fixture;
     }
 
     [Fact]
@@ -74,12 +45,10 @@ public class BatchMetadataExtractionTests
             ""overallConfidence"": 0.9
         }";
 
-        _mockCompletionService
-            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mockResponse);
+        _fixture.SetupMockResponse(mockResponse);
 
         // Act
-        var result = await _extractor.ExtractBatchWithProgressAsync(request);
+        var result = await _fixture.Extractor.ExtractBatchWithProgressAsync(request);
 
         // Assert
         result.Should().NotBeNull();
@@ -112,15 +81,13 @@ public class BatchMetadataExtractionTests
             ""overallConfidence"": 0.9
         }";
 
-        _mockCompletionService
-            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mockResponse);
+        _fixture.SetupMockResponse(mockResponse);
 
         var progressReports = new List<BatchMetadataExtractionProgress>();
         var progress = new Progress<BatchMetadataExtractionProgress>(p => progressReports.Add(p));
 
         // Act
-        var result = await _extractor.ExtractBatchWithProgressAsync(request, progressCallback: progress);
+        var result = await _fixture.Extractor.ExtractBatchWithProgressAsync(request, progressCallback: progress);
 
         // Assert
         result.Should().NotBeNull();
@@ -154,18 +121,16 @@ public class BatchMetadataExtractionTests
         }";
 
         var callCount = 0;
-        _mockCompletionService
-            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() =>
-            {
-                callCount++;
-                if (callCount == 2) // Second call fails
-                    throw new HttpRequestException("API error");
-                return successResponse;
-            });
+        _fixture.SetupMockResponseWithCallback(() =>
+        {
+            callCount++;
+            if (callCount == 2) // Second call fails
+                throw new HttpRequestException("API error");
+            return successResponse;
+        });
 
         // Act
-        var result = await _extractor.ExtractBatchWithProgressAsync(request);
+        var result = await _fixture.Extractor.ExtractBatchWithProgressAsync(request);
 
         // Assert
         result.Should().NotBeNull();
@@ -204,28 +169,26 @@ public class BatchMetadataExtractionTests
         var maxConcurrentCalls = 0;
         var lockObj = new object();
 
-        _mockCompletionService
-            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .Returns(async () =>
+        _fixture.SetupMockResponseWithAsyncCallback(async () =>
+        {
+            lock (lockObj)
             {
-                lock (lockObj)
-                {
-                    concurrentCalls++;
-                    maxConcurrentCalls = Math.Max(maxConcurrentCalls, concurrentCalls);
-                }
+                concurrentCalls++;
+                maxConcurrentCalls = Math.Max(maxConcurrentCalls, concurrentCalls);
+            }
 
-                await Task.Delay(50); // Simulate API call
+            await Task.Delay(50); // Simulate API call
 
-                lock (lockObj)
-                {
-                    concurrentCalls--;
-                }
+            lock (lockObj)
+            {
+                concurrentCalls--;
+            }
 
-                return mockResponse;
-            });
+            return mockResponse;
+        });
 
         // Act
-        var result = await _extractor.ExtractBatchWithProgressAsync(request);
+        var result = await _fixture.Extractor.ExtractBatchWithProgressAsync(request);
 
         // Assert
         result.Should().NotBeNull();
@@ -257,12 +220,10 @@ public class BatchMetadataExtractionTests
             ""overallConfidence"": 0.85
         }";
 
-        _mockCompletionService
-            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mockResponse);
+        _fixture.SetupMockResponse(mockResponse);
 
         // Act
-        var result = await _extractor.ExtractBatchWithProgressAsync(request);
+        var result = await _fixture.Extractor.ExtractBatchWithProgressAsync(request);
 
         // Assert
         result.Statistics.Should().NotBeNull();
@@ -283,7 +244,7 @@ public class BatchMetadataExtractionTests
         };
 
         // Act
-        var result = await _extractor.ExtractBatchWithProgressAsync(request);
+        var result = await _fixture.Extractor.ExtractBatchWithProgressAsync(request);
 
         // Assert
         result.Should().NotBeNull();
@@ -313,16 +274,14 @@ public class BatchMetadataExtractionTests
             ""overallConfidence"": 0.9
         }";
 
-        _mockCompletionService
-            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .Returns(async () =>
-            {
-                await Task.Delay(100);
-                return mockResponse;
-            });
+        _fixture.SetupMockResponseWithAsyncCallback(async () =>
+        {
+            await Task.Delay(100);
+            return mockResponse;
+        });
 
         // Act
-        var result = await _extractor.ExtractBatchWithProgressAsync(request);
+        var result = await _fixture.Extractor.ExtractBatchWithProgressAsync(request);
 
         // Assert
         result.ProcessingTime.Should().BeGreaterThan(TimeSpan.Zero);
@@ -344,12 +303,10 @@ public class BatchMetadataExtractionTests
         var cts = new CancellationTokenSource();
         cts.Cancel();
 
-        _mockCompletionService
-            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new OperationCanceledException());
+        _fixture.SetupMockException(new OperationCanceledException());
 
         // Act
-        Func<Task> act = async () => await _extractor.ExtractBatchWithProgressAsync(request, cancellationToken: cts.Token);
+        Func<Task> act = async () => await _fixture.Extractor.ExtractBatchWithProgressAsync(request, cancellationToken: cts.Token);
 
         // Assert
         await act.Should().ThrowAsync<OperationCanceledException>();
@@ -379,15 +336,13 @@ public class BatchMetadataExtractionTests
             ""overallConfidence"": 0.9
         }";
 
-        _mockCompletionService
-            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mockResponse);
+        _fixture.SetupMockResponse(mockResponse);
 
         var progressReports = new List<BatchMetadataExtractionProgress>();
         var progress = new Progress<BatchMetadataExtractionProgress>(p => progressReports.Add(p));
 
         // Act
-        var result = await _extractor.ExtractBatchWithProgressAsync(request, progressCallback: progress);
+        var result = await _fixture.Extractor.ExtractBatchWithProgressAsync(request, progressCallback: progress);
 
         // Assert
         result.Should().NotBeNull();
@@ -427,18 +382,20 @@ public class BatchMetadataExtractionTests
             ""overallConfidence"": 0.9
         }";
 
-        _mockCompletionService
-            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mockResponse);
+        _fixture.SetupMockResponse(mockResponse);
 
         // Act
-        var result = await _extractor.ExtractBatchWithProgressAsync(request);
+        var result = await _fixture.Extractor.ExtractBatchWithProgressAsync(request);
 
         // Assert
         result.Should().NotBeNull();
         result.SuccessfulItems.Should().Be(2);
-        _mockCompletionService.Verify(
-            x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
-            Times.Exactly(2));
+        // Mock 모드에서만 검증
+        if (!_fixture.UseRealApi)
+        {
+            _fixture.MockCompletionService!.Verify(
+                x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
+                Times.Exactly(2));
+        }
     }
 }

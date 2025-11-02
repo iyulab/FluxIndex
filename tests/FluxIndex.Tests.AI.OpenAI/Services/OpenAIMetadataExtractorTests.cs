@@ -12,42 +12,13 @@ using Xunit;
 
 namespace FluxIndex.Tests.AI.OpenAI.Services;
 
-public class OpenAIMetadataExtractorTests
+public class OpenAIMetadataExtractorTests : IClassFixture<OpenAITestFixture>
 {
-    private readonly Mock<ITextCompletionService> _mockCompletionService;
-    private readonly Mock<IRuleBasedMetadataExtractor> _mockRuleBasedExtractor;
-    private readonly Mock<ILogger<OpenAIMetadataExtractor>> _mockLogger;
-    private readonly IMemoryCache _cache;
-    private readonly OpenAIMetadataExtractor _extractor;
+    private readonly OpenAITestFixture _fixture;
 
-    public OpenAIMetadataExtractorTests()
+    public OpenAIMetadataExtractorTests(OpenAITestFixture fixture)
     {
-        _mockCompletionService = new Mock<ITextCompletionService>();
-        _mockRuleBasedExtractor = new Mock<IRuleBasedMetadataExtractor>();
-        _mockLogger = new Mock<ILogger<OpenAIMetadataExtractor>>();
-        _cache = new MemoryCache(new MemoryCacheOptions());
-
-        // Setup default rule-based extractor behavior
-        _mockRuleBasedExtractor
-            .Setup(x => x.ExtractAsync(It.IsAny<string>(), It.IsAny<MetadataSchema>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ExtractedMetadata
-            {
-                Keywords = new[] { "fallback" },
-                Topics = new[] { "fallback" },
-                OverallConfidence = 0.5f
-            });
-
-        var options = Options.Create(new OpenAIOptions
-        {
-            ApiKey = "test-api-key",
-            ModelName = "text-embedding-3-small"
-        });
-
-        _extractor = new OpenAIMetadataExtractor(
-            options,
-            _mockRuleBasedExtractor.Object,
-            _mockLogger.Object,
-            _cache);
+        _fixture = fixture;
     }
 
     [Fact]
@@ -64,12 +35,10 @@ public class OpenAIMetadataExtractorTests
             ""overallConfidence"": 0.9
         }";
 
-        _mockCompletionService
-            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mockResponse);
+        _fixture.SetupMockResponse(mockResponse);
 
         // Act
-        var result = await _extractor.ExtractAsync(content, MetadataSchema.General);
+        var result = await _fixture.Extractor.ExtractAsync(content, MetadataSchema.General);
 
         // Assert
         result.Should().NotBeNull();
@@ -83,13 +52,14 @@ public class OpenAIMetadataExtractorTests
     }
 
     [Fact]
+    [Trait("Category", "MockOnly")]
     public async Task ExtractAsync_WithNullContent_ShouldThrowArgumentNullException()
     {
         // Arrange
         string? content = null;
 
         // Act
-        Func<Task> act = async () => await _extractor.ExtractAsync(content!, MetadataSchema.General);
+        Func<Task> act = async () => await _fixture.Extractor.ExtractAsync(content!, MetadataSchema.General);
 
         // Assert
         await act.Should().ThrowAsync<ArgumentNullException>()
@@ -103,7 +73,7 @@ public class OpenAIMetadataExtractorTests
         var content = string.Empty;
 
         // Act
-        Func<Task> act = async () => await _extractor.ExtractAsync(content, MetadataSchema.General);
+        Func<Task> act = async () => await _fixture.Extractor.ExtractAsync(content, MetadataSchema.General);
 
         // Assert
         await act.Should().ThrowAsync<ArgumentException>()
@@ -123,16 +93,18 @@ public class OpenAIMetadataExtractorTests
             ""overallConfidence"": 0.8
         }";
 
-        _mockCompletionService
-            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mockResponse);
+        _fixture.SetupMockResponse(mockResponse);
 
         // Act
-        var result = await _extractor.ExtractWithCacheAsync(content, cacheKey, MetadataSchema.General);
+        var result = await _fixture.Extractor.ExtractWithCacheAsync(content, cacheKey, MetadataSchema.General);
 
         // Assert
         result.Should().NotBeNull();
-        _mockCompletionService.Verify(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once);
+        // Mock 모드에서만 검증
+        if (!_fixture.UseRealApi)
+        {
+            _fixture.MockCompletionService!.Verify(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once);
+        }
     }
 
     [Fact]
@@ -148,18 +120,20 @@ public class OpenAIMetadataExtractorTests
             ""overallConfidence"": 0.8
         }";
 
-        _mockCompletionService
-            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mockResponse);
+        _fixture.SetupMockResponse(mockResponse);
 
         // Act
-        var result1 = await _extractor.ExtractWithCacheAsync(content, cacheKey, MetadataSchema.General);
-        var result2 = await _extractor.ExtractWithCacheAsync(content, cacheKey, MetadataSchema.General);
+        var result1 = await _fixture.Extractor.ExtractWithCacheAsync(content, cacheKey, MetadataSchema.General);
+        var result2 = await _fixture.Extractor.ExtractWithCacheAsync(content, cacheKey, MetadataSchema.General);
 
         // Assert
         result1.Should().NotBeNull();
         result2.Should().NotBeNull();
-        _mockCompletionService.Verify(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once);
+        // Mock 모드에서만 검증
+        if (!_fixture.UseRealApi)
+        {
+            _fixture.MockCompletionService!.Verify(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Once);
+        }
     }
 
     [Fact]
@@ -174,20 +148,22 @@ public class OpenAIMetadataExtractorTests
             ""overallConfidence"": 0.8
         }";
 
-        _mockCompletionService
-            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mockResponse);
+        _fixture.SetupMockResponse(mockResponse);
 
         // Act - Test different schemas
-        await _extractor.ExtractAsync(content, MetadataSchema.General);
-        await _extractor.ExtractAsync(content, MetadataSchema.Article);
-        await _extractor.ExtractAsync(content, MetadataSchema.ProductManual);
-        await _extractor.ExtractAsync(content, MetadataSchema.TechnicalDoc);
+        await _fixture.Extractor.ExtractAsync(content, MetadataSchema.General);
+        await _fixture.Extractor.ExtractAsync(content, MetadataSchema.Article);
+        await _fixture.Extractor.ExtractAsync(content, MetadataSchema.ProductManual);
+        await _fixture.Extractor.ExtractAsync(content, MetadataSchema.TechnicalDoc);
 
         // Assert
-        _mockCompletionService.Verify(
-            x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
-            Times.Exactly(4));
+        // Mock 모드에서만 검증
+        if (!_fixture.UseRealApi)
+        {
+            _fixture.MockCompletionService!.Verify(
+                x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
+                Times.Exactly(4));
+        }
     }
 
     [Fact]
@@ -206,12 +182,10 @@ public class OpenAIMetadataExtractorTests
             ""overallConfidence"": 0.8
         }";
 
-        _mockCompletionService
-            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mockResponse);
+        _fixture.SetupMockResponse(mockResponse);
 
         // Act
-        var result = await _extractor.ExtractAsync(content, MetadataSchema.General, options);
+        var result = await _fixture.Extractor.ExtractAsync(content, MetadataSchema.General, options);
 
         // Assert
         result.Should().NotBeNull();
@@ -234,12 +208,10 @@ public class OpenAIMetadataExtractorTests
             ""overallConfidence"": 0.8
         }";
 
-        _mockCompletionService
-            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mockResponse);
+        _fixture.SetupMockResponse(mockResponse);
 
         // Act
-        var result = await _extractor.ExtractAsync(content, MetadataSchema.General, options);
+        var result = await _fixture.Extractor.ExtractAsync(content, MetadataSchema.General, options);
 
         // Assert
         result.Should().NotBeNull();
@@ -255,8 +227,8 @@ public class OpenAIMetadataExtractorTests
         var schema = MetadataSchema.General;
 
         // Act
-        var key1 = _extractor.GenerateCacheKey(content, schema);
-        var key2 = _extractor.GenerateCacheKey(content, schema);
+        var key1 = _fixture.Extractor.GenerateCacheKey(content, schema);
+        var key2 = _fixture.Extractor.GenerateCacheKey(content, schema);
 
         // Assert
         key1.Should().Be(key2);
@@ -271,8 +243,8 @@ public class OpenAIMetadataExtractorTests
         var schema = MetadataSchema.General;
 
         // Act
-        var key1 = _extractor.GenerateCacheKey(content1, schema);
-        var key2 = _extractor.GenerateCacheKey(content2, schema);
+        var key1 = _fixture.Extractor.GenerateCacheKey(content1, schema);
+        var key2 = _fixture.Extractor.GenerateCacheKey(content2, schema);
 
         // Assert
         key1.Should().NotBe(key2);
@@ -287,8 +259,8 @@ public class OpenAIMetadataExtractorTests
         var schema2 = MetadataSchema.Article;
 
         // Act
-        var key1 = _extractor.GenerateCacheKey(content, schema1);
-        var key2 = _extractor.GenerateCacheKey(content, schema2);
+        var key1 = _fixture.Extractor.GenerateCacheKey(content, schema1);
+        var key2 = _fixture.Extractor.GenerateCacheKey(content, schema2);
 
         // Assert
         key1.Should().NotBe(key2);
@@ -298,7 +270,7 @@ public class OpenAIMetadataExtractorTests
     public void GetSupportedSchemas_ShouldReturnAllSchemas()
     {
         // Act
-        var schemas = _extractor.GetSupportedSchemas();
+        var schemas = _fixture.Extractor.GetSupportedSchemas();
 
         // Assert
         schemas.Should().Contain(MetadataSchema.General);
@@ -312,7 +284,7 @@ public class OpenAIMetadataExtractorTests
     public void GetSchemaDescription_ForGeneralSchema_ShouldReturnDescription()
     {
         // Act
-        var description = _extractor.GetSchemaDescription(MetadataSchema.General);
+        var description = _fixture.Extractor.GetSchemaDescription(MetadataSchema.General);
 
         // Assert
         description.Should().NotBeNullOrWhiteSpace();
@@ -323,18 +295,20 @@ public class OpenAIMetadataExtractorTests
     {
         // Arrange
         var content = "Test content";
-        _mockCompletionService
-            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new HttpRequestException("API error"));
+        _fixture.SetupMockException(new HttpRequestException("API error"));
 
         // Act
-        Func<Task> act = async () => await _extractor.ExtractAsync(content, MetadataSchema.General);
+        Func<Task> act = async () => await _fixture.Extractor.ExtractAsync(content, MetadataSchema.General);
 
         // Assert
         await act.Should().ThrowAsync<HttpRequestException>();
-        _mockCompletionService.Verify(
-            x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
-            Times.AtLeast(1)); // Should retry
+        // Mock 모드에서만 검증
+        if (!_fixture.UseRealApi)
+        {
+            _fixture.MockCompletionService!.Verify(
+                x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()),
+                Times.AtLeast(1)); // Should retry
+        }
     }
 
     [Fact]
@@ -344,12 +318,10 @@ public class OpenAIMetadataExtractorTests
         var content = "Test content";
         var invalidJson = "This is not valid JSON";
 
-        _mockCompletionService
-            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(invalidJson);
+        _fixture.SetupMockResponse(invalidJson);
 
         // Act
-        Func<Task> act = async () => await _extractor.ExtractAsync(content, MetadataSchema.General);
+        Func<Task> act = async () => await _fixture.Extractor.ExtractAsync(content, MetadataSchema.General);
 
         // Assert
         await act.Should().ThrowAsync<Exception>(); // JSON parsing error
@@ -363,12 +335,10 @@ public class OpenAIMetadataExtractorTests
         var cts = new CancellationTokenSource();
         cts.Cancel();
 
-        _mockCompletionService
-            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new OperationCanceledException());
+        _fixture.SetupMockException(new OperationCanceledException());
 
         // Act
-        Func<Task> act = async () => await _extractor.ExtractAsync(content, MetadataSchema.General, cancellationToken: cts.Token);
+        Func<Task> act = async () => await _fixture.Extractor.ExtractAsync(content, MetadataSchema.General, cancellationToken: cts.Token);
 
         // Assert
         await act.Should().ThrowAsync<OperationCanceledException>();
