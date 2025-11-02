@@ -172,7 +172,7 @@ var results = await context.Retriever.SearchAsync(
 );
 ```
 
-For more advanced search strategies (Keyword, Vector, Hybrid), see the [Tutorial](./tutorial.md#3-search-strategies).
+For more advanced search strategies (Keyword, Vector, Hybrid), see the [Tutorial](./TUTORIAL.md#3-search-strategies).
 
 ## Environment Variables
 
@@ -263,7 +263,7 @@ await Task.Delay(TimeSpan.FromSeconds(1));
 
 ## Next Steps
 
-- [Tutorial](./tutorial.md) - Learn advanced features
+- [Tutorial](./TUTORIAL.md) - Learn advanced features
 - [Architecture](./architecture.md) - Understand the design
 - [Examples](../samples/) - See working code
 - [Benchmarks](../benchmarks/FluxIndex.Benchmarks/BENCHMARK_RESULTS.md) - Performance metrics

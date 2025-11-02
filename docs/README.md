@@ -6,35 +6,36 @@ Complete documentation for the FluxIndex RAG library.
 
 ### Getting Started
 - [Getting Started](getting-started.md) - 5-minute setup guide
-- [Tutorial](tutorial.md) - Comprehensive usage examples
+- [Tutorial](TUTORIAL.md) - Comprehensive usage examples
 - [Cheat Sheet](cheat-sheet.md) - Quick reference
 
 ### Advanced Topics
 - [Architecture](architecture.md) - Clean architecture design
+- [Testing Guide](TESTING.md) - Unit and integration testing patterns
 - [RAG System](FLUXINDEX_RAG_SYSTEM.md) - Advanced RAG patterns
 
 ### Practical Resources
 - [Examples](../samples/) - Working code samples
 - [Benchmarks](../benchmarks/FluxIndex.Benchmarks/BENCHMARK_RESULTS.md) - Performance metrics
-- [Tests](../tests/) - Unit and integration tests
+- [Development Tasks](../TASKS.md) - Roadmap and progress
 
 ## Learning Path
 
 ### Beginners
 1. Start with [Getting Started](getting-started.md) for initial setup
-2. Follow [Tutorial chapters 1-2](tutorial.md#1-setup-and-configuration) for basics
+2. Follow [Tutorial chapters 1-2](TUTORIAL.md#1-setup-and-configuration) for basics
 3. Use [Cheat Sheet](cheat-sheet.md) for quick reference
-4. Try [RealWorldDemo](../samples/FluxIndex.RealWorldDemo/) sample
+4. Try [RealQualityTest](../samples/RealQualityTest/) sample
 
 ### Intermediate
-1. Learn [Search Strategies](tutorial.md#3-search-strategies)
-2. Understand [Document Processing](tutorial.md#4-document-processing)
+1. Learn [Search Strategies](TUTORIAL.md#3-search-strategies)
+2. Understand [Document Processing](TUTORIAL.md#4-document-processing)
 3. Study [Architecture Guide](architecture.md)
-4. Explore [FileFlux](../samples/FileFluxIndexSample/) sample
+4. Explore [FileFluxIndexSample](../samples/FileFluxIndexSample/) sample
 
 ### Advanced
-1. Master [Performance Optimization](tutorial.md#5-performance-optimization)
-2. Review [Production Deployment](tutorial.md#6-production-deployment)
+1. Master [Performance Optimization](TUTORIAL.md#5-performance-optimization)
+2. Review [Production Deployment](TUTORIAL.md#6-production-deployment)
 3. Deep dive into [RAG System Guide](FLUXINDEX_RAG_SYSTEM.md)
 4. Extend with custom implementations
 

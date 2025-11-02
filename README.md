@@ -39,7 +39,7 @@ await context.Indexer.IndexDocumentAsync(
 var results = await context.Retriever.SearchAsync("RAG library", maxResults: 5);
 ```
 
-👉 **See [Tutorial](./docs/tutorial.md) for complete examples and best practices**
+👉 **See [Tutorial](./docs/TUTORIAL.md) for complete examples and best practices**
 
 ## Performance
 
@@ -55,15 +55,17 @@ Full benchmarks: [BENCHMARK_RESULTS.md](./benchmarks/FluxIndex.Benchmarks/BENCHM
 ## Documentation
 
 - [Getting Started](./docs/getting-started.md) - Setup and configuration
-- [Tutorial](./docs/tutorial.md) - Comprehensive examples
-- [Architecture](./docs/architecture.md) - Design principles
+- [Tutorial](./docs/TUTORIAL.md) - Comprehensive examples
+- [Architecture](./docs/architecture.md) - Design principles and patterns
 - [Cheat Sheet](./docs/cheat-sheet.md) - Quick reference
+- [Testing Guide](./docs/TESTING.md) - Unit and integration testing
 
 ## Examples
 
-- [RealWorldDemo](./samples/FluxIndex.RealWorldDemo/) - OpenAI + SQLite integration
-- [FileFluxSample](./samples/FileFluxIndexSample/) - PDF/DOCX processing
+- [RealQualityTest](./samples/RealQualityTest/) - OpenAI + SQLite integration
+- [FileFluxIndexSample](./samples/FileFluxIndexSample/) - PDF/DOCX processing
 - [WebFluxSample](./samples/WebFluxSample/) - Web crawling
+- [IntegrationTestSample](./samples/IntegrationTestSample/) - Integration testing patterns
 
 ## Requirements
 
