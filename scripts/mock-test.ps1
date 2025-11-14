@@ -94,6 +94,10 @@ foreach ($project in $testProjects) {
     $testOutput = & dotnet @testArgs $project 2>&1
     $exitCode = $LASTEXITCODE
 
+    # Debug: Show test output
+    Write-Output "Test output:"
+    $testOutput | ForEach-Object { Write-Output $_ }
+
     # Parse output for test results
     $passed = 0
     $failed = 0
