@@ -72,7 +72,7 @@ if ($NoBuild) {
 }
 
 if ($Coverage) {
-    $testArgs += "--collect:`"XPlat Code Coverage`""
+    $testArgs += "--collect:XPlat Code Coverage"
 }
 
 # Run tests for each project
@@ -93,10 +93,6 @@ foreach ($project in $testProjects) {
     # Run tests
     $testOutput = & dotnet @testArgs $project 2>&1
     $exitCode = $LASTEXITCODE
-
-    # Debug: Show test output
-    Write-Output "Test output:"
-    $testOutput | ForEach-Object { Write-Output $_ }
 
     # Parse output for test results
     $passed = 0
