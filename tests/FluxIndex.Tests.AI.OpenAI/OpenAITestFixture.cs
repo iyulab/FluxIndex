@@ -64,7 +64,7 @@ public class OpenAITestFixture : IDisposable
             options = new OpenAIOptions
             {
                 ApiKey = apiKey,
-                ModelName = Environment.GetEnvironmentVariable("OPENAI_MODEL_NAME") ?? "gpt-4o-mini"
+                ModelName = Environment.GetEnvironmentVariable("OPENAI_MODEL_NAME") ?? "gpt-5-nano"
             };
 
             MockCompletionService = null; // 실제 API 사용 시 Mock 불필요

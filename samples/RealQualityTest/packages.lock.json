@@ -14,20 +14,20 @@
       },
       "FileFlux": {
         "type": "Direct",
-        "requested": "[0.3.16, )",
-        "resolved": "0.3.16",
-        "contentHash": "cIymi9GB1LfYrnHTlnB4JS252RnUE4/6bRLWpq4mkNHbp341SUZ7ViQVL+q/ElPsbGE/NCNwpFKFZsFEp9lNQA==",
+        "requested": "[0.3.17, )",
+        "resolved": "0.3.17",
+        "contentHash": "hBXYiePui9Ugl4NFncoW20wm2NgbkmQ6iV0vAC3k5YW430e1cAOO95KsqXdh9TzCQJ3mZA+NEsJWe5nxaQKRYg==",
         "dependencies": {
           "CsvHelper": "33.1.0",
           "DocumentFormat.OpenXml": "3.3.0",
           "HtmlAgilityPack": "1.12.4",
           "Markdig": "0.43.0",
-          "Microsoft.Extensions.Caching.Memory": "9.0.10",
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "9.0.10",
-          "Microsoft.Extensions.Logging.Abstractions": "9.0.10",
-          "Microsoft.Extensions.ObjectPool": "9.0.10",
-          "Microsoft.Extensions.Options.ConfigurationExtensions": "9.0.10",
-          "PdfPig": "0.1.11"
+          "Microsoft.Extensions.Caching.Memory": "10.0.0",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.0",
+          "Microsoft.Extensions.Logging.Abstractions": "10.0.0",
+          "Microsoft.Extensions.ObjectPool": "10.0.0",
+          "Microsoft.Extensions.Options.ConfigurationExtensions": "10.0.0",
+          "PdfPig": "0.1.12"
         }
       },
       "Microsoft.EntityFrameworkCore.Sqlite": {
@@ -307,8 +307,8 @@
       },
       "Microsoft.Extensions.ObjectPool": {
         "type": "Transitive",
-        "resolved": "9.0.10",
-        "contentHash": "tw0jYoEdRp2AQMBYTkdCy0OKWcNaazaFQgo4KzdayTkX2N00g2hAacGd9mls4nBz6clP+87eeD0ucWyDrz+VKg=="
+        "resolved": "10.0.0",
+        "contentHash": "bpeCq0IYmVLACyEUMzFIOQX+zZUElG1t+nu1lSxthe7B+1oNYking7b91305+jNB6iwojp9fqTY9O+Nh7ULQxg=="
       },
       "Microsoft.Extensions.Primitives": {
         "type": "Transitive",
@@ -325,8 +325,8 @@
       },
       "PdfPig": {
         "type": "Transitive",
-        "resolved": "0.1.11",
-        "contentHash": "pGAhccH2pXU5SzNPs94kGD+HnChHWrW/234en2Ky+RSAAui4o7msOiUdePErOmM2FY/wnyfj3MY/WRAhjnlRVw=="
+        "resolved": "0.1.12",
+        "contentHash": "QP5Ve0xOkqK+zejRIN+R3UDjceIjdViBBIGMSmbyh6MfTmgrQ7FAx3YmDUqIgVY2gwPZRUuZFPJJdppBI0pw/g=="
       },
       "SQLitePCLRaw.bundle_e_sqlite3": {
         "type": "Transitive",
@@ -390,7 +390,7 @@
         "type": "Project",
         "dependencies": {
           "Azure.AI.OpenAI": "[2.1.0, )",
-          "FluxIndex.Core": "[0.2.14, )",
+          "FluxIndex.Core": "[0.2.15, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.0, )"
         }
@@ -398,7 +398,7 @@
       "fluxindex.core": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex": "[0.2.14, )",
+          "FluxIndex": "[0.2.15, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.0, )"
         }
@@ -406,10 +406,10 @@
       "fluxindex.sdk": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex": "[0.2.14, )",
-          "FluxIndex.AI.OpenAI": "[0.2.14, )",
-          "FluxIndex.Core": "[0.2.14, )",
-          "FluxIndex.Storage.SQLite": "[0.2.14, )",
+          "FluxIndex": "[0.2.15, )",
+          "FluxIndex.AI.OpenAI": "[0.2.15, )",
+          "FluxIndex.Core": "[0.2.15, )",
+          "FluxIndex.Storage.SQLite": "[0.2.15, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
           "Microsoft.Extensions.Http": "[10.0.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.0, )"
@@ -418,7 +418,7 @@
       "fluxindex.storage.sqlite": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.Core": "[0.2.14, )",
+          "FluxIndex.Core": "[0.2.15, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[9.0.11, )",
           "Microsoft.Extensions.Configuration.Binder": "[10.0.0, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",

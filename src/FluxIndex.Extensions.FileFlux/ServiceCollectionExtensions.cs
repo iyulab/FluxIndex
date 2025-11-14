@@ -2,6 +2,7 @@ using FileFlux;
 using FileFlux.Domain;
 using FileFlux.Infrastructure.Quality;
 using Microsoft.Extensions.DependencyInjection;
+using IFileFluxTextCompletionService = FileFlux.ITextCompletionService;
 
 namespace FluxIndex.Extensions.FileFlux;
 
@@ -24,6 +25,11 @@ public static class FileFluxServiceCollectionExtensions
         // Register FileFlux quality analyzer for document quality analysis and QA generation (FileFlux 0.3.0)
         services.AddScoped<ChunkQualityEngine>();
         services.AddScoped<IDocumentQualityAnalyzer, DocumentQualityAnalyzer>();
+
+        // Register FluxIndex's text completion adapter for FileFlux
+        // This adapter bridges FluxIndex's ITextCompletionService to FileFlux's ITextCompletionService interface
+        // FileFlux will use FluxIndex's OpenAI implementation for all LLM-based operations
+        services.AddScoped<IFileFluxTextCompletionService, FluxIndexTextCompletionAdapter>();
 
         // Configure FluxIndex-specific options
         if (configureOptions != null)

@@ -79,23 +79,60 @@ public class FluxIndexContextBuilder
     /// <summary>
     /// OpenAI 임베딩 서비스 사용
     /// </summary>
-    public FluxIndexContextBuilder UseOpenAI(string apiKey, string model = "text-embedding-3-small")
+    /// <param name="apiKey">OpenAI API key</param>
+    /// <param name="embeddingModel">Embedding model (e.g., "text-embedding-3-small")</param>
+    /// <param name="completionModel">Optional text completion model (e.g., "gpt-5-nano" recommended for cost-efficiency). If provided, ITextCompletionService will be registered.</param>
+    public FluxIndexContextBuilder UseOpenAI(
+        string apiKey,
+        string embeddingModel = "text-embedding-3-small",
+        string? completionModel = null)
     {
         _options.Embedding.Provider = "OpenAI";
         _options.Embedding.ApiKey = apiKey;
-        _options.Embedding.ModelName = model;
+        _options.Embedding.ModelName = embeddingModel;
+
+        // Register text completion service if completion model is specified
+        if (!string.IsNullOrEmpty(completionModel))
+        {
+            _services.AddOpenAITextCompletion(options =>
+            {
+                options.ApiKey = apiKey;
+                options.ModelName = completionModel;
+            });
+        }
+
         return this;
     }
 
     /// <summary>
     /// Azure OpenAI 임베딩 서비스 사용
     /// </summary>
-    public FluxIndexContextBuilder UseAzureOpenAI(string endpoint, string apiKey, string deploymentName)
+    /// <param name="endpoint">Azure OpenAI endpoint URL</param>
+    /// <param name="apiKey">Azure OpenAI API key</param>
+    /// <param name="embeddingDeployment">Embedding deployment name</param>
+    /// <param name="completionDeployment">Optional text completion deployment name (GPT-5 series recommended). If provided, ITextCompletionService will be registered.</param>
+    public FluxIndexContextBuilder UseAzureOpenAI(
+        string endpoint,
+        string apiKey,
+        string embeddingDeployment,
+        string? completionDeployment = null)
     {
         _options.Embedding.Provider = "AzureOpenAI";
         _options.Embedding.ApiKey = apiKey;
-        _options.Embedding.ModelName = deploymentName;
+        _options.Embedding.ModelName = embeddingDeployment;
         _options.Embedding.ProviderSpecificOptions["Endpoint"] = endpoint;
+
+        // Register text completion service if completion deployment is specified
+        if (!string.IsNullOrEmpty(completionDeployment))
+        {
+            _services.AddAzureOpenAITextCompletion(options =>
+            {
+                options.Endpoint = endpoint;
+                options.ApiKey = apiKey;
+                options.ModelName = completionDeployment;
+            });
+        }
+
         return this;
     }
 
@@ -128,7 +165,7 @@ public class FluxIndexContextBuilder
 
     /// <summary>
     /// AI 공급자 자동 선택 (provider/model 형식 지원)
-    /// 예: "openai/gpt-4", "anthropic/claude-sonnet-4-5", "azure/deployment-name"
+    /// 예: "openai/gpt-5-nano", "anthropic/claude-sonnet-4-5", "azure/deployment-name"
     /// </summary>
     public FluxIndexContextBuilder UseAIProvider(string modelSpec, string apiKey, Dictionary<string, object>? options = null)
     {
@@ -175,7 +212,7 @@ public class FluxIndexContextBuilder
         if (parts.Length != 2)
             throw new ArgumentException(
                 $"Invalid model specification format: '{modelSpec}'. " +
-                "Expected format: 'provider/model-name' (e.g., 'openai/gpt-4', 'anthropic/claude-sonnet-4-5')",
+                "Expected format: 'provider/model-name' (e.g., 'openai/gpt-5-nano', 'anthropic/claude-sonnet-4-5')",
                 nameof(modelSpec));
 
         var provider = parts[0].Trim();

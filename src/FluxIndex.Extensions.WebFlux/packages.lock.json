@@ -19,22 +19,22 @@
       },
       "WebFlux": {
         "type": "Direct",
-        "requested": "[0.1.5, )",
-        "resolved": "0.1.5",
-        "contentHash": "XQ2dUWKbA6tGWpyhBaWb3ZziGJYPnWyLpUfJtRfogFVMRNtv0vbJKFkNezIRi3XCNkTTa8VnBNKFXohH1r5pIg==",
+        "requested": "[0.1.6, )",
+        "resolved": "0.1.6",
+        "contentHash": "aYdYofFWPjpiH0KDuEqVCV5YFX5aTuwiinYPmpuExj7dm9535wTSh4U/Y/zeXwflXokAQp4TPrz9CXeuIUiGtQ==",
         "dependencies": {
           "HtmlAgilityPack": "1.12.4",
           "Markdig": "0.43.0",
-          "Microsoft.Extensions.Caching.Abstractions": "9.0.10",
-          "Microsoft.Extensions.Caching.Memory": "9.0.10",
-          "Microsoft.Extensions.Configuration": "9.0.10",
-          "Microsoft.Extensions.Configuration.Abstractions": "9.0.10",
-          "Microsoft.Extensions.Configuration.Binder": "9.0.10",
-          "Microsoft.Extensions.DependencyInjection": "9.0.10",
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "9.0.10",
-          "Microsoft.Extensions.Http": "9.0.10",
-          "Microsoft.Extensions.Logging": "9.0.10",
-          "Microsoft.Extensions.Logging.Abstractions": "9.0.10",
+          "Microsoft.Extensions.Caching.Abstractions": "10.0.0",
+          "Microsoft.Extensions.Caching.Memory": "10.0.0",
+          "Microsoft.Extensions.Configuration": "10.0.0",
+          "Microsoft.Extensions.Configuration.Abstractions": "10.0.0",
+          "Microsoft.Extensions.Configuration.Binder": "10.0.0",
+          "Microsoft.Extensions.DependencyInjection": "10.0.0",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.0",
+          "Microsoft.Extensions.Http": "10.0.0",
+          "Microsoft.Extensions.Logging": "10.0.0",
+          "Microsoft.Extensions.Logging.Abstractions": "10.0.0",
           "Microsoft.Playwright": "1.55.0",
           "Polly": "8.6.4",
           "Polly.Extensions.Http": "3.0.0",
@@ -241,7 +241,7 @@
         "type": "Project",
         "dependencies": {
           "Azure.AI.OpenAI": "[2.1.0, )",
-          "FluxIndex.Core": "[0.2.14, )",
+          "FluxIndex.Core": "[0.2.15, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.0, )"
         }
@@ -249,7 +249,7 @@
       "fluxindex.core": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex": "[0.2.14, )",
+          "FluxIndex": "[0.2.15, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.0, )"
         }
@@ -257,10 +257,10 @@
       "fluxindex.sdk": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex": "[0.2.14, )",
-          "FluxIndex.AI.OpenAI": "[0.2.14, )",
-          "FluxIndex.Core": "[0.2.14, )",
-          "FluxIndex.Storage.SQLite": "[0.2.14, )",
+          "FluxIndex": "[0.2.15, )",
+          "FluxIndex.AI.OpenAI": "[0.2.15, )",
+          "FluxIndex.Core": "[0.2.15, )",
+          "FluxIndex.Storage.SQLite": "[0.2.15, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
           "Microsoft.Extensions.Http": "[10.0.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.0, )"
@@ -269,7 +269,7 @@
       "fluxindex.storage.sqlite": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.Core": "[0.2.14, )",
+          "FluxIndex.Core": "[0.2.15, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[9.0.11, )",
           "Microsoft.Extensions.Configuration.Binder": "[10.0.0, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",

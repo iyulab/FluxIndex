@@ -1,8 +1,14 @@
-# FluxIndex.AI.OpenAI - AI 메타데이터 추출 서비스
+# FluxIndex.AI.OpenAI - OpenAI 통합 패키지
 
-FluxIndex의 OpenAI/Azure OpenAI 기반 메타데이터 추출 기능을 제공합니다.
+FluxIndex의 OpenAI/Azure OpenAI 통합 패키지입니다. 임베딩, 메타데이터 추출, 텍스트 완성 기능을 제공합니다.
 
 ## 주요 기능
+
+### 💬 **텍스트 완성 (Text Completion)**
+- **ITextCompletionService**: OpenAI GPT 모델을 활용한 텍스트 생성
+- **JSON 완성**: 구조화된 JSON 출력 생성
+- **캐싱 지원**: 동일한 프롬프트에 대한 응답 캐싱
+- **토큰 카운팅**: 프롬프트 및 응답 토큰 수 예측
 
 ### 🔍 **구조화된 메타데이터 추출**
 - **제목 및 요약**: 문서 청크의 핵심 내용을 AI가 자동 생성
@@ -30,7 +36,84 @@ FluxIndex의 OpenAI/Azure OpenAI 기반 메타데이터 추출 기능을 제공�
 
 ## 빠른 시작
 
-### 1. 기본 설정
+### 1. 텍스트 완성 서비스 사용
+
+#### 기본 사용법
+
+```csharp
+using FluxIndex.AI.OpenAI;
+using Microsoft.Extensions.DependencyInjection;
+
+// 서비스 등록
+services.AddOpenAITextCompletion(options =>
+{
+    options.ApiKey = "your-openai-api-key";
+
+    // GPT-5 Series (2025년 8월 출시) - 권장 ⭐
+    options.ModelName = "gpt-5-nano";  // 최고 비용효율: $0.05/1M input, $0.40/1M output
+    // 또는 "gpt-5-mini" (균형: $0.25/1M input, $2.00/1M output)
+    // 또는 "gpt-5" (플래그십 추론: $1.25/1M input, $10.00/1M output)
+
+    // GPT-4o Series (레거시 - 하위 호환용)
+    // 또는 "gpt-4o-mini" ($0.15/1M input)
+    // 또는 "gpt-4o" ($2.50/1M input)
+
+    options.TimeoutSeconds = 30;
+    options.MaxRetries = 3;
+});
+
+// 서비스 사용
+var completionService = serviceProvider.GetRequiredService<ITextCompletionService>();
+
+// 일반 텍스트 완성
+var response = await completionService.GenerateCompletionAsync(
+    prompt: "Explain quantum computing in simple terms",
+    maxTokens: 200,
+    temperature: 0.7f
+);
+
+// JSON 완성 (구조화된 출력)
+var jsonResponse = await completionService.GenerateJsonCompletionAsync(
+    prompt: "Generate a user profile with name, age, and interests",
+    maxTokens: 500
+);
+```
+
+#### Azure OpenAI 사용
+
+```csharp
+services.AddAzureOpenAITextCompletion(options =>
+{
+    options.Endpoint = "https://your-resource.openai.azure.com";
+    options.ApiKey = "your-azure-api-key";
+    options.ModelName = "gpt-5-nano";  // Azure 배포 이름 (권장)
+    // 또는 "gpt-5-mini", "gpt-5"
+});
+```
+
+#### FluxIndexClientBuilder와 통합
+
+```csharp
+var client = new FluxIndexClientBuilder()
+    .UseOpenAI(
+        apiKey: "your-api-key",
+        embeddingModel: "text-embedding-3-small",
+        completionModel: "gpt-5-nano"  // 선택적: 텍스트 완성 기능 (권장: 최고 비용효율)
+    )
+    .Build();
+
+// 또는 Azure OpenAI
+var client = new FluxIndexClientBuilder()
+    .UseAzureOpenAI(
+        endpoint: "https://your-resource.openai.azure.com",
+        apiKey: "your-api-key",
+        embeddingDeployment: "text-embedding-3-small",
+        completionDeployment: "gpt-5-nano"  // 선택적: 텍스트 완성 기능 (권장: 최고 비용효율)
+    )
+    .Build();
+```
+
+### 2. 메타데이터 추출 기본 설정
 
 ```csharp
 // appsettings.json
@@ -164,6 +247,62 @@ foreach (var result in results)
     Console.WriteLine($"하이라이트: {result.HighlightedContent}");
 }
 ```
+
+## 제공되는 서비스
+
+FluxIndex.AI.OpenAI 패키지는 다음 서비스 인터페이스 구현을 제공합니다:
+
+- **ITextCompletionService**: 텍스트 생성 및 JSON 완성
+- **IEmbeddingService**: 문서 임베딩 생성 (검색용)
+- **IMetadataExtractor**: AI 기반 메타데이터 추출
+
+### 통합 등록 방법
+
+#### 모든 서비스 한 번에 등록
+
+```csharp
+// 임베딩 + 메타데이터 추출
+services.AddOpenAIServices(options =>
+{
+    options.ApiKey = "your-api-key";
+    options.ModelName = "text-embedding-3-small";  // 임베딩 모델
+});
+
+// 임베딩 + 메타데이터 추출 + 텍스트 완성
+services.AddAllOpenAIServices(options =>
+{
+    options.ApiKey = "your-api-key";
+    options.ModelName = "gpt-5-nano";  // 완성 및 메타데이터 모델 (권장)
+});
+```
+
+#### 개별 서비스 등록
+
+```csharp
+// 임베딩만
+services.AddOpenAIEmbedding(options =>
+{
+    options.ApiKey = "your-api-key";
+    options.ModelName = "text-embedding-3-small";
+    options.Dimensions = 1536;  // 선택적
+});
+
+// 텍스트 완성만
+services.AddOpenAITextCompletion(options =>
+{
+    options.ApiKey = "your-api-key";
+    options.ModelName = "gpt-5-nano";  // 권장: 최고 비용효율
+});
+
+// 메타데이터 추출만
+services.AddOpenAIMetadataExtractor(options =>
+{
+    options.ApiKey = "your-api-key";
+    options.ModelName = "gpt-5-mini";  // 메타데이터는 더 높은 품질 권장
+});
+```
+
+**참고**: 임베딩과 완성에 서로 다른 모델을 사용하려면 별도의 서비스 인스턴스를 등록해야 합니다.
 
 ## 설정 옵션
 

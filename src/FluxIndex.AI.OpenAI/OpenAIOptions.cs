@@ -16,7 +16,11 @@ public class OpenAIOptions
     public string? Endpoint { get; set; }
 
     /// <summary>
-    /// Model name for embeddings (e.g., "text-embedding-3-small")
+    /// Model name (used for embedding, text completion, and metadata extraction)
+    /// For embedding: "text-embedding-3-small", "text-embedding-3-large", "text-embedding-ada-002"
+    /// For text completion: "gpt-5-nano" (recommended, most cost-effective), "gpt-5-mini", "gpt-5"
+    /// Legacy models: "gpt-4o-mini", "gpt-4o" (backward compatibility only)
+    /// Note: When using different models for embedding and completion, configure separate service instances
     /// </summary>
     public string ModelName { get; set; } = "text-embedding-3-small";
 
@@ -27,6 +31,7 @@ public class OpenAIOptions
 
     /// <summary>
     /// Embedding dimensions (optional, model default if null)
+    /// Only applicable for embedding services
     /// </summary>
     public int? Dimensions { get; set; }
 
@@ -36,7 +41,7 @@ public class OpenAIOptions
     public int TimeoutSeconds { get; set; } = 30;
 
     /// <summary>
-    /// Maximum retry attempts
+    /// Maximum retry attempts for failed requests
     /// </summary>
     public int MaxRetries { get; set; } = 3;
 }

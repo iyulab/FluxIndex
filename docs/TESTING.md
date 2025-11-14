@@ -76,7 +76,7 @@ cp .env.local.example .env.local
 
 # 2. API 키 설정 (.env.local 파일 편집)
 OPENAI_API_KEY=sk-proj-your-actual-api-key-here
-OPENAI_MODEL_NAME=gpt-4o-mini
+OPENAI_MODEL_NAME=gpt-5-nano
 ```
 
 ### 2. 전체 테스트 실행
@@ -112,7 +112,7 @@ pwsh scripts/full-test.ps1 -Filter "OpenAI"
 dotnet test tests/FluxIndex.Tests.Core
 
 # 빠른 모델 사용 (.env.local)
-OPENAI_MODEL_NAME=gpt-4o-mini  # gpt-4o 대신
+OPENAI_MODEL_NAME=gpt-5-nano
 ```
 
 ## 테스트 결과 이해하기

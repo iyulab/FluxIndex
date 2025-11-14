@@ -3,7 +3,6 @@
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
-
   <!-- Microsoft.Extensions Packages - .NET 10.0 -->
   <ItemGroup>
     <PackageVersion Include="Microsoft.Extensions.Caching.Abstractions" Version="10.0.0" />
@@ -29,8 +28,7 @@
     <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.0" />
     <PackageVersion Include="System.Text.Json" Version="10.0.0" />
   </ItemGroup>
-
-  <!-- Entity Framework Core Packages - 9.0.11 (Stable) -->
+  <!-- Entity Framework Core Packages - 9.0.11 (Stable - EF Core 10.0.0 not yet stable for Npgsql) -->
   <ItemGroup>
     <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="9.0.11" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.11" />
@@ -39,7 +37,6 @@
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
     <PackageVersion Include="Pgvector.EntityFrameworkCore" Version="0.2.2" />
   </ItemGroup>
-
   <!-- AI/ML Packages -->
   <ItemGroup>
     <PackageVersion Include="Anthropic.SDK" Version="5.8.0" />
@@ -47,21 +44,18 @@
     <PackageVersion Include="Google.Cloud.AIPlatform.V1" Version="3.54.0" />
     <PackageVersion Include="Microsoft.SemanticKernel" Version="1.31.0" />
   </ItemGroup>
-
   <!-- Storage/Cache Packages -->
   <ItemGroup>
     <PackageVersion Include="StackExchange.Redis" Version="2.9.32" />
     <PackageVersion Include="sqlite-vec" Version="0.1.7-alpha.2.1" />
   </ItemGroup>
-
   <!-- Document Processing -->
   <ItemGroup>
-    <PackageVersion Include="FileFlux" Version="0.3.16" />
+    <PackageVersion Include="FileFlux" Version="0.3.17" />
     <PackageVersion Include="FileFlux.Core" Version="0.2.5" />
     <PackageVersion Include="HtmlAgilityPack" Version="1.12.3" />
-    <PackageVersion Include="WebFlux" Version="0.1.5" />
+    <PackageVersion Include="WebFlux" Version="0.1.6" />
   </ItemGroup>
-
   <!-- Testing Packages -->
   <ItemGroup>
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
@@ -74,7 +68,6 @@
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
     <PackageVersion Include="Xunit.SkippableFact" Version="1.5.23" />
   </ItemGroup>
-
   <!-- Build/Development Packages -->
   <ItemGroup>
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.6" />

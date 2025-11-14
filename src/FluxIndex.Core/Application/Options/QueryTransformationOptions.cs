@@ -108,7 +108,7 @@ public class OpenAIOptions
     /// <summary>
     /// 기본 모델명
     /// </summary>
-    public string DefaultModel { get; set; } = "gpt-3.5-turbo";
+    public string DefaultModel { get; set; } = "gpt-5-nano";
 
     /// <summary>
     /// 최대 토큰 수
@@ -147,7 +147,7 @@ public class OpenAIOptions
     {
         ApiKey = "test-api-key",
         BaseUrl = "https://api.openai.com",
-        DefaultModel = "gpt-3.5-turbo",
+        DefaultModel = "gpt-5-nano",
         MaxTokens = 1000,
         Temperature = 0.5f,
         Timeout = TimeSpan.FromSeconds(10),
