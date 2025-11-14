@@ -440,7 +440,7 @@ public class RedisSemanticCacheService : ISemanticCacheService
 
         try
         {
-            return JsonSerializer.Deserialize<CachedSearchResult>(resultJson!, GetJsonOptions());
+            return JsonSerializer.Deserialize<CachedSearchResult>((string)resultJson!, GetJsonOptions());
         }
         catch (Exception ex)
         {

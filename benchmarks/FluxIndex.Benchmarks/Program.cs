@@ -91,7 +91,7 @@ class Program
         Console.WriteLine();
         Console.WriteLine("BenchmarkDotNet 옵션:");
         Console.WriteLine("  --memory          # 메모리 프로파일링 포함");
-        Console.WriteLine("  --runtimes        # 여러 런타임에서 실행 (예: net9.0)");
+        Console.WriteLine("  --runtimes        # 여러 런타임에서 실행 (예: net10.0)");
         Console.WriteLine("  --job short       # 빠른 실행 (정확도 낮음)");
         Console.WriteLine("  --exporters json  # JSON 형식으로 결과 내보내기");
         Console.WriteLine();
