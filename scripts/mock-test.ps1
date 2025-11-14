@@ -48,9 +48,9 @@ else {
 
 # Test project paths
 $testProjects = @(
-    "tests/FluxIndex.Tests.Core/FluxIndex.Tests.Core.csproj",
-    "tests/FluxIndex.Tests.AI.OpenAI/FluxIndex.Tests.AI.OpenAI.csproj",
-    "tests/FluxIndex.Tests.SDK/FluxIndex.Tests.SDK.csproj"
+    "tests/FluxIndex.Core.Tests/FluxIndex.Core.Tests.csproj",
+    "tests/FluxIndex.AI.OpenAI.Tests/FluxIndex.AI.OpenAI.Tests.csproj",
+    "tests/FluxIndex.SDK.Tests/FluxIndex.SDK.Tests.csproj"
 )
 
 # Storage for results
