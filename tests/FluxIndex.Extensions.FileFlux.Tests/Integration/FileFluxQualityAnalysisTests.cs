@@ -3,6 +3,8 @@ using FileFlux;
 using FileFlux.Domain;
 using FileFlux.Infrastructure.Quality;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Moq;
 using Xunit;
 
 namespace FluxIndex.Extensions.FileFlux.Tests.Integration;
@@ -13,11 +15,25 @@ namespace FluxIndex.Extensions.FileFlux.Tests.Integration;
 /// </summary>
 public class FileFluxQualityAnalysisTests
 {
+    private static ServiceCollection CreateServicesWithMocks()
+    {
+        var services = new ServiceCollection();
+
+        // Add logging
+        services.AddLogging();
+
+        // Register mock ITextCompletionService required by FluxIndexTextCompletionAdapter
+        var mockTextCompletion = new Mock<FluxIndex.Core.Application.Interfaces.ITextCompletionService>();
+        services.AddSingleton(mockTextCompletion.Object);
+
+        return services;
+    }
+
     [Fact]
     public void IDocumentQualityAnalyzer_ShouldBeRegistered()
     {
         // Arrange
-        var services = new ServiceCollection();
+        var services = CreateServicesWithMocks();
         services.AddFileFluxIntegration();
 
         var serviceProvider = services.BuildServiceProvider();
@@ -34,7 +50,7 @@ public class FileFluxQualityAnalysisTests
     public void ChunkQualityEngine_ShouldBeRegistered()
     {
         // Arrange
-        var services = new ServiceCollection();
+        var services = CreateServicesWithMocks();
         services.AddFileFluxIntegration();
 
         var serviceProvider = services.BuildServiceProvider();
@@ -50,7 +66,7 @@ public class FileFluxQualityAnalysisTests
     public void IDocumentQualityAnalyzer_EvaluateChunksAsync_MethodExists()
     {
         // Arrange
-        var services = new ServiceCollection();
+        var services = CreateServicesWithMocks();
         services.AddFileFluxIntegration();
         var serviceProvider = services.BuildServiceProvider();
         var qualityAnalyzer = serviceProvider.GetRequiredService<IDocumentQualityAnalyzer>();
@@ -65,7 +81,7 @@ public class FileFluxQualityAnalysisTests
     public void IDocumentQualityAnalyzer_GenerateQABenchmarkAsync_MethodExists()
     {
         // Arrange
-        var services = new ServiceCollection();
+        var services = CreateServicesWithMocks();
         services.AddFileFluxIntegration();
         var serviceProvider = services.BuildServiceProvider();
         var qualityAnalyzer = serviceProvider.GetRequiredService<IDocumentQualityAnalyzer>();
@@ -80,7 +96,7 @@ public class FileFluxQualityAnalysisTests
     public void IDocumentQualityAnalyzer_AnalyzeQualityAsync_MethodExists()
     {
         // Arrange
-        var services = new ServiceCollection();
+        var services = CreateServicesWithMocks();
         services.AddFileFluxIntegration();
         var serviceProvider = services.BuildServiceProvider();
         var qualityAnalyzer = serviceProvider.GetRequiredService<IDocumentQualityAnalyzer>();
@@ -95,7 +111,7 @@ public class FileFluxQualityAnalysisTests
     public void IDocumentQualityAnalyzer_BenchmarkChunkingAsync_MethodExists()
     {
         // Arrange
-        var services = new ServiceCollection();
+        var services = CreateServicesWithMocks();
         services.AddFileFluxIntegration();
         var serviceProvider = services.BuildServiceProvider();
         var qualityAnalyzer = serviceProvider.GetRequiredService<IDocumentQualityAnalyzer>();

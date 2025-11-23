@@ -208,6 +208,11 @@
         "resolved": "13.0.3",
         "contentHash": "HrC5BXdl00IP9zeV+0Z848QWPAoCr9P3bDEZguI+gkLcBKAOxix/tLEAAHC+UvDNPv4a2d18lOReHMOagPa+zQ=="
       },
+      "NTextCat": {
+        "type": "Transitive",
+        "resolved": "0.3.65",
+        "contentHash": "Yc2mJwJJPf5rEmzadOPFWmsejuHbCIqKwmarrwibNT6MhySs3COKZ1dEL7Z+UzsiQ7pO2RWhpvatilxB+l4DaQ=="
+      },
       "OpenAI": {
         "type": "Transitive",
         "resolved": "2.1.0",
@@ -339,7 +344,7 @@
       "fluxindex.extensions.fileflux": {
         "type": "Project",
         "dependencies": {
-          "FileFlux": "[0.3.18, )",
+          "FileFlux": "[0.4.0, )",
           "FluxIndex.Core": "[0.2.15, )",
           "FluxIndex.SDK": "[0.2.15, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
@@ -382,9 +387,9 @@
       },
       "FileFlux": {
         "type": "CentralTransitive",
-        "requested": "[0.3.18, )",
-        "resolved": "0.3.18",
-        "contentHash": "jKWM0exF6b7JKczKSTVHdmKqp3b/IOQ6T+tlryaSQEwF3Bj4swUXL/gShQ5QuqKj5b2HqJIpjVqLca+9Xc5JuQ==",
+        "requested": "[0.4.0, )",
+        "resolved": "0.4.0",
+        "contentHash": "mgLhDtesNbxKLydllUXjNBIKAsLkzFS9brBt4WFQjQVUPToXbLQi0RHPzVajDZLU1tPShrlY1J3kJ/hW33CKVA==",
         "dependencies": {
           "CsvHelper": "33.1.0",
           "DocumentFormat.OpenXml": "3.3.0",
@@ -396,6 +401,7 @@
           "Microsoft.Extensions.Logging.Abstractions": "10.0.0",
           "Microsoft.Extensions.ObjectPool": "10.0.0",
           "Microsoft.Extensions.Options.ConfigurationExtensions": "10.0.0",
+          "NTextCat": "0.3.65",
           "PdfPig": "0.1.12"
         }
       },
