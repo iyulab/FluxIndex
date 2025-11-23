@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <Description>MCP (Model Context Protocol) server implementation for FluxIndex RAG services</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FluxIndex.SDK\FluxIndex.SDK.csproj" />
+    <ProjectReference Include="..\FluxIndex.Storage.SQLite\FluxIndex.Storage.SQLite.csproj" />
+    <ProjectReference Include="..\FluxIndex.AI.OpenAI\FluxIndex.AI.OpenAI.csproj" />
+    <ProjectReference Include="..\FluxIndex.Extensions.FileFlux\FluxIndex.Extensions.FileFlux.csproj" />
+    <ProjectReference Include="..\FluxIndex.Extensions.WebFlux\FluxIndex.Extensions.WebFlux.csproj" />
+  </ItemGroup>
+
+</Project>

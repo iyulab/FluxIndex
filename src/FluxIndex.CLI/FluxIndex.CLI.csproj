@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <Description>CLI tool for FluxIndex RAG MCP service - memorize, search, and serve knowledge bases</Description>
+    <AssemblyName>FluxIndex.CLI</AssemblyName>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>fluxindex</ToolCommandName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+    <PackageReference Include="Spectre.Console" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FluxIndex.MCP\FluxIndex.MCP.csproj" />
+  </ItemGroup>
+
+</Project>

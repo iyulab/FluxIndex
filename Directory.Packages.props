@@ -67,6 +67,11 @@
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
     <PackageVersion Include="Xunit.SkippableFact" Version="1.5.23" />
   </ItemGroup>
+  <!-- MCP/CLI Packages -->
+  <ItemGroup>
+    <PackageVersion Include="ModelContextProtocol" Version="0.2.0-preview.1" />
+    <PackageVersion Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
+  </ItemGroup>
   <!-- Build/Development Packages -->
   <ItemGroup>
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.6" />
