@@ -381,4 +381,7 @@ nupkgs/
 **/.env.local
 **/.env.*.local
 
+# Local
+.serena/
+FluxIndex.Benchmarks/
 DEV_NOTE.md

@@ -11,7 +11,7 @@ FileFlux + FluxIndex + OpenAI를 통합한 End-to-End RAG 파이프라인 테스
 
 ## 사전 요구사항
 
-- .NET 9.0 SDK
+- .NET 10.0 SDK
 - OpenAI API Key (환경변수 `OPENAI_API_KEY` 또는 appsettings.json에 설정)
 - FileFlux 패키지 (NuGet에서 자동 설치)
 

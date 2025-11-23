@@ -776,7 +776,7 @@ services.AddHealthChecks()
 
 ## Performance Expectations
 
-Based on Phase 7.3 benchmarks (.NET 9.0, Intel i7-1360P):
+Based on Phase 7.3 benchmarks (.NET 10.0, Intel i7-1360P):
 
 **Indexing Performance**:
 - Batch indexing (1K chunks): 24ms with 8-thread parallelism

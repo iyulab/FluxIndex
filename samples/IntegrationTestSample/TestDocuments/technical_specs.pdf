@@ -1,7 +1,7 @@
 FluxIndex Technical Specifications
 
 System Requirements:
-- .NET 9.0 or higher
+- .NET 10.0 or higher
 - Entity Framework Core 9.0
 - SQLite 3.40+ or PostgreSQL 13+
 - OpenAI API access (optional)

@@ -4,7 +4,7 @@ Quick guide to setting up FluxIndex RAG library in your .NET application.
 
 ## Prerequisites
 
-- .NET 9.0 SDK or later
+- .NET 10.0 SDK or later
 - OpenAI API key (optional)
 - Basic C# knowledge
 

@@ -139,7 +139,7 @@ public class RuleBasedMetadataExtractorTests
         // Arrange
         var content = @"
             REST API Documentation v2.0
-            Framework: .NET 9.0
+            Framework: .NET 10.0
             Language: C#
 
             This documentation covers the REST API endpoints.

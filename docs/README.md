@@ -137,7 +137,7 @@ var context = FluxIndexContext.CreateBuilder()
 
 ## Performance Benchmarks
 
-Based on .NET 9.0, Intel i7-1360P, [full results](../benchmarks/FluxIndex.Benchmarks/BENCHMARK_RESULTS.md):
+Based on .NET 10.0, Intel i7-1360P, [full results](../benchmarks/FluxIndex.Benchmarks/BENCHMARK_RESULTS.md):
 
 | Operation | Size | Time | Notes |
 |-----------|------|------|-------|

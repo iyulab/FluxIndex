@@ -4,7 +4,7 @@
 [![NuGet](https://img.shields.io/nuget/v/FluxIndex.SDK.svg?label=FluxIndex.SDK)](https://www.nuget.org/packages/FluxIndex.SDK/)
 [![License](https://img.shields.io/github/license/iyulab/FluxIndex)](LICENSE)
 
-**RAG library for .NET 9.0** - Build semantic search and retrieval systems with vector + keyword hybrid search.
+**RAG library for .NET 10.0** - Build semantic search and retrieval systems with vector + keyword hybrid search.
 
 ## Key Features
 
@@ -13,7 +13,7 @@
 - **Multiple Storage** - SQLite, PostgreSQL with pgvector
 - **AI Flexibility** - OpenAI, Azure OpenAI, or custom embedding services
 - **Document Processing** - PDF/DOCX/TXT via FileFlux, web crawling via WebFlux
-- **Production Ready** - Redis caching, clean architecture, .NET 9.0
+- **Production Ready** - Redis caching, clean architecture, .NET 10.0
 
 ## Quick Start
 
@@ -69,7 +69,7 @@ Full benchmarks: [BENCHMARK_RESULTS.md](./benchmarks/FluxIndex.Benchmarks/BENCHM
 
 ## Requirements
 
-- .NET 9.0 or later
+- .NET 10.0 or later
 - SQLite or PostgreSQL
 - OpenAI API key (optional)
 

@@ -339,7 +339,7 @@
       "fluxindex.extensions.fileflux": {
         "type": "Project",
         "dependencies": {
-          "FileFlux": "[0.3.17, )",
+          "FileFlux": "[0.3.18, )",
           "FluxIndex.Core": "[0.2.15, )",
           "FluxIndex.SDK": "[0.2.15, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
@@ -382,15 +382,16 @@
       },
       "FileFlux": {
         "type": "CentralTransitive",
-        "requested": "[0.3.17, )",
-        "resolved": "0.3.17",
-        "contentHash": "hBXYiePui9Ugl4NFncoW20wm2NgbkmQ6iV0vAC3k5YW430e1cAOO95KsqXdh9TzCQJ3mZA+NEsJWe5nxaQKRYg==",
+        "requested": "[0.3.18, )",
+        "resolved": "0.3.18",
+        "contentHash": "jKWM0exF6b7JKczKSTVHdmKqp3b/IOQ6T+tlryaSQEwF3Bj4swUXL/gShQ5QuqKj5b2HqJIpjVqLca+9Xc5JuQ==",
         "dependencies": {
           "CsvHelper": "33.1.0",
           "DocumentFormat.OpenXml": "3.3.0",
           "HtmlAgilityPack": "1.12.4",
           "Markdig": "0.43.0",
           "Microsoft.Extensions.Caching.Memory": "10.0.0",
+          "Microsoft.Extensions.Configuration": "10.0.0",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.0",
           "Microsoft.Extensions.Logging.Abstractions": "10.0.0",
           "Microsoft.Extensions.ObjectPool": "10.0.0",

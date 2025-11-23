@@ -28,7 +28,7 @@
     <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.0" />
     <PackageVersion Include="System.Text.Json" Version="10.0.0" />
   </ItemGroup>
-  <!-- Entity Framework Core Packages - 9.0.11 (Stable - EF Core 10.0.0 not yet stable for Npgsql) -->
+  <!-- Entity Framework Core Packages - 9.0.x (Stable) -->
   <ItemGroup>
     <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="9.0.11" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.11" />
@@ -51,7 +51,7 @@
   </ItemGroup>
   <!-- Document Processing -->
   <ItemGroup>
-    <PackageVersion Include="FileFlux" Version="0.3.17" />
+    <PackageVersion Include="FileFlux" Version="0.3.18" />
     <PackageVersion Include="FileFlux.Core" Version="0.2.5" />
     <PackageVersion Include="HtmlAgilityPack" Version="1.12.3" />
     <PackageVersion Include="WebFlux" Version="0.1.6" />

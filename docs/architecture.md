@@ -1,6 +1,6 @@
 # FluxIndex Architecture
 
-Clean Architecture-based RAG infrastructure for .NET 9.0 with modular design and provider flexibility.
+Clean Architecture-based RAG infrastructure for .NET 10.0 with modular design and provider flexibility.
 
 ## Architecture Overview
 
