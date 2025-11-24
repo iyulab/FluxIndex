@@ -5,6 +5,7 @@ var rootCommand = new RootCommand("FluxIndex - RAG MCP service for intelligent d
 
 // Add subcommands
 rootCommand.AddCommand(InitCommand.Create());
+rootCommand.AddCommand(ConfigCommand.Create());
 rootCommand.AddCommand(MemorizeCommand.Create());
 rootCommand.AddCommand(UnmemorizeCommand.Create());
 rootCommand.AddCommand(StatusCommand.Create());

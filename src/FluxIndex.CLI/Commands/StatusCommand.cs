@@ -10,7 +10,13 @@ public static class StatusCommand
     {
         var command = new Command("status", "Show workspace status and statistics");
 
-        command.SetHandler(async () =>
+        var verboseOption = new Option<bool>(
+            ["--verbose", "-v"],
+            "Show detailed information including memorized files");
+
+        command.AddOption(verboseOption);
+
+        command.SetHandler(async (bool verbose) =>
         {
             try
             {
@@ -18,26 +24,69 @@ public static class StatusCommand
                 var context = workspace.GetContext();
                 var stats = await context.GetStatisticsAsync();
 
+                // Workspace info
                 AnsiConsole.Write(new Rule("[cyan]FluxIndex Workspace[/]").RuleStyle("dim"));
+                AnsiConsole.MarkupLine($"  [dim]Root:[/] {workspace.WorkspaceRoot}");
+                AnsiConsole.MarkupLine($"  [dim]Database:[/] {workspace.DatabasePath}");
+                AnsiConsole.WriteLine();
 
-                var table = new Table()
-                    .Border(TableBorder.Rounded)
-                    .AddColumn("Property")
+                // Configuration
+                AnsiConsole.Write(new Rule("[cyan]Configuration[/]").RuleStyle("dim"));
+                var configTable = new Table()
+                    .Border(TableBorder.Simple)
+                    .HideHeaders()
+                    .AddColumn("Key")
                     .AddColumn("Value");
 
-                table.AddRow("Root", workspace.WorkspaceRoot);
-                table.AddRow("Database", workspace.DatabasePath);
-                table.AddRow("", "");
-                table.AddRow("[cyan]Embedding[/]", "");
-                table.AddRow("  Provider", workspace.Config.Embedding.Provider);
-                table.AddRow("  Model", workspace.Config.Embedding.Model);
-                table.AddRow("", "");
-                table.AddRow("[cyan]Statistics[/]", "");
-                table.AddRow("  Documents", stats.TotalDocuments.ToString());
-                table.AddRow("  Chunks", stats.TotalChunks.ToString());
-                table.AddRow("  Cache Enabled", stats.CacheEnabled.ToString());
+                configTable.AddRow("[dim]embedding.provider[/]", $"[yellow]{workspace.Config.Embedding.Provider}[/]");
+                configTable.AddRow("[dim]embedding.model[/]", $"[yellow]{workspace.Config.Embedding.Model}[/]");
+                configTable.AddRow("[dim]search.strategy[/]", $"[yellow]{workspace.Config.Search.Strategy}[/]");
+                configTable.AddRow("[dim]search.top_k[/]", $"[yellow]{workspace.Config.Search.TopK}[/]");
+                configTable.AddRow("[dim]search.min_score[/]", $"[yellow]{workspace.Config.Search.MinScore:F2}[/]");
 
-                AnsiConsole.Write(table);
+                AnsiConsole.Write(configTable);
+                AnsiConsole.WriteLine();
+
+                // Statistics
+                AnsiConsole.Write(new Rule("[cyan]Statistics[/]").RuleStyle("dim"));
+                var statsTable = new Table()
+                    .Border(TableBorder.Simple)
+                    .HideHeaders()
+                    .AddColumn("Metric")
+                    .AddColumn("Value");
+
+                statsTable.AddRow("Documents", $"[green]{stats.TotalDocuments}[/]");
+                statsTable.AddRow("Chunks", $"[green]{stats.TotalChunks}[/]");
+                statsTable.AddRow("Cache", stats.CacheEnabled ? "[green]Enabled[/]" : "[dim]Disabled[/]");
+
+                AnsiConsole.Write(statsTable);
+
+                // Additional verbose info
+                if (verbose)
+                {
+                    AnsiConsole.WriteLine();
+                    AnsiConsole.Write(new Rule("[cyan]Additional Info[/]").RuleStyle("dim"));
+
+                    var infoTable = new Table()
+                        .Border(TableBorder.Simple)
+                        .HideHeaders()
+                        .AddColumn("Key")
+                        .AddColumn("Value");
+
+                    infoTable.AddRow("Vector Store", $"[yellow]{stats.VectorStoreProvider}[/]");
+                    infoTable.AddRow("Embedding Model", $"[yellow]{stats.EmbeddingModel}[/]");
+                    infoTable.AddRow("Avg Chunks/Doc", $"[yellow]{stats.AverageChunksPerDocument:F1}[/]");
+                    infoTable.AddRow("Chunk Size", $"[yellow]{stats.DefaultChunkSize}[/]");
+                    infoTable.AddRow("Chunk Overlap", $"[yellow]{stats.DefaultChunkOverlap}[/]");
+
+                    if (stats.SemanticCacheEnabled)
+                    {
+                        infoTable.AddRow("Cache Hit Rate", $"[yellow]{stats.CacheHitRate:P1}[/]");
+                        infoTable.AddRow("Cached Items", $"[yellow]{stats.CachedItemsCount}[/]");
+                    }
+
+                    AnsiConsole.Write(infoTable);
+                }
             }
             catch (InvalidOperationException ex) when (ex.Message.Contains("No FluxIndex workspace"))
             {
@@ -49,7 +98,7 @@ public static class StatusCommand
                 AnsiConsole.MarkupLine($"[red]Error:[/] {ex.Message}");
                 Environment.ExitCode = 1;
             }
-        });
+        }, verboseOption);
 
         return command;
     }

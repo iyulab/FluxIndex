@@ -135,6 +135,15 @@ public class FluxIndexWorkspace : IDisposable
     }
 
     /// <summary>
+    /// Save the current configuration to disk
+    /// </summary>
+    public void SaveConfig()
+    {
+        _config.Save(ConfigPath);
+        _logger?.LogInformation("Saved configuration to {Path}", ConfigPath);
+    }
+
+    /// <summary>
     /// Check if a file path is within the workspace (sandbox check)
     /// </summary>
     public bool IsPathAllowed(string path)
