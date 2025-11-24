@@ -95,7 +95,7 @@ public class FileFluxIntegration
             document.Metadata["file_extension"] = Path.GetExtension(filePath);
             document.Metadata["processed_at"] = DateTime.UtcNow.ToString("O");
             document.Metadata["processor"] = "FileFlux";
-            document.Metadata["fileflux_version"] = "0.3.0";
+            document.Metadata["fileflux_version"] = "0.4.0";
             document.Metadata["strategy"] = options.ChunkingStrategy;
 
             // Index with FluxIndex
@@ -205,7 +205,7 @@ public class FileFluxIntegration
                 document.Metadata["file_extension"] = Path.GetExtension(filePath);
                 document.Metadata["processed_at"] = DateTime.UtcNow.ToString("O");
                 document.Metadata["processor"] = "FileFlux";
-                document.Metadata["fileflux_version"] = "0.3.0";
+                document.Metadata["fileflux_version"] = "0.4.0";
                 document.Metadata["strategy"] = options.ChunkingStrategy;
                 document.Metadata["streaming_mode"] = true;
 
@@ -318,6 +318,40 @@ public class FileFluxIntegration
             {
                 fluxChunk.Metadata[$"ff_{prop.Key}"] = prop.Value;
             }
+        }
+
+        // Map SourceMetadataInfo (FileFlux 0.4.0+)
+        if (fileFluxChunk.SourceInfo != null)
+        {
+            if (!string.IsNullOrEmpty(fileFluxChunk.SourceInfo.SourceId))
+                fluxChunk.Metadata["ff_source_id"] = fileFluxChunk.SourceInfo.SourceId;
+            if (!string.IsNullOrEmpty(fileFluxChunk.SourceInfo.SourceType))
+                fluxChunk.Metadata["ff_source_type"] = fileFluxChunk.SourceInfo.SourceType;
+            if (!string.IsNullOrEmpty(fileFluxChunk.SourceInfo.Title))
+                fluxChunk.Metadata["ff_source_title"] = fileFluxChunk.SourceInfo.Title;
+            if (!string.IsNullOrEmpty(fileFluxChunk.SourceInfo.Language))
+                fluxChunk.Metadata["ff_detected_language"] = fileFluxChunk.SourceInfo.Language;
+            if (fileFluxChunk.SourceInfo.LanguageConfidence > 0)
+                fluxChunk.Metadata["ff_language_confidence"] = fileFluxChunk.SourceInfo.LanguageConfidence;
+            if (fileFluxChunk.SourceInfo.WordCount > 0)
+                fluxChunk.Metadata["ff_word_count"] = fileFluxChunk.SourceInfo.WordCount;
+            if (fileFluxChunk.SourceInfo.ChunkCount > 0)
+                fluxChunk.Metadata["ff_total_chunks"] = fileFluxChunk.SourceInfo.ChunkCount;
+            if (fileFluxChunk.SourceInfo.PageCount.HasValue)
+                fluxChunk.Metadata["ff_page_count"] = fileFluxChunk.SourceInfo.PageCount.Value;
+        }
+
+        // Map HeadingPath for hierarchical navigation (FileFlux 0.4.0+)
+        if (fileFluxChunk.Location?.HeadingPath?.Count > 0)
+        {
+            fluxChunk.Metadata["ff_heading_path"] = string.Join(" > ", fileFluxChunk.Location.HeadingPath);
+            fluxChunk.Metadata["ff_heading_depth"] = fileFluxChunk.Location.HeadingPath.Count;
+        }
+
+        // Map context dependency score
+        if (fileFluxChunk.ContextDependency > 0)
+        {
+            fluxChunk.Metadata["ff_context_dependency"] = fileFluxChunk.ContextDependency;
         }
 
         return fluxChunk;

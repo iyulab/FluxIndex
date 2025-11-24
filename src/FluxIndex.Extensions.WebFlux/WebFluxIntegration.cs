@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using WebFlux.Core.Interfaces;
 using WebFlux.Core.Models;
 using WebFlux.Core.Options;
+using CrawlProgressModel = WebFlux.Core.Models.CrawlProgress;
 
 namespace FluxIndex.Extensions.WebFlux;
 
@@ -94,7 +95,7 @@ public class WebFluxIntegration
             ["source_url"] = url,
             ["source_type"] = "web",
             ["processed_at"] = DateTime.UtcNow,
-            ["webflux_version"] = "latest",
+            ["webflux_version"] = "0.1.7",
             ["chunking_strategy"] = options.ChunkingStrategy.ToString()
         };
 
@@ -210,6 +211,16 @@ public class WebFluxIntegration
         IEnumerable<string> urls,
         WebFluxProcessingOptions? options = null,
         CancellationToken cancellationToken = default)
+        => await IndexMultipleUrlsBatchAsync(urls, options, null, cancellationToken);
+
+    /// <summary>
+    /// Batch process multiple URLs with progress reporting (WebFlux 0.1.6+)
+    /// </summary>
+    public async Task<BatchIndexingResult> IndexMultipleUrlsBatchAsync(
+        IEnumerable<string> urls,
+        WebFluxProcessingOptions? options,
+        IProgress<WebFluxCrawlProgress>? progress,
+        CancellationToken cancellationToken = default)
     {
         var urlList = urls.ToList();
         _logger.LogInformation("Batch processing {UrlCount} URLs with WebFlux", urlList.Count);
@@ -306,7 +317,7 @@ public class WebFluxIntegration
                 ["source_url"] = url,
                 ["source_type"] = "web",
                 ["processed_at"] = DateTime.UtcNow,
-                ["webflux_version"] = "0.1.3",
+                ["webflux_version"] = "0.1.7",
                 ["chunk_count"] = webChunks.Count
             },
             Status = DocumentStatus.Processing,
@@ -644,4 +655,70 @@ public class BatchIndexingResult
     /// Average chunks per URL
     /// </summary>
     public double AverageChunksPerUrl => SuccessfulUrls.Count > 0 ? (double)TotalChunksIndexed / SuccessfulUrls.Count : 0;
+}
+
+/// <summary>
+/// Progress information for WebFlux crawling operations (WebFlux 0.1.6+)
+/// </summary>
+public class WebFluxCrawlProgress
+{
+    /// <summary>
+    /// Total number of URLs to process
+    /// </summary>
+    public int TotalUrls { get; init; }
+
+    /// <summary>
+    /// Number of URLs processed so far
+    /// </summary>
+    public int ProcessedUrls { get; init; }
+
+    /// <summary>
+    /// Number of successfully processed URLs
+    /// </summary>
+    public int SuccessCount { get; init; }
+
+    /// <summary>
+    /// Number of failed URLs
+    /// </summary>
+    public int FailureCount { get; init; }
+
+    /// <summary>
+    /// Total chunks generated so far
+    /// </summary>
+    public int TotalChunks { get; init; }
+
+    /// <summary>
+    /// Currently processing URL
+    /// </summary>
+    public string CurrentUrl { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Elapsed time since start
+    /// </summary>
+    public TimeSpan ElapsedTime { get; init; }
+
+    /// <summary>
+    /// Estimated remaining time
+    /// </summary>
+    public TimeSpan EstimatedRemaining { get; init; }
+
+    /// <summary>
+    /// Progress percentage (0.0 - 1.0)
+    /// </summary>
+    public double ProgressPercentage => TotalUrls > 0 ? (double)ProcessedUrls / TotalUrls : 0.0;
+
+    /// <summary>
+    /// Success rate (0.0 - 1.0)
+    /// </summary>
+    public double SuccessRate => ProcessedUrls > 0 ? (double)SuccessCount / ProcessedUrls : 0.0;
+
+    /// <summary>
+    /// URLs processed per second
+    /// </summary>
+    public double UrlsPerSecond => ElapsedTime.TotalSeconds > 0 ? ProcessedUrls / ElapsedTime.TotalSeconds : 0.0;
+
+    /// <summary>
+    /// Recent errors (last 5)
+    /// </summary>
+    public IReadOnlyList<string> RecentErrors { get; init; } = Array.Empty<string>();
 }
