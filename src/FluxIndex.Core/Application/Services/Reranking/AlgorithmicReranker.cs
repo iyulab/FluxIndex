@@ -10,23 +10,24 @@ using System.Threading.Tasks;
 namespace FluxIndex.Core.Services.Reranking;
 
 /// <summary>
-/// Local reranker using similarity-based scoring without external dependencies
-/// Uses TF-IDF, BM25, and semantic similarity for reranking
+/// Algorithmic reranker using similarity-based scoring without external dependencies.
+/// Uses TF-IDF, BM25, and optional semantic similarity for reranking.
+/// This is a lightweight alternative to neural cross-encoder rerankers (see FluxIndex.AI.LocalReranker).
 /// </summary>
-public class LocalReranker : IReranker
+public class AlgorithmicReranker : IReranker
 {
-    private readonly ILogger<LocalReranker> _logger;
+    private readonly ILogger<AlgorithmicReranker> _logger;
     private readonly IEmbeddingService? _embeddingService;
-    private readonly LocalRerankOptions _options;
+    private readonly AlgorithmicRerankOptions _options;
 
-    public LocalReranker(
+    public AlgorithmicReranker(
         IEmbeddingService? embeddingService = null,
-        LocalRerankOptions? options = null,
-        ILogger<LocalReranker>? logger = null)
+        AlgorithmicRerankOptions? options = null,
+        ILogger<AlgorithmicReranker>? logger = null)
     {
         _embeddingService = embeddingService;
-        _options = options ?? new LocalRerankOptions();
-        _logger = logger ?? new NullLogger<LocalReranker>();
+        _options = options ?? new AlgorithmicRerankOptions();
+        _logger = logger ?? new NullLogger<AlgorithmicReranker>();
     }
 
     public async Task<IEnumerable<RerankResult>> RerankAsync(
@@ -314,9 +315,9 @@ public class LocalReranker : IReranker
 }
 
 /// <summary>
-/// Configuration options for LocalReranker
+/// Configuration options for AlgorithmicReranker
 /// </summary>
-public class LocalRerankOptions
+public class AlgorithmicRerankOptions
 {
     /// <summary>
     /// Weight for TF-IDF similarity component

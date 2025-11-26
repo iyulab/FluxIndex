@@ -24,6 +24,7 @@ dotnet add package FluxIndex.Storage.SQLite
 ```bash
 dotnet add package FluxIndex.SDK
 dotnet add package FluxIndex.AI.OpenAI
+dotnet add package FluxIndex.AI.LocalReranker      # Neural reranking
 dotnet add package FluxIndex.Storage.PostgreSQL
 dotnet add package FluxIndex.Cache.Redis
 ```
@@ -99,6 +100,7 @@ var context = FluxIndexContext.CreateBuilder()
 var context = FluxIndexContext.CreateBuilder()
     .UsePostgreSQL("Host=localhost;Database=fluxindex;Username=user;Password=pass")
     .UseOpenAI("your-api-key", "text-embedding-3-small")
+    .UseResilientLocalReranker(options => options.ModelId = "quality")
     .UseRedisCache("localhost:6379")
     .Build();
 ```
@@ -265,6 +267,7 @@ await Task.Delay(TimeSpan.FromSeconds(1));
 
 - [Tutorial](./TUTORIAL.md) - Learn advanced features
 - [Architecture](./architecture.md) - Understand the design
+- [LocalReranker Guide](./LOCAL_RERANKER_GUIDE.md) - Neural reranking integration
 - [Examples](../samples/) - See working code
 - [Benchmarks](../benchmarks/FluxIndex.Benchmarks/BENCHMARK_RESULTS.md) - Performance metrics
 

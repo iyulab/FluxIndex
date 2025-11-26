@@ -13,6 +13,7 @@ Complete documentation for the FluxIndex RAG library.
 - [Architecture](architecture.md) - Clean architecture design
 - [Testing Guide](TESTING.md) - Unit and integration testing patterns
 - [RAG System](FLUXINDEX_RAG_SYSTEM.md) - Advanced RAG patterns
+- [LocalReranker Guide](LOCAL_RERANKER_GUIDE.md) - Neural reranking integration
 
 ### Practical Resources
 - [Examples](../samples/) - Working code samples
@@ -50,6 +51,7 @@ Complete documentation for the FluxIndex RAG library.
 ### AI Integration
 - **OpenAI** - GPT embeddings and completions (text-embedding-3-small)
 - **Azure OpenAI** - Enterprise Azure deployment support
+- **LocalReranker** - Cross-encoder neural reranking with fallback
 - **Custom AI** - Implement IEmbeddingService for any provider
 
 ### Document Processing
@@ -122,6 +124,7 @@ var context = FluxIndexContext.CreateBuilder()
 var context = FluxIndexContext.CreateBuilder()
     .UsePostgreSQL(connectionString)
     .UseOpenAI(apiKey, "text-embedding-3-small")
+    .UseResilientLocalReranker(options => options.ModelId = "quality")
     .UseRedisCache("localhost:6379")
     .Build();
 ```

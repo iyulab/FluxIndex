@@ -10,6 +10,7 @@
 
 - **Hybrid Search** - Vector (semantic) + Keyword (BM25) with automatic strategy selection
 - **High Performance** - Embedding cache (100% faster), batch indexing (24ms/1K chunks)
+- **Local Reranking** - Cross-encoder neural reranking with automatic algorithmic fallback
 - **Multiple Storage** - SQLite, PostgreSQL with pgvector
 - **AI Flexibility** - OpenAI, Azure OpenAI, or custom embedding services
 - **Document Processing** - PDF/DOCX/TXT via FileFlux, web crawling via WebFlux
@@ -22,6 +23,7 @@
 ```bash
 dotnet add package FluxIndex.SDK
 dotnet add package FluxIndex.Storage.SQLite
+dotnet add package FluxIndex.AI.LocalReranker  # Optional: neural reranking
 ```
 
 ```csharp
@@ -31,6 +33,7 @@ using FluxIndex.SDK;
 var context = FluxIndexContext.CreateBuilder()
     .UseSQLite("fluxindex.db")
     .UseOpenAI("your-api-key", "text-embedding-3-small")
+    .UseResilientLocalReranker()  // Auto fallback to algorithmic
     .Build();
 
 // 2. Index
@@ -79,6 +82,7 @@ Full benchmarks: [BENCHMARK_RESULTS.md](./benchmarks/FluxIndex.Benchmarks/BENCHM
 - [Architecture](./docs/architecture.md) - Design principles and patterns
 - [Cheat Sheet](./docs/cheat-sheet.md) - Quick reference
 - [Testing Guide](./docs/TESTING.md) - Unit and integration testing
+- [LocalReranker Guide](./docs/LOCAL_RERANKER_GUIDE.md) - Neural reranking integration
 
 ## Examples
 

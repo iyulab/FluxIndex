@@ -16,6 +16,7 @@ dotnet add package FluxIndex.Storage.PostgreSQL  # 프로덕션
 dotnet add package FluxIndex.AI.OpenAI
 
 # 확장 기능 (선택)
+dotnet add package FluxIndex.AI.LocalReranker     # 신경망 리랭킹
 dotnet add package FluxIndex.Extensions.FileFlux  # 문서 파일 처리
 dotnet add package FluxIndex.Extensions.WebFlux   # 웹페이지 처리
 dotnet add package FluxIndex.Cache.Redis          # Redis 캐싱
@@ -247,6 +248,34 @@ catch (Exception ex)
 }
 ```
 
+## 🎯 리랭킹
+
+### LocalReranker 설정
+
+```csharp
+using FluxIndex.AI.LocalReranker;
+
+// Resilient (권장 - 자동 폴백)
+services.AddResilientLocalReranker(options => {
+    options.ModelId = "quality";  // fast, quality, multilingual
+    options.WarmupOnStartup = true;
+});
+
+// 또는 SDK 빌더
+var context = FluxIndexContext.CreateBuilder()
+    .UseSQLite("fluxindex.db")
+    .UseResilientLocalReranker(options => options.ModelId = "quality")
+    .Build();
+```
+
+### 모델 선택
+
+| 모델 | 속도 | 품질 | 다국어 |
+|------|------|------|--------|
+| `fast` | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ | ❌ |
+| `quality` | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ❌ |
+| `multilingual` | ⭐⭐ | ⭐⭐⭐⭐ | ✅ |
+
 ## 🚀 성능 팁
 
 1. **배치 인덱싱**: 대량 문서는 `IndexBatchAsync` 사용
@@ -254,9 +283,11 @@ catch (Exception ex)
 3. **적응형 검색**: 쿼리 복잡도에 따른 자동 최적화
 4. **PostgreSQL**: 프로덕션 환경에서는 PostgreSQL + pgvector 사용
 5. **메타데이터**: 검색 필터링을 위한 메타데이터 적극 활용
+6. **리랭킹**: `ResilientLocalReranker`로 품질 향상 + 안정성 확보
 
 ## 🔗 관련 문서
 
-- [상세 튜토리얼](tutorial.md)
+- [상세 튜토리얼](TUTORIAL.md)
 - [아키텍처 가이드](architecture.md)
+- [LocalReranker 가이드](LOCAL_RERANKER_GUIDE.md)
 - [샘플 코드](../samples/)

@@ -344,6 +344,7 @@ services.AddSingleton<Indexer>();
 
 **AI Services:**
 - FluxIndex.AI.OpenAI - OpenAI/Azure OpenAI embeddings
+- FluxIndex.AI.LocalReranker - Cross-encoder neural reranking
 
 **Storage:**
 - FluxIndex.Storage.SQLite - SQLite with vector extension
@@ -488,16 +489,38 @@ public class CustomVectorStore : IVectorStore
 ### Custom Reranker
 
 ```csharp
-public class CustomRerankerService : IRerankerService
+public class CustomRerankerService : IReranker
 {
-    public async Task<IEnumerable<SearchResult>> RerankAsync(
+    public async Task<IEnumerable<RerankResult>> RerankAsync(
         string query,
-        IEnumerable<SearchResult> results,
-        CancellationToken ct)
+        IEnumerable<RetrievalCandidate> candidates,
+        RerankOptions? options = null,
+        CancellationToken ct = default)
     {
         // Your reranking logic (cross-encoder, custom scoring, etc.)
     }
+
+    public RerankModelInfo GetModelInfo() => new()
+    {
+        Name = "Custom Reranker",
+        Type = RerankModel.Custom,
+        RequiresApiKey = false
+    };
 }
+```
+
+### Using LocalReranker
+
+```csharp
+// Standard semantic reranking
+var context = FluxIndexContext.CreateBuilder()
+    .UseLocalReranker(options => options.ModelId = "quality")
+    .Build();
+
+// Resilient with automatic fallback (recommended)
+var context = FluxIndexContext.CreateBuilder()
+    .UseResilientLocalReranker(options => options.ModelId = "quality")
+    .Build();
 ```
 
 ## Testing Architecture
@@ -622,4 +645,5 @@ foreach (var doc in documents)
 - [Getting Started](getting-started.md) - Setup and configuration
 - [Tutorial](TUTORIAL.md) - Comprehensive examples
 - [Testing Guide](TESTING.md) - Unit and integration testing
+- [LocalReranker Guide](LOCAL_RERANKER_GUIDE.md) - Neural reranking integration
 - [Benchmarks](../benchmarks/FluxIndex.Benchmarks/BENCHMARK_RESULTS.md) - Performance metrics
