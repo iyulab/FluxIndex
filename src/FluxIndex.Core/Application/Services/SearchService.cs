@@ -4,9 +4,9 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Domain.Entities;
+using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Logging;
-using DomainSearchResult = FluxIndex.Domain.Entities.SearchResult;
+using DomainSearchResult = FluxIndex.Core.Domain.Entities.SearchResult;
 
 namespace FluxIndex.Core.Services;
 

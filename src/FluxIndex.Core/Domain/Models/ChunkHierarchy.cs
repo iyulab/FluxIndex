@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace FluxIndex.Domain.Models;
+namespace FluxIndex.Core.Domain.Models;
 
 /// <summary>
 /// 청크 계층 구조 모델 - Small-to-Big 검색을 위한 부모-자식 관계

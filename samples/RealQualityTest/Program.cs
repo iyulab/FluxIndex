@@ -1,4 +1,4 @@
-using FluxIndex.SDK;
+﻿using FluxIndex.SDK;
 using Microsoft.Extensions.Logging;
 
 namespace RealQualityTest;
@@ -24,21 +24,21 @@ class Program
             // Create sample documents
             var sampleDocuments = new[]
             {
-                new FluxIndex.Domain.Entities.Document
+                new FluxIndex.Core.Domain.Entities.Document
                 {
                     Id = "doc1",
                     FileName = "sample1.txt",
                     Content = "This is a sample document about artificial intelligence and machine learning technologies.",
                     Metadata = new Dictionary<string, object> { {"category", "technology"} }
                 },
-                new FluxIndex.Domain.Entities.Document
+                new FluxIndex.Core.Domain.Entities.Document
                 {
                     Id = "doc2",
                     FileName = "sample2.txt",
                     Content = "FluxIndex is a powerful RAG infrastructure library for building search applications.",
                     Metadata = new Dictionary<string, object> { {"category", "software"} }
                 },
-                new FluxIndex.Domain.Entities.Document
+                new FluxIndex.Core.Domain.Entities.Document
                 {
                     Id = "doc3",
                     FileName = "sample3.txt",

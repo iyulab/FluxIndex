@@ -1,10 +1,10 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Domain.Entities;
+using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 
@@ -79,7 +79,7 @@ internal class InMemoryCacheService : ICacheService
 
     public async Task CacheSearchResultsAsync(
         string query,
-        IEnumerable<FluxIndex.Domain.Entities.SearchResult> results,
+        IEnumerable<FluxIndex.Core.Domain.Entities.SearchResult> results,
         TimeSpan? expiry = null,
         CancellationToken cancellationToken = default)
     {
@@ -88,12 +88,12 @@ internal class InMemoryCacheService : ICacheService
         await SetAsync(cacheKey, resultList, expiry ?? TimeSpan.FromMinutes(5), cancellationToken);
     }
 
-    public async Task<IEnumerable<FluxIndex.Domain.Entities.SearchResult>?> GetCachedSearchResultsAsync(
+    public async Task<IEnumerable<FluxIndex.Core.Domain.Entities.SearchResult>?> GetCachedSearchResultsAsync(
         string query,
         CancellationToken cancellationToken = default)
     {
         var cacheKey = $"search:{ComputeHash(query)}";
-        var results = await GetAsync<List<Domain.Entities.SearchResult>>(cacheKey, cancellationToken);
+        var results = await GetAsync<List<FluxIndex.Core.Domain.Entities.SearchResult>>(cacheKey, cancellationToken);
         return results;
     }
 

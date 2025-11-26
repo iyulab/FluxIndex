@@ -1,6 +1,6 @@
-using FluxIndex.Domain.Models;
+using FluxIndex.Core.Domain.ValueObjects;
 
-namespace FluxIndex.Domain.Entities;
+namespace FluxIndex.Core.Domain.Entities;
 
 /// <summary>
 /// 문서 엔티티

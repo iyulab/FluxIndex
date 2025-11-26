@@ -1,10 +1,10 @@
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Interfaces;
 using FluxIndex.Core.Models;
-using FluxIndex.Domain.Entities;
-using FluxIndex.Domain.Models;
-using DocumentChunkEntity = FluxIndex.Domain.Entities.DocumentChunk;
-using DocumentChunkModel = FluxIndex.Domain.Models.DocumentChunk;
+using FluxIndex.Core.Domain.Entities;
+using FluxIndex.Core.Domain.Models;
+using DocumentChunkEntity = FluxIndex.Core.Domain.Entities.DocumentChunk;
+using DocumentChunkModel = FluxIndex.Core.Domain.Models.CacheDocumentChunk;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using System;

@@ -1,9 +1,9 @@
-using FileFlux;
+﻿using FileFlux;
 using FileFlux.Domain;
-using FluxIndex.Domain.Entities;
+using FluxIndex.Core.Domain.Entities;
 using FluxIndex.SDK;
 using Microsoft.Extensions.Logging;
-using FluxIndexDocumentChunk = FluxIndex.Domain.Entities.DocumentChunk;
+using FluxIndexDocumentChunk = FluxIndex.Core.Domain.Entities.DocumentChunk;
 using FileFluxChunk = FileFlux.Domain.DocumentChunk;
 
 namespace FluxIndex.Extensions.FileFlux;

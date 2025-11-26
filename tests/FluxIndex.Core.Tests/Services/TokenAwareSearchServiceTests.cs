@@ -1,7 +1,7 @@
-using FluxIndex.Core.Application.Interfaces;
+﻿using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Models;
 using FluxIndex.Core.Application.Services;
-using FluxIndex.Domain.Entities;
+using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;

@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace FluxIndex.Domain.Models;
+namespace FluxIndex.Core.Domain.Models;
 
 /// <summary>
 /// HyDE 결과

@@ -1,5 +1,5 @@
-using FluxIndex.Core.Application.Interfaces;
-using DocumentChunk = FluxIndex.Domain.Entities.DocumentChunk;
+﻿using FluxIndex.Core.Application.Interfaces;
+using DocumentChunk = FluxIndex.Core.Domain.Entities.DocumentChunk;
 using FluxIndex.Storage.SQLite;
 using FluxIndex.AI.OpenAI;
 using Microsoft.Extensions.Options;

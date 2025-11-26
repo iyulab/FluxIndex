@@ -1,7 +1,6 @@
-using System;
-using System.Collections.Generic;
+using FluxIndex.Core.Domain.ValueObjects;
 
-namespace FluxIndex.Domain.Entities;
+namespace FluxIndex.Core.Domain.Entities;
 
 /// <summary>
 /// 문서 청크 엔티티 - 고도화된 RAG를 위한 메타데이터 포함
@@ -19,7 +18,7 @@ public class DocumentChunk
     public int TokenCount { get; set; }
     public float? Score { get; set; }
     public Dictionary<string, object>? Metadata { get; set; }
-    
+
     // Modern RAG 메타데이터
     public ChunkMetadata ChunkMetadata { get; private set; }
     public List<ChunkRelationship> Relationships { get; private set; }
@@ -45,9 +44,9 @@ public class DocumentChunk
     }
 
     public static DocumentChunk Create(
-        string documentId, 
-        string content, 
-        int chunkIndex, 
+        string documentId,
+        string content,
+        int chunkIndex,
         int totalChunks)
     {
         if (string.IsNullOrWhiteSpace(documentId))
@@ -87,7 +86,7 @@ public class DocumentChunk
     {
         if (string.IsNullOrWhiteSpace(key))
             throw new ArgumentException("Property key cannot be empty", nameof(key));
-        
+
         Properties[key] = value;
     }
 
@@ -119,20 +118,20 @@ public class ChunkMetadata
     public int SentenceCount { get; set; }
     public double ReadabilityScore { get; set; }
     public string Language { get; set; } = "ko";
-    
+
     // 의미적 메타데이터
     public List<string> Keywords { get; set; } = new();
     public List<string> Entities { get; set; } = new();
     public List<string> Topics { get; set; } = new();
     public string ContentType { get; set; } = "text"; // text, code, table, list
-    
+
     // 구조적 메타데이터
     public int SectionLevel { get; set; } // H1=1, H2=2, etc.
     public string SectionTitle { get; set; } = string.Empty;
     public List<string> Headings { get; set; } = new();
     public string ContextBefore { get; set; } = string.Empty; // 이전 청크 요약
     public string ContextAfter { get; set; } = string.Empty;  // 다음 청크 요약
-    
+
     // 검색 최적화 메타데이터
     public double ImportanceScore { get; set; } // 0.0-1.0
     public List<string> SearchableTerms { get; set; } = new();
@@ -178,18 +177,18 @@ public class ChunkQuality
     public double InformationDensity { get; set; }  // 0.0-1.0, 정보 밀도
     public double Coherence { get; set; }          // 0.0-1.0, 응집성
     public double Uniqueness { get; set; }         // 0.0-1.0, 고유성
-    
+
     // 검색 관련 품질
     public double QueryRelevanceScore { get; set; } // 쿼리 관련성 (동적 계산)
     public double ContextualRelevance { get; set; } // 주변 맥락 관련성
     public double AuthorityScore { get; set; }      // 권위도 점수
     public double FreshnessScore { get; set; }      // 최신성 점수
-    
+
     // 사용자 피드백
     public int PositiveFeedback { get; set; }
     public int NegativeFeedback { get; set; }
     public double UserRating { get; set; } // 평균 사용자 평점
-    
+
     // 성능 메트릭
     public int RetrievalCount { get; set; }    // 검색된 횟수
     public double ClickThroughRate { get; set; } // 클릭률

@@ -1,7 +1,7 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using DocumentChunk = FluxIndex.Domain.Models.DocumentChunk;
+using DocumentChunk = FluxIndex.Core.Domain.Models.CacheDocumentChunk;
 
 namespace FluxIndex.SDK.Models;
 
@@ -109,9 +109,9 @@ public class SmallToBigSearchOptions
     /// <summary>
     /// Core 옵션으로 변환
     /// </summary>
-    internal Domain.Models.SmallToBigOptions ToCoreOptions()
+    internal FluxIndex.Core.Domain.Models.SmallToBigOptions ToCoreOptions()
     {
-        return new Domain.Models.SmallToBigOptions
+        return new FluxIndex.Core.Domain.Models.SmallToBigOptions
         {
             MaxResults = MaxResults,
             MinRelevanceScore = MinRelevanceScore,

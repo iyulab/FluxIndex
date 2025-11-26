@@ -1,6 +1,6 @@
-using FluxIndex.Cache.Redis.Configuration;
+﻿using FluxIndex.Cache.Redis.Configuration;
 using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Domain.Models;
+using FluxIndex.Core.Domain.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using StackExchange.Redis;
@@ -120,7 +120,7 @@ public class RedisSemanticCacheService : ISemanticCacheService
     /// </summary>
     public async Task SetCachedResultAsync(
         string query,
-        IReadOnlyList<DocumentChunk> results,
+        IReadOnlyList<CacheDocumentChunk> results,
         SearchMetadata? metadata = null,
         TimeSpan? ttl = null,
         CancellationToken cancellationToken = default)

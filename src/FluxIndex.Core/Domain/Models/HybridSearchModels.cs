@@ -1,7 +1,6 @@
-using System;
-using System.Collections.Generic;
+using FluxIndex.Core.Domain.Entities;
 
-namespace FluxIndex.Domain.Models;
+namespace FluxIndex.Core.Domain.Models;
 
 /// <summary>
 /// 하이브리드 검색 결과

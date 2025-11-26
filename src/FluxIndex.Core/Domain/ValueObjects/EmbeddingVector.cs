@@ -1,7 +1,4 @@
-using System;
-using System.Linq;
-
-namespace FluxIndex.Domain.Entities;
+namespace FluxIndex.Core.Domain.ValueObjects;
 
 /// <summary>
 /// 임베딩 벡터 값 객체
@@ -51,7 +48,7 @@ public class EmbeddingVector : IEquatable<EmbeddingVector>
         if (other is null) return false;
         if (ReferenceEquals(this, other)) return true;
         if (Dimension != other.Dimension) return false;
-        
+
         return Values.SequenceEqual(other.Values) && ModelName == other.ModelName;
     }
 

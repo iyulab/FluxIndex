@@ -1,6 +1,6 @@
-using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Domain.Entities;
-using FluxIndex.Domain.Models;
+﻿using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Domain.Entities;
+using FluxIndex.Core.Domain.Models;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;

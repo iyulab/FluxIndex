@@ -1,12 +1,15 @@
 using System;
 using System.Collections.Generic;
+using FluxIndex.Core.Domain.ValueObjects;
 
-namespace FluxIndex.Domain.Models;
+namespace FluxIndex.Core.Domain.Models;
 
 /// <summary>
 /// 문서 청크 모델 - 시맨틱 캐시용 경량 버전
+/// Note: This is a lightweight model for caching purposes.
+/// For full document chunk entity, use FluxIndex.Core.Domain.Entities.DocumentChunk
 /// </summary>
-public class DocumentChunk
+public class CacheDocumentChunk
 {
     /// <summary>
     /// 고유 식별자
@@ -61,7 +64,7 @@ public class DocumentChunk
     /// <summary>
     /// 문서 청크 생성
     /// </summary>
-    public static DocumentChunk Create(
+    public static CacheDocumentChunk Create(
         string documentId,
         string content,
         int chunkIndex,
@@ -71,7 +74,7 @@ public class DocumentChunk
         int tokenCount = 0,
         Dictionary<string, object>? metadata = null)
     {
-        return new DocumentChunk
+        return new CacheDocumentChunk
         {
             Id = Guid.NewGuid().ToString(),
             DocumentId = documentId,
@@ -89,7 +92,7 @@ public class DocumentChunk
     /// <summary>
     /// 임베딩과 함께 문서 청크 생성
     /// </summary>
-    public static DocumentChunk Create(
+    public static CacheDocumentChunk Create(
         string documentId,
         string content,
         int chunkIndex,
@@ -105,7 +108,7 @@ public class DocumentChunk
     /// <summary>
     /// 메타데이터와 함께 복사
     /// </summary>
-    public DocumentChunk WithMetadata(Dictionary<string, object> newMetadata)
+    public CacheDocumentChunk WithMetadata(Dictionary<string, object> newMetadata)
     {
         var combinedMetadata = new Dictionary<string, object>(Metadata);
         foreach (var kvp in newMetadata)
@@ -113,7 +116,7 @@ public class DocumentChunk
             combinedMetadata[kvp.Key] = kvp.Value;
         }
 
-        return new DocumentChunk
+        return new CacheDocumentChunk
         {
             Id = Id,
             DocumentId = DocumentId,
@@ -131,9 +134,9 @@ public class DocumentChunk
     /// <summary>
     /// 점수와 함께 복사
     /// </summary>
-    public DocumentChunk WithScore(float newScore)
+    public CacheDocumentChunk WithScore(float newScore)
     {
-        return new DocumentChunk
+        return new CacheDocumentChunk
         {
             Id = Id,
             DocumentId = DocumentId,
@@ -146,72 +149,5 @@ public class DocumentChunk
             Metadata = Metadata,
             CreatedAt = CreatedAt
         };
-    }
-}
-
-/// <summary>
-/// 임베딩 벡터 값 객체
-/// </summary>
-public class EmbeddingVector
-{
-    /// <summary>
-    /// 벡터 값들
-    /// </summary>
-    public float[] Values { get; init; }
-
-    /// <summary>
-    /// 벡터 차원
-    /// </summary>
-    public int Dimension => Values.Length;
-
-    /// <summary>
-    /// 모델 이름
-    /// </summary>
-    public string ModelName { get; init; } = string.Empty;
-
-    /// <summary>
-    /// 생성 시간
-    /// </summary>
-    public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
-
-    /// <summary>
-    /// 생성자
-    /// </summary>
-    public EmbeddingVector(float[] values, string modelName = "")
-    {
-        Values = values ?? throw new ArgumentNullException(nameof(values));
-        ModelName = modelName;
-        CreatedAt = DateTime.UtcNow;
-    }
-
-    /// <summary>
-    /// 임베딩 벡터 생성
-    /// </summary>
-    public static EmbeddingVector Create(float[] values, string modelName = "")
-    {
-        return new EmbeddingVector(values, modelName);
-    }
-
-    /// <summary>
-    /// 코사인 유사도 계산
-    /// </summary>
-    public float CosineSimilarity(EmbeddingVector other)
-    {
-        if (other == null || Values.Length != other.Values.Length)
-            return 0f;
-
-        var dotProduct = 0f;
-        var magnitude1 = 0f;
-        var magnitude2 = 0f;
-
-        for (int i = 0; i < Values.Length; i++)
-        {
-            dotProduct += Values[i] * other.Values[i];
-            magnitude1 += Values[i] * Values[i];
-            magnitude2 += other.Values[i] * other.Values[i];
-        }
-
-        var magnitudeProduct = (float)(Math.Sqrt(magnitude1) * Math.Sqrt(magnitude2));
-        return magnitudeProduct == 0f ? 0f : dotProduct / magnitudeProduct;
     }
 }

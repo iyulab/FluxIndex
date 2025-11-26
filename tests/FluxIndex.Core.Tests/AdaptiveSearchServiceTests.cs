@@ -1,6 +1,6 @@
-using FluxIndex.Core.Application.Interfaces;
+﻿using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Services;
-using FluxIndex.Domain.Entities;
+using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -47,15 +47,17 @@ public class AdaptiveSearchServiceTests
             ConfidenceScore = 0.8
         };
 
-        var hybridResults = new List<FluxIndex.Domain.Models.HybridSearchResult>
+        var hybridResults = new List<FluxIndex.Core.Domain.Models.HybridSearchResult>
         {
             new()
             {
-                Chunk = new FluxIndex.Domain.Models.DocumentChunk
+                Chunk = new DocumentChunk
                 {
                     Id = "chunk1",
                     Content = "Test content",
                     DocumentId = "doc1",
+                    ChunkIndex = 0,
+                    TotalChunks = 1,
                     Metadata = new Dictionary<string, object> { ["title"] = "Test Doc" }
                 },
                 FusedScore = 0.9
@@ -68,7 +70,7 @@ public class AdaptiveSearchServiceTests
         _mockAnalyzer.Setup(x => x.RecommendStrategy(analysis))
             .Returns(SearchStrategy.DirectVector);
 
-        _mockHybridSearch.Setup(x => x.SearchAsync(query, It.IsAny<FluxIndex.Domain.Models.HybridSearchOptions>(), It.IsAny<CancellationToken>()))
+        _mockHybridSearch.Setup(x => x.SearchAsync(query, It.IsAny<FluxIndex.Core.Domain.Models.HybridSearchOptions>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(hybridResults);
 
         // Act
@@ -114,8 +116,8 @@ public class AdaptiveSearchServiceTests
         _mockAnalyzer.Setup(x => x.AnalyzeAsync(query, It.IsAny<CancellationToken>()))
             .ReturnsAsync(analysis);
 
-        _mockHybridSearch.Setup(x => x.SearchAsync(query, It.IsAny<FluxIndex.Domain.Models.HybridSearchOptions>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<FluxIndex.Domain.Models.HybridSearchResult>());
+        _mockHybridSearch.Setup(x => x.SearchAsync(query, It.IsAny<FluxIndex.Core.Domain.Models.HybridSearchOptions>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<FluxIndex.Core.Domain.Models.HybridSearchResult>());
 
         // Act
         var result = await _service.SearchAsync(query, options);
@@ -139,16 +141,17 @@ public class AdaptiveSearchServiceTests
             ConfidenceScore = 0.8
         };
 
-        var hybridResults = new List<FluxIndex.Domain.Models.HybridSearchResult>
+        var hybridResults = new List<FluxIndex.Core.Domain.Models.HybridSearchResult>
         {
             new()
             {
-                Chunk = new FluxIndex.Domain.Models.DocumentChunk
+                Chunk = new DocumentChunk
                 {
                     Id = "chunk1",
                     Content = "Test content",
                     DocumentId = "doc1",
-                    Score = 0.9f,
+                    ChunkIndex = 0,
+                    TotalChunks = 1,
                     Metadata = new Dictionary<string, object> { ["title"] = "Test Doc" }
                 },
                 FusedScore = 0.9
@@ -158,16 +161,26 @@ public class AdaptiveSearchServiceTests
         _mockAnalyzer.Setup(x => x.AnalyzeAsync(query, It.IsAny<CancellationToken>()))
             .ReturnsAsync(analysis);
 
-        _mockHybridSearch.Setup(x => x.SearchAsync(query, It.IsAny<FluxIndex.Domain.Models.HybridSearchOptions>(), It.IsAny<CancellationToken>()))
+        _mockHybridSearch.Setup(x => x.SearchAsync(query, It.IsAny<FluxIndex.Core.Domain.Models.HybridSearchOptions>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(hybridResults);
 
         // Setup semantic cache: first call returns null (miss), second call returns cached result (hit)
+        var cacheChunks = hybridResults.Select(r => new FluxIndex.Core.Domain.Models.CacheDocumentChunk
+        {
+            Id = r.Chunk.Id,
+            DocumentId = r.Chunk.DocumentId,
+            Content = r.Chunk.Content,
+            ChunkIndex = r.Chunk.ChunkIndex,
+            Score = (float)r.FusedScore,
+            Metadata = r.Chunk.Metadata ?? new Dictionary<string, object>()
+        }).ToList();
+
         var cachedResult = new FluxIndex.Core.Application.Interfaces.CachedSearchResult
         {
             OriginalQuery = query,
             CachedQuery = query,
             SimilarityScore = 1.0f,
-            Results = hybridResults.Select(r => r.Chunk).ToList().AsReadOnly(),
+            Results = cacheChunks.AsReadOnly(),
             CachedAt = DateTime.UtcNow,
             Metadata = new FluxIndex.Core.Application.Interfaces.SearchMetadata
             {
@@ -184,7 +197,7 @@ public class AdaptiveSearchServiceTests
         // Setup SetCachedResultAsync to complete successfully
         _mockSemanticCache.Setup(x => x.SetCachedResultAsync(
             It.IsAny<string>(),
-            It.IsAny<IReadOnlyList<FluxIndex.Domain.Models.DocumentChunk>>(),
+            It.IsAny<IReadOnlyList<FluxIndex.Core.Domain.Models.CacheDocumentChunk>>(),
             It.IsAny<FluxIndex.Core.Application.Interfaces.SearchMetadata>(),
             It.IsAny<TimeSpan?>(),
             It.IsAny<CancellationToken>()))
@@ -260,8 +273,8 @@ public class AdaptiveSearchServiceTests
         _mockAnalyzer.Setup(x => x.AnalyzeAsync(query, It.IsAny<CancellationToken>()))
             .ReturnsAsync(analysis);
 
-        _mockHybridSearch.Setup(x => x.SearchAsync(query, It.IsAny<FluxIndex.Domain.Models.HybridSearchOptions>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<FluxIndex.Domain.Models.HybridSearchResult>());
+        _mockHybridSearch.Setup(x => x.SearchAsync(query, It.IsAny<FluxIndex.Core.Domain.Models.HybridSearchOptions>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<FluxIndex.Core.Domain.Models.HybridSearchResult>());
 
         // Act
         var result = await _service.SearchAsync(query, options);

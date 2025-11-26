@@ -1,5 +1,5 @@
 using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Domain.Entities;
+using FluxIndex.Core.Domain.Entities;
 using System;
 using System.Collections.Generic;
 using System.Linq;

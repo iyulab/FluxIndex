@@ -1,6 +1,6 @@
-using FluxIndex.Core.Application.Interfaces;
+﻿using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Services;
-using FluxIndex.Domain.Entities;
+using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;

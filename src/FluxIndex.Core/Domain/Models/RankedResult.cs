@@ -1,4 +1,4 @@
-namespace FluxIndex.Domain.Models;
+namespace FluxIndex.Core.Domain.Models;
 
 /// <summary>
 /// 랭킹된 검색 결과

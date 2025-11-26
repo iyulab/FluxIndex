@@ -1,5 +1,5 @@
-using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Domain.Entities;
+﻿using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Concurrent;
@@ -252,7 +252,7 @@ public class AdaptiveSearchService : IAdaptiveSearchService
                     {
                         // DocumentChunk 목록 생성 (Document → DocumentChunk 변환)
                         var documentChunks = searchResults
-                            .Select(doc => new FluxIndex.Domain.Models.DocumentChunk
+                            .Select(doc => new FluxIndex.Core.Domain.Models.CacheDocumentChunk
                             {
                                 Id = doc.Metadata.ContainsKey("chunk_id")
                                     ? doc.Metadata["chunk_id"]?.ToString() ?? doc.Id
@@ -597,7 +597,7 @@ public class AdaptiveSearchService : IAdaptiveSearchService
         AdaptiveSearchOptions options,
         CancellationToken cancellationToken)
     {
-        var hybridOptions = new FluxIndex.Domain.Models.HybridSearchOptions
+        var hybridOptions = new FluxIndex.Core.Domain.Models.HybridSearchOptions
         {
             MaxResults = options.MaxResults,
             VectorWeight = 1.0f,
@@ -613,7 +613,7 @@ public class AdaptiveSearchService : IAdaptiveSearchService
         AdaptiveSearchOptions options,
         CancellationToken cancellationToken)
     {
-        var hybridOptions = new FluxIndex.Domain.Models.HybridSearchOptions
+        var hybridOptions = new FluxIndex.Core.Domain.Models.HybridSearchOptions
         {
             MaxResults = options.MaxResults,
             VectorWeight = 0.0f,
@@ -629,7 +629,7 @@ public class AdaptiveSearchService : IAdaptiveSearchService
         AdaptiveSearchOptions options,
         CancellationToken cancellationToken)
     {
-        var hybridOptions = new FluxIndex.Domain.Models.HybridSearchOptions
+        var hybridOptions = new FluxIndex.Core.Domain.Models.HybridSearchOptions
         {
             MaxResults = options.MaxResults,
             VectorWeight = 0.6f,  // 0.7 → 0.6으로 재조정 (벡터/키워드 밸런싱)
@@ -668,7 +668,7 @@ public class AdaptiveSearchService : IAdaptiveSearchService
         CancellationToken cancellationToken)
     {
         // 1단계: Small-to-Big으로 정밀 검색
-        var smallToBigOptions = new FluxIndex.Domain.Models.SmallToBigOptions
+        var smallToBigOptions = new FluxIndex.Core.Domain.Models.SmallToBigOptions
         {
             MaxResults = Math.Min(options.MaxResults * 2, 20),
             EnableAdaptiveWindowing = true,
@@ -690,13 +690,23 @@ public class AdaptiveSearchService : IAdaptiveSearchService
         return await ExecuteHybridSearch(query, options, cancellationToken);
     }
 
-    private Document CreateDocumentFromChunk(FluxIndex.Domain.Models.DocumentChunk chunk)
+    private Document CreateDocumentFromChunk(FluxIndex.Core.Domain.Models.CacheDocumentChunk chunk)
     {
         var document = Document.Create(chunk.DocumentId);
         document.Metadata = chunk.Metadata ?? new Dictionary<string, object>();
         document.Metadata["chunk_id"] = chunk.Id;
         document.Metadata["chunk_content"] = chunk.Content;
         document.Metadata["relevance_score"] = chunk.Score;
+        return document;
+    }
+
+    private Document CreateDocumentFromChunk(FluxIndex.Core.Domain.Entities.DocumentChunk chunk)
+    {
+        var document = Document.Create(chunk.DocumentId);
+        document.Metadata = chunk.Metadata ?? new Dictionary<string, object>();
+        document.Metadata["chunk_id"] = chunk.Id;
+        document.Metadata["chunk_content"] = chunk.Content;
+        document.Metadata["relevance_score"] = chunk.Score ?? 0f;
         return document;
     }
 

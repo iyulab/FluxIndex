@@ -1,8 +1,10 @@
-using FluxIndex.Domain.Models;
+﻿using FluxIndex.Core.Domain.Models;
 using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using DocumentChunk = FluxIndex.Core.Domain.Models.CacheDocumentChunk;
+using RelationshipType = FluxIndex.Core.Domain.Models.RelationshipType;
 
 namespace FluxIndex.Core.Application.Interfaces;
 

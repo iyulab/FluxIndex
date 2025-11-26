@@ -1,4 +1,4 @@
-using FluxIndex.Domain.Models;
+﻿using FluxIndex.Core.Domain.Models;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -34,7 +34,7 @@ public interface ISemanticCacheService
     /// <param name="cancellationToken">취소 토큰</param>
     Task SetCachedResultAsync(
         string query,
-        IReadOnlyList<DocumentChunk> results,
+        IReadOnlyList<CacheDocumentChunk> results,
         SearchMetadata? metadata = null,
         TimeSpan? ttl = null,
         CancellationToken cancellationToken = default);
@@ -96,7 +96,7 @@ public class CachedSearchResult
     /// <summary>
     /// 검색 결과
     /// </summary>
-    public IReadOnlyList<DocumentChunk> Results { get; set; } = Array.Empty<DocumentChunk>();
+    public IReadOnlyList<CacheDocumentChunk> Results { get; set; } = Array.Empty<CacheDocumentChunk>();
 
     /// <summary>
     /// 검색 메타데이터

@@ -1,5 +1,6 @@
 using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Domain.Models;
+using FluxIndex.Core.Domain.Models;
+using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Concurrent;

@@ -1,6 +1,6 @@
-using FluxIndex.Domain.Entities;
+using FluxIndex.Core.Domain.Entities;
 
-namespace FluxIndex.Domain.ValueObjects;
+namespace FluxIndex.Core.Domain.ValueObjects;
 
 /// <summary>
 /// 시맨틱 캐시 검색 결과

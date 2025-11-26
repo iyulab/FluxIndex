@@ -1,4 +1,5 @@
-using FluxIndex.Domain.Models;
+﻿using FluxIndex.Core.Domain.Models;
+using FluxIndex.Core.Domain.Entities;
 using System;
 using System.Collections.Generic;
 using System.Threading;

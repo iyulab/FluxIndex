@@ -1,4 +1,4 @@
-namespace FluxIndex.Domain.Entities;
+namespace FluxIndex.Core.Domain.Entities;
 
 /// <summary>
 /// 검색 결과를 나타내는 엔터티

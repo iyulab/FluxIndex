@@ -1,11 +1,11 @@
-using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Domain.ValueObjects;
-using FluxIndex.Domain.Models;
-using FluxIndex.Domain.Entities;
+﻿using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Domain.ValueObjects;
+using FluxIndex.Core.Domain.Models;
+using FluxIndex.Core.Domain.Entities;
 using MonitoringThresholds = FluxIndex.Core.Application.Interfaces.QualityThresholds;
 using FluxIndex.SDK.Models;
-using DocumentChunkEntity = FluxIndex.Domain.Entities.DocumentChunk;
-using DocumentChunkModel = FluxIndex.Domain.Models.DocumentChunk;
+using DocumentChunkEntity = FluxIndex.Core.Domain.Entities.DocumentChunk;
+using DocumentChunkModel = FluxIndex.Core.Domain.Models.CacheDocumentChunk;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.EntityFrameworkCore;
@@ -239,7 +239,7 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
     /// </summary>
     public async Task<IReadOnlyList<HybridSearchResult>> HybridSearchV2Async(
         string query,
-        FluxIndex.Domain.Models.HybridSearchOptions? options = null,
+        FluxIndex.Core.Domain.Models.HybridSearchOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         if (_hybridSearchService == null)
@@ -388,7 +388,7 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
     /// <summary>
     /// 시맨틱 캐시 통계 조회
     /// </summary>
-    public async Task<FluxIndex.Domain.ValueObjects.CacheStatistics?> GetCacheStatisticsAsync(CancellationToken cancellationToken = default)
+    public async Task<FluxIndex.Core.Domain.ValueObjects.CacheStatistics?> GetCacheStatisticsAsync(CancellationToken cancellationToken = default)
     {
         if (_cacheService == null)
             return null;
@@ -396,7 +396,7 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
         try
         {
             var stats = await _cacheService.GetCacheStatisticsAsync(cancellationToken);
-            return new FluxIndex.Domain.ValueObjects.CacheStatistics
+            return new FluxIndex.Core.Domain.ValueObjects.CacheStatistics
             {
                 TotalQueries = stats.TotalEntries,
                 CacheHits = stats.CacheHits,
@@ -494,13 +494,13 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
 
         try
         {
-            var coreOptions = options?.ToCoreOptions() ?? new Domain.Models.SmallToBigOptions();
+            var coreOptions = options?.ToCoreOptions() ?? new FluxIndex.Core.Domain.Models.SmallToBigOptions();
             var results = await _smallToBigRetriever.SearchAsync(query, coreOptions, cancellationToken);
 
             return results.Select(r => new SmallToBigSearchResult
             {
-                PrimaryChunk = r.PrimaryChunk,
-                ContextChunks = r.ContextChunks.ToList(),
+                PrimaryChunk = ConvertEntityToCache(r.PrimaryChunk),
+                ContextChunks = r.ContextChunks.Select(ConvertEntityToCache).ToList(),
                 RelevanceScore = r.RelevanceScore,
                 WindowSize = r.WindowSize,
                 ExpansionReason = r.ExpansionReason,
@@ -606,6 +606,22 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
     }
 
     /// <summary>
+    /// Entity DocumentChunk를 Model CacheDocumentChunk로 변환
+    /// </summary>
+    private DocumentChunkModel ConvertEntityToCache(DocumentChunkEntity entityChunk)
+    {
+        return new DocumentChunkModel
+        {
+            Id = entityChunk.Id,
+            DocumentId = entityChunk.DocumentId,
+            Content = entityChunk.Content,
+            ChunkIndex = entityChunk.ChunkIndex,
+            Score = 0f,
+            Metadata = entityChunk.Metadata ?? new Dictionary<string, object>()
+        };
+    }
+
+    /// <summary>
     /// 실시간 품질 대시보드 조회
     /// </summary>
     public async Task<QualityDashboard?> GetQualityDashboardAsync(
@@ -679,18 +695,18 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
     /// <summary>
     /// SDK HybridSearchOptions를 Core HybridSearchOptions로 변환
     /// </summary>
-    private Domain.Models.HybridSearchOptions ConvertToCore(HybridSearchOptions sdkOptions)
+    private FluxIndex.Core.Domain.Models.HybridSearchOptions ConvertToCore(HybridSearchOptions sdkOptions)
     {
-        return new Domain.Models.HybridSearchOptions
+        return new FluxIndex.Core.Domain.Models.HybridSearchOptions
         {
             MaxResults = sdkOptions.TopK,
             VectorWeight = (double)sdkOptions.VectorWeight,
             SparseWeight = (double)sdkOptions.KeywordWeight,
             FusionMethod = sdkOptions.RerankingStrategy switch
             {
-                RerankingStrategy.WeightedAverage => Domain.Models.FusionMethod.WeightedSum,
-                RerankingStrategy.ReciprocalRankFusion => Domain.Models.FusionMethod.RRF,
-                _ => Domain.Models.FusionMethod.RRF
+                RerankingStrategy.WeightedAverage => FluxIndex.Core.Domain.Models.FusionMethod.WeightedSum,
+                RerankingStrategy.ReciprocalRankFusion => FluxIndex.Core.Domain.Models.FusionMethod.RRF,
+                _ => FluxIndex.Core.Domain.Models.FusionMethod.RRF
             }
         };
     }
@@ -800,7 +816,7 @@ public interface IFluxIndexContext
     // Convenience methods
     Task<IEnumerable<SearchResult>> SearchAsync(string query, int maxResults = 10, float minScore = 0.5f, Dictionary<string, object>? filter = null, CancellationToken cancellationToken = default);
     Task<IEnumerable<SearchResult>> HybridSearchAsync(string keyword, string query, int maxResults = 10, float vectorWeight = 0.7f, Dictionary<string, object>? filter = null, CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<HybridSearchResult>> HybridSearchV2Async(string query, FluxIndex.Domain.Models.HybridSearchOptions? options = null, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<HybridSearchResult>> HybridSearchV2Async(string query, FluxIndex.Core.Domain.Models.HybridSearchOptions? options = null, CancellationToken cancellationToken = default);
     Task<Document?> GetDocumentAsync(string documentId, CancellationToken cancellationToken = default);
     Task<string> IndexAsync(Document document, CancellationToken cancellationToken = default);
     Task<string> IndexChunksAsync(IEnumerable<DocumentChunkModel> chunks, string? documentId = null, Dictionary<string, object>? metadata = null, CancellationToken cancellationToken = default);

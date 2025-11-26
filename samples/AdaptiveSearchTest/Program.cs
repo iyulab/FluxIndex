@@ -1,5 +1,5 @@
-using FluxIndex.SDK;
-using FluxIndex.Domain.Entities;
+﻿using FluxIndex.SDK;
+using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Samples.Shared;
 using Microsoft.Extensions.Logging;
@@ -133,14 +133,14 @@ class Program
 
             // 문서를 청크로 분할
             var sentences = doc.Content.Split('.', StringSplitOptions.RemoveEmptyEntries);
-            var chunks = new List<FluxIndex.Domain.Models.DocumentChunk>();
+            var chunks = new List<FluxIndex.Core.Domain.Models.CacheDocumentChunk>();
 
             for (int i = 0; i < sentences.Length; i++)
             {
                 var sentence = sentences[i].Trim();
                 if (!string.IsNullOrEmpty(sentence))
                 {
-                    chunks.Add(new FluxIndex.Domain.Models.DocumentChunk
+                    chunks.Add(new FluxIndex.Core.Domain.Models.CacheDocumentChunk
                     {
                         Id = $"{doc.Id}_chunk_{i}",
                         DocumentId = doc.Id,

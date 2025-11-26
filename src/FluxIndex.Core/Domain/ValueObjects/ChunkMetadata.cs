@@ -1,14 +1,10 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-
-namespace FluxIndex.Domain.ValueObjects;
+namespace FluxIndex.Core.Domain.ValueObjects;
 
 /// <summary>
 /// 문서 청크의 메타데이터를 나타내는 불변 값 객체
 /// 테스트 가능성을 위한 팩토리 메서드와 검증 로직 포함
 /// </summary>
-public sealed record ChunkMetadata
+public sealed record ChunkMetadataRecord
 {
     /// <summary>
     /// 청크의 제목 (최대 100자)
@@ -73,7 +69,7 @@ public sealed record ChunkMetadata
     /// <summary>
     /// 테스트용 팩토리 메서드 - 기본값으로 유효한 메타데이터 생성
     /// </summary>
-    public static ChunkMetadata CreateDefault(string title = "Test Title") => new()
+    public static ChunkMetadataRecord CreateDefault(string title = "Test Title") => new()
     {
         Title = title,
         Summary = "Test summary for validation",
@@ -88,7 +84,7 @@ public sealed record ChunkMetadata
     /// <summary>
     /// 빌더 패턴을 통한 유연한 생성 (테스트에서 활용)
     /// </summary>
-    public static ChunkMetadataBuilder Builder() => new();
+    public static ChunkMetadataRecordBuilder Builder() => new();
 
     /// <summary>
     /// 메타데이터를 검색 가능한 키워드로 변환
@@ -110,7 +106,7 @@ public sealed record ChunkMetadata
     /// 디버깅용 문자열 표현
     /// </summary>
     public override string ToString() =>
-        $"ChunkMetadata: {Title} (Quality: {QualityScore:F2}, Keywords: {Keywords.Count})";
+        $"ChunkMetadataRecord: {Title} (Quality: {QualityScore:F2}, Keywords: {Keywords.Count})";
 }
 
 /// <summary>
@@ -125,9 +121,9 @@ public enum ConfidenceLevel
 }
 
 /// <summary>
-/// ChunkMetadata 생성을 위한 빌더 클래스 (테스트에서 활용)
+/// ChunkMetadataRecord 생성을 위한 빌더 클래스 (테스트에서 활용)
 /// </summary>
-public class ChunkMetadataBuilder
+public class ChunkMetadataRecordBuilder
 {
     private string _title = string.Empty;
     private string _summary = string.Empty;
@@ -139,55 +135,55 @@ public class ChunkMetadataBuilder
     private string _extractedBy = "TestService";
     private ConfidenceLevel _confidence = ConfidenceLevel.Medium;
 
-    public ChunkMetadataBuilder WithTitle(string title)
+    public ChunkMetadataRecordBuilder WithTitle(string title)
     {
         _title = title;
         return this;
     }
 
-    public ChunkMetadataBuilder WithSummary(string summary)
+    public ChunkMetadataRecordBuilder WithSummary(string summary)
     {
         _summary = summary;
         return this;
     }
 
-    public ChunkMetadataBuilder WithKeywords(params string[] keywords)
+    public ChunkMetadataRecordBuilder WithKeywords(params string[] keywords)
     {
         _keywords.AddRange(keywords);
         return this;
     }
 
-    public ChunkMetadataBuilder WithEntities(params string[] entities)
+    public ChunkMetadataRecordBuilder WithEntities(params string[] entities)
     {
         _entities.AddRange(entities);
         return this;
     }
 
-    public ChunkMetadataBuilder WithQuestions(params string[] questions)
+    public ChunkMetadataRecordBuilder WithQuestions(params string[] questions)
     {
         _questions.AddRange(questions);
         return this;
     }
 
-    public ChunkMetadataBuilder WithQualityScore(float score)
+    public ChunkMetadataRecordBuilder WithQualityScore(float score)
     {
         _qualityScore = score;
         return this;
     }
 
-    public ChunkMetadataBuilder WithConfidence(ConfidenceLevel confidence)
+    public ChunkMetadataRecordBuilder WithConfidence(ConfidenceLevel confidence)
     {
         _confidence = confidence;
         return this;
     }
 
-    public ChunkMetadataBuilder WithCustomField(string key, object value)
+    public ChunkMetadataRecordBuilder WithCustomField(string key, object value)
     {
         _customFields[key] = value;
         return this;
     }
 
-    public ChunkMetadata Build() => new()
+    public ChunkMetadataRecord Build() => new()
     {
         Title = _title,
         Summary = _summary,

@@ -1,7 +1,4 @@
-using System;
-using System.Collections.Generic;
-
-namespace FluxIndex.Domain.Entities;
+namespace FluxIndex.Core.Domain.ValueObjects;
 
 /// <summary>
 /// 문서 메타데이터 값 객체
@@ -50,7 +47,7 @@ public class DocumentMetadata
     {
         if (string.IsNullOrWhiteSpace(key))
             throw new ArgumentException("Custom field key cannot be empty", nameof(key));
-        
+
         CustomFields[key] = value ?? string.Empty;
     }
 

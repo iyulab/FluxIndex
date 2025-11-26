@@ -1,6 +1,6 @@
 using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Domain.Models;
-using EvaluationThresholds = FluxIndex.Domain.Models.QualityThresholds;
+using FluxIndex.Core.Domain.Models;
+using EvaluationThresholds = FluxIndex.Core.Domain.Models.QualityThresholds;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;

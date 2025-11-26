@@ -1,6 +1,7 @@
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Models;
-using FluxIndex.Domain.Entities;
+using FluxIndex.Core.Domain.Entities;
+using FluxIndex.Core.Domain.ValueObjects;
 using Microsoft.Extensions.Logging;
 
 namespace FluxIndex.Core.Application.Services;

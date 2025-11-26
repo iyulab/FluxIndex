@@ -103,4 +103,4 @@ MIT License - see [LICENSE](LICENSE) file.
 
 ## Contributing
 
-See [development roadmap](./TASKS.md) for planned features.
+Contributions are welcome! Please feel free to submit issues and pull requests.

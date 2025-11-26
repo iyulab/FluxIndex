@@ -1,4 +1,4 @@
-using FluxIndex.Domain.Entities;
+using FluxIndex.Core.Domain.Entities;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;

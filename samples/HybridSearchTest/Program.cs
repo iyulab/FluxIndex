@@ -1,9 +1,9 @@
-using FluxIndex.SDK;
-using FluxIndex.Domain.Entities;
+﻿using FluxIndex.SDK;
+using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Samples.Shared;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
-using DomainHybridSearchOptions = FluxIndex.Domain.Models.HybridSearchOptions;
+using DomainHybridSearchOptions = FluxIndex.Core.Domain.Models.HybridSearchOptions;
 
 namespace HybridSearchTest;
 
@@ -111,7 +111,7 @@ class Program
             // 문서에 청크 추가
             var chunks = new[]
             {
-                new FluxIndex.Domain.Models.DocumentChunk
+                new FluxIndex.Core.Domain.Models.CacheDocumentChunk
                 {
                     Id = $"{doc.Id}_chunk_1",
                     DocumentId = doc.Id,

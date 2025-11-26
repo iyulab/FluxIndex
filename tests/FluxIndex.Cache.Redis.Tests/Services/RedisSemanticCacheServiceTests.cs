@@ -1,14 +1,15 @@
-using FluxIndex.Cache.Redis.Configuration;
+﻿using FluxIndex.Cache.Redis.Configuration;
 using FluxIndex.Cache.Redis.Services;
 using FluxIndex.Cache.Redis.Tests.Infrastructure;
 using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Domain.Models;
+using FluxIndex.Core.Domain.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
 using StackExchange.Redis;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
@@ -116,13 +117,14 @@ public class RedisSemanticCacheServiceTests : RedisTestBase
 
         // Arrange
         var query = "테스트 쿼리";
-        var results = new List<DocumentChunk>
+        var results = new List<CacheDocumentChunk>
         {
-            new DocumentChunk
+            new CacheDocumentChunk
             {
                 Id = "test-chunk-1",
                 Content = "테스트 내용",
-                ChunkIndex = 0
+                ChunkIndex = 0,
+                DocumentId = "test-doc-1"
             }
         };
 
@@ -159,7 +161,7 @@ public class RedisSemanticCacheServiceTests : RedisTestBase
 
         // Arrange
         var query = "무효화 테스트 쿼리";
-        var results = new List<DocumentChunk> { new DocumentChunk { Content = "내용", ChunkIndex = 0 } };
+        var results = new List<CacheDocumentChunk> { new CacheDocumentChunk { Content = "내용", ChunkIndex = 0, DocumentId = "doc1", Id = "chunk1" } };
 
         await _cacheService!.SetCachedResultAsync(query, results);
 

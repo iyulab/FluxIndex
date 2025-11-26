@@ -1,8 +1,8 @@
 using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Domain.Entities;
-using FluxIndex.Domain.Models;
-using DocumentChunkEntity = FluxIndex.Domain.Entities.DocumentChunk;
-using DocumentChunkModel = FluxIndex.Domain.Models.DocumentChunk;
+using FluxIndex.Core.Domain.Entities;
+using FluxIndex.Core.Domain.Models;
+using DocumentChunkEntity = FluxIndex.Core.Domain.Entities.DocumentChunk;
+using DocumentChunkModel = FluxIndex.Core.Domain.Models.CacheDocumentChunk;
 using RankedResultCore = FluxIndex.Core.Application.Interfaces.RankedResult;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -227,7 +227,7 @@ public class Retriever
             // Convert DocumentChunks to VectorSearchResults
             var results = searchResults.Select(chunk => new VectorSearchResult
             {
-                DocumentChunk = ConvertToModelChunk(chunk),
+                DocumentChunk = chunk, // Use entity directly
                 Score = 1.0f, // Default score since IVectorStore doesn't provide it
                 Rank = 0,
                 Distance = 0,
@@ -569,7 +569,7 @@ public class Retriever
 
                 results.AddRange(matchingChunks.Select(chunk => new VectorSearchResult
                 {
-                    DocumentChunk = ConvertToModelChunk(chunk),
+                    DocumentChunk = chunk, // Use entity directly
                     Score = CalculateKeywordScore(chunk.Content, keyword),
                     Rank = 0,
                     Distance = 0,
@@ -721,7 +721,7 @@ public class Retriever
             .Take(maxResults)
             .Select(chunk => new VectorSearchResult
             {
-                DocumentChunk = ConvertToModelChunk(chunk),
+                DocumentChunk = chunk, // Use entity directly
                 Score = 1.0f, // Default score
                 Rank = 0,
                 Distance = 0,
@@ -836,7 +836,7 @@ public class Retriever
 
     private DocumentChunkModel ConvertToModelChunk(DocumentChunkEntity entityChunk)
     {
-        return DocumentChunkModel.Create(
+        var modelChunk = DocumentChunkModel.Create(
             entityChunk.DocumentId,
             entityChunk.Content,
             entityChunk.ChunkIndex,
@@ -846,6 +846,21 @@ public class Retriever
             entityChunk.TokenCount,
             entityChunk.Metadata
         );
+
+        // Preserve the Id from the entity
+        return new DocumentChunkModel
+        {
+            Id = entityChunk.Id,
+            DocumentId = modelChunk.DocumentId,
+            Content = modelChunk.Content,
+            ChunkIndex = modelChunk.ChunkIndex,
+            TotalChunks = modelChunk.TotalChunks,
+            Embedding = modelChunk.Embedding,
+            Score = modelChunk.Score,
+            TokenCount = modelChunk.TokenCount,
+            Metadata = modelChunk.Metadata,
+            CreatedAt = modelChunk.CreatedAt
+        };
     }
 
     private IEnumerable<RankedResultCore> ConvertToRankedResults(IEnumerable<VectorSearchResult> searchResults, string source)
@@ -867,7 +882,7 @@ public class Retriever
     {
         return rankedResults.Select(r => new VectorSearchResult
         {
-            DocumentChunk = ConvertToModelChunk(new DocumentChunkEntity
+            DocumentChunk = new DocumentChunkEntity  // Use entity directly
             {
                 Id = r.ChunkId,
                 DocumentId = r.DocumentId,
@@ -875,7 +890,7 @@ public class Retriever
                 ChunkIndex = 0,
                 TokenCount = 0,
                 Metadata = r.Metadata ?? new Dictionary<string, object>()
-            }),
+            },
             Score = (float)r.Score,
             Rank = r.Rank,
             Distance = 0,

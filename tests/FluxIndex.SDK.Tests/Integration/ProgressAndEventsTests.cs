@@ -1,8 +1,8 @@
-using FluxIndex.SDK;
+﻿using FluxIndex.SDK;
 using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Domain.Entities;
-using FluxIndex.Domain.Models;
-using DocumentChunkEntity = FluxIndex.Domain.Entities.DocumentChunk;
+using FluxIndex.Core.Domain.Entities;
+using FluxIndex.Core.Domain.Models;
+using DocumentChunkEntity = FluxIndex.Core.Domain.Entities.DocumentChunk;
 using Moq;
 using Xunit;
 

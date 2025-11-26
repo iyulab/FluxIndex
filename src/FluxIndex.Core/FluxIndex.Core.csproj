@@ -12,7 +12,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\FluxIndex\FluxIndex.csproj" />
+    <PackageReference Include="FileFlux" />
   </ItemGroup>
 
 </Project>

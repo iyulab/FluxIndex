@@ -1,5 +1,6 @@
-using FluxIndex.Domain.Models;
-using EvaluationThresholds = FluxIndex.Domain.Models.QualityThresholds;
+﻿using FluxIndex.Core.Domain.Models;
+using FluxIndex.Core.Domain.Entities;
+using EvaluationThresholds = FluxIndex.Core.Domain.Models.QualityThresholds;
 using System;
 using System.Collections.Generic;
 using System.Threading;

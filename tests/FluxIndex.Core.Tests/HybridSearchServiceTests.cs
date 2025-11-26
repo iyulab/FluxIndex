@@ -1,11 +1,11 @@
-using FluxIndex.Core.Application.Interfaces;
+﻿using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Services;
-using FluxIndex.Domain.Models;
+using FluxIndex.Core.Domain.Models;
+using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
-using DomainEntities = FluxIndex.Domain.Entities;
 
 namespace FluxIndex.Core.Tests;
 
@@ -45,16 +45,16 @@ public class HybridSearchServiceTests
 
         var embedding = new float[] { 0.1f, 0.2f, 0.3f };
 
-        var vectorChunks = new List<DomainEntities.DocumentChunk>
+        var vectorChunks = new List<DocumentChunk>
         {
-            new DomainEntities.DocumentChunk
+            new DocumentChunk
             {
                 Id = "chunk1",
                 Content = "Test content 1",
                 DocumentId = "doc1",
                 Metadata = new Dictionary<string, object> { ["title"] = "Test Doc 1" }
             },
-            new DomainEntities.DocumentChunk
+            new DocumentChunk
             {
                 Id = "chunk2",
                 Content = "Test content 2",
@@ -137,7 +137,7 @@ public class HybridSearchServiceTests
             .ReturnsAsync(embedding);
 
         _mockVectorStore.Setup(x => x.SearchAsync(embedding, It.IsAny<int>(), It.IsAny<float>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Enumerable.Empty<DomainEntities.DocumentChunk>());
+            .ReturnsAsync(Enumerable.Empty<DocumentChunk>());
 
         _mockSparseRetriever.Setup(x => x.SearchAsync(query, It.IsAny<SparseSearchOptions>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<SparseSearchResult>());
@@ -169,7 +169,7 @@ public class HybridSearchServiceTests
             .ReturnsAsync(embedding);
 
         _mockVectorStore.Setup(x => x.SearchAsync(embedding, It.IsAny<int>(), It.IsAny<float>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Enumerable.Empty<DomainEntities.DocumentChunk>());
+            .ReturnsAsync(Enumerable.Empty<DocumentChunk>());
 
         _mockSparseRetriever.Setup(x => x.SearchAsync(query, It.IsAny<SparseSearchOptions>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<SparseSearchResult>());

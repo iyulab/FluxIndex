@@ -1,6 +1,6 @@
-using FluxIndex.SDK;
+﻿using FluxIndex.SDK;
 using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Domain.Entities;
+using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;

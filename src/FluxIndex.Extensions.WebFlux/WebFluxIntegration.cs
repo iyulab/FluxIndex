@@ -1,4 +1,4 @@
-using FluxIndex.Domain.Entities;
+﻿using FluxIndex.Core.Domain.Entities;
 using FluxIndex.SDK;
 using Microsoft.Extensions.Logging;
 using WebFlux.Core.Interfaces;

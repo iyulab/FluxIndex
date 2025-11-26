@@ -241,14 +241,6 @@
         "resolved": "6.0.0",
         "contentHash": "ntFHArH3I4Lpjf5m4DCXQHJuGwWPNVJPaAvM95Jy/u+2Yzt2ryiyIN04LAogkjP9DeRcEOiviAjQotfmPq/FrQ=="
       },
-      "fluxindex": {
-        "type": "Project",
-        "dependencies": {
-          "Microsoft.Extensions.Caching.Memory": "[10.0.0, )",
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
-          "Microsoft.Extensions.Logging.Abstractions": "[10.0.0, )"
-        }
-      },
       "fluxindex.ai.openai": {
         "type": "Project",
         "dependencies": {
@@ -261,7 +253,7 @@
       "fluxindex.core": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex": "[0.2.15, )",
+          "FileFlux": "[0.4.1, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.0, )"
         }
@@ -269,7 +261,6 @@
       "fluxindex.sdk": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex": "[0.2.15, )",
           "FluxIndex.AI.OpenAI": "[0.2.15, )",
           "FluxIndex.Core": "[0.2.15, )",
           "FluxIndex.Storage.SQLite": "[0.2.15, )",

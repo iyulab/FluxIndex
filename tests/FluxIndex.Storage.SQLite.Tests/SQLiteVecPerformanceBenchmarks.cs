@@ -1,8 +1,8 @@
-using BenchmarkDotNet.Attributes;
+﻿using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Running;
 using FluentAssertions;
 using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Domain.Entities;
+using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Storage.SQLite;
 using FluxIndex.Storage.SQLite.Tests.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;

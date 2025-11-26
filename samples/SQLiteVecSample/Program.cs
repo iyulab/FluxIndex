@@ -1,4 +1,4 @@
-using FluxIndex.SDK;
+﻿using FluxIndex.SDK;
 using FluxIndex.Storage.SQLite;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -547,7 +547,7 @@ class Program
         var stopwatch = Stopwatch.StartNew();
 
         // 인덱싱
-        var chunks = testData.Select((doc, i) => new FluxIndex.Domain.Entities.DocumentChunk
+        var chunks = testData.Select((doc, i) => new FluxIndex.Core.Domain.Entities.DocumentChunk
         {
             DocumentId = doc.Id,
             ChunkIndex = 0,
