@@ -51,9 +51,10 @@
     <PackageVersion Include="StackExchange.Redis" Version="2.10.1" />
     <PackageVersion Include="sqlite-vec" Version="0.1.7-alpha.2.1" />
   </ItemGroup>
-  <!-- Document Processing -->
+  <!-- Document Processing & Quality -->
   <ItemGroup>
     <PackageVersion Include="FileFlux" Version="0.4.1" />
+    <PackageVersion Include="FluxImprover" Version="0.1.1" />
     <PackageVersion Include="HtmlAgilityPack" Version="1.12.3" />
     <PackageVersion Include="WebFlux" Version="0.1.7" />
   </ItemGroup>
