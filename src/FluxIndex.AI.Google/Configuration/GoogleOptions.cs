@@ -1,34 +1,44 @@
 namespace FluxIndex.AI.Google.Configuration;
 
 /// <summary>
-/// Google Gemini API 설정
+/// Google Gemini API 설정 (Google AI Studio 또는 Vertex AI)
 /// </summary>
 public class GoogleOptions
 {
     /// <summary>
-    /// Google Cloud Project ID
+    /// Google AI Studio API Key (for Google AI Studio)
     /// </summary>
-    public string ProjectId { get; set; } = string.Empty;
+    public string ApiKey { get; set; } = string.Empty;
 
     /// <summary>
-    /// Google Cloud Location (e.g., "us-central1")
+    /// Google Cloud Project ID (for Vertex AI - optional)
+    /// </summary>
+    public string? ProjectId { get; set; }
+
+    /// <summary>
+    /// Google Cloud Location (for Vertex AI - e.g., "us-central1")
     /// </summary>
     public string Location { get; set; } = "us-central1";
 
     /// <summary>
-    /// 기본 모델 (gemini-1.5-pro)
+    /// Whether to use Vertex AI instead of Google AI Studio
     /// </summary>
-    public string DefaultModel { get; set; } = "gemini-1.5-pro";
+    public bool UseVertexAI { get; set; } = false;
 
     /// <summary>
-    /// Fast 전략용 모델 (gemini-1.5-flash)
+    /// 기본 모델 (gemini-2.0-flash)
     /// </summary>
-    public string FastModel { get; set; } = "gemini-1.5-flash";
+    public string DefaultModel { get; set; } = "gemini-2.0-flash";
 
     /// <summary>
-    /// Deep 전략용 모델 (gemini-1.5-pro)
+    /// Fast 전략용 모델 (gemini-2.0-flash)
     /// </summary>
-    public string DeepModel { get; set; } = "gemini-1.5-pro";
+    public string FastModel { get; set; } = "gemini-2.0-flash";
+
+    /// <summary>
+    /// Deep 전략용 모델 (gemini-2.5-pro-preview-05-06)
+    /// </summary>
+    public string DeepModel { get; set; } = "gemini-2.5-pro-preview-05-06";
 
     /// <summary>
     /// 최대 토큰 수

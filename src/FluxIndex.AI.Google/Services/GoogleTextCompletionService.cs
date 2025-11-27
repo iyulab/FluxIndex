@@ -1,19 +1,19 @@
 using FluxIndex.AI.Google.Configuration;
 using FluxIndex.Core.Application.Interfaces;
-using Google.Cloud.AIPlatform.V1;
+using Mscc.GenerativeAI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace FluxIndex.AI.Google.Services;
 
 /// <summary>
-/// Google Gemini 기반 텍스트 완성 서비스
+/// Google Gemini 기반 텍스트 완성 서비스 (Google AI Studio API 사용)
 /// </summary>
 public class GoogleTextCompletionService : ITextCompletionService
 {
     private readonly GoogleOptions _options;
     private readonly ILogger<GoogleTextCompletionService> _logger;
-    private readonly PredictionServiceClient _client;
+    private readonly IGenerativeAI _googleAI;
 
     public GoogleTextCompletionService(
         IOptions<GoogleOptions> options,
@@ -21,7 +21,13 @@ public class GoogleTextCompletionService : ITextCompletionService
     {
         _options = options.Value;
         _logger = logger;
-        _client = PredictionServiceClient.Create();
+
+        if (string.IsNullOrEmpty(_options.ApiKey))
+        {
+            throw new ArgumentException("Google AI API key is required", nameof(options));
+        }
+
+        _googleAI = new GoogleAI(apiKey: _options.ApiKey);
     }
 
     public async Task<string> GenerateCompletionAsync(
@@ -34,43 +40,26 @@ public class GoogleTextCompletionService : ITextCompletionService
 
         try
         {
-            var endpoint = $"projects/{_options.ProjectId}/locations/{_options.Location}/publishers/google/models/{_options.DefaultModel}";
+            var model = _googleAI.GenerativeModel(model: _options.DefaultModel);
 
-            var content = new Content
+            var generationConfig = new GenerationConfig
             {
-                Parts = { new Part { Text = prompt } }
+                Temperature = temperature,
+                TopP = _options.TopP,
+                TopK = _options.TopK,
+                MaxOutputTokens = maxTokens
             };
 
-            var generateContentRequest = new GenerateContentRequest
-            {
-                Model = endpoint,
-                Contents = { content },
-                GenerationConfig = new GenerationConfig
-                {
-                    Temperature = temperature,
-                    TopP = _options.TopP,
-                    TopK = _options.TopK,
-                    MaxOutputTokens = maxTokens
-                }
-            };
+            var response = await model.GenerateContent(prompt, generationConfig);
 
-            var response = await _client.GenerateContentAsync(generateContentRequest, cancellationToken);
-
-            if (response?.Candidates == null || response.Candidates.Count == 0)
+            if (response == null || string.IsNullOrEmpty(response.Text))
             {
                 throw new InvalidOperationException("Google Gemini API returned empty response");
             }
 
-            var candidate = response.Candidates[0];
-            if (candidate.Content?.Parts == null || candidate.Content.Parts.Count == 0)
-            {
-                throw new InvalidOperationException("Google Gemini API response does not contain text content");
-            }
+            _logger.LogInformation("Google Gemini API call successful. Model: {Model}", _options.DefaultModel);
 
-            var text = candidate.Content.Parts[0].Text;
-            _logger.LogInformation("Google Gemini API call successful");
-
-            return text;
+            return response.Text;
         }
         catch (Exception ex)
         {
@@ -88,43 +77,28 @@ public class GoogleTextCompletionService : ITextCompletionService
 
         try
         {
-            var endpoint = $"projects/{_options.ProjectId}/locations/{_options.Location}/publishers/google/models/{_options.DefaultModel}";
+            var model = _googleAI.GenerativeModel(model: _options.DefaultModel);
 
-            var content = new Content
+            var generationConfig = new GenerationConfig
             {
-                Parts = { new Part { Text = prompt + "\n\nReturn ONLY valid JSON (no markdown, no explanations):" } }
+                Temperature = _options.Temperature,
+                TopP = _options.TopP,
+                TopK = _options.TopK,
+                MaxOutputTokens = maxTokens,
+                ResponseMimeType = "application/json"
             };
 
-            var generateContentRequest = new GenerateContentRequest
-            {
-                Model = endpoint,
-                Contents = { content },
-                GenerationConfig = new GenerationConfig
-                {
-                    Temperature = _options.Temperature,
-                    TopP = _options.TopP,
-                    TopK = _options.TopK,
-                    MaxOutputTokens = maxTokens
-                }
-            };
+            var jsonPrompt = prompt + "\n\nReturn ONLY valid JSON (no markdown, no explanations):";
+            var response = await model.GenerateContent(jsonPrompt, generationConfig);
 
-            var response = await _client.GenerateContentAsync(generateContentRequest, cancellationToken);
-
-            if (response?.Candidates == null || response.Candidates.Count == 0)
+            if (response == null || string.IsNullOrEmpty(response.Text))
             {
                 throw new InvalidOperationException("Google Gemini API returned empty response");
             }
 
-            var candidate = response.Candidates[0];
-            if (candidate.Content?.Parts == null || candidate.Content.Parts.Count == 0)
-            {
-                throw new InvalidOperationException("Google Gemini API response does not contain text content");
-            }
+            _logger.LogInformation("Google Gemini JSON API call successful. Model: {Model}", _options.DefaultModel);
 
-            var text = candidate.Content.Parts[0].Text;
-            _logger.LogInformation("Google Gemini JSON API call successful");
-
-            return text;
+            return response.Text;
         }
         catch (Exception ex)
         {

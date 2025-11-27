@@ -8,11 +8,13 @@ namespace FluxIndex.AI.Anthropic.Extensions;
 
 /// <summary>
 /// Anthropic Claude AI 서비스 등록 확장 메서드
+/// Note: Anthropic does not provide embedding APIs, use LocalEmbedder for embeddings
 /// </summary>
 public static class ServiceCollectionExtensions
 {
     /// <summary>
     /// Anthropic Claude 메타데이터 추출기 등록
+    /// Note: Embedding service must be registered separately (recommend LocalEmbedder)
     /// </summary>
     public static IServiceCollection AddAnthropicMetadataExtractor(
         this IServiceCollection services,
@@ -21,12 +23,14 @@ public static class ServiceCollectionExtensions
         services.Configure(configureOptions);
         services.AddSingleton<ITextCompletionService, AnthropicTextCompletionService>();
         services.AddSingleton<IMetadataExtractor, AnthropicMetadataExtractor>();
+        services.AddMemoryCache();
 
         return services;
     }
 
     /// <summary>
     /// Anthropic Claude 텍스트 완성 서비스만 등록
+    /// Note: Embedding service must be registered separately (recommend LocalEmbedder)
     /// </summary>
     public static IServiceCollection AddAnthropicTextCompletion(
         this IServiceCollection services,
@@ -34,7 +38,20 @@ public static class ServiceCollectionExtensions
     {
         services.Configure(configureOptions);
         services.AddSingleton<ITextCompletionService, AnthropicTextCompletionService>();
+        services.AddMemoryCache();
 
+        return services;
+    }
+
+    /// <summary>
+    /// Anthropic Claude 서비스와 함께 사용할 수 있는 전체 서비스 등록
+    /// TextCompletion은 Anthropic, Embedding은 별도로 등록 필요
+    /// </summary>
+    public static IServiceCollection AddAnthropicServices(
+        this IServiceCollection services,
+        Action<AnthropicOptions> configureOptions)
+    {
+        services.AddAnthropicMetadataExtractor(configureOptions);
         return services;
     }
 }

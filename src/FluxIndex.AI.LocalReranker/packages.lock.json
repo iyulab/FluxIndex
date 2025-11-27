@@ -260,14 +260,25 @@
       },
       "System.Numerics.Tensors": {
         "type": "Transitive",
-        "resolved": "9.0.0",
-        "contentHash": "hyJB4UlpAi19Xr9AXzu2NuagKC4lPfHObNMEAA0HmqFz2rX7wKgzeYzO/jM/eBHDhnUGFFEjk5cOoJaxqg5J4A=="
+        "resolved": "10.0.0",
+        "contentHash": "PxZKFx8ACAt7gRnTSDgtZFA06cimls5XL1Olv63bWF8qKL5+EQdqq3K02etW4LNut4xDoREPe9z7QYATLMkBPA=="
+      },
+      "fluxindex.ai.localembedder": {
+        "type": "Project",
+        "dependencies": {
+          "FluxIndex.Core": "[0.2.16, )",
+          "LocalEmbedder": "[0.1.0, )",
+          "Microsoft.Extensions.Caching.Memory": "[10.0.0, )",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
+          "Microsoft.Extensions.Logging.Abstractions": "[10.0.0, )",
+          "Microsoft.Extensions.Options": "[10.0.0, )"
+        }
       },
       "fluxindex.ai.openai": {
         "type": "Project",
         "dependencies": {
           "Azure.AI.OpenAI": "[2.1.0, )",
-          "FluxIndex.Core": "[0.2.15, )",
+          "FluxIndex.Core": "[0.2.16, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.0, )"
         }
@@ -283,9 +294,10 @@
       "fluxindex.sdk": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.AI.OpenAI": "[0.2.15, )",
-          "FluxIndex.Core": "[0.2.15, )",
-          "FluxIndex.Storage.SQLite": "[0.2.15, )",
+          "FluxIndex.AI.LocalEmbedder": "[0.2.16, )",
+          "FluxIndex.AI.OpenAI": "[0.2.16, )",
+          "FluxIndex.Core": "[0.2.16, )",
+          "FluxIndex.Storage.SQLite": "[0.2.16, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
           "Microsoft.Extensions.Http": "[10.0.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.0, )"
@@ -294,7 +306,7 @@
       "fluxindex.storage.sqlite": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.Core": "[0.2.15, )",
+          "FluxIndex.Core": "[0.2.16, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.0, )",
           "Microsoft.Extensions.Configuration.Binder": "[10.0.0, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
@@ -340,6 +352,16 @@
         "requested": "[1.12.3, )",
         "resolved": "1.12.4",
         "contentHash": "ljqvBabvFwKoLniuoQKO8b5bJfJweKLs4fUNS/V5dsvpo0A8MlJqxxn9XVmP2DaskbUXty6IYaWAi1SArGIMeQ=="
+      },
+      "LocalEmbedder": {
+        "type": "CentralTransitive",
+        "requested": "[0.1.0, )",
+        "resolved": "0.1.0",
+        "contentHash": "glALR2IXQcDAjjHhiWpqSCXsi+8HWgg09WKBtewK0lIgRT1ro0aMKXVF+2tbZacZQCbkH1VO9zQmjmKwKuEiZA==",
+        "dependencies": {
+          "Microsoft.ML.OnnxRuntime": "1.23.2",
+          "System.Numerics.Tensors": "10.0.0"
+        }
       },
       "Microsoft.EntityFrameworkCore": {
         "type": "CentralTransitive",

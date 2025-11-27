@@ -7,7 +7,8 @@ using Microsoft.Extensions.DependencyInjection;
 namespace FluxIndex.AI.OpenAI;
 
 /// <summary>
-/// Extension methods for registering OpenAI services with dependency injection
+/// Extension methods for registering OpenAI and OpenAI-compatible services with dependency injection
+/// Supports: OpenAI, Azure OpenAI, GPUStack (v1/v2), and other OpenAI-compatible APIs
 /// </summary>
 public static class ServiceCollectionExtensions
 {
@@ -149,4 +150,137 @@ public static class ServiceCollectionExtensions
         services.AddOpenAITextCompletion(configureOptions);
         return services;
     }
+
+    #region GPUStack Support
+
+    /// <summary>
+    /// Adds GPUStack embedding service to the service collection
+    /// GPUStack provides OpenAI-compatible APIs for self-hosted inference
+    /// </summary>
+    /// <param name="services">The service collection</param>
+    /// <param name="endpoint">GPUStack server endpoint (e.g., http://localhost:80)</param>
+    /// <param name="apiKey">GPUStack API key</param>
+    /// <param name="modelName">Embedding model name deployed on GPUStack (e.g., "BAAI/bge-m3")</param>
+    /// <param name="dimensions">Optional embedding dimensions</param>
+    /// <returns>Service collection for chaining</returns>
+    public static IServiceCollection AddGPUStackEmbedding(
+        this IServiceCollection services,
+        string endpoint,
+        string apiKey,
+        string modelName,
+        int? dimensions = null)
+    {
+        return services.AddOpenAIEmbedding(options =>
+        {
+            options.Endpoint = endpoint;
+            options.ApiKey = apiKey;
+            options.ModelName = modelName;
+            options.Dimensions = dimensions;
+            options.ProviderType = OpenAIProviderType.GPUStack;
+        });
+    }
+
+    /// <summary>
+    /// Adds GPUStack text completion service to the service collection
+    /// GPUStack provides OpenAI-compatible APIs for self-hosted inference
+    /// </summary>
+    /// <param name="services">The service collection</param>
+    /// <param name="endpoint">GPUStack server endpoint (e.g., http://localhost:80)</param>
+    /// <param name="apiKey">GPUStack API key</param>
+    /// <param name="modelName">Chat model name deployed on GPUStack (e.g., "Qwen/Qwen2.5-0.5B-Instruct")</param>
+    /// <returns>Service collection for chaining</returns>
+    public static IServiceCollection AddGPUStackTextCompletion(
+        this IServiceCollection services,
+        string endpoint,
+        string apiKey,
+        string modelName)
+    {
+        return services.AddOpenAITextCompletion(options =>
+        {
+            options.Endpoint = endpoint;
+            options.ApiKey = apiKey;
+            options.ModelName = modelName;
+            options.ProviderType = OpenAIProviderType.GPUStack;
+        });
+    }
+
+    /// <summary>
+    /// Adds all GPUStack services (embedding + text completion)
+    /// </summary>
+    /// <param name="services">The service collection</param>
+    /// <param name="endpoint">GPUStack server endpoint</param>
+    /// <param name="apiKey">GPUStack API key</param>
+    /// <param name="embeddingModel">Embedding model name</param>
+    /// <param name="chatModel">Chat completion model name</param>
+    /// <param name="dimensions">Optional embedding dimensions</param>
+    /// <returns>Service collection for chaining</returns>
+    public static IServiceCollection AddGPUStackServices(
+        this IServiceCollection services,
+        string endpoint,
+        string apiKey,
+        string embeddingModel,
+        string chatModel,
+        int? dimensions = null)
+    {
+        services.AddGPUStackEmbedding(endpoint, apiKey, embeddingModel, dimensions);
+        services.AddGPUStackTextCompletion(endpoint, apiKey, chatModel);
+        return services;
+    }
+
+    #endregion
+
+    #region Generic OpenAI-Compatible Support
+
+    /// <summary>
+    /// Adds OpenAI-compatible embedding service to the service collection
+    /// Use this for providers like Ollama, LM Studio, vLLM, etc.
+    /// </summary>
+    /// <param name="services">The service collection</param>
+    /// <param name="endpoint">API endpoint URL</param>
+    /// <param name="apiKey">API key (may be optional for some providers)</param>
+    /// <param name="modelName">Embedding model name</param>
+    /// <param name="dimensions">Optional embedding dimensions</param>
+    /// <returns>Service collection for chaining</returns>
+    public static IServiceCollection AddOpenAICompatibleEmbedding(
+        this IServiceCollection services,
+        string endpoint,
+        string apiKey,
+        string modelName,
+        int? dimensions = null)
+    {
+        return services.AddOpenAIEmbedding(options =>
+        {
+            options.Endpoint = endpoint;
+            options.ApiKey = apiKey;
+            options.ModelName = modelName;
+            options.Dimensions = dimensions;
+            options.ProviderType = OpenAIProviderType.OpenAICompatible;
+        });
+    }
+
+    /// <summary>
+    /// Adds OpenAI-compatible text completion service to the service collection
+    /// Use this for providers like Ollama, LM Studio, vLLM, etc.
+    /// </summary>
+    /// <param name="services">The service collection</param>
+    /// <param name="endpoint">API endpoint URL</param>
+    /// <param name="apiKey">API key (may be optional for some providers)</param>
+    /// <param name="modelName">Chat model name</param>
+    /// <returns>Service collection for chaining</returns>
+    public static IServiceCollection AddOpenAICompatibleTextCompletion(
+        this IServiceCollection services,
+        string endpoint,
+        string apiKey,
+        string modelName)
+    {
+        return services.AddOpenAITextCompletion(options =>
+        {
+            options.Endpoint = endpoint;
+            options.ApiKey = apiKey;
+            options.ModelName = modelName;
+            options.ProviderType = OpenAIProviderType.OpenAICompatible;
+        });
+    }
+
+    #endregion
 }

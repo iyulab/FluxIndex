@@ -11,8 +11,8 @@ using System.Text;
 namespace FluxIndex.AI.OpenAI.Services;
 
 /// <summary>
-/// OpenAI implementation of IEmbeddingService
-/// Supports both OpenAI API and Azure OpenAI with caching
+/// OpenAI-compatible implementation of IEmbeddingService
+/// Supports: OpenAI API, Azure OpenAI, GPUStack (v1/v2), and other OpenAI-compatible APIs
 /// </summary>
 public class OpenAIEmbeddingService : IEmbeddingService
 {
@@ -20,6 +20,7 @@ public class OpenAIEmbeddingService : IEmbeddingService
     private readonly OpenAIOptions _options;
     private readonly IMemoryCache? _cache;
     private readonly ILogger<OpenAIEmbeddingService> _logger;
+    private readonly OpenAIProviderType _providerType;
 
     public OpenAIEmbeddingService(
         IOptions<OpenAIOptions> options,
@@ -29,6 +30,10 @@ public class OpenAIEmbeddingService : IEmbeddingService
         _options = options.Value;
         _logger = logger;
         _cache = cache;
+        _providerType = _options.GetEffectiveProviderType();
+
+        _logger.LogInformation("Initializing OpenAI Embedding Service: Provider={Provider}, Model={Model}, Endpoint={Endpoint}",
+            _providerType, _options.ModelName, _options.Endpoint ?? "default");
 
         // Initialize OpenAI client
         _client = CreateEmbeddingClient(_options);
@@ -227,18 +232,37 @@ public class OpenAIEmbeddingService : IEmbeddingService
 
     private EmbeddingClient CreateEmbeddingClient(OpenAIOptions options)
     {
-        if (string.IsNullOrEmpty(options.Endpoint))
+        var providerType = options.GetEffectiveProviderType();
+
+        switch (providerType)
         {
-            // Use OpenAI API
-            var openAIClient = new OpenAIClient(options.ApiKey);
-            return openAIClient.GetEmbeddingClient(options.ModelName);
-        }
-        else
-        {
-            // Use Azure OpenAI
-            var azureClient = new AzureOpenAIClient(new Uri(options.Endpoint),
-                new System.ClientModel.ApiKeyCredential(options.ApiKey));
-            return azureClient.GetEmbeddingClient(options.ModelName);
+            case OpenAIProviderType.OpenAI:
+                // Use OpenAI API (api.openai.com)
+                var openAIClient = new OpenAIClient(options.ApiKey);
+                return openAIClient.GetEmbeddingClient(options.ModelName);
+
+            case OpenAIProviderType.AzureOpenAI:
+                // Use Azure OpenAI
+                var azureClient = new AzureOpenAIClient(
+                    new Uri(options.Endpoint!),
+                    new System.ClientModel.ApiKeyCredential(options.ApiKey));
+                return azureClient.GetEmbeddingClient(options.ModelName);
+
+            case OpenAIProviderType.GPUStack:
+            case OpenAIProviderType.OpenAICompatible:
+            default:
+                // Use OpenAI-compatible API (GPUStack, Ollama, vLLM, LM Studio, etc.)
+                // GPUStack v1/v2 both use OpenAI-compatible endpoints at /v1/embeddings
+                var endpoint = options.Endpoint!.TrimEnd('/');
+                if (!endpoint.EndsWith("/v1"))
+                {
+                    endpoint += "/v1";
+                }
+
+                var compatibleClient = new OpenAIClient(
+                    new System.ClientModel.ApiKeyCredential(options.ApiKey),
+                    new OpenAIClientOptions { Endpoint = new Uri(endpoint) });
+                return compatibleClient.GetEmbeddingClient(options.ModelName);
         }
     }
 

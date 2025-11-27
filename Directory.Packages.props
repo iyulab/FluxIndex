@@ -42,8 +42,9 @@
     <PackageVersion Include="Anthropic.SDK" Version="5.8.0" />
     <PackageVersion Include="Azure.AI.OpenAI" Version="2.1.0" />
     <PackageVersion Include="Google.Cloud.AIPlatform.V1" Version="3.54.0" />
+    <PackageVersion Include="Mscc.GenerativeAI" Version="2.5.2" />
+    <PackageVersion Include="LocalEmbedder" Version="0.1.0" />
     <PackageVersion Include="LocalReranker" Version="0.1.0" />
-    <PackageVersion Include="Microsoft.SemanticKernel" Version="1.31.0" />
   </ItemGroup>
   <!-- Storage/Cache Packages -->
   <ItemGroup>

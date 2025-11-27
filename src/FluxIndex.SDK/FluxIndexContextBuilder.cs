@@ -5,6 +5,7 @@ using FluxIndex.Core.Services;
 using FluxIndex.SDK.Configuration;
 using FluxIndex.SDK.Services;
 using FluxIndex.SDK.Extensions;
+using FluxIndex.AI.LocalEmbedder;
 using FluxIndex.AI.OpenAI;
 using FluxIndex.Storage.SQLite;
 // using FluxIndex.Cache.Redis.Extensions;
@@ -40,9 +41,11 @@ public class FluxIndexContextBuilder
         _services.AddLogging();
         _services.AddMemoryCache();
 
-        // ✅ Default to InMemory embedding for better developer experience
-        // This allows developers to test FluxIndex without requiring external API keys
-        _options.Embedding.Provider = "InMemory";
+        // ✅ Default to LocalEmbedder for better developer experience
+        // This allows developers to use FluxIndex without requiring external API keys
+        // LocalEmbedder provides real embeddings using local ONNX models
+        _options.Embedding.Provider = "LocalEmbedder";
+        _options.Embedding.ModelName = "all-MiniLM-L6-v2"; // Default LocalEmbedder model
     }
 
     /// <summary>
@@ -142,6 +145,77 @@ public class FluxIndexContextBuilder
     public FluxIndexContextBuilder UseInMemoryEmbedding()
     {
         _options.Embedding.Provider = "InMemory";
+        return this;
+    }
+
+    /// <summary>
+    /// LocalEmbedder 사용 (로컬 ONNX 기반, 외부 API 불필요)
+    /// Available models: all-MiniLM-L6-v2 (default), all-mpnet-base-v2, bge-small-en-v1.5, multilingual-e5-small
+    /// </summary>
+    /// <param name="modelId">Model identifier (default: "all-MiniLM-L6-v2")</param>
+    public FluxIndexContextBuilder UseLocalEmbedder(string modelId = "all-MiniLM-L6-v2")
+    {
+        _options.Embedding.Provider = "LocalEmbedder";
+        _options.Embedding.ModelName = modelId;
+        return this;
+    }
+
+    /// <summary>
+    /// 다국어 LocalEmbedder 사용 (multilingual-e5-small)
+    /// 한국어, 영어, 중국어, 일본어 등 다양한 언어 지원
+    /// </summary>
+    public FluxIndexContextBuilder UseLocalEmbedderMultilingual()
+    {
+        _options.Embedding.Provider = "LocalEmbedder";
+        _options.Embedding.ModelName = "multilingual-e5-small";
+        return this;
+    }
+
+    /// <summary>
+    /// GPUStack 임베딩 서비스 사용 (OpenAI-compatible self-hosted inference)
+    /// </summary>
+    /// <param name="endpoint">GPUStack endpoint (e.g., "http://localhost:80")</param>
+    /// <param name="apiKey">GPUStack API key</param>
+    /// <param name="modelName">Embedding model name (e.g., "BAAI/bge-m3")</param>
+    /// <param name="dimensions">Optional embedding dimensions</param>
+    public FluxIndexContextBuilder UseGPUStack(
+        string endpoint,
+        string apiKey,
+        string modelName,
+        int? dimensions = null)
+    {
+        _options.Embedding.Provider = "GPUStack";
+        _options.Embedding.ApiKey = apiKey;
+        _options.Embedding.ModelName = modelName;
+        _options.Embedding.ProviderSpecificOptions["Endpoint"] = endpoint;
+        if (dimensions.HasValue)
+        {
+            _options.Embedding.ProviderSpecificOptions["Dimensions"] = dimensions.Value;
+        }
+        return this;
+    }
+
+    /// <summary>
+    /// OpenAI-compatible 임베딩 서비스 사용 (Ollama, LM Studio, vLLM 등)
+    /// </summary>
+    /// <param name="endpoint">API endpoint URL</param>
+    /// <param name="apiKey">API key (may be optional for some providers)</param>
+    /// <param name="modelName">Embedding model name</param>
+    /// <param name="dimensions">Optional embedding dimensions</param>
+    public FluxIndexContextBuilder UseOpenAICompatible(
+        string endpoint,
+        string apiKey,
+        string modelName,
+        int? dimensions = null)
+    {
+        _options.Embedding.Provider = "OpenAICompatible";
+        _options.Embedding.ApiKey = apiKey;
+        _options.Embedding.ModelName = modelName;
+        _options.Embedding.ProviderSpecificOptions["Endpoint"] = endpoint;
+        if (dimensions.HasValue)
+        {
+            _options.Embedding.ProviderSpecificOptions["Dimensions"] = dimensions.Value;
+        }
         return this;
     }
 
@@ -756,6 +830,15 @@ public class FluxIndexContextBuilder
     {
         switch (_options.Embedding.Provider?.ToLower())
         {
+            case "localembedder":
+                // ✅ Default: Local ONNX-based embeddings (no API key required)
+                FluxIndex.AI.LocalEmbedder.ServiceCollectionExtensions.AddLocalEmbedder(_services, options =>
+                {
+                    options.ModelId = !string.IsNullOrEmpty(_options.Embedding.ModelName)
+                        ? _options.Embedding.ModelName
+                        : "all-MiniLM-L6-v2";
+                });
+                break;
             case "openai":
                 FluxIndex.AI.OpenAI.ServiceCollectionExtensions.AddOpenAIEmbedding(_services, options =>
                 {
@@ -771,6 +854,20 @@ public class FluxIndexContextBuilder
                     options.Endpoint = _options.Embedding.ProviderSpecificOptions.TryGetValue("Endpoint", out var endpoint) ? endpoint?.ToString() : "";
                 });
                 break;
+            case "gpustack":
+                FluxIndex.AI.OpenAI.ServiceCollectionExtensions.AddGPUStackEmbedding(_services,
+                    endpoint: _options.Embedding.ProviderSpecificOptions.TryGetValue("Endpoint", out var gpuEndpoint) ? gpuEndpoint?.ToString() ?? "" : "",
+                    apiKey: _options.Embedding.ApiKey,
+                    modelName: _options.Embedding.ModelName,
+                    dimensions: _options.Embedding.ProviderSpecificOptions.TryGetValue("Dimensions", out var gpuDim) && gpuDim is int gpuDimVal ? gpuDimVal : null);
+                break;
+            case "openaicompatible":
+                FluxIndex.AI.OpenAI.ServiceCollectionExtensions.AddOpenAICompatibleEmbedding(_services,
+                    endpoint: _options.Embedding.ProviderSpecificOptions.TryGetValue("Endpoint", out var compatEndpoint) ? compatEndpoint?.ToString() ?? "" : "",
+                    apiKey: _options.Embedding.ApiKey,
+                    modelName: _options.Embedding.ModelName,
+                    dimensions: _options.Embedding.ProviderSpecificOptions.TryGetValue("Dimensions", out var compatDim) && compatDim is int compatDimVal ? compatDimVal : null);
+                break;
             case "inmemory":
                 // In-memory embedding service for testing (generates random embeddings)
                 _services.AddSingleton<IEmbeddingService, InMemoryEmbeddingService>();
@@ -780,9 +877,8 @@ public class FluxIndexContextBuilder
                 // Do nothing - service is already in DI container
                 break;
             default:
-                // ✅ Fallback to InMemory embedding if no provider specified
-                // This should not happen since constructor sets InMemory as default
-                _services.AddSingleton<IEmbeddingService, InMemoryEmbeddingService>();
+                // ✅ Fallback to LocalEmbedder if no provider specified
+                FluxIndex.AI.LocalEmbedder.ServiceCollectionExtensions.AddLocalEmbedder(_services);
                 break;
         }
     }

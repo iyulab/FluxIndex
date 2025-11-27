@@ -11,8 +11,8 @@ using System.Text;
 namespace FluxIndex.AI.OpenAI.Services;
 
 /// <summary>
-/// OpenAI implementation of ITextCompletionService
-/// Supports both OpenAI API and Azure OpenAI with caching and retry logic
+/// OpenAI-compatible implementation of ITextCompletionService
+/// Supports: OpenAI API, Azure OpenAI, GPUStack (v1/v2), and other OpenAI-compatible APIs
 /// </summary>
 public class OpenAITextCompletionService : ITextCompletionService
 {
@@ -20,6 +20,7 @@ public class OpenAITextCompletionService : ITextCompletionService
     private readonly OpenAIOptions _options;
     private readonly IMemoryCache? _cache;
     private readonly ILogger<OpenAITextCompletionService> _logger;
+    private readonly OpenAIProviderType _providerType;
 
     public OpenAITextCompletionService(
         IOptions<OpenAIOptions> options,
@@ -29,6 +30,10 @@ public class OpenAITextCompletionService : ITextCompletionService
         _options = options.Value;
         _logger = logger;
         _cache = cache;
+        _providerType = _options.GetEffectiveProviderType();
+
+        _logger.LogInformation("Initializing OpenAI Text Completion Service: Provider={Provider}, Model={Model}, Endpoint={Endpoint}",
+            _providerType, _options.ModelName, _options.Endpoint ?? "default");
 
         // Initialize ChatClient
         _client = CreateChatClient(_options);
@@ -182,19 +187,37 @@ public class OpenAITextCompletionService : ITextCompletionService
 
     private ChatClient CreateChatClient(OpenAIOptions options)
     {
-        if (string.IsNullOrEmpty(options.Endpoint))
+        var providerType = options.GetEffectiveProviderType();
+
+        switch (providerType)
         {
-            // Use OpenAI API
-            var openAIClient = new OpenAIClient(options.ApiKey);
-            return openAIClient.GetChatClient(options.ModelName);
-        }
-        else
-        {
-            // Use Azure OpenAI
-            var azureClient = new AzureOpenAIClient(
-                new Uri(options.Endpoint),
-                new System.ClientModel.ApiKeyCredential(options.ApiKey));
-            return azureClient.GetChatClient(options.ModelName);
+            case OpenAIProviderType.OpenAI:
+                // Use OpenAI API (api.openai.com)
+                var openAIClient = new OpenAIClient(options.ApiKey);
+                return openAIClient.GetChatClient(options.ModelName);
+
+            case OpenAIProviderType.AzureOpenAI:
+                // Use Azure OpenAI
+                var azureClient = new AzureOpenAIClient(
+                    new Uri(options.Endpoint!),
+                    new System.ClientModel.ApiKeyCredential(options.ApiKey));
+                return azureClient.GetChatClient(options.ModelName);
+
+            case OpenAIProviderType.GPUStack:
+            case OpenAIProviderType.OpenAICompatible:
+            default:
+                // Use OpenAI-compatible API (GPUStack, Ollama, vLLM, LM Studio, etc.)
+                // GPUStack v1/v2 both use OpenAI-compatible endpoints at /v1/chat/completions
+                var endpoint = options.Endpoint!.TrimEnd('/');
+                if (!endpoint.EndsWith("/v1"))
+                {
+                    endpoint += "/v1";
+                }
+
+                var compatibleClient = new OpenAIClient(
+                    new System.ClientModel.ApiKeyCredential(options.ApiKey),
+                    new OpenAIClientOptions { Endpoint = new Uri(endpoint) });
+                return compatibleClient.GetChatClient(options.ModelName);
         }
     }
 
