@@ -8,20 +8,23 @@ public static class InitCommand
 {
     public static Command Create()
     {
-        var providerOption = new Option<string>(
-            "--provider",
-            getDefaultValue: () => "openai",
-            description: "Embedding provider (openai, anthropic, local)");
+        var providerOption = new Option<string>("--provider")
+        {
+            Description = "Embedding provider (openai, anthropic, local)",
+            DefaultValueFactory = _ => "openai"
+        };
 
-        var modelOption = new Option<string>(
-            "--model",
-            getDefaultValue: () => "text-embedding-3-small",
-            description: "Embedding model name");
+        var modelOption = new Option<string>("--model")
+        {
+            Description = "Embedding model name",
+            DefaultValueFactory = _ => "text-embedding-3-small"
+        };
 
-        var pathArgument = new Argument<string?>(
-            "path",
-            getDefaultValue: () => null,
-            description: "Path to initialize workspace (default: current directory)");
+        var pathArgument = new Argument<string?>("path")
+        {
+            Description = "Path to initialize workspace (default: current directory)",
+            DefaultValueFactory = _ => null
+        };
 
         var command = new Command("init", "Initialize a new FluxIndex workspace")
         {
@@ -30,8 +33,12 @@ public static class InitCommand
             modelOption
         };
 
-        command.SetHandler(async (path, provider, model) =>
+        command.SetAction(async (parseResult, cancellationToken) =>
         {
+            var path = parseResult.GetValue(pathArgument);
+            var provider = parseResult.GetValue(providerOption)!;
+            var model = parseResult.GetValue(modelOption)!;
+
             try
             {
                 path ??= Directory.GetCurrentDirectory();
@@ -69,9 +76,8 @@ public static class InitCommand
             catch (Exception ex)
             {
                 AnsiConsole.MarkupLine($"[red]Error:[/] {ex.Message}");
-                Environment.ExitCode = 1;
             }
-        }, pathArgument, providerOption, modelOption);
+        });
 
         return command;
     }

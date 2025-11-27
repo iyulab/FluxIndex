@@ -17,24 +17,21 @@ public class FileFluxIntegration
     private readonly Indexer _indexer;
     private readonly ILogger<FileFluxIntegration> _logger;
     private readonly FileFluxOptions _options;
-    private readonly IDocumentQualityAnalyzer _qualityAnalyzer;
 
     public FileFluxIntegration(
         IDocumentProcessor fileFluxProcessor,
         Indexer indexer,
         ILogger<FileFluxIntegration> logger,
-        IDocumentQualityAnalyzer qualityAnalyzer,
         Microsoft.Extensions.Options.IOptions<FileFluxOptions>? options = null)
     {
         _fileFluxProcessor = fileFluxProcessor ?? throw new ArgumentNullException(nameof(fileFluxProcessor));
         _indexer = indexer ?? throw new ArgumentNullException(nameof(indexer));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _qualityAnalyzer = qualityAnalyzer ?? throw new ArgumentNullException(nameof(qualityAnalyzer));
         _options = options?.Value ?? new FileFluxOptions();
     }
 
     /// <summary>
-    /// Process a file with FileFlux and index with FluxIndex using FileFlux 0.2.12 API
+    /// Process a file with FileFlux and index with FluxIndex using FileFlux 0.4.6 API
     /// </summary>
     public async Task<string> ProcessAndIndexAsync(
         string filePath,
@@ -95,7 +92,7 @@ public class FileFluxIntegration
             document.Metadata["file_extension"] = Path.GetExtension(filePath);
             document.Metadata["processed_at"] = DateTime.UtcNow.ToString("O");
             document.Metadata["processor"] = "FileFlux";
-            document.Metadata["fileflux_version"] = "0.4.0";
+            document.Metadata["fileflux_version"] = "0.4.6";
             document.Metadata["strategy"] = options.ChunkingStrategy;
 
             // Index with FluxIndex
@@ -205,7 +202,7 @@ public class FileFluxIntegration
                 document.Metadata["file_extension"] = Path.GetExtension(filePath);
                 document.Metadata["processed_at"] = DateTime.UtcNow.ToString("O");
                 document.Metadata["processor"] = "FileFlux";
-                document.Metadata["fileflux_version"] = "0.4.0";
+                document.Metadata["fileflux_version"] = "0.4.6";
                 document.Metadata["strategy"] = options.ChunkingStrategy;
                 document.Metadata["streaming_mode"] = true;
 
@@ -355,128 +352,6 @@ public class FileFluxIntegration
         }
 
         return fluxChunk;
-    }
-
-    /// <summary>
-    /// Analyze chunk quality using FileFlux 0.3.0 IDocumentQualityAnalyzer
-    /// </summary>
-    public async Task<ChunkingQualityMetrics> AnalyzeChunkQualityAsync(
-        IEnumerable<FileFluxChunk> chunks,
-        CancellationToken cancellationToken = default)
-    {
-        _logger.LogInformation("Analyzing chunk quality for {ChunkCount} chunks", chunks.Count());
-
-        try
-        {
-            var metrics = await _qualityAnalyzer.EvaluateChunksAsync(chunks, cancellationToken);
-
-            _logger.LogInformation(
-                "Quality metrics: Completeness={Completeness:P2}, Consistency={Consistency:P2}, BoundaryQuality={BoundaryQuality:P2}",
-                metrics.AverageCompleteness, metrics.ContentConsistency, metrics.BoundaryQuality);
-
-            return metrics;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to analyze chunk quality");
-            throw;
-        }
-    }
-
-    /// <summary>
-    /// Generate QA benchmark from document content using FileFlux 0.3.0 API
-    /// </summary>
-    public async Task<QABenchmark> GenerateQABenchmarkAsync(
-        string filePath,
-        int questionCount = 10,
-        CancellationToken cancellationToken = default)
-    {
-        _logger.LogInformation("Generating QA benchmark with {QuestionCount} questions from file: {FilePath}", questionCount, filePath);
-
-        try
-        {
-            var qaBenchmark = await _qualityAnalyzer.GenerateQABenchmarkAsync(filePath, questionCount, cancellationToken);
-
-            _logger.LogInformation(
-                "Successfully generated {QuestionCount} questions with answerability score: {AnswerabilityScore:P2}",
-                qaBenchmark.Questions.Count, qaBenchmark.AnswerabilityScore);
-
-            return qaBenchmark;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to generate QA benchmark from file: {FilePath}", filePath);
-            throw;
-        }
-    }
-
-    /// <summary>
-    /// Complete quality analysis workflow: analyze document quality with FileFlux 0.3.0
-    /// </summary>
-    public async Task<DocumentQualityReport> AnalyzeDocumentQualityAsync(
-        string filePath,
-        ProcessingOptions? options = null,
-        CancellationToken cancellationToken = default)
-    {
-        _logger.LogInformation("Starting complete quality analysis for file: {FilePath}", filePath);
-
-        try
-        {
-            options ??= new ProcessingOptions
-            {
-                ChunkingStrategy = _options.DefaultChunkingStrategy,
-                MaxChunkSize = _options.DefaultMaxChunkSize,
-                OverlapSize = _options.DefaultOverlapSize
-            };
-
-            var chunkingOptions = new ChunkingOptions
-            {
-                Strategy = options.ChunkingStrategy,
-                MaxChunkSize = options.MaxChunkSize,
-                OverlapSize = options.OverlapSize
-            };
-
-            // Analyze document quality with FileFlux
-            var qualityReport = await _qualityAnalyzer.AnalyzeQualityAsync(filePath, chunkingOptions, cancellationToken);
-
-            _logger.LogInformation(
-                "Quality analysis complete: Overall score={OverallScore:P2}, Completeness={Completeness:P2}",
-                qualityReport.OverallQualityScore, qualityReport.ChunkingQuality.AverageCompleteness);
-
-            return qualityReport;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to analyze document quality: {FilePath}", filePath);
-            throw;
-        }
-    }
-
-    /// <summary>
-    /// Compare different chunking strategies for document quality optimization
-    /// </summary>
-    public async Task<QualityBenchmarkResult> BenchmarkChunkingStrategiesAsync(
-        string filePath,
-        string[] strategies,
-        CancellationToken cancellationToken = default)
-    {
-        _logger.LogInformation("Benchmarking {StrategyCount} chunking strategies for file: {FilePath}", strategies.Length, filePath);
-
-        try
-        {
-            var benchmarkResult = await _qualityAnalyzer.BenchmarkChunkingAsync(filePath, strategies, cancellationToken);
-
-            _logger.LogInformation(
-                "Benchmark complete: Recommended strategy={RecommendedStrategy}",
-                benchmarkResult.RecommendedStrategy);
-
-            return benchmarkResult;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to benchmark chunking strategies: {FilePath}", filePath);
-            throw;
-        }
     }
 }
 

@@ -313,8 +313,8 @@
       "fluxindex.ai.localembedder": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.Core": "[0.2.16, )",
-          "LocalEmbedder": "[0.1.0, )",
+          "FluxIndex.Core": "[0.2.18, )",
+          "LocalEmbedder": "[0.3.1, )",
           "Microsoft.Extensions.Caching.Memory": "[10.0.0, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.0, )",
@@ -325,7 +325,7 @@
         "type": "Project",
         "dependencies": {
           "Azure.AI.OpenAI": "[2.1.0, )",
-          "FluxIndex.Core": "[0.2.16, )",
+          "FluxIndex.Core": "[0.2.18, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.0, )"
         }
@@ -333,7 +333,7 @@
       "fluxindex.core": {
         "type": "Project",
         "dependencies": {
-          "FileFlux": "[0.4.1, )",
+          "FileFlux": "[0.4.6, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.0, )"
         }
@@ -341,10 +341,10 @@
       "fluxindex.sdk": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.AI.LocalEmbedder": "[0.2.16, )",
-          "FluxIndex.AI.OpenAI": "[0.2.16, )",
-          "FluxIndex.Core": "[0.2.16, )",
-          "FluxIndex.Storage.SQLite": "[0.2.16, )",
+          "FluxIndex.AI.LocalEmbedder": "[0.2.18, )",
+          "FluxIndex.AI.OpenAI": "[0.2.18, )",
+          "FluxIndex.Core": "[0.2.18, )",
+          "FluxIndex.Storage.SQLite": "[0.2.18, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
           "Microsoft.Extensions.Http": "[10.0.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.0, )"
@@ -353,7 +353,7 @@
       "fluxindex.storage.sqlite": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.Core": "[0.2.16, )",
+          "FluxIndex.Core": "[0.2.18, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.0, )",
           "Microsoft.Extensions.Configuration.Binder": "[10.0.0, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
@@ -374,13 +374,14 @@
       },
       "FileFlux": {
         "type": "CentralTransitive",
-        "requested": "[0.4.1, )",
-        "resolved": "0.4.1",
-        "contentHash": "NJcMvY4ssccdIunjtMzlpWtiXeQnU15lzt1GSCNvSvGkE2yc9sNNNWr8d1ocdhxXlq58S2EIi3tf4FXrUDNNtg==",
+        "requested": "[0.4.6, )",
+        "resolved": "0.4.6",
+        "contentHash": "6W8BRVZ/9p7BTTCmJUDXuZHCVlrQhUorNorNhmzhSPsoJBiUSG9Rpo56JUg3t2MPLjJdNDGIrQM7OjKNa85M2g==",
         "dependencies": {
           "CsvHelper": "33.1.0",
           "DocumentFormat.OpenXml": "3.3.0",
           "HtmlAgilityPack": "1.12.4",
+          "LocalEmbedder": "0.3.1",
           "Mammoth": "1.8.0",
           "Markdig": "0.43.0",
           "Microsoft.Extensions.Caching.Memory": "10.0.0",
@@ -402,9 +403,9 @@
       },
       "LocalEmbedder": {
         "type": "CentralTransitive",
-        "requested": "[0.1.0, )",
-        "resolved": "0.1.0",
-        "contentHash": "glALR2IXQcDAjjHhiWpqSCXsi+8HWgg09WKBtewK0lIgRT1ro0aMKXVF+2tbZacZQCbkH1VO9zQmjmKwKuEiZA==",
+        "requested": "[0.3.1, )",
+        "resolved": "0.3.1",
+        "contentHash": "kbYe32KCBONBItgvKf28YGuDOTfvAp1VQ5UkTBHvfiWnQutKdIGkq9WwjD5ckb2qdA1C48X4uk8LTGeJYay+rw==",
         "dependencies": {
           "Microsoft.ML.OnnxRuntime": "1.23.2",
           "System.Numerics.Tensors": "10.0.0"

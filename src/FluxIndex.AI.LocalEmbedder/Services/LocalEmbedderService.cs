@@ -242,10 +242,11 @@ public class LocalEmbedderService : IEmbeddingService, IAsyncDisposable, IDispos
     {
         return provider switch
         {
+            LocalEmbedderExecutionProvider.Auto => ExecutionProvider.Auto,
             LocalEmbedderExecutionProvider.CPU => ExecutionProvider.Cpu,
             LocalEmbedderExecutionProvider.CUDA => ExecutionProvider.Cuda,
             LocalEmbedderExecutionProvider.DirectML => ExecutionProvider.DirectML,
-            _ => ExecutionProvider.Cpu // Default to CPU for maximum compatibility
+            _ => ExecutionProvider.Auto // Default to Auto for automatic GPU detection
         };
     }
 

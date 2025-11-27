@@ -4,11 +4,12 @@ using FluxIndex.CLI.Commands;
 var rootCommand = new RootCommand("FluxIndex - RAG MCP service for intelligent document memorization and search");
 
 // Add subcommands
-rootCommand.AddCommand(InitCommand.Create());
-rootCommand.AddCommand(ConfigCommand.Create());
-rootCommand.AddCommand(MemorizeCommand.Create());
-rootCommand.AddCommand(UnmemorizeCommand.Create());
-rootCommand.AddCommand(StatusCommand.Create());
-rootCommand.AddCommand(ServeCommand.Create());
+rootCommand.Add(InitCommand.Create());
+rootCommand.Add(ConfigCommand.Create());
+rootCommand.Add(MemorizeCommand.Create());
+rootCommand.Add(UnmemorizeCommand.Create());
+rootCommand.Add(StatusCommand.Create());
+rootCommand.Add(ServeCommand.Create());
 
-return await rootCommand.InvokeAsync(args);
+var parseResult = rootCommand.Parse(args);
+return await parseResult.InvokeAsync();

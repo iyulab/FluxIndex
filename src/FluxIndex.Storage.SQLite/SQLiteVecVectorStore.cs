@@ -106,17 +106,53 @@ public class SQLiteVecVectorStore : IVectorStore
                 return await _fallbackStore.Value.StoreBatchAsync(chunkList, cancellationToken);
             }
 
-            var ids = new List<string>();
+            var ids = new List<string>(chunkList.Count);
             var batchSize = Math.Min(_options.MaxBatchSize, chunkList.Count);
+            var totalBatches = (chunkList.Count + batchSize - 1) / batchSize;
+            var processedCount = 0;
+            var startTime = DateTime.UtcNow;
+
+            // 대용량 작업 시 진행 로깅
+            var isLargeBatch = chunkList.Count > 1000;
+            if (isLargeBatch)
+            {
+                _logger.LogInformation(
+                    "대용량 배치 저장 시작: 총 {TotalCount}개 항목, {BatchCount}개 배치 (배치당 {BatchSize}개)",
+                    chunkList.Count, totalBatches, batchSize);
+            }
 
             for (int i = 0; i < chunkList.Count; i += batchSize)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 var batch = chunkList.Skip(i).Take(batchSize);
                 var batchIds = await StoreBatchInternalAsync(batch, cancellationToken);
                 ids.AddRange(batchIds);
+                processedCount += batchIds.Count();
+
+                // 진행 상황 로깅
+                if (_options.BatchProgressLogInterval > 0 &&
+                    processedCount % _options.BatchProgressLogInterval == 0 &&
+                    processedCount < chunkList.Count)
+                {
+                    var elapsed = DateTime.UtcNow - startTime;
+                    var remaining = TimeSpan.FromTicks(
+                        (long)(elapsed.Ticks * (chunkList.Count - processedCount) / (double)processedCount));
+
+                    _logger.LogDebug(
+                        "배치 저장 진행: {Processed}/{Total} ({Percent:P0}), 경과: {Elapsed:mm\\:ss}, 예상 남은 시간: {Remaining:mm\\:ss}",
+                        processedCount, chunkList.Count, (double)processedCount / chunkList.Count,
+                        elapsed, remaining);
+                }
             }
 
-            _logger.LogInformation("배치 벡터 저장 완료: {Count}개 항목", ids.Count);
+            var totalElapsed = DateTime.UtcNow - startTime;
+            var rate = totalElapsed.TotalSeconds > 0 ? ids.Count / totalElapsed.TotalSeconds : 0;
+
+            _logger.LogInformation(
+                "배치 벡터 저장 완료: {Count}개 항목, 소요 시간: {Elapsed:mm\\:ss\\.fff}, 처리율: {Rate:F0}개/초",
+                ids.Count, totalElapsed, rate);
+
             return ids;
         }
         catch (Exception ex)
@@ -356,6 +392,214 @@ public class SQLiteVecVectorStore : IVectorStore
             _logger.LogError(ex, "sqlite-vec 네이티브 검색 실패");
             throw;
         }
+    }
+
+    /// <summary>
+    /// 하이브리드 검색 (벡터 + FTS5 텍스트 검색 + RRF 결합)
+    /// </summary>
+    /// <param name="queryEmbedding">쿼리 임베딩 벡터</param>
+    /// <param name="textQuery">텍스트 검색 쿼리 (FTS5)</param>
+    /// <param name="topK">반환할 최대 결과 수</param>
+    /// <param name="minScore">최소 점수 임계값</param>
+    /// <param name="vectorWeight">벡터 점수 가중치 (0.0 ~ 1.0), null이면 옵션 기본값 사용</param>
+    /// <param name="cancellationToken">취소 토큰</param>
+    /// <returns>RRF로 결합된 검색 결과</returns>
+    public async Task<IEnumerable<HybridSearchResult>> HybridSearchAsync(
+        float[] queryEmbedding,
+        string textQuery,
+        int topK = 10,
+        float minScore = 0.0f,
+        float? vectorWeight = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await EnsureInitializedAsync(cancellationToken);
+
+            var weight = vectorWeight ?? _options.HybridVectorWeight;
+            var textWeight = 1.0f - weight;
+            var k = _options.RrfK;
+
+            // 1. 벡터 검색 수행
+            var vectorResults = new Dictionary<string, (int Rank, DocumentChunk Chunk, float VectorScore)>();
+            if (_sqliteVecAvailable && queryEmbedding != null && queryEmbedding.Length > 0)
+            {
+                var vectorChunks = await SearchWithSQLiteVecAsync(queryEmbedding, topK * 2, minScore, cancellationToken);
+                int rank = 1;
+                foreach (var chunk in vectorChunks)
+                {
+                    vectorResults[chunk.Id] = (rank++, chunk, 1.0f / rank); // 순위 기반 점수
+                }
+            }
+
+            // 2. FTS5 텍스트 검색 수행
+            var ftsResults = new Dictionary<string, (int Rank, DocumentChunk Chunk, float BM25Score)>();
+            if (_options.UseFts5 && !string.IsNullOrWhiteSpace(textQuery))
+            {
+                var ftsChunks = await SearchWithFts5Async(textQuery, topK * 2, cancellationToken);
+                int rank = 1;
+                foreach (var (chunk, bm25Score) in ftsChunks)
+                {
+                    ftsResults[chunk.Id] = (rank++, chunk, bm25Score);
+                }
+            }
+
+            // 3. RRF (Reciprocal Rank Fusion) 결합
+            var allIds = vectorResults.Keys.Union(ftsResults.Keys).ToHashSet();
+            var combinedResults = new List<HybridSearchResult>();
+
+            foreach (var id in allIds)
+            {
+                var vectorRank = vectorResults.TryGetValue(id, out var vr) ? vr.Rank : int.MaxValue;
+                var ftsRank = ftsResults.TryGetValue(id, out var fr) ? fr.Rank : int.MaxValue;
+
+                // RRF 점수 계산: score = w1 / (k + rank1) + w2 / (k + rank2)
+                var rrfScore = (weight / (k + vectorRank)) + (textWeight / (k + ftsRank));
+
+                var chunk = vectorResults.TryGetValue(id, out var vc) ? vc.Chunk :
+                           ftsResults.TryGetValue(id, out var fc) ? fc.Chunk : null;
+
+                if (chunk != null)
+                {
+                    combinedResults.Add(new HybridSearchResult
+                    {
+                        Chunk = chunk,
+                        RrfScore = (float)rrfScore,
+                        VectorRank = vectorRank == int.MaxValue ? null : vectorRank,
+                        FtsRank = ftsRank == int.MaxValue ? null : ftsRank,
+                        VectorScore = vectorResults.TryGetValue(id, out var vs) ? vs.VectorScore : null,
+                        Bm25Score = ftsResults.TryGetValue(id, out var fs) ? fs.BM25Score : null
+                    });
+                }
+            }
+
+            // 4. RRF 점수로 정렬하여 반환
+            var finalResults = combinedResults
+                .OrderByDescending(r => r.RrfScore)
+                .Take(topK)
+                .ToList();
+
+            _logger.LogDebug(
+                "하이브리드 검색 완료: 벡터={VectorCount}개, FTS={FtsCount}개, 결합={CombinedCount}개",
+                vectorResults.Count, ftsResults.Count, finalResults.Count);
+
+            return finalResults;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "하이브리드 검색 실패");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// FTS5 전문 검색 수행
+    /// </summary>
+    private async Task<IEnumerable<(DocumentChunk Chunk, float BM25Score)>> SearchWithFts5Async(
+        string textQuery,
+        int topK,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var connection = _context.Database.GetDbConnection();
+            if (connection.State != System.Data.ConnectionState.Open)
+            {
+                await connection.OpenAsync(cancellationToken);
+            }
+
+            // FTS5 쿼리 이스케이프 (특수문자 처리)
+            var escapedQuery = EscapeFts5Query(textQuery);
+
+            using var command = connection.CreateCommand();
+            command.CommandText = @"
+                SELECT
+                    vc.Id,
+                    vc.DocumentId,
+                    vc.ChunkIndex,
+                    vc.Content,
+                    vc.TokenCount,
+                    vc.Metadata,
+                    bm25(chunk_fts) as bm25_score
+                FROM chunk_fts fts
+                JOIN vector_chunks vc ON vc.rowid = fts.rowid
+                WHERE chunk_fts MATCH @query
+                ORDER BY bm25_score
+                LIMIT @topK";
+
+            command.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("@query", escapedQuery));
+            command.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("@topK", topK));
+
+            var results = new List<(DocumentChunk, float)>();
+
+            using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var metadataJson = reader.GetString(5);
+                var metadata = JsonSerializer.Deserialize<Dictionary<string, object>>(metadataJson)
+                    ?? new Dictionary<string, object>();
+
+                var chunk = new DocumentChunk
+                {
+                    Id = reader.GetString(0),
+                    DocumentId = reader.GetString(1),
+                    ChunkIndex = reader.GetInt32(2),
+                    Content = reader.GetString(3),
+                    TokenCount = reader.GetInt32(4),
+                    Metadata = metadata,
+                    Embedding = null
+                };
+
+                // BM25 점수 (음수, 낮을수록 좋음) -> 양수로 변환
+                var bm25Score = reader.GetFloat(6);
+                results.Add((chunk, -bm25Score)); // 음수를 양수로 변환
+            }
+
+            _logger.LogDebug("FTS5 검색 완료: {Count}개 결과, 쿼리: {Query}", results.Count, escapedQuery);
+            return results;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "FTS5 검색 실패, 빈 결과 반환");
+            return Enumerable.Empty<(DocumentChunk, float)>();
+        }
+    }
+
+    /// <summary>
+    /// FTS5 쿼리 문자열 이스케이프
+    /// </summary>
+    private static string EscapeFts5Query(string query)
+    {
+        // FTS5 특수 문자 이스케이프
+        var escaped = query
+            .Replace("\"", "\"\"") // 큰따옴표 이스케이프
+            .Replace("*", "") // 와일드카드 제거 (안전성)
+            .Replace(":", " ") // 필드 구분자 제거
+            .Trim();
+
+        // 각 단어를 따옴표로 감싸서 특수문자 문제 방지
+        var words = escaped.Split(new[] { ' ', '\t', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length == 0) return "*"; // 빈 쿼리 처리
+
+        return string.Join(" OR ", words.Select(w => $"\"{w}\""));
+    }
+
+    /// <summary>
+    /// 텍스트만으로 검색 (벡터 없이 FTS5만 사용)
+    /// </summary>
+    public async Task<IEnumerable<DocumentChunk>> TextSearchAsync(
+        string textQuery,
+        int topK = 10,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_options.UseFts5)
+        {
+            _logger.LogWarning("FTS5가 비활성화되어 있어 텍스트 검색을 수행할 수 없습니다.");
+            return Enumerable.Empty<DocumentChunk>();
+        }
+
+        var results = await SearchWithFts5Async(textQuery, topK, cancellationToken);
+        return results.Select(r => r.Chunk);
     }
 
     public async Task<IEnumerable<DocumentChunk>> GetByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default)
@@ -634,4 +878,55 @@ public class SQLiteVecVectorStore : IVectorStore
             _sqliteVecAvailable = false;
         }
     }
+}
+
+/// <summary>
+/// 하이브리드 검색 결과 (벡터 + FTS5 결합)
+/// </summary>
+public class HybridSearchResult
+{
+    /// <summary>
+    /// 검색된 문서 청크
+    /// </summary>
+    public DocumentChunk Chunk { get; set; } = null!;
+
+    /// <summary>
+    /// RRF (Reciprocal Rank Fusion) 결합 점수
+    /// </summary>
+    public float RrfScore { get; set; }
+
+    /// <summary>
+    /// 벡터 검색에서의 순위 (null이면 벡터 검색 결과에 포함되지 않음)
+    /// </summary>
+    public int? VectorRank { get; set; }
+
+    /// <summary>
+    /// FTS5 검색에서의 순위 (null이면 텍스트 검색 결과에 포함되지 않음)
+    /// </summary>
+    public int? FtsRank { get; set; }
+
+    /// <summary>
+    /// 벡터 유사도 점수 (null이면 벡터 검색 결과에 포함되지 않음)
+    /// </summary>
+    public float? VectorScore { get; set; }
+
+    /// <summary>
+    /// BM25 점수 (null이면 텍스트 검색 결과에 포함되지 않음)
+    /// </summary>
+    public float? Bm25Score { get; set; }
+
+    /// <summary>
+    /// 검색 결과가 벡터 검색에서 찾아졌는지 여부
+    /// </summary>
+    public bool FoundInVectorSearch => VectorRank.HasValue;
+
+    /// <summary>
+    /// 검색 결과가 텍스트 검색에서 찾아졌는지 여부
+    /// </summary>
+    public bool FoundInTextSearch => FtsRank.HasValue;
+
+    /// <summary>
+    /// 양쪽 검색에서 모두 찾아졌는지 여부
+    /// </summary>
+    public bool FoundInBoth => FoundInVectorSearch && FoundInTextSearch;
 }

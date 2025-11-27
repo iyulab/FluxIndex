@@ -10,23 +10,28 @@ public static class ConfigCommand
     {
         var command = new Command("config", "Manage workspace configuration");
 
-        command.AddCommand(CreateGetCommand());
-        command.AddCommand(CreateSetCommand());
-        command.AddCommand(CreateListCommand());
+        command.Add(CreateGetCommand());
+        command.Add(CreateSetCommand());
+        command.Add(CreateListCommand());
 
         return command;
     }
 
     private static Command CreateGetCommand()
     {
-        var keyArg = new Argument<string>("key", "Configuration key (e.g., embedding.provider, search.top_k)");
+        var keyArg = new Argument<string>("key")
+        {
+            Description = "Configuration key (e.g., embedding.provider, search.top_k)"
+        };
         var command = new Command("get", "Get a configuration value")
         {
             keyArg
         };
 
-        command.SetHandler((string key) =>
+        command.SetAction((parseResult) =>
         {
+            var key = parseResult.GetValue(keyArg)!;
+
             try
             {
                 var workspace = FluxIndexWorkspace.Open();
@@ -39,36 +44,47 @@ public static class ConfigCommand
                 else
                 {
                     AnsiConsole.MarkupLine($"[yellow]Warning:[/] Configuration key '{key}' not found");
-                    Environment.ExitCode = 1;
+                    return 1;
                 }
             }
             catch (InvalidOperationException ex) when (ex.Message.Contains("No FluxIndex workspace"))
             {
                 AnsiConsole.MarkupLine("[red]Error:[/] No FluxIndex workspace found. Run 'fluxindex init' first.");
-                Environment.ExitCode = 1;
+                return 1;
             }
             catch (Exception ex)
             {
                 AnsiConsole.MarkupLine($"[red]Error:[/] {ex.Message}");
-                Environment.ExitCode = 1;
+                return 1;
             }
-        }, keyArg);
+
+            return 0;
+        });
 
         return command;
     }
 
     private static Command CreateSetCommand()
     {
-        var keyArg = new Argument<string>("key", "Configuration key (e.g., embedding.model, search.top_k)");
-        var valueArg = new Argument<string>("value", "Configuration value");
+        var keyArg = new Argument<string>("key")
+        {
+            Description = "Configuration key (e.g., embedding.model, search.top_k)"
+        };
+        var valueArg = new Argument<string>("value")
+        {
+            Description = "Configuration value"
+        };
         var command = new Command("set", "Set a configuration value")
         {
             keyArg,
             valueArg
         };
 
-        command.SetHandler((string key, string value) =>
+        command.SetAction((parseResult) =>
         {
+            var key = parseResult.GetValue(keyArg)!;
+            var value = parseResult.GetValue(valueArg)!;
+
             try
             {
                 var workspace = FluxIndexWorkspace.Open();
@@ -84,20 +100,22 @@ public static class ConfigCommand
                     AnsiConsole.MarkupLine($"[red]Error:[/] Unknown configuration key '{key}'");
                     AnsiConsole.MarkupLine("");
                     PrintAvailableKeys();
-                    Environment.ExitCode = 1;
+                    return 1;
                 }
             }
             catch (InvalidOperationException ex) when (ex.Message.Contains("No FluxIndex workspace"))
             {
                 AnsiConsole.MarkupLine("[red]Error:[/] No FluxIndex workspace found. Run 'fluxindex init' first.");
-                Environment.ExitCode = 1;
+                return 1;
             }
             catch (Exception ex)
             {
                 AnsiConsole.MarkupLine($"[red]Error:[/] {ex.Message}");
-                Environment.ExitCode = 1;
+                return 1;
             }
-        }, keyArg, valueArg);
+
+            return 0;
+        });
 
         return command;
     }
@@ -106,7 +124,7 @@ public static class ConfigCommand
     {
         var command = new Command("list", "List all configuration values");
 
-        command.SetHandler(() =>
+        command.SetAction((parseResult) =>
         {
             try
             {
@@ -140,13 +158,15 @@ public static class ConfigCommand
             catch (InvalidOperationException ex) when (ex.Message.Contains("No FluxIndex workspace"))
             {
                 AnsiConsole.MarkupLine("[red]Error:[/] No FluxIndex workspace found. Run 'fluxindex init' first.");
-                Environment.ExitCode = 1;
+                return 1;
             }
             catch (Exception ex)
             {
                 AnsiConsole.MarkupLine($"[red]Error:[/] {ex.Message}");
-                Environment.ExitCode = 1;
+                return 1;
             }
+
+            return 0;
         });
 
         return command;

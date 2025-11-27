@@ -50,9 +50,58 @@ public class SQLiteVecOptions : SQLiteOptions
     public float DefaultMinScore { get; set; } = 0.0f;
 
     /// <summary>
-    /// 배치 삽입 시 최대 배치 크기
+    /// 배치 삽입 시 최대 배치 크기.
+    /// 1K-10K 범위 권장. 너무 크면 메모리 사용 증가, 너무 작으면 성능 저하.
     /// </summary>
     public int MaxBatchSize { get; set; } = 1000;
+
+    /// <summary>
+    /// 대용량 배치 작업에서 진행 상황 로깅 간격 (청크 수).
+    /// 0이면 진행 로깅 비활성화.
+    /// </summary>
+    public int BatchProgressLogInterval { get; set; } = 1000;
+
+    /// <summary>
+    /// 배치 작업 중 명시적 트랜잭션 커밋 간격 (청크 수).
+    /// 0이면 전체 배치를 단일 트랜잭션으로 처리.
+    /// 대용량 작업 시 5000-10000 권장 (메모리 효율성).
+    /// </summary>
+    public int BatchTransactionCommitInterval { get; set; } = 5000;
+
+    // ============================================================
+    // FTS5 하이브리드 검색 옵션
+    // ============================================================
+
+    /// <summary>
+    /// FTS5 전문 검색 테이블 사용 여부.
+    /// 활성화 시 텍스트 + 벡터 하이브리드 검색 가능.
+    /// </summary>
+    public bool UseFts5 { get; set; } = true;
+
+    /// <summary>
+    /// FTS5 토크나이저 설정.
+    /// 기본값: "unicode61" (유니코드 지원).
+    /// 한국어: "unicode61 remove_diacritics 0" 또는 "trigram"
+    /// </summary>
+    public string Fts5Tokenizer { get; set; } = "unicode61";
+
+    /// <summary>
+    /// 하이브리드 검색 시 벡터 점수 가중치 (0.0 ~ 1.0).
+    /// 기본값: 0.5 (벡터 50%, 텍스트 50%)
+    /// </summary>
+    public float HybridVectorWeight { get; set; } = 0.5f;
+
+    /// <summary>
+    /// RRF (Reciprocal Rank Fusion) 알고리즘의 k 파라미터.
+    /// 기본값: 60 (일반적으로 좋은 성능)
+    /// </summary>
+    public int RrfK { get; set; } = 60;
+
+    /// <summary>
+    /// FTS5 검색 시 BM25 가중치 설정.
+    /// 형식: "b, k1" (기본값: "0.75, 1.2")
+    /// </summary>
+    public string Fts5Bm25Weights { get; set; } = "0.75, 1.2";
 
     /// <summary>
     /// 현재 플랫폼에 대한 기본 확장 파일 경로 반환

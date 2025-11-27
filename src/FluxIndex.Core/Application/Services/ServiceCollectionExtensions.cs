@@ -104,4 +104,35 @@ public static class MetadataAugmentationServiceExtensions
 
         return services;
     }
+
+    /// <summary>
+    /// 그래프 탐색 서비스 등록
+    /// </summary>
+    /// <param name="services">서비스 컬렉션</param>
+    /// <returns>서비스 컬렉션</returns>
+    public static IServiceCollection AddGraphTraversal(this IServiceCollection services)
+    {
+        services.AddScoped<IGraphTraversalService, GraphTraversalService>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// FluxIndex Core 전체 서비스 등록
+    /// </summary>
+    /// <param name="services">서비스 컬렉션</param>
+    /// <param name="headerOptions">Contextual Header 옵션</param>
+    /// <param name="classificationOptions">분류 옵션</param>
+    /// <returns>서비스 컬렉션</returns>
+    public static IServiceCollection AddFluxIndexCore(
+        this IServiceCollection services,
+        Action<ContextualHeaderOptions>? headerOptions = null,
+        Action<ClassificationOptions>? classificationOptions = null)
+    {
+        services.AddFullAugmentation(headerOptions, classificationOptions);
+        services.AddTokenAwareSearch();
+        services.AddGraphTraversal();
+
+        return services;
+    }
 }

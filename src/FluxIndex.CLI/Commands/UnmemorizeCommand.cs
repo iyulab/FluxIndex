@@ -8,23 +8,26 @@ public static class UnmemorizeCommand
 {
     public static Command Create()
     {
-        var pathArgument = new Argument<string>(
-            "path",
-            description: "File path or document ID to remove");
+        var pathArgument = new Argument<string>("path")
+        {
+            Description = "File path or document ID to remove"
+        };
 
         var command = new Command("unmemorize", "Remove files from the knowledge base")
         {
             pathArgument
         };
 
-        command.SetHandler(async (path) =>
+        command.SetAction(async (parseResult, cancellationToken) =>
         {
+            var path = parseResult.GetValue(pathArgument)!;
+
             try
             {
                 var workspace = FluxIndexWorkspace.Open();
                 var context = workspace.GetContext();
 
-                var deleted = await context.Indexer.DeleteByDocumentIdAsync(path);
+                var deleted = await context.Indexer.DeleteByDocumentIdAsync(path, cancellationToken);
 
                 if (deleted)
                 {
@@ -38,14 +41,12 @@ public static class UnmemorizeCommand
             catch (InvalidOperationException ex) when (ex.Message.Contains("No FluxIndex workspace"))
             {
                 AnsiConsole.MarkupLine("[red]Error:[/] No FluxIndex workspace found. Run 'fluxindex init' first.");
-                Environment.ExitCode = 1;
             }
             catch (Exception ex)
             {
                 AnsiConsole.MarkupLine($"[red]Error:[/] {ex.Message}");
-                Environment.ExitCode = 1;
             }
-        }, pathArgument);
+        });
 
         return command;
     }

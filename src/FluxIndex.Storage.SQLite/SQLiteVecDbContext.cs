@@ -132,6 +132,11 @@ public class SQLiteVecDbContext : DbContext
                 await InitializeSQLiteVecAsync(cancellationToken);
             }
 
+            if (_options.UseFts5)
+            {
+                await InitializeFts5Async(cancellationToken);
+            }
+
             if (_options.AutoMigrateFromLegacy)
             {
                 await MigrateFromLegacyAsync(cancellationToken);
@@ -142,6 +147,108 @@ public class SQLiteVecDbContext : DbContext
         catch (Exception ex)
         {
             _logger.LogError(ex, "SQLite 데이터베이스 초기화 실패");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// FTS5 전문 검색 테이블 초기화
+    /// </summary>
+    private async Task InitializeFts5Async(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var connection = Database.GetDbConnection();
+            if (connection.State != System.Data.ConnectionState.Open)
+            {
+                await connection.OpenAsync(cancellationToken);
+            }
+
+            // FTS5 테이블이 이미 존재하는지 확인
+            using var checkCommand = connection.CreateCommand();
+            checkCommand.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='chunk_fts'";
+            var tableExists = Convert.ToInt32(await checkCommand.ExecuteScalarAsync(cancellationToken)) > 0;
+
+            if (!tableExists)
+            {
+                // FTS5 가상 테이블 생성 (콘텐츠 테이블과 연결)
+                using var createCommand = connection.CreateCommand();
+                createCommand.CommandText = $@"
+                    CREATE VIRTUAL TABLE IF NOT EXISTS chunk_fts USING fts5(
+                        content,
+                        content='vector_chunks',
+                        content_rowid='rowid',
+                        tokenize='{_options.Fts5Tokenizer}'
+                    )";
+                await createCommand.ExecuteNonQueryAsync(cancellationToken);
+
+                // FTS5 트리거 생성 (자동 동기화)
+                // INSERT 트리거
+                using var insertTrigger = connection.CreateCommand();
+                insertTrigger.CommandText = @"
+                    CREATE TRIGGER IF NOT EXISTS chunk_fts_insert AFTER INSERT ON vector_chunks BEGIN
+                        INSERT INTO chunk_fts(rowid, content) VALUES (NEW.rowid, NEW.Content);
+                    END";
+                await insertTrigger.ExecuteNonQueryAsync(cancellationToken);
+
+                // DELETE 트리거
+                using var deleteTrigger = connection.CreateCommand();
+                deleteTrigger.CommandText = @"
+                    CREATE TRIGGER IF NOT EXISTS chunk_fts_delete AFTER DELETE ON vector_chunks BEGIN
+                        INSERT INTO chunk_fts(chunk_fts, rowid, content) VALUES('delete', OLD.rowid, OLD.Content);
+                    END";
+                await deleteTrigger.ExecuteNonQueryAsync(cancellationToken);
+
+                // UPDATE 트리거
+                using var updateTrigger = connection.CreateCommand();
+                updateTrigger.CommandText = @"
+                    CREATE TRIGGER IF NOT EXISTS chunk_fts_update AFTER UPDATE ON vector_chunks BEGIN
+                        INSERT INTO chunk_fts(chunk_fts, rowid, content) VALUES('delete', OLD.rowid, OLD.Content);
+                        INSERT INTO chunk_fts(rowid, content) VALUES (NEW.rowid, NEW.Content);
+                    END";
+                await updateTrigger.ExecuteNonQueryAsync(cancellationToken);
+
+                _logger.LogInformation("FTS5 전문 검색 테이블 및 트리거 생성 완료 (토크나이저: {Tokenizer})", _options.Fts5Tokenizer);
+            }
+            else
+            {
+                _logger.LogDebug("FTS5 테이블이 이미 존재함");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "FTS5 전문 검색 테이블 초기화 실패");
+            // FTS5 실패는 치명적이지 않음 - 벡터 검색은 계속 작동
+        }
+    }
+
+    /// <summary>
+    /// FTS5 인덱스 재구성 (기존 데이터 인덱싱)
+    /// </summary>
+    public async Task RebuildFts5IndexAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var connection = Database.GetDbConnection();
+            if (connection.State != System.Data.ConnectionState.Open)
+            {
+                await connection.OpenAsync(cancellationToken);
+            }
+
+            _logger.LogInformation("FTS5 인덱스 재구성 시작");
+
+            // 기존 FTS 데이터 삭제 후 재구성
+            using var rebuildCommand = connection.CreateCommand();
+            rebuildCommand.CommandText = @"
+                INSERT INTO chunk_fts(chunk_fts) VALUES('delete-all');
+                INSERT INTO chunk_fts(rowid, content) SELECT rowid, Content FROM vector_chunks";
+            await rebuildCommand.ExecuteNonQueryAsync(cancellationToken);
+
+            _logger.LogInformation("FTS5 인덱스 재구성 완료");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "FTS5 인덱스 재구성 실패");
             throw;
         }
     }

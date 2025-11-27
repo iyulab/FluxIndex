@@ -1,6 +1,5 @@
 using System.CommandLine;
 using FluxIndex.MCP;
-using Spectre.Console;
 
 namespace FluxIndex.CLI.Commands;
 
@@ -10,7 +9,7 @@ public static class ServeCommand
     {
         var command = new Command("serve", "Start the MCP server (stdio transport)");
 
-        command.SetHandler(async () =>
+        command.SetAction(async (parseResult, cancellationToken) =>
         {
             try
             {
@@ -22,7 +21,6 @@ public static class ServeCommand
             {
                 // Write to stderr since stdout is for MCP protocol
                 Console.Error.WriteLine($"Error: {ex.Message}");
-                Environment.ExitCode = 1;
             }
         });
 

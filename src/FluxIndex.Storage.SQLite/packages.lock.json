@@ -317,6 +317,22 @@
         "resolved": "10.0.0",
         "contentHash": "inRnbpCS0nwO/RuoZIAqxQUuyjaknOOnCEZB55KSMMjRhl0RQDttSmLSGsUJN3RQ3ocf5NDLFd2mOQViHqMK5w=="
       },
+      "Microsoft.ML.OnnxRuntime": {
+        "type": "Transitive",
+        "resolved": "1.23.2",
+        "contentHash": "849xImRO0vxDH7DNlg/FAVGExKfjN1r2CIZevZGI5JQCoOj+0T23ShqPEgu5mLTwElot5X7V0qkO0jUz/yJZbA==",
+        "dependencies": {
+          "Microsoft.ML.OnnxRuntime.Managed": "1.23.2"
+        }
+      },
+      "Microsoft.ML.OnnxRuntime.Managed": {
+        "type": "Transitive",
+        "resolved": "1.23.2",
+        "contentHash": "HtlQuzmVrqhnkmwfmkQ+2re8xPxtVmeLRQaYSJ3pXfzKs4b36+yBfa/LnDuzfX1bGcyWn/McKxmbY87TCAmo1Q==",
+        "dependencies": {
+          "System.Numerics.Tensors": "9.0.0"
+        }
+      },
       "Microsoft.NET.StringTools": {
         "type": "Transitive",
         "resolved": "17.14.28",
@@ -457,6 +473,11 @@
         "resolved": "8.0.1",
         "contentHash": "KYkIOAvPexQOLDxPO2g0BVoWInnQhPpkFzRqvNrNrMhVT6kqhVr0zEb6KCHlptLFukxnZrjuMVAnxK7pOGUYrw=="
       },
+      "System.Numerics.Tensors": {
+        "type": "Transitive",
+        "resolved": "10.0.0",
+        "contentHash": "PxZKFx8ACAt7gRnTSDgtZFA06cimls5XL1Olv63bWF8qKL5+EQdqq3K02etW4LNut4xDoREPe9z7QYATLMkBPA=="
+      },
       "System.Reflection.MetadataLoadContext": {
         "type": "Transitive",
         "resolved": "7.0.0",
@@ -504,20 +525,21 @@
       "fluxindex.core": {
         "type": "Project",
         "dependencies": {
-          "FileFlux": "[0.4.1, )",
+          "FileFlux": "[0.4.6, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.0, )"
         }
       },
       "FileFlux": {
         "type": "CentralTransitive",
-        "requested": "[0.4.1, )",
-        "resolved": "0.4.1",
-        "contentHash": "NJcMvY4ssccdIunjtMzlpWtiXeQnU15lzt1GSCNvSvGkE2yc9sNNNWr8d1ocdhxXlq58S2EIi3tf4FXrUDNNtg==",
+        "requested": "[0.4.6, )",
+        "resolved": "0.4.6",
+        "contentHash": "6W8BRVZ/9p7BTTCmJUDXuZHCVlrQhUorNorNhmzhSPsoJBiUSG9Rpo56JUg3t2MPLjJdNDGIrQM7OjKNa85M2g==",
         "dependencies": {
           "CsvHelper": "33.1.0",
           "DocumentFormat.OpenXml": "3.3.0",
           "HtmlAgilityPack": "1.12.4",
+          "LocalEmbedder": "0.3.1",
           "Mammoth": "1.8.0",
           "Markdig": "0.43.0",
           "Microsoft.Extensions.Caching.Memory": "10.0.0",
@@ -536,6 +558,16 @@
         "requested": "[1.12.3, )",
         "resolved": "1.12.4",
         "contentHash": "ljqvBabvFwKoLniuoQKO8b5bJfJweKLs4fUNS/V5dsvpo0A8MlJqxxn9XVmP2DaskbUXty6IYaWAi1SArGIMeQ=="
+      },
+      "LocalEmbedder": {
+        "type": "CentralTransitive",
+        "requested": "[0.3.1, )",
+        "resolved": "0.3.1",
+        "contentHash": "kbYe32KCBONBItgvKf28YGuDOTfvAp1VQ5UkTBHvfiWnQutKdIGkq9WwjD5ckb2qdA1C48X4uk8LTGeJYay+rw==",
+        "dependencies": {
+          "Microsoft.ML.OnnxRuntime": "1.23.2",
+          "System.Numerics.Tensors": "10.0.0"
+        }
       },
       "Microsoft.EntityFrameworkCore": {
         "type": "CentralTransitive",

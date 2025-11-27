@@ -1,6 +1,5 @@
 using FileFlux;
 using FileFlux.Domain;
-using FileFlux.Infrastructure.Quality;
 using Microsoft.Extensions.DependencyInjection;
 using IFileFluxTextCompletionService = FileFlux.ITextCompletionService;
 
@@ -19,12 +18,8 @@ public static class FileFluxServiceCollectionExtensions
     /// <returns>Service collection for chaining</returns>
     public static IServiceCollection AddFileFluxIntegration(this IServiceCollection services, Action<FileFluxOptions>? configureOptions = null)
     {
-        // Register FileFlux services (uses FileFlux 0.3.0 API) - using FileFlux's own extension method
+        // Register FileFlux services (uses FileFlux 0.4.6 API) - using FileFlux's own extension method
         services.AddFileFlux();
-
-        // Register FileFlux quality analyzer for document quality analysis and QA generation (FileFlux 0.3.0)
-        services.AddScoped<ChunkQualityEngine>();
-        services.AddScoped<IDocumentQualityAnalyzer, DocumentQualityAnalyzer>();
 
         // Register FluxIndex's text completion adapter for FileFlux
         // This adapter bridges FluxIndex's ITextCompletionService to FileFlux's ITextCompletionService interface

@@ -237,6 +237,83 @@ public static class ServiceCollectionExtensions
 }
 
 /// <summary>
+/// SQLite PRAGMA 최적화 설정 헬퍼
+/// </summary>
+internal static class SQLitePragmaHelper
+{
+    /// <summary>
+    /// 공통 PRAGMA 최적화 설정을 적용합니다.
+    /// </summary>
+    public static async Task ApplyPragmaOptimizationsAsync<TContext>(
+        TContext context,
+        SQLiteOptions options,
+        ILogger logger,
+        CancellationToken cancellationToken) where TContext : DbContext
+    {
+        // WAL 모드 활성화 (성능 향상)
+        await context.Database.ExecuteSqlRawAsync(
+            "PRAGMA journal_mode=WAL",
+            cancellationToken);
+
+        // 동기화 모드 설정 (내부적으로 제어되는 enum 값 - SQL injection 안전)
+#pragma warning disable EF1002
+        await context.Database.ExecuteSqlRawAsync(
+            $"PRAGMA synchronous={options.Synchronous.ToString().ToUpper()}",
+            cancellationToken);
+#pragma warning restore EF1002
+
+        // 메모리 맵 크기 설정
+        if (options.MmapSize > 0)
+        {
+#pragma warning disable EF1002
+            await context.Database.ExecuteSqlRawAsync(
+                $"PRAGMA mmap_size={options.MmapSize}",
+                cancellationToken);
+#pragma warning restore EF1002
+        }
+
+        // 캐시 크기 설정
+#pragma warning disable EF1002
+        await context.Database.ExecuteSqlRawAsync(
+            $"PRAGMA cache_size={options.CacheSize}",
+            cancellationToken);
+#pragma warning restore EF1002
+
+        // 임시 저장소 설정
+#pragma warning disable EF1002
+        await context.Database.ExecuteSqlRawAsync(
+            $"PRAGMA temp_store={options.TempStore.ToString().ToUpper()}",
+            cancellationToken);
+#pragma warning restore EF1002
+
+        // 페이지 크기 (새 DB 생성 시에만 적용됨)
+#pragma warning disable EF1002
+        await context.Database.ExecuteSqlRawAsync(
+            $"PRAGMA page_size={options.PageSize}",
+            cancellationToken);
+#pragma warning restore EF1002
+
+        // Busy timeout 설정
+#pragma warning disable EF1002
+        await context.Database.ExecuteSqlRawAsync(
+            $"PRAGMA busy_timeout={options.BusyTimeout}",
+            cancellationToken);
+#pragma warning restore EF1002
+
+        // Auto vacuum 설정
+#pragma warning disable EF1002
+        await context.Database.ExecuteSqlRawAsync(
+            $"PRAGMA auto_vacuum={(int)options.AutoVacuum}",
+            cancellationToken);
+#pragma warning restore EF1002
+
+        logger.LogInformation(
+            "SQLite 성능 최적화 설정 완료: WAL 모드, {CacheSize}KB 캐시, {MmapSize}B mmap, Temp={TempStore}",
+            Math.Abs(options.CacheSize), options.MmapSize, options.TempStore);
+    }
+}
+
+/// <summary>
 /// SQLite 데이터베이스 마이그레이션 서비스
 /// </summary>
 internal class SQLiteMigrationService : IHostedService
@@ -255,30 +332,22 @@ internal class SQLiteMigrationService : IHostedService
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("Starting SQLite database migration");
-        
+
         using var scope = _serviceProvider.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<SQLiteDbContext>();
-        
+
         try
         {
             // 데이터베이스 생성 및 마이그레이션
             await context.Database.EnsureCreatedAsync(cancellationToken);
-            
+
             // 추가 초기화 (필요시)
-            var options = scope.ServiceProvider.GetRequiredService<SQLiteOptions>();
+            var options = scope.ServiceProvider.GetRequiredService<IOptions<SQLiteOptions>>().Value;
             if (!options.UseInMemory)
             {
-                // WAL 모드 활성화 (성능 향상)
-                await context.Database.ExecuteSqlRawAsync(
-                    "PRAGMA journal_mode=WAL", 
-                    cancellationToken);
-                
-                // 동기화 모드 설정 (성능과 안정성 균형)
-                await context.Database.ExecuteSqlRawAsync(
-                    "PRAGMA synchronous=NORMAL", 
-                    cancellationToken);
+                await SQLitePragmaHelper.ApplyPragmaOptimizationsAsync(context, options, _logger, cancellationToken);
             }
-            
+
             _logger.LogInformation("SQLite database migration completed successfully");
         }
         catch (Exception ex)
@@ -330,47 +399,7 @@ internal class SQLiteVecMigrationService : IHostedService
             // 성능 최적화 설정
             if (!options.UseInMemory && options.UseSQLiteVec)
             {
-                // WAL 모드 활성화 (동시성 향상)
-                await context.Database.ExecuteSqlRawAsync(
-                    "PRAGMA journal_mode=WAL",
-                    cancellationToken);
-
-                // 동기화 모드 설정 (성능과 안정성 균형)
-                await context.Database.ExecuteSqlRawAsync(
-                    "PRAGMA synchronous=NORMAL",
-                    cancellationToken);
-
-                // 메모리 맵 크기 증가 (대용량 벡터 처리)
-                await context.Database.ExecuteSqlRawAsync(
-                    "PRAGMA mmap_size=268435456", // 256MB
-                    cancellationToken);
-
-                // 캐시 크기 증가 (negative = KB)
-                await context.Database.ExecuteSqlRawAsync(
-                    "PRAGMA cache_size=-20000", // 20MB (20000 KB)
-                    cancellationToken);
-
-                // Temp 저장소를 메모리로 (중간 결과 성능 향상)
-                await context.Database.ExecuteSqlRawAsync(
-                    "PRAGMA temp_store=MEMORY",
-                    cancellationToken);
-
-                // 페이지 크기 최적화 (벡터 데이터에 적합)
-                await context.Database.ExecuteSqlRawAsync(
-                    "PRAGMA page_size=4096",
-                    cancellationToken);
-
-                // Busy timeout 설정 (Lock 경합 시 재시도)
-                await context.Database.ExecuteSqlRawAsync(
-                    "PRAGMA busy_timeout=5000", // 5초
-                    cancellationToken);
-
-                // Auto vacuum 설정 (파일 크기 자동 관리)
-                await context.Database.ExecuteSqlRawAsync(
-                    "PRAGMA auto_vacuum=INCREMENTAL",
-                    cancellationToken);
-
-                _logger.LogInformation("SQLite 성능 최적화 설정 완료: WAL 모드, 20MB 캐시, 256MB mmap, Temp=Memory");
+                await SQLitePragmaHelper.ApplyPragmaOptimizationsAsync(context, options, _logger, cancellationToken);
             }
 
             _logger.LogInformation("SQLite-vec 데이터베이스 초기화 완료");

@@ -6,7 +6,13 @@ namespace FluxIndex.AI.LocalEmbedder;
 public enum LocalEmbedderExecutionProvider
 {
     /// <summary>
-    /// CPU execution (default, always available)
+    /// Automatic GPU detection (recommended, LocalEmbedder 0.3.0+ default)
+    /// Tries GPU providers first, falls back to CPU if unavailable
+    /// </summary>
+    Auto,
+
+    /// <summary>
+    /// CPU execution (always available)
     /// </summary>
     CPU,
 
@@ -61,9 +67,9 @@ public class LocalEmbedderOptions
 
     /// <summary>
     /// Execution provider for ONNX runtime
-    /// Default: CPU (always available)
+    /// Default: Auto (automatic GPU detection, recommended for LocalEmbedder 0.3.0+)
     /// </summary>
-    public LocalEmbedderExecutionProvider ExecutionProvider { get; set; } = LocalEmbedderExecutionProvider.CPU;
+    public LocalEmbedderExecutionProvider ExecutionProvider { get; set; } = LocalEmbedderExecutionProvider.Auto;
 
     /// <summary>
     /// Pooling mode for generating embeddings

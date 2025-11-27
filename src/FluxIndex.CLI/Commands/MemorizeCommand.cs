@@ -8,14 +8,16 @@ public static class MemorizeCommand
 {
     public static Command Create()
     {
-        var pathArgument = new Argument<string>(
-            "path",
-            description: "File path or glob pattern to memorize");
+        var pathArgument = new Argument<string>("path")
+        {
+            Description = "File path or glob pattern to memorize"
+        };
 
-        var recursiveOption = new Option<bool>(
-            "--recursive",
-            getDefaultValue: () => false,
-            description: "Recursively process directories");
+        var recursiveOption = new Option<bool>("--recursive")
+        {
+            Description = "Recursively process directories",
+            DefaultValueFactory = _ => false
+        };
 
         var command = new Command("memorize", "Index files into the knowledge base")
         {
@@ -23,8 +25,11 @@ public static class MemorizeCommand
             recursiveOption
         };
 
-        command.SetHandler(async (path, recursive) =>
+        command.SetAction(async (parseResult, cancellationToken) =>
         {
+            var path = parseResult.GetValue(pathArgument)!;
+            var recursive = parseResult.GetValue(recursiveOption);
+
             try
             {
                 var workspace = FluxIndexWorkspace.Open();
@@ -46,9 +51,9 @@ public static class MemorizeCommand
                         new ProgressBarColumn(),
                         new PercentageColumn(),
                         new SpinnerColumn())
-                    .StartAsync(async ctx =>
+                    .StartAsync(async progressCtx =>
                     {
-                        var task = ctx.AddTask($"[cyan]Memorizing {files.Count} file(s)[/]", maxValue: files.Count);
+                        var task = progressCtx.AddTask($"[cyan]Memorizing {files.Count} file(s)[/]", maxValue: files.Count);
 
                         foreach (var file in files)
                         {
@@ -56,12 +61,13 @@ public static class MemorizeCommand
 
                             try
                             {
-                                var content = await File.ReadAllTextAsync(file);
+                                var content = await File.ReadAllTextAsync(file, cancellationToken);
 
                                 var documentId = await context.Indexer.IndexDocumentAsync(
                                     content,
                                     file,
-                                    null);
+                                    null,
+                                    cancellationToken);
 
                                 AnsiConsole.MarkupLine($"  [green]✓[/] {workspace.GetRelativePath(file)}");
                             }
@@ -79,14 +85,12 @@ public static class MemorizeCommand
             catch (InvalidOperationException ex) when (ex.Message.Contains("No FluxIndex workspace"))
             {
                 AnsiConsole.MarkupLine("[red]Error:[/] No FluxIndex workspace found. Run 'fluxindex init' first.");
-                Environment.ExitCode = 1;
             }
             catch (Exception ex)
             {
                 AnsiConsole.MarkupLine($"[red]Error:[/] {ex.Message}");
-                Environment.ExitCode = 1;
             }
-        }, pathArgument, recursiveOption);
+        });
 
         return command;
     }

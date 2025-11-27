@@ -10,19 +10,23 @@ public static class StatusCommand
     {
         var command = new Command("status", "Show workspace status and statistics");
 
-        var verboseOption = new Option<bool>(
-            ["--verbose", "-v"],
-            "Show detailed information including memorized files");
-
-        command.AddOption(verboseOption);
-
-        command.SetHandler(async (bool verbose) =>
+        var verboseOption = new Option<bool>("--verbose")
         {
+            Description = "Show detailed information including memorized files"
+        };
+        verboseOption.Aliases.Add("-v");
+
+        command.Add(verboseOption);
+
+        command.SetAction(async (parseResult, cancellationToken) =>
+        {
+            var verbose = parseResult.GetValue(verboseOption);
+
             try
             {
                 var workspace = FluxIndexWorkspace.Open();
                 var context = workspace.GetContext();
-                var stats = await context.GetStatisticsAsync();
+                var stats = await context.GetStatisticsAsync(cancellationToken);
 
                 // Workspace info
                 AnsiConsole.Write(new Rule("[cyan]FluxIndex Workspace[/]").RuleStyle("dim"));
@@ -91,14 +95,12 @@ public static class StatusCommand
             catch (InvalidOperationException ex) when (ex.Message.Contains("No FluxIndex workspace"))
             {
                 AnsiConsole.MarkupLine("[red]Error:[/] No FluxIndex workspace found. Run 'fluxindex init' first.");
-                Environment.ExitCode = 1;
             }
             catch (Exception ex)
             {
                 AnsiConsole.MarkupLine($"[red]Error:[/] {ex.Message}");
-                Environment.ExitCode = 1;
             }
-        }, verboseOption);
+        });
 
         return command;
     }
