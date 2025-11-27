@@ -11,6 +11,8 @@
 - **Hybrid Search** - Vector (semantic) + Keyword (BM25) with automatic strategy selection
 - **High Performance** - Embedding cache (100% faster), batch indexing (24ms/1K chunks)
 - **Local Reranking** - Cross-encoder neural reranking with automatic algorithmic fallback
+- **Graph Traversal** - BFS/DFS, Dijkstra shortest path, PageRank-style importance
+- **Vector Quantization** - Scalar (Int8/Int4), Product Quantization, Binary (32x compression)
 - **Multiple Storage** - SQLite, PostgreSQL with pgvector
 - **AI Flexibility** - OpenAI, Azure OpenAI, or custom embedding services
 - **Document Processing** - PDF/DOCX/TXT via FileFlux, web crawling via WebFlux

@@ -119,6 +119,17 @@ namespace FluxIndex.Core.Application.Services
         Task<IEnumerable<SearchResult>> SearchAsync(
             string query, int topK, CancellationToken ct);
     }
+
+    public class GraphTraversalService
+    {
+        // Document relationship traversal
+        Task<TraversalResult> TraverseBfsAsync(string startId, TraversalOptions options);
+        Task<TraversalResult> TraverseDfsAsync(string startId, TraversalOptions options);
+        Task<ShortestPathResult> FindShortestPathAsync(string startId, string endId);
+        Task<IEnumerable<string>> FindConnectedComponentsAsync(string startId);
+        Task<bool> HasCycleAsync(string startId);
+        Task<IDictionary<string, double>> CalculateImportanceAsync(IEnumerable<string> nodeIds);
+    }
 }
 ```
 
@@ -331,6 +342,8 @@ services.AddSingleton<Indexer>();
 - Local reranking
 - Rank fusion
 - Domain models
+- Graph traversal (BFS, DFS, Dijkstra, PageRank)
+- Vector quantization (Scalar, Product, Binary)
 
 ### SDK Package (Recommended)
 
@@ -443,6 +456,50 @@ Database connection optimization:
 // Configuration
 builder.UsePostgreSQL(connectionString); // Auto-pooling
 builder.UseSQLite(path); // Auto WAL mode
+```
+
+## Vector Quantization
+
+FluxIndex supports multiple vector quantization strategies for memory-efficient storage:
+
+### Scalar Quantization
+
+Reduces float32 vectors to integer representations:
+
+```csharp
+// Int8 quantization (4x compression)
+services.AddScalarQuantization(dimension: 1536, type: QuantizationType.ScalarInt8);
+
+// Int4 quantization (8x compression)
+services.AddScalarQuantization(dimension: 1536, type: QuantizationType.ScalarInt4);
+```
+
+### Product Quantization (PQ)
+
+High compression with codebook-based encoding:
+
+```csharp
+// 16-64x compression with K-Means++ trained codebooks
+services.AddProductQuantization(
+    dimension: 1536,
+    numSubvectors: 8,
+    codebookSize: 256);
+
+// Usage with distance table precomputation for fast search
+var distanceTable = quantizer.BuildDistanceTable(queryVector);
+var distance = quantizer.ComputeDistanceWithTable(distanceTable, codes);
+```
+
+### Binary Quantization
+
+Maximum compression with SIMD-optimized Hamming distance:
+
+```csharp
+// 32x compression, fastest distance computation
+services.AddBinaryQuantization(dimension: 1536);
+
+// SIMD PopCount for Hamming distance
+var similarity = quantizer.ComputeHammingSimilarity(q1, q2);
 ```
 
 ## Extension Points
