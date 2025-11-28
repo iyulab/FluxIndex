@@ -85,6 +85,7 @@ Full benchmarks: [BENCHMARK_RESULTS.md](./benchmarks/FluxIndex.Benchmarks/BENCHM
 - [Cheat Sheet](./docs/cheat-sheet.md) - Quick reference
 - [Testing Guide](./docs/TESTING.md) - Unit and integration testing
 - [LocalReranker Guide](./docs/LOCAL_RERANKER_GUIDE.md) - Neural reranking integration
+- [Vector Quantization Guide](./docs/VECTOR_QUANTIZATION_GUIDE.md) - Memory optimization with quantization
 
 ## Examples
 

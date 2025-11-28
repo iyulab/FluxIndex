@@ -1,4 +1,5 @@
 ﻿using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Models;
 using FluxIndex.Core.Domain.ValueObjects;
 using FluxIndex.Core.Domain.Models;
 using FluxIndex.Core.Domain.Entities;
@@ -297,6 +298,73 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
         var stats = await _retriever.GetStatisticsAsync(cancellationToken);
         return stats.TotalChunks;
     }
+
+    #region Quantized Search Methods
+
+    /// <summary>
+    /// 양자화 지원 여부 확인
+    /// </summary>
+    public bool SupportsQuantization => _retriever.SupportsQuantization;
+
+    /// <summary>
+    /// 양자화기 인스턴스
+    /// </summary>
+    public IVectorQuantizer? Quantizer => _retriever.Quantizer;
+
+    /// <summary>
+    /// 양자화 벡터를 사용한 빠른 근사 검색
+    /// </summary>
+    /// <param name="query">검색 쿼리</param>
+    /// <param name="maxResults">최대 결과 수</param>
+    /// <param name="minScore">최소 유사도 점수</param>
+    /// <param name="cancellationToken">취소 토큰</param>
+    /// <returns>검색 결과 목록</returns>
+    public async Task<IEnumerable<SearchResult>> SearchQuantizedAsync(
+        string query,
+        int maxResults = 10,
+        float minScore = 0.0f,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            throw new ArgumentException("Query cannot be null or empty", nameof(query));
+
+        var coreResults = await _retriever.SearchQuantizedAsync(query, maxResults, minScore, cancellationToken);
+        return ConvertToSDKSearchResults(coreResults);
+    }
+
+    /// <summary>
+    /// 양자화 후보 선택 + 원본 벡터 리랭킹 검색
+    /// 양자화로 빠르게 후보군을 선택한 후, 원본 벡터로 정확하게 리랭킹
+    /// </summary>
+    /// <param name="query">검색 쿼리</param>
+    /// <param name="maxResults">최대 결과 수</param>
+    /// <param name="candidateMultiplier">후보군 배수 (기본 3배)</param>
+    /// <param name="minScore">최소 유사도 점수</param>
+    /// <param name="cancellationToken">취소 토큰</param>
+    /// <returns>리랭킹된 검색 결과</returns>
+    public async Task<IEnumerable<SearchResult>> SearchWithRerankAsync(
+        string query,
+        int maxResults = 10,
+        int candidateMultiplier = 3,
+        float minScore = 0.0f,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            throw new ArgumentException("Query cannot be null or empty", nameof(query));
+
+        var coreResults = await _retriever.SearchWithRerankAsync(query, maxResults, candidateMultiplier, minScore, cancellationToken);
+        return ConvertToSDKSearchResults(coreResults);
+    }
+
+    /// <summary>
+    /// 양자화 저장소 통계 조회
+    /// </summary>
+    public async Task<QuantizedStorageStats?> GetQuantizedStatsAsync(CancellationToken cancellationToken = default)
+    {
+        return await _retriever.GetQuantizedStatsAsync(cancellationToken);
+    }
+
+    #endregion
 
     // Convenience methods - delegate to Indexer
 
@@ -812,7 +880,7 @@ public interface IFluxIndexContext
     Retriever Retriever { get; }
     Indexer Indexer { get; }
     IServiceProvider ServiceProvider { get; }
-    
+
     // Convenience methods
     Task<IEnumerable<SearchResult>> SearchAsync(string query, int maxResults = 10, float minScore = 0.5f, Dictionary<string, object>? filter = null, CancellationToken cancellationToken = default);
     Task<IEnumerable<SearchResult>> HybridSearchAsync(string keyword, string query, int maxResults = 10, float vectorWeight = 0.7f, Dictionary<string, object>? filter = null, CancellationToken cancellationToken = default);
@@ -825,6 +893,18 @@ public interface IFluxIndexContext
     Task<ClientStatistics> GetStatisticsAsync(CancellationToken cancellationToken = default);
     Task<int> GetDocumentCountAsync(CancellationToken cancellationToken = default);
     Task<int> GetChunkCountAsync(CancellationToken cancellationToken = default);
+
+    // Quantized Search APIs
+    /// <summary>양자화 지원 여부</summary>
+    bool SupportsQuantization { get; }
+    /// <summary>양자화기 인스턴스</summary>
+    IVectorQuantizer? Quantizer { get; }
+    /// <summary>양자화 벡터를 사용한 빠른 근사 검색</summary>
+    Task<IEnumerable<SearchResult>> SearchQuantizedAsync(string query, int maxResults = 10, float minScore = 0.0f, CancellationToken cancellationToken = default);
+    /// <summary>양자화 후보 선택 + 원본 벡터 리랭킹 검색</summary>
+    Task<IEnumerable<SearchResult>> SearchWithRerankAsync(string query, int maxResults = 10, int candidateMultiplier = 3, float minScore = 0.0f, CancellationToken cancellationToken = default);
+    /// <summary>양자화 저장소 통계 조회</summary>
+    Task<QuantizedStorageStats?> GetQuantizedStatsAsync(CancellationToken cancellationToken = default);
 
     // Quality Monitoring APIs
     Task<QualityDashboard?> GetQualityDashboardAsync(TimeSpan? timeWindow = null, CancellationToken cancellationToken = default);

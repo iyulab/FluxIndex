@@ -1,4 +1,5 @@
 ﻿using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Models;
 using FluxIndex.Core.Domain.Models;
 using Microsoft.Extensions.Logging;
 using System;
@@ -21,19 +22,42 @@ public class HybridSearchService : IHybridSearchService
     private readonly IVectorStore _vectorStore;
     private readonly ISparseRetriever _sparseRetriever;
     private readonly IEmbeddingService _embeddingService;
+    private readonly IVectorQuantizer? _quantizer;
     private readonly ILogger<HybridSearchService> _logger;
 
+    /// <summary>
+    /// 기본 생성자 (양자화 없음)
+    /// </summary>
     public HybridSearchService(
         IVectorStore vectorStore,
         ISparseRetriever sparseRetriever,
         IEmbeddingService embeddingService,
         ILogger<HybridSearchService> logger)
+        : this(vectorStore, sparseRetriever, embeddingService, null, logger)
+    {
+    }
+
+    /// <summary>
+    /// 양자화 지원 생성자
+    /// </summary>
+    public HybridSearchService(
+        IVectorStore vectorStore,
+        ISparseRetriever sparseRetriever,
+        IEmbeddingService embeddingService,
+        IVectorQuantizer? quantizer,
+        ILogger<HybridSearchService> logger)
     {
         _vectorStore = vectorStore ?? throw new ArgumentNullException(nameof(vectorStore));
         _sparseRetriever = sparseRetriever ?? throw new ArgumentNullException(nameof(sparseRetriever));
         _embeddingService = embeddingService ?? throw new ArgumentNullException(nameof(embeddingService));
+        _quantizer = quantizer;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
+
+    /// <summary>
+    /// 양자화 검색 지원 여부
+    /// </summary>
+    public bool SupportsQuantizedSearch => _quantizer != null && _vectorStore is IQuantizedVectorStore;
 
     /// <summary>
     /// 하이브리드 검색 실행
@@ -232,20 +256,36 @@ public class HybridSearchService : IHybridSearchService
             // 쿼리 임베딩 생성
             var embedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
 
-            // 벡터 검색 실행
-            var vectorResults = await _vectorStore.SearchAsync(
-                embedding,
-                options.VectorOptions.MaxResults,
-                (float)options.VectorOptions.MinScore,
-                cancellationToken);
+            IEnumerable<(Domain.Entities.DocumentChunk Chunk, float Score)>? searchResults = null;
+
+            // 양자화 검색 사용 여부 확인
+            if (options.UseQuantizedSearch && SupportsQuantizedSearch)
+            {
+                searchResults = await ExecuteQuantizedVectorSearchAsync(
+                    embedding,
+                    options,
+                    cancellationToken);
+            }
+
+            // 양자화 검색 미사용 또는 지원하지 않는 경우 일반 검색
+            if (searchResults == null)
+            {
+                var vectorResults = await _vectorStore.SearchAsync(
+                    embedding,
+                    options.VectorOptions.MaxResults,
+                    (float)options.VectorOptions.MinScore,
+                    cancellationToken);
+
+                searchResults = vectorResults.Select(chunk => (chunk, chunk.Score ?? 0f));
+            }
 
             // DocumentChunk 엔티티를 VectorSearchResult로 변환
-            var results = vectorResults.Select((chunk, index) => new VectorSearchResult
+            var results = searchResults.Select((item, index) => new VectorSearchResult
             {
-                DocumentChunk = chunk,
-                Score = chunk.Score ?? 0f,
+                DocumentChunk = item.Chunk,
+                Score = item.Score,
                 Rank = index + 1,
-                Distance = 1.0 - (chunk.Score ?? 0f) // 점수를 거리로 변환
+                Distance = 1.0 - item.Score // 점수를 거리로 변환
             }).ToList();
 
             return results;
@@ -254,6 +294,45 @@ public class HybridSearchService : IHybridSearchService
         {
             _logger.LogWarning(ex, "벡터 검색 실패, 빈 결과 반환");
             return Array.Empty<VectorSearchResult>();
+        }
+    }
+
+    /// <summary>
+    /// 양자화 검색 실행 (Two-Stage: 양자화 검색 → 리랭킹)
+    /// </summary>
+    private async Task<IEnumerable<(Domain.Entities.DocumentChunk Chunk, float Score)>?> ExecuteQuantizedVectorSearchAsync(
+        float[] embedding,
+        HybridSearchOptions options,
+        CancellationToken cancellationToken)
+    {
+        if (_quantizer == null || _vectorStore is not IQuantizedVectorStore quantizedStore)
+        {
+            return null;
+        }
+
+        try
+        {
+            // 쿼리 벡터 양자화
+            var quantizedQuery = await _quantizer.QuantizeAsync(embedding, cancellationToken);
+
+            _logger.LogDebug("양자화 Two-Stage 검색 실행: TopK={TopK}, CandidateMultiplier={Multiplier}",
+                options.VectorOptions.MaxResults, options.QuantizedCandidateMultiplier);
+
+            // Two-Stage 검색: 양자화 검색 후 원본 벡터로 리랭킹
+            var results = await quantizedStore.SearchWithRerankAsync(
+                embedding,
+                quantizedQuery,
+                options.VectorOptions.MaxResults,
+                options.QuantizedCandidateMultiplier,
+                options.QuantizedMinScore,
+                cancellationToken);
+
+            return results;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "양자화 검색 실패, 일반 검색으로 폴백");
+            return null;
         }
     }
 

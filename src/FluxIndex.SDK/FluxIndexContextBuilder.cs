@@ -606,6 +606,7 @@ public class FluxIndexContextBuilder
             var cacheService = serviceProvider.GetService<ICacheService>();
             var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
             var rankFusionService = serviceProvider.GetService<IRankFusionService>();
+            var vectorQuantizer = serviceProvider.GetService<IVectorQuantizer>();
 
             return new Retriever(
                 vectorStore,
@@ -614,6 +615,7 @@ public class FluxIndexContextBuilder
                 _retrieverOptions,
                 cacheService,
                 rankFusionService,
+                vectorQuantizer,
                 loggerFactory.CreateLogger<Retriever>()
             );
         });
@@ -643,20 +645,10 @@ public class FluxIndexContextBuilder
         // Build service provider
         var serviceProvider = _services.BuildServiceProvider();
 
-        // Debug: Direct console output to bypass logging configuration
-        Console.WriteLine($"=== DEBUG BUILD: VectorStore.Provider = '{_options.VectorStore.Provider}' ===");
-        Console.WriteLine($"=== DEBUG BUILD: Provider?.ToLower() = '{_options.VectorStore.Provider?.ToLower()}' ===");
-        Console.WriteLine($"=== DEBUG BUILD: Checking if provider == 'sqlite': {_options.VectorStore.Provider?.ToLower() == "sqlite"} ===");
-
         // Initialize database if using SQLite (console app support)
         if (_options.VectorStore.Provider?.ToLower() == "sqlite")
         {
-            Console.WriteLine("=== DEBUG BUILD: Condition TRUE, calling InitializeDatabaseSync() ===");
             InitializeDatabaseSync(serviceProvider);
-        }
-        else
-        {
-            Console.WriteLine("=== DEBUG BUILD: Condition FALSE, NOT calling InitializeDatabaseSync() ===");
         }
 
         // Get Retriever and Indexer from DI
@@ -690,92 +682,34 @@ public class FluxIndexContextBuilder
     /// </summary>
     private void InitializeDatabaseSync(IServiceProvider serviceProvider)
     {
-        try
+        using var scope = serviceProvider.CreateScope();
+
+        var context = scope.ServiceProvider.GetRequiredService<SQLiteDbContext>();
+
+        // 데이터베이스 생성 및 마이그레이션
+        context.Database.EnsureCreated();
+
+        // 추가 초기화 (필요시)
+        var options = scope.ServiceProvider.GetService<Microsoft.Extensions.Options.IOptions<FluxIndex.Storage.SQLite.SQLiteOptions>>();
+
+        if (options?.Value != null && !options.Value.UseInMemory)
         {
-            Console.WriteLine("=== DEBUG InitDB: Entry ===");
+            // WAL 모드 활성화 (성능 향상)
+            RelationalDatabaseFacadeExtensions.ExecuteSqlRaw(context.Database, "PRAGMA journal_mode=WAL");
 
-            using var scope = serviceProvider.CreateScope();
-            Console.WriteLine("=== DEBUG InitDB: Scope created ===");
-
-            // Debug: Check what services are actually registered
-            Console.WriteLine("=== DEBUG InitDB: Checking registered services ===");
-            var optionsService = scope.ServiceProvider.GetService<Microsoft.Extensions.Options.IOptions<FluxIndex.Storage.SQLite.SQLiteOptions>>();
-            Console.WriteLine($"=== DEBUG InitDB: IOptions<SQLiteOptions> available: {optionsService != null} ===");
-            if (optionsService != null)
-            {
-                Console.WriteLine($"=== DEBUG InitDB: SQLiteOptions.DatabasePath: {optionsService.Value?.DatabasePath} ===");
-                Console.WriteLine($"=== DEBUG InitDB: SQLiteOptions.UseInMemory: {optionsService.Value?.UseInMemory} ===");
-                Console.WriteLine($"=== DEBUG InitDB: SQLiteOptions.GetConnectionString(): {optionsService.Value?.GetConnectionString()} ===");
-            }
-
-            // Try to get context with GetRequiredService to see exact error
-            SQLiteDbContext? context = null;
-            try
-            {
-                context = scope.ServiceProvider.GetRequiredService<SQLiteDbContext>();
-                Console.WriteLine($"=== DEBUG InitDB: SQLiteDbContext resolved successfully ===");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"=== DEBUG InitDB: FAILED to resolve SQLiteDbContext: {ex.GetType().Name}: {ex.Message} ===");
-                if (ex.InnerException != null)
-                {
-                    Console.WriteLine($"=== DEBUG InitDB: Inner exception: {ex.InnerException.Message} ===");
-                }
-                return;
-            }
-
-            var connectionString = context.Database.GetConnectionString();
-            Console.WriteLine($"=== DEBUG InitDB: Connection string: {connectionString} ===");
-
-            // 데이터베이스 생성 및 마이그레이션
-            Console.WriteLine("=== DEBUG InitDB: Calling EnsureCreated() ===");
-            var created = context.Database.EnsureCreated();
-            Console.WriteLine($"=== DEBUG InitDB: EnsureCreated() result: {created} ===");
-
-            // 추가 초기화 (필요시)
-            var options = scope.ServiceProvider.GetService<Microsoft.Extensions.Options.IOptions<FluxIndex.Storage.SQLite.SQLiteOptions>>();
-            Console.WriteLine($"=== DEBUG InitDB: SQLiteOptions resolved: {options?.Value != null}, UseInMemory: {options?.Value?.UseInMemory ?? false} ===");
-
-            if (options?.Value != null && !options.Value.UseInMemory)
-            {
-                // WAL 모드 활성화 (성능 향상)
-                Console.WriteLine("=== DEBUG InitDB: Setting WAL mode ===");
-                RelationalDatabaseFacadeExtensions.ExecuteSqlRaw(context.Database, "PRAGMA journal_mode=WAL");
-
-                // 동기화 모드 설정 (성능과 안정성 균형)
-                Console.WriteLine("=== DEBUG InitDB: Setting synchronous mode ===");
-                RelationalDatabaseFacadeExtensions.ExecuteSqlRaw(context.Database, "PRAGMA synchronous=NORMAL");
-
-                Console.WriteLine("=== DEBUG InitDB: SQLite database initialized with WAL mode ===");
-            }
-            else
-            {
-                Console.WriteLine("=== DEBUG InitDB: SQLite database initialized (basic/in-memory mode) ===");
-            }
-
-            Console.WriteLine("=== DEBUG InitDB: Completed successfully ===");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"=== DEBUG InitDB: EXCEPTION: {ex.GetType().Name}: {ex.Message} ===");
-            Console.WriteLine($"=== DEBUG InitDB: Stack trace: {ex.StackTrace} ===");
-            throw;
+            // 동기화 모드 설정 (성능과 안정성 균형)
+            RelationalDatabaseFacadeExtensions.ExecuteSqlRaw(context.Database, "PRAGMA synchronous=NORMAL");
         }
     }
 
     private void ConfigureVectorStore()
     {
-        Console.WriteLine($"=== DEBUG ConfigVectorStore: Provider = '{_options.VectorStore.Provider?.ToLower()}' ===");
-
         switch (_options.VectorStore.Provider?.ToLower())
         {
             case "postgresql":
-                Console.WriteLine("=== DEBUG ConfigVectorStore: Adding PostgreSQL ===");
                 _services.AddPostgreSQLVectorStore(_options.VectorStore.ConnectionString);
                 break;
             case "sqlite":
-                Console.WriteLine($"=== DEBUG ConfigVectorStore: Adding SQLite with ConnectionString = '{_options.VectorStore.ConnectionString}' ===");
                 _services.AddSQLiteVectorStore(options =>
                 {
                     // Parse connection string to extract database path
@@ -814,12 +748,9 @@ public class FluxIndexContextBuilder
                     }
 
                     options.AutoMigrate = true;
-                    Console.WriteLine($"=== DEBUG ConfigVectorStore: SQLiteOptions configured - DatabasePath: {options.DatabasePath}, UseInMemory: {options.UseInMemory}, AutoMigrate: {options.AutoMigrate} ===");
                 });
-                Console.WriteLine("=== DEBUG ConfigVectorStore: AddSQLiteVectorStore completed ===");
                 break;
             default:
-                Console.WriteLine("=== DEBUG ConfigVectorStore: Using InMemory (default) ===");
                 // Default to in-memory for testing
                 _services.AddSingleton<IVectorStore, InMemoryVectorStore>();
                 break;

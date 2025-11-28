@@ -153,6 +153,21 @@ public record HybridSearchOptions
     /// 다양성 임계값
     /// </summary>
     public double DiversityThreshold { get; set; } = 0.8;
+
+    /// <summary>
+    /// 양자화 검색 사용 여부 (Two-Stage 검색)
+    /// </summary>
+    public bool UseQuantizedSearch { get; set; } = false;
+
+    /// <summary>
+    /// 양자화 검색 후보 배수 (리랭킹 시 원본 결과 대비 후보 수 배율)
+    /// </summary>
+    public int QuantizedCandidateMultiplier { get; set; } = 3;
+
+    /// <summary>
+    /// 양자화 검색 최소 점수 임계값
+    /// </summary>
+    public float QuantizedMinScore { get; set; } = 0.0f;
 }
 
 /// <summary>

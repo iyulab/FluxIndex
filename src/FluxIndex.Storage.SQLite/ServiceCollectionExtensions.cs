@@ -234,6 +234,116 @@ public static class ServiceCollectionExtensions
 
         return services;
     }
+
+    /// <summary>
+    /// SQLite 양자화 벡터 저장소 등록
+    /// </summary>
+    /// <param name="services">서비스 컬렉션</param>
+    /// <param name="configureOptions">옵션 설정 액션</param>
+    /// <returns>서비스 컬렉션</returns>
+    public static IServiceCollection AddSQLiteQuantizedVectorStore(
+        this IServiceCollection services,
+        Action<SQLiteQuantizedOptions> configureOptions)
+    {
+        services.Configure(configureOptions);
+
+        // DbContext 등록
+        services.AddDbContext<SQLiteQuantizedDbContext>((serviceProvider, dbOptions) =>
+        {
+            var options = serviceProvider.GetRequiredService<IOptions<SQLiteQuantizedOptions>>().Value;
+            dbOptions.UseSqlite(options.GetConnectionString(), sqliteOptions =>
+            {
+                sqliteOptions.CommandTimeout(options.CommandTimeout);
+            });
+            dbOptions.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
+        }, ServiceLifetime.Scoped);
+
+        // IQuantizedVectorStore 및 IVectorStore 등록
+        services.AddScoped<SQLiteQuantizedVectorStore>();
+        services.AddScoped<IQuantizedVectorStore>(sp => sp.GetRequiredService<SQLiteQuantizedVectorStore>());
+        services.AddScoped<IVectorStore>(sp => sp.GetRequiredService<SQLiteQuantizedVectorStore>());
+
+        // 마이그레이션 서비스
+        services.AddHostedService<SQLiteQuantizedMigrationService>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// SQLite 양자화 벡터 저장소 등록 (간단한 설정)
+    /// </summary>
+    public static IServiceCollection AddSQLiteQuantizedVectorStore(
+        this IServiceCollection services,
+        string databasePath = "fluxindex-quantized.db",
+        bool autoQuantize = true)
+    {
+        return services.AddSQLiteQuantizedVectorStore(options =>
+        {
+            options.DatabasePath = databasePath;
+            options.AutoQuantizeOnStore = autoQuantize;
+            options.AutoMigrate = true;
+        });
+    }
+
+    /// <summary>
+    /// SQLite 양자화 벡터 저장소 등록 (인메모리, 테스트용)
+    /// </summary>
+    public static IServiceCollection AddSQLiteQuantizedInMemoryVectorStore(
+        this IServiceCollection services,
+        bool autoQuantize = true)
+    {
+        return services.AddSQLiteQuantizedVectorStore(options =>
+        {
+            options.UseInMemory = true;
+            options.AutoQuantizeOnStore = autoQuantize;
+            options.AutoMigrate = true;
+        });
+    }
+}
+
+/// <summary>
+/// SQLite 양자화 데이터베이스 마이그레이션 서비스
+/// </summary>
+internal class SQLiteQuantizedMigrationService : IHostedService
+{
+    private readonly IServiceProvider _serviceProvider;
+    private readonly ILogger<SQLiteQuantizedMigrationService> _logger;
+
+    public SQLiteQuantizedMigrationService(
+        IServiceProvider serviceProvider,
+        ILogger<SQLiteQuantizedMigrationService> logger)
+    {
+        _serviceProvider = serviceProvider;
+        _logger = logger;
+    }
+
+    public async Task StartAsync(CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Starting SQLite quantized database migration");
+
+        using var scope = _serviceProvider.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<SQLiteQuantizedDbContext>();
+
+        try
+        {
+            await context.Database.EnsureCreatedAsync(cancellationToken);
+
+            var options = scope.ServiceProvider.GetRequiredService<IOptions<SQLiteQuantizedOptions>>().Value;
+            if (!options.UseInMemory)
+            {
+                await SQLitePragmaHelper.ApplyPragmaOptimizationsAsync(context, options, _logger, cancellationToken);
+            }
+
+            _logger.LogInformation("SQLite quantized database migration completed");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "SQLite quantized database migration failed");
+            throw;
+        }
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }
 
 /// <summary>

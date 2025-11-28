@@ -2,6 +2,7 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Models;
 using FluxIndex.Core.Application.Services.Quantization;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 
 namespace FluxIndex.Core.Application.Services;
@@ -229,6 +230,111 @@ public static class MetadataAugmentationServiceExtensions
         services.AddTokenAwareSearch();
         services.AddGraphTraversal();
 
+        return services;
+    }
+
+    /// <summary>
+    /// Quantized Vector Store Decorator 등록.
+    /// 기존 IVectorStore 구현체를 래핑하여 양자화 기능을 추가합니다.
+    /// </summary>
+    /// <param name="services">서비스 컬렉션</param>
+    /// <param name="configureOptions">데코레이터 옵션 설정 액션</param>
+    /// <returns>서비스 컬렉션</returns>
+    public static IServiceCollection AddQuantizedVectorStoreDecorator(
+        this IServiceCollection services,
+        Action<QuantizedVectorStoreOptions>? configureOptions = null)
+    {
+        // 옵션 설정
+        if (configureOptions != null)
+        {
+            services.Configure(configureOptions);
+        }
+        else
+        {
+            services.Configure<QuantizedVectorStoreOptions>(_ => { });
+        }
+
+        // 기존 IVectorStore 등록을 찾아서 데코레이터로 래핑
+        var descriptor = services.FirstOrDefault(d => d.ServiceType == typeof(IVectorStore));
+        if (descriptor != null)
+        {
+            services.Remove(descriptor);
+
+            services.Add(new ServiceDescriptor(
+                typeof(IVectorStore),
+                sp =>
+                {
+                    // 원본 구현체 생성
+                    IVectorStore innerStore;
+                    if (descriptor.ImplementationFactory != null)
+                    {
+                        innerStore = (IVectorStore)descriptor.ImplementationFactory(sp);
+                    }
+                    else if (descriptor.ImplementationInstance != null)
+                    {
+                        innerStore = (IVectorStore)descriptor.ImplementationInstance;
+                    }
+                    else if (descriptor.ImplementationType != null)
+                    {
+                        innerStore = (IVectorStore)ActivatorUtilities.CreateInstance(sp, descriptor.ImplementationType);
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException("Cannot resolve inner IVectorStore implementation.");
+                    }
+
+                    var quantizer = sp.GetRequiredService<IVectorQuantizer>();
+                    var logger = sp.GetRequiredService<ILogger<QuantizedVectorStoreDecorator>>();
+                    var options = sp.GetService<Microsoft.Extensions.Options.IOptions<QuantizedVectorStoreOptions>>()?.Value;
+                    return new QuantizedVectorStoreDecorator(innerStore, quantizer, logger, options);
+                },
+                descriptor.Lifetime));
+        }
+
+        // IQuantizedVectorStore 인터페이스도 동일한 인스턴스로 등록
+        services.AddScoped<IQuantizedVectorStore>(sp =>
+        {
+            var store = sp.GetRequiredService<IVectorStore>();
+            if (store is IQuantizedVectorStore quantizedStore)
+            {
+                return quantizedStore;
+            }
+            throw new InvalidOperationException(
+                "IVectorStore is not decorated with QuantizedVectorStoreDecorator. " +
+                "Ensure AddQuantizedVectorStoreDecorator is called after registering the base IVectorStore.");
+        });
+
+        return services;
+    }
+
+    /// <summary>
+    /// Quantized Vector Store Decorator 등록 (간단한 설정).
+    /// 먼저 AddVectorQuantization 또는 AddScalarQuantization 등을 호출해야 합니다.
+    /// </summary>
+    /// <param name="services">서비스 컬렉션</param>
+    /// <param name="autoQuantize">저장 시 자동 양자화 여부</param>
+    /// <returns>서비스 컬렉션</returns>
+    public static IServiceCollection AddQuantizedVectorStoreDecorator(
+        this IServiceCollection services,
+        bool autoQuantize = true)
+    {
+        return services.AddQuantizedVectorStoreDecorator(options =>
+        {
+            options.AutoQuantizeOnStore = autoQuantize;
+        });
+    }
+
+    /// <summary>
+    /// 벡터 양자화 마이그레이션 서비스 등록.
+    /// 기존 벡터를 양자화 형식으로 일괄 변환하는 서비스입니다.
+    /// IVectorStore와 IVectorQuantizer가 먼저 등록되어 있어야 합니다.
+    /// </summary>
+    /// <param name="services">서비스 컬렉션</param>
+    /// <returns>서비스 컬렉션</returns>
+    public static IServiceCollection AddVectorQuantizationMigration(
+        this IServiceCollection services)
+    {
+        services.AddScoped<VectorQuantizationMigrationService>();
         return services;
     }
 }
