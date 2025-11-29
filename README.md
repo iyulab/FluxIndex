@@ -17,7 +17,6 @@
 - **AI Flexibility** - OpenAI, Azure OpenAI, or custom embedding services
 - **Document Processing** - PDF/DOCX/TXT via FileFlux, web crawling via WebFlux
 - **MCP Server** - Model Context Protocol for AI assistant integration
-- **CLI Tool** - Standalone `fluxindex` command for workspace management
 - **Production Ready** - Redis caching, clean architecture, .NET 10.0
 
 ## Quick Start
@@ -48,23 +47,13 @@ var results = await context.Retriever.SearchAsync("RAG library", maxResults: 5);
 
 👉 **See [Tutorial](./docs/TUTORIAL.md) for complete examples and best practices**
 
-## CLI & MCP Server
+## MCP Server
 
-```bash
-# Install CLI tool
-dotnet tool install --global FluxIndex.CLI
+FluxIndex provides Model Context Protocol (MCP) server for AI assistant integration.
 
-# Initialize workspace
-fluxindex init
+**Available Tools**: `search`, `memorize`, `unmemorize`, `status`
 
-# Index files
-fluxindex memorize docs/*.md
-
-# Start MCP server for AI assistants
-fluxindex serve
-```
-
-MCP Tools: `search`, `memorize`, `unmemorize`, `status`
+See [FluxIndex.MCP](./src/FluxIndex.MCP/) for integration details.
 
 ## Performance
 

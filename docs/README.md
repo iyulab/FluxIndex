@@ -12,8 +12,8 @@ Complete documentation for the FluxIndex RAG library.
 ### Advanced Topics
 - [Architecture](architecture.md) - Clean architecture design
 - [Testing Guide](TESTING.md) - Unit and integration testing patterns
-- [RAG System](FLUXINDEX_RAG_SYSTEM.md) - Advanced RAG patterns
 - [LocalReranker Guide](LOCAL_RERANKER_GUIDE.md) - Neural reranking integration
+- [Vector Quantization Guide](VECTOR_QUANTIZATION_GUIDE.md) - Memory optimization with quantization
 
 ### Practical Resources
 - [Examples](../samples/) - Working code samples
@@ -37,7 +37,7 @@ Complete documentation for the FluxIndex RAG library.
 ### Advanced
 1. Master [Performance Optimization](TUTORIAL.md#5-performance-optimization)
 2. Review [Production Deployment](TUTORIAL.md#6-production-deployment)
-3. Deep dive into [RAG System Guide](FLUXINDEX_RAG_SYSTEM.md)
+3. Explore [Vector Quantization](VECTOR_QUANTIZATION_GUIDE.md) for memory optimization
 4. Extend with custom implementations
 
 ## Feature Overview
