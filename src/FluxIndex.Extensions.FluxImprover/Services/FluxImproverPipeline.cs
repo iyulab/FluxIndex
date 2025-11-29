@@ -1,8 +1,8 @@
-using FluxImprover.Abstractions.Options;
+using FluxImprover.Options;
 using FluxImprover.Evaluation;
 using FluxImprover.QAGeneration;
 using FluxIndexChunk = FluxIndex.Core.Application.Interfaces.IEnrichedChunk;
-using FluxImproverEnrichedChunk = FluxImprover.Abstractions.Models.IEnrichedChunk;
+using FluxImproverEnrichedChunk = FluxImprover.Models.IEnrichedChunk;
 
 namespace FluxIndex.Extensions.FluxImprover.Services;
 

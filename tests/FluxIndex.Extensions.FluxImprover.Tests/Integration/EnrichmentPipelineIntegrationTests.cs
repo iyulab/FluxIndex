@@ -2,14 +2,14 @@ using FluentAssertions;
 using FluxIndex.Extensions.FluxImprover.Adapters;
 using FluxIndex.Extensions.FluxImprover.Services;
 using FluxImprover.Enrichment;
-using FluxImprover.Abstractions.Options;
+using FluxImprover.Options;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using Xunit;
 using FluxIndexChunk = FluxIndex.Core.Application.Interfaces.IEnrichedChunk;
 using FluxIndexSource = FluxIndex.Core.Application.Interfaces.ISourceMetadata;
 using FluxIndexCompletion = FluxIndex.Core.Application.Interfaces.ITextCompletionService;
-using FluxImproverCompletion = FluxImprover.Abstractions.Services.ITextCompletionService;
+using FluxImproverCompletion = FluxImprover.Services.ITextCompletionService;
 
 namespace FluxIndex.Extensions.FluxImprover.Tests.Integration;
 

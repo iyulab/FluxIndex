@@ -2,13 +2,13 @@ using FluentAssertions;
 using FluxIndex.Extensions.FluxImprover.Adapters;
 using FluxIndex.Extensions.FluxImprover.Services;
 using FluxImprover.Enrichment;
-using FluxImprover.Abstractions.Models;
-using FluxImprover.Abstractions.Options;
+using FluxImprover.Models;
+using FluxImprover.Options;
 using Moq;
 using Xunit;
 using FluxIndexChunk = FluxIndex.Core.Application.Interfaces.IEnrichedChunk;
 using FluxIndexSource = FluxIndex.Core.Application.Interfaces.ISourceMetadata;
-using FluxImproverEnrichedChunk = FluxImprover.Abstractions.Models.IEnrichedChunk;
+using FluxImproverEnrichedChunk = FluxImprover.Models.IEnrichedChunk;
 
 namespace FluxIndex.Extensions.FluxImprover.Tests.Services;
 

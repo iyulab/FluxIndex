@@ -1,12 +1,12 @@
 using System.Collections.Concurrent;
 using System.Threading.Channels;
-using FluxImprover.Abstractions.Options;
+using FluxImprover.Options;
 using FluxImprover.Evaluation;
 using FluxImprover.QAGeneration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using FluxIndexChunk = FluxIndex.Core.Application.Interfaces.IEnrichedChunk;
-using FluxImproverEnrichedChunk = FluxImprover.Abstractions.Models.IEnrichedChunk;
+using FluxImproverEnrichedChunk = FluxImprover.Models.IEnrichedChunk;
 
 namespace FluxIndex.Extensions.FluxImprover.Services;
 

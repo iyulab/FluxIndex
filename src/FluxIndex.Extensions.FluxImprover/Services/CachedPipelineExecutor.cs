@@ -1,10 +1,10 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
-using FluxImprover.Abstractions.Options;
+using FluxImprover.Options;
 using FluxImprover.QAGeneration;
 using FluxIndexChunk = FluxIndex.Core.Application.Interfaces.IEnrichedChunk;
-using FluxImproverEnrichedChunk = FluxImprover.Abstractions.Models.IEnrichedChunk;
+using FluxImproverEnrichedChunk = FluxImprover.Models.IEnrichedChunk;
 
 namespace FluxIndex.Extensions.FluxImprover.Services;
 

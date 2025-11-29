@@ -3,8 +3,8 @@ using FluxIndex.Extensions.FluxImprover.Adapters;
 using Moq;
 using Xunit;
 using FluxIndexCompletion = FluxIndex.Core.Application.Interfaces.ITextCompletionService;
-using FluxImproverCompletion = FluxImprover.Abstractions.Services.ITextCompletionService;
-using FluxImprover.Abstractions.Services;
+using FluxImproverCompletion = FluxImprover.Services.ITextCompletionService;
+using FluxImprover.Services;
 
 namespace FluxIndex.Extensions.FluxImprover.Tests.Adapters;
 

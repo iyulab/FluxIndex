@@ -1,11 +1,12 @@
 using FluxIndex.Extensions.FluxImprover.Adapters;
 using FluxIndex.Extensions.FluxImprover.Services;
+using FluxImprover.ChunkFiltering;
 using FluxImprover.Enrichment;
 using FluxImprover.Evaluation;
 using FluxImprover.QAGeneration;
 using Microsoft.Extensions.DependencyInjection;
 using FluxIndexCompletion = FluxIndex.Core.Application.Interfaces.ITextCompletionService;
-using FluxImproverCompletion = FluxImprover.Abstractions.Services.ITextCompletionService;
+using FluxImproverCompletion = FluxImprover.Services.ITextCompletionService;
 
 namespace FluxIndex.Extensions.FluxImprover;
 
@@ -99,6 +100,27 @@ public static class ServiceCollectionExtensions
             var filterService = provider.GetRequiredService<QAFilterService>();
             var pipeline = provider.GetRequiredService<QAPipeline>();
             return new QAGenerationService(generatorService, filterService, pipeline);
+        });
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the ChunkFilteringServiceWrapper for LLM-based 3-stage chunk filtering.
+    /// </summary>
+    /// <param name="services">The service collection to add services to.</param>
+    /// <returns>The service collection for chaining.</returns>
+    /// <remarks>
+    /// This method requires FluxImprover's IChunkFilteringService to be already registered.
+    /// The wrapper is registered as a singleton.
+    /// Provides 3-stage LLM evaluation: Initial → Self-Reflection → Critic Validation.
+    /// </remarks>
+    public static IServiceCollection AddChunkFilteringWrapper(this IServiceCollection services)
+    {
+        services.AddSingleton<ChunkFilteringServiceWrapper>(provider =>
+        {
+            var filteringService = provider.GetRequiredService<IChunkFilteringService>();
+            return new ChunkFilteringServiceWrapper(filteringService);
         });
 
         return services;

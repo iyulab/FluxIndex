@@ -1,7 +1,7 @@
 using FluentAssertions;
 using FluxIndex.Extensions.FluxImprover.Services;
-using FluxImprover.Abstractions.Options;
-using FluxImprover.Abstractions.Services;
+using FluxImprover.Options;
+using FluxImprover.Services;
 using FluxImprover.Evaluation;
 using FluxImprover.QAGeneration;
 using Moq;

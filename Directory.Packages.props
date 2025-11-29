@@ -53,8 +53,8 @@
   </ItemGroup>
   <!-- Document Processing & Quality -->
   <ItemGroup>
-    <PackageVersion Include="FileFlux" Version="0.4.6" />
-    <PackageVersion Include="FluxImprover" Version="0.1.1" />
+    <PackageVersion Include="FileFlux" Version="0.4.7" />
+    <PackageVersion Include="FluxImprover" Version="0.2.0" />
     <PackageVersion Include="HtmlAgilityPack" Version="1.12.3" />
     <PackageVersion Include="WebFlux" Version="0.1.7" />
   </ItemGroup>

@@ -4,7 +4,7 @@ using Moq;
 using Xunit;
 using FluxIndexChunk = FluxIndex.Core.Application.Interfaces.IEnrichedChunk;
 using FluxIndexSource = FluxIndex.Core.Application.Interfaces.ISourceMetadata;
-using FluxImproverChunk = FluxImprover.Abstractions.Models.IEnrichedChunk;
+using FluxImproverChunk = FluxImprover.Models.IEnrichedChunk;
 
 namespace FluxIndex.Extensions.FluxImprover.Tests.Adapters;
 

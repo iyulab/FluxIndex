@@ -1,11 +1,12 @@
 using FluxIndex.Extensions.FluxImprover.Services;
 using FluxIndex.SDK;
-using FluxImprover.Abstractions.Options;
+using FluxImprover.Options;
 using FluxImprover.Evaluation;
 using FluxImprover.QAGeneration;
 using Microsoft.Extensions.DependencyInjection;
 using FluxIndexChunk = FluxIndex.Core.Application.Interfaces.IEnrichedChunk;
-using FluxImproverEnrichedChunk = FluxImprover.Abstractions.Models.IEnrichedChunk;
+using FluxImproverEnrichedChunk = FluxImprover.Models.IEnrichedChunk;
+using FilteringOptions = FluxImprover.Options.ChunkFilteringOptions;
 
 namespace FluxIndex.Extensions.FluxImprover;
 
@@ -243,8 +244,94 @@ public static class FluxIndexContextExtensions
         {
             IsEnrichmentAvailable = context.GetEnrichmentService() != null,
             IsRAGEvaluationAvailable = context.GetRAGEvaluationService() != null,
-            IsQAGenerationAvailable = context.GetQAGenerationService() != null
+            IsQAGenerationAvailable = context.GetQAGenerationService() != null,
+            IsChunkFilteringAvailable = context.GetChunkFilteringService() != null
         };
+    }
+
+    /// <summary>
+    /// FluxIndexContext에서 ChunkFilteringServiceWrapper를 가져옵니다.
+    /// </summary>
+    /// <param name="context">FluxIndex 컨텍스트</param>
+    /// <returns>청크 필터링 서비스 래퍼 (등록되지 않은 경우 null)</returns>
+    public static ChunkFilteringServiceWrapper? GetChunkFilteringService(this FluxIndexContext context)
+    {
+        return context.ServiceProvider.GetService<ChunkFilteringServiceWrapper>();
+    }
+
+    /// <summary>
+    /// LLM 기반 3단계 평가를 통해 청크를 필터링합니다.
+    /// </summary>
+    /// <param name="context">FluxIndex 컨텍스트</param>
+    /// <param name="chunks">필터링할 청크들</param>
+    /// <param name="query">관련성 평가를 위한 쿼리 (null일 경우 품질 기반 필터링만 수행)</param>
+    /// <param name="options">필터링 옵션</param>
+    /// <param name="cancellationToken">취소 토큰</param>
+    /// <returns>필터링된 청크들과 점수 및 평가 상세 정보</returns>
+    public static async Task<IReadOnlyList<FilteredFluxIndexChunk>> FilterChunksAsync(
+        this FluxIndexContext context,
+        IEnumerable<FluxIndexChunk> chunks,
+        string? query,
+        FilteringOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        var filteringService = context.GetChunkFilteringService()
+            ?? throw new InvalidOperationException(
+                "ChunkFilteringServiceWrapper is not registered. " +
+                "Please call AddChunkFilteringWrapper() during service configuration.");
+
+        return await filteringService.FilterAsync(chunks, query, options, cancellationToken);
+    }
+
+    /// <summary>
+    /// 최소 점수 기준으로 청크를 필터링하고 점수 내림차순으로 정렬합니다.
+    /// </summary>
+    /// <param name="context">FluxIndex 컨텍스트</param>
+    /// <param name="chunks">필터링할 청크들</param>
+    /// <param name="query">관련성 평가를 위한 쿼리</param>
+    /// <param name="minScore">최소 점수 임계값 (0.0 ~ 1.0, 기본값: 0.7)</param>
+    /// <param name="maxResults">반환할 최대 청크 수 (null이면 제한 없음)</param>
+    /// <param name="cancellationToken">취소 토큰</param>
+    /// <returns>필터링된 FluxIndex 청크들</returns>
+    public static async Task<IReadOnlyList<FluxIndexChunk>> FilterChunksByScoreAsync(
+        this FluxIndexContext context,
+        IEnumerable<FluxIndexChunk> chunks,
+        string? query,
+        double minScore = 0.7,
+        int? maxResults = null,
+        CancellationToken cancellationToken = default)
+    {
+        var filteringService = context.GetChunkFilteringService()
+            ?? throw new InvalidOperationException(
+                "ChunkFilteringServiceWrapper is not registered. " +
+                "Please call AddChunkFilteringWrapper() during service configuration.");
+
+        return await filteringService.FilterByScoreAsync(
+            chunks, query, minScore, maxResults, cancellationToken);
+    }
+
+    /// <summary>
+    /// 단일 청크에 대해 3단계 평가를 수행합니다.
+    /// </summary>
+    /// <param name="context">FluxIndex 컨텍스트</param>
+    /// <param name="chunk">평가할 청크</param>
+    /// <param name="query">관련성 평가를 위한 쿼리</param>
+    /// <param name="options">평가 옵션</param>
+    /// <param name="cancellationToken">취소 토큰</param>
+    /// <returns>상세 평가 결과</returns>
+    public static async Task<ChunkAssessmentResult> AssessChunkAsync(
+        this FluxIndexContext context,
+        FluxIndexChunk chunk,
+        string? query,
+        FilteringOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        var filteringService = context.GetChunkFilteringService()
+            ?? throw new InvalidOperationException(
+                "ChunkFilteringServiceWrapper is not registered. " +
+                "Please call AddChunkFilteringWrapper() during service configuration.");
+
+        return await filteringService.AssessAsync(chunk, query, options, cancellationToken);
     }
 
     /// <summary>
@@ -325,12 +412,19 @@ public sealed class FluxImproverAvailability
     public bool IsQAGenerationAvailable { get; init; }
 
     /// <summary>
+    /// 청크 필터링 서비스 가용 여부
+    /// </summary>
+    public bool IsChunkFilteringAvailable { get; init; }
+
+    /// <summary>
     /// 모든 FluxImprover 서비스가 가용한지 여부
     /// </summary>
-    public bool IsFullyAvailable => IsEnrichmentAvailable && IsRAGEvaluationAvailable && IsQAGenerationAvailable;
+    public bool IsFullyAvailable => IsEnrichmentAvailable && IsRAGEvaluationAvailable
+                                   && IsQAGenerationAvailable && IsChunkFilteringAvailable;
 
     /// <summary>
     /// 최소 하나 이상의 서비스가 가용한지 여부
     /// </summary>
-    public bool IsPartiallyAvailable => IsEnrichmentAvailable || IsRAGEvaluationAvailable || IsQAGenerationAvailable;
+    public bool IsPartiallyAvailable => IsEnrichmentAvailable || IsRAGEvaluationAvailable
+                                       || IsQAGenerationAvailable || IsChunkFilteringAvailable;
 }

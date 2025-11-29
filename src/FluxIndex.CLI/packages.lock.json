@@ -442,7 +442,7 @@
       "fluxindex.core": {
         "type": "Project",
         "dependencies": {
-          "FileFlux": "[0.4.6, )",
+          "FileFlux": "[0.4.7, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.0, )"
         }
@@ -450,7 +450,7 @@
       "fluxindex.extensions.fileflux": {
         "type": "Project",
         "dependencies": {
-          "FileFlux": "[0.4.6, )",
+          "FileFlux": "[0.4.7, )",
           "FluxIndex.Core": "[0.2.18, )",
           "FluxIndex.SDK": "[0.2.18, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
@@ -519,9 +519,9 @@
       },
       "FileFlux": {
         "type": "CentralTransitive",
-        "requested": "[0.4.6, )",
-        "resolved": "0.4.6",
-        "contentHash": "6W8BRVZ/9p7BTTCmJUDXuZHCVlrQhUorNorNhmzhSPsoJBiUSG9Rpo56JUg3t2MPLjJdNDGIrQM7OjKNa85M2g==",
+        "requested": "[0.4.7, )",
+        "resolved": "0.4.7",
+        "contentHash": "qiAZjzp8igoSTRSqzNwyn7QJk+pol2feF1EyTVxDMGZ9K2BsdbjOelIR4uZojrgqGUMSUapwKAmr2y6kELsxSA==",
         "dependencies": {
           "CsvHelper": "33.1.0",
           "DocumentFormat.OpenXml": "3.3.0",
@@ -550,7 +550,7 @@
         "type": "CentralTransitive",
         "requested": "[0.3.1, )",
         "resolved": "0.3.1",
-        "contentHash": "kbYe32KCBONBItgvKf28YGuDOTfvAp1VQ5UkTBHvfiWnQutKdIGkq9WwjD5ckb2qdA1C48X4uk8LTGeJYay+rw==",
+        "contentHash": "Q2QoU32BqSVMhEAKTyF3tt3SVtrxzVX2biChEL/0HGBjQU2cLK/b2d7VQjsIZWmQxzf6LRu/rH6ZwMewG2GJkw==",
         "dependencies": {
           "Microsoft.ML.OnnxRuntime": "1.23.2",
           "System.Numerics.Tensors": "10.0.0"

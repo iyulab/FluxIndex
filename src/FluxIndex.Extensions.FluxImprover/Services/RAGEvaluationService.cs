@@ -1,4 +1,4 @@
-using FluxImprover.Abstractions.Options;
+using FluxImprover.Options;
 using FluxImprover.Evaluation;
 
 namespace FluxIndex.Extensions.FluxImprover.Services;
