@@ -18,7 +18,7 @@ public static class FileFluxServiceCollectionExtensions
     /// <returns>Service collection for chaining</returns>
     public static IServiceCollection AddFileFluxIntegration(this IServiceCollection services, Action<FileFluxOptions>? configureOptions = null)
     {
-        // Register FileFlux services (uses FileFlux 0.4.6 API) - using FileFlux's own extension method
+        // Register FileFlux services (uses FileFlux 0.4.8 API) - using FileFlux's own extension method
         services.AddFileFlux();
 
         // Register FluxIndex's text completion adapter for FileFlux
@@ -45,7 +45,7 @@ public static class FileFluxServiceCollectionExtensions
 public class FileFluxOptions
 {
     /// <summary>
-    /// Default chunking strategy (Auto, Smart, MemoryOptimizedIntelligent, Intelligent, Semantic, Paragraph, FixedSize)
+    /// Default chunking strategy (Auto, Smart, MemoryOptimizedIntelligent, Intelligent, Semantic, Paragraph, FixedSize, Hierarchical, PageLevel)
     /// </summary>
     public string DefaultChunkingStrategy { get; set; } = ChunkingStrategies.Auto;
 
@@ -58,6 +58,22 @@ public class FileFluxOptions
     /// Default overlap size between chunks in tokens
     /// </summary>
     public int DefaultOverlapSize { get; set; } = 128;
+
+    /// <summary>
+    /// Default language code for language-aware chunking (e.g., "ko", "en", "zh", "ja", "ar")
+    /// FileFlux 0.4.x supports language-aware processing with automatic language detection
+    /// </summary>
+    public string? DefaultLanguage { get; set; }
+
+    /// <summary>
+    /// Enable metadata enrichment by default (requires ITextCompletionService)
+    /// </summary>
+    public bool EnableMetadataEnrichment { get; set; } = false;
+
+    /// <summary>
+    /// Default metadata schema (General, Academic, Technical, Legal, Medical)
+    /// </summary>
+    public string DefaultMetadataSchema { get; set; } = "General";
 
     /// <summary>
     /// Enable streaming API for memory-efficient processing of large files (recommended for files > 10MB)

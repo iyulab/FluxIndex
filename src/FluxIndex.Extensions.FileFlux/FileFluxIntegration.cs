@@ -31,7 +31,7 @@ public class FileFluxIntegration
     }
 
     /// <summary>
-    /// Process a file with FileFlux and index with FluxIndex using FileFlux 0.4.6 API
+    /// Process a file with FileFlux and index with FluxIndex using FileFlux 0.4.x API
     /// </summary>
     public async Task<string> ProcessAndIndexAsync(
         string filePath,
@@ -48,10 +48,14 @@ public class FileFluxIntegration
         {
             ChunkingStrategy = _options.DefaultChunkingStrategy,
             MaxChunkSize = _options.DefaultMaxChunkSize,
-            OverlapSize = _options.DefaultOverlapSize
+            OverlapSize = _options.DefaultOverlapSize,
+            Language = _options.DefaultLanguage,
+            EnableMetadataEnrichment = _options.EnableMetadataEnrichment,
+            MetadataSchema = _options.DefaultMetadataSchema
         };
 
-        _logger.LogInformation("Processing file with FileFlux: {FilePath}", filePath);
+        _logger.LogInformation("Processing file with FileFlux: {FilePath}, Language: {Language}",
+            filePath, options.Language ?? "auto");
 
         try
         {
@@ -61,6 +65,9 @@ public class FileFluxIntegration
                 MaxChunkSize = options.MaxChunkSize,
                 OverlapSize = options.OverlapSize
             };
+
+            // Add custom properties for language and metadata enrichment
+            ApplyCustomProperties(chunkingOptions, options);
 
             var fluxIndexChunks = new List<FluxIndexDocumentChunk>();
             var chunkIndex = 0;
@@ -92,8 +99,10 @@ public class FileFluxIntegration
             document.Metadata["file_extension"] = Path.GetExtension(filePath);
             document.Metadata["processed_at"] = DateTime.UtcNow.ToString("O");
             document.Metadata["processor"] = "FileFlux";
-            document.Metadata["fileflux_version"] = "0.4.6";
+            document.Metadata["fileflux_version"] = "0.4.7";
             document.Metadata["strategy"] = options.ChunkingStrategy;
+            if (!string.IsNullOrEmpty(options.Language))
+                document.Metadata["language"] = options.Language;
 
             // Index with FluxIndex
             var indexedDocumentId = await _indexer.IndexDocumentAsync(
@@ -135,10 +144,14 @@ public class FileFluxIntegration
         {
             ChunkingStrategy = _options.DefaultChunkingStrategy,
             MaxChunkSize = _options.DefaultMaxChunkSize,
-            OverlapSize = _options.DefaultOverlapSize
+            OverlapSize = _options.DefaultOverlapSize,
+            Language = _options.DefaultLanguage,
+            EnableMetadataEnrichment = _options.EnableMetadataEnrichment,
+            MetadataSchema = _options.DefaultMetadataSchema
         };
 
-        _logger.LogInformation("Processing file with FileFlux streaming API: {FilePath}", filePath);
+        _logger.LogInformation("Processing file with FileFlux streaming API: {FilePath}, Language: {Language}",
+            filePath, options.Language ?? "auto");
 
         try
         {
@@ -148,6 +161,9 @@ public class FileFluxIntegration
                 MaxChunkSize = options.MaxChunkSize,
                 OverlapSize = options.OverlapSize
             };
+
+            // Add custom properties for language and metadata enrichment
+            ApplyCustomProperties(chunkingOptions, options);
 
             var documentId = Path.GetFileNameWithoutExtension(filePath);
             var fluxIndexChunks = new List<FluxIndexDocumentChunk>();
@@ -202,9 +218,11 @@ public class FileFluxIntegration
                 document.Metadata["file_extension"] = Path.GetExtension(filePath);
                 document.Metadata["processed_at"] = DateTime.UtcNow.ToString("O");
                 document.Metadata["processor"] = "FileFlux";
-                document.Metadata["fileflux_version"] = "0.4.6";
+                document.Metadata["fileflux_version"] = "0.4.7";
                 document.Metadata["strategy"] = options.ChunkingStrategy;
                 document.Metadata["streaming_mode"] = true;
+                if (!string.IsNullOrEmpty(options.Language))
+                    document.Metadata["language"] = options.Language;
 
                 // Index with FluxIndex
                 var indexedDocumentId = await _indexer.IndexDocumentAsync(
@@ -262,6 +280,26 @@ public class FileFluxIntegration
         {
             _logger.LogError(ex, "Failed to batch index chunks for document {DocumentId}", documentId);
             // Don't throw - continue processing
+        }
+    }
+
+    /// <summary>
+    /// Apply custom properties to FileFlux ChunkingOptions based on ProcessingOptions
+    /// Leverages FileFlux 0.4.x language profiles and metadata enrichment
+    /// </summary>
+    private void ApplyCustomProperties(ChunkingOptions chunkingOptions, ProcessingOptions options)
+    {
+        // Language-aware chunking (FileFlux 0.4.x - 11 language profiles)
+        if (!string.IsNullOrEmpty(options.Language))
+        {
+            chunkingOptions.CustomProperties["language"] = options.Language;
+        }
+
+        // Metadata enrichment settings
+        if (options.EnableMetadataEnrichment)
+        {
+            chunkingOptions.CustomProperties["enableMetadataEnrichment"] = true;
+            chunkingOptions.CustomProperties["metadataSchema"] = options.MetadataSchema;
         }
     }
 
@@ -361,7 +399,7 @@ public class FileFluxIntegration
 public class ProcessingOptions
 {
     /// <summary>
-    /// Chunking strategy to use (Auto, Smart, Intelligent, Semantic, Paragraph, FixedSize)
+    /// Chunking strategy to use (Auto, Smart, Intelligent, Semantic, Paragraph, FixedSize, Hierarchical, PageLevel)
     /// </summary>
     public string ChunkingStrategy { get; set; } = ChunkingStrategies.Auto;
 
@@ -374,6 +412,22 @@ public class ProcessingOptions
     /// Overlap size between chunks in tokens
     /// </summary>
     public int OverlapSize { get; set; } = 128;
+
+    /// <summary>
+    /// Language code for language-aware chunking (e.g., "ko", "en", "zh", "ja", "ar")
+    /// FileFlux 0.4.x supports language-aware processing with sentence boundary detection
+    /// </summary>
+    public string? Language { get; set; }
+
+    /// <summary>
+    /// Enable metadata enrichment with AI-powered extraction
+    /// </summary>
+    public bool EnableMetadataEnrichment { get; set; } = false;
+
+    /// <summary>
+    /// Metadata schema for enrichment (General, Academic, Technical, Legal, Medical)
+    /// </summary>
+    public string MetadataSchema { get; set; } = "General";
 }
 
 /// <summary>
