@@ -58,6 +58,13 @@ jobs:
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         echo "📦 Version: $VERSION"
 
+    # Clear NuGet cache to avoid hash validation issues
+    - name: Clear NuGet cache
+      run: |
+        echo "🧹 Clearing NuGet cache to avoid hash validation issues..."
+        dotnet nuget locals all --clear
+        echo "✅ NuGet cache cleared"
+
     # Restore, Build, Test
     - name: Restore dependencies
       run: |
