@@ -385,4 +385,4 @@ nupkgs/
 .serena/
 local-docs/
 FluxIndex.Benchmarks/
-research-docs/
+research-docs/nuget.local.config
