@@ -442,7 +442,7 @@
       "fluxindex.ai.localembedder": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.Core": "[0.2.19, )",
+          "FluxIndex.Core": "[0.2.20, )",
           "LocalEmbedder": "[0.3.1, )",
           "Microsoft.Extensions.Caching.Memory": "[10.0.0, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
@@ -454,7 +454,7 @@
         "type": "Project",
         "dependencies": {
           "Azure.AI.OpenAI": "[2.1.0, )",
-          "FluxIndex.Core": "[0.2.19, )",
+          "FluxIndex.Core": "[0.2.20, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.0, )"
         }
@@ -471,8 +471,8 @@
         "type": "Project",
         "dependencies": {
           "FileFlux": "[0.5.0, )",
-          "FluxIndex.Core": "[0.2.19, )",
-          "FluxIndex.SDK": "[0.2.19, )",
+          "FluxIndex.Core": "[0.2.20, )",
+          "FluxIndex.SDK": "[0.2.20, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.0, )"
         }
@@ -480,8 +480,8 @@
       "fluxindex.extensions.webflux": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.Core": "[0.2.19, )",
-          "FluxIndex.SDK": "[0.2.19, )",
+          "FluxIndex.Core": "[0.2.20, )",
+          "FluxIndex.SDK": "[0.2.20, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.0, )",
           "WebFlux": "[0.1.7, )"
@@ -490,10 +490,10 @@
       "fluxindex.sdk": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.AI.LocalEmbedder": "[0.2.19, )",
-          "FluxIndex.AI.OpenAI": "[0.2.19, )",
-          "FluxIndex.Core": "[0.2.19, )",
-          "FluxIndex.Storage.SQLite": "[0.2.19, )",
+          "FluxIndex.AI.LocalEmbedder": "[0.2.20, )",
+          "FluxIndex.AI.OpenAI": "[0.2.20, )",
+          "FluxIndex.Core": "[0.2.20, )",
+          "FluxIndex.Storage.SQLite": "[0.2.20, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
           "Microsoft.Extensions.Http": "[10.0.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.0, )"
@@ -502,7 +502,7 @@
       "fluxindex.storage.sqlite": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.Core": "[0.2.19, )",
+          "FluxIndex.Core": "[0.2.20, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.0, )",
           "Microsoft.Extensions.Configuration.Binder": "[10.0.0, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
