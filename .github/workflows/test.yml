@@ -21,8 +21,10 @@ jobs:
       with:
         dotnet-version: '10.0.x'
 
-    - name: Clear NuGet cache
-      run: dotnet nuget locals all --clear
+    - name: Clear NuGet cache and lock files
+      run: |
+        dotnet nuget locals all --clear
+        find . -name "packages.lock.json" -delete
 
     - name: Restore dependencies
       run: dotnet restore
@@ -54,8 +56,10 @@ jobs:
       with:
         dotnet-version: '10.0.x'
 
-    - name: Clear NuGet cache
-      run: dotnet nuget locals all --clear
+    - name: Clear NuGet cache and lock files
+      run: |
+        dotnet nuget locals all --clear
+        find . -name "packages.lock.json" -delete
 
     - name: Restore dependencies
       run: dotnet restore
