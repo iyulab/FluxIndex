@@ -61,6 +61,18 @@ public record HybridSearchResult
     /// 융합 메타데이터
     /// </summary>
     public Dictionary<string, object> FusionMetadata { get; init; } = new();
+
+    /// <summary>
+    /// Confidence score for the result (0.0 - 1.0)
+    /// Higher values indicate more reliable results based on multiple signals
+    /// </summary>
+    public double Confidence { get; init; }
+
+    /// <summary>
+    /// Indicates whether this result is considered highly reliable
+    /// Based on confidence threshold and source diversity
+    /// </summary>
+    public bool IsHighConfidence => Confidence >= 0.7 && Source == SearchSource.Both;
 }
 
 /// <summary>
@@ -317,6 +329,12 @@ public enum FusionMethod
     /// 조화 평균
     /// </summary>
     HarmonicMean,
+
+    /// <summary>
+    /// Relative Score Fusion - preserves score magnitude information
+    /// Normalizes scores within each retriever before fusion
+    /// </summary>
+    RelativeScoreFusion,
 
     /// <summary>
     /// 학습된 융합 (향후 확장)

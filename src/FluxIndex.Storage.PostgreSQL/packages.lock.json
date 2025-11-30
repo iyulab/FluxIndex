@@ -163,16 +163,16 @@
       "fluxindex.core": {
         "type": "Project",
         "dependencies": {
-          "FileFlux": "[0.4.7, )",
+          "FileFlux": "[0.5.0, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.0, )"
         }
       },
       "FileFlux": {
         "type": "CentralTransitive",
-        "requested": "[0.4.7, )",
-        "resolved": "0.4.7",
-        "contentHash": "qiAZjzp8igoSTRSqzNwyn7QJk+pol2feF1EyTVxDMGZ9K2BsdbjOelIR4uZojrgqGUMSUapwKAmr2y6kELsxSA==",
+        "requested": "[0.5.0, )",
+        "resolved": "0.5.0",
+        "contentHash": "Ar65O9Dz/Q+ztaxF+J8LgNPuGQdk+9AF9l0q3wbNvLyoC+d9daQkCyLAYlj9htwMZZFqG0wjbfxSaBwZaFnUXg==",
         "dependencies": {
           "CsvHelper": "33.1.0",
           "DocumentFormat.OpenXml": "3.3.0",

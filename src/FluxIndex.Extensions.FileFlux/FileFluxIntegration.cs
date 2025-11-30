@@ -1,4 +1,5 @@
 ﻿using FileFlux;
+using FileFlux.Core;
 using FileFlux.Domain;
 using FluxIndex.Core.Domain.Entities;
 using FluxIndex.SDK;
@@ -10,21 +11,30 @@ namespace FluxIndex.Extensions.FileFlux;
 
 /// <summary>
 /// FileFlux integration service for FluxIndex - bridges FileFlux document processing with FluxIndex indexing
+/// Leverages FileFlux 0.4.8 ILanguageProfileProvider for intelligent language-aware processing
 /// </summary>
 public class FileFluxIntegration
 {
     private readonly IDocumentProcessor _fileFluxProcessor;
+    private readonly ILanguageProfileProvider _languageProfileProvider;
     private readonly Indexer _indexer;
     private readonly ILogger<FileFluxIntegration> _logger;
     private readonly FileFluxOptions _options;
 
+    /// <summary>
+    /// Current FileFlux version for metadata tracking
+    /// </summary>
+    private const string FileFluxVersion = "0.4.8";
+
     public FileFluxIntegration(
         IDocumentProcessor fileFluxProcessor,
+        ILanguageProfileProvider languageProfileProvider,
         Indexer indexer,
         ILogger<FileFluxIntegration> logger,
         Microsoft.Extensions.Options.IOptions<FileFluxOptions>? options = null)
     {
         _fileFluxProcessor = fileFluxProcessor ?? throw new ArgumentNullException(nameof(fileFluxProcessor));
+        _languageProfileProvider = languageProfileProvider ?? throw new ArgumentNullException(nameof(languageProfileProvider));
         _indexer = indexer ?? throw new ArgumentNullException(nameof(indexer));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _options = options?.Value ?? new FileFluxOptions();
@@ -99,10 +109,16 @@ public class FileFluxIntegration
             document.Metadata["file_extension"] = Path.GetExtension(filePath);
             document.Metadata["processed_at"] = DateTime.UtcNow.ToString("O");
             document.Metadata["processor"] = "FileFlux";
-            document.Metadata["fileflux_version"] = "0.4.7";
+            document.Metadata["fileflux_version"] = FileFluxVersion;
             document.Metadata["strategy"] = options.ChunkingStrategy;
-            if (!string.IsNullOrEmpty(options.Language))
-                document.Metadata["language"] = options.Language;
+
+            // Add language profile metadata (FileFlux 0.4.8)
+            var effectiveLanguage = DetermineEffectiveLanguage(options.Language, document.Content);
+            if (!string.IsNullOrEmpty(effectiveLanguage))
+            {
+                document.Metadata["language"] = effectiveLanguage;
+                AddLanguageProfileMetadata(document.Metadata, effectiveLanguage);
+            }
 
             // Index with FluxIndex
             var indexedDocumentId = await _indexer.IndexDocumentAsync(
@@ -218,11 +234,17 @@ public class FileFluxIntegration
                 document.Metadata["file_extension"] = Path.GetExtension(filePath);
                 document.Metadata["processed_at"] = DateTime.UtcNow.ToString("O");
                 document.Metadata["processor"] = "FileFlux";
-                document.Metadata["fileflux_version"] = "0.4.7";
+                document.Metadata["fileflux_version"] = FileFluxVersion;
                 document.Metadata["strategy"] = options.ChunkingStrategy;
                 document.Metadata["streaming_mode"] = true;
-                if (!string.IsNullOrEmpty(options.Language))
-                    document.Metadata["language"] = options.Language;
+
+                // Add language profile metadata (FileFlux 0.4.8)
+                var effectiveLanguage = DetermineEffectiveLanguage(options.Language, document.Content);
+                if (!string.IsNullOrEmpty(effectiveLanguage))
+                {
+                    document.Metadata["language"] = effectiveLanguage;
+                    AddLanguageProfileMetadata(document.Metadata, effectiveLanguage);
+                }
 
                 // Index with FluxIndex
                 var indexedDocumentId = await _indexer.IndexDocumentAsync(
@@ -285,14 +307,19 @@ public class FileFluxIntegration
 
     /// <summary>
     /// Apply custom properties to FileFlux ChunkingOptions based on ProcessingOptions
-    /// Leverages FileFlux 0.4.x language profiles and metadata enrichment
+    /// Leverages FileFlux 0.4.8 language profiles and metadata enrichment
     /// </summary>
     private void ApplyCustomProperties(ChunkingOptions chunkingOptions, ProcessingOptions options)
     {
-        // Language-aware chunking (FileFlux 0.4.x - 11 language profiles)
+        // Language-aware chunking (FileFlux 0.4.8 - 11 language profiles)
         if (!string.IsNullOrEmpty(options.Language))
         {
             chunkingOptions.CustomProperties["language"] = options.Language;
+        }
+        else if (options.EnableLanguageAutoDetection)
+        {
+            // Signal FileFlux to use auto-detection via ILanguageProfileProvider
+            chunkingOptions.CustomProperties["enableLanguageAutoDetection"] = true;
         }
 
         // Metadata enrichment settings
@@ -300,6 +327,62 @@ public class FileFluxIntegration
         {
             chunkingOptions.CustomProperties["enableMetadataEnrichment"] = true;
             chunkingOptions.CustomProperties["metadataSchema"] = options.MetadataSchema;
+        }
+    }
+
+    /// <summary>
+    /// Determine effective language using explicit setting or auto-detection
+    /// </summary>
+    private string? DetermineEffectiveLanguage(string? explicitLanguage, string? contentSample)
+    {
+        // Use explicit language if provided
+        if (!string.IsNullOrEmpty(explicitLanguage))
+        {
+            return explicitLanguage;
+        }
+
+        // Auto-detect if enabled and content is available
+        if (_options.EnableLanguageAutoDetection && !string.IsNullOrEmpty(contentSample))
+        {
+            try
+            {
+                var detectedProfile = _languageProfileProvider.DetectAndGetProfile(contentSample);
+                _logger.LogDebug("Auto-detected language: {Language} ({Script})",
+                    detectedProfile.LanguageCode, detectedProfile.ScriptCode);
+                return detectedProfile.LanguageCode;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Language auto-detection failed, using default");
+                return _languageProfileProvider.DefaultProfile.LanguageCode;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Add extended language profile metadata to document metadata (FileFlux 0.4.8)
+    /// </summary>
+    private void AddLanguageProfileMetadata(Dictionary<string, object> metadata, string languageCode)
+    {
+        if (!_options.IncludeLanguageProfileMetadata)
+            return;
+
+        try
+        {
+            var profile = _languageProfileProvider.GetProfile(languageCode);
+
+            metadata["ff_language_name"] = profile.LanguageName;
+            metadata["ff_script_code"] = profile.ScriptCode;
+            metadata["ff_writing_direction"] = profile.WritingDirection.ToString();
+
+            _logger.LogDebug("Added language profile metadata: {Language} ({Script}, {Direction})",
+                profile.LanguageName, profile.ScriptCode, profile.WritingDirection);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to add language profile metadata for {LanguageCode}", languageCode);
         }
     }
 
@@ -415,9 +498,16 @@ public class ProcessingOptions
 
     /// <summary>
     /// Language code for language-aware chunking (e.g., "ko", "en", "zh", "ja", "ar")
-    /// FileFlux 0.4.x supports language-aware processing with sentence boundary detection
+    /// FileFlux 0.4.8 supports 11 language profiles with comprehensive text segmentation
+    /// Set to null or empty to enable automatic language detection
     /// </summary>
     public string? Language { get; set; }
+
+    /// <summary>
+    /// Enable automatic language detection using Unicode script analysis (FileFlux 0.4.8)
+    /// When enabled and Language is not set, FileFlux will auto-detect the document language
+    /// </summary>
+    public bool EnableLanguageAutoDetection { get; set; } = true;
 
     /// <summary>
     /// Enable metadata enrichment with AI-powered extraction

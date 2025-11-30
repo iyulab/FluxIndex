@@ -16,13 +16,53 @@ public class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
 {
     private readonly ILogger<QueryComplexityAnalyzer> _logger;
 
-    // 기술 용어 패턴
-    private static readonly HashSet<string> TechnicalTerms = new(StringComparer.OrdinalIgnoreCase)
+    // Technical terms by domain for enhanced analysis
+    private static readonly Dictionary<string, HashSet<string>> TechnicalTermsByDomain = new()
     {
-        "API", "HTTP", "JSON", "SQL", "AI", "ML", "CNN", "RNN", "LSTM", "GPU", "CPU",
-        "알고리즘", "데이터베이스", "프레임워크", "라이브러리", "인터페이스",
-        "machine learning", "deep learning", "neural network", "transformer"
+        ["programming"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "API", "REST", "GraphQL", "HTTP", "HTTPS", "JSON", "XML", "SQL", "NoSQL",
+            "OAuth", "JWT", "CORS", "CRUD", "ORM", "MVC", "MVVM", "DI", "IoC",
+            "async", "await", "callback", "promise", "thread", "mutex", "semaphore",
+            "lambda", "closure", "interface", "abstract", "polymorphism", "inheritance",
+            "microservices", "monolith", "serverless", "container", "kubernetes", "docker",
+            "algorithm", "data structure", "hash", "linked list", "binary tree", "graph"
+        },
+        ["ai_ml"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "AI", "ML", "NLP", "LLM", "GPT", "BERT", "transformer", "embedding",
+            "vector", "RAG", "retrieval", "generation", "fine-tuning", "prompt",
+            "neural", "deep learning", "machine learning", "classification",
+            "regression", "clustering", "attention", "encoder", "decoder",
+            "CNN", "RNN", "LSTM", "GAN", "diffusion", "tokenization",
+            "cross-encoder", "bi-encoder", "reranking", "semantic search"
+        },
+        ["database"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "database", "table", "index", "query", "join", "transaction", "ACID",
+            "normalization", "denormalization", "partition", "shard", "replica",
+            "PostgreSQL", "MySQL", "MongoDB", "Redis", "Elasticsearch", "pgvector",
+            "SQLite", "indexing", "B-tree", "LSM", "MVCC", "isolation level"
+        },
+        ["devops"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "CI/CD", "pipeline", "deployment", "infrastructure", "terraform",
+            "ansible", "helm", "ingress", "load balancer", "auto-scaling",
+            "monitoring", "logging", "metrics", "tracing", "observability",
+            "container", "orchestration", "service mesh", "gitops"
+        },
+        ["korean"] = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "알고리즘", "데이터베이스", "프레임워크", "라이브러리", "인터페이스",
+            "임베딩", "벡터", "시맨틱", "머신러닝", "딥러닝", "인공지능",
+            "클라우드", "컨테이너", "마이크로서비스", "검색", "색인"
+        }
     };
+
+    // Legacy flat set for backward compatibility
+    private static readonly HashSet<string> TechnicalTerms = TechnicalTermsByDomain.Values
+        .SelectMany(x => x)
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     // 질문 단어
     private static readonly HashSet<string> QuestionWords = new(StringComparer.OrdinalIgnoreCase)
@@ -75,6 +115,8 @@ public class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
         await Task.CompletedTask; // 비동기 인터페이스 준수
 
         var tokens = TokenizeQuery(query);
+        var technicalDomains = DetectTechnicalDomains(query, tokens);
+
         var analysis = new QueryAnalysis
         {
             Type = DetermineQueryType(query, tokens),
@@ -85,6 +127,7 @@ public class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
             Keywords = ExtractKeywords(tokens),
             Intent = DetermineIntent(query, tokens),
             Language = DetectLanguage(query),
+            TechnicalDomains = technicalDomains,
             RequiresReasoning = RequiresReasoning(query, tokens),
             HasTemporalContext = HasTemporalContext(tokens),
             HasComparativeContext = HasComparativeContext(tokens),
@@ -97,6 +140,7 @@ public class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
                 ["char_count"] = query.Length,
                 ["question_words"] = tokens.Count(t => QuestionWords.Contains(t)),
                 ["technical_terms"] = tokens.Count(t => TechnicalTerms.Contains(t)),
+                ["technical_domains"] = technicalDomains,
                 ["analyzed_at"] = DateTime.UtcNow
             }
         };
@@ -139,6 +183,30 @@ public class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
     }
 
     #region Private Methods
+
+    private List<string> DetectTechnicalDomains(string query, string[] tokens)
+    {
+        var domains = new List<string>();
+        var lowerQuery = query.ToLowerInvariant();
+
+        foreach (var (domain, terms) in TechnicalTermsByDomain)
+        {
+            // Check individual tokens
+            var tokenMatches = tokens.Count(t => terms.Contains(t));
+
+            // Check multi-word terms in the query
+            var multiWordMatches = terms
+                .Where(term => term.Contains(' '))
+                .Count(term => lowerQuery.Contains(term.ToLowerInvariant()));
+
+            if (tokenMatches > 0 || multiWordMatches > 0)
+            {
+                domains.Add(domain);
+            }
+        }
+
+        return domains;
+    }
 
     private string[] TokenizeQuery(string query)
     {
@@ -374,20 +442,33 @@ public class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
 
     private SearchStrategy RecommendSimpleStrategy(QueryAnalysis analysis)
     {
-        // 단순한 쿼리는 벡터 검색이 더 효과적
+        // Technical domain queries benefit from keyword matching
+        if (analysis.ContainsTechnicalTerms)
+            return SearchStrategy.Hybrid;
+
+        // Simple queries work well with vector search
         return SearchStrategy.DirectVector;
     }
 
     private SearchStrategy RecommendModerateStrategy(QueryAnalysis analysis)
     {
-        // 보통 복잡도는 하이브리드 검색이 최적
-        return analysis.HasComparativeContext
-            ? SearchStrategy.MultiQuery
-            : SearchStrategy.Hybrid;
+        // AI/ML domain queries benefit from HyDE
+        if (analysis.TechnicalDomains.Contains("ai_ml"))
+            return SearchStrategy.HyDE;
+
+        // Comparative queries need multi-query
+        if (analysis.HasComparativeContext)
+            return SearchStrategy.MultiQuery;
+
+        return SearchStrategy.Hybrid;
     }
 
     private SearchStrategy RecommendComplexStrategy(QueryAnalysis analysis)
     {
+        // Multi-domain technical queries
+        if (analysis.TechnicalDomains.Count >= 2)
+            return SearchStrategy.TwoStage;
+
         if (analysis.RequiresReasoning)
             return SearchStrategy.TwoStage;
 
@@ -402,11 +483,164 @@ public class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
         if (analysis.IsMultiHop && analysis.RequiresReasoning)
             return SearchStrategy.SelfRAG;
 
+        if (analysis.RequiresReasoning && analysis.TechnicalDomains.Count > 0)
+            return SearchStrategy.SelfRAG;
+
         if (analysis.RequiresReasoning)
             return SearchStrategy.TwoStage;
 
         return SearchStrategy.Adaptive;
     }
 
+    /// <summary>
+    /// Maps QueryAnalysis to HybridSearchOptions for integration with HybridSearchService
+    /// </summary>
+    public HybridSearchRecommendation GetHybridSearchRecommendation(QueryAnalysis analysis)
+    {
+        var strategy = RecommendStrategy(analysis);
+
+        // Calculate optimal weights based on query characteristics
+        var (vectorWeight, sparseWeight) = CalculateOptimalWeights(analysis);
+
+        // Select fusion method
+        var fusionMethod = SelectFusionMethod(analysis, strategy);
+
+        return new HybridSearchRecommendation
+        {
+            Strategy = strategy,
+            VectorWeight = vectorWeight,
+            SparseWeight = sparseWeight,
+            FusionMethod = fusionMethod,
+            UseQuantizedSearch = analysis.Complexity >= ComplexityLevel.Complex,
+            Confidence = analysis.ConfidenceScore,
+            Reasoning = GenerateReasoning(analysis, strategy, fusionMethod)
+        };
+    }
+
+    private (double VectorWeight, double SparseWeight) CalculateOptimalWeights(QueryAnalysis analysis)
+    {
+        // Base weights
+        double vectorWeight = 0.6;
+        double sparseWeight = 0.4;
+
+        // Technical terms favor keyword matching
+        if (analysis.ContainsTechnicalTerms)
+        {
+            sparseWeight += 0.1;
+            vectorWeight -= 0.1;
+        }
+
+        // Reasoning queries favor semantic understanding
+        if (analysis.RequiresReasoning)
+        {
+            vectorWeight += 0.15;
+            sparseWeight -= 0.15;
+        }
+
+        // High specificity favors keyword matching
+        if (analysis.Specificity > 0.6)
+        {
+            sparseWeight += 0.1;
+            vectorWeight -= 0.1;
+        }
+
+        // Long queries favor semantic search
+        if (analysis.Keywords.Count > 8)
+        {
+            vectorWeight += 0.1;
+            sparseWeight -= 0.1;
+        }
+
+        // Ensure valid range and normalize
+        vectorWeight = Math.Clamp(vectorWeight, 0.2, 0.9);
+        sparseWeight = Math.Clamp(sparseWeight, 0.1, 0.8);
+
+        var total = vectorWeight + sparseWeight;
+        return (vectorWeight / total, sparseWeight / total);
+    }
+
+    private string SelectFusionMethod(QueryAnalysis analysis, SearchStrategy strategy)
+    {
+        // Technical queries benefit from weighted sum
+        if (analysis.ContainsTechnicalTerms && analysis.Specificity > 0.5)
+            return "WeightedSum";
+
+        // Complex queries benefit from RSF
+        if (analysis.Complexity >= ComplexityLevel.Complex)
+            return "RelativeScoreFusion";
+
+        // Multi-hop needs exact matches - use product fusion
+        if (analysis.IsMultiHop)
+            return "Product";
+
+        // Default to RRF for robustness
+        return "RRF";
+    }
+
+    private string GenerateReasoning(QueryAnalysis analysis, SearchStrategy strategy, string fusionMethod)
+    {
+        var parts = new List<string>
+        {
+            $"Tokens: {analysis.Keywords.Count}",
+            $"Complexity: {analysis.Complexity}",
+            $"Intent: {analysis.Intent}",
+            $"Specificity: {analysis.Specificity:F2}"
+        };
+
+        if (analysis.TechnicalDomains.Count > 0)
+            parts.Add($"Domains: {string.Join(", ", analysis.TechnicalDomains)}");
+
+        if (analysis.RequiresReasoning)
+            parts.Add("RequiresReasoning");
+
+        if (analysis.IsMultiHop)
+            parts.Add("MultiHop");
+
+        parts.Add($"→ {strategy}, {fusionMethod}");
+
+        return string.Join("; ", parts);
+    }
+
     #endregion
+}
+
+/// <summary>
+/// Recommendation for hybrid search configuration
+/// </summary>
+public class HybridSearchRecommendation
+{
+    /// <summary>
+    /// Recommended search strategy
+    /// </summary>
+    public SearchStrategy Strategy { get; init; }
+
+    /// <summary>
+    /// Recommended vector search weight (0.0 - 1.0)
+    /// </summary>
+    public double VectorWeight { get; init; }
+
+    /// <summary>
+    /// Recommended sparse/keyword search weight (0.0 - 1.0)
+    /// </summary>
+    public double SparseWeight { get; init; }
+
+    /// <summary>
+    /// Recommended fusion method name
+    /// </summary>
+    public string FusionMethod { get; init; } = "RRF";
+
+    /// <summary>
+    /// Whether to use quantized search for performance
+    /// </summary>
+    public bool UseQuantizedSearch { get; init; }
+
+    /// <summary>
+    /// Confidence in the recommendation (0.0 - 1.0)
+    /// </summary>
+    public double Confidence { get; init; }
+
+    /// <summary>
+    /// Reasoning explanation for the recommendation
+    /// </summary>
+    public string Reasoning { get; init; } = string.Empty;
 }

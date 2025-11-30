@@ -367,6 +367,7 @@ public class HybridSearchService : IHybridSearchService
             FusionMethod.Product => FuseWithProduct(vectorResults, sparseResults, options),
             FusionMethod.Maximum => FuseWithMaximum(vectorResults, sparseResults, options),
             FusionMethod.HarmonicMean => FuseWithHarmonicMean(vectorResults, sparseResults, options),
+            FusionMethod.RelativeScoreFusion => FuseWithRelativeScoreFusion(vectorResults, sparseResults, options),
             _ => FuseWithRRF(vectorResults, sparseResults, options)
         };
     }
@@ -632,6 +633,127 @@ public class HybridSearchService : IHybridSearchService
         }
 
         return OrderAndLimitResults(fusedResults, options);
+    }
+
+    private IReadOnlyList<HybridSearchResult> FuseWithRelativeScoreFusion(
+        IReadOnlyList<VectorSearchResult> vectorResults,
+        IReadOnlyList<SparseSearchResult> sparseResults,
+        HybridSearchOptions options)
+    {
+        // Relative Score Fusion (RSF) preserves score magnitude information
+        // by normalizing scores within each retriever before fusion
+
+        var fusedResults = new Dictionary<string, HybridSearchResult>();
+
+        // Calculate min-max normalization bounds for each retriever
+        var vectorScores = vectorResults.Select(r => r.Score).ToList();
+        var sparseScores = sparseResults.Select(r => r.Score).ToList();
+
+        var (vectorMin, vectorMax) = vectorScores.Count > 0
+            ? (vectorScores.Min(), vectorScores.Max())
+            : (0.0, 1.0);
+        var (sparseMin, sparseMax) = sparseScores.Count > 0
+            ? (sparseScores.Min(), sparseScores.Max())
+            : (0.0, 1.0);
+
+        // Avoid division by zero
+        var vectorRange = vectorMax - vectorMin;
+        var sparseRange = sparseMax - sparseMin;
+        if (vectorRange == 0) vectorRange = 1.0;
+        if (sparseRange == 0) sparseRange = 1.0;
+
+        // Process vector results
+        for (var i = 0; i < vectorResults.Count; i++)
+        {
+            var result = vectorResults[i];
+            var normalizedScore = (result.Score - vectorMin) / vectorRange;
+            var weightedScore = normalizedScore * options.VectorWeight;
+
+            fusedResults[result.DocumentChunk.Id] = new HybridSearchResult
+            {
+                Chunk = result.DocumentChunk,
+                FusedScore = weightedScore,
+                VectorScore = result.Score,
+                SparseScore = 0.0,
+                VectorRank = i + 1,
+                SparseRank = int.MaxValue,
+                FusionMethod = FusionMethod.RelativeScoreFusion,
+                Source = SearchSource.Vector,
+                MatchedTerms = Array.Empty<string>(),
+                Confidence = CalculateConfidence(normalizedScore, 0.0, SearchSource.Vector)
+            };
+        }
+
+        // Process sparse results and merge with existing
+        for (var i = 0; i < sparseResults.Count; i++)
+        {
+            var result = sparseResults[i];
+            var normalizedScore = (result.Score - sparseMin) / sparseRange;
+            var weightedScore = normalizedScore * options.SparseWeight;
+
+            if (fusedResults.TryGetValue(result.Chunk.Id, out var existing))
+            {
+                // Combine scores for results found in both
+                var vectorNormalized = (existing.VectorScore - vectorMin) / vectorRange;
+                var combinedScore = vectorNormalized * options.VectorWeight + weightedScore;
+
+                fusedResults[result.Chunk.Id] = existing with
+                {
+                    FusedScore = combinedScore,
+                    SparseScore = result.Score,
+                    SparseRank = i + 1,
+                    Source = SearchSource.Both,
+                    MatchedTerms = result.MatchedTerms,
+                    Confidence = CalculateConfidence(vectorNormalized, normalizedScore, SearchSource.Both)
+                };
+            }
+            else
+            {
+                fusedResults[result.Chunk.Id] = new HybridSearchResult
+                {
+                    Chunk = result.Chunk,
+                    FusedScore = weightedScore,
+                    VectorScore = 0.0,
+                    SparseScore = result.Score,
+                    VectorRank = int.MaxValue,
+                    SparseRank = i + 1,
+                    FusionMethod = FusionMethod.RelativeScoreFusion,
+                    Source = SearchSource.Sparse,
+                    MatchedTerms = result.MatchedTerms,
+                    Confidence = CalculateConfidence(0.0, normalizedScore, SearchSource.Sparse)
+                };
+            }
+        }
+
+        return OrderAndLimitResults(fusedResults.Values, options);
+    }
+
+    /// <summary>
+    /// Calculates confidence score based on normalized scores and source diversity
+    /// </summary>
+    private static double CalculateConfidence(double vectorNormalized, double sparseNormalized, SearchSource source)
+    {
+        // Base confidence from score agreement (both sources agreeing = higher confidence)
+        var scoreAgreement = source == SearchSource.Both
+            ? 1.0 - Math.Abs(vectorNormalized - sparseNormalized)
+            : 0.5; // Single source gets moderate base confidence
+
+        // Boost for high scores
+        var avgScore = source switch
+        {
+            SearchSource.Both => (vectorNormalized + sparseNormalized) / 2.0,
+            SearchSource.Vector => vectorNormalized,
+            SearchSource.Sparse => sparseNormalized,
+            _ => 0.0
+        };
+
+        // Source diversity bonus
+        var diversityBonus = source == SearchSource.Both ? 0.2 : 0.0;
+
+        // Final confidence: weighted combination
+        var confidence = (scoreAgreement * 0.4) + (avgScore * 0.4) + diversityBonus;
+
+        return Math.Clamp(confidence, 0.0, 1.0);
     }
 
     private IReadOnlyList<HybridSearchResult> OrderAndLimitResults(

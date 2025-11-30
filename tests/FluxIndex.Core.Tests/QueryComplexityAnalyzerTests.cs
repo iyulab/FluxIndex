@@ -122,9 +122,9 @@ public class QueryComplexityAnalyzerTests
     }
 
     [Theory]
-    [InlineData("AI", SearchStrategy.DirectVector)]
-    [InlineData("machine learning algorithms detailed explanation", SearchStrategy.Hybrid)]
-    [InlineData("How does deep learning work and why is it effective?", SearchStrategy.TwoStage)]
+    [InlineData("AI", SearchStrategy.Hybrid)] // "AI" contains technical terms → Hybrid
+    [InlineData("machine learning algorithms detailed explanation", SearchStrategy.HyDE)] // Moderate complexity + ai_ml domain → HyDE
+    [InlineData("How does deep learning work and why is it effective?", SearchStrategy.SelfRAG)] // VeryComplex + reasoning + technical domains → SelfRAG
     [InlineData("Compare TensorFlow vs PyTorch for production", SearchStrategy.MultiQuery)]
     public async Task RecommendStrategy_VariousQueries_ReturnsExpectedStrategy(string query, SearchStrategy expectedStrategy)
     {

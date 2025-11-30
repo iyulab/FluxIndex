@@ -41,6 +41,10 @@ public class QueryAnalysis
     public Language Language { get; set; }
     public Dictionary<string, object> Metadata { get; set; } = new();
     
+    // Technical domain analysis
+    public List<string> TechnicalDomains { get; set; } = new();
+    public bool ContainsTechnicalTerms => TechnicalDomains.Count > 0 || Concepts.Any();
+
     // 추론형 쿼리 특성
     public bool RequiresReasoning { get; set; }
     public bool HasTemporalContext { get; set; }

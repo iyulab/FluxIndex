@@ -61,9 +61,17 @@ public class FileFluxOptions
 
     /// <summary>
     /// Default language code for language-aware chunking (e.g., "ko", "en", "zh", "ja", "ar")
-    /// FileFlux 0.4.x supports language-aware processing with automatic language detection
+    /// FileFlux 0.4.8 supports 11 language profiles with comprehensive text segmentation
+    /// Set to null or empty to enable automatic language detection
     /// </summary>
     public string? DefaultLanguage { get; set; }
+
+    /// <summary>
+    /// Enable automatic language detection using Unicode script analysis
+    /// When enabled and DefaultLanguage is not set, FileFlux will auto-detect the document language
+    /// FileFlux 0.4.8 uses ILanguageProfileProvider for intelligent language detection
+    /// </summary>
+    public bool EnableLanguageAutoDetection { get; set; } = true;
 
     /// <summary>
     /// Enable metadata enrichment by default (requires ITextCompletionService)
@@ -91,5 +99,11 @@ public class FileFluxOptions
     /// Only applies when EnableImmediateIndexing is true
     /// </summary>
     public int ImmediateIndexingBatchSize { get; set; } = 100;
+
+    /// <summary>
+    /// Include extended language profile metadata in indexed chunks
+    /// When enabled, adds script code, writing direction, and other language-specific metadata
+    /// </summary>
+    public bool IncludeLanguageProfileMetadata { get; set; } = true;
 }
 

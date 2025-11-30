@@ -442,7 +442,7 @@
       "fluxindex.ai.localembedder": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.Core": "[0.2.18, )",
+          "FluxIndex.Core": "[0.2.19, )",
           "LocalEmbedder": "[0.3.1, )",
           "Microsoft.Extensions.Caching.Memory": "[10.0.0, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
@@ -454,7 +454,7 @@
         "type": "Project",
         "dependencies": {
           "Azure.AI.OpenAI": "[2.1.0, )",
-          "FluxIndex.Core": "[0.2.18, )",
+          "FluxIndex.Core": "[0.2.19, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.0, )"
         }
@@ -462,7 +462,7 @@
       "fluxindex.core": {
         "type": "Project",
         "dependencies": {
-          "FileFlux": "[0.4.7, )",
+          "FileFlux": "[0.5.0, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.0, )"
         }
@@ -470,9 +470,9 @@
       "fluxindex.extensions.fileflux": {
         "type": "Project",
         "dependencies": {
-          "FileFlux": "[0.4.7, )",
-          "FluxIndex.Core": "[0.2.18, )",
-          "FluxIndex.SDK": "[0.2.18, )",
+          "FileFlux": "[0.5.0, )",
+          "FluxIndex.Core": "[0.2.19, )",
+          "FluxIndex.SDK": "[0.2.19, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.0, )"
         }
@@ -480,8 +480,8 @@
       "fluxindex.extensions.webflux": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.Core": "[0.2.18, )",
-          "FluxIndex.SDK": "[0.2.18, )",
+          "FluxIndex.Core": "[0.2.19, )",
+          "FluxIndex.SDK": "[0.2.19, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.0, )",
           "WebFlux": "[0.1.7, )"
@@ -490,10 +490,10 @@
       "fluxindex.sdk": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.AI.LocalEmbedder": "[0.2.18, )",
-          "FluxIndex.AI.OpenAI": "[0.2.18, )",
-          "FluxIndex.Core": "[0.2.18, )",
-          "FluxIndex.Storage.SQLite": "[0.2.18, )",
+          "FluxIndex.AI.LocalEmbedder": "[0.2.19, )",
+          "FluxIndex.AI.OpenAI": "[0.2.19, )",
+          "FluxIndex.Core": "[0.2.19, )",
+          "FluxIndex.Storage.SQLite": "[0.2.19, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
           "Microsoft.Extensions.Http": "[10.0.0, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.0, )"
@@ -502,7 +502,7 @@
       "fluxindex.storage.sqlite": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.Core": "[0.2.18, )",
+          "FluxIndex.Core": "[0.2.19, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.0, )",
           "Microsoft.Extensions.Configuration.Binder": "[10.0.0, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.0, )",
@@ -523,9 +523,9 @@
       },
       "FileFlux": {
         "type": "CentralTransitive",
-        "requested": "[0.4.7, )",
-        "resolved": "0.4.7",
-        "contentHash": "qiAZjzp8igoSTRSqzNwyn7QJk+pol2feF1EyTVxDMGZ9K2BsdbjOelIR4uZojrgqGUMSUapwKAmr2y6kELsxSA==",
+        "requested": "[0.5.0, )",
+        "resolved": "0.5.0",
+        "contentHash": "Ar65O9Dz/Q+ztaxF+J8LgNPuGQdk+9AF9l0q3wbNvLyoC+d9daQkCyLAYlj9htwMZZFqG0wjbfxSaBwZaFnUXg==",
         "dependencies": {
           "CsvHelper": "33.1.0",
           "DocumentFormat.OpenXml": "3.3.0",
