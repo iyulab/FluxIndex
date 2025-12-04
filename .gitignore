@@ -371,10 +371,14 @@ nupkgs/
 
 # Database files (but not project folders)
 *.db
+*.db-shm
+*.db-wal
 *.sqlite
 *.sqlite3
 # Allow SQLite project folder
 !src/FluxIndex.Storage.SQLite/
+# Demo app data directory
+demo/FluxIndex.Demo/data/
 
 # Environment files in all directories
 **/.env

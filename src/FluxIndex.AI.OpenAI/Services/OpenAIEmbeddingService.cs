@@ -91,7 +91,10 @@ public class OpenAIEmbeddingService : IEmbeddingService
             // Cache the result if caching is enabled
             if (_cache != null)
             {
-                _cache.Set(cacheKey, embedding, TimeSpan.FromHours(24));
+                var cacheEntryOptions = new MemoryCacheEntryOptions()
+                    .SetAbsoluteExpiration(TimeSpan.FromHours(24))
+                    .SetSize(embedding.Length * sizeof(float)); // Embedding size in bytes
+                _cache.Set(cacheKey, embedding, cacheEntryOptions);
             }
 
             _logger.LogDebug("Generated embedding for text: {Text}", text.Substring(0, Math.Min(50, text.Length)));

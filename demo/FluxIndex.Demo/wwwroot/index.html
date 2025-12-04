@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FluxIndex Demo</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>FluxIndex Demo</h1>
+            <p class="subtitle">RAG Infrastructure for Document Indexing & Semantic Search</p>
+        </header>
+
+        <div class="status-bar" id="statusBar">
+            <span>Documents: <strong id="docCount">0</strong></span>
+            <span>Chunks: <strong id="chunkCount">0</strong></span>
+            <span>Last Indexed: <strong id="lastIndexed">-</strong></span>
+        </div>
+
+        <div class="main-content">
+            <!-- Upload Section -->
+            <section class="card upload-section">
+                <h2>Upload Document</h2>
+                <div class="upload-area" id="uploadArea">
+                    <input type="file" id="fileInput" accept=".pdf,.docx,.doc,.txt,.md,.html,.json,.csv" hidden>
+                    <div class="upload-content">
+                        <div class="upload-icon">📄</div>
+                        <p>Drag & drop a file here or <button class="link-btn" onclick="document.getElementById('fileInput').click()">browse</button></p>
+                        <p class="hint">Supported: PDF, DOCX, TXT, MD, HTML, JSON, CSV</p>
+                    </div>
+                </div>
+                <div class="upload-progress" id="uploadProgress" style="display: none;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <p id="uploadStatus">Processing...</p>
+                </div>
+            </section>
+
+            <!-- Search Section -->
+            <section class="card search-section">
+                <h2>Semantic Search</h2>
+                <div class="search-form">
+                    <input type="text" id="searchInput" placeholder="Enter your search query..." autocomplete="off">
+                    <div class="search-options">
+                        <label>
+                            <input type="checkbox" id="useReranker" checked>
+                            Use Reranker
+                        </label>
+                        <label>
+                            Top K:
+                            <select id="topK">
+                                <option value="5">5</option>
+                                <option value="10" selected>10</option>
+                                <option value="20">20</option>
+                            </select>
+                        </label>
+                        <button class="btn primary" onclick="performSearch()">Search</button>
+                    </div>
+                </div>
+
+                <div class="search-results" id="searchResults">
+                    <p class="placeholder">Enter a query to search your indexed documents</p>
+                </div>
+            </section>
+
+            <!-- MCP Function Section -->
+            <section class="card mcp-section">
+                <h2>MCP Function Test</h2>
+                <p class="description">Simulate MCP tool call for AI assistant integration</p>
+                <div class="mcp-form">
+                    <textarea id="mcpQuery" placeholder="Enter query for MCP function..."></textarea>
+                    <div class="mcp-options">
+                        <label>
+                            <input type="checkbox" id="mcpIncludeMetadata" checked>
+                            Include Metadata
+                        </label>
+                        <button class="btn secondary" onclick="callMcpFunction()">Call MCP Function</button>
+                    </div>
+                </div>
+                <div class="mcp-response" id="mcpResponse">
+                    <pre id="mcpOutput">// MCP response will appear here</pre>
+                </div>
+            </section>
+
+            <!-- Documents List -->
+            <section class="card documents-section">
+                <h2>Indexed Documents</h2>
+                <button class="btn secondary" onclick="loadDocuments()">Refresh</button>
+                <div class="documents-list" id="documentsList">
+                    <p class="placeholder">No documents indexed yet</p>
+                </div>
+            </section>
+        </div>
+
+        <footer>
+            <p>FluxIndex &copy; 2024 - RAG Infrastructure Library</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
