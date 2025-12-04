@@ -49,11 +49,12 @@ public class IndexingService
             _logger.LogInformation("Processing file: {FileName}", file.FileName);
 
             // Process document with FileFlux
+            // Use Token strategy for proper chunking with embedding size limits
             var chunkingOptions = new ChunkingOptions
             {
-                Strategy = ChunkingStrategies.Auto,
-                MaxChunkSize = 1024,
-                OverlapSize = 128
+                Strategy = ChunkingStrategies.Token,
+                MaxChunkSize = 500,  // Token limit per chunk (safe for embeddings)
+                OverlapSize = 50
             };
 
             var fileFluxChunks = await _documentProcessor.ProcessAsync(tempPath, chunkingOptions);
