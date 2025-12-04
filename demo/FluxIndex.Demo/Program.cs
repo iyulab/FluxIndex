@@ -127,6 +127,63 @@ app.MapDelete("/api/documents/{id}", async (string id, IVectorStore vectorStore,
     return Results.Ok(new { Message = "Document deleted" });
 });
 
+// Document detail endpoint - returns extracted content and chunks
+app.MapGet("/api/documents/{id}", async (string id, IVectorStore vectorStore, DemoState state) =>
+{
+    var chunks = await vectorStore.GetByDocumentIdAsync(id);
+    var chunkList = chunks.ToList();
+
+    if (!chunkList.Any())
+    {
+        return Results.NotFound(new { Error = "Document not found" });
+    }
+
+    var docInfo = state.GetDocumentList().FirstOrDefault(d => d.Id == id);
+
+    // Combine all chunk contents for full extracted text
+    var fullContent = string.Join("\n\n---\n\n", chunkList.OrderBy(c => c.ChunkIndex).Select(c => c.Content));
+
+    var result = new DocumentDetailResponse
+    {
+        Id = id,
+        Title = docInfo?.Title ?? "Unknown",
+        CreatedAt = docInfo?.CreatedAt ?? DateTime.UtcNow,
+        TotalChunks = chunkList.Count,
+        FullContent = fullContent,
+        Chunks = chunkList.OrderBy(c => c.ChunkIndex).Select(c => new ChunkDetail
+        {
+            Id = c.Id,
+            Index = c.ChunkIndex,
+            Content = c.Content,
+            TokenCount = c.TokenCount,
+            Metadata = c.Metadata ?? new Dictionary<string, object>(),
+            ChunkMetadata = c.ChunkMetadata != null ? new ChunkMetadataDto
+            {
+                Language = c.ChunkMetadata.Language,
+                ContentType = c.ChunkMetadata.ContentType,
+                Keywords = c.ChunkMetadata.Keywords,
+                Entities = c.ChunkMetadata.Entities,
+                Topics = c.ChunkMetadata.Topics,
+                SectionTitle = c.ChunkMetadata.SectionTitle,
+                ImportanceScore = c.ChunkMetadata.ImportanceScore,
+                TokenCount = c.ChunkMetadata.TokenCount,
+                CharacterCount = c.ChunkMetadata.CharacterCount,
+                SentenceCount = c.ChunkMetadata.SentenceCount,
+                ReadabilityScore = c.ChunkMetadata.ReadabilityScore
+            } : null,
+            Quality = c.Quality != null ? new ChunkQualityDto
+            {
+                ContentCompleteness = c.Quality.ContentCompleteness,
+                InformationDensity = c.Quality.InformationDensity,
+                Coherence = c.Quality.Coherence,
+                Uniqueness = c.Quality.Uniqueness
+            } : null
+        }).ToList()
+    };
+
+    return Results.Ok(result);
+});
+
 // MCP-style function endpoint (simulating MCP tool call)
 app.MapPost("/api/mcp/search", async (McpSearchRequest request, SearchService searchService) =>
 {
@@ -134,7 +191,8 @@ app.MapPost("/api/mcp/search", async (McpSearchRequest request, SearchService se
         request.Query,
         request.TopK,
         request.UseReranker,
-        request.IncludeMetadata);
+        request.IncludeMetadata,
+        request.MaxTokens);
     return Results.Ok(results);
 });
 
@@ -145,4 +203,49 @@ app.Run();
 
 // Request/Response models
 public record SearchRequest(string Query, int TopK = 10, bool UseReranker = true);
-public record McpSearchRequest(string Query, int TopK = 10, bool UseReranker = true, bool IncludeMetadata = true);
+public record McpSearchRequest(string Query, int TopK = 10, bool UseReranker = true, bool IncludeMetadata = true, int MaxTokens = 5000);
+
+// Document detail response models
+public class DocumentDetailResponse
+{
+    public string Id { get; set; } = "";
+    public string Title { get; set; } = "";
+    public DateTime CreatedAt { get; set; }
+    public int TotalChunks { get; set; }
+    public string FullContent { get; set; } = "";
+    public List<ChunkDetail> Chunks { get; set; } = new();
+}
+
+public class ChunkDetail
+{
+    public string Id { get; set; } = "";
+    public int Index { get; set; }
+    public string Content { get; set; } = "";
+    public int TokenCount { get; set; }
+    public Dictionary<string, object> Metadata { get; set; } = new();
+    public ChunkMetadataDto? ChunkMetadata { get; set; }
+    public ChunkQualityDto? Quality { get; set; }
+}
+
+public class ChunkMetadataDto
+{
+    public string Language { get; set; } = "";
+    public string ContentType { get; set; } = "";
+    public List<string> Keywords { get; set; } = new();
+    public List<string> Entities { get; set; } = new();
+    public List<string> Topics { get; set; } = new();
+    public string SectionTitle { get; set; } = "";
+    public double ImportanceScore { get; set; }
+    public int TokenCount { get; set; }
+    public int CharacterCount { get; set; }
+    public int SentenceCount { get; set; }
+    public double ReadabilityScore { get; set; }
+}
+
+public class ChunkQualityDto
+{
+    public double ContentCompleteness { get; set; }
+    public double InformationDensity { get; set; }
+    public double Coherence { get; set; }
+    public double Uniqueness { get; set; }
+}

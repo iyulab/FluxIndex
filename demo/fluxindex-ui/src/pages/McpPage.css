@@ -1,0 +1,89 @@
+.mcp-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+@media (max-width: 1200px) {
+  .mcp-container {
+    grid-template-columns: 1fr;
+  }
+}
+
+.mcp-input-section {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+}
+
+.mcp-form {
+  margin-bottom: 20px;
+}
+
+.mcp-form label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+}
+
+.mcp-form textarea {
+  width: 100%;
+  min-height: 120px;
+  resize: vertical;
+}
+
+.mcp-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 20px;
+}
+
+.mcp-options .option-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mcp-options .btn {
+  margin-left: auto;
+}
+
+.mcp-output-section {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.mcp-output-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.mcp-output-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.mcp-output {
+  padding: 20px;
+  max-height: 600px;
+  overflow: auto;
+}
+
+.mcp-output pre {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Monaco', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+}

@@ -134,21 +134,28 @@ public class SearchService
         string query,
         int topK = 10,
         bool useReranker = true,
-        bool includeMetadata = true)
+        bool includeMetadata = true,
+        int maxTokens = 5000)
     {
         var searchResults = await SearchAsync(query, topK, useReranker);
 
-        return new McpSearchResults
+        // Limit results based on maxTokens (approximate: 1 token ≈ 4 characters)
+        var limitedResults = new List<McpSearchResult>();
+        int currentTokens = 0;
+        int resultsIncluded = 0;
+
+        foreach (var r in searchResults.Results)
         {
-            ToolName = "fluxindex_search",
-            Query = query,
-            Parameters = new McpParameters
+            // Estimate tokens (rough approximation: 1 token ≈ 4 chars for English, 2 chars for Korean)
+            var contentTokens = EstimateTokens(r.Content);
+
+            if (currentTokens + contentTokens > maxTokens && limitedResults.Count > 0)
             {
-                TopK = topK,
-                UseReranker = useReranker,
-                IncludeMetadata = includeMetadata
-            },
-            Results = searchResults.Results.Select(r => new McpSearchResult
+                // Don't add more results if we've exceeded token limit
+                break;
+            }
+
+            limitedResults.Add(new McpSearchResult
             {
                 Id = r.ChunkId,
                 Content = r.Content,
@@ -158,15 +165,49 @@ public class SearchService
                 WasReranked = r.WasReranked,
                 Metadata = includeMetadata ? r.Metadata : null,
                 Source = r.Source
-            }).ToList(),
+            });
+
+            currentTokens += contentTokens;
+            resultsIncluded++;
+        }
+
+        return new McpSearchResults
+        {
+            ToolName = "fluxindex_search",
+            Query = query,
+            Parameters = new McpParameters
+            {
+                TopK = topK,
+                UseReranker = useReranker,
+                IncludeMetadata = includeMetadata,
+                MaxTokens = maxTokens
+            },
+            Results = limitedResults,
             Metadata = new McpResultMetadata
             {
                 TotalResults = searchResults.TotalResults,
+                ResultsReturned = resultsIncluded,
+                EstimatedTokens = currentTokens,
                 SearchTimeMs = searchResults.SearchTimeMs,
                 UsedReranker = searchResults.UsedReranker,
                 Error = searchResults.Error
             }
         };
+    }
+
+    /// <summary>
+    /// Estimate token count for content (mixed Korean/English)
+    /// </summary>
+    private static int EstimateTokens(string content)
+    {
+        if (string.IsNullOrEmpty(content)) return 0;
+
+        // Count Korean characters (each typically 2-3 tokens)
+        int koreanChars = content.Count(c => c >= 0xAC00 && c <= 0xD7A3);
+        int otherChars = content.Length - koreanChars;
+
+        // Approximate: Korean ~2 chars/token, English ~4 chars/token
+        return (koreanChars / 2) + (otherChars / 4) + 1;
     }
 }
 
@@ -206,6 +247,7 @@ public record McpParameters
     public int TopK { get; init; }
     public bool UseReranker { get; init; }
     public bool IncludeMetadata { get; init; }
+    public int MaxTokens { get; init; }
 }
 
 public record McpSearchResult
@@ -223,6 +265,8 @@ public record McpSearchResult
 public record McpResultMetadata
 {
     public int TotalResults { get; init; }
+    public int ResultsReturned { get; init; }
+    public int EstimatedTokens { get; init; }
     public long SearchTimeMs { get; init; }
     public bool UsedReranker { get; init; }
     public string? Error { get; init; }
