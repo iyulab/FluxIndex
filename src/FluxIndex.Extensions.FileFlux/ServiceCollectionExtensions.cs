@@ -1,4 +1,5 @@
 using FileFlux;
+using FileFlux.Core;
 using FileFlux.Domain;
 using Microsoft.Extensions.DependencyInjection;
 using IFileFluxTextCompletionService = FileFlux.ITextCompletionService;

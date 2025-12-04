@@ -1,4 +1,5 @@
 using FileFlux;
+using FileFlux.Core;
 using FileFlux.Domain;
 using FluxIndex.Core.Application.Interfaces;
 using Microsoft.Extensions.Logging;

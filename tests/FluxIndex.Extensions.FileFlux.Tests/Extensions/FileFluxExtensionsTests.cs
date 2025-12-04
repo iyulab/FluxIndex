@@ -1,5 +1,6 @@
 using FluxIndex.Extensions.FileFlux;
 using FluxIndex.SDK;
+using FileFlux.Core;
 using FileFlux.Domain;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;

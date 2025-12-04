@@ -1,5 +1,6 @@
 using FluxIndex.Extensions.FileFlux;
 using FileFlux;
+using FileFlux.Core;
 using FileFlux.Domain;
 using Microsoft.Extensions.Logging;
 using Moq;

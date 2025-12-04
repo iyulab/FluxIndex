@@ -1,11 +1,10 @@
 ﻿using FileFlux;
 using FileFlux.Core;
-using FileFlux.Domain;
 using FluxIndex.Core.Domain.Entities;
 using FluxIndex.SDK;
 using Microsoft.Extensions.Logging;
 using FluxIndexDocumentChunk = FluxIndex.Core.Domain.Entities.DocumentChunk;
-using FileFluxChunk = FileFlux.Domain.DocumentChunk;
+using FileFluxChunk = FileFlux.Core.DocumentChunk;
 
 namespace FluxIndex.Extensions.FileFlux;
 
@@ -24,7 +23,7 @@ public class FileFluxIntegration
     /// <summary>
     /// Current FileFlux version for metadata tracking
     /// </summary>
-    private const string FileFluxVersion = "0.4.8";
+    private const string FileFluxVersion = "0.6.1";
 
     public FileFluxIntegration(
         IDocumentProcessor fileFluxProcessor,
