@@ -4,9 +4,9 @@
     "net10.0": {
       "FluxImprover": {
         "type": "Direct",
-        "requested": "[0.3.0, )",
-        "resolved": "0.3.0",
-        "contentHash": "gDQgZ6J+oaa54ofpHUVCk+vz4yohrffJlDU5EE/+l1rYstcX/i8E8b+AJypbM+avHImCCh07Ggp4g77NTQIU0A==",
+        "requested": "[0.4.0, )",
+        "resolved": "0.4.0",
+        "contentHash": "iA89TFu1gr13hiAO2sC1hUSIQ0RDb7l14hB4tCsRxOZrTUe1Y1hhknbWY3yQO+tZAL6dcXuibYVZsplLAr0XgQ==",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.0",
           "Microsoft.Extensions.Options": "10.0.0",
