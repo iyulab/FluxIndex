@@ -1,10 +1,12 @@
 using FluxIndex.Extensions.FluxImprover.Adapters;
 using FluxIndex.Extensions.FluxImprover.Services;
+using FluxImprover;
 using FluxImprover.ChunkFiltering;
 using FluxImprover.Enrichment;
 using FluxImprover.Evaluation;
 using FluxImprover.QAGeneration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using FluxIndexCompletion = FluxIndex.Core.Application.Interfaces.ITextCompletionService;
 using FluxImproverCompletion = FluxImprover.Services.ITextCompletionService;
 
@@ -161,7 +163,8 @@ public static class ServiceCollectionExtensions
             var enrichmentService = provider.GetService<ChunkEnrichmentServiceWrapper>();
             var qaService = provider.GetService<QAGenerationService>();
             var evaluationService = provider.GetService<RAGEvaluationService>();
-            return new ParallelPipelineExecutor(enrichmentService, qaService, evaluationService);
+            var logger = provider.GetService<ILogger<ParallelPipelineExecutor>>();
+            return new ParallelPipelineExecutor(enrichmentService, qaService, evaluationService, logger);
         });
 
         return services;
@@ -230,6 +233,81 @@ public static class ServiceCollectionExtensions
         services.AddFluxImproverTextCompletion();
         services.AddFluxImproverPipeline();
         services.AddParallelPipelineExecutor();
+        services.AddCachedPipelineExecutor(configureCacheOptions);
+        return services;
+    }
+
+    /// <summary>
+    /// One-stop registration for FluxImprover integration with FluxIndex.
+    /// Requires FluxIndex's ITextCompletionService to be already registered.
+    /// </summary>
+    /// <param name="services">The service collection to add services to.</param>
+    /// <returns>The service collection for chaining.</returns>
+    /// <remarks>
+    /// <para>
+    /// This is the recommended way to integrate FluxImprover with FluxIndex.
+    /// It registers all FluxImprover services (v0.4.1+) and all FluxIndex wrapper services in one call.
+    /// </para>
+    /// <para>
+    /// <b>Prerequisites:</b> FluxIndex's ITextCompletionService must be registered first (e.g., via AddOpenAITextCompletion).
+    /// </para>
+    /// <para>
+    /// <b>Registers:</b>
+    /// <list type="bullet">
+    /// <item><description>All FluxImprover core services (ChunkEnrichmentService, QAPipeline, Evaluators, etc.)</description></item>
+    /// <item><description>ChunkEnrichmentServiceWrapper - LLM-powered chunk enrichment</description></item>
+    /// <item><description>QAGenerationService - Q&amp;A pair generation from chunks</description></item>
+    /// <item><description>RAGEvaluationService - RAG pipeline quality evaluation</description></item>
+    /// <item><description>ChunkFilteringServiceWrapper - 3-stage LLM chunk filtering</description></item>
+    /// <item><description>ParallelPipelineExecutor - High-performance parallel processing</description></item>
+    /// </list>
+    /// </para>
+    /// </remarks>
+    /// <example>
+    /// <code>
+    /// // Register FluxIndex services first
+    /// services.AddOpenAITextCompletion(options => { options.ApiKey = apiKey; });
+    ///
+    /// // Then register FluxImprover integration in one call
+    /// services.AddFluxIndexFluxImprover();
+    ///
+    /// // Now inject any service you need
+    /// public class MyService(QAGenerationService qa, RAGEvaluationService eval) { }
+    /// </code>
+    /// </example>
+    public static IServiceCollection AddFluxIndexFluxImprover(this IServiceCollection services)
+    {
+        // Register all FluxImprover core services using v0.4.1+ simplified DI
+        services.AddFluxImprover(sp =>
+            new TextCompletionServiceAdapter(sp.GetRequiredService<FluxIndexCompletion>()));
+
+        // Register FluxIndex wrapper services
+        services.AddChunkEnrichmentWrapper();
+        services.AddQAGeneration();
+        services.AddRAGEvaluation();
+        services.AddChunkFilteringWrapper();
+
+        // Register parallel executor
+        services.AddParallelPipelineExecutor();
+
+        return services;
+    }
+
+    /// <summary>
+    /// One-stop registration for FluxImprover integration with FluxIndex, including caching support.
+    /// Requires FluxIndex's ITextCompletionService to be already registered.
+    /// </summary>
+    /// <param name="services">The service collection to add services to.</param>
+    /// <param name="configureCacheOptions">Optional cache options configuration.</param>
+    /// <returns>The service collection for chaining.</returns>
+    /// <remarks>
+    /// Same as <see cref="AddFluxIndexFluxImprover(IServiceCollection)"/> but also registers CachedPipelineExecutor.
+    /// </remarks>
+    public static IServiceCollection AddFluxIndexFluxImprover(
+        this IServiceCollection services,
+        Action<CacheOptions> configureCacheOptions)
+    {
+        services.AddFluxIndexFluxImprover();
         services.AddCachedPipelineExecutor(configureCacheOptions);
         return services;
     }

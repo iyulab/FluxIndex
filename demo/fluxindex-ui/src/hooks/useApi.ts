@@ -126,6 +126,18 @@ export function useGenerateDocumentQA() {
   });
 }
 
+// Evaluate QA mutation
+export function useEvaluateDocumentQA() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (documentId: string) => fluxIndexApi.evaluateDocumentQA(documentId),
+    onSuccess: (_, documentId) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.documentDetail(documentId) });
+    },
+  });
+}
+
 // Logs query key
 export const logsQueryKey = ['logs'] as const;
 

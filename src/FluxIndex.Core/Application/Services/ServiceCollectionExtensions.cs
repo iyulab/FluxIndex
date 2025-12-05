@@ -215,6 +215,17 @@ public static class MetadataAugmentationServiceExtensions
     }
 
     /// <summary>
+    /// 이미지 추출 서비스 등록
+    /// </summary>
+    /// <param name="services">서비스 컬렉션</param>
+    /// <returns>서비스 컬렉션</returns>
+    public static IServiceCollection AddImageExtraction(this IServiceCollection services)
+    {
+        services.TryAddSingleton<IImageExtractionService, ImageExtractionService>();
+        return services;
+    }
+
+    /// <summary>
     /// FluxIndex Core 전체 서비스 등록
     /// </summary>
     /// <param name="services">서비스 컬렉션</param>
@@ -229,6 +240,7 @@ public static class MetadataAugmentationServiceExtensions
         services.AddFullAugmentation(headerOptions, classificationOptions);
         services.AddTokenAwareSearch();
         services.AddGraphTraversal();
+        services.AddImageExtraction();
 
         return services;
     }

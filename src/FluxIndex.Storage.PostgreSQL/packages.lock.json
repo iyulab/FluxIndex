@@ -231,7 +231,7 @@
       },
       "FluxImprover": {
         "type": "CentralTransitive",
-        "requested": "[0.4.0, )",
+        "requested": "[0.4.1, )",
         "resolved": "0.4.0",
         "contentHash": "iA89TFu1gr13hiAO2sC1hUSIQ0RDb7l14hB4tCsRxOZrTUe1Y1hhknbWY3yQO+tZAL6dcXuibYVZsplLAr0XgQ==",
         "dependencies": {

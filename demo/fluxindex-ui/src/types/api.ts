@@ -226,10 +226,19 @@ export interface ChunkEvaluationSummary {
 export interface DocumentEvaluationResponse {
   documentId: string;
   chunksEvaluated: number;
+  evaluatedPairs: number;
   totalQAPairs: number;
   passedCount: number;
   failedCount: number;
   passRate: number;
+  averageScore: number | null;
   evaluations: ChunkEvaluationSummary[];
   errors: string[];
+}
+
+// Q&A Evaluation metadata stored in chunks
+export interface QAEvaluationMetadata {
+  averageScore: number;
+  passRate: number;
+  evaluatedAt: string;
 }

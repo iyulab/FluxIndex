@@ -7,12 +7,9 @@ using FluxIndex.AI.LocalEmbedder;
 using FluxIndex.Storage.SQLite;
 using FluxIndex.Storage.PostgreSQL;
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Services;
 using FluxIndex.Extensions.FluxImprover;
 using FluxIndex.Extensions.FluxImprover.Services;
-using FluxImprover.Evaluation;
-using FluxImprover.QAGeneration;
-using FluxImproverCompletion = FluxImprover.Services.ITextCompletionService;
-using Microsoft.Extensions.Logging;
 
 // Load environment variables from .env file
 var envPath = Path.Combine(Directory.GetCurrentDirectory(), "..", ".env");
@@ -127,61 +124,49 @@ builder.Services.AddResilientLocalReranker();
 // Configure FileFlux for document processing
 builder.Services.AddFileFlux();
 
-// Configure FluxImprover services for QA generation (requires OpenAI API key)
+// Configure FluxImprover services (requires OpenAI API key)
 var completionModel = Environment.GetEnvironmentVariable("OPENAI_COMPLETION_MODEL") ?? "gpt-5-nano";
 if (!string.IsNullOrEmpty(openAiApiKey))
 {
-    // Register OpenAI Text Completion Service
+    // Register FluxIndex OpenAI Text Completion Service
     builder.Services.AddOpenAITextCompletion(options =>
     {
         options.ApiKey = openAiApiKey;
         options.ModelName = completionModel;
     });
 
-    // Register FluxImprover Text Completion Adapter (bridges FluxIndex → FluxImprover)
-    builder.Services.AddFluxImproverTextCompletion();
+    // Register ALL FluxImprover integration services in one call
+    // This includes: ChunkEnrichmentService, QAPipeline, Evaluators, wrapper services, and ParallelPipelineExecutor
+    builder.Services.AddFluxIndexFluxImprover();
 
-    // Register FluxImprover Evaluators (all depend on FluxImprover's ITextCompletionService)
-    builder.Services.AddSingleton<AnswerabilityEvaluator>(provider =>
-        new AnswerabilityEvaluator(provider.GetRequiredService<FluxImproverCompletion>()));
-    builder.Services.AddSingleton<FaithfulnessEvaluator>(provider =>
-        new FaithfulnessEvaluator(provider.GetRequiredService<FluxImproverCompletion>()));
-    builder.Services.AddSingleton<RelevancyEvaluator>(provider =>
-        new RelevancyEvaluator(provider.GetRequiredService<FluxImproverCompletion>()));
-
-    // Register FluxImprover QA Services
-    builder.Services.AddSingleton<QAGeneratorService>(provider =>
-        new QAGeneratorService(provider.GetRequiredService<FluxImproverCompletion>()));
-    builder.Services.AddSingleton<QAFilterService>(provider =>
-        new QAFilterService(
-            provider.GetRequiredService<FaithfulnessEvaluator>(),
-            provider.GetRequiredService<RelevancyEvaluator>(),
-            provider.GetRequiredService<AnswerabilityEvaluator>()));
-    builder.Services.AddSingleton<QAPipeline>(provider =>
-        new QAPipeline(
-            provider.GetRequiredService<QAGeneratorService>(),
-            provider.GetRequiredService<QAFilterService>()));
-
-    // Register FluxIndex QAGenerationService wrapper
-    builder.Services.AddQAGeneration();
-
-    // Register RAGEvaluationService for quality evaluation
-    builder.Services.AddRAGEvaluation();
-
-    // Register ParallelPipelineExecutor for streaming QA generation
-    builder.Services.AddSingleton<FluxIndex.Extensions.FluxImprover.Services.ParallelPipelineExecutor>(provider =>
-        new FluxIndex.Extensions.FluxImprover.Services.ParallelPipelineExecutor(
-            enrichmentService: null,
-            qaService: provider.GetRequiredService<QAGenerationService>(),
-            evaluationService: provider.GetService<RAGEvaluationService>(),
-            logger: provider.GetService<ILogger<FluxIndex.Extensions.FluxImprover.Services.ParallelPipelineExecutor>>()));
-
-    Console.WriteLine($"FluxImprover QA generation enabled with model: {completionModel}");
+    Console.WriteLine($"FluxImprover enabled with model: {completionModel}");
+    Console.WriteLine("  - QA Generation: enabled");
+    Console.WriteLine("  - RAG Evaluation: enabled");
+    Console.WriteLine("  - Chunk Enrichment: enabled");
+    Console.WriteLine("  - Chunk Filtering: enabled");
 }
 else
 {
-    Console.WriteLine("FluxImprover QA generation disabled (no OPENAI_API_KEY)");
+    Console.WriteLine("FluxImprover disabled (no OPENAI_API_KEY)");
 }
+
+// Configure image storage
+var imageStorePath = Path.Combine(Directory.GetCurrentDirectory(), "data", "images");
+Directory.CreateDirectory(imageStorePath);
+var imagePublicUrl = $"http://localhost:5011/images"; // Static files serving
+
+builder.Services.AddSingleton<IImageStore>(sp =>
+    new LocalFileImageStore(
+        imageStorePath,
+        imagePublicUrl,
+        sp.GetService<ILogger<LocalFileImageStore>>()));
+
+builder.Services.AddSingleton<IExtractedImageRepository, InMemoryExtractedImageRepository>();
+
+// Register image extraction service from FluxIndex.Core
+builder.Services.AddImageExtraction();
+
+Console.WriteLine($"Image storage: {imageStorePath}");
 
 // Register demo services
 builder.Services.AddSingleton<DemoState>();
@@ -223,6 +208,17 @@ if (storageBackend.Equals("postgresql", StringComparison.OrdinalIgnoreCase))
 
 app.UseCors();
 app.UseStaticFiles();
+
+// Serve images from the data/images directory
+var imagesPath = Path.Combine(Directory.GetCurrentDirectory(), "data", "images");
+if (Directory.Exists(imagesPath))
+{
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(imagesPath),
+        RequestPath = "/images"
+    });
+}
 
 // API Endpoints
 app.MapGet("/", () => Results.Redirect("/index.html"));
@@ -290,11 +286,35 @@ app.MapGet("/api/documents", async (IVectorStore vectorStore, DemoState state) =
     return Results.Ok(state.GetDocumentList());
 });
 
-app.MapDelete("/api/documents/{id}", async (string id, IVectorStore vectorStore, DemoState state) =>
+app.MapDelete("/api/documents/{id}", async (
+    string id,
+    IVectorStore vectorStore,
+    DemoState state,
+    IImageStore imageStore,
+    IExtractedImageRepository imageRepository,
+    ILogger<Program> logger) =>
 {
+    // Delete images first
+    var deletedImages = await imageStore.DeleteByDocumentAsync(id);
+    var deletedImageRecords = await imageRepository.DeleteByDocumentIdAsync(id);
+
+    if (deletedImages > 0)
+    {
+        logger.LogInformation(
+            "Deleted {Count} images for document {DocumentId}",
+            deletedImages, id);
+    }
+
+    // Delete document chunks
     await vectorStore.DeleteByDocumentIdAsync(id);
     state.RemoveDocument(id);
-    return Results.Ok(new { Message = "Document deleted" });
+
+    return Results.Ok(new
+    {
+        Message = "Document deleted",
+        DeletedImages = deletedImages,
+        DeletedImageRecords = deletedImageRecords
+    });
 });
 
 app.MapGet("/api/documents/{id}", async (string id, IVectorStore vectorStore, DemoState state) =>
@@ -470,8 +490,9 @@ app.MapPost("/api/chunks/{id}/generate-qa", async (
     string id,
     IVectorStore vectorStore,
     FluxIndex.Core.Application.Interfaces.IEmbeddingService embeddingService,
-    QAGenerationService? qaService) =>
+    HttpContext httpContext) =>
 {
+    var qaService = httpContext.RequestServices.GetService<QAGenerationService>();
     if (qaService == null)
     {
         return Results.BadRequest(new { Error = "QA generation service not available. Please configure OPENAI_API_KEY." });
@@ -523,8 +544,9 @@ app.MapPost("/api/documents/{documentId}/generate-qa", async (
     IVectorStore vectorStore,
     FluxIndex.Core.Application.Interfaces.IEmbeddingService embeddingService,
     ProcessLogService logService,
-    ParallelPipelineExecutor? pipelineExecutor) =>
+    HttpContext httpContext) =>
 {
+    var pipelineExecutor = httpContext.RequestServices.GetService<ParallelPipelineExecutor>();
     if (pipelineExecutor == null)
     {
         return Results.BadRequest(new { Error = "QA generation service not available. Please configure OPENAI_API_KEY." });
@@ -619,8 +641,9 @@ app.MapPost("/api/chunks/{chunkId}/evaluate-qa", async (
     EvaluateQARequest request,
     IVectorStore vectorStore,
     ProcessLogService logService,
-    RAGEvaluationService? evaluationService) =>
+    HttpContext httpContext) =>
 {
+    var evaluationService = httpContext.RequestServices.GetService<RAGEvaluationService>();
     if (evaluationService == null)
     {
         return Results.BadRequest(new { Error = "RAG evaluation service not available. Please configure OPENAI_API_KEY." });
@@ -668,8 +691,9 @@ app.MapPost("/api/documents/{documentId}/evaluate-qa", async (
     string documentId,
     IVectorStore vectorStore,
     ProcessLogService logService,
-    RAGEvaluationService? evaluationService) =>
+    HttpContext httpContext) =>
 {
+    var evaluationService = httpContext.RequestServices.GetService<RAGEvaluationService>();
     if (evaluationService == null)
     {
         return Results.BadRequest(new { Error = "RAG evaluation service not available. Please configure OPENAI_API_KEY." });
@@ -683,12 +707,15 @@ app.MapPost("/api/documents/{documentId}/evaluate-qa", async (
         return Results.NotFound(new { Error = "Document not found" });
     }
 
-    logService.Info("Evaluate", $"Starting QA evaluation for document: {documentId}", $"Total chunks: {chunkList.Count}");
+    // Count total QA pairs first
+    var totalQAPairsInDoc = chunkList.Sum(c => ExtractQAFromMetadata(c.Metadata)?.Count ?? 0);
+    logService.Info("Evaluate", $"Starting QA evaluation for document: {documentId}", $"Total chunks: {chunkList.Count}, Total Q&A pairs: {totalQAPairsInDoc}");
 
-    var evaluatedCount = 0;
-    var totalQAPairs = 0;
+    var evaluatedChunks = 0;
+    var evaluatedPairs = 0;
     var passedCount = 0;
     var failedCount = 0;
+    var totalScore = 0.0;
     var errors = new List<string>();
     var chunkEvaluations = new List<ChunkEvaluationSummary>();
 
@@ -697,14 +724,18 @@ app.MapPost("/api/documents/{documentId}/evaluate-qa", async (
         var qaPairs = ExtractQAFromMetadata(chunk.Metadata);
         if (qaPairs == null || qaPairs.Count == 0) continue;
 
+        var chunkScores = new List<double>();
+
         foreach (var qa in qaPairs)
         {
             try
             {
-                logService.Info("Evaluate", $"[{totalQAPairs + 1}] Evaluating Q&A pair", $"Chunk: {chunk.Id}");
+                logService.Info("Evaluate", $"[{evaluatedPairs + 1}/{totalQAPairsInDoc}] Evaluating Q&A pair", $"Chunk: {chunk.Id}");
 
                 var result = await evaluationService.EvaluateAsync(chunk.Content, qa.Question, qa.Answer);
-                totalQAPairs++;
+                evaluatedPairs++;
+                totalScore += result.OverallScore;
+                chunkScores.Add(result.OverallScore);
 
                 if (result.PassesThreshold(0.7))
                 {
@@ -731,22 +762,255 @@ app.MapPost("/api/documents/{documentId}/evaluate-qa", async (
                 logService.Error("Evaluate", $"Evaluation failed", $"Chunk: {chunk.Id}, Error: {ex.Message}");
             }
         }
-        evaluatedCount++;
+
+        // Store evaluation scores in chunk metadata
+        if (chunkScores.Count > 0)
+        {
+            chunk.Metadata ??= new Dictionary<string, object>();
+            chunk.Metadata["qa_evaluation"] = new
+            {
+                AverageScore = chunkScores.Average(),
+                PassRate = (double)chunkScores.Count(s => s >= 0.7) / chunkScores.Count,
+                EvaluatedAt = DateTime.UtcNow.ToString("O")
+            };
+            await vectorStore.UpdateAsync(chunk);
+        }
+
+        evaluatedChunks++;
     }
 
+    var averageScore = evaluatedPairs > 0 ? totalScore / evaluatedPairs : (double?)null;
+
     logService.Success("Evaluate", $"Evaluation completed for document: {documentId}",
-        $"Evaluated: {totalQAPairs} Q&A pairs, Passed: {passedCount}, Failed: {failedCount}");
+        $"Evaluated: {evaluatedPairs} Q&A pairs, Passed: {passedCount}, Failed: {failedCount}, Avg Score: {averageScore:F2}");
 
     return Results.Ok(new DocumentEvaluationResponse
     {
         DocumentId = documentId,
-        ChunksEvaluated = evaluatedCount,
-        TotalQAPairs = totalQAPairs,
+        ChunksEvaluated = evaluatedChunks,
+        EvaluatedPairs = evaluatedPairs,
+        TotalQAPairs = totalQAPairsInDoc,
         PassedCount = passedCount,
         FailedCount = failedCount,
-        PassRate = totalQAPairs > 0 ? (double)passedCount / totalQAPairs : 0,
+        PassRate = evaluatedPairs > 0 ? (double)passedCount / evaluatedPairs : 0,
+        AverageScore = averageScore,
         Evaluations = chunkEvaluations,
         Errors = errors
+    });
+});
+
+// Chunk Enrichment API endpoints
+app.MapPost("/api/chunks/{chunkId}/enrich", async (
+    string chunkId,
+    IVectorStore vectorStore,
+    ProcessLogService logService,
+    HttpContext httpContext) =>
+{
+    var enrichmentService = httpContext.RequestServices.GetService<ChunkEnrichmentServiceWrapper>();
+    if (enrichmentService == null)
+    {
+        return Results.BadRequest(new { Error = "Chunk enrichment service not available. Please configure OPENAI_API_KEY." });
+    }
+
+    var chunk = await vectorStore.GetByIdAsync(chunkId);
+    if (chunk == null)
+    {
+        return Results.NotFound(new { Error = "Chunk not found" });
+    }
+
+    logService.Info("Enrich", $"Enriching chunk: {chunkId}", $"Content: {chunk.Content[..Math.Min(100, chunk.Content.Length)]}...");
+
+    try
+    {
+        var enrichedChunk = new SimpleEnrichedChunk(chunk);
+        var result = await enrichmentService.EnrichAsync(enrichedChunk);
+
+        // Store enrichment in chunk metadata
+        chunk.Metadata ??= new Dictionary<string, object>();
+        chunk.Metadata["enrichment"] = new
+        {
+            Summary = result.Summary,
+            Keywords = result.Keywords,
+            EnrichedAt = DateTime.UtcNow.ToString("O")
+        };
+        await vectorStore.UpdateAsync(chunk);
+
+        logService.Success("Enrich", $"Enrichment completed for chunk: {chunkId}",
+            $"Summary: {result.Summary?[..Math.Min(100, result.Summary?.Length ?? 0)]}..., Keywords: {result.Keywords?.Count ?? 0}");
+
+        return Results.Ok(new
+        {
+            ChunkId = chunkId,
+            Summary = result.Summary,
+            Keywords = result.Keywords,
+            EnrichedAt = DateTime.UtcNow.ToString("O")
+        });
+    }
+    catch (Exception ex)
+    {
+        logService.Error("Enrich", $"Enrichment failed for chunk: {chunkId}", ex.Message);
+        return Results.Problem($"Failed to enrich chunk: {ex.Message}");
+    }
+});
+
+app.MapPost("/api/documents/{documentId}/enrich", async (
+    string documentId,
+    IVectorStore vectorStore,
+    ProcessLogService logService,
+    FluxIndex.Core.Application.Interfaces.IEmbeddingService embeddingService,
+    HttpContext httpContext) =>
+{
+    var enrichmentService = httpContext.RequestServices.GetService<ChunkEnrichmentServiceWrapper>();
+    if (enrichmentService == null)
+    {
+        return Results.BadRequest(new { Error = "Chunk enrichment service not available. Please configure OPENAI_API_KEY." });
+    }
+
+    var chunks = await vectorStore.GetByDocumentIdAsync(documentId);
+    var chunkList = chunks.ToList();
+
+    if (!chunkList.Any())
+    {
+        return Results.NotFound(new { Error = "Document not found" });
+    }
+
+    logService.Info("Enrich", $"Starting enrichment for document: {documentId}", $"Total chunks: {chunkList.Count}");
+
+    var enrichedCount = 0;
+    var errors = new List<string>();
+
+    foreach (var chunk in chunkList)
+    {
+        try
+        {
+            var enrichedChunk = new SimpleEnrichedChunk(chunk);
+            var result = await enrichmentService.EnrichAsync(enrichedChunk);
+
+            // Store enrichment in chunk metadata
+            chunk.Metadata ??= new Dictionary<string, object>();
+            chunk.Metadata["enrichment"] = new
+            {
+                Summary = result.Summary,
+                Keywords = result.Keywords,
+                EnrichedAt = DateTime.UtcNow.ToString("O")
+            };
+
+            // Update embedding with enriched content (summary + keywords + original)
+            var enrichedContent = chunk.Content;
+            if (!string.IsNullOrWhiteSpace(result.Summary))
+            {
+                enrichedContent = $"Summary: {result.Summary}\n\nContent: {chunk.Content}";
+            }
+            if (result.Keywords?.Count > 0)
+            {
+                enrichedContent = $"Keywords: {string.Join(", ", result.Keywords)}\n\n{enrichedContent}";
+            }
+            chunk.Embedding = await embeddingService.GenerateEmbeddingAsync(enrichedContent);
+
+            await vectorStore.UpdateAsync(chunk);
+            enrichedCount++;
+
+            logService.Info("Enrich", $"Chunk enriched: {chunk.Id}",
+                $"Summary: {result.Summary?[..Math.Min(50, result.Summary?.Length ?? 0)]}...");
+        }
+        catch (Exception ex)
+        {
+            errors.Add($"Chunk {chunk.Id}: {ex.Message}");
+            logService.Error("Enrich", $"Enrichment failed", $"Chunk: {chunk.Id}, Error: {ex.Message}");
+        }
+    }
+
+    logService.Success("Enrich", $"Enrichment completed for document: {documentId}",
+        $"Enriched: {enrichedCount}/{chunkList.Count}, Errors: {errors.Count}");
+
+    return Results.Ok(new
+    {
+        DocumentId = documentId,
+        TotalChunks = chunkList.Count,
+        EnrichedChunks = enrichedCount,
+        Errors = errors
+    });
+});
+
+// Image API endpoints
+app.MapGet("/api/documents/{documentId}/images", async (
+    string documentId,
+    IExtractedImageRepository imageRepository) =>
+{
+    var images = await imageRepository.GetByDocumentIdAsync(documentId);
+    var imageList = images.Select(img => new
+    {
+        img.Id,
+        img.DocumentId,
+        img.ChunkId,
+        img.PositionIndex,
+        img.MimeType,
+        img.FileExtension,
+        img.StoragePath,
+        img.AltText,
+        img.Description,
+        img.SizeBytes,
+        img.Width,
+        img.Height,
+        img.CreatedAt
+    }).ToList();
+
+    return Results.Ok(new
+    {
+        DocumentId = documentId,
+        ImageCount = imageList.Count,
+        Images = imageList
+    });
+});
+
+app.MapGet("/api/images/{imageId}", async (
+    string imageId,
+    IImageStore imageStore,
+    IExtractedImageRepository imageRepository) =>
+{
+    var imageRecord = await imageRepository.GetByIdAsync(imageId);
+    if (imageRecord == null)
+    {
+        return Results.NotFound(new { Error = "Image not found" });
+    }
+
+    var imageData = await imageStore.GetAsync(imageRecord.StoragePath);
+    if (imageData == null)
+    {
+        return Results.NotFound(new { Error = "Image file not found" });
+    }
+
+    return Results.File(imageData.Data, imageData.MimeType);
+});
+
+app.MapGet("/api/images/{imageId}/info", async (
+    string imageId,
+    IImageStore imageStore,
+    IExtractedImageRepository imageRepository) =>
+{
+    var imageRecord = await imageRepository.GetByIdAsync(imageId);
+    if (imageRecord == null)
+    {
+        return Results.NotFound(new { Error = "Image not found" });
+    }
+
+    return Results.Ok(new
+    {
+        imageRecord.Id,
+        imageRecord.DocumentId,
+        imageRecord.ChunkId,
+        imageRecord.PositionIndex,
+        imageRecord.MimeType,
+        imageRecord.FileExtension,
+        imageRecord.StoragePath,
+        imageRecord.AltText,
+        imageRecord.Description,
+        imageRecord.SizeBytes,
+        imageRecord.Width,
+        imageRecord.Height,
+        imageRecord.ContentHash,
+        imageRecord.CreatedAt,
+        PublicUrl = imageStore.GetPublicUrl(imageRecord.StoragePath)
     });
 });
 
@@ -1015,10 +1279,12 @@ public class DocumentEvaluationResponse
 {
     public string DocumentId { get; set; } = "";
     public int ChunksEvaluated { get; set; }
+    public int EvaluatedPairs { get; set; }
     public int TotalQAPairs { get; set; }
     public int PassedCount { get; set; }
     public int FailedCount { get; set; }
     public double PassRate { get; set; }
+    public double? AverageScore { get; set; }
     public List<ChunkEvaluationSummary> Evaluations { get; set; } = new();
     public List<string> Errors { get; set; } = new();
 }

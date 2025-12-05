@@ -1,9 +1,9 @@
 import { useState, useCallback, useMemo } from 'react';
-import { X, FileText, Layers, MessageSquare, Info, ChevronDown, ChevronRight, Save, RotateCcw, Loader2, Sparkles } from 'lucide-react';
+import { X, FileText, Layers, MessageSquare, Info, ChevronDown, ChevronRight, Save, RotateCcw, Loader2, Sparkles, CheckCircle } from 'lucide-react';
 import Editor from '@monaco-editor/react';
-import { useDocumentDetail, useBatchRememorize, useGenerateDocumentQA } from '../hooks/useApi';
+import { useDocumentDetail, useBatchRememorize, useGenerateDocumentQA, useEvaluateDocumentQA } from '../hooks/useApi';
 import { useToast } from '../components/Toast';
-import type { ChunkDetail, QAItem, ChunkUpdateRequest } from '../types/api';
+import type { ChunkDetail, QAItem, ChunkUpdateRequest, QAEvaluationMetadata } from '../types/api';
 import './DocumentDetailModal.css';
 
 interface DocumentDetailModalProps {
@@ -31,12 +31,52 @@ export default function DocumentDetailModal({
   const { data, isLoading, error, refetch } = useDocumentDetail(documentId);
   const batchRememorizeMutation = useBatchRememorize();
   const generateQAMutation = useGenerateDocumentQA();
+  const evaluateQAMutation = useEvaluateDocumentQA();
   const { showToast } = useToast();
 
   const currentChunk = useMemo(() => {
     if (!data?.chunks || selectedChunkIndex >= data.chunks.length) return null;
     return data.chunks[selectedChunkIndex];
   }, [data?.chunks, selectedChunkIndex]);
+
+  // Extract evaluation metadata from chunk
+  const getChunkEvaluation = useCallback((chunk: ChunkDetail): QAEvaluationMetadata | null => {
+    const evalData = chunk.metadata?.['qa_evaluation'];
+    if (!evalData || typeof evalData !== 'object') return null;
+    const e = evalData as Record<string, unknown>;
+    if (typeof e.averageScore !== 'number' || typeof e.passRate !== 'number') return null;
+    return {
+      averageScore: e.averageScore,
+      passRate: e.passRate,
+      evaluatedAt: typeof e.evaluatedAt === 'string' ? e.evaluatedAt : new Date().toISOString()
+    };
+  }, []);
+
+  // Calculate document-level evaluation summary
+  const documentEvaluationSummary = useMemo(() => {
+    if (!data?.chunks) return null;
+
+    const evaluatedChunks = data.chunks
+      .map(chunk => getChunkEvaluation(chunk))
+      .filter((e): e is QAEvaluationMetadata => e !== null);
+
+    if (evaluatedChunks.length === 0) return null;
+
+    const avgScore = evaluatedChunks.reduce((sum, e) => sum + e.averageScore, 0) / evaluatedChunks.length;
+    const avgPassRate = evaluatedChunks.reduce((sum, e) => sum + e.passRate, 0) / evaluatedChunks.length;
+    const latestEval = evaluatedChunks.reduce((latest, e) =>
+      e.evaluatedAt > latest ? e.evaluatedAt : latest,
+      evaluatedChunks[0].evaluatedAt
+    );
+
+    return {
+      evaluatedChunks: evaluatedChunks.length,
+      totalChunks: data.chunks.length,
+      averageScore: avgScore,
+      passRate: avgPassRate,
+      evaluatedAt: latestEval
+    };
+  }, [data?.chunks, getChunkEvaluation]);
 
   const getEditedContent = useCallback((chunk: ChunkDetail): string => {
     const edited = editedChunks.get(chunk.id);
@@ -134,6 +174,22 @@ export default function DocumentDetailModal({
       showToast('error', errorMessage);
     }
   }, [documentId, generateQAMutation, showToast, refetch]);
+
+  const handleEvaluateQA = useCallback(async () => {
+    if (!documentId) return;
+
+    try {
+      const result = await evaluateQAMutation.mutateAsync(documentId);
+
+      const passRatePercent = (result.passRate * 100).toFixed(0);
+      const avgScoreStr = result.averageScore != null ? ` Avg: ${(result.averageScore * 100).toFixed(0)}%` : '';
+      showToast('success', `Evaluated ${result.evaluatedPairs} Q&A pairs. Pass: ${passRatePercent}% (${result.passedCount}/${result.evaluatedPairs})${avgScoreStr}`);
+      refetch();
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'QA evaluation failed';
+      showToast('error', errorMessage);
+    }
+  }, [documentId, evaluateQAMutation, showToast, refetch]);
 
   const toggleChunk = (index: number) => {
     setExpandedChunks((prev) => {
@@ -264,6 +320,7 @@ export default function DocumentDetailModal({
 
     const editedQA = getEditedQA(currentChunk);
     const qaJson = JSON.stringify(editedQA, null, 2);
+    const currentEval = getChunkEvaluation(currentChunk);
 
     return (
       <div className="qa-editor-container">
@@ -272,14 +329,26 @@ export default function DocumentDetailModal({
             value={selectedChunkIndex}
             onChange={(e) => setSelectedChunkIndex(Number(e.target.value))}
           >
-            {data?.chunks.map((chunk, index) => (
-              <option key={chunk.id} value={index}>
-                Chunk {chunk.index + 1}
-                {(chunk.qa?.length ?? 0) > 0 ? ` - ${chunk.qa?.length} Q&A` : ' - No Q&A'}
-                {editedChunks.has(chunk.id) ? ' (modified)' : ''}
-              </option>
-            ))}
+            {data?.chunks.map((chunk, index) => {
+              const chunkEval = getChunkEvaluation(chunk);
+              const evalBadge = chunkEval
+                ? ` [${(chunkEval.averageScore * 100).toFixed(0)}%]`
+                : '';
+              return (
+                <option key={chunk.id} value={index}>
+                  Chunk {chunk.index + 1}
+                  {(chunk.qa?.length ?? 0) > 0 ? ` - ${chunk.qa?.length} Q&A` : ' - No Q&A'}
+                  {evalBadge}
+                  {editedChunks.has(chunk.id) ? ' (modified)' : ''}
+                </option>
+              );
+            })}
           </select>
+          {currentEval && (
+            <span className={`chunk-eval-badge ${currentEval.passRate >= 0.7 ? 'good' : currentEval.passRate >= 0.5 ? 'fair' : 'poor'}`}>
+              Score: {(currentEval.averageScore * 100).toFixed(0)}% | Pass: {(currentEval.passRate * 100).toFixed(0)}%
+            </span>
+          )}
         </div>
 
         <div className="qa-help-text">
@@ -440,7 +509,7 @@ export default function DocumentDetailModal({
                 <button
                   className="btn btn-accent"
                   onClick={handleGenerateQA}
-                  disabled={generateQAMutation.isPending}
+                  disabled={generateQAMutation.isPending || evaluateQAMutation.isPending}
                 >
                   {generateQAMutation.isPending ? (
                     <Loader2 size={16} className="animate-spin" />
@@ -449,10 +518,59 @@ export default function DocumentDetailModal({
                   )}
                   Auto-Generate QA
                 </button>
+                <button
+                  className="btn btn-secondary"
+                  onClick={handleEvaluateQA}
+                  disabled={evaluateQAMutation.isPending || generateQAMutation.isPending}
+                >
+                  {evaluateQAMutation.isPending ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <CheckCircle size={16} />
+                  )}
+                  Evaluate QA
+                </button>
                 {generateQAMutation.isPending && (
                   <span className="qa-status">Generating Q&A pairs with LLM...</span>
                 )}
+                {evaluateQAMutation.isPending && (
+                  <span className="qa-status">Evaluating Q&A pairs...</span>
+                )}
               </div>
+
+              {/* Evaluation Summary Display */}
+              {documentEvaluationSummary && (
+                <div className="evaluation-summary">
+                  <div className="eval-header">
+                    <CheckCircle size={16} className="eval-icon" />
+                    <span className="eval-title">Evaluation Results</span>
+                    <span className="eval-date">
+                      {new Date(documentEvaluationSummary.evaluatedAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <div className="eval-metrics">
+                    <div className="eval-metric">
+                      <span className="metric-label">Avg Score</span>
+                      <span className={`metric-value ${documentEvaluationSummary.averageScore >= 0.7 ? 'good' : documentEvaluationSummary.averageScore >= 0.5 ? 'fair' : 'poor'}`}>
+                        {(documentEvaluationSummary.averageScore * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                    <div className="eval-metric">
+                      <span className="metric-label">Pass Rate</span>
+                      <span className={`metric-value ${documentEvaluationSummary.passRate >= 0.7 ? 'good' : documentEvaluationSummary.passRate >= 0.5 ? 'fair' : 'poor'}`}>
+                        {(documentEvaluationSummary.passRate * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                    <div className="eval-metric">
+                      <span className="metric-label">Evaluated</span>
+                      <span className="metric-value">
+                        {documentEvaluationSummary.evaluatedChunks}/{documentEvaluationSummary.totalChunks} chunks
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {renderQAEditor()}
             </div>
           )}
