@@ -1,0 +1,56 @@
+# Development compose file - infrastructure only
+# Use with: docker-compose -f docker-compose.dev.yml up -d
+
+services:
+  postgres:
+    container_name: fluxindex-postgres
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: fluxindex
+      POSTGRES_PASSWORD: fluxindex
+      POSTGRES_DB: fluxindex
+    volumes:
+      - postgres-dev-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fluxindex"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    container_name: fluxindex-redis
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-dev-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  neo4j:
+    container_name: fluxindex-neo4j
+    image: neo4j:5-community
+    environment:
+      NEO4J_AUTH: neo4j/password
+      NEO4J_PLUGINS: '["apoc"]'
+    volumes:
+      - neo4j-dev-data:/data
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:7474"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-dev-data:
+  redis-dev-data:
+  neo4j-dev-data:
