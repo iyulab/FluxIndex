@@ -16,6 +16,8 @@
     <ProjectReference Include="..\..\src\FluxIndex.AI.LocalReranker\FluxIndex.AI.LocalReranker.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.AI.LocalEmbedder\FluxIndex.AI.LocalEmbedder.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.Storage.SQLite\FluxIndex.Storage.SQLite.csproj" />
+    <ProjectReference Include="..\..\src\FluxIndex.Storage.PostgreSQL\FluxIndex.Storage.PostgreSQL.csproj" />
+    <ProjectReference Include="..\..\src\FluxIndex.Cache.Redis\FluxIndex.Cache.Redis.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.MCP\FluxIndex.MCP.csproj" />
   </ItemGroup>
 

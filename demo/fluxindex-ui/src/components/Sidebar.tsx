@@ -1,4 +1,4 @@
-import { Zap, Search, Upload, Files, Plug } from 'lucide-react';
+import { Zap, Search, Upload, Files, Plug, ScrollText } from 'lucide-react';
 import { useStatus } from '../hooks/useApi';
 import './Sidebar.css';
 
@@ -12,6 +12,7 @@ const navItems = [
   { id: 'upload', label: 'Upload', icon: Upload },
   { id: 'documents', label: 'Documents', icon: Files },
   { id: 'mcp', label: 'MCP Test', icon: Plug },
+  { id: 'logs', label: 'Logs', icon: ScrollText },
 ];
 
 function formatNumber(num: number): string {
@@ -75,8 +76,12 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
 
       <div className="sidebar-footer">
         <div className="model-info">
-          <span className="model-label">Embedding Model</span>
+          <span className="model-label">Embedding</span>
           <span className="model-name">{status?.embeddingModel ?? '-'}</span>
+        </div>
+        <div className="model-info">
+          <span className="model-label">LLM</span>
+          <span className="model-name">{status?.completionModel ?? '-'}</span>
         </div>
         <div className="last-indexed">
           <span>Last Indexed:</span>

@@ -6,6 +6,7 @@ import SearchPage from './pages/SearchPage';
 import UploadPage from './pages/UploadPage';
 import DocumentsPage from './pages/DocumentsPage';
 import McpPage from './pages/McpPage';
+import LogsPage from './pages/LogsPage';
 import './styles/globals.css';
 
 const queryClient = new QueryClient({
@@ -30,6 +31,8 @@ function AppContent() {
         return <DocumentsPage />;
       case 'mcp':
         return <McpPage />;
+      case 'logs':
+        return <LogsPage />;
       default:
         return <SearchPage />;
     }

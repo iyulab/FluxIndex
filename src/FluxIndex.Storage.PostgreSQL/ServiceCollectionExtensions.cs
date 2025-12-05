@@ -2,6 +2,7 @@ using FluxIndex.Core.Application.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Npgsql;
 
 namespace FluxIndex.Storage.PostgreSQL;
 
@@ -23,11 +24,17 @@ public static class ServiceCollectionExtensions
         // Configure options
         services.Configure(configureOptions);
 
-        // Register DbContext
+        // Register DbContext with NpgsqlDataSource for dynamic JSON support
         services.AddDbContext<FluxIndexDbContext>((serviceProvider, options) =>
         {
             var postgresOptions = serviceProvider.GetRequiredService<IOptions<PostgreSQLOptions>>().Value;
-            options.UseNpgsql(postgresOptions.ConnectionString, npgsqlOptions =>
+
+            // Build NpgsqlDataSource with dynamic JSON support for Dictionary<string, object>
+            var dataSourceBuilder = new NpgsqlDataSourceBuilder(postgresOptions.ConnectionString);
+            dataSourceBuilder.EnableDynamicJson();
+            var dataSource = dataSourceBuilder.Build();
+
+            options.UseNpgsql(dataSource, npgsqlOptions =>
             {
                 npgsqlOptions.UseVector();
                 npgsqlOptions.CommandTimeout(postgresOptions.CommandTimeout);

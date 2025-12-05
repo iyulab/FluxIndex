@@ -106,7 +106,10 @@ public class LocalEmbedderService : IEmbeddingService, IAsyncDisposable, IDispos
             // Cache the result
             if (_cache != null)
             {
-                _cache.Set(cacheKey, embedding, TimeSpan.FromHours(24));
+                var cacheOptions = new MemoryCacheEntryOptions()
+                    .SetAbsoluteExpiration(TimeSpan.FromHours(24))
+                    .SetSize(embedding.Length * sizeof(float)); // Size in bytes
+                _cache.Set(cacheKey, embedding, cacheOptions);
             }
 
             _logger.LogDebug("Local embedding generated: {Dimensions} dimensions", embedding.Length);
@@ -174,7 +177,10 @@ public class LocalEmbedderService : IEmbeddingService, IAsyncDisposable, IDispos
                     if (_cache != null)
                     {
                         var cacheKey = GenerateCacheKey(uncachedTexts[i].text);
-                        _cache.Set(cacheKey, embedding, TimeSpan.FromHours(24));
+                        var cacheOptions = new MemoryCacheEntryOptions()
+                            .SetAbsoluteExpiration(TimeSpan.FromHours(24))
+                            .SetSize(embedding.Length * sizeof(float)); // Size in bytes
+                        _cache.Set(cacheKey, embedding, cacheOptions);
                     }
                 }
 

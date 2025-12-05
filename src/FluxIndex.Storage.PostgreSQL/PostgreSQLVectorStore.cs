@@ -204,6 +204,9 @@ public class PostgreSQLVectorStore : IVectorStore
         entity.TokenCount = chunk.TokenCount;
         entity.Metadata = chunk.Metadata;
 
+        // Explicitly mark Metadata as modified for EF Core change tracking
+        _context.Entry(entity).Property(e => e.Metadata).IsModified = true;
+
         await _context.SaveChangesAsync(cancellationToken);
         return true;
     }
