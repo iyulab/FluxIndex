@@ -393,3 +393,10 @@ FluxIndex.Benchmarks/
 research-docs/nuget.local.config
 .playwright-mcp/
 nul
+
+# Frontend build artifacts
+**/dist/
+**/tsconfig.tsbuildinfo
+
+# Docker volumes and data
+service/docker/
