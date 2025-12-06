@@ -6,6 +6,7 @@ using FluxIndex.Service.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 
 namespace FluxIndex.Service.Infrastructure.Extensions;
 
@@ -38,11 +39,17 @@ public static class ServiceCollectionExtensions
         var connectionString = configuration.GetConnectionString("PostgreSQL")
             ?? throw new InvalidOperationException("PostgreSQL connection string not configured.");
 
+        // Build NpgsqlDataSource with required features
+        var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
+        dataSourceBuilder.UseVector();
+        dataSourceBuilder.EnableDynamicJson(); // Required for Dictionary<string, object> to JSONB
+        var dataSource = dataSourceBuilder.Build();
+
         services.AddDbContext<ServiceDbContext>(options =>
         {
-            options.UseNpgsql(connectionString, npgsqlOptions =>
+            options.UseNpgsql(dataSource, npgsqlOptions =>
             {
-                npgsqlOptions.UseVector();
+                npgsqlOptions.UseVector(); // EF Core level pgvector support
                 npgsqlOptions.EnableRetryOnFailure(
                     maxRetryCount: 3,
                     maxRetryDelay: TimeSpan.FromSeconds(10),
@@ -76,7 +83,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ICollectionService, CollectionService>();
         services.AddScoped<IApiKeyService, ApiKeyService>();
         services.AddScoped<IAnalyticsService, AnalyticsService>();
-        // IDocumentService, ISearchService, IIndexingService will be added with FluxIndex integration
+        services.AddScoped<IDocumentService, DocumentService>();
+        services.AddScoped<ISearchService, SearchService>();
+        services.AddScoped<IIndexingService, IndexingService>();
 
         return services;
     }

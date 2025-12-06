@@ -84,6 +84,12 @@ service/
 ### Search
 - `POST /api/v1/search` - Semantic search
 
+### Jobs
+- `GET /api/v1/jobs` - List indexing jobs (paginated)
+- `GET /api/v1/jobs/summary` - Get job status summary
+- `GET /api/v1/jobs/{id}` - Get job status
+- `POST /api/v1/jobs/{id}/cancel` - Cancel a pending/processing job
+
 ### Analytics
 - `GET /api/v1/analytics/system` - System statistics
 - `GET /api/v1/analytics/search` - Search analytics

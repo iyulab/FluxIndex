@@ -1,3 +1,4 @@
+using FluxIndex.Service.Api.BackgroundServices;
 using FluxIndex.Service.Api.Middleware;
 using FluxIndex.Service.Infrastructure.Data;
 using FluxIndex.Service.Infrastructure.Extensions;
@@ -38,6 +39,9 @@ builder.Services.AddSwaggerGen(options =>
 // Add infrastructure services
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddRedisCache(builder.Configuration);
+
+// Add background services
+builder.Services.AddHostedService<IndexingBackgroundService>();
 
 // Add CORS
 builder.Services.AddCors(options =>
