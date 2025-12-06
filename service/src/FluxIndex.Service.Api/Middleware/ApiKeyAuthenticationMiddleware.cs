@@ -10,6 +10,7 @@ public class ApiKeyAuthenticationMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly ILogger<ApiKeyAuthenticationMiddleware> _logger;
+    private readonly IHostEnvironment _environment;
     private const string ApiKeyHeaderName = "X-API-Key";
 
     // Endpoints that don't require authentication
@@ -22,10 +23,12 @@ public class ApiKeyAuthenticationMiddleware
 
     public ApiKeyAuthenticationMiddleware(
         RequestDelegate next,
-        ILogger<ApiKeyAuthenticationMiddleware> logger)
+        ILogger<ApiKeyAuthenticationMiddleware> logger,
+        IHostEnvironment environment)
     {
         _next = next;
         _logger = logger;
+        _environment = environment;
     }
 
     public async Task InvokeAsync(HttpContext context, IApiKeyService apiKeyService)
@@ -35,6 +38,27 @@ public class ApiKeyAuthenticationMiddleware
         // Skip authentication for public endpoints
         if (PublicEndpoints.Any(e => path.StartsWith(e)))
         {
+            await _next(context);
+            return;
+        }
+
+        // Skip authentication in Development environment when no API key is provided
+        if (_environment.IsDevelopment() &&
+            !context.Request.Headers.ContainsKey(ApiKeyHeaderName))
+        {
+            _logger.LogDebug("Development mode: bypassing API key authentication for {Path}", path);
+
+            // Set a mock admin context for development
+            context.Items["ApiKey"] = new ApiKeyDto
+            {
+                Id = Guid.Empty,
+                Name = "Development",
+                Role = "Admin",
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
+            };
+            context.Items["ApiKeyRole"] = "Admin";
+
             await _next(context);
             return;
         }

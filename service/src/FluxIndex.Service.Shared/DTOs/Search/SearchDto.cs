@@ -40,7 +40,7 @@ public class SearchResponse
 /// <summary>
 /// Individual search result DTO.
 /// </summary>
-public class SearchResultDto
+public record SearchResultDto
 {
     public Guid ChunkId { get; init; }
     public Guid DocumentId { get; init; }

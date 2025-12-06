@@ -1,17 +1,17 @@
 import { useQuery } from '@tanstack/react-query'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { analyticsApi, type SystemStats } from '@/lib/api'
+import { analyticsApi } from '@/lib/api'
 import { formatBytes } from '@/lib/utils'
 import { FileText, FolderOpen, Database, CheckCircle, Clock, XCircle } from 'lucide-react'
 
 export default function DashboardPage() {
-  const { data: statsResponse, isLoading } = useQuery({
+  const { data: stats, isLoading } = useQuery({
     queryKey: ['systemStats'],
-    queryFn: () => analyticsApi.getSystemStats(),
-    select: (response) => response.data.data,
+    queryFn: async () => {
+      const response = await analyticsApi.getSystemStats()
+      return response.data.data
+    },
   })
-
-  const stats = statsResponse as SystemStats | undefined
 
   if (isLoading) {
     return (

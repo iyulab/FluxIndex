@@ -32,7 +32,11 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'fluxindex-storage',
-      partialize: (state) => ({ apiKey: state.apiKey, theme: state.theme }),
+      partialize: (state) => ({
+        apiKey: state.apiKey,
+        theme: state.theme,
+        // selectedCollectionId is session-only (search scope filter)
+      }),
     }
   )
 )

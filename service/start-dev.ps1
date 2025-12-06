@@ -21,6 +21,7 @@ param(
     [switch]$SkipDocker,
     [switch]$BackendOnly,
     [switch]$FrontendOnly,
+    [switch]$WithTools,
     [switch]$Help
 )
 
@@ -51,10 +52,11 @@ Options:
     -SkipDocker     Skip starting Docker infrastructure
     -BackendOnly    Start only the backend API
     -FrontendOnly   Start only the frontend
+    -WithTools      Include development tools (Redis Commander)
     -Help           Show this help message
 
 Services:
-    Docker:    PostgreSQL (5432), Redis (6379), Neo4j (7474/7687)
+    Docker:    PostgreSQL (5432), Qdrant (6333/6334), Neo4j (7474/7687), Redis (6379)
     Backend:   ASP.NET Core API on http://localhost:5000
     Frontend:  Vite dev server on http://localhost:5173
 
@@ -119,14 +121,16 @@ if (-not $SkipDocker -and -not $FrontendOnly) {
 
     # Check if required containers are already running
     $postgresRunning = docker ps --filter "name=fluxindex-postgres" --filter "status=running" -q 2>$null
+    $qdrantRunning = docker ps --filter "name=fluxindex-qdrant" --filter "status=running" -q 2>$null
     $redisRunning = docker ps --filter "name=fluxindex-redis" --filter "status=running" -q 2>$null
     $neo4jRunning = docker ps --filter "name=fluxindex-neo4j" --filter "status=running" -q 2>$null
 
-    if ($postgresRunning -and $redisRunning -and $neo4jRunning) {
+    if ($postgresRunning -and $qdrantRunning -and $redisRunning -and $neo4jRunning) {
         Write-Success "Docker infrastructure already running"
-        Write-Host "    PostgreSQL: localhost:5432 (fluxindex-postgres)" -ForegroundColor Gray
-        Write-Host "    Redis:      localhost:6379 (fluxindex-redis)" -ForegroundColor Gray
-        Write-Host "    Neo4j:      localhost:7474 (fluxindex-neo4j)" -ForegroundColor Gray
+        Write-Host "    PostgreSQL: localhost:5432" -ForegroundColor Gray
+        Write-Host "    Qdrant:     localhost:6333 (REST), localhost:6334 (gRPC)" -ForegroundColor Gray
+        Write-Host "    Redis:      localhost:6379" -ForegroundColor Gray
+        Write-Host "    Neo4j:      localhost:7474 (browser), localhost:7687 (bolt)" -ForegroundColor Gray
     } else {
         Write-Status "Starting Docker infrastructure..."
 
@@ -138,14 +142,25 @@ if (-not $SkipDocker -and -not $FrontendOnly) {
                 exit 1
             }
 
+            # Build docker-compose command
+            $composeCmd = "docker-compose -f docker-compose.dev.yml"
+            if ($WithTools) {
+                $composeCmd += " --profile tools"
+            }
+            $composeCmd += " up -d"
+
             # Start containers
-            docker-compose -f docker-compose.dev.yml up -d 2>&1 | Out-Null
+            Invoke-Expression $composeCmd 2>&1 | Out-Null
 
             if ($LASTEXITCODE -eq 0) {
                 Write-Success "Docker infrastructure started"
                 Write-Host "    PostgreSQL: localhost:5432" -ForegroundColor Gray
+                Write-Host "    Qdrant:     localhost:6333 (REST), localhost:6334 (gRPC)" -ForegroundColor Gray
                 Write-Host "    Redis:      localhost:6379" -ForegroundColor Gray
                 Write-Host "    Neo4j:      localhost:7474 (browser), localhost:7687 (bolt)" -ForegroundColor Gray
+                if ($WithTools) {
+                    Write-Host "    Redis Commander: localhost:8081" -ForegroundColor Gray
+                }
             } else {
                 Write-Error "Failed to start Docker infrastructure"
                 Write-Host "    Try running: docker-compose -f docker-compose.dev.yml up -d" -ForegroundColor Yellow
@@ -158,11 +173,12 @@ if (-not $SkipDocker -and -not $FrontendOnly) {
 
         # Wait for services to be ready
         Write-Status "Waiting for services to be ready..."
-        Start-Sleep -Seconds 3
+        Start-Sleep -Seconds 5
     }
 
     # Health check for PostgreSQL
-    $maxRetries = 10
+    Write-Status "Checking PostgreSQL..."
+    $maxRetries = 15
     $retryCount = 0
     while ($retryCount -lt $maxRetries) {
         $pgReady = docker exec fluxindex-postgres pg_isready -U fluxindex 2>$null
@@ -174,9 +190,27 @@ if (-not $SkipDocker -and -not $FrontendOnly) {
         Write-Host "    Waiting for PostgreSQL... ($retryCount/$maxRetries)" -ForegroundColor Gray
         Start-Sleep -Seconds 2
     }
-
     if ($retryCount -eq $maxRetries) {
         Write-Warning "PostgreSQL may not be fully ready yet"
+    }
+
+    # Health check for Qdrant
+    Write-Status "Checking Qdrant..."
+    $maxRetries = 10
+    $retryCount = 0
+    while ($retryCount -lt $maxRetries) {
+        try {
+            $qdrantReady = Invoke-RestMethod -Uri "http://localhost:6333/readyz" -Method Get -ErrorAction SilentlyContinue
+            Write-Success "Qdrant is ready"
+            break
+        } catch {
+            $retryCount++
+            Write-Host "    Waiting for Qdrant... ($retryCount/$maxRetries)" -ForegroundColor Gray
+            Start-Sleep -Seconds 2
+        }
+    }
+    if ($retryCount -eq $maxRetries) {
+        Write-Warning "Qdrant may not be fully ready yet"
     }
 
     Write-Host ""
@@ -211,9 +245,8 @@ if (-not $FrontendOnly) {
     }
 
     if ($useWindowsTerminal) {
-        # Windows Terminal tab
-        $backendCmd = "dotnet watch run --project `"$BackendDir`""
-        wt -w 0 nt --title "FluxIndex API" --tabColor "#512BD4" -d $BackendDir cmd /k "dotnet watch run"
+        # Start backend in a NEW Windows Terminal window (not attached to existing)
+        wt --title "FluxIndex API" --tabColor "#512BD4" -d $BackendDir cmd /k "dotnet watch run"
     } else {
         Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$BackendDir'; dotnet watch run" -WorkingDirectory $BackendDir
     }
@@ -222,8 +255,8 @@ if (-not $FrontendOnly) {
     Write-Host "    Swagger UI: http://localhost:5000/swagger" -ForegroundColor Gray
     Write-Host ""
 
-    # Give backend time to start
-    Start-Sleep -Seconds 2
+    # Wait for Windows Terminal window to be created before adding frontend tab
+    Start-Sleep -Seconds 3
 }
 
 # Start Frontend with Vite HMR
@@ -245,7 +278,7 @@ if (-not $BackendOnly) {
     }
 
     if ($useWindowsTerminal) {
-        # Windows Terminal tab
+        # Add frontend as a new tab in the backend's terminal window (most recent window)
         wt -w 0 nt --title "FluxIndex UI" --tabColor "#61DAFB" -d $FrontendDir cmd /k "npm run dev"
     } else {
         Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$FrontendDir'; npm run dev" -WorkingDirectory $FrontendDir
@@ -264,8 +297,12 @@ Write-Host "Services:" -ForegroundColor White
 
 if (-not $SkipDocker -and -not $FrontendOnly) {
     Write-Host "  [Docker]   PostgreSQL    http://localhost:5432" -ForegroundColor Gray
+    Write-Host "  [Docker]   Qdrant        http://localhost:6333" -ForegroundColor Gray
     Write-Host "  [Docker]   Redis         http://localhost:6379" -ForegroundColor Gray
     Write-Host "  [Docker]   Neo4j         http://localhost:7474" -ForegroundColor Gray
+    if ($WithTools) {
+        Write-Host "  [Docker]   Redis Cmd     http://localhost:8081" -ForegroundColor Gray
+    }
 }
 
 if (-not $FrontendOnly) {
