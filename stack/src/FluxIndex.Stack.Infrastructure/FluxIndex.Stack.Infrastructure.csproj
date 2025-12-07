@@ -1,0 +1,32 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\FluxIndex.Stack.Application\FluxIndex.Stack.Application.csproj" />
+    <ProjectReference Include="..\FluxIndex.Stack.Domain\FluxIndex.Stack.Domain.csproj" />
+    <ProjectReference Include="..\FluxIndex.Stack.Shared\FluxIndex.Stack.Shared.csproj" />
+    <ProjectReference Include="..\..\..\src\FluxIndex.Core\FluxIndex.Core.csproj" />
+    <ProjectReference Include="..\..\..\src\FluxIndex.SDK\FluxIndex.SDK.csproj" />
+    <ProjectReference Include="..\..\..\src\FluxIndex.Storage.PostgreSQL\FluxIndex.Storage.PostgreSQL.csproj" />
+    <ProjectReference Include="..\..\..\src\FluxIndex.Storage.SQLite\FluxIndex.Storage.SQLite.csproj" />
+    <ProjectReference Include="..\..\..\src\FluxIndex.AI.LocalEmbedder\FluxIndex.AI.LocalEmbedder.csproj" />
+    <ProjectReference Include="..\..\..\src\FluxIndex.AI.OpenAI\FluxIndex.AI.OpenAI.csproj" />
+    <ProjectReference Include="..\..\..\src\FluxIndex.AI.LocalReranker\FluxIndex.AI.LocalReranker.csproj" />
+    <ProjectReference Include="..\..\..\src\FluxIndex.Cache.Redis\FluxIndex.Cache.Redis.csproj" />
+    <ProjectReference Include="..\..\..\src\FluxIndex.Extensions.FileFlux\FluxIndex.Extensions.FileFlux.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Pgvector.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" />
+    <PackageReference Include="StackExchange.Redis" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
