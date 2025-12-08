@@ -772,4 +772,132 @@ public static class MetadataAugmentationServiceExtensions
         services.AddLearningBasedFusion();
         return services;
     }
+
+    /// <summary>
+    /// Retrieval Verification Service registration.
+    /// Implements real-time validation of retrieved documents with document grading,
+    /// hallucination detection, factual grounding, and confidence-based filtering.
+    /// Supports CRAG (Corrective RAG) patterns for improved RAG reliability.
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <param name="configureOptions">Options configuration action</param>
+    /// <returns>Service collection</returns>
+    public static IServiceCollection AddRetrievalVerification(
+        this IServiceCollection services,
+        Action<RetrievalVerificationServiceOptions>? configureOptions = null)
+    {
+        // Configure options
+        if (configureOptions != null)
+        {
+            services.Configure(configureOptions);
+        }
+        else
+        {
+            services.Configure<RetrievalVerificationServiceOptions>(_ => { });
+        }
+
+        // Register retrieval verification service
+        services.TryAddScoped<Interfaces.IRetrievalVerificationService, RetrievalVerificationService>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Retrieval Verification Service with default options.
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <param name="alwaysCheckHallucination">Whether to always check for hallucination risks</param>
+    /// <param name="useLlmForGrading">Whether to use LLM for document grading explanations</param>
+    /// <returns>Service collection</returns>
+    public static IServiceCollection AddRetrievalVerification(
+        this IServiceCollection services,
+        bool alwaysCheckHallucination = false,
+        bool useLlmForGrading = false)
+    {
+        return services.AddRetrievalVerification(options =>
+        {
+            options.AlwaysCheckHallucination = alwaysCheckHallucination;
+            options.UseLlmForGrading = useLlmForGrading;
+        });
+    }
+
+    /// <summary>
+    /// Self-Correction RAG Services registration.
+    /// Includes Retrieval Verification for comprehensive self-correcting RAG support.
+    /// Foundation for CRAG, Self-RAG, and Agentic RAG patterns.
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <returns>Service collection</returns>
+    public static IServiceCollection AddSelfCorrectionRAG(this IServiceCollection services)
+    {
+        services.AddRetrievalVerification(configureOptions: null);
+        return services;
+    }
+
+    /// <summary>
+    /// Registers Self-RAG (Self-Reflective Retrieval Augmented Generation) services.
+    /// Provides iterative search with quality assessment and query refinement capabilities.
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <param name="configureOptions">Optional configuration for Self-RAG behavior</param>
+    /// <returns>Service collection</returns>
+    public static IServiceCollection AddSelfRAGService(
+        this IServiceCollection services,
+        Action<SelfRAGServiceOptions>? configureOptions = null)
+    {
+        if (configureOptions != null)
+        {
+            services.Configure(configureOptions);
+        }
+        else
+        {
+            services.Configure<SelfRAGServiceOptions>(_ => { });
+        }
+
+        services.TryAddScoped<Interfaces.ISelfRAGService, SelfRAGService>();
+        return services;
+    }
+
+    /// <summary>
+    /// Adds the Corrective RAG (CRAG) service for retrieval correction.
+    /// Evaluates retrieved documents and performs corrective actions based on relevance grading.
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <param name="configureOptions">Optional configuration for Corrective RAG behavior</param>
+    /// <returns>Service collection</returns>
+    public static IServiceCollection AddCorrectiveRAGService(
+        this IServiceCollection services,
+        Action<CorrectiveRAGServiceOptions>? configureOptions = null)
+    {
+        if (configureOptions != null)
+        {
+            services.Configure(configureOptions);
+        }
+        else
+        {
+            services.Configure<CorrectiveRAGServiceOptions>(_ => { });
+        }
+
+        services.TryAddScoped<Interfaces.ICorrectiveRAGService, CorrectiveRAGService>();
+        return services;
+    }
+
+    /// <summary>
+    /// Agentic Retrieval Router registration.
+    /// Intelligent query routing to optimal retrieval strategies based on query analysis.
+    /// Supports multiple retrieval backends: HybridSearch, SelfRAG, CorrectiveRAG, SmallToBig, etc.
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <returns>Service collection</returns>
+    /// <remarks>
+    /// Prerequisites: At minimum, IHybridSearchService must be registered.
+    /// Optional services (ISelfRAGService, ICorrectiveRAGService, ISmallToBigRetriever,
+    /// IIterativeRetrievalService) will be resolved if available.
+    /// </remarks>
+    public static IServiceCollection AddAgenticRetrievalRouter(
+        this IServiceCollection services)
+    {
+        services.TryAddScoped<Interfaces.IAgenticRetrievalRouter, AgenticRetrievalRouter>();
+        return services;
+    }
 }
