@@ -432,4 +432,226 @@ public static class MetadataAugmentationServiceExtensions
             options.GenerateDualEmbeddings = generateDualEmbeddings;
         });
     }
+
+    /// <summary>
+    /// Advanced Entity Extraction Service registration.
+    /// Foundation for GraphRAG - extracts named entities with type classification,
+    /// confidence scoring, position tracking, and relation extraction.
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <param name="configureOptions">Options configuration action</param>
+    /// <returns>Service collection</returns>
+    public static IServiceCollection AddEntityExtraction(
+        this IServiceCollection services,
+        Action<EntityExtractionOptions>? configureOptions = null)
+    {
+        // Configure options
+        if (configureOptions != null)
+        {
+            services.Configure(configureOptions);
+        }
+        else
+        {
+            services.Configure<EntityExtractionOptions>(_ => { });
+        }
+
+        // Register entity extraction service
+        services.TryAddScoped<IAdvancedEntityExtractionService, EntityExtractionService>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Advanced Entity Extraction Service with default options.
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <param name="useLlm">Whether to use LLM for complex entity extraction</param>
+    /// <param name="minConfidence">Minimum confidence threshold for entity inclusion</param>
+    /// <returns>Service collection</returns>
+    public static IServiceCollection AddEntityExtraction(
+        this IServiceCollection services,
+        bool useLlm = true,
+        double minConfidence = 0.5)
+    {
+        return services.AddEntityExtraction(options =>
+        {
+            options.UseLlm = useLlm;
+            options.MinConfidence = minConfidence;
+        });
+    }
+
+    /// <summary>
+    /// Leiden Community Detection Service registration.
+    /// Implements hierarchical community detection using the Leiden algorithm
+    /// for GraphRAG global search support.
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <param name="configureOptions">Options configuration action</param>
+    /// <returns>Service collection</returns>
+    public static IServiceCollection AddLeidenCommunityDetection(
+        this IServiceCollection services,
+        Action<LeidenOptions>? configureOptions = null)
+    {
+        // Configure options
+        if (configureOptions != null)
+        {
+            services.Configure(configureOptions);
+        }
+        else
+        {
+            services.Configure<LeidenOptions>(_ => { });
+        }
+
+        // Register Leiden community service
+        services.TryAddScoped<ILeidenCommunityService, LeidenCommunityService>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Leiden Community Detection Service with default options.
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <param name="resolution">Resolution parameter for modularity (higher = more communities)</param>
+    /// <param name="maxHierarchyLevels">Maximum hierarchy levels to generate</param>
+    /// <returns>Service collection</returns>
+    public static IServiceCollection AddLeidenCommunityDetection(
+        this IServiceCollection services,
+        double resolution = 1.0,
+        int maxHierarchyLevels = 3)
+    {
+        return services.AddLeidenCommunityDetection(options =>
+        {
+            options.Resolution = resolution;
+            options.MaxHierarchyLevels = maxHierarchyLevels;
+        });
+    }
+
+    /// <summary>
+    /// GraphRAG Core Services registration.
+    /// Includes Entity Extraction and Leiden Community Detection for GraphRAG support.
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <param name="entityOptions">Entity extraction options</param>
+    /// <param name="leidenOptions">Leiden algorithm options</param>
+    /// <returns>Service collection</returns>
+    public static IServiceCollection AddGraphRAGCore(
+        this IServiceCollection services,
+        Action<EntityExtractionOptions>? entityOptions = null,
+        Action<LeidenOptions>? leidenOptions = null)
+    {
+        services.AddEntityExtraction(entityOptions);
+        services.AddLeidenCommunityDetection(leidenOptions);
+
+        return services;
+    }
+
+    /// <summary>
+    /// Listwise Reranker Service registration.
+    /// Implements advanced listwise reranking with sliding window, tournament,
+    /// attention-based, and hybrid methods for optimal document ordering.
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <param name="configureOptions">Options configuration action</param>
+    /// <returns>Service collection</returns>
+    public static IServiceCollection AddListwiseReranking(
+        this IServiceCollection services,
+        Action<ListwiseRerankOptions>? configureOptions = null)
+    {
+        // Configure options
+        if (configureOptions != null)
+        {
+            services.Configure(configureOptions);
+        }
+        else
+        {
+            services.Configure<ListwiseRerankOptions>(_ => { });
+        }
+
+        // Register listwise reranker
+        services.TryAddScoped<IListwiseReranker, Reranking.ListwiseReranker>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Listwise Reranker Service with default options.
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <param name="method">Default listwise method</param>
+    /// <param name="topN">Number of top results to return</param>
+    /// <returns>Service collection</returns>
+    public static IServiceCollection AddListwiseReranking(
+        this IServiceCollection services,
+        ListwiseMethod method = ListwiseMethod.SlidingWindow,
+        int topN = 10)
+    {
+        return services.AddListwiseReranking(options =>
+        {
+            options.Method = method;
+            options.TopN = topN;
+        });
+    }
+
+    /// <summary>
+    /// Iterative Retrieval Service registration.
+    /// Implements advanced iterative retrieval patterns including IRCOT, Self-Ask,
+    /// Multi-Hop, and Agentic retrieval for complex query handling.
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <param name="configureOptions">Options configuration action</param>
+    /// <returns>Service collection</returns>
+    public static IServiceCollection AddIterativeRetrieval(
+        this IServiceCollection services,
+        Action<IterativeRetrievalOptions>? configureOptions = null)
+    {
+        // Configure options
+        if (configureOptions != null)
+        {
+            services.Configure(configureOptions);
+        }
+        else
+        {
+            services.Configure<IterativeRetrievalOptions>(_ => { });
+        }
+
+        // Register iterative retrieval service
+        services.TryAddScoped<IIterativeRetrievalService, IterativeRetrievalService>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Iterative Retrieval Service with default options.
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <param name="maxIterations">Maximum retrieval iterations</param>
+    /// <param name="maxDocsPerIteration">Maximum documents per iteration</param>
+    /// <returns>Service collection</returns>
+    public static IServiceCollection AddIterativeRetrieval(
+        this IServiceCollection services,
+        int maxIterations = 5,
+        int maxDocsPerIteration = 10)
+    {
+        return services.AddIterativeRetrieval(options =>
+        {
+            options.MaxIterations = maxIterations;
+            options.MaxDocsPerIteration = maxDocsPerIteration;
+        });
+    }
+
+    /// <summary>
+    /// Advanced RAG Services registration.
+    /// Includes GraphRAG core services, advanced reranking, and iterative retrieval.
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <returns>Service collection</returns>
+    public static IServiceCollection AddAdvancedRAG(this IServiceCollection services)
+    {
+        services.AddGraphRAGCore();
+        services.AddListwiseReranking(configureOptions: null);
+        services.AddIterativeRetrieval(configureOptions: null);
+
+        return services;
+    }
 }
