@@ -1,9 +1,17 @@
 ﻿using System.Diagnostics;
+using FluxIndex.Core.Domain.Models;
 using FluxIndex.Stack.Application.Interfaces.Repositories;
 using FluxIndex.Stack.Application.Interfaces.Services;
 using FluxIndex.Stack.Domain.Entities;
 using FluxIndex.Stack.Shared.DTOs.Search;
 using Microsoft.Extensions.Logging;
+// Import Core types to avoid namespace collisions
+using IReranker = FluxIndex.Core.Application.Interfaces.IReranker;
+using RetrievalCandidate = FluxIndex.Core.Application.Interfaces.RetrievalCandidate;
+using RerankOptions = FluxIndex.Core.Application.Interfaces.RerankOptions;
+using ISemanticCacheService = FluxIndex.Core.Application.Interfaces.ISemanticCacheService;
+using CachedSearchResult = FluxIndex.Core.Application.Interfaces.CachedSearchResult;
+using SearchMetadata = FluxIndex.Core.Application.Interfaces.SearchMetadata;
 
 namespace FluxIndex.Stack.Application.Services;
 
@@ -15,21 +23,30 @@ public class SearchService : ISearchService
     private readonly IDocumentChunkRepository _chunkRepository;
     private readonly IDocumentRepository _documentRepository;
     private readonly ISearchHistoryRepository _searchHistoryRepository;
+    private readonly IEmbeddingProvider _embeddingProvider;
+    private readonly IReranker? _reranker;
+    private readonly ISemanticCacheService? _semanticCache;
     private readonly ILogger<SearchService> _logger;
 
-    // Simple in-memory cache for semantic cache (could be Redis in production)
-    private static readonly Dictionary<string, (string Response, DateTime CachedAt)> _semanticCache = new();
+    // Fallback in-memory cache when Redis is not available
+    private static readonly Dictionary<string, (string Response, DateTime CachedAt)> _fallbackCache = new();
     private static readonly object _cacheLock = new();
 
     public SearchService(
         IDocumentChunkRepository chunkRepository,
         IDocumentRepository documentRepository,
         ISearchHistoryRepository searchHistoryRepository,
-        ILogger<SearchService> logger)
+        IEmbeddingProvider embeddingProvider,
+        ILogger<SearchService> logger,
+        IReranker? reranker = null,
+        ISemanticCacheService? semanticCache = null)
     {
         _chunkRepository = chunkRepository;
         _documentRepository = documentRepository;
         _searchHistoryRepository = searchHistoryRepository;
+        _embeddingProvider = embeddingProvider;
+        _reranker = reranker;
+        _semanticCache = semanticCache;
         _logger = logger;
     }
 
@@ -91,6 +108,12 @@ public class SearchService : ISearchService
                 results = results.Where(r => r.Score >= request.MinScore).ToList();
             }
 
+            // Apply reranking if enabled and reranker is available
+            if (request.EnableReranking && _reranker != null && results.Count > 0)
+            {
+                results = await ApplyRerankingAsync(request.Query, results, request.TopK, cancellationToken);
+            }
+
             // Apply TopK limit
             results = results.Take(request.TopK).ToList();
         }
@@ -139,17 +162,75 @@ public class SearchService : ISearchService
         };
     }
 
-    private Task<List<SearchResultDto>> VectorSearchAsync(
+    private async Task<List<SearchResultDto>> VectorSearchAsync(
         SearchRequest request,
         List<DocumentChunk> chunks,
         List<Document> documents,
         CancellationToken cancellationToken)
     {
-        // Vector search requires embeddings - for now, fall back to keyword search
-        // TODO: Implement proper vector similarity search with pgvector
-        // This would require generating embedding for the query and using cosine distance
-        _logger.LogWarning("Vector search not fully implemented, falling back to keyword search");
-        return Task.FromResult(KeywordSearch(request, chunks, documents));
+        try
+        {
+            // Generate embedding for the query
+            _logger.LogDebug("Generating embedding for query: {Query}", request.Query);
+            var queryEmbedding = await _embeddingProvider.GetEmbeddingAsync(request.Query, cancellationToken);
+
+            // Get document IDs for filtering
+            var documentIds = documents.Select(d => d.Id).ToList();
+
+            // Perform vector similarity search using pgvector
+            _logger.LogDebug("Performing vector search with {ChunkCount} potential chunks", chunks.Count);
+            var vectorResults = await _chunkRepository.SearchByVectorAsync(
+                queryEmbedding,
+                limit: request.TopK * 2, // Get more results for potential filtering
+                documentIds: documentIds,
+                minScore: request.MinScore,
+                cancellationToken: cancellationToken);
+
+            var docLookup = documents.ToDictionary(d => d.Id);
+
+            return vectorResults
+                .Take(request.TopK)
+                .Select(r => new SearchResultDto
+                {
+                    ChunkId = r.Chunk.Id,
+                    DocumentId = r.Chunk.DocumentId,
+                    DocumentTitle = docLookup.TryGetValue(r.Chunk.DocumentId, out var doc) ? doc.Title : "Unknown",
+                    ChunkIndex = r.Chunk.ChunkIndex,
+                    Content = request.IncludeContent ? r.Chunk.Content : null,
+                    Score = r.Score,
+                    VectorScore = r.Score,
+                    KeywordScore = null,
+                    Metadata = request.IncludeMetadata ? r.Chunk.Metadata : null,
+                    Highlights = ExtractHighlights(r.Chunk.Content, request.Query)
+                })
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Vector search failed, falling back to keyword search");
+            return KeywordSearch(request, chunks, documents);
+        }
+    }
+
+    private static List<string> ExtractHighlights(string content, string query, int contextSize = 50)
+    {
+        var highlights = new List<string>();
+        var queryTerms = query.ToLowerInvariant()
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var contentLower = content.ToLowerInvariant();
+
+        foreach (var term in queryTerms.Take(3))
+        {
+            var idx = contentLower.IndexOf(term, StringComparison.OrdinalIgnoreCase);
+            if (idx >= 0)
+            {
+                var start = Math.Max(0, idx - contextSize);
+                var end = Math.Min(content.Length, idx + term.Length + contextSize);
+                highlights.Add(content.Substring(start, end - start));
+            }
+        }
+
+        return highlights.Distinct().Take(3).ToList();
     }
 
     private async Task<List<SearchResultDto>> HybridSearchAsync(
@@ -309,60 +390,215 @@ public class SearchService : ISearchService
         };
     }
 
-    public Task<SemanticCacheEntryDto?> GetCachedResponseAsync(
+    private async Task<List<SearchResultDto>> ApplyRerankingAsync(
+        string query,
+        List<SearchResultDto> results,
+        int topK,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            _logger.LogDebug("Applying reranking to {Count} results", results.Count);
+
+            // Convert SearchResultDto to RetrievalCandidate
+            var candidates = results.Select((r, index) => new RetrievalCandidate
+            {
+                Id = r.ChunkId.ToString(),
+                DocumentId = r.DocumentId.ToString(),
+                ChunkId = r.ChunkId.ToString(),
+                Content = r.Content ?? string.Empty,
+                InitialScore = (float)r.Score,
+                InitialRank = index + 1,
+                Metadata = r.Metadata
+            }).ToList();
+
+            // Apply reranking
+            var rerankOptions = new RerankOptions
+            {
+                TopN = topK,
+                IncludeExplanation = false,
+                MaxContentLength = 512
+            };
+
+            var rerankedResults = await _reranker!.RerankAsync(
+                query,
+                candidates,
+                rerankOptions,
+                cancellationToken);
+
+            // Convert back to SearchResultDto with updated scores
+            var resultLookup = results.ToDictionary(r => r.ChunkId);
+            var rerankedList = rerankedResults.ToList();
+
+            return rerankedList
+                .Where(rr => Guid.TryParse(rr.ChunkId, out var chunkId) && resultLookup.ContainsKey(chunkId))
+                .Select(rr =>
+                {
+                    var chunkId = Guid.Parse(rr.ChunkId);
+                    var original = resultLookup[chunkId];
+                    return original with
+                    {
+                        Score = rr.RerankScore,
+                        RerankScore = rr.RerankScore,
+                        RerankExplanation = rr.Explanation
+                    };
+                })
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Reranking failed, returning original results");
+            return results;
+        }
+    }
+
+    public async Task<SemanticCacheEntryDto?> GetCachedResponseAsync(
         string query,
         double similarityThreshold = 0.95,
         CancellationToken cancellationToken = default)
     {
+        // Try Redis semantic cache first if available
+        if (_semanticCache != null)
+        {
+            try
+            {
+                var cachedResult = await _semanticCache.GetCachedResultAsync(
+                    query,
+                    (float)similarityThreshold,
+                    cancellationToken);
+
+                if (cachedResult != null)
+                {
+                    _logger.LogDebug("Redis semantic cache hit for query: {Query} (similarity: {Similarity:F3})",
+                        query, cachedResult.SimilarityScore);
+
+                    // Return cached response - serialize results to JSON for response field
+                    var responseJson = System.Text.Json.JsonSerializer.Serialize(cachedResult.Results);
+                    return new SemanticCacheEntryDto
+                    {
+                        Query = query,
+                        Response = responseJson,
+                        Similarity = cachedResult.SimilarityScore,
+                        CachedAt = cachedResult.CachedAt
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Redis semantic cache lookup failed, falling back to in-memory cache");
+            }
+        }
+
+        // Fallback to in-memory cache
         lock (_cacheLock)
         {
-            // Simple exact match cache (semantic similarity would require embeddings)
             var normalizedQuery = query.ToLowerInvariant().Trim();
 
-            if (_semanticCache.TryGetValue(normalizedQuery, out var cached))
+            if (_fallbackCache.TryGetValue(normalizedQuery, out var cached))
             {
                 // Check if not expired (1 hour TTL)
                 if (DateTime.UtcNow - cached.CachedAt < TimeSpan.FromHours(1))
                 {
-                    return Task.FromResult<SemanticCacheEntryDto?>(new SemanticCacheEntryDto
+                    return new SemanticCacheEntryDto
                     {
                         Query = query,
                         Response = cached.Response,
                         Similarity = 1.0,
                         CachedAt = cached.CachedAt
-                    });
+                    };
                 }
 
-                _semanticCache.Remove(normalizedQuery);
+                _fallbackCache.Remove(normalizedQuery);
             }
         }
 
-        return Task.FromResult<SemanticCacheEntryDto?>(null);
+        return null;
     }
 
-    public Task CacheResponseAsync(
+    public async Task CacheResponseAsync(
         string query,
         string response,
         CancellationToken cancellationToken = default)
     {
+        // Try Redis semantic cache first if available
+        if (_semanticCache != null)
+        {
+            try
+            {
+                // Parse response JSON to create cache chunks
+                var chunks = new List<CacheDocumentChunk>();
+                try
+                {
+                    var results = System.Text.Json.JsonSerializer.Deserialize<List<SearchResultDto>>(response);
+                    if (results != null)
+                    {
+                        chunks = results.Select(r => CacheDocumentChunk.Create(
+                            documentId: r.DocumentId.ToString(),
+                            content: r.Content ?? string.Empty,
+                            chunkIndex: r.ChunkIndex,
+                            score: (float)r.Score,
+                            metadata: r.Metadata
+                        )).ToList();
+                    }
+                }
+                catch
+                {
+                    // If response is not parseable, create a single chunk with the response
+                    chunks.Add(CacheDocumentChunk.Create(
+                        documentId: "response",
+                        content: response,
+                        chunkIndex: 0
+                    ));
+                }
+
+                await _semanticCache.SetCachedResultAsync(
+                    query,
+                    chunks,
+                    metadata: new SearchMetadata { SearchAlgorithm = "semantic_search" },
+                    cancellationToken: cancellationToken);
+
+                _logger.LogDebug("Cached response in Redis semantic cache for query: {Query}", query);
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to cache in Redis, falling back to in-memory cache");
+            }
+        }
+
+        // Fallback to in-memory cache
         lock (_cacheLock)
         {
             var normalizedQuery = query.ToLowerInvariant().Trim();
-            _semanticCache[normalizedQuery] = (response, DateTime.UtcNow);
+            _fallbackCache[normalizedQuery] = (response, DateTime.UtcNow);
         }
-
-        return Task.CompletedTask;
     }
 
-    public Task ClearCacheAsync(Guid? collectionId = null, CancellationToken cancellationToken = default)
+    public async Task ClearCacheAsync(Guid? collectionId = null, CancellationToken cancellationToken = default)
     {
-        lock (_cacheLock)
+        // Try to clear Redis semantic cache if available
+        if (_semanticCache != null)
         {
-            // For now, clear all cache (collection-specific clearing would need more structure)
-            _semanticCache.Clear();
+            try
+            {
+                var pattern = collectionId.HasValue ? $"*{collectionId}*" : "*";
+                await _semanticCache.InvalidateCacheAsync(pattern, cancellationToken);
+                _logger.LogInformation("Redis semantic cache cleared for collection: {CollectionId}",
+                    collectionId ?? Guid.Empty);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to clear Redis semantic cache");
+            }
         }
 
-        _logger.LogInformation("Semantic cache cleared for collection: {CollectionId}", collectionId ?? Guid.Empty);
-        return Task.CompletedTask;
+        // Also clear fallback in-memory cache
+        lock (_cacheLock)
+        {
+            _fallbackCache.Clear();
+        }
+
+        _logger.LogInformation("In-memory fallback cache cleared for collection: {CollectionId}",
+            collectionId ?? Guid.Empty);
     }
 }

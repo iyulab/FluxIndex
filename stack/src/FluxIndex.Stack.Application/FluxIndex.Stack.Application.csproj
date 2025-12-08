@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\FluxIndex.Stack.Domain\FluxIndex.Stack.Domain.csproj" />
     <ProjectReference Include="..\FluxIndex.Stack.Shared\FluxIndex.Stack.Shared.csproj" />
+    <ProjectReference Include="..\..\..\src\FluxIndex.Core\FluxIndex.Core.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

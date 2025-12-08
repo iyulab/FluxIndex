@@ -21,4 +21,20 @@ public interface IDocumentChunkRepository
         int pageSize = 20,
         Guid? documentId = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Performs vector similarity search using pgvector cosine distance.
+    /// </summary>
+    /// <param name="queryEmbedding">The query embedding vector.</param>
+    /// <param name="limit">Maximum number of results to return.</param>
+    /// <param name="documentIds">Optional filter by document IDs.</param>
+    /// <param name="minScore">Minimum similarity score (0-1).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>List of chunks with similarity scores, ordered by score descending.</returns>
+    Task<List<(DocumentChunk Chunk, double Score)>> SearchByVectorAsync(
+        float[] queryEmbedding,
+        int limit = 10,
+        IEnumerable<Guid>? documentIds = null,
+        double minScore = 0.0,
+        CancellationToken cancellationToken = default);
 }

@@ -1,4 +1,10 @@
-﻿using FluxIndex.SDK;
+﻿using FileFlux;
+using FluxIndex.AI.LocalReranker;
+using FluxIndex.Cache.Redis.Extensions;
+using FluxIndex.Cache.Redis.Configuration;
+using FluxIndex.Extensions.FluxImprover;
+using FluxIndex.Extensions.FluxImprover.Services;
+using FluxIndex.SDK;
 using FluxIndex.Stack.Application.Interfaces.Repositories;
 using FluxIndex.Stack.Application.Interfaces.Services;
 using FluxIndex.Stack.Application.Services;
@@ -9,6 +15,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
+
+// Type aliases to resolve collisions with Core interfaces
+using CoreTextCompletionService = FluxIndex.Core.Application.Interfaces.ITextCompletionService;
+using CoreEmbeddingService = FluxIndex.Core.Application.Interfaces.IEmbeddingService;
+using ISemanticCacheService = FluxIndex.Core.Application.Interfaces.ISemanticCacheService;
 
 namespace FluxIndex.Stack.Infrastructure.Extensions;
 
@@ -28,6 +39,40 @@ public static class ServiceCollectionExtensions
         services.AddRepositories();
         services.AddApplicationServices();
         services.AddFluxIndexSDK(configuration);
+        services.AddFileFluxChunking(configuration);
+        services.AddLocalRerankerService(configuration);
+        services.AddTextCompletionService(configuration);
+        services.AddFluxImproverServices(configuration);
+        services.AddRedisCache(configuration);
+
+        return services;
+    }
+
+    /// <summary>
+    /// Adds FileFlux intelligent chunking services.
+    /// </summary>
+    public static IServiceCollection AddFileFluxChunking(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        // Register FileFlux core services
+        services.AddFileFlux();
+
+        // Configure FileFlux chunking options
+        services.Configure<FileFluxChunkingConfiguration>(options =>
+        {
+            var section = configuration.GetSection("FileFlux");
+            if (section.Exists())
+            {
+                options.DefaultStrategy = section.GetValue<string>("Strategy") ?? "Auto";
+                options.DefaultMaxChunkSize = section.GetValue<int>("MaxChunkSize", 1024);
+                options.DefaultOverlapSize = section.GetValue<int>("OverlapSize", 128);
+                options.EnableLanguageDetection = section.GetValue<bool>("EnableLanguageDetection", true);
+            }
+        });
+
+        // Register FileFlux-based chunking service
+        services.AddScoped<IChunkingService, FileFluxChunkingService>();
 
         return services;
     }
@@ -129,21 +174,125 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Adds Redis caching support.
+    /// Adds LocalReranker cross-encoder based semantic reranking.
+    /// </summary>
+    public static IServiceCollection AddLocalRerankerService(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        var section = configuration.GetSection("LocalReranker");
+
+        // Register ResilientLocalReranker with warmup and fallback
+        services.AddResilientLocalRerankerWithWarmup(options =>
+        {
+            if (section.Exists())
+            {
+                options.ModelId = section.GetValue<string>("ModelId") ?? "default";
+                options.UseGpu = section.GetValue<bool>("UseGpu", false);
+                options.BatchSize = section.GetValue<int>("BatchSize", 32);
+                options.WarmupOnStartup = section.GetValue<bool>("WarmupOnStartup", true);
+
+                var cacheDir = section.GetValue<string>("CacheDirectory");
+                if (!string.IsNullOrEmpty(cacheDir))
+                {
+                    options.CacheDirectory = cacheDir;
+                }
+            }
+        });
+
+        return services;
+    }
+
+    /// <summary>
+    /// Adds dynamic text completion service with database-driven configuration.
+    /// </summary>
+    public static IServiceCollection AddTextCompletionService(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        // Register text completion service factory
+        services.AddSingleton<ITextCompletionServiceFactory, TextCompletionServiceFactory>();
+
+        // Register dynamic text completion provider that reads from AiProviderSettings
+        services.AddSingleton<DynamicTextCompletionProvider>();
+        services.AddSingleton<CoreTextCompletionService>(sp =>
+        {
+            return sp.GetRequiredService<DynamicTextCompletionProvider>();
+        });
+        services.AddSingleton<ITextCompletionProviderCache>(sp =>
+        {
+            return sp.GetRequiredService<DynamicTextCompletionProvider>();
+        });
+
+        return services;
+    }
+
+    /// <summary>
+    /// Adds FluxImprover services for chunk enrichment, QA generation, and RAG evaluation.
+    /// Requires ITextCompletionService to be registered.
+    /// </summary>
+    public static IServiceCollection AddFluxImproverServices(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        var section = configuration.GetSection("FluxImprover");
+        var enableFluxImprover = section.GetValue<bool>("Enabled", true);
+
+        if (!enableFluxImprover)
+        {
+            return services;
+        }
+
+        // Register FluxImprover integration using the one-stop method
+        // This registers all FluxImprover services and wrappers
+        services.AddFluxIndexFluxImprover();
+
+        // Register FluxImproverPipeline for orchestration
+        services.AddFluxImproverPipeline();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Adds Redis caching support with semantic cache.
     /// </summary>
     public static IServiceCollection AddRedisCache(
         this IServiceCollection services,
         IConfiguration configuration)
     {
         var redisConnection = configuration.GetConnectionString("Redis");
-        if (!string.IsNullOrEmpty(redisConnection))
+        if (string.IsNullOrEmpty(redisConnection))
         {
-            services.AddStackExchangeRedisCache(options =>
-            {
-                options.Configuration = redisConnection;
-                options.InstanceName = "FluxIndex:";
-            });
+            return services;
         }
+
+        // Register standard Redis distributed cache
+        services.AddStackExchangeRedisCache(options =>
+        {
+            options.Configuration = redisConnection;
+            options.InstanceName = "FluxIndex:";
+        });
+
+        // Register EmbeddingProvider to EmbeddingService adapter for semantic cache
+        services.AddSingleton<CoreEmbeddingService>(sp =>
+        {
+            var embeddingProvider = sp.GetRequiredService<IEmbeddingProvider>();
+            return new EmbeddingProviderToEmbeddingServiceAdapter(embeddingProvider);
+        });
+
+        // Register Redis semantic cache service
+        services.AddRedisSemanticCache(options =>
+        {
+            var section = configuration.GetSection("SemanticCache");
+            options.ConnectionString = redisConnection;
+            options.KeyPrefix = section.GetValue<string>("KeyPrefix") ?? "fluxindex:semantic:";
+            options.DefaultSimilarityThreshold = section.GetValue<float>("SimilarityThreshold", 0.95f);
+            options.DefaultTtl = TimeSpan.FromHours(section.GetValue<int>("TtlHours", 1));
+            options.MaxCacheEntries = section.GetValue<long>("MaxEntries", 10000);
+            options.MaxParallelism = section.GetValue<int>("MaxParallelism", Environment.ProcessorCount);
+            options.DatabaseNumber = section.GetValue<int>("DatabaseNumber", 1);
+            options.EnableMetrics = section.GetValue<bool>("EnableMetrics", true);
+        });
 
         return services;
     }

@@ -72,8 +72,11 @@ public class DynamicEmbeddingProvider : IEmbeddingProvider, IEmbeddingProviderCa
             provider = await _embeddingServiceFactory.CreateLocalProviderAsync(null, cancellationToken);
         }
 
-        // Cache the provider
-        _cache.Set(CacheKey, provider, CacheDuration);
+        // Cache the provider with size specification (required when SizeLimit is set)
+        var cacheOptions = new MemoryCacheEntryOptions()
+            .SetAbsoluteExpiration(CacheDuration)
+            .SetSize(1); // Size of 1 for the provider reference
+        _cache.Set(CacheKey, provider, cacheOptions);
 
         return provider;
     }

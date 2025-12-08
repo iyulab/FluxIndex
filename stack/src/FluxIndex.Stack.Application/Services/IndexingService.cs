@@ -20,9 +20,10 @@ public class IndexingService : IIndexingService
     private readonly IIndexingJobLogRepository? _logRepository;
     private readonly IEmbeddingProvider? _embeddingProvider;
     private readonly IDocumentContentProvider? _contentProvider;
+    private readonly IChunkingService? _chunkingService;
     private readonly ILogger<IndexingService> _logger;
 
-    // Default chunking configuration
+    // Default chunking configuration (fallback when IChunkingService not available)
     private const int DefaultChunkSize = 1024;
     private const int DefaultChunkOverlap = 128;
 
@@ -33,7 +34,8 @@ public class IndexingService : IIndexingService
         ILogger<IndexingService> logger,
         IIndexingJobLogRepository? logRepository = null,
         IEmbeddingProvider? embeddingProvider = null,
-        IDocumentContentProvider? contentProvider = null)
+        IDocumentContentProvider? contentProvider = null,
+        IChunkingService? chunkingService = null)
     {
         _jobRepository = jobRepository;
         _documentRepository = documentRepository;
@@ -41,6 +43,7 @@ public class IndexingService : IIndexingService
         _logRepository = logRepository;
         _embeddingProvider = embeddingProvider;
         _contentProvider = contentProvider;
+        _chunkingService = chunkingService;
         _logger = logger;
     }
 
@@ -206,10 +209,41 @@ public class IndexingService : IIndexingService
             return 0;
         }
 
-        // 2. Chunk the content
+        // 2. Chunk the content using intelligent chunking (FileFlux) or fallback
         await AddLogAsync(job.Id, IndexingJobLogLevel.Info, "Starting content chunking", phase: "Chunking");
-        var chunks = ChunkContent(content, document.Id);
-        var chunkList = chunks.ToList();
+        List<DocumentChunk> chunkList;
+
+        if (_chunkingService != null)
+        {
+            // Use FileFlux intelligent chunking
+            _logger.LogInformation("Using FileFlux intelligent chunking for document {DocumentId}", document.Id);
+            await AddLogAsync(job.Id, IndexingJobLogLevel.Info, "Using intelligent chunking (FileFlux)", phase: "Chunking");
+
+            var detectedLanguage = _chunkingService.DetectLanguage(content);
+            if (!string.IsNullOrEmpty(detectedLanguage))
+            {
+                await AddLogAsync(job.Id, IndexingJobLogLevel.Info, $"Detected language: {detectedLanguage}", phase: "Chunking");
+            }
+
+            chunkList = await _chunkingService.ChunkContentAsync(
+                content,
+                document.Id,
+                new ChunkingOptions
+                {
+                    Strategy = "Auto", // Let FileFlux choose optimal strategy
+                    MaxChunkSize = DefaultChunkSize,
+                    OverlapSize = DefaultChunkOverlap,
+                    Language = detectedLanguage
+                },
+                cancellationToken);
+        }
+        else
+        {
+            // Fallback to simple chunking
+            _logger.LogWarning("FileFlux not available, using fallback chunking for document {DocumentId}", document.Id);
+            await AddLogAsync(job.Id, IndexingJobLogLevel.Warning, "Using fallback chunking (FileFlux not available)", phase: "Chunking");
+            chunkList = ChunkContent(content, document.Id).ToList();
+        }
 
         _logger.LogInformation("Document {DocumentId} split into {ChunkCount} chunks", document.Id, chunkList.Count);
         await AddLogAsync(job.Id, IndexingJobLogLevel.Info, $"Content split into {chunkList.Count} chunks", phase: "Chunking");

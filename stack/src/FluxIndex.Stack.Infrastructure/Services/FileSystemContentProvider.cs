@@ -71,7 +71,11 @@ public class FileSystemContentProvider : IDocumentContentProvider
             Directory.CreateDirectory(directory);
         }
 
-        await File.WriteAllTextAsync(path, content, cancellationToken);
+        // Sanitize null bytes (0x00) which are invalid in PostgreSQL TEXT columns
+        // This is a workaround until FileFlux releases the TextSanitizer fix
+        var sanitizedContent = SanitizeContent(content);
+
+        await File.WriteAllTextAsync(path, sanitizedContent, cancellationToken);
         _logger.LogDebug("Stored text content for document {DocumentId} at {Path}", documentId, path);
     }
 
@@ -125,5 +129,22 @@ public class FileSystemContentProvider : IDocumentContentProvider
         var shard = idString.Substring(0, 2);
 
         return Path.Combine(_basePath, shard, $"{documentId}{extension}");
+    }
+
+    /// <summary>
+    /// Removes null bytes (0x00) from text content.
+    /// PDF/DOCX files may contain null bytes from embedded binary objects, form fields, or encoding artifacts.
+    /// PostgreSQL TEXT columns reject null bytes as invalid UTF-8.
+    /// </summary>
+    private static string SanitizeContent(string? content)
+    {
+        if (string.IsNullOrEmpty(content))
+            return string.Empty;
+
+        // Fast path: check if sanitization is needed
+        if (!content.Contains('\0'))
+            return content;
+
+        return content.Replace("\0", string.Empty);
     }
 }

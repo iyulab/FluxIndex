@@ -13,6 +13,7 @@
     <ProjectReference Include="..\..\..\src\FluxIndex.AI.LocalReranker\FluxIndex.AI.LocalReranker.csproj" />
     <ProjectReference Include="..\..\..\src\FluxIndex.Cache.Redis\FluxIndex.Cache.Redis.csproj" />
     <ProjectReference Include="..\..\..\src\FluxIndex.Extensions.FileFlux\FluxIndex.Extensions.FileFlux.csproj" />
+    <ProjectReference Include="..\..\..\src\FluxIndex.Extensions.FluxImprover\FluxIndex.Extensions.FluxImprover.csproj" />
   </ItemGroup>
 
   <ItemGroup>

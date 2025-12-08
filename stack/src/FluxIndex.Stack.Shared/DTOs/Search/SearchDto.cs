@@ -13,6 +13,11 @@ public class SearchRequest
     public Dictionary<string, object>? Filters { get; set; }
     public bool IncludeContent { get; set; } = true;
     public bool IncludeMetadata { get; set; } = true;
+
+    /// <summary>
+    /// Enable cross-encoder reranking for higher quality results.
+    /// </summary>
+    public bool EnableReranking { get; set; } = false;
 }
 
 /// <summary>
@@ -52,6 +57,16 @@ public record SearchResultDto
     public double? KeywordScore { get; init; }
     public Dictionary<string, object>? Metadata { get; init; }
     public List<string>? Highlights { get; init; }
+
+    /// <summary>
+    /// Rerank score from cross-encoder model (if reranking was applied).
+    /// </summary>
+    public double? RerankScore { get; init; }
+
+    /// <summary>
+    /// Explanation for reranking decision (if requested).
+    /// </summary>
+    public string? RerankExplanation { get; init; }
 }
 
 /// <summary>

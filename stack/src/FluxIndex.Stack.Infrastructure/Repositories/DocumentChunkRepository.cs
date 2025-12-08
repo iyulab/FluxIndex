@@ -2,6 +2,8 @@
 using FluxIndex.Stack.Domain.Entities;
 using FluxIndex.Stack.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Pgvector;
+using Pgvector.EntityFrameworkCore;
 
 namespace FluxIndex.Stack.Infrastructure.Repositories;
 
@@ -114,5 +116,44 @@ public class DocumentChunkRepository : IDocumentChunkRepository
             .ToListAsync(cancellationToken);
 
         return (items, totalCount);
+    }
+
+    public async Task<List<(DocumentChunk Chunk, double Score)>> SearchByVectorAsync(
+        float[] queryEmbedding,
+        int limit = 10,
+        IEnumerable<Guid>? documentIds = null,
+        double minScore = 0.0,
+        CancellationToken cancellationToken = default)
+    {
+        var queryVector = new Vector(queryEmbedding);
+
+        // Start with base query filtering only chunks with embeddings
+        var query = _context.DocumentChunks
+            .Where(c => c.Embedding != null);
+
+        // Apply document filter if specified
+        if (documentIds != null && documentIds.Any())
+        {
+            var docIdsList = documentIds.ToList();
+            query = query.Where(c => docIdsList.Contains(c.DocumentId));
+        }
+
+        // Execute query with cosine distance ordering and projection
+        var results = await query
+            .OrderBy(c => c.Embedding!.CosineDistance(queryVector))
+            .Take(limit * 2) // Get more to allow for score filtering
+            .Select(c => new
+            {
+                Chunk = c,
+                Distance = c.Embedding!.CosineDistance(queryVector)
+            })
+            .ToListAsync(cancellationToken);
+
+        // Convert distance to similarity score (1 - distance) and filter by minimum score
+        return results
+            .Select(r => (r.Chunk, Score: 1.0 - r.Distance))
+            .Where(r => r.Score >= minScore)
+            .Take(limit)
+            .ToList();
     }
 }

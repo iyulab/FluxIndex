@@ -55,7 +55,7 @@
   </ItemGroup>
   <!-- Document Processing & Quality -->
   <ItemGroup>
-    <PackageVersion Include="FileFlux" Version="0.6.1" />
+    <PackageVersion Include="FileFlux" Version="0.6.2" />
     <PackageVersion Include="FluxImprover" Version="0.4.1" />
     <PackageVersion Include="HtmlAgilityPack" Version="1.12.3" />
     <PackageVersion Include="WebFlux" Version="0.1.7" />
@@ -64,6 +64,7 @@
   <ItemGroup>
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
     <PackageVersion Include="FluentAssertions" Version="8.8.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
     <PackageVersion Include="Moq" Version="4.20.72" />
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.9.0" />
