@@ -3,7 +3,9 @@
 namespace FluxIndex.Stack.Domain.Entities;
 
 /// <summary>
-/// Represents a chunk of a document with its embedding vector.
+/// Represents a chunk of a document with its embedding vectors.
+/// Supports multiple embedding models through ChunkEmbeddings collection.
+/// Legacy Embedding property is deprecated - use ChunkEmbeddings for new code.
 /// </summary>
 public class DocumentChunk
 {
@@ -11,6 +13,12 @@ public class DocumentChunk
     public Guid DocumentId { get; private set; }
     public int ChunkIndex { get; private set; }
     public string Content { get; private set; } = string.Empty;
+
+    /// <summary>
+    /// Legacy embedding vector. Deprecated - use ChunkEmbeddings for model-aware embeddings.
+    /// Kept for backward compatibility during migration.
+    /// </summary>
+    [Obsolete("Use ChunkEmbeddings collection for model-aware embedding storage")]
     public Vector? Embedding { get; private set; }
     public int TokenCount { get; private set; }
     public int StartPosition { get; private set; }
@@ -20,6 +28,11 @@ public class DocumentChunk
 
     // Navigation
     public Document? Document { get; private set; }
+
+    /// <summary>
+    /// Collection of embeddings for this chunk (supports multiple embedding models)
+    /// </summary>
+    public ICollection<ChunkEmbedding> ChunkEmbeddings { get; private set; } = new List<ChunkEmbedding>();
 
     private DocumentChunk() { } // EF Core
 
@@ -99,5 +112,29 @@ public class DocumentChunk
                 Metadata[kvp.Key] = kvp.Value;
             }
         }
+    }
+
+    /// <summary>
+    /// Gets the embedding for a specific model.
+    /// </summary>
+    public ChunkEmbedding? GetEmbeddingForModel(Guid embeddingModelId)
+    {
+        return ChunkEmbeddings.FirstOrDefault(e => e.EmbeddingModelId == embeddingModelId);
+    }
+
+    /// <summary>
+    /// Checks if this chunk has an embedding for the specified model.
+    /// </summary>
+    public bool HasEmbeddingForModel(Guid embeddingModelId)
+    {
+        return ChunkEmbeddings.Any(e => e.EmbeddingModelId == embeddingModelId);
+    }
+
+    /// <summary>
+    /// Gets all embedding model IDs that have embeddings for this chunk.
+    /// </summary>
+    public IEnumerable<Guid> GetEmbeddingModelIds()
+    {
+        return ChunkEmbeddings.Select(e => e.EmbeddingModelId);
     }
 }

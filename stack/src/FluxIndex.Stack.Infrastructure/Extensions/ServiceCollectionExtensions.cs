@@ -122,6 +122,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISearchHistoryRepository, SearchHistoryRepository>();
         services.AddScoped<IAiProviderSettingsRepository, AiProviderSettingsRepository>();
 
+        // Adaptive embedding system repositories
+        services.AddScoped<IEmbeddingModelRepository, EmbeddingModelRepository>();
+        services.AddScoped<IChunkEmbeddingRepository, ChunkEmbeddingRepository>();
+        services.AddScoped<IReindexingJobRepository, ReindexingJobRepository>();
+
         return services;
     }
 
@@ -138,6 +143,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IIndexingService, IndexingService>();
         services.AddScoped<IChunkService, ChunkService>();
         services.AddScoped<IAiProviderSettingsService, AiProviderSettingsService>();
+
+        // Adaptive embedding system services
+        // Note: ReindexingService must be registered before EmbeddingModelService
+        // because EmbeddingModelService depends on IReindexingService
+        services.AddScoped<IReindexingService, ReindexingService>();
+        services.AddScoped<IEmbeddingModelService, EmbeddingModelService>();
 
         // Register embedding service factory for dynamic provider creation
         services.AddSingleton<IEmbeddingServiceFactory, EmbeddingServiceFactory>();

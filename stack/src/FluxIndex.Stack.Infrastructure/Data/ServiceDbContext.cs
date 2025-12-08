@@ -21,6 +21,11 @@ public class ServiceDbContext : DbContext
     public DbSet<SearchHistory> SearchHistories => Set<SearchHistory>();
     public DbSet<AiProviderSettings> AiProviderSettings => Set<AiProviderSettings>();
 
+    // Adaptive embedding system entities
+    public DbSet<EmbeddingModel> EmbeddingModels => Set<EmbeddingModel>();
+    public DbSet<ChunkEmbedding> ChunkEmbeddings => Set<ChunkEmbedding>();
+    public DbSet<ReindexingJob> ReindexingJobs => Set<ReindexingJob>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -152,6 +157,64 @@ public class ServiceDbContext : DbContext
             entity.Property(e => e.AdditionalConfig).HasColumnType("jsonb");
             entity.HasIndex(e => e.IsDefaultEmbedding);
             entity.HasIndex(e => e.IsDefaultLlm);
+        });
+
+        // EmbeddingModel configuration
+        modelBuilder.Entity<EmbeddingModel>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.ModelKey).HasMaxLength(200).IsRequired();
+            entity.HasIndex(e => e.ModelKey).IsUnique();
+            entity.Property(e => e.ProviderName).HasMaxLength(50).IsRequired();
+            entity.Property(e => e.ModelName).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.DisplayName).HasMaxLength(200);
+            entity.HasIndex(e => e.IsActive);
+            entity.HasIndex(e => e.ProviderName);
+        });
+
+        // ChunkEmbedding configuration
+        modelBuilder.Entity<ChunkEmbedding>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.ChunkId);
+            entity.HasIndex(e => e.EmbeddingModelId);
+            entity.HasIndex(e => new { e.ChunkId, e.EmbeddingModelId }).IsUnique();
+
+            // Vector column without fixed dimension - will be set dynamically per model
+            // Using raw SQL for column type since dimension varies
+            entity.Property(e => e.Embedding)
+                .HasColumnType("vector");
+
+            entity.HasOne(e => e.Chunk)
+                .WithMany(c => c.ChunkEmbeddings)
+                .HasForeignKey(e => e.ChunkId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Model)
+                .WithMany(m => m.ChunkEmbeddings)
+                .HasForeignKey(e => e.EmbeddingModelId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ReindexingJob configuration
+        modelBuilder.Entity<ReindexingJob>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.Priority);
+            entity.HasIndex(e => e.CreatedAt);
+            entity.HasIndex(e => new { e.Status, e.Priority });
+            entity.Property(e => e.ErrorMessage).HasMaxLength(2000);
+
+            entity.HasOne(e => e.TargetModel)
+                .WithMany()
+                .HasForeignKey(e => e.TargetModelId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.SourceModel)
+                .WithMany()
+                .HasForeignKey(e => e.SourceModelId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
     }
 }
