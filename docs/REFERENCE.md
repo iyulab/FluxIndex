@@ -274,6 +274,171 @@ var importance = await graphService.CalculateChunkImportanceAsync(
 
 ---
 
+## Advanced RAG Services
+
+Self-correction and agentic retrieval capabilities.
+
+### Self-RAG
+
+Self-reflective RAG with iterative quality improvement.
+
+```csharp
+var selfRag = serviceProvider.GetRequiredService<ISelfRAGService>();
+
+var result = await selfRag.SearchAsync(query, new SelfRAGOptions
+{
+    MaxIterations = 3,
+    MinQualityThreshold = 0.7f,
+    EnableReflection = true
+});
+
+// Result contains FinalResults, FinalQualityScore, Iterations
+```
+
+### Corrective RAG
+
+Document grading and knowledge refinement with web augmentation.
+
+```csharp
+var crag = serviceProvider.GetRequiredService<ICorrectiveRAGService>();
+
+var result = await crag.RetrieveWithCorrectionAsync(query, new CorrectiveRAGOptions
+{
+    EnableWebAugmentation = true,
+    GradingThreshold = 0.5f,
+    MaxCorrections = 2
+});
+
+// Documents are graded as Correct, Ambiguous, or Incorrect
+```
+
+### Agentic Retrieval Router
+
+Intelligent strategy selection based on query analysis.
+
+```csharp
+var router = serviceProvider.GetRequiredService<IAgenticRetrievalRouter>();
+
+// Automatic strategy selection
+var result = await router.RouteAndRetrieveAsync(query, new RoutingContext
+{
+    MaxResults = 10,
+    Domain = "technical"
+});
+
+// Or analyze query first
+var decision = await router.AnalyzeQueryAsync(query);
+// decision.PrimaryStrategy, decision.QueryAnalysis.Type
+```
+
+**Supported Strategies**:
+- SemanticSearch, KeywordSearch, HybridSearch
+- MultiHopRetrieval, SelfRAG, CorrectiveRAG
+- SmallToBig, GraphTraversal, IterativeRetrieval
+- QueryDecomposition, Ensemble
+
+---
+
+## GraphRAG Pipeline
+
+Entity-centric retrieval and hierarchical summarization.
+
+### Entity Extraction
+
+```csharp
+var extractor = serviceProvider.GetRequiredService<IEntityExtractionService>();
+
+var entities = await extractor.ExtractEntitiesAsync(content);
+var relations = await extractor.ExtractRelationsAsync(content, entities);
+```
+
+### Entity Graph Service
+
+```csharp
+var entityGraph = serviceProvider.GetRequiredService<IEntityGraphService>();
+
+// Build graph from documents
+await entityGraph.BuildGraphAsync(documents);
+
+// Entity-centric search with Personalized PageRank
+var results = await entityGraph.SearchByEntityAsync(entityId, new EntitySearchOptions
+{
+    MaxDepth = 3,
+    DampingFactor = 0.85
+});
+```
+
+### Hierarchical Summarization
+
+```csharp
+var summarizer = serviceProvider.GetRequiredService<IHierarchicalSummarizationService>();
+
+// Generate community summaries
+var summaries = await summarizer.GenerateSummariesAsync(communities, level: 1);
+
+// Global search using community summaries
+var answer = await summarizer.GlobalSearchAsync(query, new GlobalSearchOptions
+{
+    MaxCommunities = 5,
+    SummaryLevel = 1
+});
+```
+
+### Full GraphRAG
+
+```csharp
+var graphRag = serviceProvider.GetRequiredService<IGraphRAGService>();
+
+var result = await graphRag.SearchAsync(query, new GraphRAGOptions
+{
+    EnableLocalSearch = true,
+    EnableGlobalSearch = true,
+    CommunityLevel = 1
+});
+```
+
+---
+
+## Query Enhancement
+
+Dynamic fusion and query transformation.
+
+### Dynamic Fusion
+
+Query-type specific weight optimization.
+
+```csharp
+var dynamicFusion = serviceProvider.GetRequiredService<IDynamicFusionService>();
+
+var weights = dynamicFusion.CalculateWeights(queryAnalysis);
+// Returns optimized VectorWeight and SparseWeight based on query type
+```
+
+**Default Weights by Query Type**:
+| Query Type | Vector Weight | Sparse Weight |
+|------------|---------------|---------------|
+| Factual | 0.3 | 0.7 |
+| Analytical | 0.7 | 0.3 |
+| Exploratory | 0.8 | 0.2 |
+| Procedural | 0.5 | 0.5 |
+
+### Query Transformation
+
+```csharp
+var transformer = serviceProvider.GetRequiredService<IQueryTransformationService>();
+
+// HyDE (Hypothetical Document Embedding)
+var hydeQuery = await transformer.TransformWithHyDEAsync(query);
+
+// Multi-Query expansion
+var multiQueries = await transformer.ExpandQueryAsync(query);
+
+// Query decomposition for complex questions
+var subQueries = await transformer.DecomposeQueryAsync(complexQuery);
+```
+
+---
+
 ## Custom Implementations
 
 ### Custom Embedding Service

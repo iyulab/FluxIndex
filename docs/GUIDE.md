@@ -183,6 +183,61 @@ var sources = results.Select(r => r.DocumentChunk.Metadata["file_path"]).Distinc
 
 ---
 
+## Advanced RAG
+
+### Self-Correcting Search
+
+```csharp
+// Self-RAG: Iterative quality improvement
+var selfRag = provider.GetRequiredService<ISelfRAGService>();
+var result = await selfRag.SearchAsync("complex technical question");
+// Automatically refines results until quality threshold met
+
+// Corrective RAG: Document grading + web augmentation
+var crag = provider.GetRequiredService<ICorrectiveRAGService>();
+var corrected = await crag.RetrieveWithCorrectionAsync("specific query");
+// Grades documents, replaces low-quality with web-augmented content
+```
+
+### Intelligent Query Routing
+
+```csharp
+// Agentic Router: Auto-selects best retrieval strategy
+var router = provider.GetRequiredService<IAgenticRetrievalRouter>();
+
+var result = await router.RouteAndRetrieveAsync("What is machine learning?");
+// Automatically chooses: SemanticSearch, HybridSearch, SelfRAG, etc.
+
+// Check routing decision
+Console.WriteLine($"Strategy: {result.Decision.PrimaryStrategy}");
+Console.WriteLine($"Query Type: {result.Decision.QueryAnalysis.Type}");
+```
+
+### GraphRAG for Complex Questions
+
+```csharp
+// Entity-aware search for relational queries
+var graphRag = provider.GetRequiredService<IGraphRAGService>();
+
+var result = await graphRag.SearchAsync(
+    "How are Machine Learning and Neural Networks related?",
+    new GraphRAGOptions { EnableGlobalSearch = true });
+```
+
+### DI Registration
+
+```csharp
+services.AddFluxIndexCore();
+
+// Add advanced RAG services
+services.AddSelfRAGService();
+services.AddCorrectiveRAGService();
+services.AddAgenticRetrievalRouter();
+services.AddGraphRAGServices();
+```
+
+---
+
 ## Performance Tips
 
 | Optimization | Benefit |
