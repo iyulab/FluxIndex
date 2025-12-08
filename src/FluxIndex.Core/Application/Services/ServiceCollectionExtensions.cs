@@ -651,7 +651,125 @@ public static class MetadataAugmentationServiceExtensions
         services.AddGraphRAGCore();
         services.AddListwiseReranking(configureOptions: null);
         services.AddIterativeRetrieval(configureOptions: null);
+        services.AddEntityGraphService();
 
+        return services;
+    }
+
+    /// <summary>
+    /// Entity Graph Service registration for entity-centric indexing and retrieval.
+    /// Provides GraphRAG capabilities through entity-based search and traversal.
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <returns>Service collection</returns>
+    public static IServiceCollection AddEntityGraphService(this IServiceCollection services)
+    {
+        services.TryAddScoped<IEntityGraphService, Graph.EntityGraphService>();
+        return services;
+    }
+
+    /// <summary>
+    /// Hierarchical Summarization Service registration.
+    /// Implements map-reduce summarization at community level with caching
+    /// and global search support for GraphRAG.
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <param name="configureOptions">Options configuration action</param>
+    /// <returns>Service collection</returns>
+    public static IServiceCollection AddHierarchicalSummarization(
+        this IServiceCollection services,
+        Action<HierarchicalSummarizationOptions>? configureOptions = null)
+    {
+        // Configure options
+        if (configureOptions != null)
+        {
+            services.Configure(configureOptions);
+        }
+        else
+        {
+            services.Configure<HierarchicalSummarizationOptions>(_ => { });
+        }
+
+        // Register hierarchical summarization service
+        services.TryAddScoped<IHierarchicalSummarizationService, Graph.HierarchicalSummarizationService>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Hierarchical Summarization Service with default options.
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <param name="parallelGeneration">Enable parallel summary generation</param>
+    /// <param name="enableCaching">Enable summary caching</param>
+    /// <returns>Service collection</returns>
+    public static IServiceCollection AddHierarchicalSummarization(
+        this IServiceCollection services,
+        bool parallelGeneration = true,
+        bool enableCaching = true)
+    {
+        return services.AddHierarchicalSummarization(options =>
+        {
+            options.ParallelGeneration = parallelGeneration;
+            options.EnableCaching = enableCaching;
+        });
+    }
+
+    /// <summary>
+    /// Full GraphRAG Services registration.
+    /// Includes Entity Extraction, Leiden Community Detection, Entity Graph,
+    /// and Hierarchical Summarization for complete GraphRAG support.
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <returns>Service collection</returns>
+    public static IServiceCollection AddFullGraphRAG(this IServiceCollection services)
+    {
+        services.AddGraphRAGCore();
+        services.AddEntityGraphService();
+        services.AddHierarchicalSummarization(configureOptions: null);
+        services.AddGraphRAGService();
+
+        return services;
+    }
+
+    /// <summary>
+    /// GraphRAG Pipeline Service registration.
+    /// Orchestrates entity graph, community detection, and hierarchical summarization
+    /// for comprehensive retrieval-augmented generation with local and global search.
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <returns>Service collection</returns>
+    public static IServiceCollection AddGraphRAGService(this IServiceCollection services)
+    {
+        services.TryAddScoped<IGraphRAGService, Graph.GraphRAGService>();
+        return services;
+    }
+
+    /// <summary>
+    /// Learning-based Fusion Service registration.
+    /// Implements machine learning approach to predict optimal fusion weights
+    /// based on query characteristics and historical feedback.
+    /// Supports online learning for continuous improvement.
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <returns>Service collection</returns>
+    public static IServiceCollection AddLearningBasedFusion(this IServiceCollection services)
+    {
+        services.TryAddSingleton<ILearningBasedFusionService, Fusion.LearningBasedFusionService>();
+        return services;
+    }
+
+    /// <summary>
+    /// Advanced Hybrid Search Services registration.
+    /// Includes Dynamic Alpha Tuning, Learning-based Fusion, and Query Complexity Analyzer
+    /// for intelligent query-adaptive search optimization.
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <returns>Service collection</returns>
+    public static IServiceCollection AddAdvancedHybridSearch(this IServiceCollection services)
+    {
+        services.AddDynamicAlphaTuning();
+        services.AddLearningBasedFusion();
         return services;
     }
 }
