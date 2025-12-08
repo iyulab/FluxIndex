@@ -1,6 +1,7 @@
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Models;
 using FluxIndex.Core.Application.Services.Quantization;
+using FluxIndex.Core.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
@@ -116,6 +117,36 @@ public static class MetadataAugmentationServiceExtensions
     public static IServiceCollection AddGraphTraversal(this IServiceCollection services)
     {
         services.AddScoped<IGraphTraversalService, GraphTraversalService>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Dynamic Alpha Tuning (DAT) 서비스 등록.
+    /// 쿼리 유형에 따라 최적의 융합 가중치를 자동 결정합니다.
+    /// 연구 결과 6.6% 검색 품질 향상이 확인되었습니다.
+    /// </summary>
+    /// <param name="services">서비스 컬렉션</param>
+    /// <returns>서비스 컬렉션</returns>
+    public static IServiceCollection AddDynamicAlphaTuning(this IServiceCollection services)
+    {
+        // QueryComplexityAnalyzer 등록 (없으면)
+        services.TryAddScoped<IQueryComplexityAnalyzer, QueryComplexityAnalyzer>();
+
+        // DynamicFusionService 등록
+        services.TryAddScoped<IDynamicFusionService, DynamicFusionService>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// 쿼리 복잡도 분석기 등록
+    /// </summary>
+    /// <param name="services">서비스 컬렉션</param>
+    /// <returns>서비스 컬렉션</returns>
+    public static IServiceCollection AddQueryComplexityAnalyzer(this IServiceCollection services)
+    {
+        services.TryAddScoped<IQueryComplexityAnalyzer, QueryComplexityAnalyzer>();
 
         return services;
     }
@@ -241,6 +272,7 @@ public static class MetadataAugmentationServiceExtensions
         services.AddTokenAwareSearch();
         services.AddGraphTraversal();
         services.AddImageExtraction();
+        services.AddDynamicAlphaTuning(); // DAT for query-adaptive fusion weights
 
         return services;
     }
@@ -348,5 +380,56 @@ public static class MetadataAugmentationServiceExtensions
     {
         services.AddScoped<VectorQuantizationMigrationService>();
         return services;
+    }
+
+    /// <summary>
+    /// Contextual Embedding Service registration.
+    /// Implements Anthropic's Contextual Retrieval approach - prepends LLM-generated context
+    /// to chunks before embedding, improving retrieval accuracy by up to 67%.
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <param name="configureOptions">Options configuration action</param>
+    /// <returns>Service collection</returns>
+    public static IServiceCollection AddContextualEmbedding(
+        this IServiceCollection services,
+        Action<ContextualEmbeddingOptions>? configureOptions = null)
+    {
+        // Configure options
+        if (configureOptions != null)
+        {
+            services.Configure(configureOptions);
+        }
+        else
+        {
+            services.Configure<ContextualEmbeddingOptions>(_ => { });
+        }
+
+        // Register contextual header generator (required dependency)
+        services.TryAddScoped<IContextualHeaderGenerator, HybridContextualHeaderGenerator>();
+
+        // Register contextual embedding service
+        services.TryAddScoped<IContextualEmbeddingService, ContextualEmbeddingService>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Contextual Embedding Service with default options.
+    /// Includes contextual header generation and embedding pipeline.
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <param name="llmThreshold">LLM usage threshold (0.0-1.0, default 0.7)</param>
+    /// <param name="generateDualEmbeddings">Whether to generate both contextual and standard embeddings</param>
+    /// <returns>Service collection</returns>
+    public static IServiceCollection AddContextualEmbedding(
+        this IServiceCollection services,
+        double llmThreshold = 0.7,
+        bool generateDualEmbeddings = false)
+    {
+        return services.AddContextualEmbedding(options =>
+        {
+            options.LlmThreshold = llmThreshold;
+            options.GenerateDualEmbeddings = generateDualEmbeddings;
+        });
     }
 }

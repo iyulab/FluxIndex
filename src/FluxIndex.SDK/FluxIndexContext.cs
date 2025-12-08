@@ -31,6 +31,7 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
     private readonly IHybridSearchService? _hybridSearchService;
     private readonly ISmallToBigRetriever? _smallToBigRetriever;
     private readonly IQualityMonitoringService? _qualityMonitor;
+    private readonly IAdaptiveSearchService? _adaptiveSearchService;
     private readonly ILogger<FluxIndexContext> _logger;
     private bool _disposed = false;
 
@@ -42,7 +43,8 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
         ISemanticCacheService? cacheService = null,
         IHybridSearchService? hybridSearchService = null,
         ISmallToBigRetriever? smallToBigRetriever = null,
-        IQualityMonitoringService? qualityMonitor = null)
+        IQualityMonitoringService? qualityMonitor = null,
+        IAdaptiveSearchService? adaptiveSearchService = null)
     {
         _retriever = retriever;
         _indexer = indexer;
@@ -51,6 +53,7 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
         _hybridSearchService = hybridSearchService;
         _smallToBigRetriever = smallToBigRetriever;
         _qualityMonitor = qualityMonitor;
+        _adaptiveSearchService = adaptiveSearchService;
         _logger = logger ?? new NullLogger<FluxIndexContext>();
 
         if (_cacheService != null)
@@ -72,6 +75,11 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
         if (_smallToBigRetriever != null)
         {
             _logger.LogInformation("FluxIndexClient initialized with Small-to-Big retrieval enabled");
+        }
+
+        if (_adaptiveSearchService != null)
+        {
+            _logger.LogInformation("FluxIndexClient initialized with adaptive search (DAT) enabled");
         }
     }
 
@@ -270,6 +278,127 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
             throw;
         }
     }
+
+    #region Adaptive Search Methods (DAT-enabled)
+
+    /// <summary>
+    /// Adaptive Search with Dynamic Alpha Tuning (DAT).
+    /// Automatically selects optimal search strategy and fusion weights based on query analysis.
+    /// Research shows 6.6% improvement in retrieval quality with query-adaptive weights.
+    /// </summary>
+    /// <param name="query">Search query</param>
+    /// <param name="options">Adaptive search options</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Adaptive search result with strategy information</returns>
+    public async Task<AdaptiveSearchResult> AdaptiveSearchAsync(
+        string query,
+        AdaptiveSearchOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (_adaptiveSearchService == null)
+        {
+            throw new InvalidOperationException(
+                "AdaptiveSearchService is not configured. " +
+                "Use FluxIndexContextBuilder to enable adaptive search.");
+        }
+
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            throw new ArgumentException("Query cannot be null or empty", nameof(query));
+        }
+
+        try
+        {
+            var startTime = DateTime.UtcNow;
+            var result = await _adaptiveSearchService.SearchAsync(query, options, cancellationToken);
+            var duration = DateTime.UtcNow - startTime;
+
+            _logger.LogInformation(
+                "Adaptive search completed: query='{Query}', strategy={Strategy}, results={Count}, duration={Duration}ms",
+                query, result.UsedStrategy, result.Documents.Count(), duration.TotalMilliseconds);
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Adaptive search failed: query='{Query}'", query);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Adaptive search with forced strategy.
+    /// Useful for testing or when a specific strategy is required.
+    /// </summary>
+    /// <param name="query">Search query</param>
+    /// <param name="strategy">Forced search strategy</param>
+    /// <param name="options">Adaptive search options</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Adaptive search result with strategy information</returns>
+    public async Task<AdaptiveSearchResult> AdaptiveSearchWithStrategyAsync(
+        string query,
+        FluxIndex.Core.Application.Interfaces.SearchStrategy strategy,
+        AdaptiveSearchOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (_adaptiveSearchService == null)
+        {
+            throw new InvalidOperationException(
+                "AdaptiveSearchService is not configured. " +
+                "Use FluxIndexContextBuilder to enable adaptive search.");
+        }
+
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            throw new ArgumentException("Query cannot be null or empty", nameof(query));
+        }
+
+        return await _adaptiveSearchService.SearchWithStrategyAsync(query, strategy, options, cancellationToken);
+    }
+
+    /// <summary>
+    /// Indicates whether adaptive search (DAT) is available.
+    /// </summary>
+    public bool SupportsAdaptiveSearch => _adaptiveSearchService != null;
+
+    /// <summary>
+    /// Gets performance report for all search strategies.
+    /// </summary>
+    public async Task<StrategyPerformanceReport?> GetStrategyPerformanceReportAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (_adaptiveSearchService == null)
+        {
+            return null;
+        }
+
+        return await _adaptiveSearchService.GetPerformanceReportAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Provides feedback on search results for adaptive learning.
+    /// </summary>
+    /// <param name="query">Original search query</param>
+    /// <param name="result">Search result to provide feedback on</param>
+    /// <param name="feedback">User feedback</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    public async Task ProvideSearchFeedbackAsync(
+        string query,
+        AdaptiveSearchResult result,
+        UserFeedback feedback,
+        CancellationToken cancellationToken = default)
+    {
+        if (_adaptiveSearchService == null)
+        {
+            _logger.LogWarning("Feedback ignored: AdaptiveSearchService is not configured");
+            return;
+        }
+
+        await _adaptiveSearchService.UpdateFeedbackAsync(query, result, feedback, cancellationToken);
+        _logger.LogDebug("Search feedback recorded for query: '{Query}'", query);
+    }
+
+    #endregion
 
     /// <summary>
     /// 문서 조회 (Retriever 위임)

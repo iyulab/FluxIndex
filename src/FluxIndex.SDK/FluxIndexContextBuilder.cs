@@ -2,6 +2,7 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services;
 using FluxIndex.Core.Models;
 using FluxIndex.Core.Services;
+using CoreServiceExtensions = FluxIndex.Core.Application.Services.MetadataAugmentationServiceExtensions;
 using FluxIndex.SDK.Configuration;
 using FluxIndex.SDK.Services;
 using FluxIndex.SDK.Extensions;
@@ -557,6 +558,39 @@ public class FluxIndexContextBuilder
     }
 
     /// <summary>
+    /// Contextual Embedding Pipeline activation (Anthropic's Contextual Retrieval approach).
+    /// Prepends LLM-generated context to chunks before embedding, improving retrieval by up to 67%.
+    /// Research shows combining with BM25 reduces retrieval failures by 49%.
+    /// </summary>
+    /// <param name="llmThreshold">LLM usage threshold based on ContextDependency (default 0.7)</param>
+    /// <param name="generateDualEmbeddings">Generate both contextual and standard embeddings for hybrid retrieval</param>
+    /// <returns>Builder instance for chaining</returns>
+    public FluxIndexContextBuilder WithContextualEmbedding(
+        double llmThreshold = 0.7,
+        bool generateDualEmbeddings = false)
+    {
+        CoreServiceExtensions.AddContextualEmbedding(_services, options =>
+        {
+            options.LlmThreshold = llmThreshold;
+            options.GenerateDualEmbeddings = generateDualEmbeddings;
+        });
+
+        return this;
+    }
+
+    /// <summary>
+    /// Contextual Embedding with advanced configuration.
+    /// </summary>
+    /// <param name="configure">Configuration action for ContextualEmbeddingOptions</param>
+    /// <returns>Builder instance for chaining</returns>
+    public FluxIndexContextBuilder WithContextualEmbedding(
+        Action<FluxIndex.Core.Application.Services.ContextualEmbeddingOptions> configure)
+    {
+        CoreServiceExtensions.AddContextualEmbedding(_services, configure);
+        return this;
+    }
+
+    /// <summary>
     /// 고급 서비스 구성 - 확장 패키지에서 사용
     /// </summary>
     public FluxIndexContextBuilder ConfigureServices(Action<IServiceCollection> configure)
@@ -661,6 +695,7 @@ public class FluxIndexContextBuilder
         var semanticCacheService = serviceProvider.GetService<ISemanticCacheService>();
         var smallToBigRetriever = serviceProvider.GetService<ISmallToBigRetriever>();
         var qualityMonitoringService = serviceProvider.GetService<IQualityMonitoringService>();
+        var adaptiveSearchService = serviceProvider.GetService<IAdaptiveSearchService>();
 
         // Create and return context
         return new FluxIndexContext(
@@ -671,7 +706,8 @@ public class FluxIndexContextBuilder
             semanticCacheService,
             hybridSearchService,
             smallToBigRetriever,
-            qualityMonitoringService
+            qualityMonitoringService,
+            adaptiveSearchService
         );
     }
 

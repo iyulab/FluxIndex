@@ -23,6 +23,7 @@ public class HybridSearchService : IHybridSearchService
     private readonly ISparseRetriever _sparseRetriever;
     private readonly IEmbeddingService _embeddingService;
     private readonly IVectorQuantizer? _quantizer;
+    private readonly IDynamicFusionService? _dynamicFusion;
     private readonly ILogger<HybridSearchService> _logger;
 
     /// <summary>
@@ -33,7 +34,7 @@ public class HybridSearchService : IHybridSearchService
         ISparseRetriever sparseRetriever,
         IEmbeddingService embeddingService,
         ILogger<HybridSearchService> logger)
-        : this(vectorStore, sparseRetriever, embeddingService, null, logger)
+        : this(vectorStore, sparseRetriever, embeddingService, null, null, logger)
     {
     }
 
@@ -46,11 +47,26 @@ public class HybridSearchService : IHybridSearchService
         IEmbeddingService embeddingService,
         IVectorQuantizer? quantizer,
         ILogger<HybridSearchService> logger)
+        : this(vectorStore, sparseRetriever, embeddingService, quantizer, null, logger)
+    {
+    }
+
+    /// <summary>
+    /// Dynamic Alpha Tuning 지원 생성자 (권장)
+    /// </summary>
+    public HybridSearchService(
+        IVectorStore vectorStore,
+        ISparseRetriever sparseRetriever,
+        IEmbeddingService embeddingService,
+        IVectorQuantizer? quantizer,
+        IDynamicFusionService? dynamicFusion,
+        ILogger<HybridSearchService> logger)
     {
         _vectorStore = vectorStore ?? throw new ArgumentNullException(nameof(vectorStore));
         _sparseRetriever = sparseRetriever ?? throw new ArgumentNullException(nameof(sparseRetriever));
         _embeddingService = embeddingService ?? throw new ArgumentNullException(nameof(embeddingService));
         _quantizer = quantizer;
+        _dynamicFusion = dynamicFusion;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -77,8 +93,19 @@ public class HybridSearchService : IHybridSearchService
 
         try
         {
-            // 1. 검색 전략 자동 선택 (옵션 활성화 시)
-            if (options.EnableAutoStrategy)
+            // 1. Dynamic Alpha Tuning (DAT) 적용 (우선)
+            if (options.EnableDynamicAlphaTuning && _dynamicFusion != null)
+            {
+                var datConfig = await _dynamicFusion.CalculateDynamicWeightsAsync(query, cancellationToken);
+                options = ApplyDynamicFusionConfiguration(options, datConfig);
+                _logger.LogInformation(
+                    "DAT 적용: Vector={VectorWeight:F2}, Sparse={SparseWeight:F2}, " +
+                    "Fusion={Fusion}, Type={QueryType}",
+                    datConfig.VectorWeight, datConfig.SparseWeight,
+                    datConfig.RecommendedFusion, datConfig.QueryType);
+            }
+            // 2. 검색 전략 자동 선택 (DAT 미적용 시 폴백)
+            else if (options.EnableAutoStrategy)
             {
                 var strategy = await RecommendSearchStrategyAsync(query, cancellationToken);
                 options = ApplySearchStrategy(options, strategy);
@@ -368,7 +395,7 @@ public class HybridSearchService : IHybridSearchService
             FusionMethod.Maximum => FuseWithMaximum(vectorResults, sparseResults, options),
             FusionMethod.HarmonicMean => FuseWithHarmonicMean(vectorResults, sparseResults, options),
             FusionMethod.RelativeScoreFusion => FuseWithRelativeScoreFusion(vectorResults, sparseResults, options),
-            _ => FuseWithRRF(vectorResults, sparseResults, options)
+            _ => FuseWithRelativeScoreFusion(vectorResults, sparseResults, options) // Default to RSF for better reranking
         };
     }
 
@@ -830,6 +857,22 @@ public class HybridSearchService : IHybridSearchService
             FusionMethod = strategy.RecommendedFusion,
             VectorWeight = strategy.RecommendedWeights.VectorWeight,
             SparseWeight = strategy.RecommendedWeights.SparseWeight
+        };
+    }
+
+    /// <summary>
+    /// Applies Dynamic Alpha Tuning (DAT) configuration to search options.
+    /// </summary>
+    private static HybridSearchOptions ApplyDynamicFusionConfiguration(
+        HybridSearchOptions options,
+        DynamicFusionConfiguration datConfig)
+    {
+        return options with
+        {
+            VectorWeight = datConfig.VectorWeight,
+            SparseWeight = datConfig.SparseWeight,
+            FusionMethod = datConfig.RecommendedFusion,
+            UseQuantizedSearch = datConfig.UseQuantizedSearch || options.UseQuantizedSearch
         };
     }
 

@@ -19,6 +19,7 @@ public class AdaptiveSearchService : IAdaptiveSearchService
     private readonly IHybridSearchService _hybridSearchService;
     private readonly ISmallToBigRetriever _smallToBigRetriever;
     private readonly IQueryComplexityAnalyzer _queryAnalyzer;
+    private readonly IDynamicFusionService? _dynamicFusion;
     private readonly ISemanticCacheService? _semanticCache;
     private readonly ILogger<AdaptiveSearchService> _logger;
 
@@ -36,12 +37,14 @@ public class AdaptiveSearchService : IAdaptiveSearchService
         ISmallToBigRetriever smallToBigRetriever,
         IQueryComplexityAnalyzer queryAnalyzer,
         ILogger<AdaptiveSearchService> logger,
+        IDynamicFusionService? dynamicFusion = null,
         ISemanticCacheService? semanticCache = null)
     {
         _hybridSearchService = hybridSearchService ?? throw new ArgumentNullException(nameof(hybridSearchService));
         _smallToBigRetriever = smallToBigRetriever ?? throw new ArgumentNullException(nameof(smallToBigRetriever));
         _queryAnalyzer = queryAnalyzer ?? throw new ArgumentNullException(nameof(queryAnalyzer));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _dynamicFusion = dynamicFusion;
         _semanticCache = semanticCache;
 
         _strategyMetrics = new ConcurrentDictionary<SearchStrategy, StrategyMetrics>();
@@ -632,9 +635,28 @@ public class AdaptiveSearchService : IAdaptiveSearchService
         var hybridOptions = new FluxIndex.Core.Domain.Models.HybridSearchOptions
         {
             MaxResults = options.MaxResults,
-            VectorWeight = 0.6f,  // 0.7 → 0.6으로 재조정 (벡터/키워드 밸런싱)
-            SparseWeight = 0.4f   // 0.3 → 0.4로 증가 (키워드 검색 강화)
+            VectorWeight = 0.6f,
+            SparseWeight = 0.4f
         };
+
+        // Apply DAT (Dynamic Alpha Tuning) for query-adaptive weights
+        if (_dynamicFusion != null)
+        {
+            try
+            {
+                var datConfig = await _dynamicFusion.CalculateDynamicWeightsAsync(query, cancellationToken);
+                hybridOptions.VectorWeight = datConfig.VectorWeight;
+                hybridOptions.SparseWeight = datConfig.SparseWeight;
+                hybridOptions.FusionMethod = datConfig.RecommendedFusion;
+
+                _logger.LogDebug("DAT applied: Vector={VectorWeight:F2}, Sparse={SparseWeight:F2}, Fusion={Fusion}",
+                    datConfig.VectorWeight, datConfig.SparseWeight, datConfig.RecommendedFusion);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "DAT calculation failed, using default weights");
+            }
+        }
 
         var results = await _hybridSearchService.SearchAsync(query, hybridOptions, cancellationToken);
         return results.Select(r => CreateDocumentFromChunk(r.Chunk));

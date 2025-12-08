@@ -112,9 +112,9 @@ public record HybridSearchOptions
     public int MaxResults { get; set; } = 10;
 
     /// <summary>
-    /// 융합 방법
+    /// 융합 방법 (기본값: RelativeScoreFusion - 점수 크기 정보 보존으로 리랭킹 성능 향상)
     /// </summary>
-    public FusionMethod FusionMethod { get; set; } = FusionMethod.RRF;
+    public FusionMethod FusionMethod { get; set; } = FusionMethod.RelativeScoreFusion;
 
     /// <summary>
     /// RRF k 매개변수
@@ -180,6 +180,13 @@ public record HybridSearchOptions
     /// 양자화 검색 최소 점수 임계값
     /// </summary>
     public float QuantizedMinScore { get; set; } = 0.0f;
+
+    /// <summary>
+    /// Dynamic Alpha Tuning (DAT) 활성화 여부.
+    /// 활성화 시 쿼리 유형에 따라 최적의 융합 가중치를 자동 결정합니다.
+    /// 연구 결과 6.6% 검색 품질 향상이 확인되었습니다.
+    /// </summary>
+    public bool EnableDynamicAlphaTuning { get; set; } = false;
 }
 
 /// <summary>
@@ -306,33 +313,34 @@ public class QueryCharacteristics
 public enum FusionMethod
 {
     /// <summary>
-    /// Reciprocal Rank Fusion (기본값)
+    /// Reciprocal Rank Fusion - 순위 기반 융합, 점수 크기 무시
     /// </summary>
     RRF,
 
     /// <summary>
-    /// 가중 선형 조합
+    /// 가중 선형 조합 - 정규화된 점수의 가중 합
     /// </summary>
     WeightedSum,
 
     /// <summary>
-    /// 곱셈 융합
+    /// 곱셈 융합 - 양쪽 모두에서 매칭된 결과만 유지 (기하 평균)
     /// </summary>
     Product,
 
     /// <summary>
-    /// 최대값 융합
+    /// 최대값 융합 - 각 결과의 최대 점수 선택
     /// </summary>
     Maximum,
 
     /// <summary>
-    /// 조화 평균
+    /// 조화 평균 - 양쪽 모두에서 매칭된 결과의 조화 평균
     /// </summary>
     HarmonicMean,
 
     /// <summary>
-    /// Relative Score Fusion - preserves score magnitude information
-    /// Normalizes scores within each retriever before fusion
+    /// Relative Score Fusion (기본값, 권장)
+    /// 점수 크기 정보를 보존하여 리랭킹 성능 향상.
+    /// 각 검색기 내에서 점수를 min-max 정규화 후 융합.
     /// </summary>
     RelativeScoreFusion,
 

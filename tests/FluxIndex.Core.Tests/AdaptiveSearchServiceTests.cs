@@ -30,7 +30,8 @@ public class AdaptiveSearchServiceTests
             _mockSmallToBig.Object,
             _mockAnalyzer.Object,
             _logger,
-            _mockSemanticCache.Object);
+            dynamicFusion: null,
+            semanticCache: _mockSemanticCache.Object);
     }
 
     [Fact]
