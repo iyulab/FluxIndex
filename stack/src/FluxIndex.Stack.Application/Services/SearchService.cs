@@ -1,53 +1,93 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
+using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.Models;
 using FluxIndex.Stack.Application.Interfaces.Repositories;
 using FluxIndex.Stack.Application.Interfaces.Services;
 using FluxIndex.Stack.Domain.Entities;
 using FluxIndex.Stack.Shared.DTOs.Search;
 using Microsoft.Extensions.Logging;
-// Import Core types to avoid namespace collisions
+
+// Type aliases
+using StackIDocumentRepository = FluxIndex.Stack.Application.Interfaces.Repositories.IDocumentRepository;
 using IReranker = FluxIndex.Core.Application.Interfaces.IReranker;
 using RetrievalCandidate = FluxIndex.Core.Application.Interfaces.RetrievalCandidate;
 using RerankOptions = FluxIndex.Core.Application.Interfaces.RerankOptions;
 using ISemanticCacheService = FluxIndex.Core.Application.Interfaces.ISemanticCacheService;
 using CachedSearchResult = FluxIndex.Core.Application.Interfaces.CachedSearchResult;
 using SearchMetadata = FluxIndex.Core.Application.Interfaces.SearchMetadata;
+using CoreSearchStrategy = FluxIndex.Core.Application.Interfaces.SearchStrategy;
+using CoreAdaptiveSearchOptions = FluxIndex.Core.Application.Interfaces.AdaptiveSearchOptions;
+using CoreAdaptiveSearchResult = FluxIndex.Core.Application.Interfaces.AdaptiveSearchResult;
 
 namespace FluxIndex.Stack.Application.Services;
 
 /// <summary>
-/// Service implementation for search operations.
+/// Unified search service - thin wrapper around Core's search services.
+///
+/// This service delegates core search algorithms to FluxIndex.Core:
+/// - Query analysis → IQueryComplexityAnalyzer
+/// - Strategy selection → IAdaptiveSearchService
+/// - Hybrid search → IHybridSearchService
+/// - Dynamic fusion → IDynamicFusionService
+/// - Reranking → IReranker, IListwiseReranker
+///
+/// Stack-specific responsibilities:
+/// - DTO conversion (SearchRequest ↔ Core options)
+/// - Stack entity access (Document, DocumentChunk)
+/// - Search history recording
+/// - Optional backend integration (Qdrant, Neo4j)
 /// </summary>
 public class SearchService : ISearchService
 {
     private readonly IDocumentChunkRepository _chunkRepository;
-    private readonly IDocumentRepository _documentRepository;
+    private readonly StackIDocumentRepository _documentRepository;
     private readonly ISearchHistoryRepository _searchHistoryRepository;
     private readonly IEmbeddingProvider _embeddingProvider;
-    private readonly IReranker? _reranker;
-    private readonly ISemanticCacheService? _semanticCache;
     private readonly ILogger<SearchService> _logger;
 
-    // Fallback in-memory cache when Redis is not available
-    private static readonly Dictionary<string, (string Response, DateTime CachedAt)> _fallbackCache = new();
-    private static readonly object _cacheLock = new();
+    // Core search services (primary delegation targets)
+    private readonly IAdaptiveSearchService? _adaptiveSearchService;
+    private readonly IHybridSearchService? _hybridSearchService;
+    private readonly IQueryComplexityAnalyzer? _queryAnalyzer;
+    private readonly IDynamicFusionService? _fusionService;
+    private readonly IReranker? _reranker;
+    private readonly ISemanticCacheService? _semanticCache;
+
+    // Optional Stack-specific backends
+    private readonly IQdrantSearchService? _qdrantService;
+    private readonly INeo4jGraphService? _neo4jService;
+    private readonly IAdvancedEntityExtractionService? _entityService;
 
     public SearchService(
         IDocumentChunkRepository chunkRepository,
-        IDocumentRepository documentRepository,
+        StackIDocumentRepository documentRepository,
         ISearchHistoryRepository searchHistoryRepository,
         IEmbeddingProvider embeddingProvider,
         ILogger<SearchService> logger,
+        IAdaptiveSearchService? adaptiveSearchService = null,
+        IHybridSearchService? hybridSearchService = null,
+        IQueryComplexityAnalyzer? queryAnalyzer = null,
+        IDynamicFusionService? fusionService = null,
         IReranker? reranker = null,
-        ISemanticCacheService? semanticCache = null)
+        ISemanticCacheService? semanticCache = null,
+        IQdrantSearchService? qdrantService = null,
+        INeo4jGraphService? neo4jService = null,
+        IAdvancedEntityExtractionService? entityService = null)
     {
         _chunkRepository = chunkRepository;
         _documentRepository = documentRepository;
         _searchHistoryRepository = searchHistoryRepository;
         _embeddingProvider = embeddingProvider;
+        _logger = logger;
+        _adaptiveSearchService = adaptiveSearchService;
+        _hybridSearchService = hybridSearchService;
+        _queryAnalyzer = queryAnalyzer;
+        _fusionService = fusionService;
         _reranker = reranker;
         _semanticCache = semanticCache;
-        _logger = logger;
+        _qdrantService = qdrantService;
+        _neo4jService = neo4jService;
+        _entityService = entityService;
     }
 
     public async Task<SearchResponse> SearchAsync(
@@ -57,29 +97,158 @@ public class SearchService : ISearchService
     {
         var stopwatch = Stopwatch.StartNew();
 
-        _logger.LogInformation("Searching for: {Query} in collection: {CollectionId}",
-            request.Query, request.CollectionId);
+        _logger.LogInformation("Search request: {Query}, Mode: {Mode}, Preference: {Preference}",
+            request.Query, request.Mode, request.QualityPreference);
 
+        // Route to appropriate search method
+        var response = request.Mode == SearchMode.Auto
+            ? await AutoSearchAsync(request, stopwatch, cancellationToken)
+            : await ManualSearchAsync(request, stopwatch, cancellationToken);
+
+        // Record search history (Stack-specific)
+        await RecordSearchHistoryAsync(request, response, apiKeyPrefix, cancellationToken);
+
+        return response;
+    }
+
+    #region Auto Mode - Delegates to Core's AdaptiveSearchService
+
+    private async Task<SearchResponse> AutoSearchAsync(
+        SearchRequest request,
+        Stopwatch totalStopwatch,
+        CancellationToken cancellationToken)
+    {
+        // If Core's AdaptiveSearchService is available, delegate to it
+        if (_adaptiveSearchService != null)
+        {
+            return await DelegateToAdaptiveSearchAsync(request, totalStopwatch, cancellationToken);
+        }
+
+        // Fallback: use HybridSearchService directly
+        if (_hybridSearchService != null)
+        {
+            return await DelegateToHybridSearchAsync(request, totalStopwatch, cancellationToken);
+        }
+
+        // Final fallback: basic Stack-level search
+        return await FallbackSearchAsync(request, totalStopwatch, cancellationToken);
+    }
+
+    /// <summary>
+    /// Delegates search to Core's AdaptiveSearchService (recommended path).
+    /// Core handles: query analysis, strategy selection, fusion, caching.
+    /// Stack handles: DTO conversion, entity enrichment.
+    /// </summary>
+    private async Task<SearchResponse> DelegateToAdaptiveSearchAsync(
+        SearchRequest request,
+        Stopwatch totalStopwatch,
+        CancellationToken cancellationToken)
+    {
+        // 1. Convert Stack options to Core options
+        var coreOptions = MapToAdaptiveSearchOptions(request);
+
+        // 2. Delegate to Core's AdaptiveSearchService
+        var coreResult = await _adaptiveSearchService!.SearchAsync(
+            request.Query, coreOptions, cancellationToken);
+
+        // 3. Enrich with Stack-specific data (entity extraction, graph expansion)
+        var enrichedResults = await EnrichCoreResultsAsync(
+            coreResult, request, cancellationToken);
+
+        // 4. Convert Core result to Stack DTO
+        totalStopwatch.Stop();
+        return MapToSearchResponse(coreResult, enrichedResults, request, totalStopwatch.Elapsed);
+    }
+
+    /// <summary>
+    /// Delegates search to Core's HybridSearchService.
+    /// </summary>
+    private async Task<SearchResponse> DelegateToHybridSearchAsync(
+        SearchRequest request,
+        Stopwatch totalStopwatch,
+        CancellationToken cancellationToken)
+    {
+        // 1. Convert to Core's HybridSearchOptions
+        var hybridOptions = new HybridSearchOptions
+        {
+            MaxResults = request.TopK * 2, // Over-fetch for filtering
+            MinFusedScore = request.MinScore,
+            EnableDynamicAlphaTuning = request.QualityPreference != QualityPreference.Speed,
+            EnableAutoStrategy = true
+        };
+
+        // 2. Apply Dynamic Alpha if available
+        if (_fusionService != null)
+        {
+            var fusionConfig = await _fusionService.CalculateDynamicWeightsAsync(
+                request.Query, cancellationToken);
+            hybridOptions.VectorWeight = fusionConfig.VectorWeight;
+            hybridOptions.SparseWeight = fusionConfig.SparseWeight;
+            hybridOptions.FusionMethod = fusionConfig.RecommendedFusion;
+        }
+
+        // 3. Execute Core hybrid search
+        var coreResults = await _hybridSearchService!.SearchAsync(
+            request.Query, hybridOptions, cancellationToken);
+
+        // 4. Apply reranking if requested
+        var rerankedResults = coreResults.ToList();
+        if (request.QualityPreference != QualityPreference.Speed && _reranker != null)
+        {
+            rerankedResults = await ApplyRerankingAsync(
+                request.Query, coreResults, request.TopK, cancellationToken);
+        }
+
+        // 5. Convert to Stack DTOs
+        totalStopwatch.Stop();
+        var results = rerankedResults
+            .Take(request.TopK)
+            .Select((r, idx) => MapHybridResultToDto(r, request, idx))
+            .ToList();
+
+        return new SearchResponse
+        {
+            Query = request.Query,
+            Results = results,
+            TotalResults = results.Count,
+            ExecutionTimeMs = totalStopwatch.Elapsed.TotalMilliseconds,
+            Mode = SearchMode.Auto,
+            FromCache = false,
+            Strategy = new SearchStrategyInfo
+            {
+                PrimaryStrategy = "Hybrid",
+                FusionMethod = hybridOptions.FusionMethod.ToString(),
+                DynamicAlpha = hybridOptions.VectorWeight,
+                BackendsUsed = new List<string> { "PostgreSQL" }
+            },
+            Quality = CalculateQuality(results)
+        };
+    }
+
+    #endregion
+
+    #region Manual Modes - Vector, Keyword, Hybrid
+
+    private async Task<SearchResponse> ManualSearchAsync(
+        SearchRequest request,
+        Stopwatch stopwatch,
+        CancellationToken cancellationToken)
+    {
         var results = new List<SearchResultDto>();
 
         try
         {
-            // Get documents for the collection (or all if no collection specified)
             var (documents, _) = await _documentRepository.GetPagedAsync(
-                1, 1000, // Get up to 1000 documents
-                request.CollectionId,
-                DocumentStatus.Indexed,
-                cancellationToken);
+                1, 1000, request.CollectionId, DocumentStatus.Indexed, cancellationToken);
 
             if (!documents.Any())
             {
-                _logger.LogInformation("No indexed documents found for search");
                 return CreateEmptyResponse(request, stopwatch);
             }
 
             var documentIds = documents.Select(d => d.Id).ToList();
+            var docLookup = documents.ToDictionary(d => d.Id);
 
-            // Get all chunks for these documents
             var allChunks = new List<DocumentChunk>();
             foreach (var docId in documentIds)
             {
@@ -87,129 +256,582 @@ public class SearchService : ISearchService
                 allChunks.AddRange(chunks);
             }
 
-            // Perform search based on mode
             results = request.Mode switch
             {
-                SearchMode.Vector => await VectorSearchAsync(request, allChunks, documents, cancellationToken),
-                SearchMode.Keyword => KeywordSearch(request, allChunks, documents),
-                SearchMode.Hybrid => await HybridSearchAsync(request, allChunks, documents, cancellationToken),
-                _ => KeywordSearch(request, allChunks, documents)
+                SearchMode.Vector => await ExecuteVectorSearchAsync(request, documentIds, docLookup, cancellationToken),
+                SearchMode.Keyword => ExecuteKeywordSearch(request, allChunks, docLookup),
+                SearchMode.Hybrid => await ExecuteHybridSearchAsync(request, allChunks, documentIds, docLookup, cancellationToken),
+                _ => ExecuteKeywordSearch(request, allChunks, docLookup)
             };
 
-            // Apply filters if provided
+            // Apply filters
             if (request.Filters != null && request.Filters.Count > 0)
             {
                 results = ApplyFilters(results, request.Filters);
             }
 
-            // Apply minimum score filter
             if (request.MinScore > 0)
             {
                 results = results.Where(r => r.Score >= request.MinScore).ToList();
             }
 
-            // Apply reranking if enabled and reranker is available
+            // Apply reranking if enabled
             if (request.EnableReranking && _reranker != null && results.Count > 0)
             {
-                results = await ApplyRerankingAsync(request.Query, results, request.TopK, cancellationToken);
+                results = await ApplyStackRerankingAsync(request.Query, results, request.TopK, cancellationToken);
             }
 
-            // Apply TopK limit
             results = results.Take(request.TopK).ToList();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during search for query: {Query}", request.Query);
+            _logger.LogError(ex, "Error during manual search for query: {Query}", request.Query);
             throw;
         }
 
         stopwatch.Stop();
-        var executionTime = stopwatch.Elapsed.TotalMilliseconds;
-
-        // Record search history
-        try
-        {
-            var searchType = request.Mode switch
-            {
-                SearchMode.Vector => SearchType.Vector,
-                SearchMode.Keyword => SearchType.Keyword,
-                SearchMode.Hybrid => SearchType.Hybrid,
-                _ => SearchType.Keyword
-            };
-
-            var history = SearchHistory.Create(
-                request.Query,
-                request.CollectionId,
-                results.Count,
-                executionTime,
-                searchType,
-                apiKeyPrefix);
-
-            await _searchHistoryRepository.AddAsync(history, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to record search history");
-        }
 
         return new SearchResponse
         {
             Query = request.Query,
             Results = results,
             TotalResults = results.Count,
-            ExecutionTimeMs = executionTime,
+            ExecutionTimeMs = stopwatch.Elapsed.TotalMilliseconds,
             Mode = request.Mode
         };
     }
 
-    private async Task<List<SearchResultDto>> VectorSearchAsync(
+    private async Task<List<SearchResultDto>> ExecuteVectorSearchAsync(
+        SearchRequest request,
+        List<Guid> documentIds,
+        Dictionary<Guid, Document> docLookup,
+        CancellationToken cancellationToken)
+    {
+        var queryEmbedding = await _embeddingProvider.GetEmbeddingAsync(request.Query, cancellationToken);
+
+        var vectorResults = await _chunkRepository.SearchByVectorAsync(
+            queryEmbedding,
+            limit: request.TopK * 2,
+            documentIds: documentIds,
+            minScore: request.MinScore,
+            cancellationToken: cancellationToken);
+
+        return vectorResults
+            .Select(r => new SearchResultDto
+            {
+                ChunkId = r.Chunk.Id,
+                DocumentId = r.Chunk.DocumentId,
+                DocumentTitle = docLookup.TryGetValue(r.Chunk.DocumentId, out var doc) ? doc.Title : "Unknown",
+                ChunkIndex = r.Chunk.ChunkIndex,
+                Content = request.IncludeContent ? r.Chunk.Content : null,
+                Score = r.Score,
+                Confidence = r.Score > 0.8 ? "High" : r.Score > 0.5 ? "Medium" : "Low",
+                VectorScore = r.Score,
+                Metadata = request.IncludeMetadata ? r.Chunk.Metadata : null,
+                Highlights = ExtractHighlights(r.Chunk.Content, request.Query)
+            })
+            .ToList();
+    }
+
+    private List<SearchResultDto> ExecuteKeywordSearch(
         SearchRequest request,
         List<DocumentChunk> chunks,
-        List<Document> documents,
+        Dictionary<Guid, Document> docLookup)
+    {
+        var queryTerms = request.Query.ToLowerInvariant()
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        if (queryTerms.Length == 0) return new List<SearchResultDto>();
+
+        var results = new List<(DocumentChunk Chunk, double Score, List<string> Highlights)>();
+
+        foreach (var chunk in chunks)
+        {
+            var content = chunk.Content.ToLowerInvariant();
+            var matchCount = queryTerms.Count(term => content.Contains(term));
+
+            if (matchCount > 0)
+            {
+                var score = (double)matchCount / queryTerms.Length;
+                var highlights = ExtractHighlights(chunk.Content, request.Query);
+                results.Add((chunk, score, highlights));
+            }
+        }
+
+        return results
+            .OrderByDescending(r => r.Score)
+            .Take(request.TopK * 2)
+            .Select(r => new SearchResultDto
+            {
+                ChunkId = r.Chunk.Id,
+                DocumentId = r.Chunk.DocumentId,
+                DocumentTitle = docLookup.TryGetValue(r.Chunk.DocumentId, out var doc) ? doc.Title : "Unknown",
+                ChunkIndex = r.Chunk.ChunkIndex,
+                Content = request.IncludeContent ? r.Chunk.Content : null,
+                Score = r.Score,
+                Confidence = r.Score > 0.7 ? "High" : r.Score > 0.4 ? "Medium" : "Low",
+                KeywordScore = r.Score,
+                Metadata = request.IncludeMetadata ? r.Chunk.Metadata : null,
+                Highlights = r.Highlights
+            })
+            .ToList();
+    }
+
+    private async Task<List<SearchResultDto>> ExecuteHybridSearchAsync(
+        SearchRequest request,
+        List<DocumentChunk> allChunks,
+        List<Guid> documentIds,
+        Dictionary<Guid, Document> docLookup,
+        CancellationToken cancellationToken)
+    {
+        // Use Core's HybridSearchService if available
+        if (_hybridSearchService != null)
+        {
+            var hybridOptions = new HybridSearchOptions
+            {
+                MaxResults = request.TopK * 2,
+                MinFusedScore = request.MinScore
+            };
+
+            var coreResults = await _hybridSearchService.SearchAsync(
+                request.Query, hybridOptions, cancellationToken);
+
+            return coreResults
+                .Take(request.TopK)
+                .Select((r, idx) => MapHybridResultToDto(r, request, idx))
+                .ToList();
+        }
+
+        // Fallback: simple RRF fusion
+        var keywordResults = ExecuteKeywordSearch(request, allChunks, docLookup);
+        var vectorResults = await ExecuteVectorSearchAsync(request, documentIds, docLookup, cancellationToken);
+        return MergeWithRRF(keywordResults, vectorResults);
+    }
+
+    #endregion
+
+    #region Fallback Search (when Core services unavailable)
+
+    private async Task<SearchResponse> FallbackSearchAsync(
+        SearchRequest request,
+        Stopwatch stopwatch,
+        CancellationToken cancellationToken)
+    {
+        _logger.LogWarning("Core search services unavailable, using fallback search");
+
+        var (documents, _) = await _documentRepository.GetPagedAsync(
+            1, 1000, request.CollectionId, DocumentStatus.Indexed, cancellationToken);
+
+        if (!documents.Any())
+        {
+            return CreateEmptyResponse(request, stopwatch);
+        }
+
+        var documentIds = documents.Select(d => d.Id).ToList();
+        var docLookup = documents.ToDictionary(d => d.Id);
+
+        var allChunks = new List<DocumentChunk>();
+        foreach (var docId in documentIds)
+        {
+            var chunks = await _chunkRepository.GetByDocumentIdAsync(docId, cancellationToken);
+            allChunks.AddRange(chunks);
+        }
+
+        var results = await ExecuteHybridSearchAsync(request, allChunks, documentIds, docLookup, cancellationToken);
+
+        if (request.MinScore > 0)
+        {
+            results = results.Where(r => r.Score >= request.MinScore).ToList();
+        }
+
+        results = results.Take(request.TopK).ToList();
+
+        stopwatch.Stop();
+        return new SearchResponse
+        {
+            Query = request.Query,
+            Results = results,
+            TotalResults = results.Count,
+            ExecutionTimeMs = stopwatch.Elapsed.TotalMilliseconds,
+            Mode = SearchMode.Auto,
+            FromCache = false,
+            Strategy = new SearchStrategyInfo
+            {
+                PrimaryStrategy = "Hybrid",
+                FusionMethod = "RRF",
+                BackendsUsed = new List<string> { "PostgreSQL" }
+            },
+            Quality = CalculateQuality(results)
+        };
+    }
+
+    #endregion
+
+    #region DTO Mapping
+
+    private static CoreAdaptiveSearchOptions MapToAdaptiveSearchOptions(SearchRequest request)
+    {
+        var strategy = request.QualityPreference switch
+        {
+            QualityPreference.Speed => CoreSearchStrategy.DirectVector,
+            QualityPreference.Quality => CoreSearchStrategy.Adaptive,
+            _ => CoreSearchStrategy.Hybrid
+        };
+
+        return new CoreAdaptiveSearchOptions
+        {
+            MaxResults = request.TopK * 2, // Over-fetch for filtering
+            MinScore = request.MinScore,
+            UseCache = true,
+            ForceStrategy = request.Mode != SearchMode.Auto ? strategy : null
+        };
+    }
+
+    private SearchResponse MapToSearchResponse(
+        CoreAdaptiveSearchResult coreResult,
+        List<SearchResultDto> enrichedResults,
+        SearchRequest request,
+        TimeSpan elapsed)
+    {
+        var strategyInfo = new SearchStrategyInfo
+        {
+            PrimaryStrategy = coreResult.UsedStrategy.ToString(),
+            FusionMethod = "DynamicAlpha",
+            BackendsUsed = new List<string> { "PostgreSQL" }
+        };
+
+        if (_qdrantService?.IsAvailable == true)
+            strategyInfo.BackendsUsed.Add("Qdrant");
+        if (_neo4jService?.IsAvailable == true)
+            strategyInfo.BackendsUsed.Add("Neo4j");
+        if (_semanticCache != null)
+            strategyInfo.BackendsUsed.Add("Redis");
+
+        var quality = new SearchQualityInfo
+        {
+            EstimatedQuality = coreResult.ConfidenceScore,
+            QualityTier = coreResult.ConfidenceScore > 0.8 ? "High" :
+                         coreResult.ConfidenceScore > 0.5 ? "Medium" : "Low",
+            QualityFactors = coreResult.StrategyReasons
+        };
+
+        return new SearchResponse
+        {
+            Query = request.Query,
+            Results = enrichedResults.Take(request.TopK).ToList(),
+            TotalResults = enrichedResults.Count,
+            ExecutionTimeMs = elapsed.TotalMilliseconds,
+            Mode = SearchMode.Auto,
+            FromCache = coreResult.Performance.CacheHit,
+            Strategy = strategyInfo,
+            Quality = quality,
+            Explanation = request.IncludeExplanation ? new SearchExplanation
+            {
+                QueryAnalysis = new QueryAnalysisDto
+                {
+                    QueryType = coreResult.QueryAnalysis.Type.ToString(),
+                    ComplexityLevel = coreResult.QueryAnalysis.Complexity.ToString(),
+                    Keywords = coreResult.QueryAnalysis.Keywords.ToList(),
+                    Entities = coreResult.QueryAnalysis.Entities.ToList(),
+                    ContainsTechnicalTerms = coreResult.QueryAnalysis.ContainsTechnicalTerms
+                },
+                StrategyReason = string.Join(". ", coreResult.StrategyReasons),
+                PerformanceBreakdown = new Dictionary<string, double>
+                {
+                    ["AnalysisMs"] = coreResult.Performance.AnalysisTime.TotalMilliseconds,
+                    ["SearchMs"] = coreResult.Performance.SearchTime.TotalMilliseconds,
+                    ["PostProcessMs"] = coreResult.Performance.PostProcessingTime.TotalMilliseconds
+                }
+            } : null
+        };
+    }
+
+    private SearchResultDto MapHybridResultToDto(HybridSearchResult result, SearchRequest request, int rank)
+    {
+        return new SearchResultDto
+        {
+            ChunkId = Guid.TryParse(result.Chunk.Id, out var cid) ? cid : Guid.Empty,
+            DocumentId = Guid.TryParse(result.Chunk.DocumentId, out var did) ? did : Guid.Empty,
+            DocumentTitle = result.Chunk.Metadata?.GetValueOrDefault("title")?.ToString() ?? "Unknown",
+            ChunkIndex = result.Chunk.ChunkIndex,
+            Content = request.IncludeContent ? result.Chunk.Content : null,
+            Score = result.FusedScore,
+            Confidence = result.Confidence > 0.8 ? "High" : result.Confidence > 0.5 ? "Medium" : "Low",
+            VectorScore = result.VectorScore,
+            KeywordScore = result.SparseScore,
+            Metadata = request.IncludeMetadata ? result.Chunk.Metadata : null,
+            Highlights = result.MatchedTerms.Take(3).ToList()
+        };
+    }
+
+    #endregion
+
+    #region Enrichment (Stack-specific)
+
+    private async Task<List<SearchResultDto>> EnrichCoreResultsAsync(
+        CoreAdaptiveSearchResult coreResult,
+        SearchRequest request,
+        CancellationToken cancellationToken)
+    {
+        var results = new List<SearchResultDto>();
+
+        foreach (var doc in coreResult.Documents)
+        {
+            var chunkId = doc.Metadata.TryGetValue("chunk_id", out var cid) ? cid?.ToString() : doc.Id;
+            var content = doc.Metadata.TryGetValue("chunk_content", out var cc) ? cc?.ToString() : "";
+            var score = doc.Metadata.TryGetValue("relevance_score", out var rs) ? Convert.ToDouble(rs) : 0.5;
+
+            var result = new SearchResultDto
+            {
+                ChunkId = Guid.TryParse(chunkId, out var parsedChunkId) ? parsedChunkId : Guid.Empty,
+                DocumentId = Guid.TryParse(doc.Id, out var parsedDocId) ? parsedDocId : Guid.Empty,
+                DocumentTitle = doc.Metadata.TryGetValue("title", out var title) ? title?.ToString() ?? "Unknown" : "Unknown",
+                Content = request.IncludeContent ? content : null,
+                Score = score,
+                Confidence = score > 0.8 ? "High" : score > 0.5 ? "Medium" : "Low",
+                Metadata = request.IncludeMetadata ? doc.Metadata : null,
+                Highlights = ExtractHighlights(content ?? "", request.Query)
+            };
+
+            results.Add(result);
+        }
+
+        // Entity enrichment for Quality preference
+        if (request.QualityPreference == QualityPreference.Quality && _entityService != null)
+        {
+            results = await EnrichWithEntitiesAsync(results.Take(5).ToList(), cancellationToken);
+        }
+
+        return results;
+    }
+
+    private async Task<List<SearchResultDto>> EnrichWithEntitiesAsync(
+        List<SearchResultDto> results,
         CancellationToken cancellationToken)
     {
         try
         {
-            // Generate embedding for the query
-            _logger.LogDebug("Generating embedding for query: {Query}", request.Query);
-            var queryEmbedding = await _embeddingProvider.GetEmbeddingAsync(request.Query, cancellationToken);
-
-            // Get document IDs for filtering
-            var documentIds = documents.Select(d => d.Id).ToList();
-
-            // Perform vector similarity search using pgvector
-            _logger.LogDebug("Performing vector search with {ChunkCount} potential chunks", chunks.Count);
-            var vectorResults = await _chunkRepository.SearchByVectorAsync(
-                queryEmbedding,
-                limit: request.TopK * 2, // Get more results for potential filtering
-                documentIds: documentIds,
-                minScore: request.MinScore,
-                cancellationToken: cancellationToken);
-
-            var docLookup = documents.ToDictionary(d => d.Id);
-
-            return vectorResults
-                .Take(request.TopK)
-                .Select(r => new SearchResultDto
+            var enrichedResults = new List<SearchResultDto>();
+            foreach (var result in results)
+            {
+                var entities = await _entityService!.ExtractEntitiesAsync(
+                    result.Content ?? string.Empty, null, cancellationToken);
+                enrichedResults.Add(result with
                 {
-                    ChunkId = r.Chunk.Id,
-                    DocumentId = r.Chunk.DocumentId,
-                    DocumentTitle = docLookup.TryGetValue(r.Chunk.DocumentId, out var doc) ? doc.Title : "Unknown",
-                    ChunkIndex = r.Chunk.ChunkIndex,
-                    Content = request.IncludeContent ? r.Chunk.Content : null,
-                    Score = r.Score,
-                    VectorScore = r.Score,
-                    KeywordScore = null,
-                    Metadata = request.IncludeMetadata ? r.Chunk.Metadata : null,
-                    Highlights = ExtractHighlights(r.Chunk.Content, request.Query)
-                })
-                .ToList();
+                    RelatedEntities = entities.Take(5).Select(e => e.Text).ToList()
+                });
+            }
+            return enrichedResults;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Vector search failed, falling back to keyword search");
-            return KeywordSearch(request, chunks, documents);
+            _logger.LogWarning(ex, "Entity extraction failed");
+            return results;
         }
+    }
+
+    #endregion
+
+    #region Reranking
+
+    private async Task<List<HybridSearchResult>> ApplyRerankingAsync(
+        string query,
+        IReadOnlyList<HybridSearchResult> results,
+        int topK,
+        CancellationToken cancellationToken)
+    {
+        var candidates = results.Select((r, idx) => new RetrievalCandidate
+        {
+            Id = r.Chunk.Id,
+            ChunkId = r.Chunk.Id,
+            Content = r.Chunk.Content,
+            InitialScore = (float)r.FusedScore,
+            InitialRank = idx + 1
+        }).ToList();
+
+        var rerankOptions = new RerankOptions
+        {
+            TopN = topK,
+            IncludeExplanation = false,
+            MaxContentLength = 512
+        };
+
+        var reranked = await _reranker!.RerankAsync(query, candidates, rerankOptions, cancellationToken);
+        var resultLookup = results.ToDictionary(r => r.Chunk.Id);
+
+        return reranked
+            .Where(rr => resultLookup.ContainsKey(rr.ChunkId))
+            .Select(rr =>
+            {
+                var original = resultLookup[rr.ChunkId];
+                return original with
+                {
+                    FusedScore = rr.RerankScore,
+                    Confidence = rr.RerankScore > 0.8 ? 0.9 : rr.RerankScore > 0.5 ? 0.7 : 0.4
+                };
+            })
+            .ToList();
+    }
+
+    private async Task<List<SearchResultDto>> ApplyStackRerankingAsync(
+        string query,
+        List<SearchResultDto> results,
+        int topK,
+        CancellationToken cancellationToken)
+    {
+        var candidates = results.Select((r, idx) => new RetrievalCandidate
+        {
+            Id = r.ChunkId.ToString(),
+            ChunkId = r.ChunkId.ToString(),
+            Content = r.Content ?? string.Empty,
+            InitialScore = (float)r.Score,
+            InitialRank = idx + 1
+        }).ToList();
+
+        var rerankOptions = new RerankOptions { TopN = topK };
+        var reranked = await _reranker!.RerankAsync(query, candidates, rerankOptions, cancellationToken);
+        var resultLookup = results.ToDictionary(r => r.ChunkId.ToString());
+
+        return reranked
+            .Where(rr => resultLookup.ContainsKey(rr.ChunkId))
+            .Select(rr =>
+            {
+                var original = resultLookup[rr.ChunkId];
+                return original with
+                {
+                    Score = rr.RerankScore,
+                    RerankScore = rr.RerankScore,
+                    Confidence = rr.RerankScore > 0.8 ? "High" : rr.RerankScore > 0.5 ? "Medium" : "Low"
+                };
+            })
+            .ToList();
+    }
+
+    #endregion
+
+    #region Caching Interface
+
+    public async Task<SemanticCacheEntryDto?> GetCachedResponseAsync(
+        string query,
+        double similarityThreshold = 0.95,
+        CancellationToken cancellationToken = default)
+    {
+        if (_semanticCache == null) return null;
+
+        try
+        {
+            var cached = await _semanticCache.GetCachedResultAsync(
+                query, (float)similarityThreshold, cancellationToken);
+
+            if (cached != null)
+            {
+                return new SemanticCacheEntryDto
+                {
+                    Query = query,
+                    Response = System.Text.Json.JsonSerializer.Serialize(cached.Results),
+                    Similarity = cached.SimilarityScore,
+                    CachedAt = cached.CachedAt
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Cache lookup failed");
+        }
+
+        return null;
+    }
+
+    public async Task CacheResponseAsync(string query, string response, CancellationToken cancellationToken = default)
+    {
+        if (_semanticCache == null) return;
+
+        try
+        {
+            var chunks = new List<CacheDocumentChunk>
+            {
+                CacheDocumentChunk.Create("response", response, 0)
+            };
+
+            await _semanticCache.SetCachedResultAsync(
+                query, chunks,
+                metadata: new SearchMetadata { SearchAlgorithm = "semantic_search" },
+                cancellationToken: cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to cache response");
+        }
+    }
+
+    public async Task ClearCacheAsync(Guid? collectionId = null, CancellationToken cancellationToken = default)
+    {
+        if (_semanticCache == null) return;
+
+        try
+        {
+            var pattern = collectionId.HasValue ? $"*{collectionId}*" : "*";
+            await _semanticCache.InvalidateCacheAsync(pattern, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to clear cache");
+        }
+    }
+
+    #endregion
+
+    #region Helpers
+
+    private static List<SearchResultDto> MergeWithRRF(
+        List<SearchResultDto> keywordResults,
+        List<SearchResultDto> vectorResults,
+        int k = 60)
+    {
+        var merged = new Dictionary<Guid, SearchResultDto>();
+        var scores = new Dictionary<Guid, double>();
+
+        for (int i = 0; i < keywordResults.Count; i++)
+        {
+            var result = keywordResults[i];
+            scores[result.ChunkId] = 1.0 / (k + i + 1);
+            merged[result.ChunkId] = result with { KeywordScore = result.Score };
+        }
+
+        for (int i = 0; i < vectorResults.Count; i++)
+        {
+            var result = vectorResults[i];
+            var rrfScore = 1.0 / (k + i + 1);
+
+            if (scores.TryGetValue(result.ChunkId, out var existing))
+            {
+                scores[result.ChunkId] = existing + rrfScore;
+                merged[result.ChunkId] = merged[result.ChunkId] with { VectorScore = result.Score };
+            }
+            else
+            {
+                scores[result.ChunkId] = rrfScore;
+                merged[result.ChunkId] = result with { VectorScore = result.Score };
+            }
+        }
+
+        return merged.Values
+            .Select(r => r with
+            {
+                Score = scores[r.ChunkId],
+                Confidence = scores[r.ChunkId] > 0.03 ? "High" : scores[r.ChunkId] > 0.015 ? "Medium" : "Low"
+            })
+            .OrderByDescending(r => r.Score)
+            .ToList();
+    }
+
+    private static List<SearchResultDto> ApplyFilters(List<SearchResultDto> results, Dictionary<string, object> filters)
+    {
+        return results.Where(r =>
+        {
+            if (r.Metadata == null) return false;
+            return filters.All(f => r.Metadata.TryGetValue(f.Key, out var value) && value?.Equals(f.Value) == true);
+        }).ToList();
     }
 
     private static List<string> ExtractHighlights(string content, string query, int contextSize = 50)
@@ -233,148 +855,37 @@ public class SearchService : ISearchService
         return highlights.Distinct().Take(3).ToList();
     }
 
-    private async Task<List<SearchResultDto>> HybridSearchAsync(
-        SearchRequest request,
-        List<DocumentChunk> chunks,
-        List<Document> documents,
-        CancellationToken cancellationToken)
+    private static SearchQualityInfo CalculateQuality(List<SearchResultDto> results)
     {
-        // Hybrid combines vector and keyword search
-        // For now, use keyword search with boosted relevance
-        var keywordResults = KeywordSearch(request, chunks, documents);
-        var vectorResults = await VectorSearchAsync(request, chunks, documents, cancellationToken);
-
-        // Merge results with RRF (Reciprocal Rank Fusion)
-        var merged = MergeWithRRF(keywordResults, vectorResults);
-        return merged.Take(request.TopK).ToList();
-    }
-
-    private List<SearchResultDto> KeywordSearch(
-        SearchRequest request,
-        List<DocumentChunk> chunks,
-        List<Document> documents)
-    {
-        var queryTerms = request.Query.ToLowerInvariant()
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-        if (queryTerms.Length == 0)
+        if (!results.Any())
         {
-            return new List<SearchResultDto>();
+            return new SearchQualityInfo
+            {
+                EstimatedQuality = 0,
+                QualityTier = "Low",
+                QualityFactors = new List<string> { "No results found" },
+                ImprovementSuggestions = new List<string> { "Try broadening your search terms" }
+            };
         }
 
-        var docLookup = documents.ToDictionary(d => d.Id);
-        var results = new List<(DocumentChunk Chunk, double Score, List<string> Highlights)>();
+        var avgScore = results.Average(r => r.Score);
+        var quality = avgScore > 0.7 ? 0.85 : avgScore > 0.5 ? 0.65 : 0.45;
 
-        foreach (var chunk in chunks)
+        if (results.Count >= 5) quality += 0.05;
+        if (results.Any(r => r.RerankScore.HasValue)) quality += 0.1;
+
+        quality = Math.Min(quality, 1.0);
+
+        return new SearchQualityInfo
         {
-            var content = chunk.Content.ToLowerInvariant();
-            var matchCount = 0;
-            var highlights = new List<string>();
-
-            foreach (var term in queryTerms)
+            EstimatedQuality = quality,
+            QualityTier = quality > 0.8 ? "Excellent" : quality > 0.6 ? "Good" : quality > 0.4 ? "Acceptable" : "Low",
+            QualityFactors = new List<string>
             {
-                if (content.Contains(term))
-                {
-                    matchCount++;
-
-                    // Find highlight context
-                    var idx = content.IndexOf(term, StringComparison.OrdinalIgnoreCase);
-                    if (idx >= 0)
-                    {
-                        var start = Math.Max(0, idx - 50);
-                        var end = Math.Min(content.Length, idx + term.Length + 50);
-                        highlights.Add(chunk.Content.Substring(start, end - start));
-                    }
-                }
+                $"{results.Count} results found",
+                $"Average score: {avgScore:F2}"
             }
-
-            if (matchCount > 0)
-            {
-                // Simple TF scoring
-                var score = (double)matchCount / queryTerms.Length;
-                results.Add((chunk, score, highlights));
-            }
-        }
-
-        return results
-            .OrderByDescending(r => r.Score)
-            .Select(r => new SearchResultDto
-            {
-                ChunkId = r.Chunk.Id,
-                DocumentId = r.Chunk.DocumentId,
-                DocumentTitle = docLookup.TryGetValue(r.Chunk.DocumentId, out var doc) ? doc.Title : "Unknown",
-                ChunkIndex = r.Chunk.ChunkIndex,
-                Content = request.IncludeContent ? r.Chunk.Content : null,
-                Score = r.Score,
-                KeywordScore = r.Score,
-                VectorScore = null,
-                Metadata = request.IncludeMetadata ? r.Chunk.Metadata : null,
-                Highlights = r.Highlights.Take(3).ToList()
-            })
-            .ToList();
-    }
-
-    private static List<SearchResultDto> MergeWithRRF(
-        List<SearchResultDto> keywordResults,
-        List<SearchResultDto> vectorResults,
-        int k = 60)
-    {
-        var merged = new Dictionary<Guid, SearchResultDto>();
-        var scores = new Dictionary<Guid, double>();
-
-        // Process keyword results
-        for (int i = 0; i < keywordResults.Count; i++)
-        {
-            var result = keywordResults[i];
-            scores[result.ChunkId] = 1.0 / (k + i + 1);
-            merged[result.ChunkId] = result with { KeywordScore = result.Score };
-        }
-
-        // Process vector results
-        for (int i = 0; i < vectorResults.Count; i++)
-        {
-            var result = vectorResults[i];
-            var rrfScore = 1.0 / (k + i + 1);
-
-            if (scores.TryGetValue(result.ChunkId, out var existingScore))
-            {
-                scores[result.ChunkId] = existingScore + rrfScore;
-                var existing = merged[result.ChunkId];
-                merged[result.ChunkId] = existing with { VectorScore = result.Score };
-            }
-            else
-            {
-                scores[result.ChunkId] = rrfScore;
-                merged[result.ChunkId] = result with { VectorScore = result.Score };
-            }
-        }
-
-        // Update final scores and return sorted
-        return merged.Values
-            .Select(r => r with { Score = scores[r.ChunkId] })
-            .OrderByDescending(r => r.Score)
-            .ToList();
-    }
-
-    private static List<SearchResultDto> ApplyFilters(
-        List<SearchResultDto> results,
-        Dictionary<string, object> filters)
-    {
-        return results.Where(r =>
-        {
-            if (r.Metadata == null) return false;
-
-            foreach (var filter in filters)
-            {
-                if (!r.Metadata.TryGetValue(filter.Key, out var value))
-                    return false;
-
-                if (!value.Equals(filter.Value))
-                    return false;
-            }
-
-            return true;
-        }).ToList();
+        };
     }
 
     private static SearchResponse CreateEmptyResponse(SearchRequest request, Stopwatch stopwatch)
@@ -386,219 +897,49 @@ public class SearchService : ISearchService
             Results = new List<SearchResultDto>(),
             TotalResults = 0,
             ExecutionTimeMs = stopwatch.Elapsed.TotalMilliseconds,
-            Mode = request.Mode
+            Mode = request.Mode,
+            Quality = new SearchQualityInfo
+            {
+                EstimatedQuality = 0,
+                QualityTier = "Low",
+                QualityFactors = new List<string> { "No indexed documents found" },
+                ImprovementSuggestions = new List<string> { "Index documents before searching" }
+            }
         };
     }
 
-    private async Task<List<SearchResultDto>> ApplyRerankingAsync(
-        string query,
-        List<SearchResultDto> results,
-        int topK,
+    private async Task RecordSearchHistoryAsync(
+        SearchRequest request,
+        SearchResponse response,
+        string? apiKeyPrefix,
         CancellationToken cancellationToken)
     {
         try
         {
-            _logger.LogDebug("Applying reranking to {Count} results", results.Count);
-
-            // Convert SearchResultDto to RetrievalCandidate
-            var candidates = results.Select((r, index) => new RetrievalCandidate
+            var searchType = request.Mode switch
             {
-                Id = r.ChunkId.ToString(),
-                DocumentId = r.DocumentId.ToString(),
-                ChunkId = r.ChunkId.ToString(),
-                Content = r.Content ?? string.Empty,
-                InitialScore = (float)r.Score,
-                InitialRank = index + 1,
-                Metadata = r.Metadata
-            }).ToList();
-
-            // Apply reranking
-            var rerankOptions = new RerankOptions
-            {
-                TopN = topK,
-                IncludeExplanation = false,
-                MaxContentLength = 512
+                SearchMode.Auto => SearchType.Hybrid,
+                SearchMode.Vector => SearchType.Vector,
+                SearchMode.Keyword => SearchType.Keyword,
+                SearchMode.Hybrid => SearchType.Hybrid,
+                _ => SearchType.Keyword
             };
 
-            var rerankedResults = await _reranker!.RerankAsync(
-                query,
-                candidates,
-                rerankOptions,
-                cancellationToken);
+            var history = SearchHistory.Create(
+                request.Query,
+                request.CollectionId,
+                response.TotalResults,
+                response.ExecutionTimeMs,
+                searchType,
+                apiKeyPrefix);
 
-            // Convert back to SearchResultDto with updated scores
-            var resultLookup = results.ToDictionary(r => r.ChunkId);
-            var rerankedList = rerankedResults.ToList();
-
-            return rerankedList
-                .Where(rr => Guid.TryParse(rr.ChunkId, out var chunkId) && resultLookup.ContainsKey(chunkId))
-                .Select(rr =>
-                {
-                    var chunkId = Guid.Parse(rr.ChunkId);
-                    var original = resultLookup[chunkId];
-                    return original with
-                    {
-                        Score = rr.RerankScore,
-                        RerankScore = rr.RerankScore,
-                        RerankExplanation = rr.Explanation
-                    };
-                })
-                .ToList();
+            await _searchHistoryRepository.AddAsync(history, cancellationToken);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Reranking failed, returning original results");
-            return results;
+            _logger.LogWarning(ex, "Failed to record search history");
         }
     }
 
-    public async Task<SemanticCacheEntryDto?> GetCachedResponseAsync(
-        string query,
-        double similarityThreshold = 0.95,
-        CancellationToken cancellationToken = default)
-    {
-        // Try Redis semantic cache first if available
-        if (_semanticCache != null)
-        {
-            try
-            {
-                var cachedResult = await _semanticCache.GetCachedResultAsync(
-                    query,
-                    (float)similarityThreshold,
-                    cancellationToken);
-
-                if (cachedResult != null)
-                {
-                    _logger.LogDebug("Redis semantic cache hit for query: {Query} (similarity: {Similarity:F3})",
-                        query, cachedResult.SimilarityScore);
-
-                    // Return cached response - serialize results to JSON for response field
-                    var responseJson = System.Text.Json.JsonSerializer.Serialize(cachedResult.Results);
-                    return new SemanticCacheEntryDto
-                    {
-                        Query = query,
-                        Response = responseJson,
-                        Similarity = cachedResult.SimilarityScore,
-                        CachedAt = cachedResult.CachedAt
-                    };
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Redis semantic cache lookup failed, falling back to in-memory cache");
-            }
-        }
-
-        // Fallback to in-memory cache
-        lock (_cacheLock)
-        {
-            var normalizedQuery = query.ToLowerInvariant().Trim();
-
-            if (_fallbackCache.TryGetValue(normalizedQuery, out var cached))
-            {
-                // Check if not expired (1 hour TTL)
-                if (DateTime.UtcNow - cached.CachedAt < TimeSpan.FromHours(1))
-                {
-                    return new SemanticCacheEntryDto
-                    {
-                        Query = query,
-                        Response = cached.Response,
-                        Similarity = 1.0,
-                        CachedAt = cached.CachedAt
-                    };
-                }
-
-                _fallbackCache.Remove(normalizedQuery);
-            }
-        }
-
-        return null;
-    }
-
-    public async Task CacheResponseAsync(
-        string query,
-        string response,
-        CancellationToken cancellationToken = default)
-    {
-        // Try Redis semantic cache first if available
-        if (_semanticCache != null)
-        {
-            try
-            {
-                // Parse response JSON to create cache chunks
-                var chunks = new List<CacheDocumentChunk>();
-                try
-                {
-                    var results = System.Text.Json.JsonSerializer.Deserialize<List<SearchResultDto>>(response);
-                    if (results != null)
-                    {
-                        chunks = results.Select(r => CacheDocumentChunk.Create(
-                            documentId: r.DocumentId.ToString(),
-                            content: r.Content ?? string.Empty,
-                            chunkIndex: r.ChunkIndex,
-                            score: (float)r.Score,
-                            metadata: r.Metadata
-                        )).ToList();
-                    }
-                }
-                catch
-                {
-                    // If response is not parseable, create a single chunk with the response
-                    chunks.Add(CacheDocumentChunk.Create(
-                        documentId: "response",
-                        content: response,
-                        chunkIndex: 0
-                    ));
-                }
-
-                await _semanticCache.SetCachedResultAsync(
-                    query,
-                    chunks,
-                    metadata: new SearchMetadata { SearchAlgorithm = "semantic_search" },
-                    cancellationToken: cancellationToken);
-
-                _logger.LogDebug("Cached response in Redis semantic cache for query: {Query}", query);
-                return;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to cache in Redis, falling back to in-memory cache");
-            }
-        }
-
-        // Fallback to in-memory cache
-        lock (_cacheLock)
-        {
-            var normalizedQuery = query.ToLowerInvariant().Trim();
-            _fallbackCache[normalizedQuery] = (response, DateTime.UtcNow);
-        }
-    }
-
-    public async Task ClearCacheAsync(Guid? collectionId = null, CancellationToken cancellationToken = default)
-    {
-        // Try to clear Redis semantic cache if available
-        if (_semanticCache != null)
-        {
-            try
-            {
-                var pattern = collectionId.HasValue ? $"*{collectionId}*" : "*";
-                await _semanticCache.InvalidateCacheAsync(pattern, cancellationToken);
-                _logger.LogInformation("Redis semantic cache cleared for collection: {CollectionId}",
-                    collectionId ?? Guid.Empty);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to clear Redis semantic cache");
-            }
-        }
-
-        // Also clear fallback in-memory cache
-        lock (_cacheLock)
-        {
-            _fallbackCache.Clear();
-        }
-
-        _logger.LogInformation("In-memory fallback cache cleared for collection: {CollectionId}",
-            collectionId ?? Guid.Empty);
-    }
+    #endregion
 }

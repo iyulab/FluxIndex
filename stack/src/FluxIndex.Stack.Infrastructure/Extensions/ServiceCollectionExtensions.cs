@@ -376,6 +376,9 @@ public static class ServiceCollectionExtensions
         // 6. Advanced Search Service that orchestrates all the above
         services.AddScoped<IAdvancedSearchService, AdvancedSearchService>();
 
+        // Note: SmartSearchService has been merged into SearchService.Auto mode
+        // Use SearchRequest.Mode = SearchMode.Auto (default) for intelligent search optimization
+
         return services;
     }
 }
