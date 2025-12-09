@@ -2,6 +2,10 @@
 using FluxIndex.AI.LocalReranker;
 using FluxIndex.Cache.Redis.Extensions;
 using FluxIndex.Cache.Redis.Configuration;
+using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Services;
+using FluxIndex.Core.Application.Services.Reranking;
+using FluxIndex.Core.Services;
 using FluxIndex.Extensions.FluxImprover;
 using FluxIndex.Extensions.FluxImprover.Services;
 using FluxIndex.SDK;
@@ -20,6 +24,12 @@ using Npgsql;
 using CoreTextCompletionService = FluxIndex.Core.Application.Interfaces.ITextCompletionService;
 using CoreEmbeddingService = FluxIndex.Core.Application.Interfaces.IEmbeddingService;
 using ISemanticCacheService = FluxIndex.Core.Application.Interfaces.ISemanticCacheService;
+
+// Stack-specific types (avoid ambiguity with Core types)
+using StackIDocumentRepository = FluxIndex.Stack.Application.Interfaces.Repositories.IDocumentRepository;
+using StackIChunkingService = FluxIndex.Stack.Application.Interfaces.Services.IChunkingService;
+using StackSearchService = FluxIndex.Stack.Application.Services.SearchService;
+using StackIndexingService = FluxIndex.Stack.Application.Services.IndexingService;
 
 namespace FluxIndex.Stack.Infrastructure.Extensions;
 
@@ -44,6 +54,7 @@ public static class ServiceCollectionExtensions
         services.AddTextCompletionService(configuration);
         services.AddFluxImproverServices(configuration);
         services.AddRedisCache(configuration);
+        services.AddAdvancedSearchServices(configuration);
 
         return services;
     }
@@ -72,7 +83,7 @@ public static class ServiceCollectionExtensions
         });
 
         // Register FileFlux-based chunking service
-        services.AddScoped<IChunkingService, FileFluxChunkingService>();
+        services.AddScoped<StackIChunkingService, FileFluxChunkingService>();
 
         return services;
     }
@@ -114,7 +125,7 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddRepositories(this IServiceCollection services)
     {
         services.AddScoped<ICollectionRepository, CollectionRepository>();
-        services.AddScoped<IDocumentRepository, DocumentRepository>();
+        services.AddScoped<StackIDocumentRepository, DocumentRepository>();
         services.AddScoped<IDocumentChunkRepository, DocumentChunkRepository>();
         services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
         services.AddScoped<IIndexingJobRepository, IndexingJobRepository>();
@@ -139,8 +150,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IApiKeyService, ApiKeyService>();
         services.AddScoped<IAnalyticsService, AnalyticsService>();
         services.AddScoped<IDocumentService, DocumentService>();
-        services.AddScoped<ISearchService, SearchService>();
-        services.AddScoped<IIndexingService, IndexingService>();
+        services.AddScoped<ISearchService, StackSearchService>();
+        services.AddScoped<IIndexingService, StackIndexingService>();
         services.AddScoped<IChunkService, ChunkService>();
         services.AddScoped<IAiProviderSettingsService, AiProviderSettingsService>();
 
@@ -304,6 +315,66 @@ public static class ServiceCollectionExtensions
             options.DatabaseNumber = section.GetValue<int>("DatabaseNumber", 1);
             options.EnableMetrics = section.GetValue<bool>("EnableMetrics", true);
         });
+
+        return services;
+    }
+
+    /// <summary>
+    /// Adds advanced search services with dynamic fusion, listwise reranking,
+    /// entity extraction, and community-based search.
+    /// </summary>
+    public static IServiceCollection AddAdvancedSearchServices(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        var section = configuration.GetSection("AdvancedSearch");
+        var enabled = section.GetValue<bool>("Enabled", true);
+
+        if (!enabled)
+        {
+            return services;
+        }
+
+        // Register Core services for advanced search
+
+        // 1. Query Complexity Analyzer for understanding query characteristics
+        services.AddSingleton<IQueryComplexityAnalyzer, QueryComplexityAnalyzer>();
+
+        // 2. Dynamic Fusion Service (Query-adaptive alpha tuning)
+        services.AddSingleton<IDynamicFusionService>(sp =>
+        {
+            var queryAnalyzer = sp.GetRequiredService<IQueryComplexityAnalyzer>();
+            var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<DynamicFusionService>>();
+            return new DynamicFusionService(queryAnalyzer, logger);
+        });
+
+        // 3. Listwise Reranker for advanced reranking
+        services.AddSingleton<IListwiseReranker>(sp =>
+        {
+            var llmService = sp.GetService<CoreTextCompletionService>();
+            var embeddingService = sp.GetService<CoreEmbeddingService>();
+            var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ListwiseReranker>>();
+            return new ListwiseReranker(llmService, embeddingService, logger);
+        });
+
+        // 4. Advanced Entity Extraction Service
+        services.AddSingleton<IAdvancedEntityExtractionService>(sp =>
+        {
+            var llmService = sp.GetService<CoreTextCompletionService>();
+            var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<EntityExtractionService>>();
+            return new EntityExtractionService(logger, llmService);
+        });
+
+        // 5. Leiden Community Service for hierarchical community detection
+        services.AddSingleton<ILeidenCommunityService>(sp =>
+        {
+            var llmService = sp.GetService<CoreTextCompletionService>();
+            var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<LeidenCommunityService>>();
+            return new LeidenCommunityService(logger, llmService);
+        });
+
+        // 6. Advanced Search Service that orchestrates all the above
+        services.AddScoped<IAdvancedSearchService, AdvancedSearchService>();
 
         return services;
     }
