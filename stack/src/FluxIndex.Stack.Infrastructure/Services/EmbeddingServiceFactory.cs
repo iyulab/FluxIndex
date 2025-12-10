@@ -24,6 +24,8 @@ public class EmbeddingServiceFactory : IEmbeddingServiceFactory
     {
         "OpenAI",
         "Azure",
+        "GPUStack",
+        "OpenAI-Compatible",
         "Local",
         "Cohere",
         "Google"
@@ -88,7 +90,23 @@ public class EmbeddingServiceFactory : IEmbeddingServiceFactory
             case "localembedder":
                 return CreateLocalProviderAsync(modelName, cancellationToken);
 
+            case "gpustack":
+                return CreateGPUStackProviderAsync(apiKey, modelName, endpointUrl, cancellationToken);
+
+            case "openai-compatible":
+            case "openaicompatible":
+                return CreateOpenAICompatibleProviderAsync(apiKey, modelName, endpointUrl, cancellationToken);
+
             default:
+                // If endpoint URL is provided, treat as OpenAI-compatible
+                if (!string.IsNullOrWhiteSpace(endpointUrl))
+                {
+                    _logger.LogInformation(
+                        "Unknown provider: {Provider} with endpoint. Treating as OpenAI-compatible.",
+                        providerName);
+                    return CreateOpenAICompatibleProviderAsync(apiKey, modelName, endpointUrl, cancellationToken);
+                }
+
                 _logger.LogWarning(
                     "Unknown provider: {Provider}. Falling back to LocalEmbedder.",
                     providerName);
@@ -179,6 +197,82 @@ public class EmbeddingServiceFactory : IEmbeddingServiceFactory
             Endpoint = endpointUrl,
             ProviderType = OpenAIProviderType.AzureOpenAI,
             Dimensions = GetDimensionsForModel(effectiveModel)
+        };
+
+        var serviceLogger = _loggerFactory.CreateLogger<OpenAIEmbeddingService>();
+        var service = new OpenAIEmbeddingService(
+            Options.Create(options),
+            serviceLogger,
+            _cache);
+
+        var provider = new EmbeddingServiceWrapper(service);
+        return Task.FromResult<IEmbeddingProvider>(provider);
+    }
+
+    private Task<IEmbeddingProvider> CreateGPUStackProviderAsync(
+        string apiKey,
+        string? modelName,
+        string? endpointUrl,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(endpointUrl))
+        {
+            _logger.LogWarning(
+                "GPUStack provider requires endpoint URL. Falling back to LocalEmbedder.");
+            return CreateLocalProviderAsync(null, cancellationToken);
+        }
+
+        var effectiveModel = modelName ?? "gpt-oss";
+
+        _logger.LogInformation(
+            "Creating GPUStack embedding provider: Model={Model}, Endpoint={Endpoint}",
+            effectiveModel, endpointUrl);
+
+        var options = new OpenAIOptions
+        {
+            ApiKey = apiKey,
+            ModelName = effectiveModel,
+            Endpoint = endpointUrl,
+            ProviderType = OpenAIProviderType.GPUStack,
+            Dimensions = null // Let the provider determine dimensions
+        };
+
+        var serviceLogger = _loggerFactory.CreateLogger<OpenAIEmbeddingService>();
+        var service = new OpenAIEmbeddingService(
+            Options.Create(options),
+            serviceLogger,
+            _cache);
+
+        var provider = new EmbeddingServiceWrapper(service);
+        return Task.FromResult<IEmbeddingProvider>(provider);
+    }
+
+    private Task<IEmbeddingProvider> CreateOpenAICompatibleProviderAsync(
+        string apiKey,
+        string? modelName,
+        string? endpointUrl,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(endpointUrl))
+        {
+            _logger.LogWarning(
+                "OpenAI-compatible provider requires endpoint URL. Falling back to LocalEmbedder.");
+            return CreateLocalProviderAsync(null, cancellationToken);
+        }
+
+        var effectiveModel = modelName ?? "text-embedding-3-small";
+
+        _logger.LogInformation(
+            "Creating OpenAI-compatible embedding provider: Model={Model}, Endpoint={Endpoint}",
+            effectiveModel, endpointUrl);
+
+        var options = new OpenAIOptions
+        {
+            ApiKey = apiKey,
+            ModelName = effectiveModel,
+            Endpoint = endpointUrl,
+            ProviderType = OpenAIProviderType.OpenAICompatible,
+            Dimensions = null // Let the provider determine dimensions
         };
 
         var serviceLogger = _loggerFactory.CreateLogger<OpenAIEmbeddingService>();

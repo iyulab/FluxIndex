@@ -96,8 +96,8 @@
       },
       "FileFlux.Core": {
         "type": "Transitive",
-        "resolved": "0.6.2",
-        "contentHash": "2I3k/GFx1/gMAaVbPWgBUXmRcWfjWcm9BqZRKk82ts+98jmpj344pOFAsMglzjQAnh4wl8wa9TYS8MWMg+NPpw==",
+        "resolved": "0.7.0",
+        "contentHash": "VPFIFRKuW3KyIoEpKXaLTuimx1QyiHab/lWCGbkwWd4e+aEdsEx2ajhqf+GD16A+bawJl9bsYsymunytmSgXag==",
         "dependencies": {
           "CsvHelper": "33.1.0",
           "DocumentFormat.OpenXml": "3.3.0",
@@ -576,15 +576,15 @@
       "fluxindex.ai.localembedder": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.Core": "[0.2.20, )",
+          "FluxIndex.Core": "[0.3.0, )",
           "LocalEmbedder": "[0.3.1, )"
         }
       },
       "fluxindex.ai.localreranker": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.Core": "[0.2.20, )",
-          "FluxIndex.SDK": "[0.2.20, )",
+          "FluxIndex.Core": "[0.3.0, )",
+          "FluxIndex.SDK": "[0.3.0, )",
           "LocalReranker": "[0.1.0, )"
         }
       },
@@ -592,13 +592,13 @@
         "type": "Project",
         "dependencies": {
           "Azure.AI.OpenAI": "[2.1.0, )",
-          "FluxIndex.Core": "[0.2.20, )"
+          "FluxIndex.Core": "[0.3.0, )"
         }
       },
       "fluxindex.cache.redis": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.Core": "[0.2.20, )",
+          "FluxIndex.Core": "[0.3.0, )",
           "Microsoft.Extensions.Caching.StackExchangeRedis": "[10.0.0, )",
           "StackExchange.Redis": "[2.10.1, )"
         }
@@ -606,40 +606,40 @@
       "fluxindex.core": {
         "type": "Project",
         "dependencies": {
-          "FileFlux": "[0.6.2, )"
+          "FileFlux": "[0.7.0, )"
         }
       },
       "fluxindex.extensions.fileflux": {
         "type": "Project",
         "dependencies": {
-          "FileFlux": "[0.6.2, )",
-          "FluxIndex.Core": "[0.2.20, )",
-          "FluxIndex.SDK": "[0.2.20, )"
+          "FileFlux": "[0.7.0, )",
+          "FluxIndex.Core": "[0.3.0, )",
+          "FluxIndex.SDK": "[0.3.0, )"
         }
       },
       "fluxindex.extensions.fluximprover": {
         "type": "Project",
         "dependencies": {
           "FluxImprover": "[0.4.1, )",
-          "FluxIndex.Core": "[0.2.20, )",
-          "FluxIndex.SDK": "[0.2.20, )"
+          "FluxIndex.Core": "[0.3.0, )",
+          "FluxIndex.SDK": "[0.3.0, )"
         }
       },
       "fluxindex.sdk": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.AI.LocalEmbedder": "[0.2.20, )",
-          "FluxIndex.AI.OpenAI": "[0.2.20, )",
-          "FluxIndex.Core": "[0.2.20, )",
-          "FluxIndex.Storage.SQLite": "[0.2.20, )"
+          "FluxIndex.AI.LocalEmbedder": "[0.3.0, )",
+          "FluxIndex.AI.OpenAI": "[0.3.0, )",
+          "FluxIndex.Core": "[0.3.0, )",
+          "FluxIndex.Storage.SQLite": "[0.3.0, )"
         }
       },
       "fluxindex.stack.application": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.Core": "[0.2.20, )",
-          "FluxIndex.Stack.Domain": "[0.2.20, )",
-          "FluxIndex.Stack.Shared": "[0.2.20, )"
+          "FluxIndex.Core": "[0.3.0, )",
+          "FluxIndex.Stack.Domain": "[0.3.0, )",
+          "FluxIndex.Stack.Shared": "[0.3.0, )"
         }
       },
       "fluxindex.stack.domain": {
@@ -651,19 +651,19 @@
       "fluxindex.stack.infrastructure": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.AI.LocalEmbedder": "[0.2.20, )",
-          "FluxIndex.AI.LocalReranker": "[0.2.20, )",
-          "FluxIndex.AI.OpenAI": "[0.2.20, )",
-          "FluxIndex.Cache.Redis": "[0.2.20, )",
-          "FluxIndex.Core": "[0.2.20, )",
-          "FluxIndex.Extensions.FileFlux": "[0.2.20, )",
-          "FluxIndex.Extensions.FluxImprover": "[0.2.20, )",
-          "FluxIndex.SDK": "[0.2.20, )",
-          "FluxIndex.Stack.Application": "[0.2.20, )",
-          "FluxIndex.Stack.Domain": "[0.2.20, )",
-          "FluxIndex.Stack.Shared": "[0.2.20, )",
-          "FluxIndex.Storage.PostgreSQL": "[0.2.20, )",
-          "FluxIndex.Storage.SQLite": "[0.2.20, )",
+          "FluxIndex.AI.LocalEmbedder": "[0.3.0, )",
+          "FluxIndex.AI.LocalReranker": "[0.3.0, )",
+          "FluxIndex.AI.OpenAI": "[0.3.0, )",
+          "FluxIndex.Cache.Redis": "[0.3.0, )",
+          "FluxIndex.Core": "[0.3.0, )",
+          "FluxIndex.Extensions.FileFlux": "[0.3.0, )",
+          "FluxIndex.Extensions.FluxImprover": "[0.3.0, )",
+          "FluxIndex.SDK": "[0.3.0, )",
+          "FluxIndex.Stack.Application": "[0.3.0, )",
+          "FluxIndex.Stack.Domain": "[0.3.0, )",
+          "FluxIndex.Stack.Shared": "[0.3.0, )",
+          "FluxIndex.Storage.PostgreSQL": "[0.3.0, )",
+          "FluxIndex.Storage.SQLite": "[0.3.0, )",
           "Microsoft.EntityFrameworkCore": "[10.0.0, )",
           "Microsoft.Extensions.Caching.StackExchangeRedis": "[10.0.0, )",
           "Npgsql.EntityFrameworkCore.PostgreSQL": "[10.0.0, )",
@@ -677,7 +677,7 @@
       "fluxindex.storage.postgresql": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.Core": "[0.2.20, )",
+          "FluxIndex.Core": "[0.3.0, )",
           "Npgsql.EntityFrameworkCore.PostgreSQL": "[10.0.0, )",
           "Pgvector.EntityFrameworkCore": "[0.2.2, )"
         }
@@ -685,7 +685,7 @@
       "fluxindex.storage.sqlite": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.Core": "[0.2.20, )",
+          "FluxIndex.Core": "[0.3.0, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.0, )",
           "sqlite-vec": "[0.1.7-alpha.2.1, )"
         }
@@ -702,13 +702,13 @@
       },
       "FileFlux": {
         "type": "CentralTransitive",
-        "requested": "[0.6.2, )",
-        "resolved": "0.6.2",
-        "contentHash": "7IQjgH9VQtyraCmvQUNVZCVgjk0phLt5jnjL2cRfhVgaQvH2btgOK2Jy1d5cCCsYRR4zZvJmFQ3/YqtYin2syA==",
+        "requested": "[0.7.0, )",
+        "resolved": "0.7.0",
+        "contentHash": "+Avb7J3a/fXLwHZYpdFsMN6jpXfj9a3qZ16JaImybTxYXa3dTlHzbBhwVbmJJGvV2OiluW5ZfGOTbAgzXFfxJA==",
         "dependencies": {
           "CsvHelper": "33.1.0",
           "DocumentFormat.OpenXml": "3.3.0",
-          "FileFlux.Core": "0.6.2",
+          "FileFlux.Core": "0.7.0",
           "FluxCurator": "0.5.0",
           "FluxImprover": "0.4.0",
           "HtmlAgilityPack": "1.12.4",

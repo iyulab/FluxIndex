@@ -29,6 +29,9 @@ api.interceptors.response.use(
         console.warn('API key invalid, clearing stored key. You may need to generate a new one.')
         localStorage.removeItem('fluxindex-api-key')
       }
+    } else if (error.response?.status === 403) {
+      // Forbidden - user doesn't have required permissions
+      console.warn('Permission denied. Admin role required for this operation.')
     }
     return Promise.reject(error)
   }

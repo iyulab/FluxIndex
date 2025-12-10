@@ -117,6 +117,23 @@ public class AiProviderSettingsService : IAiProviderSettingsService
                 new ModelInfoDto { Id = "mistral-large", Name = "Mistral Large", Description = "Mistral's flagship model", MaxTokens = 128000 },
                 new ModelInfoDto { Id = "deepseek-r1", Name = "DeepSeek R1", Description = "Reasoning-focused model", MaxTokens = 64000 }
             }
+        },
+        ["GPUStack"] = new ProviderInfo
+        {
+            DisplayName = "GPUStack",
+            RequiresEndpoint = true,
+            EmbeddingModels = new[]
+            {
+                new ModelInfoDto { Id = "gpt-oss", Name = "GPT-OSS", Description = "OpenAI-compatible embedding model", Dimensions = 1536 },
+                new ModelInfoDto { Id = "bge-m3", Name = "BGE-M3", Description = "BAAI multilingual embedding", Dimensions = 1024 },
+                new ModelInfoDto { Id = "nomic-embed-text", Name = "Nomic Embed Text", Description = "Nomic embedding model", Dimensions = 768 }
+            },
+            LlmModels = new[]
+            {
+                new ModelInfoDto { Id = "gpt-oss", Name = "GPT-OSS", Description = "OpenAI-compatible LLM", MaxTokens = 128000 },
+                new ModelInfoDto { Id = "qwen2.5-72b-instruct", Name = "Qwen 2.5 72B", Description = "Alibaba's large model", MaxTokens = 128000 },
+                new ModelInfoDto { Id = "llama-3.3-70b-instruct", Name = "Llama 3.3 70B", Description = "Meta's large model", MaxTokens = 128000 }
+            }
         }
     };
 
@@ -316,6 +333,7 @@ public class AiProviderSettingsService : IAiProviderSettingsService
     private class ProviderInfo
     {
         public string DisplayName { get; set; } = string.Empty;
+        public bool RequiresEndpoint { get; set; } = false;
         public ModelInfoDto[] EmbeddingModels { get; set; } = Array.Empty<ModelInfoDto>();
         public ModelInfoDto[] LlmModels { get; set; } = Array.Empty<ModelInfoDto>();
     }

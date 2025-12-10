@@ -1,5 +1,7 @@
+using System.Text;
 using FileFlux;
 using FileFlux.Core;
+using FileFlux.Core.Infrastructure.Readers;
 using FluxIndex.Stack.Application.Interfaces.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -20,6 +22,7 @@ public class FileFluxChunkingService : IChunkingService
     private readonly ILanguageProfileProvider _languageProfileProvider;
     private readonly ILogger<FileFluxChunkingService> _logger;
     private readonly FileFluxChunkingOptions _defaultOptions;
+    private readonly HtmlDocumentReader _htmlReader;
 
     public FileFluxChunkingService(
         IDocumentProcessor documentProcessor,
@@ -30,6 +33,7 @@ public class FileFluxChunkingService : IChunkingService
         _documentProcessor = documentProcessor;
         _languageProfileProvider = languageProfileProvider;
         _logger = logger;
+        _htmlReader = new HtmlDocumentReader();
 
         var config = options?.Value ?? new FileFluxChunkingConfiguration();
         _defaultOptions = new FileFluxChunkingOptions
@@ -53,8 +57,11 @@ public class FileFluxChunkingService : IChunkingService
 
         options ??= new StackChunkingOptions();
 
+        // Pre-process HTML content to extract clean text
+        var processedContent = await PreprocessContentAsync(content, documentId, cancellationToken);
+
         // Detect language if not specified
-        var language = options.Language ?? DetectLanguage(content);
+        var language = options.Language ?? DetectLanguage(processedContent);
 
         _logger.LogDebug("Chunking document {DocumentId} with strategy {Strategy}, language {Language}",
             documentId, options.Strategy, language ?? "auto");
@@ -81,8 +88,7 @@ public class FileFluxChunkingService : IChunkingService
             try
             {
                 // Sanitize null bytes (0x00) which are invalid in PostgreSQL TEXT columns
-                // PDF/DOCX files may contain null bytes from embedded binary objects or encoding artifacts
-                var sanitizedContent = SanitizeContent(content);
+                var sanitizedContent = SanitizeContent(processedContent);
                 await File.WriteAllTextAsync(tempPath, sanitizedContent, cancellationToken);
 
                 var chunks = new List<StackDocumentChunk>();
@@ -113,8 +119,81 @@ public class FileFluxChunkingService : IChunkingService
                 documentId);
 
             // Fallback to simple chunking
-            return FallbackChunking(content, documentId, options);
+            return FallbackChunking(processedContent, documentId, options);
         }
+    }
+
+    /// <summary>
+    /// Pre-process content based on detected content type.
+    /// HTML content is converted to clean Markdown text.
+    /// FileFlux v0.7+ automatically extracts base64 images and replaces them with placeholders.
+    /// </summary>
+    private async Task<string> PreprocessContentAsync(string content, Guid documentId, CancellationToken cancellationToken)
+    {
+        // Check if content looks like HTML
+        if (!IsHtmlContent(content))
+        {
+            return content;
+        }
+
+        _logger.LogInformation("Document {DocumentId} detected as HTML, preprocessing with HtmlDocumentReader", documentId);
+
+        try
+        {
+            // Use FileFlux HtmlDocumentReader to extract clean text
+            // FileFlux v0.7+ automatically extracts base64 images and replaces with placeholders (embedded:img_xxx)
+            using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
+            var rawContent = await _htmlReader.ExtractAsync(stream, "document.html", cancellationToken);
+
+            var extractedText = rawContent.Text;
+
+            var originalLength = content.Length;
+            var extractedLength = extractedText.Length;
+            var reductionPercent = (1 - (double)extractedLength / originalLength) * 100;
+
+            // Log image extraction info if any embedded images were found (FileFlux v0.7+)
+            if (rawContent.Images.Count > 0)
+            {
+                var embeddedCount = rawContent.Images.Count(i => i.Data != null);
+                var totalImageSize = rawContent.Images.Where(i => i.Data != null).Sum(i => i.Data!.Length);
+                _logger.LogInformation(
+                    "Document {DocumentId}: Extracted {EmbeddedCount} embedded images ({TotalSize:N0} bytes)",
+                    documentId, embeddedCount, totalImageSize);
+            }
+
+            _logger.LogInformation(
+                "HTML preprocessing complete for {DocumentId}: {OriginalLength} -> {ExtractedLength} chars ({ReductionPercent:F1}% reduction)",
+                documentId, originalLength, extractedLength, reductionPercent);
+
+            return extractedText;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "HTML preprocessing failed for {DocumentId}, using original content", documentId);
+            return content;
+        }
+    }
+
+    /// <summary>
+    /// Check if content appears to be HTML based on common patterns.
+    /// </summary>
+    private static bool IsHtmlContent(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+            return false;
+
+        var trimmed = content.TrimStart();
+
+        // Check for DOCTYPE or opening HTML tag
+        if (trimmed.StartsWith("<!DOCTYPE", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("<html", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        // Check for common HTML structure patterns
+        return trimmed.Contains("<head", StringComparison.OrdinalIgnoreCase) &&
+               trimmed.Contains("<body", StringComparison.OrdinalIgnoreCase);
     }
 
     public string? DetectLanguage(string content)
@@ -292,9 +371,7 @@ public class FileFluxChunkingService : IChunkingService
 
     /// <summary>
     /// Removes null bytes (0x00) from text content.
-    /// PDF/DOCX files may contain null bytes from embedded binary objects, form fields, or encoding artifacts.
     /// PostgreSQL TEXT columns reject null bytes as invalid UTF-8.
-    /// This is a workaround until FileFlux releases the TextSanitizer fix.
     /// </summary>
     private static string SanitizeContent(string? content)
     {

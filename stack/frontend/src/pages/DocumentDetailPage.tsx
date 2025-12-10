@@ -1,39 +1,22 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import Editor from '@monaco-editor/react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Separator } from '@/components/ui/separator'
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import {
-  documentsApi, chunksApi, jobsApi,
-  type ChunkDetail, type IndexingJobLog, type DocumentChunk
+  documentsApi, chunksApi,
+  type ChunkDetail, type DocumentChunk
 } from '@/lib/api'
-import { formatDate, formatBytes, cn } from '@/lib/utils'
+import { formatBytes, cn } from '@/lib/utils'
 import {
   ArrowLeft, FileText, Clock, CheckCircle, XCircle, RefreshCw,
-  Edit2, Save, X, Plus, Trash2, AlertCircle, Info, Bug,
-  ChevronDown, ChevronRight, Loader2, RotateCcw
+  Save, Loader2, RotateCcw, FileCode, Database, MessageSquare, Info
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 
 const statusVariants: Record<string, 'default' | 'success' | 'warning' | 'destructive' | 'info'> = {
   Indexed: 'success',
@@ -42,23 +25,21 @@ const statusVariants: Record<string, 'default' | 'success' | 'warning' | 'destru
   Failed: 'destructive',
 }
 
-const logLevelColors: Record<string, string> = {
-  Debug: 'text-gray-500',
-  Info: 'text-blue-500',
-  Warning: 'text-yellow-500',
-  Error: 'text-red-500',
-}
-
-const logLevelIcons: Record<string, typeof Info> = {
-  Debug: Bug,
-  Info: Info,
-  Warning: AlertCircle,
-  Error: XCircle,
-}
-
 interface QAPair {
   question: string
   answer: string
+}
+
+type ContentType = 'chunk' | 'metadata' | 'qa' | 'extract'
+
+interface SelectedItem {
+  type: ContentType
+  id: string
+  title: string
+  content: string
+  language: string
+  editable: boolean
+  chunkIndex?: number
 }
 
 export default function DocumentDetailPage() {
@@ -67,13 +48,10 @@ export default function DocumentDetailPage() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
 
-  const [activeTab, setActiveTab] = useState('overview')
-  const [editingChunkId, setEditingChunkId] = useState<string | null>(null)
-  const [editedContent, setEditedContent] = useState('')
-  const [editedMetadata, setEditedMetadata] = useState('')
-  const [expandedChunks, setExpandedChunks] = useState<Set<string>>(new Set())
-  const [qaDialogOpen, setQaDialogOpen] = useState(false)
-  const [editingQa, setEditingQa] = useState<{ chunkId: string; qa: QAPair[] } | null>(null)
+  const [activeTab, setActiveTab] = useState<ContentType>('chunk')
+  const [selectedItem, setSelectedItem] = useState<SelectedItem | null>(null)
+  const [editedContent, setEditedContent] = useState<string>('')
+  const [hasChanges, setHasChanges] = useState(false)
 
   // Fetch document detail
   const { data: document, isLoading: docLoading } = useQuery({
@@ -95,32 +73,6 @@ export default function DocumentDetailPage() {
     enabled: !!id,
   })
 
-  // Fetch job logs if document has a recent job
-  const { data: jobLogs } = useQuery({
-    queryKey: ['jobs', 'document', id, 'logs'],
-    queryFn: async () => {
-      // Get the most recent job for this document
-      const jobsResponse = await jobsApi.getAll({ pageSize: 1 })
-      const jobs = jobsResponse.data.data?.items || []
-      const documentJob = jobs.find(j => j.documentId === id)
-      if (!documentJob) return []
-
-      const logsResponse = await jobsApi.getLogs(documentJob.id)
-      return logsResponse.data.data || []
-    },
-    enabled: !!id,
-    refetchInterval: (query) => {
-      const logs = query.state.data as IndexingJobLog[] | undefined
-      // Keep refreshing if there are recent logs (within last minute)
-      if (logs && logs.length > 0) {
-        const lastLog = logs[logs.length - 1]
-        const isRecent = new Date(lastLog.createdAt).getTime() > Date.now() - 60000
-        return isRecent ? 2000 : false
-      }
-      return false
-    },
-  })
-
   // Update chunk mutation
   const updateChunkMutation = useMutation({
     mutationFn: async ({ chunkId, content, metadata }: { chunkId: string; content?: string; metadata?: Record<string, unknown> }) => {
@@ -129,11 +81,11 @@ export default function DocumentDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['chunks', id] })
       queryClient.invalidateQueries({ queryKey: ['document', id] })
-      setEditingChunkId(null)
-      toast({ title: 'Chunk updated successfully' })
+      setHasChanges(false)
+      toast({ title: 'Saved successfully' })
     },
     onError: () => {
-      toast({ title: 'Failed to update chunk', variant: 'destructive' })
+      toast({ title: 'Failed to save', variant: 'destructive' })
     },
   })
 
@@ -150,87 +102,157 @@ export default function DocumentDetailPage() {
     },
   })
 
-  // Prefer ChunkDetail from API, fallback to DocumentChunk from document
   const chunks: (ChunkDetail | DocumentChunk)[] = chunksData?.items || document?.chunks || []
 
-  // Helper to check if chunk is ChunkDetail (has hasEmbedding property)
-  const isChunkDetail = (chunk: ChunkDetail | DocumentChunk): chunk is ChunkDetail => {
-    return 'hasEmbedding' in chunk
-  }
+  // Build list items based on active tab
+  const listItems = useMemo(() => {
+    switch (activeTab) {
+      case 'chunk':
+        return chunks.map((chunk) => ({
+          id: chunk.id,
+          title: `Chunk #${chunk.chunkIndex + 1}`,
+          subtitle: `${chunk.tokenCount} tokens`,
+          preview: chunk.content.substring(0, 80) + (chunk.content.length > 80 ? '...' : ''),
+          chunkIndex: chunk.chunkIndex,
+        }))
+      case 'metadata':
+        return chunks.map((chunk) => ({
+          id: `meta-${chunk.id}`,
+          title: `Chunk #${chunk.chunkIndex + 1} Metadata`,
+          subtitle: `${Object.keys(chunk.metadata || {}).length} fields`,
+          preview: Object.keys(chunk.metadata || {}).slice(0, 3).join(', '),
+          chunkIndex: chunk.chunkIndex,
+          chunkId: chunk.id,
+        }))
+      case 'qa':
+        return chunks.map((chunk) => {
+          const qa = (chunk.metadata?.qa as QAPair[]) || []
+          return {
+            id: `qa-${chunk.id}`,
+            title: `Chunk #${chunk.chunkIndex + 1} QA`,
+            subtitle: `${qa.length} pairs`,
+            preview: qa.length > 0 ? qa[0].question.substring(0, 50) : 'No QA pairs',
+            chunkIndex: chunk.chunkIndex,
+            chunkId: chunk.id,
+          }
+        })
+      case 'extract':
+        return chunks.map((chunk) => {
+          const extracts = chunk.metadata?.extracts as string[] || []
+          return {
+            id: `extract-${chunk.id}`,
+            title: `Chunk #${chunk.chunkIndex + 1} Extracts`,
+            subtitle: `${extracts.length} items`,
+            preview: extracts.length > 0 ? extracts[0].substring(0, 50) : 'No extracts',
+            chunkIndex: chunk.chunkIndex,
+            chunkId: chunk.id,
+          }
+        })
+      default:
+        return []
+    }
+  }, [activeTab, chunks])
 
-  const toggleChunkExpand = (chunkId: string) => {
-    setExpandedChunks(prev => {
-      const next = new Set(prev)
-      if (next.has(chunkId)) {
-        next.delete(chunkId)
-      } else {
-        next.add(chunkId)
-      }
-      return next
+  // Handle item selection
+  const handleSelectItem = (item: typeof listItems[0]) => {
+    let content = ''
+    let language = 'plaintext'
+    let editable = true
+    let chunkIndex = item.chunkIndex
+
+    const chunk = chunks.find(c =>
+      c.id === item.id ||
+      item.id === `meta-${c.id}` ||
+      item.id === `qa-${c.id}` ||
+      item.id === `extract-${c.id}`
+    )
+
+    switch (activeTab) {
+      case 'chunk':
+        content = chunk?.content || ''
+        language = 'plaintext'
+        editable = true
+        break
+      case 'metadata':
+        content = JSON.stringify(chunk?.metadata || {}, null, 2)
+        language = 'json'
+        editable = true
+        break
+      case 'qa':
+        const qa = (chunk?.metadata?.qa as QAPair[]) || []
+        content = JSON.stringify(qa, null, 2)
+        language = 'json'
+        editable = true
+        break
+      case 'extract':
+        const extracts = (chunk?.metadata?.extracts as string[]) || []
+        content = JSON.stringify(extracts, null, 2)
+        language = 'json'
+        editable = true
+        break
+    }
+
+    setSelectedItem({
+      type: activeTab,
+      id: chunk?.id || item.id,
+      title: item.title,
+      content,
+      language,
+      editable,
+      chunkIndex,
     })
+    setEditedContent(content)
+    setHasChanges(false)
   }
 
-  const startEditingChunk = (chunk: ChunkDetail | DocumentChunk) => {
-    setEditingChunkId(chunk.id)
-    setEditedContent(chunk.content)
-    setEditedMetadata(JSON.stringify(chunk.metadata, null, 2))
-  }
+  // Handle save
+  const handleSave = () => {
+    if (!selectedItem || !hasChanges) return
 
-  const saveChunkEdit = () => {
-    if (!editingChunkId) return
+    const chunk = chunks.find(c => c.id === selectedItem.id)
+    if (!chunk) return
+
     try {
-      const metadata = JSON.parse(editedMetadata)
-      updateChunkMutation.mutate({
-        chunkId: editingChunkId,
-        content: editedContent,
-        metadata,
-      })
+      switch (selectedItem.type) {
+        case 'chunk':
+          updateChunkMutation.mutate({
+            chunkId: selectedItem.id,
+            content: editedContent,
+          })
+          break
+        case 'metadata':
+          const metadata = JSON.parse(editedContent)
+          updateChunkMutation.mutate({
+            chunkId: selectedItem.id,
+            metadata,
+          })
+          break
+        case 'qa':
+          const qa = JSON.parse(editedContent)
+          updateChunkMutation.mutate({
+            chunkId: selectedItem.id,
+            metadata: { ...chunk.metadata, qa },
+          })
+          break
+        case 'extract':
+          const extracts = JSON.parse(editedContent)
+          updateChunkMutation.mutate({
+            chunkId: selectedItem.id,
+            metadata: { ...chunk.metadata, extracts },
+          })
+          break
+      }
     } catch {
-      toast({ title: 'Invalid JSON in metadata', variant: 'destructive' })
+      toast({ title: 'Invalid JSON format', variant: 'destructive' })
     }
   }
 
-  const openQaEditor = (chunk: ChunkDetail | DocumentChunk) => {
-    const existingQa = (chunk.metadata?.qa as QAPair[]) || []
-    setEditingQa({ chunkId: chunk.id, qa: existingQa.length > 0 ? existingQa : [{ question: '', answer: '' }] })
-    setQaDialogOpen(true)
-  }
-
-  const addQaPair = () => {
-    if (!editingQa) return
-    setEditingQa({
-      ...editingQa,
-      qa: [...editingQa.qa, { question: '', answer: '' }]
-    })
-  }
-
-  const removeQaPair = (index: number) => {
-    if (!editingQa) return
-    setEditingQa({
-      ...editingQa,
-      qa: editingQa.qa.filter((_, i) => i !== index)
-    })
-  }
-
-  const updateQaPair = (index: number, field: 'question' | 'answer', value: string) => {
-    if (!editingQa) return
-    const newQa = [...editingQa.qa]
-    newQa[index] = { ...newQa[index], [field]: value }
-    setEditingQa({ ...editingQa, qa: newQa })
-  }
-
-  const saveQa = () => {
-    if (!editingQa) return
-    const filteredQa = editingQa.qa.filter(qa => qa.question.trim() || qa.answer.trim())
-    const chunk = chunks.find(c => c.id === editingQa.chunkId)
-    if (!chunk) return
-
-    updateChunkMutation.mutate({
-      chunkId: editingQa.chunkId,
-      metadata: { ...chunk.metadata, qa: filteredQa }
-    })
-    setQaDialogOpen(false)
-    setEditingQa(null)
+  // Handle editor change
+  const handleEditorChange = (value: string | undefined) => {
+    if (value !== undefined) {
+      setEditedContent(value)
+      setHasChanges(value !== selectedItem?.content)
+    }
   }
 
   if (docLoading) {
@@ -258,440 +280,185 @@ export default function DocumentDetailPage() {
     document.status === 'Processing' ? RefreshCw :
     document.status === 'Pending' ? Clock : XCircle
 
+  const tabIcons: Record<ContentType, typeof FileCode> = {
+    chunk: FileCode,
+    metadata: Database,
+    qa: MessageSquare,
+    extract: Info,
+  }
+
   return (
-    <TooltipProvider>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate('/documents')}>
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <div>
-              <h2 className="text-2xl font-bold tracking-tight">{document.title}</h2>
-              <div className="flex items-center gap-2 mt-1">
-                <Badge variant={statusVariants[document.status] || 'default'}>
-                  <StatusIcon className={cn('h-3 w-3 mr-1', document.status === 'Processing' && 'animate-spin')} />
-                  {document.status}
-                </Badge>
-                <span className="text-sm text-muted-foreground">
-                  {document.sourceType || 'Unknown'} • {formatBytes(document.fileSize || 0)}
-                </span>
-              </div>
+    <div className="flex flex-col h-[calc(100vh-4rem)]">
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 border-b shrink-0">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={() => navigate('/documents')}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div>
+            <h2 className="text-xl font-bold tracking-tight">{document.title}</h2>
+            <div className="flex items-center gap-2 mt-1">
+              <Badge variant={statusVariants[document.status] || 'default'}>
+                <StatusIcon className={cn('h-3 w-3 mr-1', document.status === 'Processing' && 'animate-spin')} />
+                {document.status}
+              </Badge>
+              <span className="text-sm text-muted-foreground">
+                {document.sourceType} • {formatBytes(document.fileSize || 0)} • {chunks.length} chunks
+              </span>
             </div>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => reindexMutation.mutate()}
-              disabled={reindexMutation.isPending || document.status === 'Processing'}
-            >
-              <RotateCcw className="h-4 w-4 mr-2" />
-              Reindex
-            </Button>
           </div>
         </div>
+        <div className="flex gap-2">
+          {hasChanges && (
+            <Button
+              onClick={handleSave}
+              disabled={updateChunkMutation.isPending}
+            >
+              {updateChunkMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4 mr-2" />
+              )}
+              Save Changes
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            onClick={() => reindexMutation.mutate()}
+            disabled={reindexMutation.isPending || document.status === 'Processing'}
+          >
+            <RotateCcw className="h-4 w-4 mr-2" />
+            Reindex
+          </Button>
+        </div>
+      </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList>
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="chunks">Chunks ({chunks.length})</TabsTrigger>
-            <TabsTrigger value="qa">QA & Metadata</TabsTrigger>
-            <TabsTrigger value="logs">Processing Logs</TabsTrigger>
-          </TabsList>
+      {/* Main Content - Split Panel */}
+      <ResizablePanelGroup direction="horizontal" className="flex-1">
+        {/* Left Panel - List */}
+        <ResizablePanel defaultSize={30} minSize={20} maxSize={50}>
+          <div className="flex flex-col h-full border-r">
+            {/* Tabs */}
+            <Tabs value={activeTab} onValueChange={(v) => {
+              setActiveTab(v as ContentType)
+              setSelectedItem(null)
+              setHasChanges(false)
+            }} className="flex flex-col h-full">
+              <TabsList className="w-full justify-start rounded-none border-b bg-transparent h-auto p-0">
+                {(['chunk', 'metadata', 'qa', 'extract'] as ContentType[]).map((tab) => {
+                  const Icon = tabIcons[tab]
+                  return (
+                    <TabsTrigger
+                      key={tab}
+                      value={tab}
+                      className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2"
+                    >
+                      <Icon className="h-4 w-4 mr-1" />
+                      {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                    </TabsTrigger>
+                  )
+                })}
+              </TabsList>
 
-          {/* Overview Tab */}
-          <TabsContent value="overview" className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Document Info</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">ID</span>
-                    <span className="font-mono text-sm">{document.id}</span>
-                  </div>
-                  <Separator />
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Source Type</span>
-                    <span>{document.sourceType || 'Unknown'}</span>
-                  </div>
-                  <Separator />
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">File Size</span>
-                    <span>{formatBytes(document.fileSize || 0)}</span>
-                  </div>
-                  <Separator />
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Chunk Count</span>
-                    <span>{document.chunkCount}</span>
-                  </div>
-                  <Separator />
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Created</span>
-                    <span>{formatDate(document.createdAt)}</span>
-                  </div>
-                  {document.indexedAt && (
-                    <>
-                      <Separator />
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Indexed</span>
-                        <span>{formatDate(document.indexedAt)}</span>
-                      </div>
-                    </>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Metadata</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ScrollArea className="h-[200px]">
-                    <pre className="text-sm font-mono whitespace-pre-wrap">
-                      {JSON.stringify(document.metadata, null, 2)}
-                    </pre>
-                  </ScrollArea>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Content Preview */}
-            {chunks.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Content Preview</CardTitle>
-                  <CardDescription>First chunk of the document</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ScrollArea className="h-[300px]">
-                    <p className="text-sm whitespace-pre-wrap">{chunks[0]?.content}</p>
-                  </ScrollArea>
-                </CardContent>
-              </Card>
-            )}
-          </TabsContent>
-
-          {/* Chunks Tab */}
-          <TabsContent value="chunks" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Document Chunks</CardTitle>
-                <CardDescription>
-                  {chunks.length} chunks extracted from this document
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ScrollArea className="h-[600px]">
-                  <div className="space-y-3">
-                    {chunks.map((chunk) => {
-                      const isExpanded = expandedChunks.has(chunk.id)
-                      const isEditing = editingChunkId === chunk.id
-
-                      return (
-                        <div
-                          key={chunk.id}
-                          className="border rounded-lg p-4"
-                        >
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6"
-                                onClick={() => toggleChunkExpand(chunk.id)}
-                              >
-                                {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                              </Button>
-                              <span className="font-medium">Chunk #{chunk.chunkIndex + 1}</span>
-                              <Badge variant="outline" className="text-xs">
-                                {chunk.tokenCount} tokens
-                              </Badge>
-                              {isChunkDetail(chunk) && chunk.hasEmbedding && (
-                                <Badge variant="success" className="text-xs">
-                                  Embedded
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-1">
-                              {isEditing ? (
-                                <>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => setEditingChunkId(null)}
-                                  >
-                                    <X className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    onClick={saveChunkEdit}
-                                    disabled={updateChunkMutation.isPending}
-                                  >
-                                    <Save className="h-4 w-4 mr-1" />
-                                    Save
-                                  </Button>
-                                </>
-                              ) : (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      onClick={() => startEditingChunk(chunk)}
-                                    >
-                                      <Edit2 className="h-4 w-4" />
-                                    </Button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>Edit chunk</TooltipContent>
-                                </Tooltip>
-                              )}
-                            </div>
-                          </div>
-
-                          {isExpanded && (
-                            <div className="mt-3 space-y-3">
-                              {isEditing ? (
-                                <>
-                                  <div>
-                                    <label className="text-sm font-medium">Content</label>
-                                    <Textarea
-                                      value={editedContent}
-                                      onChange={(e) => setEditedContent(e.target.value)}
-                                      className="mt-1 min-h-[200px] font-mono text-sm"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="text-sm font-medium">Metadata (JSON)</label>
-                                    <Textarea
-                                      value={editedMetadata}
-                                      onChange={(e) => setEditedMetadata(e.target.value)}
-                                      className="mt-1 min-h-[100px] font-mono text-sm"
-                                    />
-                                  </div>
-                                </>
-                              ) : (
-                                <>
-                                  <div className="bg-muted/50 rounded p-3">
-                                    <p className="text-sm whitespace-pre-wrap">{chunk.content}</p>
-                                  </div>
-                                  {Object.keys(chunk.metadata || {}).length > 0 && (
-                                    <div>
-                                      <span className="text-sm font-medium text-muted-foreground">Metadata:</span>
-                                      <pre className="mt-1 text-xs font-mono bg-muted/50 rounded p-2 overflow-x-auto">
-                                        {JSON.stringify(chunk.metadata, null, 2)}
-                                      </pre>
-                                    </div>
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </ScrollArea>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* QA Tab */}
-          <TabsContent value="qa" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>QA Pairs & Memorize Data</CardTitle>
-                <CardDescription>
-                  Manage question-answer pairs and additional metadata for each chunk
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ScrollArea className="h-[600px]">
-                  <div className="space-y-4">
-                    {chunks.map((chunk) => {
-                      const qa = (chunk.metadata?.qa as QAPair[]) || []
-                      return (
-                        <div key={chunk.id} className="border rounded-lg p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <div>
-                              <span className="font-medium">Chunk #{chunk.chunkIndex + 1}</span>
-                              <p className="text-sm text-muted-foreground line-clamp-1 mt-1">
-                                {chunk.content.substring(0, 100)}...
-                              </p>
-                            </div>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => openQaEditor(chunk)}
-                            >
-                              <Edit2 className="h-4 w-4 mr-1" />
-                              Edit QA ({qa.length})
-                            </Button>
-                          </div>
-
-                          {qa.length > 0 && (
-                            <div className="space-y-2 mt-3">
-                              {qa.map((pair, idx) => (
-                                <div key={idx} className="bg-muted/50 rounded p-3 space-y-1">
-                                  <p className="text-sm">
-                                    <span className="font-medium text-blue-600">Q:</span> {pair.question}
-                                  </p>
-                                  <p className="text-sm">
-                                    <span className="font-medium text-green-600">A:</span> {pair.answer}
-                                  </p>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </ScrollArea>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Logs Tab */}
-          <TabsContent value="logs" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Processing Logs</CardTitle>
-                <CardDescription>
-                  View detailed logs from the indexing process
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ScrollArea className="h-[600px]">
-                  {jobLogs && jobLogs.length > 0 ? (
-                    <div className="space-y-2">
-                      {jobLogs.map((log) => {
-                        const LogIcon = logLevelIcons[log.level] || Info
-                        return (
-                          <div
-                            key={log.id}
-                            className={cn(
-                              'flex items-start gap-3 p-3 rounded border',
-                              log.level === 'Error' && 'bg-red-50 border-red-200 dark:bg-red-950/20',
-                              log.level === 'Warning' && 'bg-yellow-50 border-yellow-200 dark:bg-yellow-950/20'
-                            )}
-                          >
-                            <LogIcon className={cn('h-4 w-4 mt-0.5', logLevelColors[log.level])} />
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className={cn('text-xs font-medium', logLevelColors[log.level])}>
-                                  {log.level}
-                                </span>
-                                {log.phase && (
-                                  <Badge variant="outline" className="text-xs">
-                                    {log.phase}
-                                  </Badge>
-                                )}
-                                {log.chunkIndex !== undefined && log.chunkIndex !== null && (
-                                  <Badge variant="secondary" className="text-xs">
-                                    Chunk #{log.chunkIndex + 1}
-                                  </Badge>
-                                )}
-                                <span className="text-xs text-muted-foreground ml-auto">
-                                  {formatDate(log.createdAt)}
-                                </span>
-                              </div>
-                              <p className="text-sm">{log.message}</p>
-                              {log.details && (
-                                <pre className="mt-1 text-xs font-mono text-muted-foreground whitespace-pre-wrap">
-                                  {log.details}
-                                </pre>
-                              )}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-12">
-                      <Info className="h-12 w-12 text-muted-foreground mb-4" />
-                      <h3 className="text-lg font-medium">No processing logs</h3>
-                      <p className="text-sm text-muted-foreground">
-                        Logs will appear here when the document is processed
-                      </p>
-                    </div>
-                  )}
-                </ScrollArea>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-
-        {/* QA Editor Dialog */}
-        <Dialog open={qaDialogOpen} onOpenChange={setQaDialogOpen}>
-          <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Edit QA Pairs</DialogTitle>
-              <DialogDescription>
-                Add or modify question-answer pairs for this chunk
-              </DialogDescription>
-            </DialogHeader>
-
-            {editingQa && (
-              <div className="space-y-4">
-                {editingQa.qa.map((pair, index) => (
-                  <div key={index} className="border rounded-lg p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">QA Pair #{index + 1}</span>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => removeQaPair(index)}
+              <TabsContent value={activeTab} className="flex-1 m-0 overflow-hidden">
+                <ScrollArea className="h-full">
+                  <div className="p-2 space-y-1">
+                    {listItems.map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => handleSelectItem(item)}
+                        className={cn(
+                          'w-full text-left p-3 rounded-lg border transition-colors',
+                          selectedItem?.id === item.id || selectedItem?.id === item.id.replace(/^(meta|qa|extract)-/, '')
+                            ? 'border-primary bg-primary/5'
+                            : 'border-transparent hover:bg-muted/50'
+                        )}
                       >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    <div>
-                      <label className="text-sm text-muted-foreground">Question</label>
-                      <Input
-                        value={pair.question}
-                        onChange={(e) => updateQaPair(index, 'question', e.target.value)}
-                        placeholder="Enter question..."
-                        className="mt-1"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm text-muted-foreground">Answer</label>
-                      <Textarea
-                        value={pair.answer}
-                        onChange={(e) => updateQaPair(index, 'answer', e.target.value)}
-                        placeholder="Enter answer..."
-                        className="mt-1"
-                      />
-                    </div>
-                  </div>
-                ))}
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-medium text-sm">{item.title}</span>
+                          <Badge variant="outline" className="text-xs">
+                            {item.subtitle}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground line-clamp-2">
+                          {item.preview}
+                        </p>
+                      </button>
+                    ))}
 
-                <Button
-                  variant="outline"
-                  onClick={addQaPair}
-                  className="w-full"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add QA Pair
-                </Button>
+                    {listItems.length === 0 && (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <Info className="h-8 w-8 mx-auto mb-2" />
+                        <p className="text-sm">No items available</p>
+                      </div>
+                    )}
+                  </div>
+                </ScrollArea>
+              </TabsContent>
+            </Tabs>
+          </div>
+        </ResizablePanel>
+
+        <ResizableHandle withHandle />
+
+        {/* Right Panel - Monaco Editor */}
+        <ResizablePanel defaultSize={70}>
+          <div className="flex flex-col h-full">
+            {selectedItem ? (
+              <>
+                {/* Editor Header */}
+                <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{selectedItem.title}</span>
+                    {hasChanges && (
+                      <Badge variant="warning" className="text-xs">
+                        Modified
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <span>{selectedItem.language.toUpperCase()}</span>
+                    {selectedItem.editable && (
+                      <Badge variant="outline" className="text-xs">
+                        Editable
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+
+                {/* Monaco Editor */}
+                <div className="flex-1">
+                  <Editor
+                    height="100%"
+                    language={selectedItem.language}
+                    value={editedContent}
+                    onChange={handleEditorChange}
+                    theme="vs-dark"
+                    options={{
+                      readOnly: !selectedItem.editable,
+                      minimap: { enabled: false },
+                      fontSize: 13,
+                      lineNumbers: 'on',
+                      wordWrap: 'on',
+                      scrollBeyondLastLine: false,
+                      automaticLayout: true,
+                      padding: { top: 8, bottom: 8 },
+                    }}
+                  />
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+                <FileCode className="h-16 w-16 mb-4 opacity-50" />
+                <h3 className="text-lg font-medium">Select an item to view</h3>
+                <p className="text-sm mt-1">
+                  Choose a chunk, metadata, QA, or extract from the list
+                </p>
               </div>
             )}
-
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setQaDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={saveQa} disabled={updateChunkMutation.isPending}>
-                {updateChunkMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                Save Changes
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
-    </TooltipProvider>
+          </div>
+        </ResizablePanel>
+      </ResizablePanelGroup>
+    </div>
   )
 }

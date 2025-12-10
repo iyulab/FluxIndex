@@ -100,8 +100,18 @@ export default function DocumentsPage() {
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
       toast({ title: 'Document deleted successfully' })
     },
-    onError: () => {
-      toast({ title: 'Failed to delete document', variant: 'destructive' })
+    onError: (error: unknown) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const status = (error as any)?.response?.status
+      if (status === 403) {
+        toast({
+          title: 'Permission denied',
+          description: 'Admin role required to delete documents. Check your API key settings.',
+          variant: 'destructive'
+        })
+      } else {
+        toast({ title: 'Failed to delete document', variant: 'destructive' })
+      }
     },
   })
 
