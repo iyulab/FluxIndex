@@ -4,37 +4,55 @@ using System.Collections.Generic;
 namespace FluxIndex.Core.Domain.Models;
 
 /// <summary>
-/// HyDE 결과
+/// HyDE (Hypothetical Document Embeddings) result.
+/// Supports multi-hypothetical mode for improved retrieval accuracy.
 /// </summary>
 public class HyDEResult
 {
     /// <summary>
-    /// 원본 쿼리
+    /// Original query
     /// </summary>
     public string OriginalQuery { get; set; } = string.Empty;
 
     /// <summary>
-    /// 생성된 가상 문서
+    /// Primary hypothetical document (first generated document)
     /// </summary>
     public string HypotheticalDocument { get; set; } = string.Empty;
 
     /// <summary>
-    /// 품질 점수 (0-1)
+    /// All generated hypothetical documents (for multi-hypothetical mode)
+    /// </summary>
+    public IReadOnlyList<string> HypotheticalDocuments { get; set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Quality scores for each hypothetical document
+    /// </summary>
+    public IReadOnlyList<float> QualityScores { get; set; } = Array.Empty<float>();
+
+    /// <summary>
+    /// Average quality score (0-1)
     /// </summary>
     public float QualityScore { get; set; }
 
     /// <summary>
-    /// 사용된 토큰 수
+    /// Total tokens used across all documents
     /// </summary>
     public int TokensUsed { get; set; }
 
     /// <summary>
-    /// 생성 시간 (밀리초)
+    /// Generation time (milliseconds)
     /// </summary>
     public long GenerationTimeMs { get; set; }
 
     /// <summary>
-    /// 성공 여부
+    /// Number of documents generated
+    /// </summary>
+    public int DocumentCount => HypotheticalDocuments.Count > 0
+        ? HypotheticalDocuments.Count
+        : string.IsNullOrEmpty(HypotheticalDocument) ? 0 : 1;
+
+    /// <summary>
+    /// Success indicator
     /// </summary>
     public bool IsSuccessful => QualityScore > 0.3f && !string.IsNullOrEmpty(HypotheticalDocument);
 }
@@ -143,29 +161,78 @@ public class QueryIntentResult
 }
 
 /// <summary>
-/// HyDE 옵션
+/// HyDE (Hypothetical Document Embeddings) options.
+/// Supports multi-hypothetical mode for generating diverse perspectives.
 /// </summary>
 public class HyDEOptions
 {
     /// <summary>
-    /// 최대 문서 길이
+    /// Maximum length per hypothetical document (in tokens)
     /// </summary>
     public int MaxLength { get; set; } = 300;
 
     /// <summary>
-    /// 문서 스타일
+    /// Document style (informative, technical, conversational, academic)
     /// </summary>
     public string DocumentStyle { get; set; } = "informative";
 
     /// <summary>
-    /// 도메인 컨텍스트
+    /// Domain context for more relevant document generation
     /// </summary>
     public string DomainContext { get; set; } = string.Empty;
 
     /// <summary>
-    /// 기본 옵션 생성
+    /// Number of hypothetical documents to generate (1-10).
+    /// Multiple documents provide diverse perspectives and improve retrieval.
+    /// Default: 1 (standard HyDE), Recommended: 3-5 for multi-hypothetical mode.
+    /// </summary>
+    public int DocumentCount { get; set; } = 1;
+
+    /// <summary>
+    /// Temperature variation for multi-document generation.
+    /// Higher values create more diverse documents.
+    /// Applied as: base_temperature + (index * TemperatureStep)
+    /// </summary>
+    public float TemperatureStep { get; set; } = 0.1f;
+
+    /// <summary>
+    /// Document perspectives for multi-hypothetical mode.
+    /// If empty, generic perspectives are used.
+    /// Examples: ["expert", "beginner", "critical", "supportive", "historical"]
+    /// </summary>
+    public IList<string> Perspectives { get; set; } = new List<string>();
+
+    /// <summary>
+    /// Enable parallel document generation (default: true)
+    /// </summary>
+    public bool EnableParallelGeneration { get; set; } = true;
+
+    /// <summary>
+    /// Creates default options (single document)
     /// </summary>
     public static HyDEOptions CreateDefault() => new();
+
+    /// <summary>
+    /// Creates multi-hypothetical options with specified document count
+    /// </summary>
+    /// <param name="documentCount">Number of hypothetical documents (3-5 recommended)</param>
+    public static HyDEOptions CreateMultiHypothetical(int documentCount = 5) => new()
+    {
+        DocumentCount = Math.Clamp(documentCount, 1, 10),
+        TemperatureStep = 0.1f,
+        EnableParallelGeneration = true
+    };
+
+    /// <summary>
+    /// Creates multi-hypothetical options with custom perspectives
+    /// </summary>
+    /// <param name="perspectives">Custom perspectives for document generation</param>
+    public static HyDEOptions CreateWithPerspectives(params string[] perspectives) => new()
+    {
+        DocumentCount = perspectives.Length,
+        Perspectives = perspectives.ToList(),
+        EnableParallelGeneration = true
+    };
 }
 
 /// <summary>

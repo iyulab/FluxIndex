@@ -900,4 +900,52 @@ public static class MetadataAugmentationServiceExtensions
         services.TryAddScoped<Interfaces.IAgenticRetrievalRouter, AgenticRetrievalRouter>();
         return services;
     }
+
+    /// <summary>
+    /// Late Chunking Embedding Service registration.
+    /// Implements Jina AI's Late Chunking approach - generates embeddings for the full
+    /// document first, then derives chunk embeddings preserving more contextual information.
+    /// Research shows 2.7% - 3.6% average retrieval improvement over standard chunking.
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <param name="configureOptions">Options configuration action</param>
+    /// <returns>Service collection</returns>
+    public static IServiceCollection AddLateChunking(
+        this IServiceCollection services,
+        Action<LateChunkingOptions>? configureOptions = null)
+    {
+        // Configure options
+        if (configureOptions != null)
+        {
+            services.Configure(configureOptions);
+        }
+        else
+        {
+            services.Configure<LateChunkingOptions>(_ => { });
+        }
+
+        // Register late chunking service
+        services.TryAddScoped<ILateChunkingEmbeddingService, LateChunkingEmbeddingService>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Late Chunking Embedding Service with default options.
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <param name="contextMode">Context integration mode</param>
+    /// <param name="documentContextWeight">Weight for document context in weighted combination (0.0-1.0)</param>
+    /// <returns>Service collection</returns>
+    public static IServiceCollection AddLateChunking(
+        this IServiceCollection services,
+        ContextIntegrationMode contextMode = ContextIntegrationMode.SurroundingContext,
+        double documentContextWeight = 0.3)
+    {
+        return services.AddLateChunking(options =>
+        {
+            options.ContextIntegrationMode = contextMode;
+            options.DocumentContextWeight = documentContextWeight;
+        });
+    }
 }

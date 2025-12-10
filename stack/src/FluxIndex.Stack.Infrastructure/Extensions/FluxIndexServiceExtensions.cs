@@ -68,6 +68,9 @@ public static class FluxIndexServiceExtensions
         // Configure quality monitoring
         ConfigureQualityMonitoring(builder, options);
 
+        // Configure RAG Enhancement features
+        ConfigureRAGEnhancement(services, options);
+
         // Configure FileFlux integration if enabled
         ConfigureFileFluxIntegration(services, options);
 
@@ -457,6 +460,75 @@ public static class FluxIndexServiceExtensions
         //     rerankerOptions.ModelId = "cross-encoder/ms-marco-MiniLM-L-6-v2";
         //     rerankerOptions.EnableCaching = true;
         // });
+    }
+
+    /// <summary>
+    /// Configure advanced RAG Enhancement features.
+    /// Supports three modes:
+    /// - Disabled: No enhancements (legacy behavior)
+    /// - Auto: Intelligent selection based on content/query characteristics (default)
+    /// - Custom: Manual configuration via sub-options
+    /// </summary>
+    private static void ConfigureRAGEnhancement(
+        IServiceCollection services,
+        FluxIndexOptions options)
+    {
+        var ragOptions = options.RAGEnhancement;
+
+        // Skip if disabled
+        if (!ragOptions.IsEnabled)
+            return;
+
+        // Auto mode: Register all services with intelligent defaults
+        // Services will self-select based on content characteristics at runtime
+        if (ragOptions.IsAutoMode)
+        {
+            // Register Late Chunking with auto-activation thresholds
+            services.AddLateChunking(lateChunkingOptions =>
+            {
+                lateChunkingOptions.MaxDocumentLength = 8000;
+                lateChunkingOptions.ContextIntegrationMode = ContextIntegrationMode.SurroundingContext;
+                lateChunkingOptions.DocumentContextWeight = 0.3;
+                lateChunkingOptions.SurroundingContextSize = 500;
+            });
+
+            // Register Contextual Embedding with balanced threshold
+            services.AddContextualEmbedding(contextualOptions =>
+            {
+                contextualOptions.LlmThreshold = 0.6; // Balanced: rule-based for simple, LLM for complex
+                contextualOptions.GenerateDualEmbeddings = false; // Single embedding for efficiency
+            });
+
+            return;
+        }
+
+        // Custom mode: Use explicit configuration
+        if (ragOptions.LateChunking.Enabled)
+        {
+            var contextMode = Enum.TryParse<ContextIntegrationMode>(
+                ragOptions.LateChunking.ContextIntegrationMode,
+                out var mode) ? mode : ContextIntegrationMode.SurroundingContext;
+
+            services.AddLateChunking(lateChunkingOptions =>
+            {
+                lateChunkingOptions.MaxDocumentLength = ragOptions.LateChunking.MaxDocumentLength;
+                lateChunkingOptions.ContextIntegrationMode = contextMode;
+                lateChunkingOptions.DocumentContextWeight = ragOptions.LateChunking.DocumentContextWeight;
+                lateChunkingOptions.SurroundingContextSize = ragOptions.LateChunking.SurroundingContextSize;
+            });
+        }
+
+        if (ragOptions.ContextualRetrieval.Enabled)
+        {
+            services.AddContextualEmbedding(contextualOptions =>
+            {
+                contextualOptions.LlmThreshold = ragOptions.ContextualRetrieval.LlmThreshold;
+                contextualOptions.GenerateDualEmbeddings = ragOptions.ContextualRetrieval.GenerateDualEmbeddings;
+            });
+        }
+
+        // Multi-Hypothetical HyDE is applied at query time via IQueryTransformationService
+        // No additional registration needed - the options are passed to the service when invoked
     }
 
     /// <summary>

@@ -2,6 +2,7 @@ using FluxIndex.Extensions.FluxImprover.Adapters;
 using FluxIndex.Extensions.FluxImprover.Services;
 using FluxImprover;
 using FluxImprover.ChunkFiltering;
+using FluxImprover.ContextualRetrieval;
 using FluxImprover.Enrichment;
 using FluxImprover.Evaluation;
 using FluxImprover.QAGeneration;
@@ -52,6 +53,35 @@ public static class ServiceCollectionExtensions
         {
             var enrichmentService = provider.GetRequiredService<ChunkEnrichmentService>();
             return new ChunkEnrichmentServiceWrapper(enrichmentService);
+        });
+
+        return services;
+    }
+
+    /// <summary>
+    /// Registers the ContextualEnrichmentServiceWrapper for Anthropic's Contextual Retrieval pattern.
+    /// </summary>
+    /// <param name="services">The service collection to add services to.</param>
+    /// <returns>The service collection for chaining.</returns>
+    /// <remarks>
+    /// <para>
+    /// This method requires FluxImprover's IContextualEnrichmentService to be already registered.
+    /// The wrapper is registered as a singleton.
+    /// </para>
+    /// <para>
+    /// Contextual Retrieval reduces failed retrievals by 49% (67% with reranking) by prepending
+    /// LLM-generated document context to each chunk before embedding.
+    /// </para>
+    /// <para>
+    /// Reference: https://www.anthropic.com/news/contextual-retrieval
+    /// </para>
+    /// </remarks>
+    public static IServiceCollection AddContextualEnrichmentWrapper(this IServiceCollection services)
+    {
+        services.AddSingleton<ContextualEnrichmentServiceWrapper>(provider =>
+        {
+            var contextualService = provider.GetRequiredService<IContextualEnrichmentService>();
+            return new ContextualEnrichmentServiceWrapper(contextualService);
         });
 
         return services;
@@ -283,6 +313,7 @@ public static class ServiceCollectionExtensions
 
         // Register FluxIndex wrapper services
         services.AddChunkEnrichmentWrapper();
+        services.AddContextualEnrichmentWrapper();
         services.AddQAGeneration();
         services.AddRAGEvaluation();
         services.AddChunkFilteringWrapper();

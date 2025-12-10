@@ -232,9 +232,77 @@ public class LocalEmbedderService : IEmbeddingService, IAsyncDisposable, IDispos
 
     public Task<int> CountTokensAsync(string text, CancellationToken cancellationToken = default)
     {
-        // Simple approximation: ~4 characters per token
-        var tokenCount = text.Length / 4;
+        if (string.IsNullOrEmpty(text))
+            return Task.FromResult(0);
+
+        // More accurate token estimation based on BPE/WordPiece tokenization patterns
+        // This accounts for:
+        // - Word boundaries (spaces)
+        // - Subword tokenization (longer words = more tokens)
+        // - Punctuation (usually separate tokens)
+        // - Non-ASCII characters (CJK characters typically 1 token each)
+
+        var tokenCount = 0;
+
+        // Count by analyzing text characteristics
+        var words = text.Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+
+        foreach (var word in words)
+        {
+            if (word.Length == 0) continue;
+
+            // Count punctuation as separate tokens
+            int punctCount = word.Count(c => char.IsPunctuation(c));
+            tokenCount += punctCount;
+
+            // Remove punctuation for word analysis
+            var cleanWord = new string(word.Where(c => !char.IsPunctuation(c)).ToArray());
+            if (string.IsNullOrEmpty(cleanWord)) continue;
+
+            // Check for CJK characters (Chinese, Japanese, Korean)
+            // These are typically tokenized as individual characters
+            int cjkChars = cleanWord.Count(c => IsCjkCharacter(c));
+            if (cjkChars > 0)
+            {
+                tokenCount += cjkChars;
+                cleanWord = new string(cleanWord.Where(c => !IsCjkCharacter(c)).ToArray());
+            }
+
+            if (string.IsNullOrEmpty(cleanWord)) continue;
+
+            // For remaining text (Latin, etc.):
+            // - Short words (1-4 chars): typically 1 token
+            // - Medium words (5-10 chars): typically 1-2 tokens
+            // - Long words (11+ chars): estimate based on subword tokenization
+            if (cleanWord.Length <= 4)
+            {
+                tokenCount += 1;
+            }
+            else if (cleanWord.Length <= 10)
+            {
+                tokenCount += 1 + (cleanWord.Length - 4) / 6;
+            }
+            else
+            {
+                // Longer words tend to be split into ~3.5 chars/token
+                tokenCount += (int)Math.Ceiling(cleanWord.Length / 3.5);
+            }
+        }
+
+        // Account for special tokens ([CLS], [SEP]) which are added during encoding
+        tokenCount += 2;
+
         return Task.FromResult(tokenCount);
+    }
+
+    private static bool IsCjkCharacter(char c)
+    {
+        // CJK Unified Ideographs and common CJK ranges
+        return (c >= '\u4E00' && c <= '\u9FFF') ||   // CJK Unified Ideographs
+               (c >= '\u3400' && c <= '\u4DBF') ||   // CJK Extension A
+               (c >= '\uAC00' && c <= '\uD7AF') ||   // Hangul Syllables (Korean)
+               (c >= '\u3040' && c <= '\u309F') ||   // Hiragana (Japanese)
+               (c >= '\u30A0' && c <= '\u30FF');     // Katakana (Japanese)
     }
 
     private string GenerateCacheKey(string text)

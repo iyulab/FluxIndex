@@ -54,8 +54,11 @@ public class QueryTransformationService : IQueryTransformationService
         options ??= HyDEOptions.CreateDefault();
 
         var startTime = DateTime.UtcNow;
+        var documentCount = Math.Clamp(options.DocumentCount, 1, 10);
 
-        _logger.LogDebug("Generating hypothetical document for query: {Query}", query);
+        _logger.LogDebug(
+            "Generating {Count} hypothetical document(s) for query: {Query}",
+            documentCount, query);
 
         if (_completionService == null)
         {
@@ -64,6 +67,8 @@ public class QueryTransformationService : IQueryTransformationService
             {
                 OriginalQuery = query,
                 HypotheticalDocument = string.Empty,
+                HypotheticalDocuments = Array.Empty<string>(),
+                QualityScores = Array.Empty<float>(),
                 QualityScore = 0,
                 GenerationTimeMs = 0
             };
@@ -71,40 +76,170 @@ public class QueryTransformationService : IQueryTransformationService
 
         try
         {
-            var prompt = BuildHyDEPrompt(query, options);
-            var hypotheticalDoc = await _completionService.GenerateCompletionAsync(
-                prompt,
-                options.MaxLength,
-                _options.HyDETemperature,
-                cancellationToken);
-
-            var elapsedMs = (long)(DateTime.UtcNow - startTime).TotalMilliseconds;
-            var qualityScore = EvaluateHyDEQuality(query, hypotheticalDoc);
-
-            _logger.LogDebug(
-                "Generated hypothetical document with quality score {Score} in {Elapsed}ms",
-                qualityScore, elapsedMs);
-
-            return new HyDEResult
+            // Single document mode (standard HyDE)
+            if (documentCount == 1)
             {
-                OriginalQuery = query,
-                HypotheticalDocument = hypotheticalDoc,
-                QualityScore = qualityScore,
-                TokensUsed = _completionService.CountTokens(hypotheticalDoc),
-                GenerationTimeMs = elapsedMs
-            };
+                return await GenerateSingleHypotheticalDocumentAsync(query, options, startTime, cancellationToken);
+            }
+
+            // Multi-hypothetical mode
+            return await GenerateMultiHypotheticalDocumentsAsync(query, options, documentCount, startTime, cancellationToken);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to generate hypothetical document for query: {Query}", query);
+            _logger.LogError(ex, "Failed to generate hypothetical document(s) for query: {Query}", query);
             return new HyDEResult
             {
                 OriginalQuery = query,
                 HypotheticalDocument = string.Empty,
+                HypotheticalDocuments = Array.Empty<string>(),
+                QualityScores = Array.Empty<float>(),
                 QualityScore = 0,
                 GenerationTimeMs = (long)(DateTime.UtcNow - startTime).TotalMilliseconds
             };
         }
+    }
+
+    private async Task<HyDEResult> GenerateSingleHypotheticalDocumentAsync(
+        string query,
+        HyDEOptions options,
+        DateTime startTime,
+        CancellationToken cancellationToken)
+    {
+        var prompt = BuildHyDEPrompt(query, options, perspective: null);
+        var hypotheticalDoc = await _completionService!.GenerateCompletionAsync(
+            prompt,
+            options.MaxLength,
+            _options.HyDETemperature,
+            cancellationToken);
+
+        var elapsedMs = (long)(DateTime.UtcNow - startTime).TotalMilliseconds;
+        var qualityScore = EvaluateHyDEQuality(query, hypotheticalDoc);
+
+        _logger.LogDebug(
+            "Generated hypothetical document with quality score {Score} in {Elapsed}ms",
+            qualityScore, elapsedMs);
+
+        return new HyDEResult
+        {
+            OriginalQuery = query,
+            HypotheticalDocument = hypotheticalDoc,
+            HypotheticalDocuments = new[] { hypotheticalDoc },
+            QualityScores = new[] { qualityScore },
+            QualityScore = qualityScore,
+            TokensUsed = _completionService.CountTokens(hypotheticalDoc),
+            GenerationTimeMs = elapsedMs
+        };
+    }
+
+    private async Task<HyDEResult> GenerateMultiHypotheticalDocumentsAsync(
+        string query,
+        HyDEOptions options,
+        int documentCount,
+        DateTime startTime,
+        CancellationToken cancellationToken)
+    {
+        var perspectives = GetPerspectives(options, documentCount);
+
+        _logger.LogDebug(
+            "Generating {Count} hypothetical documents with perspectives: {Perspectives}",
+            documentCount, string.Join(", ", perspectives));
+
+        List<string> documents;
+        List<float> qualityScores;
+
+        if (options.EnableParallelGeneration)
+        {
+            // Parallel generation with semaphore to control concurrency
+            var semaphore = new SemaphoreSlim(Math.Min(documentCount, 5));
+            var tasks = perspectives.Select(async (perspective, index) =>
+            {
+                await semaphore.WaitAsync(cancellationToken);
+                try
+                {
+                    var temperature = _options.HyDETemperature + (index * options.TemperatureStep);
+                    temperature = Math.Clamp(temperature, 0.0f, 2.0f);
+
+                    var prompt = BuildHyDEPrompt(query, options, perspective);
+                    return await _completionService!.GenerateCompletionAsync(
+                        prompt,
+                        options.MaxLength,
+                        temperature,
+                        cancellationToken);
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            });
+
+            documents = (await Task.WhenAll(tasks)).ToList();
+        }
+        else
+        {
+            // Sequential generation
+            documents = new List<string>(documentCount);
+            for (int i = 0; i < documentCount; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var temperature = _options.HyDETemperature + (i * options.TemperatureStep);
+                temperature = Math.Clamp(temperature, 0.0f, 2.0f);
+
+                var prompt = BuildHyDEPrompt(query, options, perspectives[i]);
+                var doc = await _completionService!.GenerateCompletionAsync(
+                    prompt,
+                    options.MaxLength,
+                    temperature,
+                    cancellationToken);
+                documents.Add(doc);
+            }
+        }
+
+        // Calculate quality scores for each document
+        qualityScores = documents.Select(doc => EvaluateHyDEQuality(query, doc)).ToList();
+
+        var elapsedMs = (long)(DateTime.UtcNow - startTime).TotalMilliseconds;
+        var avgQualityScore = qualityScores.Count > 0 ? qualityScores.Average() : 0f;
+        var totalTokens = documents.Sum(doc => _completionService!.CountTokens(doc));
+
+        _logger.LogDebug(
+            "Generated {Count} hypothetical documents with avg quality {AvgScore:F2} in {Elapsed}ms",
+            documents.Count, avgQualityScore, elapsedMs);
+
+        return new HyDEResult
+        {
+            OriginalQuery = query,
+            HypotheticalDocument = documents.FirstOrDefault() ?? string.Empty,
+            HypotheticalDocuments = documents,
+            QualityScores = qualityScores,
+            QualityScore = avgQualityScore,
+            TokensUsed = totalTokens,
+            GenerationTimeMs = elapsedMs
+        };
+    }
+
+    private static readonly string[] DefaultPerspectives = new[]
+    {
+        "expert technical explanation",
+        "beginner-friendly introduction",
+        "practical real-world application",
+        "theoretical academic analysis",
+        "problem-solving troubleshooting guide"
+    };
+
+    private List<string> GetPerspectives(HyDEOptions options, int count)
+    {
+        if (options.Perspectives.Count > 0)
+        {
+            // Use provided perspectives, cycling if necessary
+            return Enumerable.Range(0, count)
+                .Select(i => options.Perspectives[i % options.Perspectives.Count])
+                .ToList();
+        }
+
+        // Use default perspectives
+        return DefaultPerspectives.Take(count).ToList();
     }
 
     /// <inheritdoc />
@@ -282,16 +417,20 @@ public class QueryTransformationService : IQueryTransformationService
 
     #region Prompt Builders
 
-    private string BuildHyDEPrompt(string query, HyDEOptions options)
+    private string BuildHyDEPrompt(string query, HyDEOptions options, string? perspective)
     {
         var domainContext = string.IsNullOrEmpty(options.DomainContext)
             ? ""
             : $"Domain context: {options.DomainContext}\n";
 
+        var perspectiveInstruction = string.IsNullOrEmpty(perspective)
+            ? ""
+            : $"Perspective: Write from the perspective of a {perspective}.\n";
+
         return $"""
             You are an expert document writer. Given a query, write a hypothetical document that would perfectly answer this query.
 
-            {domainContext}Query: {query}
+            {domainContext}{perspectiveInstruction}Query: {query}
 
             Write a {options.DocumentStyle} document (approximately {options.MaxLength / 4} words) that would be the ideal answer to this query.
             Focus on providing specific, accurate, and relevant information.
