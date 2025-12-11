@@ -154,7 +154,52 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IIndexingService, StackIndexingService>();
         services.AddScoped<IChunkService, ChunkService>();
         services.AddScoped<IAiProviderSettingsService, AiProviderSettingsService>();
-        services.AddScoped<IChunkEnrichmentService, ChunkEnrichmentService>();
+        // ChunkEnrichmentService with explicit dependency injection
+        // Requires FluxImproverPipeline and ITextCompletionService to be registered
+        services.AddScoped<IChunkEnrichmentService>(sp =>
+        {
+            var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ChunkEnrichmentService>>();
+            var pipeline = sp.GetService<FluxImproverPipeline>();
+            var textCompletionService = sp.GetService<CoreTextCompletionService>();
+            return new ChunkEnrichmentService(logger, pipeline, textCompletionService);
+        });
+
+        // RAG Evaluation search provider - bridges Stack search to Core evaluation framework
+        services.AddScoped<IEvaluationSearchProvider>(sp =>
+        {
+            var searchService = sp.GetRequiredService<ISearchService>();
+            var chunkRepo = sp.GetRequiredService<IDocumentChunkRepository>();
+            var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<StackEvaluationSearchProvider>>();
+            var textCompletionService = sp.GetService<CoreTextCompletionService>();
+            return new StackEvaluationSearchProvider(searchService, chunkRepo, logger, textCompletionService);
+        });
+
+        // RAG Evaluation framework services
+        // CoreRAGEvaluationServiceAdapter - bridges FluxImprover to Core's IRAGEvaluationService
+        services.AddScoped<IRAGEvaluationService>(sp =>
+        {
+            var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CoreRAGEvaluationServiceAdapter>>();
+            var fluxImproverService = sp.GetService<FluxIndex.Extensions.FluxImprover.Services.RAGEvaluationService>();
+            return new CoreRAGEvaluationServiceAdapter(logger, fluxImproverService);
+        });
+
+        // GoldenDatasetManager for managing test datasets
+        services.AddScoped<IGoldenDatasetManager>(sp =>
+        {
+            var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<GoldenDatasetManager>>();
+            var datasetPath = Path.Combine(Directory.GetCurrentDirectory(), "datasets");
+            return new GoldenDatasetManager(logger, datasetPath);
+        });
+
+        // EvaluationJobManager for running and tracking evaluation jobs
+        services.AddScoped<IEvaluationJobManager>(sp =>
+        {
+            var ragEvalService = sp.GetRequiredService<IRAGEvaluationService>();
+            var datasetManager = sp.GetRequiredService<IGoldenDatasetManager>();
+            var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<EvaluationJobManager>>();
+            var searchProvider = sp.GetService<IEvaluationSearchProvider>();
+            return new EvaluationJobManager(ragEvalService, datasetManager, logger, searchProvider);
+        });
 
         // Adaptive embedding system services
         // Note: ReindexingService must be registered before EmbeddingModelService
