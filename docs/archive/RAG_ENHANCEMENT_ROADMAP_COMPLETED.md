@@ -601,12 +601,47 @@ Week 7-14: Phase 3 (Advanced)
 
 ---
 
+## Stack Integration Phase (2025-12-11) ✅
+
+After Core RAG services completion, integration with FluxIndex.Stack service was implemented:
+
+### Stack P3.1: Contextual Retrieval Integration ✅
+- Integrated `IChunkContextEnricher` into Stack indexing pipeline
+- Added `ChunkEnrichmentService` infrastructure wrapper
+- DI registration in `ServiceCollectionExtensions.cs`
+
+### Stack P3.2: Multi-Hypothetical HyDE Integration ✅
+- Integrated `IQueryTransformationService` into Stack search pipeline
+- Configured `QueryTransformationOptions` for HyDE with 5 hypothetical docs
+- RRF (k=60) fusion for combining multi-HyDE results
+
+### Stack P3.3: Evaluation Dashboard UI ✅
+- Created `EvaluationPage.tsx` with job management and metrics display
+- Added evaluation API client (`evaluationApi` in `api.ts`)
+- Real-time job polling with 5-second interval
+- Metrics visualization: MRR, Precision@K, Recall@K, NDCG, Overall Score
+
+---
+
+## Completion Summary
+
+| Phase | Focus | Status | Completion Date |
+|-------|-------|--------|-----------------|
+| Phase 1 | Quick Wins (DAT, Contextual, Router) | ✅ Complete | 2024-12-05 |
+| Phase 2 | Foundation (Entity, Leiden, Reranking) | ✅ Complete | 2024-12-06 |
+| Phase 3 | Advanced (GraphRAG, Summarization, Fusion) | ✅ Complete | 2024-12-07 |
+| Phase 4 | Self-Correction & Agentic RAG | ✅ Complete | 2024-12-08 |
+| Stack Integration | UI Dashboard & Service Integration | ✅ Complete | 2025-12-11 |
+
+---
+
 ## Next Steps
 
-1. **Immediate**: Review this roadmap with team
-2. **Week 1**: Start Phase 1.1 (Dynamic Alpha Tuning)
-3. **Ongoing**: Track metrics against baselines
-4. **Monthly**: Review and adjust priorities based on results
+1. ~~**Immediate**: Review this roadmap with team~~
+2. ~~**Week 1**: Start Phase 1.1 (Dynamic Alpha Tuning)~~
+3. **Production Testing**: Validate RAG enhancements with real workloads
+4. **Performance Tuning**: Optimize based on production metrics
+5. **Documentation**: Complete API reference for new services
 
 ---
 
