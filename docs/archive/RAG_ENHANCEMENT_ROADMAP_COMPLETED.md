@@ -629,6 +629,31 @@ After Core RAG services completion, integration with FluxIndex.Stack service was
 - Visual metrics comparison (achieved vs threshold)
 - Failed criteria highlighting
 
+### Stack P4: Self-Correcting RAG Stack Integration ✅
+- Registered `ISelfRAGService` in Stack's `AddAdvancedSearchServices`
+  - Configurable: `DefaultMaxIterations`, `DefaultQualityThreshold`, `UseLlmForRefinement`
+  - Iterative search with quality assessment and automatic query refinement
+- Registered `ICorrectiveRAGService` in Stack's `AddAdvancedSearchServices`
+  - Configurable: `CorrectThreshold`, `AmbiguousThreshold`, `UseLlmForRefinement`
+  - Document grading and correction with relevance thresholds
+- Configuration via `appsettings.json`:
+  ```json
+  {
+    "AdvancedSearch": {
+      "SelfRAG": {
+        "MaxIterations": 3,
+        "QualityThreshold": 0.7,
+        "UseLlmForRefinement": true
+      },
+      "CorrectiveRAG": {
+        "CorrectThreshold": 0.7,
+        "AmbiguousThreshold": 0.4,
+        "UseLlmForRefinement": true
+      }
+    }
+  }
+  ```
+
 ---
 
 ## Completion Summary
@@ -639,7 +664,8 @@ After Core RAG services completion, integration with FluxIndex.Stack service was
 | Phase 2 | Foundation (Entity, Leiden, Reranking) | ✅ Complete | 2024-12-06 |
 | Phase 3 | Advanced (GraphRAG, Summarization, Fusion) | ✅ Complete | 2024-12-07 |
 | Phase 4 | Self-Correction & Agentic RAG | ✅ Complete | 2024-12-08 |
-| Stack Integration | UI Dashboard & Service Integration | ✅ Complete | 2025-12-11 |
+| Stack P3 | UI Dashboard & Service Integration | ✅ Complete | 2025-12-11 |
+| Stack P4 | Self-Correcting RAG Stack Integration | ✅ Complete | 2025-12-11 |
 
 ---
 

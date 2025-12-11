@@ -462,6 +462,30 @@ public static class ServiceCollectionExtensions
         // Note: SmartSearchService has been merged into SearchService.Auto mode
         // Use SearchRequest.Mode = SearchMode.Auto (default) for intelligent search optimization
 
+        // 7. Self-RAG Service for iterative search with quality assessment
+        services.AddSelfRAGService(options =>
+        {
+            var selfRagSection = section.GetSection("SelfRAG");
+            if (selfRagSection.Exists())
+            {
+                options.DefaultMaxIterations = selfRagSection.GetValue<int>("MaxIterations", 3);
+                options.DefaultQualityThreshold = selfRagSection.GetValue<double>("QualityThreshold", 0.7);
+                options.UseLlmForRefinement = selfRagSection.GetValue<bool>("UseLlmForRefinement", true);
+            }
+        });
+
+        // 8. Corrective RAG Service for document grading and correction
+        services.AddCorrectiveRAGService(options =>
+        {
+            var cragSection = section.GetSection("CorrectiveRAG");
+            if (cragSection.Exists())
+            {
+                options.CorrectThreshold = cragSection.GetValue<double>("CorrectThreshold", 0.7);
+                options.AmbiguousThreshold = cragSection.GetValue<double>("AmbiguousThreshold", 0.4);
+                options.UseLlmForRefinement = cragSection.GetValue<bool>("UseLlmForRefinement", true);
+            }
+        });
+
         return services;
     }
 }
