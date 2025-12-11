@@ -19,33 +19,33 @@
       },
       "WebFlux": {
         "type": "Direct",
-        "requested": "[0.1.7, )",
-        "resolved": "0.1.7",
-        "contentHash": "ib+BjSfAx2qC7ViXNoQnFQHJdxfKk3/QwPwvifklZzY8z4XtpbfzZyZmn8R7psP9VuiklkKaGUeh1xLuSCnh1Q==",
+        "requested": "[0.1.8, )",
+        "resolved": "0.1.8",
+        "contentHash": "g8bo/mL8Sw/IVoS94kxVHtQ47MOfXoq6X+OC5TcL4EMcUF7uDuVJm+WEytaMb3qGxQ5ITyFj/VCElhHbWeaiEw==",
         "dependencies": {
-          "AngleSharp": "1.2.0",
+          "AngleSharp": "1.4.0",
           "HtmlAgilityPack": "1.12.4",
-          "Markdig": "0.43.0",
-          "Microsoft.Extensions.Caching.Abstractions": "10.0.0",
-          "Microsoft.Extensions.Caching.Memory": "10.0.0",
-          "Microsoft.Extensions.Configuration": "10.0.0",
-          "Microsoft.Extensions.Configuration.Abstractions": "10.0.0",
-          "Microsoft.Extensions.Configuration.Binder": "10.0.0",
-          "Microsoft.Extensions.DependencyInjection": "10.0.0",
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.0",
-          "Microsoft.Extensions.Http": "10.0.0",
-          "Microsoft.Extensions.Logging": "10.0.0",
-          "Microsoft.Extensions.Logging.Abstractions": "10.0.0",
-          "Microsoft.Playwright": "1.56.0",
-          "Polly": "8.6.4",
+          "Markdig": "0.44.0",
+          "Microsoft.Extensions.Caching.Abstractions": "10.0.1",
+          "Microsoft.Extensions.Caching.Memory": "10.0.1",
+          "Microsoft.Extensions.Configuration": "10.0.1",
+          "Microsoft.Extensions.Configuration.Abstractions": "10.0.1",
+          "Microsoft.Extensions.Configuration.Binder": "10.0.1",
+          "Microsoft.Extensions.DependencyInjection": "10.0.1",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.1",
+          "Microsoft.Extensions.Http": "10.0.1",
+          "Microsoft.Extensions.Logging": "10.0.1",
+          "Microsoft.Extensions.Logging.Abstractions": "10.0.1",
+          "Microsoft.Playwright": "1.57.0",
+          "Polly": "8.6.5",
           "Polly.Extensions.Http": "3.0.0",
           "YamlDotNet": "16.3.0"
         }
       },
       "AngleSharp": {
         "type": "Transitive",
-        "resolved": "1.2.0",
-        "contentHash": "uF/PzSCVcb+b2nqVvHZbOqexoJ9R6QLjonugPf0PQl+0h7YKaFZeXyspctbHe5HGlx7/Iuk5BErtk+t63ac/ZA=="
+        "resolved": "1.4.0",
+        "contentHash": "6ph8mpaQx0KL0COYRt0kI8MB9gSp1PtKijKMhJU//+aVFgKAJLKDesG/+26JSaVCOrHNgPf12wpfoyRcMYOeXg=="
       },
       "Azure.Core": {
         "type": "Transitive",
@@ -80,15 +80,15 @@
       },
       "FileFlux.Core": {
         "type": "Transitive",
-        "resolved": "0.7.0",
-        "contentHash": "VPFIFRKuW3KyIoEpKXaLTuimx1QyiHab/lWCGbkwWd4e+aEdsEx2ajhqf+GD16A+bawJl9bsYsymunytmSgXag==",
+        "resolved": "0.7.1",
+        "contentHash": "ipVSAOasUai4srqqX+lCXX30FW7o9nS48YXW+f4yHLmKxUkGdWTpPjWtajY9wlONwvWM4A1qjqNKHWlGbfxfFw==",
         "dependencies": {
           "CsvHelper": "33.1.0",
           "DocumentFormat.OpenXml": "3.3.0",
           "HtmlAgilityPack": "1.12.4",
           "Mammoth": "1.11.0",
           "Markdig": "0.44.0",
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.0",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.1",
           "PdfPig": "0.1.12",
           "ReverseMarkdown": "4.7.1"
         }
@@ -208,8 +208,8 @@
       },
       "Microsoft.Extensions.ObjectPool": {
         "type": "Transitive",
-        "resolved": "10.0.0",
-        "contentHash": "bpeCq0IYmVLACyEUMzFIOQX+zZUElG1t+nu1lSxthe7B+1oNYking7b91305+jNB6iwojp9fqTY9O+Nh7ULQxg=="
+        "resolved": "10.0.1",
+        "contentHash": "HqAEbtoAhgvH53c54IV5e4vQ60PYvl7Z/WIHsbet+UGGE7n+7dwVNXw1mb9LZlWbsxnupCevvtgIne5P//ZKpQ=="
       },
       "Microsoft.Extensions.Options.ConfigurationExtensions": {
         "type": "Transitive",
@@ -246,8 +246,8 @@
       },
       "Microsoft.Playwright": {
         "type": "Transitive",
-        "resolved": "1.56.0",
-        "contentHash": "DswyjEbhkTkQSyGnx2x1xhzwAztu/ckfOPZsT/fCA0HZVGdLkEWmf2u1FmUBWdT61do02VoMzp0dvA+oq7hKDg==",
+        "resolved": "1.57.0",
+        "contentHash": "DJXmZ64wwgakSrVZxsFJS8/epLEfac2Xfij66a0xY/ggfKqHIOeWeRaQQ97qxwA3FdyVwU1nWjAqeZhOZFxYMw==",
         "dependencies": {
           "Microsoft.Bcl.AsyncInterfaces": "6.0.0",
           "System.ComponentModel.Annotations": "5.0.0"
@@ -273,10 +273,10 @@
       },
       "Polly": {
         "type": "Transitive",
-        "resolved": "8.6.4",
-        "contentHash": "uuBsDoBw0oYrMe3uTWRjkT2sIkKh+ZZnnDrLb4Z+QANfeA4+7FJacx6E8CY5GAxXRoSgFrvUADEAQ7DPF6fGiw==",
+        "resolved": "8.6.5",
+        "contentHash": "VqtW2ZE/ALvQMAH1cQY3qZ2cF2OXa3oe/HKMdOv6Q02HCoEW0rsFNfcBONXlHBe1TnjWW1vdRxBEkPeq0/2FHA==",
         "dependencies": {
-          "Polly.Core": "8.6.4"
+          "Polly.Core": "8.6.5"
         }
       },
       "Polly.Core": {
@@ -383,7 +383,7 @@
       "fluxindex.core": {
         "type": "Project",
         "dependencies": {
-          "FileFlux": "[0.7.0, )",
+          "FileFlux": "[0.7.1, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.1, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.1, )"
         }
@@ -424,25 +424,25 @@
       },
       "FileFlux": {
         "type": "CentralTransitive",
-        "requested": "[0.7.0, )",
-        "resolved": "0.7.0",
-        "contentHash": "+Avb7J3a/fXLwHZYpdFsMN6jpXfj9a3qZ16JaImybTxYXa3dTlHzbBhwVbmJJGvV2OiluW5ZfGOTbAgzXFfxJA==",
+        "requested": "[0.7.1, )",
+        "resolved": "0.7.1",
+        "contentHash": "WVcrE+4uHN+6xuqg1ebl65/ChNrOpjHqx0YeEYe7UPYS71W20O1uO/Rqael/cPsOXdwyW6vBn+1Y/KG7LsA66A==",
         "dependencies": {
           "CsvHelper": "33.1.0",
           "DocumentFormat.OpenXml": "3.3.0",
-          "FileFlux.Core": "0.7.0",
+          "FileFlux.Core": "0.7.1",
           "FluxCurator": "0.5.0",
-          "FluxImprover": "0.4.0",
+          "FluxImprover": "0.4.1",
           "HtmlAgilityPack": "1.12.4",
           "LocalEmbedder": "0.3.1",
           "Mammoth": "1.11.0",
           "Markdig": "0.44.0",
-          "Microsoft.Extensions.Caching.Memory": "10.0.0",
-          "Microsoft.Extensions.Configuration": "10.0.0",
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.0",
-          "Microsoft.Extensions.Logging.Abstractions": "10.0.0",
-          "Microsoft.Extensions.ObjectPool": "10.0.0",
-          "Microsoft.Extensions.Options.ConfigurationExtensions": "10.0.0",
+          "Microsoft.Extensions.Caching.Memory": "10.0.1",
+          "Microsoft.Extensions.Configuration": "10.0.1",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.1",
+          "Microsoft.Extensions.Logging.Abstractions": "10.0.1",
+          "Microsoft.Extensions.ObjectPool": "10.0.1",
+          "Microsoft.Extensions.Options.ConfigurationExtensions": "10.0.1",
           "NTextCat": "0.3.65",
           "PdfPig": "0.1.12",
           "ReverseMarkdown": "4.7.1"
@@ -450,9 +450,9 @@
       },
       "FluxImprover": {
         "type": "CentralTransitive",
-        "requested": "[0.4.1, )",
-        "resolved": "0.4.0",
-        "contentHash": "iA89TFu1gr13hiAO2sC1hUSIQ0RDb7l14hB4tCsRxOZrTUe1Y1hhknbWY3yQO+tZAL6dcXuibYVZsplLAr0XgQ==",
+        "requested": "[0.4.2, )",
+        "resolved": "0.4.1",
+        "contentHash": "nUo/I6ixZ2lbJFwnNZ9ogj8UxR0yEDRZ7Oha/DC4AjDJouxx4z30llcUE92FKSrwq8TH9KhYNca7+QyGMqGcww==",
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.0",
           "Microsoft.Extensions.Options": "10.0.0",

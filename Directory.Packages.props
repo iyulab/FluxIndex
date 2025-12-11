@@ -61,10 +61,10 @@
   </ItemGroup>
   <!-- Document Processing & Quality -->
   <ItemGroup>
-    <PackageVersion Include="FileFlux" Version="0.7.0" />
-    <PackageVersion Include="FluxImprover" Version="0.4.1" />
+    <PackageVersion Include="FileFlux" Version="0.7.1" />
+    <PackageVersion Include="FluxImprover" Version="0.4.2" />
     <PackageVersion Include="HtmlAgilityPack" Version="1.12.3" />
-    <PackageVersion Include="WebFlux" Version="0.1.7" />
+    <PackageVersion Include="WebFlux" Version="0.1.8" />
   </ItemGroup>
   <!-- Testing Packages -->
   <ItemGroup>
