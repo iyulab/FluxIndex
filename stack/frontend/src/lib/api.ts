@@ -479,3 +479,125 @@ export const settingsApi = {
   initializeProviders: () =>
     api.post<ApiResponse<string>>('/settings/ai/providers/initialize'),
 }
+
+// Evaluation types
+export interface EvaluationQuery {
+  query: string
+  expectedAnswer: string
+  relevantDocumentIds?: string[]
+}
+
+export interface RunEvaluationRequest {
+  jobName: string
+  collectionId?: string
+  queries: EvaluationQuery[]
+  topK?: number
+  generateAnswers?: boolean
+  version?: string
+}
+
+export interface EvaluationJobResponse {
+  jobId: string
+  jobName: string
+  status: string
+  totalQueries: number
+  createdAt: string
+  estimatedCompletionAt?: string
+}
+
+export interface EvaluationMetrics {
+  mrr: number
+  precisionAtK: number
+  recallAtK: number
+  ndcg: number
+  averageFaithfulness?: number
+  averageRelevancy?: number
+  averageContextPrecision?: number
+  overallScore: number
+  qualityTier: string
+}
+
+export interface QueryEvaluationResult {
+  query: string
+  expectedAnswer: string
+  generatedAnswer?: string
+  retrievedChunks: number
+  relevantChunksFound?: number
+  metrics?: {
+    reciprocalRank: number
+    precision: number
+    recall: number
+    faithfulness?: number
+    relevancy?: number
+    contextPrecision?: number
+  }
+  retrievalLatencyMs: number
+  generationLatencyMs?: number
+  success: boolean
+  errorMessage?: string
+}
+
+export interface EvaluationResult {
+  jobId: string
+  jobName: string
+  status: string
+  totalQueries: number
+  successfulQueries: number
+  failedQueries: number
+  metrics?: EvaluationMetrics
+  queryResults?: QueryEvaluationResult[]
+  startedAt?: string
+  completedAt?: string
+  durationMs?: number
+  errorMessage?: string
+}
+
+export interface QualityThresholds {
+  minPrecision: number
+  minRecall: number
+  minF1Score: number
+  minMRR: number
+  minNDCG: number
+  minFaithfulness?: number
+  minAnswerRelevancy?: number
+}
+
+export interface QualityGateRequest {
+  systemVersion: string
+  datasetId: string
+  thresholds: QualityThresholds
+}
+
+export interface QualityGateResult {
+  passed: boolean
+  systemVersion: string
+  datasetId: string
+  metrics: EvaluationMetrics
+  appliedThresholds: QualityThresholds
+  failedCriteria: string[]
+  summary: Record<string, unknown>
+  executedAt: string
+  durationMs?: number
+}
+
+export const evaluationApi = {
+  runEvaluation: (data: RunEvaluationRequest) =>
+    api.post<ApiResponse<EvaluationJobResponse>>('/evaluation/run', data),
+  getJobStatus: (jobId: string) =>
+    api.get<ApiResponse<EvaluationJobResponse>>(`/evaluation/${jobId}`),
+  getResults: (jobId: string, includeQueryResults = false) =>
+    api.get<ApiResponse<EvaluationResult>>(`/evaluation/results/${jobId}`, { params: { includeQueryResults } }),
+  listJobs: (params?: { status?: string; page?: number; pageSize?: number }) =>
+    api.get<ApiResponse<PagedResult<EvaluationJobResponse>>>('/evaluation/jobs', { params }),
+  cancelJob: (jobId: string) =>
+    api.post<ApiResponse<string>>(`/evaluation/${jobId}/cancel`),
+}
+
+export const qualityGateApi = {
+  execute: (data: QualityGateRequest) =>
+    api.post<ApiResponse<QualityGateResult>>('/qualitygate/execute', data),
+  quickCheck: (version: string, datasetId: string, minScore = 0.7) =>
+    api.get<ApiResponse<{ status: string; version: string; score: number }>>('/qualitygate/check', {
+      params: { version, datasetId, minScore }
+    }),
+}

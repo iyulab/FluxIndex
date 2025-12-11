@@ -6,6 +6,7 @@ import DocumentsPage from '@/pages/DocumentsPage'
 import DocumentDetailPage from '@/pages/DocumentDetailPage'
 import JobsPage from '@/pages/JobsPage'
 import SearchPage from '@/pages/SearchPage'
+import EvaluationPage from '@/pages/EvaluationPage'
 import SettingsPage from '@/pages/SettingsPage'
 
 function App() {
@@ -19,6 +20,7 @@ function App() {
           <Route path="documents/:id" element={<DocumentDetailPage />} />
           <Route path="jobs" element={<JobsPage />} />
           <Route path="search" element={<SearchPage />} />
+          <Route path="evaluation" element={<EvaluationPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Routes>

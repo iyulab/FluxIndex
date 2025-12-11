@@ -13,6 +13,7 @@ import {
   ChevronDown,
   X,
   ListTodo,
+  Target,
 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -21,6 +22,7 @@ const navigation = [
   { name: 'Documents', href: '/documents', icon: FileText },
   { name: 'Jobs', href: '/jobs', icon: ListTodo },
   { name: 'Search', href: '/search', icon: Search },
+  { name: 'Evaluation', href: '/evaluation', icon: Target },
   { name: 'Settings', href: '/settings', icon: Settings },
 ]
 
