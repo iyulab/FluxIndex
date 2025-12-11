@@ -18,15 +18,18 @@ public class QualityGateService : IQualityGateService
     private readonly IRAGEvaluationService _evaluationService;
     private readonly IGoldenDatasetManager _datasetManager;
     private readonly ILogger<QualityGateService> _logger;
+    private readonly IEvaluationResultCache? _resultCache;
 
     public QualityGateService(
         IRAGEvaluationService evaluationService,
         IGoldenDatasetManager datasetManager,
-        ILogger<QualityGateService> logger)
+        ILogger<QualityGateService> logger,
+        IEvaluationResultCache? resultCache = null)
     {
         _evaluationService = evaluationService ?? throw new ArgumentNullException(nameof(evaluationService));
         _datasetManager = datasetManager ?? throw new ArgumentNullException(nameof(datasetManager));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _resultCache = resultCache;
     }
 
     /// <summary>
@@ -228,7 +231,19 @@ public class QualityGateService : IQualityGateService
         string datasetId,
         CancellationToken cancellationToken)
     {
-        // TODO: 실제 구현에서는 버전별 결과 캐싱 및 로드 로직 추가
+        // Check cache first
+        if (_resultCache != null)
+        {
+            var cachedResult = await _resultCache.GetAsync(version, datasetId, cancellationToken);
+            if (cachedResult != null)
+            {
+                _logger.LogDebug("Using cached evaluation result for version={Version}, dataset={DatasetId}", 
+                    version, datasetId);
+                return cachedResult;
+            }
+        }
+
+        // Evaluate if not cached
         var dataset = await _datasetManager.LoadDatasetAsync(datasetId, cancellationToken);
 
         var evaluationConfig = new EvaluationConfiguration
@@ -238,7 +253,17 @@ public class QualityGateService : IQualityGateService
             EnableContextEvaluation = true
         };
 
-        return await _evaluationService.EvaluateBatchAsync(dataset, evaluationConfig, cancellationToken);
+        var result = await _evaluationService.EvaluateBatchAsync(dataset, evaluationConfig, cancellationToken);
+
+        // Cache the result
+        if (_resultCache != null)
+        {
+            await _resultCache.SetAsync(version, datasetId, result, TimeSpan.FromHours(24), cancellationToken);
+            _logger.LogDebug("Cached evaluation result for version={Version}, dataset={DatasetId}", 
+                version, datasetId);
+        }
+
+        return result;
     }
 
     private List<string> IdentifyFailedCriteria(BatchEvaluationResult result, EvaluationThresholds thresholds)

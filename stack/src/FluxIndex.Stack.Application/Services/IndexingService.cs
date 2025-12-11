@@ -21,6 +21,7 @@ public class IndexingService : IIndexingService
     private readonly IEmbeddingProvider? _embeddingProvider;
     private readonly IDocumentContentProvider? _contentProvider;
     private readonly IChunkingService? _chunkingService;
+    private readonly IChunkEnrichmentService? _enrichmentService;
     private readonly ILogger<IndexingService> _logger;
 
     // Default chunking configuration (fallback when IChunkingService not available)
@@ -35,7 +36,8 @@ public class IndexingService : IIndexingService
         IIndexingJobLogRepository? logRepository = null,
         IEmbeddingProvider? embeddingProvider = null,
         IDocumentContentProvider? contentProvider = null,
-        IChunkingService? chunkingService = null)
+        IChunkingService? chunkingService = null,
+        IChunkEnrichmentService? enrichmentService = null)
     {
         _jobRepository = jobRepository;
         _documentRepository = documentRepository;
@@ -44,6 +46,7 @@ public class IndexingService : IIndexingService
         _embeddingProvider = embeddingProvider;
         _contentProvider = contentProvider;
         _chunkingService = chunkingService;
+        _enrichmentService = enrichmentService;
         _logger = logger;
     }
 
@@ -279,7 +282,66 @@ public class IndexingService : IIndexingService
             await AddLogAsync(job.Id, IndexingJobLogLevel.Warning, "Embedding provider not available, chunks will have no embeddings", phase: "Embedding");
         }
 
-        // 4. Store chunks in database
+        // 4. Enrich chunks with AI-generated metadata (QA pairs, keywords, etc.)
+        if (_enrichmentService != null && _enrichmentService.IsAvailable)
+        {
+            await AddLogAsync(job.Id, IndexingJobLogLevel.Info, "Starting chunk enrichment with FluxImprover", phase: "Enrichment");
+            try
+            {
+                var enrichmentOptions = new ChunkEnrichmentOptions
+                {
+                    GenerateQAPairs = true,
+                    MaxQAPairsPerChunk = 3,
+                    ExtractKeywords = true,
+                    GenerateSummary = false, // Can be enabled for detailed summaries
+                    EvaluateQuality = false  // Can be enabled for quality filtering
+                };
+
+                var enrichmentResult = await _enrichmentService.EnrichChunksAsync(
+                    chunkList,
+                    document,
+                    enrichmentOptions,
+                    (processed, total) =>
+                    {
+                        if (processed % 5 == 0 || processed == total)
+                        {
+                            _logger.LogDebug("Enrichment progress: {Processed}/{Total}", processed, total);
+                        }
+                    },
+                    cancellationToken);
+
+                await AddLogAsync(job.Id, IndexingJobLogLevel.Info,
+                    $"Enrichment completed: {enrichmentResult.EnrichedChunks}/{enrichmentResult.TotalChunks} chunks, " +
+                    $"{enrichmentResult.TotalQAPairs} QA pairs generated",
+                    phase: "Enrichment");
+
+                if (enrichmentResult.FailedChunks > 0)
+                {
+                    await AddLogAsync(job.Id, IndexingJobLogLevel.Warning,
+                        $"Enrichment partial failure: {enrichmentResult.FailedChunks} chunks failed",
+                        string.Join("\n", enrichmentResult.Errors.Take(5)),
+                        "Enrichment");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to enrich chunks for document {DocumentId}", document.Id);
+                await AddLogAsync(job.Id, IndexingJobLogLevel.Warning,
+                    $"Chunk enrichment failed: {ex.Message}",
+                    ex.StackTrace,
+                    "Enrichment");
+                // Continue without enrichment - not critical
+            }
+        }
+        else
+        {
+            _logger.LogDebug("Chunk enrichment skipped: service not available for document {DocumentId}", document.Id);
+            await AddLogAsync(job.Id, IndexingJobLogLevel.Debug,
+                "Chunk enrichment skipped (LLM service not configured)",
+                phase: "Enrichment");
+        }
+
+        // 5. Store chunks in database
         await AddLogAsync(job.Id, IndexingJobLogLevel.Info, "Storing chunks in database", phase: "Storage");
         await _chunkRepository.AddRangeAsync(chunkList, cancellationToken);
         await AddLogAsync(job.Id, IndexingJobLogLevel.Info, $"Successfully stored {chunkList.Count} chunks", phase: "Storage");

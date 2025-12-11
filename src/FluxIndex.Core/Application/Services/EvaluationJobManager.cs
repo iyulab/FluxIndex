@@ -19,9 +19,10 @@ public class EvaluationJobManager : IEvaluationJobManager
 {
     private readonly IRAGEvaluationService _evaluationService;
     private readonly IGoldenDatasetManager _datasetManager;
+    private readonly IEvaluationSearchProvider _searchProvider;
     private readonly ILogger<EvaluationJobManager> _logger;
 
-    // 인메모리 작업 스토리지 (실제 구현에서는 데이터베이스 사용)
+    // In-memory job storage (use database in production)
     private readonly ConcurrentDictionary<string, EvaluationJob> _jobs = new();
     private readonly ConcurrentDictionary<string, BatchEvaluationResult> _results = new();
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _cancellationTokens = new();
@@ -29,15 +30,17 @@ public class EvaluationJobManager : IEvaluationJobManager
     public EvaluationJobManager(
         IRAGEvaluationService evaluationService,
         IGoldenDatasetManager datasetManager,
-        ILogger<EvaluationJobManager> logger)
+        ILogger<EvaluationJobManager> logger,
+        IEvaluationSearchProvider? searchProvider = null)
     {
         _evaluationService = evaluationService ?? throw new ArgumentNullException(nameof(evaluationService));
         _datasetManager = datasetManager ?? throw new ArgumentNullException(nameof(datasetManager));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _searchProvider = searchProvider ?? new MockEvaluationSearchProvider();
     }
 
     /// <summary>
-    /// 평가 작업 생성
+    /// Creates an evaluation job.
     /// </summary>
     public async Task<string> CreateEvaluationJobAsync(
         string name,
@@ -48,7 +51,7 @@ public class EvaluationJobManager : IEvaluationJobManager
     {
         try
         {
-            await Task.Delay(1, cancellationToken); // 비동기 시뮬레이션
+            await Task.Delay(1, cancellationToken);
 
             var jobId = Guid.NewGuid().ToString();
             var job = new EvaluationJob
@@ -65,20 +68,20 @@ public class EvaluationJobManager : IEvaluationJobManager
 
             _jobs.TryAdd(jobId, job);
 
-            _logger.LogInformation("평가 작업 생성 완료: JobId={JobId}, Name={Name}, Dataset={Dataset}",
+            _logger.LogInformation("Evaluation job created: JobId={JobId}, Name={Name}, Dataset={Dataset}",
                 jobId, name, datasetId);
 
             return jobId;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "평가 작업 생성 중 오류 발생: Name={Name}", name);
+            _logger.LogError(ex, "Error creating evaluation job: Name={Name}", name);
             throw;
         }
     }
 
     /// <summary>
-    /// 평가 작업 실행
+    /// Executes an evaluation job.
     /// </summary>
     public async Task<BatchEvaluationResult> ExecuteEvaluationJobAsync(
         string jobId,
@@ -86,61 +89,54 @@ public class EvaluationJobManager : IEvaluationJobManager
     {
         if (!_jobs.TryGetValue(jobId, out var job))
         {
-            throw new ArgumentException($"작업을 찾을 수 없습니다: {jobId}");
+            throw new ArgumentException($"Job not found: {jobId}");
         }
 
         if (job.Status != EvaluationStatus.Pending)
         {
-            throw new InvalidOperationException($"작업이 이미 실행 중이거나 완료되었습니다: {jobId}");
+            throw new InvalidOperationException($"Job already running or completed: {jobId}");
         }
 
-        // 취소 토큰 생성 및 저장
         var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _cancellationTokens.TryAdd(jobId, combinedCts);
 
         try
         {
-            // 작업 상태 업데이트
             job.Status = EvaluationStatus.Running;
             job.StartedAt = DateTime.UtcNow;
             job.Progress = 0;
 
-            _logger.LogInformation("평가 작업 실행 시작: JobId={JobId}, Name={Name}",
+            _logger.LogInformation("Evaluation job started: JobId={JobId}, Name={Name}",
                 jobId, job.Name);
 
-            // 골든 데이터셋 로드
             var dataset = await _datasetManager.LoadDatasetAsync(job.DatasetId, combinedCts.Token);
             if (!dataset.Any())
             {
-                throw new InvalidOperationException($"데이터셋이 비어있습니다: {job.DatasetId}");
+                throw new InvalidOperationException($"Dataset is empty: {job.DatasetId}");
             }
 
             job.Progress = 10;
 
-            // 진행률 추적을 위한 Progress Reporter 생성
             var progressReporter = new Progress<int>(progress =>
             {
                 job.Progress = Math.Max(job.Progress, progress);
-                _logger.LogDebug("평가 작업 진행률 업데이트: JobId={JobId}, Progress={Progress}%",
+                _logger.LogDebug("Evaluation job progress updated: JobId={JobId}, Progress={Progress}%",
                     jobId, job.Progress);
             });
 
-            // 배치 평가 실행
             var result = await ExecuteBatchEvaluationWithProgressAsync(
                 dataset,
                 job.Configuration,
                 progressReporter,
                 combinedCts.Token);
 
-            // 작업 완료 처리
             job.Status = EvaluationStatus.Completed;
             job.CompletedAt = DateTime.UtcNow;
             job.Progress = 100;
 
-            // 결과 저장
             _results.TryAdd(jobId, result);
 
-            _logger.LogInformation("평가 작업 실행 완료: JobId={JobId}, TotalQueries={TotalQueries}, Duration={Duration}",
+            _logger.LogInformation("Evaluation job completed: JobId={JobId}, TotalQueries={TotalQueries}, Duration={Duration}",
                 jobId, result.TotalQueries, result.TotalDuration);
 
             return result;
@@ -149,9 +145,9 @@ public class EvaluationJobManager : IEvaluationJobManager
         {
             job.Status = EvaluationStatus.Cancelled;
             job.CompletedAt = DateTime.UtcNow;
-            job.ErrorMessage = "작업이 취소되었습니다.";
+            job.ErrorMessage = "Job was cancelled.";
 
-            _logger.LogInformation("평가 작업 취소됨: JobId={JobId}", jobId);
+            _logger.LogInformation("Evaluation job cancelled: JobId={JobId}", jobId);
             throw;
         }
         catch (Exception ex)
@@ -160,64 +156,62 @@ public class EvaluationJobManager : IEvaluationJobManager
             job.CompletedAt = DateTime.UtcNow;
             job.ErrorMessage = ex.Message;
 
-            _logger.LogError(ex, "평가 작업 실행 중 오류 발생: JobId={JobId}", jobId);
+            _logger.LogError(ex, "Error executing evaluation job: JobId={JobId}", jobId);
             throw;
         }
         finally
         {
-            // 정리
             _cancellationTokens.TryRemove(jobId, out var cts);
             cts?.Dispose();
         }
     }
 
     /// <summary>
-    /// 평가 작업 상태 확인
+    /// Gets job status.
     /// </summary>
     public async Task<EvaluationJob> GetJobStatusAsync(
         string jobId,
         CancellationToken cancellationToken = default)
     {
-        await Task.Delay(1, cancellationToken); // 비동기 시뮬레이션
+        await Task.Delay(1, cancellationToken);
 
         if (!_jobs.TryGetValue(jobId, out var job))
         {
-            throw new ArgumentException($"작업을 찾을 수 없습니다: {jobId}");
+            throw new ArgumentException($"Job not found: {jobId}");
         }
 
         return job;
     }
 
     /// <summary>
-    /// 실행 중인 작업 취소
+    /// Cancels a running job.
     /// </summary>
     public async Task CancelJobAsync(
         string jobId,
         CancellationToken cancellationToken = default)
     {
-        await Task.Delay(1, cancellationToken); // 비동기 시뮬레이션
+        await Task.Delay(1, cancellationToken);
 
         if (!_jobs.TryGetValue(jobId, out var job))
         {
-            throw new ArgumentException($"작업을 찾을 수 없습니다: {jobId}");
+            throw new ArgumentException($"Job not found: {jobId}");
         }
 
         if (job.Status != EvaluationStatus.Running)
         {
-            throw new InvalidOperationException($"실행 중이지 않은 작업은 취소할 수 없습니다: {jobId}");
+            throw new InvalidOperationException($"Cannot cancel job that is not running: {jobId}");
         }
 
-        // 취소 토큰 활성화
         if (_cancellationTokens.TryGetValue(jobId, out var cts))
         {
             cts.Cancel();
         }
 
-        _logger.LogInformation("평가 작업 취소 요청: JobId={JobId}", jobId);
+        _logger.LogInformation("Evaluation job cancellation requested: JobId={JobId}", jobId);
     }
 
     /// <summary>
-    /// 작업 목록 조회
+    /// Gets list of jobs.
     /// </summary>
     public async Task<IEnumerable<EvaluationJob>> GetJobsAsync(
         EvaluationStatus? status = null,
@@ -225,17 +219,15 @@ public class EvaluationJobManager : IEvaluationJobManager
         DateTime? to = null,
         CancellationToken cancellationToken = default)
     {
-        await Task.Delay(1, cancellationToken); // 비동기 시뮬레이션
+        await Task.Delay(1, cancellationToken);
 
         var jobs = _jobs.Values.AsEnumerable();
 
-        // 상태 필터
         if (status.HasValue)
         {
             jobs = jobs.Where(j => j.Status == status.Value);
         }
 
-        // 날짜 범위 필터
         if (from.HasValue)
         {
             jobs = jobs.Where(j => j.CreatedAt >= from.Value);
@@ -270,7 +262,7 @@ public class EvaluationJobManager : IEvaluationJobManager
         var failedCount = 0;
 
         var processedCount = 0;
-        var basePrgress = 10; // 데이터셋 로드 완료
+        var baseProgress = 10;
 
         foreach (var item in datasetList)
         {
@@ -278,14 +270,16 @@ public class EvaluationJobManager : IEvaluationJobManager
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                // TODO: 실제 검색 및 답변 생성 로직 호출
-                var mockRetrievedChunks = CreateMockRetrievedChunks(item);
-                var mockGeneratedAnswer = $"Mock answer for: {item.Query}";
+                // Use pluggable search provider for retrieval and answer generation
+                var retrievedChunks = await _searchProvider.RetrieveChunksAsync(
+                    item.Query, 5, cancellationToken);
+                var generatedAnswer = await _searchProvider.GenerateAnswerAsync(
+                    item.Query, retrievedChunks, cancellationToken);
 
                 var result = await _evaluationService.EvaluateQueryAsync(
                     item.Query,
-                    mockRetrievedChunks,
-                    mockGeneratedAnswer,
+                    retrievedChunks,
+                    generatedAnswer,
                     item,
                     configuration,
                     cancellationToken);
@@ -293,8 +287,7 @@ public class EvaluationJobManager : IEvaluationJobManager
                 results.Add(result);
                 processedCount++;
 
-                // 진행률 업데이트 (10% ~ 90%)
-                var progress = basePrgress + (int)((double)processedCount / datasetList.Count * 80);
+                var progress = baseProgress + (int)((double)processedCount / datasetList.Count * 80);
                 progressReporter?.Report(progress);
             }
             catch (OperationCanceledException)
@@ -303,12 +296,11 @@ public class EvaluationJobManager : IEvaluationJobManager
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "개별 쿼리 평가 실패: QueryId={QueryId}", item.Id);
+                _logger.LogError(ex, "Individual query evaluation failed: QueryId={QueryId}", item.Id);
                 failedCount++;
             }
         }
 
-        // 집계 계산
         batchResult.Results = results;
         batchResult.SuccessfulQueries = results.Count;
         batchResult.FailedQueries = failedCount;
@@ -333,36 +325,15 @@ public class EvaluationJobManager : IEvaluationJobManager
         batchResult.CompletedAt = DateTime.UtcNow;
         batchResult.TotalDuration = batchResult.CompletedAt - batchResult.StartedAt;
 
-        // 최종 진행률 업데이트
         progressReporter?.Report(90);
 
         return batchResult;
     }
 
-    private IEnumerable<DocumentChunk> CreateMockRetrievedChunks(GoldenDatasetItem item)
-    {
-        // TODO: 실제 검색 시스템 호출로 대체
-        var mockChunks = new List<DocumentChunk>();
-
-        for (int i = 0; i < Math.Min(5, item.RelevantChunkIds.Count); i++)
-        {
-            mockChunks.Add(new DocumentChunk
-            {
-                Id = item.RelevantChunkIds[i],
-                Content = $"Mock content for chunk {item.RelevantChunkIds[i]}",
-                DocumentId = $"doc_{i}",
-                ChunkIndex = i,
-                Embedding = new float[384] // Mock embedding
-            });
-        }
-
-        return mockChunks;
-    }
-
     #endregion
 
     /// <summary>
-    /// 리소스 정리
+    /// Disposes resources.
     /// </summary>
     public void Dispose()
     {

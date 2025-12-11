@@ -23,4 +23,19 @@ public interface IDocumentRepository
     Task<bool> ContentHashExistsAsync(string contentHash, CancellationToken cancellationToken = default);
     Task<int> GetCountAsync(Guid? collectionId = null, DocumentStatus? status = null, CancellationToken cancellationToken = default);
     Task<long> GetTotalFileSizeAsync(Guid? collectionId = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets document counts grouped by source type.
+    /// </summary>
+    Task<List<(string SourceType, int Count)>> GetGroupedBySourceTypeAsync(
+        Guid? collectionId = null,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets daily upload trends for the specified period.
+    /// </summary>
+    Task<List<(DateTime Date, int Count)>> GetDailyUploadTrendsAsync(
+        int days,
+        Guid? collectionId = null,
+        CancellationToken cancellationToken = default);
 }

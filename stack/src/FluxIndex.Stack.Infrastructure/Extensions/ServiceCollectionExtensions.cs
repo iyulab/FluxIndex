@@ -154,6 +154,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IIndexingService, StackIndexingService>();
         services.AddScoped<IChunkService, ChunkService>();
         services.AddScoped<IAiProviderSettingsService, AiProviderSettingsService>();
+        services.AddScoped<IChunkEnrichmentService, ChunkEnrichmentService>();
 
         // Adaptive embedding system services
         // Note: ReindexingService must be registered before EmbeddingModelService

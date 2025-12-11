@@ -62,7 +62,10 @@ public class AnalyticsService : IAnalyticsService
         var avgExecutionTime = await _searchHistoryRepository.GetAverageExecutionTimeAsync(
             collectionId, fromDate, cancellationToken: cancellationToken);
 
-        var topQueries = await _searchHistoryRepository.GetTopQueriesAsync(
+        var avgResultCount = await _searchHistoryRepository.GetAverageResultCountAsync(
+            collectionId, fromDate, cancellationToken: cancellationToken);
+
+        var topQueries = await _searchHistoryRepository.GetTopQueriesWithAvgTimeAsync(
             10, collectionId, fromDate, cancellationToken: cancellationToken);
 
         var dailyTrends = await _searchHistoryRepository.GetDailyTrendsAsync(
@@ -72,12 +75,12 @@ public class AnalyticsService : IAnalyticsService
         {
             TotalSearches = totalSearches,
             AverageExecutionTimeMs = avgExecutionTime,
-            AverageResultCount = 0, // TODO: Implement
+            AverageResultCount = avgResultCount,
             TopQueries = topQueries.Select(q => new TopQueryDto
             {
                 Query = q.Query,
                 Count = q.Count,
-                AverageExecutionTimeMs = 0 // TODO: Implement per-query average
+                AverageExecutionTimeMs = q.AvgExecutionTimeMs
             }).ToList(),
             DailyTrends = dailyTrends.Select(t => new SearchTrendDto
             {
@@ -93,9 +96,7 @@ public class AnalyticsService : IAnalyticsService
         Guid? collectionId = null,
         CancellationToken cancellationToken = default)
     {
-        // TODO: Implement detailed document analytics
-        // This requires additional repository methods for grouping by source type and status
-
+        // Get document counts by status
         var byStatus = new List<DocumentStatusStatsDto>();
         foreach (DocumentStatus status in Enum.GetValues<DocumentStatus>())
         {
@@ -107,11 +108,27 @@ public class AnalyticsService : IAnalyticsService
             });
         }
 
+        // Get document counts by source type
+        var sourceTypeGroups = await _documentRepository.GetGroupedBySourceTypeAsync(collectionId, cancellationToken);
+        var bySourceType = sourceTypeGroups.Select(g => new DocumentTypeStatsDto
+        {
+            SourceType = g.SourceType,
+            Count = g.Count
+        }).ToList();
+
+        // Get daily upload trends
+        var uploadTrends = await _documentRepository.GetDailyUploadTrendsAsync(days, collectionId, cancellationToken);
+        var dailyUploads = uploadTrends.Select(t => new DocumentTrendDto
+        {
+            Date = t.Date,
+            UploadCount = t.Count
+        }).ToList();
+
         return new DocumentAnalyticsDto
         {
-            BySourceType = new List<DocumentTypeStatsDto>(), // TODO: Implement
+            BySourceType = bySourceType,
             ByStatus = byStatus,
-            DailyUploads = new List<DocumentTrendDto>() // TODO: Implement
+            DailyUploads = dailyUploads
         };
     }
 }

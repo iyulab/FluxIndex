@@ -133,4 +133,54 @@ public class DocumentRepository : IDocumentRepository
             .Where(d => d.FileSize.HasValue)
             .SumAsync(d => d.FileSize!.Value, cancellationToken);
     }
+
+    public async Task<List<(string SourceType, int Count)>> GetGroupedBySourceTypeAsync(
+        Guid? collectionId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var query = _context.Documents.AsQueryable();
+
+        if (collectionId.HasValue)
+        {
+            query = query.Where(d => d.CollectionId == collectionId.Value);
+        }
+
+        var grouped = await query
+            .GroupBy(d => d.SourceType ?? "unknown")
+            .Select(g => new { SourceType = g.Key, Count = g.Count() })
+            .ToListAsync(cancellationToken);
+
+        return grouped.Select(g => (g.SourceType, g.Count)).ToList();
+    }
+
+    public async Task<List<(DateTime Date, int Count)>> GetDailyUploadTrendsAsync(
+        int days,
+        Guid? collectionId = null,
+        CancellationToken cancellationToken = default)
+    {
+        var fromDate = DateTime.UtcNow.Date.AddDays(-days + 1);
+        var query = _context.Documents.AsQueryable();
+
+        if (collectionId.HasValue)
+        {
+            query = query.Where(d => d.CollectionId == collectionId.Value);
+        }
+
+        var grouped = await query
+            .Where(d => d.CreatedAt >= fromDate)
+            .GroupBy(d => d.CreatedAt.Date)
+            .Select(g => new { Date = g.Key, Count = g.Count() })
+            .OrderBy(g => g.Date)
+            .ToListAsync(cancellationToken);
+
+        // Fill in missing days with 0 count
+        var result = new List<(DateTime Date, int Count)>();
+        for (var date = fromDate; date <= DateTime.UtcNow.Date; date = date.AddDays(1))
+        {
+            var existing = grouped.FirstOrDefault(g => g.Date == date);
+            result.Add((date, existing?.Count ?? 0));
+        }
+
+        return result;
+    }
 }

@@ -109,6 +109,44 @@ public class SearchHistoryRepository : ISearchHistoryRepository
         return results.Select(r => (r.Date, r.Count, r.AvgTime)).ToList();
     }
 
+    public async Task<double> GetAverageResultCountAsync(
+        Guid? collectionId = null,
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
+        CancellationToken cancellationToken = default)
+    {
+        var query = BuildFilteredQuery(collectionId, fromDate, toDate);
+        var count = await query.CountAsync(cancellationToken);
+
+        if (count == 0) return 0;
+
+        return await query.AverageAsync(s => s.ResultCount, cancellationToken);
+    }
+
+    public async Task<List<(string Query, int Count, double AvgExecutionTimeMs)>> GetTopQueriesWithAvgTimeAsync(
+        int count,
+        Guid? collectionId = null,
+        DateTime? fromDate = null,
+        DateTime? toDate = null,
+        CancellationToken cancellationToken = default)
+    {
+        var query = BuildFilteredQuery(collectionId, fromDate, toDate);
+
+        var results = await query
+            .GroupBy(s => s.Query)
+            .Select(g => new
+            {
+                Query = g.Key,
+                Count = g.Count(),
+                AvgExecutionTimeMs = g.Average(s => s.ExecutionTimeMs)
+            })
+            .OrderByDescending(x => x.Count)
+            .Take(count)
+            .ToListAsync(cancellationToken);
+
+        return results.Select(r => (r.Query, r.Count, r.AvgExecutionTimeMs)).ToList();
+    }
+
     private IQueryable<SearchHistory> BuildFilteredQuery(
         Guid? collectionId,
         DateTime? fromDate,
