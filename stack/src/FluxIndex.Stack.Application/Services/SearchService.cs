@@ -18,6 +18,8 @@ using SearchMetadata = FluxIndex.Core.Application.Interfaces.SearchMetadata;
 using CoreSearchStrategy = FluxIndex.Core.Application.Interfaces.SearchStrategy;
 using CoreAdaptiveSearchOptions = FluxIndex.Core.Application.Interfaces.AdaptiveSearchOptions;
 using CoreAdaptiveSearchResult = FluxIndex.Core.Application.Interfaces.AdaptiveSearchResult;
+using IQueryTransformationService = FluxIndex.Core.Application.Interfaces.IQueryTransformationService;
+using HyDEOptions = FluxIndex.Core.Domain.Models.HyDEOptions;
 
 namespace FluxIndex.Stack.Application.Services;
 
@@ -58,6 +60,9 @@ public class SearchService : ISearchService
     private readonly INeo4jGraphService? _neo4jService;
     private readonly IAdvancedEntityExtractionService? _entityService;
 
+    // Query transformation service for HyDE (Hypothetical Document Embeddings)
+    private readonly IQueryTransformationService? _queryTransformationService;
+
     public SearchService(
         IDocumentChunkRepository chunkRepository,
         StackIDocumentRepository documentRepository,
@@ -72,7 +77,8 @@ public class SearchService : ISearchService
         ISemanticCacheService? semanticCache = null,
         IQdrantSearchService? qdrantService = null,
         INeo4jGraphService? neo4jService = null,
-        IAdvancedEntityExtractionService? entityService = null)
+        IAdvancedEntityExtractionService? entityService = null,
+        IQueryTransformationService? queryTransformationService = null)
     {
         _chunkRepository = chunkRepository;
         _documentRepository = documentRepository;
@@ -88,6 +94,7 @@ public class SearchService : ISearchService
         _qdrantService = qdrantService;
         _neo4jService = neo4jService;
         _entityService = entityService;
+        _queryTransformationService = queryTransformationService;
     }
 
     public async Task<SearchResponse> SearchAsync(
@@ -137,19 +144,54 @@ public class SearchService : ISearchService
     /// <summary>
     /// Delegates search to Core's AdaptiveSearchService (recommended path).
     /// Core handles: query analysis, strategy selection, fusion, caching.
-    /// Stack handles: DTO conversion, entity enrichment.
+    /// Stack handles: DTO conversion, entity enrichment, HyDE expansion.
     /// </summary>
     private async Task<SearchResponse> DelegateToAdaptiveSearchAsync(
         SearchRequest request,
         Stopwatch totalStopwatch,
         CancellationToken cancellationToken)
     {
+        // 0. Apply Multi-Hypothetical HyDE if enabled
+        var searchQuery = request.Query;
+        string[]? hydeDocuments = null;
+
+        if (request.EnableHyDE && _queryTransformationService != null)
+        {
+            try
+            {
+                var hydeOptions = HyDEOptions.CreateMultiHypothetical(request.HyDEDocumentCount);
+                var hydeResult = await _queryTransformationService.GenerateHypotheticalDocumentAsync(
+                    request.Query, hydeOptions, cancellationToken);
+
+                if (hydeResult.IsSuccessful && hydeResult.HypotheticalDocuments.Count > 0)
+                {
+                    hydeDocuments = hydeResult.HypotheticalDocuments.ToArray();
+                    _logger.LogInformation("Generated {Count} hypothetical documents for HyDE",
+                        hydeDocuments.Length);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "HyDE generation failed, falling back to original query");
+            }
+        }
+
         // 1. Convert Stack options to Core options
         var coreOptions = MapToAdaptiveSearchOptions(request);
 
         // 2. Delegate to Core's AdaptiveSearchService
-        var coreResult = await _adaptiveSearchService!.SearchAsync(
-            request.Query, coreOptions, cancellationToken);
+        // If HyDE generated documents, search with each and merge results
+        CoreAdaptiveSearchResult coreResult;
+        if (hydeDocuments != null && hydeDocuments.Length > 0)
+        {
+            coreResult = await SearchWithHyDEDocumentsAsync(
+                request.Query, hydeDocuments, coreOptions, cancellationToken);
+        }
+        else
+        {
+            coreResult = await _adaptiveSearchService!.SearchAsync(
+                searchQuery, coreOptions, cancellationToken);
+        }
 
         // 3. Enrich with Stack-specific data (entity extraction, graph expansion)
         var enrichedResults = await EnrichCoreResultsAsync(
@@ -158,6 +200,93 @@ public class SearchService : ISearchService
         // 4. Convert Core result to Stack DTO
         totalStopwatch.Stop();
         return MapToSearchResponse(coreResult, enrichedResults, request, totalStopwatch.Elapsed);
+    }
+
+    /// <summary>
+    /// Executes search with multiple HyDE-generated hypothetical documents.
+    /// Merges results using reciprocal rank fusion for robust retrieval.
+    /// </summary>
+    private async Task<CoreAdaptiveSearchResult> SearchWithHyDEDocumentsAsync(
+        string originalQuery,
+        string[] hydeDocuments,
+        CoreAdaptiveSearchOptions options,
+        CancellationToken cancellationToken)
+    {
+        var allResults = new List<CoreAdaptiveSearchResult>();
+
+        // Search with original query
+        var originalResult = await _adaptiveSearchService!.SearchAsync(
+            originalQuery, options, cancellationToken);
+        allResults.Add(originalResult);
+
+        // Search with each HyDE document (in parallel for performance)
+        var hydeTasks = hydeDocuments.Select(async doc =>
+        {
+            try
+            {
+                return await _adaptiveSearchService.SearchAsync(doc, options, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "HyDE document search failed");
+                return null;
+            }
+        });
+
+        var hydeResults = await Task.WhenAll(hydeTasks);
+        allResults.AddRange(hydeResults.Where(r => r != null)!);
+
+        // Merge results using Reciprocal Rank Fusion
+        return MergeHyDEResults(originalResult, allResults);
+    }
+
+    /// <summary>
+    /// Merges multiple search results using Reciprocal Rank Fusion (RRF).
+    /// RRF provides robust result merging without score normalization.
+    /// </summary>
+    private CoreAdaptiveSearchResult MergeHyDEResults(
+        CoreAdaptiveSearchResult original,
+        List<CoreAdaptiveSearchResult> allResults)
+    {
+        const int k = 60; // RRF constant
+        var rrfScores = new Dictionary<string, double>();
+        var docMap = new Dictionary<string, FluxIndex.Core.Domain.Entities.Document>();
+
+        foreach (var result in allResults)
+        {
+            var rank = 1;
+            foreach (var doc in result.Documents)
+            {
+                var key = doc.Id.ToString();
+                if (!rrfScores.ContainsKey(key))
+                {
+                    rrfScores[key] = 0;
+                    docMap[key] = doc;
+                }
+                rrfScores[key] += 1.0 / (k + rank);
+                rank++;
+            }
+        }
+
+        // Sort by RRF score and return top results
+        var mergedDocs = rrfScores
+            .OrderByDescending(kv => kv.Value)
+            .Take(original.Documents.Count() > 0 ? original.Documents.Count() * 2 : 20)
+            .Select(kv => docMap[kv.Key])
+            .ToList();
+
+        return new CoreAdaptiveSearchResult
+        {
+            Documents = mergedDocs,
+            UsedStrategy = original.UsedStrategy,
+            Performance = original.Performance,
+            QueryAnalysis = original.QueryAnalysis,
+            StrategyReasons = new List<string>(original.StrategyReasons)
+            {
+                $"Multi-HyDE with {allResults.Count} searches (RRF merged)"
+            },
+            ConfidenceScore = original.ConfidenceScore
+        };
     }
 
     /// <summary>

@@ -1,4 +1,7 @@
 ﻿using FluxIndex.Core.Application.Services;
+using IContextualEmbeddingService = FluxIndex.Core.Application.Services.IContextualEmbeddingService;
+using IEnrichedChunk = FluxIndex.Core.Application.Interfaces.IEnrichedChunk;
+using ISourceMetadata = FluxIndex.Core.Application.Interfaces.ISourceMetadata;
 using FluxIndex.Stack.Application.Interfaces.Repositories;
 using FluxIndex.Stack.Application.Interfaces.Services;
 using FluxIndex.Stack.Domain.Entities;
@@ -24,6 +27,7 @@ public class IndexingService : IIndexingService
     private readonly IChunkingService? _chunkingService;
     private readonly IChunkEnrichmentService? _enrichmentService;
     private readonly ILateChunkingEmbeddingService? _lateChunkingService;
+    private readonly IContextualEmbeddingService? _contextualEmbeddingService;
     private readonly ILogger<IndexingService> _logger;
 
     // Default chunking configuration (fallback when IChunkingService not available)
@@ -40,7 +44,8 @@ public class IndexingService : IIndexingService
         IDocumentContentProvider? contentProvider = null,
         IChunkingService? chunkingService = null,
         IChunkEnrichmentService? enrichmentService = null,
-        ILateChunkingEmbeddingService? lateChunkingService = null)
+        ILateChunkingEmbeddingService? lateChunkingService = null,
+        IContextualEmbeddingService? contextualEmbeddingService = null)
     {
         _jobRepository = jobRepository;
         _documentRepository = documentRepository;
@@ -51,6 +56,7 @@ public class IndexingService : IIndexingService
         _chunkingService = chunkingService;
         _enrichmentService = enrichmentService;
         _lateChunkingService = lateChunkingService;
+        _contextualEmbeddingService = contextualEmbeddingService;
         _logger = logger;
     }
 
@@ -487,7 +493,8 @@ public class IndexingService : IIndexingService
     }
 
     /// <summary>
-    /// Generates standard embeddings using the embedding provider (without Late Chunking context).
+    /// Generates embeddings using Contextual Retrieval if available, otherwise standard embedding.
+    /// Contextual Retrieval prepends document context to each chunk before embedding (Anthropic's approach).
     /// </summary>
     private async Task GenerateStandardEmbeddingsAsync(
         List<DocumentChunk> chunkList,
@@ -501,6 +508,29 @@ public class IndexingService : IIndexingService
             return;
         }
 
+        // Try Contextual Embedding first (Anthropic's Contextual Retrieval - up to 67% improvement)
+        if (_contextualEmbeddingService != null)
+        {
+            try
+            {
+                await AddLogAsync(job.Id, IndexingJobLogLevel.Info,
+                    "Starting Contextual Retrieval embedding (Anthropic's approach)", phase: "Embedding");
+
+                await GenerateContextualEmbeddingsAsync(chunkList, document, job, cancellationToken);
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Contextual embedding failed, falling back to standard embedding for document {DocumentId}",
+                    document.Id);
+                await AddLogAsync(job.Id, IndexingJobLogLevel.Warning,
+                    $"Contextual embedding failed: {ex.Message}. Falling back to standard embedding.",
+                    ex.StackTrace, "Embedding");
+            }
+        }
+
+        // Standard embedding fallback
         await AddLogAsync(job.Id, IndexingJobLogLevel.Info, "Starting standard embedding generation", phase: "Embedding");
         var chunkContents = chunkList.Select(c => c.Content).ToArray();
 
@@ -522,6 +552,184 @@ public class IndexingService : IIndexingService
             _logger.LogError(ex, "Failed to generate embeddings for document {DocumentId}", document.Id);
             await AddLogAsync(job.Id, IndexingJobLogLevel.Warning, $"Embedding generation failed: {ex.Message}", ex.StackTrace, "Embedding");
             // Continue without embeddings - can be regenerated later
+        }
+    }
+
+    /// <summary>
+    /// Generates contextual embeddings using Anthropic's Contextual Retrieval approach.
+    /// Each chunk is prepended with document context before embedding for improved retrieval.
+    /// </summary>
+    private async Task GenerateContextualEmbeddingsAsync(
+        List<DocumentChunk> chunkList,
+        Document document,
+        IndexingJob job,
+        CancellationToken cancellationToken)
+    {
+        // Convert Stack chunks to IEnrichedChunk for Core API using inline adapter
+        var enrichedChunks = chunkList.Select(chunk =>
+            (IEnrichedChunk)new DocumentChunkEnrichedAdapter(chunk, document))
+            .ToList();
+
+        // Generate document summary for context (if available in metadata)
+        string? documentSummary = null;
+        if (document.Metadata.TryGetValue("summary", out var summary))
+        {
+            documentSummary = summary?.ToString();
+        }
+
+        // Generate contextual embeddings in batch
+        var contextualResults = await _contextualEmbeddingService!.GenerateContextualEmbeddingsBatchAsync(
+            enrichedChunks,
+            documentSummary,
+            cancellationToken);
+
+        // Apply embeddings to chunks and store contextual content
+        var resultDict = contextualResults.ToDictionary(r => r.ChunkId, r => r);
+        var appliedCount = 0;
+
+        foreach (var chunk in chunkList)
+        {
+            var chunkIdStr = chunk.Id.ToString();
+            if (resultDict.TryGetValue(chunkIdStr, out var result))
+            {
+                chunk.SetEmbedding(result.Embedding.Values);
+
+                // Store contextual header in metadata for reference
+                if (!string.IsNullOrEmpty(result.ContextualHeader))
+                {
+                    chunk.Metadata["contextual_header"] = result.ContextualHeader;
+                    chunk.Metadata["contextual_source"] = result.ContextSource.ToString();
+                }
+                appliedCount++;
+            }
+        }
+
+        _logger.LogInformation(
+            "Generated contextual embeddings for {AppliedCount}/{TotalCount} chunks of document {DocumentId}",
+            appliedCount, chunkList.Count, document.Id);
+        await AddLogAsync(job.Id, IndexingJobLogLevel.Info,
+            $"Generated contextual embeddings for {appliedCount}/{chunkList.Count} chunks (Contextual Retrieval)",
+            phase: "Embedding");
+    }
+
+    /// <summary>
+    /// Inline adapter to convert Stack's DocumentChunk to Core's IEnrichedChunk.
+    /// Used for Contextual Embedding integration without circular dependencies.
+    /// </summary>
+    private sealed class DocumentChunkEnrichedAdapter : IEnrichedChunk
+    {
+        private readonly DocumentChunk _chunk;
+        private readonly Document? _document;
+        private readonly ISourceMetadata _source;
+
+        public DocumentChunkEnrichedAdapter(DocumentChunk chunk, Document? document = null)
+        {
+            _chunk = chunk;
+            _document = document ?? chunk.Document;
+            _source = new DocumentChunkSourceAdapter(_chunk, _document);
+        }
+
+        public string Content => _chunk.Content;
+        public string ChunkId => _chunk.Id.ToString();
+        public int ChunkIndex => _chunk.ChunkIndex;
+
+        public IReadOnlyList<string> HeadingPath
+        {
+            get
+            {
+                if (_chunk.Metadata.TryGetValue("heading_path", out var path))
+                {
+                    if (path is string pathStr && !string.IsNullOrEmpty(pathStr))
+                        return pathStr.Split(" > ", StringSplitOptions.RemoveEmptyEntries);
+                    if (path is IEnumerable<string> pathList)
+                        return pathList.ToList();
+                }
+                return Array.Empty<string>();
+            }
+        }
+
+        public string? SectionTitle
+        {
+            get
+            {
+                if (_chunk.Metadata.TryGetValue("section", out var section))
+                    return section?.ToString();
+                var path = HeadingPath;
+                return path.Count > 0 ? path[^1] : null;
+            }
+        }
+
+        public int? StartPage => GetMetadataInt("start_page");
+        public int? EndPage => GetMetadataInt("end_page");
+        public double Quality => GetMetadataDouble("ff_quality", 0.8);
+        public double ContextDependency => GetMetadataDouble("context_dependency", 0.5);
+        public int? TokenCount => _chunk.TokenCount > 0 ? _chunk.TokenCount : null;
+        public ISourceMetadata Source => _source;
+
+        private int? GetMetadataInt(string key) =>
+            _chunk.Metadata.TryGetValue(key, out var value) ? Convert.ToInt32(value) : null;
+
+        private double GetMetadataDouble(string key, double defaultValue) =>
+            _chunk.Metadata.TryGetValue(key, out var value) ? Convert.ToDouble(value) : defaultValue;
+    }
+
+    /// <summary>
+    /// Inline source metadata adapter for DocumentChunk.
+    /// </summary>
+    private sealed class DocumentChunkSourceAdapter : ISourceMetadata
+    {
+        private readonly DocumentChunk _chunk;
+        private readonly Document? _document;
+
+        public DocumentChunkSourceAdapter(DocumentChunk chunk, Document? document)
+        {
+            _chunk = chunk;
+            _document = document;
+        }
+
+        public string SourceId => _chunk.DocumentId.ToString();
+        public string SourceType => _document?.SourceType ?? GetMetadata("content_type", "text");
+        public string Title => _document?.Title ?? "Unknown Document";
+        public string? FilePath => _document?.SourcePath;
+        public string? Url => GetUrl();
+        public DateTime CreatedAt => _chunk.CreatedAt;
+        public string Language => GetMetadata("language", "en");
+        public double? LanguageConfidence => null;
+        public int WordCount => GetMetadataInt("word_count", _chunk.Content.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length);
+        public int ChunkCount => GetMetadataInt("total_chunks", 1);
+        public int? PageCount => null;
+        public DateTime? PublishedAt => _document?.UpdatedAt;
+        public string? Author => null;
+        public IReadOnlyList<string>? Keywords => GetKeywords();
+
+        private string GetMetadata(string key, string defaultValue) =>
+            _chunk.Metadata.TryGetValue(key, out var v) ? v?.ToString() ?? defaultValue : defaultValue;
+
+        private int GetMetadataInt(string key, int defaultValue) =>
+            _chunk.Metadata.TryGetValue(key, out var v) ? Convert.ToInt32(v) : defaultValue;
+
+        private string? GetUrl()
+        {
+            if (_chunk.Metadata.TryGetValue("url", out var url))
+                return url?.ToString();
+            var sourcePath = _document?.SourcePath;
+            if (!string.IsNullOrEmpty(sourcePath) &&
+                (sourcePath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                 sourcePath.StartsWith("https://", StringComparison.OrdinalIgnoreCase)))
+                return sourcePath;
+            return null;
+        }
+
+        private IReadOnlyList<string>? GetKeywords()
+        {
+            if (_chunk.Metadata.TryGetValue("keywords", out var kw))
+            {
+                if (kw is IEnumerable<string> keywords)
+                    return keywords.ToList();
+                if (kw is string kwStr && !string.IsNullOrEmpty(kwStr))
+                    return kwStr.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            }
+            return null;
         }
     }
 

@@ -25,6 +25,8 @@ using Npgsql;
 using CoreTextCompletionService = FluxIndex.Core.Application.Interfaces.ITextCompletionService;
 using CoreEmbeddingService = FluxIndex.Core.Application.Interfaces.IEmbeddingService;
 using ISemanticCacheService = FluxIndex.Core.Application.Interfaces.ISemanticCacheService;
+using IQueryTransformationService = FluxIndex.Core.Application.Interfaces.IQueryTransformationService;
+using QueryTransformationService = FluxIndex.Core.Application.Services.QueryTransformationService;
 
 // Stack-specific types (avoid ambiguity with Core types)
 using StackIDocumentRepository = FluxIndex.Stack.Application.Interfaces.Repositories.IDocumentRepository;
@@ -226,6 +228,21 @@ public static class ServiceCollectionExtensions
         // because EmbeddingModelService depends on IReindexingService
         services.AddScoped<IReindexingService, ReindexingService>();
         services.AddScoped<IEmbeddingModelService, EmbeddingModelService>();
+
+        // Query Transformation Service for Multi-Hypothetical HyDE
+        services.Configure<QueryTransformationOptions>(options =>
+        {
+            options.MaxMultiQueryCount = 5;
+            options.EnableCaching = true;
+            options.HyDETemperature = 0.7f;
+        });
+        services.AddScoped<IQueryTransformationService>(sp =>
+        {
+            var textCompletionService = sp.GetService<CoreTextCompletionService>();
+            var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<QueryTransformationOptions>>();
+            var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<QueryTransformationService>>();
+            return new QueryTransformationService(textCompletionService, options, logger);
+        });
 
         // Register embedding service factory for dynamic provider creation
         services.AddSingleton<IEmbeddingServiceFactory, EmbeddingServiceFactory>();

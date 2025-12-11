@@ -37,6 +37,19 @@ public class SearchRequest
     /// Include detailed explanation of search strategy (only in Auto mode).
     /// </summary>
     public bool IncludeExplanation { get; set; } = false;
+
+    /// <summary>
+    /// Enable HyDE (Hypothetical Document Embeddings) for query expansion.
+    /// When enabled, generates hypothetical answer documents to improve retrieval.
+    /// </summary>
+    public bool EnableHyDE { get; set; } = false;
+
+    /// <summary>
+    /// Number of hypothetical documents to generate when HyDE is enabled.
+    /// Multiple documents provide diverse perspectives (Multi-Hypothetical HyDE).
+    /// Default: 5 documents for optimal quality/performance balance.
+    /// </summary>
+    public int HyDEDocumentCount { get; set; } = 5;
 }
 
 /// <summary>
