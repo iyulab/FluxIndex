@@ -60,4 +60,16 @@ public class ChunkingOptions
     /// Enable metadata enrichment with AI (requires ITextCompletionService).
     /// </summary>
     public bool EnableMetadataEnrichment { get; set; } = false;
+
+    /// <summary>
+    /// Enable Late Chunking for contextual embeddings.
+    /// When enabled, generates embeddings with document-level context preserved.
+    /// </summary>
+    public bool EnableLateChunking { get; set; } = false;
+
+    /// <summary>
+    /// Context window size for Late Chunking (number of surrounding chunks to include).
+    /// Default: 2 (includes 2 chunks before and after the current chunk).
+    /// </summary>
+    public int LateChunkingContextWindow { get; set; } = 2;
 }

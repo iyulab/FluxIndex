@@ -323,3 +323,201 @@ public class ListEvaluationJobsRequest
     /// </summary>
     public int PageSize { get; set; } = 20;
 }
+
+// ========================
+// Quality Gate DTOs
+// ========================
+
+/// <summary>
+/// Request to execute a quality gate check.
+/// Used in CI/CD pipelines to validate RAG system quality before deployment.
+/// </summary>
+public class QualityGateRequest
+{
+    /// <summary>
+    /// System version identifier (e.g., git commit hash, semver).
+    /// Used for tracking and comparison.
+    /// </summary>
+    public string SystemVersion { get; set; } = string.Empty;
+
+    /// <summary>
+    /// ID of the golden dataset to evaluate against.
+    /// </summary>
+    public string DatasetId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Quality thresholds that must be met for the gate to pass.
+    /// </summary>
+    public QualityThresholdsDto Thresholds { get; set; } = new();
+}
+
+/// <summary>
+/// Quality thresholds for RAG evaluation metrics.
+/// All values are between 0.0 and 1.0.
+/// </summary>
+public class QualityThresholdsDto
+{
+    /// <summary>
+    /// Minimum acceptable precision.
+    /// </summary>
+    public double MinPrecision { get; set; } = 0.7;
+
+    /// <summary>
+    /// Minimum acceptable recall.
+    /// </summary>
+    public double MinRecall { get; set; } = 0.7;
+
+    /// <summary>
+    /// Minimum acceptable F1 score.
+    /// </summary>
+    public double MinF1Score { get; set; } = 0.7;
+
+    /// <summary>
+    /// Minimum acceptable Mean Reciprocal Rank.
+    /// </summary>
+    public double MinMRR { get; set; } = 0.7;
+
+    /// <summary>
+    /// Minimum acceptable NDCG.
+    /// </summary>
+    public double MinNDCG { get; set; } = 0.7;
+
+    /// <summary>
+    /// Minimum acceptable faithfulness (answer groundedness).
+    /// </summary>
+    public double? MinFaithfulness { get; set; }
+
+    /// <summary>
+    /// Minimum acceptable answer relevancy.
+    /// </summary>
+    public double? MinAnswerRelevancy { get; set; }
+}
+
+/// <summary>
+/// Result of a quality gate execution.
+/// </summary>
+public class QualityGateResultDto
+{
+    /// <summary>
+    /// Whether the quality gate passed all criteria.
+    /// </summary>
+    public bool Passed { get; set; }
+
+    /// <summary>
+    /// System version that was evaluated.
+    /// </summary>
+    public string SystemVersion { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Dataset used for evaluation.
+    /// </summary>
+    public string DatasetId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Achieved metrics from the evaluation.
+    /// </summary>
+    public EvaluationMetricsDto Metrics { get; set; } = new();
+
+    /// <summary>
+    /// Applied quality thresholds.
+    /// </summary>
+    public QualityThresholdsDto AppliedThresholds { get; set; } = new();
+
+    /// <summary>
+    /// List of criteria that failed (if any).
+    /// </summary>
+    public List<string> FailedCriteria { get; set; } = new();
+
+    /// <summary>
+    /// Summary of the evaluation.
+    /// </summary>
+    public Dictionary<string, object> Summary { get; set; } = new();
+
+    /// <summary>
+    /// Execution timestamp.
+    /// </summary>
+    public DateTime ExecutedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// Total duration in milliseconds.
+    /// </summary>
+    public long? DurationMs { get; set; }
+}
+
+/// <summary>
+/// Request to compare performance between two versions.
+/// </summary>
+public class VersionComparisonRequest
+{
+    /// <summary>
+    /// Current version to evaluate.
+    /// </summary>
+    public string CurrentVersion { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Baseline version to compare against.
+    /// </summary>
+    public string BaselineVersion { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Dataset ID for comparison.
+    /// </summary>
+    public string DatasetId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Regression threshold (percentage decline that triggers failure).
+    /// Default: 5% (0.05).
+    /// </summary>
+    public double RegressionThreshold { get; set; } = 0.05;
+}
+
+/// <summary>
+/// Result of version comparison.
+/// </summary>
+public class VersionComparisonResultDto
+{
+    /// <summary>
+    /// Current version identifier.
+    /// </summary>
+    public string CurrentVersion { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Baseline version identifier.
+    /// </summary>
+    public string BaselineVersion { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Metrics for the current version.
+    /// </summary>
+    public Dictionary<string, double> CurrentMetrics { get; set; } = new();
+
+    /// <summary>
+    /// Metrics for the baseline version.
+    /// </summary>
+    public Dictionary<string, double> BaselineMetrics { get; set; } = new();
+
+    /// <summary>
+    /// Metrics that improved (positive deltas).
+    /// </summary>
+    public Dictionary<string, double> Improvements { get; set; } = new();
+
+    /// <summary>
+    /// Metrics that regressed (negative deltas).
+    /// </summary>
+    public Dictionary<string, double> Regressions { get; set; } = new();
+
+    /// <summary>
+    /// Overall improvement percentage.
+    /// </summary>
+    public double OverallImprovement { get; set; }
+
+    /// <summary>
+    /// Whether a significant regression was detected.
+    /// </summary>
+    public bool HasSignificantRegression { get; set; }
+
+    /// <summary>
+    /// Recommendation based on comparison.
+    /// </summary>
+    public string Recommendation { get; set; } = string.Empty;
+}

@@ -84,3 +84,90 @@ public class DocumentTrendDto
     public int UploadCount { get; init; }
     public int IndexedCount { get; init; }
 }
+
+/// <summary>
+/// Semantic cache statistics DTO for monitoring cache performance.
+/// </summary>
+public class SemanticCacheStatsDto
+{
+    /// <summary>
+    /// Total number of cached entries.
+    /// </summary>
+    public long TotalEntries { get; init; }
+
+    /// <summary>
+    /// Number of cache hits.
+    /// </summary>
+    public long CacheHits { get; init; }
+
+    /// <summary>
+    /// Number of cache misses.
+    /// </summary>
+    public long CacheMisses { get; init; }
+
+    /// <summary>
+    /// Cache hit rate (0.0 - 1.0).
+    /// </summary>
+    public float HitRate { get; init; }
+
+    /// <summary>
+    /// Average response time in milliseconds.
+    /// </summary>
+    public float AverageResponseTimeMs { get; init; }
+
+    /// <summary>
+    /// Cache size in bytes.
+    /// </summary>
+    public long CacheSizeBytes { get; init; }
+
+    /// <summary>
+    /// Number of expired entries.
+    /// </summary>
+    public long ExpiredEntries { get; init; }
+
+    /// <summary>
+    /// Average similarity score for cache hits.
+    /// </summary>
+    public float AverageSimilarityScore { get; init; }
+
+    /// <summary>
+    /// Top performing queries with hit counts.
+    /// </summary>
+    public List<CacheQueryPerformanceDto> TopPerformingQueries { get; init; } = new();
+
+    /// <summary>
+    /// Timestamp when statistics were collected.
+    /// </summary>
+    public DateTime CollectedAt { get; init; }
+}
+
+/// <summary>
+/// Query performance metrics for semantic cache.
+/// </summary>
+public class CacheQueryPerformanceDto
+{
+    /// <summary>
+    /// The query string.
+    /// </summary>
+    public string Query { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Number of cache hits for this query.
+    /// </summary>
+    public int HitCount { get; init; }
+
+    /// <summary>
+    /// Average similarity score when matched.
+    /// </summary>
+    public float AverageSimilarity { get; init; }
+
+    /// <summary>
+    /// Average response time in milliseconds.
+    /// </summary>
+    public float AverageResponseTimeMs { get; init; }
+
+    /// <summary>
+    /// Last time this query was accessed.
+    /// </summary>
+    public DateTime LastUsedAt { get; init; }
+}

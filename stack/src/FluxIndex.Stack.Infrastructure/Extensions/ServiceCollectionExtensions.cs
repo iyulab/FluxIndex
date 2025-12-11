@@ -6,6 +6,7 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services;
 using FluxIndex.Core.Application.Services.Reranking;
 using FluxIndex.Core.Services;
+using CoreQualityThresholds = FluxIndex.Core.Domain.Models.QualityThresholds;
 using FluxIndex.Extensions.FluxImprover;
 using FluxIndex.Extensions.FluxImprover.Services;
 using FluxIndex.SDK;
@@ -199,6 +200,25 @@ public static class ServiceCollectionExtensions
             var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<EvaluationJobManager>>();
             var searchProvider = sp.GetService<IEvaluationSearchProvider>();
             return new EvaluationJobManager(ragEvalService, datasetManager, logger, searchProvider);
+        });
+
+        // Quality Gate Service for CI/CD integration
+        services.AddScoped<IQualityGateService>(sp =>
+        {
+            var evaluationService = sp.GetRequiredService<IRAGEvaluationService>();
+            var datasetManager = sp.GetRequiredService<IGoldenDatasetManager>();
+            var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<QualityGateService>>();
+            var resultCache = sp.GetService<IEvaluationResultCache>();
+            return new QualityGateService(evaluationService, datasetManager, logger, resultCache);
+        });
+
+        // Late Chunking Embedding Service for contextual embeddings
+        services.AddLateChunking(options =>
+        {
+            options.MaxDocumentLength = 8000;
+            options.ContextIntegrationMode = ContextIntegrationMode.SurroundingContext;
+            options.DocumentContextWeight = 0.3;
+            options.SurroundingContextSize = 500;
         });
 
         // Adaptive embedding system services

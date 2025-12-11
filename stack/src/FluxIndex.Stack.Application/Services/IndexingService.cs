@@ -1,4 +1,5 @@
-﻿using FluxIndex.Stack.Application.Interfaces.Repositories;
+﻿using FluxIndex.Core.Application.Services;
+using FluxIndex.Stack.Application.Interfaces.Repositories;
 using FluxIndex.Stack.Application.Interfaces.Services;
 using FluxIndex.Stack.Domain.Entities;
 using FluxIndex.Stack.Shared.Common;
@@ -22,6 +23,7 @@ public class IndexingService : IIndexingService
     private readonly IDocumentContentProvider? _contentProvider;
     private readonly IChunkingService? _chunkingService;
     private readonly IChunkEnrichmentService? _enrichmentService;
+    private readonly ILateChunkingEmbeddingService? _lateChunkingService;
     private readonly ILogger<IndexingService> _logger;
 
     // Default chunking configuration (fallback when IChunkingService not available)
@@ -37,7 +39,8 @@ public class IndexingService : IIndexingService
         IEmbeddingProvider? embeddingProvider = null,
         IDocumentContentProvider? contentProvider = null,
         IChunkingService? chunkingService = null,
-        IChunkEnrichmentService? enrichmentService = null)
+        IChunkEnrichmentService? enrichmentService = null,
+        ILateChunkingEmbeddingService? lateChunkingService = null)
     {
         _jobRepository = jobRepository;
         _documentRepository = documentRepository;
@@ -47,6 +50,7 @@ public class IndexingService : IIndexingService
         _contentProvider = contentProvider;
         _chunkingService = chunkingService;
         _enrichmentService = enrichmentService;
+        _lateChunkingService = lateChunkingService;
         _logger = logger;
     }
 
@@ -251,30 +255,62 @@ public class IndexingService : IIndexingService
         _logger.LogInformation("Document {DocumentId} split into {ChunkCount} chunks", document.Id, chunkList.Count);
         await AddLogAsync(job.Id, IndexingJobLogLevel.Info, $"Content split into {chunkList.Count} chunks", phase: "Chunking");
 
-        // 3. Generate embeddings if provider is available
-        if (_embeddingProvider != null)
+        // 3. Generate embeddings - use Late Chunking if available and enabled, otherwise use standard embedding
+        var useLateChunking = _lateChunkingService != null && _chunkingService != null;
+
+        if (useLateChunking)
         {
-            await AddLogAsync(job.Id, IndexingJobLogLevel.Info, "Starting embedding generation", phase: "Embedding");
-            var chunkContents = chunkList.Select(c => c.Content).ToArray();
+            await AddLogAsync(job.Id, IndexingJobLogLevel.Info, "Starting Late Chunking embedding generation", phase: "Embedding");
             try
             {
-                var embeddings = await _embeddingProvider.GetEmbeddingsAsync(chunkContents, cancellationToken);
-
-                for (int i = 0; i < chunkList.Count && i < embeddings.Length; i++)
+                // Convert DocumentChunks to ChunkBoundaries for Late Chunking API
+                var chunkBoundaries = chunkList.Select(c => new ChunkBoundary
                 {
-                    chunkList[i].SetEmbedding(embeddings[i]);
+                    ChunkId = c.Id.ToString(),
+                    Index = c.ChunkIndex,
+                    StartPosition = c.StartPosition,
+                    EndPosition = c.EndPosition
+                }).ToList();
+
+                var lateChunkingResult = await _lateChunkingService!.GenerateLateChunkingEmbeddingsAsync(
+                    content,
+                    chunkBoundaries,
+                    cancellationToken);
+
+                // Apply embeddings from Late Chunking result
+                foreach (var chunkEmbedding in lateChunkingResult.ChunkEmbeddings)
+                {
+                    if (Guid.TryParse(chunkEmbedding.ChunkId, out var chunkId))
+                    {
+                        var chunk = chunkList.FirstOrDefault(c => c.Id == chunkId);
+                        if (chunk != null && chunkEmbedding.Embedding != null)
+                        {
+                            chunk.SetEmbedding(chunkEmbedding.Embedding.Values);
+                        }
+                    }
                 }
 
-                _logger.LogInformation("Generated embeddings for {ChunkCount} chunks of document {DocumentId}",
-                    chunkList.Count, document.Id);
-                await AddLogAsync(job.Id, IndexingJobLogLevel.Info, $"Generated embeddings for {chunkList.Count} chunks", phase: "Embedding");
+                _logger.LogInformation(
+                    "Generated Late Chunking embeddings for {ChunkCount} chunks of document {DocumentId}",
+                    lateChunkingResult.ChunkEmbeddings.Count, document.Id);
+                await AddLogAsync(job.Id, IndexingJobLogLevel.Info,
+                    $"Generated Late Chunking embeddings for {lateChunkingResult.ChunkEmbeddings.Count} chunks (contextual)",
+                    phase: "Embedding");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to generate embeddings for document {DocumentId}", document.Id);
-                await AddLogAsync(job.Id, IndexingJobLogLevel.Warning, $"Embedding generation failed: {ex.Message}", ex.StackTrace, "Embedding");
-                // Continue without embeddings - can be regenerated later
+                _logger.LogWarning(ex, "Late Chunking failed, falling back to standard embedding for document {DocumentId}", document.Id);
+                await AddLogAsync(job.Id, IndexingJobLogLevel.Warning,
+                    $"Late Chunking failed: {ex.Message}. Falling back to standard embedding.",
+                    ex.StackTrace, "Embedding");
+
+                // Fallback to standard embedding
+                await GenerateStandardEmbeddingsAsync(chunkList, document, job, cancellationToken);
             }
+        }
+        else if (_embeddingProvider != null)
+        {
+            await GenerateStandardEmbeddingsAsync(chunkList, document, job, cancellationToken);
         }
         else
         {
@@ -448,6 +484,45 @@ public class IndexingService : IIndexingService
     {
         // Rough estimation: ~4 characters per token for English
         return (int)Math.Ceiling(text.Length / 4.0);
+    }
+
+    /// <summary>
+    /// Generates standard embeddings using the embedding provider (without Late Chunking context).
+    /// </summary>
+    private async Task GenerateStandardEmbeddingsAsync(
+        List<DocumentChunk> chunkList,
+        Document document,
+        IndexingJob job,
+        CancellationToken cancellationToken)
+    {
+        if (_embeddingProvider == null)
+        {
+            _logger.LogWarning("Embedding provider not available for standard embedding: {DocumentId}", document.Id);
+            return;
+        }
+
+        await AddLogAsync(job.Id, IndexingJobLogLevel.Info, "Starting standard embedding generation", phase: "Embedding");
+        var chunkContents = chunkList.Select(c => c.Content).ToArray();
+
+        try
+        {
+            var embeddings = await _embeddingProvider.GetEmbeddingsAsync(chunkContents, cancellationToken);
+
+            for (int i = 0; i < chunkList.Count && i < embeddings.Length; i++)
+            {
+                chunkList[i].SetEmbedding(embeddings[i]);
+            }
+
+            _logger.LogInformation("Generated standard embeddings for {ChunkCount} chunks of document {DocumentId}",
+                chunkList.Count, document.Id);
+            await AddLogAsync(job.Id, IndexingJobLogLevel.Info, $"Generated standard embeddings for {chunkList.Count} chunks", phase: "Embedding");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to generate embeddings for document {DocumentId}", document.Id);
+            await AddLogAsync(job.Id, IndexingJobLogLevel.Warning, $"Embedding generation failed: {ex.Message}", ex.StackTrace, "Embedding");
+            // Continue without embeddings - can be regenerated later
+        }
     }
 
     private async Task<int> SimulateChunkingAsync(Document document, IndexingJob job, CancellationToken cancellationToken)
