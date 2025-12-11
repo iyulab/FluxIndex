@@ -590,6 +590,35 @@ public class FluxIndexContextBuilder
         return this;
     }
 
+
+    /// <summary>
+    /// Enable Late Chunking for contextual embeddings.
+    /// Late Chunking generates embeddings considering surrounding context,
+    /// improving retrieval quality for documents with high contextual dependencies.
+    /// </summary>
+    /// <param name="contextMode">How to integrate document context (default: SurroundingContext)</param>
+    /// <param name="documentContextWeight">Weight for document context in weighted combination (default: 0.3)</param>
+    /// <returns>Builder instance for chaining</returns>
+    public FluxIndexContextBuilder UseLateChunking(
+        FluxIndex.Core.Application.Services.ContextIntegrationMode contextMode = FluxIndex.Core.Application.Services.ContextIntegrationMode.SurroundingContext,
+        double documentContextWeight = 0.3)
+    {
+        CoreServiceExtensions.AddLateChunking(_services, contextMode, documentContextWeight);
+        return this;
+    }
+
+    /// <summary>
+    /// Enable Late Chunking with advanced configuration.
+    /// </summary>
+    /// <param name="configure">Configuration action for LateChunkingOptions</param>
+    /// <returns>Builder instance for chaining</returns>
+    public FluxIndexContextBuilder UseLateChunking(
+        Action<FluxIndex.Core.Application.Services.LateChunkingOptions> configure)
+    {
+        CoreServiceExtensions.AddLateChunking(_services, configure);
+        return this;
+    }
+
     /// <summary>
     /// 고급 서비스 구성 - 확장 패키지에서 사용
     /// </summary>

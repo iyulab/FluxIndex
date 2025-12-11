@@ -35,6 +35,18 @@ public class RunEvaluationRequest
     /// System version identifier for result caching.
     /// </summary>
     public string? Version { get; set; }
+
+    /// <summary>
+    /// Whether to evaluate semantic cache performance.
+    /// When enabled, tracks cache hits/misses and latency savings.
+    /// </summary>
+    public bool EvaluateCache { get; set; } = false;
+
+    /// <summary>
+    /// Similarity threshold for semantic cache during evaluation.
+    /// Only used when EvaluateCache is true.
+    /// </summary>
+    public float CacheSimilarityThreshold { get; set; } = 0.95f;
 }
 
 /// <summary>
@@ -209,6 +221,35 @@ public class EvaluationMetricsDto
     /// Quality tier: Low, Medium, High, Excellent.
     /// </summary>
     public string QualityTier { get; set; } = "Medium";
+
+    // ========================
+    // Semantic Cache Metrics
+    // ========================
+
+    /// <summary>
+    /// Semantic cache hit rate during evaluation (0-1).
+    /// </summary>
+    public double? CacheHitRate { get; set; }
+
+    /// <summary>
+    /// Average latency reduction from cache hits in milliseconds.
+    /// </summary>
+    public double? CacheLatencySavingsMs { get; set; }
+
+    /// <summary>
+    /// Average similarity score for cache hits.
+    /// </summary>
+    public double? AverageCacheSimilarity { get; set; }
+
+    /// <summary>
+    /// Number of queries that hit the cache.
+    /// </summary>
+    public int? CacheHits { get; set; }
+
+    /// <summary>
+    /// Number of queries that missed the cache.
+    /// </summary>
+    public int? CacheMisses { get; set; }
 }
 
 /// <summary>
@@ -265,6 +306,25 @@ public class QueryEvaluationResultDto
     /// Error message if failed.
     /// </summary>
     public string? ErrorMessage { get; set; }
+
+    // ========================
+    // Semantic Cache Info
+    // ========================
+
+    /// <summary>
+    /// Whether this query was served from semantic cache.
+    /// </summary>
+    public bool? CacheHit { get; set; }
+
+    /// <summary>
+    /// Similarity score for cache hit (0-1).
+    /// </summary>
+    public double? CacheSimilarity { get; set; }
+
+    /// <summary>
+    /// Latency saved by cache hit in milliseconds.
+    /// </summary>
+    public double? CacheLatencySavedMs { get; set; }
 }
 
 /// <summary>

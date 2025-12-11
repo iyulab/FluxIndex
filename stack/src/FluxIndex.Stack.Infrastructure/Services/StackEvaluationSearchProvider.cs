@@ -4,6 +4,7 @@ using FluxIndex.Stack.Application.Interfaces.Repositories;
 using FluxIndex.Stack.Application.Interfaces.Services;
 using FluxIndex.Stack.Shared.DTOs.Search;
 using Microsoft.Extensions.Logging;
+using System.Diagnostics;
 
 namespace FluxIndex.Stack.Infrastructure.Services;
 
@@ -15,8 +16,14 @@ public class StackEvaluationSearchProvider : IEvaluationSearchProvider
 {
     private readonly ISearchService _searchService;
     private readonly ITextCompletionService? _textCompletionService;
+    private readonly ISemanticCacheService? _semanticCacheService;
     private readonly IDocumentChunkRepository _chunkRepository;
     private readonly ILogger<StackEvaluationSearchProvider> _logger;
+
+    // Cache evaluation tracking
+    private bool _evaluateCacheEnabled;
+    private float _cacheSimilarityThreshold = 0.95f;
+    private readonly List<CacheEvaluationEntry> _cacheEvaluationEntries = new();
 
     /// <summary>
     /// Initializes a new instance of the StackEvaluationSearchProvider.
@@ -25,12 +32,71 @@ public class StackEvaluationSearchProvider : IEvaluationSearchProvider
         ISearchService searchService,
         IDocumentChunkRepository chunkRepository,
         ILogger<StackEvaluationSearchProvider> logger,
-        ITextCompletionService? textCompletionService = null)
+        ITextCompletionService? textCompletionService = null,
+        ISemanticCacheService? semanticCacheService = null)
     {
         _searchService = searchService ?? throw new ArgumentNullException(nameof(searchService));
         _chunkRepository = chunkRepository ?? throw new ArgumentNullException(nameof(chunkRepository));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _textCompletionService = textCompletionService;
+        _semanticCacheService = semanticCacheService;
+    }
+
+    /// <summary>
+    /// Enables cache evaluation mode with specified threshold.
+    /// </summary>
+    public void EnableCacheEvaluation(float similarityThreshold = 0.95f)
+    {
+        _evaluateCacheEnabled = true;
+        _cacheSimilarityThreshold = similarityThreshold;
+        _cacheEvaluationEntries.Clear();
+    }
+
+    /// <summary>
+    /// Disables cache evaluation mode.
+    /// </summary>
+    public void DisableCacheEvaluation()
+    {
+        _evaluateCacheEnabled = false;
+    }
+
+    /// <summary>
+    /// Gets cache evaluation results collected during the evaluation run.
+    /// </summary>
+    public CacheEvaluationSummary GetCacheEvaluationSummary()
+    {
+        if (_cacheEvaluationEntries.Count == 0)
+        {
+            return new CacheEvaluationSummary();
+        }
+
+        var hits = _cacheEvaluationEntries.Where(e => e.CacheHit).ToList();
+        var misses = _cacheEvaluationEntries.Where(e => !e.CacheHit).ToList();
+
+        return new CacheEvaluationSummary
+        {
+            TotalQueries = _cacheEvaluationEntries.Count,
+            CacheHits = hits.Count,
+            CacheMisses = misses.Count,
+            HitRate = _cacheEvaluationEntries.Count > 0
+                ? (double)hits.Count / _cacheEvaluationEntries.Count
+                : 0,
+            AverageSimilarity = hits.Any()
+                ? hits.Average(h => h.Similarity)
+                : 0,
+            AverageLatencySavingsMs = hits.Any()
+                ? hits.Average(h => h.LatencySavedMs)
+                : 0,
+            Entries = _cacheEvaluationEntries.ToList()
+        };
+    }
+
+    /// <summary>
+    /// Clears cache evaluation entries.
+    /// </summary>
+    public void ClearCacheEvaluationEntries()
+    {
+        _cacheEvaluationEntries.Clear();
     }
 
     /// <inheritdoc />
@@ -51,9 +117,55 @@ public class StackEvaluationSearchProvider : IEvaluationSearchProvider
             IncludeMetadata = true
         };
 
+        // Track cache evaluation if enabled
+        CacheEvaluationEntry? cacheEntry = null;
+        if (_evaluateCacheEnabled && _semanticCacheService != null)
+        {
+            cacheEntry = new CacheEvaluationEntry { Query = query };
+            var stopwatch = Stopwatch.StartNew();
+
+            try
+            {
+                var cachedResult = await _semanticCacheService.GetCachedResultAsync(
+                    query, _cacheSimilarityThreshold, cancellationToken);
+
+                if (cachedResult != null)
+                {
+                    stopwatch.Stop();
+                    cacheEntry.CacheHit = true;
+                    cacheEntry.Similarity = cachedResult.SimilarityScore;
+                    cacheEntry.LatencySavedMs = stopwatch.ElapsedMilliseconds;
+
+                    // Convert cached results to DocumentChunk
+                    var cachedChunks = cachedResult.Results.Select((r, idx) => new DocumentChunk
+                    {
+                        Id = r.Id,
+                        DocumentId = r.DocumentId,
+                        Content = r.Content,
+                        ChunkIndex = r.ChunkIndex,
+                        Metadata = new Dictionary<string, object>
+                        {
+                            ["search_score"] = r.Score,
+                            ["from_cache"] = true
+                        }
+                    }).ToList();
+
+                    _cacheEvaluationEntries.Add(cacheEntry);
+                    _logger.LogDebug("Cache hit for query with similarity {Similarity}", cachedResult.SimilarityScore);
+                    return cachedChunks;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to check semantic cache during evaluation");
+            }
+        }
+
         try
         {
+            var queryStartTime = Stopwatch.StartNew();
             var response = await _searchService.SearchAsync(searchRequest, cancellationToken: cancellationToken);
+            queryStartTime.Stop();
 
             // Convert Stack search results to Core DocumentChunk entities
             var chunks = new List<DocumentChunk>();
@@ -74,6 +186,14 @@ public class StackEvaluationSearchProvider : IEvaluationSearchProvider
                 chunk.Metadata["document_title"] = result.DocumentTitle ?? string.Empty;
 
                 chunks.Add(chunk);
+            }
+
+            // Record cache miss and estimate latency savings
+            if (cacheEntry != null)
+            {
+                cacheEntry.CacheHit = false;
+                cacheEntry.LatencySavedMs = queryStartTime.ElapsedMilliseconds; // What could have been saved
+                _cacheEvaluationEntries.Add(cacheEntry);
             }
 
             _logger.LogDebug("Retrieved {Count} chunks for evaluation query", chunks.Count);
@@ -167,4 +287,71 @@ public class StackEvaluationSearchProvider : IEvaluationSearchProvider
     {
         return string.Join("\n\n---\n\n", chunks.Select(c => c.Content));
     }
+}
+
+/// <summary>
+/// Individual cache evaluation entry for tracking.
+/// </summary>
+public class CacheEvaluationEntry
+{
+    /// <summary>
+    /// The evaluated query.
+    /// </summary>
+    public string Query { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Whether the query hit the cache.
+    /// </summary>
+    public bool CacheHit { get; set; }
+
+    /// <summary>
+    /// Similarity score for cache hit (0-1).
+    /// </summary>
+    public double Similarity { get; set; }
+
+    /// <summary>
+    /// Latency saved (or potential savings) in milliseconds.
+    /// </summary>
+    public double LatencySavedMs { get; set; }
+}
+
+/// <summary>
+/// Summary of cache evaluation across all queries.
+/// </summary>
+public class CacheEvaluationSummary
+{
+    /// <summary>
+    /// Total number of queries evaluated.
+    /// </summary>
+    public int TotalQueries { get; set; }
+
+    /// <summary>
+    /// Number of cache hits.
+    /// </summary>
+    public int CacheHits { get; set; }
+
+    /// <summary>
+    /// Number of cache misses.
+    /// </summary>
+    public int CacheMisses { get; set; }
+
+    /// <summary>
+    /// Cache hit rate (0-1).
+    /// </summary>
+    public double HitRate { get; set; }
+
+    /// <summary>
+    /// Average similarity score for cache hits.
+    /// </summary>
+    public double AverageSimilarity { get; set; }
+
+    /// <summary>
+    /// Average latency savings in milliseconds.
+    /// </summary>
+    public double AverageLatencySavingsMs { get; set; }
+
+    /// <summary>
+    /// Individual cache evaluation entries.
+    /// </summary>
+    public List<CacheEvaluationEntry> Entries { get; set; } = new();
 }
