@@ -486,6 +486,36 @@ public static class ServiceCollectionExtensions
             }
         });
 
+        // 9. Iterative Retrieval Service for multi-hop reasoning (IRCOT, Self-Ask)
+        services.AddIterativeRetrieval(options =>
+        {
+            var iterativeSection = section.GetSection("IterativeRetrieval");
+            if (iterativeSection.Exists())
+            {
+                options.MaxIterations = iterativeSection.GetValue<int>("MaxIterations", 5);
+                options.MaxDocsPerIteration = iterativeSection.GetValue<int>("MaxDocsPerIteration", 5);
+                options.UseLlmReasoning = iterativeSection.GetValue<bool>("UseLlmReasoning", true);
+                options.ConfidenceThreshold = iterativeSection.GetValue<float>("ConfidenceThreshold", 0.8f);
+            }
+        });
+
+        // 10. Retrieval Verification Service for CRAG patterns and hallucination detection
+        services.AddRetrievalVerification(options =>
+        {
+            var verificationSection = section.GetSection("RetrievalVerification");
+            if (verificationSection.Exists())
+            {
+                options.AlwaysCheckHallucination = verificationSection.GetValue<bool>("AlwaysCheckHallucination", false);
+                options.UseLlmForGrading = verificationSection.GetValue<bool>("UseLlmForGrading", false);
+                options.MinGroundingScore = verificationSection.GetValue<double>("MinGroundingScore", 0.5);
+            }
+        });
+
+        // 11. Agentic Retrieval Router for intelligent strategy selection
+        // Routes queries to optimal retrieval strategies based on query analysis
+        // Supports: HybridSearch, SelfRAG, CorrectiveRAG, SmallToBig, Iterative, etc.
+        services.AddAgenticRetrievalRouter();
+
         return services;
     }
 }

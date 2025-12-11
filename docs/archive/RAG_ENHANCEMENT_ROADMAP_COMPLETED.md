@@ -654,6 +654,35 @@ After Core RAG services completion, integration with FluxIndex.Stack service was
   }
   ```
 
+### Stack P5: Advanced RAG Services Stack Integration ✅
+- Registered `IIterativeRetrievalService` in Stack's `AddAdvancedSearchServices`
+  - Configurable: `MaxIterations`, `MaxDocsPerIteration`, `UseLlmReasoning`, `ConfidenceThreshold`
+  - Multi-hop reasoning for complex queries (IRCOT, Self-Ask patterns)
+- Registered `IRetrievalVerificationService` in Stack's `AddAdvancedSearchServices`
+  - Configurable: `AlwaysCheckHallucination`, `UseLlmForGrading`, `MinGroundingScore`
+  - CRAG patterns, hallucination detection, multi-evidence validation
+- Registered `IAgenticRetrievalRouter` in Stack's `AddAdvancedSearchServices`
+  - Intelligent routing to 11 retrieval strategies based on query analysis
+  - Strategies: HybridSearch, SelfRAG, CorrectiveRAG, SmallToBig, GraphRAG, etc.
+- Configuration via `appsettings.json`:
+  ```json
+  {
+    "AdvancedSearch": {
+      "IterativeRetrieval": {
+        "MaxIterations": 5,
+        "MaxDocsPerIteration": 5,
+        "UseLlmReasoning": true,
+        "ConfidenceThreshold": 0.8
+      },
+      "RetrievalVerification": {
+        "AlwaysCheckHallucination": false,
+        "UseLlmForGrading": false,
+        "MinGroundingScore": 0.5
+      }
+    }
+  }
+  ```
+
 ---
 
 ## Completion Summary
@@ -666,6 +695,7 @@ After Core RAG services completion, integration with FluxIndex.Stack service was
 | Phase 4 | Self-Correction & Agentic RAG | ✅ Complete | 2024-12-08 |
 | Stack P3 | UI Dashboard & Service Integration | ✅ Complete | 2025-12-11 |
 | Stack P4 | Self-Correcting RAG Stack Integration | ✅ Complete | 2025-12-11 |
+| Stack P5 | Advanced RAG Services Stack Integration | ✅ Complete | 2025-12-11 |
 
 ---
 
