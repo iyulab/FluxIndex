@@ -660,6 +660,9 @@ public class FluxIndexContextBuilder
         _services.AddScoped<IQueryComplexityAnalyzer, QueryComplexityAnalyzer>();
         _services.AddScoped<IAdaptiveSearchService, AdaptiveSearchService>();
 
+        // Register Graph Traversal service for local graph search support
+        CoreServiceExtensions.AddGraphTraversal(_services);
+
         // Register Retriever and Indexer as services (needed for Extensions)
         _services.AddScoped<Retriever>(serviceProvider =>
         {

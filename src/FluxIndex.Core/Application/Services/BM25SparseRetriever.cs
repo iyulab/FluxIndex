@@ -5,7 +5,9 @@ using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,26 +15,90 @@ using System.Threading.Tasks;
 namespace FluxIndex.Core.Services;
 
 /// <summary>
-/// BM25 기반 희소 검색 구현체
+/// Interface for sparse retrievers that support index persistence
 /// </summary>
-public class BM25SparseRetriever : ISparseRetriever
+public interface IPersistableSparseRetriever
+{
+    /// <summary>
+    /// Saves the index to a file
+    /// </summary>
+    Task SaveIndexAsync(string filePath, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Loads the index from a file
+    /// </summary>
+    Task LoadIndexAsync(string filePath, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the persistence file path if configured
+    /// </summary>
+    string? PersistencePath { get; }
+
+    /// <summary>
+    /// Gets whether auto-save is enabled
+    /// </summary>
+    bool AutoSaveEnabled { get; }
+}
+
+/// <summary>
+/// BM25 based sparse retrieval implementation with optional file persistence
+/// </summary>
+public class BM25SparseRetriever : ISparseRetriever, IPersistableSparseRetriever
 {
     private readonly ILogger<BM25SparseRetriever> _logger;
     private readonly ConcurrentDictionary<string, BM25Index> _indexes;
     private readonly object _lockObject = new();
+    private readonly string? _persistencePath;
+    private readonly bool _autoSave;
+    private readonly SemaphoreSlim _persistenceLock = new(1, 1);
 
-    // BM25 기본 매개변수
+    // BM25 default parameters
     private const double DefaultK1 = 1.2;
     private const double DefaultB = 0.75;
 
+    /// <summary>
+    /// Creates a new BM25 sparse retriever without persistence
+    /// </summary>
     public BM25SparseRetriever(ILogger<BM25SparseRetriever> logger)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _indexes = new ConcurrentDictionary<string, BM25Index>();
+        _persistencePath = null;
+        _autoSave = false;
     }
 
     /// <summary>
-    /// BM25 키워드 검색 실행
+    /// Creates a new BM25 sparse retriever with optional file persistence
+    /// </summary>
+    /// <param name="logger">Logger instance</param>
+    /// <param name="persistencePath">Path to the persistence file (null for no persistence)</param>
+    /// <param name="autoSave">If true, automatically saves after each indexing operation</param>
+    /// <param name="loadExisting">If true and file exists, loads index on construction</param>
+    public BM25SparseRetriever(
+        ILogger<BM25SparseRetriever> logger,
+        string? persistencePath,
+        bool autoSave = false,
+        bool loadExisting = true)
+    {
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _indexes = new ConcurrentDictionary<string, BM25Index>();
+        _persistencePath = persistencePath;
+        _autoSave = autoSave;
+
+        if (loadExisting && !string.IsNullOrEmpty(persistencePath) && File.Exists(persistencePath))
+        {
+            LoadIndexAsync(persistencePath).GetAwaiter().GetResult();
+        }
+    }
+
+    /// <inheritdoc />
+    public string? PersistencePath => _persistencePath;
+
+    /// <inheritdoc />
+    public bool AutoSaveEnabled => _autoSave;
+
+    /// <summary>
+    /// Execute BM25 keyword search
     /// </summary>
     public async Task<IReadOnlyList<SparseSearchResult>> SearchAsync(
         string query,
@@ -44,7 +110,7 @@ public class BM25SparseRetriever : ISparseRetriever
 
         options ??= new SparseSearchOptions();
 
-        _logger.LogInformation("BM25 검색 시작: {Query}", query);
+        _logger.LogInformation("BM25 search started: {Query}", query);
 
         var searchTerms = TokenizeQuery(query, options);
         if (!searchTerms.Any())
@@ -52,7 +118,7 @@ public class BM25SparseRetriever : ISparseRetriever
 
         var results = new List<SparseSearchResult>();
 
-        // 모든 인덱스에서 검색
+        // Search across all indexes
         foreach (var indexKvp in _indexes)
         {
             var index = indexKvp.Value;
@@ -60,44 +126,46 @@ public class BM25SparseRetriever : ISparseRetriever
             results.AddRange(indexResults);
         }
 
-        // 점수 기준 정렬 및 상위 결과 반환
+        // Sort by score and return top results
         var sortedResults = results
             .Where(r => r.Score >= options.MinScore)
             .OrderByDescending(r => r.Score)
             .Take(options.MaxResults)
             .ToList();
 
-        _logger.LogInformation("BM25 검색 완료: {ResultCount}개 결과", sortedResults.Count);
+        _logger.LogInformation("BM25 search completed: {ResultCount} results", sortedResults.Count);
 
         return sortedResults.AsReadOnly();
     }
 
     /// <summary>
-    /// 문서 청크 인덱싱
+    /// Index a document chunk
     /// </summary>
     public async Task IndexDocumentAsync(DocumentChunk chunk, CancellationToken cancellationToken = default)
     {
         if (chunk == null)
             return;
 
-        _logger.LogInformation("청크 인덱싱 시작: {ChunkId}", chunk.Id);
+        _logger.LogInformation("Indexing chunk started: {ChunkId}", chunk.Id);
 
         var index = _indexes.GetOrAdd("default", _ => new BM25Index());
 
         await IndexChunkAsync(chunk, index, cancellationToken);
 
-        // 인덱스 통계 업데이트
+        // Update index statistics
         await UpdateIndexStatisticsAsync(index, cancellationToken);
 
-        _logger.LogInformation("청크 인덱싱 완료: {ChunkId}", chunk.Id);
+        await AutoSaveIfEnabledAsync(cancellationToken);
+
+        _logger.LogInformation("Indexing chunk completed: {ChunkId}", chunk.Id);
     }
 
     /// <summary>
-    /// 인덱스 통계 조회
+    /// Get index statistics
     /// </summary>
     public async Task<SparseIndexStatistics> GetIndexStatisticsAsync(CancellationToken cancellationToken = default)
     {
-        await Task.CompletedTask; // 비동기 인터페이스 준수
+        await Task.CompletedTask;
 
         var defaultIndex = _indexes.GetOrAdd("default", _ => new BM25Index());
 
@@ -124,19 +192,19 @@ public class BM25SparseRetriever : ISparseRetriever
     }
 
     /// <summary>
-    /// 인덱스 최적화
+    /// Optimize the index
     /// </summary>
     public async Task OptimizeIndexAsync(CancellationToken cancellationToken = default)
     {
         await Task.Run(() =>
         {
-            _logger.LogInformation("인덱스 최적화 시작");
+            _logger.LogInformation("Index optimization started");
 
             var defaultIndex = _indexes.GetOrAdd("default", _ => new BM25Index());
 
             lock (_lockObject)
             {
-                // 빈도가 1인 용어 제거 (선택적)
+                // Remove terms with frequency of 1 (optional)
                 var lowFrequencyTerms = defaultIndex.TermFrequencies
                     .Where(tf => tf.Value <= 1)
                     .Select(tf => tf.Key)
@@ -150,11 +218,158 @@ public class BM25SparseRetriever : ISparseRetriever
 
                 defaultIndex.LastOptimizedAt = DateTime.UtcNow;
 
-                _logger.LogInformation("인덱스 최적화 완료: {RemovedTerms}개 저빈도 용어 제거",
+                _logger.LogInformation("Index optimization completed: {RemovedTerms} low-frequency terms removed",
                     lowFrequencyTerms.Count);
             }
         }, cancellationToken);
+
+        await AutoSaveIfEnabledAsync(cancellationToken);
     }
+
+    #region Persistence Methods
+
+    /// <inheritdoc />
+    public async Task SaveIndexAsync(string filePath, CancellationToken cancellationToken = default)
+    {
+        await _persistenceLock.WaitAsync(cancellationToken);
+        try
+        {
+            _logger.LogInformation("Saving BM25 index to {FilePath}", filePath);
+
+            var data = new BM25IndexData
+            {
+                Version = 1,
+                SavedAt = DateTime.UtcNow,
+                Indexes = _indexes.ToDictionary(
+                    kvp => kvp.Key,
+                    kvp => new BM25IndexSerializable
+                    {
+                        DocumentCount = kvp.Value.DocumentCount,
+                        TotalDocumentLength = kvp.Value.TotalDocumentLength,
+                        LastOptimizedAt = kvp.Value.LastOptimizedAt,
+                        TermFrequencies = kvp.Value.TermFrequencies.ToDictionary(tf => tf.Key, tf => tf.Value),
+                        InvertedIndex = kvp.Value.InvertedIndex.ToDictionary(
+                            ii => ii.Key,
+                            ii => ii.Value.Select(p => new PostingSerializable
+                            {
+                                ChunkId = p.ChunkId,
+                                TermFrequency = p.TermFrequency,
+                                DocumentLength = p.DocumentLength
+                            }).ToList()
+                        ),
+                        Documents = kvp.Value.DocumentIndex.Select(d => new ChunkSerializable
+                        {
+                            Id = d.Key,
+                            DocumentId = d.Value.DocumentId,
+                            Content = d.Value.Content,
+                            ChunkIndex = d.Value.ChunkIndex
+                        }).ToList()
+                    }
+                )
+            };
+
+            var directory = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            var options = new JsonSerializerOptions
+            {
+                WriteIndented = false
+            };
+
+            await using var stream = File.Create(filePath);
+            await JsonSerializer.SerializeAsync(stream, data, options, cancellationToken);
+
+            _logger.LogInformation("BM25 index saved successfully: {DocumentCount} documents",
+                _indexes.Values.Sum(i => i.DocumentCount));
+        }
+        finally
+        {
+            _persistenceLock.Release();
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task LoadIndexAsync(string filePath, CancellationToken cancellationToken = default)
+    {
+        if (!File.Exists(filePath))
+        {
+            throw new FileNotFoundException($"BM25 index file not found: {filePath}");
+        }
+
+        await _persistenceLock.WaitAsync(cancellationToken);
+        try
+        {
+            _logger.LogInformation("Loading BM25 index from {FilePath}", filePath);
+
+            await using var stream = File.OpenRead(filePath);
+            var data = await JsonSerializer.DeserializeAsync<BM25IndexData>(stream, cancellationToken: cancellationToken);
+
+            if (data?.Indexes == null)
+            {
+                throw new InvalidDataException("Invalid BM25 index data format");
+            }
+
+            _indexes.Clear();
+
+            foreach (var indexKvp in data.Indexes)
+            {
+                var index = new BM25Index
+                {
+                    DocumentCount = indexKvp.Value.DocumentCount,
+                    TotalDocumentLength = indexKvp.Value.TotalDocumentLength,
+                    LastOptimizedAt = indexKvp.Value.LastOptimizedAt
+                };
+
+                // Restore term frequencies
+                foreach (var tf in indexKvp.Value.TermFrequencies)
+                {
+                    index.TermFrequencies[tf.Key] = tf.Value;
+                }
+
+                // Restore inverted index
+                foreach (var ii in indexKvp.Value.InvertedIndex)
+                {
+                    index.InvertedIndex[ii.Key] = ii.Value
+                        .Select(p => new Posting(p.ChunkId, p.TermFrequency, p.DocumentLength))
+                        .ToList();
+                }
+
+                // Restore documents
+                foreach (var doc in indexKvp.Value.Documents)
+                {
+                    var chunk = DocumentChunk.Create(
+                        doc.DocumentId ?? string.Empty,
+                        doc.Content ?? string.Empty,
+                        doc.ChunkIndex,
+                        1
+                    );
+                    index.DocumentIndex[doc.Id] = chunk;
+                }
+
+                _indexes[indexKvp.Key] = index;
+            }
+
+            _logger.LogInformation("BM25 index loaded successfully: {DocumentCount} documents",
+                _indexes.Values.Sum(i => i.DocumentCount));
+        }
+        finally
+        {
+            _persistenceLock.Release();
+        }
+    }
+
+    private async Task AutoSaveIfEnabledAsync(CancellationToken cancellationToken)
+    {
+        if (_autoSave && !string.IsNullOrEmpty(_persistencePath))
+        {
+            await SaveIndexAsync(_persistencePath, cancellationToken);
+        }
+    }
+
+    #endregion
 
     #region Private Methods
 
@@ -164,7 +379,7 @@ public class BM25SparseRetriever : ISparseRetriever
         SparseSearchOptions options,
         CancellationToken cancellationToken)
     {
-        await Task.CompletedTask; // 비동기 인터페이스 준수
+        await Task.CompletedTask;
 
         var results = new Dictionary<string, SparseSearchResult>();
         var avgDocLength = index.DocumentCount > 0
@@ -176,8 +391,8 @@ public class BM25SparseRetriever : ISparseRetriever
             if (!index.InvertedIndex.TryGetValue(term, out var postings))
                 continue;
 
-            var df = postings.Count; // 문서 빈도
-            var idf = Math.Log((index.DocumentCount - df + 0.5) / (df + 0.5)); // BM25 IDF
+            var df = postings.Count;
+            var idf = Math.Log((index.DocumentCount - df + 0.5) / (df + 0.5));
 
             foreach (var posting in postings)
             {
@@ -185,12 +400,12 @@ public class BM25SparseRetriever : ISparseRetriever
                 var tf = posting.TermFrequency;
                 var docLength = posting.DocumentLength;
 
-                // BM25 점수 계산
+                // Calculate BM25 score
                 var bm25Score = CalculateBM25Score(tf, df, index.DocumentCount, docLength, avgDocLength, options);
 
                 if (results.TryGetValue(chunkId, out var existingResult))
                 {
-                    // 기존 결과에 점수 누적
+                    // Accumulate score for existing result
                     var newScore = existingResult.Score + bm25Score;
                     var newMatchedTerms = existingResult.MatchedTerms.Concat(new[] { term }).Distinct().ToList();
                     var newTermFreqs = new Dictionary<string, int>(existingResult.TermFrequencies) { [term] = tf };
@@ -204,7 +419,7 @@ public class BM25SparseRetriever : ISparseRetriever
                 }
                 else
                 {
-                    // 새 결과 생성
+                    // Create new result
                     if (index.DocumentIndex.TryGetValue(chunkId, out var chunk))
                     {
                         results[chunkId] = new SparseSearchResult
@@ -229,10 +444,10 @@ public class BM25SparseRetriever : ISparseRetriever
         var k1 = options.K1;
         var b = options.B;
 
-        // IDF 계산
+        // IDF calculation
         var idf = Math.Log((totalDocs - df + 0.5) / (df + 0.5));
 
-        // TF 정규화
+        // TF normalization
         var normalizedTf = (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * (docLength / avgDocLength)));
 
         return idf * normalizedTf;
@@ -255,26 +470,26 @@ public class BM25SparseRetriever : ISparseRetriever
 
     private async Task IndexChunkAsync(DocumentChunk chunk, BM25Index index, CancellationToken cancellationToken)
     {
-        await Task.CompletedTask; // 비동기 인터페이스 준수
+        await Task.CompletedTask;
 
         var tokens = TokenizeContent(chunk.Content);
         var termFrequencies = CountTermFrequencies(tokens);
 
         lock (_lockObject)
         {
-            // 문서 인덱스에 청크 추가
+            // Add chunk to document index
             index.DocumentIndex[chunk.Id] = chunk;
 
-            // 각 용어에 대해 역인덱스 업데이트
+            // Update inverted index for each term
             foreach (var termFreq in termFrequencies)
             {
                 var term = termFreq.Key;
                 var frequency = termFreq.Value;
 
-                // 전체 용어 빈도 업데이트
+                // Update global term frequency
                 index.TermFrequencies.AddOrUpdate(term, frequency, (_, existing) => existing + frequency);
 
-                // 역인덱스 업데이트
+                // Update inverted index
                 index.InvertedIndex.AddOrUpdate(term,
                     new List<Posting> { new(chunk.Id, frequency, tokens.Count) },
                     (_, existing) =>
@@ -284,7 +499,7 @@ public class BM25SparseRetriever : ISparseRetriever
                     });
             }
 
-            // 인덱스 통계 업데이트
+            // Update index statistics
             index.DocumentCount++;
             index.TotalDocumentLength += tokens.Count;
         }
@@ -292,8 +507,8 @@ public class BM25SparseRetriever : ISparseRetriever
 
     private async Task UpdateIndexStatisticsAsync(BM25Index index, CancellationToken cancellationToken)
     {
-        await Task.CompletedTask; // 비동기 인터페이스 준수
-        // 추가 통계 업데이트 로직이 필요하면 여기에 구현
+        await Task.CompletedTask;
+        // Additional statistics update logic can be implemented here
     }
 
     private IReadOnlyList<string> TokenizeQuery(string query, SparseSearchOptions options)
@@ -302,7 +517,7 @@ public class BM25SparseRetriever : ISparseRetriever
 
         if (options.EnableTermExpansion)
         {
-            // 스테밍, 동의어 확장 등 (기본 구현)
+            // Stemming, synonym expansion, etc. (basic implementation)
             tokens = ExpandTerms(tokens);
         }
 
@@ -314,7 +529,7 @@ public class BM25SparseRetriever : ISparseRetriever
         if (string.IsNullOrWhiteSpace(content))
             return Array.Empty<string>();
 
-        // 기본 토큰화: 단어 분리, 소문자 변환, 특수문자 제거
+        // Basic tokenization: word splitting, lowercase, remove special characters
         var tokens = Regex.Split(content.ToLowerInvariant(), @"\W+")
             .Where(token => !string.IsNullOrWhiteSpace(token) && token.Length > 1)
             .ToList();
@@ -324,8 +539,8 @@ public class BM25SparseRetriever : ISparseRetriever
 
     private IReadOnlyList<string> ExpandTerms(IReadOnlyList<string> terms)
     {
-        // 기본 구현: 스테밍이나 동의어 확장 없이 원본 반환
-        // 실제 구현에서는 Porter Stemmer나 동의어 사전 사용
+        // Basic implementation: return original without stemming or synonym expansion
+        // In real implementation, use Porter Stemmer or synonym dictionary
         return terms;
     }
 
@@ -343,11 +558,11 @@ public class BM25SparseRetriever : ISparseRetriever
 
     private long EstimateIndexSize(BM25Index index)
     {
-        // 대략적인 인덱스 크기 계산
+        // Approximate index size calculation
         var termCount = index.TermFrequencies.Count;
         var postingCount = index.InvertedIndex.Values.Sum(postings => postings.Count);
 
-        // 용어당 평균 8바이트 + 포스팅당 평균 16바이트
+        // Average 8 bytes per term + 16 bytes per posting
         return (termCount * 8) + (postingCount * 16);
     }
 
@@ -357,7 +572,7 @@ public class BM25SparseRetriever : ISparseRetriever
 #region Data Structures
 
 /// <summary>
-/// BM25 인덱스 데이터 구조
+/// BM25 index data structure
 /// </summary>
 internal class BM25Index
 {
@@ -370,8 +585,44 @@ internal class BM25Index
 }
 
 /// <summary>
-/// 포스팅 정보 (용어가 출현하는 문서 정보)
+/// Posting information (document info where term appears)
 /// </summary>
 internal record Posting(string ChunkId, int TermFrequency, int DocumentLength);
+
+#endregion
+
+#region Persistence Data Classes
+
+internal sealed class BM25IndexData
+{
+    public int Version { get; set; }
+    public DateTime SavedAt { get; set; }
+    public Dictionary<string, BM25IndexSerializable> Indexes { get; set; } = new();
+}
+
+internal sealed class BM25IndexSerializable
+{
+    public long DocumentCount { get; set; }
+    public long TotalDocumentLength { get; set; }
+    public DateTime LastOptimizedAt { get; set; }
+    public Dictionary<string, int> TermFrequencies { get; set; } = new();
+    public Dictionary<string, List<PostingSerializable>> InvertedIndex { get; set; } = new();
+    public List<ChunkSerializable> Documents { get; set; } = new();
+}
+
+internal sealed class PostingSerializable
+{
+    public string ChunkId { get; set; } = string.Empty;
+    public int TermFrequency { get; set; }
+    public int DocumentLength { get; set; }
+}
+
+internal sealed class ChunkSerializable
+{
+    public string Id { get; set; } = string.Empty;
+    public string? DocumentId { get; set; }
+    public string? Content { get; set; }
+    public int ChunkIndex { get; set; }
+}
 
 #endregion
