@@ -315,6 +315,14 @@ public class DocumentProcessingPipeline
 
     private async Task<string> ExtractRawTextAsync(string filePath, CancellationToken cancellationToken)
     {
+        var extension = Path.GetExtension(filePath).ToLowerInvariant();
+
+        // For PDF files, use PdfDocumentReader directly to access StructuralHints for table quality
+        if (extension == ".pdf")
+        {
+            return await ExtractPdfWithQualityCheckAsync(filePath, cancellationToken);
+        }
+
         // Use FileFlux for extraction - it handles various document types
         var chunks = await _documentProcessor.ProcessAsync(filePath, new ChunkingOptions
         {
@@ -323,6 +331,57 @@ public class DocumentProcessingPipeline
         }, cancellationToken);
 
         return string.Join("\n\n", chunks.Select(c => c.Content));
+    }
+
+    private async Task<string> ExtractPdfWithQualityCheckAsync(string filePath, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await using var stream = File.OpenRead(filePath);
+            var reader = new PdfDocumentReader();
+            var rawContent = await reader.ExtractAsync(stream, Path.GetFileName(filePath), cancellationToken);
+
+            // Check table quality using StructuralHints (FileFlux v0.7.2+)
+            if (rawContent.Hints != null)
+            {
+                var tablesDetected = rawContent.Hints.TryGetValue("TablesDetected", out var tablesObj)
+                    ? Convert.ToInt32(tablesObj) : 0;
+                var lowConfidenceTables = rawContent.Hints.TryGetValue("LowConfidenceTables", out var lowConfObj)
+                    ? Convert.ToInt32(lowConfObj) : 0;
+                var minConfidence = rawContent.Hints.TryGetValue("MinTableConfidence", out var confObj)
+                    ? Convert.ToDouble(confObj) : 1.0;
+
+                if (tablesDetected > 0)
+                {
+                    _logger.LogInformation(
+                        "PDF table quality: {Tables} tables detected, {LowConf} low-confidence, min score: {MinConf:F2}",
+                        tablesDetected, lowConfidenceTables, minConfidence);
+
+                    if (lowConfidenceTables > 0)
+                    {
+                        _logger.LogWarning(
+                            "PDF contains {Count} low-confidence tables (score < 0.5). " +
+                            "Table content may be formatted as plain text for better readability.",
+                            lowConfidenceTables);
+                    }
+                }
+            }
+
+            return rawContent.Text ?? string.Empty;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "PDF quality check failed for {FilePath}, falling back to standard extraction", filePath);
+
+            // Fallback to standard FileFlux extraction
+            var chunks = await _documentProcessor.ProcessAsync(filePath, new ChunkingOptions
+            {
+                Strategy = "FullDocument",
+                MaxChunkSize = int.MaxValue
+            }, cancellationToken);
+
+            return string.Join("\n\n", chunks.Select(c => c.Content));
+        }
     }
 
     private async Task<IEnumerable<FileFlux.Core.DocumentChunk>> ChunkTextAsync(
