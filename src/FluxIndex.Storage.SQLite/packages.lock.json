@@ -739,7 +739,7 @@
       },
       "LocalAI.Embedder": {
         "type": "CentralTransitive",
-        "requested": "[0.7.0, )",
+        "requested": "[0.7.1, )",
         "resolved": "0.7.0",
         "contentHash": "25O8BS+seGtfGWbpuc8LCLIG3momScKAj3S1fWinm13eXTJc5TrZVtqYnsKtL/RIZ2d9OA3Q1rAPj7yo24cc9Q==",
         "dependencies": {

@@ -14,7 +14,7 @@
 - **Graph Traversal** - BFS/DFS, Dijkstra shortest path, PageRank-style importance
 - **Vector Quantization** - Scalar (Int8/Int4), Product Quantization, Binary (32x compression)
 - **Multiple Storage** - SQLite, PostgreSQL with pgvector
-- **AI Flexibility** - OpenAI, Azure OpenAI, or custom embedding services
+- **Local-First AI** - Built-in LocalAI (ONNX-based), bring your own embedding service
 - **Document Processing** - PDF/DOCX/TXT via FileFlux, web crawling via WebFlux
 - **MCP Server** - Model Context Protocol for AI assistant integration
 - **Production Ready** - Redis caching, clean architecture, .NET 10.0
@@ -24,16 +24,15 @@
 ```bash
 dotnet add package FluxIndex.SDK
 dotnet add package FluxIndex.Storage.SQLite
-dotnet add package FluxIndex.AI.LocalReranker  # Optional: neural reranking
 ```
 
 ```csharp
 using FluxIndex.SDK;
 
-// 1. Setup
+// 1. Setup (LocalAI embedding - no API key required)
 var context = FluxIndexContext.CreateBuilder()
     .UseSQLite("fluxindex.db")
-    .UseOpenAI("your-api-key", "text-embedding-3-small")
+    .UseLocalAIEmbedding()  // Built-in ONNX-based embedding
     .UseResilientLocalReranker()  // Auto fallback to algorithmic
     .Build();
 
@@ -45,7 +44,28 @@ await context.Indexer.IndexDocumentAsync(
 var results = await context.Retriever.SearchAsync("RAG library", maxResults: 5);
 ```
 
-👉 **See [Tutorial](./docs/TUTORIAL.md) for complete examples and best practices**
+### Using Custom Embedding Service
+
+FluxIndex is AI provider-agnostic. Implement `IEmbeddingService` for your preferred provider:
+
+```csharp
+// Example: Custom OpenAI embedding service
+public class MyOpenAIEmbeddingService : IEmbeddingService
+{
+    public async Task<float[]> GetEmbeddingAsync(string text, CancellationToken ct = default)
+    {
+        // Your OpenAI API call here
+    }
+}
+
+// Register your implementation
+services.AddSingleton<IEmbeddingService, MyOpenAIEmbeddingService>();
+
+var context = FluxIndexContext.CreateBuilder()
+    .UseSQLite("fluxindex.db")
+    .UseEmbeddingService<MyOpenAIEmbeddingService>()
+    .Build();
+```
 
 ## MCP Server
 
@@ -66,6 +86,16 @@ See [FluxIndex.MCP](./src/FluxIndex.MCP/) for integration details.
 
 Full benchmarks: [BENCHMARK_RESULTS.md](./benchmarks/FluxIndex.Benchmarks/BENCHMARK_RESULTS.md)
 
+## Package Structure
+
+| Package | Description |
+|---------|-------------|
+| **FluxIndex.Core** | Interfaces and core logic |
+| **FluxIndex.SDK** | All-in-one SDK with LocalAI, FileFlux, WebFlux, FluxCurator, FluxImprover |
+| **FluxIndex.Storage.SQLite** | SQLite vector store |
+| **FluxIndex.Storage.PostgreSQL** | PostgreSQL with pgvector |
+| **FluxIndex.Cache.Redis** | Redis semantic cache |
+
 ## Documentation
 
 - [Getting Started](./docs/getting-started.md) - Setup and configuration
@@ -78,16 +108,13 @@ Full benchmarks: [BENCHMARK_RESULTS.md](./benchmarks/FluxIndex.Benchmarks/BENCHM
 
 ## Examples
 
-- [RealQualityTest](./samples/RealQualityTest/) - OpenAI + SQLite integration
-- [FileFluxIndexSample](./samples/FileFluxIndexSample/) - PDF/DOCX processing
+- [RealQualityTest](./samples/RealQualityTest/) - LocalAI + SQLite integration
 - [WebFluxSample](./samples/WebFluxSample/) - Web crawling
-- [IntegrationTestSample](./samples/IntegrationTestSample/) - Integration testing patterns
 
 ## Requirements
 
 - .NET 10.0 or later
 - SQLite or PostgreSQL
-- OpenAI API key (optional)
 
 ## License
 

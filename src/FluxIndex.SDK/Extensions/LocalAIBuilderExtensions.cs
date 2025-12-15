@@ -1,4 +1,4 @@
-using FluxIndex.AI.Local;
+using FluxIndex.SDK.AI.Local;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace FluxIndex.SDK.Extensions;

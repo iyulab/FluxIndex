@@ -9,7 +9,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\FluxIndex.SDK\FluxIndex.SDK.csproj" />
-    <ProjectReference Include="..\..\src\FluxIndex.Extensions.WebFlux\FluxIndex.Extensions.WebFlux.csproj" />
   </ItemGroup>
 
 

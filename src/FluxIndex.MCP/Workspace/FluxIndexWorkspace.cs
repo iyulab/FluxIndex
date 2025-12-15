@@ -112,19 +112,17 @@ public class FluxIndexWorkspace : IDisposable
     {
         switch (_config.Embedding.Provider.ToLowerInvariant())
         {
-            case "openai":
-                var apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
-                if (string.IsNullOrEmpty(apiKey))
-                {
-                    throw new InvalidOperationException(
-                        "OPENAI_API_KEY environment variable is required for OpenAI embedding");
-                }
-                builder.UseOpenAI(apiKey, _config.Embedding.Model);
+            case "local":
+            case "localai":
+                // Use local AI embedder (ONNX-based, no API key required)
+                builder.UseLocalAIEmbedding();
                 break;
 
             default:
-                throw new NotSupportedException(
-                    $"Embedding provider '{_config.Embedding.Provider}' is not supported");
+                // Default to LocalAI for unknown providers
+                // External AI providers should be implemented by consuming applications
+                builder.UseLocalAIEmbedding();
+                break;
         }
     }
 

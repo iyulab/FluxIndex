@@ -1,8 +1,7 @@
 using System.CommandLine;
 using FileFlux;
-using FluxIndex.AI.Local;
-using FluxIndex.AI.OpenAI;
 using FluxIndex.CLI.Configuration;
+using FluxIndex.SDK.AI.Local;
 using FluxIndex.SDK.Extensions;
 using FluxIndex.SDK.Processing;
 using Microsoft.Extensions.DependencyInjection;
@@ -255,88 +254,15 @@ public static class ProcessCommand
 
     private static void ConfigureEmbeddingService(IServiceCollection services, CliSettings settings)
     {
-        var provider = settings.Provider.ToLowerInvariant();
-
-        switch (provider)
-        {
-            case "openai" when !string.IsNullOrEmpty(settings.OpenAIApiKey):
-                services.AddOpenAIEmbedding(options =>
-                {
-                    options.ApiKey = settings.OpenAIApiKey;
-                    options.ModelName = settings.OpenAIModelName ?? "text-embedding-3-small";
-                    options.ProviderType = OpenAIProviderType.OpenAI;
-                });
-                break;
-
-            case "azure" when !string.IsNullOrEmpty(settings.AzureApiKey):
-                services.AddOpenAIEmbedding(options =>
-                {
-                    options.Endpoint = settings.AzureEndpoint;
-                    options.ApiKey = settings.AzureApiKey;
-                    options.ModelName = settings.AzureDeploymentName ?? "text-embedding-ada-002";
-                    options.ProviderType = OpenAIProviderType.AzureOpenAI;
-                });
-                break;
-
-            case "gpustack" when !string.IsNullOrEmpty(settings.GPUStackApiKey):
-                // Use GPUStack embedding if model specified, otherwise fall back to local
-                if (!string.IsNullOrEmpty(settings.GPUStackEmbeddingModelName))
-                {
-                    services.AddGPUStackEmbedding(
-                        settings.GPUStackEndpoint!,
-                        settings.GPUStackApiKey,
-                        settings.GPUStackEmbeddingModelName);
-                }
-                else
-                {
-                    // Default to local AI embedder
-                    services.AddLocalAIEmbedding();
-                }
-                break;
-
-            default:
-                // Default to local AI embedder
-                services.AddLocalAIEmbedding();
-                break;
-        }
+        // Use LocalAI embedder - external AI providers should implement IEmbeddingService in consuming apps
+        services.AddLocalAIEmbedding();
     }
 
     private static void ConfigureTextCompletionService(IServiceCollection services, CliSettings settings)
     {
-        var provider = settings.Provider.ToLowerInvariant();
-
-        switch (provider)
-        {
-            case "openai" when !string.IsNullOrEmpty(settings.OpenAIApiKey):
-                services.AddOpenAITextCompletion(options =>
-                {
-                    options.ApiKey = settings.OpenAIApiKey;
-                    options.ModelName = settings.OpenAIModelName ?? "gpt-4o-mini";
-                    options.ProviderType = OpenAIProviderType.OpenAI;
-                });
-                break;
-
-            case "azure" when !string.IsNullOrEmpty(settings.AzureApiKey):
-                services.AddOpenAITextCompletion(options =>
-                {
-                    options.Endpoint = settings.AzureEndpoint;
-                    options.ApiKey = settings.AzureApiKey;
-                    options.ModelName = settings.AzureDeploymentName ?? "gpt-4o-mini";
-                    options.ProviderType = OpenAIProviderType.AzureOpenAI;
-                });
-                break;
-
-            case "gpustack" when !string.IsNullOrEmpty(settings.GPUStackApiKey) && !string.IsNullOrEmpty(settings.GPUStackModelName):
-                services.AddGPUStackTextCompletion(
-                    settings.GPUStackEndpoint!,
-                    settings.GPUStackApiKey,
-                    settings.GPUStackModelName);
-                break;
-
-            default:
-                // No text completion service - mock will be registered by AddDocumentProcessingPipelineWithFallback
-                break;
-        }
+        // No text completion service by default
+        // Mock will be registered by AddDocumentProcessingPipelineWithFallback
+        // Consumers can implement ITextCompletionService for external AI providers
     }
 
     private static void DisplaySuccessResult(DocumentProcessingResult result, bool verbose)

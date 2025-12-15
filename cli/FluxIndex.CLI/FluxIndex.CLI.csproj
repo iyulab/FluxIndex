@@ -16,17 +16,14 @@
     <!-- Package metadata for local tool installation -->
     <IsPackable>true</IsPackable>
     <PackageId>FluxIndex.CLI</PackageId>
-    <Version>0.3.1</Version>
+    <Version>0.4.0</Version>
     <Description>FluxIndex CLI - Document processing and RAG indexing tool</Description>
     <Authors>FluxIndex</Authors>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- FluxIndex SDK and Extensions -->
+    <!-- FluxIndex SDK (includes LocalAI, FileFlux, WebFlux, FluxCurator, FluxImprover) -->
     <ProjectReference Include="..\..\src\FluxIndex.SDK\FluxIndex.SDK.csproj" />
-    <ProjectReference Include="..\..\src\FluxIndex.Extensions.FileFlux\FluxIndex.Extensions.FileFlux.csproj" />
-    <ProjectReference Include="..\..\src\FluxIndex.AI.OpenAI\FluxIndex.AI.OpenAI.csproj" />
-    <ProjectReference Include="..\..\src\FluxIndex.AI.Local\FluxIndex.AI.Local.csproj" />
   </ItemGroup>
 
   <ItemGroup>

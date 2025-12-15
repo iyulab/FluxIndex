@@ -6,23 +6,20 @@ using CoreServiceExtensions = FluxIndex.Core.Application.Services.MetadataAugmen
 using FluxIndex.SDK.Configuration;
 using FluxIndex.SDK.Services;
 using FluxIndex.SDK.Extensions;
-using FluxIndex.AI.Local;
-using FluxIndex.AI.OpenAI;
+using FluxIndex.SDK.AI.Local;
 using FluxIndex.Storage.SQLite;
-// using FluxIndex.Cache.Redis.Extensions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using System;
 
-// Note: We're using FluxIndex.Core.Application.Interfaces.IEmbeddingService internally
-// Fully qualified names used where ambiguity exists
-
 namespace FluxIndex.SDK;
 
 /// <summary>
 /// FluxIndexContext 빌더 - Fluent API로 Retriever와 Indexer 구성
+/// AI Provider-agnostic 설계: 외부 AI SDK 없이 LocalAI 기본 사용
+/// 소비자 앱에서 IEmbeddingService 구현체 제공 가능
 /// </summary>
 public class FluxIndexContextBuilder
 {
@@ -81,66 +78,6 @@ public class FluxIndexContextBuilder
     }
 
     /// <summary>
-    /// OpenAI 임베딩 서비스 사용
-    /// </summary>
-    /// <param name="apiKey">OpenAI API key</param>
-    /// <param name="embeddingModel">Embedding model (e.g., "text-embedding-3-small")</param>
-    /// <param name="completionModel">Optional text completion model (e.g., "gpt-5-nano" recommended for cost-efficiency). If provided, ITextCompletionService will be registered.</param>
-    public FluxIndexContextBuilder UseOpenAI(
-        string apiKey,
-        string embeddingModel = "text-embedding-3-small",
-        string? completionModel = null)
-    {
-        _options.Embedding.Provider = "OpenAI";
-        _options.Embedding.ApiKey = apiKey;
-        _options.Embedding.ModelName = embeddingModel;
-
-        // Register text completion service if completion model is specified
-        if (!string.IsNullOrEmpty(completionModel))
-        {
-            _services.AddOpenAITextCompletion(options =>
-            {
-                options.ApiKey = apiKey;
-                options.ModelName = completionModel;
-            });
-        }
-
-        return this;
-    }
-
-    /// <summary>
-    /// Azure OpenAI 임베딩 서비스 사용
-    /// </summary>
-    /// <param name="endpoint">Azure OpenAI endpoint URL</param>
-    /// <param name="apiKey">Azure OpenAI API key</param>
-    /// <param name="embeddingDeployment">Embedding deployment name</param>
-    /// <param name="completionDeployment">Optional text completion deployment name (GPT-5 series recommended). If provided, ITextCompletionService will be registered.</param>
-    public FluxIndexContextBuilder UseAzureOpenAI(
-        string endpoint,
-        string apiKey,
-        string embeddingDeployment,
-        string? completionDeployment = null)
-    {
-        _options.Embedding.Provider = "AzureOpenAI";
-        _options.Embedding.ApiKey = apiKey;
-        _options.Embedding.ModelName = embeddingDeployment;
-        _options.Embedding.ProviderSpecificOptions["Endpoint"] = endpoint;
-
-        // Register text completion service if completion deployment is specified
-        if (!string.IsNullOrEmpty(completionDeployment))
-        {
-            _services.AddAzureOpenAITextCompletion(options =>
-            {
-                options.Endpoint = endpoint;
-                options.ApiKey = apiKey;
-                options.ModelName = completionDeployment;
-            });
-        }
-
-        return this;
-    }
-
-    /// <summary>
     /// 인메모리 임베딩 서비스 사용 (테스트용)
     /// </summary>
     public FluxIndexContextBuilder UseInMemoryEmbedding()
@@ -172,58 +109,17 @@ public class FluxIndexContextBuilder
         _options.Embedding.ModelName = "multilingual";
         return this;
     }
-    /// <summary>
-    /// GPUStack 임베딩 서비스 사용 (OpenAI-compatible self-hosted inference)
-    /// </summary>
-    /// <param name="endpoint">GPUStack endpoint (e.g., "http://localhost:80")</param>
-    /// <param name="apiKey">GPUStack API key</param>
-    /// <param name="modelName">Embedding model name (e.g., "BAAI/bge-m3")</param>
-    /// <param name="dimensions">Optional embedding dimensions</param>
-    public FluxIndexContextBuilder UseGPUStack(
-        string endpoint,
-        string apiKey,
-        string modelName,
-        int? dimensions = null)
-    {
-        _options.Embedding.Provider = "GPUStack";
-        _options.Embedding.ApiKey = apiKey;
-        _options.Embedding.ModelName = modelName;
-        _options.Embedding.ProviderSpecificOptions["Endpoint"] = endpoint;
-        if (dimensions.HasValue)
-        {
-            _options.Embedding.ProviderSpecificOptions["Dimensions"] = dimensions.Value;
-        }
-        return this;
-    }
-
-    /// <summary>
-    /// OpenAI-compatible 임베딩 서비스 사용 (Ollama, LM Studio, vLLM 등)
-    /// </summary>
-    /// <param name="endpoint">API endpoint URL</param>
-    /// <param name="apiKey">API key (may be optional for some providers)</param>
-    /// <param name="modelName">Embedding model name</param>
-    /// <param name="dimensions">Optional embedding dimensions</param>
-    public FluxIndexContextBuilder UseOpenAICompatible(
-        string endpoint,
-        string apiKey,
-        string modelName,
-        int? dimensions = null)
-    {
-        _options.Embedding.Provider = "OpenAICompatible";
-        _options.Embedding.ApiKey = apiKey;
-        _options.Embedding.ModelName = modelName;
-        _options.Embedding.ProviderSpecificOptions["Endpoint"] = endpoint;
-        if (dimensions.HasValue)
-        {
-            _options.Embedding.ProviderSpecificOptions["Dimensions"] = dimensions.Value;
-        }
-        return this;
-    }
 
     /// <summary>
     /// DI 기반 임베딩 서비스 사용 (Interface Provider Pattern)
     /// 소비자가 제공한 IEmbeddingService 구현체를 직접 등록
+    /// OpenAI, Azure, Anthropic 등 외부 AI 서비스 사용 시 이 메서드 사용
     /// </summary>
+    /// <example>
+    /// // OpenAI 사용 예시 (소비자 앱에서 구현)
+    /// var openAIService = new MyOpenAIEmbeddingService(apiKey);
+    /// builder.UseEmbeddingService(openAIService);
+    /// </example>
     public FluxIndexContextBuilder UseEmbeddingService(FluxIndex.Core.Application.Interfaces.IEmbeddingService embeddingService)
     {
         if (embeddingService == null)
@@ -239,66 +135,18 @@ public class FluxIndexContextBuilder
     }
 
     /// <summary>
-    /// AI 공급자 자동 선택 (provider/model 형식 지원)
-    /// 예: "openai/gpt-5-nano", "anthropic/claude-sonnet-4-5", "azure/deployment-name"
+    /// DI 기반 임베딩 서비스 팩토리 등록
+    /// 서비스 프로바이더를 통해 IEmbeddingService 인스턴스 생성
     /// </summary>
-    public FluxIndexContextBuilder UseAIProvider(string modelSpec, string apiKey, Dictionary<string, object>? options = null)
+    public FluxIndexContextBuilder UseEmbeddingService(Func<IServiceProvider, FluxIndex.Core.Application.Interfaces.IEmbeddingService> factory)
     {
-        var (provider, modelName) = ParseModelSpec(modelSpec);
+        if (factory == null)
+            throw new ArgumentNullException(nameof(factory));
 
-        return provider.ToLowerInvariant() switch
-        {
-            "openai" => UseOpenAI(apiKey, modelName),
+        _options.Embedding.Provider = "Custom";
+        _services.AddSingleton(factory);
 
-            "anthropic" => throw new NotImplementedException(
-                "Anthropic embedding support is not yet implemented. " +
-                "Currently, only OpenAI and Azure OpenAI are supported for embeddings."),
-
-            "azure" => UseAzureProviderWithOptions(apiKey, modelName, options),
-
-            "google" => throw new NotImplementedException(
-                "Google (Gemini) embedding support is not yet implemented. " +
-                "Currently, only OpenAI and Azure OpenAI are supported for embeddings."),
-
-            _ => throw new ArgumentException($"Unknown AI provider: {provider}. Supported providers: openai, azure")
-        };
-    }
-
-    /// <summary>
-    /// Azure provider helper method
-    /// </summary>
-    private FluxIndexContextBuilder UseAzureProviderWithOptions(string apiKey, string modelName, Dictionary<string, object>? options)
-    {
-        var endpoint = options?.TryGetValue("endpoint", out var ep) == true ? ep?.ToString() : null;
-        if (string.IsNullOrEmpty(endpoint))
-            throw new ArgumentException("Azure endpoint is required. Provide it in options dictionary with key 'endpoint'.");
-        return UseAzureOpenAI(endpoint!, apiKey, modelName);
-    }
-
-    /// <summary>
-    /// 모델 스펙 파싱: "provider/model-name" → (provider, modelName)
-    /// </summary>
-    private (string provider, string modelName) ParseModelSpec(string modelSpec)
-    {
-        if (string.IsNullOrWhiteSpace(modelSpec))
-            throw new ArgumentException("Model specification cannot be empty", nameof(modelSpec));
-
-        var parts = modelSpec.Split('/', 2);
-        if (parts.Length != 2)
-            throw new ArgumentException(
-                $"Invalid model specification format: '{modelSpec}'. " +
-                "Expected format: 'provider/model-name' (e.g., 'openai/gpt-5-nano', 'anthropic/claude-sonnet-4-5')",
-                nameof(modelSpec));
-
-        var provider = parts[0].Trim();
-        var modelName = parts[1].Trim();
-
-        if (string.IsNullOrWhiteSpace(provider) || string.IsNullOrWhiteSpace(modelName))
-            throw new ArgumentException(
-                $"Invalid model specification: '{modelSpec}'. Both provider and model name must be non-empty.",
-                nameof(modelSpec));
-
-        return (provider, modelName);
+        return this;
     }
 
     /// <summary>
@@ -351,77 +199,16 @@ public class FluxIndexContextBuilder
     }
 
     /// <summary>
-    /// AI 메타데이터 추출 활성화 (OpenAI 기반)
-    /// </summary>
-    public FluxIndexContextBuilder WithOpenAIMetadataExtractor(
-        string apiKey,
-        string? endpoint = null,
-        MetadataSchema schema = MetadataSchema.General,
-        MetadataExtractionStrategy strategy = MetadataExtractionStrategy.Smart,
-        float minConfidence = 0.6f)
-    {
-        // Register OpenAI metadata extraction services
-        _services.AddOpenAIMetadataExtractor(options =>
-        {
-            options.ApiKey = apiKey;
-            if (!string.IsNullOrEmpty(endpoint))
-            {
-                options.Endpoint = endpoint;
-            }
-        });
-
-        // Configure IndexingOptions with AI metadata settings
-        _indexerOptions.CustomOptions ??= new Dictionary<string, object>();
-        _indexerOptions.CustomOptions["EnableAIMetadataExtraction"] = true;
-        _indexerOptions.CustomOptions["MetadataSchema"] = schema.ToString();
-        _indexerOptions.CustomOptions["MetadataExtractionStrategy"] = strategy.ToString();
-        _indexerOptions.CustomOptions["MinMetadataConfidence"] = minConfidence;
-
-        return this;
-    }
-
-    /// <summary>
-    /// AI 메타데이터 추출 활성화 (커스텀 프롬프트 사용)
-    /// </summary>
-    public FluxIndexContextBuilder WithCustomMetadataExtractor(
-        string apiKey,
-        string customPrompt,
-        string? endpoint = null,
-        MetadataExtractionStrategy strategy = MetadataExtractionStrategy.Smart,
-        float minConfidence = 0.6f)
-    {
-        // Register OpenAI metadata extraction services
-        _services.AddOpenAIMetadataExtractor(options =>
-        {
-            options.ApiKey = apiKey;
-            if (!string.IsNullOrEmpty(endpoint))
-            {
-                options.Endpoint = endpoint;
-            }
-        });
-
-        // Configure IndexingOptions with custom metadata settings
-        _indexerOptions.CustomOptions ??= new Dictionary<string, object>();
-        _indexerOptions.CustomOptions["EnableAIMetadataExtraction"] = true;
-        _indexerOptions.CustomOptions["MetadataSchema"] = MetadataSchema.Custom.ToString();
-        _indexerOptions.CustomOptions["MetadataExtractionStrategy"] = strategy.ToString();
-        _indexerOptions.CustomOptions["MinMetadataConfidence"] = minConfidence;
-        _indexerOptions.CustomOptions["CustomMetadataPrompt"] = customPrompt;
-
-        return this;
-    }
-
-    /// <summary>
     /// 검색 옵션 설정
     /// </summary>
     public FluxIndexContextBuilder WithSearchOptions(int defaultMaxResults = 10, float defaultMinScore = 0.5f)
     {
         _options.Search.DefaultMaxResults = defaultMaxResults;
         _options.Search.DefaultMinScore = defaultMinScore;
-        
+
         _retrieverOptions.DefaultMaxResults = defaultMaxResults;
         _retrieverOptions.DefaultMinScore = defaultMinScore;
-        
+
         return this;
     }
 
@@ -454,80 +241,12 @@ public class FluxIndexContextBuilder
         return this;
     }
 
-
-    /// <summary>
-    /// 시맨틱 캐싱 활성화 - Redis 벡터 캐시를 통한 쿼리 유사도 기반 캐싱
-    /// </summary>
-    /*
-    public FluxIndexContextBuilder WithSemanticCaching(string redisConnectionString, Action<FluxIndex.Cache.Redis.Configuration.RedisSemanticCacheOptions>? configure = null)
-    {
-        // Redis 시맨틱 캐시 등록
-        if (configure != null)
-        {
-            _services.AddRedisSemanticCache(options =>
-            {
-                options.ConnectionString = redisConnectionString;
-                configure(options);
-            });
-        }
-        else
-        {
-            _services.AddRedisSemanticCache(redisConnectionString);
-        }
-
-        return this;
-    }
-    */
-
-    /// <summary>
-    /// 개발용 시맨틱 캐싱 활성화 - 로컬 Redis 및 최적화된 설정
-    /// </summary>
-    /*
-    public FluxIndexContextBuilder WithSemanticCachingForDevelopment(string redisConnectionString = "localhost:6379")
-    {
-        return WithSemanticCaching(redisConnectionString, options =>
-        {
-            options.DefaultTtl = TimeSpan.FromMinutes(30);
-            options.MaxCacheEntries = 1000;
-            options.EnableMetrics = true;
-            options.EnableAutoCompaction = false;
-            options.EnableDetailedLogging = true;
-        });
-    }
-    */
-
-    /// <summary>
-    /// 운영용 시맨틱 캐싱 활성화 - 고성능 및 최적화 설정
-    /// </summary>
-    /*
-    public FluxIndexContextBuilder WithSemanticCachingForProduction(string redisConnectionString)
-    {
-        return WithSemanticCaching(redisConnectionString, options =>
-        {
-            options.DefaultTtl = TimeSpan.FromHours(24);
-            options.MaxCacheEntries = 50000;
-            options.EnableMetrics = true;
-            options.EnableVectorCompression = true;
-            options.EnableAutoCompaction = true;
-            options.AutoCompactionInterval = TimeSpan.FromHours(6);
-            options.EnableDetailedLogging = false;
-        });
-    }
-    */
-
     /// <summary>
     /// RAG 품질 평가 시스템 활성화 (소비자가 IRAGEvaluationService 구현체 제공 필요)
     /// </summary>
     public FluxIndexContextBuilder WithEvaluationSystem(string? datasetBasePath = null)
     {
         // 평가 시스템 인프라만 등록 (AI 구현체는 소비자 제공)
-        // _services.AddScoped<IGoldenDatasetManager>(sp =>
-        //     new GoldenDatasetManager(sp.GetRequiredService<ILogger<GoldenDatasetManager>>(), datasetBasePath));
-        // _services.AddScoped<IQualityGateService, QualityGateService>();
-        // _services.AddScoped<IEvaluationJobManager, EvaluationJobManager>();
-
-        // 소비자가 IRAGEvaluationService 구현체를 직접 주입해야 함
-
         return this;
     }
 
@@ -546,16 +265,6 @@ public class FluxIndexContextBuilder
     public FluxIndexContextBuilder WithEvaluationSystemForProduction(string datasetBasePath)
     {
         WithEvaluationSystem(datasetBasePath);
-
-        // 운영용 추가 설정 (EvaluationConfiguration 미구현으로 주석 처리)
-        // _services.Configure<EvaluationConfiguration>(config =>
-        // {
-        //     config.Timeout = TimeSpan.FromMinutes(10);
-        //     config.EnableFaithfulnessEvaluation = true;
-        //     config.EnableAnswerRelevancyEvaluation = true;
-        //     config.EnableContextEvaluation = true;
-        // });
-
         return this;
     }
 
@@ -640,7 +349,7 @@ public class FluxIndexContextBuilder
         ConfigureEmbeddingService();
         ConfigureCacheService();
         ConfigureChunkingService();
-        
+
         // Register core services
         _services.AddSingleton<IDocumentRepository, InMemoryDocumentRepository>();
         _services.AddSingleton(_retrieverOptions);
@@ -834,41 +543,12 @@ public class FluxIndexContextBuilder
             case "localai":
             case "localembedder": // Legacy support
                 // ✅ Default: Local ONNX-based embeddings (no API key required)
-                FluxIndex.AI.Local.ServiceCollectionExtensions.AddLocalAIEmbedding(_services, options =>
+                FluxIndex.SDK.AI.Local.ServiceCollectionExtensions.AddLocalAIEmbedding(_services, options =>
                 {
                     options.ModelId = !string.IsNullOrEmpty(_options.Embedding.ModelName)
                         ? _options.Embedding.ModelName
                         : "default";
                 });
-                break;
-            case "openai":
-                FluxIndex.AI.OpenAI.ServiceCollectionExtensions.AddOpenAIEmbedding(_services, options =>
-                {
-                    options.ApiKey = _options.Embedding.ApiKey;
-                    options.ModelName = _options.Embedding.ModelName;
-                });
-                break;
-            case "azureopenai":
-                FluxIndex.AI.OpenAI.ServiceCollectionExtensions.AddAzureOpenAIEmbedding(_services, options =>
-                {
-                    options.ApiKey = _options.Embedding.ApiKey;
-                    options.ModelName = _options.Embedding.ModelName;
-                    options.Endpoint = _options.Embedding.ProviderSpecificOptions.TryGetValue("Endpoint", out var endpoint) ? endpoint?.ToString() : "";
-                });
-                break;
-            case "gpustack":
-                FluxIndex.AI.OpenAI.ServiceCollectionExtensions.AddGPUStackEmbedding(_services,
-                    endpoint: _options.Embedding.ProviderSpecificOptions.TryGetValue("Endpoint", out var gpuEndpoint) ? gpuEndpoint?.ToString() ?? "" : "",
-                    apiKey: _options.Embedding.ApiKey,
-                    modelName: _options.Embedding.ModelName,
-                    dimensions: _options.Embedding.ProviderSpecificOptions.TryGetValue("Dimensions", out var gpuDim) && gpuDim is int gpuDimVal ? gpuDimVal : null);
-                break;
-            case "openaicompatible":
-                FluxIndex.AI.OpenAI.ServiceCollectionExtensions.AddOpenAICompatibleEmbedding(_services,
-                    endpoint: _options.Embedding.ProviderSpecificOptions.TryGetValue("Endpoint", out var compatEndpoint) ? compatEndpoint?.ToString() ?? "" : "",
-                    apiKey: _options.Embedding.ApiKey,
-                    modelName: _options.Embedding.ModelName,
-                    dimensions: _options.Embedding.ProviderSpecificOptions.TryGetValue("Dimensions", out var compatDim) && compatDim is int compatDimVal ? compatDimVal : null);
                 break;
             case "inmemory":
                 // In-memory embedding service for testing (generates random embeddings)
@@ -880,7 +560,7 @@ public class FluxIndexContextBuilder
                 break;
             default:
                 // ✅ Fallback to LocalAI if no provider specified
-                FluxIndex.AI.Local.ServiceCollectionExtensions.AddLocalAIEmbedding(_services);
+                FluxIndex.SDK.AI.Local.ServiceCollectionExtensions.AddLocalAIEmbedding(_services);
                 break;
         }
     }

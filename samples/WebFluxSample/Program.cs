@@ -1,5 +1,5 @@
 using FluxIndex.SDK;
-using FluxIndex.Extensions.WebFlux;
+using FluxIndex.SDK.Extensions.WebFlux;
 using Microsoft.Extensions.Logging;
 
 namespace WebFluxSample;

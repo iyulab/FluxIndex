@@ -151,26 +151,26 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    /// OpenAI 임베딩 서비스 추가
+    /// OpenAI 임베딩 서비스 추가 (소비자가 IEmbeddingService 구현 필요)
     /// </summary>
     public static IServiceCollection AddOpenAIEmbedding(this IServiceCollection services, Action<OpenAIOptions> configure)
     {
         var options = new OpenAIOptions();
         configure(options);
-        // NOTE: OpenAI implementation available in FluxIndex.AI.OpenAI package
-        // Consumer must provide IEmbeddingService implementation or use the extension package
+        // Consumer must implement IEmbeddingService for OpenAI
+        // See UseEmbeddingService<T>() in FluxIndexContextBuilder for custom implementations
         return services;
     }
 
     /// <summary>
-    /// Azure OpenAI 임베딩 서비스 추가
+    /// Azure OpenAI 임베딩 서비스 추가 (소비자가 IEmbeddingService 구현 필요)
     /// </summary>
     public static IServiceCollection AddAzureOpenAIEmbedding(this IServiceCollection services, Action<AzureOpenAIOptions> configure)
     {
         var options = new AzureOpenAIOptions();
         configure(options);
-        // NOTE: Azure OpenAI implementation available in FluxIndex.AI.OpenAI package
-        // Consumer must provide IEmbeddingService implementation or use the extension package
+        // Consumer must implement IEmbeddingService for Azure OpenAI
+        // See UseEmbeddingService<T>() in FluxIndexContextBuilder for custom implementations
         return services;
     }
 
@@ -257,8 +257,7 @@ public static class DocumentProcessingExtensions
     /// <summary>
     /// Adds document processing pipeline with externally registered services.
     /// Assumes IContextualEnrichmentService, IQAGenerationService, and ITextCompletionService
-    /// are already registered (e.g., by FluxIndex.AI.OpenAI or FluxImprover packages).
-    /// Falls back to mock implementations if services are not found.
+    /// are already registered. Falls back to mock implementations if services are not found.
     /// </summary>
     public static IServiceCollection AddDocumentProcessingPipelineWithFallback(this IServiceCollection services)
     {
