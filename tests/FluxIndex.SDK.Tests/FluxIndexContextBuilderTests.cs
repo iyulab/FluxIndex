@@ -224,14 +224,9 @@ public class FluxIndexContextBuilderTests : IDisposable
         }
     }
 
-    [Fact(Skip = "Requires LocalAI model files - run locally only")]
+    [Fact]
     public async Task Builder_WithLocalAIEmbedding_ShouldIndexSuccessfully()
     {
-        // Skip in CI environment - LocalAI requires downloaded model files
-        if (Environment.GetEnvironmentVariable("CI") == "true")
-        {
-            return;
-        }
 
         // Arrange
         var context = FluxIndexContext.CreateBuilder()

@@ -52,8 +52,8 @@
     <PackageVersion Include="Google.Cloud.AIPlatform.V1" Version="3.54.0" />
     <PackageVersion Include="Mscc.GenerativeAI" Version="2.5.2" />
     <!-- LocalAI: Unified local AI inference (replaces LocalEmbedder/LocalReranker) -->
-    <PackageVersion Include="LocalAI.Embedder" Version="0.7.0" />
-    <PackageVersion Include="LocalAI.Reranker" Version="0.7.0" />
+    <PackageVersion Include="LocalAI.Embedder" Version="0.7.1" />
+    <PackageVersion Include="LocalAI.Reranker" Version="0.7.1" />
   </ItemGroup>
   <!-- Storage/Cache Packages -->
   <ItemGroup>
