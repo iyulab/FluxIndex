@@ -114,7 +114,7 @@ public class EntityGraphServiceTests
         // Assert
         Assert.NotNull(result);
         Assert.Empty(result.Entities);
-        Assert.Equal(1, result.SourceChunkIds.Count);
+        Assert.Single(result.SourceChunkIds);
     }
 
     [Fact]

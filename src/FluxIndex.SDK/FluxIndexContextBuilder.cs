@@ -6,7 +6,7 @@ using CoreServiceExtensions = FluxIndex.Core.Application.Services.MetadataAugmen
 using FluxIndex.SDK.Configuration;
 using FluxIndex.SDK.Services;
 using FluxIndex.SDK.Extensions;
-using FluxIndex.AI.LocalEmbedder;
+using FluxIndex.AI.Local;
 using FluxIndex.AI.OpenAI;
 using FluxIndex.Storage.SQLite;
 // using FluxIndex.Cache.Redis.Extensions;
@@ -42,11 +42,11 @@ public class FluxIndexContextBuilder
         _services.AddLogging();
         _services.AddMemoryCache();
 
-        // ✅ Default to LocalEmbedder for better developer experience
+        // ✅ Default to LocalAI for better developer experience
         // This allows developers to use FluxIndex without requiring external API keys
-        // LocalEmbedder provides real embeddings using local ONNX models
-        _options.Embedding.Provider = "LocalEmbedder";
-        _options.Embedding.ModelName = "all-MiniLM-L6-v2"; // Default LocalEmbedder model
+        // LocalAI provides real embeddings using local ONNX models
+        _options.Embedding.Provider = "LocalAI";
+        _options.Embedding.ModelName = "default"; // bge-small-en-v1.5
     }
 
     /// <summary>
@@ -150,28 +150,28 @@ public class FluxIndexContextBuilder
     }
 
     /// <summary>
-    /// LocalEmbedder 사용 (로컬 ONNX 기반, 외부 API 불필요)
-    /// Available models: all-MiniLM-L6-v2 (default), all-mpnet-base-v2, bge-small-en-v1.5, multilingual-e5-small
+    /// LocalAI 임베딩 사용 (로컬 ONNX 기반, 외부 API 불필요)
+    /// Available models: default (bge-small), fast (MiniLM), quality (bge-base),
+    /// large (nomic-embed), multilingual (e5-base), or HuggingFace model ID
     /// </summary>
-    /// <param name="modelId">Model identifier (default: "all-MiniLM-L6-v2")</param>
-    public FluxIndexContextBuilder UseLocalEmbedder(string modelId = "all-MiniLM-L6-v2")
+    /// <param name="modelId">Model alias or HuggingFace ID (default: "default")</param>
+    public FluxIndexContextBuilder UseLocalAIEmbedding(string modelId = "default")
     {
-        _options.Embedding.Provider = "LocalEmbedder";
+        _options.Embedding.Provider = "LocalAI";
         _options.Embedding.ModelName = modelId;
         return this;
     }
 
     /// <summary>
-    /// 다국어 LocalEmbedder 사용 (multilingual-e5-small)
+    /// 다국어 LocalAI 임베딩 사용 (multilingual-e5-base)
     /// 한국어, 영어, 중국어, 일본어 등 다양한 언어 지원
     /// </summary>
-    public FluxIndexContextBuilder UseLocalEmbedderMultilingual()
+    public FluxIndexContextBuilder UseLocalAIMultilingual()
     {
-        _options.Embedding.Provider = "LocalEmbedder";
-        _options.Embedding.ModelName = "multilingual-e5-small";
+        _options.Embedding.Provider = "LocalAI";
+        _options.Embedding.ModelName = "multilingual";
         return this;
     }
-
     /// <summary>
     /// GPUStack 임베딩 서비스 사용 (OpenAI-compatible self-hosted inference)
     /// </summary>
@@ -371,6 +371,7 @@ public class FluxIndexContextBuilder
         });
 
         // Configure IndexingOptions with AI metadata settings
+        _indexerOptions.CustomOptions ??= new Dictionary<string, object>();
         _indexerOptions.CustomOptions["EnableAIMetadataExtraction"] = true;
         _indexerOptions.CustomOptions["MetadataSchema"] = schema.ToString();
         _indexerOptions.CustomOptions["MetadataExtractionStrategy"] = strategy.ToString();
@@ -400,6 +401,7 @@ public class FluxIndexContextBuilder
         });
 
         // Configure IndexingOptions with custom metadata settings
+        _indexerOptions.CustomOptions ??= new Dictionary<string, object>();
         _indexerOptions.CustomOptions["EnableAIMetadataExtraction"] = true;
         _indexerOptions.CustomOptions["MetadataSchema"] = MetadataSchema.Custom.ToString();
         _indexerOptions.CustomOptions["MetadataExtractionStrategy"] = strategy.ToString();
@@ -829,13 +831,14 @@ public class FluxIndexContextBuilder
     {
         switch (_options.Embedding.Provider?.ToLower())
         {
-            case "localembedder":
+            case "localai":
+            case "localembedder": // Legacy support
                 // ✅ Default: Local ONNX-based embeddings (no API key required)
-                FluxIndex.AI.LocalEmbedder.ServiceCollectionExtensions.AddLocalEmbedder(_services, options =>
+                FluxIndex.AI.Local.ServiceCollectionExtensions.AddLocalAIEmbedding(_services, options =>
                 {
                     options.ModelId = !string.IsNullOrEmpty(_options.Embedding.ModelName)
                         ? _options.Embedding.ModelName
-                        : "all-MiniLM-L6-v2";
+                        : "default";
                 });
                 break;
             case "openai":
@@ -876,8 +879,8 @@ public class FluxIndexContextBuilder
                 // Do nothing - service is already in DI container
                 break;
             default:
-                // ✅ Fallback to LocalEmbedder if no provider specified
-                FluxIndex.AI.LocalEmbedder.ServiceCollectionExtensions.AddLocalEmbedder(_services);
+                // ✅ Fallback to LocalAI if no provider specified
+                FluxIndex.AI.Local.ServiceCollectionExtensions.AddLocalAIEmbedding(_services);
                 break;
         }
     }

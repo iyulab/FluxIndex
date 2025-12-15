@@ -1,42 +1,44 @@
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Services.Reranking;
+using LocalAI.Reranker;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using LocalRerankerLib = LocalReranker;
 
-namespace FluxIndex.AI.LocalReranker;
+namespace FluxIndex.AI.Local.Services;
 
 /// <summary>
-/// Resilient reranker adapter that provides automatic fallback from semantic (cross-encoder)
+/// Resilient reranker that provides automatic fallback from semantic (cross-encoder)
 /// to algorithmic (TF-IDF/BM25) reranking when the neural model is unavailable.
 /// </summary>
 /// <remarks>
-/// This implements the Composite Reranker pattern recommended by LocalReranker team:
+/// Implements the Composite Reranker pattern:
 /// - Primary: Cross-encoder semantic reranking (high quality, requires ONNX model)
 /// - Fallback: Algorithmic reranking (lower quality, always available)
 ///
 /// Fallback is triggered when:
-/// - Model download fails (network issues, firewall, etc.)
-/// - Model loading fails (disk issues, memory, etc.)
+/// - Model download fails (network issues, firewall)
+/// - Model loading fails (disk issues, memory)
 /// - Runtime inference fails (unexpected errors)
 /// </remarks>
-public sealed class ResilientRerankerAdapter : IReranker, IAsyncDisposable, IDisposable
+public sealed class ResilientLocalAIReranker : IReranker, IAsyncDisposable
 {
-    private readonly LocalRerankerLib.Reranker? _semanticReranker;
+    private readonly LocalAIRerankerOptions _options;
+    private readonly ILogger<ResilientLocalAIReranker> _logger;
     private readonly AlgorithmicReranker _fallbackReranker;
-    private readonly ILogger<ResilientRerankerAdapter> _logger;
-    private readonly LocalRerankerOptions _options;
-    private readonly bool _semanticAvailable;
+    private IRerankerModel? _semanticReranker;
+    private readonly SemaphoreSlim _initLock = new(1, 1);
+    private bool _semanticAvailable;
+    private bool _initAttempted;
     private bool _disposed;
 
-    public ResilientRerankerAdapter(
-        IOptions<LocalRerankerOptions> options,
+    public ResilientLocalAIReranker(
+        IOptions<LocalAIRerankerOptions> options,
         IEmbeddingService? embeddingService = null,
-        ILogger<ResilientRerankerAdapter>? logger = null)
+        ILogger<ResilientLocalAIReranker>? logger = null)
     {
-        _options = options?.Value ?? new LocalRerankerOptions();
-        _logger = logger ?? NullLogger<ResilientRerankerAdapter>.Instance;
+        _options = options?.Value ?? new LocalAIRerankerOptions();
+        _logger = logger ?? NullLogger<ResilientLocalAIReranker>.Instance;
 
         // Initialize algorithmic fallback (always available)
         _fallbackReranker = new AlgorithmicReranker(
@@ -48,41 +50,9 @@ public sealed class ResilientRerankerAdapter : IReranker, IAsyncDisposable, IDis
                 SemanticWeight = embeddingService != null ? 0.3f : 0.0f
             });
 
-        // Try to initialize semantic reranker
-        try
-        {
-            var rerankerOptions = new LocalRerankerLib.RerankerOptions
-            {
-                ModelId = _options.ModelId,
-                MaxSequenceLength = _options.MaxSequenceLength,
-                UseGpu = _options.UseGpu,
-                BatchSize = _options.BatchSize,
-                CacheDirectory = _options.CacheDirectory,
-                ThreadCount = _options.ThreadCount
-            };
-
-            _semanticReranker = new LocalRerankerLib.Reranker(rerankerOptions);
-
-            if (_options.WarmupOnStartup)
-            {
-                // Validate model availability by warming up
-                _semanticReranker.WarmupAsync().GetAwaiter().GetResult();
-            }
-
-            _semanticAvailable = true;
-            _logger.LogInformation(
-                "ResilientRerankerAdapter initialized with semantic reranker (model: {ModelId})",
-                _options.ModelId);
-        }
-        catch (Exception ex)
-        {
-            _semanticReranker = null;
-            _semanticAvailable = false;
-            _logger.LogWarning(ex,
-                "Semantic reranker unavailable, using algorithmic fallback. " +
-                "Reason: {Message}",
-                ex.Message);
-        }
+        _logger.LogInformation(
+            "Resilient LocalAI Reranker initialized: Model={ModelId}, HasEmbeddingFallback={HasEmbedding}",
+            _options.ModelId, embeddingService != null);
     }
 
     /// <summary>
@@ -96,6 +66,67 @@ public sealed class ResilientRerankerAdapter : IReranker, IAsyncDisposable, IDis
     public RerankMethod CurrentMethod => IsSemanticAvailable
         ? RerankMethod.Semantic
         : RerankMethod.Algorithmic;
+
+    private async ValueTask<IRerankerModel?> TryGetSemanticModelAsync(CancellationToken cancellationToken = default)
+    {
+        if (_semanticReranker != null)
+            return _semanticReranker;
+
+        if (_initAttempted && !_semanticAvailable)
+            return null;
+
+        await _initLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (_semanticReranker != null)
+                return _semanticReranker;
+
+            if (_initAttempted)
+                return null;
+
+            _initAttempted = true;
+
+            try
+            {
+                _logger.LogInformation("Attempting to load LocalAI reranker model: {Model}", _options.ModelId);
+
+                var rerankerOptions = new RerankerOptions
+                {
+                    ModelId = _options.ModelId,
+                    MaxSequenceLength = _options.MaxSequenceLength,
+                    BatchSize = _options.BatchSize,
+                    CacheDirectory = _options.CacheDirectory,
+                    Provider = _options.ToExecutionProvider(),
+                    ThreadCount = _options.ThreadCount
+                };
+
+                _semanticReranker = await LocalReranker.LoadAsync(
+                    _options.ModelId,
+                    rerankerOptions,
+                    null,
+                    cancellationToken);
+
+                _semanticAvailable = true;
+                _logger.LogInformation(
+                    "Semantic reranker loaded successfully: {Model}",
+                    _semanticReranker.ModelId);
+
+                return _semanticReranker;
+            }
+            catch (Exception ex)
+            {
+                _semanticAvailable = false;
+                _logger.LogWarning(ex,
+                    "Semantic reranker unavailable, using algorithmic fallback. Reason: {Message}",
+                    ex.Message);
+                return null;
+            }
+        }
+        finally
+        {
+            _initLock.Release();
+        }
+    }
 
     /// <inheritdoc />
     public async Task<IEnumerable<RerankResult>> RerankAsync(
@@ -116,12 +147,13 @@ public sealed class ResilientRerankerAdapter : IReranker, IAsyncDisposable, IDis
         }
 
         // Try semantic reranking first
-        if (_semanticReranker != null)
+        var semanticModel = await TryGetSemanticModelAsync(cancellationToken);
+        if (semanticModel != null)
         {
             try
             {
                 return await RerankWithSemanticAsync(
-                    query, candidateList, rerankOptions, cancellationToken);
+                    semanticModel, query, candidateList, rerankOptions, cancellationToken);
             }
             catch (Exception ex)
             {
@@ -137,6 +169,7 @@ public sealed class ResilientRerankerAdapter : IReranker, IAsyncDisposable, IDis
     }
 
     private async Task<IEnumerable<RerankResult>> RerankWithSemanticAsync(
+        IRerankerModel model,
         string query,
         List<RetrievalCandidate> candidateList,
         RerankOptions options,
@@ -144,10 +177,11 @@ public sealed class ResilientRerankerAdapter : IReranker, IAsyncDisposable, IDis
     {
         _logger.LogDebug("Using semantic reranker for {Count} candidates", candidateList.Count);
 
-        var documents = candidateList.Select(c =>
-            TruncateContent(c.Content, options.MaxContentLength));
+        var documents = candidateList
+            .Select(c => TruncateContent(c.Content, options.MaxContentLength))
+            .ToList();
 
-        var rankedResults = await _semanticReranker!.RerankAsync(
+        var rankedResults = await model.RerankAsync(
             query,
             documents,
             options.TopN,
@@ -213,10 +247,10 @@ public sealed class ResilientRerankerAdapter : IReranker, IAsyncDisposable, IDis
             var modelInfo = _semanticReranker.GetModelInfo();
             return new RerankModelInfo
             {
-                Name = modelInfo?.DisplayName ?? $"LocalReranker ({_options.ModelId})",
+                Name = modelInfo?.DisplayName ?? $"LocalAI Reranker ({_options.ModelId})",
                 Type = RerankModel.Local,
                 Version = "1.0.0",
-                SupportsMultilingual = modelInfo?.IsMultilingual ?? false,
+                SupportsMultilingual = modelInfo?.Alias == "multilingual",
                 MaxInputLength = modelInfo?.MaxSequenceLength ?? 512,
                 EstimatedLatencyMs = 50.0f,
                 RequiresApiKey = false,
@@ -226,9 +260,7 @@ public sealed class ResilientRerankerAdapter : IReranker, IAsyncDisposable, IDis
                     ["cross_encoder"] = true,
                     ["local_inference"] = true,
                     ["has_fallback"] = true,
-                    ["current_method"] = CurrentMethod.ToString(),
-                    ["parameters"] = modelInfo?.Parameters ?? 0,
-                    ["size_mb"] = modelInfo?.SizeMB ?? 0
+                    ["current_method"] = CurrentMethod.ToString()
                 }
             };
         }
@@ -259,7 +291,6 @@ public sealed class ResilientRerankerAdapter : IReranker, IAsyncDisposable, IDis
     /// <summary>
     /// Attempts to upgrade from algorithmic to semantic reranking if model becomes available.
     /// </summary>
-    /// <returns>True if upgrade was successful, false otherwise.</returns>
     public async Task<bool> TryUpgradeToSemanticAsync(CancellationToken cancellationToken = default)
     {
         if (_semanticReranker != null)
@@ -268,32 +299,19 @@ public sealed class ResilientRerankerAdapter : IReranker, IAsyncDisposable, IDis
             return true;
         }
 
+        // Reset init state to allow retry
+        await _initLock.WaitAsync(cancellationToken);
         try
         {
-            var rerankerOptions = new LocalRerankerLib.RerankerOptions
-            {
-                ModelId = _options.ModelId,
-                MaxSequenceLength = _options.MaxSequenceLength,
-                UseGpu = _options.UseGpu,
-                BatchSize = _options.BatchSize,
-                CacheDirectory = _options.CacheDirectory,
-                ThreadCount = _options.ThreadCount
-            };
-
-            var newReranker = new LocalRerankerLib.Reranker(rerankerOptions);
-            await newReranker.WarmupAsync(cancellationToken);
-
-            // Note: This class is sealed and _semanticReranker is readonly,
-            // so true hot-swapping isn't possible. This method is for diagnostic purposes.
-            _logger.LogInformation("Semantic reranker model is now available for new instances");
-            newReranker.Dispose();
-            return true;
+            _initAttempted = false;
         }
-        catch (Exception ex)
+        finally
         {
-            _logger.LogDebug(ex, "Semantic reranker still unavailable: {Message}", ex.Message);
-            return false;
+            _initLock.Release();
         }
+
+        var model = await TryGetSemanticModelAsync(cancellationToken);
+        return model != null;
     }
 
     private static string TruncateContent(string content, int maxLength)
@@ -304,20 +322,17 @@ public sealed class ResilientRerankerAdapter : IReranker, IAsyncDisposable, IDis
         return content[..maxLength];
     }
 
-    public void Dispose()
-    {
-        if (_disposed) return;
-        _semanticReranker?.Dispose();
-        _disposed = true;
-    }
-
     public async ValueTask DisposeAsync()
     {
         if (_disposed) return;
+
         if (_semanticReranker != null)
         {
             await _semanticReranker.DisposeAsync();
+            _semanticReranker = null;
         }
+
+        _initLock.Dispose();
         _disposed = true;
     }
 }

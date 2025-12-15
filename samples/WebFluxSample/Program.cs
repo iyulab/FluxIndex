@@ -62,16 +62,16 @@ class Program
             try
             {
                 var webFlux = context.GetWebFluxIntegration();
-                var documentIds = await webFlux.IndexMultipleUrlsAsync(testUrls, new WebFluxProcessingOptions
+                var batchResult = await webFlux.IndexMultipleUrlsBatchAsync(testUrls, new WebFluxProcessingOptions
                 {
                     MaxChunkSize = 1024,
                     ChunkOverlap = 100
                 });
 
-                Console.WriteLine($"✅ Successfully indexed {documentIds.Count()} websites");
-                foreach (var docId in documentIds)
+                Console.WriteLine($"✅ Successfully indexed {batchResult.SuccessfulUrls.Count}/{batchResult.TotalUrls} websites");
+                foreach (var (url, docId) in batchResult.SuccessfulUrls)
                 {
-                    Console.WriteLine($"   📄 Document ID: {docId}");
+                    Console.WriteLine($"   📄 {url} → Document ID: {docId}");
                 }
             }
             catch (Exception ex)

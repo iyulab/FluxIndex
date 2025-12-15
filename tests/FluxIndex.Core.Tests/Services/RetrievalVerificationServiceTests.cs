@@ -845,7 +845,6 @@ public class RetrievalVerificationServiceTests
 
         // Assert
         Assert.NotNull(assessment);
-        Assert.NotNull(assessment.RiskLevel);
     }
 
     #endregion

@@ -49,12 +49,12 @@ public class FluxIndexContextBuilderTests : IDisposable
     }
 
     [Fact]
-    public void UseLocalEmbedder_WithDefaultModel_ShouldConfigure()
+    public void UseLocalAIEmbedding_WithDefaultModel_ShouldConfigure()
     {
         // Act
         var builder = FluxIndexContext.CreateBuilder()
             .UseSQLite(_testDbPath)
-            .UseLocalEmbedder();
+            .UseLocalAIEmbedding();
 
         var context = builder.Build();
         try
@@ -69,12 +69,12 @@ public class FluxIndexContextBuilderTests : IDisposable
     }
 
     [Fact]
-    public void UseLocalEmbedder_WithCustomModel_ShouldConfigure()
+    public void UseLocalAIEmbedding_WithCustomModel_ShouldConfigure()
     {
         // Act
         var builder = FluxIndexContext.CreateBuilder()
             .UseSQLite(_testDbPath)
-            .UseLocalEmbedder("bge-small-en-v1.5");
+            .UseLocalAIEmbedding("bge-small-en-v1.5");
 
         var context = builder.Build();
         try
@@ -89,12 +89,12 @@ public class FluxIndexContextBuilderTests : IDisposable
     }
 
     [Fact]
-    public void UseLocalEmbedderMultilingual_ShouldConfigure()
+    public void UseLocalAIMultilingual_ShouldConfigure()
     {
         // Act
         var builder = FluxIndexContext.CreateBuilder()
             .UseSQLite(_testDbPath)
-            .UseLocalEmbedderMultilingual();
+            .UseLocalAIMultilingual();
 
         var context = builder.Build();
         try
@@ -171,12 +171,12 @@ public class FluxIndexContextBuilderTests : IDisposable
     }
 
     [Fact]
-    public void UseOpenAI_ShouldOverrideLocalEmbedder()
+    public void UseOpenAI_ShouldOverrideLocalAIEmbedding()
     {
-        // Act - Use OpenAI after LocalEmbedder
+        // Act - Use OpenAI after LocalAI embedding
         var builder = FluxIndexContext.CreateBuilder()
             .UseSQLite(_testDbPath)
-            .UseLocalEmbedder()
+            .UseLocalAIEmbedding()
             .UseOpenAI("test-api-key");
 
         // Assert - Builder should accept both calls (last one wins)
@@ -225,19 +225,19 @@ public class FluxIndexContextBuilderTests : IDisposable
     }
 
     [Fact]
-    public async Task Builder_WithLocalEmbedder_ShouldIndexSuccessfully()
+    public async Task Builder_WithLocalAIEmbedding_ShouldIndexSuccessfully()
     {
         // Arrange
         var context = FluxIndexContext.CreateBuilder()
             .UseSQLite(_testDbPath)
-            .UseLocalEmbedder()
+            .UseLocalAIEmbedding()
             .Build();
 
         try
         {
             // Act
             var docId = await context.Indexer.IndexDocumentAsync(
-                "Test document for LocalEmbedder integration",
+                "Test document for LocalAI embedding integration",
                 "test-doc-001");
 
             // Assert

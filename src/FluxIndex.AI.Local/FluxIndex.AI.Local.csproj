@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <PackageId>FluxIndex.AI.Local</PackageId>
+    <IsPackable>true</IsPackable>
+    <Title>FluxIndex Local AI Integration</Title>
+    <Description>Local ONNX-based embedding and reranking services for FluxIndex RAG infrastructure. Zero-configuration, no API keys required. Supports GPU acceleration (CUDA, DirectML, CoreML).</Description>
+    <PackageTags>RAG;VectorStore;Embeddings;Reranker;ONNX;LocalAI;GPU;CUDA;DirectML</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FluxIndex.Core\FluxIndex.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="LocalAI.Embedder" />
+    <PackageReference Include="LocalAI.Reranker" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="FluxIndex.AI.Local.Tests" />
+  </ItemGroup>
+
+</Project>

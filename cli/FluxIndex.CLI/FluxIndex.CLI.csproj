@@ -26,7 +26,7 @@
     <ProjectReference Include="..\..\src\FluxIndex.SDK\FluxIndex.SDK.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.Extensions.FileFlux\FluxIndex.Extensions.FileFlux.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.AI.OpenAI\FluxIndex.AI.OpenAI.csproj" />
-    <ProjectReference Include="..\..\src\FluxIndex.AI.LocalEmbedder\FluxIndex.AI.LocalEmbedder.csproj" />
+    <ProjectReference Include="..\..\src\FluxIndex.AI.Local\FluxIndex.AI.Local.csproj" />
   </ItemGroup>
 
   <ItemGroup>

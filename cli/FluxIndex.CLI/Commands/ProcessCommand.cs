@@ -1,6 +1,6 @@
 using System.CommandLine;
 using FileFlux;
-using FluxIndex.AI.LocalEmbedder;
+using FluxIndex.AI.Local;
 using FluxIndex.AI.OpenAI;
 using FluxIndex.CLI.Configuration;
 using FluxIndex.SDK.Extensions;
@@ -289,14 +289,14 @@ public static class ProcessCommand
                 }
                 else
                 {
-                    // Default to local embedder
-                    services.AddLocalEmbedder();
+                    // Default to local AI embedder
+                    services.AddLocalAIEmbedding();
                 }
                 break;
 
             default:
-                // Default to local embedder
-                services.AddLocalEmbedder();
+                // Default to local AI embedder
+                services.AddLocalAIEmbedding();
                 break;
         }
     }

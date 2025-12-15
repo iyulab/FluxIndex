@@ -35,7 +35,7 @@ public class RankFusionServiceTests
     public void FuseWithRRF_NullResultSets_ReturnsEmpty()
     {
         // Act
-        var results = _service.FuseWithRRF(null);
+        var results = _service.FuseWithRRF(null!);
 
         // Assert
         Assert.Empty(results);
@@ -159,7 +159,7 @@ public class RankFusionServiceTests
     public void FuseWithWeights_NullResultSets_ReturnsEmpty()
     {
         // Act
-        var results = _service.FuseWithWeights(null);
+        var results = _service.FuseWithWeights(null!);
 
         // Assert
         Assert.Empty(results);
