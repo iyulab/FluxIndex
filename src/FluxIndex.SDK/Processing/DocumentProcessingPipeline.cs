@@ -134,6 +134,14 @@ public class DocumentProcessingPipeline
             var fileFluxChunks = await ChunkTextAsync(textForChunking, filePath, chunkingOptions, cancellationToken);
             var chunkList = fileFluxChunks.ToList();
 
+            // Extract language from FileFlux metadata (v0.8.4+)
+            var firstChunk = chunkList.FirstOrDefault();
+            if (firstChunk?.Metadata != null)
+            {
+                if (!string.IsNullOrEmpty(firstChunk.Metadata.Language))
+                    result.Metadata.DetectedLanguage = firstChunk.Metadata.Language;
+            }
+
             var chunkIndex = 0;
             foreach (var fileFluxChunk in chunkList)
             {
@@ -498,7 +506,9 @@ JSON response:";
                     {
                         if (metadata.TryGetValue("title", out var title))
                             result.Metadata.Title = title.GetString();
-                        if (metadata.TryGetValue("language", out var lang))
+                        // Only override language if not already set by FileFlux
+                        if (string.IsNullOrEmpty(result.Metadata.DetectedLanguage) &&
+                            metadata.TryGetValue("language", out var lang))
                             result.Metadata.DetectedLanguage = lang.GetString();
                         if (metadata.TryGetValue("contentType", out var contentType))
                             result.Metadata.ContentType = contentType.GetString();
