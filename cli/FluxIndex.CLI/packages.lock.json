@@ -79,8 +79,8 @@
       },
       "FileFlux.Core": {
         "type": "Transitive",
-        "resolved": "0.8.0",
-        "contentHash": "JEiQgR9TpRz44r0gpvo377w2RoBFhLGjAj89OleuxHo/iO3Qkre6jVQH0sJbTQSLjEzpaahcv/Mq27odjBXlcQ==",
+        "resolved": "0.8.2",
+        "contentHash": "ynhMQ/SQ1i0NLVRhq0bjx4huYlJBDTBA4fBAvXI+MV6/8DHrPjmyx1T+Gr6iq6XRbgR0VutRMx3p5uhK6lo2pA==",
         "dependencies": {
           "CsvHelper": "33.1.0",
           "DocumentFormat.OpenXml": "3.3.0",
@@ -114,19 +114,19 @@
       },
       "LocalAI.Core": {
         "type": "Transitive",
-        "resolved": "0.7.1",
-        "contentHash": "0WlPTyj7R+Juz6DFU1N67Y5hSic5Ap3Mjn5w9KtOa/+YrWnpemxfbCKJtKUsxlBGO1AOmCwXwN/kMVxTY+/PdA==",
+        "resolved": "0.7.2",
+        "contentHash": "Q/kyzrA1LtUzjasJFQWEV9cytNDHPmklmEXovM7lDkGO/rUtnnJfOL7qpUoUMZjXPiwA5ahoLMxD8IqbzIqk0w==",
         "dependencies": {
           "Microsoft.ML.OnnxRuntime": "1.23.2"
         }
       },
       "LocalAI.Generator": {
         "type": "Transitive",
-        "resolved": "0.7.0",
-        "contentHash": "nWcKyqopvy946MddPWeIELGhOctspcpe8Ze6QatNnqFKdnp0p4tJOVvuC1RdgXZL6oki022IdC0LgNcXrsIv8Q==",
+        "resolved": "0.7.2",
+        "contentHash": "q3FU+uSYOEZND7IwqBPDj6JY/MGFFrxusBctqtsKcgAxP9a8IHQt2hxhBVa74Oa/yZG6qKBa8ASLTMxnk5waXQ==",
         "dependencies": {
-          "LocalAI.Core": "0.7.0",
-          "Microsoft.ML.OnnxRuntimeGenAI": "0.11.3"
+          "LocalAI.Core": "0.7.2",
+          "Microsoft.ML.OnnxRuntimeGenAI": "0.11.4"
         }
       },
       "LocalAI.Ocr": {
@@ -140,10 +140,10 @@
       },
       "LocalAI.Text.Core": {
         "type": "Transitive",
-        "resolved": "0.7.1",
-        "contentHash": "OXu7aSZ35OqDsOiO5QVzecXaVgR7CfuQbDc1KU2kAU4hVa1ggsBljXFywz7PILVG3dlPNy5dM1YENIChTtv/bA==",
+        "resolved": "0.7.2",
+        "contentHash": "SkTslsm5JhOUksGKbuWT96uzuMVvDIfiux+e3B9KaWZI8jMSUOhkF0sfNTBRhaQ7epulHuxAui3F4DVXlogFhA==",
         "dependencies": {
-          "LocalAI.Core": "0.7.1",
+          "LocalAI.Core": "0.7.2",
           "Microsoft.ML.Tokenizers": "2.0.0"
         }
       },
@@ -341,17 +341,17 @@
       },
       "Microsoft.ML.OnnxRuntimeGenAI": {
         "type": "Transitive",
-        "resolved": "0.11.3",
-        "contentHash": "TXzZl3rEkplhPeIZZKQBvnWIqHKPOQqyCD5DNpF4BC80byzwACf7ytxiSvVHKfKWFcKroW29Bm9mkBP7o3FOBA==",
+        "resolved": "0.11.4",
+        "contentHash": "1ZswbhnSS9dszFIbXjNfjS9g+3NEonO/MhFKTU2dB2mkMnLsR/r9QNUkpuNA50q2dwOCUq7/k7tyBBrnGLS6gA==",
         "dependencies": {
           "Microsoft.ML.OnnxRuntime": "1.23.2",
-          "Microsoft.ML.OnnxRuntimeGenAI.Managed": "0.11.3"
+          "Microsoft.ML.OnnxRuntimeGenAI.Managed": "0.11.4"
         }
       },
       "Microsoft.ML.OnnxRuntimeGenAI.Managed": {
         "type": "Transitive",
-        "resolved": "0.11.3",
-        "contentHash": "ncA2k9W7BoRHcAHvvnbIMBsQnzCgERDxNGt7XRBdo0AACs0MrwnNDXyDzMZlKMr8aDW4ZQFvm0+8soo3w4KLsQ==",
+        "resolved": "0.11.4",
+        "contentHash": "qNVk+gFtQKYm4qIZWMKHO4rqXMUtTtCfkoPLVFdMez2CTIJ7mPk8S5Cjpvm+Il3Cl8ithIj25XSfl85wl+viPQ==",
         "dependencies": {
           "Microsoft.Extensions.AI.Abstractions": "9.8.0"
         }
@@ -467,7 +467,7 @@
       "fluxindex.core": {
         "type": "Project",
         "dependencies": {
-          "FileFlux": "[0.8.0, )",
+          "FileFlux": "[0.8.2, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.1, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.1, )"
         }
@@ -475,13 +475,13 @@
       "fluxindex.sdk": {
         "type": "Project",
         "dependencies": {
-          "FileFlux": "[0.8.0, )",
+          "FileFlux": "[0.8.2, )",
           "FluxCurator": "[0.6.0, )",
           "FluxImprover": "[0.5.0, )",
-          "FluxIndex.Core": "[0.3.3, )",
-          "FluxIndex.Storage.SQLite": "[0.3.3, )",
-          "LocalAI.Embedder": "[0.7.1, )",
-          "LocalAI.Reranker": "[0.7.1, )",
+          "FluxIndex.Core": "[0.4.0, )",
+          "FluxIndex.Storage.SQLite": "[0.4.0, )",
+          "LocalAI.Embedder": "[0.7.2, )",
+          "LocalAI.Reranker": "[0.7.2, )",
           "Microsoft.Extensions.Caching.Memory": "[10.0.1, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.1, )",
           "Microsoft.Extensions.Hosting.Abstractions": "[10.0.1, )",
@@ -494,7 +494,7 @@
       "fluxindex.storage.sqlite": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.Core": "[0.3.3, )",
+          "FluxIndex.Core": "[0.4.0, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.1, )",
           "Microsoft.Extensions.Configuration.Binder": "[10.0.1, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.1, )",
@@ -505,20 +505,20 @@
       },
       "FileFlux": {
         "type": "CentralTransitive",
-        "requested": "[0.8.0, )",
-        "resolved": "0.8.0",
-        "contentHash": "3hiVcl+ecFcYjG7yEXb3JjOIFadk4kqTNpylTVUEIxtfy2Jwyag+UPHjTYjrJwuBBUvmfk76WSoxZBe7klyU7w==",
+        "requested": "[0.8.2, )",
+        "resolved": "0.8.2",
+        "contentHash": "GaDHPIEA3nd16eJbac7JLKZwfAKmN+BfWNN7TgjqjaBePMLk33jqfAkCIPJwQO2A59nXOQTCrgybX2zsqxtZmg==",
         "dependencies": {
           "CsvHelper": "33.1.0",
           "DocumentFormat.OpenXml": "3.3.0",
-          "FileFlux.Core": "0.8.0",
+          "FileFlux.Core": "0.8.2",
           "FluxCurator": "0.5.0",
           "FluxImprover": "0.5.0",
           "HtmlAgilityPack": "1.12.4",
           "LocalAI.Captioner": "0.7.0",
-          "LocalAI.Core": "0.7.0",
-          "LocalAI.Embedder": "0.7.0",
-          "LocalAI.Generator": "0.7.0",
+          "LocalAI.Core": "0.7.2",
+          "LocalAI.Embedder": "0.7.2",
+          "LocalAI.Generator": "0.7.2",
           "LocalAI.Ocr": "0.7.0",
           "Mammoth": "1.11.0",
           "Markdig": "0.44.0",
@@ -558,29 +558,29 @@
       },
       "HtmlAgilityPack": {
         "type": "CentralTransitive",
-        "requested": "[1.12.3, )",
+        "requested": "[1.12.4, )",
         "resolved": "1.12.4",
         "contentHash": "ljqvBabvFwKoLniuoQKO8b5bJfJweKLs4fUNS/V5dsvpo0A8MlJqxxn9XVmP2DaskbUXty6IYaWAi1SArGIMeQ=="
       },
       "LocalAI.Embedder": {
         "type": "CentralTransitive",
-        "requested": "[0.7.1, )",
-        "resolved": "0.7.1",
-        "contentHash": "2sSkpYrPvxSKSWfKImRQ4qA2DY5Xf0eP4E7g5of2lIkOCiXLRf0yJ28aBiuxU7mvvdBJr86JVWqIhiA9iulGuw==",
+        "requested": "[0.7.2, )",
+        "resolved": "0.7.2",
+        "contentHash": "6SjAuHC2Le//nMNCvvFi/EXS8Hkpm3G/jpJC98cTBK+/QyT4iUrHttEnBm6NitKSuGpQkCD+u0MoWiKr2r566w==",
         "dependencies": {
-          "LocalAI.Core": "0.7.1",
-          "LocalAI.Text.Core": "0.7.1",
+          "LocalAI.Core": "0.7.2",
+          "LocalAI.Text.Core": "0.7.2",
           "System.Numerics.Tensors": "10.0.1"
         }
       },
       "LocalAI.Reranker": {
         "type": "CentralTransitive",
-        "requested": "[0.7.1, )",
-        "resolved": "0.7.1",
-        "contentHash": "5f0l0oLQtMtHg74cVkaWE1y5+8hSTSRiozldOKajHY7lGTHVxs3ofx6/IYYJwn1VhfTkVCtWkgEItpYgkQGZgw==",
+        "requested": "[0.7.2, )",
+        "resolved": "0.7.2",
+        "contentHash": "slBAO/JKfhpl/SHPZwdVhQHrUQKEyscu6zudd5I4A3t2bUQJsVptWAioHK7ucWTuCiqn7HQ3J84ianwvaVVJ1Q==",
         "dependencies": {
-          "LocalAI.Core": "0.7.1",
-          "LocalAI.Text.Core": "0.7.1"
+          "LocalAI.Core": "0.7.2",
+          "LocalAI.Text.Core": "0.7.2"
         }
       },
       "Microsoft.EntityFrameworkCore": {

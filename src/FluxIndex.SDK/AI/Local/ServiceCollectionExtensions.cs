@@ -173,6 +173,49 @@ public static class ServiceCollectionExtensions
 
     #endregion
 
+    #region Text Completion Services
+
+    /// <summary>
+    /// Adds LocalAI text completion (generator) service to the service collection.
+    /// Uses local ONNX-based models for offline text generation.
+    /// </summary>
+    /// <param name="services">The service collection</param>
+    /// <param name="configureOptions">Optional configuration action</param>
+    /// <returns>Service collection for chaining</returns>
+    public static IServiceCollection AddLocalAITextCompletion(
+        this IServiceCollection services,
+        Action<LocalAITextCompletionOptions>? configureOptions = null)
+    {
+        if (configureOptions != null)
+        {
+            services.Configure(configureOptions);
+        }
+        else
+        {
+            services.TryAddSingleton(Options.Create(new LocalAITextCompletionOptions()));
+        }
+
+        services.AddSingleton<LocalAITextCompletionService>();
+        services.AddSingleton<ITextCompletionService>(sp => sp.GetRequiredService<LocalAITextCompletionService>());
+
+        return services;
+    }
+
+    /// <summary>
+    /// Adds LocalAI text completion with a specific model.
+    /// </summary>
+    /// <param name="services">The service collection</param>
+    /// <param name="modelId">Model alias (default, fast, quality, large) or HuggingFace ID</param>
+    /// <returns>Service collection for chaining</returns>
+    public static IServiceCollection AddLocalAITextCompletion(
+        this IServiceCollection services,
+        string modelId)
+    {
+        return services.AddLocalAITextCompletion(options => options.ModelId = modelId);
+    }
+
+    #endregion
+
     #region Combined Services
 
     /// <summary>

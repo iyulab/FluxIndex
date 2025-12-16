@@ -362,7 +362,6 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 
-CLAUDE.local.md
 claudedocs/
 appsettings.Development.json
 
@@ -386,6 +385,8 @@ demo/FluxIndex.Demo/data/
 **/.env.*.local
 
 # Local
+CLAUDE.md
+*.local.md
 .serena/
 local-docs/
 research-docs/

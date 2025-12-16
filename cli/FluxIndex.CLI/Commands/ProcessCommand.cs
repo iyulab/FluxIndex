@@ -260,9 +260,9 @@ public static class ProcessCommand
 
     private static void ConfigureTextCompletionService(IServiceCollection services, CliSettings settings)
     {
-        // No text completion service by default
-        // Mock will be registered by AddDocumentProcessingPipelineWithFallback
-        // Consumers can implement ITextCompletionService for external AI providers
+        // LocalAI text completion is the default - enables all LLM features without API key
+        // External providers (OpenAI, Azure, GPUStack) can override when configured
+        services.AddLocalAITextCompletion();
     }
 
     private static void DisplaySuccessResult(DocumentProcessingResult result, bool verbose)

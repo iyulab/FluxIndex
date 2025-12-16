@@ -154,6 +154,71 @@ public sealed class LocalAIEmbeddingOptions
 }
 
 /// <summary>
+/// Configuration options for LocalAI text completion (generator) service
+/// </summary>
+public sealed class LocalAITextCompletionOptions
+{
+    /// <summary>
+    /// Model identifier or alias.
+    /// Available aliases: "default" (Qwen2.5-0.5B), "fast" (TinyLlama-1.1B),
+    /// "quality" (Qwen2.5-1.5B), "large" (Qwen2.5-3B)
+    /// </summary>
+    public string ModelId { get; set; } = "default";
+
+    /// <summary>
+    /// Execution provider for ONNX runtime.
+    /// Default: Auto (automatic GPU detection)
+    /// </summary>
+    public LocalAIExecutionProvider ExecutionProvider { get; set; } = LocalAIExecutionProvider.Auto;
+
+    /// <summary>
+    /// Maximum context length for the model.
+    /// Default: 4096
+    /// </summary>
+    public int MaxContextLength { get; set; } = 4096;
+
+    /// <summary>
+    /// Top-p (nucleus) sampling parameter.
+    /// Default: 0.9
+    /// </summary>
+    public float TopP { get; set; } = 0.9f;
+
+    /// <summary>
+    /// Top-k sampling parameter.
+    /// Default: 50
+    /// </summary>
+    public int TopK { get; set; } = 50;
+
+    /// <summary>
+    /// Repetition penalty to reduce repetitive outputs.
+    /// Default: 1.1
+    /// </summary>
+    public float RepetitionPenalty { get; set; } = 1.1f;
+
+    /// <summary>
+    /// Custom cache directory for model files.
+    /// Default: null (uses HuggingFace standard cache)
+    /// </summary>
+    public string? CacheDirectory { get; set; }
+
+    /// <summary>
+    /// Pre-load model during service registration.
+    /// Default: false
+    /// </summary>
+    public bool WarmupOnStartup { get; set; } = false;
+
+    internal ExecutionProvider ToExecutionProvider() => ExecutionProvider switch
+    {
+        LocalAIExecutionProvider.Auto => LocalAI.ExecutionProvider.Auto,
+        LocalAIExecutionProvider.Cpu => LocalAI.ExecutionProvider.Cpu,
+        LocalAIExecutionProvider.Cuda => LocalAI.ExecutionProvider.Cuda,
+        LocalAIExecutionProvider.DirectML => LocalAI.ExecutionProvider.DirectML,
+        LocalAIExecutionProvider.CoreML => LocalAI.ExecutionProvider.CoreML,
+        _ => LocalAI.ExecutionProvider.Auto
+    };
+}
+
+/// <summary>
 /// Configuration options for LocalAI reranker service
 /// </summary>
 public sealed class LocalAIRerankerOptions
