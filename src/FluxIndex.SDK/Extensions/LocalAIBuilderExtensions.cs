@@ -121,42 +121,80 @@ public static class LocalAIBuilderExtensions
     }
 
     /// <summary>
-    /// Uses both LocalAI embedding and resilient reranker services.
-    /// Recommended for production scenarios requiring complete local AI stack.
+    /// Enable all LocalAI services: Embedding, Text Completion, and Reranker.
+    /// This is the recommended way to enable full AI capabilities without external API keys.
+    /// Individual services can be overridden afterward using ConfigureServices().
     /// </summary>
     /// <param name="builder">The FluxIndex context builder</param>
-    /// <param name="configureEmbedding">Embedding configuration</param>
-    /// <param name="configureReranker">Reranker configuration</param>
+    /// <param name="configure">Optional configuration for all LocalAI models</param>
     /// <returns>Builder for chaining</returns>
+    /// <example>
+    /// // Enable all LocalAI services with defaults
+    /// var context = FluxIndexContext.CreateBuilder()
+    ///     .UseSQLite("data.db")
+    ///     .UseLocalAI()
+    ///     .Build();
+    ///
+    /// // With custom models
+    /// var context = FluxIndexContext.CreateBuilder()
+    ///     .UseSQLite("data.db")
+    ///     .UseLocalAI(options => {
+    ///         options.EmbeddingModelId = "multilingual";
+    ///         options.TextCompletionModelId = "quality";
+    ///     })
+    ///     .Build();
+    ///
+    /// // Override specific service after UseLocalAI
+    /// var context = FluxIndexContext.CreateBuilder()
+    ///     .UseSQLite("data.db")
+    ///     .UseLocalAI()
+    ///     .ConfigureServices(s => s.AddSingleton&lt;IEmbeddingService&gt;(myCustomEmbedding))
+    ///     .Build();
+    /// </example>
     public static FluxIndexContextBuilder UseLocalAI(
         this FluxIndexContextBuilder builder,
-        Action<LocalAIEmbeddingOptions>? configureEmbedding = null,
-        Action<LocalAIRerankerOptions>? configureReranker = null)
+        Action<LocalAIOptions>? configure = null)
     {
         builder.ConfigureServices(services =>
         {
-            services.AddLocalAI(configureEmbedding, configureReranker);
+            services.AddLocalAI(configure);
         });
 
         return builder;
     }
 
     /// <summary>
-    /// Uses both LocalAI embedding and resilient reranker with warmup.
-    /// Recommended for production scenarios with predictable first-request latency.
+    /// Enable all LocalAI services with model warmup during startup.
+    /// Models are loaded immediately to reduce first-request latency.
     /// </summary>
     /// <param name="builder">The FluxIndex context builder</param>
-    /// <param name="configureEmbedding">Embedding configuration</param>
-    /// <param name="configureReranker">Reranker configuration</param>
+    /// <param name="configure">Optional configuration for all LocalAI models</param>
     /// <returns>Builder for chaining</returns>
     public static FluxIndexContextBuilder UseLocalAIWithWarmup(
         this FluxIndexContextBuilder builder,
-        Action<LocalAIEmbeddingOptions>? configureEmbedding = null,
-        Action<LocalAIRerankerOptions>? configureReranker = null)
+        Action<LocalAIOptions>? configure = null)
     {
         builder.ConfigureServices(services =>
         {
-            services.AddLocalAIWithWarmup(configureEmbedding, configureReranker);
+            services.AddLocalAIWithWarmup(configure);
+        });
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Uses LocalAI text completion service for HyDE, metadata enrichment, etc.
+    /// </summary>
+    /// <param name="builder">The FluxIndex context builder</param>
+    /// <param name="configure">Optional configuration action</param>
+    /// <returns>Builder for chaining</returns>
+    public static FluxIndexContextBuilder UseLocalAITextCompletion(
+        this FluxIndexContextBuilder builder,
+        Action<LocalAITextCompletionOptions>? configure = null)
+    {
+        builder.ConfigureServices(services =>
+        {
+            services.AddLocalAITextCompletion(configure);
         });
 
         return builder;

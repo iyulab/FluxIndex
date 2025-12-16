@@ -219,37 +219,106 @@ public static class ServiceCollectionExtensions
     #region Combined Services
 
     /// <summary>
-    /// Adds both LocalAI embedding and resilient reranker services.
-    /// Recommended for production scenarios.
+    /// Adds all LocalAI services: Embedding, Text Completion, and Reranker.
+    /// This is the recommended way to enable full AI capabilities without external API keys.
+    /// Individual services can be overridden after calling this method.
     /// </summary>
     /// <param name="services">The service collection</param>
-    /// <param name="configureEmbedding">Embedding configuration</param>
-    /// <param name="configureReranker">Reranker configuration</param>
+    /// <param name="configure">Optional configuration for all LocalAI options</param>
     /// <returns>Service collection for chaining</returns>
+    /// <example>
+    /// // Enable all LocalAI services with defaults
+    /// services.AddLocalAI();
+    ///
+    /// // With custom configuration
+    /// services.AddLocalAI(options => {
+    ///     options.EmbeddingModelId = "multilingual";
+    ///     options.TextCompletionModelId = "quality";
+    /// });
+    ///
+    /// // Override specific service after AddLocalAI
+    /// services.AddLocalAI();
+    /// services.AddSingleton&lt;IEmbeddingService&gt;(myCustomEmbedding);
+    /// </example>
     public static IServiceCollection AddLocalAI(
         this IServiceCollection services,
-        Action<LocalAIEmbeddingOptions>? configureEmbedding = null,
-        Action<LocalAIRerankerOptions>? configureReranker = null)
+        Action<LocalAIOptions>? configure = null)
     {
-        services.AddLocalAIEmbedding(configureEmbedding);
-        services.AddResilientLocalAIReranker(configureReranker);
+        var options = new LocalAIOptions();
+        configure?.Invoke(options);
+
+        // Embedding (default: bge-small-en-v1.5)
+        services.AddLocalAIEmbedding(opts =>
+        {
+            opts.ModelId = options.EmbeddingModelId ?? "default";
+        });
+
+        // Text Completion (default: Qwen2.5-0.5B)
+        services.AddLocalAITextCompletion(opts =>
+        {
+            opts.ModelId = options.TextCompletionModelId ?? "default";
+        });
+
+        // Reranker with fallback (default: cross-encoder)
+        services.AddResilientLocalAIReranker(opts =>
+        {
+            opts.ModelId = options.RerankerModelId ?? "default";
+        });
 
         return services;
     }
 
     /// <summary>
-    /// Adds both LocalAI embedding and resilient reranker with warmup.
+    /// Adds all LocalAI services with model warmup during startup.
+    /// Models are loaded immediately to reduce first-request latency.
     /// </summary>
     public static IServiceCollection AddLocalAIWithWarmup(
         this IServiceCollection services,
-        Action<LocalAIEmbeddingOptions>? configureEmbedding = null,
-        Action<LocalAIRerankerOptions>? configureReranker = null)
+        Action<LocalAIOptions>? configure = null)
     {
-        services.AddLocalAIEmbeddingWithWarmup(configureEmbedding);
-        services.AddResilientLocalAIRerankerWithWarmup(configureReranker);
+        var options = new LocalAIOptions();
+        configure?.Invoke(options);
+
+        services.AddLocalAIEmbeddingWithWarmup(opts =>
+        {
+            opts.ModelId = options.EmbeddingModelId ?? "default";
+        });
+
+        services.AddLocalAITextCompletion(opts =>
+        {
+            opts.ModelId = options.TextCompletionModelId ?? "default";
+        });
+
+        services.AddResilientLocalAIRerankerWithWarmup(opts =>
+        {
+            opts.ModelId = options.RerankerModelId ?? "default";
+        });
 
         return services;
     }
 
     #endregion
+}
+
+/// <summary>
+/// Combined options for all LocalAI services.
+/// </summary>
+public class LocalAIOptions
+{
+    /// <summary>
+    /// Embedding model ID. Available: default, fast, quality, large, multilingual, or HuggingFace ID.
+    /// Default: "default" (bge-small-en-v1.5)
+    /// </summary>
+    public string? EmbeddingModelId { get; set; }
+
+    /// <summary>
+    /// Text completion model ID. Available: default, fast, quality, large, or HuggingFace ID.
+    /// Default: "default" (Qwen2.5-0.5B)
+    /// </summary>
+    public string? TextCompletionModelId { get; set; }
+
+    /// <summary>
+    /// Reranker model ID. Default: "default" (ms-marco-MiniLM)
+    /// </summary>
+    public string? RerankerModelId { get; set; }
 }
