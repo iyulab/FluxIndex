@@ -2,36 +2,6 @@
   "version": 2,
   "dependencies": {
     "net10.0": {
-      "FileFlux": {
-        "type": "Direct",
-        "requested": "[0.8.2, )",
-        "resolved": "0.8.2",
-        "contentHash": "GaDHPIEA3nd16eJbac7JLKZwfAKmN+BfWNN7TgjqjaBePMLk33jqfAkCIPJwQO2A59nXOQTCrgybX2zsqxtZmg==",
-        "dependencies": {
-          "CsvHelper": "33.1.0",
-          "DocumentFormat.OpenXml": "3.3.0",
-          "FileFlux.Core": "0.8.2",
-          "FluxCurator": "0.5.0",
-          "FluxImprover": "0.5.0",
-          "HtmlAgilityPack": "1.12.4",
-          "LocalAI.Captioner": "0.7.0",
-          "LocalAI.Core": "0.7.2",
-          "LocalAI.Embedder": "0.7.2",
-          "LocalAI.Generator": "0.7.2",
-          "LocalAI.Ocr": "0.7.0",
-          "Mammoth": "1.11.0",
-          "Markdig": "0.44.0",
-          "Microsoft.Extensions.Caching.Memory": "10.0.1",
-          "Microsoft.Extensions.Configuration": "10.0.1",
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.1",
-          "Microsoft.Extensions.Logging.Abstractions": "10.0.1",
-          "Microsoft.Extensions.ObjectPool": "10.0.1",
-          "Microsoft.Extensions.Options.ConfigurationExtensions": "10.0.1",
-          "NTextCat": "0.3.65",
-          "PdfPig": "0.1.12",
-          "ReverseMarkdown": "4.7.1"
-        }
-      },
       "FluxCurator": {
         "type": "Direct",
         "requested": "[0.6.0, )",
@@ -171,42 +141,6 @@
         "resolved": "1.4.0",
         "contentHash": "6ph8mpaQx0KL0COYRt0kI8MB9gSp1PtKijKMhJU//+aVFgKAJLKDesG/+26JSaVCOrHNgPf12wpfoyRcMYOeXg=="
       },
-      "CsvHelper": {
-        "type": "Transitive",
-        "resolved": "33.1.0",
-        "contentHash": "kqfTOZGrn7NarNeXgjh86JcpTHUoeQDMB8t9NVa/ZtlSYiV1rxfRnQ49WaJsob4AiGrbK0XDzpyKkBwai4F8eg=="
-      },
-      "DocumentFormat.OpenXml": {
-        "type": "Transitive",
-        "resolved": "3.3.0",
-        "contentHash": "JogRPJNiE6kKvbuCqVRX691pPWeGMqdQgjrUwRYkdpfkMmtElfqAgcRR73geYj7OtBeEpstldZXXzJw27LUI9w==",
-        "dependencies": {
-          "DocumentFormat.OpenXml.Framework": "3.3.0"
-        }
-      },
-      "DocumentFormat.OpenXml.Framework": {
-        "type": "Transitive",
-        "resolved": "3.3.0",
-        "contentHash": "R5CLzEoeyr7XDB7g3NTxRobcU19agaxVAhGZm+fZUShJGiU4bw8oUgnA2BNFepigJckfFMayOBMAbV3kDXNInA==",
-        "dependencies": {
-          "System.IO.Packaging": "8.0.1"
-        }
-      },
-      "FileFlux.Core": {
-        "type": "Transitive",
-        "resolved": "0.8.2",
-        "contentHash": "ynhMQ/SQ1i0NLVRhq0bjx4huYlJBDTBA4fBAvXI+MV6/8DHrPjmyx1T+Gr6iq6XRbgR0VutRMx3p5uhK6lo2pA==",
-        "dependencies": {
-          "CsvHelper": "33.1.0",
-          "DocumentFormat.OpenXml": "3.3.0",
-          "HtmlAgilityPack": "1.12.4",
-          "Mammoth": "1.11.0",
-          "Markdig": "0.44.0",
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.1",
-          "PdfPig": "0.1.12",
-          "ReverseMarkdown": "4.7.1"
-        }
-      },
       "FluxCurator.Core": {
         "type": "Transitive",
         "resolved": "0.6.0",
@@ -216,16 +150,6 @@
         "type": "Transitive",
         "resolved": "3.30.2",
         "contentHash": "Y2aOVLIt75yeeEWigg9V9YnjsEm53sADtLGq0gLhwaXpk3iu8tYSoauolyhenagA2sWno2TQ2WujI0HQd6s1Vw=="
-      },
-      "LocalAI.Captioner": {
-        "type": "Transitive",
-        "resolved": "0.7.0",
-        "contentHash": "gnct1iB0+che6NZEMZQdeXChcDLQ5f8eTjj9w43vauYkFAzpEqc8yqZnEK0vNnEBs6nDcwPaGAJCe/0pxdCqkQ==",
-        "dependencies": {
-          "LocalAI.Text.Core": "0.7.0",
-          "LocalAI.Vision.Core": "0.7.0",
-          "System.Numerics.Tensors": "10.0.1"
-        }
       },
       "LocalAI.Core": {
         "type": "Transitive",
@@ -237,20 +161,11 @@
       },
       "LocalAI.Generator": {
         "type": "Transitive",
-        "resolved": "0.7.2",
-        "contentHash": "q3FU+uSYOEZND7IwqBPDj6JY/MGFFrxusBctqtsKcgAxP9a8IHQt2hxhBVa74Oa/yZG6qKBa8ASLTMxnk5waXQ==",
-        "dependencies": {
-          "LocalAI.Core": "0.7.2",
-          "Microsoft.ML.OnnxRuntimeGenAI": "0.11.4"
-        }
-      },
-      "LocalAI.Ocr": {
-        "type": "Transitive",
         "resolved": "0.7.0",
-        "contentHash": "7sXE38c4OJfpDiK50sGW31ILnQWQl4s3BQBJPImc1zqmSlp3RQ+CBejHXhyDVADRc7mT64XzcDU7sPNoqbf6Cw==",
+        "contentHash": "nWcKyqopvy946MddPWeIELGhOctspcpe8Ze6QatNnqFKdnp0p4tJOVvuC1RdgXZL6oki022IdC0LgNcXrsIv8Q==",
         "dependencies": {
-          "LocalAI.Vision.Core": "0.7.0",
-          "System.Numerics.Tensors": "10.0.1"
+          "LocalAI.Core": "0.7.0",
+          "Microsoft.ML.OnnxRuntimeGenAI": "0.11.3"
         }
       },
       "LocalAI.Text.Core": {
@@ -261,20 +176,6 @@
           "LocalAI.Core": "0.7.2",
           "Microsoft.ML.Tokenizers": "2.0.0"
         }
-      },
-      "LocalAI.Vision.Core": {
-        "type": "Transitive",
-        "resolved": "0.7.0",
-        "contentHash": "fd9vx1jdKFeeZtXBVnfZIKutf3eTFL7cLVCLsnz9qyZ8j4Qh9pWDgIhoMPxvyEQ5efOdC6wFqttSRxbi7qlCgw==",
-        "dependencies": {
-          "LocalAI.Core": "0.7.0",
-          "SixLabors.ImageSharp": "3.1.12"
-        }
-      },
-      "Mammoth": {
-        "type": "Transitive",
-        "resolved": "1.11.0",
-        "contentHash": "Gqb0ylU9ADphhD04gzYSncOeGsuQobm1ldgS+1xvKoJU+eiSydEla+FR6cDXf+o42j0vo9RXWJNNmsVSn6MPxA=="
       },
       "Markdig": {
         "type": "Transitive",
@@ -374,11 +275,6 @@
           "Microsoft.Extensions.Primitives": "10.0.1"
         }
       },
-      "Microsoft.Extensions.ObjectPool": {
-        "type": "Transitive",
-        "resolved": "10.0.1",
-        "contentHash": "HqAEbtoAhgvH53c54IV5e4vQ60PYvl7Z/WIHsbet+UGGE7n+7dwVNXw1mb9LZlWbsxnupCevvtgIne5P//ZKpQ=="
-      },
       "Microsoft.Extensions.Options.ConfigurationExtensions": {
         "type": "Transitive",
         "resolved": "10.0.1",
@@ -414,17 +310,17 @@
       },
       "Microsoft.ML.OnnxRuntimeGenAI": {
         "type": "Transitive",
-        "resolved": "0.11.4",
-        "contentHash": "1ZswbhnSS9dszFIbXjNfjS9g+3NEonO/MhFKTU2dB2mkMnLsR/r9QNUkpuNA50q2dwOCUq7/k7tyBBrnGLS6gA==",
+        "resolved": "0.11.3",
+        "contentHash": "TXzZl3rEkplhPeIZZKQBvnWIqHKPOQqyCD5DNpF4BC80byzwACf7ytxiSvVHKfKWFcKroW29Bm9mkBP7o3FOBA==",
         "dependencies": {
           "Microsoft.ML.OnnxRuntime": "1.23.2",
-          "Microsoft.ML.OnnxRuntimeGenAI.Managed": "0.11.4"
+          "Microsoft.ML.OnnxRuntimeGenAI.Managed": "0.11.3"
         }
       },
       "Microsoft.ML.OnnxRuntimeGenAI.Managed": {
         "type": "Transitive",
-        "resolved": "0.11.4",
-        "contentHash": "qNVk+gFtQKYm4qIZWMKHO4rqXMUtTtCfkoPLVFdMez2CTIJ7mPk8S5Cjpvm+Il3Cl8ithIj25XSfl85wl+viPQ==",
+        "resolved": "0.11.3",
+        "contentHash": "ncA2k9W7BoRHcAHvvnbIMBsQnzCgERDxNGt7XRBdo0AACs0MrwnNDXyDzMZlKMr8aDW4ZQFvm0+8soo3w4KLsQ==",
         "dependencies": {
           "Microsoft.Extensions.AI.Abstractions": "9.8.0"
         }
@@ -446,16 +342,6 @@
           "System.ComponentModel.Annotations": "5.0.0"
         }
       },
-      "NTextCat": {
-        "type": "Transitive",
-        "resolved": "0.3.65",
-        "contentHash": "Yc2mJwJJPf5rEmzadOPFWmsejuHbCIqKwmarrwibNT6MhySs3COKZ1dEL7Z+UzsiQ7pO2RWhpvatilxB+l4DaQ=="
-      },
-      "PdfPig": {
-        "type": "Transitive",
-        "resolved": "0.1.12",
-        "contentHash": "QP5Ve0xOkqK+zejRIN+R3UDjceIjdViBBIGMSmbyh6MfTmgrQ7FAx3YmDUqIgVY2gwPZRUuZFPJJdppBI0pw/g=="
-      },
       "Polly": {
         "type": "Transitive",
         "resolved": "8.6.5",
@@ -476,19 +362,6 @@
         "dependencies": {
           "Polly": "7.1.0"
         }
-      },
-      "ReverseMarkdown": {
-        "type": "Transitive",
-        "resolved": "4.7.1",
-        "contentHash": "Tz8yJXg8J1O9xJn6fXzjeEcLTYjfwbauCGwK4f/dpxOOpo3iniXIggmRlJ7F91yHJPB0Gm4lk1/qV0Jxip4a8A==",
-        "dependencies": {
-          "HtmlAgilityPack": "1.12.1"
-        }
-      },
-      "SixLabors.ImageSharp": {
-        "type": "Transitive",
-        "resolved": "3.1.12",
-        "contentHash": "iAg6zifihXEFS/t7fiHhZBGAdCp3FavsF4i2ZIDp0JfeYeDVzvmlbY1CNhhIKimaIzrzSi5M/NBFcWvZT2rB/A=="
       },
       "SQLitePCLRaw.bundle_e_sqlite3": {
         "type": "Transitive",
@@ -522,11 +395,6 @@
         "resolved": "5.0.0",
         "contentHash": "dMkqfy2el8A8/I76n2Hi1oBFEbG1SfxD2l5nhwXV3XjlnOmwxJlQbYpJH4W51odnU9sARCSAgv7S3CyAFMkpYg=="
       },
-      "System.IO.Packaging": {
-        "type": "Transitive",
-        "resolved": "8.0.1",
-        "contentHash": "KYkIOAvPexQOLDxPO2g0BVoWInnQhPpkFzRqvNrNrMhVT6kqhVr0zEb6KCHlptLFukxnZrjuMVAnxK7pOGUYrw=="
-      },
       "System.Numerics.Tensors": {
         "type": "Transitive",
         "resolved": "10.0.1",
@@ -540,7 +408,7 @@
       "fluxindex.core": {
         "type": "Project",
         "dependencies": {
-          "FileFlux": "[0.8.2, )",
+          "FileFlux": "[0.8.5, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.1, )",
           "Microsoft.Extensions.Logging.Abstractions": "[10.0.1, )"
         }
@@ -548,7 +416,7 @@
       "fluxindex.storage.sqlite": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.Core": "[0.4.0, )",
+          "FluxIndex.Core": "[0.4.1, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.1, )",
           "Microsoft.Extensions.Configuration.Binder": "[10.0.1, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.1, )",

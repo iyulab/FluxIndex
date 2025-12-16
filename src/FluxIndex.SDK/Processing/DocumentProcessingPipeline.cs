@@ -403,31 +403,45 @@ public class DocumentProcessingPipeline
         return await _documentProcessor.ProcessAsync(filePath, options, cancellationToken);
     }
 
+    /// <summary>
+    /// Extract images from document using FileFlux's IDocumentProcessor.
+    /// Supported formats (FileFlux v0.8.5+): HTML, DOCX, PDF, PPTX, XLSX
+    /// </summary>
     private async Task<Dictionary<string, byte[]>> ExtractImagesAsync(string filePath, CancellationToken cancellationToken)
     {
         var images = new Dictionary<string, byte[]>();
+        var extension = Path.GetExtension(filePath).ToLowerInvariant();
+
+        // Formats with image extraction support in FileFlux v0.8.5+
+        var supportedFormats = new[] { ".html", ".htm", ".docx", ".pdf", ".pptx", ".xlsx" };
+
+        if (!supportedFormats.Contains(extension))
+        {
+            _logger.LogDebug("Image extraction not supported for format: {Extension}", extension);
+            return images;
+        }
 
         try
         {
-            await using var stream = File.OpenRead(filePath);
-            var extension = Path.GetExtension(filePath).ToLowerInvariant();
+            // Use IDocumentProcessor.ExtractAsync for unified image extraction
+            var rawContent = await _documentProcessor.ExtractAsync(filePath, cancellationToken);
 
-            if (extension is ".html" or ".htm")
+            if (rawContent.Images != null && rawContent.Images.Count > 0)
             {
-                var reader = new HtmlDocumentReader();
-                var rawContent = await reader.ExtractAsync(stream, Path.GetFileName(filePath), cancellationToken);
-
-                if (rawContent.Images != null)
+                foreach (var image in rawContent.Images.Where(i => i.Data != null && i.Data.Length > 0))
                 {
-                    int imageIndex = 0;
-                    foreach (var image in rawContent.Images.Where(i => i.Data != null))
+                    var imageId = image.Id ?? $"img_{images.Count:D3}";
+                    var imageExtension = GetImageExtension(image.MimeType);
+                    var fileName = $"{imageId}{imageExtension}";
+
+                    // Avoid duplicate keys
+                    if (!images.ContainsKey(fileName))
                     {
-                        var imageName = $"img_{imageIndex:D3}";
-                        var imageExtension = GetImageExtension(image.MimeType);
-                        images[$"{imageName}{imageExtension}"] = image.Data!;
-                        imageIndex++;
+                        images[fileName] = image.Data!;
                     }
                 }
+
+                _logger.LogDebug("Extracted {Count} images from {FilePath}", images.Count, filePath);
             }
         }
         catch (Exception ex)
