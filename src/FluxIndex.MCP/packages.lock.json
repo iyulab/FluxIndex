@@ -122,8 +122,8 @@
       },
       "FluxCurator.Core": {
         "type": "Transitive",
-        "resolved": "0.6.0",
-        "contentHash": "AWbZB9qgdEHRAicZS6CVgJGNlE/C9MZdupc2bPVh1Ir/VrlyqWUvs7Vpu20cTj023h3wrzS12Cdc62dWaGp4QQ=="
+        "resolved": "0.6.1",
+        "contentHash": "Ocn7PloeFrIJjYl1uyLa5PhjLMEwy/GOsjrpKeImcC8fG9xoBvCbYpCpFtloLPm6yHpPqD0M3IbbtC8OnbU35w=="
       },
       "Google.Protobuf": {
         "type": "Transitive",
@@ -453,6 +453,14 @@
           "Microsoft.Extensions.Logging.Abstractions": "10.0.0"
         }
       },
+      "Npgsql": {
+        "type": "Transitive",
+        "resolved": "10.0.0",
+        "contentHash": "xZAYhPOU2rUIFpV48xsqhCx9vXs6Y+0jX2LCoSEfDFYMw9jtAOUk3iQsCnDLrFIv9NT3JGMihn7nnuZsPKqJmA==",
+        "dependencies": {
+          "Microsoft.Extensions.Logging.Abstractions": "10.0.0"
+        }
+      },
       "NTextCat": {
         "type": "Transitive",
         "resolved": "0.3.65",
@@ -561,10 +569,11 @@
         "type": "Project",
         "dependencies": {
           "FileFlux": "[0.8.6, )",
-          "FluxCurator": "[0.6.0, )",
+          "FluxCurator": "[0.6.1, )",
           "FluxImprover": "[0.5.0, )",
-          "FluxIndex.Core": "[0.4.1, )",
-          "FluxIndex.Storage.SQLite": "[0.4.1, )",
+          "FluxIndex.Core": "[0.5.0, )",
+          "FluxIndex.Storage.PostgreSQL": "[0.5.0, )",
+          "FluxIndex.Storage.SQLite": "[0.5.0, )",
           "LocalAI.Embedder": "[0.7.2, )",
           "LocalAI.Reranker": "[0.7.2, )",
           "Microsoft.Extensions.Caching.Memory": "[10.0.1, )",
@@ -576,10 +585,21 @@
           "WebFlux": "[0.1.8, )"
         }
       },
+      "fluxindex.storage.postgresql": {
+        "type": "Project",
+        "dependencies": {
+          "FluxIndex.Core": "[0.5.0, )",
+          "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.1, )",
+          "Microsoft.Extensions.Hosting": "[10.0.1, )",
+          "Microsoft.Extensions.Logging.Abstractions": "[10.0.1, )",
+          "Npgsql.EntityFrameworkCore.PostgreSQL": "[10.0.0, )",
+          "Pgvector.EntityFrameworkCore": "[0.2.2, )"
+        }
+      },
       "fluxindex.storage.sqlite": {
         "type": "Project",
         "dependencies": {
-          "FluxIndex.Core": "[0.4.1, )",
+          "FluxIndex.Core": "[0.5.0, )",
           "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.1, )",
           "Microsoft.Extensions.Configuration.Binder": "[10.0.1, )",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "[10.0.1, )",
@@ -620,12 +640,12 @@
       },
       "FluxCurator": {
         "type": "CentralTransitive",
-        "requested": "[0.6.0, )",
-        "resolved": "0.6.0",
-        "contentHash": "Yx0sCqDKO3mI8z+fDADBixeZsyYdvswiGteZP1JcxRBy4uIm8r1z8GGCbyko8BFBs1Py5TIFLZuusFiSsDI2aA==",
+        "requested": "[0.6.1, )",
+        "resolved": "0.6.1",
+        "contentHash": "rF1dFC7EfLhxDxwnEV1E2sglYwYInuT/y9zDWwgh3IMu7CsXtO+/UcsPEA4O33uV01BRU+hVzkbTYGMSrbKM+A==",
         "dependencies": {
-          "FluxCurator.Core": "0.6.0",
-          "LocalAI.Embedder": "0.7.0",
+          "FluxCurator.Core": "0.6.1",
+          "LocalAI.Embedder": "0.7.2",
           "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.1"
         }
       },
@@ -817,6 +837,36 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.1",
           "Microsoft.Extensions.Primitives": "10.0.1"
+        }
+      },
+      "Npgsql.EntityFrameworkCore.PostgreSQL": {
+        "type": "CentralTransitive",
+        "requested": "[10.0.0, )",
+        "resolved": "10.0.0",
+        "contentHash": "E2+uSWxSB8LdsUVwPaqRWOcGOP92biry2JEwc0KJMdLJF+aZdczeIdEXVwEyv4nSVMQJH0o8tLhyAMiR6VF0lw==",
+        "dependencies": {
+          "Microsoft.EntityFrameworkCore": "[10.0.0, 11.0.0)",
+          "Microsoft.EntityFrameworkCore.Relational": "[10.0.0, 11.0.0)",
+          "Npgsql": "10.0.0"
+        }
+      },
+      "Pgvector": {
+        "type": "CentralTransitive",
+        "requested": "[0.3.0, )",
+        "resolved": "0.3.1",
+        "contentHash": "XeuF5F5krjjv9/Mlt9vtl5Sd7B6ps82XhsA98qP5G6KAjL2bDPr+nvXTTXrJoKiwdE+R5VXoq1t0hWFkgbMyZw==",
+        "dependencies": {
+          "Npgsql": "8.0.3"
+        }
+      },
+      "Pgvector.EntityFrameworkCore": {
+        "type": "CentralTransitive",
+        "requested": "[0.2.2, )",
+        "resolved": "0.2.2",
+        "contentHash": "U4C48O+f31y7lWlUY+fsZrOZAvzI8rCsQb/sEWF3MfGYX/153uQingO2/8YoXeLGx00Wl9na8zl89gehXtMbFg==",
+        "dependencies": {
+          "Npgsql.EntityFrameworkCore.PostgreSQL": "8.0.0",
+          "Pgvector": "0.3.1"
         }
       },
       "sqlite-vec": {

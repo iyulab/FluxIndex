@@ -323,7 +323,7 @@
       },
       "FluxCurator": {
         "type": "CentralTransitive",
-        "requested": "[0.6.0, )",
+        "requested": "[0.6.1, )",
         "resolved": "0.5.0",
         "contentHash": "YXSzMk84UQLDoyUKf4dsXm6P2Ssug7fYgxuFXWtbCKAgYSIdnOcWGPsfD8rWxPSwMmi7Fp3p77otdO2bFM6l6g==",
         "dependencies": {
