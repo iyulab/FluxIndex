@@ -34,6 +34,16 @@ public class FluxIndexOptions
     public CacheOptions Cache { get; set; } = new();
 
     /// <summary>
+    /// 그래프 저장소 설정 (청크 계층 구조 및 관계)
+    /// </summary>
+    public GraphStoreOptions GraphStore { get; set; } = new();
+
+    /// <summary>
+    /// 시맨틱 캐시 설정 (쿼리 유사도 기반 결과 캐싱)
+    /// </summary>
+    public SemanticCacheOptions SemanticCache { get; set; } = new();
+
+    /// <summary>
     /// 품질 모니터링 설정
     /// </summary>
     public QualityMonitoringOptions QualityMonitoring { get; set; } = new();
@@ -123,6 +133,98 @@ public class CacheOptions
     public TimeSpan CacheTTL { get; set; } = TimeSpan.FromHours(1);
     public string CacheProvider { get; set; } = "Memory";
     public string RedisConnectionString { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// 그래프 저장소 옵션 (청크 계층 구조 및 관계)
+/// </summary>
+public class GraphStoreOptions
+{
+    /// <summary>
+    /// 그래프 저장소 프로바이더 ("None", "SQLite", "PostgreSQL")
+    /// </summary>
+    public string Provider { get; set; } = "None";
+
+    /// <summary>
+    /// 연결 문자열 (벡터 저장소와 동일한 연결 사용 시 비워둠)
+    /// </summary>
+    public string ConnectionString { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 자동 마이그레이션 활성화
+    /// </summary>
+    public bool AutoMigrate { get; set; } = true;
+
+    /// <summary>
+    /// 재귀 쿼리 최대 깊이 (순환 방지)
+    /// </summary>
+    public int MaxRecursionDepth { get; set; } = 100;
+
+    /// <summary>
+    /// 벡터 저장소와 동일한 연결 문자열 사용 여부
+    /// </summary>
+    public bool UseVectorStoreConnection { get; set; } = true;
+}
+
+/// <summary>
+/// 시맨틱 캐시 옵션 (쿼리 유사도 기반 결과 캐싱)
+/// </summary>
+public class SemanticCacheOptions
+{
+    /// <summary>
+    /// 시맨틱 캐시 프로바이더 ("None", "SQLite", "PostgreSQL", "Redis")
+    /// </summary>
+    public string Provider { get; set; } = "None";
+
+    /// <summary>
+    /// 연결 문자열 (벡터 저장소와 동일한 연결 사용 시 비워둠)
+    /// </summary>
+    public string ConnectionString { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 자동 마이그레이션 활성화
+    /// </summary>
+    public bool AutoMigrate { get; set; } = true;
+
+    /// <summary>
+    /// 유사도 임계값 (이 값 이상의 유사도일 때 캐시 히트)
+    /// </summary>
+    public float SimilarityThreshold { get; set; } = 0.85f;
+
+    /// <summary>
+    /// 기본 캐시 만료 시간
+    /// </summary>
+    public TimeSpan DefaultExpiry { get; set; } = TimeSpan.FromHours(24);
+
+    /// <summary>
+    /// 최대 캐시 항목 수
+    /// </summary>
+    public int MaxEntries { get; set; } = 10000;
+
+    /// <summary>
+    /// 임베딩 차원 수 (pgvector 인덱스용)
+    /// </summary>
+    public int EmbeddingDimensions { get; set; } = 1536;
+
+    /// <summary>
+    /// 자동 정리 활성화
+    /// </summary>
+    public bool EnableAutoCleanup { get; set; } = true;
+
+    /// <summary>
+    /// 정리 간격
+    /// </summary>
+    public TimeSpan CleanupInterval { get; set; } = TimeSpan.FromMinutes(30);
+
+    /// <summary>
+    /// 벡터 저장소와 동일한 연결 문자열 사용 여부
+    /// </summary>
+    public bool UseVectorStoreConnection { get; set; } = true;
+
+    /// <summary>
+    /// PostgreSQL: UNLOGGED 테이블 사용 (빠른 쓰기, 크래시 시 데이터 손실 가능)
+    /// </summary>
+    public bool UseUnloggedTable { get; set; } = true;
 }
 
 /// <summary>

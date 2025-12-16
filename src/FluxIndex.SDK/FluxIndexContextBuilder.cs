@@ -8,6 +8,10 @@ using FluxIndex.SDK.Services;
 using FluxIndex.SDK.Extensions;
 using FluxIndex.SDK.AI.Local;
 using FluxIndex.Storage.SQLite;
+using FluxIndex.Storage.SQLite.Graph;
+using FluxIndex.Storage.SQLite.Cache;
+using FluxIndex.Storage.PostgreSQL.Graph;
+using FluxIndex.Storage.PostgreSQL.Cache;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Caching.Memory;
@@ -47,33 +51,65 @@ public class FluxIndexContextBuilder
     }
 
     /// <summary>
-    /// PostgreSQL 벡터 저장소 사용
+    /// PostgreSQL 사용 - Fullstack RAG (Vector + Graph + SemanticCache 모두 활성화)
+    /// 개별 구성요소는 이후 오버라이드 가능: UsePostgreSQLGraph(), UsePostgreSQLSemanticCache() 등
     /// </summary>
     public FluxIndexContextBuilder UsePostgreSQL(string connectionString)
     {
+        // Vector Store
         _options.VectorStore.Provider = "PostgreSQL";
         _options.VectorStore.ConnectionString = connectionString;
+
+        // Graph Store (동일 연결 사용)
+        _options.GraphStore.Provider = "PostgreSQL";
+        _options.GraphStore.UseVectorStoreConnection = true;
+
+        // Semantic Cache (동일 연결 사용)
+        _options.SemanticCache.Provider = "PostgreSQL";
+        _options.SemanticCache.UseVectorStoreConnection = true;
+
         return this;
     }
 
     /// <summary>
-    /// SQLite 벡터 저장소 사용 (로컬 개발용)
+    /// SQLite 사용 - Fullstack RAG (Vector + Graph + SemanticCache 모두 활성화)
+    /// 개별 구성요소는 이후 오버라이드 가능: UseSQLiteGraph(), UseSQLiteSemanticCache() 등
     /// </summary>
     public FluxIndexContextBuilder UseSQLite(string databasePath = "fluxindex.db")
     {
+        // Vector Store
         _options.VectorStore.Provider = "SQLite";
         _options.VectorStore.ConnectionString = $"Data Source={databasePath}";
+
+        // Graph Store (동일 연결 사용)
+        _options.GraphStore.Provider = "SQLite";
+        _options.GraphStore.UseVectorStoreConnection = true;
+
+        // Semantic Cache (동일 연결 사용)
+        _options.SemanticCache.Provider = "SQLite";
+        _options.SemanticCache.UseVectorStoreConnection = true;
+
         return this;
     }
 
     /// <summary>
-    /// SQLite 인메모리 벡터 저장소 사용 (테스트용)
+    /// SQLite 인메모리 사용 - Fullstack RAG (테스트용, 모든 기능 활성화)
     /// </summary>
     public FluxIndexContextBuilder UseSQLiteInMemory()
     {
+        // Vector Store
         _options.VectorStore.Provider = "SQLite";
         // Shared cache mode for in-memory database to allow multiple connections
         _options.VectorStore.ConnectionString = "Data Source=:memory:;Mode=Memory;Cache=Shared";
+
+        // Graph Store (동일 연결 사용)
+        _options.GraphStore.Provider = "SQLite";
+        _options.GraphStore.UseVectorStoreConnection = true;
+
+        // Semantic Cache (동일 연결 사용)
+        _options.SemanticCache.Provider = "SQLite";
+        _options.SemanticCache.UseVectorStoreConnection = true;
+
         return this;
     }
 
@@ -170,6 +206,147 @@ public class FluxIndexContextBuilder
         _options.Cache.EnableSearchCache = true;
         return this;
     }
+
+    #region Component Disable Options
+
+    /// <summary>
+    /// 그래프 저장소 비활성화 (Vector + SemanticCache만 사용)
+    /// </summary>
+    public FluxIndexContextBuilder WithoutGraph()
+    {
+        _options.GraphStore.Provider = "None";
+        return this;
+    }
+
+    /// <summary>
+    /// 시맨틱 캐시 비활성화 (Vector + Graph만 사용)
+    /// </summary>
+    public FluxIndexContextBuilder WithoutSemanticCache()
+    {
+        _options.SemanticCache.Provider = "None";
+        return this;
+    }
+
+    /// <summary>
+    /// Vector Store만 사용 (Graph + SemanticCache 비활성화)
+    /// </summary>
+    public FluxIndexContextBuilder VectorOnly()
+    {
+        _options.GraphStore.Provider = "None";
+        _options.SemanticCache.Provider = "None";
+        return this;
+    }
+
+    #endregion
+
+    #region Graph Store Configuration
+
+    /// <summary>
+    /// SQLite 그래프 저장소 사용 (벡터 저장소와 동일한 연결)
+    /// 청크 계층 구조 및 관계를 SQLite에 저장
+    /// </summary>
+    public FluxIndexContextBuilder UseSQLiteGraph()
+    {
+        _options.GraphStore.Provider = "SQLite";
+        _options.GraphStore.UseVectorStoreConnection = true;
+        return this;
+    }
+
+    /// <summary>
+    /// SQLite 그래프 저장소 사용 (별도 연결 문자열)
+    /// </summary>
+    public FluxIndexContextBuilder UseSQLiteGraph(string connectionString)
+    {
+        _options.GraphStore.Provider = "SQLite";
+        _options.GraphStore.ConnectionString = connectionString;
+        _options.GraphStore.UseVectorStoreConnection = false;
+        return this;
+    }
+
+    /// <summary>
+    /// PostgreSQL 그래프 저장소 사용 (벡터 저장소와 동일한 연결)
+    /// JSONB 및 재귀 CTE를 활용한 그래프 저장
+    /// </summary>
+    public FluxIndexContextBuilder UsePostgreSQLGraph()
+    {
+        _options.GraphStore.Provider = "PostgreSQL";
+        _options.GraphStore.UseVectorStoreConnection = true;
+        return this;
+    }
+
+    /// <summary>
+    /// PostgreSQL 그래프 저장소 사용 (별도 연결 문자열)
+    /// </summary>
+    public FluxIndexContextBuilder UsePostgreSQLGraph(string connectionString)
+    {
+        _options.GraphStore.Provider = "PostgreSQL";
+        _options.GraphStore.ConnectionString = connectionString;
+        _options.GraphStore.UseVectorStoreConnection = false;
+        return this;
+    }
+
+    #endregion
+
+    #region Semantic Cache Configuration
+
+    /// <summary>
+    /// SQLite 시맨틱 캐시 사용 (벡터 저장소와 동일한 연결)
+    /// 쿼리 유사도 기반 결과 캐싱
+    /// </summary>
+    public FluxIndexContextBuilder UseSQLiteSemanticCache(float similarityThreshold = 0.85f)
+    {
+        _options.SemanticCache.Provider = "SQLite";
+        _options.SemanticCache.UseVectorStoreConnection = true;
+        _options.SemanticCache.SimilarityThreshold = similarityThreshold;
+        return this;
+    }
+
+    /// <summary>
+    /// SQLite 시맨틱 캐시 사용 (별도 연결 문자열)
+    /// </summary>
+    public FluxIndexContextBuilder UseSQLiteSemanticCache(string connectionString, float similarityThreshold = 0.85f)
+    {
+        _options.SemanticCache.Provider = "SQLite";
+        _options.SemanticCache.ConnectionString = connectionString;
+        _options.SemanticCache.UseVectorStoreConnection = false;
+        _options.SemanticCache.SimilarityThreshold = similarityThreshold;
+        return this;
+    }
+
+    /// <summary>
+    /// PostgreSQL 시맨틱 캐시 사용 (벡터 저장소와 동일한 연결)
+    /// pgvector 활용 HNSW 인덱스로 빠른 유사도 검색
+    /// </summary>
+    public FluxIndexContextBuilder UsePostgreSQLSemanticCache(float similarityThreshold = 0.85f)
+    {
+        _options.SemanticCache.Provider = "PostgreSQL";
+        _options.SemanticCache.UseVectorStoreConnection = true;
+        _options.SemanticCache.SimilarityThreshold = similarityThreshold;
+        return this;
+    }
+
+    /// <summary>
+    /// PostgreSQL 시맨틱 캐시 사용 (별도 연결 문자열)
+    /// </summary>
+    public FluxIndexContextBuilder UsePostgreSQLSemanticCache(string connectionString, float similarityThreshold = 0.85f)
+    {
+        _options.SemanticCache.Provider = "PostgreSQL";
+        _options.SemanticCache.ConnectionString = connectionString;
+        _options.SemanticCache.UseVectorStoreConnection = false;
+        _options.SemanticCache.SimilarityThreshold = similarityThreshold;
+        return this;
+    }
+
+    /// <summary>
+    /// 시맨틱 캐시 고급 설정
+    /// </summary>
+    public FluxIndexContextBuilder WithSemanticCacheOptions(Action<Configuration.SemanticCacheOptions> configure)
+    {
+        configure?.Invoke(_options.SemanticCache);
+        return this;
+    }
+
+    #endregion
 
     /// <summary>
     /// 품질 모니터링 시스템 활성화
@@ -349,6 +526,8 @@ public class FluxIndexContextBuilder
         ConfigureEmbeddingService();
         ConfigureCacheService();
         ConfigureChunkingService();
+        ConfigureGraphStore();
+        ConfigureSemanticCache();
 
         // Register core services
         _services.AddSingleton<IDocumentRepository, InMemoryDocumentRepository>();
@@ -592,5 +771,141 @@ public class FluxIndexContextBuilder
                 _indexerOptions.ChunkOverlap
             )
         );
+    }
+
+    private void ConfigureGraphStore()
+    {
+        var provider = _options.GraphStore.Provider?.ToLower();
+        if (string.IsNullOrEmpty(provider) || provider == "none")
+        {
+            // 기본: InMemory 사용 (이미 Build()에서 등록)
+            return;
+        }
+
+        var connectionString = _options.GraphStore.UseVectorStoreConnection
+            ? _options.VectorStore.ConnectionString
+            : _options.GraphStore.ConnectionString;
+
+        switch (provider)
+        {
+            case "sqlite":
+                _services.AddSQLiteGraphStore(options =>
+                {
+                    // Parse connection string
+                    var connStr = connectionString;
+                    var isInMemory = connStr.Contains(":memory:");
+
+                    if (isInMemory)
+                    {
+                        options.UseInMemory = true;
+                    }
+                    else
+                    {
+                        var dataSourcePrefix = "Data Source=";
+                        var startIndex = connStr.IndexOf(dataSourcePrefix, StringComparison.OrdinalIgnoreCase);
+                        if (startIndex >= 0)
+                        {
+                            var path = connStr.Substring(startIndex + dataSourcePrefix.Length).Trim();
+                            var semicolonIndex = path.IndexOf(';');
+                            if (semicolonIndex >= 0)
+                                path = path.Substring(0, semicolonIndex).Trim();
+                            options.GraphDatabasePath = path;
+                        }
+                        else
+                        {
+                            options.GraphDatabasePath = connStr;
+                        }
+                        options.UseInMemory = false;
+                    }
+
+                    options.AutoMigrate = _options.GraphStore.AutoMigrate;
+                });
+                break;
+
+            case "postgresql":
+                _services.AddPostgreSQLGraphStore(options =>
+                {
+                    options.ConnectionString = connectionString;
+                    options.AutoMigrate = _options.GraphStore.AutoMigrate;
+                    options.MaxRecursionDepth = _options.GraphStore.MaxRecursionDepth;
+                });
+                break;
+        }
+    }
+
+    private void ConfigureSemanticCache()
+    {
+        var provider = _options.SemanticCache.Provider?.ToLower();
+        if (string.IsNullOrEmpty(provider) || provider == "none")
+        {
+            // 시맨틱 캐시 미사용
+            return;
+        }
+
+        var connectionString = _options.SemanticCache.UseVectorStoreConnection
+            ? _options.VectorStore.ConnectionString
+            : _options.SemanticCache.ConnectionString;
+
+        switch (provider)
+        {
+            case "sqlite":
+                _services.AddSQLiteSemanticCache(options =>
+                {
+                    // Parse connection string
+                    var connStr = connectionString;
+                    var isInMemory = connStr.Contains(":memory:");
+
+                    if (isInMemory)
+                    {
+                        options.UseInMemory = true;
+                        options.DatabasePath = connStr;
+                    }
+                    else
+                    {
+                        var dataSourcePrefix = "Data Source=";
+                        var startIndex = connStr.IndexOf(dataSourcePrefix, StringComparison.OrdinalIgnoreCase);
+                        if (startIndex >= 0)
+                        {
+                            var path = connStr.Substring(startIndex + dataSourcePrefix.Length).Trim();
+                            var semicolonIndex = path.IndexOf(';');
+                            if (semicolonIndex >= 0)
+                                path = path.Substring(0, semicolonIndex).Trim();
+                            options.DatabasePath = path;
+                        }
+                        else
+                        {
+                            options.DatabasePath = connStr;
+                        }
+                        options.UseInMemory = false;
+                    }
+
+                    options.AutoMigrate = _options.SemanticCache.AutoMigrate;
+                    options.DefaultExpiry = _options.SemanticCache.DefaultExpiry;
+                    options.MaxEntries = _options.SemanticCache.MaxEntries;
+                    options.EnableAutoCleanup = _options.SemanticCache.EnableAutoCleanup;
+                    options.CleanupInterval = _options.SemanticCache.CleanupInterval;
+                });
+                break;
+
+            case "postgresql":
+                _services.AddPostgreSQLSemanticCache(options =>
+                {
+                    options.ConnectionString = connectionString;
+                    options.AutoMigrate = _options.SemanticCache.AutoMigrate;
+                    options.DefaultExpiry = _options.SemanticCache.DefaultExpiry;
+                    options.MaxEntries = _options.SemanticCache.MaxEntries;
+                    options.EmbeddingDimensions = _options.SemanticCache.EmbeddingDimensions;
+                    options.EnableAutoCleanup = _options.SemanticCache.EnableAutoCleanup;
+                    options.CleanupInterval = _options.SemanticCache.CleanupInterval;
+                    options.UseUnloggedTable = _options.SemanticCache.UseUnloggedTable;
+                });
+                break;
+
+            case "redis":
+                // Redis는 기존 ICacheService 인프라 활용
+                // 여기서는 ISemanticCache가 아닌 Redis 캐시이므로 별도 처리 필요
+                // 향후 Redis 시맨틱 캐시 구현 시 추가
+                break;
+        }
     }
 }
