@@ -1,4 +1,145 @@
+using System.Security.Cryptography;
+
 namespace FluxIndex.SDK.Processing;
+
+/// <summary>
+/// Result of extraction-only stage.
+/// Contains raw content that can be persisted and used to resume processing later.
+/// </summary>
+public class ExtractionResult
+{
+    /// <summary>
+    /// Document ID
+    /// </summary>
+    public string DocumentId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Original file path
+    /// </summary>
+    public string SourcePath { get; set; } = string.Empty;
+
+    /// <summary>
+    /// SHA-256 hash of source file for change detection
+    /// </summary>
+    public string SourceHash { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Extracted raw text content
+    /// </summary>
+    public string ExtractedText { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Extracted images (filename -> binary data)
+    /// </summary>
+    public Dictionary<string, byte[]> Images { get; set; } = new();
+
+    /// <summary>
+    /// Document metadata from extraction
+    /// </summary>
+    public DocumentMetadataResult Metadata { get; set; } = new();
+
+    /// <summary>
+    /// Extraction timestamp
+    /// </summary>
+    public DateTime ExtractedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// Whether extraction was successful
+    /// </summary>
+    public bool Success { get; set; }
+
+    /// <summary>
+    /// Error message if extraction failed
+    /// </summary>
+    public string? ErrorMessage { get; set; }
+
+    /// <summary>
+    /// Markdown-converted text (if ConvertToMarkdown was enabled)
+    /// </summary>
+    public string? MarkdownText { get; set; }
+
+    /// <summary>
+    /// Markdown conversion statistics (if ConvertToMarkdown was enabled)
+    /// </summary>
+    public MarkdownConversionStatistics? MarkdownStatistics { get; set; }
+
+    /// <summary>
+    /// Compute SHA-256 hash of a file for change detection.
+    /// </summary>
+    public static string ComputeFileHash(string filePath)
+    {
+        using var stream = File.OpenRead(filePath);
+        using var sha256 = SHA256.Create();
+        var hashBytes = sha256.ComputeHash(stream);
+        return Convert.ToHexString(hashBytes).ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Check if source file has changed since this extraction.
+    /// </summary>
+    public bool HasSourceChanged(string filePath)
+    {
+        if (!File.Exists(filePath)) return true;
+        var currentHash = ComputeFileHash(filePath);
+        return !string.Equals(SourceHash, currentHash, StringComparison.OrdinalIgnoreCase);
+    }
+}
+
+/// <summary>
+/// Options for processing from extracted content (skip extraction stage).
+/// </summary>
+public class ContentProcessingOptions
+{
+    /// <summary>
+    /// Document ID to use for the result
+    /// </summary>
+    public string? DocumentId { get; set; }
+
+    /// <summary>
+    /// Language hint for processing (null = auto-detect)
+    /// </summary>
+    public string? Language { get; set; }
+
+    /// <summary>
+    /// Chunking strategy (Auto, Smart, Intelligent, Semantic, Paragraph, FixedSize, Hierarchical)
+    /// </summary>
+    public string ChunkingStrategy { get; set; } = "Auto";
+
+    /// <summary>
+    /// Maximum chunk size in tokens
+    /// </summary>
+    public int MaxChunkSize { get; set; } = 1024;
+
+    /// <summary>
+    /// Overlap size between chunks in tokens
+    /// </summary>
+    public int OverlapSize { get; set; } = 128;
+
+    /// <summary>
+    /// Generate embeddings for chunks
+    /// </summary>
+    public bool GenerateEmbeddings { get; set; } = true;
+
+    /// <summary>
+    /// Enable contextual enrichment for chunks
+    /// </summary>
+    public bool EnableContextualEnrichment { get; set; } = false;
+
+    /// <summary>
+    /// Enable QA pair generation from chunks
+    /// </summary>
+    public bool EnableQAGeneration { get; set; } = false;
+
+    /// <summary>
+    /// Maximum QA pairs to generate per chunk
+    /// </summary>
+    public int MaxQAPairsPerChunk { get; set; } = 3;
+
+    /// <summary>
+    /// Progress callback for reporting processing status
+    /// </summary>
+    public Action<ProcessingProgress>? OnProgress { get; set; }
+}
 
 /// <summary>
 /// Result of document processing pipeline
@@ -301,4 +442,118 @@ public class QAPairResult
     /// Quality score (0-1) if evaluation was performed
     /// </summary>
     public double? QualityScore { get; set; }
+}
+
+/// <summary>
+/// Options for extraction-only stage
+/// </summary>
+public class ExtractionOptions
+{
+    /// <summary>
+    /// Extract images from document
+    /// </summary>
+    public bool ExtractImages { get; set; } = true;
+
+    /// <summary>
+    /// Convert extracted text to structured Markdown (FileFlux v0.8.6+)
+    /// </summary>
+    public bool ConvertToMarkdown { get; set; } = false;
+
+    /// <summary>
+    /// Markdown conversion options (used when ConvertToMarkdown is true)
+    /// </summary>
+    public MarkdownOptions? MarkdownOptions { get; set; }
+}
+
+/// <summary>
+/// Markdown conversion options (wrapper for FileFlux.MarkdownConversionOptions)
+/// </summary>
+public class MarkdownOptions
+{
+    /// <summary>
+    /// Preserve detected heading hierarchy
+    /// </summary>
+    public bool PreserveHeadings { get; set; } = true;
+
+    /// <summary>
+    /// Convert detected tables to Markdown tables
+    /// </summary>
+    public bool ConvertTables { get; set; } = true;
+
+    /// <summary>
+    /// Preserve bullet/numbered lists
+    /// </summary>
+    public bool PreserveLists { get; set; } = true;
+
+    /// <summary>
+    /// Include image placeholders (![alt](embedded:img_000))
+    /// </summary>
+    public bool IncludeImagePlaceholders { get; set; } = true;
+
+    /// <summary>
+    /// Use LLM for structure inference when heuristics fail
+    /// (requires ITextCompletionService)
+    /// </summary>
+    public bool UseLLMInference { get; set; } = false;
+
+    /// <summary>
+    /// Detect and preserve code blocks
+    /// </summary>
+    public bool DetectCodeBlocks { get; set; } = true;
+
+    /// <summary>
+    /// Normalize whitespace for readability
+    /// </summary>
+    public bool NormalizeWhitespace { get; set; } = true;
+}
+
+/// <summary>
+/// Markdown conversion statistics from FileFlux
+/// </summary>
+public class MarkdownConversionStatistics
+{
+    /// <summary>
+    /// Number of headings detected
+    /// </summary>
+    public int HeadingCount { get; set; }
+
+    /// <summary>
+    /// Number of tables detected
+    /// </summary>
+    public int TableCount { get; set; }
+
+    /// <summary>
+    /// Number of lists detected
+    /// </summary>
+    public int ListCount { get; set; }
+
+    /// <summary>
+    /// Number of code blocks detected
+    /// </summary>
+    public int CodeBlockCount { get; set; }
+
+    /// <summary>
+    /// Number of image placeholders converted
+    /// </summary>
+    public int ImagePlaceholderCount { get; set; }
+
+    /// <summary>
+    /// Conversion method used (Heuristic, LLM, Mixed)
+    /// </summary>
+    public string Method { get; set; } = "Heuristic";
+
+    /// <summary>
+    /// Original text length
+    /// </summary>
+    public int OriginalLength { get; set; }
+
+    /// <summary>
+    /// Converted markdown length
+    /// </summary>
+    public int MarkdownLength { get; set; }
+
+    /// <summary>
+    /// Warnings from conversion process
+    /// </summary>
+    public List<string> Warnings { get; set; } = new();
 }

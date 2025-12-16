@@ -2,6 +2,7 @@ using System.Text.Json;
 using FileFlux;
 using FileFlux.Core;
 using FileFlux.Core.Infrastructure.Readers;
+using FileFlux.Infrastructure.Conversion;
 using Microsoft.Extensions.Logging;
 using IFluxIndexEmbeddingService = FluxIndex.Core.Application.Interfaces.IEmbeddingService;
 using IFluxIndexTextCompletionService = FluxIndex.Core.Application.Interfaces.ITextCompletionService;
@@ -31,6 +32,7 @@ public class DocumentProcessingPipeline
     private readonly IFluxIndexTextCompletionService? _textCompletionService;
     private readonly IFluxIndexContextualEnrichmentService? _contextualEnrichmentService;
     private readonly IFluxIndexQAGenerationService? _qaGenerationService;
+    private readonly IMarkdownConverter? _markdownConverter;
     private readonly ILogger<DocumentProcessingPipeline> _logger;
 
     public DocumentProcessingPipeline(
@@ -39,13 +41,15 @@ public class DocumentProcessingPipeline
         IFluxIndexTextCompletionService? textCompletionService,
         IFluxIndexContextualEnrichmentService? contextualEnrichmentService,
         IFluxIndexQAGenerationService? qaGenerationService,
-        ILogger<DocumentProcessingPipeline> logger)
+        ILogger<DocumentProcessingPipeline> logger,
+        IMarkdownConverter? markdownConverter = null)
     {
         _documentProcessor = documentProcessor ?? throw new ArgumentNullException(nameof(documentProcessor));
         _embeddingService = embeddingService;
         _textCompletionService = textCompletionService;
         _contextualEnrichmentService = contextualEnrichmentService;
         _qaGenerationService = qaGenerationService;
+        _markdownConverter = markdownConverter;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -296,6 +300,442 @@ public class DocumentProcessingPipeline
             ReportProgress(options, ProcessingStage.Failed, 0, $"Processing failed: {ex.Message}");
             return result;
         }
+    }
+
+    /// <summary>
+    /// Extract content from document without chunking or embedding.
+    /// Use this to get intermediate results that can be persisted and resumed later.
+    /// </summary>
+    /// <param name="filePath">Path to document file</param>
+    /// <param name="extractImages">Whether to extract images</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Extraction result with raw text, images, and source hash for change detection</returns>
+    public Task<ExtractionResult> ExtractOnlyAsync(
+        string filePath,
+        bool extractImages = true,
+        CancellationToken cancellationToken = default)
+    {
+        return ExtractOnlyAsync(filePath, new ExtractionOptions { ExtractImages = extractImages }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Extract content from document with configurable options.
+    /// Use this to get intermediate results that can be persisted and resumed later.
+    /// </summary>
+    /// <param name="filePath">Path to document file</param>
+    /// <param name="options">Extraction options including markdown conversion</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Extraction result with raw text, optional markdown, images, and source hash</returns>
+    public async Task<ExtractionResult> ExtractOnlyAsync(
+        string filePath,
+        ExtractionOptions options,
+        CancellationToken cancellationToken = default)
+    {
+        var result = new ExtractionResult
+        {
+            SourcePath = filePath,
+            DocumentId = Path.GetFileNameWithoutExtension(filePath)
+        };
+
+        try
+        {
+            if (!File.Exists(filePath))
+            {
+                throw new FileNotFoundException($"File not found: {filePath}", filePath);
+            }
+
+            // Compute source hash for change detection
+            result.SourceHash = ExtractionResult.ComputeFileHash(filePath);
+
+            // Extract file metadata
+            var fileInfo = new FileInfo(filePath);
+            result.Metadata.FileSize = fileInfo.Length;
+            result.Metadata.FileExtension = fileInfo.Extension;
+            result.Metadata.CreatedDate = fileInfo.CreationTimeUtc;
+            result.Metadata.ModifiedDate = fileInfo.LastWriteTimeUtc;
+
+            // Extract raw content using FileFlux
+            RawContent? rawContent = null;
+            try
+            {
+                rawContent = await _documentProcessor.ExtractAsync(filePath, cancellationToken);
+                result.ExtractedText = rawContent.Text ?? string.Empty;
+            }
+            catch
+            {
+                // Fallback to ProcessAsync for text extraction
+                var rawText = await ExtractRawTextAsync(filePath, cancellationToken);
+                result.ExtractedText = rawText;
+            }
+
+            result.Metadata.CharacterCount = result.ExtractedText.Length;
+            result.Metadata.WordCount = CountWords(result.ExtractedText);
+
+            _logger.LogInformation("Extracted {CharCount} characters from {FilePath}",
+                result.Metadata.CharacterCount, filePath);
+
+            // Extract images if enabled
+            if (options.ExtractImages)
+            {
+                if (rawContent?.Images != null && rawContent.Images.Count > 0)
+                {
+                    // Use images from rawContent if available
+                    foreach (var image in rawContent.Images.Where(i => i.Data != null && i.Data.Length > 0))
+                    {
+                        var imageId = image.Id ?? $"img_{result.Images.Count:D3}";
+                        var imageExtension = GetImageExtension(image.MimeType);
+                        var fileName = $"{imageId}{imageExtension}";
+                        if (!result.Images.ContainsKey(fileName))
+                        {
+                            result.Images[fileName] = image.Data!;
+                        }
+                    }
+                }
+                else
+                {
+                    result.Images = await ExtractImagesAsync(filePath, cancellationToken);
+                }
+                result.Metadata.ImageCount = result.Images.Count;
+            }
+
+            // Convert to Markdown if enabled (FileFlux v0.8.6+)
+            if (options.ConvertToMarkdown)
+            {
+                var markdownResult = await ConvertToMarkdownInternalAsync(
+                    rawContent ?? new RawContent { Text = result.ExtractedText },
+                    options.MarkdownOptions,
+                    cancellationToken);
+
+                result.MarkdownText = markdownResult.markdown;
+                result.MarkdownStatistics = markdownResult.statistics;
+
+                _logger.LogInformation("Converted to Markdown: {Headings} headings, {Tables} tables, {Lists} lists",
+                    markdownResult.statistics?.HeadingCount ?? 0,
+                    markdownResult.statistics?.TableCount ?? 0,
+                    markdownResult.statistics?.ListCount ?? 0);
+            }
+
+            result.ExtractedAt = DateTime.UtcNow;
+            result.Success = true;
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Extraction failed for {FilePath}", filePath);
+            result.Success = false;
+            result.ErrorMessage = ex.Message;
+            return result;
+        }
+    }
+
+    /// <summary>
+    /// Convert text content to structured Markdown using FileFlux MarkdownConverter.
+    /// </summary>
+    /// <param name="text">Text to convert</param>
+    /// <param name="options">Markdown conversion options</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Converted markdown and statistics</returns>
+    public async Task<(string markdown, MarkdownConversionStatistics? statistics)> ConvertToMarkdownAsync(
+        string text,
+        MarkdownOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        var rawContent = new RawContent { Text = text };
+        return await ConvertToMarkdownInternalAsync(rawContent, options, cancellationToken);
+    }
+
+    private async Task<(string markdown, MarkdownConversionStatistics? statistics)> ConvertToMarkdownInternalAsync(
+        RawContent rawContent,
+        MarkdownOptions? options,
+        CancellationToken cancellationToken)
+    {
+        // If no converter available, create one without LLM support
+        var converter = _markdownConverter ?? new MarkdownConverter();
+
+        var conversionOptions = new MarkdownConversionOptions();
+        if (options != null)
+        {
+            conversionOptions.PreserveHeadings = options.PreserveHeadings;
+            conversionOptions.ConvertTables = options.ConvertTables;
+            conversionOptions.PreserveLists = options.PreserveLists;
+            conversionOptions.IncludeImagePlaceholders = options.IncludeImagePlaceholders;
+            conversionOptions.UseLLMInference = options.UseLLMInference;
+            conversionOptions.DetectCodeBlocks = options.DetectCodeBlocks;
+            conversionOptions.NormalizeWhitespace = options.NormalizeWhitespace;
+        }
+
+        var result = await converter.ConvertAsync(rawContent, conversionOptions, cancellationToken);
+
+        var statistics = new MarkdownConversionStatistics
+        {
+            HeadingCount = result.Statistics.HeadingCount,
+            TableCount = result.Statistics.TableCount,
+            ListCount = result.Statistics.ListCount,
+            CodeBlockCount = result.Statistics.CodeBlockCount,
+            ImagePlaceholderCount = result.Statistics.ImagePlaceholderCount,
+            Method = result.Method.ToString(),
+            OriginalLength = result.OriginalLength,
+            MarkdownLength = result.MarkdownLength,
+            Warnings = result.Warnings
+        };
+
+        return (result.Markdown, statistics);
+    }
+
+    /// <summary>
+    /// Process from already-extracted content, skipping the extraction stage.
+    /// Use this to resume processing from persisted extraction results or user-edited content.
+    /// </summary>
+    /// <param name="content">Text content to process (can be extracted text or user-edited)</param>
+    /// <param name="options">Processing options for chunking, embedding, etc.</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Processing result with chunks and embeddings</returns>
+    public async Task<DocumentProcessingResult> ProcessFromContentAsync(
+        string content,
+        ContentProcessingOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        options ??= new ContentProcessingOptions();
+        var result = new DocumentProcessingResult
+        {
+            DocumentId = options.DocumentId ?? $"content_{DateTime.UtcNow:yyyyMMddHHmmss}",
+            ExtractedText = content,
+            Stats = { StartTime = DateTime.UtcNow }
+        };
+
+        try
+        {
+            ReportContentProgress(options, ProcessingStage.Initializing, 0, "Initializing from content...");
+
+            result.Metadata.CharacterCount = content.Length;
+            result.Metadata.WordCount = CountWords(content);
+
+            // Stage: Chunk content
+            ReportContentProgress(options, ProcessingStage.Chunking, 20, "Creating chunks...");
+            var chunkStart = DateTime.UtcNow;
+
+            var chunkingOptions = new ChunkingOptions
+            {
+                Strategy = options.ChunkingStrategy,
+                MaxChunkSize = options.MaxChunkSize,
+                OverlapSize = options.OverlapSize
+            };
+
+            if (!string.IsNullOrEmpty(options.Language))
+            {
+                chunkingOptions.CustomProperties["language"] = options.Language;
+            }
+
+            // FileFlux IDocumentProcessor works with files, so create a temporary file
+            var tempFilePath = Path.Combine(Path.GetTempPath(), $"fluxindex_content_{Guid.NewGuid()}.txt");
+            List<DocumentChunk> chunkList;
+            try
+            {
+                await File.WriteAllTextAsync(tempFilePath, content, cancellationToken);
+                var fileFluxChunks = await _documentProcessor.ProcessAsync(tempFilePath, chunkingOptions, cancellationToken);
+                chunkList = fileFluxChunks.ToList();
+            }
+            finally
+            {
+                // Clean up temporary file
+                if (File.Exists(tempFilePath))
+                {
+                    try { File.Delete(tempFilePath); } catch { /* Ignore cleanup errors */ }
+                }
+            }
+
+            // Extract language from FileFlux metadata
+            var firstChunk = chunkList.FirstOrDefault();
+            if (firstChunk?.Metadata != null && !string.IsNullOrEmpty(firstChunk.Metadata.Language))
+            {
+                result.Metadata.DetectedLanguage = firstChunk.Metadata.Language;
+            }
+
+            var chunkIndex = 0;
+            foreach (var fileFluxChunk in chunkList)
+            {
+                var chunkResult = new ChunkResult
+                {
+                    Id = $"{result.DocumentId}_chunk_{chunkIndex:D3}",
+                    Index = chunkIndex,
+                    Content = fileFluxChunk.Content ?? string.Empty,
+                    CharacterCount = fileFluxChunk.Content?.Length ?? 0,
+                    TokenCount = EstimateTokenCount(fileFluxChunk.Content ?? string.Empty)
+                };
+
+                if (fileFluxChunk.Location != null)
+                {
+                    chunkResult.StartPosition = fileFluxChunk.Location.StartChar;
+                    chunkResult.EndPosition = fileFluxChunk.Location.EndChar;
+
+                    if (fileFluxChunk.Location.HeadingPath?.Count > 0)
+                    {
+                        chunkResult.Metadata["heading_path"] = string.Join(" > ", fileFluxChunk.Location.HeadingPath);
+                    }
+                }
+
+                chunkResult.Metadata["quality"] = fileFluxChunk.Quality;
+                chunkResult.Metadata["strategy"] = fileFluxChunk.Strategy;
+
+                result.Chunks.Add(chunkResult);
+                chunkIndex++;
+            }
+
+            result.Stats.ChunkingTime = DateTime.UtcNow - chunkStart;
+            result.Stats.TotalChunks = result.Chunks.Count;
+
+            _logger.LogInformation("Created {ChunkCount} chunks from content", result.Chunks.Count);
+
+            // Stage: Contextual Enrichment (if enabled)
+            if (options.EnableContextualEnrichment && _contextualEnrichmentService != null)
+            {
+                ReportContentProgress(options, ProcessingStage.ContextualEnrichment, 40, "Adding contextual enrichment...");
+                var enrichStart = DateTime.UtcNow;
+
+                var chunkContents = result.Chunks.Select(c => c.Content).ToList();
+                var contextSummaries = await _contextualEnrichmentService.GenerateContextBatchAsync(
+                    chunkContents, content, cancellationToken);
+
+                for (int i = 0; i < result.Chunks.Count && i < contextSummaries.Count; i++)
+                {
+                    result.Chunks[i].ContextSummary = contextSummaries[i];
+                }
+
+                result.Stats.ContextualEnrichmentTime = DateTime.UtcNow - enrichStart;
+                result.Stats.EnrichedChunks = contextSummaries.Count(s => !string.IsNullOrEmpty(s));
+            }
+
+            // Stage: Generate embeddings
+            if (options.GenerateEmbeddings && _embeddingService != null)
+            {
+                ReportContentProgress(options, ProcessingStage.GeneratingEmbeddings, 60, "Generating embeddings...");
+                var embedStart = DateTime.UtcNow;
+
+                var textsForEmbedding = result.Chunks
+                    .Select(c => c.GetContextualizedText())
+                    .ToList();
+
+                var embeddings = (await _embeddingService.GenerateEmbeddingsBatchAsync(
+                    textsForEmbedding, cancellationToken)).ToList();
+
+                for (int i = 0; i < result.Chunks.Count && i < embeddings.Count; i++)
+                {
+                    result.Chunks[i].Embedding = embeddings[i];
+                }
+
+                result.Stats.EmbeddingTime = DateTime.UtcNow - embedStart;
+                _logger.LogInformation("Generated embeddings for {ChunkCount} chunks", result.Chunks.Count);
+            }
+
+            // Stage: Generate QA pairs (if enabled)
+            if (options.EnableQAGeneration && _qaGenerationService != null)
+            {
+                ReportContentProgress(options, ProcessingStage.GeneratingQA, 85, "Generating QA pairs...");
+                var qaStart = DateTime.UtcNow;
+
+                var chunkInputs = result.Chunks.Select(c => new Core.Application.Interfaces.ChunkInput
+                {
+                    ChunkId = c.Id,
+                    Content = c.Content
+                }).ToList();
+
+                var qaResults = await _qaGenerationService.GenerateFromChunksBatchAsync(
+                    chunkInputs, options.MaxQAPairsPerChunk, cancellationToken);
+
+                foreach (var chunkQA in qaResults)
+                {
+                    foreach (var qa in chunkQA.QAPairs)
+                    {
+                        result.QAPairs.Add(new QAPairResult
+                        {
+                            ChunkId = chunkQA.ChunkId,
+                            Question = qa.Question,
+                            Answer = qa.Answer,
+                            Context = qa.Context,
+                            QualityScore = qa.QualityScore
+                        });
+                    }
+                }
+
+                result.Stats.QAGenerationTime = DateTime.UtcNow - qaStart;
+                result.Stats.TotalQAPairs = result.QAPairs.Count;
+            }
+
+            result.Stats.EndTime = DateTime.UtcNow;
+            result.Success = true;
+
+            ReportContentProgress(options, ProcessingStage.Complete, 100, "Processing complete!");
+            _logger.LogInformation("Content processing completed in {Duration}ms", result.Stats.Duration.TotalMilliseconds);
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Content processing failed");
+            result.Success = false;
+            result.ErrorMessage = ex.Message;
+            result.Stats.EndTime = DateTime.UtcNow;
+
+            ReportContentProgress(options, ProcessingStage.Failed, 0, $"Processing failed: {ex.Message}");
+            return result;
+        }
+    }
+
+    /// <summary>
+    /// Resume processing from an extraction result, optionally with modified content.
+    /// </summary>
+    /// <param name="extractionResult">Previous extraction result</param>
+    /// <param name="modifiedContent">Optional modified content (if null, uses original extracted text)</param>
+    /// <param name="options">Processing options</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Processing result with chunks and embeddings</returns>
+    public async Task<DocumentProcessingResult> ProcessFromExtractionAsync(
+        ExtractionResult extractionResult,
+        string? modifiedContent = null,
+        ContentProcessingOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        // Validate extraction result
+        if (!extractionResult.Success)
+        {
+            _logger.LogWarning("Cannot process from failed extraction: {ErrorMessage}", extractionResult.ErrorMessage);
+            return new DocumentProcessingResult
+            {
+                DocumentId = extractionResult.DocumentId,
+                SourcePath = extractionResult.SourcePath,
+                Success = false,
+                ErrorMessage = $"Cannot process from failed extraction: {extractionResult.ErrorMessage}",
+                Stats = { StartTime = DateTime.UtcNow, EndTime = DateTime.UtcNow }
+            };
+        }
+
+        options ??= new ContentProcessingOptions();
+        options.DocumentId ??= extractionResult.DocumentId;
+
+        var content = modifiedContent ?? extractionResult.ExtractedText;
+        var result = await ProcessFromContentAsync(content, options, cancellationToken);
+
+        // Copy metadata from extraction
+        result.SourcePath = extractionResult.SourcePath;
+        result.Images = new Dictionary<string, byte[]>(extractionResult.Images);
+        result.Metadata.FileSize = extractionResult.Metadata.FileSize;
+        result.Metadata.FileExtension = extractionResult.Metadata.FileExtension;
+        result.Metadata.CreatedDate = extractionResult.Metadata.CreatedDate;
+        result.Metadata.ModifiedDate = extractionResult.Metadata.ModifiedDate;
+        result.Metadata.ImageCount = extractionResult.Images.Count;
+
+        return result;
+    }
+
+    /// <summary>
+    /// Check if source file has changed since extraction.
+    /// </summary>
+    public static bool HasSourceChanged(string filePath, string previousHash)
+    {
+        if (!File.Exists(filePath)) return true;
+        var currentHash = ExtractionResult.ComputeFileHash(filePath);
+        return !string.Equals(previousHash, currentHash, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -642,6 +1082,16 @@ JSON response:";
     }
 
     private void ReportProgress(DocumentProcessingOptions options, ProcessingStage stage, int percentage, string message)
+    {
+        options.OnProgress?.Invoke(new ProcessingProgress
+        {
+            Stage = stage,
+            Percentage = percentage,
+            Message = message
+        });
+    }
+
+    private void ReportContentProgress(ContentProcessingOptions options, ProcessingStage stage, int percentage, string message)
     {
         options.OnProgress?.Invoke(new ProcessingProgress
         {

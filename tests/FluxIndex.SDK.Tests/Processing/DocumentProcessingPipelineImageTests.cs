@@ -50,12 +50,12 @@ public class DocumentProcessingPipelineImageTests : IDisposable
     }
 
     [Theory]
-    [InlineData(".pdf", "application/pdf")]
-    [InlineData(".docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")]
-    [InlineData(".pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation")]
-    [InlineData(".xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")]
-    [InlineData(".html", "text/html")]
-    public async Task ExtractImages_SupportedFormat_ShouldExtractImages(string extension, string mimeType)
+    [InlineData(".pdf")]
+    [InlineData(".docx")]
+    [InlineData(".pptx")]
+    [InlineData(".xlsx")]
+    [InlineData(".html")]
+    public async Task ExtractImages_SupportedFormat_ShouldExtractImages(string extension)
     {
         // Arrange
         var testFile = CreateTestFile(extension);
@@ -310,7 +310,7 @@ public class DocumentProcessingPipelineImageTests : IDisposable
                 new DocumentChunk
                 {
                     Content = rawContent.Text,
-                    Quality = "good",
+                    Quality = 0.8,
                     Strategy = "test"
                 }
             });
