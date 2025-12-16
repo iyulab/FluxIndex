@@ -15,15 +15,14 @@ namespace FluxIndex.SDK.Processing;
 /// Document processing pipeline for extracting, chunking, enriching, and embedding documents.
 ///
 /// Pipeline order (optimized for RAG quality):
-/// 1. Extract - Text extraction from document
-/// 2. Images - Extract images (parallel with cleaning)
-/// 3. Clean - Preprocess text (noise removal, OCR fixes) BEFORE chunking
-/// 4. Chunk - Split into semantic chunks
-/// 5. ContextualEnrich - Add document context to each chunk (Anthropic Contextual Retrieval)
-/// 6. Embed - Generate embeddings (uses contextualized text if enrichment was performed)
-/// 7. Metadata - Enrich document metadata
-/// 8. QAGenerate - Generate QA pairs for evaluation (optional)
-/// 9. Save - Output files
+/// 1. ExtractImages - Extract images from document (optional, parallel-ready)
+/// 2. FileFlux Pipeline - Single call handles: Extract → Parse → Refine → Chunk → Enhance
+///    - Refine stage (v0.8.7+): Noise removal, OCR fixes, Markdown conversion via RefiningOptions
+/// 3. ContextualEnrich - Add document context to each chunk (Anthropic Contextual Retrieval)
+/// 4. Embed - Generate embeddings (uses contextualized text if enrichment was performed)
+/// 5. Metadata - Enrich document metadata (optional LLM-based)
+/// 6. QAGenerate - Generate QA pairs for evaluation (optional)
+/// 7. Save - Output files
 /// </summary>
 public class DocumentProcessingPipeline
 {
@@ -85,48 +84,16 @@ public class DocumentProcessingPipeline
             result.Metadata.CreatedDate = fileInfo.CreationTimeUtc;
             result.Metadata.ModifiedDate = fileInfo.LastWriteTimeUtc;
 
-            // Stage 1: Extract text
-            ReportProgress(options, ProcessingStage.Extracting, 5, "Extracting text from document...");
-            var extractStart = DateTime.UtcNow;
-
-            var rawText = await ExtractRawTextAsync(filePath, cancellationToken);
-            result.ExtractedText = rawText;
-            result.Metadata.CharacterCount = rawText.Length;
-            result.Metadata.WordCount = CountWords(rawText);
-            result.Stats.ExtractionTime = DateTime.UtcNow - extractStart;
-
-            _logger.LogInformation("Extracted {CharCount} characters, {WordCount} words from {FilePath}",
-                result.Metadata.CharacterCount, result.Metadata.WordCount, filePath);
-
-            // Stage 2: Extract images (if enabled)
-            if (options.ExtractImages)
-            {
-                ReportProgress(options, ProcessingStage.ExtractingImages, 10, "Extracting images...");
-                result.Images = await ExtractImagesAsync(filePath, cancellationToken);
-                result.Metadata.ImageCount = result.Images.Count;
-                result.Stats.TotalImages = result.Images.Count;
-            }
-
-            // Stage 3: Clean/preprocess text BEFORE chunking (if enabled)
-            var textForChunking = rawText;
-            if (options.EnableTextCleaning && _textCompletionService != null)
-            {
-                ReportProgress(options, ProcessingStage.Cleaning, 15, "Cleaning text...");
-                var cleanStart = DateTime.UtcNow;
-                result.CleanedText = await CleanTextAsync(rawText, cancellationToken);
-                textForChunking = result.CleanedText;
-                result.Stats.CleaningTime = DateTime.UtcNow - cleanStart;
-            }
-
-            // Stage 4: Chunk document
-            ReportProgress(options, ProcessingStage.Chunking, 25, "Creating chunks...");
-            var chunkStart = DateTime.UtcNow;
-
+            // Build ChunkingOptions with RefiningOptions (FileFlux v0.8.7+ 5-stage pipeline)
             var chunkingOptions = new ChunkingOptions
             {
                 Strategy = options.ChunkingStrategy,
                 MaxChunkSize = options.MaxChunkSize,
-                OverlapSize = options.OverlapSize
+                OverlapSize = options.OverlapSize,
+                // Use FileFlux's RefiningOptions for text cleaning (replaces EnableTextCleaning)
+                RefiningOptions = options.EnableTextCleaning
+                    ? RefiningOptions.ForRAG  // Full refining with Markdown conversion
+                    : RefiningOptions.Default  // Default refining (Markdown conversion enabled)
             };
 
             if (!string.IsNullOrEmpty(options.Language))
@@ -134,9 +101,55 @@ public class DocumentProcessingPipeline
                 chunkingOptions.CustomProperties["language"] = options.Language;
             }
 
-            // Use cleaned text for chunking if available
-            var fileFluxChunks = await ChunkTextAsync(textForChunking, filePath, chunkingOptions, cancellationToken);
+            // Stage 1: Extract raw content (for images and metadata)
+            ReportProgress(options, ProcessingStage.Extracting, 5, "Extracting content from document...");
+            var extractStart = DateTime.UtcNow;
+
+            RawContent? rawContent = null;
+            if (options.ExtractImages)
+            {
+                try
+                {
+                    rawContent = await _documentProcessor.ExtractAsync(filePath, cancellationToken);
+                    if (rawContent.Images?.Count > 0)
+                    {
+                        foreach (var image in rawContent.Images.Where(i => i.Data != null && i.Data.Length > 0))
+                        {
+                            var imageId = image.Id ?? $"img_{result.Images.Count:D3}";
+                            var imageExtension = GetImageExtension(image.MimeType);
+                            var fileName = $"{imageId}{imageExtension}";
+                            if (!result.Images.ContainsKey(fileName))
+                            {
+                                result.Images[fileName] = image.Data!;
+                            }
+                        }
+                        result.Metadata.ImageCount = result.Images.Count;
+                        result.Stats.TotalImages = result.Images.Count;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Image extraction failed, continuing without images");
+                }
+            }
+
+            // Stage 2-4: Parse → Refine → Chunk (single FileFlux pipeline call)
+            // FileFlux v0.8.7 handles: Extract → Parse → Refine (Markdown conversion) → Chunk → Enhance
+            ReportProgress(options, ProcessingStage.Chunking, 20, "Processing and chunking document...");
+            var chunkStart = DateTime.UtcNow;
+
+            var fileFluxChunks = await _documentProcessor.ProcessAsync(filePath, chunkingOptions, cancellationToken);
             var chunkList = fileFluxChunks.ToList();
+
+            // Reconstruct full text from chunks for statistics and enrichment
+            var fullText = string.Join("\n\n", chunkList.Select(c => c.Content));
+            result.ExtractedText = rawContent?.Text ?? fullText;
+            result.Metadata.CharacterCount = result.ExtractedText.Length;
+            result.Metadata.WordCount = CountWords(result.ExtractedText);
+            result.Stats.ExtractionTime = DateTime.UtcNow - extractStart;
+
+            _logger.LogInformation("Extracted {CharCount} characters, {WordCount} words from {FilePath}",
+                result.Metadata.CharacterCount, result.Metadata.WordCount, filePath);
 
             // Extract language from FileFlux metadata (v0.8.4+)
             var firstChunk = chunkList.FirstOrDefault();
@@ -192,7 +205,7 @@ public class DocumentProcessingPipeline
                 ReportProgress(options, ProcessingStage.ContextualEnrichment, 40, "Adding contextual enrichment...");
                 var enrichStart = DateTime.UtcNow;
 
-                var fullText = result.CleanedText ?? result.ExtractedText;
+                // Use extracted text (already refined by FileFlux v0.8.7+)
                 var chunkContents = result.Chunks.Select(c => c.Content).ToList();
 
                 var contextSummaries = await _contextualEnrichmentService.GenerateContextBatchAsync(
@@ -832,16 +845,6 @@ public class DocumentProcessingPipeline
         }
     }
 
-    private async Task<IEnumerable<FileFlux.Core.DocumentChunk>> ChunkTextAsync(
-        string text,
-        string filePath,
-        ChunkingOptions options,
-        CancellationToken cancellationToken)
-    {
-        // For cleaned text, we need to re-chunk
-        // If text is same as original, use FileFlux directly
-        return await _documentProcessor.ProcessAsync(filePath, options, cancellationToken);
-    }
 
     /// <summary>
     /// Extract images from document using FileFlux's IDocumentProcessor.

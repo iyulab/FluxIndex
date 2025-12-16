@@ -4,13 +4,13 @@
     "net10.0": {
       "FileFlux": {
         "type": "Direct",
-        "requested": "[0.8.6, )",
-        "resolved": "0.8.6",
-        "contentHash": "DgwEzJEpOWe/SmUd8yOM2oCYPhwKmjj9SwWye44olI3YFsCkCBgVppSHze1hrw+aVKLCsZcz7AZLKLo7Yoj3vg==",
+        "requested": "[0.8.7, )",
+        "resolved": "0.8.7",
+        "contentHash": "0veLW254eC76oI4vxvILA3nia4YKX84Kxt6NiWFxbENTUPyyV0+TEjYVT/EiUmXn9/xsnLL9PYoIGkYM+7aBOg==",
         "dependencies": {
           "CsvHelper": "33.1.0",
           "DocumentFormat.OpenXml": "3.3.0",
-          "FileFlux.Core": "0.8.6",
+          "FileFlux.Core": "0.8.7",
           "FluxCurator": "0.5.0",
           "FluxImprover": "0.5.0",
           "HtmlAgilityPack": "1.12.4",
@@ -70,8 +70,8 @@
       },
       "FileFlux.Core": {
         "type": "Transitive",
-        "resolved": "0.8.6",
-        "contentHash": "V4ubw4ngzjAAGnyffjZPH+SdCN6Njhu3PGo3Ep6J9k++IBO200Sqb39mzttUUfxAvoBSXCBJnwP7TP2Rn9YwWg==",
+        "resolved": "0.8.7",
+        "contentHash": "ztsM4q+Tt2JKvIe4MVo5UcPqINvvmis8nHNQju9hIG1b8qMYvL/8xWUARWcPOQpgZrcT7QfjWIvkMgjOJg7m+g==",
         "dependencies": {
           "CsvHelper": "33.1.0",
           "DocumentFormat.OpenXml": "3.3.0",
