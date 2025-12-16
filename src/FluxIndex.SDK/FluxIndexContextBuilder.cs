@@ -31,6 +31,7 @@ public class FluxIndexContextBuilder
     private readonly FluxIndexOptions _options;
     private readonly RetrieverOptions _retrieverOptions;
     private readonly IndexerOptions _indexerOptions;
+    private bool _suppressStartupMessages = false;
 
     public FluxIndexContextBuilder()
     {
@@ -517,6 +518,16 @@ public class FluxIndexContextBuilder
     }
 
     /// <summary>
+    /// Suppress startup messages (AI service guidance).
+    /// Use this in production environments or when console output is not desired.
+    /// </summary>
+    public FluxIndexContextBuilder SuppressStartupMessages()
+    {
+        _suppressStartupMessages = true;
+        return this;
+    }
+
+    /// <summary>
     /// FluxIndexContext 빌드
     /// </summary>
     public IFluxIndexContext Build()
@@ -605,6 +616,12 @@ public class FluxIndexContextBuilder
         if (_options.VectorStore.Provider?.ToLower() == "sqlite")
         {
             InitializeDatabaseSync(serviceProvider);
+        }
+
+        // Display AI service guidance (shows LocalAI options for missing services)
+        if (!_suppressStartupMessages)
+        {
+            StartupMessageService.DisplayAIServiceGuidance(serviceProvider, _options.Embedding.Provider);
         }
 
         // Get Retriever and Indexer from DI
