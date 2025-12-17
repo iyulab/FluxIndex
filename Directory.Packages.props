@@ -59,6 +59,11 @@
   <ItemGroup>
     <PackageVersion Include="StackExchange.Redis" Version="2.10.1" />
     <PackageVersion Include="sqlite-vec" Version="0.1.7-alpha.2.1" />
+    <!-- Graph Database -->
+    <PackageVersion Include="Neo4j.Driver" Version="5.28.4" />
+    <!-- Vector Database -->
+    <PackageVersion Include="Qdrant.Client" Version="1.13.0" />
+    <PackageVersion Include="Testcontainers.Qdrant" Version="4.9.0" />
   </ItemGroup>
   <!-- Document Processing & Quality -->
   <ItemGroup>
