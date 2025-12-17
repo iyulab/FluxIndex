@@ -4,197 +4,197 @@ using Microsoft.Extensions.DependencyInjection;
 namespace FluxIndex.SDK.Extensions;
 
 /// <summary>
-/// Extension methods for FluxIndexContextBuilder to configure LocalAI services.
+/// Extension methods for FluxIndexContextBuilder to configure LMSupply services.
 /// </summary>
-public static class LocalAIBuilderExtensions
+public static class LMSupplyBuilderExtensions
 {
     /// <summary>
-    /// Uses LocalAI embedding service with the specified model.
+    /// Uses LMSupply embedding service with the specified model.
     /// Available models: default (bge-small), fast (MiniLM), quality (bge-base),
     /// large (nomic-embed), multilingual (e5-base), or any HuggingFace model ID.
     /// </summary>
     /// <param name="builder">The FluxIndex context builder</param>
     /// <param name="modelId">Model alias or HuggingFace ID (default: "default")</param>
     /// <returns>Builder for chaining</returns>
-    public static FluxIndexContextBuilder UseLocalAIEmbeddingAdvanced(
+    public static FluxIndexContextBuilder UseLMSupplyEmbeddingAdvanced(
         this FluxIndexContextBuilder builder,
         string modelId = "default")
     {
         builder.ConfigureServices(services =>
         {
-            services.AddLocalAIEmbedding(modelId);
+            services.AddLMSupplyEmbedding(modelId);
         });
 
         return builder;
     }
 
     /// <summary>
-    /// Uses LocalAI embedding service with advanced configuration.
+    /// Uses LMSupply embedding service with advanced configuration.
     /// </summary>
     /// <param name="builder">The FluxIndex context builder</param>
     /// <param name="configure">Configuration action</param>
     /// <returns>Builder for chaining</returns>
-    public static FluxIndexContextBuilder UseLocalAIEmbeddingAdvanced(
+    public static FluxIndexContextBuilder UseLMSupplyEmbeddingAdvanced(
         this FluxIndexContextBuilder builder,
-        Action<LocalAIEmbeddingOptions> configure)
+        Action<LMSupplyEmbeddingOptions> configure)
     {
         builder.ConfigureServices(services =>
         {
-            services.AddLocalAIEmbedding(configure);
+            services.AddLMSupplyEmbedding(configure);
         });
 
         return builder;
     }
 
     /// <summary>
-    /// Uses LocalAI embedding with warmup during startup.
+    /// Uses LMSupply embedding with warmup during startup.
     /// Pre-loads the model to avoid cold start latency.
     /// </summary>
     /// <param name="builder">The FluxIndex context builder</param>
     /// <param name="configure">Optional configuration action</param>
     /// <returns>Builder for chaining</returns>
-    public static FluxIndexContextBuilder UseLocalAIEmbeddingWithWarmup(
+    public static FluxIndexContextBuilder UseLMSupplyEmbeddingWithWarmup(
         this FluxIndexContextBuilder builder,
-        Action<LocalAIEmbeddingOptions>? configure = null)
+        Action<LMSupplyEmbeddingOptions>? configure = null)
     {
         builder.ConfigureServices(services =>
         {
-            services.AddLocalAIEmbeddingWithWarmup(configure);
+            services.AddLMSupplyEmbeddingWithWarmup(configure);
         });
 
         return builder;
     }
 
     /// <summary>
-    /// Uses LocalAI reranker for semantic reranking.
+    /// Uses LMSupply reranker for semantic reranking.
     /// </summary>
     /// <param name="builder">The FluxIndex context builder</param>
     /// <param name="configure">Optional configuration action</param>
     /// <returns>Builder for chaining</returns>
-    public static FluxIndexContextBuilder UseLocalAIReranker(
+    public static FluxIndexContextBuilder UseLMSupplyReranker(
         this FluxIndexContextBuilder builder,
-        Action<LocalAIRerankerOptions>? configure = null)
+        Action<LMSupplyRerankerOptions>? configure = null)
     {
         builder.ConfigureServices(services =>
         {
-            services.AddLocalAIReranker(configure);
+            services.AddLMSupplyReranker(configure);
         });
 
         return builder;
     }
 
     /// <summary>
-    /// Uses resilient LocalAI reranker with automatic fallback.
+    /// Uses resilient LMSupply reranker with automatic fallback.
     /// Falls back to algorithmic (TF-IDF/BM25) reranking if semantic model unavailable.
     /// </summary>
     /// <param name="builder">The FluxIndex context builder</param>
     /// <param name="configure">Optional configuration action</param>
     /// <returns>Builder for chaining</returns>
-    public static FluxIndexContextBuilder UseResilientLocalAIReranker(
+    public static FluxIndexContextBuilder UseResilientLMSupplyReranker(
         this FluxIndexContextBuilder builder,
-        Action<LocalAIRerankerOptions>? configure = null)
+        Action<LMSupplyRerankerOptions>? configure = null)
     {
         builder.ConfigureServices(services =>
         {
-            services.AddResilientLocalAIReranker(configure);
+            services.AddResilientLMSupplyReranker(configure);
         });
 
         return builder;
     }
 
     /// <summary>
-    /// Uses resilient LocalAI reranker with warmup and automatic fallback.
+    /// Uses resilient LMSupply reranker with warmup and automatic fallback.
     /// </summary>
     /// <param name="builder">The FluxIndex context builder</param>
     /// <param name="configure">Optional configuration action</param>
     /// <returns>Builder for chaining</returns>
-    public static FluxIndexContextBuilder UseResilientLocalAIRerankerWithWarmup(
+    public static FluxIndexContextBuilder UseResilientLMSupplyRerankerWithWarmup(
         this FluxIndexContextBuilder builder,
-        Action<LocalAIRerankerOptions>? configure = null)
+        Action<LMSupplyRerankerOptions>? configure = null)
     {
         builder.ConfigureServices(services =>
         {
-            services.AddResilientLocalAIRerankerWithWarmup(configure);
+            services.AddResilientLMSupplyRerankerWithWarmup(configure);
         });
 
         return builder;
     }
 
     /// <summary>
-    /// Enable all LocalAI services: Embedding, Text Completion, and Reranker.
+    /// Enable all LMSupply services: Embedding, Text Completion, and Reranker.
     /// This is the recommended way to enable full AI capabilities without external API keys.
     /// Individual services can be overridden afterward using ConfigureServices().
     /// </summary>
     /// <param name="builder">The FluxIndex context builder</param>
-    /// <param name="configure">Optional configuration for all LocalAI models</param>
+    /// <param name="configure">Optional configuration for all LMSupply models</param>
     /// <returns>Builder for chaining</returns>
     /// <example>
-    /// // Enable all LocalAI services with defaults
+    /// // Enable all LMSupply services with defaults
     /// var context = FluxIndexContext.CreateBuilder()
     ///     .UseSQLite("data.db")
-    ///     .UseLocalAI()
+    ///     .UseLMSupply()
     ///     .Build();
     ///
     /// // With custom models
     /// var context = FluxIndexContext.CreateBuilder()
     ///     .UseSQLite("data.db")
-    ///     .UseLocalAI(options => {
+    ///     .UseLMSupply(options => {
     ///         options.EmbeddingModelId = "multilingual";
     ///         options.TextCompletionModelId = "quality";
     ///     })
     ///     .Build();
     ///
-    /// // Override specific service after UseLocalAI
+    /// // Override specific service after UseLMSupply
     /// var context = FluxIndexContext.CreateBuilder()
     ///     .UseSQLite("data.db")
-    ///     .UseLocalAI()
+    ///     .UseLMSupply()
     ///     .ConfigureServices(s => s.AddSingleton&lt;IEmbeddingService&gt;(myCustomEmbedding))
     ///     .Build();
     /// </example>
-    public static FluxIndexContextBuilder UseLocalAI(
+    public static FluxIndexContextBuilder UseLMSupply(
         this FluxIndexContextBuilder builder,
-        Action<LocalAIOptions>? configure = null)
+        Action<LMSupplyOptions>? configure = null)
     {
         builder.ConfigureServices(services =>
         {
-            services.AddLocalAI(configure);
+            services.AddLMSupply(configure);
         });
 
         return builder;
     }
 
     /// <summary>
-    /// Enable all LocalAI services with model warmup during startup.
+    /// Enable all LMSupply services with model warmup during startup.
     /// Models are loaded immediately to reduce first-request latency.
     /// </summary>
     /// <param name="builder">The FluxIndex context builder</param>
-    /// <param name="configure">Optional configuration for all LocalAI models</param>
+    /// <param name="configure">Optional configuration for all LMSupply models</param>
     /// <returns>Builder for chaining</returns>
-    public static FluxIndexContextBuilder UseLocalAIWithWarmup(
+    public static FluxIndexContextBuilder UseLMSupplyWithWarmup(
         this FluxIndexContextBuilder builder,
-        Action<LocalAIOptions>? configure = null)
+        Action<LMSupplyOptions>? configure = null)
     {
         builder.ConfigureServices(services =>
         {
-            services.AddLocalAIWithWarmup(configure);
+            services.AddLMSupplyWithWarmup(configure);
         });
 
         return builder;
     }
 
     /// <summary>
-    /// Uses LocalAI text completion service for HyDE, metadata enrichment, etc.
+    /// Uses LMSupply text completion service for HyDE, metadata enrichment, etc.
     /// </summary>
     /// <param name="builder">The FluxIndex context builder</param>
     /// <param name="configure">Optional configuration action</param>
     /// <returns>Builder for chaining</returns>
-    public static FluxIndexContextBuilder UseLocalAITextCompletion(
+    public static FluxIndexContextBuilder UseLMSupplyTextCompletion(
         this FluxIndexContextBuilder builder,
-        Action<LocalAITextCompletionOptions>? configure = null)
+        Action<LMSupplyTextCompletionOptions>? configure = null)
     {
         builder.ConfigureServices(services =>
         {
-            services.AddLocalAITextCompletion(configure);
+            services.AddLMSupplyTextCompletion(configure);
         });
 
         return builder;

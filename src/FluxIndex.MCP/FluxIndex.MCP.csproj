@@ -13,7 +13,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- FluxIndex SDK (includes LocalAI, FileFlux, WebFlux, FluxCurator, FluxImprover) -->
+    <!-- FluxIndex SDK (includes LMSupply, FileFlux, WebFlux, FluxCurator, FluxImprover) -->
     <ProjectReference Include="..\FluxIndex.SDK\FluxIndex.SDK.csproj" />
     <ProjectReference Include="..\FluxIndex.Storage.SQLite\FluxIndex.Storage.SQLite.csproj" />
   </ItemGroup>

@@ -7,8 +7,8 @@
     <LangVersion>latest</LangVersion>
     <PackageId>FluxIndex.SDK</PackageId>
     <IsPackable>true</IsPackable>
-    <Description>FluxIndex SDK - Complete RAG infrastructure with LocalAI embeddings, FileFlux integration, FluxCurator preprocessing, and FluxImprover quality enhancement</Description>
-    <PackageTags>RAG;VectorStore;Search;AI;Embeddings;Retrieval;SDK;LocalAI;FileFlux;FluxCurator;FluxImprover</PackageTags>
+    <Description>FluxIndex SDK - Complete RAG infrastructure with LMSupply embeddings, FileFlux integration, FluxCurator preprocessing, and FluxImprover quality enhancement</Description>
+    <PackageTags>RAG;VectorStore;Search;AI;Embeddings;Retrieval;SDK;LMSupply;FileFlux;FluxCurator;FluxImprover</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
@@ -24,9 +24,9 @@
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Options" />
 
-    <!-- LocalAI dependencies (from AI.Local) -->
-    <PackageReference Include="LocalAI.Embedder" />
-    <PackageReference Include="LocalAI.Reranker" />
+    <!-- LMSupply dependencies (from AI.Local) -->
+    <PackageReference Include="LMSupply.Embedder" />
+    <PackageReference Include="LMSupply.Reranker" />
 
     <!-- Document processing dependencies (from Extensions) -->
     <PackageReference Include="FileFlux" />

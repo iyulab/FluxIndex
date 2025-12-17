@@ -51,9 +51,9 @@
     <PackageVersion Include="Azure.AI.OpenAI" Version="2.1.0" />
     <PackageVersion Include="Google.Cloud.AIPlatform.V1" Version="3.54.0" />
     <PackageVersion Include="Mscc.GenerativeAI" Version="2.5.2" />
-    <!-- LocalAI: Unified local AI inference (replaces LocalEmbedder/LocalReranker) -->
-    <PackageVersion Include="LocalAI.Embedder" Version="0.7.2" />
-    <PackageVersion Include="LocalAI.Reranker" Version="0.7.2" />
+    <!-- LMSupply: Unified local AI inference  -->
+    <PackageVersion Include="LMSupply.Embedder" Version="0.7.2" />
+    <PackageVersion Include="LMSupply.Reranker" Version="0.7.2" />
   </ItemGroup>
   <!-- Storage/Cache Packages -->
   <ItemGroup>
@@ -62,9 +62,9 @@
   </ItemGroup>
   <!-- Document Processing & Quality -->
   <ItemGroup>
-    <PackageVersion Include="FileFlux" Version="0.8.7" />
-    <PackageVersion Include="FluxCurator" Version="0.6.1" />
-    <PackageVersion Include="FluxImprover" Version="0.5.0" />
+    <PackageVersion Include="FileFlux" Version="0.8.8" />
+    <PackageVersion Include="FluxCurator" Version="0.6.2" />
+    <PackageVersion Include="FluxImprover" Version="0.5.1" />
     <PackageVersion Include="HtmlAgilityPack" Version="1.12.4" />
     <PackageVersion Include="WebFlux" Version="0.1.8" />
   </ItemGroup>

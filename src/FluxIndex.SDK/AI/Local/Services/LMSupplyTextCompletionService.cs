@@ -1,35 +1,35 @@
 using System.Text;
 using FluxIndex.Core.Application.Interfaces;
-using LocalAI;
-using LocalAI.Generator;
-using LocalAI.Generator.Abstractions;
-using LocalAI.Generator.Models;
+using LMSupply;
+using LMSupply.Generator;
+using LMSupply.Generator.Abstractions;
+using LMSupply.Generator.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace FluxIndex.SDK.AI.Local.Services;
 
 /// <summary>
-/// Local ONNX-based implementation of ITextCompletionService using LocalAI.Generator.
+/// Local ONNX-based implementation of ITextCompletionService using LMSupply.Generator.
 /// Provides offline, GPU-accelerated text generation without external API calls.
 /// </summary>
-public sealed class LocalAITextCompletionService : ITextCompletionService, IAsyncDisposable
+public sealed class LMSupplyTextCompletionService : ITextCompletionService, IAsyncDisposable
 {
-    private readonly LocalAITextCompletionOptions _options;
-    private readonly ILogger<LocalAITextCompletionService> _logger;
+    private readonly LMSupplyTextCompletionOptions _options;
+    private readonly ILogger<LMSupplyTextCompletionService> _logger;
     private IGeneratorModel? _model;
     private readonly SemaphoreSlim _initLock = new(1, 1);
     private bool _disposed;
 
-    public LocalAITextCompletionService(
-        IOptions<LocalAITextCompletionOptions> options,
-        ILogger<LocalAITextCompletionService> logger)
+    public LMSupplyTextCompletionService(
+        IOptions<LMSupplyTextCompletionOptions> options,
+        ILogger<LMSupplyTextCompletionService> logger)
     {
         _options = options.Value;
         _logger = logger;
 
         _logger.LogInformation(
-            "LocalAI Text Completion Service configured: Model={Model}, Provider={Provider}",
+            "LMSupply Text Completion Service configured: Model={Model}, Provider={Provider}",
             _options.ModelId, _options.ExecutionProvider);
     }
 
@@ -44,7 +44,7 @@ public sealed class LocalAITextCompletionService : ITextCompletionService, IAsyn
             if (_model != null)
                 return _model;
 
-            _logger.LogInformation("Loading LocalAI generator model: {Model}", _options.ModelId);
+            _logger.LogInformation("Loading LMSupply generator model: {Model}", _options.ModelId);
 
             var generatorOptions = new GeneratorOptions
             {
@@ -62,7 +62,7 @@ public sealed class LocalAITextCompletionService : ITextCompletionService, IAsyn
                 cancellationToken);
 
             _logger.LogInformation(
-                "LocalAI generator model loaded: {Model}",
+                "LMSupply generator model loaded: {Model}",
                 _model.ModelId);
 
             return _model;
@@ -196,7 +196,7 @@ public sealed class LocalAITextCompletionService : ITextCompletionService, IAsyn
     /// </summary>
     public async Task WarmupAsync(CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Warming up LocalAI generator model...");
+        _logger.LogInformation("Warming up LMSupply generator model...");
         var model = await GetModelAsync(cancellationToken);
 
         // Generate a small test completion
@@ -206,7 +206,7 @@ public sealed class LocalAITextCompletionService : ITextCompletionService, IAsyn
             break; // Just load the model and generate first token
         }
 
-        _logger.LogInformation("LocalAI generator warmup completed");
+        _logger.LogInformation("LMSupply generator warmup completed");
     }
 
     private static string ExtractJson(string response)

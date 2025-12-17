@@ -1,6 +1,6 @@
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Services.Reranking;
-using LocalAI.Reranker;
+using LMSupply.Reranker;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -21,10 +21,10 @@ namespace FluxIndex.SDK.AI.Local.Services;
 /// - Model loading fails (disk issues, memory)
 /// - Runtime inference fails (unexpected errors)
 /// </remarks>
-public sealed class ResilientLocalAIReranker : IReranker, IAsyncDisposable
+public sealed class ResilientLMSupplyReranker : IReranker, IAsyncDisposable
 {
-    private readonly LocalAIRerankerOptions _options;
-    private readonly ILogger<ResilientLocalAIReranker> _logger;
+    private readonly LMSupplyRerankerOptions _options;
+    private readonly ILogger<ResilientLMSupplyReranker> _logger;
     private readonly AlgorithmicReranker _fallbackReranker;
     private IRerankerModel? _semanticReranker;
     private readonly SemaphoreSlim _initLock = new(1, 1);
@@ -32,13 +32,13 @@ public sealed class ResilientLocalAIReranker : IReranker, IAsyncDisposable
     private bool _initAttempted;
     private bool _disposed;
 
-    public ResilientLocalAIReranker(
-        IOptions<LocalAIRerankerOptions> options,
+    public ResilientLMSupplyReranker(
+        IOptions<LMSupplyRerankerOptions> options,
         IEmbeddingService? embeddingService = null,
-        ILogger<ResilientLocalAIReranker>? logger = null)
+        ILogger<ResilientLMSupplyReranker>? logger = null)
     {
-        _options = options?.Value ?? new LocalAIRerankerOptions();
-        _logger = logger ?? NullLogger<ResilientLocalAIReranker>.Instance;
+        _options = options?.Value ?? new LMSupplyRerankerOptions();
+        _logger = logger ?? NullLogger<ResilientLMSupplyReranker>.Instance;
 
         // Initialize algorithmic fallback (always available)
         _fallbackReranker = new AlgorithmicReranker(
@@ -51,7 +51,7 @@ public sealed class ResilientLocalAIReranker : IReranker, IAsyncDisposable
             });
 
         _logger.LogInformation(
-            "Resilient LocalAI Reranker initialized: Model={ModelId}, HasEmbeddingFallback={HasEmbedding}",
+            "Resilient LMSupply Reranker initialized: Model={ModelId}, HasEmbeddingFallback={HasEmbedding}",
             _options.ModelId, embeddingService != null);
     }
 
@@ -88,7 +88,7 @@ public sealed class ResilientLocalAIReranker : IReranker, IAsyncDisposable
 
             try
             {
-                _logger.LogInformation("Attempting to load LocalAI reranker model: {Model}", _options.ModelId);
+                _logger.LogInformation("Attempting to load LMSupply reranker model: {Model}", _options.ModelId);
 
                 var rerankerOptions = new RerankerOptions
                 {
@@ -247,7 +247,7 @@ public sealed class ResilientLocalAIReranker : IReranker, IAsyncDisposable
             var modelInfo = _semanticReranker.GetModelInfo();
             return new RerankModelInfo
             {
-                Name = modelInfo?.DisplayName ?? $"LocalAI Reranker ({_options.ModelId})",
+                Name = modelInfo?.DisplayName ?? $"LMSupply Reranker ({_options.ModelId})",
                 Type = RerankModel.Local,
                 Version = "1.0.0",
                 SupportsMultilingual = modelInfo?.Alias == "multilingual",

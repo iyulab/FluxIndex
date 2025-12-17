@@ -1,7 +1,7 @@
 <Project>
   <!-- Common Version Management -->
   <PropertyGroup>
-    <Version>0.5.0</Version>
+    <Version>0.5.1</Version>
     <AssemblyVersion>$(Version).0</AssemblyVersion>
     <FileVersion>$(Version).0</FileVersion>
     
@@ -30,8 +30,7 @@
 
     <!-- NuGet Package Settings -->
     <PackageOutputPath>$(MSBuildThisFileDirectory)nupkgs</PackageOutputPath>
-    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
-
+    
     <!-- Suppress NuGet warnings for package management -->
     <NoWarn>$(NoWarn);NU1506;NU1507;NU1605;NU1107</NoWarn>
     <!-- Suppress XML documentation warnings -->

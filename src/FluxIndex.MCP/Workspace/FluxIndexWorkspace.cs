@@ -113,15 +113,15 @@ public class FluxIndexWorkspace : IDisposable
         switch (_config.Embedding.Provider.ToLowerInvariant())
         {
             case "local":
-            case "localai":
+            case "LMSupply":
                 // Use local AI embedder (ONNX-based, no API key required)
-                builder.UseLocalAIEmbedding();
+                builder.UseLMSupplyEmbedding();
                 break;
 
             default:
-                // Default to LocalAI for unknown providers
+                // Default to LMSupply for unknown providers
                 // External AI providers should be implemented by consuming applications
-                builder.UseLocalAIEmbedding();
+                builder.UseLMSupplyEmbedding();
                 break;
         }
     }

@@ -22,7 +22,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- FluxIndex SDK (includes LocalAI, FileFlux, WebFlux, FluxCurator, FluxImprover) -->
+    <!-- FluxIndex SDK (includes LMSupply, FileFlux, WebFlux, FluxCurator, FluxImprover) -->
     <ProjectReference Include="..\..\src\FluxIndex.SDK\FluxIndex.SDK.csproj" />
   </ItemGroup>
 

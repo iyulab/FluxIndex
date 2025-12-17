@@ -14,7 +14,7 @@
 - **Graph Traversal** - BFS/DFS, Dijkstra shortest path, PageRank-style importance
 - **Vector Quantization** - Scalar (Int8/Int4), Product Quantization, Binary (32x compression)
 - **Multiple Storage** - SQLite, PostgreSQL with pgvector
-- **Local-First AI** - Built-in LocalAI (ONNX-based), bring your own embedding service
+- **Local-First AI** - Built-in LMSupply (ONNX-based), bring your own embedding service
 - **Document Processing** - PDF/DOCX/TXT via FileFlux, web crawling via WebFlux
 - **MCP Server** - Model Context Protocol for AI assistant integration
 - **Production Ready** - Redis caching, clean architecture, .NET 10.0
@@ -29,10 +29,10 @@ dotnet add package FluxIndex.Storage.SQLite
 ```csharp
 using FluxIndex.SDK;
 
-// 1. Setup (LocalAI embedding - no API key required)
+// 1. Setup (LMSupply embedding - no API key required)
 var context = FluxIndexContext.CreateBuilder()
     .UseSQLite("fluxindex.db")
-    .UseLocalAIEmbedding()  // Built-in ONNX-based embedding
+    .UseLMSupplyEmbedding()  // Built-in ONNX-based embedding
     .UseResilientLocalReranker()  // Auto fallback to algorithmic
     .Build();
 
@@ -91,7 +91,7 @@ Full benchmarks: [BENCHMARK_RESULTS.md](./benchmarks/FluxIndex.Benchmarks/BENCHM
 | Package | Description |
 |---------|-------------|
 | **FluxIndex.Core** | Interfaces and core logic |
-| **FluxIndex.SDK** | All-in-one SDK with LocalAI, FileFlux, WebFlux, FluxCurator, FluxImprover |
+| **FluxIndex.SDK** | All-in-one SDK with LMSupply, FileFlux, WebFlux, FluxCurator, FluxImprover |
 | **FluxIndex.Storage.SQLite** | SQLite vector store |
 | **FluxIndex.Storage.PostgreSQL** | PostgreSQL with pgvector |
 | **FluxIndex.Cache.Redis** | Redis semantic cache |
@@ -108,7 +108,7 @@ Full benchmarks: [BENCHMARK_RESULTS.md](./benchmarks/FluxIndex.Benchmarks/BENCHM
 
 ## Examples
 
-- [RealQualityTest](./samples/RealQualityTest/) - LocalAI + SQLite integration
+- [RealQualityTest](./samples/RealQualityTest/) - LMSupply + SQLite integration
 - [WebFluxSample](./samples/WebFluxSample/) - Web crawling
 
 ## Requirements

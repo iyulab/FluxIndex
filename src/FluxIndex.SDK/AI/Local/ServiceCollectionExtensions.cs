@@ -7,22 +7,22 @@ using Microsoft.Extensions.Options;
 namespace FluxIndex.SDK.AI.Local;
 
 /// <summary>
-/// Extension methods for registering LocalAI services with dependency injection
+/// Extension methods for registering LMSupply services with dependency injection
 /// </summary>
 public static class ServiceCollectionExtensions
 {
     #region Embedding Services
 
     /// <summary>
-    /// Adds LocalAI embedding service to the service collection.
+    /// Adds LMSupply embedding service to the service collection.
     /// Uses local ONNX-based models for offline embedding generation.
     /// </summary>
     /// <param name="services">The service collection</param>
     /// <param name="configureOptions">Optional configuration action</param>
     /// <returns>Service collection for chaining</returns>
-    public static IServiceCollection AddLocalAIEmbedding(
+    public static IServiceCollection AddLMSupplyEmbedding(
         this IServiceCollection services,
-        Action<LocalAIEmbeddingOptions>? configureOptions = null)
+        Action<LMSupplyEmbeddingOptions>? configureOptions = null)
     {
         if (configureOptions != null)
         {
@@ -30,44 +30,44 @@ public static class ServiceCollectionExtensions
         }
         else
         {
-            services.TryAddSingleton(Options.Create(new LocalAIEmbeddingOptions()));
+            services.TryAddSingleton(Options.Create(new LMSupplyEmbeddingOptions()));
         }
 
         services.AddMemoryCache();
-        services.AddSingleton<LocalAIEmbeddingService>();
-        services.AddSingleton<IEmbeddingService>(sp => sp.GetRequiredService<LocalAIEmbeddingService>());
+        services.AddSingleton<LMSupplyEmbeddingService>();
+        services.AddSingleton<IEmbeddingService>(sp => sp.GetRequiredService<LMSupplyEmbeddingService>());
 
         return services;
     }
 
     /// <summary>
-    /// Adds LocalAI embedding with a specific model alias.
+    /// Adds LMSupply embedding with a specific model alias.
     /// </summary>
     /// <param name="services">The service collection</param>
     /// <param name="modelId">Model alias (default, fast, quality, large, multilingual) or HuggingFace ID</param>
     /// <returns>Service collection for chaining</returns>
-    public static IServiceCollection AddLocalAIEmbedding(
+    public static IServiceCollection AddLMSupplyEmbedding(
         this IServiceCollection services,
         string modelId)
     {
-        return services.AddLocalAIEmbedding(options => options.ModelId = modelId);
+        return services.AddLMSupplyEmbedding(options => options.ModelId = modelId);
     }
 
     /// <summary>
-    /// Adds LocalAI embedding with warmup during startup.
+    /// Adds LMSupply embedding with warmup during startup.
     /// </summary>
-    public static IServiceCollection AddLocalAIEmbeddingWithWarmup(
+    public static IServiceCollection AddLMSupplyEmbeddingWithWarmup(
         this IServiceCollection services,
-        Action<LocalAIEmbeddingOptions>? configureOptions = null)
+        Action<LMSupplyEmbeddingOptions>? configureOptions = null)
     {
-        var wrappedConfigure = (LocalAIEmbeddingOptions opts) =>
+        var wrappedConfigure = (LMSupplyEmbeddingOptions opts) =>
         {
             configureOptions?.Invoke(opts);
             opts.WarmupOnStartup = true;
         };
 
-        services.AddLocalAIEmbedding(wrappedConfigure);
-        services.AddHostedService<LocalAIEmbeddingWarmupService>();
+        services.AddLMSupplyEmbedding(wrappedConfigure);
+        services.AddHostedService<LMSupplyEmbeddingWarmupService>();
 
         return services;
     }
@@ -77,7 +77,7 @@ public static class ServiceCollectionExtensions
     #region Reranker Services
 
     /// <summary>
-    /// Adds LocalAI reranker service.
+    /// Adds LMSupply reranker service.
     /// Provides cross-encoder based semantic reranking using local ONNX models.
     /// </summary>
     /// <param name="services">The service collection</param>
@@ -85,11 +85,11 @@ public static class ServiceCollectionExtensions
     /// <returns>Service collection for chaining</returns>
     /// <remarks>
     /// This registration will fail if the model cannot be downloaded.
-    /// For resilient fallback behavior, use <see cref="AddResilientLocalAIReranker"/> instead.
+    /// For resilient fallback behavior, use <see cref="AddResilientLMSupplyReranker"/> instead.
     /// </remarks>
-    public static IServiceCollection AddLocalAIReranker(
+    public static IServiceCollection AddLMSupplyReranker(
         this IServiceCollection services,
-        Action<LocalAIRerankerOptions>? configureOptions = null)
+        Action<LMSupplyRerankerOptions>? configureOptions = null)
     {
         if (configureOptions != null)
         {
@@ -97,36 +97,36 @@ public static class ServiceCollectionExtensions
         }
         else
         {
-            services.TryAddSingleton(Options.Create(new LocalAIRerankerOptions()));
+            services.TryAddSingleton(Options.Create(new LMSupplyRerankerOptions()));
         }
 
-        services.AddSingleton<LocalAIRerankerAdapter>();
-        services.AddSingleton<IReranker>(sp => sp.GetRequiredService<LocalAIRerankerAdapter>());
+        services.AddSingleton<LMSupplyRerankerAdapter>();
+        services.AddSingleton<IReranker>(sp => sp.GetRequiredService<LMSupplyRerankerAdapter>());
 
         return services;
     }
 
     /// <summary>
-    /// Adds LocalAI reranker with warmup during startup.
+    /// Adds LMSupply reranker with warmup during startup.
     /// </summary>
-    public static IServiceCollection AddLocalAIRerankerWithWarmup(
+    public static IServiceCollection AddLMSupplyRerankerWithWarmup(
         this IServiceCollection services,
-        Action<LocalAIRerankerOptions>? configureOptions = null)
+        Action<LMSupplyRerankerOptions>? configureOptions = null)
     {
-        var wrappedConfigure = (LocalAIRerankerOptions opts) =>
+        var wrappedConfigure = (LMSupplyRerankerOptions opts) =>
         {
             configureOptions?.Invoke(opts);
             opts.WarmupOnStartup = true;
         };
 
-        services.AddLocalAIReranker(wrappedConfigure);
-        services.AddHostedService<LocalAIRerankerWarmupService>();
+        services.AddLMSupplyReranker(wrappedConfigure);
+        services.AddHostedService<LMSupplyRerankerWarmupService>();
 
         return services;
     }
 
     /// <summary>
-    /// Adds resilient LocalAI reranker with automatic fallback to algorithmic reranking.
+    /// Adds resilient LMSupply reranker with automatic fallback to algorithmic reranking.
     /// </summary>
     /// <param name="services">The service collection</param>
     /// <param name="configureOptions">Optional configuration action</param>
@@ -136,9 +136,9 @@ public static class ServiceCollectionExtensions
     /// - Primary: Cross-encoder semantic reranking (high quality)
     /// - Fallback: TF-IDF/BM25 algorithmic reranking (lower quality, always available)
     /// </remarks>
-    public static IServiceCollection AddResilientLocalAIReranker(
+    public static IServiceCollection AddResilientLMSupplyReranker(
         this IServiceCollection services,
-        Action<LocalAIRerankerOptions>? configureOptions = null)
+        Action<LMSupplyRerankerOptions>? configureOptions = null)
     {
         if (configureOptions != null)
         {
@@ -146,29 +146,29 @@ public static class ServiceCollectionExtensions
         }
         else
         {
-            services.TryAddSingleton(Options.Create(new LocalAIRerankerOptions()));
+            services.TryAddSingleton(Options.Create(new LMSupplyRerankerOptions()));
         }
 
-        services.AddSingleton<ResilientLocalAIReranker>();
-        services.AddSingleton<IReranker>(sp => sp.GetRequiredService<ResilientLocalAIReranker>());
+        services.AddSingleton<ResilientLMSupplyReranker>();
+        services.AddSingleton<IReranker>(sp => sp.GetRequiredService<ResilientLMSupplyReranker>());
 
         return services;
     }
 
     /// <summary>
-    /// Adds resilient LocalAI reranker with warmup and automatic fallback.
+    /// Adds resilient LMSupply reranker with warmup and automatic fallback.
     /// </summary>
-    public static IServiceCollection AddResilientLocalAIRerankerWithWarmup(
+    public static IServiceCollection AddResilientLMSupplyRerankerWithWarmup(
         this IServiceCollection services,
-        Action<LocalAIRerankerOptions>? configureOptions = null)
+        Action<LMSupplyRerankerOptions>? configureOptions = null)
     {
-        var wrappedConfigure = (LocalAIRerankerOptions opts) =>
+        var wrappedConfigure = (LMSupplyRerankerOptions opts) =>
         {
             configureOptions?.Invoke(opts);
             opts.WarmupOnStartup = true;
         };
 
-        return services.AddResilientLocalAIReranker(wrappedConfigure);
+        return services.AddResilientLMSupplyReranker(wrappedConfigure);
     }
 
     #endregion
@@ -176,15 +176,15 @@ public static class ServiceCollectionExtensions
     #region Text Completion Services
 
     /// <summary>
-    /// Adds LocalAI text completion (generator) service to the service collection.
+    /// Adds LMSupply text completion (generator) service to the service collection.
     /// Uses local ONNX-based models for offline text generation.
     /// </summary>
     /// <param name="services">The service collection</param>
     /// <param name="configureOptions">Optional configuration action</param>
     /// <returns>Service collection for chaining</returns>
-    public static IServiceCollection AddLocalAITextCompletion(
+    public static IServiceCollection AddLMSupplyTextCompletion(
         this IServiceCollection services,
-        Action<LocalAITextCompletionOptions>? configureOptions = null)
+        Action<LMSupplyTextCompletionOptions>? configureOptions = null)
     {
         if (configureOptions != null)
         {
@@ -192,26 +192,26 @@ public static class ServiceCollectionExtensions
         }
         else
         {
-            services.TryAddSingleton(Options.Create(new LocalAITextCompletionOptions()));
+            services.TryAddSingleton(Options.Create(new LMSupplyTextCompletionOptions()));
         }
 
-        services.AddSingleton<LocalAITextCompletionService>();
-        services.AddSingleton<ITextCompletionService>(sp => sp.GetRequiredService<LocalAITextCompletionService>());
+        services.AddSingleton<LMSupplyTextCompletionService>();
+        services.AddSingleton<ITextCompletionService>(sp => sp.GetRequiredService<LMSupplyTextCompletionService>());
 
         return services;
     }
 
     /// <summary>
-    /// Adds LocalAI text completion with a specific model.
+    /// Adds LMSupply text completion with a specific model.
     /// </summary>
     /// <param name="services">The service collection</param>
     /// <param name="modelId">Model alias (default, fast, quality, large) or HuggingFace ID</param>
     /// <returns>Service collection for chaining</returns>
-    public static IServiceCollection AddLocalAITextCompletion(
+    public static IServiceCollection AddLMSupplyTextCompletion(
         this IServiceCollection services,
         string modelId)
     {
-        return services.AddLocalAITextCompletion(options => options.ModelId = modelId);
+        return services.AddLMSupplyTextCompletion(options => options.ModelId = modelId);
     }
 
     #endregion
@@ -219,48 +219,48 @@ public static class ServiceCollectionExtensions
     #region Combined Services
 
     /// <summary>
-    /// Adds all LocalAI services: Embedding, Text Completion, and Reranker.
+    /// Adds all LMSupply services: Embedding, Text Completion, and Reranker.
     /// This is the recommended way to enable full AI capabilities without external API keys.
     /// Individual services can be overridden after calling this method.
     /// </summary>
     /// <param name="services">The service collection</param>
-    /// <param name="configure">Optional configuration for all LocalAI options</param>
+    /// <param name="configure">Optional configuration for all LMSupply options</param>
     /// <returns>Service collection for chaining</returns>
     /// <example>
-    /// // Enable all LocalAI services with defaults
-    /// services.AddLocalAI();
+    /// // Enable all LMSupply services with defaults
+    /// services.AddLMSupply();
     ///
     /// // With custom configuration
-    /// services.AddLocalAI(options => {
+    /// services.AddLMSupply(options => {
     ///     options.EmbeddingModelId = "multilingual";
     ///     options.TextCompletionModelId = "quality";
     /// });
     ///
-    /// // Override specific service after AddLocalAI
-    /// services.AddLocalAI();
+    /// // Override specific service after AddLMSupply
+    /// services.AddLMSupply();
     /// services.AddSingleton&lt;IEmbeddingService&gt;(myCustomEmbedding);
     /// </example>
-    public static IServiceCollection AddLocalAI(
+    public static IServiceCollection AddLMSupply(
         this IServiceCollection services,
-        Action<LocalAIOptions>? configure = null)
+        Action<LMSupplyOptions>? configure = null)
     {
-        var options = new LocalAIOptions();
+        var options = new LMSupplyOptions();
         configure?.Invoke(options);
 
         // Embedding (default: bge-small-en-v1.5)
-        services.AddLocalAIEmbedding(opts =>
+        services.AddLMSupplyEmbedding(opts =>
         {
             opts.ModelId = options.EmbeddingModelId ?? "default";
         });
 
         // Text Completion (default: Qwen2.5-0.5B)
-        services.AddLocalAITextCompletion(opts =>
+        services.AddLMSupplyTextCompletion(opts =>
         {
             opts.ModelId = options.TextCompletionModelId ?? "default";
         });
 
         // Reranker with fallback (default: cross-encoder)
-        services.AddResilientLocalAIReranker(opts =>
+        services.AddResilientLMSupplyReranker(opts =>
         {
             opts.ModelId = options.RerankerModelId ?? "default";
         });
@@ -269,27 +269,27 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Adds all LocalAI services with model warmup during startup.
+    /// Adds all LMSupply services with model warmup during startup.
     /// Models are loaded immediately to reduce first-request latency.
     /// </summary>
-    public static IServiceCollection AddLocalAIWithWarmup(
+    public static IServiceCollection AddLMSupplyWithWarmup(
         this IServiceCollection services,
-        Action<LocalAIOptions>? configure = null)
+        Action<LMSupplyOptions>? configure = null)
     {
-        var options = new LocalAIOptions();
+        var options = new LMSupplyOptions();
         configure?.Invoke(options);
 
-        services.AddLocalAIEmbeddingWithWarmup(opts =>
+        services.AddLMSupplyEmbeddingWithWarmup(opts =>
         {
             opts.ModelId = options.EmbeddingModelId ?? "default";
         });
 
-        services.AddLocalAITextCompletion(opts =>
+        services.AddLMSupplyTextCompletion(opts =>
         {
             opts.ModelId = options.TextCompletionModelId ?? "default";
         });
 
-        services.AddResilientLocalAIRerankerWithWarmup(opts =>
+        services.AddResilientLMSupplyRerankerWithWarmup(opts =>
         {
             opts.ModelId = options.RerankerModelId ?? "default";
         });
@@ -301,9 +301,9 @@ public static class ServiceCollectionExtensions
 }
 
 /// <summary>
-/// Combined options for all LocalAI services.
+/// Combined options for all LMSupply services.
 /// </summary>
-public class LocalAIOptions
+public class LMSupplyOptions
 {
     /// <summary>
     /// Embedding model ID. Available: default, fast, quality, large, multilingual, or HuggingFace ID.

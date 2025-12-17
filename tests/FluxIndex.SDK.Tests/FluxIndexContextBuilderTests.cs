@@ -49,12 +49,12 @@ public class FluxIndexContextBuilderTests : IDisposable
     }
 
     [Fact]
-    public void UseLocalAIEmbedding_WithDefaultModel_ShouldConfigure()
+    public void UseLMSupplyEmbedding_WithDefaultModel_ShouldConfigure()
     {
         // Act
         var builder = FluxIndexContext.CreateBuilder()
             .UseSQLite(_testDbPath)
-            .UseLocalAIEmbedding();
+            .UseLMSupplyEmbedding();
 
         var context = builder.Build();
         try
@@ -69,12 +69,12 @@ public class FluxIndexContextBuilderTests : IDisposable
     }
 
     [Fact]
-    public void UseLocalAIEmbedding_WithCustomModel_ShouldConfigure()
+    public void UseLMSupplyEmbedding_WithCustomModel_ShouldConfigure()
     {
         // Act
         var builder = FluxIndexContext.CreateBuilder()
             .UseSQLite(_testDbPath)
-            .UseLocalAIEmbedding("bge-small-en-v1.5");
+            .UseLMSupplyEmbedding("bge-small-en-v1.5");
 
         var context = builder.Build();
         try
@@ -89,12 +89,12 @@ public class FluxIndexContextBuilderTests : IDisposable
     }
 
     [Fact]
-    public void UseLocalAIMultilingual_ShouldConfigure()
+    public void UseLMSupplyMultilingual_ShouldConfigure()
     {
         // Act
         var builder = FluxIndexContext.CreateBuilder()
             .UseSQLite(_testDbPath)
-            .UseLocalAIMultilingual();
+            .UseLMSupplyMultilingual();
 
         var context = builder.Build();
         try
@@ -150,20 +150,20 @@ public class FluxIndexContextBuilderTests : IDisposable
     }
 
     [Fact]
-    public async Task Builder_WithLocalAIEmbedding_ShouldIndexSuccessfully()
+    public async Task Builder_WithLMSupplyEmbedding_ShouldIndexSuccessfully()
     {
 
         // Arrange
         var context = FluxIndexContext.CreateBuilder()
             .UseSQLite(_testDbPath)
-            .UseLocalAIEmbedding()
+            .UseLMSupplyEmbedding()
             .Build();
 
         try
         {
             // Act
             var docId = await context.Indexer.IndexDocumentAsync(
-                "Test document for LocalAI embedding integration",
+                "Test document for LMSupply embedding integration",
                 "test-doc-001");
 
             // Assert

@@ -1,8 +1,8 @@
 using System.Security.Cryptography;
 using System.Text;
 using FluxIndex.Core.Application.Interfaces;
-using LocalAI;
-using LocalAI.Embedder;
+using LMSupply;
+using LMSupply.Embedder;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -10,21 +10,21 @@ using Microsoft.Extensions.Options;
 namespace FluxIndex.SDK.AI.Local.Services;
 
 /// <summary>
-/// Local ONNX-based implementation of IEmbeddingService using LocalAI.Embedder.
+/// Local ONNX-based implementation of IEmbeddingService using LMSupply.Embedder.
 /// Provides offline, GPU-accelerated text embeddings without external API calls.
 /// </summary>
-public sealed class LocalAIEmbeddingService : IEmbeddingService, IAsyncDisposable
+public sealed class LMSupplyEmbeddingService : IEmbeddingService, IAsyncDisposable
 {
-    private readonly LocalAIEmbeddingOptions _options;
+    private readonly LMSupplyEmbeddingOptions _options;
     private readonly IMemoryCache? _cache;
-    private readonly ILogger<LocalAIEmbeddingService> _logger;
+    private readonly ILogger<LMSupplyEmbeddingService> _logger;
     private IEmbeddingModel? _model;
     private readonly SemaphoreSlim _initLock = new(1, 1);
     private bool _disposed;
 
-    public LocalAIEmbeddingService(
-        IOptions<LocalAIEmbeddingOptions> options,
-        ILogger<LocalAIEmbeddingService> logger,
+    public LMSupplyEmbeddingService(
+        IOptions<LMSupplyEmbeddingOptions> options,
+        ILogger<LMSupplyEmbeddingService> logger,
         IMemoryCache? cache = null)
     {
         _options = options.Value;
@@ -32,7 +32,7 @@ public sealed class LocalAIEmbeddingService : IEmbeddingService, IAsyncDisposabl
         _cache = cache;
 
         _logger.LogInformation(
-            "LocalAI Embedding Service configured: Model={Model}, Provider={Provider}, Pooling={Pooling}",
+            "LMSupply Embedding Service configured: Model={Model}, Provider={Provider}, Pooling={Pooling}",
             _options.ModelId, _options.ExecutionProvider, _options.PoolingMode);
     }
 
@@ -47,7 +47,7 @@ public sealed class LocalAIEmbeddingService : IEmbeddingService, IAsyncDisposabl
             if (_model != null)
                 return _model;
 
-            _logger.LogInformation("Loading LocalAI embedding model: {Model}", _options.ModelId);
+            _logger.LogInformation("Loading LMSupply embedding model: {Model}", _options.ModelId);
 
             var embedderOptions = new EmbedderOptions
             {
@@ -58,7 +58,7 @@ public sealed class LocalAIEmbeddingService : IEmbeddingService, IAsyncDisposabl
                 CacheDirectory = _options.CacheDirectory
             };
 
-            _model = await LocalAI.Embedder.LocalEmbedder.LoadAsync(
+            _model = await LMSupply.Embedder.LocalEmbedder.LoadAsync(
                 _options.ModelId,
                 embedderOptions,
                 new Progress<DownloadProgress>(p =>
@@ -67,7 +67,7 @@ public sealed class LocalAIEmbeddingService : IEmbeddingService, IAsyncDisposabl
                 cancellationToken);
 
             _logger.LogInformation(
-                "LocalAI embedding model loaded: {Model}, Dimensions={Dimensions}",
+                "LMSupply embedding model loaded: {Model}, Dimensions={Dimensions}",
                 _model.ModelId, _model.Dimensions);
 
             return _model;
@@ -272,10 +272,10 @@ public sealed class LocalAIEmbeddingService : IEmbeddingService, IAsyncDisposabl
     /// </summary>
     public async Task WarmupAsync(CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Warming up LocalAI embedding model...");
+        _logger.LogInformation("Warming up LMSupply embedding model...");
         var model = await GetModelAsync(cancellationToken);
         await model.WarmupAsync(cancellationToken);
-        _logger.LogInformation("LocalAI embedding warmup completed");
+        _logger.LogInformation("LMSupply embedding warmup completed");
     }
 
     private static bool IsCjkCharacter(char c)
@@ -290,7 +290,7 @@ public sealed class LocalAIEmbeddingService : IEmbeddingService, IAsyncDisposabl
     private string GenerateCacheKey(string text)
     {
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes($"{_options.ModelId}:{text}"));
-        return $"localai-embed:{Convert.ToBase64String(hash).Replace("/", "_").Replace("+", "-")[..16]}";
+        return $"LMSupply-embed:{Convert.ToBase64String(hash).Replace("/", "_").Replace("+", "-")[..16]}";
     }
 
     public async ValueTask DisposeAsync()

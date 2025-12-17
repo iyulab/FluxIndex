@@ -17,7 +17,7 @@ public class SimplifiedApiTests : IDisposable
         _testDbPath = Path.Combine(Path.GetTempPath(), $"fluxindex_simple_api_test_{Guid.NewGuid()}.db");
 
         // ✅ Issue #1 검증: 간편 API 테스트 (InMemory 임베딩 사용)
-        // Note: CI 환경에서 LocalAI 모델이 없으므로 InMemory 사용
+        // Note: CI 환경에서 LMSupply 모델이 없으므로 InMemory 사용
         _context = FluxIndexContext.CreateBuilder()
             .UseSQLite(_testDbPath)
             .UseInMemoryEmbedding()

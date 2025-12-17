@@ -8,55 +8,55 @@ using Xunit;
 namespace FluxIndex.SDK.Tests.AI.Local;
 
 /// <summary>
-/// Tests for LocalAI service registration and DI configuration
+/// Tests for LMSupply service registration and DI configuration
 /// </summary>
-public class LocalAIServiceCollectionExtensionsTests
+public class LMSupplyServiceCollectionExtensionsTests
 {
     #region Text Completion Service Tests
 
     [Fact]
-    public void AddLocalAITextCompletion_RegistersServices()
+    public void AddLMSupplyTextCompletion_RegistersServices()
     {
         // Arrange
         var services = new ServiceCollection();
         services.AddLogging();
 
         // Act
-        services.AddLocalAITextCompletion();
+        services.AddLMSupplyTextCompletion();
 
         // Assert
         var provider = services.BuildServiceProvider();
         var textCompletionService = provider.GetService<ITextCompletionService>();
         Assert.NotNull(textCompletionService);
-        Assert.IsType<LocalAITextCompletionService>(textCompletionService);
+        Assert.IsType<LMSupplyTextCompletionService>(textCompletionService);
     }
 
     [Fact]
-    public void AddLocalAITextCompletion_WithModelId_RegistersWithCorrectModel()
+    public void AddLMSupplyTextCompletion_WithModelId_RegistersWithCorrectModel()
     {
         // Arrange
         var services = new ServiceCollection();
         services.AddLogging();
 
         // Act
-        services.AddLocalAITextCompletion("fast");
+        services.AddLMSupplyTextCompletion("fast");
 
         // Assert
         var provider = services.BuildServiceProvider();
-        var options = provider.GetService<IOptions<LocalAITextCompletionOptions>>();
+        var options = provider.GetService<IOptions<LMSupplyTextCompletionOptions>>();
         Assert.NotNull(options);
         Assert.Equal("fast", options.Value.ModelId);
     }
 
     [Fact]
-    public void AddLocalAITextCompletion_WithConfigureOptions_AppliesConfiguration()
+    public void AddLMSupplyTextCompletion_WithConfigureOptions_AppliesConfiguration()
     {
         // Arrange
         var services = new ServiceCollection();
         services.AddLogging();
 
         // Act
-        services.AddLocalAITextCompletion(options =>
+        services.AddLMSupplyTextCompletion(options =>
         {
             options.ModelId = "quality";
             options.MaxContextLength = 8192;
@@ -66,7 +66,7 @@ public class LocalAIServiceCollectionExtensionsTests
 
         // Assert
         var provider = services.BuildServiceProvider();
-        var options = provider.GetService<IOptions<LocalAITextCompletionOptions>>();
+        var options = provider.GetService<IOptions<LMSupplyTextCompletionOptions>>();
         Assert.NotNull(options);
         Assert.Equal("quality", options.Value.ModelId);
         Assert.Equal(8192, options.Value.MaxContextLength);
@@ -79,55 +79,55 @@ public class LocalAIServiceCollectionExtensionsTests
     #region Embedding Service Tests
 
     [Fact]
-    public void AddLocalAIEmbedding_RegistersServices()
+    public void AddLMSupplyEmbedding_RegistersServices()
     {
         // Arrange
         var services = new ServiceCollection();
         services.AddLogging();
 
         // Act
-        services.AddLocalAIEmbedding();
+        services.AddLMSupplyEmbedding();
 
         // Assert
         var provider = services.BuildServiceProvider();
         var embeddingService = provider.GetService<IEmbeddingService>();
         Assert.NotNull(embeddingService);
-        Assert.IsType<LocalAIEmbeddingService>(embeddingService);
+        Assert.IsType<LMSupplyEmbeddingService>(embeddingService);
     }
 
     [Fact]
-    public void AddLocalAIEmbedding_WithModelId_RegistersWithCorrectModel()
+    public void AddLMSupplyEmbedding_WithModelId_RegistersWithCorrectModel()
     {
         // Arrange
         var services = new ServiceCollection();
         services.AddLogging();
 
         // Act
-        services.AddLocalAIEmbedding("multilingual");
+        services.AddLMSupplyEmbedding("multilingual");
 
         // Assert
         var provider = services.BuildServiceProvider();
-        var options = provider.GetService<IOptions<LocalAIEmbeddingOptions>>();
+        var options = provider.GetService<IOptions<LMSupplyEmbeddingOptions>>();
         Assert.NotNull(options);
         Assert.Equal("multilingual", options.Value.ModelId);
     }
 
     [Fact]
-    public void AddLocalAIEmbedding_DefaultOptions_HasCorrectDefaults()
+    public void AddLMSupplyEmbedding_DefaultOptions_HasCorrectDefaults()
     {
         // Arrange
         var services = new ServiceCollection();
         services.AddLogging();
 
         // Act
-        services.AddLocalAIEmbedding();
+        services.AddLMSupplyEmbedding();
 
         // Assert
         var provider = services.BuildServiceProvider();
-        var options = provider.GetService<IOptions<LocalAIEmbeddingOptions>>()?.Value;
+        var options = provider.GetService<IOptions<LMSupplyEmbeddingOptions>>()?.Value;
         Assert.NotNull(options);
         Assert.Equal("default", options.ModelId);
-        Assert.Equal(LocalAIExecutionProvider.Auto, options.ExecutionProvider);
+        Assert.Equal(LMSupplyExecutionProvider.Auto, options.ExecutionProvider);
         Assert.Equal(512, options.MaxSequenceLength);
         Assert.True(options.NormalizeEmbeddings);
         Assert.False(options.WarmupOnStartup);
@@ -138,37 +138,37 @@ public class LocalAIServiceCollectionExtensionsTests
     #region Reranker Service Tests
 
     [Fact]
-    public void AddLocalAIReranker_RegistersServices()
+    public void AddLMSupplyReranker_RegistersServices()
     {
         // Arrange
         var services = new ServiceCollection();
         services.AddLogging();
 
         // Act
-        services.AddLocalAIReranker();
+        services.AddLMSupplyReranker();
 
         // Assert
         var provider = services.BuildServiceProvider();
         var reranker = provider.GetService<IReranker>();
         Assert.NotNull(reranker);
-        Assert.IsType<LocalAIRerankerAdapter>(reranker);
+        Assert.IsType<LMSupplyRerankerAdapter>(reranker);
     }
 
     [Fact]
-    public void AddResilientLocalAIReranker_RegistersResilientService()
+    public void AddResilientLMSupplyReranker_RegistersResilientService()
     {
         // Arrange
         var services = new ServiceCollection();
         services.AddLogging();
 
         // Act
-        services.AddResilientLocalAIReranker();
+        services.AddResilientLMSupplyReranker();
 
         // Assert
         var provider = services.BuildServiceProvider();
         var reranker = provider.GetService<IReranker>();
         Assert.NotNull(reranker);
-        Assert.IsType<ResilientLocalAIReranker>(reranker);
+        Assert.IsType<ResilientLMSupplyReranker>(reranker);
     }
 
     #endregion
@@ -176,25 +176,25 @@ public class LocalAIServiceCollectionExtensionsTests
     #region Combined Services Tests
 
     [Fact]
-    public void AddLocalAI_RegistersEmbeddingAndReranker()
+    public void AddLMSupply_RegistersEmbeddingAndReranker()
     {
         // Arrange
         var services = new ServiceCollection();
         services.AddLogging();
 
         // Act
-        services.AddLocalAI();
+        services.AddLMSupply();
 
         // Assert
         var provider = services.BuildServiceProvider();
 
         var embeddingService = provider.GetService<IEmbeddingService>();
         Assert.NotNull(embeddingService);
-        Assert.IsType<LocalAIEmbeddingService>(embeddingService);
+        Assert.IsType<LMSupplyEmbeddingService>(embeddingService);
 
         var reranker = provider.GetService<IReranker>();
         Assert.NotNull(reranker);
-        Assert.IsType<ResilientLocalAIReranker>(reranker);
+        Assert.IsType<ResilientLMSupplyReranker>(reranker);
     }
 
     #endregion

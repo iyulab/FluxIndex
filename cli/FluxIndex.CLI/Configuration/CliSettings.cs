@@ -59,7 +59,7 @@ public class CliSettings
     public string? GPUStackModelName { get; set; }
 
     /// <summary>
-    /// GPUStack embedding model name (optional, defaults to local-embedder)
+    /// GPUStack embedding model name (optional, defaults to lm-supply)
     /// </summary>
     public string? GPUStackEmbeddingModelName { get; set; }
 

@@ -1,12 +1,12 @@
-using LocalAI;
-using LocalAI.Embedder;
+using LMSupply;
+using LMSupply.Embedder;
 
 namespace FluxIndex.SDK.AI.Local;
 
 /// <summary>
 /// Execution provider for ONNX runtime inference
 /// </summary>
-public enum LocalAIExecutionProvider
+public enum LMSupplyExecutionProvider
 {
     /// <summary>
     /// Automatic GPU detection (recommended).
@@ -38,7 +38,7 @@ public enum LocalAIExecutionProvider
 /// <summary>
 /// Pooling mode for generating embeddings from token outputs
 /// </summary>
-public enum LocalAIPoolingMode
+public enum LMSupplyPoolingMode
 {
     /// <summary>
     /// Average all token outputs (default, best for most models)
@@ -57,9 +57,9 @@ public enum LocalAIPoolingMode
 }
 
 /// <summary>
-/// Configuration options for LocalAI embedding service
+/// Configuration options for LMSupply embedding service
 /// </summary>
-public sealed class LocalAIEmbeddingOptions
+public sealed class LMSupplyEmbeddingOptions
 {
     /// <summary>
     /// Model identifier or alias.
@@ -72,13 +72,13 @@ public sealed class LocalAIEmbeddingOptions
     /// Execution provider for ONNX runtime.
     /// Default: Auto (automatic GPU detection)
     /// </summary>
-    public LocalAIExecutionProvider ExecutionProvider { get; set; } = LocalAIExecutionProvider.Auto;
+    public LMSupplyExecutionProvider ExecutionProvider { get; set; } = LMSupplyExecutionProvider.Auto;
 
     /// <summary>
     /// Pooling mode for generating embeddings.
     /// Default: Mean (best for most models)
     /// </summary>
-    public LocalAIPoolingMode PoolingMode { get; set; } = LocalAIPoolingMode.Mean;
+    public LMSupplyPoolingMode PoolingMode { get; set; } = LMSupplyPoolingMode.Mean;
 
     /// <summary>
     /// Maximum sequence length for tokenization.
@@ -136,27 +136,27 @@ public sealed class LocalAIEmbeddingOptions
 
     internal ExecutionProvider ToExecutionProvider() => ExecutionProvider switch
     {
-        LocalAIExecutionProvider.Auto => LocalAI.ExecutionProvider.Auto,
-        LocalAIExecutionProvider.Cpu => LocalAI.ExecutionProvider.Cpu,
-        LocalAIExecutionProvider.Cuda => LocalAI.ExecutionProvider.Cuda,
-        LocalAIExecutionProvider.DirectML => LocalAI.ExecutionProvider.DirectML,
-        LocalAIExecutionProvider.CoreML => LocalAI.ExecutionProvider.CoreML,
-        _ => LocalAI.ExecutionProvider.Auto
+        LMSupplyExecutionProvider.Auto => LMSupply.ExecutionProvider.Auto,
+        LMSupplyExecutionProvider.Cpu => LMSupply.ExecutionProvider.Cpu,
+        LMSupplyExecutionProvider.Cuda => LMSupply.ExecutionProvider.Cuda,
+        LMSupplyExecutionProvider.DirectML => LMSupply.ExecutionProvider.DirectML,
+        LMSupplyExecutionProvider.CoreML => LMSupply.ExecutionProvider.CoreML,
+        _ => LMSupply.ExecutionProvider.Auto
     };
 
     internal PoolingMode ToPoolingMode() => PoolingMode switch
     {
-        LocalAIPoolingMode.Mean => LocalAI.Embedder.PoolingMode.Mean,
-        LocalAIPoolingMode.Cls => LocalAI.Embedder.PoolingMode.Cls,
-        LocalAIPoolingMode.Max => LocalAI.Embedder.PoolingMode.Max,
-        _ => LocalAI.Embedder.PoolingMode.Mean
+        LMSupplyPoolingMode.Mean => LMSupply.Embedder.PoolingMode.Mean,
+        LMSupplyPoolingMode.Cls => LMSupply.Embedder.PoolingMode.Cls,
+        LMSupplyPoolingMode.Max => LMSupply.Embedder.PoolingMode.Max,
+        _ => LMSupply.Embedder.PoolingMode.Mean
     };
 }
 
 /// <summary>
-/// Configuration options for LocalAI text completion (generator) service
+/// Configuration options for LMSupply text completion (generator) service
 /// </summary>
-public sealed class LocalAITextCompletionOptions
+public sealed class LMSupplyTextCompletionOptions
 {
     /// <summary>
     /// Model identifier or alias.
@@ -169,7 +169,7 @@ public sealed class LocalAITextCompletionOptions
     /// Execution provider for ONNX runtime.
     /// Default: Auto (automatic GPU detection)
     /// </summary>
-    public LocalAIExecutionProvider ExecutionProvider { get; set; } = LocalAIExecutionProvider.Auto;
+    public LMSupplyExecutionProvider ExecutionProvider { get; set; } = LMSupplyExecutionProvider.Auto;
 
     /// <summary>
     /// Maximum context length for the model.
@@ -209,19 +209,19 @@ public sealed class LocalAITextCompletionOptions
 
     internal ExecutionProvider ToExecutionProvider() => ExecutionProvider switch
     {
-        LocalAIExecutionProvider.Auto => LocalAI.ExecutionProvider.Auto,
-        LocalAIExecutionProvider.Cpu => LocalAI.ExecutionProvider.Cpu,
-        LocalAIExecutionProvider.Cuda => LocalAI.ExecutionProvider.Cuda,
-        LocalAIExecutionProvider.DirectML => LocalAI.ExecutionProvider.DirectML,
-        LocalAIExecutionProvider.CoreML => LocalAI.ExecutionProvider.CoreML,
-        _ => LocalAI.ExecutionProvider.Auto
+        LMSupplyExecutionProvider.Auto => LMSupply.ExecutionProvider.Auto,
+        LMSupplyExecutionProvider.Cpu => LMSupply.ExecutionProvider.Cpu,
+        LMSupplyExecutionProvider.Cuda => LMSupply.ExecutionProvider.Cuda,
+        LMSupplyExecutionProvider.DirectML => LMSupply.ExecutionProvider.DirectML,
+        LMSupplyExecutionProvider.CoreML => LMSupply.ExecutionProvider.CoreML,
+        _ => LMSupply.ExecutionProvider.Auto
     };
 }
 
 /// <summary>
-/// Configuration options for LocalAI reranker service
+/// Configuration options for LMSupply reranker service
 /// </summary>
-public sealed class LocalAIRerankerOptions
+public sealed class LMSupplyRerankerOptions
 {
     /// <summary>
     /// Model identifier or alias.
@@ -240,7 +240,7 @@ public sealed class LocalAIRerankerOptions
     /// Execution provider for ONNX runtime.
     /// Default: Auto (automatic GPU detection)
     /// </summary>
-    public LocalAIExecutionProvider ExecutionProvider { get; set; } = LocalAIExecutionProvider.Auto;
+    public LMSupplyExecutionProvider ExecutionProvider { get; set; } = LMSupplyExecutionProvider.Auto;
 
     /// <summary>
     /// Batch size for processing multiple documents.
@@ -268,11 +268,11 @@ public sealed class LocalAIRerankerOptions
 
     internal ExecutionProvider ToExecutionProvider() => ExecutionProvider switch
     {
-        LocalAIExecutionProvider.Auto => LocalAI.ExecutionProvider.Auto,
-        LocalAIExecutionProvider.Cpu => LocalAI.ExecutionProvider.Cpu,
-        LocalAIExecutionProvider.Cuda => LocalAI.ExecutionProvider.Cuda,
-        LocalAIExecutionProvider.DirectML => LocalAI.ExecutionProvider.DirectML,
-        LocalAIExecutionProvider.CoreML => LocalAI.ExecutionProvider.CoreML,
-        _ => LocalAI.ExecutionProvider.Auto
+        LMSupplyExecutionProvider.Auto => LMSupply.ExecutionProvider.Auto,
+        LMSupplyExecutionProvider.Cpu => LMSupply.ExecutionProvider.Cpu,
+        LMSupplyExecutionProvider.Cuda => LMSupply.ExecutionProvider.Cuda,
+        LMSupplyExecutionProvider.DirectML => LMSupply.ExecutionProvider.DirectML,
+        LMSupplyExecutionProvider.CoreML => LMSupply.ExecutionProvider.CoreML,
+        _ => LMSupply.ExecutionProvider.Auto
     };
 }

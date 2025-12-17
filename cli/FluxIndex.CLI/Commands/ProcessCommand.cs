@@ -254,15 +254,15 @@ public static class ProcessCommand
 
     private static void ConfigureEmbeddingService(IServiceCollection services, CliSettings settings)
     {
-        // Use LocalAI embedder - external AI providers should implement IEmbeddingService in consuming apps
-        services.AddLocalAIEmbedding();
+        // Use LMSupply embedder - external AI providers should implement IEmbeddingService in consuming apps
+        services.AddLMSupplyEmbedding();
     }
 
     private static void ConfigureTextCompletionService(IServiceCollection services, CliSettings settings)
     {
-        // LocalAI text completion is the default - enables all LLM features without API key
+        // LMSupply text completion is the default - enables all LLM features without API key
         // External providers (OpenAI, Azure, GPUStack) can override when configured
-        services.AddLocalAITextCompletion();
+        services.AddLMSupplyTextCompletion();
     }
 
     private static void DisplaySuccessResult(DocumentProcessingResult result, bool verbose)

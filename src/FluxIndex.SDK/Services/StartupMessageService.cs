@@ -5,14 +5,14 @@ namespace FluxIndex.SDK.Services;
 
 /// <summary>
 /// Displays startup guidance for FluxIndex AI service configuration.
-/// Shows which AI services are active and suggests LocalAI options for enhanced RAG capabilities.
+/// Shows which AI services are active and suggests LMSupply options for enhanced RAG capabilities.
 /// </summary>
 public static class StartupMessageService
 {
     private static bool _messageDisplayed = false;
 
     /// <summary>
-    /// Display AI service configuration status and LocalAI guidance.
+    /// Display AI service configuration status and LMSupply guidance.
     /// Only displays once per application lifecycle.
     /// </summary>
     /// <param name="serviceProvider">The built service provider to check registrations</param>
@@ -27,7 +27,7 @@ public static class StartupMessageService
         var hasReranker = serviceProvider.GetService<IReranker>() != null;
         var hasContextualEnrichment = serviceProvider.GetService<IContextualEnrichmentService>() != null;
 
-        var isLocalAIEmbedding = embeddingProvider?.ToLower() is "localai" or "localembedder" or null;
+        var isLMSupplyEmbedding = embeddingProvider?.ToLower() is "LMSupply" or "localembedder" or null;
         var isInMemoryEmbedding = embeddingProvider?.ToLower() == "inmemory";
 
         // Count active AI services
@@ -60,11 +60,11 @@ public static class StartupMessageService
         WriteServiceStatus("Reranking", hasReranker, hasReranker ? "Active" : "Not configured");
         WriteServiceStatus("Contextual Enrichment", hasContextualEnrichment, hasContextualEnrichment ? "Active" : "Not configured");
 
-        // Show LocalAI suggestion if services are missing
+        // Show LMSupply suggestion if services are missing
         if (missingServices.Count > 0 && !isInMemoryEmbedding)
         {
             WriteBoxSeparator();
-            WriteBoxLine("Enable additional AI features with LocalAI (no API key required):", ConsoleColor.Yellow);
+            WriteBoxLine("Enable additional AI features with LMSupply (no API key required):", ConsoleColor.Yellow);
             WriteBoxEmpty();
 
             // Show code example
@@ -72,11 +72,11 @@ public static class StartupMessageService
 
             if (!hasTextCompletion)
             {
-                WriteBoxLine("      services.AddLocalAITextCompletion();  // HyDE, metadata enrichment", ConsoleColor.White);
+                WriteBoxLine("      services.AddLMSupplyTextCompletion();  // HyDE, metadata enrichment", ConsoleColor.White);
             }
             if (!hasReranker)
             {
-                WriteBoxLine("      services.AddLocalAIReranker();        // Semantic reranking", ConsoleColor.White);
+                WriteBoxLine("      services.AddLMSupplyReranker();        // Semantic reranking", ConsoleColor.White);
             }
             if (!hasContextualEnrichment && hasTextCompletion)
             {
@@ -127,10 +127,10 @@ public static class StartupMessageService
     {
         return provider?.ToLower() switch
         {
-            "localai" or "localembedder" => "LocalAI (ONNX)",
+            "LMSupply" or "localembedder" => "LMSupply (ONNX)",
             "inmemory" => "InMemory (Test)",
             "custom" => "Custom Provider",
-            null => "LocalAI (Default)",
+            null => "LMSupply (Default)",
             _ => provider
         };
     }

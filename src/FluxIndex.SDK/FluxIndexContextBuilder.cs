@@ -22,7 +22,7 @@ namespace FluxIndex.SDK;
 
 /// <summary>
 /// FluxIndexContext 빌더 - Fluent API로 Retriever와 Indexer 구성
-/// AI Provider-agnostic 설계: 외부 AI SDK 없이 LocalAI 기본 사용
+/// AI Provider-agnostic 설계: 외부 AI SDK 없이 LMSupply 기본 사용
 /// 소비자 앱에서 IEmbeddingService 구현체 제공 가능
 /// </summary>
 public class FluxIndexContextBuilder
@@ -44,10 +44,10 @@ public class FluxIndexContextBuilder
         _services.AddLogging();
         _services.AddMemoryCache();
 
-        // ✅ Default to LocalAI for better developer experience
+        // ✅ Default to LMSupply for better developer experience
         // This allows developers to use FluxIndex without requiring external API keys
-        // LocalAI provides real embeddings using local ONNX models
-        _options.Embedding.Provider = "LocalAI";
+        // LMSupply provides real embeddings using local ONNX models
+        _options.Embedding.Provider = "LMSupply";
         _options.Embedding.ModelName = "default"; // bge-small-en-v1.5
     }
 
@@ -124,25 +124,25 @@ public class FluxIndexContextBuilder
     }
 
     /// <summary>
-    /// LocalAI 임베딩 사용 (로컬 ONNX 기반, 외부 API 불필요)
+    /// LMSupply 임베딩 사용 (로컬 ONNX 기반, 외부 API 불필요)
     /// Available models: default (bge-small), fast (MiniLM), quality (bge-base),
     /// large (nomic-embed), multilingual (e5-base), or HuggingFace model ID
     /// </summary>
     /// <param name="modelId">Model alias or HuggingFace ID (default: "default")</param>
-    public FluxIndexContextBuilder UseLocalAIEmbedding(string modelId = "default")
+    public FluxIndexContextBuilder UseLMSupplyEmbedding(string modelId = "default")
     {
-        _options.Embedding.Provider = "LocalAI";
+        _options.Embedding.Provider = "LMSupply";
         _options.Embedding.ModelName = modelId;
         return this;
     }
 
     /// <summary>
-    /// 다국어 LocalAI 임베딩 사용 (multilingual-e5-base)
+    /// 다국어 LMSupply 임베딩 사용 (multilingual-e5-base)
     /// 한국어, 영어, 중국어, 일본어 등 다양한 언어 지원
     /// </summary>
-    public FluxIndexContextBuilder UseLocalAIMultilingual()
+    public FluxIndexContextBuilder UseLMSupplyMultilingual()
     {
-        _options.Embedding.Provider = "LocalAI";
+        _options.Embedding.Provider = "LMSupply";
         _options.Embedding.ModelName = "multilingual";
         return this;
     }
@@ -618,7 +618,7 @@ public class FluxIndexContextBuilder
             InitializeDatabaseSync(serviceProvider);
         }
 
-        // Display AI service guidance (shows LocalAI options for missing services)
+        // Display AI service guidance (shows LMSupply options for missing services)
         if (!_suppressStartupMessages)
         {
             StartupMessageService.DisplayAIServiceGuidance(serviceProvider, _options.Embedding.Provider);
@@ -736,10 +736,10 @@ public class FluxIndexContextBuilder
     {
         switch (_options.Embedding.Provider?.ToLower())
         {
-            case "localai":
+            case "LMSupply":
             case "localembedder": // Legacy support
                 // ✅ Default: Local ONNX-based embeddings (no API key required)
-                FluxIndex.SDK.AI.Local.ServiceCollectionExtensions.AddLocalAIEmbedding(_services, options =>
+                FluxIndex.SDK.AI.Local.ServiceCollectionExtensions.AddLMSupplyEmbedding(_services, options =>
                 {
                     options.ModelId = !string.IsNullOrEmpty(_options.Embedding.ModelName)
                         ? _options.Embedding.ModelName
@@ -755,8 +755,8 @@ public class FluxIndexContextBuilder
                 // Do nothing - service is already in DI container
                 break;
             default:
-                // ✅ Fallback to LocalAI if no provider specified
-                FluxIndex.SDK.AI.Local.ServiceCollectionExtensions.AddLocalAIEmbedding(_services);
+                // ✅ Fallback to LMSupply if no provider specified
+                FluxIndex.SDK.AI.Local.ServiceCollectionExtensions.AddLMSupplyEmbedding(_services);
                 break;
         }
     }

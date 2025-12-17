@@ -1,5 +1,5 @@
 using FluxIndex.Core.Application.Interfaces;
-using LocalAI.Reranker;
+using LMSupply.Reranker;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -7,26 +7,26 @@ using Microsoft.Extensions.Options;
 namespace FluxIndex.SDK.AI.Local.Services;
 
 /// <summary>
-/// Adapter that wraps LocalAI.Reranker to implement FluxIndex's IReranker interface.
+/// Adapter that wraps LMSupply.Reranker to implement FluxIndex's IReranker interface.
 /// Provides cross-encoder based semantic reranking using local ONNX models.
 /// </summary>
-public sealed class LocalAIRerankerAdapter : IReranker, IAsyncDisposable
+public sealed class LMSupplyRerankerAdapter : IReranker, IAsyncDisposable
 {
-    private readonly LocalAIRerankerOptions _options;
-    private readonly ILogger<LocalAIRerankerAdapter> _logger;
+    private readonly LMSupplyRerankerOptions _options;
+    private readonly ILogger<LMSupplyRerankerAdapter> _logger;
     private IRerankerModel? _model;
     private readonly SemaphoreSlim _initLock = new(1, 1);
     private bool _disposed;
 
-    public LocalAIRerankerAdapter(
-        IOptions<LocalAIRerankerOptions> options,
-        ILogger<LocalAIRerankerAdapter>? logger = null)
+    public LMSupplyRerankerAdapter(
+        IOptions<LMSupplyRerankerOptions> options,
+        ILogger<LMSupplyRerankerAdapter>? logger = null)
     {
-        _options = options?.Value ?? new LocalAIRerankerOptions();
-        _logger = logger ?? NullLogger<LocalAIRerankerAdapter>.Instance;
+        _options = options?.Value ?? new LMSupplyRerankerOptions();
+        _logger = logger ?? NullLogger<LMSupplyRerankerAdapter>.Instance;
 
         _logger.LogInformation(
-            "LocalAI Reranker Adapter configured: Model={ModelId}, BatchSize={BatchSize}",
+            "LMSupply Reranker Adapter configured: Model={ModelId}, BatchSize={BatchSize}",
             _options.ModelId, _options.BatchSize);
     }
 
@@ -41,7 +41,7 @@ public sealed class LocalAIRerankerAdapter : IReranker, IAsyncDisposable
             if (_model != null)
                 return _model;
 
-            _logger.LogInformation("Loading LocalAI reranker model: {Model}", _options.ModelId);
+            _logger.LogInformation("Loading LMSupply reranker model: {Model}", _options.ModelId);
 
             var rerankerOptions = new RerankerOptions
             {
@@ -59,7 +59,7 @@ public sealed class LocalAIRerankerAdapter : IReranker, IAsyncDisposable
                 null,
                 cancellationToken);
 
-            _logger.LogInformation("LocalAI reranker model loaded: {Model}", _model.ModelId);
+            _logger.LogInformation("LMSupply reranker model loaded: {Model}", _model.ModelId);
             return _model;
         }
         finally
@@ -73,10 +73,10 @@ public sealed class LocalAIRerankerAdapter : IReranker, IAsyncDisposable
     /// </summary>
     public async Task WarmupAsync(CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Warming up LocalAI reranker model...");
+        _logger.LogInformation("Warming up LMSupply reranker model...");
         var model = await GetModelAsync(cancellationToken);
         await model.WarmupAsync(cancellationToken);
-        _logger.LogInformation("LocalAI reranker warmup completed");
+        _logger.LogInformation("LMSupply reranker warmup completed");
     }
 
     /// <inheritdoc />
@@ -97,7 +97,7 @@ public sealed class LocalAIRerankerAdapter : IReranker, IAsyncDisposable
             return [];
         }
 
-        _logger.LogDebug("Reranking {Count} candidates with LocalAI Reranker", candidateList.Count);
+        _logger.LogDebug("Reranking {Count} candidates with LMSupply Reranker", candidateList.Count);
 
         var model = await GetModelAsync(cancellationToken);
 
@@ -106,7 +106,7 @@ public sealed class LocalAIRerankerAdapter : IReranker, IAsyncDisposable
             .Select(c => TruncateContent(c.Content, rerankOptions.MaxContentLength))
             .ToList();
 
-        // Call LocalAI Reranker
+        // Call LMSupply Reranker
         var rankedResults = await model.RerankAsync(
             query,
             documents,
@@ -140,7 +140,7 @@ public sealed class LocalAIRerankerAdapter : IReranker, IAsyncDisposable
             .ToList();
 
         _logger.LogDebug(
-            "LocalAI Reranker completed: {Original} -> {Final} results",
+            "LMSupply Reranker completed: {Original} -> {Final} results",
             candidateList.Count, filteredResults.Count);
 
         return filteredResults;
@@ -153,7 +153,7 @@ public sealed class LocalAIRerankerAdapter : IReranker, IAsyncDisposable
 
         return new RerankModelInfo
         {
-            Name = modelInfo?.DisplayName ?? $"LocalAI Reranker ({_options.ModelId})",
+            Name = modelInfo?.DisplayName ?? $"LMSupply Reranker ({_options.ModelId})",
             Type = RerankModel.Local,
             Version = "1.0.0",
             SupportsMultilingual = modelInfo?.Alias == "multilingual",
