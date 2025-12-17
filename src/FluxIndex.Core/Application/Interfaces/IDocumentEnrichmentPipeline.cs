@@ -169,6 +169,9 @@ public record EnrichmentOptions
     /// <summary>Analyze chunk quality</summary>
     public bool AnalyzeQuality { get; init; } = false;
 
+    /// <summary>Generate hypothetical questions for Q&amp;A retrieval</summary>
+    public bool GenerateHypotheticalQuestions { get; init; } = false;
+
     /// <summary>Maximum concurrent operations</summary>
     public int MaxConcurrency { get; init; } = 4;
 
@@ -177,6 +180,12 @@ public record EnrichmentOptions
 
     /// <summary>Minimum confidence for entity extraction</summary>
     public double MinEntityConfidence { get; init; } = 0.7;
+
+    /// <summary>Entity extraction options</summary>
+    public EnrichmentEntityOptions? EntityExtractionOptions { get; init; }
+
+    /// <summary>Graph build options</summary>
+    public GraphBuildOptions? GraphBuildOptions { get; init; }
 }
 
 /// <summary>
@@ -184,6 +193,21 @@ public record EnrichmentOptions
 /// </summary>
 public record EmbeddingGenerationOptions
 {
+    /// <summary>Generate content embeddings</summary>
+    public bool GenerateContentEmbedding { get; init; } = true;
+
+    /// <summary>Generate summary embeddings</summary>
+    public bool GenerateSummaryEmbedding { get; init; } = false;
+
+    /// <summary>Generate hypothetical embeddings (HyDE)</summary>
+    public bool GenerateHypotheticalEmbedding { get; init; } = false;
+
+    /// <summary>Generate question embeddings for Q&amp;A retrieval</summary>
+    public bool GenerateQuestionEmbeddings { get; init; } = false;
+
+    /// <summary>Maximum questions for question embedding</summary>
+    public int MaxQuestions { get; init; } = 5;
+
     /// <summary>Embedding types to generate</summary>
     public IReadOnlyList<EmbeddingType> Types { get; init; } = [EmbeddingType.Content];
 
@@ -229,8 +253,8 @@ public record GraphBuildOptions
     /// <summary>Merge duplicate entities</summary>
     public bool MergeEntities { get; init; } = true;
 
-    /// <summary>Similarity threshold for entity merging</summary>
-    public double EntityMergeThreshold { get; init; } = 0.85;
+    /// <summary>Similarity threshold for entity merging (0-1)</summary>
+    public double MergeThreshold { get; init; } = 0.85;
 
     /// <summary>Generate entity embeddings</summary>
     public bool GenerateEntityEmbeddings { get; init; } = true;
@@ -243,6 +267,12 @@ public record GraphBuildOptions
 
     /// <summary>Maximum community detection iterations</summary>
     public int MaxCommunityIterations { get; init; } = 100;
+
+    /// <summary>Minimum community size</summary>
+    public int MinCommunitySize { get; init; } = 3;
+
+    /// <summary>Maximum number of communities to return</summary>
+    public int MaxCommunities { get; init; } = 50;
 }
 
 #endregion
@@ -449,6 +479,60 @@ public record ExtractedRelationship
 
     /// <summary>Source chunk IDs</summary>
     public IReadOnlyList<string> ChunkIds { get; init; } = [];
+}
+
+/// <summary>
+/// Relationship with entity IDs (used during graph building).
+/// </summary>
+public record EnrichmentRelationship
+{
+    /// <summary>Temporary ID</summary>
+    public string Id { get; init; } = Guid.NewGuid().ToString();
+
+    /// <summary>Source entity ID</summary>
+    public required string SourceEntityId { get; init; }
+
+    /// <summary>Target entity ID</summary>
+    public required string TargetEntityId { get; init; }
+
+    /// <summary>Relationship type</summary>
+    public RelationType Type { get; init; }
+
+    /// <summary>Relationship label</summary>
+    public string Label { get; init; } = string.Empty;
+
+    /// <summary>Confidence score</summary>
+    public double Confidence { get; init; }
+
+    /// <summary>Evidence text</summary>
+    public string? Evidence { get; init; }
+
+    /// <summary>Source chunk IDs</summary>
+    public IReadOnlyList<string> ChunkIds { get; init; } = [];
+}
+
+/// <summary>
+/// Detected community from graph analysis (intermediate type before GraphCommunity).
+/// </summary>
+public record DetectedCommunity
+{
+    /// <summary>Temporary community ID</summary>
+    public required string Id { get; init; }
+
+    /// <summary>Community name/label</summary>
+    public required string Name { get; init; }
+
+    /// <summary>Entity IDs in this community</summary>
+    public IReadOnlyList<string> EntityIds { get; init; } = [];
+
+    /// <summary>Number of entities</summary>
+    public int Size { get; init; }
+
+    /// <summary>Hierarchy level (0 = top)</summary>
+    public int Level { get; init; }
+
+    /// <summary>Importance score</summary>
+    public double ImportanceScore { get; init; }
 }
 
 /// <summary>
