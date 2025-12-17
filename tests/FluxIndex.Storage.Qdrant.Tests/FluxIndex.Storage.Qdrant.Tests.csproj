@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\FluxIndex.Storage.Qdrant\FluxIndex.Storage.Qdrant.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Testcontainers for Qdrant integration tests -->
+    <PackageReference Include="Testcontainers.Qdrant" />
+    <PackageReference Include="Xunit.SkippableFact" />
+  </ItemGroup>
+
+</Project>
