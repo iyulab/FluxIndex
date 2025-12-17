@@ -242,9 +242,9 @@ public static class ServiceCollectionExtensions
     /// </example>
     public static IServiceCollection AddLMSupply(
         this IServiceCollection services,
-        Action<LMSupplyOptions>? configure = null)
+        Action<UnifiedLMSupplyOptions>? configure = null)
     {
-        var options = new LMSupplyOptions();
+        var options = new UnifiedLMSupplyOptions();
         configure?.Invoke(options);
 
         // Embedding (default: bge-small-en-v1.5)
@@ -274,9 +274,9 @@ public static class ServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddLMSupplyWithWarmup(
         this IServiceCollection services,
-        Action<LMSupplyOptions>? configure = null)
+        Action<UnifiedLMSupplyOptions>? configure = null)
     {
-        var options = new LMSupplyOptions();
+        var options = new UnifiedLMSupplyOptions();
         configure?.Invoke(options);
 
         services.AddLMSupplyEmbeddingWithWarmup(opts =>
@@ -301,9 +301,10 @@ public static class ServiceCollectionExtensions
 }
 
 /// <summary>
-/// Combined options for all LMSupply services.
+/// Combined options for all LMSupply services in FluxIndex.
+/// Named UnifiedLMSupplyOptions to avoid collision with FileFlux.Infrastructure.Services.LMSupply.LMSupplyOptions.
 /// </summary>
-public class LMSupplyOptions
+public class UnifiedLMSupplyOptions
 {
     /// <summary>
     /// Embedding model ID. Available: default, fast, quality, large, multilingual, or HuggingFace ID.

@@ -153,7 +153,7 @@ public static class LMSupplyBuilderExtensions
     /// </example>
     public static FluxIndexContextBuilder UseLMSupply(
         this FluxIndexContextBuilder builder,
-        Action<LMSupplyOptions>? configure = null)
+        Action<UnifiedLMSupplyOptions>? configure = null)
     {
         builder.ConfigureServices(services =>
         {
@@ -172,7 +172,7 @@ public static class LMSupplyBuilderExtensions
     /// <returns>Builder for chaining</returns>
     public static FluxIndexContextBuilder UseLMSupplyWithWarmup(
         this FluxIndexContextBuilder builder,
-        Action<LMSupplyOptions>? configure = null)
+        Action<UnifiedLMSupplyOptions>? configure = null)
     {
         builder.ConfigureServices(services =>
         {
