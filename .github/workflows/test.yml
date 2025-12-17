@@ -27,7 +27,7 @@ jobs:
         find . -name "packages.lock.json" -delete
 
     - name: Restore dependencies
-      run: dotnet restore
+      run: dotnet restore --ignore-failed-sources
 
     - name: Build
       run: dotnet build --configuration Release --no-restore
@@ -62,7 +62,7 @@ jobs:
         find . -name "packages.lock.json" -delete
 
     - name: Restore dependencies
-      run: dotnet restore
+      run: dotnet restore --ignore-failed-sources
 
     - name: Build
       run: dotnet build --configuration Release --no-restore
