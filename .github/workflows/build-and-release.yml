@@ -163,36 +163,6 @@ jobs:
             --skip-duplicate
         done
 
-    # Create GitHub Release
-    - name: Create GitHub Release
-      if: (steps.version_check.outputs.version_exists == 'false' || github.event.inputs.force_publish == 'true') && success()
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: v${{ steps.version.outputs.version }}
-        name: FluxIndex v${{ steps.version.outputs.version }}
-        draft: false
-        prerelease: ${{ contains(steps.version.outputs.version, '-') }}
-        generate_release_notes: true
-        files: |
-          ./packages/*.nupkg
-          ./packages/*.snupkg
-        body: |
-          ## 🎉 FluxIndex v${{ steps.version.outputs.version }}
-
-          ### 📦 NuGet Packages
-          - **FluxIndex.Core** - Core RAG infrastructure
-          - **FluxIndex.SDK** - Main SDK package
-          - **FluxIndex.Storage.*** - Storage providers
-          - **FluxIndex.AI.*** - AI service providers
-
-          ### 📋 Installation
-          ```bash
-          dotnet add package FluxIndex.SDK --version ${{ steps.version.outputs.version }}
-          ```
-
-          ### 🔄 Changes
-          See the release notes below for detailed changes.
-
     # Upload packages as artifacts
     - name: Upload packages
       uses: actions/upload-artifact@v4

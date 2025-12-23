@@ -42,7 +42,7 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.1" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
     <PackageVersion Include="Pgvector" Version="0.3.0" />
-    <PackageVersion Include="Pgvector.EntityFrameworkCore" Version="0.2.2" />
+    <PackageVersion Include="Pgvector.EntityFrameworkCore" Version="0.3.0" />
     <PackageVersion Include="Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore" Version="10.0.0" />
   </ItemGroup>
   <!-- AI/ML Packages -->
@@ -52,8 +52,8 @@
     <PackageVersion Include="Google.Cloud.AIPlatform.V1" Version="3.54.0" />
     <PackageVersion Include="Mscc.GenerativeAI" Version="2.5.2" />
     <!-- LMSupply: Unified local AI inference  -->
-    <PackageVersion Include="LMSupply.Embedder" Version="0.7.2" />
-    <PackageVersion Include="LMSupply.Reranker" Version="0.7.2" />
+    <PackageVersion Include="LMSupply.Embedder" Version="0.8.3" />
+    <PackageVersion Include="LMSupply.Reranker" Version="0.8.3" />
   </ItemGroup>
   <!-- Storage/Cache Packages -->
   <ItemGroup>
@@ -62,14 +62,14 @@
     <!-- Graph Database -->
     <PackageVersion Include="Neo4j.Driver" Version="5.28.4" />
     <!-- Vector Database -->
-    <PackageVersion Include="Qdrant.Client" Version="1.13.0" />
+    <PackageVersion Include="Qdrant.Client" Version="1.16.1" />
     <PackageVersion Include="Testcontainers.Qdrant" Version="4.9.0" />
   </ItemGroup>
   <!-- Document Processing & Quality -->
   <ItemGroup>
-    <PackageVersion Include="FileFlux" Version="0.8.8" />
-    <PackageVersion Include="FluxCurator" Version="0.6.2" />
-    <PackageVersion Include="FluxImprover" Version="0.5.1" />
+    <PackageVersion Include="FileFlux" Version="0.9.4" />
+    <PackageVersion Include="FluxCurator" Version="0.6.5" />
+    <PackageVersion Include="FluxImprover" Version="0.5.3" />
     <PackageVersion Include="HtmlAgilityPack" Version="1.12.4" />
     <PackageVersion Include="WebFlux" Version="0.1.8" />
   </ItemGroup>

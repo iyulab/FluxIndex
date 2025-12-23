@@ -10,11 +10,11 @@ namespace FluxIndex.SDK.Extensions.FileFlux;
 
 /// <summary>
 /// FileFlux integration service for FluxIndex - bridges FileFlux document processing with FluxIndex indexing
-/// Leverages FileFlux 0.4.8 ILanguageProfileProvider for intelligent language-aware processing
+/// Leverages FileFlux 0.9.x stateful document processor with 4-stage pipeline
 /// </summary>
 public class FileFluxIntegration
 {
-    private readonly IDocumentProcessor _fileFluxProcessor;
+    private readonly IDocumentProcessorFactory _processorFactory;
     private readonly ILanguageProfileProvider _languageProfileProvider;
     private readonly Indexer _indexer;
     private readonly ILogger<FileFluxIntegration> _logger;
@@ -23,16 +23,16 @@ public class FileFluxIntegration
     /// <summary>
     /// Current FileFlux version for metadata tracking
     /// </summary>
-    private const string FileFluxVersion = "0.6.1";
+    private const string FileFluxVersion = "0.9.4";
 
     public FileFluxIntegration(
-        IDocumentProcessor fileFluxProcessor,
+        IDocumentProcessorFactory processorFactory,
         ILanguageProfileProvider languageProfileProvider,
         Indexer indexer,
         ILogger<FileFluxIntegration> logger,
         Microsoft.Extensions.Options.IOptions<FileFluxOptions>? options = null)
     {
-        _fileFluxProcessor = fileFluxProcessor ?? throw new ArgumentNullException(nameof(fileFluxProcessor));
+        _processorFactory = processorFactory ?? throw new ArgumentNullException(nameof(processorFactory));
         _languageProfileProvider = languageProfileProvider ?? throw new ArgumentNullException(nameof(languageProfileProvider));
         _indexer = indexer ?? throw new ArgumentNullException(nameof(indexer));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -40,7 +40,7 @@ public class FileFluxIntegration
     }
 
     /// <summary>
-    /// Process a file with FileFlux and index with FluxIndex using FileFlux 0.4.x API
+    /// Process a file with FileFlux and index with FluxIndex using FileFlux 0.9.x API
     /// </summary>
     public async Task<string> ProcessAndIndexAsync(
         string filePath,
@@ -81,8 +81,11 @@ public class FileFluxIntegration
             var fluxIndexChunks = new List<FluxIndexDocumentChunk>();
             var chunkIndex = 0;
 
-            // Use FileFlux API to process document (returns DocumentChunk[])
-            var fileFluxChunks = await _fileFluxProcessor.ProcessAsync(filePath, chunkingOptions, cancellationToken);
+            // Use FileFlux 0.9.x factory pattern to process document
+            await using var processor = _processorFactory.Create(filePath);
+            var processingOpts = new global::FileFlux.Core.ProcessingOptions { Chunking = chunkingOptions };
+            await processor.ProcessAsync(processingOpts, cancellationToken);
+            var fileFluxChunks = processor.Result.Chunks;
 
             foreach (var fileFluxChunk in fileFluxChunks)
             {
@@ -185,8 +188,10 @@ public class FileFluxIntegration
             var chunkIndex = 0;
             var totalChunks = 0;
 
-            // Use FileFlux streaming API for memory-efficient processing (returns IAsyncEnumerable<DocumentChunk>)
-            await foreach (var fileFluxChunk in _fileFluxProcessor.ProcessStreamAsync(filePath, chunkingOptions, cancellationToken))
+            // Use FileFlux 0.9.x factory pattern with streaming API for memory-efficient processing
+            await using var processor = _processorFactory.Create(filePath);
+            var processingOpts = new global::FileFlux.Core.ProcessingOptions { Chunking = chunkingOptions };
+            await foreach (var fileFluxChunk in processor.ProcessStreamAsync(processingOpts, cancellationToken))
             {
                 var fluxChunk = ConvertToFluxIndexChunk(fileFluxChunk, chunkIndex++, filePath);
                 fluxIndexChunks.Add(fluxChunk);

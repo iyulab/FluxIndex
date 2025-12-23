@@ -312,9 +312,10 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
         };
 
         // Extract embedding from vectors
-        if (point.Vectors?.Vector?.Data != null)
+        var denseVector = point.Vectors?.Vector?.GetDenseVector();
+        if (denseVector?.Data is { Count: > 0 })
         {
-            chunk.SetEmbedding(point.Vectors.Vector.Data.ToArray());
+            chunk.SetEmbedding(denseVector.Data.ToArray());
         }
 
         // Extract custom properties
@@ -378,9 +379,10 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
         };
 
         // Extract embedding from vectors if present
-        if (point.Vectors?.Vector?.Data != null)
+        var scoredDenseVector = point.Vectors?.Vector?.GetDenseVector();
+        if (scoredDenseVector?.Data is { Count: > 0 })
         {
-            chunk.SetEmbedding(point.Vectors.Vector.Data.ToArray());
+            chunk.SetEmbedding(scoredDenseVector.Data.ToArray());
         }
 
         // Extract custom properties

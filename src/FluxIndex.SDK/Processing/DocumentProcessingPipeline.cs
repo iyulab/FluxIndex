@@ -26,7 +26,7 @@ namespace FluxIndex.SDK.Processing;
 /// </summary>
 public class DocumentProcessingPipeline
 {
-    private readonly IDocumentProcessor _documentProcessor;
+    private readonly IDocumentProcessorFactory _processorFactory;
     private readonly IFluxIndexEmbeddingService? _embeddingService;
     private readonly IFluxIndexTextCompletionService? _textCompletionService;
     private readonly IFluxIndexContextualEnrichmentService? _contextualEnrichmentService;
@@ -35,7 +35,7 @@ public class DocumentProcessingPipeline
     private readonly ILogger<DocumentProcessingPipeline> _logger;
 
     public DocumentProcessingPipeline(
-        IDocumentProcessor documentProcessor,
+        IDocumentProcessorFactory processorFactory,
         IFluxIndexEmbeddingService? embeddingService,
         IFluxIndexTextCompletionService? textCompletionService,
         IFluxIndexContextualEnrichmentService? contextualEnrichmentService,
@@ -43,7 +43,7 @@ public class DocumentProcessingPipeline
         ILogger<DocumentProcessingPipeline> logger,
         IMarkdownConverter? markdownConverter = null)
     {
-        _documentProcessor = documentProcessor ?? throw new ArgumentNullException(nameof(documentProcessor));
+        _processorFactory = processorFactory ?? throw new ArgumentNullException(nameof(processorFactory));
         _embeddingService = embeddingService;
         _textCompletionService = textCompletionService;
         _contextualEnrichmentService = contextualEnrichmentService;
@@ -110,8 +110,10 @@ public class DocumentProcessingPipeline
             {
                 try
                 {
-                    rawContent = await _documentProcessor.ExtractAsync(filePath, cancellationToken);
-                    if (rawContent.Images?.Count > 0)
+                    await using var extractProcessor = _processorFactory.Create(filePath);
+                    await extractProcessor.ExtractAsync(cancellationToken);
+                    rawContent = extractProcessor.Result.Raw;
+                    if (rawContent?.Images?.Count > 0)
                     {
                         foreach (var image in rawContent.Images.Where(i => i.Data != null && i.Data.Length > 0))
                         {
@@ -134,12 +136,14 @@ public class DocumentProcessingPipeline
             }
 
             // Stage 2-4: Parse → Refine → Chunk (single FileFlux pipeline call)
-            // FileFlux v0.8.7 handles: Extract → Parse → Refine (Markdown conversion) → Chunk → Enhance
+            // FileFlux v0.9.x handles: Extract → Refine → Chunk → Enrich (stateful processor)
             ReportProgress(options, ProcessingStage.Chunking, 20, "Processing and chunking document...");
             var chunkStart = DateTime.UtcNow;
 
-            var fileFluxChunks = await _documentProcessor.ProcessAsync(filePath, chunkingOptions, cancellationToken);
-            var chunkList = fileFluxChunks.ToList();
+            await using var chunkProcessor = _processorFactory.Create(filePath);
+            var processingOptions = new FileFlux.Core.ProcessingOptions { Chunking = chunkingOptions };
+            await chunkProcessor.ProcessAsync(processingOptions, cancellationToken);
+            var chunkList = chunkProcessor.Result.Chunks.ToList();
 
             // Reconstruct full text from chunks for statistics and enrichment
             var fullText = string.Join("\n\n", chunkList.Select(c => c.Content));
@@ -367,12 +371,14 @@ public class DocumentProcessingPipeline
             result.Metadata.CreatedDate = fileInfo.CreationTimeUtc;
             result.Metadata.ModifiedDate = fileInfo.LastWriteTimeUtc;
 
-            // Extract raw content using FileFlux
+            // Extract raw content using FileFlux 0.9.x factory pattern
             RawContent? rawContent = null;
             try
             {
-                rawContent = await _documentProcessor.ExtractAsync(filePath, cancellationToken);
-                result.ExtractedText = rawContent.Text ?? string.Empty;
+                await using var extractProcessor = _processorFactory.Create(filePath);
+                await extractProcessor.ExtractAsync(cancellationToken);
+                rawContent = extractProcessor.Result.Raw;
+                result.ExtractedText = rawContent?.Text ?? string.Empty;
             }
             catch
             {
@@ -540,14 +546,16 @@ public class DocumentProcessingPipeline
                 chunkingOptions.CustomProperties["language"] = options.Language;
             }
 
-            // FileFlux IDocumentProcessor works with files, so create a temporary file
+            // FileFlux IDocumentProcessorFactory works with files, so create a temporary file
             var tempFilePath = Path.Combine(Path.GetTempPath(), $"fluxindex_content_{Guid.NewGuid()}.txt");
             List<DocumentChunk> chunkList;
             try
             {
                 await File.WriteAllTextAsync(tempFilePath, content, cancellationToken);
-                var fileFluxChunks = await _documentProcessor.ProcessAsync(tempFilePath, chunkingOptions, cancellationToken);
-                chunkList = fileFluxChunks.ToList();
+                await using var tempProcessor = _processorFactory.Create(tempFilePath);
+                var tempProcessingOptions = new FileFlux.Core.ProcessingOptions { Chunking = chunkingOptions };
+                await tempProcessor.ProcessAsync(tempProcessingOptions, cancellationToken);
+                chunkList = tempProcessor.Result.Chunks.ToList();
             }
             finally
             {
@@ -785,13 +793,18 @@ public class DocumentProcessingPipeline
         }
 
         // Use FileFlux for extraction - it handles various document types
-        var chunks = await _documentProcessor.ProcessAsync(filePath, new ChunkingOptions
+        await using var fullDocProcessor = _processorFactory.Create(filePath);
+        var fullDocOptions = new FileFlux.Core.ProcessingOptions
         {
-            Strategy = "FullDocument", // Get full text first
-            MaxChunkSize = int.MaxValue
-        }, cancellationToken);
+            Chunking = new ChunkingOptions
+            {
+                Strategy = "FullDocument", // Get full text first
+                MaxChunkSize = int.MaxValue
+            }
+        };
+        await fullDocProcessor.ProcessAsync(fullDocOptions, cancellationToken);
 
-        return string.Join("\n\n", chunks.Select(c => c.Content));
+        return string.Join("\n\n", fullDocProcessor.Result.Chunks.Select(c => c.Content));
     }
 
     private async Task<string> ExtractPdfWithQualityCheckAsync(string filePath, CancellationToken cancellationToken)
@@ -800,7 +813,7 @@ public class DocumentProcessingPipeline
         {
             await using var stream = File.OpenRead(filePath);
             var reader = new PdfDocumentReader();
-            var rawContent = await reader.ExtractAsync(stream, Path.GetFileName(filePath), cancellationToken);
+            var rawContent = await reader.ExtractAsync(stream, Path.GetFileName(filePath), null, cancellationToken);
 
             // Check table quality using StructuralHints (FileFlux v0.7.2+)
             if (rawContent.Hints != null)
@@ -835,13 +848,18 @@ public class DocumentProcessingPipeline
             _logger.LogWarning(ex, "PDF quality check failed for {FilePath}, falling back to standard extraction", filePath);
 
             // Fallback to standard FileFlux extraction
-            var chunks = await _documentProcessor.ProcessAsync(filePath, new ChunkingOptions
+            await using var fallbackProcessor = _processorFactory.Create(filePath);
+            var fallbackOptions = new FileFlux.Core.ProcessingOptions
             {
-                Strategy = "FullDocument",
-                MaxChunkSize = int.MaxValue
-            }, cancellationToken);
+                Chunking = new ChunkingOptions
+                {
+                    Strategy = "FullDocument",
+                    MaxChunkSize = int.MaxValue
+                }
+            };
+            await fallbackProcessor.ProcessAsync(fallbackOptions, cancellationToken);
 
-            return string.Join("\n\n", chunks.Select(c => c.Content));
+            return string.Join("\n\n", fallbackProcessor.Result.Chunks.Select(c => c.Content));
         }
     }
 
@@ -866,10 +884,12 @@ public class DocumentProcessingPipeline
 
         try
         {
-            // Use IDocumentProcessor.ExtractAsync for unified image extraction
-            var rawContent = await _documentProcessor.ExtractAsync(filePath, cancellationToken);
+            // Use IDocumentProcessorFactory.ExtractAsync for unified image extraction
+            await using var imageProcessor = _processorFactory.Create(filePath);
+            await imageProcessor.ExtractAsync(cancellationToken);
+            var rawContent = imageProcessor.Result.Raw;
 
-            if (rawContent.Images != null && rawContent.Images.Count > 0)
+            if (rawContent?.Images != null && rawContent.Images.Count > 0)
             {
                 foreach (var image in rawContent.Images.Where(i => i.Data != null && i.Data.Length > 0))
                 {
