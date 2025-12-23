@@ -61,9 +61,9 @@ public class QdrantVectorStoreIntegrationTests : IAsyncLifetime
 
     private bool IsDockerAvailable => _vectorStore != null;
 
-    private float[] CreateTestEmbedding(int dimension = 384)
+    private float[] CreateTestEmbedding(int dimension = 384, int seed = 42)
     {
-        var random = new Random(42);
+        var random = new Random(seed);
         var embedding = new float[dimension];
         for (int i = 0; i < dimension; i++)
         {
@@ -223,10 +223,11 @@ public class QdrantVectorStoreIntegrationTests : IAsyncLifetime
         var chunk = CreateTestChunk(embedding: embedding);
         await _vectorStore.StoreAsync(chunk);
 
-        // Store some other chunks with different embeddings
+        // Store some other chunks with different embeddings (using different seeds)
         for (int i = 0; i < 5; i++)
         {
-            await _vectorStore.StoreAsync(CreateTestChunk());
+            var differentEmbedding = CreateTestEmbedding(seed: 100 + i);
+            await _vectorStore.StoreAsync(CreateTestChunk(embedding: differentEmbedding));
         }
 
         // Act - search with similar embedding

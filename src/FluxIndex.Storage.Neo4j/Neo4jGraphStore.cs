@@ -577,11 +577,12 @@ public class Neo4jGraphStore : IGraphStore, IAsyncDisposable
                 };
             }
 
-            var directionPattern = options.Direction switch
+            // Cypher relationship pattern: -[r]-> (outgoing), <-[r]- (incoming), -[r]- (both)
+            var (leftArrow, rightArrow) = options.Direction switch
             {
-                TraversalDirection.Outgoing => "->",
-                TraversalDirection.Incoming => "<-",
-                _ => "-"
+                TraversalDirection.Outgoing => ("", ">"),
+                TraversalDirection.Incoming => ("<", ""),
+                _ => ("", "")
             };
 
             var relTypeFilter = options.RelationTypes.Count > 0
@@ -589,7 +590,7 @@ public class Neo4jGraphStore : IGraphStore, IAsyncDisposable
                 : "";
 
             var query = $@"
-                MATCH path = (start:{EntityLabel} {{id: $startId}}){directionPattern}[r*1..{options.MaxDepth}]{directionPattern}(end:{EntityLabel})
+                MATCH path = (start:{EntityLabel} {{id: $startId}}){leftArrow}-[r*1..{options.MaxDepth}]-{rightArrow}(end:{EntityLabel})
                 WHERE ALL(rel IN r WHERE rel.weight >= $minWeight)
                 RETURN DISTINCT end, path
                 LIMIT $maxNodes";
