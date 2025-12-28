@@ -1,6 +1,6 @@
 # FluxIndex Documentation
 
-RAG library for .NET - Simple, fast, and flexible.
+RAG infrastructure library for .NET - Simple, fast, and local-first.
 
 ## Documentation
 
@@ -8,16 +8,25 @@ RAG library for .NET - Simple, fast, and flexible.
 |----------|-------------|
 | [**GUIDE.md**](GUIDE.md) | Quick start, configuration, indexing, search, examples |
 | [**REFERENCE.md**](REFERENCE.md) | Architecture, retrieval mechanisms, advanced topics |
+| [**ADVANCED_RAG.md**](ADVANCED_RAG.md) | HyDE, Contextual Retrieval, Query Expansion |
+| [**FLUXINDEX_PHILOSOPHY.md**](FLUXINDEX_PHILOSOPHY.md) | Core philosophy, role, and scope |
+
+### Subdirectories
+
+| Directory | Contents |
+|-----------|----------|
+| [research/](research/) | Embedding strategy, polyglot persistence research |
+| [archive/](archive/) | Completed roadmaps and historical research |
 
 ## Quick Start
 
 ```csharp
 using FluxIndex.SDK;
 
-// 1. Setup
+// 1. Setup (local-first with LMSupply)
 var context = FluxIndexContext.CreateBuilder()
     .UseSQLite("fluxindex.db")
-    .UseOpenAI("your-api-key", "text-embedding-3-small")
+    .UseLMSupply()  // Local embedding + reranking (no API key needed)
     .Build();
 
 // 2. Index
@@ -35,7 +44,6 @@ var results = await context.Retriever.SearchAsync("RAG library", maxResults: 5);
 ```bash
 dotnet add package FluxIndex.SDK
 dotnet add package FluxIndex.Storage.SQLite      # or PostgreSQL
-dotnet add package FluxIndex.AI.OpenAI           # Optional
 ```
 
 ## Features
@@ -44,12 +52,13 @@ dotnet add package FluxIndex.AI.OpenAI           # Optional
 - **Keyword Search** - BM25 algorithm for exact matching
 - **Hybrid Search** - Reciprocal Rank Fusion combining both
 - **Adaptive Search** - Auto-select strategy by query complexity
-- **Neural Reranking** - Cross-encoder LocalReranker with fallback
+- **Neural Reranking** - Cross-encoder with LMSupply
 - **Vector Quantization** - 4-32x memory compression
 - **Graph Traversal** - BFS, DFS, PageRank for document relationships
+- **Local-First AI** - LMSupply for embedding and reranking without API keys
 
 ## Resources
 
 - [Examples](../samples/) - Working code samples
-- [Benchmarks](../benchmarks/FluxIndex.Benchmarks/BENCHMARK_RESULTS.md) - Performance metrics
+- [Stack](../stack/) - Full RAG service with API and UI
 - [GitHub](https://github.com/iyulab/FluxIndex) - Issues & contributions

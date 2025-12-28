@@ -94,22 +94,23 @@ Full benchmarks: [BENCHMARK_RESULTS.md](./benchmarks/FluxIndex.Benchmarks/BENCHM
 | **FluxIndex.SDK** | All-in-one SDK with LMSupply, FileFlux, WebFlux, FluxCurator, FluxImprover |
 | **FluxIndex.Storage.SQLite** | SQLite vector store |
 | **FluxIndex.Storage.PostgreSQL** | PostgreSQL with pgvector |
+| **FluxIndex.Storage.Neo4j** | Neo4j graph database |
+| **FluxIndex.Storage.Qdrant** | Qdrant vector database |
 | **FluxIndex.Cache.Redis** | Redis semantic cache |
 
 ## Documentation
 
-- [Getting Started](./docs/getting-started.md) - Setup and configuration
-- [Tutorial](./docs/TUTORIAL.md) - Comprehensive examples
-- [Architecture](./docs/architecture.md) - Design principles and patterns
-- [Cheat Sheet](./docs/cheat-sheet.md) - Quick reference
-- [Testing Guide](./docs/TESTING.md) - Unit and integration testing
-- [LocalReranker Guide](./docs/LOCAL_RERANKER_GUIDE.md) - Neural reranking integration
-- [Vector Quantization Guide](./docs/VECTOR_QUANTIZATION_GUIDE.md) - Memory optimization with quantization
+- [Guide](./docs/GUIDE.md) - Quick start and configuration
+- [Reference](./docs/REFERENCE.md) - Architecture and API reference
+- [Advanced RAG](./docs/ADVANCED_RAG.md) - HyDE, Contextual Retrieval, Query Expansion
+- [Philosophy](./docs/FLUXINDEX_PHILOSOPHY.md) - Core principles and design philosophy
 
 ## Examples
 
 - [RealQualityTest](./samples/RealQualityTest/) - LMSupply + SQLite integration
-- [WebFluxSample](./samples/WebFluxSample/) - Web crawling
+- [WebFluxSample](./samples/WebFluxSample/) - Web crawling with WebFlux
+- [ChunkingQualityTest](./samples/ChunkingQualityTest/) - FileFlux chunking analysis
+- [FileFluxIndexSample](./samples/FileFluxIndexSample/) - Document indexing workflow
 
 ## Requirements
 
