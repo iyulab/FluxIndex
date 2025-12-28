@@ -119,6 +119,11 @@ public class IndexingService : IIndexingService
         }
 
         _logger.LogInformation("Processing indexing job: {JobId} for document {DocumentId}", job.Id, job.DocumentId);
+
+        // IMPORTANT: Mark job as Processing immediately to prevent duplicate pickup
+        job.MarkAsProcessing();
+        await _jobRepository.UpdateAsync(job, cancellationToken);
+
         await AddLogAsync(job.Id, IndexingJobLogLevel.Info, "Starting indexing job", phase: "Initialize");
 
         try
@@ -144,7 +149,8 @@ public class IndexingService : IIndexingService
             await AddLogAsync(job.Id, IndexingJobLogLevel.Info, "Starting document processing", phase: "Processing");
             var totalChunks = await SimulateChunkingAsync(document, job, cancellationToken);
 
-            job.Start(totalChunks);
+            // Set total chunks count (job was already marked as Processing earlier)
+            job.SetTotalChunks(totalChunks);
             await _jobRepository.UpdateAsync(job, cancellationToken);
             await AddLogAsync(job.Id, IndexingJobLogLevel.Info, $"Document split into {totalChunks} chunks", phase: "Chunking");
 

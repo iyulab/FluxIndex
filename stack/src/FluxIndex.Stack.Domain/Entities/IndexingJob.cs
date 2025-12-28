@@ -33,6 +33,24 @@ public class IndexingJob
         };
     }
 
+    /// <summary>
+    /// Marks the job as processing immediately to prevent duplicate pickup.
+    /// Call this right after getting the job from the queue.
+    /// </summary>
+    public void MarkAsProcessing()
+    {
+        Status = IndexingJobStatus.Processing;
+        StartedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Sets the total chunk count after chunking is complete.
+    /// </summary>
+    public void SetTotalChunks(int totalChunks)
+    {
+        TotalChunks = totalChunks;
+    }
+
     public void Start(int totalChunks)
     {
         Status = IndexingJobStatus.Processing;
