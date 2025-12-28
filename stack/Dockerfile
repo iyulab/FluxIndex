@@ -18,9 +18,9 @@ COPY stack/src/FluxIndex.Stack.Api/FluxIndex.Stack.Api.csproj stack/src/FluxInde
 COPY src/FluxIndex.Core/FluxIndex.Core.csproj src/FluxIndex.Core/
 COPY src/FluxIndex.SDK/FluxIndex.SDK.csproj src/FluxIndex.SDK/
 COPY src/FluxIndex.Storage.PostgreSQL/FluxIndex.Storage.PostgreSQL.csproj src/FluxIndex.Storage.PostgreSQL/
-COPY src/FluxIndex.AI.OpenAI/FluxIndex.AI.OpenAI.csproj src/FluxIndex.AI.OpenAI/
-COPY src/FluxIndex.AI.LocalEmbedder/FluxIndex.AI.LocalEmbedder.csproj src/FluxIndex.AI.LocalEmbedder/
-COPY src/FluxIndex.AI.LocalReranker/FluxIndex.AI.LocalReranker.csproj src/FluxIndex.AI.LocalReranker/
+COPY src/FluxIndex.Storage.SQLite/FluxIndex.Storage.SQLite.csproj src/FluxIndex.Storage.SQLite/
+COPY src/FluxIndex.Storage.Neo4j/FluxIndex.Storage.Neo4j.csproj src/FluxIndex.Storage.Neo4j/
+COPY src/FluxIndex.Storage.Qdrant/FluxIndex.Storage.Qdrant.csproj src/FluxIndex.Storage.Qdrant/
 COPY src/FluxIndex.Cache.Redis/FluxIndex.Cache.Redis.csproj src/FluxIndex.Cache.Redis/
 
 # Restore dependencies
