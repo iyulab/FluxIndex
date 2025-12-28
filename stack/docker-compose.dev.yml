@@ -19,7 +19,7 @@ services:
       - postgres-dev-data:/var/lib/postgresql/data
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
-      - "5432:5432"
+      - "5433:5432"
     command:
       - "postgres"
       - "-c"
@@ -67,8 +67,8 @@ services:
       - qdrant-dev-data:/qdrant/storage
       - qdrant-dev-snapshots:/qdrant/snapshots
     ports:
-      - "6333:6333"  # REST API
-      - "6334:6334"  # gRPC
+      - "6335:6333"  # REST API
+      - "6336:6334"  # gRPC
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:6333/readyz"]
       interval: 5s
@@ -101,8 +101,8 @@ services:
       - neo4j-dev-logs:/logs
       - neo4j-dev-plugins:/plugins
     ports:
-      - "7474:7474"  # HTTP (Browser)
-      - "7687:7687"  # Bolt
+      - "7475:7474"  # HTTP (Browser)
+      - "7688:7687"  # Bolt
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:7474 || exit 1"]
       interval: 10s
@@ -122,7 +122,7 @@ services:
     volumes:
       - redis-dev-data:/data
     ports:
-      - "6379:6379"
+      - "6381:6379"
     command:
       - redis-server
       - --appendonly yes

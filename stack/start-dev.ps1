@@ -56,7 +56,7 @@ Options:
     -Help           Show this help message
 
 Services:
-    Docker:    PostgreSQL (5432), Qdrant (6333/6334), Neo4j (7474/7687), Redis (6379)
+    Docker:    PostgreSQL (5433), Qdrant (6335/6336), Neo4j (7475/7688), Redis (6381)
     Backend:   ASP.NET Core API on http://localhost:5000
     Frontend:  Vite dev server on http://localhost:5173
 
@@ -127,10 +127,10 @@ if (-not $SkipDocker -and -not $FrontendOnly) {
 
     if ($postgresRunning -and $qdrantRunning -and $redisRunning -and $neo4jRunning) {
         Write-Success "Docker infrastructure already running"
-        Write-Host "    PostgreSQL: localhost:5432" -ForegroundColor Gray
-        Write-Host "    Qdrant:     localhost:6333 (REST), localhost:6334 (gRPC)" -ForegroundColor Gray
-        Write-Host "    Redis:      localhost:6379" -ForegroundColor Gray
-        Write-Host "    Neo4j:      localhost:7474 (browser), localhost:7687 (bolt)" -ForegroundColor Gray
+        Write-Host "    PostgreSQL: localhost:5433" -ForegroundColor Gray
+        Write-Host "    Qdrant:     localhost:6335 (REST), localhost:6336 (gRPC)" -ForegroundColor Gray
+        Write-Host "    Redis:      localhost:6381" -ForegroundColor Gray
+        Write-Host "    Neo4j:      localhost:7475 (browser), localhost:7688 (bolt)" -ForegroundColor Gray
     } else {
         Write-Status "Starting Docker infrastructure..."
 
@@ -154,10 +154,10 @@ if (-not $SkipDocker -and -not $FrontendOnly) {
 
             if ($LASTEXITCODE -eq 0) {
                 Write-Success "Docker infrastructure started"
-                Write-Host "    PostgreSQL: localhost:5432" -ForegroundColor Gray
-                Write-Host "    Qdrant:     localhost:6333 (REST), localhost:6334 (gRPC)" -ForegroundColor Gray
-                Write-Host "    Redis:      localhost:6379" -ForegroundColor Gray
-                Write-Host "    Neo4j:      localhost:7474 (browser), localhost:7687 (bolt)" -ForegroundColor Gray
+                Write-Host "    PostgreSQL: localhost:5433" -ForegroundColor Gray
+                Write-Host "    Qdrant:     localhost:6335 (REST), localhost:6336 (gRPC)" -ForegroundColor Gray
+                Write-Host "    Redis:      localhost:6381" -ForegroundColor Gray
+                Write-Host "    Neo4j:      localhost:7475 (browser), localhost:7688 (bolt)" -ForegroundColor Gray
                 if ($WithTools) {
                     Write-Host "    Redis Commander: localhost:8081" -ForegroundColor Gray
                 }
@@ -200,7 +200,7 @@ if (-not $SkipDocker -and -not $FrontendOnly) {
     $retryCount = 0
     while ($retryCount -lt $maxRetries) {
         try {
-            $qdrantReady = Invoke-RestMethod -Uri "http://localhost:6333/readyz" -Method Get -ErrorAction SilentlyContinue
+            $qdrantReady = Invoke-RestMethod -Uri "http://localhost:6335/readyz" -Method Get -ErrorAction SilentlyContinue
             Write-Success "Qdrant is ready"
             break
         } catch {
@@ -296,10 +296,10 @@ Write-Host ""
 Write-Host "Services:" -ForegroundColor White
 
 if (-not $SkipDocker -and -not $FrontendOnly) {
-    Write-Host "  [Docker]   PostgreSQL    http://localhost:5432" -ForegroundColor Gray
-    Write-Host "  [Docker]   Qdrant        http://localhost:6333" -ForegroundColor Gray
-    Write-Host "  [Docker]   Redis         http://localhost:6379" -ForegroundColor Gray
-    Write-Host "  [Docker]   Neo4j         http://localhost:7474" -ForegroundColor Gray
+    Write-Host "  [Docker]   PostgreSQL    http://localhost:5433" -ForegroundColor Gray
+    Write-Host "  [Docker]   Qdrant        http://localhost:6335" -ForegroundColor Gray
+    Write-Host "  [Docker]   Redis         http://localhost:6381" -ForegroundColor Gray
+    Write-Host "  [Docker]   Neo4j         http://localhost:7475" -ForegroundColor Gray
     if ($WithTools) {
         Write-Host "  [Docker]   Redis Cmd     http://localhost:8081" -ForegroundColor Gray
     }

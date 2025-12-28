@@ -5,6 +5,7 @@ using IEnrichedChunk = FluxIndex.Core.Application.Interfaces.IEnrichedChunk;
 using ISourceMetadata = FluxIndex.Core.Application.Interfaces.ISourceMetadata;
 using IAdvancedEntityExtractionService = FluxIndex.Core.Application.Interfaces.IAdvancedEntityExtractionService;
 using EntityExtractionOptions = FluxIndex.Core.Application.Interfaces.EntityExtractionOptions;
+using NamedEntityType = FluxIndex.Core.Application.Interfaces.NamedEntityType;
 using ExtractedEntity = FluxIndex.Core.Application.Interfaces.ExtractedEntity;
 using EntityRelation = FluxIndex.Core.Application.Interfaces.EntityRelation;
 using FluxIndex.Stack.Application.Interfaces.Repositories;
@@ -409,8 +410,19 @@ public class IndexingService : IIndexingService
                 var entityOptions = new EntityExtractionOptions
                 {
                     ExtractRelations = true,
-                    MinConfidence = 0.6,
-                    MaxEntities = 50
+                    MinConfidence = 0.8,
+                    MaxEntities = 30,
+                    // Only extract meaningful entities - regex patterns cause too many false positives
+                    // for numeric patterns (PhoneNumber, Quantity, Percentage, etc.)
+                    EntityTypes = new List<NamedEntityType>
+                    {
+                        NamedEntityType.Person,
+                        NamedEntityType.Organization,
+                        NamedEntityType.Location,
+                        NamedEntityType.Technology,
+                        NamedEntityType.Email,
+                        NamedEntityType.Url
+                    }
                 };
 
                 var allEntities = new List<ExtractedEntity>();

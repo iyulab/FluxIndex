@@ -95,6 +95,8 @@ public static class ServiceCollectionExtensions
 
     /// <summary>
     /// Adds database context with PostgreSQL.
+    /// Database name is automatically suffixed with embedding dimension (e.g., fluxindex_384)
+    /// to prevent vector dimension mismatch errors when switching embedding models.
     /// </summary>
     public static IServiceCollection AddDatabase(
         this IServiceCollection services,
@@ -102,6 +104,15 @@ public static class ServiceCollectionExtensions
     {
         var connectionString = configuration.GetConnectionString("PostgreSQL")
             ?? throw new InvalidOperationException("PostgreSQL connection string not configured.");
+
+        // Get embedding dimension for dimension-based DB naming
+        var embeddingDimension = configuration.GetValue<int>("FluxIndex:Embedding:Dimension", 384);
+
+        // Set dimension for DbContext schema creation
+        ServiceDbContext.EmbeddingDimension = embeddingDimension;
+
+        // Modify database name to include dimension suffix
+        connectionString = AppendDimensionToDatabaseName(connectionString, embeddingDimension);
 
         // Build NpgsqlDataSource with required features
         var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
@@ -122,6 +133,26 @@ public static class ServiceCollectionExtensions
         });
 
         return services;
+    }
+
+    /// <summary>
+    /// Appends embedding dimension to the database name in connection string.
+    /// Example: "Database=fluxindex" → "Database=fluxindex_384"
+    /// </summary>
+    private static string AppendDimensionToDatabaseName(string connectionString, int dimension)
+    {
+        var builder = new NpgsqlConnectionStringBuilder(connectionString);
+        var originalDb = builder.Database ?? "fluxindex";
+
+        // Don't append if dimension suffix already exists
+        if (!originalDb.EndsWith($"_{dimension}"))
+        {
+            // Remove any existing dimension suffix (e.g., _1536, _384)
+            var baseName = System.Text.RegularExpressions.Regex.Replace(originalDb, @"_\d+$", "");
+            builder.Database = $"{baseName}_{dimension}";
+        }
+
+        return builder.ConnectionString;
     }
 
     /// <summary>

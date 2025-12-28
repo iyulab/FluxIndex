@@ -8,6 +8,12 @@ namespace FluxIndex.Stack.Infrastructure.Data;
 /// </summary>
 public class ServiceDbContext : DbContext
 {
+    /// <summary>
+    /// Embedding vector dimension. Defaults to 384 (LMSupply MiniLM).
+    /// Set via AddDbContext configuration based on FluxIndex:Embedding:Dimension setting.
+    /// </summary>
+    public static int EmbeddingDimension { get; set; } = 384;
+
     public ServiceDbContext(DbContextOptions<ServiceDbContext> options) : base(options)
     {
     }
@@ -73,7 +79,7 @@ public class ServiceDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Content).IsRequired();
             entity.Property(e => e.Embedding)
-                .HasColumnType("vector(1536)"); // OpenAI text-embedding-3-small dimension
+                .HasColumnType($"vector({EmbeddingDimension})"); // Dynamic dimension from config
             entity.HasIndex(e => e.DocumentId);
             entity.Property(e => e.Metadata)
                 .HasColumnType("jsonb");
