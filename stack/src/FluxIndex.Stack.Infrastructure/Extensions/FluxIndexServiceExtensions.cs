@@ -75,17 +75,6 @@ public static class FluxIndexServiceExtensions
         // Configure local reranker if enabled
         ConfigureLocalReranker(services, options);
 
-        // Build and register FluxIndexContext
-        builder.ConfigureServices(innerServices =>
-        {
-            // Copy core services from builder to main service collection
-            // This ensures services are registered in the main DI container
-            foreach (var service in innerServices)
-            {
-                services.Add(service);
-            }
-        });
-
         // Build context and register as singleton
         var context = builder.Build();
         services.AddSingleton<IFluxIndexContext>(context);
@@ -94,6 +83,23 @@ public static class FluxIndexServiceExtensions
         // Register Retriever and Indexer separately for direct access
         services.AddSingleton(context.Retriever);
         services.AddSingleton(context.Indexer);
+
+        // Register Core services from FluxIndexContext's ServiceProvider
+        // These are needed by HybridSearchService and other advanced search services
+        services.AddScoped<IVectorStore>(sp =>
+            context.ServiceProvider.GetRequiredService<IVectorStore>());
+        services.AddScoped<ISparseRetriever>(sp =>
+            context.ServiceProvider.GetRequiredService<ISparseRetriever>());
+        services.AddScoped<IEmbeddingService>(sp =>
+            context.ServiceProvider.GetRequiredService<IEmbeddingService>());
+        services.AddScoped<IHybridSearchService>(sp =>
+            context.ServiceProvider.GetRequiredService<IHybridSearchService>());
+        services.AddScoped<ISmallToBigRetriever>(sp =>
+            context.ServiceProvider.GetRequiredService<ISmallToBigRetriever>());
+        services.AddScoped<IRankFusionService>(sp =>
+            context.ServiceProvider.GetRequiredService<IRankFusionService>());
+        services.AddScoped<IAdaptiveSearchService>(sp =>
+            context.ServiceProvider.GetRequiredService<IAdaptiveSearchService>());
 
         // Register options for configuration access
         services.AddSingleton(options);

@@ -1,4 +1,5 @@
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Domain.Models;
 using FluxIndex.Core.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -49,9 +50,9 @@ public class RankFusionServiceTests
         {
             ["vector_search"] = new List<RankedResult>
             {
-                new RankedResult { DocumentId = "doc1", ChunkId = "chunk1", Score = 0.9f },
-                new RankedResult { DocumentId = "doc2", ChunkId = "chunk2", Score = 0.8f },
-                new RankedResult { DocumentId = "doc3", ChunkId = "chunk3", Score = 0.7f }
+                new RankedResult { DocumentId = "doc1", ChunkId = "chunk1", Score = 0.9 },
+                new RankedResult { DocumentId = "doc2", ChunkId = "chunk2", Score = 0.8 },
+                new RankedResult { DocumentId = "doc3", ChunkId = "chunk3", Score = 0.7 }
             }
         };
 
@@ -72,13 +73,13 @@ public class RankFusionServiceTests
         {
             ["vector_search"] = new List<RankedResult>
             {
-                new RankedResult { DocumentId = "doc1", ChunkId = "chunk1", Score = 0.9f },
-                new RankedResult { DocumentId = "doc2", ChunkId = "chunk2", Score = 0.8f }
+                new RankedResult { DocumentId = "doc1", ChunkId = "chunk1", Score = 0.9 },
+                new RankedResult { DocumentId = "doc2", ChunkId = "chunk2", Score = 0.8 }
             },
             ["keyword_search"] = new List<RankedResult>
             {
-                new RankedResult { DocumentId = "doc1", ChunkId = "chunk1", Score = 0.85f }, // Same doc appears again
-                new RankedResult { DocumentId = "doc3", ChunkId = "chunk3", Score = 0.75f }
+                new RankedResult { DocumentId = "doc1", ChunkId = "chunk1", Score = 0.85 }, // Same doc appears again
+                new RankedResult { DocumentId = "doc3", ChunkId = "chunk3", Score = 0.75 }
             }
         };
 
@@ -105,7 +106,7 @@ public class RankFusionServiceTests
                 {
                     DocumentId = $"doc{i}",
                     ChunkId = $"chunk{i}",
-                    Score = 1.0f / i
+                    Score = 1.0 / i
                 })
         };
 
@@ -129,8 +130,8 @@ public class RankFusionServiceTests
         {
             ["search"] = new List<RankedResult>
             {
-                new RankedResult { DocumentId = "doc1", ChunkId = "chunk1", Score = 0.9f },
-                new RankedResult { DocumentId = "doc2", ChunkId = "chunk2", Score = 0.8f }
+                new RankedResult { DocumentId = "doc1", ChunkId = "chunk1", Score = 0.9 },
+                new RankedResult { DocumentId = "doc2", ChunkId = "chunk2", Score = 0.8 }
             }
         };
 
@@ -146,7 +147,7 @@ public class RankFusionServiceTests
     public void FuseWithWeights_EmptyResultSets_ReturnsEmpty()
     {
         // Arrange
-        var resultSets = new Dictionary<string, (IEnumerable<RankedResult>, float)>();
+        var resultSets = new Dictionary<string, (IEnumerable<RankedResult> results, double weight)>();
 
         // Act
         var results = _service.FuseWithWeights(resultSets);
@@ -169,16 +170,16 @@ public class RankFusionServiceTests
     public void FuseWithWeights_InvalidWeights_ThrowsException()
     {
         // Arrange
-        var resultSets = new Dictionary<string, (IEnumerable<RankedResult>, float)>
+        var resultSets = new Dictionary<string, (IEnumerable<RankedResult> results, double weight)>
         {
             ["search1"] = (new List<RankedResult>
             {
-                new RankedResult { DocumentId = "doc1", ChunkId = "chunk1", Score = 0.9f }
-            }, 0.0f),
+                new RankedResult { DocumentId = "doc1", ChunkId = "chunk1", Score = 0.9 }
+            }, 0.0),
             ["search2"] = (new List<RankedResult>
             {
-                new RankedResult { DocumentId = "doc2", ChunkId = "chunk2", Score = 0.8f }
-            }, 0.0f)
+                new RankedResult { DocumentId = "doc2", ChunkId = "chunk2", Score = 0.8 }
+            }, 0.0)
         };
 
         // Act & Assert
@@ -189,18 +190,18 @@ public class RankFusionServiceTests
     public void FuseWithWeights_EqualWeights_CombinesCorrectly()
     {
         // Arrange
-        var resultSets = new Dictionary<string, (IEnumerable<RankedResult>, float)>
+        var resultSets = new Dictionary<string, (IEnumerable<RankedResult> results, double weight)>
         {
             ["vector_search"] = (new List<RankedResult>
             {
-                new RankedResult { DocumentId = "doc1", ChunkId = "chunk1", Score = 0.9f },
-                new RankedResult { DocumentId = "doc2", ChunkId = "chunk2", Score = 0.7f }
-            }, 1.0f),
+                new RankedResult { DocumentId = "doc1", ChunkId = "chunk1", Score = 0.9 },
+                new RankedResult { DocumentId = "doc2", ChunkId = "chunk2", Score = 0.7 }
+            }, 1.0),
             ["keyword_search"] = (new List<RankedResult>
             {
-                new RankedResult { DocumentId = "doc1", ChunkId = "chunk1", Score = 0.8f },
-                new RankedResult { DocumentId = "doc3", ChunkId = "chunk3", Score = 0.6f }
-            }, 1.0f)
+                new RankedResult { DocumentId = "doc1", ChunkId = "chunk1", Score = 0.8 },
+                new RankedResult { DocumentId = "doc3", ChunkId = "chunk3", Score = 0.6 }
+            }, 1.0)
         };
 
         // Act
@@ -218,16 +219,16 @@ public class RankFusionServiceTests
     public void FuseWithWeights_DifferentWeights_PrioritizesHigherWeight()
     {
         // Arrange
-        var resultSets = new Dictionary<string, (IEnumerable<RankedResult>, float)>
+        var resultSets = new Dictionary<string, (IEnumerable<RankedResult> results, double weight)>
         {
             ["high_priority"] = (new List<RankedResult>
             {
-                new RankedResult { DocumentId = "doc1", ChunkId = "chunk1", Score = 0.6f }
-            }, 3.0f), // 3x weight
+                new RankedResult { DocumentId = "doc1", ChunkId = "chunk1", Score = 0.6 }
+            }, 3.0), // 3x weight
             ["low_priority"] = (new List<RankedResult>
             {
-                new RankedResult { DocumentId = "doc2", ChunkId = "chunk2", Score = 0.9f }
-            }, 1.0f)  // 1x weight
+                new RankedResult { DocumentId = "doc2", ChunkId = "chunk2", Score = 0.9 }
+            }, 1.0)  // 1x weight
         };
 
         // Act
@@ -244,15 +245,15 @@ public class RankFusionServiceTests
     public void FuseWithWeights_TopNLimit_ReturnsCorrectCount()
     {
         // Arrange
-        var resultSets = new Dictionary<string, (IEnumerable<RankedResult>, float)>
+        var resultSets = new Dictionary<string, (IEnumerable<RankedResult> results, double weight)>
         {
             ["search"] = (Enumerable.Range(1, 20)
                 .Select(i => new RankedResult
                 {
                     DocumentId = $"doc{i}",
                     ChunkId = $"chunk{i}",
-                    Score = 1.0f / i
-                }), 1.0f)
+                    Score = 1.0 / i
+                }), 1.0)
         };
 
         var topN = 7;
@@ -283,9 +284,9 @@ public class RankFusionServiceTests
         // Arrange
         var results = new List<RankedResult>
         {
-            new RankedResult { DocumentId = "doc1", ChunkId = "chunk1", Score = 10.0f },
-            new RankedResult { DocumentId = "doc2", ChunkId = "chunk2", Score = 5.0f },
-            new RankedResult { DocumentId = "doc3", ChunkId = "chunk3", Score = 0.0f }
+            new RankedResult { DocumentId = "doc1", ChunkId = "chunk1", Score = 10.0 },
+            new RankedResult { DocumentId = "doc2", ChunkId = "chunk2", Score = 5.0 },
+            new RankedResult { DocumentId = "doc3", ChunkId = "chunk3", Score = 0.0 }
         };
 
         // Act
@@ -295,15 +296,15 @@ public class RankFusionServiceTests
         Assert.Equal(3, normalized.Count);
         Assert.All(normalized, r =>
         {
-            Assert.True(r.Score >= 0.0f);
-            Assert.True(r.Score <= 1.0f);
+            Assert.True(r.Score >= 0.0);
+            Assert.True(r.Score <= 1.0);
         });
 
         // Highest score should be 1.0
-        Assert.Equal(1.0f, normalized.Max(r => r.Score));
+        Assert.Equal(1.0, normalized.Max(r => r.Score));
 
         // Lowest score should be 0.0
-        Assert.Equal(0.0f, normalized.Min(r => r.Score));
+        Assert.Equal(0.0, normalized.Min(r => r.Score));
     }
 
     [Fact]
@@ -312,9 +313,9 @@ public class RankFusionServiceTests
         // Arrange
         var results = new List<RankedResult>
         {
-            new RankedResult { DocumentId = "doc1", ChunkId = "chunk1", Score = 0.5f },
-            new RankedResult { DocumentId = "doc2", ChunkId = "chunk2", Score = 0.5f },
-            new RankedResult { DocumentId = "doc3", ChunkId = "chunk3", Score = 0.5f }
+            new RankedResult { DocumentId = "doc1", ChunkId = "chunk1", Score = 0.5 },
+            new RankedResult { DocumentId = "doc2", ChunkId = "chunk2", Score = 0.5 },
+            new RankedResult { DocumentId = "doc3", ChunkId = "chunk3", Score = 0.5 }
         };
 
         // Act
@@ -322,7 +323,7 @@ public class RankFusionServiceTests
 
         // Assert
         Assert.Equal(3, normalized.Count);
-        Assert.All(normalized, r => Assert.Equal(1.0f, r.Score));
+        Assert.All(normalized, r => Assert.Equal(1.0, r.Score));
     }
 
     [Fact]
@@ -334,7 +335,7 @@ public class RankFusionServiceTests
         {
             [sourceName] = new List<RankedResult>
             {
-                new RankedResult { DocumentId = "doc1", ChunkId = "chunk1", Score = 0.9f }
+                new RankedResult { DocumentId = "doc1", ChunkId = "chunk1", Score = 0.9 }
             }
         };
 
@@ -354,11 +355,11 @@ public class RankFusionServiceTests
         {
             ["source1"] = new List<RankedResult>
             {
-                new RankedResult { DocumentId = "doc1", ChunkId = "chunk1", Score = 0.9f }
+                new RankedResult { DocumentId = "doc1", ChunkId = "chunk1", Score = 0.9 }
             },
             ["source2"] = new List<RankedResult>
             {
-                new RankedResult { DocumentId = "doc1", ChunkId = "chunk1", Score = 0.8f }
+                new RankedResult { DocumentId = "doc1", ChunkId = "chunk1", Score = 0.8 }
             }
         };
 
@@ -375,16 +376,16 @@ public class RankFusionServiceTests
     public void FuseWithWeights_NormalizesWeights_Correctly()
     {
         // Arrange - weights don't sum to 1
-        var resultSets = new Dictionary<string, (IEnumerable<RankedResult>, float)>
+        var resultSets = new Dictionary<string, (IEnumerable<RankedResult> results, double weight)>
         {
             ["search1"] = (new List<RankedResult>
             {
-                new RankedResult { DocumentId = "doc1", ChunkId = "chunk1", Score = 0.5f }
-            }, 2.0f),
+                new RankedResult { DocumentId = "doc1", ChunkId = "chunk1", Score = 0.5 }
+            }, 2.0),
             ["search2"] = (new List<RankedResult>
             {
-                new RankedResult { DocumentId = "doc2", ChunkId = "chunk2", Score = 0.5f }
-            }, 8.0f)  // Total weight = 10
+                new RankedResult { DocumentId = "doc2", ChunkId = "chunk2", Score = 0.5 }
+            }, 8.0)  // Total weight = 10
         };
 
         // Act

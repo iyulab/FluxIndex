@@ -1,14 +1,11 @@
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Domain.Models;
 using Microsoft.Extensions.Logging;
+using QueryType = FluxIndex.Core.Application.Interfaces.QueryType;
 
 namespace FluxIndex.Core.Application.Services.Fusion;
 

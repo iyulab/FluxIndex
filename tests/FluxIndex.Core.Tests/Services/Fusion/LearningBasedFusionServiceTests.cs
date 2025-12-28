@@ -1,12 +1,9 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services;
 using FluxIndex.Core.Application.Services.Fusion;
+using FluxIndex.Core.Domain.Models;
 using Microsoft.Extensions.DependencyInjection;
+using QueryType = FluxIndex.Core.Application.Interfaces.QueryType;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;

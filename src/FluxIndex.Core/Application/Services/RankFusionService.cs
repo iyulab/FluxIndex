@@ -1,14 +1,12 @@
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Domain.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 
 namespace FluxIndex.Core.Services;
 
 /// <summary>
-/// Implementation of rank fusion algorithms for combining multiple search result sets
+/// Implementation of rank fusion algorithms for combining multiple search result sets.
 /// </summary>
 public class RankFusionService : IRankFusionService
 {
@@ -20,7 +18,7 @@ public class RankFusionService : IRankFusionService
     }
 
     /// <summary>
-    /// Implements Reciprocal Rank Fusion (RRF) algorithm
+    /// Implements Reciprocal Rank Fusion (RRF) algorithm.
     /// RRF Score = Σ(1/(k + rank_i)) for each result set i
     /// </summary>
     public IEnumerable<RankedResult> FuseWithRRF(
@@ -34,16 +32,16 @@ public class RankFusionService : IRankFusionService
             return Enumerable.Empty<RankedResult>();
         }
 
-        _logger.LogInformation("Performing RRF fusion on {Count} result sets with k={K}", 
+        _logger.LogInformation("Performing RRF fusion on {Count} result sets with k={K}",
             resultSets.Count, k);
 
         // Dictionary to accumulate RRF scores
-        var rrfScores = new Dictionary<string, (RankedResult result, float score)>();
+        var rrfScores = new Dictionary<string, (RankedResult result, double score)>();
 
         foreach (var (sourceName, results) in resultSets)
         {
             // Ensure results are ranked (1-based ranking)
-            var rankedResults = results.Select((r, index) => 
+            var rankedResults = results.Select((r, index) =>
             {
                 r.Rank = index + 1;
                 r.Source = sourceName;
@@ -53,17 +51,17 @@ public class RankFusionService : IRankFusionService
             foreach (var result in rankedResults)
             {
                 var key = result.GetUniqueKey();
-                var rrfScore = 1.0f / (k + result.Rank);
+                var rrfScore = 1.0 / (k + result.Rank);
 
-                if (rrfScores.ContainsKey(key))
+                if (rrfScores.TryGetValue(key, out var existing))
                 {
                     // Accumulate RRF score for items appearing in multiple result sets
                     rrfScores[key] = (
-                        result: MergeResults(rrfScores[key].result, result),
-                        score: rrfScores[key].score + rrfScore
+                        result: MergeResults(existing.result, result),
+                        score: existing.score + rrfScore
                     );
-                    
-                    _logger.LogDebug("Accumulated RRF score for {Key}: {Score}", 
+
+                    _logger.LogDebug("Accumulated RRF score for {Key}: {Score}",
                         key, rrfScores[key].score);
                 }
                 else
@@ -86,17 +84,17 @@ public class RankFusionService : IRankFusionService
             .Take(topN)
             .ToList();
 
-        _logger.LogInformation("RRF fusion completed: {Count} unique results, returning top {TopN}", 
+        _logger.LogInformation("RRF fusion completed: {Count} unique results, returning top {TopN}",
             rrfScores.Count, fusedResults.Count);
 
         return fusedResults;
     }
 
     /// <summary>
-    /// Implements weighted linear combination of scores
+    /// Implements weighted linear combination of scores.
     /// </summary>
     public IEnumerable<RankedResult> FuseWithWeights(
-        Dictionary<string, (IEnumerable<RankedResult> results, float weight)> resultSets,
+        Dictionary<string, (IEnumerable<RankedResult> results, double weight)> resultSets,
         int topN = 10)
     {
         if (resultSets == null || !resultSets.Any())
@@ -105,7 +103,7 @@ public class RankFusionService : IRankFusionService
             return Enumerable.Empty<RankedResult>();
         }
 
-        _logger.LogInformation("Performing weighted fusion on {Count} result sets", 
+        _logger.LogInformation("Performing weighted fusion on {Count} result sets",
             resultSets.Count);
 
         // Normalize weights to sum to 1
@@ -117,12 +115,12 @@ public class RankFusionService : IRankFusionService
         }
 
         // Dictionary to accumulate weighted scores
-        var weightedScores = new Dictionary<string, (RankedResult result, float score)>();
+        var weightedScores = new Dictionary<string, (RankedResult result, double score)>();
 
         foreach (var (sourceName, (results, weight)) in resultSets)
         {
             var normalizedWeight = weight / totalWeight;
-            
+
             // Normalize scores within this result set
             var normalizedResults = NormalizeScores(results).ToList();
 
@@ -132,11 +130,11 @@ public class RankFusionService : IRankFusionService
                 result.Source = sourceName;
                 var weightedScore = result.Score * normalizedWeight;
 
-                if (weightedScores.ContainsKey(key))
+                if (weightedScores.TryGetValue(key, out var existing))
                 {
                     weightedScores[key] = (
-                        result: MergeResults(weightedScores[key].result, result),
-                        score: weightedScores[key].score + weightedScore
+                        result: MergeResults(existing.result, result),
+                        score: existing.score + weightedScore
                     );
                 }
                 else
@@ -159,14 +157,14 @@ public class RankFusionService : IRankFusionService
             .Take(topN)
             .ToList();
 
-        _logger.LogInformation("Weighted fusion completed: {Count} unique results, returning top {TopN}", 
+        _logger.LogInformation("Weighted fusion completed: {Count} unique results, returning top {TopN}",
             weightedScores.Count, fusedResults.Count);
 
         return fusedResults;
     }
 
     /// <summary>
-    /// Normalizes scores to [0, 1] range using min-max normalization
+    /// Normalizes scores to [0, 1] range using min-max normalization.
     /// </summary>
     public IEnumerable<RankedResult> NormalizeScores(IEnumerable<RankedResult> results)
     {
@@ -181,11 +179,11 @@ public class RankFusionService : IRankFusionService
         var range = maxScore - minScore;
 
         // If all scores are the same, return uniform scores
-        if (range <= float.Epsilon)
+        if (range <= double.Epsilon)
         {
             foreach (var result in resultList)
             {
-                result.Score = 1.0f;
+                result.Score = 1.0;
             }
             return resultList;
         }
@@ -200,10 +198,10 @@ public class RankFusionService : IRankFusionService
     }
 
     /// <summary>
-    /// Merges two results representing the same document/chunk
-    /// Preserves the result with more complete information
+    /// Merges two results representing the same document/chunk.
+    /// Preserves the result with more complete information.
     /// </summary>
-    private RankedResult MergeResults(RankedResult existing, RankedResult incoming)
+    private static RankedResult MergeResults(RankedResult existing, RankedResult incoming)
     {
         // Keep the existing result but update source information
         if (string.IsNullOrEmpty(existing.Source))
@@ -220,10 +218,7 @@ public class RankFusionService : IRankFusionService
         {
             foreach (var kvp in incoming.Metadata)
             {
-                if (!existing.Metadata.ContainsKey(kvp.Key))
-                {
-                    existing.Metadata[kvp.Key] = kvp.Value;
-                }
+                existing.Metadata.TryAdd(kvp.Key, kvp.Value);
             }
         }
         else if (existing.Metadata == null && incoming.Metadata != null)

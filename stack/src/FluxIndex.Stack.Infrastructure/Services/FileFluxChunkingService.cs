@@ -2,6 +2,7 @@ using System.Text;
 using FileFlux;
 using FileFlux.Core;
 using FileFlux.Core.Infrastructure.Readers;
+using FluxIndex.Core.Services;
 using FluxIndex.Stack.Application.Interfaces.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -297,10 +298,10 @@ public class FileFluxChunkingService : IChunkingService
         {
             var endPosition = Math.Min(position + chunkSize, content.Length);
 
-            // Find natural break point
+            // Find natural break point using Core utility
             if (endPosition < content.Length)
             {
-                var breakPoint = FindBreakPoint(content, position, endPosition);
+                var breakPoint = SimpleChunkingService.FindNaturalBreakPoint(content, position, endPosition);
                 if (breakPoint > position)
                 {
                     endPosition = breakPoint;
@@ -334,36 +335,6 @@ public class FileFluxChunkingService : IChunkingService
         }
 
         return chunks;
-    }
-
-    private static int FindBreakPoint(string content, int start, int end)
-    {
-        var sentenceEnds = new[] { ". ", "! ", "? ", ".\n", "!\n", "?\n" };
-
-        foreach (var ending in sentenceEnds)
-        {
-            var pos = content.LastIndexOf(ending, end - 1, end - start);
-            if (pos > start)
-            {
-                return pos + ending.Length;
-            }
-        }
-
-        // Try paragraph break
-        var paraBreak = content.LastIndexOf("\n\n", end - 1, end - start);
-        if (paraBreak > start)
-        {
-            return paraBreak + 2;
-        }
-
-        // Try word boundary
-        var spacePos = content.LastIndexOf(' ', end - 1, end - start);
-        if (spacePos > start)
-        {
-            return spacePos + 1;
-        }
-
-        return end;
     }
 
     private static int EstimateTokenCount(string text)

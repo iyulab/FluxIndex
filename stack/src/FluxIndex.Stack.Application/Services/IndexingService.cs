@@ -1,4 +1,5 @@
 ﻿using FluxIndex.Core.Application.Services;
+using FluxIndex.Core.Services;
 using IContextualEmbeddingService = FluxIndex.Core.Application.Services.IContextualEmbeddingService;
 using IEnrichedChunk = FluxIndex.Core.Application.Interfaces.IEnrichedChunk;
 using ISourceMetadata = FluxIndex.Core.Application.Interfaces.ISourceMetadata;
@@ -545,7 +546,7 @@ public class IndexingService : IIndexingService
             // Try to find a natural break point (sentence end, paragraph)
             if (endPosition < content.Length)
             {
-                int lastBreak = FindLastBreakPoint(content, position, endPosition);
+                int lastBreak = SimpleChunkingService.FindNaturalBreakPoint(content, position, endPosition);
                 if (lastBreak > position)
                 {
                     endPosition = lastBreak;
@@ -581,44 +582,6 @@ public class IndexingService : IIndexingService
                 position = nextPosition;
             }
         }
-    }
-
-    private static int FindLastBreakPoint(string content, int start, int end)
-    {
-        // Prefer sentence boundaries, then paragraphs, then words
-        string[] sentenceEnds = { ". ", "! ", "? ", ".\n", "!\n", "?\n" };
-
-        int lastBreak = start;
-        foreach (var ending in sentenceEnds)
-        {
-            int pos = content.LastIndexOf(ending, end - 1, end - start);
-            if (pos > lastBreak)
-            {
-                lastBreak = pos + ending.Length;
-            }
-        }
-
-        if (lastBreak == start)
-        {
-            // Try to find a paragraph break
-            int paraBreak = content.LastIndexOf("\n\n", end - 1, end - start);
-            if (paraBreak > start)
-            {
-                lastBreak = paraBreak + 2;
-            }
-        }
-
-        if (lastBreak == start)
-        {
-            // Try to find a word boundary
-            int spacePos = content.LastIndexOf(' ', end - 1, end - start);
-            if (spacePos > start)
-            {
-                lastBreak = spacePos + 1;
-            }
-        }
-
-        return lastBreak;
     }
 
     private static int EstimateTokenCount(string text)

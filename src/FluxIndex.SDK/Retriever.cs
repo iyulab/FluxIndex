@@ -4,7 +4,7 @@ using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Core.Domain.Models;
 using DocumentChunkEntity = FluxIndex.Core.Domain.Entities.DocumentChunk;
 using DocumentChunkModel = FluxIndex.Core.Domain.Models.CacheDocumentChunk;
-using RankedResultCore = FluxIndex.Core.Application.Interfaces.RankedResult;
+using RankedResultCore = FluxIndex.Core.Domain.Models.RankedResult;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using System;
@@ -329,7 +329,7 @@ public class Retriever
         string keyword,
         string query,
         int maxResults = 10,
-        float vectorWeight = 0.7f,
+        double vectorWeight = 0.7,
         Dictionary<string, object>? filter = null,
         CancellationToken cancellationToken = default)
     {
@@ -344,7 +344,7 @@ public class Retriever
         string query,
         IProgress<SearchProgress>? progress,
         int maxResults = 10,
-        float vectorWeight = 0.7f,
+        double vectorWeight = 0.7,
         Dictionary<string, object>? filter = null,
         CancellationToken cancellationToken = default)
     {
@@ -428,7 +428,7 @@ public class Retriever
             // Use RRF fusion if weights are equal, otherwise use weighted fusion
             IEnumerable<VectorSearchResult> combinedResults;
 
-            if (Math.Abs(vectorWeight - 0.5f) < 0.01f) // Equal weights, use RRF
+            if (Math.Abs(vectorWeight - 0.5) < 0.01) // Equal weights, use RRF
             {
                 var resultSets = new Dictionary<string, IEnumerable<RankedResultCore>>
                 {
@@ -441,10 +441,10 @@ public class Retriever
             }
             else // Use weighted fusion
             {
-                var resultSets = new Dictionary<string, (IEnumerable<RankedResultCore> results, float weight)>
+                var resultSets = new Dictionary<string, (IEnumerable<RankedResultCore> results, double weight)>
                 {
                     ["vector"] = (ConvertToRankedResults(vectorResults, "vector"), vectorWeight),
-                    ["keyword"] = (ConvertToRankedResults(keywordResults, "keyword"), 1 - vectorWeight)
+                    ["keyword"] = (ConvertToRankedResults(keywordResults, "keyword"), 1.0 - vectorWeight)
                 };
 
                 var fusedResults = _rankFusionService.FuseWithWeights(resultSets, topN: maxResults);
@@ -804,9 +804,9 @@ public class Retriever
     private IEnumerable<VectorSearchResult> CombineResults(
         IEnumerable<VectorSearchResult> vectorResults,
         IEnumerable<VectorSearchResult> keywordResults,
-        float vectorWeight)
+        double vectorWeight)
     {
-        var keywordWeight = 1 - vectorWeight;
+        var keywordWeight = 1.0 - vectorWeight;
         var combined = new Dictionary<string, VectorSearchResult>();
 
         // Add vector results

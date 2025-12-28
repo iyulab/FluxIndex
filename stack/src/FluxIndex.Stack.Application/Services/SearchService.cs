@@ -54,6 +54,7 @@ public class SearchService : ISearchService
     private readonly IDynamicFusionService? _fusionService;
     private readonly IReranker? _reranker;
     private readonly ISemanticCacheService? _semanticCache;
+    private readonly IRankFusionService? _rankFusionService;
 
     // Optional Stack-specific backends
     private readonly IQdrantSearchService? _qdrantService;
@@ -75,6 +76,7 @@ public class SearchService : ISearchService
         IDynamicFusionService? fusionService = null,
         IReranker? reranker = null,
         ISemanticCacheService? semanticCache = null,
+        IRankFusionService? rankFusionService = null,
         IQdrantSearchService? qdrantService = null,
         INeo4jGraphService? neo4jService = null,
         IAdvancedEntityExtractionService? entityService = null,
@@ -91,6 +93,7 @@ public class SearchService : ISearchService
         _fusionService = fusionService;
         _reranker = reranker;
         _semanticCache = semanticCache;
+        _rankFusionService = rankFusionService;
         _qdrantService = qdrantService;
         _neo4jService = neo4jService;
         _entityService = entityService;

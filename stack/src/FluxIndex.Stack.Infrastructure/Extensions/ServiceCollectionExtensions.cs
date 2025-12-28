@@ -467,6 +467,9 @@ public static class ServiceCollectionExtensions
         // 6. Advanced Search Service that orchestrates all the above
         services.AddScoped<IAdvancedSearchService, AdvancedSearchService>();
 
+        // Note: IHybridSearchService is registered in AddFluxIndexSDK from context.ServiceProvider
+        // This ensures proper dependency chain from the SDK's built services
+
         // Note: SmartSearchService has been merged into SearchService.Auto mode
         // Use SearchRequest.Mode = SearchMode.Auto (default) for intelligent search optimization
 
