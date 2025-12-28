@@ -10,6 +10,7 @@ using CoreQualityThresholds = FluxIndex.Core.Domain.Models.QualityThresholds;
 using FluxIndex.SDK.Extensions.FluxImprover;
 using FluxIndex.SDK.Extensions.FluxImprover.Services;
 using FluxIndex.SDK;
+using FluxIndex.Storage.Neo4j;
 using FluxIndex.Stack.Application.Interfaces.Repositories;
 using FluxIndex.Stack.Application.Interfaces.Services;
 using FluxIndex.Stack.Application.Services;
@@ -58,6 +59,7 @@ public static class ServiceCollectionExtensions
         services.AddFluxImproverServices(configuration);
         services.AddRedisCache(configuration);
         services.AddAdvancedSearchServices(configuration);
+        services.AddNeo4jGraphService(configuration);
 
         return services;
     }
@@ -521,6 +523,57 @@ public static class ServiceCollectionExtensions
         // Routes queries to optimal retrieval strategies based on query analysis
         // Supports: HybridSearch, SelfRAG, CorrectiveRAG, SmallToBig, Iterative, etc.
         services.AddAgenticRetrievalRouter();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Adds Neo4j graph database services for GraphRAG capabilities.
+    /// Provides relationship-aware search and entity traversal.
+    /// </summary>
+    public static IServiceCollection AddNeo4jGraphService(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        var neo4jSection = configuration.GetSection("Neo4j");
+        var connectionString = configuration.GetConnectionString("Neo4j");
+
+        // Check if Neo4j is configured
+        if (string.IsNullOrEmpty(connectionString))
+        {
+            // Neo4j not configured - Neo4jGraphService will operate in degraded mode
+            // Don't register IGraphStore, let Neo4jGraphService handle null gracefully
+            services.AddSingleton<INeo4jGraphService>(sp =>
+            {
+                var embeddingProvider = sp.GetService<IEmbeddingProvider>();
+                var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Neo4jGraphService>>();
+                return new Neo4jGraphService(null, embeddingProvider, logger);
+            });
+            return services;
+        }
+
+        // Register Neo4j graph store from Core
+        services.AddNeo4jGraphStore(options =>
+        {
+            options.Uri = connectionString;
+            options.Username = neo4jSection.GetValue<string>("Username") ?? "neo4j";
+            options.Password = neo4jSection.GetValue<string>("Password") ?? string.Empty;
+            options.Database = neo4jSection.GetValue<string>("Database");
+            options.CreateIndexesOnStartup = neo4jSection.GetValue<bool>("CreateIndexes", true);
+            options.NodeLabelPrefix = neo4jSection.GetValue<string>("NodeLabelPrefix") ?? "FluxIndex_";
+            options.Encrypted = neo4jSection.GetValue<bool>("Encrypted", false);
+            options.ConnectionTimeoutSeconds = neo4jSection.GetValue<int>("ConnectionTimeoutSeconds", 30);
+            options.MaxConnectionPoolSize = neo4jSection.GetValue<int>("MaxConnectionPoolSize", 100);
+        });
+
+        // Register Stack-level Neo4j service
+        services.AddSingleton<INeo4jGraphService>(sp =>
+        {
+            var graphStore = sp.GetService<IGraphStore>();
+            var embeddingProvider = sp.GetService<IEmbeddingProvider>();
+            var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Neo4jGraphService>>();
+            return new Neo4jGraphService(graphStore, embeddingProvider, logger);
+        });
 
         return services;
     }

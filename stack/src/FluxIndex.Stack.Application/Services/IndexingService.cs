@@ -2,6 +2,10 @@
 using IContextualEmbeddingService = FluxIndex.Core.Application.Services.IContextualEmbeddingService;
 using IEnrichedChunk = FluxIndex.Core.Application.Interfaces.IEnrichedChunk;
 using ISourceMetadata = FluxIndex.Core.Application.Interfaces.ISourceMetadata;
+using IAdvancedEntityExtractionService = FluxIndex.Core.Application.Interfaces.IAdvancedEntityExtractionService;
+using EntityExtractionOptions = FluxIndex.Core.Application.Interfaces.EntityExtractionOptions;
+using ExtractedEntity = FluxIndex.Core.Application.Interfaces.ExtractedEntity;
+using EntityRelation = FluxIndex.Core.Application.Interfaces.EntityRelation;
 using FluxIndex.Stack.Application.Interfaces.Repositories;
 using FluxIndex.Stack.Application.Interfaces.Services;
 using FluxIndex.Stack.Domain.Entities;
@@ -28,6 +32,8 @@ public class IndexingService : IIndexingService
     private readonly IChunkEnrichmentService? _enrichmentService;
     private readonly ILateChunkingEmbeddingService? _lateChunkingService;
     private readonly IContextualEmbeddingService? _contextualEmbeddingService;
+    private readonly IAdvancedEntityExtractionService? _entityExtractionService;
+    private readonly INeo4jGraphService? _graphService;
     private readonly ILogger<IndexingService> _logger;
 
     // Default chunking configuration (fallback when IChunkingService not available)
@@ -45,7 +51,9 @@ public class IndexingService : IIndexingService
         IChunkingService? chunkingService = null,
         IChunkEnrichmentService? enrichmentService = null,
         ILateChunkingEmbeddingService? lateChunkingService = null,
-        IContextualEmbeddingService? contextualEmbeddingService = null)
+        IContextualEmbeddingService? contextualEmbeddingService = null,
+        IAdvancedEntityExtractionService? entityExtractionService = null,
+        INeo4jGraphService? graphService = null)
     {
         _jobRepository = jobRepository;
         _documentRepository = documentRepository;
@@ -57,6 +65,8 @@ public class IndexingService : IIndexingService
         _enrichmentService = enrichmentService;
         _lateChunkingService = lateChunkingService;
         _contextualEmbeddingService = contextualEmbeddingService;
+        _entityExtractionService = entityExtractionService;
+        _graphService = graphService;
         _logger = logger;
     }
 
@@ -383,7 +393,132 @@ public class IndexingService : IIndexingService
                 phase: "Enrichment");
         }
 
-        // 5. Store chunks in database
+        // 5. Extract entities and build knowledge graph
+        if (_entityExtractionService != null && _graphService != null && _graphService.IsAvailable)
+        {
+            await AddLogAsync(job.Id, IndexingJobLogLevel.Info, "Starting entity extraction for knowledge graph", phase: "EntityExtraction");
+            try
+            {
+                var entityOptions = new EntityExtractionOptions
+                {
+                    ExtractRelations = true,
+                    MinConfidence = 0.6,
+                    MaxEntities = 50
+                };
+
+                var allEntities = new List<ExtractedEntity>();
+                var allRelations = new List<EntityRelation>();
+                var chunkEntityMap = new Dictionary<Guid, List<string>>(); // ChunkId -> EntityIds
+                var entityIdMapping = new Dictionary<string, string>(); // Original entity.Id -> Our normalized ID
+
+                foreach (var chunk in chunkList)
+                {
+                    try
+                    {
+                        var extractionResult = await _entityExtractionService.ExtractEntitiesAsync(
+                            chunk.Content,
+                            entityOptions,
+                            cancellationToken);
+
+                        if (extractionResult.Any())
+                        {
+                            var entityIds = new List<string>();
+                            foreach (var entity in extractionResult)
+                            {
+                                // Generate unique entity ID based on type and normalized text
+                                var normalizedId = $"{entity.Type}:{entity.NormalizedText}".ToLowerInvariant();
+                                entityIds.Add(normalizedId);
+                                entityIdMapping[entity.Id] = normalizedId;
+
+                                // Store entity in graph
+                                var graphEntity = new GraphEntity(
+                                    normalizedId,
+                                    entity.Text,
+                                    entity.Type.ToString(),
+                                    entity.Metadata,
+                                    chunk.Id,
+                                    document.Id);
+
+                                await _graphService.StoreEntityAsync(graphEntity, cancellationToken);
+                                allEntities.Add(entity);
+                            }
+
+                            chunkEntityMap[chunk.Id] = entityIds;
+
+                            // Extract relations between entities in this chunk
+                            if (extractionResult.Count >= 2)
+                            {
+                                var relations = await _entityExtractionService.ExtractRelationsAsync(
+                                    chunk.Content,
+                                    extractionResult,
+                                    entityOptions,
+                                    cancellationToken);
+
+                                foreach (var relation in relations)
+                                {
+                                    // Map original entity IDs to our normalized IDs
+                                    if (entityIdMapping.TryGetValue(relation.SourceEntityId, out var sourceId) &&
+                                        entityIdMapping.TryGetValue(relation.TargetEntityId, out var targetId))
+                                    {
+                                        await _graphService.StoreRelationshipAsync(
+                                            sourceId,
+                                            targetId,
+                                            relation.Type.ToString(),
+                                            relation.Metadata,
+                                            cancellationToken);
+
+                                        allRelations.Add(relation);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to extract entities from chunk {ChunkId}", chunk.Id);
+                        // Continue with other chunks
+                    }
+                }
+
+                // Link chunks to their entities
+                foreach (var (chunkId, entityIds) in chunkEntityMap)
+                {
+                    if (entityIds.Count > 0)
+                    {
+                        await _graphService.LinkChunkToEntitiesAsync(chunkId, entityIds, cancellationToken);
+                    }
+                }
+
+                _logger.LogInformation(
+                    "Entity extraction completed for document {DocumentId}: {EntityCount} entities, {RelationCount} relations",
+                    document.Id, allEntities.Count, allRelations.Count);
+
+                await AddLogAsync(job.Id, IndexingJobLogLevel.Info,
+                    $"Entity extraction completed: {allEntities.Count} entities, {allRelations.Count} relations",
+                    phase: "EntityExtraction");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to extract entities for document {DocumentId}", document.Id);
+                await AddLogAsync(job.Id, IndexingJobLogLevel.Warning,
+                    $"Entity extraction failed: {ex.Message}",
+                    ex.StackTrace,
+                    "EntityExtraction");
+                // Continue without entity extraction - not critical
+            }
+        }
+        else
+        {
+            var reason = _entityExtractionService == null
+                ? "Entity extraction service not configured"
+                : "Neo4j graph service not available";
+            _logger.LogDebug("Entity extraction skipped: {Reason} for document {DocumentId}", reason, document.Id);
+            await AddLogAsync(job.Id, IndexingJobLogLevel.Debug,
+                $"Entity extraction skipped ({reason})",
+                phase: "EntityExtraction");
+        }
+
+        // 6. Store chunks in database
         await AddLogAsync(job.Id, IndexingJobLogLevel.Info, "Storing chunks in database", phase: "Storage");
         await _chunkRepository.AddRangeAsync(chunkList, cancellationToken);
         await AddLogAsync(job.Id, IndexingJobLogLevel.Info, $"Successfully stored {chunkList.Count} chunks", phase: "Storage");

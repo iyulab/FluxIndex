@@ -15,6 +15,7 @@ import {
   ListTodo,
   Target,
   Shield,
+  Network,
 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -23,6 +24,7 @@ const navigation = [
   { name: 'Documents', href: '/documents', icon: FileText },
   { name: 'Jobs', href: '/jobs', icon: ListTodo },
   { name: 'Search', href: '/search', icon: Search },
+  { name: 'Graph', href: '/graph', icon: Network },
   { name: 'Evaluation', href: '/evaluation', icon: Target },
   { name: 'Quality Gate', href: '/quality-gate', icon: Shield },
   { name: 'Settings', href: '/settings', icon: Settings },

@@ -6,6 +6,7 @@ import DocumentsPage from '@/pages/DocumentsPage'
 import DocumentDetailPage from '@/pages/DocumentDetailPage'
 import JobsPage from '@/pages/JobsPage'
 import SearchPage from '@/pages/SearchPage'
+import GraphPage from '@/pages/GraphPage'
 import EvaluationPage from '@/pages/EvaluationPage'
 import QualityGatePage from '@/pages/QualityGatePage'
 import SettingsPage from '@/pages/SettingsPage'
@@ -21,6 +22,7 @@ function App() {
           <Route path="documents/:id" element={<DocumentDetailPage />} />
           <Route path="jobs" element={<JobsPage />} />
           <Route path="search" element={<SearchPage />} />
+          <Route path="graph" element={<GraphPage />} />
           <Route path="evaluation" element={<EvaluationPage />} />
           <Route path="quality-gate" element={<QualityGatePage />} />
           <Route path="settings" element={<SettingsPage />} />

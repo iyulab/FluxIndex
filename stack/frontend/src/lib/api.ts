@@ -601,3 +601,100 @@ export const qualityGateApi = {
       params: { version, datasetId, minScore }
     }),
 }
+
+// Graph (Knowledge Graph) types
+export interface GraphStatistics {
+  isAvailable: boolean
+  totalNodes: number
+  totalRelationships: number
+  totalCommunities: number
+  nodesByType: Record<string, number>
+  relationshipsByType: Record<string, number>
+}
+
+export interface GraphHealth {
+  isAvailable: boolean
+  service: string
+  status: string
+}
+
+export interface EntityRelationship {
+  sourceEntityId: string
+  targetEntityId: string
+  relationshipType: string
+  properties?: Record<string, unknown>
+}
+
+export interface GetRelatedEntitiesRequest {
+  entityIds: string[]
+  maxHops?: number
+}
+
+export interface GetRelatedEntitiesResponse {
+  relationships: EntityRelationship[]
+  totalCount: number
+}
+
+export interface QueryExpansionRequest {
+  query: string
+  maxEntities?: number
+}
+
+export interface QueryExpansionResponse {
+  originalQuery: string
+  relatedTerms: string[]
+  expandedQuery: string
+}
+
+export interface GraphPath {
+  entityIds: string[]
+  relationshipTypes: string[]
+  pathWeight: number
+  length: number
+}
+
+export interface FindPathsRequest {
+  sourceEntityId: string
+  targetEntityId: string
+  maxPathLength?: number
+}
+
+export interface FindPathsResponse {
+  paths: GraphPath[]
+  sourceEntityId: string
+  targetEntityId: string
+}
+
+export interface GraphCommunity {
+  communityId: string
+  name: string
+  memberEntityIds: string[]
+  summary?: string
+  level: number
+}
+
+export interface RunCommunityDetectionRequest {
+  collectionId?: string
+}
+
+export interface RunCommunityDetectionResponse {
+  communitiesDetected: number
+  executionTimeMs: number
+}
+
+export const graphApi = {
+  getStatistics: () =>
+    api.get<ApiResponse<GraphStatistics>>('/graph/statistics'),
+  getHealth: () =>
+    api.get<ApiResponse<GraphHealth>>('/graph/health'),
+  getRelatedEntities: (data: GetRelatedEntitiesRequest) =>
+    api.post<ApiResponse<GetRelatedEntitiesResponse>>('/graph/entities/related', data),
+  expandQuery: (data: QueryExpansionRequest) =>
+    api.post<ApiResponse<QueryExpansionResponse>>('/graph/query/expand', data),
+  findPaths: (data: FindPathsRequest) =>
+    api.post<ApiResponse<FindPathsResponse>>('/graph/paths/find', data),
+  getEntityCommunity: (entityId: string) =>
+    api.get<ApiResponse<GraphCommunity>>(`/graph/entities/${encodeURIComponent(entityId)}/community`),
+  runCommunityDetection: (data?: RunCommunityDetectionRequest) =>
+    api.post<ApiResponse<RunCommunityDetectionResponse>>('/graph/communities/detect', data || {}),
+}
