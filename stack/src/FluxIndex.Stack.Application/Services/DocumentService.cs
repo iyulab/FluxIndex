@@ -17,6 +17,7 @@ public class DocumentService : IDocumentService
 {
     private readonly IDocumentRepository _documentRepository;
     private readonly IDocumentChunkRepository _chunkRepository;
+    private readonly IIndexingJobRepository? _jobRepository;
     private readonly IIndexingService? _indexingService;
     private readonly IDocumentContentProvider? _contentProvider;
     private readonly ILogger<DocumentService> _logger;
@@ -25,11 +26,13 @@ public class DocumentService : IDocumentService
         IDocumentRepository documentRepository,
         IDocumentChunkRepository chunkRepository,
         ILogger<DocumentService> logger,
+        IIndexingJobRepository? jobRepository = null,
         IIndexingService? indexingService = null,
         IDocumentContentProvider? contentProvider = null)
     {
         _documentRepository = documentRepository;
         _chunkRepository = chunkRepository;
+        _jobRepository = jobRepository;
         _indexingService = indexingService;
         _contentProvider = contentProvider;
         _logger = logger;
@@ -240,6 +243,18 @@ public class DocumentService : IDocumentService
         if (!await _documentRepository.ExistsAsync(id, cancellationToken))
         {
             throw new KeyNotFoundException($"Document with id '{id}' not found.");
+        }
+
+        // Cancel any pending/processing indexing jobs for this document
+        if (_jobRepository != null)
+        {
+            var job = await _jobRepository.GetByDocumentIdAsync(id, cancellationToken);
+            if (job != null && (job.Status == IndexingJobStatus.Queued || job.Status == IndexingJobStatus.Processing))
+            {
+                job.Cancel();
+                await _jobRepository.UpdateAsync(job, cancellationToken);
+                _logger.LogInformation("Cancelled indexing job {JobId} for document {DocumentId}", job.Id, id);
+            }
         }
 
         // Chunks are deleted via cascade

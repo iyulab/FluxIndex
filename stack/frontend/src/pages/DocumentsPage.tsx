@@ -9,7 +9,7 @@ import { documentsApi, collectionsApi, jobsApi, type Document } from '@/lib/api'
 import { formatDate, formatBytes, truncate } from '@/lib/utils'
 import {
   Upload, FileText, Trash2, RefreshCw, CheckCircle, Clock, XCircle,
-  AlertCircle, FolderOpen, RotateCcw, Loader2, Info, Eye
+  AlertCircle, FolderOpen, RotateCcw, Loader2, Info, Eye, StopCircle
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { useStore } from '@/store/useStore'
@@ -124,6 +124,18 @@ export default function DocumentsPage() {
     },
     onError: () => {
       toast({ title: 'Failed to reindex document', variant: 'destructive' })
+    },
+  })
+
+  const cancelJobMutation = useMutation({
+    mutationFn: (jobId: string) => jobsApi.cancel(jobId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['documents'] })
+      queryClient.invalidateQueries({ queryKey: ['jobs'] })
+      toast({ title: 'Indexing job cancelled' })
+    },
+    onError: () => {
+      toast({ title: 'Failed to cancel job', variant: 'destructive' })
     },
   })
 
@@ -361,6 +373,26 @@ export default function DocumentsPage() {
                           </Tooltip>
                         )}
 
+                        {/* Cancel button for processing/pending documents */}
+                        {(isProcessing || isPending) && doc.metadata?.jobId && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-orange-500 hover:text-orange-600"
+                                onClick={() => cancelJobMutation.mutate(doc.metadata?.jobId as string)}
+                                disabled={cancelJobMutation.isPending}
+                              >
+                                <StopCircle className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Cancel indexing</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+
                         {/* Reindex button for failed/indexed documents */}
                         {(isFailed || doc.status === 'Indexed') && (
                           <Tooltip>
@@ -380,20 +412,21 @@ export default function DocumentsPage() {
                           </Tooltip>
                         )}
 
-                        {/* Delete button */}
+                        {/* Delete button - always available */}
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
                               variant="ghost"
                               size="icon"
+                              className={isProcessing || isPending ? 'text-red-500 hover:text-red-600' : ''}
                               onClick={() => deleteMutation.mutate(doc.id)}
-                              disabled={deleteMutation.isPending || isProcessing}
+                              disabled={deleteMutation.isPending}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>
-                            <p>Delete document</p>
+                            <p>{isProcessing || isPending ? 'Force delete (cancels job)' : 'Delete document'}</p>
                           </TooltipContent>
                         </Tooltip>
                       </div>
