@@ -41,16 +41,15 @@ RUN dotnet publish stack/src/FluxIndex.Stack.Api/FluxIndex.Stack.Api.csproj -c R
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
-# Install curl for health checks and create non-root user
+# Install curl for health checks
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl adduser && \
-    rm -rf /var/lib/apt/lists/* && \
-    adduser --disabled-password --gecos '' --uid 1000 appuser && \
-    chown -R appuser:appuser /app
+    apt-get install -y --no-install-recommends curl && \
+    rm -rf /var/lib/apt/lists/*
 
 COPY --from=publish /app/publish .
 
-USER appuser
+# Use the built-in 'app' user from the ASP.NET base image (UID 1654)
+USER app
 
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
