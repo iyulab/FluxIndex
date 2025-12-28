@@ -394,6 +394,7 @@ FluxIndex.Benchmarks/
 research-docs/nuget.local.config
 .playwright-mcp/
 nul
+stack/src/FluxIndex.Stack.Api/content
 
 # Frontend build artifacts
 **/dist/
