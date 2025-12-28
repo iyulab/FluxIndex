@@ -1,18 +1,16 @@
-using FluxIndex.AI.LocalEmbedder;
-using FluxIndex.AI.LocalEmbedder.Services;
-using FluxIndex.AI.OpenAI;
-using FluxIndex.AI.OpenAI.Services;
+using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.SDK.AI.Local;
+using FluxIndex.SDK.AI.Local.Services;
 using FluxIndex.Stack.Application.Interfaces.Services;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using CoreEmbeddingService = FluxIndex.Core.Application.Interfaces.IEmbeddingService;
 
 namespace FluxIndex.Stack.Infrastructure.Services;
 
 /// <summary>
 /// Factory for creating embedding providers based on configuration.
-/// Supports OpenAI, Azure OpenAI, Local (ONNX), and other OpenAI-compatible providers.
+/// Supports LMSupply (local), OpenAI, Azure OpenAI, and other providers via Core interfaces.
 /// </summary>
 public class EmbeddingServiceFactory : IEmbeddingServiceFactory
 {
@@ -27,6 +25,7 @@ public class EmbeddingServiceFactory : IEmbeddingServiceFactory
         "GPUStack",
         "OpenAI-Compatible",
         "Local",
+        "LMSupply",
         "Cohere",
         "Google"
     };
@@ -54,86 +53,62 @@ public class EmbeddingServiceFactory : IEmbeddingServiceFactory
             "Creating embedding provider: Provider={Provider}, Model={Model}",
             providerName, modelName ?? "default");
 
-        // If no API key is provided, fall back to local
+        // If no API key is provided, fall back to local LMSupply
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             _logger.LogWarning(
-                "No API key provided for {Provider}. Falling back to LocalEmbedder.",
+                "No API key provided for {Provider}. Falling back to LMSupply local embedder.",
                 providerName);
-            return CreateLocalProviderAsync(null, cancellationToken);
+            return CreateLocalProviderAsync(modelName, cancellationToken);
         }
 
         var normalizedProvider = providerName.ToLowerInvariant();
 
-        switch (normalizedProvider)
+        return normalizedProvider switch
         {
-            case "openai":
-                return CreateOpenAIProviderAsync(apiKey, modelName, cancellationToken);
+            "local" or "localembedder" or "lmsupply" =>
+                CreateLocalProviderAsync(modelName, cancellationToken),
 
-            case "azure":
-            case "azureopenai":
-                return CreateAzureProviderAsync(apiKey, modelName, endpointUrl, cancellationToken);
+            "openai" =>
+                CreateOpenAIProviderAsync(apiKey, modelName, null, cancellationToken),
 
-            case "cohere":
-                // Cohere uses OpenAI-compatible API for embeddings
-                _logger.LogWarning(
-                    "Cohere embedding not yet implemented. Falling back to LocalEmbedder.");
-                return CreateLocalProviderAsync(null, cancellationToken);
+            "azure" or "azureopenai" =>
+                CreateOpenAIProviderAsync(apiKey, modelName, endpointUrl, cancellationToken),
 
-            case "google":
-                // Google Gemini embedding requires different SDK
-                _logger.LogWarning(
-                    "Google embedding not yet implemented. Falling back to LocalEmbedder.");
-                return CreateLocalProviderAsync(null, cancellationToken);
+            "gpustack" or "openai-compatible" or "openaicompatible" =>
+                CreateOpenAIProviderAsync(apiKey, modelName, endpointUrl, cancellationToken),
 
-            case "local":
-            case "localembedder":
-                return CreateLocalProviderAsync(modelName, cancellationToken);
+            "cohere" or "google" =>
+                HandleUnsupportedProvider(normalizedProvider, modelName, cancellationToken),
 
-            case "gpustack":
-                return CreateGPUStackProviderAsync(apiKey, modelName, endpointUrl, cancellationToken);
+            _ when !string.IsNullOrWhiteSpace(endpointUrl) =>
+                CreateOpenAIProviderAsync(apiKey, modelName, endpointUrl, cancellationToken),
 
-            case "openai-compatible":
-            case "openaicompatible":
-                return CreateOpenAICompatibleProviderAsync(apiKey, modelName, endpointUrl, cancellationToken);
-
-            default:
-                // If endpoint URL is provided, treat as OpenAI-compatible
-                if (!string.IsNullOrWhiteSpace(endpointUrl))
-                {
-                    _logger.LogInformation(
-                        "Unknown provider: {Provider} with endpoint. Treating as OpenAI-compatible.",
-                        providerName);
-                    return CreateOpenAICompatibleProviderAsync(apiKey, modelName, endpointUrl, cancellationToken);
-                }
-
-                _logger.LogWarning(
-                    "Unknown provider: {Provider}. Falling back to LocalEmbedder.",
-                    providerName);
-                return CreateLocalProviderAsync(null, cancellationToken);
-        }
+            _ => HandleUnsupportedProvider(normalizedProvider, modelName, cancellationToken)
+        };
     }
 
     public Task<IEmbeddingProvider> CreateLocalProviderAsync(
         string? modelName = null,
         CancellationToken cancellationToken = default)
     {
-        var effectiveModel = modelName ?? "all-MiniLM-L6-v2";
+        // Map common model names to LMSupply model IDs
+        var effectiveModel = MapToLMSupplyModel(modelName);
 
         _logger.LogInformation(
-            "Creating LocalEmbedder provider with model: {Model}",
+            "Creating LMSupply local embedding provider with model: {Model}",
             effectiveModel);
 
-        var options = new LocalEmbedderOptions
+        var options = new LMSupplyEmbeddingOptions
         {
             ModelId = effectiveModel,
-            ExecutionProvider = LocalEmbedderExecutionProvider.Auto,
-            PoolingMode = LocalEmbedderPoolingMode.Mean,
+            ExecutionProvider = LMSupplyExecutionProvider.Auto,
+            PoolingMode = LMSupplyPoolingMode.Mean,
             NormalizeEmbeddings = true
         };
 
-        var serviceLogger = _loggerFactory.CreateLogger<LocalEmbedderService>();
-        var service = new LocalEmbedderService(
+        var serviceLogger = _loggerFactory.CreateLogger<LMSupplyEmbeddingService>();
+        var service = new LMSupplyEmbeddingService(
             Options.Create(options),
             serviceLogger,
             _cache);
@@ -145,154 +120,46 @@ public class EmbeddingServiceFactory : IEmbeddingServiceFactory
     private Task<IEmbeddingProvider> CreateOpenAIProviderAsync(
         string apiKey,
         string? modelName,
-        CancellationToken cancellationToken)
-    {
-        var effectiveModel = modelName ?? "text-embedding-3-small";
-
-        _logger.LogInformation(
-            "Creating OpenAI embedding provider with model: {Model}",
-            effectiveModel);
-
-        var options = new OpenAIOptions
-        {
-            ApiKey = apiKey,
-            ModelName = effectiveModel,
-            ProviderType = OpenAIProviderType.OpenAI,
-            Dimensions = GetDimensionsForModel(effectiveModel)
-        };
-
-        var serviceLogger = _loggerFactory.CreateLogger<OpenAIEmbeddingService>();
-        var service = new OpenAIEmbeddingService(
-            Options.Create(options),
-            serviceLogger,
-            _cache);
-
-        var provider = new EmbeddingServiceWrapper(service);
-        return Task.FromResult<IEmbeddingProvider>(provider);
-    }
-
-    private Task<IEmbeddingProvider> CreateAzureProviderAsync(
-        string apiKey,
-        string? modelName,
         string? endpointUrl,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(endpointUrl))
-        {
-            _logger.LogWarning(
-                "Azure OpenAI requires endpoint URL. Falling back to LocalEmbedder.");
-            return CreateLocalProviderAsync(null, cancellationToken);
-        }
+        // For now, fall back to local provider
+        // TODO: Implement external provider support via FluxIndex.Core interfaces
+        _logger.LogWarning(
+            "External embedding providers require consumer implementation. " +
+            "Falling back to LMSupply local embedder. " +
+            "Requested: Model={Model}, Endpoint={Endpoint}",
+            modelName, endpointUrl ?? "default");
 
-        var effectiveModel = modelName ?? "text-embedding-3-small";
-
-        _logger.LogInformation(
-            "Creating Azure OpenAI embedding provider: Model={Model}, Endpoint={Endpoint}",
-            effectiveModel, endpointUrl);
-
-        var options = new OpenAIOptions
-        {
-            ApiKey = apiKey,
-            ModelName = effectiveModel,
-            Endpoint = endpointUrl,
-            ProviderType = OpenAIProviderType.AzureOpenAI,
-            Dimensions = GetDimensionsForModel(effectiveModel)
-        };
-
-        var serviceLogger = _loggerFactory.CreateLogger<OpenAIEmbeddingService>();
-        var service = new OpenAIEmbeddingService(
-            Options.Create(options),
-            serviceLogger,
-            _cache);
-
-        var provider = new EmbeddingServiceWrapper(service);
-        return Task.FromResult<IEmbeddingProvider>(provider);
+        return CreateLocalProviderAsync(modelName, cancellationToken);
     }
 
-    private Task<IEmbeddingProvider> CreateGPUStackProviderAsync(
-        string apiKey,
+    private Task<IEmbeddingProvider> HandleUnsupportedProvider(
+        string providerName,
         string? modelName,
-        string? endpointUrl,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(endpointUrl))
-        {
-            _logger.LogWarning(
-                "GPUStack provider requires endpoint URL. Falling back to LocalEmbedder.");
-            return CreateLocalProviderAsync(null, cancellationToken);
-        }
-
-        var effectiveModel = modelName ?? "gpt-oss";
-
-        _logger.LogInformation(
-            "Creating GPUStack embedding provider: Model={Model}, Endpoint={Endpoint}",
-            effectiveModel, endpointUrl);
-
-        var options = new OpenAIOptions
-        {
-            ApiKey = apiKey,
-            ModelName = effectiveModel,
-            Endpoint = endpointUrl,
-            ProviderType = OpenAIProviderType.GPUStack,
-            Dimensions = null // Let the provider determine dimensions
-        };
-
-        var serviceLogger = _loggerFactory.CreateLogger<OpenAIEmbeddingService>();
-        var service = new OpenAIEmbeddingService(
-            Options.Create(options),
-            serviceLogger,
-            _cache);
-
-        var provider = new EmbeddingServiceWrapper(service);
-        return Task.FromResult<IEmbeddingProvider>(provider);
+        _logger.LogWarning(
+            "{Provider} embedding not yet implemented. Falling back to LMSupply local embedder.",
+            providerName);
+        return CreateLocalProviderAsync(modelName, cancellationToken);
     }
 
-    private Task<IEmbeddingProvider> CreateOpenAICompatibleProviderAsync(
-        string apiKey,
-        string? modelName,
-        string? endpointUrl,
-        CancellationToken cancellationToken)
+    private static string MapToLMSupplyModel(string? modelName)
     {
-        if (string.IsNullOrWhiteSpace(endpointUrl))
-        {
-            _logger.LogWarning(
-                "OpenAI-compatible provider requires endpoint URL. Falling back to LocalEmbedder.");
-            return CreateLocalProviderAsync(null, cancellationToken);
-        }
+        if (string.IsNullOrWhiteSpace(modelName))
+            return "all-MiniLM-L6-v2";
 
-        var effectiveModel = modelName ?? "text-embedding-3-small";
-
-        _logger.LogInformation(
-            "Creating OpenAI-compatible embedding provider: Model={Model}, Endpoint={Endpoint}",
-            effectiveModel, endpointUrl);
-
-        var options = new OpenAIOptions
-        {
-            ApiKey = apiKey,
-            ModelName = effectiveModel,
-            Endpoint = endpointUrl,
-            ProviderType = OpenAIProviderType.OpenAICompatible,
-            Dimensions = null // Let the provider determine dimensions
-        };
-
-        var serviceLogger = _loggerFactory.CreateLogger<OpenAIEmbeddingService>();
-        var service = new OpenAIEmbeddingService(
-            Options.Create(options),
-            serviceLogger,
-            _cache);
-
-        var provider = new EmbeddingServiceWrapper(service);
-        return Task.FromResult<IEmbeddingProvider>(provider);
-    }
-
-    private static int? GetDimensionsForModel(string modelName)
-    {
         return modelName.ToLowerInvariant() switch
         {
-            "text-embedding-3-small" => 1536,
-            "text-embedding-3-large" => 3072,
-            "text-embedding-ada-002" => 1536,
-            _ => null
+            "text-embedding-3-small" => "all-MiniLM-L6-v2", // Fallback for OpenAI model
+            "text-embedding-3-large" => "bge-large-en-v1.5", // Fallback for larger model
+            "text-embedding-ada-002" => "all-MiniLM-L6-v2",
+            "multilingual" => "multilingual-e5-small",
+            "multilingual-large" => "multilingual-e5-base",
+            "bge-small" => "bge-small-en-v1.5",
+            "bge-large" => "bge-large-en-v1.5",
+            _ => modelName // Use as-is for LMSupply model IDs
         };
     }
 }
@@ -302,9 +169,9 @@ public class EmbeddingServiceFactory : IEmbeddingServiceFactory
 /// </summary>
 internal class EmbeddingServiceWrapper : IEmbeddingProvider
 {
-    private readonly CoreEmbeddingService _service;
+    private readonly IEmbeddingService _service;
 
-    public EmbeddingServiceWrapper(CoreEmbeddingService service)
+    public EmbeddingServiceWrapper(IEmbeddingService service)
     {
         _service = service ?? throw new ArgumentNullException(nameof(service));
     }

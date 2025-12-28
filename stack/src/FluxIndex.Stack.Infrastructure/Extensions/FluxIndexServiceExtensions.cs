@@ -2,12 +2,10 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services;
 using FluxIndex.SDK;
 using FluxIndex.SDK.Configuration;
-using FluxIndex.AI.OpenAI;
-using FluxIndex.AI.LocalEmbedder;
-using FluxIndex.AI.LocalReranker;
+using FluxIndex.SDK.AI.Local;
+using FluxIndex.SDK.Extensions;
 using FluxIndex.Storage.PostgreSQL;
 using FluxIndex.Cache.Redis.Extensions;
-using FluxIndex.Extensions.FileFlux;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -164,138 +162,31 @@ public static class FluxIndexServiceExtensions
 
     /// <summary>
     /// Configure embedding service based on AI provider setting.
-    /// Supports OpenAI, Azure OpenAI, Anthropic, Google, and local embedders.
+    /// Stack uses dynamic embedding provider from database settings.
+    /// This method configures the underlying SDK embedding as fallback.
     /// </summary>
     private static void ConfigureEmbeddingService(
         FluxIndexContextBuilder builder,
         FluxIndexOptions options)
     {
         var provider = options.Embedding.Provider?.ToLowerInvariant();
-        var apiKey = options.Embedding.ApiKey;
         var modelName = options.Embedding.ModelName;
 
         switch (provider)
         {
-            case "openai":
-                if (string.IsNullOrEmpty(apiKey))
-                {
-                    // Fallback to LocalEmbedder if API key not provided
-                    Console.WriteLine(
-                        "[FluxIndex] OpenAI API key not configured. Using LocalEmbedder as fallback. " +
-                        "Configure FluxIndex:Embedding:ApiKey for OpenAI embeddings.");
-                    builder.UseLocalEmbedder("all-MiniLM-L6-v2");
-                    break;
-                }
-                builder.UseOpenAI(
-                    apiKey,
-                    string.IsNullOrEmpty(modelName) ? "text-embedding-3-small" : modelName);
-                break;
-
-            case "azureopenai":
-            case "azure":
-                if (string.IsNullOrEmpty(apiKey))
-                {
-                    // Fallback to LocalEmbedder if API key not provided
-                    Console.WriteLine(
-                        "[FluxIndex] Azure OpenAI API key not configured. Using LocalEmbedder as fallback. " +
-                        "Configure FluxIndex:Embedding:ApiKey for Azure OpenAI embeddings.");
-                    builder.UseLocalEmbedder("all-MiniLM-L6-v2");
-                    break;
-                }
-
-                var endpoint = options.Embedding.ProviderSpecificOptions.TryGetValue("Endpoint", out var ep)
-                    ? ep?.ToString()
-                    : null;
-
-                if (string.IsNullOrEmpty(endpoint))
-                {
-                    Console.WriteLine(
-                        "[FluxIndex] Azure OpenAI endpoint not configured. Using LocalEmbedder as fallback. " +
-                        "Configure FluxIndex:Embedding:ProviderSpecificOptions:Endpoint");
-                    builder.UseLocalEmbedder("all-MiniLM-L6-v2");
-                    break;
-                }
-
-                builder.UseAzureOpenAI(
-                    endpoint!,
-                    apiKey,
-                    string.IsNullOrEmpty(modelName) ? "text-embedding-ada-002" : modelName);
-                break;
-
-            case "localembedder":
+            case "lmsupply":
             case "local":
-                // Use local ONNX-based embeddings (no API key required)
+            case "localembedder":
+                // Use LMSupply local ONNX-based embeddings (no API key required)
                 var localModel = string.IsNullOrEmpty(modelName)
-                    ? "all-MiniLM-L6-v2"
+                    ? "default"
                     : modelName;
-                builder.UseLocalEmbedder(localModel);
+                builder.UseLMSupplyEmbedding(localModel);
                 break;
 
             case "multilingual":
-                // Use multilingual local embedder
-                builder.UseLocalEmbedderMultilingual();
-                break;
-
-            case "gpustack":
-                if (string.IsNullOrEmpty(apiKey))
-                {
-                    throw new InvalidOperationException(
-                        "GPUStack API key is required. Configure FluxIndex:Embedding:ApiKey");
-                }
-
-                var gpuEndpoint = options.Embedding.ProviderSpecificOptions.TryGetValue("Endpoint", out var gpuEp)
-                    ? gpuEp?.ToString()
-                    : null;
-
-                if (string.IsNullOrEmpty(gpuEndpoint))
-                {
-                    throw new InvalidOperationException(
-                        "GPUStack endpoint is required. " +
-                        "Configure FluxIndex:Embedding:ProviderSpecificOptions:Endpoint");
-                }
-
-                int? dimensions = options.Embedding.ProviderSpecificOptions.TryGetValue("Dimensions", out var dims)
-                    && dims is int d
-                    ? d
-                    : null;
-
-                builder.UseGPUStack(
-                    gpuEndpoint!,
-                    apiKey,
-                    string.IsNullOrEmpty(modelName) ? "BAAI/bge-m3" : modelName,
-                    dimensions);
-                break;
-
-            case "openaicompatible":
-            case "compatible":
-                if (string.IsNullOrEmpty(apiKey))
-                {
-                    throw new InvalidOperationException(
-                        "API key is required for OpenAI-compatible endpoint. " +
-                        "Configure FluxIndex:Embedding:ApiKey");
-                }
-
-                var compatEndpoint = options.Embedding.ProviderSpecificOptions.TryGetValue("Endpoint", out var compatEp)
-                    ? compatEp?.ToString()
-                    : null;
-
-                if (string.IsNullOrEmpty(compatEndpoint))
-                {
-                    throw new InvalidOperationException(
-                        "Endpoint is required for OpenAI-compatible provider. " +
-                        "Configure FluxIndex:Embedding:ProviderSpecificOptions:Endpoint");
-                }
-
-                int? compatDimensions = options.Embedding.ProviderSpecificOptions.TryGetValue("Dimensions", out var compatDims)
-                    && compatDims is int cd
-                    ? cd
-                    : null;
-
-                builder.UseOpenAICompatible(
-                    compatEndpoint!,
-                    apiKey,
-                    string.IsNullOrEmpty(modelName) ? "embedding" : modelName,
-                    compatDimensions);
+                // Use multilingual LMSupply embedder
+                builder.UseLMSupplyMultilingual();
                 break;
 
             case "inmemory":
@@ -304,8 +195,14 @@ public static class FluxIndexServiceExtensions
                 break;
 
             default:
-                // Default to LocalEmbedder for better developer experience (no API keys needed)
-                builder.UseLocalEmbedder("all-MiniLM-L6-v2");
+                // Default to LMSupply for better developer experience (no API keys needed)
+                // External providers (OpenAI, Azure, etc.) are handled by DynamicEmbeddingProvider
+                // which reads settings from the database
+                Console.WriteLine(
+                    $"[FluxIndex] Provider '{provider ?? "default"}' configured. " +
+                    "Using LMSupply as base embedding. " +
+                    "Configure AI providers in Settings UI for external API access.");
+                builder.UseLMSupplyEmbedding("default");
                 break;
         }
     }
@@ -593,8 +490,8 @@ public static class FluxIndexServiceExtensions
                 builder.UsePostgreSQL(connectionString);
             }
 
-            // Use LocalEmbedder (no API keys needed)
-            builder.UseLocalEmbedder("all-MiniLM-L6-v2");
+            // Use LMSupply embedding (no API keys needed)
+            builder.UseLMSupplyEmbedding("fast");
 
             // Memory cache for development
             builder.UseMemoryCache(1000);

@@ -1,5 +1,5 @@
 ﻿using FileFlux;
-using FluxIndex.AI.LocalReranker;
+using FluxIndex.SDK.AI.Local;
 using FluxIndex.Cache.Redis.Extensions;
 using FluxIndex.Cache.Redis.Configuration;
 using FluxIndex.Core.Application.Interfaces;
@@ -7,8 +7,8 @@ using FluxIndex.Core.Application.Services;
 using FluxIndex.Core.Application.Services.Reranking;
 using FluxIndex.Core.Services;
 using CoreQualityThresholds = FluxIndex.Core.Domain.Models.QualityThresholds;
-using FluxIndex.Extensions.FluxImprover;
-using FluxIndex.Extensions.FluxImprover.Services;
+using FluxIndex.SDK.Extensions.FluxImprover;
+using FluxIndex.SDK.Extensions.FluxImprover.Services;
 using FluxIndex.SDK;
 using FluxIndex.Stack.Application.Interfaces.Repositories;
 using FluxIndex.Stack.Application.Interfaces.Services;
@@ -182,7 +182,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IRAGEvaluationService>(sp =>
         {
             var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<CoreRAGEvaluationServiceAdapter>>();
-            var fluxImproverService = sp.GetService<FluxIndex.Extensions.FluxImprover.Services.RAGEvaluationService>();
+            var fluxImproverService = sp.GetService<FluxIndex.SDK.Extensions.FluxImprover.Services.RAGEvaluationService>();
             return new CoreRAGEvaluationServiceAdapter(logger, fluxImproverService);
         });
 
@@ -287,15 +287,21 @@ public static class ServiceCollectionExtensions
     {
         var section = configuration.GetSection("LocalReranker");
 
-        // Register ResilientLocalReranker with warmup and fallback
-        services.AddResilientLocalRerankerWithWarmup(options =>
+        // Register ResilientLMSupplyReranker with warmup and fallback
+        services.AddResilientLMSupplyRerankerWithWarmup(options =>
         {
             if (section.Exists())
             {
                 options.ModelId = section.GetValue<string>("ModelId") ?? "default";
-                options.UseGpu = section.GetValue<bool>("UseGpu", false);
                 options.BatchSize = section.GetValue<int>("BatchSize", 32);
                 options.WarmupOnStartup = section.GetValue<bool>("WarmupOnStartup", true);
+
+                // Use ExecutionProvider instead of UseGpu
+                var useGpu = section.GetValue<bool>("UseGpu", false);
+                if (useGpu)
+                {
+                    options.ExecutionProvider = LMSupplyExecutionProvider.Auto;
+                }
 
                 var cacheDir = section.GetValue<string>("CacheDirectory");
                 if (!string.IsNullOrEmpty(cacheDir))

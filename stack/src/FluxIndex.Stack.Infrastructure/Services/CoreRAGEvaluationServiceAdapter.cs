@@ -4,7 +4,7 @@ using FluxIndex.Core.Domain.Models;
 using Microsoft.Extensions.Logging;
 
 // Alias to resolve ambiguity with FluxImprover types
-using FluxImproverRAGService = FluxIndex.Extensions.FluxImprover.Services.RAGEvaluationService;
+using FluxImproverRAGService = FluxIndex.SDK.Extensions.FluxImprover.Services.RAGEvaluationService;
 using CoreRAGEvaluationResult = FluxIndex.Core.Domain.Models.RAGEvaluationResult;
 
 namespace FluxIndex.Stack.Infrastructure.Services;

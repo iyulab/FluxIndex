@@ -1,6 +1,6 @@
-using FluxIndex.AI.OpenAI;
-using FluxIndex.AI.OpenAI.Services;
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.SDK.AI.Local;
+using FluxIndex.SDK.AI.Local.Services;
 using FluxIndex.Stack.Application.Interfaces.Services;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
@@ -10,7 +10,7 @@ namespace FluxIndex.Stack.Infrastructure.Services;
 
 /// <summary>
 /// Factory for creating text completion service providers based on configuration.
-/// Supports OpenAI, Azure OpenAI, and mock providers.
+/// Supports LMSupply (local), OpenAI, Azure OpenAI, and mock providers.
 /// </summary>
 public class TextCompletionServiceFactory : ITextCompletionServiceFactory
 {
@@ -22,6 +22,8 @@ public class TextCompletionServiceFactory : ITextCompletionServiceFactory
     {
         "OpenAI",
         "Azure",
+        "LMSupply",
+        "Local",
         "Mock"
     };
 
@@ -48,95 +50,87 @@ public class TextCompletionServiceFactory : ITextCompletionServiceFactory
             "Creating text completion provider: Provider={Provider}, Model={Model}",
             providerName, modelName ?? "default");
 
-        // If no API key is provided, fall back to mock
+        var normalizedProvider = providerName.ToLowerInvariant();
+
+        // Local providers don't need API key
+        if (normalizedProvider is "local" or "lmsupply")
+        {
+            return CreateLocalProviderAsync(modelName, cancellationToken);
+        }
+
+        // If no API key is provided, fall back to local LMSupply
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             _logger.LogWarning(
-                "No API key provided for {Provider}. Falling back to MockTextCompletionService.",
+                "No API key provided for {Provider}. Falling back to LMSupply local text completion.",
                 providerName);
-            return Task.FromResult<ITextCompletionService>(new MockTextCompletionService());
+            return CreateLocalProviderAsync(modelName, cancellationToken);
         }
 
-        var normalizedProvider = providerName.ToLowerInvariant();
-
-        switch (normalizedProvider)
+        return normalizedProvider switch
         {
-            case "openai":
-                return CreateOpenAIProviderAsync(apiKey, modelName, cancellationToken);
-
-            case "azure":
-            case "azureopenai":
-                return CreateAzureProviderAsync(apiKey, modelName, endpointUrl, cancellationToken);
-
-            case "mock":
-                return Task.FromResult<ITextCompletionService>(new MockTextCompletionService());
-
-            default:
-                _logger.LogWarning(
-                    "Unknown provider: {Provider}. Falling back to MockTextCompletionService.",
-                    providerName);
-                return Task.FromResult<ITextCompletionService>(new MockTextCompletionService());
-        }
+            "openai" => CreateExternalProviderAsync(apiKey, modelName, null, cancellationToken),
+            "azure" or "azureopenai" => CreateExternalProviderAsync(apiKey, modelName, endpointUrl, cancellationToken),
+            "mock" => Task.FromResult<ITextCompletionService>(new MockTextCompletionService()),
+            _ when !string.IsNullOrWhiteSpace(endpointUrl) => CreateExternalProviderAsync(apiKey, modelName, endpointUrl, cancellationToken),
+            _ => CreateLocalProviderAsync(modelName, cancellationToken)
+        };
     }
 
-    private Task<ITextCompletionService> CreateOpenAIProviderAsync(
-        string apiKey,
-        string? modelName,
-        CancellationToken cancellationToken)
+    public Task<ITextCompletionService> CreateLocalProviderAsync(
+        string? modelName = null,
+        CancellationToken cancellationToken = default)
     {
-        var effectiveModel = modelName ?? "gpt-4o-mini";
+        var effectiveModel = MapToLMSupplyModel(modelName);
 
         _logger.LogInformation(
-            "Creating OpenAI text completion provider with model: {Model}",
+            "Creating LMSupply local text completion provider with model: {Model}",
             effectiveModel);
 
-        var options = new OpenAIOptions
+        var options = new LMSupplyTextCompletionOptions
         {
-            ApiKey = apiKey,
-            ModelName = effectiveModel,
-            ProviderType = OpenAIProviderType.OpenAI
+            ModelId = effectiveModel,
+            MaxContextLength = 4096,
+            TopP = 0.95f
         };
 
-        var serviceLogger = _loggerFactory.CreateLogger<OpenAITextCompletionService>();
-        var service = new OpenAITextCompletionService(
+        var serviceLogger = _loggerFactory.CreateLogger<LMSupplyTextCompletionService>();
+        var service = new LMSupplyTextCompletionService(
             Options.Create(options),
             serviceLogger);
 
         return Task.FromResult<ITextCompletionService>(service);
     }
 
-    private Task<ITextCompletionService> CreateAzureProviderAsync(
+    private Task<ITextCompletionService> CreateExternalProviderAsync(
         string apiKey,
         string? modelName,
         string? endpointUrl,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(endpointUrl))
+        // For now, fall back to local provider
+        // TODO: Implement external provider support via FluxIndex.Core interfaces
+        _logger.LogWarning(
+            "External text completion providers require consumer implementation. " +
+            "Falling back to LMSupply local completion. " +
+            "Requested: Model={Model}, Endpoint={Endpoint}",
+            modelName, endpointUrl ?? "default");
+
+        return CreateLocalProviderAsync(modelName, cancellationToken);
+    }
+
+    private static string MapToLMSupplyModel(string? modelName)
+    {
+        if (string.IsNullOrWhiteSpace(modelName))
+            return "default"; // Qwen2.5-0.5B
+
+        return modelName.ToLowerInvariant() switch
         {
-            _logger.LogWarning(
-                "Azure OpenAI requires endpoint URL. Falling back to MockTextCompletionService.");
-            return Task.FromResult<ITextCompletionService>(new MockTextCompletionService());
-        }
-
-        var effectiveModel = modelName ?? "gpt-4o-mini";
-
-        _logger.LogInformation(
-            "Creating Azure OpenAI text completion provider: Model={Model}, Endpoint={Endpoint}",
-            effectiveModel, endpointUrl);
-
-        var options = new OpenAIOptions
-        {
-            ApiKey = apiKey,
-            ModelName = effectiveModel,
-            Endpoint = endpointUrl,
-            ProviderType = OpenAIProviderType.AzureOpenAI
+            "gpt-4" or "gpt-4o" or "gpt-4o-mini" => "default", // Fallback for OpenAI models
+            "fast" or "tinyllama" => "fast", // TinyLlama-1.1B
+            "quality" => "quality", // Qwen2.5-1.5B
+            "large" => "large", // Qwen2.5-3B
+            _ => modelName // Use as-is for LMSupply model IDs
         };
-
-        var serviceLogger = _loggerFactory.CreateLogger<OpenAITextCompletionService>();
-        var service = new OpenAITextCompletionService(
-            Options.Create(options),
-            serviceLogger);
-
-        return Task.FromResult<ITextCompletionService>(service);
     }
 }

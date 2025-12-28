@@ -67,7 +67,7 @@
   </ItemGroup>
   <!-- Document Processing & Quality -->
   <ItemGroup>
-    <PackageVersion Include="FileFlux" Version="0.9.4" />
+    <PackageVersion Include="FileFlux" Version="0.9.5" />
     <PackageVersion Include="FluxCurator" Version="0.6.5" />
     <PackageVersion Include="FluxImprover" Version="0.5.3" />
     <PackageVersion Include="HtmlAgilityPack" Version="1.12.4" />
@@ -91,6 +91,7 @@
   <!-- MCP/CLI Packages -->
   <ItemGroup>
     <PackageVersion Include="ModelContextProtocol" Version="0.5.0-preview.1" />
+    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="0.4.1-preview.1" />
     <PackageVersion Include="System.CommandLine" Version="2.0.1" />
   </ItemGroup>
   <!-- Web/API Packages -->

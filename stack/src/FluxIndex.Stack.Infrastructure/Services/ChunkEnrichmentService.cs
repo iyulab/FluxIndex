@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Extensions.FluxImprover.Services;
+using FluxIndex.SDK.Extensions.FluxImprover.Services;
 using FluxIndex.Stack.Application.Interfaces.Services;
 using FluxIndex.Stack.Domain.Entities;
 using FluxImprover.Options;

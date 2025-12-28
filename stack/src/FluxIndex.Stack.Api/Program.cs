@@ -1,11 +1,21 @@
 ﻿using FluxIndex.Stack.Api.BackgroundServices;
+using FluxIndex.Stack.Api.Mcp;
 using FluxIndex.Stack.Api.Middleware;
 using FluxIndex.Stack.Application.Interfaces.Services;
 using FluxIndex.Stack.Infrastructure.Data;
 using FluxIndex.Stack.Infrastructure.Extensions;
 using Microsoft.EntityFrameworkCore;
+using ModelContextProtocol.Server;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Add MCP Server with HTTP transport (Anthropic MCP Protocol compliant)
+builder.Services.AddMcpServer()
+    .WithHttpTransport()
+    .WithToolsFromAssembly();
+
+// Register MCP tools with DI (FluxIndexTools needs services injected)
+builder.Services.AddScoped<FluxIndexTools>();
 
 // Add services to the container.
 builder.Services.AddControllers()
@@ -85,6 +95,9 @@ app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseAuthorization();
 app.MapControllers();
 app.MapHealthChecks("/health");
+
+// Map MCP endpoints (SSE transport at /sse and /message)
+app.MapMcp();
 
 // Ensure database is created in development (use migrations in production)
 if (app.Environment.IsDevelopment())

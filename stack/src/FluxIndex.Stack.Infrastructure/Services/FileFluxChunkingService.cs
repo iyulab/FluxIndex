@@ -15,22 +15,23 @@ namespace FluxIndex.Stack.Infrastructure.Services;
 /// <summary>
 /// FileFlux-based implementation of IChunkingService.
 /// Provides intelligent language-aware chunking using FileFlux library.
+/// Uses FileFlux 0.9.x factory pattern for stateful document processing.
 /// </summary>
 public class FileFluxChunkingService : IChunkingService
 {
-    private readonly IDocumentProcessor _documentProcessor;
+    private readonly IDocumentProcessorFactory _processorFactory;
     private readonly ILanguageProfileProvider _languageProfileProvider;
     private readonly ILogger<FileFluxChunkingService> _logger;
     private readonly FileFluxChunkingOptions _defaultOptions;
     private readonly HtmlDocumentReader _htmlReader;
 
     public FileFluxChunkingService(
-        IDocumentProcessor documentProcessor,
+        IDocumentProcessorFactory processorFactory,
         ILanguageProfileProvider languageProfileProvider,
         ILogger<FileFluxChunkingService> logger,
         IOptions<FileFluxChunkingConfiguration>? options = null)
     {
-        _documentProcessor = documentProcessor;
+        _processorFactory = processorFactory;
         _languageProfileProvider = languageProfileProvider;
         _logger = logger;
         _htmlReader = new HtmlDocumentReader();
@@ -94,9 +95,10 @@ public class FileFluxChunkingService : IChunkingService
                 var chunks = new List<StackDocumentChunk>();
                 var chunkIndex = 0;
 
-                // Use FileFlux streaming API for memory-efficient processing
-                await foreach (var fileFluxChunk in _documentProcessor.ProcessStreamAsync(
-                    tempPath, fileFluxOptions, cancellationToken))
+                // Use FileFlux 0.9.x factory pattern with streaming API for memory-efficient processing
+                await using var processor = _processorFactory.Create(tempPath);
+                var processingOptions = new FileFlux.Core.ProcessingOptions { Chunking = fileFluxOptions };
+                await foreach (var fileFluxChunk in processor.ProcessStreamAsync(processingOptions, cancellationToken))
                 {
                     var chunk = ConvertToStackChunk(fileFluxChunk, documentId, chunkIndex++, language);
                     chunks.Add(chunk);
@@ -141,9 +143,9 @@ public class FileFluxChunkingService : IChunkingService
         try
         {
             // Use FileFlux HtmlDocumentReader to extract clean text
-            // FileFlux v0.7+ automatically extracts base64 images and replaces with placeholders (embedded:img_xxx)
+            // FileFlux v0.9+ automatically extracts base64 images and replaces with placeholders (embedded:img_xxx)
             using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
-            var rawContent = await _htmlReader.ExtractAsync(stream, "document.html", cancellationToken);
+            var rawContent = await _htmlReader.ExtractAsync(stream, "document.html", null, cancellationToken);
 
             var extractedText = rawContent.Text;
 
