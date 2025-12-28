@@ -45,11 +45,11 @@ public static class ServiceCollectionExtensions
     /// <returns>The service collection for chaining.</returns>
     /// <remarks>
     /// This method requires FluxImprover's ChunkEnrichmentService to be already registered.
-    /// The wrapper is registered as a singleton.
+    /// The wrapper is registered as scoped to match FluxImprover's service lifetime.
     /// </remarks>
     public static IServiceCollection AddChunkEnrichmentWrapper(this IServiceCollection services)
     {
-        services.AddSingleton<ChunkEnrichmentServiceWrapper>(provider =>
+        services.AddScoped<ChunkEnrichmentServiceWrapper>(provider =>
         {
             var enrichmentService = provider.GetRequiredService<ChunkEnrichmentService>();
             return new ChunkEnrichmentServiceWrapper(enrichmentService);
@@ -66,7 +66,7 @@ public static class ServiceCollectionExtensions
     /// <remarks>
     /// <para>
     /// This method requires FluxImprover's IContextualEnrichmentService to be already registered.
-    /// The wrapper is registered as a singleton.
+    /// The wrapper is registered as scoped to match FluxImprover's service lifetime.
     /// </para>
     /// <para>
     /// Contextual Retrieval reduces failed retrievals by 49% (67% with reranking) by prepending
@@ -78,7 +78,7 @@ public static class ServiceCollectionExtensions
     /// </remarks>
     public static IServiceCollection AddContextualEnrichmentWrapper(this IServiceCollection services)
     {
-        services.AddSingleton<ContextualEnrichmentServiceWrapper>(provider =>
+        services.AddScoped<ContextualEnrichmentServiceWrapper>(provider =>
         {
             var contextualService = provider.GetRequiredService<IContextualEnrichmentService>();
             return new ContextualEnrichmentServiceWrapper(contextualService);
@@ -97,11 +97,11 @@ public static class ServiceCollectionExtensions
     /// - AnswerabilityEvaluator
     /// - FaithfulnessEvaluator
     /// - RelevancyEvaluator
-    /// The wrapper is registered as a singleton.
+    /// The wrapper is registered as scoped to match FluxImprover's service lifetime.
     /// </remarks>
     public static IServiceCollection AddRAGEvaluation(this IServiceCollection services)
     {
-        services.AddSingleton<RAGEvaluationService>(provider =>
+        services.AddScoped<RAGEvaluationService>(provider =>
         {
             var answerabilityEvaluator = provider.GetRequiredService<AnswerabilityEvaluator>();
             var faithfulnessEvaluator = provider.GetRequiredService<FaithfulnessEvaluator>();
@@ -122,11 +122,11 @@ public static class ServiceCollectionExtensions
     /// - QAGeneratorService
     /// - QAFilterService
     /// - QAPipeline
-    /// The wrapper is registered as a singleton.
+    /// The wrapper is registered as scoped to match FluxImprover's service lifetime.
     /// </remarks>
     public static IServiceCollection AddQAGeneration(this IServiceCollection services)
     {
-        services.AddSingleton<QAGenerationService>(provider =>
+        services.AddScoped<QAGenerationService>(provider =>
         {
             var generatorService = provider.GetRequiredService<QAGeneratorService>();
             var filterService = provider.GetRequiredService<QAFilterService>();
@@ -144,12 +144,12 @@ public static class ServiceCollectionExtensions
     /// <returns>The service collection for chaining.</returns>
     /// <remarks>
     /// This method requires FluxImprover's IChunkFilteringService to be already registered.
-    /// The wrapper is registered as a singleton.
+    /// The wrapper is registered as scoped to match FluxImprover's service lifetime.
     /// Provides 3-stage LLM evaluation: Initial → Self-Reflection → Critic Validation.
     /// </remarks>
     public static IServiceCollection AddChunkFilteringWrapper(this IServiceCollection services)
     {
-        services.AddSingleton<ChunkFilteringServiceWrapper>(provider =>
+        services.AddScoped<ChunkFilteringServiceWrapper>(provider =>
         {
             var filteringService = provider.GetRequiredService<IChunkFilteringService>();
             return new ChunkFilteringServiceWrapper(filteringService);
@@ -166,11 +166,11 @@ public static class ServiceCollectionExtensions
     /// <remarks>
     /// This method will use available services (ChunkEnrichmentServiceWrapper, QAGenerationService, RAGEvaluationService)
     /// and gracefully handle cases where some services are not registered.
-    /// The pipeline is registered as a singleton.
+    /// The pipeline is registered as scoped to match FluxImprover's service lifetime.
     /// </remarks>
     public static IServiceCollection AddFluxImproverPipeline(this IServiceCollection services)
     {
-        services.AddSingleton<FluxImproverPipeline>(provider =>
+        services.AddScoped<FluxImproverPipeline>(provider =>
         {
             var enrichmentService = provider.GetService<ChunkEnrichmentServiceWrapper>();
             var qaService = provider.GetService<QAGenerationService>();
@@ -188,7 +188,7 @@ public static class ServiceCollectionExtensions
     /// <returns>The service collection for chaining.</returns>
     public static IServiceCollection AddParallelPipelineExecutor(this IServiceCollection services)
     {
-        services.AddSingleton<ParallelPipelineExecutor>(provider =>
+        services.AddScoped<ParallelPipelineExecutor>(provider =>
         {
             var enrichmentService = provider.GetService<ChunkEnrichmentServiceWrapper>();
             var qaService = provider.GetService<QAGenerationService>();
@@ -210,7 +210,7 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         Action<CacheOptions>? configureOptions = null)
     {
-        services.AddSingleton<CachedPipelineExecutor>(provider =>
+        services.AddScoped<CachedPipelineExecutor>(provider =>
         {
             var enrichmentService = provider.GetService<ChunkEnrichmentServiceWrapper>();
             var qaService = provider.GetService<QAGenerationService>();
