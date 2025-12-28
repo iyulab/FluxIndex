@@ -94,6 +94,16 @@
     <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="0.4.1-preview.1" />
     <PackageVersion Include="System.CommandLine" Version="2.0.1" />
   </ItemGroup>
+  <!-- OpenTelemetry Observability Packages -->
+  <ItemGroup>
+    <PackageVersion Include="OpenTelemetry" Version="1.14.0" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.14.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.14.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.14.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.EntityFrameworkCore" Version="1.0.0-beta.12" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.14.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.Prometheus.AspNetCore" Version="1.14.0-beta.1" />
+  </ItemGroup>
   <!-- Web/API Packages -->
   <ItemGroup>
     <PackageVersion Include="Swashbuckle.AspNetCore" Version="7.2.0" />

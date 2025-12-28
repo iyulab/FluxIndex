@@ -49,6 +49,11 @@ services:
       FluxIndex__Search__MinScore: ${FLUXINDEX_MIN_SCORE:-0.5}
       FluxIndex__Indexing__DefaultChunkSize: ${FLUXINDEX_CHUNK_SIZE:-1000}
       FluxIndex__Indexing__DefaultChunkOverlap: ${FLUXINDEX_CHUNK_OVERLAP:-200}
+      # OpenTelemetry Configuration
+      OpenTelemetry__ServiceName: FluxIndex.Stack
+      OpenTelemetry__ServiceVersion: "1.0.0"
+      OpenTelemetry__OtlpEndpoint: http://jaeger:4317
+      OpenTelemetry__EnableConsoleExporter: "false"
     depends_on:
       postgres:
         condition: service_healthy
@@ -57,6 +62,8 @@ services:
       qdrant:
         condition: service_healthy
       neo4j:
+        condition: service_healthy
+      jaeger:
         condition: service_healthy
     deploy:
       resources:
@@ -352,6 +359,125 @@ services:
         max-size: "5m"
         max-file: "3"
 
+  # =============================================================================
+  # Jaeger - Distributed Tracing
+  # =============================================================================
+  jaeger:
+    container_name: fluxindex-jaeger
+    image: jaegertracing/all-in-one:1.65
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+      QUERY_BASE_PATH: "/jaeger"
+      SPAN_STORAGE_TYPE: badger
+      BADGER_EPHEMERAL: "false"
+      BADGER_DIRECTORY_VALUE: /badger/data
+      BADGER_DIRECTORY_KEY: /badger/key
+    volumes:
+      - jaeger-data:/badger
+    ports:
+      - "16686:16686"   # Jaeger UI
+      - "4317:4317"     # OTLP gRPC
+      - "4318:4318"     # OTLP HTTP
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:16686/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+    restart: unless-stopped
+    networks:
+      - fluxindex-network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # =============================================================================
+  # Prometheus - Metrics Collection
+  # =============================================================================
+  prometheus:
+    container_name: fluxindex-prometheus
+    image: prom/prometheus:v3.3.1
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+    restart: unless-stopped
+    networks:
+      - fluxindex-network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # =============================================================================
+  # Grafana - Visualization Dashboard
+  # =============================================================================
+  grafana:
+    container_name: fluxindex-grafana
+    image: grafana/grafana:11.6.0
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-fluxindex}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3001}
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+      - jaeger
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 128M
+    restart: unless-stopped
+    networks:
+      - fluxindex-network
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+
 # =============================================================================
 # Volumes
 # =============================================================================
@@ -371,6 +497,12 @@ volumes:
   redis-data:
     driver: local
   api-content:
+    driver: local
+  jaeger-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
     driver: local
 
 # =============================================================================

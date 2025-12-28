@@ -1,6 +1,7 @@
 ﻿using FluxIndex.Stack.Api.BackgroundServices;
 using FluxIndex.Stack.Api.Mcp;
 using FluxIndex.Stack.Api.Middleware;
+using FluxIndex.Stack.Api.Observability;
 using FluxIndex.Stack.Application.Interfaces.Services;
 using FluxIndex.Stack.Infrastructure.Data;
 using FluxIndex.Stack.Infrastructure.Extensions;
@@ -56,6 +57,9 @@ builder.Services.AddSwaggerGen(options =>
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddRedisCache(builder.Configuration);
 
+// Add OpenTelemetry observability (metrics + tracing)
+builder.Services.AddFluxIndexObservability(builder.Configuration);
+
 // Add background services
 builder.Services.AddHostedService<IndexingBackgroundService>();
 
@@ -95,6 +99,9 @@ app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseAuthorization();
 app.MapControllers();
 app.MapHealthChecks("/health");
+
+// OpenTelemetry Prometheus metrics endpoint (/metrics)
+app.UseFluxIndexObservability();
 
 // Map MCP endpoints (SSE transport at /sse and /message)
 app.MapMcp();
