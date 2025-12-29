@@ -15,6 +15,17 @@ public class AiProviderSettingsDto
     public string? EmbeddingModel { get; set; }
     public string? LlmModel { get; set; }
     public string? EndpointUrl { get; set; }
+
+    /// <summary>
+    /// Whether this is a local provider that doesn't require an API key (e.g., LMSupply)
+    /// </summary>
+    public bool IsLocalProvider { get; set; }
+
+    /// <summary>
+    /// Whether this provider requires a custom endpoint URL (e.g., Azure, GPUStack)
+    /// </summary>
+    public bool RequiresEndpoint { get; set; }
+
     public List<string> AvailableEmbeddingModels { get; set; } = new();
     public List<string> AvailableLlmModels { get; set; } = new();
     public DateTime CreatedAt { get; set; }

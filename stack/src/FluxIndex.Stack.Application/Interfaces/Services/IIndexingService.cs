@@ -18,4 +18,10 @@ public interface IIndexingService
         CancellationToken cancellationToken = default);
     Task CancelJobAsync(Guid jobId, CancellationToken cancellationToken = default);
     Task<JobStatusSummaryDto> GetStatusSummaryAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Recovers jobs stuck in Processing state (from server shutdown/crash).
+    /// These jobs are reset to Queued so they can be reprocessed.
+    /// </summary>
+    Task<int> RecoverStuckJobsAsync(CancellationToken cancellationToken = default);
 }

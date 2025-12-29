@@ -115,4 +115,23 @@ public class IndexingJobRepository : IIndexingJobRepository
             .Include(j => j.Document)
             .FirstOrDefaultAsync(cancellationToken);
     }
+
+    public async Task<int> ResetStuckProcessingJobsAsync(CancellationToken cancellationToken = default)
+    {
+        var stuckJobs = await _context.IndexingJobs
+            .Where(j => j.Status == IndexingJobStatus.Processing)
+            .ToListAsync(cancellationToken);
+
+        foreach (var job in stuckJobs)
+        {
+            job.ResetToQueued();
+        }
+
+        if (stuckJobs.Count > 0)
+        {
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        return stuckJobs.Count;
+    }
 }

@@ -57,8 +57,8 @@ Options:
 
 Services:
     Docker:    PostgreSQL (5433), Qdrant (6335/6336), Neo4j (7475/7688), Redis (6381)
-    Backend:   ASP.NET Core API on http://localhost:5000
-    Frontend:  Vite dev server on http://localhost:5173
+    Backend:   ASP.NET Core API on http://localhost:6100
+    Frontend:  Vite dev server on http://localhost:6101
 
 "@
     exit 0
@@ -246,13 +246,13 @@ if (-not $FrontendOnly) {
 
     if ($useWindowsTerminal) {
         # Start backend in a NEW Windows Terminal window (not attached to existing)
-        wt --title "FluxIndex API" --tabColor "#512BD4" -d $BackendDir cmd /k "dotnet watch run"
+        wt --title "FluxIndex API" --tabColor "#512BD4" -d $BackendDir cmd /k "dotnet watch run --urls http://localhost:6100"
     } else {
-        Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$BackendDir'; dotnet watch run" -WorkingDirectory $BackendDir
+        Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$BackendDir'; dotnet watch run --urls http://localhost:6100" -WorkingDirectory $BackendDir
     }
 
-    Write-Success "Backend API starting on http://localhost:5000"
-    Write-Host "    Swagger UI: http://localhost:5000/swagger" -ForegroundColor Gray
+    Write-Success "Backend API starting on http://localhost:6100"
+    Write-Host "    Swagger UI: http://localhost:6100/swagger" -ForegroundColor Gray
     Write-Host ""
 
     # Wait for Windows Terminal window to be created before adding frontend tab
@@ -279,12 +279,77 @@ if (-not $BackendOnly) {
 
     if ($useWindowsTerminal) {
         # Add frontend as a new tab in the backend's terminal window (most recent window)
-        wt -w 0 nt --title "FluxIndex UI" --tabColor "#61DAFB" -d $FrontendDir cmd /k "npm run dev"
+        wt -w 0 nt --title "FluxIndex UI" --tabColor "#61DAFB" -d $FrontendDir cmd /k "npm run dev -- --port 6101"
     } else {
-        Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$FrontendDir'; npm run dev" -WorkingDirectory $FrontendDir
+        Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd '$FrontendDir'; npm run dev -- --port 6101" -WorkingDirectory $FrontendDir
     }
 
-    Write-Success "Frontend starting on http://localhost:5173"
+    Write-Success "Frontend starting on http://localhost:6101"
+    Write-Host ""
+}
+
+# Wait for backend to be ready and get/create API key
+if (-not $FrontendOnly) {
+    Write-Status "Waiting for Backend API to be ready..."
+    $maxRetries = 30
+    $retryCount = 0
+    $apiReady = $false
+
+    while ($retryCount -lt $maxRetries) {
+        try {
+            $healthCheck = Invoke-RestMethod -Uri "http://localhost:6100/health" -Method Get -TimeoutSec 2 -ErrorAction SilentlyContinue
+            $apiReady = $true
+            Write-Success "Backend API is ready"
+            break
+        } catch {
+            $retryCount++
+            if ($retryCount % 5 -eq 0) {
+                Write-Host "    Waiting for API... ($retryCount/$maxRetries)" -ForegroundColor Gray
+            }
+            Start-Sleep -Seconds 1
+        }
+    }
+
+    if ($apiReady) {
+        # Try to get existing API keys or create a dev key
+        try {
+            $apiKeysResponse = Invoke-RestMethod -Uri "http://localhost:6100/api/v1/apikeys" -Method Get -TimeoutSec 5 -ErrorAction SilentlyContinue
+            $existingKeys = $apiKeysResponse.data
+
+            if ($existingKeys -and $existingKeys.Count -gt 0) {
+                $devKey = $existingKeys | Where-Object { $_.name -eq "Development" } | Select-Object -First 1
+                if ($devKey) {
+                    Write-Success "Development API Key exists (prefix: $($devKey.keyPrefix))"
+                }
+            } else {
+                # Create a new development API key
+                $body = @{
+                    name = "Development"
+                    role = "Admin"
+                } | ConvertTo-Json
+
+                $newKeyResponse = Invoke-RestMethod -Uri "http://localhost:6100/api/v1/apikeys" -Method Post -Body $body -ContentType "application/json" -TimeoutSec 5 -ErrorAction SilentlyContinue
+
+                if ($newKeyResponse.data.rawKey) {
+                    Write-Host ""
+                    Write-Host "========================================" -ForegroundColor Yellow
+                    Write-Host "  NEW API KEY CREATED                  " -ForegroundColor Yellow
+                    Write-Host "========================================" -ForegroundColor Yellow
+                    Write-Host ""
+                    Write-Host "  API Key: $($newKeyResponse.data.rawKey)" -ForegroundColor Cyan
+                    Write-Host "  Prefix:  $($newKeyResponse.data.keyPrefix)" -ForegroundColor Gray
+                    Write-Host ""
+                    Write-Host "  Save this key! It won't be shown again." -ForegroundColor Yellow
+                    Write-Host ""
+                }
+            }
+        } catch {
+            Write-Host "    Note: Could not check/create API key (dev mode allows keyless access)" -ForegroundColor Gray
+        }
+    } else {
+        Write-Warning "Backend API did not start in time. Check the backend terminal for errors."
+    }
+
     Write-Host ""
 }
 
@@ -306,12 +371,12 @@ if (-not $SkipDocker -and -not $FrontendOnly) {
 }
 
 if (-not $FrontendOnly) {
-    Write-Host "  [Backend]  API           http://localhost:5000" -ForegroundColor Cyan
-    Write-Host "  [Backend]  Swagger       http://localhost:5000/swagger" -ForegroundColor Cyan
+    Write-Host "  [Backend]  API           http://localhost:6100" -ForegroundColor Cyan
+    Write-Host "  [Backend]  Swagger       http://localhost:6100/swagger" -ForegroundColor Cyan
 }
 
 if (-not $BackendOnly) {
-    Write-Host "  [Frontend] Vite Dev      http://localhost:5173" -ForegroundColor Yellow
+    Write-Host "  [Frontend] Vite Dev      http://localhost:6101" -ForegroundColor Yellow
 }
 
 Write-Host ""

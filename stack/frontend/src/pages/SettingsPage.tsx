@@ -30,6 +30,8 @@ import {
   Star,
   TestTube,
   Settings2,
+  HardDrive,
+  Power,
 } from 'lucide-react'
 import {
   Dialog,
@@ -58,6 +60,8 @@ const providerIcons: Record<string, typeof Bot> = {
   Cohere: Cpu,
   Google: Star,
   Local: Settings2,
+  LMSupply: HardDrive,
+  GPUStack: Cpu,
 }
 
 export default function SettingsPage() {
@@ -513,7 +517,8 @@ export default function SettingsPage() {
               {aiConfig.providers.map((provider) => {
                 const ProviderIcon = providerIcons[provider.providerName] || Bot
                 const isEditing = editingProvider === provider.providerName
-                const needsEndpoint = provider.providerName === 'Azure' || provider.providerName === 'Local'
+                const needsEndpoint = provider.requiresEndpoint
+                const isLocalProvider = provider.isLocalProvider
 
                 return (
                   <div
@@ -530,6 +535,11 @@ export default function SettingsPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-medium">{provider.displayName}</span>
+                            {isLocalProvider && (
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 flex items-center gap-1">
+                                <HardDrive className="h-3 w-3" /> Local
+                              </span>
+                            )}
                             {provider.isEnabled && (
                               <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">
                                 Enabled
@@ -607,7 +617,11 @@ export default function SettingsPage() {
                           ) : (
                             <div className="mt-2 space-y-2">
                               <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
-                                <span>API Key: {provider.hasApiKey ? '••••••••' : 'Not configured'}</span>
+                                {isLocalProvider ? (
+                                  <span className="text-green-600">Local AI - No API key required</span>
+                                ) : (
+                                  <span>API Key: {provider.hasApiKey ? '••••••••' : 'Not configured'}</span>
+                                )}
                                 {provider.endpointUrl && (
                                   <span>Endpoint: {provider.endpointUrl}</span>
                                 )}
@@ -656,14 +670,36 @@ export default function SettingsPage() {
                       {/* Actions */}
                       {!isEditing && (
                         <div className="flex items-center gap-1 ml-4">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleStartEditProvider(provider)}
-                            title="Configure API Key"
-                          >
-                            <Key className="h-4 w-4" />
-                          </Button>
+                          {/* For local providers: show enable/disable toggle */}
+                          {isLocalProvider ? (
+                            <Button
+                              variant={provider.isEnabled ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => updateProviderMutation.mutate({
+                                providerName: provider.providerName,
+                                data: { isEnabled: !provider.isEnabled }
+                              })}
+                              title={provider.isEnabled ? "Disable local AI" : "Enable local AI"}
+                              disabled={updateProviderMutation.isPending}
+                              className={provider.isEnabled ? "bg-green-600 hover:bg-green-700" : ""}
+                            >
+                              {updateProviderMutation.isPending ? (
+                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                              ) : (
+                                <Power className="h-4 w-4 mr-2" />
+                              )}
+                              {provider.isEnabled ? 'Enabled' : 'Enable'}
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleStartEditProvider(provider)}
+                              title="Configure API Key"
+                            >
+                              <Key className="h-4 w-4" />
+                            </Button>
+                          )}
                           {provider.isEnabled && provider.availableEmbeddingModels.length > 0 && !provider.isDefaultEmbedding && (
                             <Button
                               variant="ghost"

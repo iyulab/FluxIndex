@@ -27,6 +27,9 @@ public class IndexingBackgroundService : BackgroundService
     {
         _logger.LogInformation("Indexing background service started");
 
+        // Recover any jobs stuck in Processing state (from previous server shutdown)
+        await RecoverStuckJobsAsync(stoppingToken);
+
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -69,5 +72,34 @@ public class IndexingBackgroundService : BackgroundService
         }
 
         _logger.LogInformation("Indexing background service stopped");
+    }
+
+    /// <summary>
+    /// Recovers jobs that were left in Processing state from a previous server shutdown.
+    /// These jobs are reset to Queued so they can be reprocessed.
+    /// </summary>
+    private async Task RecoverStuckJobsAsync(CancellationToken stoppingToken)
+    {
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var indexingService = scope.ServiceProvider.GetService<IIndexingService>();
+
+            if (indexingService == null)
+            {
+                _logger.LogWarning("IIndexingService not available for stuck job recovery");
+                return;
+            }
+
+            var recoveredCount = await indexingService.RecoverStuckJobsAsync(stoppingToken);
+            if (recoveredCount > 0)
+            {
+                _logger.LogWarning("Recovered {Count} stuck jobs from Processing state", recoveredCount);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error recovering stuck jobs on startup");
+        }
     }
 }

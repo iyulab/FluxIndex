@@ -52,15 +52,28 @@ public class FileFluxChunkingService : IChunkingService
         StackChunkingOptions? options = null,
         CancellationToken cancellationToken = default)
     {
+        var result = await ChunkContentWithImagesAsync(content, documentId, options, cancellationToken);
+        return result.Chunks;
+    }
+
+    public async Task<ChunkingResult> ChunkContentWithImagesAsync(
+        string content,
+        Guid documentId,
+        StackChunkingOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        var result = new ChunkingResult();
+
         if (string.IsNullOrWhiteSpace(content))
         {
-            return new List<StackDocumentChunk>();
+            return result;
         }
 
         options ??= new StackChunkingOptions();
 
-        // Pre-process HTML content to extract clean text
-        var processedContent = await PreprocessContentAsync(content, documentId, cancellationToken);
+        // Pre-process HTML content to extract clean text and images
+        var (processedContent, extractedImages) = await PreprocessContentWithImagesAsync(content, documentId, cancellationToken);
+        result.Images = extractedImages;
 
         // Detect language if not specified
         var language = options.Language ?? DetectLanguage(processedContent);
@@ -93,7 +106,6 @@ public class FileFluxChunkingService : IChunkingService
                 var sanitizedContent = SanitizeContent(processedContent);
                 await File.WriteAllTextAsync(tempPath, sanitizedContent, cancellationToken);
 
-                var chunks = new List<StackDocumentChunk>();
                 var chunkIndex = 0;
 
                 // Use FileFlux 0.9.x factory pattern with streaming API for memory-efficient processing
@@ -102,13 +114,13 @@ public class FileFluxChunkingService : IChunkingService
                 await foreach (var fileFluxChunk in processor.ProcessStreamAsync(processingOptions, cancellationToken))
                 {
                     var chunk = ConvertToStackChunk(fileFluxChunk, documentId, chunkIndex++, language);
-                    chunks.Add(chunk);
+                    result.Chunks.Add(chunk);
                 }
 
-                _logger.LogInformation("Document {DocumentId} chunked into {ChunkCount} segments using {Strategy} strategy (FileFlux)",
-                    documentId, chunks.Count, options.Strategy);
+                _logger.LogInformation("Document {DocumentId} chunked into {ChunkCount} segments with {ImageCount} images using {Strategy} strategy (FileFlux)",
+                    documentId, result.Chunks.Count, result.Images.Count, options.Strategy);
 
-                return chunks;
+                return result;
             }
             finally
             {
@@ -122,21 +134,27 @@ public class FileFluxChunkingService : IChunkingService
                 documentId);
 
             // Fallback to simple chunking
-            return FallbackChunking(processedContent, documentId, options);
+            result.Chunks = FallbackChunking(processedContent, documentId, options);
+            return result;
         }
     }
 
     /// <summary>
     /// Pre-process content based on detected content type.
-    /// HTML content is converted to clean Markdown text.
+    /// HTML content is converted to clean Markdown text and images are extracted.
     /// FileFlux v0.7+ automatically extracts base64 images and replaces them with placeholders.
     /// </summary>
-    private async Task<string> PreprocessContentAsync(string content, Guid documentId, CancellationToken cancellationToken)
+    private async Task<(string Content, Dictionary<string, ExtractedImage> Images)> PreprocessContentWithImagesAsync(
+        string content,
+        Guid documentId,
+        CancellationToken cancellationToken)
     {
+        var images = new Dictionary<string, ExtractedImage>();
+
         // Check if content looks like HTML
         if (!IsHtmlContent(content))
         {
-            return content;
+            return (content, images);
         }
 
         _logger.LogInformation("Document {DocumentId} detected as HTML, preprocessing with HtmlDocumentReader", documentId);
@@ -154,11 +172,36 @@ public class FileFluxChunkingService : IChunkingService
             var extractedLength = extractedText.Length;
             var reductionPercent = (1 - (double)extractedLength / originalLength) * 100;
 
-            // Log image extraction info if any embedded images were found (FileFlux v0.7+)
+            // Extract images from RawContent.Images (FileFlux v0.7+)
             if (rawContent.Images.Count > 0)
             {
-                var embeddedCount = rawContent.Images.Count(i => i.Data != null);
-                var totalImageSize = rawContent.Images.Where(i => i.Data != null).Sum(i => i.Data!.Length);
+                var embeddedCount = 0;
+                var totalImageSize = 0L;
+
+                foreach (var img in rawContent.Images)
+                {
+                    if (img.Data != null && img.Data.Length > 0)
+                    {
+                        // Use FileFlux ImageInfo.Id (e.g., "img_001")
+                        var imageId = !string.IsNullOrEmpty(img.Id) ? img.Id : $"img_{embeddedCount:D3}";
+
+                        // Use MimeType from ImageInfo, or detect from binary data
+                        var contentType = !string.IsNullOrEmpty(img.MimeType)
+                            ? img.MimeType
+                            : DetermineImageContentType(img.Data, null);
+
+                        images[imageId] = new ExtractedImage
+                        {
+                            Data = img.Data,
+                            ContentType = contentType,
+                            Description = img.Caption
+                        };
+
+                        totalImageSize += img.Data.Length;
+                        embeddedCount++;
+                    }
+                }
+
                 _logger.LogInformation(
                     "Document {DocumentId}: Extracted {EmbeddedCount} embedded images ({TotalSize:N0} bytes)",
                     documentId, embeddedCount, totalImageSize);
@@ -168,13 +211,62 @@ public class FileFluxChunkingService : IChunkingService
                 "HTML preprocessing complete for {DocumentId}: {OriginalLength} -> {ExtractedLength} chars ({ReductionPercent:F1}% reduction)",
                 documentId, originalLength, extractedLength, reductionPercent);
 
-            return extractedText;
+            return (extractedText, images);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "HTML preprocessing failed for {DocumentId}, using original content", documentId);
-            return content;
+            return (content, images);
         }
+    }
+
+    /// <summary>
+    /// Determines the image content type from binary data or filename.
+    /// </summary>
+    private static string DetermineImageContentType(byte[] data, string? name)
+    {
+        // Check magic bytes first
+        if (data.Length >= 8)
+        {
+            // PNG: 89 50 4E 47 0D 0A 1A 0A
+            if (data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47)
+                return "image/png";
+
+            // JPEG: FF D8 FF
+            if (data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF)
+                return "image/jpeg";
+
+            // GIF: GIF87a or GIF89a
+            if (data[0] == 0x47 && data[1] == 0x49 && data[2] == 0x46)
+                return "image/gif";
+
+            // WebP: RIFF....WEBP
+            if (data[0] == 0x52 && data[1] == 0x49 && data[2] == 0x46 && data[3] == 0x46 &&
+                data.Length >= 12 && data[8] == 0x57 && data[9] == 0x45 && data[10] == 0x42 && data[11] == 0x50)
+                return "image/webp";
+
+            // BMP: BM
+            if (data[0] == 0x42 && data[1] == 0x4D)
+                return "image/bmp";
+        }
+
+        // Fallback to extension if available
+        if (!string.IsNullOrEmpty(name))
+        {
+            var ext = Path.GetExtension(name)?.ToLowerInvariant();
+            return ext switch
+            {
+                ".png" => "image/png",
+                ".jpg" or ".jpeg" => "image/jpeg",
+                ".gif" => "image/gif",
+                ".webp" => "image/webp",
+                ".bmp" => "image/bmp",
+                ".svg" => "image/svg+xml",
+                _ => "image/png"
+            };
+        }
+
+        return "image/png"; // default
     }
 
     /// <summary>

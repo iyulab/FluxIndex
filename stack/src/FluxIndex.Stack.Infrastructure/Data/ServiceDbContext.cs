@@ -71,6 +71,12 @@ public class ServiceDbContext : DbContext
             entity.HasIndex(e => e.Status);
             entity.Property(e => e.Metadata)
                 .HasColumnType("jsonb");
+            // Document-level extracted content (full text)
+            entity.Property(e => e.ExtractedContent)
+                .HasColumnType("text");
+            // Document-level Q&A pairs stored as JSON
+            entity.Property(e => e.QAPairs)
+                .HasColumnType("jsonb");
         });
 
         // DocumentChunk configuration

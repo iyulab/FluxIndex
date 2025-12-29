@@ -14,16 +14,19 @@ public class SettingsController : ControllerBase
 {
     private readonly IAiProviderSettingsService _settingsService;
     private readonly IEmbeddingProviderCache? _embeddingProviderCache;
+    private readonly ITextCompletionProviderCache? _textCompletionProviderCache;
     private readonly ILogger<SettingsController> _logger;
 
     public SettingsController(
         IAiProviderSettingsService settingsService,
         ILogger<SettingsController> logger,
-        IEmbeddingProviderCache? embeddingProviderCache = null)
+        IEmbeddingProviderCache? embeddingProviderCache = null,
+        ITextCompletionProviderCache? textCompletionProviderCache = null)
     {
         _settingsService = settingsService;
         _logger = logger;
         _embeddingProviderCache = embeddingProviderCache;
+        _textCompletionProviderCache = textCompletionProviderCache;
     }
 
     /// <summary>
@@ -87,6 +90,14 @@ public class SettingsController : ControllerBase
             {
                 _embeddingProviderCache?.InvalidateCache();
                 _logger.LogInformation("Embedding provider cache invalidated due to settings change");
+            }
+
+            // Invalidate text completion provider cache when LLM settings change
+            if (request.ApiKey != null || request.LlmModel != null ||
+                request.IsDefaultLlm == true || request.IsEnabled != null)
+            {
+                _textCompletionProviderCache?.InvalidateCache();
+                _logger.LogInformation("Text completion provider cache invalidated due to settings change");
             }
 
             return Ok(ApiResponse<AiProviderSettingsDto>.Ok(provider, "Provider settings updated successfully"));
@@ -176,6 +187,40 @@ public class SettingsController : ControllerBase
         _embeddingProviderCache?.InvalidateCache();
         _logger.LogInformation("Embedding provider cache manually refreshed");
         return Ok(ApiResponse<string>.Ok("Cache refreshed", "Embedding provider will be reconfigured on next request"));
+    }
+
+    /// <summary>
+    /// Gets the current text completion (LLM) provider status.
+    /// </summary>
+    [HttpGet("ai/llm/status")]
+    [ProducesResponseType(typeof(ApiResponse<TextCompletionProviderStatus>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetLlmProviderStatus(CancellationToken cancellationToken)
+    {
+        if (_textCompletionProviderCache == null)
+        {
+            return Ok(ApiResponse<TextCompletionProviderStatus>.Ok(new TextCompletionProviderStatus
+            {
+                ProviderName = "Unknown",
+                ModelName = "unknown",
+                IsAvailable = false,
+                ErrorMessage = "Text completion provider not configured"
+            }));
+        }
+
+        var status = await _textCompletionProviderCache.GetProviderStatusAsync(cancellationToken);
+        return Ok(ApiResponse<TextCompletionProviderStatus>.Ok(status));
+    }
+
+    /// <summary>
+    /// Refreshes the LLM provider cache, forcing reconfiguration.
+    /// </summary>
+    [HttpPost("ai/llm/refresh")]
+    [ProducesResponseType(typeof(ApiResponse<string>), StatusCodes.Status200OK)]
+    public IActionResult RefreshLlmProvider()
+    {
+        _textCompletionProviderCache?.InvalidateCache();
+        _logger.LogInformation("LLM provider cache manually refreshed");
+        return Ok(ApiResponse<string>.Ok("Cache refreshed", "LLM provider will be reconfigured on next request"));
     }
 }
 

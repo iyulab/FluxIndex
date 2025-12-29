@@ -21,4 +21,5 @@ public interface IDocumentService
     Task<DocumentDto> UpdateAsync(Guid id, UpdateDocumentRequest request, CancellationToken cancellationToken = default);
     Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
     Task ReindexAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<GenerateQAResponse> GenerateQAAsync(Guid id, int maxPairs = 10, CancellationToken cancellationToken = default);
 }

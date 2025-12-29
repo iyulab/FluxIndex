@@ -21,15 +21,37 @@ public class DocumentDto
 }
 
 /// <summary>
-/// Detailed document DTO including chunks.
+/// Detailed document DTO with document-level and chunk-level data.
 /// </summary>
 public class DocumentDetailDto : DocumentDto
 {
+    /// <summary>
+    /// Full extracted text content of the document.
+    /// </summary>
+    public string? ExtractedContent { get; init; }
+
+    /// <summary>
+    /// Document-level Q&A pairs.
+    /// </summary>
+    public List<QAPairDto> QAPairs { get; init; } = new();
+
+    /// <summary>
+    /// Document chunks with content and metadata.
+    /// </summary>
     public List<DocumentChunkDto> Chunks { get; init; } = new();
 }
 
 /// <summary>
-/// Document chunk DTO.
+/// Document-level Q&A pair DTO.
+/// </summary>
+public class QAPairDto
+{
+    public string Question { get; init; } = string.Empty;
+    public string Answer { get; init; } = string.Empty;
+}
+
+/// <summary>
+/// Document chunk DTO with content and metadata.
 /// </summary>
 public class DocumentChunkDto
 {
@@ -78,5 +100,16 @@ public class UploadDocumentResponse
     public Guid DocumentId { get; init; }
     public Guid? JobId { get; init; }
     public string Status { get; init; } = string.Empty;
+    public string Message { get; init; } = string.Empty;
+}
+
+/// <summary>
+/// Response after Q&A generation.
+/// </summary>
+public class GenerateQAResponse
+{
+    public Guid DocumentId { get; init; }
+    public int QAPairsGenerated { get; init; }
+    public List<QAPairDto> QAPairs { get; init; } = new();
     public string Message { get; init; } = string.Empty;
 }

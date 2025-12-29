@@ -7,14 +7,17 @@ import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   documentsApi, chunksApi,
-  type ChunkDetail, type DocumentChunk
+  type ChunkDetail, type DocumentChunk, type DocumentDetail
 } from '@/lib/api'
 import { formatBytes, cn } from '@/lib/utils'
 import {
   ArrowLeft, FileText, Clock, CheckCircle, XCircle, RefreshCw,
-  Save, Loader2, RotateCcw, FileCode, Database, MessageSquare, Info
+  Save, Loader2, RotateCcw, FileCode, Database, MessageSquare,
+  Info, Layers, ImageIcon, Sparkles, Copy, Hash, Calendar,
+  FolderOpen, FileType, HardDrive
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 
@@ -25,21 +28,49 @@ const statusVariants: Record<string, 'default' | 'success' | 'warning' | 'destru
   Failed: 'destructive',
 }
 
-interface QAPair {
-  question: string
-  answer: string
+type DocumentTab = 'info' | 'extract' | 'images' | 'chunks' | 'qa'
+type ChunkView = 'content' | 'metadata'
+
+interface SelectedChunk {
+  chunk: DocumentChunk | ChunkDetail
+  view: ChunkView
 }
 
-type ContentType = 'chunk' | 'metadata' | 'qa' | 'extract'
+// Info row component for displaying document properties
+function InfoRow({
+  icon: Icon,
+  label,
+  value,
+  copyable = false
+}: {
+  icon: typeof FileText
+  label: string
+  value: React.ReactNode
+  copyable?: boolean
+}) {
+  const { toast } = useToast()
 
-interface SelectedItem {
-  type: ContentType
-  id: string
-  title: string
-  content: string
-  language: string
-  editable: boolean
-  chunkIndex?: number
+  const handleCopy = () => {
+    if (typeof value === 'string') {
+      navigator.clipboard.writeText(value)
+      toast({ title: 'Copied to clipboard' })
+    }
+  }
+
+  return (
+    <div className="flex items-start gap-3 py-3 border-b last:border-b-0">
+      <Icon className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+      <div className="flex-1 min-w-0">
+        <div className="text-sm text-muted-foreground">{label}</div>
+        <div className="font-medium break-all">{value || '-'}</div>
+      </div>
+      {copyable && typeof value === 'string' && value && (
+        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={handleCopy}>
+          <Copy className="h-3 w-3" />
+        </Button>
+      )}
+    </div>
+  )
 }
 
 export default function DocumentDetailPage() {
@@ -48,8 +79,9 @@ export default function DocumentDetailPage() {
   const { toast } = useToast()
   const queryClient = useQueryClient()
 
-  const [activeTab, setActiveTab] = useState<ContentType>('chunk')
-  const [selectedItem, setSelectedItem] = useState<SelectedItem | null>(null)
+  const [activeTab, setActiveTab] = useState<DocumentTab>('info')
+  const [selectedChunk, setSelectedChunk] = useState<SelectedChunk | null>(null)
+  const [chunkView, setChunkView] = useState<ChunkView>('content')
   const [editedContent, setEditedContent] = useState<string>('')
   const [hasChanges, setHasChanges] = useState(false)
 
@@ -102,145 +134,90 @@ export default function DocumentDetailPage() {
     },
   })
 
+  // Generate Q&A mutation
+  const generateQAMutation = useMutation({
+    mutationFn: async () => {
+      const response = await documentsApi.generateQA(id!)
+      return response.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['document', id] })
+      toast({ title: 'Q&A pairs generated successfully' })
+    },
+    onError: () => {
+      toast({ title: 'Failed to generate Q&A pairs', variant: 'destructive' })
+    },
+  })
+
   const chunks: (ChunkDetail | DocumentChunk)[] = chunksData?.items || document?.chunks || []
 
-  // Build list items based on active tab
-  const listItems = useMemo(() => {
-    switch (activeTab) {
-      case 'chunk':
-        return chunks.map((chunk) => ({
-          id: chunk.id,
-          title: `Chunk #${chunk.chunkIndex + 1}`,
-          subtitle: `${chunk.tokenCount} tokens`,
-          preview: chunk.content.substring(0, 80) + (chunk.content.length > 80 ? '...' : ''),
-          chunkIndex: chunk.chunkIndex,
-        }))
-      case 'metadata':
-        return chunks.map((chunk) => ({
-          id: `meta-${chunk.id}`,
-          title: `Chunk #${chunk.chunkIndex + 1} Metadata`,
-          subtitle: `${Object.keys(chunk.metadata || {}).length} fields`,
-          preview: Object.keys(chunk.metadata || {}).slice(0, 3).join(', '),
-          chunkIndex: chunk.chunkIndex,
-          chunkId: chunk.id,
-        }))
-      case 'qa':
-        return chunks.map((chunk) => {
-          const qa = (chunk.metadata?.qa as QAPair[]) || []
-          return {
-            id: `qa-${chunk.id}`,
-            title: `Chunk #${chunk.chunkIndex + 1} QA`,
-            subtitle: `${qa.length} pairs`,
-            preview: qa.length > 0 ? qa[0].question.substring(0, 50) : 'No QA pairs',
-            chunkIndex: chunk.chunkIndex,
-            chunkId: chunk.id,
-          }
-        })
-      case 'extract':
-        return chunks.map((chunk) => {
-          const extracts = chunk.metadata?.extracts as string[] || []
-          return {
-            id: `extract-${chunk.id}`,
-            title: `Chunk #${chunk.chunkIndex + 1} Extracts`,
-            subtitle: `${extracts.length} items`,
-            preview: extracts.length > 0 ? extracts[0].substring(0, 50) : 'No extracts',
-            chunkIndex: chunk.chunkIndex,
-            chunkId: chunk.id,
-          }
-        })
-      default:
-        return []
-    }
-  }, [activeTab, chunks])
+  // Get document-level metadata (FileFlux processing metadata)
+  // Prefer document.metadata (new documents), fallback to first chunk (legacy documents)
+  const documentMetadata = useMemo(() => {
+    const docLevelKeys = ['language', 'ff_strategy', 'ff_density', 'ff_quality', 'ff_importance', 'total_chunks', 'word_count']
 
-  // Handle item selection
-  const handleSelectItem = (item: typeof listItems[0]) => {
-    let content = ''
-    let language = 'plaintext'
-    let editable = true
-    let chunkIndex = item.chunkIndex
-
-    const chunk = chunks.find(c =>
-      c.id === item.id ||
-      item.id === `meta-${c.id}` ||
-      item.id === `qa-${c.id}` ||
-      item.id === `extract-${c.id}`
-    )
-
-    switch (activeTab) {
-      case 'chunk':
-        content = chunk?.content || ''
-        language = 'plaintext'
-        editable = true
-        break
-      case 'metadata':
-        content = JSON.stringify(chunk?.metadata || {}, null, 2)
-        language = 'json'
-        editable = true
-        break
-      case 'qa':
-        const qa = (chunk?.metadata?.qa as QAPair[]) || []
-        content = JSON.stringify(qa, null, 2)
-        language = 'json'
-        editable = true
-        break
-      case 'extract':
-        const extracts = (chunk?.metadata?.extracts as string[]) || []
-        content = JSON.stringify(extracts, null, 2)
-        language = 'json'
-        editable = true
-        break
+    // First try document.metadata (populated during indexing for new documents)
+    if (document?.metadata && Object.keys(document.metadata).length > 0) {
+      const docMeta: Record<string, unknown> = {}
+      for (const key of docLevelKeys) {
+        if (key in document.metadata) {
+          docMeta[key] = document.metadata[key]
+        }
+      }
+      if (Object.keys(docMeta).length > 0) return docMeta
     }
 
-    setSelectedItem({
-      type: activeTab,
-      id: chunk?.id || item.id,
-      title: item.title,
-      content,
-      language,
-      editable,
-      chunkIndex,
-    })
+    // Fallback: extract from first chunk (legacy documents not yet re-indexed)
+    const firstChunk = chunks[0]
+    if (!firstChunk?.metadata) return null
+
+    const docMeta: Record<string, unknown> = {}
+    for (const key of docLevelKeys) {
+      if (key in firstChunk.metadata) {
+        docMeta[key] = firstChunk.metadata[key]
+      }
+    }
+
+    return Object.keys(docMeta).length > 0 ? docMeta : null
+  }, [document?.metadata, chunks])
+
+  // Handle chunk selection
+  const handleSelectChunk = (chunk: DocumentChunk | ChunkDetail) => {
+    const content = chunkView === 'content' ? chunk.content : JSON.stringify(chunk.metadata || {}, null, 2)
+    setSelectedChunk({ chunk, view: chunkView })
     setEditedContent(content)
     setHasChanges(false)
   }
 
+  // Handle chunk view toggle
+  const handleChunkViewChange = (view: ChunkView) => {
+    setChunkView(view)
+    if (selectedChunk) {
+      const content = view === 'content'
+        ? selectedChunk.chunk.content
+        : JSON.stringify(selectedChunk.chunk.metadata || {}, null, 2)
+      setSelectedChunk({ ...selectedChunk, view })
+      setEditedContent(content)
+      setHasChanges(false)
+    }
+  }
+
   // Handle save
   const handleSave = () => {
-    if (!selectedItem || !hasChanges) return
-
-    const chunk = chunks.find(c => c.id === selectedItem.id)
-    if (!chunk) return
+    if (!selectedChunk || !hasChanges) return
 
     try {
-      switch (selectedItem.type) {
-        case 'chunk':
-          updateChunkMutation.mutate({
-            chunkId: selectedItem.id,
-            content: editedContent,
-          })
-          break
-        case 'metadata':
-          const metadata = JSON.parse(editedContent)
-          updateChunkMutation.mutate({
-            chunkId: selectedItem.id,
-            metadata,
-          })
-          break
-        case 'qa':
-          const qa = JSON.parse(editedContent)
-          updateChunkMutation.mutate({
-            chunkId: selectedItem.id,
-            metadata: { ...chunk.metadata, qa },
-          })
-          break
-        case 'extract':
-          const extracts = JSON.parse(editedContent)
-          updateChunkMutation.mutate({
-            chunkId: selectedItem.id,
-            metadata: { ...chunk.metadata, extracts },
-          })
-          break
+      if (chunkView === 'content') {
+        updateChunkMutation.mutate({
+          chunkId: selectedChunk.chunk.id,
+          content: editedContent,
+        })
+      } else {
+        const metadata = JSON.parse(editedContent)
+        updateChunkMutation.mutate({
+          chunkId: selectedChunk.chunk.id,
+          metadata,
+        })
       }
     } catch {
       toast({ title: 'Invalid JSON format', variant: 'destructive' })
@@ -249,9 +226,12 @@ export default function DocumentDetailPage() {
 
   // Handle editor change
   const handleEditorChange = (value: string | undefined) => {
-    if (value !== undefined) {
+    if (value !== undefined && activeTab === 'chunks' && selectedChunk) {
       setEditedContent(value)
-      setHasChanges(value !== selectedItem?.content)
+      const originalContent = chunkView === 'content'
+        ? selectedChunk.chunk.content
+        : JSON.stringify(selectedChunk.chunk.metadata || {}, null, 2)
+      setHasChanges(value !== originalContent)
     }
   }
 
@@ -280,12 +260,13 @@ export default function DocumentDetailPage() {
     document.status === 'Processing' ? RefreshCw :
     document.status === 'Pending' ? Clock : XCircle
 
-  const tabIcons: Record<ContentType, typeof FileCode> = {
-    chunk: FileCode,
-    metadata: Database,
-    qa: MessageSquare,
-    extract: Info,
-  }
+  const tabConfig: { key: DocumentTab; label: string; icon: typeof FileCode }[] = [
+    { key: 'info', label: 'Info', icon: Info },
+    { key: 'extract', label: 'Extract', icon: FileText },
+    { key: 'images', label: 'Images', icon: ImageIcon },
+    { key: 'chunks', label: 'Chunks', icon: Layers },
+    { key: 'qa', label: 'Q&A', icon: MessageSquare },
+  ]
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)]">
@@ -309,7 +290,7 @@ export default function DocumentDetailPage() {
           </div>
         </div>
         <div className="flex gap-2">
-          {hasChanges && (
+          {hasChanges && activeTab === 'chunks' && (
             <Button
               onClick={handleSave}
               disabled={updateChunkMutation.isPending}
@@ -333,132 +314,365 @@ export default function DocumentDetailPage() {
         </div>
       </div>
 
-      {/* Main Content - Split Panel */}
-      <ResizablePanelGroup direction="horizontal" className="flex-1">
-        {/* Left Panel - List */}
-        <ResizablePanel defaultSize={30} minSize={20} maxSize={50}>
-          <div className="flex flex-col h-full border-r">
-            {/* Tabs */}
-            <Tabs value={activeTab} onValueChange={(v) => {
-              setActiveTab(v as ContentType)
-              setSelectedItem(null)
-              setHasChanges(false)
-            }} className="flex flex-col h-full">
-              <TabsList className="w-full justify-start rounded-none border-b bg-transparent h-auto p-0">
-                {(['chunk', 'metadata', 'qa', 'extract'] as ContentType[]).map((tab) => {
-                  const Icon = tabIcons[tab]
-                  return (
-                    <TabsTrigger
-                      key={tab}
-                      value={tab}
-                      className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2"
-                    >
-                      <Icon className="h-4 w-4 mr-1" />
-                      {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                    </TabsTrigger>
-                  )
-                })}
-              </TabsList>
+      {/* Main Content */}
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => {
+          setActiveTab(v as DocumentTab)
+          setSelectedChunk(null)
+          setHasChanges(false)
+        }}
+        className="flex flex-col flex-1 overflow-hidden"
+      >
+        {/* Tab Bar */}
+        <div className="border-b px-4">
+          <TabsList className="h-auto bg-transparent p-0">
+            {tabConfig.map(({ key, label, icon: Icon }) => (
+              <TabsTrigger
+                key={key}
+                value={key}
+                className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2"
+              >
+                <Icon className="h-4 w-4 mr-2" />
+                {label}
+                {key === 'chunks' && (
+                  <Badge variant="outline" className="ml-2 text-xs">
+                    {chunks.length}
+                  </Badge>
+                )}
+                {key === 'qa' && document.qaPairs && (
+                  <Badge variant="outline" className="ml-2 text-xs">
+                    {document.qaPairs.length}
+                  </Badge>
+                )}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
 
-              <TabsContent value={activeTab} className="flex-1 m-0 overflow-hidden">
-                <ScrollArea className="h-full">
-                  <div className="p-2 space-y-1">
-                    {listItems.map((item) => (
-                      <button
-                        key={item.id}
-                        onClick={() => handleSelectItem(item)}
-                        className={cn(
-                          'w-full text-left p-3 rounded-lg border transition-colors',
-                          selectedItem?.id === item.id || selectedItem?.id === item.id.replace(/^(meta|qa|extract)-/, '')
-                            ? 'border-primary bg-primary/5'
-                            : 'border-transparent hover:bg-muted/50'
-                        )}
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="font-medium text-sm">{item.title}</span>
-                          <Badge variant="outline" className="text-xs">
-                            {item.subtitle}
-                          </Badge>
-                        </div>
-                        <p className="text-xs text-muted-foreground line-clamp-2">
-                          {item.preview}
-                        </p>
-                      </button>
-                    ))}
+        {/* Info Tab - Document Properties */}
+        <TabsContent value="info" className="flex-1 m-0 overflow-auto">
+          <div className="p-6 max-w-4xl mx-auto space-y-6">
+            {/* Basic Info Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Document Information</CardTitle>
+                <CardDescription>Basic properties and metadata</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-0">
+                <InfoRow icon={Hash} label="Document ID" value={document.id} copyable />
+                <InfoRow icon={FileText} label="Title" value={document.title} />
+                <InfoRow icon={FileType} label="Source Type" value={document.sourceType} />
+                <InfoRow icon={FolderOpen} label="Source Path" value={document.sourcePath} copyable />
+                <InfoRow icon={HardDrive} label="File Size" value={formatBytes(document.fileSize || 0)} />
+                <InfoRow icon={Layers} label="Chunk Count" value={String(document.chunkCount || chunks.length)} />
+                <InfoRow
+                  icon={Hash}
+                  label="Content Hash"
+                  value={document.contentHash ? `${document.contentHash.substring(0, 16)}...` : null}
+                  copyable
+                />
+              </CardContent>
+            </Card>
 
-                    {listItems.length === 0 && (
-                      <div className="text-center py-8 text-muted-foreground">
-                        <Info className="h-8 w-8 mx-auto mb-2" />
-                        <p className="text-sm">No items available</p>
-                      </div>
-                    )}
-                  </div>
-                </ScrollArea>
-              </TabsContent>
-            </Tabs>
-          </div>
-        </ResizablePanel>
+            {/* Timestamps Card */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Timestamps</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-0">
+                <InfoRow
+                  icon={Calendar}
+                  label="Created"
+                  value={new Date(document.createdAt).toLocaleString()}
+                />
+                <InfoRow
+                  icon={Calendar}
+                  label="Updated"
+                  value={new Date(document.updatedAt).toLocaleString()}
+                />
+                <InfoRow
+                  icon={Calendar}
+                  label="Indexed"
+                  value={document.indexedAt ? new Date(document.indexedAt).toLocaleString() : 'Not indexed'}
+                />
+              </CardContent>
+            </Card>
 
-        <ResizableHandle withHandle />
-
-        {/* Right Panel - Monaco Editor */}
-        <ResizablePanel defaultSize={70}>
-          <div className="flex flex-col h-full">
-            {selectedItem ? (
-              <>
-                {/* Editor Header */}
-                <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">{selectedItem.title}</span>
-                    {hasChanges && (
-                      <Badge variant="warning" className="text-xs">
-                        Modified
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <span>{selectedItem.language.toUpperCase()}</span>
-                    {selectedItem.editable && (
-                      <Badge variant="outline" className="text-xs">
-                        Editable
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-
-                {/* Monaco Editor */}
-                <div className="flex-1">
+            {/* Processing Metadata Card (from FileFlux) */}
+            {documentMetadata && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Processing Metadata</CardTitle>
+                  <CardDescription>FileFlux extraction properties</CardDescription>
+                </CardHeader>
+                <CardContent>
                   <Editor
-                    height="100%"
-                    language={selectedItem.language}
-                    value={editedContent}
-                    onChange={handleEditorChange}
+                    height="150px"
+                    language="json"
+                    value={JSON.stringify(documentMetadata, null, 2)}
                     theme="vs-dark"
                     options={{
-                      readOnly: !selectedItem.editable,
+                      readOnly: true,
                       minimap: { enabled: false },
                       fontSize: 13,
-                      lineNumbers: 'on',
-                      wordWrap: 'on',
+                      lineNumbers: 'off',
                       scrollBeyondLastLine: false,
                       automaticLayout: true,
                       padding: { top: 8, bottom: 8 },
                     }}
                   />
-                </div>
-              </>
-            ) : (
-              <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-                <FileCode className="h-16 w-16 mb-4 opacity-50" />
-                <h3 className="text-lg font-medium">Select an item to view</h3>
-                <p className="text-sm mt-1">
-                  Choose a chunk, metadata, QA, or extract from the list
-                </p>
-              </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Custom Metadata Card */}
+            {document.metadata && Object.keys(document.metadata).length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Custom Metadata</CardTitle>
+                  <CardDescription>User-defined metadata</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Editor
+                    height="200px"
+                    language="json"
+                    value={JSON.stringify(document.metadata, null, 2)}
+                    theme="vs-dark"
+                    options={{
+                      readOnly: true,
+                      minimap: { enabled: false },
+                      fontSize: 13,
+                      lineNumbers: 'off',
+                      scrollBeyondLastLine: false,
+                      automaticLayout: true,
+                      padding: { top: 8, bottom: 8 },
+                    }}
+                  />
+                </CardContent>
+              </Card>
             )}
           </div>
-        </ResizablePanel>
-      </ResizablePanelGroup>
+        </TabsContent>
+
+        {/* Extract Tab */}
+        <TabsContent value="extract" className="flex-1 m-0 overflow-hidden">
+          <div className="h-full p-0">
+            <Editor
+              height="100%"
+              language="markdown"
+              value={document?.extractedContent || '(No extracted content available)'}
+              theme="vs-dark"
+              options={{
+                readOnly: true,
+                minimap: { enabled: false },
+                fontSize: 13,
+                lineNumbers: 'off',
+                wordWrap: 'on',
+                scrollBeyondLastLine: false,
+                automaticLayout: true,
+                padding: { top: 16, bottom: 16 },
+              }}
+            />
+          </div>
+        </TabsContent>
+
+        {/* Images Tab */}
+        <TabsContent value="images" className="flex-1 m-0 overflow-auto">
+          <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+            <ImageIcon className="h-16 w-16 mb-4 opacity-50" />
+            <h3 className="text-lg font-medium">No images extracted</h3>
+            <p className="text-sm mt-1 max-w-md text-center">
+              Image extraction from documents will be available in a future update.
+              Currently, images embedded in PDFs, DOCX, and HTML files can be processed.
+            </p>
+          </div>
+        </TabsContent>
+
+        {/* Q&A Tab */}
+        <TabsContent value="qa" className="flex-1 m-0 overflow-hidden">
+          <div className="h-full flex flex-col">
+            {/* Q&A Header with Generate Button */}
+            <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/30">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="h-4 w-4" />
+                <span className="font-medium">
+                  Q&A Pairs ({document.qaPairs?.length || 0})
+                </span>
+              </div>
+              <Button
+                onClick={() => generateQAMutation.mutate()}
+                disabled={generateQAMutation.isPending || !document.extractedContent}
+                size="sm"
+              >
+                {generateQAMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Sparkles className="h-4 w-4 mr-2" />
+                )}
+                Generate Q&A
+              </Button>
+            </div>
+
+            {/* Q&A Content */}
+            <div className="flex-1">
+              {document.qaPairs && document.qaPairs.length > 0 ? (
+                <ScrollArea className="h-full">
+                  <div className="p-4 space-y-4">
+                    {document.qaPairs.map((qa, index) => (
+                      <Card key={index}>
+                        <CardHeader className="pb-2">
+                          <CardTitle className="text-sm font-medium flex items-center gap-2">
+                            <Badge variant="outline">Q{index + 1}</Badge>
+                            {qa.question}
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <p className="text-sm text-muted-foreground">{qa.answer}</p>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </ScrollArea>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+                  <MessageSquare className="h-16 w-16 mb-4 opacity-50" />
+                  <h3 className="text-lg font-medium">No Q&A pairs generated</h3>
+                  <p className="text-sm mt-1 mb-4 max-w-md text-center">
+                    Generate question-answer pairs from the document content using AI.
+                  </p>
+                  <Button
+                    onClick={() => generateQAMutation.mutate()}
+                    disabled={generateQAMutation.isPending || !document.extractedContent}
+                  >
+                    {generateQAMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-4 w-4 mr-2" />
+                    )}
+                    Generate Q&A Pairs
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* Chunks Tab */}
+        <TabsContent value="chunks" className="flex-1 m-0 overflow-hidden">
+          <ResizablePanelGroup direction="horizontal" className="h-full">
+            {/* Left Panel - Chunk List */}
+            <ResizablePanel defaultSize={30} minSize={20} maxSize={50}>
+              <div className="flex flex-col h-full border-r">
+                <ScrollArea className="flex-1">
+                  <div className="p-2 space-y-1">
+                    {chunks.map((chunk) => (
+                      <button
+                        key={chunk.id}
+                        onClick={() => handleSelectChunk(chunk)}
+                        className={cn(
+                          'w-full text-left p-3 rounded-lg border transition-colors',
+                          selectedChunk?.chunk.id === chunk.id
+                            ? 'border-primary bg-primary/5'
+                            : 'border-transparent hover:bg-muted/50'
+                        )}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-medium text-sm">Chunk #{chunk.chunkIndex + 1}</span>
+                          <Badge variant="outline" className="text-xs">
+                            {chunk.tokenCount} tokens
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground line-clamp-2">
+                          {chunk.content.substring(0, 100)}
+                          {chunk.content.length > 100 ? '...' : ''}
+                        </p>
+                      </button>
+                    ))}
+
+                    {chunks.length === 0 && (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <Layers className="h-8 w-8 mx-auto mb-2" />
+                        <p className="text-sm">No chunks available</p>
+                      </div>
+                    )}
+                  </div>
+                </ScrollArea>
+              </div>
+            </ResizablePanel>
+
+            <ResizableHandle withHandle />
+
+            {/* Right Panel - Editor */}
+            <ResizablePanel defaultSize={70}>
+              <div className="flex flex-col h-full">
+                {selectedChunk ? (
+                  <>
+                    {/* Chunk View Toggle */}
+                    <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">Chunk #{selectedChunk.chunk.chunkIndex + 1}</span>
+                        {hasChanges && (
+                          <Badge variant="warning" className="text-xs">
+                            Modified
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant={chunkView === 'content' ? 'default' : 'ghost'}
+                          size="sm"
+                          onClick={() => handleChunkViewChange('content')}
+                        >
+                          <FileCode className="h-4 w-4 mr-1" />
+                          Content
+                        </Button>
+                        <Button
+                          variant={chunkView === 'metadata' ? 'default' : 'ghost'}
+                          size="sm"
+                          onClick={() => handleChunkViewChange('metadata')}
+                        >
+                          <Database className="h-4 w-4 mr-1" />
+                          Metadata
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Monaco Editor */}
+                    <div className="flex-1">
+                      <Editor
+                        height="100%"
+                        language={chunkView === 'content' ? 'markdown' : 'json'}
+                        value={editedContent}
+                        onChange={handleEditorChange}
+                        theme="vs-dark"
+                        options={{
+                          readOnly: false,
+                          minimap: { enabled: false },
+                          fontSize: 13,
+                          lineNumbers: 'on',
+                          wordWrap: 'on',
+                          scrollBeyondLastLine: false,
+                          automaticLayout: true,
+                          padding: { top: 8, bottom: 8 },
+                        }}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+                    <Layers className="h-16 w-16 mb-4 opacity-50" />
+                    <h3 className="text-lg font-medium">Select a chunk to view</h3>
+                    <p className="text-sm mt-1">
+                      Choose a chunk from the list to view or edit its content
+                    </p>
+                  </div>
+                )}
+              </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

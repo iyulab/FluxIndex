@@ -243,10 +243,11 @@ public class IndexingService : IIndexingService
         // 2. Chunk the content using intelligent chunking (FileFlux) or fallback
         await AddLogAsync(job.Id, IndexingJobLogLevel.Info, "Starting content chunking", phase: "Chunking");
         List<DocumentChunk> chunkList;
+        Dictionary<string, ExtractedImage> extractedImages = new();
 
         if (_chunkingService != null)
         {
-            // Use FileFlux intelligent chunking
+            // Use FileFlux intelligent chunking with image extraction
             _logger.LogInformation("Using FileFlux intelligent chunking for document {DocumentId}", document.Id);
             await AddLogAsync(job.Id, IndexingJobLogLevel.Info, "Using intelligent chunking (FileFlux)", phase: "Chunking");
 
@@ -256,7 +257,7 @@ public class IndexingService : IIndexingService
                 await AddLogAsync(job.Id, IndexingJobLogLevel.Info, $"Detected language: {detectedLanguage}", phase: "Chunking");
             }
 
-            chunkList = await _chunkingService.ChunkContentAsync(
+            var chunkingResult = await _chunkingService.ChunkContentWithImagesAsync(
                 content,
                 document.Id,
                 new ChunkingOptions
@@ -267,6 +268,9 @@ public class IndexingService : IIndexingService
                     Language = detectedLanguage
                 },
                 cancellationToken);
+
+            chunkList = chunkingResult.Chunks;
+            extractedImages = chunkingResult.Images;
         }
         else
         {
@@ -278,6 +282,33 @@ public class IndexingService : IIndexingService
 
         _logger.LogInformation("Document {DocumentId} split into {ChunkCount} chunks", document.Id, chunkList.Count);
         await AddLogAsync(job.Id, IndexingJobLogLevel.Info, $"Content split into {chunkList.Count} chunks", phase: "Chunking");
+
+        // 2.1 Store extracted images if any
+        if (extractedImages.Count > 0 && _contentProvider != null)
+        {
+            await AddLogAsync(job.Id, IndexingJobLogLevel.Info, $"Storing {extractedImages.Count} extracted images", phase: "ImageStorage");
+            foreach (var (imageId, image) in extractedImages)
+            {
+                try
+                {
+                    await _contentProvider.StoreImageAsync(document.Id, imageId, image.Data, image.ContentType, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to store image {ImageId} for document {DocumentId}", imageId, document.Id);
+                }
+            }
+            _logger.LogInformation("Stored {ImageCount} images for document {DocumentId}", extractedImages.Count, document.Id);
+            await AddLogAsync(job.Id, IndexingJobLogLevel.Info, $"Successfully stored {extractedImages.Count} images", phase: "ImageStorage");
+        }
+
+        // Extract document-level metadata from first chunk and set on Document
+        if (chunkList.Count > 0)
+        {
+            ExtractAndSetDocumentMetadata(document, chunkList[0]);
+            await _documentRepository.UpdateAsync(document, cancellationToken);
+            _logger.LogDebug("Document-level metadata extracted and saved for {DocumentId}", document.Id);
+        }
 
         // 3. Generate embeddings - use Late Chunking if available and enabled, otherwise use standard embedding
         var useLateChunking = _lateChunkingService != null && _chunkingService != null;
@@ -609,6 +640,37 @@ public class IndexingService : IIndexingService
     }
 
     /// <summary>
+    /// Extracts document-level metadata from chunk metadata and sets it on the Document entity.
+    /// These are properties that are the same across all chunks (FileFlux processing metadata).
+    /// </summary>
+    private static void ExtractAndSetDocumentMetadata(Document document, DocumentChunk firstChunk)
+    {
+        // Keys that represent document-level metadata (same for all chunks)
+        var docLevelKeys = new[]
+        {
+            "language",
+            "ff_strategy",
+            "ff_quality",
+            "ff_importance",
+            "ff_density",
+            "total_chunks",
+            "word_count"
+        };
+
+        var docMetadata = new Dictionary<string, object>(document.Metadata);
+
+        foreach (var key in docLevelKeys)
+        {
+            if (firstChunk.Metadata.TryGetValue(key, out var value))
+            {
+                docMetadata[key] = value;
+            }
+        }
+
+        document.SetMetadata(docMetadata);
+    }
+
+    /// <summary>
     /// Generates embeddings using Contextual Retrieval if available, otherwise standard embedding.
     /// Contextual Retrieval prepends document context to each chunk before embedding (Anthropic's approach).
     /// </summary>
@@ -912,6 +974,34 @@ public class IndexingService : IIndexingService
             TotalCount = queuedCount + processingCount + completedCount + failedCount,
             AverageProcessingTimeMs = avgProcessingTime
         };
+    }
+
+    public async Task<int> RecoverStuckJobsAsync(CancellationToken cancellationToken = default)
+    {
+        // Get all stuck Processing jobs and reset them to Queued
+        var recoveredCount = await _jobRepository.ResetStuckProcessingJobsAsync(cancellationToken);
+
+        if (recoveredCount > 0)
+        {
+            _logger.LogWarning(
+                "Recovered {Count} stuck indexing jobs from Processing state. These jobs will be reprocessed.",
+                recoveredCount);
+
+            // Also reset the document statuses for these jobs
+            // Jobs with Processing status have their documents in Processing state
+            var processingJobs = await _jobRepository.GetByStatusAsync(IndexingJobStatus.Queued, cancellationToken);
+            foreach (var job in processingJobs)
+            {
+                var document = await _documentRepository.GetByIdAsync(job.DocumentId, cancellationToken);
+                if (document != null && document.Status == DocumentStatus.Processing)
+                {
+                    document.MarkAsPending();
+                    await _documentRepository.UpdateAsync(document, cancellationToken);
+                }
+            }
+        }
+
+        return recoveredCount;
     }
 }
 

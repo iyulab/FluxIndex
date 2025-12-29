@@ -18,6 +18,16 @@ public class Document
     public DateTime UpdatedAt { get; private set; }
     public DateTime? IndexedAt { get; private set; }
 
+    /// <summary>
+    /// Full extracted text content of the document.
+    /// </summary>
+    public string? ExtractedContent { get; private set; }
+
+    /// <summary>
+    /// Document-level Q&A pairs stored as JSON.
+    /// </summary>
+    public List<DocumentQAPair> QAPairs { get; private set; } = new();
+
     // Computed properties
     public int ChunkCount { get; private set; }
 
@@ -58,6 +68,12 @@ public class Document
     public void SetMetadata(Dictionary<string, object> metadata)
     {
         Metadata = metadata ?? new Dictionary<string, object>();
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void MarkAsPending()
+    {
+        Status = DocumentStatus.Pending;
         UpdatedAt = DateTime.UtcNow;
     }
 
@@ -105,6 +121,33 @@ public class Document
         ChunkCount = chunkCount;
         UpdatedAt = DateTime.UtcNow;
     }
+
+    /// <summary>
+    /// Sets the extracted content of the document.
+    /// </summary>
+    public void SetExtractedContent(string? content)
+    {
+        ExtractedContent = content;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Sets the document-level Q&A pairs.
+    /// </summary>
+    public void SetQAPairs(List<DocumentQAPair> qaPairs)
+    {
+        QAPairs = qaPairs ?? new List<DocumentQAPair>();
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Adds a Q&A pair to the document.
+    /// </summary>
+    public void AddQAPair(string question, string answer)
+    {
+        QAPairs.Add(new DocumentQAPair { Question = question, Answer = answer });
+        UpdatedAt = DateTime.UtcNow;
+    }
 }
 
 public enum DocumentStatus
@@ -113,4 +156,13 @@ public enum DocumentStatus
     Processing,
     Indexed,
     Failed
+}
+
+/// <summary>
+/// Represents a question-answer pair for document-level QA.
+/// </summary>
+public class DocumentQAPair
+{
+    public string Question { get; set; } = string.Empty;
+    public string Answer { get; set; } = string.Empty;
 }

@@ -21,4 +21,10 @@ public interface IIndexingJobRepository
     Task<int> GetCountByStatusAsync(IndexingJobStatus status, CancellationToken cancellationToken = default);
     Task<double> GetAverageProcessingTimeAsync(CancellationToken cancellationToken = default);
     Task<IndexingJob?> GetNextQueuedAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Resets all jobs in Processing state to Queued state and returns the count of reset jobs.
+    /// Used for recovery after server restart.
+    /// </summary>
+    Task<int> ResetStuckProcessingJobsAsync(CancellationToken cancellationToken = default);
 }

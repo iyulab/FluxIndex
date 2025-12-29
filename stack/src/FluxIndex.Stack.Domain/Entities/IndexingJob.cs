@@ -83,6 +83,18 @@ public class IndexingJob
         CompletedAt = DateTime.UtcNow;
     }
 
+    /// <summary>
+    /// Resets a stuck job back to Queued state for reprocessing.
+    /// Used for recovery after server restart when jobs were left in Processing state.
+    /// </summary>
+    public void ResetToQueued()
+    {
+        Status = IndexingJobStatus.Queued;
+        StartedAt = null;
+        ProcessedChunks = 0;
+        ErrorMessage = null;
+    }
+
     public double GetProgressPercentage()
     {
         if (TotalChunks == 0) return 0;

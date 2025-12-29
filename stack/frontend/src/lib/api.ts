@@ -111,7 +111,14 @@ export interface DocumentChunk {
   metadata: Record<string, unknown>
 }
 
+export interface QAPair {
+  question: string
+  answer: string
+}
+
 export interface DocumentDetail extends Document {
+  extractedContent?: string
+  qaPairs: QAPair[]
   chunks: DocumentChunk[]
 }
 
@@ -260,6 +267,13 @@ export const collectionsApi = {
   delete: (id: string) => api.delete<ApiResponse<void>>(`/collections/${id}`),
 }
 
+export interface GenerateQAResponse {
+  documentId: string
+  qaPairsGenerated: number
+  qaPairs: QAPair[]
+  message: string
+}
+
 export const documentsApi = {
   getAll: (params?: { page?: number; pageSize?: number; collectionId?: string; status?: string }) =>
     api.get<ApiResponse<Document[]>>('/documents', { params }),
@@ -275,6 +289,8 @@ export const documentsApi = {
     api.put<ApiResponse<Document>>(`/documents/${id}`, data),
   delete: (id: string) => api.delete<ApiResponse<void>>(`/documents/${id}`),
   reindex: (id: string) => api.post<ApiResponse<void>>(`/documents/${id}/reindex`),
+  generateQA: (id: string, params?: { maxPairs?: number }) =>
+    api.post<ApiResponse<GenerateQAResponse>>(`/documents/${id}/generate-qa`, null, { params }),
 }
 
 export const searchApi = {
@@ -423,6 +439,10 @@ export interface AiProviderSettings {
   embeddingModel?: string
   llmModel?: string
   endpointUrl?: string
+  /** Whether this is a local provider that doesn't require an API key (e.g., LMSupply) */
+  isLocalProvider: boolean
+  /** Whether this provider requires a custom endpoint URL (e.g., Azure, GPUStack) */
+  requiresEndpoint: boolean
   availableEmbeddingModels: string[]
   availableLlmModels: string[]
   createdAt: string

@@ -45,6 +45,12 @@ public static class DocumentMappings
             CreatedAt = entity.CreatedAt,
             UpdatedAt = entity.UpdatedAt,
             IndexedAt = entity.IndexedAt,
+            ExtractedContent = entity.ExtractedContent,
+            QAPairs = entity.QAPairs.Select(qa => new QAPairDto
+            {
+                Question = qa.Question,
+                Answer = qa.Answer
+            }).ToList(),
             Chunks = chunks.Select(c => c.ToDto()).ToList()
         };
     }

@@ -47,23 +47,40 @@ public class DynamicTextCompletionProvider : ITextCompletionService, ITextComple
 
         // Get default LLM provider from settings
         var settings = await settingsRepository.GetAllAsync(cancellationToken);
+
+        // Priority: 1) Default LLM provider if enabled
+        //           2) Any enabled provider with API key
+        //           3) LMSupply if enabled (no API key required for local)
         var defaultProvider = settings.FirstOrDefault(s => s.IsDefaultLlm && s.IsEnabled)
-                           ?? settings.FirstOrDefault(s => s.IsEnabled && !string.IsNullOrEmpty(s.ApiKey));
+                           ?? settings.FirstOrDefault(s => s.IsEnabled && !string.IsNullOrEmpty(s.ApiKey))
+                           ?? settings.FirstOrDefault(s => s.IsEnabled && s.ProviderName == "LMSupply");
 
         ITextCompletionService provider;
 
-        if (defaultProvider != null && !string.IsNullOrEmpty(defaultProvider.ApiKey))
+        if (defaultProvider != null)
         {
-            _logger.LogInformation(
-                "Using configured text completion provider: {Provider}, Model: {Model}",
-                defaultProvider.ProviderName, defaultProvider.LlmModel ?? "gpt-4o-mini");
+            var isLocalProvider = defaultProvider.ProviderName is "LMSupply" or "Local";
 
-            provider = await _textCompletionFactory.CreateProviderAsync(
-                defaultProvider.ProviderName,
-                defaultProvider.ApiKey,
-                defaultProvider.LlmModel,
-                defaultProvider.EndpointUrl,
-                cancellationToken);
+            // Local providers don't need API key
+            if (isLocalProvider || !string.IsNullOrEmpty(defaultProvider.ApiKey))
+            {
+                _logger.LogInformation(
+                    "Using configured text completion provider: {Provider}, Model: {Model}, IsLocal: {IsLocal}",
+                    defaultProvider.ProviderName, defaultProvider.LlmModel ?? "default", isLocalProvider);
+
+                provider = await _textCompletionFactory.CreateProviderAsync(
+                    defaultProvider.ProviderName,
+                    defaultProvider.ApiKey,
+                    defaultProvider.LlmModel,
+                    defaultProvider.EndpointUrl,
+                    cancellationToken);
+            }
+            else
+            {
+                _logger.LogInformation("Provider {Provider} is enabled but has no API key. Using MockTextCompletionService.",
+                    defaultProvider.ProviderName);
+                provider = new MockTextCompletionService();
+            }
         }
         else
         {
@@ -117,17 +134,25 @@ public class DynamicTextCompletionProvider : ITextCompletionService, ITextComple
             using var scope = _scopeFactory.CreateScope();
             var settingsRepository = scope.ServiceProvider.GetRequiredService<IAiProviderSettingsRepository>();
             var settings = await settingsRepository.GetAllAsync(cancellationToken);
-            var defaultProvider = settings.FirstOrDefault(s => s.IsDefaultLlm && s.IsEnabled)
-                               ?? settings.FirstOrDefault(s => s.IsEnabled && !string.IsNullOrEmpty(s.ApiKey));
 
-            if (defaultProvider != null && !string.IsNullOrEmpty(defaultProvider.ApiKey))
+            // Same priority as GetActiveProviderAsync
+            var defaultProvider = settings.FirstOrDefault(s => s.IsDefaultLlm && s.IsEnabled)
+                               ?? settings.FirstOrDefault(s => s.IsEnabled && !string.IsNullOrEmpty(s.ApiKey))
+                               ?? settings.FirstOrDefault(s => s.IsEnabled && s.ProviderName == "LMSupply");
+
+            if (defaultProvider != null)
             {
-                return new TextCompletionProviderStatus
+                var isLocalProvider = defaultProvider.ProviderName is "LMSupply" or "Local";
+
+                if (isLocalProvider || !string.IsNullOrEmpty(defaultProvider.ApiKey))
                 {
-                    ProviderName = defaultProvider.ProviderName,
-                    ModelName = defaultProvider.LlmModel ?? "gpt-4o-mini",
-                    IsAvailable = true
-                };
+                    return new TextCompletionProviderStatus
+                    {
+                        ProviderName = defaultProvider.ProviderName,
+                        ModelName = defaultProvider.LlmModel ?? (isLocalProvider ? "default" : "gpt-4o-mini"),
+                        IsAvailable = true
+                    };
+                }
             }
 
             return new TextCompletionProviderStatus
@@ -135,7 +160,7 @@ public class DynamicTextCompletionProvider : ITextCompletionService, ITextComple
                 ProviderName = "Mock",
                 ModelName = "mock",
                 IsAvailable = true,
-                ErrorMessage = "No API key configured. Using mock provider."
+                ErrorMessage = "No AI provider configured. Enable LMSupply (local) or configure an API key."
             };
         }
         catch (Exception ex)

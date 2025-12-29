@@ -14,13 +14,16 @@ namespace FluxIndex.Stack.Api.Controllers;
 public class DocumentsController : ControllerBase
 {
     private readonly IDocumentService _documentService;
+    private readonly IDocumentContentProvider? _contentProvider;
     private readonly ILogger<DocumentsController> _logger;
 
     public DocumentsController(
         IDocumentService documentService,
-        ILogger<DocumentsController> logger)
+        ILogger<DocumentsController> logger,
+        IDocumentContentProvider? contentProvider = null)
     {
         _documentService = documentService;
+        _contentProvider = contentProvider;
         _logger = logger;
     }
 
@@ -215,4 +218,110 @@ public class DocumentsController : ControllerBase
             return BadRequest(ApiResponse<object>.Fail(ex.Message));
         }
     }
+
+    /// <summary>
+    /// Generates Q&A pairs for a document using AI.
+    /// </summary>
+    [HttpPost("{id:guid}/generate-qa")]
+    public async Task<ActionResult<ApiResponse<GenerateQAResponse>>> GenerateQA(
+        Guid id,
+        [FromQuery] int maxPairs = 10,
+        CancellationToken cancellationToken = default)
+    {
+        if (!HttpContext.IsWriter())
+        {
+            return Forbid();
+        }
+
+        try
+        {
+            var response = await _documentService.GenerateQAAsync(id, maxPairs, cancellationToken);
+            _logger.LogInformation("Generated {Count} Q&A pairs for document: {DocumentId}",
+                response.QAPairsGenerated, id);
+            return Ok(ApiResponse<GenerateQAResponse>.Ok(response));
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(ApiResponse<GenerateQAResponse>.Fail($"Document with id '{id}' not found."));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ApiResponse<GenerateQAResponse>.Fail(ex.Message));
+        }
+    }
+
+    /// <summary>
+    /// Gets a specific image from a document.
+    /// </summary>
+    /// <param name="id">Document ID</param>
+    /// <param name="imageId">Image ID (e.g., "img_001")</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    [HttpGet("{id:guid}/images/{imageId}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ResponseCache(Duration = 3600)] // Cache for 1 hour
+    public async Task<IActionResult> GetDocumentImage(
+        Guid id,
+        string imageId,
+        CancellationToken cancellationToken = default)
+    {
+        if (_contentProvider == null)
+        {
+            return NotFound("Content provider not configured.");
+        }
+
+        var imageResult = await _contentProvider.GetImageAsync(id, imageId, cancellationToken);
+        if (imageResult == null)
+        {
+            return NotFound($"Image '{imageId}' not found for document '{id}'.");
+        }
+
+        return File(imageResult.Value.Data, imageResult.Value.ContentType);
+    }
+
+    /// <summary>
+    /// Lists all images for a document.
+    /// </summary>
+    /// <param name="id">Document ID</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    [HttpGet("{id:guid}/images")]
+    [ProducesResponseType(typeof(ApiResponse<DocumentImagesDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ApiResponse<DocumentImagesDto>>> GetDocumentImages(
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        // First check if document exists
+        var document = await _documentService.GetByIdAsync(id, cancellationToken);
+        if (document == null)
+        {
+            return NotFound(ApiResponse<DocumentImagesDto>.Fail($"Document with id '{id}' not found."));
+        }
+
+        if (_contentProvider == null)
+        {
+            return Ok(ApiResponse<DocumentImagesDto>.Ok(new DocumentImagesDto
+            {
+                DocumentId = id,
+                ImageIds = Array.Empty<string>()
+            }));
+        }
+
+        var imageIds = await _contentProvider.GetImageIdsAsync(id, cancellationToken);
+
+        return Ok(ApiResponse<DocumentImagesDto>.Ok(new DocumentImagesDto
+        {
+            DocumentId = id,
+            ImageIds = imageIds.ToArray()
+        }));
+    }
+}
+
+/// <summary>
+/// DTO for document images list.
+/// </summary>
+public class DocumentImagesDto
+{
+    public Guid DocumentId { get; set; }
+    public string[] ImageIds { get; set; } = Array.Empty<string>();
 }

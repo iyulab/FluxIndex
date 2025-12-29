@@ -134,6 +134,24 @@ public class AiProviderSettingsService : IAiProviderSettingsService
                 new ModelInfoDto { Id = "qwen2.5-72b-instruct", Name = "Qwen 2.5 72B", Description = "Alibaba's large model", MaxTokens = 128000 },
                 new ModelInfoDto { Id = "llama-3.3-70b-instruct", Name = "Llama 3.3 70B", Description = "Meta's large model", MaxTokens = 128000 }
             }
+        },
+        ["LMSupply"] = new ProviderInfo
+        {
+            DisplayName = "LMSupply (Local)",
+            IsLocalProvider = true,
+            EmbeddingModels = new[]
+            {
+                new ModelInfoDto { Id = "bge-small-en-v1.5", Name = "BGE Small EN", Description = "Fast English embedding (384 dims)", Dimensions = 384 },
+                new ModelInfoDto { Id = "all-MiniLM-L6-v2", Name = "All-MiniLM-L6-v2", Description = "Balanced multilingual (384 dims)", Dimensions = 384 },
+                new ModelInfoDto { Id = "multilingual-e5-small", Name = "Multilingual E5 Small", Description = "Multilingual support (384 dims)", Dimensions = 384 }
+            },
+            LlmModels = new[]
+            {
+                new ModelInfoDto { Id = "default", Name = "Qwen2.5-0.5B", Description = "Default balanced model", MaxTokens = 4096 },
+                new ModelInfoDto { Id = "fast", Name = "TinyLlama-1.1B", Description = "Fast, lightweight", MaxTokens = 2048 },
+                new ModelInfoDto { Id = "quality", Name = "Qwen2.5-1.5B", Description = "Better quality", MaxTokens = 4096 },
+                new ModelInfoDto { Id = "large", Name = "Qwen2.5-3B", Description = "Highest quality (more memory)", MaxTokens = 8192 }
+            }
         }
     };
 
@@ -323,6 +341,8 @@ public class AiProviderSettingsService : IAiProviderSettingsService
             EmbeddingModel = settings.EmbeddingModel,
             LlmModel = settings.LlmModel,
             EndpointUrl = settings.EndpointUrl,
+            IsLocalProvider = providerInfo?.IsLocalProvider ?? false,
+            RequiresEndpoint = providerInfo?.RequiresEndpoint ?? false,
             AvailableEmbeddingModels = providerInfo?.EmbeddingModels.Select(m => m.Id).ToList() ?? new List<string>(),
             AvailableLlmModels = providerInfo?.LlmModels.Select(m => m.Id).ToList() ?? new List<string>(),
             CreatedAt = settings.CreatedAt,
@@ -334,6 +354,7 @@ public class AiProviderSettingsService : IAiProviderSettingsService
     {
         public string DisplayName { get; set; } = string.Empty;
         public bool RequiresEndpoint { get; set; } = false;
+        public bool IsLocalProvider { get; set; } = false;
         public ModelInfoDto[] EmbeddingModels { get; set; } = Array.Empty<ModelInfoDto>();
         public ModelInfoDto[] LlmModels { get; set; } = Array.Empty<ModelInfoDto>();
     }
