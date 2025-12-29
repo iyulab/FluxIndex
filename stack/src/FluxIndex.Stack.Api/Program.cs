@@ -5,6 +5,7 @@ using FluxIndex.Stack.Api.Observability;
 using FluxIndex.Stack.Application.Interfaces.Services;
 using FluxIndex.Stack.Infrastructure.Data;
 using FluxIndex.Stack.Infrastructure.Extensions;
+using FluxIndex.Stack.Vault.Extensions;
 using Microsoft.EntityFrameworkCore;
 using ModelContextProtocol.Server;
 
@@ -57,11 +58,15 @@ builder.Services.AddSwaggerGen(options =>
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddRedisCache(builder.Configuration);
 
+// Add Vault services (file system synchronization)
+builder.Services.AddFluxIndexVault(builder.Configuration);
+
 // Add OpenTelemetry observability (metrics + tracing)
 builder.Services.AddFluxIndexObservability(builder.Configuration);
 
 // Add background services
 builder.Services.AddHostedService<IndexingBackgroundService>();
+builder.Services.AddHostedService<VaultBackgroundService>();
 
 // Add CORS
 builder.Services.AddCors(options =>
