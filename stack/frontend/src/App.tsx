@@ -10,6 +10,7 @@ import GraphPage from '@/pages/GraphPage'
 import EvaluationPage from '@/pages/EvaluationPage'
 import QualityGatePage from '@/pages/QualityGatePage'
 import SettingsPage from '@/pages/SettingsPage'
+import VaultPage from '@/pages/VaultPage'
 
 function App() {
   return (
@@ -25,6 +26,7 @@ function App() {
           <Route path="graph" element={<GraphPage />} />
           <Route path="evaluation" element={<EvaluationPage />} />
           <Route path="quality-gate" element={<QualityGatePage />} />
+          <Route path="vault" element={<VaultPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Routes>

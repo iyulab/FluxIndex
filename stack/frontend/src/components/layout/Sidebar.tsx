@@ -16,12 +16,14 @@ import {
   Target,
   Shield,
   Network,
+  FolderSync,
 } from 'lucide-react'
 import { useState } from 'react'
 
 const navigation = [
   { name: 'Overview', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Documents', href: '/documents', icon: FileText },
+  { name: 'Vault', href: '/vault', icon: FolderSync },
   { name: 'Jobs', href: '/jobs', icon: ListTodo },
   { name: 'Search', href: '/search', icon: Search },
   { name: 'Graph', href: '/graph', icon: Network },

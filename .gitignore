@@ -384,6 +384,13 @@ demo/FluxIndex.Demo/data/
 **/.env.local
 **/.env.*.local
 
+# Frontend build artifacts
+**/dist/
+**/tsconfig.tsbuildinfo
+
+# Docker volumes and data
+service/docker/
+
 # Local
 CLAUDE.md
 *.local.md
@@ -395,10 +402,4 @@ research-docs/nuget.local.config
 .playwright-mcp/
 nul
 stack/src/FluxIndex.Stack.Api/content
-
-# Frontend build artifacts
-**/dist/
-**/tsconfig.tsbuildinfo
-
-# Docker volumes and data
-service/docker/
+local-test/

@@ -10,7 +10,7 @@ import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/componen
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   documentsApi, chunksApi,
-  type ChunkDetail, type DocumentChunk, type DocumentDetail
+  type ChunkDetail, type DocumentChunk
 } from '@/lib/api'
 import { formatBytes, cn } from '@/lib/utils'
 import {

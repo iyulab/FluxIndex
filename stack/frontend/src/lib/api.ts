@@ -622,6 +622,122 @@ export const qualityGateApi = {
     }),
 }
 
+// Vault types
+export interface WatchedFolder {
+  id: string
+  path: string
+  name: string
+  isRecursive: boolean
+  includePatterns: string[]
+  excludePatterns: string[]
+  autoMemorize: boolean
+  status: string
+  errorMessage?: string
+  createdAt: string
+  lastScannedAt?: string
+  collectionId?: string
+  trackedFileCount: number
+}
+
+export interface TrackedFile {
+  id: string
+  sourcePath: string
+  fileName: string
+  fileExtension?: string
+  fileSize?: number
+  contentHash?: string
+  fileModifiedAt?: string
+  status: string
+  version: number
+  createdAt: string
+  memorizedAt?: string
+  lastSyncedAt?: string
+  errorMessage?: string
+  watchedFolderId: string
+  documentId?: string
+}
+
+export interface VaultStatus {
+  isEnabled: boolean
+  activeWatchers: number
+  totalTrackedFiles: number
+  memorizedFiles: number
+  queuedFiles: number
+  processingFiles: number
+  staleFiles: number
+  orphanedFiles: number
+  errorFiles: number
+  lastSyncAt?: string
+}
+
+export interface ScanResult {
+  folderId: string
+  totalFilesFound: number
+  newFilesQueued: number
+  changedFilesQueued: number
+  orphanedFilesDetected: number
+  skippedFiles: number
+  errors: string[]
+  durationSeconds: number
+}
+
+export interface SyncResult {
+  foldersScanned: number
+  filesProcessed: number
+  filesQueued: number
+  orphanedFilesCleaned: number
+  errors: string[]
+  durationSeconds: number
+}
+
+export interface AddWatchedFolderRequest {
+  path: string
+  name: string
+  isRecursive?: boolean
+  autoMemorize?: boolean
+  includePatterns?: string[]
+  excludePatterns?: string[]
+  collectionId?: string
+}
+
+export const vaultApi = {
+  // Status
+  getStatus: () =>
+    api.get<ApiResponse<VaultStatus>>('/vault/status'),
+
+  // Folders
+  getFolders: () =>
+    api.get<ApiResponse<WatchedFolder[]>>('/vault/folders'),
+  getFolder: (id: string) =>
+    api.get<ApiResponse<WatchedFolder>>(`/vault/folders/${id}`),
+  addFolder: (data: AddWatchedFolderRequest) =>
+    api.post<ApiResponse<WatchedFolder>>('/vault/folders', data),
+  removeFolder: (id: string, removeTrackedFiles = false) =>
+    api.delete<ApiResponse<boolean>>(`/vault/folders/${id}`, { params: { removeTrackedFiles } }),
+  scanFolder: (id: string) =>
+    api.post<ApiResponse<ScanResult>>(`/vault/folders/${id}/scan`),
+  pauseFolder: (id: string) =>
+    api.post<ApiResponse<boolean>>(`/vault/folders/${id}/pause`),
+  resumeFolder: (id: string) =>
+    api.post<ApiResponse<boolean>>(`/vault/folders/${id}/resume`),
+
+  // Files
+  getFile: (id: string) =>
+    api.get<ApiResponse<TrackedFile>>(`/vault/files/${id}`),
+  memorizeFile: (sourcePath: string, watchedFolderId: string) =>
+    api.post<ApiResponse<TrackedFile>>('/vault/files/memorize', { sourcePath, watchedFolderId }),
+  unmemorizeFile: (id: string, deleteArtifacts = true) =>
+    api.delete<ApiResponse<boolean>>(`/vault/files/${id}`, { params: { deleteArtifacts } }),
+  reprocessFile: (id: string) =>
+    api.post<ApiResponse<TrackedFile>>(`/vault/files/${id}/reprocess`),
+
+  // Sync operations
+  syncAll: () =>
+    api.post<ApiResponse<SyncResult>>('/vault/sync'),
+  cleanup: () =>
+    api.post<ApiResponse<number>>('/vault/cleanup'),
+}
+
 // Graph (Knowledge Graph) types
 export interface GraphStatistics {
   isAvailable: boolean
