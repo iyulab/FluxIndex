@@ -4,6 +4,7 @@
     <ProjectReference Include="..\FluxIndex.Stack.Application\FluxIndex.Stack.Application.csproj" />
     <ProjectReference Include="..\FluxIndex.Stack.Infrastructure\FluxIndex.Stack.Infrastructure.csproj" />
     <ProjectReference Include="..\FluxIndex.Stack.Shared\FluxIndex.Stack.Shared.csproj" />
+    <ProjectReference Include="..\FluxIndex.Stack.Vault\FluxIndex.Stack.Vault.csproj" />
   </ItemGroup>
 
   <ItemGroup>
