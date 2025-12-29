@@ -1,3 +1,5 @@
+using FluxIndex.Stack.Application.Interfaces.Services;
+using FluxIndex.Stack.Shared.DTOs.Documents;
 using FluxIndex.Stack.Vault.Entities;
 using FluxIndex.Stack.Vault.Enums;
 using FluxIndex.Stack.Vault.Interfaces;
@@ -191,6 +193,7 @@ public class VaultBackgroundService : BackgroundService
     {
         var trackedFileRepo = serviceProvider.GetRequiredService<ITrackedFileRepository>();
         var contentHashService = serviceProvider.GetRequiredService<IContentHashService>();
+        var documentService = serviceProvider.GetService<IDocumentService>();
 
         // Verify file still exists
         if (!File.Exists(trackedFile.SourcePath))
@@ -206,13 +209,39 @@ public class VaultBackgroundService : BackgroundService
         var fileInfo = new FileInfo(trackedFile.SourcePath);
         trackedFile.UpdateFileInfo(fileInfo.Length, fileInfo.LastWriteTimeUtc, contentHash);
 
-        // For now, mark as memorized without full indexing pipeline
-        // Phase 9 will integrate with the actual indexing pipeline for document creation
-        // Passing Guid.Empty as DocumentId since actual document isn't created yet
-        trackedFile.MarkAsMemorized(Guid.Empty);
+        // If document service is not available, just update file info without indexing
+        if (documentService == null)
+        {
+            _logger.LogWarning("IDocumentService not available, file tracked but not indexed: {FilePath}", trackedFile.SourcePath);
+            trackedFile.MarkAsMemorized(Guid.Empty);
+            await trackedFileRepo.UpdateAsync(trackedFile, stoppingToken);
+            return;
+        }
+
+        // Create document and queue for indexing via DocumentService
+        var uploadRequest = new UploadDocumentRequest
+        {
+            Title = trackedFile.FileName,
+            SourceType = "vault",
+            Metadata = new Dictionary<string, object>
+            {
+                ["vault_source_path"] = trackedFile.SourcePath,
+                ["vault_tracked_file_id"] = trackedFile.Id,
+                ["vault_watched_folder_id"] = trackedFile.WatchedFolderId,
+                ["vault_content_hash"] = contentHash
+            }
+        };
+
+        await using var fileStream = File.OpenRead(trackedFile.SourcePath);
+        var response = await documentService.UploadAsync(uploadRequest, fileStream, trackedFile.FileName, stoppingToken);
+
+        // Update TrackedFile with the created Document ID
+        trackedFile.MarkAsMemorized(response.DocumentId);
         await trackedFileRepo.UpdateAsync(trackedFile, stoppingToken);
 
-        _logger.LogInformation("Processed vault file: {FileName} (pending indexing pipeline integration)", trackedFile.FileName);
+        _logger.LogInformation(
+            "Vault file indexed: {FileName} -> Document {DocumentId}, Job {JobId}",
+            trackedFile.FileName, response.DocumentId, response.JobId);
     }
 
     private async Task ShutdownAsync()
