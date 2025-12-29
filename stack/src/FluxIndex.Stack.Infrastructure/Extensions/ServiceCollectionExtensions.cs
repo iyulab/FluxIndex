@@ -35,6 +35,9 @@ using StackIChunkingService = FluxIndex.Stack.Application.Interfaces.Services.IC
 using StackSearchService = FluxIndex.Stack.Application.Services.SearchService;
 using StackIndexingService = FluxIndex.Stack.Application.Services.IndexingService;
 
+// Vault types
+using FluxIndex.Stack.Vault.Interfaces;
+
 namespace FluxIndex.Stack.Infrastructure.Extensions;
 
 /// <summary>
@@ -173,6 +176,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IEmbeddingModelRepository, EmbeddingModelRepository>();
         services.AddScoped<IChunkEmbeddingRepository, ChunkEmbeddingRepository>();
         services.AddScoped<IReindexingJobRepository, ReindexingJobRepository>();
+
+        // Vault repositories
+        services.AddScoped<IWatchedFolderRepository, WatchedFolderRepository>();
+        services.AddScoped<ITrackedFileRepository, TrackedFileRepository>();
+        services.AddScoped<ITrackedFileVersionRepository, TrackedFileVersionRepository>();
 
         return services;
     }
