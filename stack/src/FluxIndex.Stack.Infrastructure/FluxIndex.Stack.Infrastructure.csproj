@@ -4,6 +4,7 @@
     <ProjectReference Include="..\FluxIndex.Stack.Application\FluxIndex.Stack.Application.csproj" />
     <ProjectReference Include="..\FluxIndex.Stack.Domain\FluxIndex.Stack.Domain.csproj" />
     <ProjectReference Include="..\FluxIndex.Stack.Shared\FluxIndex.Stack.Shared.csproj" />
+    <ProjectReference Include="..\FluxIndex.Stack.Vault\FluxIndex.Stack.Vault.csproj" />
     <ProjectReference Include="..\..\..\src\FluxIndex.Core\FluxIndex.Core.csproj" />
     <ProjectReference Include="..\..\..\src\FluxIndex.SDK\FluxIndex.SDK.csproj" />
     <ProjectReference Include="..\..\..\src\FluxIndex.Storage.PostgreSQL\FluxIndex.Storage.PostgreSQL.csproj" />
