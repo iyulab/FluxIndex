@@ -168,6 +168,84 @@ if (app.Environment.IsDevelopment())
             CREATE INDEX IF NOT EXISTS ""IX_AiProviderSettings_IsDefaultLlm"" ON ""AiProviderSettings"" (""IsDefaultLlm"");
         ");
 
+        // Ensure Vault tables exist (WatchedFolders, TrackedFiles, TrackedFileVersions)
+        await context.Database.ExecuteSqlRawAsync(@"
+            CREATE TABLE IF NOT EXISTS ""WatchedFolders"" (
+                ""Id"" uuid NOT NULL,
+                ""Name"" character varying(200) NOT NULL,
+                ""Path"" character varying(1000) NOT NULL,
+                ""CollectionId"" uuid,
+                ""IsRecursive"" boolean NOT NULL DEFAULT true,
+                ""AutoMemorize"" boolean NOT NULL DEFAULT true,
+                ""IncludePatterns"" jsonb,
+                ""ExcludePatterns"" jsonb,
+                ""Status"" character varying(50) NOT NULL DEFAULT 'Active',
+                ""ErrorMessage"" character varying(1000),
+                ""LastScannedAt"" timestamp with time zone,
+                ""CreatedAt"" timestamp with time zone NOT NULL,
+                CONSTRAINT ""PK_WatchedFolders"" PRIMARY KEY (""Id"")
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS ""IX_WatchedFolders_Path"" ON ""WatchedFolders"" (""Path"");
+            CREATE INDEX IF NOT EXISTS ""IX_WatchedFolders_Status"" ON ""WatchedFolders"" (""Status"");
+            CREATE INDEX IF NOT EXISTS ""IX_WatchedFolders_CollectionId"" ON ""WatchedFolders"" (""CollectionId"");
+        ");
+
+        await context.Database.ExecuteSqlRawAsync(@"
+            CREATE TABLE IF NOT EXISTS ""TrackedFiles"" (
+                ""Id"" uuid NOT NULL,
+                ""WatchedFolderId"" uuid NOT NULL,
+                ""SourcePath"" character varying(1000) NOT NULL,
+                ""FileName"" character varying(500) NOT NULL,
+                ""FileExtension"" character varying(50),
+                ""FileSize"" bigint,
+                ""FileModifiedAt"" timestamp with time zone,
+                ""ContentHash"" character varying(128),
+                ""DocumentId"" uuid,
+                ""Status"" character varying(50) NOT NULL DEFAULT 'Untracked',
+                ""ErrorMessage"" character varying(1000),
+                ""Version"" integer NOT NULL DEFAULT 1,
+                ""LastSyncedAt"" timestamp with time zone,
+                ""MemorizedAt"" timestamp with time zone,
+                ""CreatedAt"" timestamp with time zone NOT NULL,
+                CONSTRAINT ""PK_TrackedFiles"" PRIMARY KEY (""Id""),
+                CONSTRAINT ""FK_TrackedFiles_WatchedFolders"" FOREIGN KEY (""WatchedFolderId"")
+                    REFERENCES ""WatchedFolders"" (""Id"") ON DELETE CASCADE
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS ""IX_TrackedFiles_SourcePath"" ON ""TrackedFiles"" (""SourcePath"");
+            CREATE INDEX IF NOT EXISTS ""IX_TrackedFiles_WatchedFolderId"" ON ""TrackedFiles"" (""WatchedFolderId"");
+            CREATE INDEX IF NOT EXISTS ""IX_TrackedFiles_Status"" ON ""TrackedFiles"" (""Status"");
+            CREATE INDEX IF NOT EXISTS ""IX_TrackedFiles_DocumentId"" ON ""TrackedFiles"" (""DocumentId"");
+            CREATE INDEX IF NOT EXISTS ""IX_TrackedFiles_ContentHash"" ON ""TrackedFiles"" (""ContentHash"");
+        ");
+
+        // Alter column size if table already exists with wrong size (sha256:hex = 71 chars, need >= 128)
+        await context.Database.ExecuteSqlRawAsync(@"
+            ALTER TABLE ""TrackedFiles"" ALTER COLUMN ""ContentHash"" TYPE character varying(128);
+        ");
+
+        await context.Database.ExecuteSqlRawAsync(@"
+            CREATE TABLE IF NOT EXISTS ""TrackedFileVersions"" (
+                ""Id"" uuid NOT NULL,
+                ""TrackedFileId"" uuid NOT NULL,
+                ""Version"" integer NOT NULL,
+                ""ContentHash"" character varying(128) NOT NULL,
+                ""FileSize"" bigint NOT NULL,
+                ""FileModifiedAt"" timestamp with time zone NOT NULL,
+                ""DocumentId"" uuid,
+                ""CreatedAt"" timestamp with time zone NOT NULL,
+                CONSTRAINT ""PK_TrackedFileVersions"" PRIMARY KEY (""Id""),
+                CONSTRAINT ""FK_TrackedFileVersions_TrackedFiles"" FOREIGN KEY (""TrackedFileId"")
+                    REFERENCES ""TrackedFiles"" (""Id"") ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS ""IX_TrackedFileVersions_TrackedFileId"" ON ""TrackedFileVersions"" (""TrackedFileId"");
+            CREATE UNIQUE INDEX IF NOT EXISTS ""IX_TrackedFileVersions_TrackedFileId_Version"" ON ""TrackedFileVersions"" (""TrackedFileId"", ""Version"");
+        ");
+
+        // Alter column size if table already exists with wrong size
+        await context.Database.ExecuteSqlRawAsync(@"
+            ALTER TABLE ""TrackedFileVersions"" ALTER COLUMN ""ContentHash"" TYPE character varying(128);
+        ");
+
         // Initialize default AI providers
         var settingsService = scope.ServiceProvider.GetRequiredService<IAiProviderSettingsService>();
         await settingsService.InitializeDefaultProvidersAsync();

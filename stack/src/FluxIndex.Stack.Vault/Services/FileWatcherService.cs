@@ -27,12 +27,13 @@ public class FileWatcherService : IFileWatcherService, IDisposable
 
     public FileWatcherService(
         ILogger<FileWatcherService> logger,
+        ILoggerFactory loggerFactory,
         IOptions<VaultOptions> options)
     {
         _logger = logger;
         _options = options.Value;
         _debounceService = new DebounceService(
-            logger as ILogger<DebounceService> ?? throw new InvalidOperationException(),
+            loggerFactory.CreateLogger<DebounceService>(),
             TimeSpan.FromMilliseconds(_options.DebounceDelayMs));
     }
 
