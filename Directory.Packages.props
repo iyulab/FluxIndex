@@ -51,8 +51,9 @@
     <PackageVersion Include="Azure.AI.OpenAI" Version="2.1.0" />
     <PackageVersion Include="Google.Cloud.AIPlatform.V1" Version="3.54.0" />
     <PackageVersion Include="Mscc.GenerativeAI" Version="2.5.2" />
-    <!-- LMSupply: Unified local AI inference  -->
+    <!-- LMSupply: Full AI stack (Embedder + Generator + Reranker) -->
     <PackageVersion Include="LMSupply.Embedder" Version="0.8.3" />
+    <PackageVersion Include="LMSupply.Generator" Version="0.8.3" />
     <PackageVersion Include="LMSupply.Reranker" Version="0.8.3" />
   </ItemGroup>
   <!-- Storage/Cache Packages -->
@@ -63,7 +64,7 @@
     <PackageVersion Include="Neo4j.Driver" Version="5.28.4" />
     <!-- Vector Database -->
     <PackageVersion Include="Qdrant.Client" Version="1.16.1" />
-    <PackageVersion Include="Testcontainers.Qdrant" Version="4.9.0" />
+    <PackageVersion Include="Testcontainers.Qdrant" Version="4.10.0" />
   </ItemGroup>
   <!-- Document Processing & Quality -->
   <ItemGroup>
@@ -80,13 +81,13 @@
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
     <PackageVersion Include="Moq" Version="4.20.72" />
-    <PackageVersion Include="Testcontainers" Version="4.9.0" />
-    <PackageVersion Include="Testcontainers.Neo4j" Version="4.9.0" />
-    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.9.0" />
-    <PackageVersion Include="Testcontainers.Redis" Version="4.9.0" />
+    <PackageVersion Include="Testcontainers" Version="4.10.0" />
+    <PackageVersion Include="Testcontainers.Neo4j" Version="4.10.0" />
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.10.0" />
+    <PackageVersion Include="Testcontainers.Redis" Version="4.10.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
-    <PackageVersion Include="Xunit.SkippableFact" Version="1.5.23" />
+    <PackageVersion Include="Xunit.SkippableFact" Version="1.5.61" />
   </ItemGroup>
   <!-- MCP/CLI Packages -->
   <ItemGroup>

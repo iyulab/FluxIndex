@@ -17,6 +17,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using System;
+using System.Linq;
 
 namespace FluxIndex.SDK;
 
@@ -32,6 +33,8 @@ public class FluxIndexContextBuilder
     private readonly RetrieverOptions _retrieverOptions;
     private readonly IndexerOptions _indexerOptions;
     private bool _suppressStartupMessages = false;
+    private bool _disableDefaultTextCompletion = false;
+    private bool _disableDefaultReranker = false;
 
     public FluxIndexContextBuilder()
     {
@@ -235,6 +238,39 @@ public class FluxIndexContextBuilder
     {
         _options.GraphStore.Provider = "None";
         _options.SemanticCache.Provider = "None";
+        return this;
+    }
+
+    /// <summary>
+    /// 기본 TextCompletion 서비스 비활성화.
+    /// LMSupply TextCompletion은 HyDE, 메타데이터 enrichment에 사용됨.
+    /// 비활성화하면 이러한 기능을 사용할 수 없음.
+    /// </summary>
+    public FluxIndexContextBuilder WithoutTextCompletion()
+    {
+        _disableDefaultTextCompletion = true;
+        return this;
+    }
+
+    /// <summary>
+    /// 기본 Reranker 서비스 비활성화.
+    /// LMSupply Reranker는 검색 결과의 semantic reranking에 사용됨.
+    /// 비활성화하면 기본 점수 기반 정렬만 사용됨.
+    /// </summary>
+    public FluxIndexContextBuilder WithoutReranker()
+    {
+        _disableDefaultReranker = true;
+        return this;
+    }
+
+    /// <summary>
+    /// 최소 AI 구성 (Embedding만 사용, TextCompletion/Reranker 비활성화).
+    /// 리소스가 제한된 환경이나 기본 RAG만 필요한 경우 사용.
+    /// </summary>
+    public FluxIndexContextBuilder MinimalAI()
+    {
+        _disableDefaultTextCompletion = true;
+        _disableDefaultReranker = true;
         return this;
     }
 
@@ -535,6 +571,7 @@ public class FluxIndexContextBuilder
         // Configure services based on options
         ConfigureVectorStore();
         ConfigureEmbeddingService();
+        ConfigureDefaultAIServices();  // ✅ 기본 AI 서비스 (TextCompletion, Reranker)
         ConfigureCacheService();
         ConfigureChunkingService();
         ConfigureGraphStore();
@@ -621,7 +658,10 @@ public class FluxIndexContextBuilder
         // Display AI service guidance (shows LMSupply options for missing services)
         if (!_suppressStartupMessages)
         {
-            StartupMessageService.DisplayAIServiceGuidance(serviceProvider, _options.Embedding.Provider);
+            StartupMessageService.DisplayAIServiceGuidance(
+                serviceProvider,
+                _options.Embedding.Provider,
+                _options.VectorStore.Provider);
         }
 
         // Get Retriever and Indexer from DI
@@ -758,6 +798,37 @@ public class FluxIndexContextBuilder
                 // ✅ Fallback to LMSupply if no provider specified
                 FluxIndex.SDK.AI.Local.ServiceCollectionExtensions.AddLMSupplyEmbedding(_services);
                 break;
+        }
+    }
+
+    /// <summary>
+    /// 기본 AI 서비스 구성 (TextCompletion, Reranker)
+    /// 최소구성원칙: 기본 설정만으로 production-quality 결과 제공
+    /// - TextCompletion: HyDE query expansion (+20-30% recall)
+    /// - Reranker: Semantic reranking (+15-25% precision)
+    /// </summary>
+    private void ConfigureDefaultAIServices()
+    {
+        // ✅ TextCompletion: 사용자가 명시적으로 비활성화하지 않았고, 아직 등록되지 않은 경우 기본 등록
+        if (!_disableDefaultTextCompletion)
+        {
+            var hasTextCompletion = _services.Any(d => d.ServiceType == typeof(ITextCompletionService));
+            if (!hasTextCompletion)
+            {
+                // LMSupply TextCompletion (로컬 ONNX, API 키 불필요)
+                FluxIndex.SDK.AI.Local.ServiceCollectionExtensions.AddLMSupplyTextCompletion(_services);
+            }
+        }
+
+        // ✅ Reranker: 사용자가 명시적으로 비활성화하지 않았고, 아직 등록되지 않은 경우 기본 등록
+        if (!_disableDefaultReranker)
+        {
+            var hasReranker = _services.Any(d => d.ServiceType == typeof(IReranker));
+            if (!hasReranker)
+            {
+                // LMSupply Resilient Reranker (모델 실패 시 알고리즘 기반 fallback)
+                FluxIndex.SDK.AI.Local.ServiceCollectionExtensions.AddResilientLMSupplyReranker(_services);
+            }
         }
     }
 

@@ -17,10 +17,14 @@ public static class StartupMessageService
     /// </summary>
     /// <param name="serviceProvider">The built service provider to check registrations</param>
     /// <param name="embeddingProvider">The configured embedding provider name</param>
-    public static void DisplayAIServiceGuidance(IServiceProvider serviceProvider, string? embeddingProvider)
+    /// <param name="vectorStoreProvider">The configured vector store provider name (optional)</param>
+    public static void DisplayAIServiceGuidance(IServiceProvider serviceProvider, string? embeddingProvider, string? vectorStoreProvider = null)
     {
         if (_messageDisplayed) return;
         _messageDisplayed = true;
+
+        // ⚠️ Vector store 경고 (in-memory 사용 시)
+        DisplayVectorStoreWarning(vectorStoreProvider);
 
         var hasEmbedding = serviceProvider.GetService<IEmbeddingService>() != null;
         var hasTextCompletion = serviceProvider.GetService<ITextCompletionService>() != null;
@@ -38,10 +42,18 @@ public static class StartupMessageService
         if (!hasReranker) missingServices.Add("Reranking");
         if (!hasContextualEnrichment) missingServices.Add("Contextual Enrichment");
 
-        // If all services are configured, show minimal success message
+        // If all services are configured, show summary with available options
         if (missingServices.Count == 0)
         {
-            WriteColored(ConsoleColor.DarkGray, "FluxIndex: All AI services configured.");
+            Console.WriteLine();
+            WriteColored(ConsoleColor.DarkCyan, "FluxIndex: ");
+            WriteColored(ConsoleColor.Green, "✓ ");
+            WriteColored(ConsoleColor.White, "Production-ready AI stack enabled");
+            Console.WriteLine();
+            WriteColored(ConsoleColor.DarkGray, "  Embedding + TextCompletion + Reranker (LMSupply, no API key)");
+            Console.WriteLine();
+            WriteColored(ConsoleColor.DarkGray, "  Tip: Use .MinimalAI() or .WithoutTextCompletion() to reduce resource usage");
+            Console.WriteLine();
             Console.WriteLine();
             return;
         }
@@ -104,6 +116,28 @@ public static class StartupMessageService
         }
 
         WriteBoxBottom();
+        Console.WriteLine();
+    }
+
+    /// <summary>
+    /// Display warning if using in-memory vector store.
+    /// </summary>
+    private static void DisplayVectorStoreWarning(string? vectorStoreProvider)
+    {
+        var provider = vectorStoreProvider?.ToLower();
+
+        // 명시적으로 SQLite나 PostgreSQL을 설정한 경우 경고 없음
+        if (provider is "sqlite" or "postgresql")
+        {
+            return;
+        }
+
+        // In-memory 또는 미설정인 경우 경고 표시
+        Console.WriteLine();
+        WriteColored(ConsoleColor.Yellow, "⚠ FluxIndex: ");
+        WriteColored(ConsoleColor.White, "Using in-memory storage (data will be lost on restart)");
+        Console.WriteLine();
+        WriteColored(ConsoleColor.DarkGray, "  Use .UseSQLite(\"data.db\") or .UsePostgreSQL(connectionString) for persistence");
         Console.WriteLine();
     }
 

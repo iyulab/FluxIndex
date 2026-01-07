@@ -24,8 +24,9 @@
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Options" />
 
-    <!-- LMSupply dependencies (from AI.Local) -->
+    <!-- LMSupply: Full AI stack (Embedder + Generator + Reranker) -->
     <PackageReference Include="LMSupply.Embedder" />
+    <PackageReference Include="LMSupply.Generator" />
     <PackageReference Include="LMSupply.Reranker" />
 
     <!-- Document processing dependencies (from Extensions) -->
