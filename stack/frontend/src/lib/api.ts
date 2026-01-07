@@ -637,6 +637,8 @@ export interface WatchedFolder {
   lastScannedAt?: string
   collectionId?: string
   trackedFileCount: number
+  /** Indicates whether the folder path currently exists on the filesystem */
+  pathExists: boolean
 }
 
 export interface TrackedFile {
@@ -655,6 +657,10 @@ export interface TrackedFile {
   errorMessage?: string
   watchedFolderId: string
   documentId?: string
+  /** The indexing status from the associated Document */
+  documentStatus?: string
+  /** Combined status that reflects actual indexing state (use this for display) */
+  effectiveStatus: string
 }
 
 export interface VaultStatus {
@@ -720,6 +726,10 @@ export const vaultApi = {
     api.post<ApiResponse<boolean>>(`/vault/folders/${id}/pause`),
   resumeFolder: (id: string) =>
     api.post<ApiResponse<boolean>>(`/vault/folders/${id}/resume`),
+  updateFolderPath: (id: string, newPath: string) =>
+    api.patch<ApiResponse<WatchedFolder>>(`/vault/folders/${id}/path`, { newPath }),
+  getFilesByFolder: (folderId: string) =>
+    api.get<ApiResponse<TrackedFile[]>>(`/vault/folders/${folderId}/files`),
 
   // Files
   getFile: (id: string) =>

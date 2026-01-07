@@ -1,3 +1,4 @@
+using FluxIndex.Stack.Application.Interfaces.Repositories;
 using FluxIndex.Stack.Shared.Common;
 using FluxIndex.Stack.Shared.DTOs.Vault;
 using FluxIndex.Stack.Vault.Interfaces;
@@ -13,13 +14,16 @@ namespace FluxIndex.Stack.Api.Controllers;
 public class VaultController : ControllerBase
 {
     private readonly IVaultService _vaultService;
+    private readonly IDocumentRepository _documentRepository;
     private readonly ILogger<VaultController> _logger;
 
     public VaultController(
         IVaultService vaultService,
+        IDocumentRepository documentRepository,
         ILogger<VaultController> logger)
     {
         _vaultService = vaultService;
+        _documentRepository = documentRepository;
         _logger = logger;
     }
 
@@ -47,7 +51,8 @@ public class VaultController : ControllerBase
             CreatedAt = f.CreatedAt,
             LastScannedAt = f.LastScannedAt,
             CollectionId = f.CollectionId,
-            TrackedFileCount = f.TrackedFiles?.Count ?? 0
+            TrackedFileCount = f.TrackedFiles?.Count ?? 0,
+            PathExists = Directory.Exists(f.Path)
         }).ToList();
 
         return Ok(ApiResponse<List<WatchedFolderDto>>.Ok(dtos));
@@ -81,7 +86,8 @@ public class VaultController : ControllerBase
             CreatedAt = folder.CreatedAt,
             LastScannedAt = folder.LastScannedAt,
             CollectionId = folder.CollectionId,
-            TrackedFileCount = folder.TrackedFiles?.Count ?? 0
+            TrackedFileCount = folder.TrackedFiles?.Count ?? 0,
+            PathExists = Directory.Exists(folder.Path)
         };
 
         return Ok(ApiResponse<WatchedFolderDto>.Ok(dto));
@@ -224,6 +230,83 @@ public class VaultController : ControllerBase
         {
             return NotFound(ApiResponse<bool>.Fail(ex.Message));
         }
+    }
+
+    /// <summary>
+    /// Updates the path of a watched folder.
+    /// Used when the folder has been moved or renamed on the filesystem.
+    /// </summary>
+    [HttpPatch("folders/{id:guid}/path")]
+    public async Task<ActionResult<ApiResponse<WatchedFolderDto>>> UpdateFolderPath(
+        Guid id,
+        [FromBody] UpdateFolderPathRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var folder = await _vaultService.UpdateFolderPathAsync(id, request.NewPath, cancellationToken);
+            var dto = new WatchedFolderDto
+            {
+                Id = folder.Id,
+                Path = folder.Path,
+                Name = folder.Name,
+                IsRecursive = folder.IsRecursive,
+                IncludePatterns = folder.IncludePatterns,
+                ExcludePatterns = folder.ExcludePatterns,
+                AutoMemorize = folder.AutoMemorize,
+                Status = folder.Status.ToString(),
+                ErrorMessage = folder.ErrorMessage,
+                CreatedAt = folder.CreatedAt,
+                LastScannedAt = folder.LastScannedAt,
+                CollectionId = folder.CollectionId,
+                TrackedFileCount = folder.TrackedFiles?.Count ?? 0,
+                PathExists = Directory.Exists(folder.Path)
+            };
+            return Ok(ApiResponse<WatchedFolderDto>.Ok(dto));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ApiResponse<WatchedFolderDto>.Fail(ex.Message));
+        }
+        catch (DirectoryNotFoundException ex)
+        {
+            return BadRequest(ApiResponse<WatchedFolderDto>.Fail(ex.Message));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(ApiResponse<WatchedFolderDto>.Fail(ex.Message));
+        }
+    }
+
+    /// <summary>
+    /// Gets all tracked files for a watched folder.
+    /// </summary>
+    [HttpGet("folders/{id:guid}/files")]
+    public async Task<ActionResult<ApiResponse<List<TrackedFileDto>>>> GetFolderFiles(
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        var folder = await _vaultService.GetWatchedFolderAsync(id, cancellationToken);
+        if (folder == null)
+        {
+            return NotFound(ApiResponse<List<TrackedFileDto>>.Fail($"Folder with id '{id}' not found."));
+        }
+
+        var files = await _vaultService.GetTrackedFilesByFolderAsync(id, cancellationToken);
+
+        // Fetch associated documents to get their status
+        var documentIds = files
+            .Where(f => f.DocumentId.HasValue)
+            .Select(f => f.DocumentId!.Value)
+            .Distinct()
+            .ToList();
+
+        var documents = await _documentRepository.GetByIdsAsync(documentIds, cancellationToken);
+        var documentStatusMap = documents.ToDictionary(d => d.Id, d => d.Status.ToString());
+
+        var dtos = files.Select(f => MapToDtoWithDocumentStatus(f, documentStatusMap)).ToList();
+
+        return Ok(ApiResponse<List<TrackedFileDto>>.Ok(dtos));
     }
 
     #endregion
@@ -402,7 +485,72 @@ public class VaultController : ControllerBase
             LastSyncedAt = file.LastSyncedAt,
             ErrorMessage = file.ErrorMessage,
             WatchedFolderId = file.WatchedFolderId,
-            DocumentId = file.DocumentId
+            DocumentId = file.DocumentId,
+            DocumentStatus = null,
+            EffectiveStatus = file.Status.ToString()
+        };
+    }
+
+    private static TrackedFileDto MapToDtoWithDocumentStatus(
+        Vault.Entities.TrackedFile file,
+        Dictionary<Guid, string> documentStatusMap)
+    {
+        string? documentStatus = null;
+        if (file.DocumentId.HasValue && documentStatusMap.TryGetValue(file.DocumentId.Value, out var status))
+        {
+            documentStatus = status;
+        }
+
+        // Compute effective status based on TrackedFile and Document status
+        var effectiveStatus = ComputeEffectiveStatus(file.Status.ToString(), documentStatus);
+
+        return new TrackedFileDto
+        {
+            Id = file.Id,
+            SourcePath = file.SourcePath,
+            FileName = file.FileName,
+            FileExtension = file.FileExtension,
+            FileSize = file.FileSize,
+            ContentHash = file.ContentHash,
+            FileModifiedAt = file.FileModifiedAt,
+            Status = file.Status.ToString(),
+            Version = file.Version,
+            CreatedAt = file.CreatedAt,
+            MemorizedAt = file.MemorizedAt,
+            LastSyncedAt = file.LastSyncedAt,
+            ErrorMessage = file.ErrorMessage,
+            WatchedFolderId = file.WatchedFolderId,
+            DocumentId = file.DocumentId,
+            DocumentStatus = documentStatus,
+            EffectiveStatus = effectiveStatus
+        };
+    }
+
+    /// <summary>
+    /// Computes the effective status that should be displayed to users.
+    /// Combines TrackedFile status with Document indexing status.
+    /// </summary>
+    private static string ComputeEffectiveStatus(string trackedFileStatus, string? documentStatus)
+    {
+        // If TrackedFile is not Memorized, use its status directly
+        if (trackedFileStatus != "Memorized")
+        {
+            return trackedFileStatus;
+        }
+
+        // TrackedFile is Memorized, but check Document status
+        if (string.IsNullOrEmpty(documentStatus))
+        {
+            return "Pending"; // Document not found
+        }
+
+        return documentStatus switch
+        {
+            "Indexed" => "Indexed",        // Fully indexed with embeddings
+            "Pending" => "Pending",        // Document created but not indexed
+            "Processing" => "Indexing",    // Currently being indexed
+            "Failed" => "Error",           // Indexing failed
+            _ => documentStatus            // Fallback to document status
         };
     }
 

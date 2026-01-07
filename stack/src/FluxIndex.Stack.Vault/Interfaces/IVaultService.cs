@@ -19,9 +19,10 @@ public interface IVaultService
         Guid? collectionId = null,
         CancellationToken cancellationToken = default);
 
-    Task RemoveWatchedFolderAsync(Guid folderId, bool removeTrackedFiles = false, CancellationToken cancellationToken = default);
+    Task RemoveWatchedFolderAsync(Guid folderId, bool removeTrackedFiles = true, CancellationToken cancellationToken = default);
     Task PauseWatchingAsync(Guid folderId, CancellationToken cancellationToken = default);
     Task ResumeWatchingAsync(Guid folderId, CancellationToken cancellationToken = default);
+    Task<WatchedFolder> UpdateFolderPathAsync(Guid folderId, string newPath, CancellationToken cancellationToken = default);
     Task<WatchedFolder?> GetWatchedFolderAsync(Guid folderId, CancellationToken cancellationToken = default);
     Task<List<WatchedFolder>> GetAllWatchedFoldersAsync(CancellationToken cancellationToken = default);
 
@@ -31,6 +32,7 @@ public interface IVaultService
     Task<TrackedFile> ReprocessFileAsync(Guid fileId, CancellationToken cancellationToken = default);
     Task<TrackedFile?> GetTrackedFileAsync(Guid fileId, CancellationToken cancellationToken = default);
     Task<TrackedFile?> GetTrackedFileByPathAsync(string sourcePath, CancellationToken cancellationToken = default);
+    Task<List<TrackedFile>> GetTrackedFilesByFolderAsync(Guid folderId, CancellationToken cancellationToken = default);
 
     // Scan Operations
     Task<ScanResult> ScanFolderAsync(Guid folderId, CancellationToken cancellationToken = default);

@@ -80,6 +80,24 @@ public class WatchedFolder
         Status = WatcherStatus.Invalid;
     }
 
+    /// <summary>
+    /// Updates the folder path (e.g., when folder is moved/renamed).
+    /// Reactivates the folder if it was previously invalid.
+    /// </summary>
+    public void UpdatePath(string newPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(newPath);
+        Path = newPath;
+        Name = System.IO.Path.GetFileName(newPath) ?? newPath;
+
+        // Reactivate if was invalid
+        if (Status == WatcherStatus.Invalid)
+        {
+            Status = WatcherStatus.Active;
+            ErrorMessage = null;
+        }
+    }
+
     public void UpdateLastScanned()
     {
         LastScannedAt = DateTime.UtcNow;

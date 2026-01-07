@@ -98,7 +98,7 @@ public class VaultService : IVaultService
         return folder;
     }
 
-    public async Task RemoveWatchedFolderAsync(Guid folderId, bool removeTrackedFiles = false, CancellationToken cancellationToken = default)
+    public async Task RemoveWatchedFolderAsync(Guid folderId, bool removeTrackedFiles = true, CancellationToken cancellationToken = default)
     {
         await _watcherService.StopWatchingAsync(folderId, cancellationToken);
 
@@ -141,6 +141,47 @@ public class VaultService : IVaultService
         }
 
         _logger.LogInformation("Resumed watching folder: {FolderId}", folderId);
+    }
+
+    public async Task<WatchedFolder> UpdateFolderPathAsync(Guid folderId, string newPath, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(newPath);
+
+        var fullPath = Path.GetFullPath(newPath);
+
+        if (!Directory.Exists(fullPath))
+        {
+            throw new DirectoryNotFoundException($"Directory not found: {fullPath}");
+        }
+
+        var folder = await _watchedFolderRepository.GetByIdAsync(folderId, cancellationToken)
+            ?? throw new KeyNotFoundException($"Folder not found: {folderId}");
+
+        // Check if the new path is already being watched by another folder
+        var existingFolder = await _watchedFolderRepository.GetByPathAsync(fullPath, cancellationToken);
+        if (existingFolder != null && existingFolder.Id != folderId)
+        {
+            throw new InvalidOperationException($"Path is already being watched by another folder: {fullPath}");
+        }
+
+        var oldPath = folder.Path;
+
+        // Stop watching old path
+        await _watcherService.StopWatchingAsync(folderId, cancellationToken);
+
+        // Update the path (this also reactivates if was Invalid)
+        folder.UpdatePath(fullPath);
+        await _watchedFolderRepository.UpdateAsync(folder, cancellationToken);
+
+        // Start watching new path if enabled
+        if (_options.EnableRealTimeWatch && folder.Status == Enums.WatcherStatus.Active)
+        {
+            await _watcherService.StartWatchingAsync(folder, cancellationToken);
+        }
+
+        _logger.LogInformation("Updated folder path: {OldPath} -> {NewPath} (ID: {FolderId})", oldPath, fullPath, folderId);
+
+        return folder;
     }
 
     public async Task<WatchedFolder?> GetWatchedFolderAsync(Guid folderId, CancellationToken cancellationToken = default)
@@ -255,6 +296,11 @@ public class VaultService : IVaultService
     public async Task<TrackedFile?> GetTrackedFileByPathAsync(string sourcePath, CancellationToken cancellationToken = default)
     {
         return await _trackedFileRepository.GetBySourcePathAsync(Path.GetFullPath(sourcePath), cancellationToken);
+    }
+
+    public async Task<List<TrackedFile>> GetTrackedFilesByFolderAsync(Guid folderId, CancellationToken cancellationToken = default)
+    {
+        return await _trackedFileRepository.GetByWatchedFolderIdAsync(folderId, cancellationToken);
     }
 
     #endregion

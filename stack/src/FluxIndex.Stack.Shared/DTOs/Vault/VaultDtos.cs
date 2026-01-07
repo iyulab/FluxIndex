@@ -18,6 +18,12 @@ public class WatchedFolderDto
     public DateTime? LastScannedAt { get; init; }
     public Guid? CollectionId { get; init; }
     public int TrackedFileCount { get; init; }
+
+    /// <summary>
+    /// Indicates whether the folder path currently exists on the filesystem.
+    /// Updated in real-time when fetching folder list.
+    /// </summary>
+    public bool PathExists { get; init; }
 }
 
 /// <summary>
@@ -40,6 +46,18 @@ public class TrackedFileDto
     public string? ErrorMessage { get; init; }
     public Guid? WatchedFolderId { get; init; }
     public Guid? DocumentId { get; init; }
+
+    /// <summary>
+    /// The actual indexing status from the associated Document.
+    /// This reflects whether the file has been fully indexed with embeddings.
+    /// </summary>
+    public string? DocumentStatus { get; init; }
+
+    /// <summary>
+    /// Computed effective status that combines TrackedFile and Document status.
+    /// This is what should be displayed to users.
+    /// </summary>
+    public string EffectiveStatus { get; init; } = string.Empty;
 }
 
 /// <summary>
@@ -54,6 +72,15 @@ public class AddWatchedFolderRequest
     public string[]? IncludePatterns { get; init; }
     public string[]? ExcludePatterns { get; init; }
     public Guid? CollectionId { get; init; }
+}
+
+/// <summary>
+/// Request to update a watched folder's path.
+/// Used when folder is moved or renamed on the filesystem.
+/// </summary>
+public class UpdateFolderPathRequest
+{
+    public string NewPath { get; init; } = string.Empty;
 }
 
 /// <summary>

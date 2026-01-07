@@ -8,6 +8,7 @@ namespace FluxIndex.Stack.Application.Interfaces.Repositories;
 public interface IDocumentRepository
 {
     Task<Document?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+    Task<List<Document>> GetByIdsAsync(IEnumerable<Guid> ids, CancellationToken cancellationToken = default);
     Task<Document?> GetByIdWithChunksAsync(Guid id, CancellationToken cancellationToken = default);
     Task<List<Document>> GetByCollectionIdAsync(Guid collectionId, CancellationToken cancellationToken = default);
     Task<(List<Document> Items, int TotalCount)> GetPagedAsync(

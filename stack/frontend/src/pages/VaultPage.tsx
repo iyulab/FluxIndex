@@ -21,7 +21,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
-import { vaultApi, type WatchedFolder, type VaultStatus } from '@/lib/api'
+import { vaultApi, type WatchedFolder, type VaultStatus, type TrackedFile } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 import {
   FolderSync,
@@ -41,6 +41,8 @@ import {
   Loader2,
   HardDrive,
   Eye,
+  FolderX,
+  MapPin,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 
@@ -48,6 +50,7 @@ const statusColors: Record<string, string> = {
   Active: 'bg-green-500',
   Paused: 'bg-yellow-500',
   Error: 'bg-red-500',
+  Invalid: 'bg-red-600',
   Untracked: 'bg-gray-400',
   Queued: 'bg-blue-500',
   Processing: 'bg-blue-600',
@@ -60,6 +63,7 @@ const statusIcons: Record<string, typeof CheckCircle> = {
   Active: CheckCircle,
   Paused: Pause,
   Error: XCircle,
+  Invalid: FolderX,
   Memorized: CheckCircle,
   Queued: Clock,
   Processing: RefreshCw,
@@ -78,6 +82,9 @@ export default function VaultPage() {
     isRecursive: true,
     autoMemorize: true,
   })
+  const [updatePathDialogOpen, setUpdatePathDialogOpen] = useState(false)
+  const [folderToUpdate, setFolderToUpdate] = useState<WatchedFolder | null>(null)
+  const [newPath, setNewPath] = useState('')
 
   // Fetch vault status
   const { data: status, isLoading: statusLoading } = useQuery({
@@ -186,6 +193,28 @@ export default function VaultPage() {
       toast({ title: 'Cleanup failed', description: error.message, variant: 'destructive' })
     },
   })
+
+  // Update folder path mutation
+  const updatePathMutation = useMutation({
+    mutationFn: ({ id, newPath }: { id: string; newPath: string }) =>
+      vaultApi.updateFolderPath(id, newPath),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['vault'] })
+      setUpdatePathDialogOpen(false)
+      setFolderToUpdate(null)
+      setNewPath('')
+      toast({ title: 'Path updated', description: 'Folder path has been updated successfully.' })
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Failed to update path', description: error.message, variant: 'destructive' })
+    },
+  })
+
+  const openUpdatePathDialog = (folder: WatchedFolder) => {
+    setFolderToUpdate(folder)
+    setNewPath(folder.path)
+    setUpdatePathDialogOpen(true)
+  }
 
   const toggleExpanded = (id: string) => {
     setExpandedFolders((prev) => {
@@ -309,6 +338,51 @@ export default function VaultPage() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+
+          {/* Update Path Dialog */}
+          <Dialog open={updatePathDialogOpen} onOpenChange={setUpdatePathDialogOpen}>
+            <DialogContent className="sm:max-w-[500px]">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <MapPin className="h-5 w-5 text-muted-foreground" />
+                  Update Folder Path
+                </DialogTitle>
+                <DialogDescription>
+                  The folder "{folderToUpdate?.name}" was moved or no longer exists at its original location.
+                  Enter the new path to continue watching.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label>Original Path</Label>
+                  <p className="text-sm text-muted-foreground bg-muted p-2 rounded-md font-mono break-all">
+                    {folderToUpdate?.path}
+                  </p>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="newPath">New Path</Label>
+                  <Input
+                    id="newPath"
+                    placeholder="Enter the new folder path"
+                    value={newPath}
+                    onChange={(e) => setNewPath(e.target.value)}
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setUpdatePathDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => folderToUpdate && updatePathMutation.mutate({ id: folderToUpdate.id, newPath })}
+                  disabled={!newPath || newPath === folderToUpdate?.path || updatePathMutation.isPending}
+                >
+                  {updatePathMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Update Path
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
@@ -401,6 +475,7 @@ export default function VaultPage() {
                   onScan={() => scanFolderMutation.mutate(folder.id)}
                   onToggle={(action) => toggleFolderMutation.mutate({ id: folder.id, action })}
                   onRemove={() => removeFolderMutation.mutate(folder.id)}
+                  onUpdatePath={() => openUpdatePathDialog(folder)}
                   isScanning={scanFolderMutation.isPending && scanFolderMutation.variables === folder.id}
                 />
               ))}
@@ -431,6 +506,7 @@ interface FolderCardProps {
   onScan: () => void
   onToggle: (action: 'pause' | 'resume') => void
   onRemove: () => void
+  onUpdatePath: () => void
   isScanning: boolean
 }
 
@@ -441,14 +517,28 @@ function FolderCard({
   onScan,
   onToggle,
   onRemove,
+  onUpdatePath,
   isScanning,
 }: FolderCardProps) {
   // StatusIcon unused for now but reserved for future visual enhancements
   void (statusIcons[folder.status] || AlertCircle)
 
+  const pathMissing = !folder.pathExists
+
+  // Fetch files when folder is expanded
+  const { data: files, isLoading: filesLoading } = useQuery({
+    queryKey: ['vault', 'folders', folder.id, 'files'],
+    queryFn: async () => {
+      const response = await vaultApi.getFilesByFolder(folder.id)
+      return response.data.data || []
+    },
+    enabled: isExpanded,
+    staleTime: 10000,
+  })
+
   return (
     <Collapsible open={isExpanded} onOpenChange={onToggleExpand}>
-      <div className="border rounded-lg">
+      <div className={`border rounded-lg ${pathMissing ? 'border-destructive/50 bg-destructive/5' : ''}`}>
         <div className="flex items-center justify-between p-4">
           <CollapsibleTrigger className="flex items-center gap-3 flex-1 text-left">
             {isExpanded ? (
@@ -456,7 +546,11 @@ function FolderCard({
             ) : (
               <ChevronRight className="h-4 w-4 text-muted-foreground" />
             )}
-            <FolderOpen className="h-5 w-5 text-primary" />
+            {pathMissing ? (
+              <FolderX className="h-5 w-5 text-destructive" />
+            ) : (
+              <FolderOpen className="h-5 w-5 text-primary" />
+            )}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
                 <span className="font-medium truncate">{folder.name}</span>
@@ -466,43 +560,69 @@ function FolderCard({
                 >
                   {folder.status}
                 </Badge>
+                {pathMissing && (
+                  <Badge variant="destructive" className="text-xs">
+                    Path Missing
+                  </Badge>
+                )}
               </div>
-              <p className="text-sm text-muted-foreground truncate">{folder.path}</p>
+              <p className={`text-sm truncate ${pathMissing ? 'text-destructive line-through' : 'text-muted-foreground'}`}>
+                {folder.path}
+              </p>
             </div>
           </CollapsibleTrigger>
           <div className="flex items-center gap-2 ml-4">
             <span className="text-sm text-muted-foreground">
               {folder.trackedFileCount} files
             </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={(e) => {
-                e.stopPropagation()
-                onScan()
-              }}
-              disabled={isScanning}
-            >
-              {isScanning ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="h-4 w-4" />
-              )}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={(e) => {
-                e.stopPropagation()
-                onToggle(folder.status === 'Active' ? 'pause' : 'resume')
-              }}
-            >
-              {folder.status === 'Active' ? (
-                <Pause className="h-4 w-4" />
-              ) : (
-                <Play className="h-4 w-4" />
-              )}
-            </Button>
+            {pathMissing ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onUpdatePath()
+                }}
+                className="text-xs"
+              >
+                <MapPin className="h-3 w-3 mr-1" />
+                Update Path
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onScan()
+                  }}
+                  disabled={isScanning}
+                  title="Scan folder"
+                >
+                  {isScanning ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onToggle(folder.status === 'Active' ? 'pause' : 'resume')
+                  }}
+                  title={folder.status === 'Active' ? 'Pause watching' : 'Resume watching'}
+                >
+                  {folder.status === 'Active' ? (
+                    <Pause className="h-4 w-4" />
+                  ) : (
+                    <Play className="h-4 w-4" />
+                  )}
+                </Button>
+              </>
+            )}
             <Button
               variant="ghost"
               size="icon"
@@ -510,6 +630,7 @@ function FolderCard({
                 e.stopPropagation()
                 onRemove()
               }}
+              title="Remove folder"
             >
               <Trash2 className="h-4 w-4 text-destructive" />
             </Button>
@@ -518,6 +639,30 @@ function FolderCard({
 
         <CollapsibleContent>
           <div className="border-t px-4 py-3 bg-muted/30">
+            {pathMissing && (
+              <div className="mb-4 p-3 bg-destructive/10 border border-destructive/30 rounded-md">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-destructive">Folder path not found</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      The folder at this path no longer exists or has been moved.
+                      Update the path to continue watching, or remove this folder.
+                    </p>
+                    <div className="mt-2 flex gap-2">
+                      <Button variant="outline" size="sm" onClick={onUpdatePath}>
+                        <MapPin className="h-3 w-3 mr-1" />
+                        Update Path
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={onRemove} className="text-destructive">
+                        <Trash2 className="h-3 w-3 mr-1" />
+                        Remove
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               <div>
                 <p className="text-muted-foreground">Recursive</p>
@@ -567,9 +712,82 @@ function FolderCard({
                 <p className="text-sm text-destructive">{folder.errorMessage}</p>
               </div>
             )}
+
+            {/* Tracked Files List */}
+            <div className="mt-4 border-t pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-medium flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  Tracked Files
+                </h4>
+                <span className="text-xs text-muted-foreground">
+                  {files?.length || 0} files
+                </span>
+              </div>
+              {filesLoading ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : files && files.length > 0 ? (
+                <div className="space-y-1 max-h-64 overflow-y-auto">
+                  {files.map((file: TrackedFile) => (
+                    <FileRow key={file.id} file={file} />
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  No tracked files in this folder
+                </p>
+              )}
+            </div>
           </div>
         </CollapsibleContent>
       </div>
     </Collapsible>
+  )
+}
+
+interface FileRowProps {
+  file: TrackedFile
+}
+
+function FileRow({ file }: FileRowProps) {
+  // Use effectiveStatus which combines TrackedFile + Document status
+  const displayStatus = file.effectiveStatus || file.status
+  const StatusIcon = statusIcons[displayStatus] || AlertCircle
+
+  const formatFileSize = (bytes?: number) => {
+    if (!bytes) return '-'
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
+
+  return (
+    <div className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 text-sm group">
+      <StatusIcon className={`h-3.5 w-3.5 shrink-0 ${
+        displayStatus === 'Indexed' ? 'text-green-500' :
+        displayStatus === 'Pending' ? 'text-yellow-500' :
+        displayStatus === 'Indexing' ? 'text-blue-600' :
+        displayStatus === 'Queued' ? 'text-blue-500' :
+        displayStatus === 'Processing' ? 'text-blue-600' :
+        displayStatus === 'Stale' ? 'text-orange-500' :
+        displayStatus === 'Error' ? 'text-red-500' :
+        displayStatus === 'Orphaned' ? 'text-gray-500' :
+        'text-muted-foreground'
+      }`} />
+      <span className="flex-1 truncate font-mono text-xs" title={file.sourcePath}>
+        {file.fileName}
+      </span>
+      <Badge
+        variant="outline"
+        className={`text-[10px] px-1.5 py-0 h-5 ${statusColors[displayStatus] || 'bg-gray-500'} text-white border-0`}
+      >
+        {displayStatus}
+      </Badge>
+      <span className="text-xs text-muted-foreground w-16 text-right">
+        {formatFileSize(file.fileSize)}
+      </span>
+    </div>
   )
 }

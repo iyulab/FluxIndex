@@ -24,6 +24,17 @@ public class DocumentRepository : IDocumentRepository
             .FirstOrDefaultAsync(d => d.Id == id, cancellationToken);
     }
 
+    public async Task<List<Document>> GetByIdsAsync(IEnumerable<Guid> ids, CancellationToken cancellationToken = default)
+    {
+        var idList = ids.ToList();
+        if (idList.Count == 0)
+            return new List<Document>();
+
+        return await _context.Documents
+            .Where(d => idList.Contains(d.Id))
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<Document?> GetByIdWithChunksAsync(Guid id, CancellationToken cancellationToken = default)
     {
         return await _context.Documents
