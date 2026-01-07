@@ -12,6 +12,7 @@ COPY stack/src/FluxIndex.Stack.Domain/FluxIndex.Stack.Domain.csproj stack/src/Fl
 COPY stack/src/FluxIndex.Stack.Shared/FluxIndex.Stack.Shared.csproj stack/src/FluxIndex.Stack.Shared/
 COPY stack/src/FluxIndex.Stack.Application/FluxIndex.Stack.Application.csproj stack/src/FluxIndex.Stack.Application/
 COPY stack/src/FluxIndex.Stack.Infrastructure/FluxIndex.Stack.Infrastructure.csproj stack/src/FluxIndex.Stack.Infrastructure/
+COPY stack/src/FluxIndex.Stack.Vault/FluxIndex.Stack.Vault.csproj stack/src/FluxIndex.Stack.Vault/
 COPY stack/src/FluxIndex.Stack.Api/FluxIndex.Stack.Api.csproj stack/src/FluxIndex.Stack.Api/
 
 # Copy FluxIndex library project files
