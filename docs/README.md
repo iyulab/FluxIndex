@@ -15,6 +15,7 @@ RAG infrastructure library for .NET - Simple, fast, and local-first.
 
 | Directory | Contents |
 |-----------|----------|
+| [design/](design/) | Technical design documents (FileVault, etc.) |
 | [research/](research/) | Embedding strategy, polyglot persistence research |
 | [archive/](archive/) | Completed roadmaps and historical research |
 
@@ -56,6 +57,7 @@ dotnet add package FluxIndex.Storage.SQLite      # or PostgreSQL
 - **Vector Quantization** - 4-32x memory compression
 - **Graph Traversal** - BFS, DFS, PageRank for document relationships
 - **Local-First AI** - LMSupply for embedding and reranking without API keys
+- **FileVault** - Git-like file tracking for RAG indexing with folder monitoring
 
 ## Resources
 

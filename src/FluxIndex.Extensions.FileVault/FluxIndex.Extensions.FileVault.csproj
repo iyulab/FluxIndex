@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <PackageId>FluxIndex.Extensions.FileVault</PackageId>
+    <IsPackable>true</IsPackable>
+    <Description>FluxIndex FileVault - Git-like file tracking system for RAG indexing with real-time folder monitoring</Description>
+    <PackageTags>RAG;FileTracking;Monitoring;VectorStore;Indexing;FileSystem</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FluxIndex.Core\FluxIndex.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FileFlux" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+  </ItemGroup>
+
+</Project>

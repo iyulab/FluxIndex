@@ -16,10 +16,8 @@ dotnet add package FluxIndex.SDK
 dotnet add package FluxIndex.Storage.SQLite      # or PostgreSQL
 
 # Optional
-dotnet add package FluxIndex.AI.OpenAI           # AI embeddings
-dotnet add package FluxIndex.AI.LocalReranker    # Neural reranking
-dotnet add package FluxIndex.Extensions.FileFlux # PDF/DOCX processing
 dotnet add package FluxIndex.Cache.Redis         # Semantic caching
+dotnet add package FluxIndex.Extensions.FileVault # Git-like file tracking
 ```
 
 ### Basic Usage
@@ -27,10 +25,10 @@ dotnet add package FluxIndex.Cache.Redis         # Semantic caching
 ```csharp
 using FluxIndex.SDK;
 
-// 1. Setup
+// 1. Setup (LMSupply embedding by default - no API key required)
 var context = FluxIndexContext.CreateBuilder()
     .UseSQLite("fluxindex.db")
-    .UseOpenAI("your-api-key", "text-embedding-3-small")  // Optional
+    .UseLMSupplyEmbedding()  // Built-in ONNX-based embedding
     .Build();
 
 // 2. Index
@@ -63,7 +61,14 @@ var context = FluxIndexContext.CreateBuilder()
 ```csharp
 var context = FluxIndexContext.CreateBuilder()
     .UsePostgreSQL("Host=localhost;Database=fluxindex;...")
-    .UseOpenAI(apiKey, "text-embedding-3-small")
+    .UseLMSupply()  // Embedding + TextCompletion + Reranker
+    .UseRedisCache("localhost:6379")
+    .Build();
+
+// Or with custom embedding service (e.g., OpenAI)
+var context = FluxIndexContext.CreateBuilder()
+    .UsePostgreSQL("Host=localhost;Database=fluxindex;...")
+    .ConfigureServices(s => s.AddSingleton<IEmbeddingService>(myOpenAIService))
     .UseResilientLocalReranker(o => o.ModelId = "quality")
     .UseRedisCache("localhost:6379")
     .Build();
@@ -75,7 +80,7 @@ var context = FluxIndexContext.CreateBuilder()
 {
   "FluxIndex": {
     "ConnectionString": "Data Source=fluxindex.db",
-    "OpenAI": { "ApiKey": "sk-...", "Model": "text-embedding-3-small" }
+    "LMSupply": { "ModelId": "bge-small-en-v1.5" }
   }
 }
 ```
@@ -257,11 +262,11 @@ services.AddGraphRAGServices();
 ```csharp
 var context = FluxIndexContext.CreateBuilder()
     .UseSQLite("fluxindex.db")
-    .UseOpenAI(apiKey, "text-embedding-3-small")
+    .UseLMSupplyEmbedding()
     .UseRedisCache("localhost:6379")  // Semantic caching
     .Build();
 
-// First query: ~1000ms (API call)
+// First query: ~50ms (local embedding)
 // Same query: <1ms (cache hit)
 // Similar query: <5ms (Redis semantic cache)
 ```
@@ -286,9 +291,10 @@ var context = FluxIndexContext.CreateBuilder()
 // Builder
 FluxIndexContext.CreateBuilder()
     .UseSQLite(path) / .UsePostgreSQL(conn)
-    .UseOpenAI(key, model) / .UseAzureOpenAI(endpoint, key, deployment)
+    .UseLMSupply() / .UseLMSupplyEmbedding()  // Local ONNX-based AI
     .UseResilientLocalReranker(options)
     .UseRedisCache(conn)
+    .ConfigureServices(s => s.AddSingleton<IEmbeddingService>(custom))  // Custom embedding
     .Build()
 
 // Indexing

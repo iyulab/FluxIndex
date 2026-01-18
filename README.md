@@ -97,6 +97,7 @@ Full benchmarks: [BENCHMARK_RESULTS.md](./benchmarks/FluxIndex.Benchmarks/BENCHM
 | **FluxIndex.Storage.Neo4j** | Neo4j graph database |
 | **FluxIndex.Storage.Qdrant** | Qdrant vector database |
 | **FluxIndex.Cache.Redis** | Redis semantic cache |
+| **FluxIndex.Extensions.FileVault** | Git-like file tracking for RAG indexing with folder monitoring |
 
 ## Documentation
 

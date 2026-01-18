@@ -12,10 +12,11 @@ Architecture, retrieval mechanisms, and advanced topics for FluxIndex.
 ┌─────────────────────────────────────────────────────┐
 │               SDK Layer (FluxIndex.SDK)             │
 │            FluxIndexContext, Builder Pattern        │
+│         LMSupply, FileFlux, WebFlux, FluxCurator    │
 ├─────────────────────────────────────────────────────┤
 │              Provider Packages (Optional)           │
-│  FluxIndex.AI.OpenAI    FluxIndex.Storage.*         │
-│  FluxIndex.Cache.Redis  FluxIndex.Extensions.*      │
+│  FluxIndex.Storage.*    FluxIndex.Cache.Redis       │
+│  FluxIndex.Extensions.FileVault                     │
 ├─────────────────────────────────────────────────────┤
 │              Core (FluxIndex.Core)                  │
 │         Domain + Application + Infrastructure       │
@@ -55,13 +56,13 @@ public interface IReranker
 | Package | Purpose |
 |---------|---------|
 | **FluxIndex.Core** | Domain models, BM25, local reranking, graph traversal, quantization |
-| **FluxIndex.SDK** | FluxIndexContext, Retriever, Indexer, Builder pattern |
-| **FluxIndex.AI.OpenAI** | OpenAI/Azure OpenAI embeddings |
-| **FluxIndex.AI.LocalReranker** | Cross-encoder neural reranking |
+| **FluxIndex.SDK** | FluxIndexContext, Retriever, Indexer, Builder pattern (includes LMSupply, FileFlux, WebFlux, FluxCurator, FluxImprover) |
 | **FluxIndex.Storage.SQLite** | SQLite with vector extension |
 | **FluxIndex.Storage.PostgreSQL** | PostgreSQL with pgvector |
+| **FluxIndex.Storage.Neo4j** | Neo4j graph database |
+| **FluxIndex.Storage.Qdrant** | Qdrant vector database |
 | **FluxIndex.Cache.Redis** | Redis-based semantic caching |
-| **FluxIndex.Extensions.FileFlux** | PDF/DOCX processing |
+| **FluxIndex.Extensions.FileVault** | Git-like file tracking for RAG indexing |
 
 ---
 
