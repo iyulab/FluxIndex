@@ -1,11 +1,11 @@
 name: Build & Release
 
 on:
-  # Directory.Build.props 파일이 변경될 때만 실행 (버전 관리)
-  push:
-    branches: [ main ]
-    paths:
-      - 'Directory.Build.props'
+  # Tests 워크플로우 완료 후 실행 (순차 실행)
+  workflow_run:
+    workflows: ["Tests"]
+    types: [completed]
+    branches: [main]
 
   # 수동 실행 가능
   workflow_dispatch:
@@ -30,6 +30,10 @@ env:
 jobs:
   build-test-release:
     runs-on: ubuntu-latest
+    # Tests 성공 시에만 실행 (workflow_dispatch는 항상 실행)
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
 
     steps:
     - name: Checkout
@@ -37,12 +41,38 @@ jobs:
       with:
         fetch-depth: 0
 
+    # Check if Directory.Build.props was changed (for workflow_run trigger)
+    - name: Check for version file changes
+      id: changes
+      run: |
+        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          echo "should_run=true" >> $GITHUB_OUTPUT
+          echo "📦 Manual trigger - will run"
+        else
+          # Get changed files from the triggering commit
+          COMMIT_SHA="${{ github.event.workflow_run.head_sha }}"
+          echo "🔍 Checking changes in commit: $COMMIT_SHA"
+
+          CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r $COMMIT_SHA 2>/dev/null || echo "")
+          echo "Changed files: $CHANGED_FILES"
+
+          if echo "$CHANGED_FILES" | grep -q "Directory.Build.props"; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "✅ Directory.Build.props changed - will run"
+          else
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            echo "⏭️ Directory.Build.props not changed - skipping"
+          fi
+        fi
+
     - name: Setup .NET
+      if: steps.changes.outputs.should_run == 'true'
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
 
     - name: Cache NuGet packages
+      if: steps.changes.outputs.should_run == 'true'
       uses: actions/cache@v4
       with:
         path: ~/.nuget/packages
@@ -52,6 +82,7 @@ jobs:
 
     # Extract version from Directory.Build.props
     - name: Extract version
+      if: steps.changes.outputs.should_run == 'true'
       id: version
       run: |
         VERSION=$(grep '<Version>' Directory.Build.props | sed 's/.*<Version>\(.*\)<\/Version>.*/\1/')
@@ -60,6 +91,7 @@ jobs:
 
     # Clear NuGet cache to avoid hash validation issues
     - name: Clear NuGet cache
+      if: steps.changes.outputs.should_run == 'true'
       run: |
         echo "🧹 Clearing NuGet cache to avoid hash validation issues..."
         dotnet nuget locals all --clear
@@ -67,6 +99,7 @@ jobs:
 
     # Restore, Build, Test
     - name: Restore dependencies
+      if: steps.changes.outputs.should_run == 'true'
       run: |
         echo "📦 Restoring packages with central package management..."
         # Force clean restore to avoid any cached issues
@@ -76,12 +109,14 @@ jobs:
         echo "✅ Package restore completed"
 
     - name: Build
+      if: steps.changes.outputs.should_run == 'true'
       run: |
         echo "🔨 Building solution..."
         dotnet build --no-restore --configuration ${{ env.CONFIGURATION }} --verbosity minimal
         echo "✅ Build completed successfully"
 
     - name: Run tests
+      if: steps.changes.outputs.should_run == 'true'
       run: |
         if find . -name "*.Tests.csproj" -o -name "*.Test.csproj" | grep -q .; then
           echo "🧪 Running tests..."
@@ -101,6 +136,7 @@ jobs:
 
     # Create NuGet packages (only src projects)
     - name: Create packages
+      if: steps.changes.outputs.should_run == 'true'
       run: |
         echo "📦 Creating NuGet packages for src projects only..."
         echo "🔍 Scanning src directory for packable projects..."
@@ -134,6 +170,7 @@ jobs:
 
     # Check if version already exists on NuGet
     - name: Check version on NuGet
+      if: steps.changes.outputs.should_run == 'true'
       id: version_check
       run: |
         VERSION=${{ steps.version.outputs.version }}
@@ -152,7 +189,9 @@ jobs:
 
     # Publish to NuGet (only if version doesn't exist or force_publish is true)
     - name: Publish to NuGet
-      if: steps.version_check.outputs.version_exists == 'false' || github.event.inputs.force_publish == 'true'
+      if: |
+        steps.changes.outputs.should_run == 'true' &&
+        (steps.version_check.outputs.version_exists == 'false' || github.event.inputs.force_publish == 'true')
       run: |
         echo "🚀 Publishing packages to NuGet..."
         for package in ./packages/*.nupkg; do
@@ -165,6 +204,7 @@ jobs:
 
     # Upload packages as artifacts
     - name: Upload packages
+      if: steps.changes.outputs.should_run == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: nuget-packages-v${{ steps.version.outputs.version }}

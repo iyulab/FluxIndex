@@ -1,12 +1,11 @@
 name: Stack Docker Release
 
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - 'stack/**'
-      - 'src/**'
-      - 'Directory.Build.props'
+  # Tests 워크플로우 완료 후 실행 (순차 실행)
+  workflow_run:
+    workflows: ["Tests"]
+    types: [completed]
+    branches: [main]
 
   workflow_dispatch:
     inputs:
@@ -29,7 +28,10 @@ env:
 jobs:
   build-api:
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'push' || github.event.inputs.build_api == 'true' }}
+    # Tests 성공 시에만 실행 (workflow_dispatch는 항상 실행)
+    if: |
+      github.event_name == 'workflow_dispatch' && github.event.inputs.build_api == 'true' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     permissions:
       contents: read
       packages: write
@@ -37,8 +39,34 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    # Check if relevant files changed (for workflow_run trigger)
+    - name: Check for relevant changes
+      id: changes
+      run: |
+        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          echo "should_run=true" >> $GITHUB_OUTPUT
+          echo "📦 Manual trigger - will run"
+        else
+          COMMIT_SHA="${{ github.event.workflow_run.head_sha }}"
+          echo "🔍 Checking changes in commit: $COMMIT_SHA"
+
+          CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r $COMMIT_SHA 2>/dev/null || echo "")
+          echo "Changed files: $CHANGED_FILES"
+
+          if echo "$CHANGED_FILES" | grep -qE "^(stack/|src/|Directory\.Build\.props)"; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "✅ Relevant files changed - will run"
+          else
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            echo "⏭️ No relevant changes - skipping"
+          fi
+        fi
 
     - name: Extract version
+      if: steps.changes.outputs.should_run == 'true'
       id: version
       run: |
         VERSION=$(grep '<Version>' Directory.Build.props | sed 's/.*<Version>\(.*\)<\/Version>.*/\1/')
@@ -46,9 +74,11 @@ jobs:
         echo "📦 Version: $VERSION"
 
     - name: Set up Docker Buildx
+      if: steps.changes.outputs.should_run == 'true'
       uses: docker/setup-buildx-action@v3
 
     - name: Log in to Container Registry
+      if: steps.changes.outputs.should_run == 'true'
       uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
@@ -56,6 +86,7 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Extract metadata (tags, labels)
+      if: steps.changes.outputs.should_run == 'true'
       id: meta
       uses: docker/metadata-action@v5
       with:
@@ -66,6 +97,7 @@ jobs:
           type=sha,prefix=
 
     - name: Build and push API image
+      if: steps.changes.outputs.should_run == 'true'
       uses: docker/build-push-action@v5
       with:
         context: .
@@ -78,6 +110,7 @@ jobs:
         platforms: linux/amd64,linux/arm64
 
     - name: Summary
+      if: steps.changes.outputs.should_run == 'true'
       run: |
         echo "## 🐳 API Docker Image Published" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
@@ -89,7 +122,10 @@ jobs:
 
   build-frontend:
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'push' || github.event.inputs.build_frontend == 'true' }}
+    # Tests 성공 시에만 실행 (workflow_dispatch는 항상 실행)
+    if: |
+      github.event_name == 'workflow_dispatch' && github.event.inputs.build_frontend == 'true' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     permissions:
       contents: read
       packages: write
@@ -97,8 +133,34 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    # Check if relevant files changed (for workflow_run trigger)
+    - name: Check for relevant changes
+      id: changes
+      run: |
+        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          echo "should_run=true" >> $GITHUB_OUTPUT
+          echo "📦 Manual trigger - will run"
+        else
+          COMMIT_SHA="${{ github.event.workflow_run.head_sha }}"
+          echo "🔍 Checking changes in commit: $COMMIT_SHA"
+
+          CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r $COMMIT_SHA 2>/dev/null || echo "")
+          echo "Changed files: $CHANGED_FILES"
+
+          if echo "$CHANGED_FILES" | grep -qE "^(stack/|src/|Directory\.Build\.props)"; then
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "✅ Relevant files changed - will run"
+          else
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            echo "⏭️ No relevant changes - skipping"
+          fi
+        fi
 
     - name: Extract version
+      if: steps.changes.outputs.should_run == 'true'
       id: version
       run: |
         VERSION=$(grep '<Version>' Directory.Build.props | sed 's/.*<Version>\(.*\)<\/Version>.*/\1/')
@@ -106,9 +168,11 @@ jobs:
         echo "📦 Version: $VERSION"
 
     - name: Set up Docker Buildx
+      if: steps.changes.outputs.should_run == 'true'
       uses: docker/setup-buildx-action@v3
 
     - name: Log in to Container Registry
+      if: steps.changes.outputs.should_run == 'true'
       uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
@@ -116,6 +180,7 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Extract metadata (tags, labels)
+      if: steps.changes.outputs.should_run == 'true'
       id: meta
       uses: docker/metadata-action@v5
       with:
@@ -126,6 +191,7 @@ jobs:
           type=sha,prefix=
 
     - name: Build and push Frontend image
+      if: steps.changes.outputs.should_run == 'true'
       uses: docker/build-push-action@v5
       with:
         context: ./stack/frontend
@@ -138,6 +204,7 @@ jobs:
         platforms: linux/amd64,linux/arm64
 
     - name: Summary
+      if: steps.changes.outputs.should_run == 'true'
       run: |
         echo "## 🐳 Frontend Docker Image Published" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY

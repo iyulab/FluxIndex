@@ -295,7 +295,7 @@ export default function DocumentsPage() {
                   const isFailed = doc.status === 'Failed'
                   const isProcessing = doc.status === 'Processing'
                   const isPending = doc.status === 'Pending'
-                  const errorMessage = doc.metadata?.error as string | undefined
+                  const errorMessage: string | undefined = typeof doc.metadata?.error === 'string' ? doc.metadata.error : undefined
 
                   return (
                     <div
@@ -374,7 +374,7 @@ export default function DocumentsPage() {
                         )}
 
                         {/* Cancel button for processing/pending documents */}
-                        {(isProcessing || isPending) && doc.metadata?.jobId && (
+                        {(isProcessing || isPending) && !!doc.metadata?.jobId && (
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <Button
