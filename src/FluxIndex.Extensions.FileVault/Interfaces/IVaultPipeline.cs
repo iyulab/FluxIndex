@@ -1,53 +1,40 @@
 using FluxIndex.Extensions.FileVault.Domain.Entities;
-using FluxIndex.Extensions.FileVault.Domain.Enums;
 
 namespace FluxIndex.Extensions.FileVault.Interfaces;
 
 /// <summary>
-/// Pipeline service for processing vault entries through stages:
-/// Source → Extract → Refine → Chunks → Memorize
+/// Pipeline service for processing vault entries.
+/// Simplified stages: Source → Extracted → Memorized
 /// </summary>
 public interface IVaultPipeline
 {
     /// <summary>
-    /// Extracts content from source file.
-    /// Stage 1 → Stage 2
+    /// Full memorize pipeline: extract → chunk → embed → commit.
+    /// Used for new files or when source content has changed.
+    /// </summary>
+    Task<MemorizeResult> MemorizeAsync(VaultEntry entry, MemorizeOptions? options = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Refresh pipeline: chunk → embed → commit (skips extraction).
+    /// Used when only vault/ files have been edited (append-text.md, qa.md).
+    /// </summary>
+    Task<MemorizeResult> RefreshAsync(VaultEntry entry, MemorizeOptions? options = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Extract content from source file to vault/refined.md.
     /// </summary>
     Task ExtractAsync(VaultEntry entry, CancellationToken ct = default);
 
     /// <summary>
-    /// Refines extracted content (auto-processing).
-    /// Stage 2 → Stage 3
+    /// Removes chunks from vector store for the given entry.
     /// </summary>
-    Task RefineAsync(VaultEntry entry, CancellationToken ct = default);
-
-    /// <summary>
-    /// Chunks refined content into segments.
-    /// Stage 3 → Stage 4
-    /// </summary>
-    Task ChunkAsync(VaultEntry entry, ChunkingOptions? options = null, CancellationToken ct = default);
-
-    /// <summary>
-    /// Memorizes chunks (indexes to FluxIndex).
-    /// Stage 4 → Stage 5
-    /// </summary>
-    Task MemorizeAsync(VaultEntry entry, CancellationToken ct = default);
-
-    /// <summary>
-    /// Processes entry up to the specified stage.
-    /// </summary>
-    Task ProcessToStageAsync(VaultEntry entry, ProcessingStage targetStage, CancellationToken ct = default);
-
-    /// <summary>
-    /// Reprocesses from a specific stage (when changes detected).
-    /// </summary>
-    Task ReprocessFromStageAsync(VaultEntry entry, ProcessingStage fromStage, CancellationToken ct = default);
+    Task RemoveAsync(VaultEntry entry, CancellationToken ct = default);
 }
 
 /// <summary>
-/// Options for chunking stage.
+/// Options for memorize/refresh operations.
 /// </summary>
-public sealed class ChunkingOptions
+public sealed class MemorizeOptions
 {
     /// <summary>
     /// Maximum chunk size in tokens.
@@ -60,12 +47,74 @@ public sealed class ChunkingOptions
     public int OverlapSize { get; set; } = 128;
 
     /// <summary>
-    /// Chunking strategy (e.g., "Intelligent", "Semantic", "Paragraph").
+    /// Chunking strategy (e.g., "Auto", "Semantic", "Paragraph").
     /// </summary>
-    public string Strategy { get; set; } = "Intelligent";
+    public string Strategy { get; set; } = "Auto";
 
     /// <summary>
     /// Language code for language-aware chunking.
     /// </summary>
     public string? Language { get; set; }
+
+    /// <summary>
+    /// Commit message for git.
+    /// </summary>
+    public string? CommitMessage { get; set; }
+
+    /// <summary>
+    /// Skip git commit after operation.
+    /// </summary>
+    public bool SkipCommit { get; set; }
+}
+
+/// <summary>
+/// Result of a memorize/refresh operation.
+/// </summary>
+public sealed class MemorizeResult
+{
+    /// <summary>
+    /// Number of chunks created and indexed.
+    /// </summary>
+    public int ChunkCount { get; init; }
+
+    /// <summary>
+    /// Total content length in characters.
+    /// </summary>
+    public int ContentLength { get; init; }
+
+    /// <summary>
+    /// Processing duration.
+    /// </summary>
+    public TimeSpan Duration { get; init; }
+
+    /// <summary>
+    /// Git commit hash (if committed).
+    /// </summary>
+    public string? CommitHash { get; init; }
+
+    /// <summary>
+    /// Whether the operation was successful.
+    /// </summary>
+    public bool Success { get; init; }
+
+    /// <summary>
+    /// Error message if failed.
+    /// </summary>
+    public string? ErrorMessage { get; init; }
+
+    public static MemorizeResult Succeeded(int chunkCount, int contentLength, TimeSpan duration, string? commitHash = null) => new()
+    {
+        Success = true,
+        ChunkCount = chunkCount,
+        ContentLength = contentLength,
+        Duration = duration,
+        CommitHash = commitHash
+    };
+
+    public static MemorizeResult Failed(string errorMessage, TimeSpan duration) => new()
+    {
+        Success = false,
+        ErrorMessage = errorMessage,
+        Duration = duration
+    };
 }

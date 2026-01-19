@@ -13,11 +13,11 @@ public sealed class FileVaultOptions
     /// <summary>
     /// Default vault directory name (hidden folder marker).
     /// </summary>
-    public const string DefaultVaultDirectoryName = ".fluxindex";
+    public const string DefaultVaultDirectoryName = ".vault";
 
     /// <summary>
     /// Vault directory name (hidden folder marker).
-    /// Defaults to ".fluxindex".
+    /// Defaults to ".vault".
     /// </summary>
     public string VaultDirectoryName { get; set; } = DefaultVaultDirectoryName;
 

@@ -64,7 +64,7 @@ public sealed class TrackedFile
     public void SetVaultEntry(VaultEntry entry)
     {
         VaultEntry = entry ?? throw new ArgumentNullException(nameof(entry));
-        ContentHash = entry.SourceHash;
+        ContentHash = entry.SourceContentHash ?? ContentHash.Empty;
     }
 
     /// <summary>
@@ -202,8 +202,7 @@ public sealed class TrackedFile
         TrackedFileStatus.Processing => ProcessingStage switch
         {
             ProcessingStage.Extracted => "Extracting",
-            ProcessingStage.Refined => "Refining",
-            ProcessingStage.Chunked => "Chunking",
+            ProcessingStage.Memorized => "Memorizing",
             _ => "Processing"
         },
         TrackedFileStatus.Memorized => "Indexed",

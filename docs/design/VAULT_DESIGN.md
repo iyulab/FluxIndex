@@ -1,417 +1,385 @@
-# FluxIndex.Vault Design Document
+# FileVault Design Document
 
 ## Overview
 
-FluxIndex.Vault is a file system synchronization layer that maintains bidirectional sync between source files and the FluxIndex indexing system. It provides automatic change detection, versioning, and artifact management.
+FluxIndex.Extensions.FileVault is a file-to-vector synchronization layer that maintains consistency between source files and the FluxIndex vector store. It provides automatic change detection, phased processing pipelines, and robust state management.
 
 ## Design Goals
 
 1. **Transparent Sync**: Files are tracked and indexed without user intervention
-2. **Change Detection**: Detect file modifications, deletions, and renames
-3. **Version History**: Maintain history of changes for rollback capability
-4. **Artifact Organization**: Store extracted content, images, chunks, Q&A in organized structure
-5. **Resilient Watching**: Handle edge cases (locked files, rapid changes, network drives)
+2. **Change Detection**: Detect file modifications, deletions via content hashing
+3. **Atomic Operations**: Phased removal with recovery from partial failures
+4. **Artifact Organization**: Store extracted content, images, refined markdown
+5. **Resilient Processing**: Background queue with retry and error recovery
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                          FluxIndex.Vault                                │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐              │
-│  │ FileWatcher  │───▶│  SyncEngine  │───▶│ VaultStorage │              │
-│  │ (Detection)  │    │ (Orchestrate)│    │  (Artifacts) │              │
-│  └──────────────┘    └──────────────┘    └──────────────┘              │
-│         │                   │                   │                       │
-│         ▼                   ▼                   ▼                       │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐              │
-│  │ ChangeDetect │    │  Pipeline    │    │   Artifact   │              │
-│  │ (Hash/Debounce)   │  Executor    │    │   Manager    │              │
-│  └──────────────┘    └──────────────┘    └──────────────┘              │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        FluxIndex.Extensions.FileVault                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐                   │
+│  │ IVault       │───▶│ VaultPipeline│───▶│ VaultStorage │                   │
+│  │ (VaultManager)    │ (Processing) │    │  (Artifacts) │                   │
+│  └──────────────┘    └──────────────┘    └──────────────┘                   │
+│         │                   │                   │                            │
+│         ▼                   ▼                   ▼                            │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐                   │
+│  │ QueueService │    │  IExtractor  │    │  IGitService │                   │
+│  │ (Background) │    │  IChunker    │    │  (Versioning)│                   │
+│  └──────────────┘    └──────────────┘    └──────────────┘                   │
+│         │                   │                                                │
+│         ▼                   ▼                                                │
+│  ┌──────────────┐    ┌──────────────┐                                       │
+│  │ FileWatcher  │    │ IVectorStore │                                       │
+│  │ (Detection)  │    │ IEmbedding   │                                       │
+│  └──────────────┘    └──────────────┘                                       │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## File State Machine
+## Processing Stage State Machine
 
 ```
     ┌───────────────────────┐
-    │     Untracked         │  (New file discovered)
+    │       Source          │  (File registered, not yet processed)
     └───────────┬───────────┘
-                │ memorize()
+                │ extract()
                 ▼
     ┌───────────────────────┐
-    │       Queued          │  (Waiting in queue)
+    │      Extracted        │  (Content extracted to vault/)
     └───────────┬───────────┘
-                │ process()
+                │ chunk() + embed() + index()
                 ▼
     ┌───────────────────────┐
-    │     Processing        │  (Extracting/Chunking/Embedding)
-    └───────────┬───────────┘
-                │ complete()
-                ▼
-    ┌───────────────────────┐  file changed     ┌───────────────────┐
-    │      Memorized        │──────────────────▶│      Stale        │
-    │  (Indexed, in sync)   │                   │  (Change detected)│
-    └───────────┬───────────┘◀──────────────────└───────────────────┘
-                │                   reprocess()
-                │ file deleted
-                ▼
-    ┌───────────────────────┐
-    │       Orphaned        │  (Source file deleted)
-    └───────────┬───────────┘
-                │ unmemorize() / auto-cleanup
-                ▼
-    ┌───────────────────────┐
-    │       Removed         │  (Cleaned from vault)
+    │      Memorized        │  (Indexed in vector store)
     └───────────────────────┘
 ```
 
+## Sync Status State Machine
+
+Tracks synchronization state between source file and vector store:
+
+```
+InSync ←────────────────────────────────────────┐
+   │                                             │
+   ├──[source changed]──→ SourceModified ──[memorize]─┤
+   │                                             │
+   ├──[vault changed]───→ VaultModified ──[refresh]───┤
+   │                                             │
+   └──[source deleted]──→ SourceDeleted
+                              │
+                              ├──[queue]──→ RemovalPending
+                              │                   │
+                              │       ┌───────────┴───────────┐
+                              │       │                       │
+                              │  [Phase1 done]            [failure]
+                              │       │                       │
+                              │       ▼                       ▼
+                              │  RemovalPartial            Error
+                              │  (Vector deleted)             │
+                              │       │                       │
+                              │  [Phase2 done]            [retry]
+                              │       │                       │
+                              │       ▼                       │
+                              │  [Entry removed] ←────────────┘
+                              │
+                              └──[immediate]──→ [Entry removed]
+```
+
+### SyncStatus Enum
+
+| Status | Description |
+|--------|-------------|
+| `InSync` | Source and vector store are synchronized |
+| `SourceModified` | Source file changed, needs re-memorization |
+| `VaultModified` | Vault files changed, needs refresh |
+| `SourceDeleted` | Source file deleted, pending removal |
+| `RemovalPending` | Removal queued, not started |
+| `RemovalPartial` | Vector deleted, storage pending |
+| `Error` | Processing error occurred |
+
 ## Data Model
 
-### TrackedFile
+### VaultEntry
 
-Primary entity representing a file being tracked by the vault.
+Primary entity representing a tracked file.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| Id | Guid | Primary key |
+| Id | Guid | Unique identifier |
+| FilepathHash | string | Hash of normalized path (directory name) |
 | SourcePath | string | Full path to source file |
-| FileName | string | File name with extension |
-| FileExtension | string | Extension (.docx, .pdf) |
-| FileSize | long | Size in bytes |
-| ContentHash | string | SHA256 hash of content |
-| FileModifiedAt | DateTime | Source file last modified |
-| Status | TrackedFileStatus | Current state |
-| Version | int | Current version number |
-| MemorizedAt | DateTime? | When first memorized |
-| LastSyncedAt | DateTime? | Last successful sync |
-| WatchedFolderId | Guid? | Parent folder |
-| DocumentId | Guid? | Linked Document entity |
+| SourceContentHash | ContentHash? | SHA256 hash for change detection |
+| Stage | ProcessingStage | Source / Extracted / Memorized |
+| SyncStatus | SyncStatus | Synchronization state |
+| ChunkCount | int | Number of indexed chunks |
+| CreatedAt | DateTimeOffset | When entry was created |
+| LastProcessedAt | DateTimeOffset? | Last successful processing |
+| LastSyncCheckAt | DateTimeOffset? | Last sync check time |
+| LastError | string? | Last error message |
+| RemovalPhase | string? | Current removal phase ("Vector") |
 
 ### WatchedFolder
 
-Represents a folder being monitored for changes.
+Folder being monitored for changes.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| Id | Guid | Primary key |
+| Id | Guid | Unique identifier |
 | Path | string | Full folder path |
-| Name | string | Folder display name |
+| Name | string | Display name |
 | IsRecursive | bool | Include subdirectories |
+| AutoMemorize | bool | Auto-process new files |
 | IncludePatterns | string[] | File patterns to include |
 | ExcludePatterns | string[] | File patterns to exclude |
-| AutoMemorize | bool | Auto-memorize new files |
-| Status | WatcherStatus | Active/Paused/Error |
-| CollectionId | Guid? | Target collection |
+| Status | WatcherStatus | Active / Paused / Error |
 
-### TrackedFileVersion
-
-Version history for tracked files.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| Id | Guid | Primary key |
-| TrackedFileId | Guid | Parent tracked file |
-| Version | int | Version number |
-| ContentHash | string | Hash at this version |
-| FileSize | long | Size at this version |
-| CreatedAt | DateTime | When version created |
-| HasExtract | bool | Extract artifact exists |
-| HasChunks | bool | Chunks artifact exists |
-| HasImages | bool | Images extracted |
-| HasQA | bool | Q&A pairs generated |
-
-## Vault Storage Structure
+## Storage Structure
 
 ```
-<vault-path>/
-├── .vault/
-│   ├── config.json           # Vault configuration
-│   └── state.json            # Runtime state
-│
-├── <file-id>/
-│   ├── .meta.json            # File metadata
-│   │   {
-│   │     "id": "guid",
-│   │     "sourcePath": "d:/data/folder-a/file-1.docx",
-│   │     "contentHash": "sha256:abc123...",
-│   │     "version": 2,
-│   │     "memorizedAt": "2024-01-15T10:30:00Z",
-│   │     "artifacts": ["extract", "images", "chunks"]
-│   │   }
-│   │
-│   ├── extract/
-│   │   ├── content.md        # Markdown converted
-│   │   └── content.txt       # Plain text
-│   │
-│   ├── images/
+.vault/                              # Vault root (configurable)
+├── {filepath-hash}/                 # Entry directory
+│   ├── meta.json                    # Entry metadata (git-ignored)
+│   ├── images/                      # Extracted images (git-ignored)
 │   │   ├── img_001.png
-│   │   ├── img_002.jpg
-│   │   └── manifest.json     # Image metadata
-│   │
-│   ├── chunks/
-│   │   └── chunks.json       # Chunk data with embeddings
-│   │
-│   ├── refine/
-│   │   └── enrichment.json   # FluxImprover results
-│   │
-│   ├── qa/
-│   │   └── pairs.json        # Generated Q&A pairs
-│   │
-│   └── versions/
-│       ├── v1/
-│       │   └── manifest.json # Version 1 state
-│       └── v2/
-│           └── manifest.json # Version 2 state
+│   │   └── manifest.json
+│   └── vault/                       # Git-tracked content
+│       ├── .git/
+│       ├── refined.md               # Extracted + refined content
+│       ├── append-text.md           # User-appended notes
+│       └── qa.md                    # Q&A pairs
 │
-└── <file-id-2>/
+└── {filepath-hash-2}/
     └── ...
 ```
 
-## FileSystemWatcher Strategy
+### Directory Naming
 
-Based on [best practices research](https://failingfast.io/a-robust-solution-for-filesystemwatcher-firing-events-multiple-times/):
+- Entry directories use first 8 bytes of SHA256(normalized_path) as hex
+- Example: `83d095c10b2f28b1` for `D:\Documents\manual.pdf`
+- Same path always produces same hash (deterministic)
 
-### Debouncing Strategy
+## Two-Phase Removal
+
+Ensures atomic cleanup even if process crashes mid-removal:
+
+```
+Phase 1: Vector Store Deletion
+    │
+    ├── entry.MarkRemovalPending()
+    ├── entry.SaveMetadata()
+    │
+    ├── pipeline.RemoveAsync(entry)  // Delete from vector store
+    │
+    ├── entry.MarkRemovalPartial("Vector")
+    └── entry.SaveMetadata()
+
+Phase 2: Storage Deletion
+    │
+    ├── storage.DeleteEntryStorageAsync(entry)
+    └── [Entry completely removed]
+```
+
+### Recovery on Startup
 
 ```csharp
-// Timer-based debouncing with MemoryCache
-public class DebounceService
+// VaultBackgroundService.StartAsync()
+var partialRemovals = await ListByStatusAsync(SyncStatus.RemovalPartial);
+foreach (var entry in partialRemovals)
 {
-    private readonly MemoryCache _cache = new();
-    private readonly TimeSpan _debounceInterval = TimeSpan.FromMilliseconds(500);
-
-    public async Task DebounceAsync(string key, Func<Task> action)
+    if (entry.RemovalPhase == "Vector")
     {
-        // Cancel previous timer if exists
-        if (_cache.TryGetValue(key, out CancellationTokenSource? existing))
-        {
-            existing?.Cancel();
-        }
-
-        var cts = new CancellationTokenSource();
-        _cache.Set(key, cts, _debounceInterval);
-
-        try
-        {
-            await Task.Delay(_debounceInterval, cts.Token);
-            await action();
-        }
-        catch (OperationCanceledException)
-        {
-            // Debounced - newer event will handle
-        }
+        // Vector already deleted, just clean storage
+        await storage.DeleteEntryStorageAsync(entry);
     }
 }
 ```
 
-### Buffer Overflow Prevention
+## Pipeline Operations
 
-- Set `InternalBufferSize` appropriately (default 8KB, can increase to 64KB)
-- Use specific `NotifyFilter` values
-- Process events asynchronously
-- Implement periodic full scan as fallback
+### Memorize (Full Pipeline)
 
-### Locked File Handling
+```
+Source File → Extract → Store refined.md → Chunk → Embed → Index
+                ↓
+          SourceContentHash updated
+                ↓
+          Stage = Memorized
+          SyncStatus = InSync
+```
+
+### Refresh (Re-index Only)
+
+```
+vault/refined.md → Chunk → Embed → Index
+        ↓
+   Stage = Memorized
+   SyncStatus = InSync
+```
+
+Used when vault files are manually edited.
+
+### DetectChanges
 
 ```csharp
-public async Task<bool> WaitForFileAccessAsync(string path, int maxRetries = 5)
-{
-    for (int i = 0; i < maxRetries; i++)
-    {
-        try
-        {
-            using var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            return true;
-        }
-        catch (IOException)
-        {
-            await Task.Delay(100 * (i + 1)); // Exponential backoff
-        }
-    }
-    return false;
-}
-```
+// Compare current file hash with stored SourceContentHash
+if (currentHash != entry.SourceContentHash)
+    return ChangeAction.Memorize;
 
-## Integration with Existing Stack
+// Check git status for vault/ changes
+if (gitStatus.HasModifications)
+    return ChangeAction.Refresh;
 
-### Document Entity Linkage
+// Check if source file exists
+if (!File.Exists(sourcePath))
+    return ChangeAction.Remove;
 
-TrackedFile links to existing Document entity via `DocumentId`:
-
-```
-TrackedFile (Vault) ──────────▶ Document (Stack)
-     │                              │
-     │ SourcePath                   │ Title
-     │ ContentHash                  │ Status
-     │ Version                      │ ChunkCount
-     └──────────────────────────────┘
-```
-
-### Indexing Pipeline Integration
-
-Vault uses existing Stack services:
-- `IChunkingService` for content chunking
-- `IEmbeddingProvider` for embeddings
-- `IDocumentContentProvider` for content storage
-- `IIndexingService` for document indexing
-
-### Event Flow
-
-```
-FileWatcher detects change
-        │
-        ▼
-DebounceService filters duplicates
-        │
-        ▼
-SyncEngine updates TrackedFile status
-        │
-        ▼
-MemorizationPipeline (reuses Stack services)
-        │
-        ▼
-VaultStorage stores artifacts
-        │
-        ▼
-Document entity updated via IDocumentService
+return ChangeAction.None;
 ```
 
 ## Configuration
 
-```json
+```csharp
+services.AddFileVault(options =>
 {
-  "FluxIndex": {
-    "Vault": {
-      "Enabled": true,
-      "StoragePath": "./vault",
-      "HashAlgorithm": "SHA256",
-      "EnableRealTimeWatch": true,
-      "ScanIntervalMinutes": 60,
-      "DebounceDelayMs": 500,
-      "WatcherBufferSize": 65536,
-      "MaxFileSizeMB": 100,
-      "VersionRetentionCount": 5,
-      "AutoCleanupOrphans": false,
-      "DefaultPatterns": {
-        "Include": ["*.docx", "*.pdf", "*.txt", "*.md", "*.html", "*.htm"],
-        "Exclude": ["~$*", "*.tmp", "*.bak", "Thumbs.db", ".DS_Store"]
-      }
-    }
-  }
+    // Storage
+    options.VaultBasePath = @"D:\Data\.vault";
+    options.VaultDirectoryName = ".vault";  // Default marker
+
+    // File handling
+    options.MaxFileSizeMB = 100;
+    options.DefaultIncludePatterns = ["*.pdf", "*.docx", "*.md"];
+    options.DefaultExcludePatterns = ["~$*", "*.tmp", ".*"];
+
+    // Real-time watching
+    options.EnableRealTimeWatch = true;
+    options.DebounceDelayMs = 500;
+    options.WatcherBufferSize = 65536;
+
+    // Background processing
+    options.EnableBackgroundProcessing = true;
+    options.MaxConcurrentProcessing = 4;
+    options.QueuePollingIntervalMs = 1000;
+
+    // Retry behavior
+    options.EnableAutoRetry = true;
+    options.MaxRetryCount = 3;
+    options.RetryDelayMs = 5000;
+
+    // Chunking
+    options.Chunking.MaxChunkSize = 1024;
+    options.Chunking.OverlapSize = 128;
+    options.Chunking.Strategy = "Intelligent";
+});
+```
+
+## Service Registration
+
+```csharp
+// Basic registration
+services.AddFileVault();
+
+// With background queue processing
+services.AddFileVaultWithBackgroundProcessing();
+
+// With FileFlux integration (extraction + chunking)
+services.AddFileVaultWithFileFlux();
+
+// With full FluxIndex integration (extraction + chunking + indexing)
+services.AddFileVaultWithFluxIndex();
+```
+
+## Key Interfaces
+
+### IVault
+
+Main facade for vault operations.
+
+```csharp
+public interface IVault
+{
+    // Core operations
+    Task<VaultEntry> MemorizeAsync(string filePath, CancellationToken ct);
+    Task<VaultEntry> RefreshAsync(string filePath, CancellationToken ct);
+    Task<SyncResult> SyncAsync(CancellationToken ct);
+    Task<ChangeDetectionResult> DetectChangesAsync(string filePath, CancellationToken ct);
+
+    // Entry management
+    Task<VaultEntry?> GetAsync(string filePath, CancellationToken ct);
+    Task<IReadOnlyList<VaultEntry>> ListAsync(ProcessingStage? filter, CancellationToken ct);
+    Task RemoveAsync(string filePath, CancellationToken ct);
+
+    // Status queries
+    Task<IReadOnlyList<VaultEntry>> ListByStatusAsync(SyncStatus status, CancellationToken ct);
+    Task<IReadOnlyList<VaultEntry>> GetPendingRemovalsAsync(CancellationToken ct);
+    Task<IReadOnlyList<VaultEntry>> GetErrorEntriesAsync(CancellationToken ct);
+
+    // Folder watching
+    Task<WatchedFolder> AddWatchedFolderAsync(string path, ...);
+    Task<ScanResult> ScanFolderAsync(string path, CancellationToken ct);
+
+    // Queue management
+    Task PauseQueueAsync(CancellationToken ct);
+    Task ResumeQueueAsync(CancellationToken ct);
 }
 ```
 
-## API Design
+### IVaultPipeline
 
-### Folder Management
+Processing pipeline for memorization and refresh.
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | /api/v1/vault/folders | List watched folders |
-| POST | /api/v1/vault/folders | Add watched folder |
-| DELETE | /api/v1/vault/folders/{id} | Remove watched folder |
-| POST | /api/v1/vault/folders/{id}/scan | Trigger full scan |
-| POST | /api/v1/vault/folders/{id}/pause | Pause watching |
-| POST | /api/v1/vault/folders/{id}/resume | Resume watching |
-
-### File Operations
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | /api/v1/vault/files | List tracked files (filterable) |
-| GET | /api/v1/vault/files/{id} | Get tracked file details |
-| POST | /api/v1/vault/files/{id}/memorize | Memorize file |
-| POST | /api/v1/vault/files/{id}/unmemorize | Unmemorize file |
-| POST | /api/v1/vault/files/{id}/reprocess | Reprocess file |
-| GET | /api/v1/vault/files/{id}/versions | Get version history |
-
-### Bulk Operations
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | /api/v1/vault/memorize-all | Memorize all untracked |
-| POST | /api/v1/vault/sync | Full sync operation |
-| POST | /api/v1/vault/cleanup | Clean orphaned files |
-
-### Artifacts
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | /api/v1/vault/files/{id}/extract | Get extracted content |
-| GET | /api/v1/vault/files/{id}/images | Get extracted images |
-| GET | /api/v1/vault/files/{id}/chunks | Get chunk data |
-| GET | /api/v1/vault/files/{id}/qa | Get Q&A pairs |
-
-## Implementation Phases
-
-### Phase 1: Core Entities and Repositories
-- TrackedFile, WatchedFolder, TrackedFileVersion entities
-- Repository interfaces
-- EF Core DbContext configuration
-- Database migrations
-
-### Phase 2: Vault Storage Service
-- VaultStorageService implementation
-- Artifact storage/retrieval
-- Hash computation service
-- File metadata management
-
-### Phase 3: File Watcher Service
-- FileSystemWatcher wrapper
-- Debouncing implementation
-- Event handling
-- Locked file handling
-- Periodic scan fallback
-
-### Phase 4: Sync Engine and Pipeline
-- SyncEngine orchestration
-- MemorizationPipeline
-- Integration with existing Stack services
-- Status state machine
-
-### Phase 5: API and Background Service
-- VaultController endpoints
-- VaultBackgroundService for watching
-- DI registration
-- Configuration binding
-
-### Phase 6: UI Integration (Future)
-- Vault dashboard page
-- Folder management UI
-- File status display
-- Sync status indicators
+```csharp
+public interface IVaultPipeline
+{
+    Task<MemorizeResult> MemorizeAsync(VaultEntry entry, MemorizeOptions? options, CancellationToken ct);
+    Task<RefreshResult> RefreshAsync(VaultEntry entry, RefreshOptions? options, CancellationToken ct);
+    Task RemoveAsync(VaultEntry entry, CancellationToken ct);
+}
+```
 
 ## Error Handling
 
 | Scenario | Handling |
 |----------|----------|
 | File locked | Retry with exponential backoff |
-| Network drive disconnected | Mark folder as Error, retry periodically |
-| Hash computation fails | Log error, mark file as Error status |
-| Buffer overflow | Log warning, trigger full scan |
+| Extraction fails | Mark entry as Error, log details |
+| Vector store error | Retry, then mark as Error |
+| Partial removal | Recover on next startup |
 | Disk full | Throw, prevent new memorizations |
-| Permission denied | Mark file as Error with reason |
 
 ## Performance Considerations
 
-1. **Lazy Loading**: Don't load file content until needed
-2. **Parallel Processing**: Process multiple files concurrently
-3. **Incremental Hashing**: For large files, use streaming hash
-4. **Index Optimization**: Create indexes on SourcePath, Status, WatchedFolderId
-5. **Artifact Compression**: Optionally compress stored artifacts
+1. **Content Hashing**: Stream-based SHA256 for large files
+2. **Parallel Processing**: Configurable concurrent operations
+3. **Debouncing**: Merge rapid file changes into single event
+4. **Lazy Loading**: Load content only when needed
+5. **Background Queue**: Non-blocking file processing
 
 ## Security Considerations
 
 1. **Path Validation**: Prevent path traversal attacks
-2. **Symlink Handling**: Don't follow symlinks outside vault
+2. **Sensitive Files**: Exclude .env, credentials by default
 3. **Permission Check**: Verify read access before tracking
-4. **Sensitive File Detection**: Warn on .env, credentials files
+4. **Symlink Handling**: Don't follow symlinks outside vault
 
-## References
+## Implementation Status
 
-- [FileSystemWatcher Best Practices](https://failingfast.io/a-robust-solution-for-filesystemwatcher-firing-events-multiple-times/)
-- [Microsoft FileSystemWatcher Documentation](https://learn.microsoft.com/en-us/dotnet/api/system.io.filesystemwatcher)
-- [Debouncing in .NET](http://writeasync.net/?p=5744)
+| Component | Status |
+|-----------|--------|
+| VaultEntry | ✅ Complete |
+| VaultManager | ✅ Complete |
+| VaultPipeline | ✅ Complete |
+| VaultStorageService | ✅ Complete |
+| VaultQueueService | ✅ Complete |
+| VaultBackgroundService | ✅ Complete |
+| FileWatcherService | ✅ Complete |
+| SyncStatus Management | ✅ Complete |
+| Two-Phase Removal | ✅ Complete |
+| Partial Removal Recovery | ✅ Complete |
+
+## Related Documentation
+
+- [FileVault Consumer Guide](../FILEVAULT_GUIDE.md) - Integration guide for consumer apps
+- [AI Provider Integration](../AI_PROVIDER_INTEGRATION.md) - Embedding service setup

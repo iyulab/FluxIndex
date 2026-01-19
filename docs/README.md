@@ -7,6 +7,8 @@ RAG infrastructure library for .NET - Simple, fast, and local-first.
 | Document | Description |
 |----------|-------------|
 | [**GUIDE.md**](GUIDE.md) | Quick start, configuration, indexing, search, examples |
+| [**FILEVAULT_GUIDE.md**](FILEVAULT_GUIDE.md) | FileVault file-to-vector sync, folder watching, pipeline |
+| [**AI_PROVIDER_INTEGRATION.md**](AI_PROVIDER_INTEGRATION.md) | OpenAI, Azure, LMSupply, custom embedding/LLM/reranker integration |
 | [**REFERENCE.md**](REFERENCE.md) | Architecture, retrieval mechanisms, advanced topics |
 | [**ADVANCED_RAG.md**](ADVANCED_RAG.md) | HyDE, Contextual Retrieval, Query Expansion |
 | [**FLUXINDEX_PHILOSOPHY.md**](FLUXINDEX_PHILOSOPHY.md) | Core philosophy, role, and scope |

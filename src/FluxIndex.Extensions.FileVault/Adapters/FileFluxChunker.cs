@@ -1,10 +1,9 @@
 using FileFlux;
 using FileFlux.Core;
-using FluxIndex.Extensions.FileVault.Interfaces;
 using FluxIndex.Extensions.FileVault.Services;
 using Microsoft.Extensions.Logging;
 using FileFluxChunkingOptions = FileFlux.Core.ChunkingOptions;
-using VaultChunkingOptions = FluxIndex.Extensions.FileVault.Interfaces.ChunkingOptions;
+using VaultChunkingOptions = FluxIndex.Extensions.FileVault.Services.ChunkingOptions;
 
 namespace FluxIndex.Extensions.FileVault.Adapters;
 

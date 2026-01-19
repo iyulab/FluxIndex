@@ -9,7 +9,7 @@ public class CliSettings
 {
     private static readonly string SettingsDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-        ".fluxindex");
+        ".vault");
 
     private static readonly string SettingsFile = Path.Combine(SettingsDirectory, "settings.json");
 

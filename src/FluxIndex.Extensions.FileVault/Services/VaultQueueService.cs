@@ -1,241 +1,636 @@
-using System.Collections.Concurrent;
+using System.Data;
 using FluxIndex.Extensions.FileVault.Domain.Entities;
-using FluxIndex.Extensions.FileVault.Domain.Enums;
 using FluxIndex.Extensions.FileVault.Interfaces;
+using FluxIndex.Extensions.FileVault.Options;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace FluxIndex.Extensions.FileVault.Services;
 
 /// <summary>
-/// In-memory vault processing queue service.
+/// SQLite-backed vault processing queue service.
+/// Provides persistence and crash recovery for processing jobs.
 /// </summary>
-public sealed class VaultQueueService : IVaultQueueService
+public sealed class VaultQueueService : IVaultQueueService, IDisposable
 {
     private readonly ILogger<VaultQueueService> _logger;
-    private readonly ConcurrentDictionary<Guid, QueuedItem> _items = new();
-    private readonly PriorityQueue<Guid, int> _queue = new();
-    private readonly object _queueLock = new();
-    private readonly List<double> _processingTimes = new();
+    private readonly string _connectionString;
+    private readonly SemaphoreSlim _dbLock = new(1, 1);
+    private readonly List<double> _processingTimes = [];
     private DateTimeOffset? _lastProcessedAt;
     private bool _isPaused;
+    private bool _disposed;
 
     public bool IsPaused => _isPaused;
 
-    public VaultQueueService(ILogger<VaultQueueService> logger)
+    public event EventHandler<VaultJob>? JobEnqueued;
+    public event EventHandler<VaultJob>? JobCompleted;
+
+    public VaultQueueService(
+        ILogger<VaultQueueService> logger,
+        IOptions<FileVaultOptions> options)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
+        var opts = options?.Value ?? new FileVaultOptions();
+        var basePath = opts.VaultBasePath ?? Path.Combine(Directory.GetCurrentDirectory(), opts.VaultDirectoryName);
+        Directory.CreateDirectory(basePath);
+
+        var dbPath = Path.Combine(basePath, "queue.db");
+        _connectionString = $"Data Source={dbPath};Mode=ReadWriteCreate;Cache=Shared";
+
+        InitializeDatabase();
     }
 
-    public Task<QueuedItem> EnqueueAsync(string filePath, ProcessingPriority priority = ProcessingPriority.Normal, CancellationToken ct = default)
+    private void InitializeDatabase()
     {
-        var item = new QueuedItem
+        using var connection = CreateConnection();
+        connection.Open();
+
+        // Enable WAL mode for better concurrency
+        using (var cmd = connection.CreateCommand())
         {
-            FilePath = filePath,
-            Priority = priority
-        };
-
-        EnqueueItem(item);
-        _logger.LogDebug("Enqueued file {FilePath} with priority {Priority}", filePath, priority);
-
-        return Task.FromResult(item);
-    }
-
-    public Task<IReadOnlyList<QueuedItem>> EnqueueBatchAsync(IEnumerable<string> filePaths, ProcessingPriority priority = ProcessingPriority.Normal, CancellationToken ct = default)
-    {
-        var items = new List<QueuedItem>();
-
-        foreach (var filePath in filePaths)
-        {
-            var item = new QueuedItem
-            {
-                FilePath = filePath,
-                Priority = priority
-            };
-            EnqueueItem(item);
-            items.Add(item);
+            cmd.CommandText = "PRAGMA journal_mode=WAL;";
+            cmd.ExecuteNonQuery();
         }
 
-        _logger.LogDebug("Enqueued {Count} files with priority {Priority}", items.Count, priority);
-        return Task.FromResult<IReadOnlyList<QueuedItem>>(items);
-    }
-
-    public Task<QueuedItem> EnqueueEntryAsync(VaultEntry entry, ProcessingStage fromStage = ProcessingStage.Source, ProcessingPriority priority = ProcessingPriority.Normal, CancellationToken ct = default)
-    {
-        var item = new QueuedItem
+        // Create jobs table
+        using (var cmd = connection.CreateCommand())
         {
-            FilePath = entry.SourcePath,
-            VaultEntryId = entry.Id,
-            FromStage = fromStage,
-            Priority = priority
-        };
+            cmd.CommandText = """
+                CREATE TABLE IF NOT EXISTS vault_jobs (
+                    id TEXT PRIMARY KEY,
+                    file_path TEXT NOT NULL,
+                    filepath_hash TEXT NOT NULL,
+                    job_type INTEGER NOT NULL,
+                    status INTEGER NOT NULL,
+                    priority INTEGER NOT NULL,
+                    queued_at TEXT NOT NULL,
+                    started_at TEXT,
+                    completed_at TEXT,
+                    retry_count INTEGER NOT NULL DEFAULT 0,
+                    max_retries INTEGER NOT NULL DEFAULT 3,
+                    error_message TEXT
+                );
 
-        EnqueueItem(item);
-        _logger.LogDebug("Enqueued entry {EntryId} from stage {Stage} with priority {Priority}", entry.Id, fromStage, priority);
+                CREATE INDEX IF NOT EXISTS idx_jobs_status ON vault_jobs(status);
+                CREATE INDEX IF NOT EXISTS idx_jobs_priority ON vault_jobs(priority DESC, queued_at ASC);
+                CREATE INDEX IF NOT EXISTS idx_jobs_filepath_hash ON vault_jobs(filepath_hash);
+                """;
+            cmd.ExecuteNonQuery();
+        }
 
-        return Task.FromResult(item);
+        _logger.LogDebug("Vault queue database initialized");
     }
 
-    public Task<QueuedItem?> DequeueAsync(CancellationToken ct = default)
+    private SqliteConnection CreateConnection() => new(_connectionString);
+
+    #region Enqueue Methods
+
+    public Task<VaultJob> EnqueueMemorizeAsync(
+        string filepathHash,
+        string filePath,
+        CancellationToken ct = default)
+    {
+        return EnqueueJobAsync(filepathHash, filePath, VaultJobType.Memorize, VaultJobPriority.Normal, ct);
+    }
+
+    public Task<VaultJob> EnqueueMemorizeAsync(
+        string filepathHash,
+        string filePath,
+        VaultJobPriority priority,
+        CancellationToken ct = default)
+    {
+        return EnqueueJobAsync(filepathHash, filePath, VaultJobType.Memorize, priority, ct);
+    }
+
+    public Task<VaultJob> EnqueueRefreshAsync(
+        string filepathHash,
+        string filePath,
+        CancellationToken ct = default)
+    {
+        return EnqueueJobAsync(filepathHash, filePath, VaultJobType.Refresh, VaultJobPriority.Normal, ct);
+    }
+
+    public Task<VaultJob> EnqueueRefreshAsync(
+        string filepathHash,
+        string filePath,
+        VaultJobPriority priority,
+        CancellationToken ct = default)
+    {
+        return EnqueueJobAsync(filepathHash, filePath, VaultJobType.Refresh, priority, ct);
+    }
+
+    public Task<VaultJob> EnqueueRemoveAsync(
+        string filepathHash,
+        string filePath,
+        CancellationToken ct = default)
+    {
+        return EnqueueJobAsync(filepathHash, filePath, VaultJobType.Remove, VaultJobPriority.Normal, ct);
+    }
+
+    public Task<VaultJob> EnqueueRemoveAsync(
+        string filepathHash,
+        string filePath,
+        VaultJobPriority priority,
+        CancellationToken ct = default)
+    {
+        return EnqueueJobAsync(filepathHash, filePath, VaultJobType.Remove, priority, ct);
+    }
+
+    private async Task<VaultJob> EnqueueJobAsync(
+        string filepathHash,
+        string filePath,
+        VaultJobType jobType,
+        VaultJobPriority priority,
+        CancellationToken ct)
+    {
+        var fullPath = Path.GetFullPath(filePath);
+        var job = VaultJob.Create(fullPath, filepathHash, jobType, priority);
+
+        await _dbLock.WaitAsync(ct);
+        try
+        {
+            await using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO vault_jobs (id, file_path, filepath_hash, job_type, status, priority, queued_at, retry_count, max_retries)
+                VALUES (@id, @file_path, @filepath_hash, @job_type, @status, @priority, @queued_at, @retry_count, @max_retries)
+                """;
+
+            cmd.Parameters.AddWithValue("@id", job.Id.ToString());
+            cmd.Parameters.AddWithValue("@file_path", job.FilePath);
+            cmd.Parameters.AddWithValue("@filepath_hash", job.FilepathHash);
+            cmd.Parameters.AddWithValue("@job_type", (int)job.JobType);
+            cmd.Parameters.AddWithValue("@status", (int)job.Status);
+            cmd.Parameters.AddWithValue("@priority", (int)job.Priority);
+            cmd.Parameters.AddWithValue("@queued_at", job.QueuedAt.ToString("O"));
+            cmd.Parameters.AddWithValue("@retry_count", job.RetryCount);
+            cmd.Parameters.AddWithValue("@max_retries", 3);
+
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        finally
+        {
+            _dbLock.Release();
+        }
+
+        _logger.LogDebug("Enqueued {JobType} job for {FilePath}", jobType, filePath);
+        JobEnqueued?.Invoke(this, job);
+
+        return job;
+    }
+
+    public async Task<IReadOnlyList<VaultJob>> EnqueueBatchAsync(
+        IEnumerable<(string FilepathHash, string FilePath)> files,
+        VaultJobType jobType = VaultJobType.Memorize,
+        VaultJobPriority priority = VaultJobPriority.Normal,
+        CancellationToken ct = default)
+    {
+        var jobs = new List<VaultJob>();
+
+        foreach (var (filepathHash, filePath) in files)
+        {
+            var job = await EnqueueJobAsync(filepathHash, filePath, jobType, priority, ct);
+            jobs.Add(job);
+        }
+
+        return jobs;
+    }
+
+    #endregion
+
+    #region Dequeue & Status Updates
+
+    public async Task<VaultJob?> DequeueAsync(CancellationToken ct = default)
     {
         if (_isPaused)
-        {
-            return Task.FromResult<QueuedItem?>(null);
-        }
+            return null;
 
-        lock (_queueLock)
+        await _dbLock.WaitAsync(ct);
+        try
         {
-            while (_queue.Count > 0)
+            await using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+
+            // Get highest priority queued job
+            await using var selectCmd = connection.CreateCommand();
+            selectCmd.CommandText = """
+                SELECT id, file_path, filepath_hash, job_type, status, priority, queued_at,
+                       started_at, completed_at, retry_count, max_retries, error_message
+                FROM vault_jobs
+                WHERE status = @status
+                ORDER BY priority DESC, queued_at ASC
+                LIMIT 1
+                """;
+            selectCmd.Parameters.AddWithValue("@status", (int)VaultJobStatus.Queued);
+
+            await using var reader = await selectCmd.ExecuteReaderAsync(ct);
+            if (!await reader.ReadAsync(ct))
+                return null;
+
+            var job = ReadJob(reader);
+
+            // Update to processing
+            await using var updateCmd = connection.CreateCommand();
+            updateCmd.CommandText = """
+                UPDATE vault_jobs
+                SET status = @status, started_at = @started_at
+                WHERE id = @id
+                """;
+            updateCmd.Parameters.AddWithValue("@id", job.Id.ToString());
+            updateCmd.Parameters.AddWithValue("@status", (int)VaultJobStatus.Processing);
+            updateCmd.Parameters.AddWithValue("@started_at", DateTimeOffset.UtcNow.ToString("O"));
+
+            await updateCmd.ExecuteNonQueryAsync(ct);
+
+            job.TryStart();
+            _logger.LogDebug("Dequeued job {JobId} for {FilePath}", job.Id, job.FilePath);
+
+            return job;
+        }
+        finally
+        {
+            _dbLock.Release();
+        }
+    }
+
+    public async Task CompleteAsync(Guid jobId, CancellationToken ct = default)
+    {
+        await _dbLock.WaitAsync(ct);
+        try
+        {
+            await using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+
+            var completedAt = DateTimeOffset.UtcNow;
+
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                UPDATE vault_jobs
+                SET status = @status, completed_at = @completed_at, error_message = NULL
+                WHERE id = @id
+                """;
+            cmd.Parameters.AddWithValue("@id", jobId.ToString());
+            cmd.Parameters.AddWithValue("@status", (int)VaultJobStatus.Completed);
+            cmd.Parameters.AddWithValue("@completed_at", completedAt.ToString("O"));
+
+            await cmd.ExecuteNonQueryAsync(ct);
+
+            _lastProcessedAt = completedAt;
+            _logger.LogDebug("Completed job {JobId}", jobId);
+
+            var job = await GetJobInternalAsync(connection, jobId, ct);
+            if (job != null)
             {
-                if (_queue.TryDequeue(out var itemId, out _))
+                JobCompleted?.Invoke(this, job);
+
+                // Track processing time
+                if (job.Duration.HasValue)
                 {
-                    if (_items.TryGetValue(itemId, out var item) && item.Status == QueueItemStatus.Queued)
+                    lock (_processingTimes)
                     {
-                        item.MarkAsProcessing();
-                        _logger.LogDebug("Dequeued item {ItemId} for processing", itemId);
-                        return Task.FromResult<QueuedItem?>(item);
+                        _processingTimes.Add(job.Duration.Value.TotalMilliseconds);
+                        if (_processingTimes.Count > 100)
+                            _processingTimes.RemoveAt(0);
                     }
                 }
             }
         }
-
-        return Task.FromResult<QueuedItem?>(null);
+        finally
+        {
+            _dbLock.Release();
+        }
     }
 
-    public Task CompleteAsync(Guid itemId, CancellationToken ct = default)
+    public async Task FailAsync(Guid jobId, string errorMessage, CancellationToken ct = default)
     {
-        if (_items.TryGetValue(itemId, out var item))
+        await _dbLock.WaitAsync(ct);
+        try
         {
-            var startedAt = item.StartedAt;
-            item.MarkAsCompleted();
-            _lastProcessedAt = DateTimeOffset.UtcNow;
+            await using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
 
-            if (startedAt.HasValue)
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                UPDATE vault_jobs
+                SET status = @status, completed_at = @completed_at, error_message = @error_message
+                WHERE id = @id
+                """;
+            cmd.Parameters.AddWithValue("@id", jobId.ToString());
+            cmd.Parameters.AddWithValue("@status", (int)VaultJobStatus.Failed);
+            cmd.Parameters.AddWithValue("@completed_at", DateTimeOffset.UtcNow.ToString("O"));
+            cmd.Parameters.AddWithValue("@error_message", errorMessage);
+
+            await cmd.ExecuteNonQueryAsync(ct);
+            _logger.LogWarning("Failed job {JobId}: {Error}", jobId, errorMessage);
+        }
+        finally
+        {
+            _dbLock.Release();
+        }
+    }
+
+    public async Task<bool> RetryAsync(Guid jobId, CancellationToken ct = default)
+    {
+        await _dbLock.WaitAsync(ct);
+        try
+        {
+            await using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+
+            // Check if retry is allowed
+            var job = await GetJobInternalAsync(connection, jobId, ct);
+            if (job == null || !job.CanRetry)
+                return false;
+
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                UPDATE vault_jobs
+                SET status = @status, started_at = NULL, completed_at = NULL,
+                    error_message = NULL, retry_count = retry_count + 1
+                WHERE id = @id AND status = @failed_status AND retry_count < max_retries
+                """;
+            cmd.Parameters.AddWithValue("@id", jobId.ToString());
+            cmd.Parameters.AddWithValue("@status", (int)VaultJobStatus.Queued);
+            cmd.Parameters.AddWithValue("@failed_status", (int)VaultJobStatus.Failed);
+
+            var rows = await cmd.ExecuteNonQueryAsync(ct);
+            if (rows > 0)
             {
-                var processingTime = (_lastProcessedAt.Value - startedAt.Value).TotalMilliseconds;
-                lock (_processingTimes)
-                {
-                    _processingTimes.Add(processingTime);
-                    if (_processingTimes.Count > 100)
-                    {
-                        _processingTimes.RemoveAt(0);
-                    }
-                }
+                _logger.LogDebug("Retrying job {JobId}, attempt {RetryCount}", jobId, job.RetryCount + 1);
+                return true;
             }
 
-            _logger.LogDebug("Completed item {ItemId}", itemId);
+            return false;
         }
-
-        return Task.CompletedTask;
+        finally
+        {
+            _dbLock.Release();
+        }
     }
 
-    public Task FailAsync(Guid itemId, string errorMessage, Exception? exception = null, CancellationToken ct = default)
+    public async Task<bool> CancelAsync(Guid jobId, CancellationToken ct = default)
     {
-        if (_items.TryGetValue(itemId, out var item))
+        await _dbLock.WaitAsync(ct);
+        try
         {
-            item.MarkAsFailed(errorMessage);
-            _logger.LogWarning(exception, "Failed item {ItemId}: {ErrorMessage}", itemId, errorMessage);
-        }
+            await using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
 
-        return Task.CompletedTask;
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                UPDATE vault_jobs
+                SET status = @status, completed_at = @completed_at
+                WHERE id = @id AND status IN (@queued, @processing)
+                """;
+            cmd.Parameters.AddWithValue("@id", jobId.ToString());
+            cmd.Parameters.AddWithValue("@status", (int)VaultJobStatus.Cancelled);
+            cmd.Parameters.AddWithValue("@completed_at", DateTimeOffset.UtcNow.ToString("O"));
+            cmd.Parameters.AddWithValue("@queued", (int)VaultJobStatus.Queued);
+            cmd.Parameters.AddWithValue("@processing", (int)VaultJobStatus.Processing);
+
+            var rows = await cmd.ExecuteNonQueryAsync(ct);
+            if (rows > 0)
+            {
+                _logger.LogDebug("Cancelled job {JobId}", jobId);
+                return true;
+            }
+
+            return false;
+        }
+        finally
+        {
+            _dbLock.Release();
+        }
     }
 
-    public Task<bool> RetryAsync(Guid itemId, CancellationToken ct = default)
+    #endregion
+
+    #region Query Methods
+
+    public async Task<VaultJob?> GetJobAsync(Guid jobId, CancellationToken ct = default)
     {
-        if (_items.TryGetValue(itemId, out var item) && item.Status == QueueItemStatus.Failed)
+        await _dbLock.WaitAsync(ct);
+        try
         {
-            item.IncrementRetry();
-            EnqueueItem(item, requeue: true);
-            _logger.LogDebug("Retrying item {ItemId}, attempt {RetryCount}", itemId, item.RetryCount);
-            return Task.FromResult(true);
+            await using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+            return await GetJobInternalAsync(connection, jobId, ct);
         }
-
-        return Task.FromResult(false);
+        finally
+        {
+            _dbLock.Release();
+        }
     }
 
-    public Task CancelAsync(Guid itemId, CancellationToken ct = default)
+    private static async Task<VaultJob?> GetJobInternalAsync(SqliteConnection connection, Guid jobId, CancellationToken ct)
     {
-        if (_items.TryGetValue(itemId, out var item) &&
-            (item.Status == QueueItemStatus.Queued || item.Status == QueueItemStatus.Processing))
-        {
-            item.MarkAsCancelled();
-            _logger.LogDebug("Cancelled item {ItemId}", itemId);
-        }
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            SELECT id, file_path, filepath_hash, job_type, status, priority, queued_at,
+                   started_at, completed_at, retry_count, max_retries, error_message
+            FROM vault_jobs
+            WHERE id = @id
+            """;
+        cmd.Parameters.AddWithValue("@id", jobId.ToString());
 
-        return Task.CompletedTask;
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        if (await reader.ReadAsync(ct))
+            return ReadJob(reader);
+
+        return null;
     }
 
-    public Task<QueueStatus> GetStatusAsync(CancellationToken ct = default)
+    public async Task<IReadOnlyList<VaultJob>> GetJobsAsync(
+        VaultJobStatus? statusFilter = null,
+        VaultJobType? typeFilter = null,
+        int? limit = null,
+        CancellationToken ct = default)
     {
-        var items = _items.Values.ToList();
-        double avgTime;
-
-        lock (_processingTimes)
+        await _dbLock.WaitAsync(ct);
+        try
         {
-            avgTime = _processingTimes.Count > 0 ? _processingTimes.Average() : 0;
+            await using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+
+            var sql = """
+                SELECT id, file_path, filepath_hash, job_type, status, priority, queued_at,
+                       started_at, completed_at, retry_count, max_retries, error_message
+                FROM vault_jobs
+                WHERE 1=1
+                """;
+
+            if (statusFilter.HasValue)
+                sql += " AND status = @status";
+            if (typeFilter.HasValue)
+                sql += " AND job_type = @job_type";
+
+            sql += " ORDER BY priority DESC, queued_at ASC";
+
+            if (limit.HasValue)
+                sql += $" LIMIT {limit.Value}";
+
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = sql;
+
+            if (statusFilter.HasValue)
+                cmd.Parameters.AddWithValue("@status", (int)statusFilter.Value);
+            if (typeFilter.HasValue)
+                cmd.Parameters.AddWithValue("@job_type", (int)typeFilter.Value);
+
+            var jobs = new List<VaultJob>();
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                jobs.Add(ReadJob(reader));
+            }
+
+            return jobs;
         }
-
-        var status = new QueueStatus
+        finally
         {
-            QueuedCount = items.Count(i => i.Status == QueueItemStatus.Queued),
-            ProcessingCount = items.Count(i => i.Status == QueueItemStatus.Processing),
-            CompletedCount = items.Count(i => i.Status == QueueItemStatus.Completed),
-            FailedCount = items.Count(i => i.Status == QueueItemStatus.Failed),
-            CancelledCount = items.Count(i => i.Status == QueueItemStatus.Cancelled),
-            IsPaused = _isPaused,
-            LastProcessedAt = _lastProcessedAt,
-            AverageProcessingTimeMs = avgTime
-        };
-
-        return Task.FromResult(status);
+            _dbLock.Release();
+        }
     }
 
-    public Task<IReadOnlyList<QueuedItem>> GetItemsAsync(QueueItemStatus? statusFilter = null, int? limit = null, CancellationToken ct = default)
+    public async Task<QueueStatistics> GetStatisticsAsync(CancellationToken ct = default)
     {
-        var query = _items.Values.AsEnumerable();
-
-        if (statusFilter.HasValue)
+        await _dbLock.WaitAsync(ct);
+        try
         {
-            query = query.Where(i => i.Status == statusFilter.Value);
+            await using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                SELECT status, COUNT(*) as count
+                FROM vault_jobs
+                GROUP BY status
+                """;
+
+            var counts = new Dictionary<VaultJobStatus, int>();
+            await using var reader = await cmd.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                var status = (VaultJobStatus)reader.GetInt32(0);
+                var count = reader.GetInt32(1);
+                counts[status] = count;
+            }
+
+            double avgTime;
+            lock (_processingTimes)
+            {
+                avgTime = _processingTimes.Count > 0 ? _processingTimes.Average() : 0;
+            }
+
+            return new QueueStatistics
+            {
+                QueuedCount = counts.GetValueOrDefault(VaultJobStatus.Queued),
+                ProcessingCount = counts.GetValueOrDefault(VaultJobStatus.Processing),
+                CompletedCount = counts.GetValueOrDefault(VaultJobStatus.Completed),
+                FailedCount = counts.GetValueOrDefault(VaultJobStatus.Failed),
+                CancelledCount = counts.GetValueOrDefault(VaultJobStatus.Cancelled),
+                IsPaused = _isPaused,
+                LastProcessedAt = _lastProcessedAt,
+                AverageProcessingTimeMs = avgTime
+            };
         }
-
-        query = query.OrderByDescending(i => (int)i.Priority)
-                     .ThenBy(i => i.QueuedAt);
-
-        if (limit.HasValue)
+        finally
         {
-            query = query.Take(limit.Value);
+            _dbLock.Release();
         }
-
-        return Task.FromResult<IReadOnlyList<QueuedItem>>(query.ToList());
     }
 
-    public Task<int> ClearCompletedAsync(CancellationToken ct = default)
+    #endregion
+
+    #region Recovery & Cleanup
+
+    public async Task<int> RecoverStuckJobsAsync(CancellationToken ct = default)
     {
-        var completedIds = _items
-            .Where(kv => kv.Value.Status == QueueItemStatus.Completed || kv.Value.Status == QueueItemStatus.Cancelled)
-            .Select(kv => kv.Key)
-            .ToList();
-
-        foreach (var id in completedIds)
+        await _dbLock.WaitAsync(ct);
+        try
         {
-            _items.TryRemove(id, out _);
-        }
+            await using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
 
-        _logger.LogDebug("Cleared {Count} completed items", completedIds.Count);
-        return Task.FromResult(completedIds.Count);
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                UPDATE vault_jobs
+                SET status = @queued, started_at = NULL
+                WHERE status = @processing
+                """;
+            cmd.Parameters.AddWithValue("@queued", (int)VaultJobStatus.Queued);
+            cmd.Parameters.AddWithValue("@processing", (int)VaultJobStatus.Processing);
+
+            var recovered = await cmd.ExecuteNonQueryAsync(ct);
+
+            if (recovered > 0)
+            {
+                _logger.LogInformation("Recovered {Count} stuck processing jobs", recovered);
+            }
+
+            return recovered;
+        }
+        finally
+        {
+            _dbLock.Release();
+        }
     }
 
-    public Task ClearAllAsync(CancellationToken ct = default)
+    public async Task<int> ClearCompletedAsync(CancellationToken ct = default)
     {
-        lock (_queueLock)
+        await _dbLock.WaitAsync(ct);
+        try
         {
-            _queue.Clear();
-        }
-        _items.Clear();
+            await using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
 
-        _logger.LogDebug("Cleared all queue items");
-        return Task.CompletedTask;
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                DELETE FROM vault_jobs
+                WHERE status IN (@completed, @cancelled)
+                """;
+            cmd.Parameters.AddWithValue("@completed", (int)VaultJobStatus.Completed);
+            cmd.Parameters.AddWithValue("@cancelled", (int)VaultJobStatus.Cancelled);
+
+            var deleted = await cmd.ExecuteNonQueryAsync(ct);
+            _logger.LogDebug("Cleared {Count} completed/cancelled jobs", deleted);
+
+            return deleted;
+        }
+        finally
+        {
+            _dbLock.Release();
+        }
     }
+
+    public async Task ClearAllAsync(CancellationToken ct = default)
+    {
+        await _dbLock.WaitAsync(ct);
+        try
+        {
+            await using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = "DELETE FROM vault_jobs";
+            await cmd.ExecuteNonQueryAsync(ct);
+
+            _logger.LogInformation("Cleared all queue jobs");
+        }
+        finally
+        {
+            _dbLock.Release();
+        }
+    }
+
+    #endregion
+
+    #region Pause/Resume
 
     public void Pause()
     {
@@ -249,19 +644,36 @@ public sealed class VaultQueueService : IVaultQueueService
         _logger.LogInformation("Queue processing resumed");
     }
 
-    private void EnqueueItem(QueuedItem item, bool requeue = false)
+    #endregion
+
+    #region Helpers
+
+    private static VaultJob ReadJob(IDataReader reader)
     {
-        if (!requeue)
-        {
-            _items[item.Id] = item;
-        }
-
-        // Priority queue uses negative priority so higher priorities come first
-        var priority = -(int)item.Priority;
-
-        lock (_queueLock)
-        {
-            _queue.Enqueue(item.Id, priority);
-        }
+        return VaultJob.Restore(
+            id: Guid.Parse(reader.GetString(0)),
+            filePath: reader.GetString(1),
+            filepathHash: reader.GetString(2),
+            jobType: (VaultJobType)reader.GetInt32(3),
+            status: (VaultJobStatus)reader.GetInt32(4),
+            priority: (VaultJobPriority)reader.GetInt32(5),
+            queuedAt: DateTimeOffset.Parse(reader.GetString(6)),
+            startedAt: reader.IsDBNull(7) ? null : DateTimeOffset.Parse(reader.GetString(7)),
+            completedAt: reader.IsDBNull(8) ? null : DateTimeOffset.Parse(reader.GetString(8)),
+            retryCount: reader.GetInt32(9),
+            maxRetries: reader.GetInt32(10),
+            errorMessage: reader.IsDBNull(11) ? null : reader.GetString(11)
+        );
     }
+
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+
+        _dbLock.Dispose();
+        _disposed = true;
+    }
+
+    #endregion
 }

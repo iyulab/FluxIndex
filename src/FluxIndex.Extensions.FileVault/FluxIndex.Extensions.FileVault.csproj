@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <PackageReference Include="FileFlux" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Options" />
   </ItemGroup>

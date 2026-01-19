@@ -1,39 +1,46 @@
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Extensions.FileVault.Domain.Entities;
-using FluxIndex.Extensions.FileVault.Services;
+using FluxIndex.Extensions.FileVault.Interfaces;
 using Microsoft.Extensions.Logging;
 
 namespace FluxIndex.Extensions.FileVault.Adapters;
 
 /// <summary>
-/// FluxIndex adapter for chunk memorization.
-/// Bridges IMemorizer to FluxIndex's IVectorStore and IEmbeddingService.
+/// FluxIndex adapter for standalone chunk memorization.
+/// Note: VaultPipeline now handles indexing internally. This adapter is for custom scenarios.
 /// </summary>
-public sealed class FluxIndexMemorizer : IMemorizer
+public sealed class FluxIndexMemorizer
 {
     private readonly IVectorStore _vectorStore;
     private readonly IEmbeddingService _embeddingService;
+    private readonly IVaultStorageService _storage;
     private readonly ILogger<FluxIndexMemorizer> _logger;
 
     public FluxIndexMemorizer(
         IVectorStore vectorStore,
         IEmbeddingService embeddingService,
+        IVaultStorageService storage,
         ILogger<FluxIndexMemorizer> logger)
     {
         _vectorStore = vectorStore ?? throw new ArgumentNullException(nameof(vectorStore));
         _embeddingService = embeddingService ?? throw new ArgumentNullException(nameof(embeddingService));
+        _storage = storage ?? throw new ArgumentNullException(nameof(storage));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public async Task MemorizeAsync(VaultEntry entry, IReadOnlyList<string> chunks, CancellationToken ct = default)
+    /// <summary>
+    /// Memorizes all vault content (refined.md + append-text.md + qa.md) for an entry.
+    /// </summary>
+    public async Task<int> MemorizeFromVaultAsync(VaultEntry entry, IReadOnlyList<string> chunks, CancellationToken ct = default)
     {
         _logger.LogInformation(
             "Memorizing {ChunkCount} chunks for {SourcePath}",
             chunks.Count,
             entry.SourcePath);
 
-        var documentId = entry.SourceHash.Value;
+        // Use filepath hash as document ID
+        var documentId = entry.FilepathHash;
         var documentChunks = new List<DocumentChunk>();
 
         // Generate embeddings for all chunks
@@ -57,10 +64,10 @@ public sealed class FluxIndexMemorizer : IMemorizer
 
             chunk.SetEmbedding(embeddingList[i]);
 
-            // Add metadata from vault entry using Metadata dictionary
+            // Add metadata from vault entry
             chunk.Metadata ??= new Dictionary<string, object>();
             chunk.Metadata["source_path"] = entry.SourcePath;
-            chunk.Metadata["source_hash"] = entry.SourceHash.Value;
+            chunk.Metadata["filepath_hash"] = entry.FilepathHash;
             chunk.Metadata["file_name"] = entry.FileName;
 
             documentChunks.Add(chunk);
@@ -75,5 +82,17 @@ public sealed class FluxIndexMemorizer : IMemorizer
             storedCount,
             chunks.Count,
             documentId);
+
+        return storedCount;
+    }
+
+    /// <summary>
+    /// Removes all chunks for an entry from the vector store.
+    /// </summary>
+    public async Task RemoveAsync(VaultEntry entry, CancellationToken ct = default)
+    {
+        var documentId = entry.FilepathHash;
+        await _vectorStore.DeleteByDocumentIdAsync(documentId, ct);
+        _logger.LogInformation("Removed chunks for document {DocumentId}", documentId);
     }
 }

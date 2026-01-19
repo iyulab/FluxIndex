@@ -10,21 +10,20 @@ using Microsoft.Extensions.Options;
 namespace FluxIndex.Extensions.FileVault.Services;
 
 /// <summary>
-/// Main vault implementation providing file-based tracking with Git integration.
+/// Main vault implementation providing file-based tracking with queue-based processing.
 /// </summary>
 public sealed class VaultManager : IVault
 {
     private readonly IContentHasher _hasher;
     private readonly IGitService _git;
     private readonly IVaultPipeline _pipeline;
+    private readonly IVaultQueueService _queue;
     private readonly IFileWatcherService _fileWatcher;
     private readonly IVaultStorageService _storage;
     private readonly PatternMatcher _patternMatcher;
     private readonly ILogger<VaultManager> _logger;
     private readonly FileVaultOptions _options;
 
-    private readonly Dictionary<string, FileSystemWatcher> _watchers = new();
-    private readonly Dictionary<string, WatchOptions> _watchOptions = new();
     private readonly ConcurrentDictionary<Guid, WatchedFolder> _watchedFolders = new();
     private DateTimeOffset? _lastSyncTime;
 
@@ -34,6 +33,7 @@ public sealed class VaultManager : IVault
         IContentHasher hasher,
         IGitService git,
         IVaultPipeline pipeline,
+        IVaultQueueService queue,
         IFileWatcherService fileWatcher,
         IVaultStorageService storage,
         ILogger<VaultManager> logger,
@@ -42,6 +42,7 @@ public sealed class VaultManager : IVault
         _hasher = hasher ?? throw new ArgumentNullException(nameof(hasher));
         _git = git ?? throw new ArgumentNullException(nameof(git));
         _pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
+        _queue = queue ?? throw new ArgumentNullException(nameof(queue));
         _fileWatcher = fileWatcher ?? throw new ArgumentNullException(nameof(fileWatcher));
         _storage = storage ?? throw new ArgumentNullException(nameof(storage));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -51,213 +52,367 @@ public sealed class VaultManager : IVault
         VaultBasePath = _options.VaultBasePath ?? _options.VaultDirectoryName;
     }
 
-    #region Entry Management
+    #region Core Commands
 
-    public async Task<VaultEntry> AddAsync(string filePath, CancellationToken ct = default)
+    public async Task<VaultEntry> MemorizeAsync(string filePath, CancellationToken ct = default)
     {
         var fullPath = Path.GetFullPath(filePath);
 
         if (!File.Exists(fullPath))
             throw new FileNotFoundException("Source file not found", fullPath);
 
-        // Compute hash
-        var hash = await _hasher.ComputeHashAsync(fullPath, ct);
+        // Get or create entry
+        var entry = await GetOrCreateEntryAsync(fullPath, ct);
 
-        // Check if already exists
-        var existingEntry = await GetByHashAsync(hash.Value, ct);
-        if (existingEntry != null)
-        {
-            _logger.LogDebug("Entry already exists for hash {Hash}", hash.Value);
-            return existingEntry;
-        }
+        // Queue memorize job (full pipeline: extract → chunk → embed → commit)
+        await _queue.EnqueueMemorizeAsync(entry.FilepathHash, fullPath, ct);
 
-        // Determine vault base path (relative to source file's directory)
-        var sourceDir = Path.GetDirectoryName(fullPath) ?? ".";
-        var vaultBase = Path.Combine(sourceDir, VaultBasePath);
-
-        // Create entry
-        var entry = VaultEntry.Create(fullPath, hash, vaultBase);
-
-        // Initialize Git repo
-        await _git.InitAsync(entry.VaultPath, ct);
-
-        // Save source info
-        entry.SaveSourceInfo();
-
-        // Initial commit
-        await _git.CommitAsync(entry.VaultPath, "init: source registered", ct);
-
-        _logger.LogInformation("Added vault entry for {FilePath} -> {VaultPath}", fullPath, entry.VaultPath);
+        _logger.LogInformation("Queued memorize job for {FilePath}", fullPath);
         return entry;
     }
 
-    public async Task<VaultEntry?> GetAsync(string filePath, CancellationToken ct = default)
+    public async Task<VaultEntry> RefreshAsync(string filePath, CancellationToken ct = default)
     {
         var fullPath = Path.GetFullPath(filePath);
 
-        if (!File.Exists(fullPath))
-            return null;
+        var entry = await GetAsync(fullPath, ct);
+        if (entry == null)
+            throw new InvalidOperationException($"No vault entry exists for: {fullPath}. Use MemorizeAsync first.");
 
-        var hash = await _hasher.ComputeHashAsync(fullPath, ct);
-        return await GetByHashAsync(hash.Value, ct);
+        if (entry.Stage < ProcessingStage.Extracted)
+            throw new InvalidOperationException($"Entry must be at least Extracted to refresh. Current stage: {entry.Stage}");
+
+        // Queue refresh job (chunk → embed → commit, skip extraction)
+        await _queue.EnqueueRefreshAsync(entry.FilepathHash, fullPath, ct);
+
+        _logger.LogInformation("Queued refresh job for {FilePath}", fullPath);
+        return entry;
     }
 
-    public Task<VaultEntry?> GetByHashAsync(string hash, CancellationToken ct = default)
+    public async Task<SyncResult> SyncAsync(CancellationToken ct = default)
     {
-        // Search in all potential vault locations
-        var searchPaths = new List<string>();
+        var startedAt = DateTimeOffset.UtcNow;
+        var memorizeCount = 0;
+        var refreshCount = 0;
+        var removeCount = 0;
+        var skippedCount = 0;
+        var newFilesCount = 0;
+        var changedFilesCount = 0;
+        var orphansDetected = 0;
+        var orphansQueued = 0;
+        var errors = new List<SyncError>();
 
-        // Current directory
-        searchPaths.Add(Path.Combine(VaultBasePath, hash));
-
-        // Check watched folders
-        foreach (var watchPath in _watchers.Keys)
+        // Scan all watched folders
+        var folders = _watchedFolders.Values.ToList();
+        foreach (var folder in folders)
         {
-            searchPaths.Add(Path.Combine(watchPath, VaultBasePath, hash));
-        }
+            if (folder.Status != WatcherStatus.Active)
+                continue;
 
-        foreach (var vaultPath in searchPaths)
-        {
-            if (Directory.Exists(vaultPath) && File.Exists(Path.Combine(vaultPath, "source.json")))
+            try
             {
-                try
+                var scanResult = await ScanFolderAsync(folder.Path, ct);
+
+                // Queue jobs based on detected changes
+                foreach (var change in scanResult.DetectedChanges)
                 {
-                    var entry = VaultEntry.Load(vaultPath);
-                    return Task.FromResult<VaultEntry?>(entry);
+                    try
+                    {
+                        switch (change.RecommendedAction)
+                        {
+                            case ChangeAction.Memorize:
+                                if (change.EntryExists)
+                                    changedFilesCount++;
+                                else
+                                    newFilesCount++;
+
+                                await _queue.EnqueueMemorizeAsync(
+                                    FilepathHasher.ComputeHash(change.FilePath),
+                                    change.FilePath, ct);
+                                memorizeCount++;
+                                break;
+
+                            case ChangeAction.Refresh:
+                                changedFilesCount++;
+                                await _queue.EnqueueRefreshAsync(
+                                    FilepathHasher.ComputeHash(change.FilePath),
+                                    change.FilePath, ct);
+                                refreshCount++;
+                                break;
+
+                            case ChangeAction.Remove:
+                                orphansDetected++;
+                                if (_options.AutoCleanupOrphans)
+                                {
+                                    await _queue.EnqueueRemoveAsync(
+                                        FilepathHasher.ComputeHash(change.FilePath),
+                                        change.FilePath, ct);
+                                    orphansQueued++;
+                                    removeCount++;
+                                }
+                                break;
+
+                            case ChangeAction.None:
+                                skippedCount++;
+                                break;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        errors.Add(new SyncError
+                        {
+                            FilePath = change.FilePath,
+                            ErrorMessage = ex.Message,
+                            Exception = ex
+                        });
+                    }
                 }
-                catch (Exception ex)
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to scan folder {Path}", folder.Path);
+                errors.Add(new SyncError
                 {
-                    _logger.LogWarning(ex, "Failed to load vault entry from {Path}", vaultPath);
-                }
+                    FilePath = folder.Path,
+                    ErrorMessage = $"Failed to scan folder: {ex.Message}",
+                    Exception = ex
+                });
             }
         }
 
-        return Task.FromResult<VaultEntry?>(null);
+        // Also check orphaned entries across all locations
+        var orphanedEntries = await GetOrphanedEntriesAsync(ct);
+        foreach (var entry in orphanedEntries)
+        {
+            if (!_options.AutoCleanupOrphans) continue;
+
+            try
+            {
+                await _queue.EnqueueRemoveAsync(entry.FilepathHash, entry.SourcePath, ct);
+                removeCount++;
+                orphansQueued++;
+            }
+            catch (Exception ex)
+            {
+                errors.Add(new SyncError
+                {
+                    FilePath = entry.SourcePath,
+                    ErrorMessage = ex.Message,
+                    Exception = ex
+                });
+            }
+        }
+
+        _lastSyncTime = DateTimeOffset.UtcNow;
+
+        return new SyncResult
+        {
+            MemorizeQueuedCount = memorizeCount,
+            RefreshQueuedCount = refreshCount,
+            RemoveQueuedCount = removeCount,
+            SkippedCount = skippedCount,
+            ErrorCount = errors.Count,
+            Errors = errors,
+            FoldersScanned = folders.Count,
+            NewFilesDiscovered = newFilesCount,
+            ChangedFilesDetected = changedFilesCount,
+            OrphansDetected = orphansDetected + orphanedEntries.Count,
+            OrphansQueued = orphansQueued,
+            StartedAt = startedAt,
+            CompletedAt = DateTimeOffset.UtcNow
+        };
+    }
+
+    public async Task<ChangeDetectionResult> DetectChangesAsync(string filePath, CancellationToken ct = default)
+    {
+        var fullPath = Path.GetFullPath(filePath);
+        var sourceExists = File.Exists(fullPath);
+        var filepathHash = FilepathHasher.ComputeHash(fullPath);
+
+        // Try to load existing entry
+        var entry = VaultEntry.LoadByHash(filepathHash, _storage.BasePath);
+        var entryExists = entry != null;
+
+        // Check source changes (content hash)
+        var sourceChanged = false;
+        if (entryExists && sourceExists && entry!.SourceContentHash != null)
+        {
+            var currentHash = await _hasher.ComputeHashAsync(fullPath, ct);
+            sourceChanged = !entry.SourceContentHash.Equals(currentHash);
+        }
+
+        // Check vault changes (git status)
+        var vaultChanged = false;
+        var modifiedVaultFiles = new List<string>();
+        if (entryExists && entry!.Stage >= ProcessingStage.Extracted)
+        {
+            var gitStatus = await _git.StatusAsync(entry.VaultPath, ct);
+            if (gitStatus.ModifiedFiles.Count > 0)
+            {
+                vaultChanged = true;
+                modifiedVaultFiles.AddRange(gitStatus.ModifiedFiles);
+            }
+        }
+
+        // Determine recommended action
+        var action = DetermineAction(entryExists, sourceExists, sourceChanged, vaultChanged);
+
+        // Update entry's SyncStatus based on detection results
+        if (entry != null)
+        {
+            if (!sourceExists)
+            {
+                entry.UpdateSyncStatus(SyncStatus.SourceDeleted);
+            }
+            else if (sourceChanged)
+            {
+                entry.UpdateSyncStatus(SyncStatus.SourceModified);
+            }
+            else if (vaultChanged)
+            {
+                entry.UpdateSyncStatus(SyncStatus.VaultModified);
+            }
+            else if (entry.SyncStatus != SyncStatus.RemovalPending &&
+                     entry.SyncStatus != SyncStatus.RemovalPartial &&
+                     entry.SyncStatus != SyncStatus.Error)
+            {
+                // Only set InSync if not in a removal or error state
+                entry.UpdateSyncStatus(SyncStatus.InSync);
+            }
+
+            entry.SaveMetadata();
+        }
+
+        return new ChangeDetectionResult
+        {
+            FilePath = fullPath,
+            EntryExists = entryExists,
+            SourceChanged = sourceChanged,
+            VaultChanged = vaultChanged,
+            SourceExists = sourceExists,
+            RecommendedAction = action,
+            ModifiedVaultFiles = modifiedVaultFiles
+        };
+    }
+
+    private static ChangeAction DetermineAction(bool entryExists, bool sourceExists, bool sourceChanged, bool vaultChanged)
+    {
+        if (!sourceExists)
+            return entryExists ? ChangeAction.Remove : ChangeAction.None;
+
+        if (!entryExists)
+            return ChangeAction.Memorize;
+
+        if (sourceChanged)
+            return ChangeAction.Memorize;
+
+        if (vaultChanged)
+            return ChangeAction.Refresh;
+
+        return ChangeAction.None;
+    }
+
+    #endregion
+
+    #region Entry Management
+
+    public Task<VaultEntry?> GetAsync(string filePath, CancellationToken ct = default)
+    {
+        var fullPath = Path.GetFullPath(filePath);
+        var hash = FilepathHasher.ComputeHash(fullPath);
+        return GetByHashAsync(hash, ct);
+    }
+
+    public Task<VaultEntry?> GetByHashAsync(string filepathHash, CancellationToken ct = default)
+    {
+        var entry = VaultEntry.LoadByHash(filepathHash, _storage.BasePath);
+        return Task.FromResult(entry);
     }
 
     public Task<IReadOnlyList<VaultEntry>> ListAsync(ProcessingStage? stageFilter = null, CancellationToken ct = default)
     {
         var entries = new List<VaultEntry>();
 
-        // Search all vault directories
-        var searchPaths = new List<string> { VaultBasePath };
-        foreach (var watchPath in _watchers.Keys)
-        {
-            searchPaths.Add(Path.Combine(watchPath, VaultBasePath));
-        }
+        if (!Directory.Exists(_storage.BasePath))
+            return Task.FromResult<IReadOnlyList<VaultEntry>>(entries);
 
-        foreach (var basePath in searchPaths)
+        foreach (var dir in Directory.GetDirectories(_storage.BasePath))
         {
-            if (!Directory.Exists(basePath))
+            var metaPath = Path.Combine(dir, "meta.json");
+            if (!File.Exists(metaPath))
                 continue;
 
-            foreach (var dir in Directory.GetDirectories(basePath))
+            try
             {
-                var sourceJson = Path.Combine(dir, "source.json");
-                if (!File.Exists(sourceJson))
-                    continue;
-
-                try
+                var dirName = Path.GetFileName(dir);
+                var entry = VaultEntry.LoadByHash(dirName, _storage.BasePath);
+                if (entry != null && (stageFilter == null || entry.Stage == stageFilter))
                 {
-                    var entry = VaultEntry.Load(dir);
-                    if (stageFilter == null || entry.Stage == stageFilter)
-                    {
-                        entries.Add(entry);
-                    }
+                    entries.Add(entry);
                 }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to load vault entry from {Path}", dir);
-                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to load vault entry from {Path}", dir);
             }
         }
 
         return Task.FromResult<IReadOnlyList<VaultEntry>>(entries);
     }
 
-    public Task RemoveAsync(string filePath, CancellationToken ct = default)
+    public async Task RemoveAsync(string filePath, CancellationToken ct = default)
     {
         var fullPath = Path.GetFullPath(filePath);
-        var sourceDir = Path.GetDirectoryName(fullPath) ?? ".";
+        var entry = await GetAsync(fullPath, ct);
 
-        // Find and remove the vault entry
-        var vaultBase = Path.Combine(sourceDir, VaultBasePath);
-
-        if (!Directory.Exists(vaultBase))
-            return Task.CompletedTask;
-
-        foreach (var dir in Directory.GetDirectories(vaultBase))
+        if (entry == null)
         {
-            var sourceJson = Path.Combine(dir, "source.json");
-            if (!File.Exists(sourceJson))
-                continue;
-
-            try
-            {
-                var entry = VaultEntry.Load(dir);
-                if (entry.SourcePath.Equals(fullPath, StringComparison.OrdinalIgnoreCase))
-                {
-                    Directory.Delete(dir, recursive: true);
-                    _logger.LogInformation("Removed vault entry for {FilePath}", fullPath);
-                    break;
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to check vault entry at {Path}", dir);
-            }
+            _logger.LogWarning("No entry found for {FilePath}", fullPath);
+            return;
         }
 
-        return Task.CompletedTask;
+        // Queue remove job
+        await _queue.EnqueueRemoveAsync(entry.FilepathHash, fullPath, ct);
+        _logger.LogInformation("Queued remove job for {FilePath}", fullPath);
     }
 
-    #endregion
-
-    #region Pipeline Commands
-
-    public async Task ExtractAsync(string filePath, CancellationToken ct = default)
+    private async Task<VaultEntry> GetOrCreateEntryAsync(string fullPath, CancellationToken ct)
     {
-        var entry = await GetOrAddAsync(filePath, ct);
-        await _pipeline.ExtractAsync(entry, ct);
-    }
+        var filepathHash = FilepathHasher.ComputeHash(fullPath);
+        var existing = VaultEntry.LoadByHash(filepathHash, _storage.BasePath);
 
-    public async Task RefineAsync(string filePath, CancellationToken ct = default)
-    {
-        var entry = await GetOrAddAsync(filePath, ct);
-        await _pipeline.RefineAsync(entry, ct);
-    }
+        if (existing != null)
+        {
+            // Update content hash if source changed
+            var currentHash = await _hasher.ComputeHashAsync(fullPath, ct);
+            if (existing.SourceContentHash == null || !existing.SourceContentHash.Equals(currentHash))
+            {
+                existing.UpdateSourceContentHash(currentHash);
+                existing.SaveMetadata();
+            }
+            return existing;
+        }
 
-    public async Task ChunkAsync(string filePath, ChunkingOptions? options = null, CancellationToken ct = default)
-    {
-        var entry = await GetOrAddAsync(filePath, ct);
-        await _pipeline.ChunkAsync(entry, options, ct);
-    }
+        // Create new entry
+        var entry = VaultEntry.Create(fullPath, _storage.BasePath);
 
-    public async Task MemorizeAsync(string filePath, CancellationToken ct = default)
-    {
-        var entry = await GetOrAddAsync(filePath, ct);
-        await _pipeline.MemorizeAsync(entry, ct);
-    }
+        // Compute content hash
+        var hash = await _hasher.ComputeHashAsync(fullPath, ct);
+        entry.UpdateSourceContentHash(hash);
 
-    public async Task<VaultEntry> ProcessAsync(string filePath, ChunkingOptions? options = null, CancellationToken ct = default)
-    {
-        var entry = await AddAsync(filePath, ct);
-        await _pipeline.ProcessToStageAsync(entry, ProcessingStage.Memorized, ct);
+        // Initialize storage (creates directories, .gitignore, git init)
+        await _storage.InitializeEntryAsync(entry, ct);
+
+        // Save metadata
+        entry.SaveMetadata();
+
+        _logger.LogInformation("Created vault entry for {FilePath} -> {EntryPath}", fullPath, entry.EntryPath);
         return entry;
     }
 
-    private async Task<VaultEntry> GetOrAddAsync(string filePath, CancellationToken ct)
-    {
-        var entry = await GetAsync(filePath, ct);
-        if (entry != null)
-            return entry;
-
-        return await AddAsync(filePath, ct);
-    }
-
     #endregion
 
-    #region Status & Diff
+    #region Status & History
 
     public async Task<VaultStatus> StatusAsync(CancellationToken ct = default)
     {
@@ -266,14 +421,20 @@ public sealed class VaultManager : IVault
 
         var sourceCount = 0;
         var extractedCount = 0;
-        var refinedCount = 0;
-        var chunkedCount = 0;
         var memorizedCount = 0;
         var changedSourceCount = 0;
-        var changedRefinedCount = 0;
-        var errorCount = 0;
+        var changedVaultCount = 0;
         var orphanedCount = 0;
         long totalStorageSize = 0;
+
+        // SyncStatus counts
+        var inSyncCount = 0;
+        var sourceModifiedCount = 0;
+        var vaultModifiedCount = 0;
+        var sourceDeletedCount = 0;
+        var removalPendingCount = 0;
+        var removalPartialCount = 0;
+        var errorCount = 0;
 
         foreach (var entry in entries)
         {
@@ -281,9 +442,19 @@ public sealed class VaultManager : IVault
             {
                 case ProcessingStage.Source: sourceCount++; break;
                 case ProcessingStage.Extracted: extractedCount++; break;
-                case ProcessingStage.Refined: refinedCount++; break;
-                case ProcessingStage.Chunked: chunkedCount++; break;
                 case ProcessingStage.Memorized: memorizedCount++; break;
+            }
+
+            // Count SyncStatus
+            switch (entry.SyncStatus)
+            {
+                case SyncStatus.InSync: inSyncCount++; break;
+                case SyncStatus.SourceModified: sourceModifiedCount++; break;
+                case SyncStatus.VaultModified: vaultModifiedCount++; break;
+                case SyncStatus.SourceDeleted: sourceDeletedCount++; break;
+                case SyncStatus.RemovalPending: removalPendingCount++; break;
+                case SyncStatus.RemovalPartial: removalPartialCount++; break;
+                case SyncStatus.Error: errorCount++; break;
             }
 
             // Check if source file exists (orphaned check)
@@ -293,25 +464,30 @@ public sealed class VaultManager : IVault
                 continue;
             }
 
-            // Check for source changes
-            if (await HasSourceChangedAsync(entry.SourcePath, ct))
+            // Detect changes
+            var changes = await DetectChangesAsync(entry.SourcePath, ct);
+            if (changes.SourceChanged)
             {
                 changedSourceCount++;
                 changedEntries.Add(entry);
             }
-            // Check for refined changes (if applicable)
-            else if (entry.Stage >= ProcessingStage.Refined && await HasRefinedChangedAsync(entry.SourcePath, ct))
+            else if (changes.VaultChanged)
             {
-                changedRefinedCount++;
+                changedVaultCount++;
                 changedEntries.Add(entry);
             }
 
             // Calculate storage size
-            totalStorageSize += await _storage.GetStorageSizeAsync(entry.Id, ct);
+            if (Directory.Exists(entry.EntryPath))
+            {
+                totalStorageSize += GetDirectorySize(entry.EntryPath);
+            }
         }
 
+        // Queue status
+        var queueStatus = await GetQueueStatusAsync(ct);
+
         // Watcher status
-        var watcherInfos = _fileWatcher.GetAllWatchers();
         var folders = _watchedFolders.Values.ToList();
 
         return new VaultStatus
@@ -319,350 +495,59 @@ public sealed class VaultManager : IVault
             TotalEntries = entries.Count,
             SourceCount = sourceCount,
             ExtractedCount = extractedCount,
-            RefinedCount = refinedCount,
-            ChunkedCount = chunkedCount,
             MemorizedCount = memorizedCount,
             ChangedSourceCount = changedSourceCount,
-            ChangedRefinedCount = changedRefinedCount,
+            ChangedVaultCount = changedVaultCount,
             ChangedEntries = changedEntries,
+            InSyncCount = inSyncCount,
+            SourceModifiedCount = sourceModifiedCount,
+            VaultModifiedCount = vaultModifiedCount,
+            SourceDeletedCount = sourceDeletedCount,
+            RemovalPendingCount = removalPendingCount,
+            RemovalPartialCount = removalPartialCount,
+            ErrorCount = errorCount,
             ActiveWatcherCount = folders.Count(f => f.Status == WatcherStatus.Active),
             PausedWatcherCount = folders.Count(f => f.Status == WatcherStatus.Paused),
             ErrorWatcherCount = folders.Count(f => f.Status == WatcherStatus.Error),
-            QueuedCount = 0, // Will be updated when queue service is integrated
-            ProcessingCount = 0,
-            ErrorCount = errorCount,
+            QueuedCount = queueStatus.QueuedCount,
+            ProcessingCount = queueStatus.ProcessingCount,
+            FailedCount = queueStatus.FailedCount,
             OrphanedCount = orphanedCount,
             LastSyncTime = _lastSyncTime,
             TotalStorageSizeBytes = totalStorageSize
         };
     }
 
-    public async Task<string> DiffAsync(string filePath, string? stage = null, CancellationToken ct = default)
+    public async Task<string> DiffAsync(string filePath, CancellationToken ct = default)
     {
         var entry = await GetAsync(filePath, ct);
-        if (entry == null)
+        if (entry == null || !Directory.Exists(entry.VaultPath))
             return "";
 
-        var targetFile = stage?.ToLowerInvariant() switch
-        {
-            "extracted" => "extracted.md",
-            "refined" => "refined.md",
-            _ => null
-        };
-
-        return await _git.DiffAsync(entry.VaultPath, targetFile, ct);
+        return await _git.DiffAsync(entry.VaultPath, null, ct);
     }
 
     public async Task<IReadOnlyList<GitCommit>> LogAsync(string filePath, int maxCount = 10, CancellationToken ct = default)
     {
         var entry = await GetAsync(filePath, ct);
-        if (entry == null)
+        if (entry == null || !Directory.Exists(entry.VaultPath))
             return [];
 
         return await _git.LogAsync(entry.VaultPath, maxCount, ct);
     }
 
-    #endregion
-
-    #region Change Detection
-
-    public async Task<bool> HasSourceChangedAsync(string filePath, CancellationToken ct = default)
+    private static long GetDirectorySize(string path)
     {
-        var entry = await GetAsync(filePath, ct);
-        if (entry == null)
-            return false;
+        var info = new DirectoryInfo(path);
+        if (!info.Exists) return 0;
 
-        if (!File.Exists(entry.SourcePath))
-            return true; // Source deleted
-
-        var currentHash = await _hasher.ComputeHashAsync(entry.SourcePath, ct);
-        return !entry.SourceHash.Equals(currentHash);
-    }
-
-    public async Task<bool> HasRefinedChangedAsync(string filePath, CancellationToken ct = default)
-    {
-        var entry = await GetAsync(filePath, ct);
-        if (entry == null || entry.Stage < ProcessingStage.Refined)
-            return false;
-
-        var status = await _git.StatusAsync(entry.VaultPath, ct);
-        return status.ModifiedFiles.Any(f => f.EndsWith("refined.md"));
-    }
-
-    public async Task<SyncResult> SyncAsync(CancellationToken ct = default)
-    {
-        var startedAt = DateTimeOffset.UtcNow;
-        var status = await StatusAsync(ct);
-        var processedCount = 0;
-        var skippedCount = 0;
-        var queuedCount = 0;
-        var errorCount = 0;
-        var errors = new List<SyncError>();
-        var orphansCleaned = 0;
-
-        // Process changed entries
-        foreach (var entry in status.ChangedEntries)
-        {
-            try
-            {
-                // Determine restart point
-                var sourceChanged = await HasSourceChangedAsync(entry.SourcePath, ct);
-                var fromStage = sourceChanged ? ProcessingStage.Source : ProcessingStage.Refined;
-
-                // Reprocess
-                await _pipeline.ReprocessFromStageAsync(entry, fromStage, ct);
-                processedCount++;
-            }
-            catch (Exception ex)
-            {
-                errorCount++;
-                errors.Add(new SyncError
-                {
-                    FilePath = entry.SourcePath,
-                    ErrorMessage = ex.Message,
-                    Exception = ex
-                });
-                _logger.LogError(ex, "Failed to sync entry {Path}", entry.SourcePath);
-            }
-        }
-
-        // Cleanup orphans if enabled
-        if (_options.AutoCleanupOrphans)
-        {
-            orphansCleaned = await CleanupOrphanedEntriesAsync(ct);
-        }
-
-        skippedCount = status.TotalEntries - status.ChangedEntries.Count - status.OrphanedCount;
-        _lastSyncTime = DateTimeOffset.UtcNow;
-
-        return new SyncResult
-        {
-            ProcessedCount = processedCount,
-            SkippedCount = skippedCount,
-            QueuedCount = queuedCount,
-            ErrorCount = errorCount,
-            Errors = errors,
-            FoldersScanned = _watchedFolders.Count,
-            NewFilesDiscovered = 0,
-            ChangedFilesDetected = status.ChangedSourceCount + status.ChangedRefinedCount,
-            OrphansDetected = status.OrphanedCount,
-            OrphansCleaned = orphansCleaned,
-            StartedAt = startedAt,
-            CompletedAt = DateTimeOffset.UtcNow
-        };
+        return info.EnumerateFiles("*", SearchOption.AllDirectories)
+            .Sum(f => f.Length);
     }
 
     #endregion
 
     #region Folder Watching
-
-    public Task WatchFolderAsync(string folderPath, WatchOptions? options = null, CancellationToken ct = default)
-    {
-        var fullPath = Path.GetFullPath(folderPath);
-
-        if (!Directory.Exists(fullPath))
-            throw new DirectoryNotFoundException($"Folder not found: {fullPath}");
-
-        if (_watchers.ContainsKey(fullPath))
-        {
-            _logger.LogWarning("Already watching folder: {Path}", fullPath);
-            return Task.CompletedTask;
-        }
-
-        options ??= new WatchOptions();
-        _watchOptions[fullPath] = options;
-
-        var watcher = new FileSystemWatcher(fullPath)
-        {
-            IncludeSubdirectories = options.IsRecursive,
-            EnableRaisingEvents = true,
-            NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size
-        };
-
-        watcher.Created += OnFileCreated;
-        watcher.Changed += OnFileChanged;
-        watcher.Deleted += OnFileDeleted;
-
-        _watchers[fullPath] = watcher;
-        _logger.LogInformation("Started watching folder: {Path}", fullPath);
-
-        return Task.CompletedTask;
-    }
-
-    public Task UnwatchFolderAsync(string folderPath, CancellationToken ct = default)
-    {
-        var fullPath = Path.GetFullPath(folderPath);
-
-        if (_watchers.TryGetValue(fullPath, out var watcher))
-        {
-            watcher.EnableRaisingEvents = false;
-            watcher.Dispose();
-            _watchers.Remove(fullPath);
-            _watchOptions.Remove(fullPath);
-            _logger.LogInformation("Stopped watching folder: {Path}", fullPath);
-        }
-
-        return Task.CompletedTask;
-    }
-
-    public async Task<ScanResult> ScanFolderAsync(string folderPath, CancellationToken ct = default)
-    {
-        var sw = Stopwatch.StartNew();
-        var fullPath = Path.GetFullPath(folderPath);
-
-        if (!Directory.Exists(fullPath))
-            throw new DirectoryNotFoundException($"Folder not found: {fullPath}");
-
-        var options = _watchOptions.GetValueOrDefault(fullPath) ?? new WatchOptions();
-        var searchOption = options.IsRecursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
-
-        var newEntries = new List<VaultEntry>();
-        var changedEntries = new List<VaultEntry>();
-        var orphanedPaths = new List<string>();
-        var errors = new List<ScanError>();
-        var existingCount = 0;
-        var skippedCount = 0;
-        var scannedCount = 0;
-
-        var files = Directory.EnumerateFiles(fullPath, "*", searchOption);
-
-        foreach (var file in files)
-        {
-            ct.ThrowIfCancellationRequested();
-            scannedCount++;
-
-            // Check patterns
-            if (!_patternMatcher.ShouldInclude(file, options.IncludePatterns, options.ExcludePatterns))
-            {
-                skippedCount++;
-                continue;
-            }
-
-            try
-            {
-                var existing = await GetAsync(file, ct);
-                if (existing != null)
-                {
-                    existingCount++;
-
-                    // Check if changed
-                    if (await HasSourceChangedAsync(file, ct))
-                    {
-                        changedEntries.Add(existing);
-                    }
-                }
-                else
-                {
-                    var entry = await AddAsync(file, ct);
-                    newEntries.Add(entry);
-
-                    if (options.AutoProcess)
-                    {
-                        await _pipeline.ProcessToStageAsync(entry, ProcessingStage.Memorized, ct);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                errors.Add(new ScanError { FilePath = file, ErrorMessage = ex.Message });
-                _logger.LogWarning(ex, "Failed to process file during scan: {Path}", file);
-            }
-        }
-
-        sw.Stop();
-        _logger.LogInformation("Scanned folder {Path}: {New} new, {Changed} changed, {Existing} existing in {Duration}ms",
-            fullPath, newEntries.Count, changedEntries.Count, existingCount, sw.ElapsedMilliseconds);
-
-        return new ScanResult
-        {
-            ScannedCount = scannedCount,
-            NewFilesCount = newEntries.Count,
-            ExistingFilesCount = existingCount,
-            ChangedFilesCount = changedEntries.Count,
-            SkippedFilesCount = skippedCount,
-            OrphanedFilesCount = orphanedPaths.Count,
-            NewEntries = newEntries,
-            ChangedEntries = changedEntries,
-            OrphanedPaths = orphanedPaths,
-            ErrorCount = errors.Count,
-            Errors = errors,
-            Duration = sw.Elapsed
-        };
-    }
-
-    public async Task<ScanResult> ScanFolderAsync(Guid folderId, CancellationToken ct = default)
-    {
-        if (!_watchedFolders.TryGetValue(folderId, out var folder))
-            throw new KeyNotFoundException($"Watched folder not found: {folderId}");
-
-        return await ScanFolderAsync(folder.Path, ct);
-    }
-
-    #endregion
-
-    #region Event Handlers
-
-    private async void OnFileCreated(object sender, FileSystemEventArgs e)
-    {
-        if (!ShouldProcessFile(e.FullPath))
-            return;
-
-        try
-        {
-            await AddAsync(e.FullPath);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to add created file: {Path}", e.FullPath);
-        }
-    }
-
-    private async void OnFileChanged(object sender, FileSystemEventArgs e)
-    {
-        if (!ShouldProcessFile(e.FullPath))
-            return;
-
-        try
-        {
-            var entry = await GetAsync(e.FullPath);
-            if (entry != null)
-            {
-                _logger.LogDebug("File changed: {Path}", e.FullPath);
-                // Entry will be reprocessed on next sync
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to handle file change: {Path}", e.FullPath);
-        }
-    }
-
-    private void OnFileDeleted(object sender, FileSystemEventArgs e)
-    {
-        _logger.LogDebug("File deleted: {Path}", e.FullPath);
-        // Deleted files will be detected on next sync
-    }
-
-    private bool ShouldProcessFile(string filePath)
-    {
-        if (!File.Exists(filePath))
-            return false;
-
-        // Find the watch options for this path
-        foreach (var (watchPath, options) in _watchOptions)
-        {
-            if (filePath.StartsWith(watchPath, StringComparison.OrdinalIgnoreCase))
-            {
-                return _patternMatcher.ShouldInclude(filePath, options.IncludePatterns, options.ExcludePatterns);
-            }
-        }
-
-        return true;
-    }
-
-    #endregion
-
-    #region Watched Folder Management
 
     public async Task<WatchedFolder> AddWatchedFolderAsync(
         string folderPath,
@@ -703,7 +588,6 @@ public sealed class VaultManager : IVault
         await _fileWatcher.StartWatchingAsync(folder, ct);
 
         _logger.LogInformation("Added watched folder: {Name} ({Path})", folder.Name, folder.Path);
-
         return folder;
     }
 
@@ -727,7 +611,6 @@ public sealed class VaultManager : IVault
 
         if (removeTrackedFiles)
         {
-            // Remove all tracked files from this folder
             var entries = await ListAsync(ct: ct);
             foreach (var entry in entries.Where(e => e.SourcePath.StartsWith(folder.Path, StringComparison.OrdinalIgnoreCase)))
             {
@@ -745,7 +628,6 @@ public sealed class VaultManager : IVault
 
         folder.Pause();
         await _fileWatcher.StopWatchingAsync(folderId, ct);
-
         _logger.LogInformation("Paused watching folder: {Name}", folder.Name);
     }
 
@@ -756,8 +638,139 @@ public sealed class VaultManager : IVault
 
         folder.Resume();
         await _fileWatcher.StartWatchingAsync(folder, ct);
-
         _logger.LogInformation("Resumed watching folder: {Name}", folder.Name);
+    }
+
+    public async Task<ScanResult> ScanFolderAsync(string folderPath, CancellationToken ct = default)
+    {
+        var sw = Stopwatch.StartNew();
+        var fullPath = Path.GetFullPath(folderPath);
+
+        if (!Directory.Exists(fullPath))
+            throw new DirectoryNotFoundException($"Folder not found: {fullPath}");
+
+        // Get watch options for this folder
+        var folder = _watchedFolders.Values.FirstOrDefault(f =>
+            f.Path.Equals(fullPath, StringComparison.OrdinalIgnoreCase));
+
+        IEnumerable<string> includePatterns = folder != null
+            ? folder.IncludePatterns
+            : _options.DefaultIncludePatterns;
+        IEnumerable<string> excludePatterns = folder != null
+            ? folder.ExcludePatterns
+            : _options.DefaultExcludePatterns;
+        var isRecursive = folder?.IsRecursive ?? true;
+
+        var searchOption = isRecursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
+        var detectedChanges = new List<ChangeDetectionResult>();
+        var errors = new List<ScanError>();
+        var existingCount = 0;
+        var skippedCount = 0;
+        var scannedCount = 0;
+        var newCount = 0;
+        var changedCount = 0;
+        var orphanedCount = 0;
+
+        var files = Directory.EnumerateFiles(fullPath, "*", searchOption);
+
+        foreach (var file in files)
+        {
+            ct.ThrowIfCancellationRequested();
+            scannedCount++;
+
+            // Check patterns
+            if (!_patternMatcher.ShouldInclude(file, includePatterns, excludePatterns))
+            {
+                skippedCount++;
+                continue;
+            }
+
+            try
+            {
+                var change = await DetectChangesAsync(file, ct);
+                detectedChanges.Add(change);
+
+                switch (change.RecommendedAction)
+                {
+                    case ChangeAction.Memorize when !change.EntryExists:
+                        newCount++;
+                        break;
+                    case ChangeAction.Memorize:
+                    case ChangeAction.Refresh:
+                        changedCount++;
+                        existingCount++;
+                        break;
+                    case ChangeAction.Remove:
+                        orphanedCount++;
+                        break;
+                    case ChangeAction.None:
+                        existingCount++;
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                errors.Add(new ScanError { FilePath = file, ErrorMessage = ex.Message });
+                _logger.LogWarning(ex, "Failed to detect changes for file: {Path}", file);
+            }
+        }
+
+        sw.Stop();
+        _logger.LogInformation("Scanned folder {Path}: {New} new, {Changed} changed, {Existing} existing in {Duration}ms",
+            fullPath, newCount, changedCount, existingCount, sw.ElapsedMilliseconds);
+
+        return new ScanResult
+        {
+            ScannedCount = scannedCount,
+            NewFilesCount = newCount,
+            ExistingFilesCount = existingCount,
+            ChangedFilesCount = changedCount,
+            SkippedFilesCount = skippedCount,
+            OrphanedFilesCount = orphanedCount,
+            DetectedChanges = detectedChanges,
+            ErrorCount = errors.Count,
+            Errors = errors,
+            Duration = sw.Elapsed
+        };
+    }
+
+    public async Task<ScanResult> ScanFolderAsync(Guid folderId, CancellationToken ct = default)
+    {
+        if (!_watchedFolders.TryGetValue(folderId, out var folder))
+            throw new KeyNotFoundException($"Watched folder not found: {folderId}");
+
+        return await ScanFolderAsync(folder.Path, ct);
+    }
+
+    #endregion
+
+    #region Queue Management
+
+    public Task PauseQueueAsync(CancellationToken ct = default)
+    {
+        _queue.Pause();
+        _logger.LogInformation("Paused queue processing");
+        return Task.CompletedTask;
+    }
+
+    public Task ResumeQueueAsync(CancellationToken ct = default)
+    {
+        _queue.Resume();
+        _logger.LogInformation("Resumed queue processing");
+        return Task.CompletedTask;
+    }
+
+    public async Task<QueueStatus> GetQueueStatusAsync(CancellationToken ct = default)
+    {
+        var stats = await _queue.GetStatisticsAsync(ct);
+        return new QueueStatus
+        {
+            QueuedCount = stats.QueuedCount,
+            ProcessingCount = stats.ProcessingCount,
+            CompletedCount = stats.CompletedCount,
+            FailedCount = stats.FailedCount,
+            IsPaused = _queue.IsPaused
+        };
     }
 
     #endregion
@@ -773,27 +786,19 @@ public sealed class VaultManager : IVault
         {
             try
             {
-                // Delete vault directory
-                if (Directory.Exists(entry.VaultPath))
-                {
-                    Directory.Delete(entry.VaultPath, recursive: true);
-                }
-
-                // Delete storage artifacts
-                await _storage.DeleteArtifactsAsync(entry.Id, ct);
-
+                // Queue removal job
+                await _queue.EnqueueRemoveAsync(entry.FilepathHash, entry.SourcePath, ct);
                 cleanedCount++;
-                _logger.LogDebug("Cleaned up orphaned entry: {Path}", entry.SourcePath);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to cleanup orphaned entry: {Path}", entry.SourcePath);
+                _logger.LogWarning(ex, "Failed to queue cleanup for orphaned entry: {Path}", entry.SourcePath);
             }
         }
 
         if (cleanedCount > 0)
         {
-            _logger.LogInformation("Cleaned up {Count} orphaned entries", cleanedCount);
+            _logger.LogInformation("Queued cleanup for {Count} orphaned entries", cleanedCount);
         }
 
         return cleanedCount;
@@ -803,6 +808,39 @@ public sealed class VaultManager : IVault
     {
         var entries = await ListAsync(ct: ct);
         return entries.Where(e => !File.Exists(e.SourcePath)).ToList();
+    }
+
+    #endregion
+
+    #region Status-based Queries
+
+    public async Task<IReadOnlyList<VaultEntry>> ListByStatusAsync(SyncStatus status, CancellationToken ct = default)
+    {
+        var entries = await ListAsync(ct: ct);
+        return entries.Where(e => e.SyncStatus == status).ToList();
+    }
+
+    public async Task<IReadOnlyList<VaultEntry>> GetPendingRemovalsAsync(CancellationToken ct = default)
+    {
+        var entries = await ListAsync(ct: ct);
+        return entries.Where(e =>
+            e.SyncStatus == SyncStatus.SourceDeleted ||
+            e.SyncStatus == SyncStatus.RemovalPending ||
+            e.SyncStatus == SyncStatus.RemovalPartial).ToList();
+    }
+
+    public async Task<IReadOnlyList<VaultEntry>> GetErrorEntriesAsync(CancellationToken ct = default)
+    {
+        var entries = await ListAsync(ct: ct);
+        return entries.Where(e => e.SyncStatus == SyncStatus.Error).ToList();
+    }
+
+    public async Task<IReadOnlyList<VaultEntry>> GetEntriesNeedingSyncAsync(CancellationToken ct = default)
+    {
+        var entries = await ListAsync(ct: ct);
+        return entries.Where(e =>
+            e.SyncStatus == SyncStatus.SourceModified ||
+            e.SyncStatus == SyncStatus.VaultModified).ToList();
     }
 
     #endregion

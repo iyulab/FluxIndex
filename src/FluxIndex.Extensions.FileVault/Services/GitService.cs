@@ -40,14 +40,14 @@ public sealed class GitService : IGitService
         await RunGitAsync(vaultPath, "add -A", ct);
     }
 
-    public async Task CommitAsync(string vaultPath, string message, CancellationToken ct = default)
+    public async Task<string?> CommitAsync(string vaultPath, string message, CancellationToken ct = default)
     {
         // Check if there are changes to commit
         var status = await StatusAsync(vaultPath, ct);
         if (!status.HasChanges)
         {
             _logger.LogDebug("No changes to commit at {Path}", vaultPath);
-            return;
+            return null;
         }
 
         await StageAllAsync(vaultPath, ct);
@@ -56,7 +56,11 @@ public sealed class GitService : IGitService
         var escapedMessage = message.Replace("\"", "\\\"");
         await RunGitAsync(vaultPath, $"commit -m \"{escapedMessage}\"", ct);
 
-        _logger.LogInformation("Committed changes at {Path}: {Message}", vaultPath, message);
+        // Get the commit hash
+        var commitHash = await RunGitAsync(vaultPath, "rev-parse HEAD", ct);
+
+        _logger.LogInformation("Committed changes at {Path}: {Message} ({Hash})", vaultPath, message, commitHash[..7]);
+        return commitHash;
     }
 
     public async Task<string> DiffAsync(string vaultPath, string? filePath = null, CancellationToken ct = default)

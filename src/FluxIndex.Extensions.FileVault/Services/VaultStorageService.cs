@@ -1,4 +1,5 @@
 using System.Text.Json;
+using FluxIndex.Extensions.FileVault.Domain.Entities;
 using FluxIndex.Extensions.FileVault.Interfaces;
 using FluxIndex.Extensions.FileVault.Options;
 using Microsoft.Extensions.Logging;
@@ -7,12 +8,12 @@ using Microsoft.Extensions.Options;
 namespace FluxIndex.Extensions.FileVault.Services;
 
 /// <summary>
-/// File-based vault artifact storage service.
+/// File-based vault storage service implementing the new directory structure.
 /// </summary>
 public sealed class VaultStorageService : IVaultStorageService
 {
     private readonly ILogger<VaultStorageService> _logger;
-    private readonly FileVaultOptions _options;
+    private readonly IGitService _gitService;
     private readonly string _basePath;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -21,57 +22,76 @@ public sealed class VaultStorageService : IVaultStorageService
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
+    /// <summary>
+    /// Content of .gitignore file in entry directory.
+    /// Excludes meta.json and images/ from git tracking.
+    /// </summary>
+    private const string GitignoreContent = """
+        # FileVault gitignore - only vault/ directory is tracked
+        meta.json
+        images/
+        """;
+
     public VaultStorageService(
         ILogger<VaultStorageService> logger,
+        IGitService gitService,
         IOptions<FileVaultOptions> options)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _options = options?.Value ?? new FileVaultOptions();
-        _basePath = _options.VaultBasePath ?? Path.Combine(Directory.GetCurrentDirectory(), _options.VaultDirectoryName);
+        _gitService = gitService ?? throw new ArgumentNullException(nameof(gitService));
+
+        var opts = options?.Value ?? new FileVaultOptions();
+        _basePath = opts.VaultBasePath ?? Path.Combine(Directory.GetCurrentDirectory(), opts.VaultDirectoryName);
 
         // Ensure base path exists
         Directory.CreateDirectory(_basePath);
     }
 
-    public string GetFileStoragePath(Guid trackedFileId)
+    public string BasePath => _basePath;
+
+    public async Task InitializeEntryAsync(VaultEntry entry, CancellationToken ct = default)
     {
-        return Path.Combine(_basePath, trackedFileId.ToString("N"));
+        // Create entry directory
+        Directory.CreateDirectory(entry.EntryPath);
+
+        // Create vault subdirectory
+        Directory.CreateDirectory(entry.VaultPath);
+
+        // Create .gitignore to exclude meta.json and images/
+        await CreateGitignoreAsync(entry, ct);
+
+        // Initialize git in vault/ subdirectory
+        await _gitService.InitAsync(entry.VaultPath, ct);
+
+        // Save entry metadata
+        entry.SaveMetadata();
+
+        _logger.LogDebug("Initialized entry storage at {EntryPath}", entry.EntryPath);
     }
 
-    public string GetArtifactPath(Guid trackedFileId, ArtifactType artifactType)
+    public async Task CreateGitignoreAsync(VaultEntry entry, CancellationToken ct = default)
     {
-        var basePath = GetFileStoragePath(trackedFileId);
-        return artifactType switch
-        {
-            ArtifactType.Extract => Path.Combine(basePath, "extract"),
-            ArtifactType.Images => Path.Combine(basePath, "images"),
-            ArtifactType.Chunks => Path.Combine(basePath, "chunks"),
-            ArtifactType.QA => Path.Combine(basePath, "qa"),
-            ArtifactType.Enrichment => Path.Combine(basePath, "refine"),
-            ArtifactType.Versions => Path.Combine(basePath, "versions"),
-            _ => basePath
-        };
+        await File.WriteAllTextAsync(entry.GitignorePath, GitignoreContent, ct);
     }
 
-    public async Task StoreExtractAsync(Guid fileId, string markdown, string? plainText = null, CancellationToken ct = default)
+    public async Task StoreRefinedContentAsync(VaultEntry entry, string content, CancellationToken ct = default)
     {
-        var path = GetArtifactPath(fileId, ArtifactType.Extract);
-        Directory.CreateDirectory(path);
-
-        await File.WriteAllTextAsync(Path.Combine(path, "content.md"), markdown, ct);
-
-        if (plainText != null)
-        {
-            await File.WriteAllTextAsync(Path.Combine(path, "content.txt"), plainText, ct);
-        }
-
-        _logger.LogDebug("Stored extract for file {FileId}", fileId);
+        Directory.CreateDirectory(entry.VaultPath);
+        await File.WriteAllTextAsync(entry.RefinedMdPath, content, ct);
+        _logger.LogDebug("Stored refined content for entry {EntryId}", entry.Id);
     }
 
-    public async Task StoreImagesAsync(Guid fileId, IEnumerable<ImageArtifact> images, CancellationToken ct = default)
+    public async Task<string?> GetRefinedContentAsync(VaultEntry entry, CancellationToken ct = default)
     {
-        var path = GetArtifactPath(fileId, ArtifactType.Images);
-        Directory.CreateDirectory(path);
+        if (!File.Exists(entry.RefinedMdPath))
+            return null;
+
+        return await File.ReadAllTextAsync(entry.RefinedMdPath, ct);
+    }
+
+    public async Task StoreImagesAsync(VaultEntry entry, IEnumerable<ImageArtifact> images, CancellationToken ct = default)
+    {
+        Directory.CreateDirectory(entry.ImagesPath);
 
         var manifest = new List<ImageManifestEntry>();
         var index = 0;
@@ -79,8 +99,8 @@ public sealed class VaultStorageService : IVaultStorageService
         foreach (var image in images)
         {
             var extension = GetExtensionFromContentType(image.ContentType);
-            var fileName = $"image_{index:D3}{extension}";
-            var filePath = Path.Combine(path, fileName);
+            var fileName = $"img_{index:D3}{extension}";
+            var filePath = Path.Combine(entry.ImagesPath, fileName);
 
             await File.WriteAllBytesAsync(filePath, image.Data, ct);
 
@@ -100,96 +120,37 @@ public sealed class VaultStorageService : IVaultStorageService
 
         // Write manifest
         var manifestJson = JsonSerializer.Serialize(manifest, JsonOptions);
-        await File.WriteAllTextAsync(Path.Combine(path, "manifest.json"), manifestJson, ct);
+        await File.WriteAllTextAsync(entry.ImagesManifestPath, manifestJson, ct);
 
-        _logger.LogDebug("Stored {Count} images for file {FileId}", index, fileId);
+        _logger.LogDebug("Stored {Count} images for entry {EntryId}", index, entry.Id);
     }
 
-    public async Task StoreChunksAsync(Guid fileId, IEnumerable<ChunkArtifact> chunks, CancellationToken ct = default)
+    public async Task<IReadOnlyList<ImageArtifact>> GetImagesAsync(VaultEntry entry, CancellationToken ct = default)
     {
-        var path = GetArtifactPath(fileId, ArtifactType.Chunks);
-        Directory.CreateDirectory(path);
+        if (!File.Exists(entry.ImagesManifestPath))
+            return [];
 
-        var chunkList = chunks.ToList();
-        var json = JsonSerializer.Serialize(chunkList, JsonOptions);
-        await File.WriteAllTextAsync(Path.Combine(path, "chunks.json"), json, ct);
-
-        _logger.LogDebug("Stored {Count} chunks for file {FileId}", chunkList.Count, fileId);
-    }
-
-    public async Task StoreQAPairsAsync(Guid fileId, IEnumerable<QAPairArtifact> qaPairs, CancellationToken ct = default)
-    {
-        var path = GetArtifactPath(fileId, ArtifactType.QA);
-        Directory.CreateDirectory(path);
-
-        var qaList = qaPairs.ToList();
-        var json = JsonSerializer.Serialize(qaList, JsonOptions);
-        await File.WriteAllTextAsync(Path.Combine(path, "pairs.json"), json, ct);
-
-        _logger.LogDebug("Stored {Count} QA pairs for file {FileId}", qaList.Count, fileId);
-    }
-
-    public async Task StoreEnrichmentAsync(Guid fileId, EnrichmentArtifact enrichment, CancellationToken ct = default)
-    {
-        var path = GetArtifactPath(fileId, ArtifactType.Enrichment);
-        Directory.CreateDirectory(path);
-
-        var json = JsonSerializer.Serialize(enrichment, JsonOptions);
-        await File.WriteAllTextAsync(Path.Combine(path, "enrichment.json"), json, ct);
-
-        _logger.LogDebug("Stored enrichment for file {FileId}", fileId);
-    }
-
-    public async Task<(string? Markdown, string? PlainText)> GetExtractAsync(Guid fileId, CancellationToken ct = default)
-    {
-        var path = GetArtifactPath(fileId, ArtifactType.Extract);
-        string? markdown = null;
-        string? plainText = null;
-
-        var mdPath = Path.Combine(path, "content.md");
-        if (File.Exists(mdPath))
-        {
-            markdown = await File.ReadAllTextAsync(mdPath, ct);
-        }
-
-        var txtPath = Path.Combine(path, "content.txt");
-        if (File.Exists(txtPath))
-        {
-            plainText = await File.ReadAllTextAsync(txtPath, ct);
-        }
-
-        return (markdown, plainText);
-    }
-
-    public async Task<IReadOnlyList<ImageArtifact>> GetImagesAsync(Guid fileId, CancellationToken ct = default)
-    {
-        var path = GetArtifactPath(fileId, ArtifactType.Images);
-        var manifestPath = Path.Combine(path, "manifest.json");
-
-        if (!File.Exists(manifestPath))
-            return Array.Empty<ImageArtifact>();
-
-        var json = await File.ReadAllTextAsync(manifestPath, ct);
+        var json = await File.ReadAllTextAsync(entry.ImagesManifestPath, ct);
         var manifest = JsonSerializer.Deserialize<List<ImageManifestEntry>>(json, JsonOptions);
 
         if (manifest == null)
-            return Array.Empty<ImageArtifact>();
+            return [];
 
         var images = new List<ImageArtifact>();
-        foreach (var entry in manifest)
+        foreach (var item in manifest)
         {
-            var imagePath = Path.Combine(path, entry.FileName);
+            var imagePath = Path.Combine(entry.ImagesPath, item.FileName);
             if (File.Exists(imagePath))
             {
                 var data = await File.ReadAllBytesAsync(imagePath, ct);
                 images.Add(new ImageArtifact
                 {
-                    Id = entry.Id,
+                    Id = item.Id,
                     Data = data,
-                    ContentType = entry.ContentType,
-                    Description = entry.Description,
-                    Width = entry.Width,
-                    Height = entry.Height
+                    ContentType = item.ContentType,
+                    Description = item.Description,
+                    Width = item.Width,
+                    Height = item.Height
                 });
             }
         }
@@ -197,182 +158,104 @@ public sealed class VaultStorageService : IVaultStorageService
         return images;
     }
 
-    public async Task<IReadOnlyList<ChunkArtifact>> GetChunksAsync(Guid fileId, CancellationToken ct = default)
+    public async Task<VaultTextContent> GetAllVaultContentAsync(VaultEntry entry, CancellationToken ct = default)
     {
-        var path = Path.Combine(GetArtifactPath(fileId, ArtifactType.Chunks), "chunks.json");
+        string? refinedContent = null;
+        string? appendText = null;
+        string? qaContent = null;
 
-        if (!File.Exists(path))
-            return Array.Empty<ChunkArtifact>();
+        if (File.Exists(entry.RefinedMdPath))
+            refinedContent = await File.ReadAllTextAsync(entry.RefinedMdPath, ct);
 
-        var json = await File.ReadAllTextAsync(path, ct);
-        return JsonSerializer.Deserialize<List<ChunkArtifact>>(json, JsonOptions) ?? [];
-    }
+        if (File.Exists(entry.AppendTextPath))
+            appendText = await File.ReadAllTextAsync(entry.AppendTextPath, ct);
 
-    public async Task<IReadOnlyList<QAPairArtifact>> GetQAPairsAsync(Guid fileId, CancellationToken ct = default)
-    {
-        var path = Path.Combine(GetArtifactPath(fileId, ArtifactType.QA), "pairs.json");
+        if (File.Exists(entry.QaPath))
+            qaContent = await File.ReadAllTextAsync(entry.QaPath, ct);
 
-        if (!File.Exists(path))
-            return Array.Empty<QAPairArtifact>();
-
-        var json = await File.ReadAllTextAsync(path, ct);
-        return JsonSerializer.Deserialize<List<QAPairArtifact>>(json, JsonOptions) ?? [];
-    }
-
-    public async Task<EnrichmentArtifact?> GetEnrichmentAsync(Guid fileId, CancellationToken ct = default)
-    {
-        var path = Path.Combine(GetArtifactPath(fileId, ArtifactType.Enrichment), "enrichment.json");
-
-        if (!File.Exists(path))
-            return null;
-
-        var json = await File.ReadAllTextAsync(path, ct);
-        return JsonSerializer.Deserialize<EnrichmentArtifact>(json, JsonOptions);
-    }
-
-    public async Task CreateVersionSnapshotAsync(Guid fileId, int version, CancellationToken ct = default)
-    {
-        var basePath = GetFileStoragePath(fileId);
-        var versionsPath = GetArtifactPath(fileId, ArtifactType.Versions);
-        var versionPath = Path.Combine(versionsPath, $"v{version}");
-
-        Directory.CreateDirectory(versionPath);
-
-        // Copy current artifacts to version snapshot
-        var extractPath = GetArtifactPath(fileId, ArtifactType.Extract);
-        if (Directory.Exists(extractPath))
+        return new VaultTextContent
         {
-            CopyDirectory(extractPath, Path.Combine(versionPath, "extract"));
-        }
-
-        var chunksPath = GetArtifactPath(fileId, ArtifactType.Chunks);
-        if (Directory.Exists(chunksPath))
-        {
-            CopyDirectory(chunksPath, Path.Combine(versionPath, "chunks"));
-        }
-
-        // Write version manifest
-        var manifest = new VersionManifest
-        {
-            Version = version,
-            CreatedAt = DateTimeOffset.UtcNow,
-            StorageSize = await GetStorageSizeAsync(fileId, ct)
+            RefinedContent = refinedContent,
+            AppendText = appendText,
+            QaContent = qaContent
         };
-
-        var json = JsonSerializer.Serialize(manifest, JsonOptions);
-        await File.WriteAllTextAsync(Path.Combine(versionPath, "manifest.json"), json, ct);
-
-        _logger.LogDebug("Created version {Version} snapshot for file {FileId}", version, fileId);
-
-        // Cleanup old versions if exceeds retention
-        await CleanupOldVersionsAsync(fileId, ct);
     }
 
-    public async Task<IReadOnlyList<VersionSnapshot>> GetVersionSnapshotsAsync(Guid fileId, CancellationToken ct = default)
+    public async Task StoreAppendTextAsync(VaultEntry entry, string content, CancellationToken ct = default)
     {
-        var versionsPath = GetArtifactPath(fileId, ArtifactType.Versions);
+        Directory.CreateDirectory(entry.VaultPath);
+        await File.WriteAllTextAsync(entry.AppendTextPath, content, ct);
+        _logger.LogDebug("Stored append-text for entry {EntryId}", entry.Id);
+    }
 
-        if (!Directory.Exists(versionsPath))
-            return Array.Empty<VersionSnapshot>();
+    public async Task StoreQaContentAsync(VaultEntry entry, string content, CancellationToken ct = default)
+    {
+        Directory.CreateDirectory(entry.VaultPath);
+        await File.WriteAllTextAsync(entry.QaPath, content, ct);
+        _logger.LogDebug("Stored QA content for entry {EntryId}", entry.Id);
+    }
 
-        var snapshots = new List<VersionSnapshot>();
-
-        foreach (var versionDir in Directory.GetDirectories(versionsPath, "v*"))
+    public Task DeleteEntryStorageAsync(VaultEntry entry, CancellationToken ct = default)
+    {
+        if (Directory.Exists(entry.EntryPath))
         {
-            var manifestPath = Path.Combine(versionDir, "manifest.json");
-            if (File.Exists(manifestPath))
+            // Delete .git directory first (may have read-only files)
+            var gitDir = Path.Combine(entry.VaultPath, ".git");
+            if (Directory.Exists(gitDir))
             {
-                var json = await File.ReadAllTextAsync(manifestPath, ct);
-                var manifest = JsonSerializer.Deserialize<VersionManifest>(json, JsonOptions);
-                if (manifest != null)
-                {
-                    snapshots.Add(new VersionSnapshot
-                    {
-                        Version = manifest.Version,
-                        CreatedAt = manifest.CreatedAt,
-                        ContentHash = manifest.ContentHash,
-                        StorageSize = manifest.StorageSize
-                    });
-                }
+                SetAttributesNormal(new DirectoryInfo(gitDir));
             }
-        }
 
-        return snapshots.OrderByDescending(v => v.Version).ToList();
-    }
-
-    public Task DeleteArtifactsAsync(Guid fileId, CancellationToken ct = default)
-    {
-        var path = GetFileStoragePath(fileId);
-
-        if (Directory.Exists(path))
-        {
-            Directory.Delete(path, recursive: true);
-            _logger.LogDebug("Deleted artifacts for file {FileId}", fileId);
+            Directory.Delete(entry.EntryPath, recursive: true);
+            _logger.LogDebug("Deleted storage for entry {EntryId}", entry.Id);
         }
 
         return Task.CompletedTask;
     }
 
-    public Task<long> GetStorageSizeAsync(Guid fileId, CancellationToken ct = default)
+    public Task<long> GetStorageSizeAsync(VaultEntry entry, CancellationToken ct = default)
     {
-        var path = GetFileStoragePath(fileId);
-
-        if (!Directory.Exists(path))
+        if (!Directory.Exists(entry.EntryPath))
             return Task.FromResult(0L);
 
-        var size = new DirectoryInfo(path)
+        var size = new DirectoryInfo(entry.EntryPath)
             .EnumerateFiles("*", SearchOption.AllDirectories)
             .Sum(f => f.Length);
 
         return Task.FromResult(size);
     }
 
-    public Task<bool> ArtifactsExistAsync(Guid fileId, CancellationToken ct = default)
+    public bool EntryStorageExists(VaultEntry entry)
     {
-        var path = GetFileStoragePath(fileId);
-        return Task.FromResult(Directory.Exists(path) && Directory.EnumerateFileSystemEntries(path).Any());
+        return Directory.Exists(entry.EntryPath);
     }
 
-    private async Task CleanupOldVersionsAsync(Guid fileId, CancellationToken ct)
+    public IEnumerable<string> ListEntryDirectories()
     {
-        var versionsPath = GetArtifactPath(fileId, ArtifactType.Versions);
+        if (!Directory.Exists(_basePath))
+            yield break;
 
-        if (!Directory.Exists(versionsPath))
-            return;
-
-        var versions = (await GetVersionSnapshotsAsync(fileId, ct))
-            .OrderByDescending(v => v.Version)
-            .ToList();
-
-        if (versions.Count <= _options.VersionRetentionCount)
-            return;
-
-        var toDelete = versions.Skip(_options.VersionRetentionCount).ToList();
-        foreach (var version in toDelete)
+        foreach (var dir in Directory.GetDirectories(_basePath))
         {
-            var versionPath = Path.Combine(versionsPath, $"v{version.Version}");
-            if (Directory.Exists(versionPath))
+            var dirName = Path.GetFileName(dir);
+            // Only return directories that look like filepath hashes (16 hex chars)
+            if (FilepathHasher.IsValidHash(dirName))
             {
-                Directory.Delete(versionPath, recursive: true);
-                _logger.LogDebug("Deleted old version {Version} for file {FileId}", version.Version, fileId);
+                yield return dir;
             }
         }
     }
 
-    private static void CopyDirectory(string sourceDir, string destDir)
+    private static void SetAttributesNormal(DirectoryInfo dir)
     {
-        Directory.CreateDirectory(destDir);
-
-        foreach (var file in Directory.GetFiles(sourceDir))
+        foreach (var subDir in dir.GetDirectories())
         {
-            var destFile = Path.Combine(destDir, Path.GetFileName(file));
-            File.Copy(file, destFile, overwrite: true);
+            SetAttributesNormal(subDir);
         }
 
-        foreach (var subDir in Directory.GetDirectories(sourceDir))
+        foreach (var file in dir.GetFiles())
         {
-            var destSubDir = Path.Combine(destDir, Path.GetFileName(subDir));
-            CopyDirectory(subDir, destSubDir);
+            file.Attributes = FileAttributes.Normal;
         }
     }
 
@@ -383,6 +266,7 @@ public sealed class VaultStorageService : IVaultStorageService
         "image/gif" => ".gif",
         "image/webp" => ".webp",
         "image/bmp" => ".bmp",
+        "image/svg+xml" => ".svg",
         _ => ".bin"
     };
 
@@ -395,13 +279,5 @@ public sealed class VaultStorageService : IVaultStorageService
         public int Width { get; init; }
         public int Height { get; init; }
         public long Size { get; init; }
-    }
-
-    private sealed class VersionManifest
-    {
-        public int Version { get; init; }
-        public DateTimeOffset CreatedAt { get; init; }
-        public string? ContentHash { get; init; }
-        public long StorageSize { get; init; }
     }
 }

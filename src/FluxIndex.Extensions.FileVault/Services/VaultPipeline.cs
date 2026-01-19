@@ -1,4 +1,6 @@
-using System.Text.Json;
+using System.Diagnostics;
+using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Extensions.FileVault.Domain.Entities;
 using FluxIndex.Extensions.FileVault.Domain.Enums;
 using FluxIndex.Extensions.FileVault.Interfaces;
@@ -8,244 +10,291 @@ namespace FluxIndex.Extensions.FileVault.Services;
 
 /// <summary>
 /// Pipeline service for processing vault entries.
-/// Integrates with FileFlux for extraction and chunking.
+/// Simplified flow: Source → Extracted → Memorized (chunks stored in DB only).
 /// </summary>
 public sealed class VaultPipeline : IVaultPipeline
 {
     private readonly IGitService _git;
     private readonly IContentHasher _hasher;
+    private readonly IVaultStorageService _storage;
     private readonly ILogger<VaultPipeline> _logger;
 
-    // FileFlux integration will be injected when available
+    // Integration services (optional)
     private readonly IExtractor? _extractor;
     private readonly IChunker? _chunker;
-    private readonly IMemorizer? _memorizer;
+    private readonly IVectorStore? _vectorStore;
+    private readonly IEmbeddingService? _embeddingService;
 
     public VaultPipeline(
         IGitService git,
         IContentHasher hasher,
+        IVaultStorageService storage,
         ILogger<VaultPipeline> logger,
         IExtractor? extractor = null,
         IChunker? chunker = null,
-        IMemorizer? memorizer = null)
+        IVectorStore? vectorStore = null,
+        IEmbeddingService? embeddingService = null)
     {
         _git = git ?? throw new ArgumentNullException(nameof(git));
         _hasher = hasher ?? throw new ArgumentNullException(nameof(hasher));
+        _storage = storage ?? throw new ArgumentNullException(nameof(storage));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _extractor = extractor;
         _chunker = chunker;
-        _memorizer = memorizer;
+        _vectorStore = vectorStore;
+        _embeddingService = embeddingService;
+    }
+
+    public async Task<MemorizeResult> MemorizeAsync(VaultEntry entry, MemorizeOptions? options = null, CancellationToken ct = default)
+    {
+        var sw = Stopwatch.StartNew();
+        options ??= new MemorizeOptions();
+
+        try
+        {
+            _logger.LogInformation("Starting memorize for {SourcePath}", entry.SourcePath);
+
+            // Step 1: Initialize entry storage if needed
+            if (!_storage.EntryStorageExists(entry))
+            {
+                await _storage.InitializeEntryAsync(entry, ct);
+            }
+
+            // Step 2: Extract content from source file
+            await ExtractAsync(entry, ct);
+
+            // Step 3: Chunk and index (shared with RefreshAsync)
+            var result = await ChunkAndIndexAsync(entry, options, ct);
+
+            // Step 4: Git commit
+            string? commitHash = null;
+            if (!options.SkipCommit)
+            {
+                var message = options.CommitMessage ?? $"memorize: {result.ChunkCount} chunks indexed";
+                commitHash = await _git.CommitAsync(entry.VaultPath, message, ct);
+            }
+
+            // Step 5: Update entry state
+            entry.MarkMemorized(result.ChunkCount);
+            entry.MarkInSync(); // Set sync status to InSync after successful memorize
+            entry.SaveMetadata();
+
+            sw.Stop();
+            _logger.LogInformation(
+                "Memorize completed for {SourcePath}: {ChunkCount} chunks in {Duration:F2}s",
+                entry.SourcePath,
+                result.ChunkCount,
+                sw.Elapsed.TotalSeconds);
+
+            return MemorizeResult.Succeeded(result.ChunkCount, result.ContentLength, sw.Elapsed, commitHash);
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            _logger.LogError(ex, "Memorize failed for {SourcePath}", entry.SourcePath);
+            entry.MarkError(ex.Message);
+            entry.SaveMetadata();
+            return MemorizeResult.Failed(ex.Message, sw.Elapsed);
+        }
+    }
+
+    public async Task<MemorizeResult> RefreshAsync(VaultEntry entry, MemorizeOptions? options = null, CancellationToken ct = default)
+    {
+        var sw = Stopwatch.StartNew();
+        options ??= new MemorizeOptions();
+
+        try
+        {
+            _logger.LogInformation("Starting refresh for {SourcePath}", entry.SourcePath);
+
+            // Verify that extracted content exists
+            if (!entry.RefinedExists)
+            {
+                throw new InvalidOperationException($"No refined content found at {entry.RefinedMdPath}. Run memorize first.");
+            }
+
+            // Remove existing chunks from vector store before re-indexing
+            await RemoveAsync(entry, ct);
+
+            // Chunk and index vault content
+            var result = await ChunkAndIndexAsync(entry, options, ct);
+
+            // Git commit
+            string? commitHash = null;
+            if (!options.SkipCommit)
+            {
+                var message = options.CommitMessage ?? $"refresh: {result.ChunkCount} chunks re-indexed";
+                commitHash = await _git.CommitAsync(entry.VaultPath, message, ct);
+            }
+
+            // Update entry state
+            entry.MarkMemorized(result.ChunkCount);
+            entry.MarkInSync(); // Set sync status to InSync after successful refresh
+            entry.SaveMetadata();
+
+            sw.Stop();
+            _logger.LogInformation(
+                "Refresh completed for {SourcePath}: {ChunkCount} chunks in {Duration:F2}s",
+                entry.SourcePath,
+                result.ChunkCount,
+                sw.Elapsed.TotalSeconds);
+
+            return MemorizeResult.Succeeded(result.ChunkCount, result.ContentLength, sw.Elapsed, commitHash);
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            _logger.LogError(ex, "Refresh failed for {SourcePath}", entry.SourcePath);
+            entry.MarkError(ex.Message);
+            entry.SaveMetadata();
+            return MemorizeResult.Failed(ex.Message, sw.Elapsed);
+        }
     }
 
     public async Task ExtractAsync(VaultEntry entry, CancellationToken ct = default)
     {
         _logger.LogInformation("Extracting content from {SourcePath}", entry.SourcePath);
 
-        // Ensure Git is initialized
-        await _git.InitAsync(entry.VaultPath, ct);
+        // Calculate source content hash
+        var contentHash = await _hasher.ComputeHashAsync(entry.SourcePath, ct);
 
-        // Save source info
-        entry.SaveSourceInfo();
-
+        // Extract content
         string extractedContent;
-        Dictionary<string, byte[]>? images = null;
 
         if (_extractor != null)
         {
-            // Use FileFlux extractor
             var result = await _extractor.ExtractAsync(entry.SourcePath, ct);
             extractedContent = result.Content;
-            images = result.Images;
+
+            // Store images if any
+            if (result.Images?.Count > 0)
+            {
+                var images = result.Images.Select((kvp, idx) => new ImageArtifact
+                {
+                    Id = $"img_{idx:D3}",
+                    Data = kvp.Value,
+                    ContentType = GuessContentType(kvp.Key)
+                });
+                await _storage.StoreImagesAsync(entry, images, ct);
+            }
         }
         else
         {
-            // Fallback: simple text extraction
             extractedContent = await ExtractFallbackAsync(entry.SourcePath, ct);
         }
 
-        // Write extracted content
-        await File.WriteAllTextAsync(entry.ExtractedPath, extractedContent, ct);
+        // Store refined content
+        await _storage.StoreRefinedContentAsync(entry, extractedContent, ct);
 
-        // Write images if any
-        if (images?.Count > 0)
-        {
-            Directory.CreateDirectory(entry.ImagesPath);
-            foreach (var (name, data) in images)
-            {
-                var imagePath = Path.Combine(entry.ImagesPath, name);
-                await File.WriteAllBytesAsync(imagePath, data, ct);
-            }
-        }
+        // Update entry
+        entry.MarkExtracted(contentHash);
+        entry.SaveMetadata();
 
-        // Git commit
-        await _git.CommitAsync(entry.VaultPath, "extract: from source", ct);
-
-        entry.MarkExtracted();
-        entry.SaveSourceInfo();
-
-        _logger.LogInformation("Extracted content to {ExtractedPath}", entry.ExtractedPath);
+        _logger.LogInformation("Extracted {Length} chars to {Path}", extractedContent.Length, entry.RefinedMdPath);
     }
 
-    public async Task RefineAsync(VaultEntry entry, CancellationToken ct = default)
+    public async Task RemoveAsync(VaultEntry entry, CancellationToken ct = default)
     {
-        if (entry.Stage < ProcessingStage.Extracted)
+        if (_vectorStore == null)
         {
-            await ExtractAsync(entry, ct);
+            _logger.LogWarning("No vector store configured, skipping removal");
+            return;
         }
 
-        _logger.LogInformation("Refining content for {SourcePath}", entry.SourcePath);
+        // Delete by document ID (filepath hash)
+        var documentId = entry.FilepathHash;
+        await _vectorStore.DeleteByDocumentIdAsync(documentId, ct);
 
-        // Read extracted content
-        var extractedContent = await File.ReadAllTextAsync(entry.ExtractedPath, ct);
-
-        // For now, refine is a copy (can be enhanced with cleanup/normalization)
-        var refinedContent = RefineContent(extractedContent);
-
-        // Write refined content
-        await File.WriteAllTextAsync(entry.RefinedPath, refinedContent, ct);
-
-        // Git commit
-        await _git.CommitAsync(entry.VaultPath, "refine: auto-processed", ct);
-
-        entry.MarkRefined(isManualEdit: false);
-        entry.SaveSourceInfo();
-
-        _logger.LogInformation("Refined content to {RefinedPath}", entry.RefinedPath);
+        _logger.LogInformation("Removed chunks for document {DocumentId}", documentId);
     }
 
-    public async Task ChunkAsync(VaultEntry entry, ChunkingOptions? options = null, CancellationToken ct = default)
+    private async Task<(int ChunkCount, int ContentLength)> ChunkAndIndexAsync(
+        VaultEntry entry,
+        MemorizeOptions options,
+        CancellationToken ct)
     {
-        if (entry.Stage < ProcessingStage.Refined)
+        // Get all vault content (refined.md + append-text.md + qa.md)
+        var vaultContent = await _storage.GetAllVaultContentAsync(entry, ct);
+        var combinedContent = vaultContent.GetCombinedContent();
+
+        if (string.IsNullOrWhiteSpace(combinedContent))
         {
-            await RefineAsync(entry, ct);
+            _logger.LogWarning("No content to index for {SourcePath}", entry.SourcePath);
+            return (0, 0);
         }
 
-        options ??= new ChunkingOptions();
-
-        _logger.LogInformation("Chunking content for {SourcePath}", entry.SourcePath);
-
-        // Read refined content
-        var refinedContent = await File.ReadAllTextAsync(entry.RefinedPath, ct);
-
+        // Chunk the content
         IReadOnlyList<string> chunks;
 
         if (_chunker != null)
         {
-            // Use FileFlux chunker
-            chunks = await _chunker.ChunkAsync(refinedContent, options, ct);
+            var chunkingOptions = new ChunkingOptions
+            {
+                MaxChunkSize = options.MaxChunkSize,
+                OverlapSize = options.OverlapSize,
+                Strategy = options.Strategy,
+                Language = options.Language
+            };
+            chunks = await _chunker.ChunkAsync(combinedContent, chunkingOptions, ct);
         }
         else
         {
-            // Fallback: simple chunking
-            chunks = ChunkFallback(refinedContent, options);
+            chunks = ChunkFallback(combinedContent, options.MaxChunkSize);
         }
 
-        // Write chunks
-        Directory.CreateDirectory(entry.ChunksPath);
+        _logger.LogDebug("Created {ChunkCount} chunks from {ContentLength} chars", chunks.Count, combinedContent.Length);
 
+        // Index to vector store
+        if (_vectorStore != null && _embeddingService != null)
+        {
+            await IndexChunksAsync(entry, chunks, ct);
+        }
+        else
+        {
+            _logger.LogWarning("No vector store or embedding service configured, skipping indexing");
+        }
+
+        return (chunks.Count, combinedContent.Length);
+    }
+
+    private async Task IndexChunksAsync(VaultEntry entry, IReadOnlyList<string> chunks, CancellationToken ct)
+    {
+        var documentId = entry.FilepathHash;
+
+        // Generate embeddings
+        var embeddings = await _embeddingService!.GenerateEmbeddingsBatchAsync(chunks, ct);
+        var embeddingList = embeddings.ToList();
+
+        if (embeddingList.Count != chunks.Count)
+        {
+            throw new InvalidOperationException(
+                $"Embedding count mismatch: expected {chunks.Count}, got {embeddingList.Count}");
+        }
+
+        // Create document chunks
+        var documentChunks = new List<DocumentChunk>();
         for (var i = 0; i < chunks.Count; i++)
         {
-            var chunkPath = Path.Combine(entry.ChunksPath, $"{i:D3}.md");
-            await File.WriteAllTextAsync(chunkPath, chunks[i], ct);
+            var chunk = DocumentChunk.Create(
+                documentId: documentId,
+                content: chunks[i],
+                chunkIndex: i,
+                totalChunks: chunks.Count);
+
+            chunk.SetEmbedding(embeddingList[i]);
+
+            // Add metadata
+            chunk.Metadata ??= new Dictionary<string, object>();
+            chunk.Metadata["source_path"] = entry.SourcePath;
+            chunk.Metadata["filepath_hash"] = entry.FilepathHash;
+            chunk.Metadata["file_name"] = entry.FileName;
+
+            documentChunks.Add(chunk);
         }
 
-        // Write manifest
-        var manifest = new ChunkManifest
-        {
-            ChunkCount = chunks.Count,
-            CreatedAt = DateTimeOffset.UtcNow,
-            Options = options,
-            IsMemorized = false
-        };
-
-        var manifestJson = JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true });
-        await File.WriteAllTextAsync(entry.ManifestPath, manifestJson, ct);
-
-        // Git commit
-        await _git.CommitAsync(entry.VaultPath, $"chunks: {chunks.Count} chunks created", ct);
-
-        entry.MarkChunked(chunks.Count);
-        entry.SaveSourceInfo();
-
-        _logger.LogInformation("Created {ChunkCount} chunks at {ChunksPath}", chunks.Count, entry.ChunksPath);
-    }
-
-    public async Task MemorizeAsync(VaultEntry entry, CancellationToken ct = default)
-    {
-        if (entry.Stage < ProcessingStage.Chunked)
-        {
-            await ChunkAsync(entry, null, ct);
-        }
-
-        _logger.LogInformation("Memorizing chunks for {SourcePath}", entry.SourcePath);
-
-        // Read chunks
-        var chunkFiles = Directory.GetFiles(entry.ChunksPath, "*.md")
-            .OrderBy(f => f)
-            .ToList();
-
-        if (_memorizer != null)
-        {
-            // Use FluxIndex memorizer
-            var chunks = new List<string>();
-            foreach (var chunkFile in chunkFiles)
-            {
-                chunks.Add(await File.ReadAllTextAsync(chunkFile, ct));
-            }
-
-            await _memorizer.MemorizeAsync(entry, chunks, ct);
-        }
-        else
-        {
-            _logger.LogWarning("No memorizer configured, skipping indexing");
-        }
-
-        // Update manifest
-        var manifestJson = await File.ReadAllTextAsync(entry.ManifestPath, ct);
-        var manifest = JsonSerializer.Deserialize<ChunkManifest>(manifestJson) ?? new ChunkManifest();
-        manifest.IsMemorized = true;
-        manifest.MemorizedAt = DateTimeOffset.UtcNow;
-
-        await File.WriteAllTextAsync(entry.ManifestPath,
-            JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true }), ct);
-
-        // Git commit
-        await _git.CommitAsync(entry.VaultPath, "memorize: indexed to FluxIndex", ct);
-
-        entry.MarkMemorized();
-        entry.SaveSourceInfo();
-
-        _logger.LogInformation("Memorized {ChunkCount} chunks", chunkFiles.Count);
-    }
-
-    public async Task ProcessToStageAsync(VaultEntry entry, ProcessingStage targetStage, CancellationToken ct = default)
-    {
-        while (entry.Stage < targetStage)
-        {
-            ct.ThrowIfCancellationRequested();
-
-            switch (entry.Stage)
-            {
-                case ProcessingStage.Source:
-                    await ExtractAsync(entry, ct);
-                    break;
-                case ProcessingStage.Extracted:
-                    await RefineAsync(entry, ct);
-                    break;
-                case ProcessingStage.Refined:
-                    await ChunkAsync(entry, null, ct);
-                    break;
-                case ProcessingStage.Chunked:
-                    await MemorizeAsync(entry, ct);
-                    break;
-            }
-        }
-    }
-
-    public async Task ReprocessFromStageAsync(VaultEntry entry, ProcessingStage fromStage, CancellationToken ct = default)
-    {
-        entry.ResetToStage(fromStage);
-        await ProcessToStageAsync(entry, ProcessingStage.Memorized, ct);
+        // Store in vector store
+        var storedIds = await _vectorStore!.StoreBatchAsync(documentChunks, ct);
+        _logger.LogInformation("Indexed {Count} chunks for {DocumentId}", storedIds.Count(), documentId);
     }
 
     private static async Task<string> ExtractFallbackAsync(string sourcePath, CancellationToken ct)
@@ -258,40 +307,10 @@ public sealed class VaultPipeline : IVaultPipeline
             return await File.ReadAllTextAsync(sourcePath, ct);
         }
 
-        // For unsupported formats, return a placeholder
-        return $"[Content extraction required for {extension} files]";
+        return $"[Content extraction required for {extension} files. Install FileFlux for full support.]";
     }
 
-    private static string RefineContent(string content)
-    {
-        // Basic refinement: normalize whitespace, remove excessive blank lines
-        var lines = content.Split('\n')
-            .Select(l => l.TrimEnd())
-            .ToList();
-
-        // Remove more than 2 consecutive blank lines
-        var result = new List<string>();
-        var blankCount = 0;
-
-        foreach (var line in lines)
-        {
-            if (string.IsNullOrWhiteSpace(line))
-            {
-                blankCount++;
-                if (blankCount <= 2)
-                    result.Add(line);
-            }
-            else
-            {
-                blankCount = 0;
-                result.Add(line);
-            }
-        }
-
-        return string.Join('\n', result);
-    }
-
-    private static IReadOnlyList<string> ChunkFallback(string content, ChunkingOptions options)
+    private static IReadOnlyList<string> ChunkFallback(string content, int maxChunkSize)
     {
         var chunks = new List<string>();
         var lines = content.Split('\n');
@@ -302,7 +321,7 @@ public sealed class VaultPipeline : IVaultPipeline
         {
             var lineLength = line.Length;
 
-            if (currentLength + lineLength > options.MaxChunkSize && currentChunk.Count > 0)
+            if (currentLength + lineLength > maxChunkSize && currentChunk.Count > 0)
             {
                 chunks.Add(string.Join('\n', currentChunk));
                 currentChunk.Clear();
@@ -321,13 +340,19 @@ public sealed class VaultPipeline : IVaultPipeline
         return chunks;
     }
 
-    private sealed class ChunkManifest
+    private static string GuessContentType(string fileName)
     {
-        public int ChunkCount { get; set; }
-        public DateTimeOffset CreatedAt { get; set; }
-        public ChunkingOptions? Options { get; set; }
-        public bool IsMemorized { get; set; }
-        public DateTimeOffset? MemorizedAt { get; set; }
+        var ext = Path.GetExtension(fileName).ToLowerInvariant();
+        return ext switch
+        {
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".gif" => "image/gif",
+            ".webp" => "image/webp",
+            ".bmp" => "image/bmp",
+            ".svg" => "image/svg+xml",
+            _ => "application/octet-stream"
+        };
     }
 }
 
@@ -357,9 +382,12 @@ public interface IChunker
 }
 
 /// <summary>
-/// Interface for chunk memorization (FluxIndex integration).
+/// Options for chunking.
 /// </summary>
-public interface IMemorizer
+public sealed class ChunkingOptions
 {
-    Task MemorizeAsync(VaultEntry entry, IReadOnlyList<string> chunks, CancellationToken ct = default);
+    public int MaxChunkSize { get; set; } = 1024;
+    public int OverlapSize { get; set; } = 128;
+    public string Strategy { get; set; } = "Auto";
+    public string? Language { get; set; }
 }

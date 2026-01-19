@@ -1,11 +1,11 @@
 namespace FluxIndex.MCP.Workspace;
 
 /// <summary>
-/// Locates .fluxindex workspace directory similar to .git directory traversal
+/// Locates .vault workspace directory similar to .git directory traversal
 /// </summary>
 public static class WorkspaceLocator
 {
-    public const string WorkspaceDirectoryName = ".fluxindex";
+    public const string WorkspaceDirectoryName = ".vault";
     public const string ConfigFileName = "config.json";
     public const string DatabaseFileName = "index.db";
 
@@ -31,7 +31,7 @@ public static class WorkspaceLocator
     }
 
     /// <summary>
-    /// Get the .fluxindex directory path for a workspace root
+    /// Get the .vault directory path for a workspace root
     /// </summary>
     public static string GetWorkspaceDirectory(string workspaceRoot)
         => Path.Combine(workspaceRoot, WorkspaceDirectoryName);

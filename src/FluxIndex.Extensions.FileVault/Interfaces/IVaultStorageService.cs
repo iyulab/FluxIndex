@@ -1,107 +1,139 @@
+using FluxIndex.Extensions.FileVault.Domain.Entities;
+
 namespace FluxIndex.Extensions.FileVault.Interfaces;
 
 /// <summary>
-/// Service for managing vault artifact storage.
+/// Service for managing vault storage structure.
+/// Directory structure:
+/// .vault/{filepath-hash}/
+/// ├── meta.json          (git 추적 X)
+/// ├── images/            (git 추적 X)
+/// │   └── manifest.json
+/// └── vault/             (git 추적 O)
+///     ├── .git/
+///     ├── refined.md
+///     ├── append-text.md
+///     └── qa.md
 /// </summary>
 public interface IVaultStorageService
 {
     /// <summary>
-    /// Gets the base storage path for a tracked file.
+    /// Gets the vault base path (.vault directory).
     /// </summary>
-    string GetFileStoragePath(Guid trackedFileId);
+    string BasePath { get; }
 
     /// <summary>
-    /// Gets the path for a specific artifact type.
+    /// Initializes the vault directory structure for an entry.
+    /// Creates: entry dir, vault/ subdir, .gitignore, and initializes git in vault/.
     /// </summary>
-    string GetArtifactPath(Guid trackedFileId, ArtifactType artifactType);
+    Task InitializeEntryAsync(VaultEntry entry, CancellationToken ct = default);
 
     /// <summary>
-    /// Stores extracted content (markdown and plain text).
+    /// Stores refined content to vault/refined.md.
     /// </summary>
-    Task StoreExtractAsync(Guid fileId, string markdown, string? plainText = null, CancellationToken ct = default);
+    Task StoreRefinedContentAsync(VaultEntry entry, string content, CancellationToken ct = default);
 
     /// <summary>
-    /// Stores extracted images.
+    /// Gets refined content from vault/refined.md.
     /// </summary>
-    Task StoreImagesAsync(Guid fileId, IEnumerable<ImageArtifact> images, CancellationToken ct = default);
+    Task<string?> GetRefinedContentAsync(VaultEntry entry, CancellationToken ct = default);
 
     /// <summary>
-    /// Stores chunk data.
+    /// Stores extracted images to images/ directory.
     /// </summary>
-    Task StoreChunksAsync(Guid fileId, IEnumerable<ChunkArtifact> chunks, CancellationToken ct = default);
+    Task StoreImagesAsync(VaultEntry entry, IEnumerable<ImageArtifact> images, CancellationToken ct = default);
 
     /// <summary>
-    /// Stores QA pairs.
+    /// Gets all images from images/ directory.
     /// </summary>
-    Task StoreQAPairsAsync(Guid fileId, IEnumerable<QAPairArtifact> qaPairs, CancellationToken ct = default);
+    Task<IReadOnlyList<ImageArtifact>> GetImagesAsync(VaultEntry entry, CancellationToken ct = default);
 
     /// <summary>
-    /// Stores enrichment data.
+    /// Gets all text content from vault/ directory (refined.md + append-text.md + qa.md).
     /// </summary>
-    Task StoreEnrichmentAsync(Guid fileId, EnrichmentArtifact enrichment, CancellationToken ct = default);
+    Task<VaultTextContent> GetAllVaultContentAsync(VaultEntry entry, CancellationToken ct = default);
 
     /// <summary>
-    /// Gets extracted content.
+    /// Stores user-appended text to vault/append-text.md.
     /// </summary>
-    Task<(string? Markdown, string? PlainText)> GetExtractAsync(Guid fileId, CancellationToken ct = default);
+    Task StoreAppendTextAsync(VaultEntry entry, string content, CancellationToken ct = default);
 
     /// <summary>
-    /// Gets extracted images.
+    /// Stores QA content to vault/qa.md.
     /// </summary>
-    Task<IReadOnlyList<ImageArtifact>> GetImagesAsync(Guid fileId, CancellationToken ct = default);
+    Task StoreQaContentAsync(VaultEntry entry, string content, CancellationToken ct = default);
 
     /// <summary>
-    /// Gets chunk data.
+    /// Deletes all storage for an entry.
     /// </summary>
-    Task<IReadOnlyList<ChunkArtifact>> GetChunksAsync(Guid fileId, CancellationToken ct = default);
+    Task DeleteEntryStorageAsync(VaultEntry entry, CancellationToken ct = default);
 
     /// <summary>
-    /// Gets QA pairs.
+    /// Gets total storage size for an entry.
     /// </summary>
-    Task<IReadOnlyList<QAPairArtifact>> GetQAPairsAsync(Guid fileId, CancellationToken ct = default);
+    Task<long> GetStorageSizeAsync(VaultEntry entry, CancellationToken ct = default);
 
     /// <summary>
-    /// Gets enrichment data.
+    /// Checks if entry storage exists.
     /// </summary>
-    Task<EnrichmentArtifact?> GetEnrichmentAsync(Guid fileId, CancellationToken ct = default);
+    bool EntryStorageExists(VaultEntry entry);
 
     /// <summary>
-    /// Creates a version snapshot.
+    /// Lists all entry directories in the vault.
     /// </summary>
-    Task CreateVersionSnapshotAsync(Guid fileId, int version, CancellationToken ct = default);
+    IEnumerable<string> ListEntryDirectories();
 
     /// <summary>
-    /// Gets version snapshots.
+    /// Creates the .gitignore file in the entry directory to exclude meta.json and images/.
     /// </summary>
-    Task<IReadOnlyList<VersionSnapshot>> GetVersionSnapshotsAsync(Guid fileId, CancellationToken ct = default);
-
-    /// <summary>
-    /// Deletes all artifacts for a file.
-    /// </summary>
-    Task DeleteArtifactsAsync(Guid fileId, CancellationToken ct = default);
-
-    /// <summary>
-    /// Gets total storage size for a file.
-    /// </summary>
-    Task<long> GetStorageSizeAsync(Guid fileId, CancellationToken ct = default);
-
-    /// <summary>
-    /// Checks if artifacts exist for a file.
-    /// </summary>
-    Task<bool> ArtifactsExistAsync(Guid fileId, CancellationToken ct = default);
+    Task CreateGitignoreAsync(VaultEntry entry, CancellationToken ct = default);
 }
 
 /// <summary>
-/// Types of artifacts stored in the vault.
+/// Combined text content from vault/ directory.
 /// </summary>
-public enum ArtifactType
+public sealed class VaultTextContent
 {
-    Extract,
-    Images,
-    Chunks,
-    QA,
-    Enrichment,
-    Versions
+    /// <summary>
+    /// Content from refined.md.
+    /// </summary>
+    public string? RefinedContent { get; init; }
+
+    /// <summary>
+    /// Content from append-text.md.
+    /// </summary>
+    public string? AppendText { get; init; }
+
+    /// <summary>
+    /// Content from qa.md.
+    /// </summary>
+    public string? QaContent { get; init; }
+
+    /// <summary>
+    /// Gets combined content for chunking/indexing.
+    /// </summary>
+    public string GetCombinedContent()
+    {
+        var parts = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(RefinedContent))
+            parts.Add(RefinedContent);
+
+        if (!string.IsNullOrWhiteSpace(AppendText))
+            parts.Add($"\n\n---\n\n## Additional Notes\n\n{AppendText}");
+
+        if (!string.IsNullOrWhiteSpace(QaContent))
+            parts.Add($"\n\n---\n\n## Q&A\n\n{QaContent}");
+
+        return string.Join("", parts);
+    }
+
+    /// <summary>
+    /// Checks if any content exists.
+    /// </summary>
+    public bool HasContent => !string.IsNullOrWhiteSpace(RefinedContent)
+                              || !string.IsNullOrWhiteSpace(AppendText)
+                              || !string.IsNullOrWhiteSpace(QaContent);
 }
 
 /// <summary>
@@ -110,55 +142,9 @@ public enum ArtifactType
 public sealed class ImageArtifact
 {
     public string Id { get; init; } = string.Empty;
-    public byte[] Data { get; init; } = Array.Empty<byte>();
+    public byte[] Data { get; init; } = [];
     public string ContentType { get; init; } = "application/octet-stream";
     public string? Description { get; init; }
     public int Width { get; init; }
     public int Height { get; init; }
-}
-
-/// <summary>
-/// Represents a content chunk.
-/// </summary>
-public sealed class ChunkArtifact
-{
-    public int Index { get; init; }
-    public string Content { get; init; } = string.Empty;
-    public int TokenCount { get; init; }
-    public Dictionary<string, object>? Metadata { get; init; }
-}
-
-/// <summary>
-/// Represents a QA pair.
-/// </summary>
-public sealed class QAPairArtifact
-{
-    public string Question { get; init; } = string.Empty;
-    public string Answer { get; init; } = string.Empty;
-    public string? Context { get; init; }
-    public float Confidence { get; init; }
-}
-
-/// <summary>
-/// Represents enrichment data.
-/// </summary>
-public sealed class EnrichmentArtifact
-{
-    public string? Summary { get; init; }
-    public IReadOnlyList<string>? Keywords { get; init; }
-    public IReadOnlyList<string>? Entities { get; init; }
-    public IReadOnlyList<string>? Topics { get; init; }
-    public Dictionary<string, object>? CustomData { get; init; }
-    public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
-}
-
-/// <summary>
-/// Represents a version snapshot.
-/// </summary>
-public sealed class VersionSnapshot
-{
-    public int Version { get; init; }
-    public DateTimeOffset CreatedAt { get; init; }
-    public string? ContentHash { get; init; }
-    public long StorageSize { get; init; }
 }

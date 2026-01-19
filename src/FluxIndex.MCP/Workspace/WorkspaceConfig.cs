@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 namespace FluxIndex.MCP.Workspace;
 
 /// <summary>
-/// FluxIndex workspace configuration stored in .fluxindex/config.json
+/// FluxIndex workspace configuration stored in .vault/config.json
 /// </summary>
 public class WorkspaceConfig
 {

@@ -178,8 +178,8 @@ public static class ServiceCollectionExtensions
     {
         services.AddFileVaultWithFileFlux(configureOptions);
 
-        // Register FluxIndex memorizer adapter
-        services.TryAddSingleton<IMemorizer, FluxIndexMemorizer>();
+        // Register FluxIndex memorizer adapter (for custom scenarios, VaultPipeline handles indexing internally)
+        services.TryAddSingleton<FluxIndexMemorizer>();
 
         return services;
     }

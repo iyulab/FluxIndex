@@ -34,7 +34,7 @@ public sealed class FileFluxExtractor : IExtractor
             // FileFlux requires a strategy - use Auto with large chunk size to get full content
             var options = new ProcessingOptions
             {
-                Chunking = new ChunkingOptions
+                Chunking = new FileFlux.Core.ChunkingOptions
                 {
                     Strategy = ChunkingStrategies.Auto,
                     MaxChunkSize = int.MaxValue // Get full content as single chunk

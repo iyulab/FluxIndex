@@ -19,7 +19,8 @@ public interface IGitService
     /// <summary>
     /// Creates a commit with the given message.
     /// </summary>
-    Task CommitAsync(string vaultPath, string message, CancellationToken ct = default);
+    /// <returns>The commit hash if a commit was created, null if no changes to commit.</returns>
+    Task<string?> CommitAsync(string vaultPath, string message, CancellationToken ct = default);
 
     /// <summary>
     /// Gets the diff for a specific file or all files.

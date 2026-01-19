@@ -83,7 +83,7 @@ public static class SetCommand
             .Border(BoxBorder.Rounded));
 
         AnsiConsole.WriteLine();
-        AnsiConsole.MarkupLine("[dim]Settings are stored in ~/.fluxindex/settings.json[/]");
+        AnsiConsole.MarkupLine("[dim]Settings are stored in ~/.vault/settings.json[/]");
     }
 
     private static void ShowSetting(CliSettings settings, string key)

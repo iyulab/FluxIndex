@@ -3,6 +3,7 @@
 RAG library for .NET - Complete usage guide.
 
 **Related Guides:**
+- [AI Provider Integration](./AI_PROVIDER_INTEGRATION.md) - OpenAI, Azure, LMSupply, custom embedding/LLM/reranker integration
 - [Advanced RAG Services](./ADVANCED_RAG.md) - Dynamic fusion, listwise reranking, entity extraction, community detection
 - [API Reference](./REFERENCE.md) - Complete API documentation
 
