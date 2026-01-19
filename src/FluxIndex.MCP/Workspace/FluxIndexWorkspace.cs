@@ -1,4 +1,5 @@
 using FluxIndex.SDK;
+using FluxIndex.MCP.AI;
 using Microsoft.Extensions.Logging;
 
 namespace FluxIndex.MCP.Workspace;
@@ -113,15 +114,15 @@ public class FluxIndexWorkspace : IDisposable
         switch (_config.Embedding.Provider.ToLowerInvariant())
         {
             case "local":
-            case "LMSupply":
+            case "lmsupply":
                 // Use local AI embedder (ONNX-based, no API key required)
-                builder.UseLMSupplyEmbedding();
+                builder.ConfigureServices(s => s.AddLMSupplyEmbedding());
                 break;
 
             default:
                 // Default to LMSupply for unknown providers
                 // External AI providers should be implemented by consuming applications
-                builder.UseLMSupplyEmbedding();
+                builder.ConfigureServices(s => s.AddLMSupplyEmbedding());
                 break;
         }
     }

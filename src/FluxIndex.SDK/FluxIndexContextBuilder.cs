@@ -5,13 +5,13 @@ using FluxIndex.Core.Services;
 using CoreServiceExtensions = FluxIndex.Core.Application.Services.MetadataAugmentationServiceExtensions;
 using FluxIndex.SDK.Configuration;
 using FluxIndex.SDK.Services;
-using FluxIndex.SDK.Extensions;
-using FluxIndex.SDK.AI.Local;
 using FluxIndex.Storage.SQLite;
 using FluxIndex.Storage.SQLite.Graph;
 using FluxIndex.Storage.SQLite.Cache;
+using FluxIndex.Storage.PostgreSQL;
 using FluxIndex.Storage.PostgreSQL.Graph;
 using FluxIndex.Storage.PostgreSQL.Cache;
+using FluxIndex.Cache.Redis.Extensions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Caching.Memory;
@@ -23,8 +23,8 @@ namespace FluxIndex.SDK;
 
 /// <summary>
 /// FluxIndexContext 빌더 - Fluent API로 Retriever와 Indexer 구성
-/// AI Provider-agnostic 설계: 외부 AI SDK 없이 LMSupply 기본 사용
-/// 소비자 앱에서 IEmbeddingService 구현체 제공 가능
+/// AI Provider-agnostic 설계: IEmbeddingService, ITextCompletionService, IReranker는 외부 주입 필요
+/// 소비 앱에서 Core의 추상 클래스(EmbeddingServiceBase 등)를 확장하여 AI Provider 구현
 /// </summary>
 public class FluxIndexContextBuilder
 {
@@ -33,8 +33,6 @@ public class FluxIndexContextBuilder
     private readonly RetrieverOptions _retrieverOptions;
     private readonly IndexerOptions _indexerOptions;
     private bool _suppressStartupMessages = false;
-    private bool _disableDefaultTextCompletion = false;
-    private bool _disableDefaultReranker = false;
 
     public FluxIndexContextBuilder()
     {
@@ -47,11 +45,10 @@ public class FluxIndexContextBuilder
         _services.AddLogging();
         _services.AddMemoryCache();
 
-        // ✅ Default to LMSupply for better developer experience
-        // This allows developers to use FluxIndex without requiring external API keys
-        // LMSupply provides real embeddings using local ONNX models
-        _options.Embedding.Provider = "LMSupply";
-        _options.Embedding.ModelName = "default"; // bge-small-en-v1.5
+        // ✅ Default to InMemory embedding (for testing)
+        // For production, configure a real embedding service via ConfigureServices()
+        // LMSupply: .ConfigureServices(s => s.AddLMSupplyEmbedding()) - 소비 앱에서 직접 래퍼 구현
+        _options.Embedding.Provider = "InMemory";
     }
 
     /// <summary>
@@ -123,30 +120,6 @@ public class FluxIndexContextBuilder
     public FluxIndexContextBuilder UseInMemoryEmbedding()
     {
         _options.Embedding.Provider = "InMemory";
-        return this;
-    }
-
-    /// <summary>
-    /// LMSupply 임베딩 사용 (로컬 ONNX 기반, 외부 API 불필요)
-    /// Available models: default (bge-small), fast (MiniLM), quality (bge-base),
-    /// large (nomic-embed), multilingual (e5-base), or HuggingFace model ID
-    /// </summary>
-    /// <param name="modelId">Model alias or HuggingFace ID (default: "default")</param>
-    public FluxIndexContextBuilder UseLMSupplyEmbedding(string modelId = "default")
-    {
-        _options.Embedding.Provider = "LMSupply";
-        _options.Embedding.ModelName = modelId;
-        return this;
-    }
-
-    /// <summary>
-    /// 다국어 LMSupply 임베딩 사용 (multilingual-e5-base)
-    /// 한국어, 영어, 중국어, 일본어 등 다양한 언어 지원
-    /// </summary>
-    public FluxIndexContextBuilder UseLMSupplyMultilingual()
-    {
-        _options.Embedding.Provider = "LMSupply";
-        _options.Embedding.ModelName = "multilingual";
         return this;
     }
 
@@ -238,39 +211,6 @@ public class FluxIndexContextBuilder
     {
         _options.GraphStore.Provider = "None";
         _options.SemanticCache.Provider = "None";
-        return this;
-    }
-
-    /// <summary>
-    /// 기본 TextCompletion 서비스 비활성화.
-    /// LMSupply TextCompletion은 HyDE, 메타데이터 enrichment에 사용됨.
-    /// 비활성화하면 이러한 기능을 사용할 수 없음.
-    /// </summary>
-    public FluxIndexContextBuilder WithoutTextCompletion()
-    {
-        _disableDefaultTextCompletion = true;
-        return this;
-    }
-
-    /// <summary>
-    /// 기본 Reranker 서비스 비활성화.
-    /// LMSupply Reranker는 검색 결과의 semantic reranking에 사용됨.
-    /// 비활성화하면 기본 점수 기반 정렬만 사용됨.
-    /// </summary>
-    public FluxIndexContextBuilder WithoutReranker()
-    {
-        _disableDefaultReranker = true;
-        return this;
-    }
-
-    /// <summary>
-    /// 최소 AI 구성 (Embedding만 사용, TextCompletion/Reranker 비활성화).
-    /// 리소스가 제한된 환경이나 기본 RAG만 필요한 경우 사용.
-    /// </summary>
-    public FluxIndexContextBuilder MinimalAI()
-    {
-        _disableDefaultTextCompletion = true;
-        _disableDefaultReranker = true;
         return this;
     }
 
@@ -571,7 +511,7 @@ public class FluxIndexContextBuilder
         // Configure services based on options
         ConfigureVectorStore();
         ConfigureEmbeddingService();
-        ConfigureDefaultAIServices();  // ✅ 기본 AI 서비스 (TextCompletion, Reranker)
+        // AI 서비스 (TextCompletion, Reranker)는 외부에서 ConfigureServices로 주입 필요
         ConfigureCacheService();
         ConfigureChunkingService();
         ConfigureGraphStore();
@@ -776,16 +716,6 @@ public class FluxIndexContextBuilder
     {
         switch (_options.Embedding.Provider?.ToLower())
         {
-            case "LMSupply":
-            case "localembedder": // Legacy support
-                // ✅ Default: Local ONNX-based embeddings (no API key required)
-                FluxIndex.SDK.AI.Local.ServiceCollectionExtensions.AddLMSupplyEmbedding(_services, options =>
-                {
-                    options.ModelId = !string.IsNullOrEmpty(_options.Embedding.ModelName)
-                        ? _options.Embedding.ModelName
-                        : "default";
-                });
-                break;
             case "inmemory":
                 // In-memory embedding service for testing (generates random embeddings)
                 _services.AddSingleton<IEmbeddingService, InMemoryEmbeddingService>();
@@ -795,40 +725,12 @@ public class FluxIndexContextBuilder
                 // Do nothing - service is already in DI container
                 break;
             default:
-                // ✅ Fallback to LMSupply if no provider specified
-                FluxIndex.SDK.AI.Local.ServiceCollectionExtensions.AddLMSupplyEmbedding(_services);
+                // ✅ Default: InMemory for basic testing
+                // For production, use ConfigureServices to register a real embedding service:
+                // - LMSupply: 소비 앱에서 EmbeddingServiceBase 확장하여 래퍼 구현
+                // - OpenAI/Azure: EmbeddingServiceBase 확장하여 구현 후 ConfigureServices로 등록
+                _services.AddSingleton<IEmbeddingService, InMemoryEmbeddingService>();
                 break;
-        }
-    }
-
-    /// <summary>
-    /// 기본 AI 서비스 구성 (TextCompletion, Reranker)
-    /// 최소구성원칙: 기본 설정만으로 production-quality 결과 제공
-    /// - TextCompletion: HyDE query expansion (+20-30% recall)
-    /// - Reranker: Semantic reranking (+15-25% precision)
-    /// </summary>
-    private void ConfigureDefaultAIServices()
-    {
-        // ✅ TextCompletion: 사용자가 명시적으로 비활성화하지 않았고, 아직 등록되지 않은 경우 기본 등록
-        if (!_disableDefaultTextCompletion)
-        {
-            var hasTextCompletion = _services.Any(d => d.ServiceType == typeof(ITextCompletionService));
-            if (!hasTextCompletion)
-            {
-                // LMSupply TextCompletion (로컬 ONNX, API 키 불필요)
-                FluxIndex.SDK.AI.Local.ServiceCollectionExtensions.AddLMSupplyTextCompletion(_services);
-            }
-        }
-
-        // ✅ Reranker: 사용자가 명시적으로 비활성화하지 않았고, 아직 등록되지 않은 경우 기본 등록
-        if (!_disableDefaultReranker)
-        {
-            var hasReranker = _services.Any(d => d.ServiceType == typeof(IReranker));
-            if (!hasReranker)
-            {
-                // LMSupply Resilient Reranker (모델 실패 시 알고리즘 기반 fallback)
-                FluxIndex.SDK.AI.Local.ServiceCollectionExtensions.AddResilientLMSupplyReranker(_services);
-            }
         }
     }
 
@@ -837,10 +739,7 @@ public class FluxIndexContextBuilder
         switch (_options.Cache.CacheProvider?.ToLower())
         {
             case "redis":
-                _services.AddRedisCache(options =>
-                {
-                    options.ConnectionString = _options.Cache.RedisConnectionString;
-                });
+                _services.AddRedisCacheStore(_options.Cache.RedisConnectionString!);
                 break;
             case "memory":
                 _services.AddSingleton<ICacheService, InMemoryCacheService>();

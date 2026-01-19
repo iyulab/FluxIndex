@@ -91,9 +91,8 @@ public class DocumentProcessingPipeline
                 MaxChunkSize = options.MaxChunkSize,
                 OverlapSize = options.OverlapSize,
                 // Use FileFlux's RefiningOptions for text cleaning (replaces EnableTextCleaning)
-                RefiningOptions = options.EnableTextCleaning
-                    ? RefiningOptions.ForRAG  // Full refining with Markdown conversion
-                    : RefiningOptions.Default  // Default refining (Markdown conversion enabled)
+                // Note: RefiningOptions.ForRAG was removed in FileFlux 0.9.7
+                RefiningOptions = RefiningOptions.Default  // Default refining with Markdown conversion
             };
 
             if (!string.IsNullOrEmpty(options.Language))

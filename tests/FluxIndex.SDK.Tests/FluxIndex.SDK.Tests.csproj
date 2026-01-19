@@ -20,4 +20,9 @@
     <ProjectReference Include="..\..\src\FluxIndex.Core\FluxIndex.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- LMSupply for local AI (direct reference) -->
+    <PackageReference Include="LMSupply.Embedder" />
+  </ItemGroup>
+
 </Project>

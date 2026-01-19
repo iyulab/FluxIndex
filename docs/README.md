@@ -24,11 +24,10 @@ RAG infrastructure library for .NET - Simple, fast, and local-first.
 ```csharp
 using FluxIndex.SDK;
 
-// 1. Setup (local-first with LMSupply)
+// 1. Setup (InMemory embedding for testing)
 var context = FluxIndexContext.CreateBuilder()
     .UseSQLite("fluxindex.db")
-    .UseLMSupply()  // Local embedding + reranking (no API key needed)
-    .Build();
+    .Build();  // InMemory embedding by default
 
 // 2. Index
 await context.Indexer.IndexDocumentAsync(
@@ -56,7 +55,7 @@ dotnet add package FluxIndex.Storage.SQLite      # or PostgreSQL
 - **Neural Reranking** - Cross-encoder with LMSupply
 - **Vector Quantization** - 4-32x memory compression
 - **Graph Traversal** - BFS, DFS, PageRank for document relationships
-- **Local-First AI** - LMSupply for embedding and reranking without API keys
+- **AI Provider Agnostic** - Core provides abstract base classes for any embedding provider
 - **FileVault** - Git-like file tracking for RAG indexing with folder monitoring
 
 ## Resources

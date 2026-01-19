@@ -25,11 +25,10 @@ dotnet add package FluxIndex.Extensions.FileVault # Git-like file tracking
 ```csharp
 using FluxIndex.SDK;
 
-// 1. Setup (LMSupply embedding by default - no API key required)
+// 1. Setup (InMemory embedding for testing)
 var context = FluxIndexContext.CreateBuilder()
     .UseSQLite("fluxindex.db")
-    .UseLMSupplyEmbedding()  // Built-in ONNX-based embedding
-    .Build();
+    .Build();  // Uses InMemory embedding by default
 
 // 2. Index
 await context.Indexer.IndexDocumentAsync(
@@ -59,19 +58,25 @@ var context = FluxIndexContext.CreateBuilder()
 ### Production
 
 ```csharp
+// With custom embedding service (e.g., LMSupply, OpenAI)
 var context = FluxIndexContext.CreateBuilder()
     .UsePostgreSQL("Host=localhost;Database=fluxindex;...")
-    .UseLMSupply()  // Embedding + TextCompletion + Reranker
+    .ConfigureServices(s => s.AddSingleton<IEmbeddingService>(myEmbeddingService))
     .UseRedisCache("localhost:6379")
     .Build();
+```
 
-// Or with custom embedding service (e.g., OpenAI)
-var context = FluxIndexContext.CreateBuilder()
-    .UsePostgreSQL("Host=localhost;Database=fluxindex;...")
-    .ConfigureServices(s => s.AddSingleton<IEmbeddingService>(myOpenAIService))
-    .UseResilientLocalReranker(o => o.ModelId = "quality")
-    .UseRedisCache("localhost:6379")
-    .Build();
+Consumer apps implement their own embedding wrappers by extending `EmbeddingServiceBase`:
+
+```csharp
+// Example: ~30 lines wrapper for LMSupply
+public class LMSupplyEmbedder : EmbeddingServiceBase, IAsyncDisposable
+{
+    private readonly IEmbeddingModel _model;
+    protected override async Task<float[]> EmbedCoreAsync(string text, CancellationToken ct)
+        => await _model.EmbedAsync(text, ct);
+    // ... see full example in README.md
+}
 ```
 
 ### appsettings.json
@@ -262,7 +267,7 @@ services.AddGraphRAGServices();
 ```csharp
 var context = FluxIndexContext.CreateBuilder()
     .UseSQLite("fluxindex.db")
-    .UseLMSupplyEmbedding()
+    .ConfigureServices(s => s.AddSingleton<IEmbeddingService>(myEmbeddingService))
     .UseRedisCache("localhost:6379")  // Semantic caching
     .Build();
 
@@ -291,10 +296,8 @@ var context = FluxIndexContext.CreateBuilder()
 // Builder
 FluxIndexContext.CreateBuilder()
     .UseSQLite(path) / .UsePostgreSQL(conn)
-    .UseLMSupply() / .UseLMSupplyEmbedding()  // Local ONNX-based AI
-    .UseResilientLocalReranker(options)
-    .UseRedisCache(conn)
     .ConfigureServices(s => s.AddSingleton<IEmbeddingService>(custom))  // Custom embedding
+    .UseRedisCache(conn)
     .Build()
 
 // Indexing

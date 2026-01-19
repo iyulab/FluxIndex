@@ -1,5 +1,6 @@
 using Xunit;
 using FluxIndex.SDK;
+using FluxIndex.SDK.Tests.AI;
 
 namespace FluxIndex.SDK.Tests;
 
@@ -27,7 +28,7 @@ public class FluxIndexContextBuilderTests : IDisposable
     }
 
     [Fact]
-    public void Builder_DefaultEmbedding_ShouldBeLocalEmbedder()
+    public void Builder_DefaultEmbedding_ShouldBeInMemory()
     {
         // Act
         var builder = FluxIndexContext.CreateBuilder()
@@ -37,7 +38,7 @@ public class FluxIndexContextBuilderTests : IDisposable
         var context = builder.Build();
         try
         {
-            // Assert - Context should be created successfully with LocalEmbedder
+            // Assert - Context should be created successfully with InMemory embedding (default)
             Assert.NotNull(context);
             Assert.NotNull(context.Indexer);
             Assert.NotNull(context.Retriever);
@@ -49,12 +50,12 @@ public class FluxIndexContextBuilderTests : IDisposable
     }
 
     [Fact]
-    public void UseLMSupplyEmbedding_WithDefaultModel_ShouldConfigure()
+    public void ConfigureServices_WithLMSupplyEmbedding_ShouldConfigure()
     {
         // Act
         var builder = FluxIndexContext.CreateBuilder()
             .UseSQLite(_testDbPath)
-            .UseLMSupplyEmbedding();
+            .ConfigureServices(s => s.AddLMSupplyEmbedding());
 
         var context = builder.Build();
         try
@@ -69,12 +70,12 @@ public class FluxIndexContextBuilderTests : IDisposable
     }
 
     [Fact]
-    public void UseLMSupplyEmbedding_WithCustomModel_ShouldConfigure()
+    public void ConfigureServices_WithLMSupplyCustomModel_ShouldConfigure()
     {
         // Act
         var builder = FluxIndexContext.CreateBuilder()
             .UseSQLite(_testDbPath)
-            .UseLMSupplyEmbedding("bge-small-en-v1.5");
+            .ConfigureServices(s => s.AddLMSupplyEmbedding("bge-small-en-v1.5"));
 
         var context = builder.Build();
         try
@@ -89,12 +90,12 @@ public class FluxIndexContextBuilderTests : IDisposable
     }
 
     [Fact]
-    public void UseLMSupplyMultilingual_ShouldConfigure()
+    public void ConfigureServices_WithLMSupplyMultilingual_ShouldConfigure()
     {
         // Act
         var builder = FluxIndexContext.CreateBuilder()
             .UseSQLite(_testDbPath)
-            .UseLMSupplyMultilingual();
+            .ConfigureServices(s => s.AddLMSupplyEmbedding("multilingual"));
 
         var context = builder.Build();
         try
@@ -156,7 +157,7 @@ public class FluxIndexContextBuilderTests : IDisposable
         // Arrange
         var context = FluxIndexContext.CreateBuilder()
             .UseSQLite(_testDbPath)
-            .UseLMSupplyEmbedding()
+            .ConfigureServices(s => s.AddLMSupplyEmbedding())
             .Build();
 
         try

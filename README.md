@@ -14,7 +14,7 @@
 - **Graph Traversal** - BFS/DFS, Dijkstra shortest path, PageRank-style importance
 - **Vector Quantization** - Scalar (Int8/Int4), Product Quantization, Binary (32x compression)
 - **Multiple Storage** - SQLite, PostgreSQL with pgvector
-- **Local-First AI** - Built-in LMSupply (ONNX-based), bring your own embedding service
+- **AI Provider Agnostic** - Core provides abstract base classes, bring your own embedding service
 - **Document Processing** - PDF/DOCX/TXT via FileFlux, web crawling via WebFlux
 - **MCP Server** - Model Context Protocol for AI assistant integration
 - **Production Ready** - Redis caching, clean architecture, .NET 10.0
@@ -29,11 +29,9 @@ dotnet add package FluxIndex.Storage.SQLite
 ```csharp
 using FluxIndex.SDK;
 
-// 1. Setup (LMSupply embedding - no API key required)
+// 1. Setup (InMemory embedding for testing)
 var context = FluxIndexContext.CreateBuilder()
     .UseSQLite("fluxindex.db")
-    .UseLMSupplyEmbedding()  // Built-in ONNX-based embedding
-    .UseResilientLocalReranker()  // Auto fallback to algorithmic
     .Build();
 
 // 2. Index
@@ -46,24 +44,34 @@ var results = await context.Retriever.SearchAsync("RAG library", maxResults: 5);
 
 ### Using Custom Embedding Service
 
-FluxIndex is AI provider-agnostic. Implement `IEmbeddingService` for your preferred provider:
+FluxIndex is AI provider-agnostic. Extend `EmbeddingServiceBase` for your preferred provider:
 
 ```csharp
-// Example: Custom OpenAI embedding service
-public class MyOpenAIEmbeddingService : IEmbeddingService
+// Example: LMSupply embedding (local ONNX-based, no API key)
+public class LMSupplyEmbedder : EmbeddingServiceBase, IAsyncDisposable
 {
-    public async Task<float[]> GetEmbeddingAsync(string text, CancellationToken ct = default)
+    private readonly IEmbeddingModel _model;
+    private LMSupplyEmbedder(IEmbeddingModel model) => _model = model;
+
+    public static async Task<LMSupplyEmbedder> CreateAsync(string modelId = "default")
     {
-        // Your OpenAI API call here
+        var model = await LocalEmbedder.LoadAsync(modelId);
+        return new LMSupplyEmbedder(model);
     }
+
+    protected override async Task<float[]> EmbedCoreAsync(string text, CancellationToken ct)
+        => await _model.EmbedAsync(text, ct);
+
+    public override int GetEmbeddingDimension() => _model.Dimensions;
+    public override string GetModelName() => _model.ModelId;
+    public ValueTask DisposeAsync() => _model.DisposeAsync();
 }
 
-// Register your implementation
-services.AddSingleton<IEmbeddingService, MyOpenAIEmbeddingService>();
-
+// Register and use
 var context = FluxIndexContext.CreateBuilder()
     .UseSQLite("fluxindex.db")
-    .UseEmbeddingService<MyOpenAIEmbeddingService>()
+    .ConfigureServices(s => s.AddSingleton<IEmbeddingService>(
+        LMSupplyEmbedder.CreateAsync().GetAwaiter().GetResult()))
     .Build();
 ```
 
@@ -90,8 +98,8 @@ Full benchmarks: [BENCHMARK_RESULTS.md](./benchmarks/FluxIndex.Benchmarks/BENCHM
 
 | Package | Description |
 |---------|-------------|
-| **FluxIndex.Core** | Interfaces and core logic |
-| **FluxIndex.SDK** | All-in-one SDK with LMSupply, FileFlux, WebFlux, FluxCurator, FluxImprover |
+| **FluxIndex.Core** | Interfaces, abstract base classes, and core logic |
+| **FluxIndex.SDK** | All-in-one SDK with FileFlux, WebFlux, FluxCurator, FluxImprover |
 | **FluxIndex.Storage.SQLite** | SQLite vector store |
 | **FluxIndex.Storage.PostgreSQL** | PostgreSQL with pgvector |
 | **FluxIndex.Storage.Neo4j** | Neo4j graph database |

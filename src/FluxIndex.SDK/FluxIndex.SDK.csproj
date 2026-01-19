@@ -7,14 +7,15 @@
     <LangVersion>latest</LangVersion>
     <PackageId>FluxIndex.SDK</PackageId>
     <IsPackable>true</IsPackable>
-    <Description>FluxIndex SDK - Complete RAG infrastructure with LMSupply embeddings, FileFlux integration, FluxCurator preprocessing, and FluxImprover quality enhancement</Description>
-    <PackageTags>RAG;VectorStore;Search;AI;Embeddings;Retrieval;SDK;LMSupply;FileFlux;FluxCurator;FluxImprover</PackageTags>
+    <Description>FluxIndex SDK - Complete RAG infrastructure with FileFlux integration, FluxCurator preprocessing, and FluxImprover quality enhancement. AI providers are externally injectable.</Description>
+    <PackageTags>RAG;VectorStore;Search;AI;Embeddings;Retrieval;SDK;FileFlux;FluxCurator;FluxImprover</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\FluxIndex.Core\FluxIndex.Core.csproj" />
     <ProjectReference Include="..\FluxIndex.Storage.SQLite\FluxIndex.Storage.SQLite.csproj" />
     <ProjectReference Include="..\FluxIndex.Storage.PostgreSQL\FluxIndex.Storage.PostgreSQL.csproj" />
+    <ProjectReference Include="..\FluxIndex.Cache.Redis\FluxIndex.Cache.Redis.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -23,11 +24,6 @@
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Options" />
-
-    <!-- LMSupply: Full AI stack (Embedder + Generator + Reranker) -->
-    <PackageReference Include="LMSupply.Embedder" />
-    <PackageReference Include="LMSupply.Generator" />
-    <PackageReference Include="LMSupply.Reranker" />
 
     <!-- Document processing dependencies (from Extensions) -->
     <PackageReference Include="FileFlux" />

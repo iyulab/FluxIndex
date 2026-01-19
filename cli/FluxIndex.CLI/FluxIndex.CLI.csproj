@@ -22,8 +22,14 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- FluxIndex SDK (includes LMSupply, FileFlux, WebFlux, FluxCurator, FluxImprover) -->
+    <!-- FluxIndex SDK (FileFlux, WebFlux, FluxCurator, FluxImprover) -->
     <ProjectReference Include="..\..\src\FluxIndex.SDK\FluxIndex.SDK.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- LMSupply for local AI (direct reference) -->
+    <PackageReference Include="LMSupply.Embedder" />
+    <PackageReference Include="LMSupply.Generator" />
   </ItemGroup>
 
   <ItemGroup>
