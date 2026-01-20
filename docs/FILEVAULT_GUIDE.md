@@ -27,7 +27,7 @@ FileVault bridges the gap between your file system and vector store by:
 
 - **Tracking files** in designated folders
 - **Detecting changes** via content hashing
-- **Processing pipelines**: extract → chunk → embed → index
+- **Processing pipelines**: extract → refine → chunk → embed → index
 - **Maintaining sync status** between source files and vector store
 - **Managing artifacts** (extracted text, images, chunks)
 
@@ -38,9 +38,12 @@ Source Files → FileVault → Vector Store
      ↓             ↓            ↓
   .docx        .vault/   Embeddings
   .pdf         ├── meta.json
-  .txt         ├── vault/
-               │   └── refined.md
-               └── images/
+  .txt         ├── extracted.md    (raw extraction, not git-tracked)
+               ├── images/
+               └── vault/          (git-tracked)
+                   ├── refined.md  (LLM-refined content)
+                   ├── append-text.md
+                   └── qa.md
 ```
 
 ### Key Concepts
@@ -49,7 +52,7 @@ Source Files → FileVault → Vector Store
 |---------|-------------|
 | **VaultEntry** | Represents a tracked file with its processing state |
 | **SyncStatus** | Tracks synchronization state (InSync, SourceModified, etc.) |
-| **ProcessingStage** | Pipeline progress (Source → Extracted → Memorized) |
+| **ProcessingStage** | Pipeline progress (Source → Extracted → Refined → Memorized) |
 | **WatchedFolder** | A folder being monitored for file changes |
 
 ---
@@ -185,7 +188,7 @@ builder.Services.AddFileVault();
 
 ### Memorize (Full Pipeline)
 
-Process a file through the complete pipeline: extract → chunk → embed → index.
+Process a file through the complete pipeline: extract → refine → chunk → embed → index.
 
 ```csharp
 // Memorize a single file
@@ -196,6 +199,16 @@ if (entry.Stage == ProcessingStage.Memorized)
 {
     Console.WriteLine($"Success: {entry.ChunkCount} chunks indexed");
 }
+
+// Re-memorize with options (preserves user content by default)
+var options = new MemorizeOptions
+{
+    PreserveQaContent = true,    // Keep existing qa.md content (default: true)
+    PreserveAppendText = true,   // Keep existing append-text.md content (default: true)
+    MaxChunkSize = 1024,
+    OverlapSize = 128
+};
+var entry = await vault.MemorizeAsync("path/to/document.pdf", options);
 ```
 
 ### Refresh (Re-chunk without Re-extract)
@@ -403,6 +416,7 @@ Console.WriteLine();
 Console.WriteLine($"Processing stages:");
 Console.WriteLine($"  Source: {status.SourceCount}");
 Console.WriteLine($"  Extracted: {status.ExtractedCount}");
+Console.WriteLine($"  Refined: {status.RefinedCount}");
 Console.WriteLine($"  Memorized: {status.MemorizedCount}");
 Console.WriteLine();
 Console.WriteLine($"Queue: {status.QueuedCount} queued, {status.ProcessingCount} processing");
@@ -505,28 +519,35 @@ services.AddFileVaultWithFluxIndex(options =>
 When you call `vault.MemorizeAsync()`, FileVault orchestrates the following pipeline:
 
 ```
-Source File → Extract → Chunk → Embed → Index
-    ↓            ↓         ↓        ↓        ↓
- .pdf/.docx   refined.md  chunks   float[]   IVectorStore
-                                     ↓
-                              IEmbeddingService
+Source File → Extract → Refine → Chunk → Embed → Index
+    ↓            ↓         ↓        ↓        ↓        ↓
+ .pdf/.docx  extracted  refined   chunks   float[]   IVectorStore
+                .md       .md                  ↓
+             (raw)    (processed)     IEmbeddingService
 ```
 
 **Pipeline Steps**:
 
-1. **Extract** (`IExtractor`): Converts source file to text/markdown
+1. **Extract** (`IExtractor`): Converts source file to raw text/markdown
    - Uses FileFlux for PDF, DOCX, HTML, etc.
-   - Output saved to `.vault/{hash}/vault/refined.md`
+   - Output saved to `.vault/{hash}/extracted.md` (not git-tracked)
+   - Images saved to `.vault/{hash}/images/`
 
-2. **Chunk** (`IChunker`): Splits content into semantic chunks
+2. **Refine** (`IVaultPipeline.RefineAsync`): Processes extracted content
+   - Applies LLM refinement (if `IImageDescriptionService` available)
+   - Injects image descriptions into text
+   - Output saved to `.vault/{hash}/vault/refined.md` (git-tracked)
+
+3. **Chunk** (`IChunker`): Splits content into semantic chunks
+   - Combines refined.md + append-text.md + qa.md
    - Configurable via `ChunkingOptions` (MaxChunkSize, OverlapSize, Strategy)
    - Output: `IReadOnlyList<ChunkResult>`
 
-3. **Embed** (`IEmbeddingService`): Generates vector embeddings
+4. **Embed** (`IEmbeddingService`): Generates vector embeddings
    - Consumer app provides the embedding service (LMSupply, OpenAI, etc.)
    - Each chunk gets a float[] embedding vector
 
-4. **Index** (`IVectorStore`): Stores chunks with embeddings
+5. **Index** (`IVectorStore`): Stores chunks with embeddings
    - Chunks stored with `FilepathHash` as document identifier
    - Enables search by file or across all files
 
@@ -936,3 +957,4 @@ Console.WriteLine($"Storage Size: {status.TotalStorageSizeBytes / 1024 / 1024:F1
 | 0.5.2 | Added partial removal recovery |
 | 0.5.3 | Added status-based query APIs |
 | 0.5.7 | Added RetryCount tracking, Vector Store integration docs, Multi-tenant usage examples |
+| 0.5.8 | Added Refined stage (4-stage pipeline), separated extracted.md/refined.md, QA/AppendText preservation on re-memorize |
