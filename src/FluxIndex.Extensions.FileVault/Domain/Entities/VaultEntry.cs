@@ -194,6 +194,16 @@ public sealed class VaultEntry
     }
 
     /// <summary>
+    /// Marks the entry as refined (LLM processing complete).
+    /// </summary>
+    public void MarkRefined()
+    {
+        Stage = ProcessingStage.Refined;
+        LastProcessedAt = DateTimeOffset.UtcNow;
+        LastError = null;
+    }
+
+    /// <summary>
     /// Marks the entry as memorized (indexed to DB).
     /// </summary>
     public void MarkMemorized(int chunkCount)
@@ -380,7 +390,12 @@ public sealed class VaultEntry
     public string VaultPath => Path.Combine(EntryPath, "vault");
 
     /// <summary>
-    /// Path to refined.md (extracted + refined content).
+    /// Path to extracted.md (raw extracted content, not git-tracked).
+    /// </summary>
+    public string ExtractedMdPath => Path.Combine(EntryPath, "extracted.md");
+
+    /// <summary>
+    /// Path to refined.md (LLM-refined content with image descriptions).
     /// </summary>
     public string RefinedMdPath => Path.Combine(VaultPath, "refined.md");
 
@@ -408,6 +423,11 @@ public sealed class VaultEntry
     /// Checks if the vault directory exists.
     /// </summary>
     public bool VaultExists => Directory.Exists(VaultPath);
+
+    /// <summary>
+    /// Checks if extracted.md exists.
+    /// </summary>
+    public bool ExtractedExists => File.Exists(ExtractedMdPath);
 
     /// <summary>
     /// Checks if refined.md exists.

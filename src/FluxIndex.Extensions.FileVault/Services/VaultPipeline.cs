@@ -54,19 +54,56 @@ public sealed class VaultPipeline : IVaultPipeline
         {
             _logger.LogInformation("Starting memorize for {SourcePath}", entry.SourcePath);
 
-            // Step 1: Initialize entry storage if needed
+            // Step 1: Backup user content if preserving (for re-memorize scenarios)
+            string? existingQaContent = null;
+            string? existingAppendText = null;
+
+            if (_storage.EntryStorageExists(entry))
+            {
+                var vaultContent = await _storage.GetAllVaultContentAsync(entry, ct);
+
+                if (options.PreserveQaContent && !string.IsNullOrWhiteSpace(vaultContent.QaContent))
+                {
+                    existingQaContent = vaultContent.QaContent;
+                    _logger.LogDebug("Backing up existing QA content ({Length} chars)", existingQaContent.Length);
+                }
+
+                if (options.PreserveAppendText && !string.IsNullOrWhiteSpace(vaultContent.AppendText))
+                {
+                    existingAppendText = vaultContent.AppendText;
+                    _logger.LogDebug("Backing up existing append-text ({Length} chars)", existingAppendText.Length);
+                }
+            }
+
+            // Step 2: Initialize entry storage if needed
             if (!_storage.EntryStorageExists(entry))
             {
                 await _storage.InitializeEntryAsync(entry, ct);
             }
 
-            // Step 2: Extract content from source file
+            // Step 3: Extract content from source file → extracted.md
             await ExtractAsync(entry, ct);
 
-            // Step 3: Chunk and index (shared with RefreshAsync)
+            // Step 4: Refine content → vault/refined.md
+            await RefineAsync(entry, ct);
+
+            // Step 5: Restore preserved user content
+            if (!string.IsNullOrWhiteSpace(existingQaContent))
+            {
+                await _storage.StoreQaContentAsync(entry, existingQaContent, ct);
+                _logger.LogDebug("Restored QA content");
+            }
+
+            if (!string.IsNullOrWhiteSpace(existingAppendText))
+            {
+                await _storage.StoreAppendTextAsync(entry, existingAppendText, ct);
+                _logger.LogDebug("Restored append-text content");
+            }
+
+            // Step 6: Chunk and index (shared with RefreshAsync)
             var result = await ChunkAndIndexAsync(entry, options, ct);
 
-            // Step 4: Git commit
+            // Step 7: Git commit
             string? commitHash = null;
             if (!options.SkipCommit)
             {
@@ -74,7 +111,7 @@ public sealed class VaultPipeline : IVaultPipeline
                 commitHash = await _git.CommitAsync(entry.VaultPath, message, ct);
             }
 
-            // Step 5: Update entry state
+            // Step 8: Update entry state
             entry.MarkMemorized(result.ChunkCount);
             entry.MarkInSync(); // Set sync status to InSync after successful memorize
             entry.SaveMetadata();
@@ -183,14 +220,40 @@ public sealed class VaultPipeline : IVaultPipeline
             extractedContent = await ExtractFallbackAsync(entry.SourcePath, ct);
         }
 
-        // Store refined content
-        await _storage.StoreRefinedContentAsync(entry, extractedContent, ct);
+        // Store raw extracted content (not git-tracked)
+        await _storage.StoreExtractedContentAsync(entry, extractedContent, ct);
 
-        // Update entry
+        // Update entry to Extracted stage
         entry.MarkExtracted(contentHash);
         entry.SaveMetadata();
 
-        _logger.LogInformation("Extracted {Length} chars to {Path}", extractedContent.Length, entry.RefinedMdPath);
+        _logger.LogInformation("Extracted {Length} chars to {Path}", extractedContent.Length, entry.ExtractedMdPath);
+    }
+
+    public async Task RefineAsync(VaultEntry entry, CancellationToken ct = default)
+    {
+        _logger.LogInformation("Refining content for {SourcePath}", entry.SourcePath);
+
+        // Get extracted content
+        var extractedContent = await _storage.GetExtractedContentAsync(entry, ct);
+        if (string.IsNullOrWhiteSpace(extractedContent))
+        {
+            throw new InvalidOperationException($"No extracted content found at {entry.ExtractedMdPath}. Run extract first.");
+        }
+
+        // For now, refined content is the same as extracted content
+        // In the future, this is where LLM refinement and image description injection happens
+        // via IImageDescriptionService (implemented by consumer apps)
+        var refinedContent = extractedContent;
+
+        // Store refined content (git-tracked)
+        await _storage.StoreRefinedContentAsync(entry, refinedContent, ct);
+
+        // Update entry to Refined stage
+        entry.MarkRefined();
+        entry.SaveMetadata();
+
+        _logger.LogInformation("Refined {Length} chars to {Path}", refinedContent.Length, entry.RefinedMdPath);
     }
 
     public async Task RemoveAsync(VaultEntry entry, CancellationToken ct = default)

@@ -2,8 +2,7 @@ namespace FluxIndex.Extensions.FileVault.Domain.Enums;
 
 /// <summary>
 /// Processing pipeline stages for a vault entry.
-/// Simplified stages: Source → Extracted → Memorized
-/// (Chunks are stored directly in DB, not on disk)
+/// Stages: Source → Extracted → Refined → Memorized
 /// </summary>
 public enum ProcessingStage
 {
@@ -13,12 +12,17 @@ public enum ProcessingStage
     Source = 0,
 
     /// <summary>
-    /// Content extracted and refined to vault/refined.md.
+    /// Raw content extracted to extracted.md (not git-tracked).
     /// </summary>
     Extracted = 1,
 
     /// <summary>
+    /// Content refined with LLM processing and image descriptions to vault/refined.md.
+    /// </summary>
+    Refined = 2,
+
+    /// <summary>
     /// Chunks embedded and indexed to FluxIndex (stored in DB).
     /// </summary>
-    Memorized = 2
+    Memorized = 3
 }

@@ -7,11 +7,12 @@ namespace FluxIndex.Extensions.FileVault.Interfaces;
 /// Directory structure:
 /// .vault/{filepath-hash}/
 /// ├── meta.json          (git 추적 X)
+/// ├── extracted.md       (git 추적 X) - raw extraction output
 /// ├── images/            (git 추적 X)
 /// │   └── manifest.json
 /// └── vault/             (git 추적 O)
 ///     ├── .git/
-///     ├── refined.md
+///     ├── refined.md     - LLM-refined content with image descriptions
 ///     ├── append-text.md
 ///     └── qa.md
 /// </summary>
@@ -27,6 +28,16 @@ public interface IVaultStorageService
     /// Creates: entry dir, vault/ subdir, .gitignore, and initializes git in vault/.
     /// </summary>
     Task InitializeEntryAsync(VaultEntry entry, CancellationToken ct = default);
+
+    /// <summary>
+    /// Stores raw extracted content to extracted.md (not git-tracked).
+    /// </summary>
+    Task StoreExtractedContentAsync(VaultEntry entry, string content, CancellationToken ct = default);
+
+    /// <summary>
+    /// Gets raw extracted content from extracted.md.
+    /// </summary>
+    Task<string?> GetExtractedContentAsync(VaultEntry entry, CancellationToken ct = default);
 
     /// <summary>
     /// Stores refined content to vault/refined.md.

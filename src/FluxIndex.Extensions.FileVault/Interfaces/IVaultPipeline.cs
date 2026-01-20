@@ -4,26 +4,32 @@ namespace FluxIndex.Extensions.FileVault.Interfaces;
 
 /// <summary>
 /// Pipeline service for processing vault entries.
-/// Simplified stages: Source → Extracted → Memorized
+/// Stages: Source → Extracted → Refined → Memorized
 /// </summary>
 public interface IVaultPipeline
 {
     /// <summary>
-    /// Full memorize pipeline: extract → chunk → embed → commit.
+    /// Full memorize pipeline: extract → refine → chunk → embed → commit.
     /// Used for new files or when source content has changed.
     /// </summary>
     Task<MemorizeResult> MemorizeAsync(VaultEntry entry, MemorizeOptions? options = null, CancellationToken ct = default);
 
     /// <summary>
-    /// Refresh pipeline: chunk → embed → commit (skips extraction).
+    /// Refresh pipeline: chunk → embed → commit (skips extraction and refinement).
     /// Used when only vault/ files have been edited (append-text.md, qa.md).
     /// </summary>
     Task<MemorizeResult> RefreshAsync(VaultEntry entry, MemorizeOptions? options = null, CancellationToken ct = default);
 
     /// <summary>
-    /// Extract content from source file to vault/refined.md.
+    /// Extract content from source file to extracted.md (not git-tracked).
     /// </summary>
     Task ExtractAsync(VaultEntry entry, CancellationToken ct = default);
+
+    /// <summary>
+    /// Refine extracted content to vault/refined.md (git-tracked).
+    /// Applies LLM processing, image descriptions, etc.
+    /// </summary>
+    Task RefineAsync(VaultEntry entry, CancellationToken ct = default);
 
     /// <summary>
     /// Removes chunks from vector store for the given entry.
@@ -65,6 +71,18 @@ public sealed class MemorizeOptions
     /// Skip git commit after operation.
     /// </summary>
     public bool SkipCommit { get; set; }
+
+    /// <summary>
+    /// Preserve existing qa.md content during re-memorize.
+    /// When true, existing QA content is backed up and restored after extraction/refinement.
+    /// </summary>
+    public bool PreserveQaContent { get; set; } = true;
+
+    /// <summary>
+    /// Preserve existing append-text.md content during re-memorize.
+    /// When true, existing user-added text is backed up and restored after extraction/refinement.
+    /// </summary>
+    public bool PreserveAppendText { get; set; } = true;
 }
 
 /// <summary>

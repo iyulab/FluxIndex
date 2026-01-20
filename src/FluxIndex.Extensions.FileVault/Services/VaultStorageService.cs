@@ -24,12 +24,13 @@ public sealed class VaultStorageService : IVaultStorageService
 
     /// <summary>
     /// Content of .gitignore file in entry directory.
-    /// Excludes meta.json and images/ from git tracking.
+    /// Excludes meta.json, images/, and extracted.md from git tracking.
     /// </summary>
     private const string GitignoreContent = """
         # FileVault gitignore - only vault/ directory is tracked
         meta.json
         images/
+        extracted.md
         """;
 
     public VaultStorageService(
@@ -72,6 +73,21 @@ public sealed class VaultStorageService : IVaultStorageService
     public async Task CreateGitignoreAsync(VaultEntry entry, CancellationToken ct = default)
     {
         await File.WriteAllTextAsync(entry.GitignorePath, GitignoreContent, ct);
+    }
+
+    public async Task StoreExtractedContentAsync(VaultEntry entry, string content, CancellationToken ct = default)
+    {
+        Directory.CreateDirectory(entry.EntryPath);
+        await File.WriteAllTextAsync(entry.ExtractedMdPath, content, ct);
+        _logger.LogDebug("Stored extracted content for entry {EntryId}", entry.Id);
+    }
+
+    public async Task<string?> GetExtractedContentAsync(VaultEntry entry, CancellationToken ct = default)
+    {
+        if (!File.Exists(entry.ExtractedMdPath))
+            return null;
+
+        return await File.ReadAllTextAsync(entry.ExtractedMdPath, ct);
     }
 
     public async Task StoreRefinedContentAsync(VaultEntry entry, string content, CancellationToken ct = default)
