@@ -12,6 +12,10 @@ FluxIndex.Extensions.FileVault provides file-to-vector synchronization for RAG a
 - [Sync Status Management](#sync-status-management)
 - [Background Processing](#background-processing)
 - [Advanced Integration](#advanced-integration)
+  - [With FileFlux](#with-fileflux-document-processing)
+  - [With FluxIndex](#with-fluxindex-full-rag-stack)
+  - [Vector Store Integration Flow](#vector-store-integration-flow)
+  - [Multi-Tenant Usage](#multi-tenant-scope-isolated-usage)
 - [Best Practices](#best-practices)
 - [Troubleshooting](#troubleshooting)
 
@@ -496,6 +500,161 @@ services.AddFileVaultWithFluxIndex(options =>
 });
 ```
 
+#### Vector Store Integration Flow
+
+When you call `vault.MemorizeAsync()`, FileVault orchestrates the following pipeline:
+
+```
+Source File → Extract → Chunk → Embed → Index
+    ↓            ↓         ↓        ↓        ↓
+ .pdf/.docx   refined.md  chunks   float[]   IVectorStore
+                                     ↓
+                              IEmbeddingService
+```
+
+**Pipeline Steps**:
+
+1. **Extract** (`IExtractor`): Converts source file to text/markdown
+   - Uses FileFlux for PDF, DOCX, HTML, etc.
+   - Output saved to `.vault/{hash}/vault/refined.md`
+
+2. **Chunk** (`IChunker`): Splits content into semantic chunks
+   - Configurable via `ChunkingOptions` (MaxChunkSize, OverlapSize, Strategy)
+   - Output: `IReadOnlyList<ChunkResult>`
+
+3. **Embed** (`IEmbeddingService`): Generates vector embeddings
+   - Consumer app provides the embedding service (LMSupply, OpenAI, etc.)
+   - Each chunk gets a float[] embedding vector
+
+4. **Index** (`IVectorStore`): Stores chunks with embeddings
+   - Chunks stored with `FilepathHash` as document identifier
+   - Enables search by file or across all files
+
+**Key Integration Points**:
+
+```csharp
+// The IVectorStore receives chunks like this:
+await vectorStore.UpsertAsync(new DocumentChunk
+{
+    Id = chunkId,
+    DocumentId = entry.FilepathHash,  // Links chunk to VaultEntry
+    Content = chunk.Text,
+    Embedding = embeddingVector,
+    Metadata = new Dictionary<string, object>
+    {
+        ["source_path"] = entry.SourcePath,
+        ["file_name"] = entry.FileName,
+        ["chunk_index"] = chunk.Index
+    }
+});
+```
+
+**Querying Indexed Content**:
+
+```csharp
+// Search across all indexed files
+var results = await vectorStore.SearchAsync(
+    queryEmbedding,
+    topK: 10);
+
+// Filter by specific file
+var results = await vectorStore.SearchAsync(
+    queryEmbedding,
+    topK: 10,
+    filter: new { DocumentId = entry.FilepathHash });
+```
+
+### Multi-Tenant (Scope-Isolated) Usage
+
+For multi-tenant applications (e.g., per-user or per-workspace vaults), create isolated IVault instances:
+
+```csharp
+public interface IScopedVaultService
+{
+    Task<VaultEntry> MemorizeAsync(string scopeId, string filePath, CancellationToken ct = default);
+    Task<IReadOnlyList<VaultEntry>> ListAsync(string scopeId, CancellationToken ct = default);
+    Task RemoveAsync(string scopeId, string filePath, CancellationToken ct = default);
+}
+
+public class ScopedVaultService : IScopedVaultService
+{
+    private readonly IServiceProvider _serviceProvider;
+    private readonly string _basePath;
+
+    public ScopedVaultService(IServiceProvider serviceProvider, IConfiguration configuration)
+    {
+        _serviceProvider = serviceProvider;
+        _basePath = configuration["FileVault:BasePath"] ?? "./data/vaults";
+    }
+
+    public async Task<VaultEntry> MemorizeAsync(string scopeId, string filePath, CancellationToken ct = default)
+    {
+        var vault = GetOrCreateVault(scopeId);
+        return await vault.MemorizeAsync(filePath, ct);
+    }
+
+    public async Task<IReadOnlyList<VaultEntry>> ListAsync(string scopeId, CancellationToken ct = default)
+    {
+        var vault = GetOrCreateVault(scopeId);
+        return await vault.ListAsync(ct: ct);
+    }
+
+    public async Task RemoveAsync(string scopeId, string filePath, CancellationToken ct = default)
+    {
+        var vault = GetOrCreateVault(scopeId);
+        await vault.RemoveAsync(filePath, ct);
+    }
+
+    private IVault GetOrCreateVault(string scopeId)
+    {
+        // Each scope gets its own vault directory
+        var scopePath = Path.Combine(_basePath, scopeId, ".vault");
+
+        // Create vault with scope-specific path
+        var options = new FileVaultOptions
+        {
+            VaultBasePath = scopePath
+        };
+
+        return ActivatorUtilities.CreateInstance<Vault>(
+            _serviceProvider,
+            Options.Create(options));
+    }
+}
+```
+
+**Directory Structure for Multi-Tenant**:
+
+```
+/data/vaults/
+├── tenant-a/
+│   └── .vault/
+│       ├── {hash1}/
+│       │   ├── meta.json
+│       │   └── vault/refined.md
+│       └── {hash2}/
+├── tenant-b/
+│   └── .vault/
+│       └── {hash3}/
+└── tenant-c/
+    └── .vault/
+```
+
+**DI Registration for Multi-Tenant**:
+
+```csharp
+// Register base services without vault instance
+services.AddFileVaultServices();  // Registers IExtractor, IChunker, etc.
+
+// Register scoped vault service
+services.AddSingleton<IScopedVaultService, ScopedVaultService>();
+
+// Each tenant gets isolated:
+// - Vault metadata (.vault directory)
+// - Vector store data (via FilepathHash prefixing or separate DBs)
+// - File watching (optional, per-tenant folders)
+```
+
 ### Custom Pipeline Components
 
 ```csharp
@@ -763,6 +922,7 @@ Console.WriteLine($"Storage Size: {status.TotalStorageSizeBytes / 1024 / 1024:F1
 | `LastProcessedAt` | DateTimeOffset? | Last successful processing |
 | `LastSyncCheckAt` | DateTimeOffset? | Last sync check time |
 | `LastError` | string? | Last error message |
+| `RetryCount` | int | Number of retry attempts (resets on success) |
 | `RemovalPhase` | string? | Current removal phase |
 
 ---
@@ -775,3 +935,4 @@ Console.WriteLine($"Storage Size: {status.TotalStorageSizeBytes / 1024 / 1024:F1
 | 0.5.1 | Added SyncStatus state management |
 | 0.5.2 | Added partial removal recovery |
 | 0.5.3 | Added status-based query APIs |
+| 0.5.7 | Added RetryCount tracking, Vector Store integration docs, Multi-tenant usage examples |

@@ -136,7 +136,12 @@ public static class ServiceCollectionExtensions
         // 시맨틱 캐시 등록
         if (configureSemanticCache != null)
         {
-            services.AddRedisSemanticCache(configureSemanticCache);
+            // connectionString을 기본값으로 설정 후 사용자 설정 적용
+            services.AddRedisSemanticCache(opts =>
+            {
+                opts.ConnectionString = connectionString;
+                configureSemanticCache(opts);
+            });
         }
         else
         {

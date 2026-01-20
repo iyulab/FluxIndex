@@ -72,6 +72,12 @@ public sealed class VaultEntry
     public string? LastError { get; private set; }
 
     /// <summary>
+    /// Number of retry attempts for the current operation.
+    /// Reset to 0 on successful processing.
+    /// </summary>
+    public int RetryCount { get; private set; }
+
+    /// <summary>
     /// Number of chunks indexed to DB.
     /// </summary>
     public int ChunkCount { get; private set; }
@@ -149,6 +155,7 @@ public sealed class VaultEntry
                 CreatedAt = meta.CreatedAt,
                 LastProcessedAt = meta.LastProcessedAt,
                 LastError = meta.LastError,
+                RetryCount = meta.RetryCount,
                 ChunkCount = meta.ChunkCount,
                 SyncStatus = meta.SyncStatus,
                 LastSyncCheckAt = meta.LastSyncCheckAt,
@@ -195,15 +202,33 @@ public sealed class VaultEntry
         ChunkCount = chunkCount;
         LastProcessedAt = DateTimeOffset.UtcNow;
         LastError = null;
+        RetryCount = 0;
     }
 
     /// <summary>
-    /// Marks the entry with an error.
+    /// Marks the entry with an error and increments retry count.
     /// </summary>
     public void MarkError(string errorMessage)
     {
         LastError = errorMessage;
+        RetryCount++;
         LastProcessedAt = DateTimeOffset.UtcNow;
+    }
+
+    /// <summary>
+    /// Increments the retry count without changing other state.
+    /// </summary>
+    public void IncrementRetryCount()
+    {
+        RetryCount++;
+    }
+
+    /// <summary>
+    /// Resets the retry count to zero (typically after successful processing).
+    /// </summary>
+    public void ResetRetryCount()
+    {
+        RetryCount = 0;
     }
 
     /// <summary>
@@ -214,6 +239,7 @@ public sealed class VaultEntry
         Stage = ProcessingStage.Source;
         ChunkCount = 0;
         LastError = null;
+        RetryCount = 0;
         SyncStatus = SyncStatus.InSync;
         RemovalPhase = null;
     }
@@ -280,6 +306,7 @@ public sealed class VaultEntry
         RemovalPhase = null;
         LastSyncCheckAt = DateTimeOffset.UtcNow;
         LastError = null;
+        RetryCount = 0;
     }
 
     /// <summary>
@@ -309,6 +336,7 @@ public sealed class VaultEntry
             CreatedAt = CreatedAt,
             LastProcessedAt = LastProcessedAt,
             LastError = LastError,
+            RetryCount = RetryCount,
             ChunkCount = ChunkCount,
             SyncStatus = SyncStatus,
             LastSyncCheckAt = LastSyncCheckAt,
@@ -399,6 +427,7 @@ public sealed class VaultEntry
         public DateTimeOffset CreatedAt { get; set; }
         public DateTimeOffset? LastProcessedAt { get; set; }
         public string? LastError { get; set; }
+        public int RetryCount { get; set; }
         public int ChunkCount { get; set; }
 
         // SyncStatus fields
