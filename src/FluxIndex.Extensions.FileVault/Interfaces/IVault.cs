@@ -230,6 +230,50 @@ public sealed class ChangeDetectionResult
     /// Whether any changes were detected.
     /// </summary>
     public bool HasChanges => SourceChanged || VaultChanged;
+
+    // === File Metadata ===
+
+    /// <summary>
+    /// File name without path.
+    /// </summary>
+    public string FileName { get; init; } = string.Empty;
+
+    /// <summary>
+    /// File extension including dot (e.g., ".pdf").
+    /// </summary>
+    public string FileExtension { get; init; } = string.Empty;
+
+    /// <summary>
+    /// File size in bytes. Null if file doesn't exist.
+    /// </summary>
+    public long? FileSize { get; init; }
+
+    /// <summary>
+    /// File last modified time. Null if file doesn't exist.
+    /// </summary>
+    public DateTimeOffset? FileModifiedAt { get; init; }
+
+    // === Vault Status ===
+
+    /// <summary>
+    /// Processing stage if entry exists.
+    /// </summary>
+    public ProcessingStage? Stage { get; init; }
+
+    /// <summary>
+    /// Sync status if entry exists.
+    /// </summary>
+    public SyncStatus? SyncStatus { get; init; }
+
+    /// <summary>
+    /// Number of chunks if memorized.
+    /// </summary>
+    public int? ChunkCount { get; init; }
+
+    /// <summary>
+    /// Last error message if any.
+    /// </summary>
+    public string? LastError { get; init; }
 }
 
 /// <summary>

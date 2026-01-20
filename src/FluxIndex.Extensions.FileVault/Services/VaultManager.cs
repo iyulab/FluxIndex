@@ -283,6 +283,26 @@ public sealed class VaultManager : IVault
             entry.SaveMetadata();
         }
 
+        // Collect file metadata
+        string fileName = Path.GetFileName(fullPath);
+        string fileExtension = Path.GetExtension(fullPath);
+        long? fileSize = null;
+        DateTimeOffset? fileModifiedAt = null;
+
+        if (sourceExists)
+        {
+            try
+            {
+                var fileInfo = new FileInfo(fullPath);
+                fileSize = fileInfo.Length;
+                fileModifiedAt = new DateTimeOffset(fileInfo.LastWriteTimeUtc, TimeSpan.Zero);
+            }
+            catch
+            {
+                // Ignore metadata collection errors
+            }
+        }
+
         return new ChangeDetectionResult
         {
             FilePath = fullPath,
@@ -291,7 +311,19 @@ public sealed class VaultManager : IVault
             VaultChanged = vaultChanged,
             SourceExists = sourceExists,
             RecommendedAction = action,
-            ModifiedVaultFiles = modifiedVaultFiles
+            ModifiedVaultFiles = modifiedVaultFiles,
+
+            // File metadata
+            FileName = fileName,
+            FileExtension = fileExtension,
+            FileSize = fileSize,
+            FileModifiedAt = fileModifiedAt,
+
+            // Vault status
+            Stage = entry?.Stage,
+            SyncStatus = entry?.SyncStatus,
+            ChunkCount = entry?.ChunkCount,
+            LastError = entry?.LastError
         };
     }
 
