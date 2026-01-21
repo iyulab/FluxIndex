@@ -50,18 +50,31 @@ public sealed class FileFluxExtractor : IExtractor
                 ? string.Join("\n\n", result.Chunks.Select(c => c.Content))
                 : string.Empty;
 
+            // Extract images from RawContent if available
+            Dictionary<string, byte[]>? images = null;
+            if (result.Raw?.Images?.Count > 0)
+            {
+                images = [];
+                foreach (var (img, idx) in result.Raw.Images.Select((img, idx) => (img, idx)))
+                {
+                    if (img.Data is { Length: > 0 })
+                    {
+                        var key = !string.IsNullOrEmpty(img.Id) ? img.Id : $"img_{idx:D3}";
+                        images[key] = img.Data;
+                    }
+                }
+            }
+
             _logger.LogInformation(
-                "Extracted {ContentLength} chars from {SourcePath}",
+                "Extracted {ContentLength} chars and {ImageCount} images from {SourcePath}",
                 content.Length,
+                images?.Count ?? 0,
                 sourcePath);
 
-            // Note: Image extraction requires separate handling via HtmlDocumentReader
-            // for HTML content or specialized readers for other formats.
-            // For simplicity, FileVault focuses on text extraction only.
             return new ExtractionResult
             {
                 Content = content,
-                Images = null
+                Images = images?.Count > 0 ? images : null
             };
         }
         catch (Exception ex)
