@@ -183,4 +183,105 @@ public static class ServiceCollectionExtensions
 
         return services;
     }
+
+    // ============================================
+    // Multi-Tenant Support (IVaultFactory)
+    // ============================================
+
+    /// <summary>
+    /// Adds FileVault factory for multi-tenant scenarios.
+    ///
+    /// Use this instead of AddFileVault() when you need isolated vault instances
+    /// per tenant/context. Each tenant gets their own:
+    /// - .vault/ directory for metadata and extracted content
+    /// - queue.db for processing queue persistence
+    ///
+    /// Shared across all tenants (for efficiency):
+    /// - IContentHasher, IGitService (stateless)
+    /// - IVectorStore, IEmbeddingService (shared AI services)
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="configureOptions">Optional configuration for default options.</param>
+    /// <returns>The service collection for chaining.</returns>
+    /// <example>
+    /// <code>
+    /// // DI registration
+    /// services.AddFileVaultFactory(options =>
+    /// {
+    ///     options.VaultBasePath = "./data";
+    ///     options.EnableBackgroundProcessing = true;
+    /// });
+    ///
+    /// // Usage
+    /// public class TenantService
+    /// {
+    ///     private readonly IVaultFactory _factory;
+    ///
+    ///     public async Task ProcessTenantFiles(string tenantId)
+    ///     {
+    ///         var vault = _factory.GetOrCreate(tenantId);
+    ///         await vault.MemorizeAsync(filePath);
+    ///     }
+    /// }
+    /// </code>
+    /// </example>
+    public static IServiceCollection AddFileVaultFactory(
+        this IServiceCollection services,
+        Action<FileVaultOptions>? configureOptions = null)
+    {
+        // Configure options
+        if (configureOptions != null)
+        {
+            services.Configure(configureOptions);
+        }
+        else
+        {
+            services.Configure<FileVaultOptions>(_ => { });
+        }
+
+        // Register shared services (stateless, reused across all tenants)
+        services.TryAddSingleton<IContentHasher, ContentHasher>();
+        services.TryAddSingleton<IGitService, GitService>();
+        services.TryAddSingleton<IFileWatcherService, FileWatcherService>();
+
+        // Register the factory
+        services.TryAddSingleton<IVaultFactory, VaultFactory>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Adds FileVault factory with FileFlux integration for multi-tenant scenarios.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="configureOptions">Optional configuration for default options.</param>
+    /// <returns>The service collection for chaining.</returns>
+    public static IServiceCollection AddFileVaultFactoryWithFileFlux(
+        this IServiceCollection services,
+        Action<FileVaultOptions>? configureOptions = null)
+    {
+        services.AddFileVaultFactory(configureOptions);
+
+        // Register FileFlux adapters (shared across all tenants)
+        services.TryAddSingleton<IExtractor, FileFluxExtractor>();
+        services.TryAddSingleton<IChunker, FileFluxChunker>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Adds FileVault factory with full FluxIndex integration for multi-tenant scenarios.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="configureOptions">Optional configuration for default options.</param>
+    /// <returns>The service collection for chaining.</returns>
+    public static IServiceCollection AddFileVaultFactoryWithFluxIndex(
+        this IServiceCollection services,
+        Action<FileVaultOptions>? configureOptions = null)
+    {
+        services.AddFileVaultFactoryWithFileFlux(configureOptions);
+        services.TryAddSingleton<FluxIndexMemorizer>();
+
+        return services;
+    }
 }

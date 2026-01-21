@@ -246,6 +246,174 @@ services.AddFileVault(options =>
 });
 ```
 
+## Multi-Tenant Support
+
+`IVaultFactory`를 사용하면 테넌트별로 격리된 Vault 인스턴스를 생성할 수 있습니다.
+SaaS 애플리케이션이나 사용자/조직별로 독립적인 인덱싱이 필요한 경우에 사용합니다.
+
+### 디렉토리 구조
+
+```
+{BasePath}/
+├── tenant-A/
+│   └── .vault/                ← Tenant A 전용
+│       ├── queue.db
+│       └── {filepath-hash}/
+│
+└── tenant-B/
+    └── .vault/                ← Tenant B 전용
+        ├── queue.db
+        └── {filepath-hash}/
+```
+
+### 테넌트별 격리 항목
+
+| 항목 | 격리 | 설명 |
+|------|------|------|
+| `.vault/` 디렉토리 | ✅ | 메타데이터, 추출된 콘텐츠 |
+| `queue.db` | ✅ | 처리 큐 영속성 |
+| IContentHasher | 공유 | Stateless, 모든 테넌트 재사용 |
+| IGitService | 공유 | Stateless, 모든 테넌트 재사용 |
+| IVectorStore | 공유 | 벡터 DB 연결 재사용 |
+| IEmbeddingService | 공유 | 임베딩 모델 재사용 |
+
+### DI 등록
+
+```csharp
+// 기본 설정으로 Factory 등록
+services.AddFileVaultFactory(options =>
+{
+    options.VaultBasePath = "./data";
+    options.EnableBackgroundProcessing = true;
+});
+
+// FileFlux 통합
+services.AddFileVaultFactoryWithFileFlux(options => ...);
+
+// FluxIndex 풀 통합
+services.AddFileVaultFactoryWithFluxIndex(options => ...);
+```
+
+### 사용법
+
+```csharp
+public class TenantService
+{
+    private readonly IVaultFactory _factory;
+
+    public TenantService(IVaultFactory factory)
+    {
+        _factory = factory;
+    }
+
+    public async Task ProcessTenantFiles(string tenantId, string filePath)
+    {
+        // 테넌트별 Vault 인스턴스 획득 (없으면 생성)
+        var vault = _factory.GetOrCreate(tenantId);
+
+        // 일반 IVault와 동일하게 사용
+        await vault.MemorizeAsync(filePath);
+    }
+
+    public async Task ProcessWithCustomOptions(string tenantId)
+    {
+        // 테넌트별 커스텀 옵션 적용
+        var vault = _factory.GetOrCreate(tenantId, options =>
+        {
+            options.MaxFileSizeMB = 50;
+            options.DefaultIncludePatterns = ["*.pdf"];
+        });
+
+        await vault.SyncAsync();
+    }
+}
+```
+
+### 백그라운드 서비스 구현
+
+FileVault는 `VaultBackgroundService`를 기본 제공하지만, multi-tenant 환경에서는
+앱에서 직접 백그라운드 서비스를 구현해야 합니다.
+
+```csharp
+public class MultiTenantVaultBackgroundService : BackgroundService
+{
+    private readonly IVaultFactory _factory;
+
+    protected override async Task ExecuteAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            // 모든 활성 테넌트 순회
+            foreach (var context in _factory.GetAllContexts())
+            {
+                if (context.QueueService.IsPaused)
+                    continue;
+
+                // 작업 dequeue 및 처리
+                var job = await context.QueueService.DequeueAsync(ct);
+                if (job != null)
+                {
+                    await ProcessJobAsync(context, job, ct);
+                }
+            }
+
+            await Task.Delay(1000, ct);
+        }
+    }
+
+    private async Task ProcessJobAsync(VaultContext ctx, VaultJob job, CancellationToken ct)
+    {
+        var entry = VaultEntry.LoadByHash(job.FilepathHash, ctx.VaultBasePath)
+                    ?? VaultEntry.Create(job.FilePath, ctx.VaultBasePath);
+
+        switch (job.JobType)
+        {
+            case VaultJobType.Memorize:
+                await ctx.Pipeline.MemorizeAsync(entry, null, ct);
+                break;
+            case VaultJobType.Refresh:
+                await ctx.Pipeline.RefreshAsync(entry, null, ct);
+                break;
+            case VaultJobType.Remove:
+                await ctx.Pipeline.RemoveAsync(entry, ct);
+                break;
+        }
+
+        await ctx.QueueService.CompleteAsync(job.Id, ct);
+    }
+}
+```
+
+### 테넌트 라이프사이클
+
+```csharp
+// 테넌트 존재 여부 확인
+if (_factory.Exists(tenantId))
+{
+    var vault = _factory.GetOrCreate(tenantId);
+}
+
+// 디스크에 있는 모든 테넌트 발견
+foreach (var tenantId in _factory.DiscoverTenants())
+{
+    Console.WriteLine($"Found tenant: {tenantId}");
+}
+
+// 현재 메모리에 로드된 테넌트
+var activeTenants = _factory.GetActiveTenants();
+
+// 테넌트 정리
+await _factory.DisposeAsync(tenantId);
+
+// 모든 테넌트 정리
+await _factory.DisposeAllAsync();
+```
+
+### 설계 원칙
+
+> **앱 책임**: 테넌트 라이프사이클 관리 (생성, 삭제, cleanup)는 앱의 책임입니다.
+> FileVault는 인프라만 제공하며, 비즈니스 로직은 포함하지 않습니다.
+
 ## Dependencies
 
 - `FluxIndex.Core` - 핵심 인터페이스 및 서비스
