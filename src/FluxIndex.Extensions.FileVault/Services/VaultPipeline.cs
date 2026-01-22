@@ -203,12 +203,13 @@ public sealed class VaultPipeline : IVaultPipeline
             var result = await _extractor.ExtractAsync(entry.SourcePath, ct);
             extractedContent = result.Content;
 
-            // Store images if any
+            // Store images if any - preserve original IDs from FileFlux
             if (result.Images?.Count > 0)
             {
-                var images = result.Images.Select((kvp, idx) => new ImageArtifact
+                var images = result.Images.Select(kvp => new ImageArtifact
                 {
-                    Id = $"img_{idx:D3}",
+                    // Extract ID from key (e.g., "img_000.png" → "img_000")
+                    Id = Path.GetFileNameWithoutExtension(kvp.Key),
                     Data = kvp.Value,
                     ContentType = GuessContentType(kvp.Key)
                 });

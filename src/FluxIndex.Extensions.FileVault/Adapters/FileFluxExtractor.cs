@@ -59,7 +59,9 @@ public sealed class FileFluxExtractor : IExtractor
                 {
                     if (img.Data is { Length: > 0 })
                     {
-                        var key = !string.IsNullOrEmpty(img.Id) ? img.Id : $"img_{idx:D3}";
+                        var baseName = !string.IsNullOrEmpty(img.Id) ? img.Id : $"img_{idx:D3}";
+                        var extension = GetExtensionFromContentType(img.MimeType);
+                        var key = $"{baseName}{extension}";
                         images[key] = img.Data;
                     }
                 }
@@ -83,4 +85,20 @@ public sealed class FileFluxExtractor : IExtractor
             throw;
         }
     }
+
+    /// <summary>
+    /// Get file extension from content type.
+    /// </summary>
+    private static string GetExtensionFromContentType(string? contentType) => contentType?.ToLowerInvariant() switch
+    {
+        "image/png" => ".png",
+        "image/jpeg" => ".jpg",
+        "image/gif" => ".gif",
+        "image/webp" => ".webp",
+        "image/bmp" => ".bmp",
+        "image/svg+xml" => ".svg",
+        "image/tiff" => ".tiff",
+        "image/x-icon" or "image/vnd.microsoft.icon" => ".ico",
+        _ => ".png"  // Default to PNG for unknown types
+    };
 }

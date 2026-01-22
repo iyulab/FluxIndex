@@ -115,7 +115,8 @@ public sealed class VaultStorageService : IVaultStorageService
         foreach (var image in images)
         {
             var extension = GetExtensionFromContentType(image.ContentType);
-            var fileName = $"img_{index:D3}{extension}";
+            // Use original image ID for consistent naming (fixes index mismatch bug)
+            var fileName = $"{image.Id}{extension}";
             var filePath = Path.Combine(entry.ImagesPath, fileName);
 
             await File.WriteAllBytesAsync(filePath, image.Data, ct);
