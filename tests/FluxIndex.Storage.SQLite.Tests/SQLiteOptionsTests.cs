@@ -6,6 +6,7 @@ namespace FluxIndex.Storage.SQLite.Tests;
 /// <summary>
 /// Tests for SQLite options configuration
 /// </summary>
+[Collection("SQLite Tests")]
 public class SQLiteOptionsTests
 {
     [Fact]
@@ -45,19 +46,20 @@ public class SQLiteOptionsTests
     }
 
     [Fact]
-    public void GetConnectionString_WithInMemory_ShouldReturnMemoryString()
+    public void GetConnectionString_WithInMemory_ShouldReturnSharedMemoryString()
     {
         // Arrange
         var options = new SQLiteOptions
         {
-            UseInMemory = true
+            UseInMemory = true,
+            DatabasePath = "test.db"  // 기본값 사용 시 "fluxindex" 이름 사용됨
         };
 
         // Act
         var connectionString = options.GetConnectionString();
 
-        // Assert
-        Assert.Equal("Data Source=:memory:", connectionString);
+        // Assert - 공유 인메모리 데이터베이스 형식 확인
+        Assert.Equal("Data Source=file:test?mode=memory&cache=shared", connectionString);
     }
 
     [Fact]
@@ -252,7 +254,7 @@ public class SQLiteOptionsTests
     [Theory]
     [InlineData("database1.db", false, "Data Source=database1.db")]
     [InlineData("database2.db", false, "Data Source=database2.db")]
-    [InlineData("any_path.db", true, "Data Source=:memory:")]
+    [InlineData("any_path.db", true, "Data Source=file:any_path?mode=memory&cache=shared")]
     public void GetConnectionString_WithDifferentPaths_ShouldReturnCorrectString(string path, bool useInMemory, string expected)
     {
         // Arrange

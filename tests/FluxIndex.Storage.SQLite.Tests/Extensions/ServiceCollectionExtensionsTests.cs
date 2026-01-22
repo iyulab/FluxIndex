@@ -152,7 +152,9 @@ public class ServiceCollectionExtensionsTests
         Assert.NotNull(options);
         Assert.True(options.UseInMemory);
         Assert.True(options.AutoMigrate);
-        Assert.Equal("Data Source=:memory:", options.GetConnectionString());
+        // 공유 인메모리 데이터베이스 형식 확인 (테스트 격리를 위해 사용)
+        Assert.StartsWith("Data Source=file:", options.GetConnectionString());
+        Assert.Contains("mode=memory&cache=shared", options.GetConnectionString());
     }
 
     [Fact]

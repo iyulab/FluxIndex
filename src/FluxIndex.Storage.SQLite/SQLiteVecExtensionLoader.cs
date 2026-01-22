@@ -101,6 +101,17 @@ public class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
 
     public bool ExtensionFileExists()
     {
+        // GetExtensionPath() now auto-detects available extension file
+        var path = GetExtensionPath();
+        return File.Exists(path);
+    }
+
+    /// <summary>
+    /// 모든 가능한 확장 파일 경로에서 사용 가능한 파일이 있는지 확인
+    /// </summary>
+    public bool AnyExtensionFileExists()
+    {
+        // GetExtensionPath() will return the first found path, or default expected path
         var path = GetExtensionPath();
         return File.Exists(path);
     }

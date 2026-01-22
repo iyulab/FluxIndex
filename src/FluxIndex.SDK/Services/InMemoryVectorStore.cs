@@ -1,13 +1,9 @@
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Services.Base;
+using FluxIndex.Core.Application.Utilities;
 using FluxIndex.Core.Domain.Entities;
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace FluxIndex.SDK.Services;
 
@@ -38,9 +34,10 @@ public interface IPersistableStore
 }
 
 /// <summary>
-/// Memory-based vector store implementation (Core interface) with optional file persistence
+/// Memory-based vector store implementation with optional file persistence.
+/// Inherits common functionality from VectorStoreBase.
 /// </summary>
-public class InMemoryVectorStore : IVectorStore, IPersistableStore
+public class InMemoryVectorStore : VectorStoreBase, IPersistableStore
 {
     private readonly ConcurrentDictionary<string, (DocumentChunk chunk, float[] embedding)> _chunks = new();
     private readonly ConcurrentDictionary<string, List<string>> _documentChunks = new();
@@ -80,7 +77,9 @@ public class InMemoryVectorStore : IVectorStore, IPersistableStore
     /// <inheritdoc />
     public bool AutoSaveEnabled => _autoSave;
 
-    public async Task<string> StoreAsync(DocumentChunk chunk, CancellationToken cancellationToken = default)
+    #region VectorStoreBase Core Implementations
+
+    protected override Task<string> StoreCoreAsync(DocumentChunk chunk, CancellationToken cancellationToken)
     {
         if (string.IsNullOrEmpty(chunk.Id))
         {
@@ -106,103 +105,33 @@ public class InMemoryVectorStore : IVectorStore, IPersistableStore
                 });
         }
 
-        await AutoSaveIfEnabledAsync(cancellationToken);
-        return chunk.Id;
+        AutoSaveIfEnabledAsync(cancellationToken).GetAwaiter().GetResult();
+        return Task.FromResult(chunk.Id);
     }
 
-    public async Task<IEnumerable<string>> StoreBatchAsync(IEnumerable<DocumentChunk> chunks, CancellationToken cancellationToken = default)
-    {
-        var results = new List<string>();
-        foreach (var chunk in chunks)
-        {
-            if (string.IsNullOrEmpty(chunk.Id))
-            {
-                var newChunk = DocumentChunk.Create(
-                    chunk.DocumentId,
-                    chunk.Content,
-                    chunk.ChunkIndex,
-                    1
-                );
-                var embedding = chunk.Embedding ?? Array.Empty<float>();
-                _chunks.TryAdd(newChunk.Id, (newChunk, embedding));
-
-                if (!string.IsNullOrEmpty(newChunk.DocumentId))
-                {
-                    _documentChunks.AddOrUpdate(newChunk.DocumentId,
-                        new List<string> { newChunk.Id },
-                        (key, existing) =>
-                        {
-                            existing.Add(newChunk.Id);
-                            return existing;
-                        });
-                }
-                results.Add(newChunk.Id);
-            }
-            else
-            {
-                var embedding = chunk.Embedding ?? Array.Empty<float>();
-                _chunks.TryAdd(chunk.Id, (chunk, embedding));
-
-                if (!string.IsNullOrEmpty(chunk.DocumentId))
-                {
-                    _documentChunks.AddOrUpdate(chunk.DocumentId,
-                        new List<string> { chunk.Id },
-                        (key, existing) =>
-                        {
-                            existing.Add(chunk.Id);
-                            return existing;
-                        });
-                }
-                results.Add(chunk.Id);
-            }
-        }
-
-        await AutoSaveIfEnabledAsync(cancellationToken);
-        return results;
-    }
-
-    public Task<DocumentChunk?> GetAsync(string id, CancellationToken cancellationToken = default)
+    protected override Task<DocumentChunk?> GetCoreAsync(string id, CancellationToken cancellationToken)
     {
         _chunks.TryGetValue(id, out var item);
         return Task.FromResult<DocumentChunk?>(item.chunk);
     }
 
-    public Task<IEnumerable<DocumentChunk>> GetByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default)
-    {
-        if (_documentChunks.TryGetValue(documentId, out var chunkIds))
-        {
-            var chunks = chunkIds
-                .Where(id => _chunks.ContainsKey(id))
-                .Select(id => _chunks[id].chunk)
-                .ToList();
-            return Task.FromResult<IEnumerable<DocumentChunk>>(chunks);
-        }
-        return Task.FromResult<IEnumerable<DocumentChunk>>(new List<DocumentChunk>());
-    }
-
-    public Task<IEnumerable<DocumentChunk>> GetChunksByIdsAsync(IEnumerable<string> ids, CancellationToken cancellationToken = default)
-    {
-        var chunks = ids
-            .Where(id => _chunks.ContainsKey(id))
-            .Select(id => _chunks[id].chunk)
-            .ToList();
-        return Task.FromResult<IEnumerable<DocumentChunk>>(chunks);
-    }
-
-    public Task<IEnumerable<DocumentChunk>> SearchAsync(float[] queryEmbedding, int topK = 10, float minScore = 0.0f, CancellationToken cancellationToken = default)
+    protected override Task<IEnumerable<VectorSearchResult>> SearchCoreAsync(
+        float[] queryEmbedding,
+        int topK,
+        CancellationToken cancellationToken)
     {
         var results = _chunks.Values
-            .Select(item => new { chunk = item.chunk, score = CosineSimilarity(queryEmbedding, item.embedding) })
-            .Where(r => r.score >= minScore)
-            .OrderByDescending(r => r.score)
-            .Take(topK)
-            .Select(r => r.chunk)
-            .ToList();
+            .Where(item => item.embedding != null && item.embedding.Length > 0)
+            .Select(item => new VectorSearchResult(
+                item.chunk,
+                ComputeCosineSimilarity(queryEmbedding, item.embedding)))
+            .OrderByDescending(r => r.Score)
+            .Take(topK * 2);
 
-        return Task.FromResult<IEnumerable<DocumentChunk>>(results);
+        return Task.FromResult(results);
     }
 
-    public async Task<bool> DeleteAsync(string id, CancellationToken cancellationToken = default)
+    protected override async Task<bool> DeleteCoreAsync(string id, CancellationToken cancellationToken)
     {
         if (_chunks.TryRemove(id, out var item))
         {
@@ -221,7 +150,37 @@ public class InMemoryVectorStore : IVectorStore, IPersistableStore
         return false;
     }
 
-    public async Task<bool> DeleteByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default)
+    protected override async Task<bool> UpdateCoreAsync(DocumentChunk chunk, CancellationToken cancellationToken)
+    {
+        if (_chunks.ContainsKey(chunk.Id))
+        {
+            var embedding = chunk.Embedding ?? Array.Empty<float>();
+            _chunks[chunk.Id] = (chunk, embedding);
+
+            await AutoSaveIfEnabledAsync(cancellationToken);
+            return true;
+        }
+        return false;
+    }
+
+    protected override Task<IEnumerable<DocumentChunk>> GetByDocumentIdCoreAsync(
+        string documentId,
+        CancellationToken cancellationToken)
+    {
+        if (_documentChunks.TryGetValue(documentId, out var chunkIds))
+        {
+            var chunks = chunkIds
+                .Where(id => _chunks.ContainsKey(id))
+                .Select(id => _chunks[id].chunk)
+                .ToList();
+            return Task.FromResult<IEnumerable<DocumentChunk>>(chunks);
+        }
+        return Task.FromResult<IEnumerable<DocumentChunk>>([]);
+    }
+
+    protected override async Task<bool> DeleteByDocumentIdCoreAsync(
+        string documentId,
+        CancellationToken cancellationToken)
     {
         if (_documentChunks.TryRemove(documentId, out var chunkIds))
         {
@@ -236,47 +195,82 @@ public class InMemoryVectorStore : IVectorStore, IPersistableStore
         return false;
     }
 
-    public Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default)
-    {
-        return Task.FromResult(_chunks.ContainsKey(id));
-    }
-
-    public Task<DocumentChunk?> GetByIdAsync(string id, CancellationToken cancellationToken = default)
-    {
-        _chunks.TryGetValue(id, out var item);
-        return Task.FromResult<DocumentChunk?>(item.chunk);
-    }
-
-    public async Task<bool> UpdateAsync(DocumentChunk chunk, CancellationToken cancellationToken = default)
-    {
-        if (_chunks.ContainsKey(chunk.Id))
-        {
-            var embedding = chunk.Embedding ?? Array.Empty<float>();
-            _chunks[chunk.Id] = (chunk, embedding);
-
-            await AutoSaveIfEnabledAsync(cancellationToken);
-            return true;
-        }
-        return false;
-    }
-
-    public Task<int> CountAsync(CancellationToken cancellationToken = default)
+    protected override Task<int> CountCoreAsync(CancellationToken cancellationToken)
     {
         return Task.FromResult(_chunks.Count);
     }
 
-    public Task<int> GetCountAsync(CancellationToken cancellationToken = default)
-    {
-        return Task.FromResult(_chunks.Count);
-    }
-
-    public async Task ClearAsync(CancellationToken cancellationToken = default)
+    protected override async Task ClearCoreAsync(CancellationToken cancellationToken)
     {
         _chunks.Clear();
         _documentChunks.Clear();
 
         await AutoSaveIfEnabledAsync(cancellationToken);
     }
+
+    #endregion
+
+    #region Overrides for Batch Optimization
+
+    public override async Task<IEnumerable<string>> StoreBatchAsync(
+        IEnumerable<DocumentChunk> chunks,
+        CancellationToken cancellationToken = default)
+    {
+        var results = new List<string>();
+        foreach (var chunk in chunks)
+        {
+            var chunkToStore = chunk;
+            if (string.IsNullOrEmpty(chunk.Id))
+            {
+                chunkToStore = DocumentChunk.Create(
+                    chunk.DocumentId,
+                    chunk.Content,
+                    chunk.ChunkIndex,
+                    1
+                );
+                // Copy embedding from original
+                if (chunk.Embedding != null)
+                    chunkToStore.SetEmbedding(chunk.Embedding);
+            }
+
+            var embedding = chunkToStore.Embedding ?? Array.Empty<float>();
+            _chunks.TryAdd(chunkToStore.Id, (chunkToStore, embedding));
+
+            if (!string.IsNullOrEmpty(chunkToStore.DocumentId))
+            {
+                _documentChunks.AddOrUpdate(chunkToStore.DocumentId,
+                    new List<string> { chunkToStore.Id },
+                    (key, existing) =>
+                    {
+                        existing.Add(chunkToStore.Id);
+                        return existing;
+                    });
+            }
+            results.Add(chunkToStore.Id);
+        }
+
+        await AutoSaveIfEnabledAsync(cancellationToken);
+        return results;
+    }
+
+    public override Task<IEnumerable<DocumentChunk>> GetChunksByIdsAsync(
+        IEnumerable<string> ids,
+        CancellationToken cancellationToken = default)
+    {
+        var chunks = ids
+            .Where(id => _chunks.ContainsKey(id))
+            .Select(id => _chunks[id].chunk)
+            .ToList();
+        return Task.FromResult<IEnumerable<DocumentChunk>>(chunks);
+    }
+
+    public override Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return Task.FromResult(false);
+        return Task.FromResult(_chunks.ContainsKey(id));
+    }
+
+    #endregion
 
     #region Persistence Methods
 
@@ -351,10 +345,13 @@ public class InMemoryVectorStore : IVectorStore, IPersistableStore
                     1
                 );
 
-                // Restore the original ID
-                var restoredChunk = RestoreChunkWithId(chunk, chunkData.Id, chunkData.Embedding);
+                // Set embedding if available
+                if (chunkData.Embedding != null && chunkData.Embedding.Length > 0)
+                {
+                    chunk.SetEmbedding(chunkData.Embedding);
+                }
 
-                _chunks.TryAdd(chunkData.Id, (restoredChunk, chunkData.Embedding ?? Array.Empty<float>()));
+                _chunks.TryAdd(chunkData.Id, (chunk, chunkData.Embedding ?? Array.Empty<float>()));
 
                 if (!string.IsNullOrEmpty(chunkData.DocumentId))
                 {
@@ -382,26 +379,6 @@ public class InMemoryVectorStore : IVectorStore, IPersistableStore
         }
     }
 
-    private static DocumentChunk RestoreChunkWithId(DocumentChunk template, string id, float[]? embedding)
-    {
-        // Use reflection or a builder to restore the chunk with specific ID
-        // For now, we create a new chunk and rely on the stored ID
-        var chunk = DocumentChunk.Create(
-            template.DocumentId,
-            template.Content,
-            template.ChunkIndex,
-            1
-        );
-
-        // Set embedding if available
-        if (embedding != null && embedding.Length > 0)
-        {
-            chunk.SetEmbedding(embedding);
-        }
-
-        return chunk;
-    }
-
     #endregion
 
     #region Persistence Data Classes
@@ -423,23 +400,4 @@ public class InMemoryVectorStore : IVectorStore, IPersistableStore
     }
 
     #endregion
-
-    private static float CosineSimilarity(float[] vectorA, float[] vectorB)
-    {
-        if (vectorA.Length != vectorB.Length)
-            return 0;
-
-        double dotProduct = 0;
-        double normA = 0;
-        double normB = 0;
-
-        for (int i = 0; i < vectorA.Length; i++)
-        {
-            dotProduct += vectorA[i] * vectorB[i];
-            normA += vectorA[i] * vectorA[i];
-            normB += vectorB[i] * vectorB[i];
-        }
-
-        return (float)(dotProduct / (Math.Sqrt(normA) * Math.Sqrt(normB)));
-    }
 }

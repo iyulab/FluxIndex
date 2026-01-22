@@ -19,7 +19,11 @@ public class SQLiteVecVectorStore : IVectorStore
 
     // 폴백용 in-memory 벡터 저장소 (sqlite-vec 실패 시 사용)
     private readonly Lazy<SQLiteVectorStore> _fallbackStore;
-    private bool _sqliteVecAvailable = true;
+    private bool _sqliteVecAvailable;
+    private bool _initialized;
+    private readonly SemaphoreSlim _initLock = new(1, 1);
+    // SQLite는 동시 쓰기를 지원하지 않으므로 쓰기 작업을 직렬화
+    private readonly SemaphoreSlim _writeLock = new(1, 1);
 
     public SQLiteVecVectorStore(
         SQLiteVecDbContext context,
@@ -33,6 +37,9 @@ public class SQLiteVecVectorStore : IVectorStore
         _options = options.Value;
         _extensionLoader = extensionLoader;
         _fallbackStore = fallbackStore;
+        
+        // UseSQLiteVec 옵션이 false면 처음부터 폴백 사용
+        _sqliteVecAvailable = _options.UseSQLiteVec;
     }
 
     public async Task<string> StoreAsync(DocumentChunk chunk, CancellationToken cancellationToken = default)
@@ -41,47 +48,65 @@ public class SQLiteVecVectorStore : IVectorStore
         {
             await EnsureInitializedAsync(cancellationToken);
 
-            if (!_sqliteVecAvailable && _options.FallbackToInMemoryOnError)
+            if (!_sqliteVecAvailable)
             {
-                return await _fallbackStore.Value.StoreAsync(chunk, cancellationToken);
+                if (_options.FallbackToInMemoryOnError)
+                {
+                    return await _fallbackStore.Value.StoreAsync(chunk, cancellationToken);
+                }
+                else
+                {
+                    throw new InvalidOperationException(
+                        "sqlite-vec 확장이 로드되지 않았습니다. " +
+                        "확장이 설치되어 있는지 확인하거나 FallbackToInMemoryOnError 옵션을 활성화하세요.");
+                }
             }
 
-            var id = Guid.NewGuid().ToString();
-
-            using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
-
+            // SQLite는 동시 쓰기를 지원하지 않으므로 직렬화
+            await _writeLock.WaitAsync(cancellationToken);
             try
             {
-                // 1. 메타데이터 저장
-                var chunkEntity = new VectorChunkEntity
-                {
-                    Id = id,
-                    DocumentId = chunk.DocumentId,
-                    ChunkIndex = chunk.ChunkIndex,
-                    Content = chunk.Content,
-                    TokenCount = chunk.TokenCount,
-                    Metadata = chunk.Metadata ?? new Dictionary<string, object>(),
-                    CreatedAt = DateTime.UtcNow
-                };
+                var id = Guid.NewGuid().ToString();
 
-                _context.VectorChunks.Add(chunkEntity);
+                using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
 
-                // 2. 벡터 저장 (sqlite-vec 사용)
-                if (chunk.Embedding != null && _sqliteVecAvailable)
+                try
                 {
-                    await _context.StoreVectorInVecTableAsync(id, chunk.Embedding, cancellationToken);
+                    // 1. 메타데이터 저장
+                    var chunkEntity = new VectorChunkEntity
+                    {
+                        Id = id,
+                        DocumentId = chunk.DocumentId,
+                        ChunkIndex = chunk.ChunkIndex,
+                        Content = chunk.Content,
+                        TokenCount = chunk.TokenCount,
+                        Metadata = chunk.Metadata ?? new Dictionary<string, object>(),
+                        CreatedAt = DateTime.UtcNow
+                    };
+
+                    _context.VectorChunks.Add(chunkEntity);
+
+                    // 2. 벡터 저장 (sqlite-vec 사용)
+                    if (chunk.Embedding != null && _sqliteVecAvailable)
+                    {
+                        await _context.StoreVectorInVecTableAsync(id, chunk.Embedding, cancellationToken);
+                    }
+
+                    await _context.SaveChangesAsync(cancellationToken);
+                    await transaction.CommitAsync(cancellationToken);
+
+                    _logger.LogDebug("벡터 저장 완료: {Id}, Document: {DocumentId}", id, chunk.DocumentId);
+                    return id;
                 }
-
-                await _context.SaveChangesAsync(cancellationToken);
-                await transaction.CommitAsync(cancellationToken);
-
-                _logger.LogDebug("벡터 저장 완료: {Id}, Document: {DocumentId}", id, chunk.DocumentId);
-                return id;
+                catch
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    throw;
+                }
             }
-            catch
+            finally
             {
-                await transaction.RollbackAsync(cancellationToken);
-                throw;
+                _writeLock.Release();
             }
         }
         catch (Exception ex)
@@ -101,9 +126,18 @@ public class SQLiteVecVectorStore : IVectorStore
         {
             await EnsureInitializedAsync(cancellationToken);
 
-            if (!_sqliteVecAvailable && _options.FallbackToInMemoryOnError)
+            if (!_sqliteVecAvailable)
             {
-                return await _fallbackStore.Value.StoreBatchAsync(chunkList, cancellationToken);
+                if (_options.FallbackToInMemoryOnError)
+                {
+                    return await _fallbackStore.Value.StoreBatchAsync(chunkList, cancellationToken);
+                }
+                else
+                {
+                    throw new InvalidOperationException(
+                        "sqlite-vec 확장이 로드되지 않았습니다. " +
+                        "확장이 설치되어 있는지 확인하거나 FallbackToInMemoryOnError 옵션을 활성화하세요.");
+                }
             }
 
             var ids = new List<string>(chunkList.Count);
@@ -164,57 +198,66 @@ public class SQLiteVecVectorStore : IVectorStore
 
     private async Task<IEnumerable<string>> StoreBatchInternalAsync(IEnumerable<DocumentChunk> chunks, CancellationToken cancellationToken)
     {
-        using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
-
+        // SQLite는 동시 쓰기를 지원하지 않으므로 직렬화
+        await _writeLock.WaitAsync(cancellationToken);
         try
         {
-            var ids = new List<string>();
-            var vectorBatch = new List<(string Id, float[] Embedding)>();
+            using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
 
-            // 1단계: 메타데이터 엔티티 준비 (메모리 작업)
-            foreach (var chunk in chunks)
+            try
             {
-                var id = Guid.NewGuid().ToString();
-                ids.Add(id);
+                var ids = new List<string>();
+                var vectorBatch = new List<(string Id, float[] Embedding)>();
 
-                // 메타데이터 저장
-                var chunkEntity = new VectorChunkEntity
+                // 1단계: 메타데이터 엔티티 준비 (메모리 작업)
+                foreach (var chunk in chunks)
                 {
-                    Id = id,
-                    DocumentId = chunk.DocumentId,
-                    ChunkIndex = chunk.ChunkIndex,
-                    Content = chunk.Content,
-                    TokenCount = chunk.TokenCount,
-                    Metadata = chunk.Metadata ?? new Dictionary<string, object>(),
-                    CreatedAt = DateTime.UtcNow
-                };
+                    var id = Guid.NewGuid().ToString();
+                    ids.Add(id);
 
-                _context.VectorChunks.Add(chunkEntity);
+                    // 메타데이터 저장
+                    var chunkEntity = new VectorChunkEntity
+                    {
+                        Id = id,
+                        DocumentId = chunk.DocumentId,
+                        ChunkIndex = chunk.ChunkIndex,
+                        Content = chunk.Content,
+                        TokenCount = chunk.TokenCount,
+                        Metadata = chunk.Metadata ?? new Dictionary<string, object>(),
+                        CreatedAt = DateTime.UtcNow
+                    };
 
-                // 벡터 배치에 추가 (아직 DB 삽입 안 함)
-                if (chunk.Embedding != null && _sqliteVecAvailable)
-                {
-                    vectorBatch.Add((id, chunk.Embedding));
+                    _context.VectorChunks.Add(chunkEntity);
+
+                    // 벡터 배치에 추가 (아직 DB 삽입 안 함)
+                    if (chunk.Embedding != null && _sqliteVecAvailable)
+                    {
+                        vectorBatch.Add((id, chunk.Embedding));
+                    }
                 }
+
+                // 2단계: 메타데이터 일괄 저장 (EF Core 최적화된 배치 INSERT)
+                await _context.SaveChangesAsync(cancellationToken);
+
+                // 3단계: 벡터 배치 삽입 (단일 SQL 문으로 최적화)
+                if (vectorBatch.Any())
+                {
+                    await StoreBatchVectorsAsync(vectorBatch, cancellationToken);
+                }
+
+                await transaction.CommitAsync(cancellationToken);
+
+                return ids;
             }
-
-            // 2단계: 메타데이터 일괄 저장 (EF Core 최적화된 배치 INSERT)
-            await _context.SaveChangesAsync(cancellationToken);
-
-            // 3단계: 벡터 배치 삽입 (단일 SQL 문으로 최적화)
-            if (vectorBatch.Any())
+            catch
             {
-                await StoreBatchVectorsAsync(vectorBatch, cancellationToken);
+                await transaction.RollbackAsync(cancellationToken);
+                throw;
             }
-
-            await transaction.CommitAsync(cancellationToken);
-
-            return ids;
         }
-        catch
+        finally
         {
-            await transaction.RollbackAsync(cancellationToken);
-            throw;
+            _writeLock.Release();
         }
     }
 
@@ -245,7 +288,8 @@ public class SQLiteVecVectorStore : IVectorStore
                     paramIndex += 2;
                 }
 
-                var sql = $"INSERT OR REPLACE INTO chunk_embeddings (chunk_id, embedding) VALUES {string.Join(", ", valuesClauses)}";
+                // 배치 삽입은 새 청크에 대해서만 호출되므로 순수 INSERT 사용
+                var sql = $"INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES {string.Join(", ", valuesClauses)}";
                 await _context.Database.ExecuteSqlRawAsync(sql, parameters.ToArray(), cancellationToken);
 
                 _logger.LogDebug("배치 벡터 삽입 완료: {Count}개", batch.Count);
@@ -262,6 +306,8 @@ public class SQLiteVecVectorStore : IVectorStore
     {
         try
         {
+            await EnsureInitializedAsync(cancellationToken);
+
             if (!_sqliteVecAvailable && _options.FallbackToInMemoryOnError)
             {
                 return await _fallbackStore.Value.GetAsync(id, cancellationToken);
@@ -301,9 +347,18 @@ public class SQLiteVecVectorStore : IVectorStore
         {
             await EnsureInitializedAsync(cancellationToken);
 
-            if (!_sqliteVecAvailable && _options.FallbackToInMemoryOnError)
+            if (!_sqliteVecAvailable)
             {
-                return await _fallbackStore.Value.SearchAsync(queryEmbedding, topK, minScore, cancellationToken);
+                if (_options.FallbackToInMemoryOnError)
+                {
+                    return await _fallbackStore.Value.SearchAsync(queryEmbedding, topK, minScore, cancellationToken);
+                }
+                else
+                {
+                    throw new InvalidOperationException(
+                        "sqlite-vec 확장이 로드되지 않았습니다. " +
+                        "확장이 설치되어 있는지 확인하거나 FallbackToInMemoryOnError 옵션을 활성화하세요.");
+                }
             }
 
             return await SearchWithSQLiteVecAsync(queryEmbedding, topK, minScore, cancellationToken);
@@ -606,6 +661,8 @@ public class SQLiteVecVectorStore : IVectorStore
     {
         try
         {
+            await EnsureInitializedAsync(cancellationToken);
+
             if (!_sqliteVecAvailable && _options.FallbackToInMemoryOnError)
             {
                 return await _fallbackStore.Value.GetByDocumentIdAsync(documentId, cancellationToken);
@@ -638,38 +695,49 @@ public class SQLiteVecVectorStore : IVectorStore
     {
         try
         {
+            await EnsureInitializedAsync(cancellationToken);
+
             if (!_sqliteVecAvailable && _options.FallbackToInMemoryOnError)
             {
                 return await _fallbackStore.Value.DeleteAsync(id, cancellationToken);
             }
 
-            using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
-
+            // SQLite는 동시 쓰기를 지원하지 않으므로 직렬화
+            await _writeLock.WaitAsync(cancellationToken);
             try
             {
-                var entity = await _context.VectorChunks
-                    .FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
+                using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
 
-                if (entity == null)
-                    return false;
-
-                _context.VectorChunks.Remove(entity);
-
-                // vec0 테이블에서도 삭제
-                if (_sqliteVecAvailable)
+                try
                 {
-                    await _context.DeleteVectorFromVecTableAsync(id, cancellationToken);
+                    var entity = await _context.VectorChunks
+                        .FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
+
+                    if (entity == null)
+                        return false;
+
+                    _context.VectorChunks.Remove(entity);
+
+                    // vec0 테이블에서도 삭제
+                    if (_sqliteVecAvailable)
+                    {
+                        await _context.DeleteVectorFromVecTableAsync(id, cancellationToken);
+                    }
+
+                    await _context.SaveChangesAsync(cancellationToken);
+                    await transaction.CommitAsync(cancellationToken);
+
+                    return true;
                 }
-
-                await _context.SaveChangesAsync(cancellationToken);
-                await transaction.CommitAsync(cancellationToken);
-
-                return true;
+                catch
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    throw;
+                }
             }
-            catch
+            finally
             {
-                await transaction.RollbackAsync(cancellationToken);
-                throw;
+                _writeLock.Release();
             }
         }
         catch (Exception ex)
@@ -683,41 +751,52 @@ public class SQLiteVecVectorStore : IVectorStore
     {
         try
         {
+            await EnsureInitializedAsync(cancellationToken);
+
             if (!_sqliteVecAvailable && _options.FallbackToInMemoryOnError)
             {
                 return await _fallbackStore.Value.DeleteByDocumentIdAsync(documentId, cancellationToken);
             }
 
-            using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
-
+            // SQLite는 동시 쓰기를 지원하지 않으므로 직렬화
+            await _writeLock.WaitAsync(cancellationToken);
             try
             {
-                var entities = await _context.VectorChunks
-                    .Where(c => c.DocumentId == documentId)
-                    .ToListAsync(cancellationToken);
+                using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
 
-                if (!entities.Any())
-                    return false;
-
-                // vec0 테이블에서 벡터들 삭제
-                if (_sqliteVecAvailable)
+                try
                 {
-                    foreach (var entity in entities)
+                    var entities = await _context.VectorChunks
+                        .Where(c => c.DocumentId == documentId)
+                        .ToListAsync(cancellationToken);
+
+                    if (!entities.Any())
+                        return false;
+
+                    // vec0 테이블에서 벡터들 삭제
+                    if (_sqliteVecAvailable)
                     {
-                        await _context.DeleteVectorFromVecTableAsync(entity.Id, cancellationToken);
+                        foreach (var entity in entities)
+                        {
+                            await _context.DeleteVectorFromVecTableAsync(entity.Id, cancellationToken);
+                        }
                     }
+
+                    _context.VectorChunks.RemoveRange(entities);
+                    await _context.SaveChangesAsync(cancellationToken);
+                    await transaction.CommitAsync(cancellationToken);
+
+                    return true;
                 }
-
-                _context.VectorChunks.RemoveRange(entities);
-                await _context.SaveChangesAsync(cancellationToken);
-                await transaction.CommitAsync(cancellationToken);
-
-                return true;
+                catch
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    throw;
+                }
             }
-            catch
+            finally
             {
-                await transaction.RollbackAsync(cancellationToken);
-                throw;
+                _writeLock.Release();
             }
         }
         catch (Exception ex)
@@ -729,6 +808,8 @@ public class SQLiteVecVectorStore : IVectorStore
 
     public async Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default)
     {
+        await EnsureInitializedAsync(cancellationToken);
+
         if (!_sqliteVecAvailable && _options.FallbackToInMemoryOnError)
         {
             return await _fallbackStore.Value.ExistsAsync(id, cancellationToken);
@@ -744,6 +825,8 @@ public class SQLiteVecVectorStore : IVectorStore
 
     public async Task<IEnumerable<DocumentChunk>> GetChunksByIdsAsync(IEnumerable<string> ids, CancellationToken cancellationToken = default)
     {
+        await EnsureInitializedAsync(cancellationToken);
+
         if (!_sqliteVecAvailable && _options.FallbackToInMemoryOnError)
         {
             return await _fallbackStore.Value.GetChunksByIdsAsync(ids, cancellationToken);
@@ -769,40 +852,51 @@ public class SQLiteVecVectorStore : IVectorStore
     {
         try
         {
+            await EnsureInitializedAsync(cancellationToken);
+
             if (!_sqliteVecAvailable && _options.FallbackToInMemoryOnError)
             {
                 return await _fallbackStore.Value.UpdateAsync(chunk, cancellationToken);
             }
 
-            using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
-
+            // SQLite는 동시 쓰기를 지원하지 않으므로 직렬화
+            await _writeLock.WaitAsync(cancellationToken);
             try
             {
-                var entity = await _context.VectorChunks
-                    .FirstOrDefaultAsync(c => c.Id == chunk.Id, cancellationToken);
+                using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
 
-                if (entity == null)
-                    return false;
-
-                entity.Content = chunk.Content;
-                entity.TokenCount = chunk.TokenCount;
-                entity.Metadata = chunk.Metadata ?? new Dictionary<string, object>();
-
-                // 벡터 업데이트
-                if (chunk.Embedding != null && _sqliteVecAvailable)
+                try
                 {
-                    await _context.StoreVectorInVecTableAsync(chunk.Id, chunk.Embedding, cancellationToken);
+                    var entity = await _context.VectorChunks
+                        .FirstOrDefaultAsync(c => c.Id == chunk.Id, cancellationToken);
+
+                    if (entity == null)
+                        return false;
+
+                    entity.Content = chunk.Content;
+                    entity.TokenCount = chunk.TokenCount;
+                    entity.Metadata = chunk.Metadata ?? new Dictionary<string, object>();
+
+                    // 벡터 업데이트
+                    if (chunk.Embedding != null && _sqliteVecAvailable)
+                    {
+                        await _context.StoreVectorInVecTableAsync(chunk.Id, chunk.Embedding, cancellationToken);
+                    }
+
+                    await _context.SaveChangesAsync(cancellationToken);
+                    await transaction.CommitAsync(cancellationToken);
+
+                    return true;
                 }
-
-                await _context.SaveChangesAsync(cancellationToken);
-                await transaction.CommitAsync(cancellationToken);
-
-                return true;
+                catch
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    throw;
+                }
             }
-            catch
+            finally
             {
-                await transaction.RollbackAsync(cancellationToken);
-                throw;
+                _writeLock.Release();
             }
         }
         catch (Exception ex)
@@ -814,6 +908,8 @@ public class SQLiteVecVectorStore : IVectorStore
 
     public async Task<int> CountAsync(CancellationToken cancellationToken = default)
     {
+        await EnsureInitializedAsync(cancellationToken);
+
         if (!_sqliteVecAvailable && _options.FallbackToInMemoryOnError)
         {
             return await _fallbackStore.Value.CountAsync(cancellationToken);
@@ -831,33 +927,44 @@ public class SQLiteVecVectorStore : IVectorStore
     {
         try
         {
+            await EnsureInitializedAsync(cancellationToken);
+
             if (!_sqliteVecAvailable && _options.FallbackToInMemoryOnError)
             {
                 await _fallbackStore.Value.ClearAsync(cancellationToken);
                 return;
             }
 
-            using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
-
+            // SQLite는 동시 쓰기를 지원하지 않으므로 직렬화
+            await _writeLock.WaitAsync(cancellationToken);
             try
             {
-                // vec0 테이블 클리어
-                if (_sqliteVecAvailable)
+                using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+
+                try
                 {
-                    await _context.Database.ExecuteSqlRawAsync("DELETE FROM chunk_embeddings", cancellationToken);
+                    // vec0 테이블 클리어
+                    if (_sqliteVecAvailable)
+                    {
+                        await _context.Database.ExecuteSqlRawAsync("DELETE FROM chunk_embeddings", cancellationToken);
+                    }
+
+                    // 메타데이터 테이블 클리어
+                    _context.VectorChunks.RemoveRange(_context.VectorChunks);
+                    await _context.SaveChangesAsync(cancellationToken);
+                    await transaction.CommitAsync(cancellationToken);
+
+                    _logger.LogInformation("벡터 저장소 클리어 완료");
                 }
-
-                // 메타데이터 테이블 클리어
-                _context.VectorChunks.RemoveRange(_context.VectorChunks);
-                await _context.SaveChangesAsync(cancellationToken);
-                await transaction.CommitAsync(cancellationToken);
-
-                _logger.LogInformation("벡터 저장소 클리어 완료");
+                catch
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    throw;
+                }
             }
-            catch
+            finally
             {
-                await transaction.RollbackAsync(cancellationToken);
-                throw;
+                _writeLock.Release();
             }
         }
         catch (Exception ex)
@@ -869,13 +976,50 @@ public class SQLiteVecVectorStore : IVectorStore
 
     private async Task EnsureInitializedAsync(CancellationToken cancellationToken)
     {
-        if (_options.UseSQLiteVec)
+        if (_initialized) return;
+
+        await _initLock.WaitAsync(cancellationToken);
+        try
         {
-            _sqliteVecAvailable = await _context.IsSQLiteVecAvailableAsync(cancellationToken);
+            if (_initialized) return;
+
+            if (_options.UseSQLiteVec)
+            {
+                // SQLite 확장은 연결 수준에서 로드되므로, 현재 연결에서 확장을 로드해야 함
+                var connection = _context.Database.GetDbConnection();
+                if (connection.State != System.Data.ConnectionState.Open)
+                {
+                    await connection.OpenAsync(cancellationToken);
+                }
+
+                // 확장 로드 시도 (이미 로드되어 있으면 빠르게 반환)
+                _sqliteVecAvailable = await _extensionLoader.LoadExtensionAsync(
+                    (Microsoft.Data.Sqlite.SqliteConnection)connection, cancellationToken);
+
+                if (_sqliteVecAvailable)
+                {
+                    // vec0 테이블 생성 (이미 존재하면 무시)
+                    await _extensionLoader.CreateVecTableAsync(
+                        (Microsoft.Data.Sqlite.SqliteConnection)connection,
+                        "chunk_embeddings",
+                        _options.VectorDimension,
+                        _options.VecTableOptions,
+                        cancellationToken);
+
+                    // EF Core 테이블 생성
+                    await _context.Database.EnsureCreatedAsync(cancellationToken);
+                }
+            }
+            else
+            {
+                _sqliteVecAvailable = false;
+            }
+
+            _initialized = true;
         }
-        else
+        finally
         {
-            _sqliteVecAvailable = false;
+            _initLock.Release();
         }
     }
 }

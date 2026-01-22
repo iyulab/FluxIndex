@@ -1,4 +1,6 @@
-﻿using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Services.Base;
+using FluxIndex.Core.Application.Utilities;
 using FluxIndex.Core.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -9,25 +11,26 @@ using Pgvector.EntityFrameworkCore;
 namespace FluxIndex.Storage.PostgreSQL;
 
 /// <summary>
-/// PostgreSQL with pgvector storage implementation for FluxIndex
+/// PostgreSQL with pgvector storage implementation for FluxIndex.
+/// Uses pgvector's native cosine distance for efficient vector search.
 /// </summary>
-public class PostgreSQLVectorStore : IVectorStore
+public class PostgreSQLVectorStore : VectorStoreBase
 {
     private readonly FluxIndexDbContext _context;
-    private readonly ILogger<PostgreSQLVectorStore> _logger;
     private readonly PostgreSQLOptions _options;
 
     public PostgreSQLVectorStore(
         FluxIndexDbContext context,
         ILogger<PostgreSQLVectorStore> logger,
-        IOptions<PostgreSQLOptions> options)
+        IOptions<PostgreSQLOptions> options) : base(logger)
     {
         _context = context;
-        _logger = logger;
         _options = options.Value;
     }
 
-    public async Task<string> StoreAsync(DocumentChunk chunk, CancellationToken cancellationToken = default)
+    #region VectorStoreBase Core Implementations
+
+    protected override async Task<string> StoreCoreAsync(DocumentChunk chunk, CancellationToken cancellationToken)
     {
         var id = Guid.NewGuid().ToString();
         var entity = new VectorEntity
@@ -46,117 +49,39 @@ public class PostgreSQLVectorStore : IVectorStore
         return id;
     }
 
-    public async Task<IEnumerable<string>> StoreBatchAsync(IEnumerable<DocumentChunk> chunks, CancellationToken cancellationToken = default)
-    {
-        var ids = new List<string>();
-        foreach (var chunk in chunks)
-        {
-            var id = await StoreAsync(chunk, cancellationToken);
-            ids.Add(id);
-        }
-        return ids;
-    }
-
-    public async Task<DocumentChunk?> GetAsync(string id, CancellationToken cancellationToken = default)
+    protected override async Task<DocumentChunk?> GetCoreAsync(string id, CancellationToken cancellationToken)
     {
         var entity = await _context.Vectors
             .FirstOrDefaultAsync(v => v.Id == Guid.Parse(id), cancellationToken);
 
-        if (entity == null) return null;
-
-        return new DocumentChunk
-        {
-            Id = entity.Id.ToString(),
-            DocumentId = entity.DocumentId,
-            ChunkIndex = entity.ChunkIndex,
-            Content = entity.Content,
-            Embedding = entity.Embedding.ToArray(),
-            TokenCount = entity.TokenCount,
-            Metadata = entity.Metadata
-        };
+        return entity == null ? null : MapToChunk(entity);
     }
 
-    public async Task<IEnumerable<DocumentChunk>> GetByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default)
-    {
-        var entities = await _context.Vectors
-            .Where(v => v.DocumentId == documentId)
-            .OrderBy(v => v.ChunkIndex)
-            .ToListAsync(cancellationToken);
-
-        return entities.Select(e => new DocumentChunk
-        {
-            Id = e.Id.ToString(),
-            DocumentId = e.DocumentId,
-            ChunkIndex = e.ChunkIndex,
-            Content = e.Content,
-            Embedding = e.Embedding.ToArray(),
-            TokenCount = e.TokenCount,
-            Metadata = e.Metadata
-        });
-    }
-
-    public async Task<IEnumerable<DocumentChunk>> GetChunksByIdsAsync(IEnumerable<string> ids, CancellationToken cancellationToken = default)
-    {
-        var guids = ids.Select(Guid.Parse).ToList();
-        var entities = await _context.Vectors
-            .Where(v => guids.Contains(v.Id))
-            .ToListAsync(cancellationToken);
-
-        return entities.Select(e => new DocumentChunk
-        {
-            Id = e.Id.ToString(),
-            DocumentId = e.DocumentId,
-            ChunkIndex = e.ChunkIndex,
-            Content = e.Content,
-            Embedding = e.Embedding.ToArray(),
-            TokenCount = e.TokenCount,
-            Metadata = e.Metadata
-        });
-    }
-
-    public async Task<IEnumerable<DocumentChunk>> SearchAsync(
+    protected override async Task<IEnumerable<VectorSearchResult>> SearchCoreAsync(
         float[] queryEmbedding,
-        int topK = 10,
-        float minScore = 0.0f,
-        CancellationToken cancellationToken = default)
+        int topK,
+        CancellationToken cancellationToken)
     {
         var queryVector = new Vector(queryEmbedding);
 
-        // Get more results than needed to apply similarity filtering
+        // Use pgvector's native cosine distance for efficient search
         var candidates = await _context.Vectors
             .OrderBy(v => v.Embedding.CosineDistance(queryVector))
             .Take(topK * 3) // Get 3x results to filter by similarity
             .Select(v => new
             {
                 Distance = v.Embedding.CosineDistance(queryVector),
-                Chunk = new DocumentChunk
-                {
-                    Id = v.Id.ToString(),
-                    DocumentId = v.DocumentId,
-                    ChunkIndex = v.ChunkIndex,
-                    Content = v.Content,
-                    Embedding = v.Embedding.ToArray(),
-                    TokenCount = v.TokenCount,
-                    Metadata = v.Metadata
-                }
+                Entity = v
             })
             .ToListAsync(cancellationToken);
 
-        // Convert cosine distance (0-2) to cosine similarity (1-0) and filter
-        var results = candidates
-            .Select(c => new {
-                Chunk = c.Chunk,
-                Similarity = 1.0 - c.Distance // Convert distance to similarity
-            })
-            .Where(r => r.Similarity >= minScore)
-            .OrderByDescending(r => r.Similarity)
-            .Take(topK)
-            .Select(r => r.Chunk);
-
-        return results;
+        // Convert cosine distance (0-2) to cosine similarity (1 to -1)
+        return candidates.Select(c => new VectorSearchResult(
+            MapToChunk(c.Entity),
+            VectorMathUtilities.DistanceToSimilarity((float)c.Distance, DistanceType.Cosine)));
     }
 
-    public async Task<bool> DeleteAsync(string id, CancellationToken cancellationToken = default)
+    protected override async Task<bool> DeleteCoreAsync(string id, CancellationToken cancellationToken)
     {
         var entity = await _context.Vectors
             .FirstOrDefaultAsync(v => v.Id == Guid.Parse(id), cancellationToken);
@@ -168,31 +93,7 @@ public class PostgreSQLVectorStore : IVectorStore
         return true;
     }
 
-    public async Task<bool> DeleteByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default)
-    {
-        var entities = await _context.Vectors
-            .Where(v => v.DocumentId == documentId)
-            .ToListAsync(cancellationToken);
-
-        if (!entities.Any()) return false;
-
-        _context.Vectors.RemoveRange(entities);
-        await _context.SaveChangesAsync(cancellationToken);
-        return true;
-    }
-
-    public async Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default)
-    {
-        return await _context.Vectors
-            .AnyAsync(v => v.Id == Guid.Parse(id), cancellationToken);
-    }
-
-    public async Task<DocumentChunk?> GetByIdAsync(string id, CancellationToken cancellationToken = default)
-    {
-        return await GetAsync(id, cancellationToken);
-    }
-
-    public async Task<bool> UpdateAsync(DocumentChunk chunk, CancellationToken cancellationToken = default)
+    protected override async Task<bool> UpdateCoreAsync(DocumentChunk chunk, CancellationToken cancellationToken)
     {
         var entity = await _context.Vectors
             .FirstOrDefaultAsync(v => v.Id == Guid.Parse(chunk.Id), cancellationToken);
@@ -211,20 +112,84 @@ public class PostgreSQLVectorStore : IVectorStore
         return true;
     }
 
-    public async Task<int> CountAsync(CancellationToken cancellationToken = default)
+    protected override async Task<IEnumerable<DocumentChunk>> GetByDocumentIdCoreAsync(
+        string documentId,
+        CancellationToken cancellationToken)
+    {
+        var entities = await _context.Vectors
+            .Where(v => v.DocumentId == documentId)
+            .OrderBy(v => v.ChunkIndex)
+            .ToListAsync(cancellationToken);
+
+        return entities.Select(MapToChunk);
+    }
+
+    protected override async Task<bool> DeleteByDocumentIdCoreAsync(
+        string documentId,
+        CancellationToken cancellationToken)
+    {
+        var entities = await _context.Vectors
+            .Where(v => v.DocumentId == documentId)
+            .ToListAsync(cancellationToken);
+
+        if (!entities.Any()) return false;
+
+        _context.Vectors.RemoveRange(entities);
+        await _context.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    protected override async Task<int> CountCoreAsync(CancellationToken cancellationToken)
     {
         return await _context.Vectors.CountAsync(cancellationToken);
     }
 
-    public async Task<int> GetCountAsync(CancellationToken cancellationToken = default)
-    {
-        return await CountAsync(cancellationToken);
-    }
-
-    public async Task ClearAsync(CancellationToken cancellationToken = default)
+    protected override async Task ClearCoreAsync(CancellationToken cancellationToken)
     {
         await _context.Database.ExecuteSqlRawAsync("TRUNCATE TABLE vectors", cancellationToken);
     }
+
+    #endregion
+
+    #region Overrides for Batch Optimization
+
+    public override async Task<IEnumerable<DocumentChunk>> GetChunksByIdsAsync(
+        IEnumerable<string> ids,
+        CancellationToken cancellationToken = default)
+    {
+        var guids = ids.Select(Guid.Parse).ToList();
+        var entities = await _context.Vectors
+            .Where(v => guids.Contains(v.Id))
+            .ToListAsync(cancellationToken);
+
+        return entities.Select(MapToChunk);
+    }
+
+    public override async Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return false;
+        return await _context.Vectors.AnyAsync(v => v.Id == Guid.Parse(id), cancellationToken);
+    }
+
+    #endregion
+
+    #region Private Helper Methods
+
+    private static DocumentChunk MapToChunk(VectorEntity entity)
+    {
+        return new DocumentChunk
+        {
+            Id = entity.Id.ToString(),
+            DocumentId = entity.DocumentId,
+            ChunkIndex = entity.ChunkIndex,
+            Content = entity.Content,
+            Embedding = entity.Embedding.ToArray(),
+            TokenCount = entity.TokenCount,
+            Metadata = entity.Metadata
+        };
+    }
+
+    #endregion
 }
 
 /// <summary>

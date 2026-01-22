@@ -105,6 +105,7 @@ public class SQLiteVecOptions : SQLiteOptions
 
     /// <summary>
     /// 현재 플랫폼에 대한 기본 확장 파일 경로 반환
+    /// NuGet 패키지 sqlite-vec에서 제공하는 네이티브 파일 자동 탐지
     /// </summary>
     public string GetDefaultExtensionPath()
     {
@@ -113,15 +114,199 @@ public class SQLiteVecOptions : SQLiteOptions
             return CustomExtensionPath;
         }
 
-        var runtimeIdentifier = RuntimeInformation.RuntimeIdentifier;
         var baseDir = AppContext.BaseDirectory;
 
-        return runtimeIdentifier switch
+        // Try output directory paths first
+        var possiblePaths = GetPossibleExtensionPaths(baseDir);
+        foreach (var path in possiblePaths)
         {
-            var rid when rid.StartsWith("win") => Path.Combine(baseDir, "runtimes", "win-x64", "native", "vec0.dll"),
-            var rid when rid.StartsWith("linux") => Path.Combine(baseDir, "runtimes", "linux-x64", "native", "libvec0.so"),
-            var rid when rid.StartsWith("osx") => Path.Combine(baseDir, "runtimes", "osx-x64", "native", "libvec0.dylib"),
-            _ => throw new PlatformNotSupportedException($"지원되지 않는 플랫폼: {runtimeIdentifier}")
+            if (File.Exists(path))
+            {
+                return path;
+            }
+        }
+
+        // Try NuGet global packages cache (native files aren't auto-copied during build)
+        var nugetCachePath = GetNuGetCacheExtensionPath();
+        if (!string.IsNullOrEmpty(nugetCachePath) && File.Exists(nugetCachePath))
+        {
+            return nugetCachePath;
+        }
+
+        // Return the first expected path even if it doesn't exist (for error reporting)
+        return nugetCachePath ?? possiblePaths.FirstOrDefault() ??
+            throw new PlatformNotSupportedException($"지원되지 않는 플랫폼: {RuntimeInformation.OSDescription}");
+    }
+
+    /// <summary>
+    /// NuGet 글로벌 패키지 캐시에서 sqlite-vec 확장 경로 찾기
+    /// </summary>
+    private static string? GetNuGetCacheExtensionPath()
+    {
+        try
+        {
+            // Standard NuGet global packages folder locations
+            var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            var nugetGlobalPackages = Path.Combine(userProfile, ".nuget", "packages", "sqlite-vec");
+
+            if (!Directory.Exists(nugetGlobalPackages))
+            {
+                return null;
+            }
+
+            // Find the latest version folder
+            var versionDirs = Directory.GetDirectories(nugetGlobalPackages)
+                .OrderByDescending(d => d)
+                .ToList();
+
+            foreach (var versionDir in versionDirs)
+            {
+                var nativePath = GetPlatformSpecificNativePath(versionDir);
+                if (!string.IsNullOrEmpty(nativePath) && File.Exists(nativePath))
+                {
+                    return nativePath;
+                }
+            }
+
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 플랫폼별 네이티브 파일 경로 반환
+    /// </summary>
+    private static string? GetPlatformSpecificNativePath(string packageDir)
+    {
+        string runtimeFolder;
+        string fileName;
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            runtimeFolder = "win-x64";
+            fileName = "vec0.dll";
+        }
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            runtimeFolder = RuntimeInformation.ProcessArchitecture == Architecture.Arm64
+                ? "linux-arm64"
+                : "linux-x64";
+            fileName = "vec0.so";
+        }
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            runtimeFolder = RuntimeInformation.ProcessArchitecture == Architecture.Arm64
+                ? "osx-arm64"
+                : "osx-x64";
+            fileName = "vec0.dylib";
+        }
+        else
+        {
+            // Fallback: try to detect from RuntimeIdentifier
+            var rid = RuntimeInformation.RuntimeIdentifier;
+            if (rid.StartsWith("win", StringComparison.OrdinalIgnoreCase))
+            {
+                runtimeFolder = "win-x64";
+                fileName = "vec0.dll";
+            }
+            else if (rid.StartsWith("linux", StringComparison.OrdinalIgnoreCase))
+            {
+                runtimeFolder = "linux-x64";
+                fileName = "vec0.so";
+            }
+            else if (rid.StartsWith("osx", StringComparison.OrdinalIgnoreCase))
+            {
+                runtimeFolder = "osx-x64";
+                fileName = "vec0.dylib";
+            }
+            else
+            {
+                return null;
+            }
+        }
+
+        return Path.Combine(packageDir, "runtimes", runtimeFolder, "native", fileName);
+    }
+
+    /// <summary>
+    /// 플랫폼별 가능한 확장 파일 경로 목록 반환 (출력 디렉토리용)
+    /// Note: sqlite-vec NuGet 패키지의 파일명은 vec0.dll/vec0.so/vec0.dylib 형식
+    /// </summary>
+    private static string[] GetPossibleExtensionPaths(string baseDir)
+    {
+        // Try explicit platform check first
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return new[]
+            {
+                Path.Combine(baseDir, "runtimes", "win-x64", "native", "vec0.dll"),
+                Path.Combine(baseDir, "vec0.dll"),
+                Path.Combine(baseDir, "native", "vec0.dll")
+            };
+        }
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            var arch = RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "linux-arm64" : "linux-x64";
+            return new[]
+            {
+                Path.Combine(baseDir, "runtimes", arch, "native", "vec0.so"),
+                Path.Combine(baseDir, "vec0.so"),
+                Path.Combine(baseDir, "native", "vec0.so")
+            };
+        }
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            var arch = RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "osx-arm64" : "osx-x64";
+            return new[]
+            {
+                Path.Combine(baseDir, "runtimes", arch, "native", "vec0.dylib"),
+                Path.Combine(baseDir, "vec0.dylib"),
+                Path.Combine(baseDir, "native", "vec0.dylib")
+            };
+        }
+
+        // Fallback: use RuntimeIdentifier for detection
+        var rid = RuntimeInformation.RuntimeIdentifier;
+        if (rid.StartsWith("win", StringComparison.OrdinalIgnoreCase))
+        {
+            return new[]
+            {
+                Path.Combine(baseDir, "runtimes", "win-x64", "native", "vec0.dll"),
+                Path.Combine(baseDir, "vec0.dll"),
+                Path.Combine(baseDir, "native", "vec0.dll")
+            };
+        }
+
+        if (rid.StartsWith("linux", StringComparison.OrdinalIgnoreCase))
+        {
+            return new[]
+            {
+                Path.Combine(baseDir, "runtimes", "linux-x64", "native", "vec0.so"),
+                Path.Combine(baseDir, "vec0.so"),
+                Path.Combine(baseDir, "native", "vec0.so")
+            };
+        }
+
+        if (rid.StartsWith("osx", StringComparison.OrdinalIgnoreCase))
+        {
+            return new[]
+            {
+                Path.Combine(baseDir, "runtimes", "osx-x64", "native", "vec0.dylib"),
+                Path.Combine(baseDir, "vec0.dylib"),
+                Path.Combine(baseDir, "native", "vec0.dylib")
+            };
+        }
+
+        // Last resort: assume Windows if all detection fails
+        return new[]
+        {
+            Path.Combine(baseDir, "runtimes", "win-x64", "native", "vec0.dll"),
+            Path.Combine(baseDir, "vec0.dll")
         };
     }
 

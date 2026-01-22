@@ -283,6 +283,12 @@ public class SQLiteVecDbContext : DbContext
             }
             else
             {
+                if (!_options.FallbackToInMemoryOnError)
+                {
+                    throw new InvalidOperationException(
+                        "sqlite-vec 확장을 로드할 수 없습니다. " +
+                        "확장 파일이 존재하는지 확인하거나 FallbackToInMemoryOnError 옵션을 활성화하세요.");
+                }
                 _logger.LogWarning("sqlite-vec 확장 로드 실패, in-memory 벡터 검색으로 폴백");
             }
         }
@@ -388,11 +394,17 @@ public class SQLiteVecDbContext : DbContext
             // 벡터를 적절한 형식으로 변환
             var vectorString = "[" + string.Join(",", embedding.Select(f => f.ToString("F6"))) + "]";
 
-            // 매개변수화된 쿼리 사용으로 SQL Injection 방지
+            // vec0 가상 테이블은 INSERT OR REPLACE를 지원하지 않으므로 DELETE + INSERT 사용
+            // 먼저 기존 벡터 삭제 (존재하지 않아도 오류 없음)
             await Database.ExecuteSqlRawAsync(
-                "INSERT OR REPLACE INTO chunk_embeddings (chunk_id, embedding) VALUES ({0}, {1})",
-                chunkId,
-                vectorString,
+                "DELETE FROM chunk_embeddings WHERE chunk_id = {0}",
+                new object[] { chunkId },
+                cancellationToken);
+
+            // 새 벡터 삽입
+            await Database.ExecuteSqlRawAsync(
+                "INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES ({0}, {1})",
+                new object[] { chunkId, vectorString },
                 cancellationToken);
         }
         catch (Exception ex)

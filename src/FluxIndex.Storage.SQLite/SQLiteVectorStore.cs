@@ -1,4 +1,6 @@
-﻿using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Services.Base;
+using FluxIndex.Core.Application.Utilities;
 using FluxIndex.Core.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -8,23 +10,21 @@ namespace FluxIndex.Storage.SQLite;
 
 /// <summary>
 /// SQLite storage implementation for FluxIndex (development and testing)
-/// Vector search performed in memory
+/// Vector search performed in memory using VectorMathUtilities
 /// </summary>
-public class SQLiteVectorStore : IVectorStore
+public class SQLiteVectorStore : VectorStoreBase
 {
     private readonly SQLiteDbContext _context;
-    private readonly ILogger<SQLiteVectorStore> _logger;
     private readonly SQLiteOptions _options;
     private bool _initialized = false;
-    private readonly SemaphoreSlim _initLock = new SemaphoreSlim(1, 1);
+    private readonly SemaphoreSlim _initLock = new(1, 1);
 
     public SQLiteVectorStore(
         SQLiteDbContext context,
         ILogger<SQLiteVectorStore> logger,
-        IOptions<SQLiteOptions> options)
+        IOptions<SQLiteOptions> options) : base(logger)
     {
         _context = context;
-        _logger = logger;
         _options = options.Value;
     }
 
@@ -37,7 +37,14 @@ public class SQLiteVectorStore : IVectorStore
         {
             if (_initialized) return;
 
+            // EnsureCreatedAsync는 데이터베이스가 이미 존재하면 테이블을 생성하지 않음
+            // fallback 모드에서 SQLiteVecDbContext가 먼저 데이터베이스를 생성했을 수 있음
             await _context.Database.EnsureCreatedAsync(cancellationToken);
+
+            // CREATE TABLE IF NOT EXISTS를 사용하여 항상 테이블 존재 보장
+            // fallback 모드에서 SQLiteVecDbContext가 먼저 DB를 생성한 경우를 처리
+            await EnsureVectorsTableExistsAsync(cancellationToken);
+
             _initialized = true;
         }
         finally
@@ -46,7 +53,34 @@ public class SQLiteVectorStore : IVectorStore
         }
     }
 
-    public async Task<string> StoreAsync(DocumentChunk chunk, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// vectors 테이블이 존재하도록 보장 (CREATE TABLE IF NOT EXISTS 사용)
+    /// </summary>
+    private async Task EnsureVectorsTableExistsAsync(CancellationToken cancellationToken)
+    {
+        // CREATE TABLE IF NOT EXISTS를 사용하여 테이블이 이미 존재하면 무시
+        var createTableSql = @"
+            CREATE TABLE IF NOT EXISTS vectors (
+                Id TEXT PRIMARY KEY NOT NULL,
+                DocumentId TEXT NOT NULL,
+                ChunkIndex INTEGER NOT NULL,
+                Content TEXT NOT NULL,
+                Embedding TEXT,
+                TokenCount INTEGER NOT NULL,
+                Metadata TEXT
+            )";
+
+        var createIndexSql1 = "CREATE INDEX IF NOT EXISTS IX_vectors_DocumentId ON vectors(DocumentId)";
+        var createIndexSql2 = "CREATE INDEX IF NOT EXISTS IX_vectors_ChunkIndex ON vectors(ChunkIndex)";
+
+        await _context.Database.ExecuteSqlRawAsync(createTableSql, cancellationToken);
+        await _context.Database.ExecuteSqlRawAsync(createIndexSql1, cancellationToken);
+        await _context.Database.ExecuteSqlRawAsync(createIndexSql2, cancellationToken);
+    }
+
+    #region VectorStoreBase Core Implementations
+
+    protected override async Task<string> StoreCoreAsync(DocumentChunk chunk, CancellationToken cancellationToken)
     {
         await EnsureInitializedAsync(cancellationToken);
 
@@ -67,140 +101,65 @@ public class SQLiteVectorStore : IVectorStore
         return id;
     }
 
-    public async Task<IEnumerable<string>> StoreBatchAsync(IEnumerable<DocumentChunk> chunks, CancellationToken cancellationToken = default)
+    protected override async Task<DocumentChunk?> GetCoreAsync(string id, CancellationToken cancellationToken)
     {
-        var ids = new List<string>();
-        foreach (var chunk in chunks)
-        {
-            var id = await StoreAsync(chunk, cancellationToken);
-            ids.Add(id);
-        }
-        return ids;
-    }
+        await EnsureInitializedAsync(cancellationToken);
 
-    public async Task<DocumentChunk?> GetAsync(string id, CancellationToken cancellationToken = default)
-    {
         var entity = await _context.Vectors
             .FirstOrDefaultAsync(v => v.Id == id, cancellationToken);
 
-        if (entity == null) return null;
-
-        return new DocumentChunk
-        {
-            Id = entity.Id,
-            DocumentId = entity.DocumentId,
-            ChunkIndex = entity.ChunkIndex,
-            Content = entity.Content,
-            Embedding = entity.Embedding,
-            TokenCount = entity.TokenCount,
-            Metadata = entity.Metadata
-        };
+        return entity == null ? null : MapToChunk(entity);
     }
 
-    public async Task<IEnumerable<DocumentChunk>> GetByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default)
-    {
-        var entities = await _context.Vectors
-            .Where(v => v.DocumentId == documentId)
-            .OrderBy(v => v.ChunkIndex)
-            .ToListAsync(cancellationToken);
-
-        return entities.Select(e => new DocumentChunk
-        {
-            Id = e.Id,
-            DocumentId = e.DocumentId,
-            ChunkIndex = e.ChunkIndex,
-            Content = e.Content,
-            Embedding = e.Embedding,
-            TokenCount = e.TokenCount,
-            Metadata = e.Metadata
-        });
-    }
-
-    public async Task<IEnumerable<DocumentChunk>> GetChunksByIdsAsync(IEnumerable<string> ids, CancellationToken cancellationToken = default)
-    {
-        var entities = await _context.Vectors
-            .Where(v => ids.Contains(v.Id))
-            .ToListAsync(cancellationToken);
-
-        return entities.Select(e => new DocumentChunk
-        {
-            Id = e.Id,
-            DocumentId = e.DocumentId,
-            ChunkIndex = e.ChunkIndex,
-            Content = e.Content,
-            Embedding = e.Embedding,
-            TokenCount = e.TokenCount,
-            Metadata = e.Metadata
-        });
-    }
-
-    public async Task<IEnumerable<DocumentChunk>> SearchAsync(
+    protected override async Task<IEnumerable<VectorSearchResult>> SearchCoreAsync(
         float[] queryEmbedding,
-        int topK = 10,
-        float minScore = 0.0f,
-        CancellationToken cancellationToken = default)
+        int topK,
+        CancellationToken cancellationToken)
     {
+        await EnsureInitializedAsync(cancellationToken);
+
         // Load all vectors for optimized in-memory search
         var entities = await _context.Vectors
             .Where(v => v.Embedding != null)
             .Select(v => new { v.Id, v.DocumentId, v.ChunkIndex, v.Content, v.Embedding, v.TokenCount, v.Metadata })
             .ToListAsync(cancellationToken);
 
-        if (!entities.Any()) return Enumerable.Empty<DocumentChunk>();
+        if (!entities.Any()) return [];
 
         // Pre-compute query magnitude for optimization
         var queryMagnitude = ComputeMagnitude(queryEmbedding);
-        if (queryMagnitude == 0) return Enumerable.Empty<DocumentChunk>();
+        if (queryMagnitude == 0) return [];
 
-        // Optimized similarity computation with early termination
-        var candidates = new List<(float score, object entity)>();
-        var threshold = minScore;
+        // Compute similarities using centralized utilities
+        var results = new List<VectorSearchResult>();
 
         foreach (var entity in entities)
         {
             if (entity.Embedding == null) continue;
 
-            var score = FastCosineSimilarity(queryEmbedding, entity.Embedding, queryMagnitude);
-
-            if (score >= threshold)
+            var score = ComputeFastCosineSimilarity(queryEmbedding, entity.Embedding, queryMagnitude);
+            var chunk = new DocumentChunk
             {
-                candidates.Add((score, entity));
+                Id = entity.Id,
+                DocumentId = entity.DocumentId,
+                ChunkIndex = entity.ChunkIndex,
+                Content = entity.Content,
+                Embedding = entity.Embedding,
+                TokenCount = entity.TokenCount,
+                Metadata = entity.Metadata
+            };
 
-                // Dynamic threshold adjustment for better performance
-                if (candidates.Count > topK * 2)
-                {
-                    candidates.Sort((a, b) => b.score.CompareTo(a.score));
-                    candidates = candidates.Take(topK).ToList();
-                    threshold = candidates.Last().score;
-                }
-            }
+            results.Add(new VectorSearchResult(chunk, score));
         }
 
-        // Final sorting and selection
-        var results = candidates
-            .OrderByDescending(c => c.score)
-            .Take(topK)
-            .Select(c =>
-            {
-                var e = c.entity;
-                var entityType = e.GetType();
-                return new DocumentChunk
-                {
-                    Id = (string)entityType.GetProperty("Id")!.GetValue(e)!,
-                    DocumentId = (string)entityType.GetProperty("DocumentId")!.GetValue(e)!,
-                    ChunkIndex = (int)entityType.GetProperty("ChunkIndex")!.GetValue(e)!,
-                    Content = (string)entityType.GetProperty("Content")!.GetValue(e)!,
-                    Embedding = (float[])entityType.GetProperty("Embedding")!.GetValue(e)!,
-                    TokenCount = (int)entityType.GetProperty("TokenCount")!.GetValue(e)!,
-                    Metadata = (Dictionary<string, object>?)entityType.GetProperty("Metadata")!.GetValue(e)
-                };
-            });
-
-        return results;
+        // Return all results - filtering and sorting handled by base class
+        return results.OrderByDescending(r => r.Score).Take(topK * 2);
     }
 
-    public async Task<bool> DeleteAsync(string id, CancellationToken cancellationToken = default)
+    protected override async Task<bool> DeleteCoreAsync(string id, CancellationToken cancellationToken)
     {
+        await EnsureInitializedAsync(cancellationToken);
+
         var entity = await _context.Vectors
             .FirstOrDefaultAsync(v => v.Id == id, cancellationToken);
 
@@ -211,32 +170,10 @@ public class SQLiteVectorStore : IVectorStore
         return true;
     }
 
-    public async Task<bool> DeleteByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default)
+    protected override async Task<bool> UpdateCoreAsync(DocumentChunk chunk, CancellationToken cancellationToken)
     {
-        var entities = await _context.Vectors
-            .Where(v => v.DocumentId == documentId)
-            .ToListAsync(cancellationToken);
+        await EnsureInitializedAsync(cancellationToken);
 
-        if (!entities.Any()) return false;
-
-        _context.Vectors.RemoveRange(entities);
-        await _context.SaveChangesAsync(cancellationToken);
-        return true;
-    }
-
-    public async Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default)
-    {
-        return await _context.Vectors
-            .AnyAsync(v => v.Id == id, cancellationToken);
-    }
-
-    public async Task<DocumentChunk?> GetByIdAsync(string id, CancellationToken cancellationToken = default)
-    {
-        return await GetAsync(id, cancellationToken);
-    }
-
-    public async Task<bool> UpdateAsync(DocumentChunk chunk, CancellationToken cancellationToken = default)
-    {
         var entity = await _context.Vectors
             .FirstOrDefaultAsync(v => v.Id == chunk.Id, cancellationToken);
 
@@ -251,74 +188,95 @@ public class SQLiteVectorStore : IVectorStore
         return true;
     }
 
-    public async Task<int> CountAsync(CancellationToken cancellationToken = default)
+    protected override async Task<IEnumerable<DocumentChunk>> GetByDocumentIdCoreAsync(
+        string documentId,
+        CancellationToken cancellationToken)
     {
+        await EnsureInitializedAsync(cancellationToken);
+
+        var entities = await _context.Vectors
+            .Where(v => v.DocumentId == documentId)
+            .OrderBy(v => v.ChunkIndex)
+            .ToListAsync(cancellationToken);
+
+        return entities.Select(MapToChunk);
+    }
+
+    protected override async Task<bool> DeleteByDocumentIdCoreAsync(
+        string documentId,
+        CancellationToken cancellationToken)
+    {
+        await EnsureInitializedAsync(cancellationToken);
+
+        var entities = await _context.Vectors
+            .Where(v => v.DocumentId == documentId)
+            .ToListAsync(cancellationToken);
+
+        if (!entities.Any()) return false;
+
+        _context.Vectors.RemoveRange(entities);
+        await _context.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    protected override async Task<int> CountCoreAsync(CancellationToken cancellationToken)
+    {
+        await EnsureInitializedAsync(cancellationToken);
         return await _context.Vectors.CountAsync(cancellationToken);
     }
 
-    public async Task<int> GetCountAsync(CancellationToken cancellationToken = default)
+    protected override async Task ClearCoreAsync(CancellationToken cancellationToken)
     {
-        return await CountAsync(cancellationToken);
-    }
-
-    public async Task ClearAsync(CancellationToken cancellationToken = default)
-    {
+        await EnsureInitializedAsync(cancellationToken);
         _context.Vectors.RemoveRange(_context.Vectors);
         await _context.SaveChangesAsync(cancellationToken);
     }
 
-    private static float CosineSimilarity(float[] a, float[] b)
+    #endregion
+
+    #region Overrides for Batch Optimization
+
+    public override async Task<IEnumerable<DocumentChunk>> GetChunksByIdsAsync(
+        IEnumerable<string> ids,
+        CancellationToken cancellationToken = default)
     {
-        if (a.Length != b.Length) return 0f;
+        await EnsureInitializedAsync(cancellationToken);
 
-        float dotProduct = 0f;
-        float magnitudeA = 0f;
-        float magnitudeB = 0f;
+        var idList = ids.ToList();
+        var entities = await _context.Vectors
+            .Where(v => idList.Contains(v.Id))
+            .ToListAsync(cancellationToken);
 
-        for (int i = 0; i < a.Length; i++)
-        {
-            dotProduct += a[i] * b[i];
-            magnitudeA += a[i] * a[i];
-            magnitudeB += b[i] * b[i];
-        }
-
-        var magnitude = (float)Math.Sqrt(magnitudeA) * (float)Math.Sqrt(magnitudeB);
-        return magnitude == 0 ? 0 : dotProduct / magnitude;
+        return entities.Select(MapToChunk);
     }
 
-    /// <summary>
-    /// Optimized cosine similarity computation when query magnitude is pre-computed
-    /// </summary>
-    private static float FastCosineSimilarity(float[] query, float[] candidate, float queryMagnitude)
+    public override async Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default)
     {
-        if (query.Length != candidate.Length || queryMagnitude == 0) return 0f;
+        await EnsureInitializedAsync(cancellationToken);
 
-        float dotProduct = 0f;
-        float candidateMagnitude = 0f;
-
-        // Single loop for both dot product and candidate magnitude
-        for (int i = 0; i < query.Length; i++)
-        {
-            dotProduct += query[i] * candidate[i];
-            candidateMagnitude += candidate[i] * candidate[i];
-        }
-
-        candidateMagnitude = (float)Math.Sqrt(candidateMagnitude);
-        return candidateMagnitude == 0 ? 0 : dotProduct / (queryMagnitude * candidateMagnitude);
+        if (string.IsNullOrWhiteSpace(id)) return false;
+        return await _context.Vectors.AnyAsync(v => v.Id == id, cancellationToken);
     }
 
-    /// <summary>
-    /// Pre-compute vector magnitude for optimization
-    /// </summary>
-    private static float ComputeMagnitude(float[] vector)
+    #endregion
+
+    #region Private Helper Methods
+
+    private static DocumentChunk MapToChunk(VectorEntity entity)
     {
-        float sum = 0f;
-        for (int i = 0; i < vector.Length; i++)
+        return new DocumentChunk
         {
-            sum += vector[i] * vector[i];
-        }
-        return (float)Math.Sqrt(sum);
+            Id = entity.Id,
+            DocumentId = entity.DocumentId,
+            ChunkIndex = entity.ChunkIndex,
+            Content = entity.Content,
+            Embedding = entity.Embedding,
+            TokenCount = entity.TokenCount,
+            Metadata = entity.Metadata
+        };
     }
+
+    #endregion
 }
 
 /// <summary>

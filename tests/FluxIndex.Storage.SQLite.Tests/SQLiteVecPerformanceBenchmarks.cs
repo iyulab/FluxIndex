@@ -17,6 +17,7 @@ namespace FluxIndex.Storage.SQLite.Tests;
 /// <summary>
 /// SQLite-vec 성능 벤치마크 및 비교 테스트
 /// </summary>
+[Collection("SQLite Tests")]
 [MemoryDiagnoser]
 [SimpleJob(BenchmarkDotNet.Jobs.RuntimeMoniker.Net90)]
 public class SQLiteVecPerformanceBenchmarks

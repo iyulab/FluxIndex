@@ -16,6 +16,7 @@ namespace FluxIndex.Storage.SQLite.Tests;
 /// <summary>
 /// SQLite-vec 벡터 저장소 테스트
 /// </summary>
+[Collection("SQLite Tests")]
 public class SQLiteVecVectorStoreTests : IDisposable
 {
     private readonly ITestOutputHelper _output;
@@ -26,14 +27,25 @@ public class SQLiteVecVectorStoreTests : IDisposable
     public SQLiteVecVectorStoreTests(ITestOutputHelper output)
     {
         _output = output;
-        _testDatabasePath = Path.Combine(Path.GetTempPath(), $"fluxindex_test_{Guid.NewGuid()}.db");
+        // 테스트 격리를 위해 고유한 데이터베이스 이름 사용
+        _testDatabasePath = $"test_{Guid.NewGuid():N}.db";
 
-        _options = SQLiteVecOptions.CreateForTesting(useSqliteVec: false); // 테스트에서는 폴백 모드 사용
+        _options = SQLiteVecOptions.CreateForTesting(useSqliteVec: false);
         _options.DatabasePath = _testDatabasePath;
 
         var services = new ServiceCollection();
         services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Warning));
-        services.AddSQLiteVecInMemoryVectorStore(); // 인메모리 테스트
+        
+        // 고유한 데이터베이스 경로를 사용하여 테스트 격리 보장
+        services.AddSQLiteVecVectorStore(options =>
+        {
+            options.UseInMemory = true;
+            options.VectorDimension = 384;
+            options.UseSQLiteVec = false;
+            options.AutoMigrate = true;
+            options.FallbackToInMemoryOnError = true;
+            options.DatabasePath = _testDatabasePath;
+        });
 
         _serviceProvider = services.BuildServiceProvider();
     }
@@ -460,14 +472,15 @@ public class SQLiteVecExtensionLoaderTests : IDisposable
         var services = new ServiceCollection();
         services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Warning));
 
-        // 테스트용 옵션 설정 (확장 없이)
+        // 테스트용 옵션 설정 - 실제 확장 로더 사용
         services.Configure<SQLiteVecOptions>(options =>
         {
-            options.UseSQLiteVec = false;
+            options.UseSQLiteVec = true;
             options.FallbackToInMemoryOnError = true;
         });
 
-        services.AddScoped<ISQLiteVecExtensionLoader, NoOpSQLiteVecExtensionLoader>();
+        // 실제 로더 사용하여 경로 탐지 테스트
+        services.AddScoped<ISQLiteVecExtensionLoader, SQLiteVecExtensionLoader>();
 
         _serviceProvider = services.BuildServiceProvider();
     }
@@ -499,7 +512,7 @@ public class SQLiteVecExtensionLoaderTests : IDisposable
     }
 
     [SkippableFact]
-    public void ExtensionFileExists_WithoutExtension_ShouldReturnFalse()
+    public void ExtensionFileExists_WithValidPath_ShouldReturnTrue()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
 
@@ -509,8 +522,8 @@ public class SQLiteVecExtensionLoaderTests : IDisposable
         // Act
         var exists = loader.ExtensionFileExists();
 
-        // Assert - 테스트 환경에서는 확장 파일이 없어야 함
-        exists.Should().BeFalse();
+        // Assert - sqlite-vec가 활성화되면 확장 파일이 있어야 함
+        exists.Should().BeTrue("because sqlite-vec extension should be available from NuGet cache");
     }
 
     public void Dispose()

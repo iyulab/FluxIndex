@@ -116,7 +116,15 @@ public class SQLiteOptions
             if (DatabasePath.Contains(';'))
                 return DatabasePath;
 
-            return "Data Source=:memory:";
+            // Use a shared in-memory database to allow multiple DbContext instances
+            // to access the same data. Without Cache=Shared, each connection gets its own database.
+            // For test isolation, use unique DatabasePath values (e.g., "test_guid.db").
+            var dbName = Path.GetFileNameWithoutExtension(DatabasePath);
+            if (string.IsNullOrEmpty(dbName))
+            {
+                dbName = "fluxindex";
+            }
+            return $"Data Source=file:{dbName}?mode=memory&cache=shared";
         }
 
         return $"Data Source={DatabasePath}";
