@@ -333,6 +333,11 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
             chunk.Metadata[key] = GetPayloadString(payload, kv.Key);
         }
 
+        // Include standard fields in metadata for consumer apps (RAG source citation)
+        chunk.Metadata["chunkIndex"] = chunk.ChunkIndex;
+        chunk.Metadata["totalChunks"] = chunk.TotalChunks;
+        chunk.Metadata["tokenCount"] = chunk.TokenCount;
+
         return chunk;
     }
 
@@ -399,6 +404,11 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
             var key = kv.Key[5..];
             chunk.Metadata[key] = GetPayloadString(payload, kv.Key);
         }
+
+        // Include standard fields in metadata for consumer apps (RAG source citation)
+        chunk.Metadata["chunkIndex"] = chunk.ChunkIndex;
+        chunk.Metadata["totalChunks"] = chunk.TotalChunks;
+        chunk.Metadata["tokenCount"] = chunk.TokenCount;
 
         return chunk;
     }

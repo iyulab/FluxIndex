@@ -426,6 +426,60 @@ public class QdrantVectorStoreIntegrationTests : IAsyncLifetime
         result!.Metadata.Should().ContainKey("author");
     }
 
+    [SkippableFact]
+    public async Task GetByIdAsync_ReturnsChunkIndex_InMetadata()
+    {
+        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+
+        // Arrange
+        var chunk = CreateTestChunk();
+        chunk.ChunkIndex = 5;
+        chunk.TotalChunks = 10;
+        chunk.TokenCount = 150;
+        await _vectorStore.StoreAsync(chunk);
+
+        // Act
+        var result = await _vectorStore.GetByIdAsync(chunk.Id);
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.ChunkIndex.Should().Be(5);
+        result.Metadata.Should().ContainKey("chunkIndex");
+        result.Metadata["chunkIndex"].Should().Be(5);
+        result.Metadata.Should().ContainKey("totalChunks");
+        result.Metadata["totalChunks"].Should().Be(10);
+        result.Metadata.Should().ContainKey("tokenCount");
+        result.Metadata["tokenCount"].Should().Be(150);
+    }
+
+    [SkippableFact]
+    public async Task SearchAsync_ReturnsChunkIndex_InMetadata()
+    {
+        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+
+        // Arrange
+        var embedding = CreateTestEmbedding();
+        var chunk = CreateTestChunk(embedding: embedding);
+        chunk.ChunkIndex = 8;
+        chunk.TotalChunks = 15;
+        chunk.TokenCount = 200;
+        await _vectorStore.StoreAsync(chunk);
+
+        // Act
+        var results = (await _vectorStore.SearchAsync(embedding, topK: 1)).ToList();
+
+        // Assert
+        results.Should().HaveCount(1);
+        var result = results.First();
+        result.ChunkIndex.Should().Be(8);
+        result.Metadata.Should().ContainKey("chunkIndex");
+        result.Metadata!["chunkIndex"].Should().Be(8);
+        result.Metadata.Should().ContainKey("totalChunks");
+        result.Metadata["totalChunks"].Should().Be(15);
+        result.Metadata.Should().ContainKey("tokenCount");
+        result.Metadata["tokenCount"].Should().Be(200);
+    }
+
     #endregion
 }
 
