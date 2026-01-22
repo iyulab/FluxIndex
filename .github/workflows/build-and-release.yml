@@ -1,17 +1,23 @@
 name: Build & Release
 
 on:
-  # Tests 워크플로우 완료 후 실행 (순차 실행)
-  workflow_run:
-    workflows: ["Tests"]
-    types: [completed]
+  # 직접 push 시 실행
+  push:
     branches: [main]
+    paths:
+      - 'Directory.Build.props'
+      - 'src/**'
 
   # 수동 실행 가능
   workflow_dispatch:
     inputs:
       force_publish:
         description: 'Force publish to NuGet (even if version exists)'
+        required: false
+        default: false
+        type: boolean
+      skip_tests:
+        description: 'Skip tests for faster deployment'
         required: false
         default: false
         type: boolean
@@ -30,10 +36,6 @@ env:
 jobs:
   build-test-release:
     runs-on: ubuntu-latest
-    # Tests 성공 시에만 실행 (workflow_dispatch는 항상 실행)
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
 
     steps:
     - name: Checkout
@@ -41,29 +43,12 @@ jobs:
       with:
         fetch-depth: 0
 
-    # Check if Directory.Build.props was changed (for workflow_run trigger)
-    - name: Check for version file changes
+    # Always run for push and workflow_dispatch
+    - name: Set run flags
       id: changes
       run: |
-        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-          echo "should_run=true" >> $GITHUB_OUTPUT
-          echo "📦 Manual trigger - will run"
-        else
-          # Get changed files from the triggering commit
-          COMMIT_SHA="${{ github.event.workflow_run.head_sha }}"
-          echo "🔍 Checking changes in commit: $COMMIT_SHA"
-
-          CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r $COMMIT_SHA 2>/dev/null || echo "")
-          echo "Changed files: $CHANGED_FILES"
-
-          if echo "$CHANGED_FILES" | grep -q "Directory.Build.props"; then
-            echo "should_run=true" >> $GITHUB_OUTPUT
-            echo "✅ Directory.Build.props changed - will run"
-          else
-            echo "should_run=false" >> $GITHUB_OUTPUT
-            echo "⏭️ Directory.Build.props not changed - skipping"
-          fi
-        fi
+        echo "should_run=true" >> $GITHUB_OUTPUT
+        echo "📦 Trigger: ${{ github.event_name }}"
 
     - name: Setup .NET
       if: steps.changes.outputs.should_run == 'true'
@@ -116,7 +101,7 @@ jobs:
         echo "✅ Build completed successfully"
 
     - name: Run tests
-      if: steps.changes.outputs.should_run == 'true'
+      if: github.event.inputs.skip_tests != 'true'
       run: |
         echo "🧪 Running CI-safe tests (excluding Docker-based tests)..."
         echo "⚠️ Excluded projects (require Docker/Testcontainers):"
@@ -144,6 +129,10 @@ jobs:
         done
 
         echo "✅ CI-safe tests completed"
+
+    - name: Skip tests notice
+      if: github.event.inputs.skip_tests == 'true'
+      run: echo "⏭️ Tests skipped by user request"
 
     # Create NuGet packages (only src projects)
     - name: Create packages
