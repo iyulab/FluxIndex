@@ -392,14 +392,40 @@ public class FileFluxIntegration
 
     private FluxIndexDocumentChunk ConvertToFluxIndexChunk(FileFluxChunk fileFluxChunk, int chunkIndex, string filePath)
     {
+        var documentId = Path.GetFileNameWithoutExtension(filePath);
         var fluxChunk = new FluxIndexDocumentChunk(fileFluxChunk.Content, chunkIndex)
         {
-            DocumentId = Path.GetFileNameWithoutExtension(filePath),
+            DocumentId = documentId,
             TokenCount = fileFluxChunk.Tokens
         };
 
-        // Map FileFlux chunk metadata to FluxIndex
+        // Initialize metadata dictionary
         fluxChunk.Metadata ??= new Dictionary<string, object>();
+
+        // ============================================================
+        // Standard RAG metadata (no prefix) - for consumer applications
+        // These fields enable source citation display in RAG responses
+        // ============================================================
+        fluxChunk.Metadata["documentId"] = documentId;
+        fluxChunk.Metadata["fileName"] = Path.GetFileName(filePath);
+        fluxChunk.Metadata["filePath"] = filePath;
+        fluxChunk.Metadata["chunkIndex"] = chunkIndex;
+
+        // Determine title from available sources (priority order)
+        var title = fileFluxChunk.Metadata?.Title
+                 ?? fileFluxChunk.SourceInfo?.Title
+                 ?? Path.GetFileNameWithoutExtension(filePath);
+        fluxChunk.Metadata["title"] = title;
+
+        // Page number if available (for PDFs, Word docs)
+        if (fileFluxChunk.Location?.StartPage.HasValue == true)
+        {
+            fluxChunk.Metadata["pageNumber"] = fileFluxChunk.Location.StartPage.Value;
+        }
+
+        // ============================================================
+        // FileFlux internal metadata (ff_ prefix) - for debugging/analysis
+        // ============================================================
         fluxChunk.Metadata["ff_chunk_id"] = fileFluxChunk.Id;
         fluxChunk.Metadata["ff_chunk_index"] = fileFluxChunk.Index;
         fluxChunk.Metadata["ff_quality_score"] = fileFluxChunk.Quality;
