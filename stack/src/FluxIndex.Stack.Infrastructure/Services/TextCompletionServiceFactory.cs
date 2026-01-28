@@ -1,16 +1,14 @@
 using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.SDK.AI.Local;
-using FluxIndex.SDK.AI.Local.Services;
 using FluxIndex.Stack.Application.Interfaces.Services;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace FluxIndex.Stack.Infrastructure.Services;
 
 /// <summary>
 /// Factory for creating text completion service providers based on configuration.
-/// Supports LMSupply (local), OpenAI, Azure OpenAI, and mock providers.
+/// Supports OpenAI, Azure OpenAI, and mock providers.
+/// Local text completion via LMSupply.Generator is planned for future implementation.
 /// </summary>
 public class TextCompletionServiceFactory : ITextCompletionServiceFactory
 {
@@ -58,13 +56,13 @@ public class TextCompletionServiceFactory : ITextCompletionServiceFactory
             return CreateLocalProviderAsync(modelName, cancellationToken);
         }
 
-        // If no API key is provided, fall back to local LMSupply
+        // If no API key is provided, fall back to mock
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             _logger.LogWarning(
-                "No API key provided for {Provider}. Falling back to LMSupply local text completion.",
+                "No API key provided for {Provider}. Falling back to mock text completion.",
                 providerName);
-            return CreateLocalProviderAsync(modelName, cancellationToken);
+            return Task.FromResult<ITextCompletionService>(new MockTextCompletionService());
         }
 
         return normalizedProvider switch
@@ -84,22 +82,16 @@ public class TextCompletionServiceFactory : ITextCompletionServiceFactory
         var effectiveModel = MapToLMSupplyModel(modelName);
 
         _logger.LogInformation(
-            "Creating LMSupply local text completion provider with model: {Model}",
+            "Creating local text completion provider with model: {Model}",
             effectiveModel);
 
-        var options = new LMSupplyTextCompletionOptions
-        {
-            ModelId = effectiveModel,
-            MaxContextLength = 4096,
-            TopP = 0.95f
-        };
+        // TODO: Implement LMSupply.Generator integration
+        // For now, return mock service
+        _logger.LogWarning(
+            "LMSupply.Generator integration not yet implemented. Using mock text completion. " +
+            "External providers (OpenAI, Azure) are recommended for production use.");
 
-        var serviceLogger = _loggerFactory.CreateLogger<LMSupplyTextCompletionService>();
-        var service = new LMSupplyTextCompletionService(
-            Options.Create(options),
-            serviceLogger);
-
-        return Task.FromResult<ITextCompletionService>(service);
+        return Task.FromResult<ITextCompletionService>(new MockTextCompletionService());
     }
 
     private Task<ITextCompletionService> CreateExternalProviderAsync(
@@ -108,15 +100,15 @@ public class TextCompletionServiceFactory : ITextCompletionServiceFactory
         string? endpointUrl,
         CancellationToken cancellationToken)
     {
-        // For now, fall back to local provider
+        // For now, fall back to mock provider
         // TODO: Implement external provider support via FluxIndex.Core interfaces
         _logger.LogWarning(
             "External text completion providers require consumer implementation. " +
-            "Falling back to LMSupply local completion. " +
+            "Falling back to mock completion. " +
             "Requested: Model={Model}, Endpoint={Endpoint}",
             modelName, endpointUrl ?? "default");
 
-        return CreateLocalProviderAsync(modelName, cancellationToken);
+        return Task.FromResult<ITextCompletionService>(new MockTextCompletionService());
     }
 
     private static string MapToLMSupplyModel(string? modelName)

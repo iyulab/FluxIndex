@@ -2,7 +2,6 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services;
 using FluxIndex.SDK;
 using FluxIndex.SDK.Configuration;
-using FluxIndex.SDK.AI.Local;
 using FluxIndex.SDK.Extensions;
 using FluxIndex.Storage.PostgreSQL;
 using FluxIndex.Cache.Redis.Extensions;
@@ -143,11 +142,11 @@ public static class FluxIndexServiceExtensions
                 var dbPath = string.IsNullOrEmpty(connectionString)
                     ? "fluxindex.db"
                     : connectionString;
-                builder.UseSQLite(dbPath);
+                builder.UseLocalStorage(dbPath);
                 break;
 
             case "inmemory":
-                builder.UseSQLiteInMemory();
+                builder.UseLocalStorage(":memory:");
                 break;
 
             default:
@@ -168,48 +167,26 @@ public static class FluxIndexServiceExtensions
 
     /// <summary>
     /// Configure embedding service based on AI provider setting.
-    /// Stack uses dynamic embedding provider from database settings.
-    /// This method configures the underlying SDK embedding as fallback.
+    /// Stack uses DynamicEmbeddingProvider from database settings for actual embeddings.
+    /// This method configures InMemory embedding as fallback for SDK internal operations.
+    /// Real embedding is handled by IEmbeddingServiceFactory and DynamicEmbeddingProvider.
     /// </summary>
     private static void ConfigureEmbeddingService(
         FluxIndexContextBuilder builder,
         FluxIndexOptions options)
     {
+        // Stack uses DynamicEmbeddingProvider for actual embedding operations
+        // SDK embedding is used as fallback for internal operations only
+        // All real embedding is delegated to IEmbeddingServiceFactory implementations
+        builder.UseInMemoryEmbedding();
+
         var provider = options.Embedding.Provider?.ToLowerInvariant();
-        var modelName = options.Embedding.ModelName;
-
-        switch (provider)
+        if (!string.IsNullOrEmpty(provider) && provider != "inmemory")
         {
-            case "lmsupply":
-            case "local":
-            case "localembedder":
-                // Use LMSupply local ONNX-based embeddings (no API key required)
-                var localModel = string.IsNullOrEmpty(modelName)
-                    ? "default"
-                    : modelName;
-                builder.UseLMSupplyEmbedding(localModel);
-                break;
-
-            case "multilingual":
-                // Use multilingual LMSupply embedder
-                builder.UseLMSupplyMultilingual();
-                break;
-
-            case "inmemory":
-                // For testing only
-                builder.UseInMemoryEmbedding();
-                break;
-
-            default:
-                // Default to LMSupply for better developer experience (no API keys needed)
-                // External providers (OpenAI, Azure, etc.) are handled by DynamicEmbeddingProvider
-                // which reads settings from the database
-                Console.WriteLine(
-                    $"[FluxIndex] Provider '{provider ?? "default"}' configured. " +
-                    "Using LMSupply as base embedding. " +
-                    "Configure AI providers in Settings UI for external API access.");
-                builder.UseLMSupplyEmbedding("default");
-                break;
+            Console.WriteLine(
+                $"[FluxIndex] Provider '{provider}' configured. " +
+                "Embedding is handled by DynamicEmbeddingProvider. " +
+                "Configure AI providers in Settings UI for external API access.");
         }
     }
 
@@ -486,18 +463,18 @@ public static class FluxIndexServiceExtensions
     {
         return services.AddFluxIndexSDK(builder =>
         {
-            // Use SQLite in-memory by default for development
+            // Use local storage (SQLite) for development - Vector + Graph + Cache all included
             if (string.IsNullOrEmpty(connectionString))
             {
-                builder.UseSQLiteInMemory();
+                builder.UseLocalStorage("fluxindex-dev.db");
             }
             else
             {
                 builder.UsePostgreSQL(connectionString);
             }
 
-            // Use LMSupply embedding (no API keys needed)
-            builder.UseLMSupplyEmbedding("fast");
+            // Use InMemory embedding as fallback (actual embedding via DynamicEmbeddingProvider)
+            builder.UseInMemoryEmbedding();
 
             // Memory cache for development
             builder.UseMemoryCache(1000);

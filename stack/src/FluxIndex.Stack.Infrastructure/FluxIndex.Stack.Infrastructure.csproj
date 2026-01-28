@@ -20,6 +20,8 @@
     <PackageReference Include="Pgvector.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" />
     <PackageReference Include="StackExchange.Redis" />
+    <!-- LMSupply for local embedding (consumer app direct reference) -->
+    <PackageReference Include="LMSupply.Embedder" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -1,5 +1,4 @@
 ﻿using FileFlux;
-using FluxIndex.SDK.AI.Local;
 using FluxIndex.Cache.Redis.Extensions;
 using FluxIndex.Cache.Redis.Configuration;
 using FluxIndex.Core.Application.Interfaces;
@@ -321,6 +320,8 @@ public static class ServiceCollectionExtensions
 
     /// <summary>
     /// Adds LocalReranker cross-encoder based semantic reranking.
+    /// TODO: Implement LMSupply.Reranker integration directly in Stack
+    /// following the consumer app pattern (direct package reference instead of SDK wrapper).
     /// </summary>
     public static IServiceCollection AddLocalRerankerService(
         this IServiceCollection services,
@@ -328,29 +329,15 @@ public static class ServiceCollectionExtensions
     {
         var section = configuration.GetSection("LocalReranker");
 
-        // Register ResilientLMSupplyReranker with warmup and fallback
-        services.AddResilientLMSupplyRerankerWithWarmup(options =>
+        // TODO: LMSupply.Reranker integration planned for future implementation
+        // Stack should directly reference LMSupply.Reranker and implement a wrapper
+        // similar to EmbeddingServiceFactory pattern
+        if (section.Exists() && section.GetValue<bool>("Enabled", false))
         {
-            if (section.Exists())
-            {
-                options.ModelId = section.GetValue<string>("ModelId") ?? "default";
-                options.BatchSize = section.GetValue<int>("BatchSize", 32);
-                options.WarmupOnStartup = section.GetValue<bool>("WarmupOnStartup", true);
-
-                // Use ExecutionProvider instead of UseGpu
-                var useGpu = section.GetValue<bool>("UseGpu", false);
-                if (useGpu)
-                {
-                    options.ExecutionProvider = LMSupplyExecutionProvider.Auto;
-                }
-
-                var cacheDir = section.GetValue<string>("CacheDirectory");
-                if (!string.IsNullOrEmpty(cacheDir))
-                {
-                    options.CacheDirectory = cacheDir;
-                }
-            }
-        });
+            Console.WriteLine(
+                "[FluxIndex] LocalReranker configuration detected but not yet implemented. " +
+                "Consider using Core's IRerankingService with external API providers.");
+        }
 
         return services;
     }

@@ -141,11 +141,21 @@ Advanced custom configuration using the builder pattern.
 ```csharp
 services.AddFluxIndexSDK(builder =>
 {
+    // Local mode (SQLite handles all storage)
+    builder.UseLocalStorage("fluxindex.db");
+
+    // Or PostgreSQL mode
     builder.UsePostgreSQL(connectionString);
-    builder.UseOpenAI(apiKey, "text-embedding-3-small");
-    builder.UseRedisCache(redisConnection);
-    builder.WithQualityMonitoring(enableAlerts: true);
-    builder.WithChunking("Auto", chunkSize: 1024, overlap: 128);
+
+    // Add specialized providers (auto-maximize)
+    builder.UseQdrant("localhost", 6334, "chunks", 1536);  // Vector (overrides PostgreSQL vector)
+    builder.UseNeo4j("bolt://localhost:7687", "neo4j", "password");  // Graph (overrides PostgreSQL graph)
+
+    // Or best-in-class preset (PostgreSQL + Qdrant + Neo4j)
+    builder.UseBestInClass(
+        postgresConnectionString,
+        qdrant => { qdrant.Host = "localhost"; qdrant.Port = 6334; },
+        neo4j => { neo4j.Uri = "bolt://localhost:7687"; });
 });
 ```
 
@@ -500,18 +510,32 @@ catch (InvalidOperationException ex)
 **Before** (manual FluxIndexContextBuilder):
 ```csharp
 var builder = new FluxIndexContextBuilder();
-builder.UsePostgreSQL(connectionString);
-builder.UseOpenAI(apiKey, model);
-builder.UseRedisCache(redisConnection);
+builder.UseSQLite(dbPath);           // ❌ Old API
+builder.UsePostgreSQLGraph();        // ❌ Removed (auto-maximize now)
+builder.WithoutGraph();              // ❌ Removed (features can't be disabled)
 var context = builder.Build();
 services.AddSingleton(context);
 ```
 
-**After** (extension method):
+**After** (new storage architecture v0.x):
 ```csharp
+var builder = new FluxIndexContextBuilder();
+builder.UseLocalStorage(dbPath);     // ✅ SQLite handles all storage
+// Or: builder.UsePostgreSQL(connStr) for PostgreSQL mode
+// Graph, SemanticCache auto-enabled based on provider capabilities
+var context = builder.Build();
+services.AddSingleton(context);
+
+// Or use extension method with configuration:
 services.AddFluxIndexSDK(configuration);
-// Configuration moved to appsettings.json
 ```
+
+**New API Summary**:
+- `UseSQLite()` → `UseLocalStorage()` (SQLite handles Vector + Graph + RDB + Cache)
+- `UsePostgreSQLGraph()`, `UseSQLiteGraph()` → Removed (auto-determined by provider)
+- `WithoutGraph()`, `WithoutSemanticCache()`, `VectorOnly()` → Removed (can't disable features)
+- `UseNeo4jGraph()` → `UseNeo4j()` (specialized graph provider)
+- New: `UseBestInClass()` preset for PostgreSQL + Qdrant + Neo4j
 
 ## Architecture
 

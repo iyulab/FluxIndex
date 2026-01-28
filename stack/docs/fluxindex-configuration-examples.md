@@ -655,21 +655,51 @@ Use LocalEmbedder to eliminate API costs:
 
 ## Migration Guide
 
-### From Direct FluxIndexContextBuilder to Extension Method
+### From Old API to New Storage Architecture (v0.x)
 
-**Before**:
+The storage architecture has been redesigned with the principle that **RDB, VectorDB, and GraphDB are not toggle features** - they are auto-maximized based on configured providers.
+
+**Before** (old API):
 ```csharp
 var builder = new FluxIndexContextBuilder();
-builder.UsePostgreSQL(connectionString);
-builder.UseOpenAI(apiKey, "text-embedding-3-small");
+builder.UseSQLite(dbPath);           // ❌ Old API
+builder.UsePostgreSQLGraph();        // ❌ Removed
+builder.WithoutGraph();              // ❌ Removed
+builder.VectorOnly();                // ❌ Removed
 var context = builder.Build();
 ```
 
-**After**:
+**After** (new API):
 ```csharp
-services.AddFluxIndexSDK(configuration);
-// Context is now available via DI
+var builder = new FluxIndexContextBuilder();
+
+// Option 1: Local mode (SQLite handles all)
+builder.UseLocalStorage(dbPath);
+
+// Option 2: PostgreSQL mode
+builder.UsePostgreSQL(connectionString);
+
+// Option 3: Best-in-class (PostgreSQL + Qdrant + Neo4j)
+builder.UseBestInClass(
+    postgresConnectionString,
+    qdrant => { qdrant.Host = "localhost"; qdrant.Port = 6334; },
+    neo4j => { neo4j.Uri = "bolt://localhost:7687"; });
+
+var context = builder.Build();
 ```
+
+**API Changes Summary**:
+| Old API | New API | Notes |
+|---------|---------|-------|
+| `UseSQLite()` | `UseLocalStorage()` | SQLite handles Vector + Graph + RDB + Cache |
+| `UseSQLiteInMemory()` | `UseLocalStorage(":memory:")` | In-memory SQLite |
+| `UsePostgreSQLGraph()` | Removed | Auto-determined by provider |
+| `UseSQLiteGraph()` | Removed | Auto-determined by provider |
+| `WithoutGraph()` | Removed | Features can't be disabled |
+| `WithoutSemanticCache()` | Removed | Features can't be disabled |
+| `VectorOnly()` | Removed | Features can't be disabled |
+| `UseNeo4jGraph()` | `UseNeo4j()` | Specialized graph provider |
+| - | `UseBestInClass()` | New preset for production |
 
 ### From Manual DI Registration to Extension Method
 

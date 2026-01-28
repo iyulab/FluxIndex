@@ -1,16 +1,16 @@
 using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.SDK.AI.Local;
-using FluxIndex.SDK.AI.Local.Services;
 using FluxIndex.Stack.Application.Interfaces.Services;
+using LMSupply.Embedder;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace FluxIndex.Stack.Infrastructure.Services;
 
 /// <summary>
 /// Factory for creating embedding providers based on configuration.
 /// Supports LMSupply (local), OpenAI, Azure OpenAI, and other providers via Core interfaces.
+/// LMSupply package is directly referenced following FluxIndex SDK design principles
+/// (consumer app implements AI service wrappers).
 /// </summary>
 public class EmbeddingServiceFactory : IEmbeddingServiceFactory
 {
@@ -88,7 +88,7 @@ public class EmbeddingServiceFactory : IEmbeddingServiceFactory
         };
     }
 
-    public Task<IEmbeddingProvider> CreateLocalProviderAsync(
+    public async Task<IEmbeddingProvider> CreateLocalProviderAsync(
         string? modelName = null,
         CancellationToken cancellationToken = default)
     {
@@ -99,22 +99,18 @@ public class EmbeddingServiceFactory : IEmbeddingServiceFactory
             "Creating LMSupply local embedding provider with model: {Model}",
             effectiveModel);
 
-        var options = new LMSupplyEmbeddingOptions
+        try
         {
-            ModelId = effectiveModel,
-            ExecutionProvider = LMSupplyExecutionProvider.Auto,
-            PoolingMode = LMSupplyPoolingMode.Mean,
-            NormalizeEmbeddings = true
-        };
-
-        var serviceLogger = _loggerFactory.CreateLogger<LMSupplyEmbeddingService>();
-        var service = new LMSupplyEmbeddingService(
-            Options.Create(options),
-            serviceLogger,
-            _cache);
-
-        var provider = new EmbeddingServiceWrapper(service);
-        return Task.FromResult<IEmbeddingProvider>(provider);
+            // Use LMSupply.Embedder directly (consumer app pattern)
+            var embeddingModel = await LocalEmbedder.LoadAsync(effectiveModel, cancellationToken: cancellationToken);
+            var wrapper = new LMSupplyEmbeddingWrapper(embeddingModel, _logger);
+            return wrapper;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to load LMSupply embedding model {Model}", effectiveModel);
+            throw;
+        }
     }
 
     private Task<IEmbeddingProvider> CreateOpenAIProviderAsync(
@@ -165,29 +161,52 @@ public class EmbeddingServiceFactory : IEmbeddingServiceFactory
 }
 
 /// <summary>
-/// Wrapper that adapts IEmbeddingService (Core) to IEmbeddingProvider (Stack Application).
+/// Wrapper that adapts LMSupply IEmbeddingModel to IEmbeddingProvider (Stack Application).
+/// Consumer app pattern: directly wraps LMSupply without SDK intermediary.
 /// </summary>
-internal class EmbeddingServiceWrapper : IEmbeddingProvider
+internal class LMSupplyEmbeddingWrapper : IEmbeddingProvider, IAsyncDisposable
 {
-    private readonly IEmbeddingService _service;
+    private readonly IEmbeddingModel _model;
+    private readonly ILogger _logger;
 
-    public EmbeddingServiceWrapper(IEmbeddingService service)
+    public LMSupplyEmbeddingWrapper(IEmbeddingModel model, ILogger logger)
     {
-        _service = service ?? throw new ArgumentNullException(nameof(service));
+        _model = model ?? throw new ArgumentNullException(nameof(model));
+        _logger = logger;
     }
 
-    public int EmbeddingDimension => _service.GetEmbeddingDimension();
+    public int EmbeddingDimension => _model.Dimensions;
 
-    public string ModelName => _service.GetModelName();
+    public string ModelName => _model.ModelId;
 
     public async Task<float[]> GetEmbeddingAsync(string text, CancellationToken cancellationToken = default)
     {
-        return await _service.GenerateEmbeddingAsync(text, cancellationToken);
+        return await _model.EmbedAsync(text, cancellationToken);
     }
 
     public async Task<float[][]> GetEmbeddingsAsync(IEnumerable<string> texts, CancellationToken cancellationToken = default)
     {
-        var embeddings = await _service.GenerateEmbeddingsBatchAsync(texts, cancellationToken);
-        return embeddings.ToArray();
+        var textList = texts.ToList();
+        var results = new List<float[]>();
+
+        foreach (var text in textList)
+        {
+            var embedding = await _model.EmbedAsync(text, cancellationToken);
+            results.Add(embedding);
+        }
+
+        return results.ToArray();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_model is IAsyncDisposable asyncDisposable)
+        {
+            await asyncDisposable.DisposeAsync();
+        }
+        else if (_model is IDisposable disposable)
+        {
+            disposable.Dispose();
+        }
     }
 }
