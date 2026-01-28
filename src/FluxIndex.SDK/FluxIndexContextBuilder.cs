@@ -11,6 +11,8 @@ using FluxIndex.Storage.SQLite.Cache;
 using FluxIndex.Storage.PostgreSQL;
 using FluxIndex.Storage.PostgreSQL.Graph;
 using FluxIndex.Storage.PostgreSQL.Cache;
+using FluxIndex.Storage.Neo4j;
+using FluxIndex.Storage.Qdrant;
 using FluxIndex.Cache.Redis.Extensions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -184,138 +186,159 @@ public class FluxIndexContextBuilder
         return this;
     }
 
-    #region Component Disable Options
+    #region Local/Full Storage Modes
 
     /// <summary>
-    /// 그래프 저장소 비활성화 (Vector + SemanticCache만 사용)
+    /// Local 모드: SQLite가 모든 역할 수행 (기본값).
+    /// Vector + Graph + RDB + SemanticCache 모두 SQLite에서 처리.
+    /// 개발/테스트 환경에 적합.
     /// </summary>
-    public FluxIndexContextBuilder WithoutGraph()
+    public FluxIndexContextBuilder UseLocalStorage(string databasePath = "fluxindex.db")
     {
-        _options.GraphStore.Provider = "None";
+        // Vector Store
+        _options.VectorStore.Provider = "SQLite";
+        _options.VectorStore.ConnectionString = $"Data Source={databasePath}";
+
+        // Graph Store (동일 연결 사용)
+        _options.GraphStore.Provider = "SQLite";
+        _options.GraphStore.UseVectorStoreConnection = true;
+
+        // Semantic Cache (동일 연결 사용)
+        _options.SemanticCache.Provider = "SQLite";
+        _options.SemanticCache.UseVectorStoreConnection = true;
+
         return this;
     }
 
     /// <summary>
-    /// 시맨틱 캐시 비활성화 (Vector + Graph만 사용)
+    /// Best-in-class 프리셋: PostgreSQL(RDB/Cache) + Qdrant(Vector) + Neo4j(Graph).
+    /// 대규모 프로덕션 환경에 적합한 최고 성능 조합.
     /// </summary>
-    public FluxIndexContextBuilder WithoutSemanticCache()
+    public FluxIndexContextBuilder UseBestInClass(
+        string postgresConnectionString,
+        Action<QdrantOptions> qdrantConfigure,
+        Action<Neo4jOptions> neo4jConfigure)
     {
-        _options.SemanticCache.Provider = "None";
+        // PostgreSQL for RDB and Cache
+        _options.VectorStore.Provider = "PostgreSQL";
+        _options.VectorStore.ConnectionString = postgresConnectionString;
+        _options.SemanticCache.Provider = "PostgreSQL";
+        _options.SemanticCache.UseVectorStoreConnection = true;
+
+        // Qdrant for Vector (takes priority over PostgreSQL)
+        _options.VectorStore.Provider = "Qdrant";
+        _options.VectorStore.QdrantOptionsAction = qdrantConfigure;
+
+        // Neo4j for Graph (specialized graph DB)
+        _options.GraphStore.Provider = "Neo4j";
+        _options.GraphStore.Neo4jOptionsAction = neo4jConfigure;
+
         return this;
     }
 
     /// <summary>
-    /// Vector Store만 사용 (Graph + SemanticCache 비활성화)
+    /// Best-in-class 프리셋 (간단한 설정): PostgreSQL + Qdrant + Neo4j.
     /// </summary>
-    public FluxIndexContextBuilder VectorOnly()
+    public FluxIndexContextBuilder UseBestInClass(
+        string postgresConnectionString,
+        string qdrantHost, int qdrantPort, string qdrantCollection, int vectorSize,
+        string neo4jUri, string neo4jUsername, string neo4jPassword)
     {
-        _options.GraphStore.Provider = "None";
-        _options.SemanticCache.Provider = "None";
+        return UseBestInClass(
+            postgresConnectionString,
+            qdrant =>
+            {
+                qdrant.Host = qdrantHost;
+                qdrant.GrpcPort = qdrantPort;
+                qdrant.CollectionName = qdrantCollection;
+                qdrant.VectorSize = vectorSize;
+            },
+            neo4j =>
+            {
+                neo4j.Uri = neo4jUri;
+                neo4j.Username = neo4jUsername;
+                neo4j.Password = neo4jPassword;
+            });
+    }
+
+    #endregion
+
+    #region Neo4j Graph Store
+
+    /// <summary>
+    /// Neo4j 그래프 저장소 추가.
+    /// 기본 저장소(SQLite/PostgreSQL)의 Graph를 Neo4j로 대체.
+    /// </summary>
+    public FluxIndexContextBuilder UseNeo4j(string uri, string username, string password, string? database = null)
+    {
+        _options.GraphStore.Provider = "Neo4j";
+        _options.GraphStore.Neo4jUri = uri;
+        _options.GraphStore.Neo4jUsername = username;
+        _options.GraphStore.Neo4jPassword = password;
+        _options.GraphStore.Neo4jDatabase = database;
+        return this;
+    }
+
+    /// <summary>
+    /// Neo4j 그래프 저장소 추가 (옵션 설정).
+    /// </summary>
+    public FluxIndexContextBuilder UseNeo4j(Action<Neo4jOptions> configure)
+    {
+        _options.GraphStore.Provider = "Neo4j";
+        _options.GraphStore.Neo4jOptionsAction = configure;
         return this;
     }
 
     #endregion
 
-    #region Graph Store Configuration
+    #region Vector Store (Qdrant)
 
     /// <summary>
-    /// SQLite 그래프 저장소 사용 (벡터 저장소와 동일한 연결)
-    /// 청크 계층 구조 및 관계를 SQLite에 저장
+    /// Qdrant 벡터 저장소 사용
+    /// 고성능 벡터 DB로 대규모 임베딩 저장 및 검색
     /// </summary>
-    public FluxIndexContextBuilder UseSQLiteGraph()
+    public FluxIndexContextBuilder UseQdrant(string host = "localhost", int grpcPort = 6334, string collectionName = "fluxindex_chunks", int vectorSize = 1536)
     {
-        _options.GraphStore.Provider = "SQLite";
-        _options.GraphStore.UseVectorStoreConnection = true;
+        _options.VectorStore.Provider = "Qdrant";
+        _options.VectorStore.QdrantHost = host;
+        _options.VectorStore.QdrantGrpcPort = grpcPort;
+        _options.VectorStore.QdrantCollectionName = collectionName;
+        _options.VectorStore.QdrantVectorSize = vectorSize;
         return this;
     }
 
     /// <summary>
-    /// SQLite 그래프 저장소 사용 (별도 연결 문자열)
+    /// Qdrant 벡터 저장소 사용 (옵션 설정)
     /// </summary>
-    public FluxIndexContextBuilder UseSQLiteGraph(string connectionString)
+    public FluxIndexContextBuilder UseQdrant(Action<QdrantOptions> configure)
     {
-        _options.GraphStore.Provider = "SQLite";
-        _options.GraphStore.ConnectionString = connectionString;
-        _options.GraphStore.UseVectorStoreConnection = false;
+        _options.VectorStore.Provider = "Qdrant";
+        _options.VectorStore.QdrantOptionsAction = configure;
         return this;
     }
 
     /// <summary>
-    /// PostgreSQL 그래프 저장소 사용 (벡터 저장소와 동일한 연결)
-    /// JSONB 및 재귀 CTE를 활용한 그래프 저장
+    /// Qdrant Cloud 벡터 저장소 사용
     /// </summary>
-    public FluxIndexContextBuilder UsePostgreSQLGraph()
+    public FluxIndexContextBuilder UseQdrantCloud(string cloudHost, string apiKey, string collectionName = "fluxindex_chunks", int vectorSize = 1536)
     {
-        _options.GraphStore.Provider = "PostgreSQL";
-        _options.GraphStore.UseVectorStoreConnection = true;
-        return this;
-    }
-
-    /// <summary>
-    /// PostgreSQL 그래프 저장소 사용 (별도 연결 문자열)
-    /// </summary>
-    public FluxIndexContextBuilder UsePostgreSQLGraph(string connectionString)
-    {
-        _options.GraphStore.Provider = "PostgreSQL";
-        _options.GraphStore.ConnectionString = connectionString;
-        _options.GraphStore.UseVectorStoreConnection = false;
+        _options.VectorStore.Provider = "Qdrant";
+        _options.VectorStore.QdrantHost = cloudHost;
+        _options.VectorStore.QdrantApiKey = apiKey;
+        _options.VectorStore.QdrantUseHttps = true;
+        _options.VectorStore.QdrantCollectionName = collectionName;
+        _options.VectorStore.QdrantVectorSize = vectorSize;
         return this;
     }
 
     #endregion
 
-    #region Semantic Cache Configuration
+    #region Semantic Cache Options
 
     /// <summary>
-    /// SQLite 시맨틱 캐시 사용 (벡터 저장소와 동일한 연결)
-    /// 쿼리 유사도 기반 결과 캐싱
-    /// </summary>
-    public FluxIndexContextBuilder UseSQLiteSemanticCache(float similarityThreshold = 0.85f)
-    {
-        _options.SemanticCache.Provider = "SQLite";
-        _options.SemanticCache.UseVectorStoreConnection = true;
-        _options.SemanticCache.SimilarityThreshold = similarityThreshold;
-        return this;
-    }
-
-    /// <summary>
-    /// SQLite 시맨틱 캐시 사용 (별도 연결 문자열)
-    /// </summary>
-    public FluxIndexContextBuilder UseSQLiteSemanticCache(string connectionString, float similarityThreshold = 0.85f)
-    {
-        _options.SemanticCache.Provider = "SQLite";
-        _options.SemanticCache.ConnectionString = connectionString;
-        _options.SemanticCache.UseVectorStoreConnection = false;
-        _options.SemanticCache.SimilarityThreshold = similarityThreshold;
-        return this;
-    }
-
-    /// <summary>
-    /// PostgreSQL 시맨틱 캐시 사용 (벡터 저장소와 동일한 연결)
-    /// pgvector 활용 HNSW 인덱스로 빠른 유사도 검색
-    /// </summary>
-    public FluxIndexContextBuilder UsePostgreSQLSemanticCache(float similarityThreshold = 0.85f)
-    {
-        _options.SemanticCache.Provider = "PostgreSQL";
-        _options.SemanticCache.UseVectorStoreConnection = true;
-        _options.SemanticCache.SimilarityThreshold = similarityThreshold;
-        return this;
-    }
-
-    /// <summary>
-    /// PostgreSQL 시맨틱 캐시 사용 (별도 연결 문자열)
-    /// </summary>
-    public FluxIndexContextBuilder UsePostgreSQLSemanticCache(string connectionString, float similarityThreshold = 0.85f)
-    {
-        _options.SemanticCache.Provider = "PostgreSQL";
-        _options.SemanticCache.ConnectionString = connectionString;
-        _options.SemanticCache.UseVectorStoreConnection = false;
-        _options.SemanticCache.SimilarityThreshold = similarityThreshold;
-        return this;
-    }
-
-    /// <summary>
-    /// 시맨틱 캐시 고급 설정
+    /// 시맨틱 캐시 고급 설정.
+    /// SemanticCache는 UseLocalStorage/UsePostgreSQL/UseBestInClass에서 자동 활성화됨.
+    /// 이 메서드는 추가 설정이 필요한 경우에만 사용.
     /// </summary>
     public FluxIndexContextBuilder WithSemanticCacheOptions(Action<Configuration.SemanticCacheOptions> configure)
     {
@@ -552,6 +575,10 @@ public class FluxIndexContextBuilder
             var rankFusionService = serviceProvider.GetService<IRankFusionService>();
             var vectorQuantizer = serviceProvider.GetService<IVectorQuantizer>();
 
+            // Auto-detection services (optional - null if not registered)
+            var hybridSearchService = serviceProvider.GetService<IHybridSearchService>();
+            var graphRAGService = serviceProvider.GetService<IGraphRAGService>();
+
             return new Retriever(
                 vectorStore,
                 documentRepository,
@@ -560,7 +587,9 @@ public class FluxIndexContextBuilder
                 cacheService,
                 rankFusionService,
                 vectorQuantizer,
-                loggerFactory.CreateLogger<Retriever>()
+                loggerFactory.CreateLogger<Retriever>(),
+                hybridSearchService,
+                graphRAGService
             );
         });
 
@@ -575,6 +604,10 @@ public class FluxIndexContextBuilder
             // Get optional IMetadataExtractor if registered
             var metadataExtractor = serviceProvider.GetService<FluxIndex.Core.Interfaces.IMetadataExtractor>();
 
+            // Auto-detection services (optional - null if not registered)
+            var graphRAGService = serviceProvider.GetService<IGraphRAGService>();
+            var hybridSearchService = serviceProvider.GetService<IHybridSearchService>();
+
             return new Indexer(
                 vectorStore,
                 documentRepository,
@@ -582,7 +615,9 @@ public class FluxIndexContextBuilder
                 chunkingService,
                 _indexerOptions,
                 loggerFactory.CreateLogger<Indexer>(),
-                metadataExtractor
+                metadataExtractor,
+                graphRAGService,
+                hybridSearchService
             );
         });
 
@@ -705,6 +740,30 @@ public class FluxIndexContextBuilder
                     options.AutoMigrate = true;
                 });
                 break;
+            case "qdrant":
+                if (_options.VectorStore.QdrantOptionsAction != null)
+                {
+                    _services.AddQdrantVectorStore(_options.VectorStore.QdrantOptionsAction);
+                }
+                else if (!string.IsNullOrEmpty(_options.VectorStore.QdrantApiKey))
+                {
+                    // Qdrant Cloud
+                    _services.AddQdrantCloudVectorStore(
+                        _options.VectorStore.QdrantHost,
+                        _options.VectorStore.QdrantApiKey,
+                        _options.VectorStore.QdrantCollectionName,
+                        _options.VectorStore.QdrantVectorSize);
+                }
+                else
+                {
+                    // Local Qdrant
+                    _services.AddQdrantVectorStore(
+                        _options.VectorStore.QdrantHost,
+                        _options.VectorStore.QdrantGrpcPort,
+                        _options.VectorStore.QdrantCollectionName,
+                        _options.VectorStore.QdrantVectorSize);
+                }
+                break;
             default:
                 // Default to in-memory for testing
                 _services.AddSingleton<IVectorStore, InMemoryVectorStore>();
@@ -816,6 +875,21 @@ public class FluxIndexContextBuilder
                     options.AutoMigrate = _options.GraphStore.AutoMigrate;
                     options.MaxRecursionDepth = _options.GraphStore.MaxRecursionDepth;
                 });
+                break;
+
+            case "neo4j":
+                if (_options.GraphStore.Neo4jOptionsAction != null)
+                {
+                    _services.AddNeo4jGraphStore(_options.GraphStore.Neo4jOptionsAction);
+                }
+                else if (!string.IsNullOrEmpty(_options.GraphStore.Neo4jUri))
+                {
+                    _services.AddNeo4jGraphStore(
+                        _options.GraphStore.Neo4jUri,
+                        _options.GraphStore.Neo4jUsername ?? "neo4j",
+                        _options.GraphStore.Neo4jPassword ?? string.Empty,
+                        _options.GraphStore.Neo4jDatabase);
+                }
                 break;
         }
     }

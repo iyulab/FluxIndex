@@ -1,5 +1,7 @@
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Services;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace FluxIndex.Storage.Qdrant;
 
@@ -73,5 +75,74 @@ public static class ServiceCollectionExtensions
             options.CollectionName = collectionName;
             options.VectorSize = vectorSize;
         });
+    }
+
+    /// <summary>
+    /// Adds Qdrant vector store with hybrid search capability (Vector + BM25).
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="configureOptions">Action to configure Qdrant options.</param>
+    /// <param name="bm25PersistencePath">Optional path for BM25 index persistence.</param>
+    /// <returns>The service collection for chaining.</returns>
+    public static IServiceCollection AddQdrantWithHybridSearch(
+        this IServiceCollection services,
+        Action<QdrantOptions> configureOptions,
+        string? bm25PersistencePath = null)
+    {
+        // Register Qdrant vector store
+        services.Configure(configureOptions);
+        services.AddSingleton<QdrantVectorStore>();
+        services.AddSingleton<IVectorStore>(sp => sp.GetRequiredService<QdrantVectorStore>());
+
+        // Register BM25 sparse retriever
+        services.AddSingleton(sp =>
+        {
+            var logger = sp.GetRequiredService<ILogger<BM25SparseRetriever>>();
+            return new BM25SparseRetriever(logger, bm25PersistencePath);
+        });
+
+        // Register hybrid search service
+        services.AddSingleton<IHybridSearchService, QdrantHybridSearchService>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Adds Qdrant vector store with hybrid search capability using basic connection parameters.
+    /// </summary>
+    public static IServiceCollection AddQdrantWithHybridSearch(
+        this IServiceCollection services,
+        string host = "localhost",
+        int port = 6334,
+        string collectionName = "fluxindex_chunks",
+        int vectorSize = 1536,
+        string? bm25PersistencePath = null)
+    {
+        return services.AddQdrantWithHybridSearch(options =>
+        {
+            options.Host = host;
+            options.GrpcPort = port;
+            options.CollectionName = collectionName;
+            options.VectorSize = vectorSize;
+        }, bm25PersistencePath);
+    }
+
+    /// <summary>
+    /// Adds Qdrant as a specialized vector provider.
+    /// Registers IStorageProvider for auto-detection by StorageOrchestrator.
+    /// Qdrant takes priority over general-purpose providers for vector operations.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <returns>The service collection for chaining.</returns>
+    public static IServiceCollection AddQdrantProvider(this IServiceCollection services)
+    {
+        services.AddSingleton<IStorageProvider>(sp =>
+        {
+            var vectorStore = sp.GetRequiredService<QdrantVectorStore>();
+            var logger = sp.GetService<ILogger<QdrantProvider>>();
+            return new QdrantProvider(vectorStore, logger);
+        });
+
+        return services;
     }
 }

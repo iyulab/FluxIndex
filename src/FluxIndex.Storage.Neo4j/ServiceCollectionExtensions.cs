@@ -48,4 +48,23 @@ public static class ServiceCollectionExtensions
             options.Database = database;
         });
     }
+
+    /// <summary>
+    /// Adds Neo4j as a specialized graph provider.
+    /// Registers IStorageProvider for auto-detection by StorageOrchestrator.
+    /// Neo4j takes priority over general-purpose providers for graph operations.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <returns>The service collection for chaining.</returns>
+    public static IServiceCollection AddNeo4jProvider(this IServiceCollection services)
+    {
+        services.AddSingleton<IStorageProvider>(sp =>
+        {
+            var graphStore = sp.GetRequiredService<Neo4jGraphStore>();
+            var logger = sp.GetService<Microsoft.Extensions.Logging.ILogger<Neo4jProvider>>();
+            return new Neo4jProvider(graphStore, logger);
+        });
+
+        return services;
+    }
 }

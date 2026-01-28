@@ -299,6 +299,25 @@ public static class ServiceCollectionExtensions
             options.AutoMigrate = true;
         });
     }
+
+    /// <summary>
+    /// SQLite 통합 Provider 등록.
+    /// IStorageProvider로 등록되어 StorageOrchestrator에서 자동 인식.
+    /// </summary>
+    /// <param name="services">서비스 컬렉션</param>
+    /// <returns>서비스 컬렉션</returns>
+    public static IServiceCollection AddSQLiteUnifiedProvider(this IServiceCollection services)
+    {
+        services.AddScoped<IStorageProvider>(sp =>
+        {
+            var vectorStore = sp.GetRequiredService<IVectorStore>();
+            var semanticCache = sp.GetService<ISemanticCacheService>();
+            var logger = sp.GetService<ILogger<SQLiteUnifiedProvider>>();
+            return new SQLiteUnifiedProvider(vectorStore, semanticCache, logger);
+        });
+
+        return services;
+    }
 }
 
 /// <summary>

@@ -1,5 +1,6 @@
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Models;
+using FluxIndex.Core.Application.Services.Enrichment;
 using FluxIndex.Core.Application.Services.Quantization;
 using FluxIndex.Core.Services;
 using Microsoft.Extensions.DependencyInjection;
@@ -257,6 +258,18 @@ public static class MetadataAugmentationServiceExtensions
     }
 
     /// <summary>
+    /// 규칙 기반 메타데이터 증강 서비스 등록.
+    /// ChunkMetadata, ChunkQuality, ChunkRelationship를 휴리스틱 규칙으로 생성합니다.
+    /// </summary>
+    /// <param name="services">서비스 컬렉션</param>
+    /// <returns>서비스 컬렉션</returns>
+    public static IServiceCollection AddMetadataEnrichment(this IServiceCollection services)
+    {
+        services.TryAddScoped<IMetadataEnrichmentService, RuleBasedMetadataEnrichmentService>();
+        return services;
+    }
+
+    /// <summary>
     /// FluxIndex Core 전체 서비스 등록
     /// </summary>
     /// <param name="services">서비스 컬렉션</param>
@@ -272,6 +285,7 @@ public static class MetadataAugmentationServiceExtensions
         services.AddTokenAwareSearch();
         services.AddGraphTraversal();
         services.AddImageExtraction();
+        services.AddMetadataEnrichment(); // Rule-based ChunkMetadata/Quality enrichment
         services.AddDynamicAlphaTuning(); // DAT for query-adaptive fusion weights
 
         return services;
@@ -947,5 +961,29 @@ public static class MetadataAugmentationServiceExtensions
             options.ContextIntegrationMode = contextMode;
             options.DocumentContextWeight = documentContextWeight;
         });
+    }
+
+    /// <summary>
+    /// Storage Orchestrator registration.
+    /// Automatically resolves the best storage provider for each capability
+    /// (Vector, Graph, RDB, SemanticCache) based on registered providers.
+    /// </summary>
+    /// <param name="services">Service collection</param>
+    /// <returns>Service collection</returns>
+    /// <remarks>
+    /// Priority rules:
+    /// 1. Specialized providers take priority over general-purpose providers
+    /// 2. When multiple specialized providers exist, the last registered one wins
+    /// 3. General-purpose providers fill in for missing capabilities
+    /// 
+    /// Example usage:
+    /// - UseLocalStorage() registers SQLite as general-purpose (Vector, Graph, RDB, Cache)
+    /// - UseQdrant() adds Qdrant as specialized Vector provider (overrides SQLite's Vector)
+    /// - UseNeo4j() adds Neo4j as specialized Graph provider (overrides SQLite's Graph)
+    /// </remarks>
+    public static IServiceCollection AddStorageOrchestrator(this IServiceCollection services)
+    {
+        services.TryAddSingleton<IStorageOrchestrator, Storage.StorageOrchestrator>();
+        return services;
     }
 }
