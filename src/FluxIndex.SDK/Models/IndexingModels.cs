@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using FluxIndex.Core.Application.Interfaces;
 
 namespace FluxIndex.SDK;
 
@@ -15,6 +16,20 @@ public class IndexingOptions
     public bool ExtractMetadata { get; set; } = true;
     public bool EnableOCR { get; set; } = false;
     public Dictionary<string, object> CustomOptions { get; set; } = new();
+
+    /// <summary>
+    /// GraphRAG 인덱싱 활성화.
+    /// - null (기본값): IGraphRAGService가 등록되어 있으면 자동 활성화
+    /// - true: 강제 활성화 (서비스 미등록 시 오류)
+    /// - false: 강제 비활성화
+    /// </summary>
+    public bool? EnableGraphRAG { get; set; } = null;
+
+    /// <summary>
+    /// GraphRAG 빌드 옵션.
+    /// GraphRAG가 활성화될 때 사용됩니다.
+    /// </summary>
+    public GraphRAGBuildOptions? GraphRAGOptions { get; set; }
 }
 
 /// <summary>

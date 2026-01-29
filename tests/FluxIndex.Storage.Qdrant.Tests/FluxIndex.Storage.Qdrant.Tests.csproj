@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\FluxIndex.Storage.Qdrant\FluxIndex.Storage.Qdrant.csproj" />
+    <ProjectReference Include="..\..\src\FluxIndex.Core\FluxIndex.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

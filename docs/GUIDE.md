@@ -1,94 +1,321 @@
 # FluxIndex Guide
 
-RAG library for .NET - Complete usage guide.
+RAG infrastructure library for .NET - Complete setup and usage guide.
 
 **Related Guides:**
-- [AI Provider Integration](./AI_PROVIDER_INTEGRATION.md) - OpenAI, Azure, LMSupply, custom embedding/LLM/reranker integration
-- [Advanced RAG Services](./ADVANCED_RAG.md) - Dynamic fusion, listwise reranking, entity extraction, community detection
-- [API Reference](./REFERENCE.md) - Complete API documentation
+- [AI Provider Integration](./AI_PROVIDER_INTEGRATION.md) - OpenAI, Azure, LMSupply, custom embedding/LLM/reranker
+- [Advanced RAG Services](./ADVANCED_RAG.md) - GraphRAG, Self-RAG, Corrective RAG
+- [API Reference](./REFERENCE.md) - Architecture and API documentation
+- [FileVault Guide](./FILEVAULT_GUIDE.md) - Git-like file tracking for RAG
 
-## Quick Start
+---
 
-### Installation
+## Installation
 
 ```bash
-# Required
+# Core SDK (always required)
 dotnet add package FluxIndex.SDK
-dotnet add package FluxIndex.Storage.SQLite      # or PostgreSQL
+
+# Storage (choose one or more)
+dotnet add package FluxIndex.Storage.SQLite      # Local mode
+dotnet add package FluxIndex.Storage.PostgreSQL  # Production RDB
+dotnet add package FluxIndex.Storage.Qdrant      # Production vector DB
+dotnet add package FluxIndex.Storage.Neo4j       # Production graph DB
 
 # Optional
-dotnet add package FluxIndex.Cache.Redis         # Semantic caching
+dotnet add package FluxIndex.Cache.Redis         # Distributed semantic cache
 dotnet add package FluxIndex.Extensions.FileVault # Git-like file tracking
 ```
 
-### Basic Usage
+---
+
+## Storage Modes
+
+FluxIndex supports three storage modes. RDB, VectorDB, and GraphDB are not features to toggle - they **automatically activate based on your configuration**.
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| **Local** | SQLite handles all (Vector + Graph + RDB + Cache) | Development, testing, edge deployment |
+| **Full** | PostgreSQL + Qdrant + Neo4j | Large-scale production |
+| **Custom** | Mix-and-match or custom providers | Special requirements |
+
+### Auto-Maximize Principle
+
+FluxIndex automatically uses all available capabilities from your configured storage:
+- **No feature toggles**: No `WithoutGraph()` or `VectorOnly()` methods
+- **Specialized DB priority**: Qdrant (vector) > PostgreSQL's pgvector
+- **Fallback to general**: If no specialized DB, uses the general-purpose one
+
+---
+
+## Local Mode (SQLite)
+
+**SQLite handles everything**: Vector search, keyword search, graph relations, semantic cache.
+
+Best for:
+- Development and testing
+- Edge AI deployment
+- Single-machine applications
+- Up to ~1M vectors
+
+### Quick Start
 
 ```csharp
 using FluxIndex.SDK;
 
-// 1. Setup (InMemory embedding for testing)
+// Minimal setup - all features enabled automatically
 var context = FluxIndexContext.CreateBuilder()
-    .UseSQLite("fluxindex.db")
-    .Build();  // Uses InMemory embedding by default
+    .UseLocalStorage("fluxindex.db")  // or .UseSQLite("fluxindex.db")
+    .Build();
 
-// 2. Index
+// Index documents
 await context.Indexer.IndexDocumentAsync(
     content: "FluxIndex is a .NET RAG library.",
     documentId: "doc-001"
 );
 
-// 3. Search
+// Search (hybrid search enabled automatically)
 var results = await context.Retriever.SearchAsync("RAG library", maxResults: 5);
+```
 
-foreach (var r in results)
-    Console.WriteLine($"[{r.Score:F2}] {r.DocumentChunk.Content}");
+### Local Mode Storage Structure
+
+```
+fluxindex.db              # Vector store + keyword index + metadata
+fluxindex-graph.db        # Chunk hierarchy (Small-to-Big)
+fluxindex-entitygraph.db  # Entity graph (GraphRAG)
+fluxindex-cache.db        # Semantic cache
+```
+
+### In-Memory Testing
+
+```csharp
+// Perfect for unit tests - all data in memory
+var context = FluxIndexContext.CreateBuilder()
+    .UseSQLiteInMemory()
+    .Build();
+```
+
+### With Production Embedding
+
+```csharp
+// Local storage + LMSupply (consumer app implements wrapper)
+var context = FluxIndexContext.CreateBuilder()
+    .UseLocalStorage("fluxindex.db")
+    .ConfigureServices(s => s.AddLMSupplyEmbedding())  // Your extension method
+    .Build();
 ```
 
 ---
 
-## Configuration
+## Full Mode (Best-in-Class)
 
-### Development
+**Specialized databases for each role**: PostgreSQL (RDB/Cache), Qdrant (Vector), Neo4j (Graph).
+
+Best for:
+- Large-scale production
+- Millions of vectors
+- Complex graph queries
+- High availability requirements
+
+### Quick Start
 
 ```csharp
 var context = FluxIndexContext.CreateBuilder()
-    .UseSQLite("dev.db")
+    .UseBestInClass(
+        postgresConnectionString: "Host=localhost;Database=fluxindex;...",
+        qdrantHost: "localhost",
+        qdrantPort: 6334,
+        qdrantCollection: "chunks",
+        vectorSize: 1536,
+        neo4jUri: "bolt://localhost:7687",
+        neo4jUsername: "neo4j",
+        neo4jPassword: "password")
+    .ConfigureServices(s => s.AddOpenAIEmbedding(apiKey))  // Your extension
     .Build();
 ```
 
-### Production
+### With Options Configuration
 
 ```csharp
-// With custom embedding service (e.g., LMSupply, OpenAI)
 var context = FluxIndexContext.CreateBuilder()
-    .UsePostgreSQL("Host=localhost;Database=fluxindex;...")
-    .ConfigureServices(s => s.AddSingleton<IEmbeddingService>(myEmbeddingService))
-    .UseRedisCache("localhost:6379")
+    .UseBestInClass(
+        postgresConnectionString: connStr,
+        qdrantConfigure: qdrant =>
+        {
+            qdrant.Host = "localhost";
+            qdrant.GrpcPort = 6334;
+            qdrant.CollectionName = "fluxindex_chunks";
+            qdrant.VectorSize = 1536;
+            qdrant.OnDiskPayload = true;  // Large payloads on disk
+        },
+        neo4jConfigure: neo4j =>
+        {
+            neo4j.Uri = "bolt://localhost:7687";
+            neo4j.Username = "neo4j";
+            neo4j.Password = "password";
+            neo4j.Database = "fluxindex";
+        })
     .Build();
 ```
 
-Consumer apps implement their own embedding wrappers by extending `EmbeddingServiceBase`:
+### Storage Role Distribution
 
-```csharp
-// Example: ~30 lines wrapper for LMSupply
-public class LMSupplyEmbedder : EmbeddingServiceBase, IAsyncDisposable
-{
-    private readonly IEmbeddingModel _model;
-    protected override async Task<float[]> EmbedCoreAsync(string text, CancellationToken ct)
-        => await _model.EmbedAsync(text, ct);
-    // ... see full example in README.md
-}
+| Role | Provider | Purpose |
+|------|----------|---------|
+| **Vector Search** | Qdrant | High-performance similarity search |
+| **Keyword Search** | PostgreSQL | BM25 full-text search |
+| **Graph Relations** | Neo4j | Entity graph, community detection |
+| **Metadata** | PostgreSQL | Document and chunk metadata |
+| **Semantic Cache** | PostgreSQL | Query result caching |
+
+### Docker Compose for Full Mode
+
+```yaml
+# docker-compose.yml
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: fluxindex
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"  # REST
+      - "6334:6334"  # gRPC
+
+  neo4j:
+    image: neo4j:5-community
+    environment:
+      NEO4J_AUTH: neo4j/password
+    ports:
+      - "7474:7474"  # Browser
+      - "7687:7687"  # Bolt
 ```
 
-### appsettings.json
+---
 
-```json
+## Custom Mode
+
+Mix and match providers or implement your own.
+
+### PostgreSQL + Qdrant (No Graph)
+
+```csharp
+var context = FluxIndexContext.CreateBuilder()
+    .UsePostgreSQL(connStr)       // RDB + Cache
+    .UseQdrant("localhost", 6334, "chunks", 1536)  // Vector (overrides PostgreSQL)
+    // No UseNeo4j() → PostgreSQL handles graph (basic support)
+    .Build();
+```
+
+### PostgreSQL + Neo4j (No Qdrant)
+
+```csharp
+var context = FluxIndexContext.CreateBuilder()
+    .UsePostgreSQL(connStr)       // RDB + Cache + Vector (pgvector)
+    .UseNeo4j(uri, user, pass)    // Graph (overrides PostgreSQL)
+    .Build();
+```
+
+### Custom Provider Implementation
+
+```csharp
+// 1. Implement IStorageProvider with capability interfaces
+public class ChromaProvider : IStorageProvider, IVectorCapable
 {
-  "FluxIndex": {
-    "ConnectionString": "Data Source=fluxindex.db",
-    "LMSupply": { "ModelId": "bge-small-en-v1.5" }
-  }
+    public string ProviderName => "Chroma";
+    public StorageCapabilities Capabilities => StorageCapabilities.Vector;
+    public IVectorStore VectorStore { get; }
+
+    public ChromaProvider(string endpoint)
+    {
+        VectorStore = new ChromaVectorStore(endpoint);
+    }
 }
+
+// 2. Register via ConfigureServices
+var context = FluxIndexContext.CreateBuilder()
+    .UsePostgreSQL(connStr)  // RDB + Cache
+    .ConfigureServices(s =>
+        s.AddSingleton<IVectorStore>(new ChromaProvider("http://localhost:8000").VectorStore))
+    .Build();
+```
+
+### Priority Rules
+
+When multiple providers support the same capability:
+
+1. **Specialized provider wins**: Qdrant (vector-only) > PostgreSQL (multi-purpose)
+2. **Last registration wins**: Among same-tier providers
+3. **Fallback fills gaps**: Unregistered capabilities use available multi-purpose provider
+
+```csharp
+// Example: Qdrant handles Vector, PostgreSQL handles everything else
+.UsePostgreSQL(connStr)   // RDB + Cache + Vector + Graph
+.UseQdrant(...)           // Takes over Vector
+// Result: Qdrant(Vector), PostgreSQL(RDB, Cache, Graph)
+```
+
+---
+
+## Configuration Reference
+
+### Builder Methods
+
+| Method | Storage | Features |
+|--------|---------|----------|
+| `UseLocalStorage(path)` | SQLite | All (Vector, Graph, RDB, Cache) |
+| `UseSQLite(path)` | SQLite | All (same as UseLocalStorage) |
+| `UseSQLiteInMemory()` | SQLite (memory) | All (testing) |
+| `UsePostgreSQL(conn)` | PostgreSQL | All (Vector via pgvector) |
+| `UseQdrant(...)` | Qdrant | Vector only |
+| `UseNeo4j(...)` | Neo4j | Graph only |
+| `UseBestInClass(...)` | PG + Qdrant + Neo4j | Optimal distribution |
+
+### AI Services
+
+```csharp
+// InMemory embedding (default, for testing)
+.Build()  // Uses InMemoryEmbeddingService automatically
+
+// Custom embedding (production)
+.ConfigureServices(s => s.AddSingleton<IEmbeddingService>(myEmbedder))
+
+// Direct instance
+.UseEmbeddingService(myEmbeddingInstance)
+```
+
+### Caching
+
+```csharp
+// In-memory embedding cache (always enabled)
+.Build()
+
+// Redis for distributed cache
+.UseRedisCache("localhost:6379")
+
+// Memory cache with custom size
+.UseMemoryCache(maxCacheSize: 5000)
+```
+
+### Search Options
+
+```csharp
+.WithSearchOptions(
+    defaultMaxResults: 10,
+    defaultMinScore: 0.5f)
+
+.WithChunking(
+    strategy: "Auto",      // Auto, Semantic, Sliding
+    chunkSize: 512,
+    chunkOverlap: 64)
+
+.WithCacheDuration(TimeSpan.FromHours(1))
 ```
 
 ---
@@ -99,12 +326,13 @@ public class LMSupplyEmbedder : EmbeddingServiceBase, IAsyncDisposable
 
 ```csharp
 await context.Indexer.IndexDocumentAsync(
-    content: "Document content...",
+    content: "Document content here...",
     documentId: "doc-001",
     metadata: new Dictionary<string, object>
     {
-        ["category"] = "tech",
-        ["author"] = "John"
+        ["category"] = "technical",
+        ["author"] = "John Doe",
+        ["date"] = DateTime.UtcNow
     }
 );
 ```
@@ -112,143 +340,142 @@ await context.Indexer.IndexDocumentAsync(
 ### Batch Indexing
 
 ```csharp
+var documents = files.Select(f => new IndexRequest
+{
+    DocumentId = Path.GetFileNameWithoutExtension(f),
+    Content = File.ReadAllText(f),
+    Metadata = new Dictionary<string, object> { ["file"] = f }
+});
+
 await context.Indexer.IndexBatchAsync(documents, parallelism: 8);
-// Performance: 1K chunks ~24ms, 10K chunks ~188ms
+// Performance: ~50K chunks/second with optimal parallelism
 ```
 
 ### File Processing (PDF, DOCX)
 
 ```csharp
+// Register FileFlux integration
 services.AddFileFluxIntegration(options =>
 {
-    options.DefaultChunkingStrategy = "Semantic";
+    options.DefaultChunkingStrategy = ChunkingStrategies.Intelligent;
     options.DefaultMaxChunkSize = 1024;
     options.DefaultOverlapSize = 128;
+    options.DefaultLanguage = "en";
 });
 
+// Process and index files
 var fileFlux = provider.GetRequiredService<FileFluxIntegration>();
 await fileFlux.ProcessAndIndexAsync("document.pdf");
 ```
 
 ---
 
-## Search Strategies
+## Search
 
-| Strategy | Use Case | Performance |
-|----------|----------|-------------|
-| **Adaptive** (default) | Auto-select best approach | Varies |
-| **Vector** | Semantic similarity | ~100ms |
-| **Keyword** (BM25) | Exact term matching | ~50ms |
-| **Hybrid** | Vector + Keyword combined | ~150ms |
-
-### Adaptive Search (Recommended)
+### Basic Search
 
 ```csharp
-// Automatically selects best strategy based on query
+// Adaptive search (auto-selects best strategy)
 var results = await context.Retriever.SearchAsync(
     query: "How does machine learning work?",
-    maxResults: 10
+    maxResults: 10,
+    minScore: 0.5f
 );
-```
 
-### Hybrid Search
-
-```csharp
-// Combines BM25 keyword search + vector semantic search
-var results = await context.Retriever.SearchAsync(
-    query: "neural network implementation",
-    maxResults: 10
-);
-```
-
----
-
-## Real-World Examples
-
-### Support Chatbot
-
-```csharp
-public class SupportChatbot
+foreach (var result in results)
 {
-    private readonly IFluxIndexContext _context;
-
-    public async Task<string> Answer(string question)
-    {
-        var docs = await _context.Retriever.SearchAsync(question, maxResults: 5);
-        var context = string.Join("\n", docs.Select(d => d.DocumentChunk.Content));
-
-        // Use LLM to generate response with retrieved context
-        return await _llm.GenerateAsync($"Context:\n{context}\n\nQuestion: {question}");
-    }
+    Console.WriteLine($"[{result.Score:F2}] {result.DocumentChunk.Content}");
 }
 ```
 
-### Document Q&A
+### Search Modes
 
 ```csharp
-// Index company documents
-var files = Directory.GetFiles("docs", "*.pdf");
-foreach (var file in files)
-    await fileFlux.ProcessAndIndexAsync(file);
+// Vector only
+var vectorResults = await context.Retriever.SearchAsync(query, maxResults: 10);
 
-// Search with source citations
-var results = await context.Retriever.SearchAsync("remote work policy");
-var sources = results.Select(r => r.DocumentChunk.Metadata["file_path"]).Distinct();
+// Keyword only (BM25)
+var keywordResults = await context.Retriever.KeywordSearchAsync(keyword, maxResults: 10);
+
+// Hybrid (Vector + BM25 with RRF)
+var hybridResults = await context.Retriever.HybridSearchAsync(
+    keyword: "machine learning",
+    query: "How does machine learning work?",
+    maxResults: 10,
+    vectorWeight: 0.7  // 70% vector, 30% keyword
+);
+```
+
+### Advanced Search Options
+
+```csharp
+var options = new SearchOptions
+{
+    TopK = 10,
+    MinSimilarity = 0.5f,
+    UseHybridSearch = true,
+    MetadataFilter = new Dictionary<string, object>
+    {
+        ["category"] = "technical"
+    }
+};
+
+var results = await context.Retriever.SearchAsync(query, options);
+
+Console.WriteLine($"Total: {results.TotalResults}");
+Console.WriteLine($"Time: {results.SearchTime.TotalMilliseconds}ms");
 ```
 
 ---
 
-## Advanced RAG
+## GraphRAG
 
-### Self-Correcting Search
+GraphRAG enables entity-aware retrieval for relational queries.
+
+### Enable GraphRAG
 
 ```csharp
-// Self-RAG: Iterative quality improvement
-var selfRag = provider.GetRequiredService<ISelfRAGService>();
-var result = await selfRag.SearchAsync("complex technical question");
-// Automatically refines results until quality threshold met
+// Local mode - SQLite handles entity graph
+var context = FluxIndexContext.CreateBuilder()
+    .UseLocalStorage("fluxindex.db")  // Includes SQLiteEntityGraphStore
+    .Build();
 
-// Corrective RAG: Document grading + web augmentation
-var crag = provider.GetRequiredService<ICorrectiveRAGService>();
-var corrected = await crag.RetrieveWithCorrectionAsync("specific query");
-// Grades documents, replaces low-quality with web-augmented content
+// Full mode - Neo4j for optimal graph performance
+var context = FluxIndexContext.CreateBuilder()
+    .UseBestInClass(pgConn, qdrantConfig, neo4jConfig)
+    .Build();
 ```
 
-### Intelligent Query Routing
+### GraphRAG Search
 
 ```csharp
-// Agentic Router: Auto-selects best retrieval strategy
-var router = provider.GetRequiredService<IAgenticRetrievalRouter>();
-
-var result = await router.RouteAndRetrieveAsync("What is machine learning?");
-// Automatically chooses: SemanticSearch, HybridSearch, SelfRAG, etc.
-
-// Check routing decision
-Console.WriteLine($"Strategy: {result.Decision.PrimaryStrategy}");
-Console.WriteLine($"Query Type: {result.Decision.QueryAnalysis.Type}");
-```
-
-### GraphRAG for Complex Questions
-
-```csharp
-// Entity-aware search for relational queries
-var graphRag = provider.GetRequiredService<IGraphRAGService>();
+var graphRag = serviceProvider.GetRequiredService<IGraphRAGService>();
 
 var result = await graphRag.SearchAsync(
     "How are Machine Learning and Neural Networks related?",
-    new GraphRAGOptions { EnableGlobalSearch = true });
+    new GraphRAGOptions
+    {
+        EnableLocalSearch = true,   // Entity-centric search
+        EnableGlobalSearch = true,  // Community-based search
+        CommunityLevel = 1
+    }
+);
 ```
 
-### DI Registration
+### Entity Graph Operations
 
 ```csharp
-services.AddFluxIndexCore();
+var entityGraph = serviceProvider.GetRequiredService<IEntityGraphService>();
 
-// Add advanced RAG services
-services.AddSelfRAGService();
-services.AddCorrectiveRAGService();
-services.AddAgenticRetrievalRouter();
-services.AddGraphRAGServices();
+// Build graph from documents
+await entityGraph.BuildGraphAsync(chunks);
+
+// Search by entity
+var results = await entityGraph.SearchByEntityAsync(entityId, new EntitySearchOptions
+{
+    MaxDepth = 3,
+    DampingFactor = 0.85
+});
 ```
 
 ---
@@ -257,24 +484,32 @@ services.AddGraphRAGServices();
 
 | Optimization | Benefit |
 |-------------|---------|
-| Embedding Cache (built-in) | 100% improvement for repeated queries |
-| Redis Semantic Cache | ~95% improvement for similar queries |
-| Batch Indexing (8 threads) | 50K chunks/second throughput |
-| PostgreSQL + pgvector | Production scalability |
-| LocalReranker | Better relevance ranking |
+| Embedding cache (built-in) | 100% improvement for repeated queries |
+| Semantic cache (Redis/SQLite) | ~95% improvement for similar queries |
+| Batch indexing (8 threads) | 50K chunks/second throughput |
+| Vector quantization | 4-32x memory reduction |
+| LocalReranker | +15-25% precision improvement |
 
 ### Enable Caching
 
 ```csharp
 var context = FluxIndexContext.CreateBuilder()
-    .UseSQLite("fluxindex.db")
-    .ConfigureServices(s => s.AddSingleton<IEmbeddingService>(myEmbeddingService))
-    .UseRedisCache("localhost:6379")  // Semantic caching
+    .UseLocalStorage("fluxindex.db")
+    .ConfigureServices(s => s.AddLMSupplyEmbedding())
+    .UseRedisCache("localhost:6379")  // Distributed semantic cache
     .Build();
 
-// First query: ~50ms (local embedding)
-// Same query: <1ms (cache hit)
-// Similar query: <5ms (Redis semantic cache)
+// First query: ~50ms (embedding + search)
+// Same query: <1ms (embedding cache hit)
+// Similar query: <5ms (semantic cache hit)
+```
+
+### Enable Quantization
+
+```csharp
+// 4x compression with Int8 quantization
+services.AddScalarQuantization(dimension: 1536);
+services.AddQuantizedVectorStoreDecorator(autoQuantize: true);
 ```
 
 ---
@@ -283,41 +518,59 @@ var context = FluxIndexContext.CreateBuilder()
 
 | Issue | Solution |
 |-------|----------|
-| Slow search | Enable Redis caching, verify embedding cache |
-| Database locked | Use singleton pattern, switch to PostgreSQL |
-| Rate limits | Reduce parallelism, add delays |
-| Poor relevance | Adjust chunk size (512-1024), try different strategy |
-| Out of memory | Process in smaller batches |
+| Slow search | Enable Redis caching, check embedding cache |
+| Database locked (SQLite) | Use singleton pattern, check concurrent access |
+| Poor relevance | Adjust chunk size (512-1024), try hybrid search |
+| Out of memory | Use batch processing, enable quantization |
+| Graph features not working | Ensure Graph provider is registered |
 
 ---
 
-## API Quick Reference
+## Example: Complete RAG Pipeline
 
 ```csharp
-// Builder
-FluxIndexContext.CreateBuilder()
-    .UseSQLite(path) / .UsePostgreSQL(conn)
-    .ConfigureServices(s => s.AddSingleton<IEmbeddingService>(custom))  // Custom embedding
-    .UseRedisCache(conn)
-    .Build()
+public class RAGService
+{
+    private readonly IFluxIndexContext _context;
+    private readonly ITextCompletionService _llm;
 
-// Indexing
-context.Indexer.IndexDocumentAsync(content, documentId, metadata)
-context.Indexer.IndexBatchAsync(documents, parallelism)
+    public RAGService(IFluxIndexContext context, ITextCompletionService llm)
+    {
+        _context = context;
+        _llm = llm;
+    }
 
-// Search
-context.Retriever.SearchAsync(query, maxResults, cancellationToken)
+    public async Task<string> AnswerAsync(string question)
+    {
+        // 1. Retrieve relevant documents
+        var results = await _context.Retriever.SearchAsync(question, maxResults: 5);
 
-// Results
-result.Score          // 0.0 - 1.0
-result.DocumentChunk.Content
-result.DocumentChunk.Metadata
+        // 2. Build context from retrieved chunks
+        var context = string.Join("\n\n", results.Select(r =>
+            $"[Source: {r.DocumentChunk.Metadata?["title"]}]\n{r.DocumentChunk.Content}"));
+
+        // 3. Generate answer with LLM
+        var prompt = $"""
+            Based on the following context, answer the question.
+
+            Context:
+            {context}
+
+            Question: {question}
+
+            Answer:
+            """;
+
+        return await _llm.GenerateCompletionAsync(prompt);
+    }
+}
 ```
 
 ---
 
 ## Next Steps
 
-- [Technical Reference](REFERENCE.md) - Architecture, retrieval mechanisms, advanced topics
-- [Examples](../samples/) - Working code samples
-- [GitHub](https://github.com/iyulab/FluxIndex) - Issues & contributions
+- [AI Provider Integration](./AI_PROVIDER_INTEGRATION.md) - Implement custom embedding/LLM services
+- [Technical Reference](./REFERENCE.md) - Architecture details
+- [Samples](../samples/) - Working code examples
+- [Stack](../stack/) - Full RAG service with API and UI

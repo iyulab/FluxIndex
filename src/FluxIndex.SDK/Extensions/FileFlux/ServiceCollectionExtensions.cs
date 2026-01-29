@@ -2,6 +2,7 @@ using FileFlux;
 using FileFlux.Core;
 using FileFlux.Domain;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using IFileFluxTextCompletionService = FileFlux.ITextCompletionService;
 
 namespace FluxIndex.SDK.Extensions.FileFlux;
@@ -26,6 +27,11 @@ public static class FileFluxServiceCollectionExtensions
         // This adapter bridges FluxIndex's ITextCompletionService to FileFlux's ITextCompletionService interface
         // FileFlux will use FluxIndex's OpenAI implementation for all LLM-based operations
         services.AddScoped<IFileFluxTextCompletionService, FluxIndexTextCompletionAdapter>();
+
+        // Register FluxIndex's LLM refiner adapter for FileFlux
+        // This adapter bridges FluxIndex's ITextCompletionService to FileFlux's ILlmRefiner interface
+        // Enables LLM-based content refinement in the FileFlux 5-stage pipeline
+        services.TryAddScoped<ILlmRefiner, LlmRefinerAdapter>();
 
         // Configure FluxIndex-specific options
         if (configureOptions != null)
@@ -106,5 +112,77 @@ public class FileFluxOptions
     /// When enabled, adds script code, writing direction, and other language-specific metadata
     /// </summary>
     public bool IncludeLanguageProfileMetadata { get; set; } = true;
+
+    /// <summary>
+    /// Enable LLM-based content refinement in the FileFlux 5-stage pipeline.
+    /// When enabled, content is refined using ITextCompletionService before chunking.
+    /// Requires ITextCompletionService to be registered in DI.
+    /// </summary>
+    public bool EnableLlmRefine { get; set; } = false;
+
+    /// <summary>
+    /// LLM refinement options when EnableLlmRefine is true.
+    /// Controls what improvements the LLM should make (noise removal, sentence restoration, etc.)
+    /// </summary>
+    public LlmRefineOptionsConfig LlmRefineOptions { get; set; } = new();
+}
+
+/// <summary>
+/// Configuration for LLM refinement options (mirrors FileFlux.Core.LlmRefineOptions)
+/// </summary>
+public class LlmRefineOptionsConfig
+{
+    /// <summary>
+    /// Enable noise removal (ads, legal notices, irrelevant content).
+    /// Default: true
+    /// </summary>
+    public bool RemoveNoise { get; set; } = true;
+
+    /// <summary>
+    /// Restore broken sentences (PDF line breaks).
+    /// Default: true
+    /// </summary>
+    public bool RestoreSentences { get; set; } = true;
+
+    /// <summary>
+    /// Restructure document sections (merge/split, fix heading levels).
+    /// Default: true
+    /// </summary>
+    public bool RestructureSections { get; set; } = true;
+
+    /// <summary>
+    /// Correct OCR errors.
+    /// Default: true
+    /// </summary>
+    public bool CorrectOcrErrors { get; set; } = true;
+
+    /// <summary>
+    /// Merge semantically duplicate content.
+    /// Default: true
+    /// </summary>
+    public bool MergeDuplicates { get; set; } = true;
+
+    /// <summary>
+    /// Preserve original formatting where possible.
+    /// Default: true
+    /// </summary>
+    public bool PreserveFormatting { get; set; } = true;
+
+    /// <summary>
+    /// Maximum tokens to use for LLM (0 = no limit).
+    /// Default: 0
+    /// </summary>
+    public int MaxTokens { get; set; } = 0;
+
+    /// <summary>
+    /// LLM temperature (0.0 - 1.0). Lower = more deterministic.
+    /// Default: 0.3
+    /// </summary>
+    public double Temperature { get; set; } = 0.3;
+
+    /// <summary>
+    /// Custom instructions for LLM.
+    /// </summary>
+    public string? CustomInstructions { get; set; }
 }
 

@@ -33,20 +33,20 @@ public static class ServiceCollectionExtensions
             services.Configure<FileVaultOptions>(_ => { });
         }
 
-        // Register core services
+        // Register stateless utility services as Singleton
         services.TryAddSingleton<IContentHasher, ContentHasher>();
         services.TryAddSingleton<IGitService, GitService>();
-        services.TryAddSingleton<IVaultPipeline, VaultPipeline>();
-        services.TryAddSingleton<IVault, VaultManager>();
-
-        // Register storage service
         services.TryAddSingleton<IVaultStorageService, VaultStorageService>();
 
-        // Register file watcher service
+        // Register file watcher service as Singleton (stateful, one per app)
         services.TryAddSingleton<IFileWatcherService, FileWatcherService>();
 
-        // Register queue service
+        // Register queue service as Singleton (stateful, one per app)
         services.TryAddSingleton<IVaultQueueService, VaultQueueService>();
+
+        // Register pipeline and vault as Scoped (they may depend on scoped services like IVectorStore)
+        services.TryAddScoped<IVaultPipeline, VaultPipeline>();
+        services.TryAddScoped<IVault, VaultManager>();
 
         return services;
     }
@@ -153,9 +153,9 @@ public static class ServiceCollectionExtensions
     {
         services.AddFileVault(configureOptions);
 
-        // Register FileFlux adapters
-        services.TryAddSingleton<IExtractor, FileFluxExtractor>();
-        services.TryAddSingleton<IChunker, FileFluxChunker>();
+        // Register FileFlux adapters as Scoped (they depend on scoped IDocumentProcessorFactory)
+        services.TryAddScoped<IExtractor, FileFluxExtractor>();
+        services.TryAddScoped<IChunker, FileFluxChunker>();
 
         return services;
     }
@@ -178,8 +178,8 @@ public static class ServiceCollectionExtensions
     {
         services.AddFileVaultWithFileFlux(configureOptions);
 
-        // Register FluxIndex memorizer adapter (for custom scenarios, VaultPipeline handles indexing internally)
-        services.TryAddSingleton<FluxIndexMemorizer>();
+        // Register FluxIndex memorizer adapter as Scoped (depends on scoped IVectorStore)
+        services.TryAddScoped<FluxIndexMemorizer>();
 
         return services;
     }
@@ -262,9 +262,9 @@ public static class ServiceCollectionExtensions
     {
         services.AddFileVaultFactory(configureOptions);
 
-        // Register FileFlux adapters (shared across all tenants)
-        services.TryAddSingleton<IExtractor, FileFluxExtractor>();
-        services.TryAddSingleton<IChunker, FileFluxChunker>();
+        // Register FileFlux adapters as Scoped (they depend on scoped IDocumentProcessorFactory)
+        services.TryAddScoped<IExtractor, FileFluxExtractor>();
+        services.TryAddScoped<IChunker, FileFluxChunker>();
 
         return services;
     }
@@ -280,7 +280,8 @@ public static class ServiceCollectionExtensions
         Action<FileVaultOptions>? configureOptions = null)
     {
         services.AddFileVaultFactoryWithFileFlux(configureOptions);
-        services.TryAddSingleton<FluxIndexMemorizer>();
+        // Register FluxIndex memorizer adapter as Scoped (depends on scoped IVectorStore)
+        services.TryAddScoped<FluxIndexMemorizer>();
 
         return services;
     }

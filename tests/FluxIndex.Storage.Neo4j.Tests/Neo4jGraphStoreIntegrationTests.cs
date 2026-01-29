@@ -1,5 +1,7 @@
 using FluentAssertions;
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Services.Graph;
+using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -569,6 +571,96 @@ public class Neo4jGraphStoreIntegrationTests : IAsyncLifetime
         // Assert
         results.Should().HaveCount(3);
         results[0].Name.Should().Be("High");
+    }
+
+    #endregion
+
+    #region EntityGraphService Integration
+
+    [SkippableFact]
+    public async Task EntityGraphService_WithNeo4jStore_PersistsEntities()
+    {
+        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+
+        // Arrange
+        await _graphStore.ClearAsync();
+
+        var entityGraphService = new EntityGraphService(
+            entityExtractionService: null,
+            embeddingService: null,
+            graphStore: _graphStore,
+            logger: NullLogger<EntityGraphService>.Instance);
+
+        // Create manual entities for test
+        var manualEntities = new[]
+        {
+            new EntityNode
+            {
+                Id = "entity-apple",
+                Name = "Apple Inc.",
+                NormalizedName = "apple inc",
+                Type = NamedEntityType.Organization,
+                Confidence = 0.95,
+                ImportanceScore = 0.8,
+                MentionCount = 1
+            },
+            new EntityNode
+            {
+                Id = "entity-steve",
+                Name = "Steve Jobs",
+                NormalizedName = "steve jobs",
+                Type = NamedEntityType.Person,
+                Confidence = 0.95,
+                ImportanceScore = 0.9,
+                MentionCount = 1
+            }
+        };
+
+        var manualRelations = new[]
+        {
+            new EntityEdge
+            {
+                Id = "rel-1",
+                SourceEntityId = "entity-steve",
+                TargetEntityId = "entity-apple",
+                RelationType = RelationType.FoundedBy, // Steve Jobs founded Apple
+                Label = "founded",
+                Confidence = 0.9,
+                Weight = 1.0,
+                IsDirectional = true,
+                EvidenceChunkIds = ["chunk-1"]
+            }
+        };
+
+        var manualGraph = new EntityGraphResult
+        {
+            Entities = manualEntities.ToList(),
+            Relations = manualRelations.ToList(),
+            ChunkMappings = new[]
+            {
+                new EntityChunkMapping { EntityId = "entity-apple", ChunkId = "chunk-1", RelevanceScore = 1.0 },
+                new EntityChunkMapping { EntityId = "entity-steve", ChunkId = "chunk-1", RelevanceScore = 1.0 }
+            }
+        };
+
+        // Act - Persist manual graph
+        await entityGraphService.PersistGraphAsync(manualGraph);
+
+        // Assert - Verify entities were stored in Neo4j
+        var stats = await _graphStore.GetStatisticsAsync();
+        stats.EntityCount.Should().BeGreaterThanOrEqualTo(2);
+        stats.RelationshipCount.Should().BeGreaterThanOrEqualTo(1);
+
+        // Verify specific entity
+        var appleEntity = await _graphStore.GetEntityByIdAsync("entity-apple");
+        appleEntity.Should().NotBeNull();
+        appleEntity!.Name.Should().Be("Apple Inc.");
+        appleEntity.Type.Should().Be(NamedEntityType.Organization);
+
+        // Verify relationship
+        var relationships = await _graphStore.GetRelationshipsAsync("entity-steve", TraversalDirection.Outgoing);
+        relationships.Should().HaveCount(1);
+        relationships[0].TargetEntityId.Should().Be("entity-apple");
     }
 
     #endregion

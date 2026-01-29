@@ -25,8 +25,20 @@ public class Indexer
     private readonly IEmbeddingService _embeddingService;
     private readonly IChunkingService _chunkingService;
     private readonly IMetadataExtractor? _metadataExtractor;
+    private readonly IGraphRAGService? _graphRAGService;
+    private readonly IHybridSearchService? _hybridSearchService;
     private readonly ILogger<Indexer> _logger;
     private readonly IndexerOptions _options;
+
+    /// <summary>
+    /// GraphRAG 서비스 사용 가능 여부
+    /// </summary>
+    public bool SupportsGraphRAG => _graphRAGService != null;
+
+    /// <summary>
+    /// 하이브리드 검색 서비스 사용 가능 여부
+    /// </summary>
+    public bool SupportsHybridSearch => _hybridSearchService != null;
 
     // Phase 3: 이벤트 기반 모니터링
     /// <summary>
@@ -61,13 +73,17 @@ public class Indexer
         IChunkingService chunkingService,
         IndexerOptions options,
         ILogger<Indexer>? logger = null,
-        IMetadataExtractor? metadataExtractor = null)
+        IMetadataExtractor? metadataExtractor = null,
+        IGraphRAGService? graphRAGService = null,
+        IHybridSearchService? hybridSearchService = null)
     {
         _vectorStore = vectorStore;
         _documentRepository = documentRepository;
         _embeddingService = embeddingService;
         _chunkingService = chunkingService;
         _metadataExtractor = metadataExtractor;
+        _graphRAGService = graphRAGService;
+        _hybridSearchService = hybridSearchService;
         _options = options;
         _logger = logger ?? new NullLogger<Indexer>();
     }
@@ -120,17 +136,47 @@ public class Indexer
         Document document,
         CancellationToken cancellationToken = default)
     {
-        return await IndexDocumentAsync(document, null, cancellationToken);
+        return await IndexDocumentAsync(document, null, null, cancellationToken);
+    }
+
+    /// <summary>
+    /// 문서 인덱싱 (진행률 모니터링 지원)
+    /// </summary>
+    /// <param name="document">인덱싱할 문서</param>
+    /// <param name="progress">진행률 보고 객체</param>
+    /// <param name="cancellationToken">취소 토큰</param>
+    public async Task<string> IndexDocumentAsync(
+        Document document,
+        IProgress<IndexingProgress>? progress,
+        CancellationToken cancellationToken = default)
+    {
+        return await IndexDocumentAsync(document, null, progress, cancellationToken);
+    }
+
+    /// <summary>
+    /// 문서 인덱싱 (IndexingOptions 지원)
+    /// </summary>
+    /// <param name="document">인덱싱할 문서</param>
+    /// <param name="options">인덱싱 옵션. null이면 등록된 서비스에 따라 자동 설정</param>
+    /// <param name="cancellationToken">취소 토큰</param>
+    public async Task<string> IndexDocumentAsync(
+        Document document,
+        IndexingOptions? options,
+        CancellationToken cancellationToken = default)
+    {
+        return await IndexDocumentAsync(document, options, null, cancellationToken);
     }
 
     /// <summary>
     /// 문서 인덱싱 (Phase 3: 진행률 모니터링 지원)
     /// </summary>
     /// <param name="document">인덱싱할 문서</param>
+    /// <param name="options">인덱싱 옵션. null이면 등록된 서비스에 따라 자동 설정</param>
     /// <param name="progress">진행률 보고 객체 (선택)</param>
     /// <param name="cancellationToken">취소 토큰</param>
     public async Task<string> IndexDocumentAsync(
         Document document,
+        IndexingOptions? options,
         IProgress<IndexingProgress>? progress,
         CancellationToken cancellationToken = default)
     {
@@ -346,6 +392,36 @@ public class Indexer
             // Store in vector store
             await _vectorStore.StoreBatchAsync(embeddedEntityChunks, cancellationToken);
 
+            // GraphRAG 인덱싱 (자동 감지)
+            // - options?.EnableGraphRAG == null: 서비스가 등록되어 있으면 자동 활성화
+            // - options?.EnableGraphRAG == true: 강제 활성화
+            // - options?.EnableGraphRAG == false: 강제 비활성화
+            var enableGraphRAG = options?.EnableGraphRAG ?? (_graphRAGService != null);
+            if (enableGraphRAG)
+            {
+                if (_graphRAGService == null)
+                {
+                    throw new InvalidOperationException(
+                        "GraphRAG is enabled but IGraphRAGService is not registered. " +
+                        "Use UseNeo4jGraph() or register IGraphRAGService manually.");
+                }
+
+                progress?.Report(new IndexingProgress
+                {
+                    JobId = jobId,
+                    DocumentId = document.Id,
+                    CurrentChunk = chunks.Count,
+                    TotalChunks = chunks.Count,
+                    ProgressPercentage = 90,
+                    Status = "GraphRAG",
+                    Message = "Building GraphRAG index"
+                });
+
+                _logger.LogInformation("Building GraphRAG index for document {DocumentId}", document.Id);
+                await _graphRAGService.BuildIndexAsync(embeddedEntityChunks, options?.GraphRAGOptions, cancellationToken);
+                _logger.LogInformation("GraphRAG index built successfully for document {DocumentId}", document.Id);
+            }
+
             // Phase 3: 진행률 보고 - 완료
             progress?.Report(new IndexingProgress
             {
@@ -403,11 +479,24 @@ public class Indexer
         documentId ??= Guid.NewGuid().ToString();
         _logger.LogInformation("Indexing chunks as document: {DocumentId}", documentId);
 
-        // Create document
-        var document = new Document { Id = documentId, CreatedAt = DateTime.UtcNow };
+        // Materialize chunks for multiple iterations
+        var chunkList = chunks.ToList();
+
+        // Create document with combined content from all chunks
+        var combinedContent = string.Join("\n", chunkList.Select(c => c.Content));
+        var document = new Document { Id = documentId, Content = combinedContent, CreatedAt = DateTime.UtcNow };
+
+        // Add metadata if provided
+        if (metadata != null)
+        {
+            foreach (var (key, value) in metadata)
+            {
+                document.SetMetadata(key, value);
+            }
+        }
 
         // Add chunks to document
-        foreach (var chunk in chunks)
+        foreach (var chunk in chunkList)
         {
             document.AddChunk(ConvertToEntityChunk(chunk));
         }

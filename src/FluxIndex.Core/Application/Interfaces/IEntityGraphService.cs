@@ -151,6 +151,11 @@ public class EntityGraphBuildOptions
     /// Batch size for processing chunks
     /// </summary>
     public int BatchSize { get; set; } = 10;
+
+    /// <summary>
+    /// Whether to persist the graph to the configured graph store (Neo4j, etc.)
+    /// </summary>
+    public bool PersistToGraphStore { get; set; } = true;
 }
 
 /// <summary>

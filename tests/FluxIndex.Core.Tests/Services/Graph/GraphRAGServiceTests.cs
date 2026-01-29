@@ -41,6 +41,7 @@ public class GraphRAGServiceTests
             _mockSummarizationService.Object,
             _mockEmbeddingService.Object,
             _mockTextCompletionService.Object,
+            graphStore: null, // No graph store for unit tests
             _mockLogger.Object);
     }
 

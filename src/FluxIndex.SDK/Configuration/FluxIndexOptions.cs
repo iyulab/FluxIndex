@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using FluxIndex.Storage.Neo4j;
+using FluxIndex.Storage.Qdrant;
 
 namespace FluxIndex.SDK.Configuration;
 
@@ -66,6 +68,16 @@ public class VectorStoreOptions
     public TimeSpan ConnectionTimeout { get; set; } = TimeSpan.FromSeconds(30);
     public bool EnableAutoMigration { get; set; } = false;
     public Dictionary<string, object> ProviderSpecificOptions { get; set; } = new();
+
+    // Qdrant-specific options
+    public string QdrantHost { get; set; } = "localhost";
+    public int QdrantGrpcPort { get; set; } = 6334;
+    public int QdrantHttpPort { get; set; } = 6333;
+    public string QdrantCollectionName { get; set; } = "fluxindex_chunks";
+    public int QdrantVectorSize { get; set; } = 1536;
+    public string? QdrantApiKey { get; set; }
+    public bool QdrantUseHttps { get; set; } = false;
+    public Action<QdrantOptions>? QdrantOptionsAction { get; set; }
 }
 
 /// <summary>
@@ -141,7 +153,7 @@ public class CacheOptions
 public class GraphStoreOptions
 {
     /// <summary>
-    /// 그래프 저장소 프로바이더 ("None", "SQLite", "PostgreSQL")
+    /// 그래프 저장소 프로바이더 ("None", "SQLite", "PostgreSQL", "Neo4j")
     /// </summary>
     public string Provider { get; set; } = "None";
 
@@ -164,6 +176,13 @@ public class GraphStoreOptions
     /// 벡터 저장소와 동일한 연결 문자열 사용 여부
     /// </summary>
     public bool UseVectorStoreConnection { get; set; } = true;
+
+    // Neo4j-specific options
+    public string? Neo4jUri { get; set; }
+    public string? Neo4jUsername { get; set; }
+    public string? Neo4jPassword { get; set; }
+    public string? Neo4jDatabase { get; set; }
+    public Action<Neo4jOptions>? Neo4jOptionsAction { get; set; }
 }
 
 /// <summary>

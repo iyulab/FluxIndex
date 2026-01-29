@@ -24,6 +24,7 @@ public class GraphRAGService : IGraphRAGService
     private readonly IHierarchicalSummarizationService _summarizationService;
     private readonly IEmbeddingService? _embeddingService;
     private readonly ITextCompletionService? _textCompletionService;
+    private readonly IGraphStore? _graphStore;
     private readonly ILogger<GraphRAGService> _logger;
 
     // Query scope detection patterns
@@ -55,6 +56,7 @@ public class GraphRAGService : IGraphRAGService
         IHierarchicalSummarizationService summarizationService,
         IEmbeddingService? embeddingService = null,
         ITextCompletionService? textCompletionService = null,
+        IGraphStore? graphStore = null,
         ILogger<GraphRAGService>? logger = null)
     {
         _entityGraphService = entityGraphService ?? throw new ArgumentNullException(nameof(entityGraphService));
@@ -62,6 +64,7 @@ public class GraphRAGService : IGraphRAGService
         _summarizationService = summarizationService ?? throw new ArgumentNullException(nameof(summarizationService));
         _embeddingService = embeddingService;
         _textCompletionService = textCompletionService;
+        _graphStore = graphStore;
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<GraphRAGService>.Instance;
     }
 
@@ -129,7 +132,7 @@ public class GraphRAGService : IGraphRAGService
             "GraphRAG index built: {Entities} entities, {Communities} communities, {Summaries} summaries in {TimeMs:F0}ms",
             stats.TotalEntities, stats.TotalCommunities, stats.TotalSummaries, stats.BuildTimeMs);
 
-        return new GraphRAGIndex
+        var index = new GraphRAGIndex
         {
             EntityGraph = entityGraph,
             CommunityHierarchy = communityHierarchy,
@@ -138,6 +141,57 @@ public class GraphRAGService : IGraphRAGService
             Stats = stats,
             Options = options
         };
+
+        // Persist communities to graph store if available
+        if (_graphStore != null)
+        {
+            await PersistCommunitiesToGraphStoreAsync(index, cancellationToken);
+        }
+
+        return index;
+    }
+
+    /// <summary>
+    /// Persists community information to the graph store for later traversal queries.
+    /// </summary>
+    private async Task PersistCommunitiesToGraphStoreAsync(GraphRAGIndex index, CancellationToken cancellationToken)
+    {
+        if (_graphStore == null) return;
+
+        _logger.LogDebug("Persisting communities to graph store");
+
+        var persistedCount = 0;
+
+        foreach (var level in index.CommunityHierarchy.Levels)
+        {
+            foreach (var community in level.Communities)
+            {
+                // Find matching summary from SummariesByLevel
+                CommunitySummary? communitySummary = null;
+                if (index.Summaries.SummariesByLevel.TryGetValue(level.LevelIndex, out var levelSummaries))
+                {
+                    communitySummary = levelSummaries.FirstOrDefault(s => s.CommunityId == community.Id);
+                }
+
+                var graphCommunity = new GraphCommunity
+                {
+                    Id = community.Id,
+                    Name = communitySummary?.Title ?? $"Community_{community.Id}",
+                    Summary = communitySummary?.Summary,
+                    EntityIds = community.ChunkIds,  // ChunkIds are stored as EntityIds in graph context
+                    Topics = communitySummary?.Themes.ToList() ?? [],
+                    ImportanceScore = community.Cohesion,
+                    Level = level.LevelIndex,
+                    ParentCommunityId = community.ParentCommunityId,
+                    Embedding = communitySummary?.Embedding?.Values
+                };
+
+                await _graphStore.StoreCommunityAsync(graphCommunity, cancellationToken);
+                persistedCount++;
+            }
+        }
+
+        _logger.LogInformation("Persisted {CommunityCount} communities to graph store", persistedCount);
     }
 
     /// <inheritdoc />

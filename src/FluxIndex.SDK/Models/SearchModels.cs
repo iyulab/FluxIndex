@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using FluxIndex.Core.Application.Interfaces;
 
 namespace FluxIndex.SDK;
 
@@ -15,6 +16,28 @@ public class SearchRequest
     public Dictionary<string, string> Filters { get; set; } = new();
     public bool IncludeMetadata { get; set; } = true;
     public float MinScore { get; set; } = 0.0f;
+
+    /// <summary>
+    /// GraphRAG 검색 활성화.
+    /// - null (기본값): IGraphRAGService가 등록되어 있으면 자동 활성화
+    /// - true: 강제 활성화 (서비스 미등록 시 오류)
+    /// - false: 강제 비활성화
+    /// </summary>
+    public bool? UseGraphRAG { get; set; } = null;
+
+    /// <summary>
+    /// GraphRAG 쿼리 옵션.
+    /// GraphRAG가 활성화될 때 사용됩니다.
+    /// </summary>
+    public GraphRAGQueryOptions? GraphRAGOptions { get; set; }
+
+    /// <summary>
+    /// 하이브리드 검색 활성화 (Vector + Keyword).
+    /// - null (기본값): IHybridSearchService가 등록되어 있으면 자동 활성화
+    /// - true: 강제 활성화 (서비스 미등록 시 오류)
+    /// - false: 강제 비활성화
+    /// </summary>
+    public bool? UseHybridSearch { get; set; } = null;
 }
 
 /// <summary>
@@ -54,6 +77,28 @@ public class SearchOptions
     public float MinSimilarity { get; set; } = 0.0f;
     public bool IncludeVectors { get; set; } = false;
     public Dictionary<string, string> MetadataFilters { get; set; } = new();
+
+    /// <summary>
+    /// GraphRAG 검색 활성화.
+    /// - null (기본값): IGraphRAGService가 등록되어 있으면 자동 활성화
+    /// - true: 강제 활성화 (서비스 미등록 시 오류)
+    /// - false: 강제 비활성화
+    /// </summary>
+    public bool? UseGraphRAG { get; set; } = null;
+
+    /// <summary>
+    /// GraphRAG 쿼리 옵션.
+    /// GraphRAG가 활성화될 때 사용됩니다.
+    /// </summary>
+    public GraphRAGQueryOptions? GraphRAGOptions { get; set; }
+
+    /// <summary>
+    /// 하이브리드 검색 활성화 (Vector + Keyword).
+    /// - null (기본값): IHybridSearchService가 등록되어 있으면 자동 활성화
+    /// - true: 강제 활성화 (서비스 미등록 시 오류)
+    /// - false: 강제 비활성화
+    /// </summary>
+    public bool? UseHybridSearch { get; set; } = null;
 }
 
 /// <summary>

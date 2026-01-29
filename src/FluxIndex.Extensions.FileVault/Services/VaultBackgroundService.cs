@@ -2,6 +2,7 @@ using FluxIndex.Extensions.FileVault.Domain.Entities;
 using FluxIndex.Extensions.FileVault.Domain.Enums;
 using FluxIndex.Extensions.FileVault.Interfaces;
 using FluxIndex.Extensions.FileVault.Options;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -11,12 +12,13 @@ namespace FluxIndex.Extensions.FileVault.Services;
 /// <summary>
 /// Background service for processing vault queue jobs.
 /// Handles memorize, refresh, and remove operations.
+/// Uses IServiceScopeFactory to access scoped services like IVaultPipeline.
 /// </summary>
 public sealed class VaultBackgroundService : BackgroundService
 {
     private readonly ILogger<VaultBackgroundService> _logger;
     private readonly IVaultQueueService _queueService;
-    private readonly IVaultPipeline _pipeline;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly IVaultStorageService _storage;
     private readonly FileVaultOptions _options;
     private readonly SemaphoreSlim _concurrencyLimiter;
@@ -34,13 +36,13 @@ public sealed class VaultBackgroundService : BackgroundService
     public VaultBackgroundService(
         ILogger<VaultBackgroundService> logger,
         IVaultQueueService queueService,
-        IVaultPipeline pipeline,
+        IServiceScopeFactory scopeFactory,
         IVaultStorageService storage,
         IOptions<FileVaultOptions> options)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _queueService = queueService ?? throw new ArgumentNullException(nameof(queueService));
-        _pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
+        _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _storage = storage ?? throw new ArgumentNullException(nameof(storage));
         _options = options?.Value ?? new FileVaultOptions();
         _concurrencyLimiter = new SemaphoreSlim(_options.MaxConcurrentProcessing);
@@ -117,18 +119,22 @@ public sealed class VaultBackgroundService : BackgroundService
             var entry = VaultEntry.LoadByHash(job.FilepathHash, _storage.BasePath)
                         ?? VaultEntry.Create(job.FilePath, _storage.BasePath);
 
+            // Use scope to access scoped services like IVaultPipeline
+            using var scope = _scopeFactory.CreateScope();
+            var pipeline = scope.ServiceProvider.GetRequiredService<IVaultPipeline>();
+
             switch (job.JobType)
             {
                 case VaultJobType.Memorize:
-                    await _pipeline.MemorizeAsync(entry, null, ct);
+                    await pipeline.MemorizeAsync(entry, null, ct);
                     break;
 
                 case VaultJobType.Refresh:
-                    await _pipeline.RefreshAsync(entry, null, ct);
+                    await pipeline.RefreshAsync(entry, null, ct);
                     break;
 
                 case VaultJobType.Remove:
-                    await ProcessRemoveJobAsync(entry, ct);
+                    await ProcessRemoveJobAsync(entry, pipeline, ct);
                     break;
 
                 default:
@@ -162,7 +168,7 @@ public sealed class VaultBackgroundService : BackgroundService
     /// Phase 1: Delete vectors from vector store
     /// Phase 2: Delete storage (entry directory)
     /// </summary>
-    private async Task ProcessRemoveJobAsync(VaultEntry entry, CancellationToken ct)
+    private async Task ProcessRemoveJobAsync(VaultEntry entry, IVaultPipeline pipeline, CancellationToken ct)
     {
         _logger.LogInformation("Processing remove job for {SourcePath}", entry.SourcePath);
 
@@ -180,7 +186,7 @@ public sealed class VaultBackgroundService : BackgroundService
 
             try
             {
-                await _pipeline.RemoveAsync(entry, ct);
+                await pipeline.RemoveAsync(entry, ct);
 
                 // Mark vector phase complete
                 entry.MarkRemovalPartial("Vector");

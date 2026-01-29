@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\FluxIndex.Storage.Neo4j\FluxIndex.Storage.Neo4j.csproj" />
+    <ProjectReference Include="..\..\src\FluxIndex.Core\FluxIndex.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -4,7 +4,6 @@
     <ProjectReference Include="..\FluxIndex.Stack.Application\FluxIndex.Stack.Application.csproj" />
     <ProjectReference Include="..\FluxIndex.Stack.Domain\FluxIndex.Stack.Domain.csproj" />
     <ProjectReference Include="..\FluxIndex.Stack.Shared\FluxIndex.Stack.Shared.csproj" />
-    <ProjectReference Include="..\FluxIndex.Stack.Vault\FluxIndex.Stack.Vault.csproj" />
     <ProjectReference Include="..\..\..\src\FluxIndex.Core\FluxIndex.Core.csproj" />
     <ProjectReference Include="..\..\..\src\FluxIndex.SDK\FluxIndex.SDK.csproj" />
     <ProjectReference Include="..\..\..\src\FluxIndex.Storage.PostgreSQL\FluxIndex.Storage.PostgreSQL.csproj" />
@@ -12,6 +11,7 @@
     <ProjectReference Include="..\..\..\src\FluxIndex.Storage.Neo4j\FluxIndex.Storage.Neo4j.csproj" />
     <ProjectReference Include="..\..\..\src\FluxIndex.Storage.Qdrant\FluxIndex.Storage.Qdrant.csproj" />
     <ProjectReference Include="..\..\..\src\FluxIndex.Cache.Redis\FluxIndex.Cache.Redis.csproj" />
+    <ProjectReference Include="..\..\..\src\FluxIndex.Extensions.FileVault\FluxIndex.Extensions.FileVault.csproj" />
   </ItemGroup>
 
   <ItemGroup>

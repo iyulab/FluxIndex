@@ -12,15 +12,32 @@ Architecture, retrieval mechanisms, and advanced topics for FluxIndex.
 ┌─────────────────────────────────────────────────────┐
 │               SDK Layer (FluxIndex.SDK)             │
 │            FluxIndexContext, Builder Pattern        │
-│         LMSupply, FileFlux, WebFlux, FluxCurator    │
+│         FileFlux, WebFlux, FluxCurator              │
 ├─────────────────────────────────────────────────────┤
-│              Provider Packages (Optional)           │
-│  FluxIndex.Storage.*    FluxIndex.Cache.Redis       │
-│  FluxIndex.Extensions.FileVault                     │
+│              Storage Providers                      │
+│  SQLite | PostgreSQL | Qdrant | Neo4j | Redis      │
 ├─────────────────────────────────────────────────────┤
 │              Core (FluxIndex.Core)                  │
-│         Domain + Application + Infrastructure       │
+│   Domain + Application (AI Agnostic)               │
+│   BM25, Graph Traversal, Quantization              │
 └─────────────────────────────────────────────────────┘
+```
+
+### Storage Modes
+
+FluxIndex supports three storage configurations:
+
+| Mode | Setup | Storage Distribution |
+|------|-------|---------------------|
+| **Local** | `UseLocalStorage()` | SQLite → Vector + Graph + RDB + Cache |
+| **Full** | `UseBestInClass()` | Qdrant(Vector) + Neo4j(Graph) + PostgreSQL(RDB+Cache) |
+| **Custom** | Mix providers | User-defined distribution |
+
+**Auto-Maximize Principle**: No feature toggles. Each provider contributes its capabilities automatically.
+
+```
+Provider Priority (same capability):
+  Specialized (Qdrant/Neo4j) > General-purpose (PostgreSQL) > SQLite
 ```
 
 ### Core Interfaces
@@ -55,14 +72,24 @@ public interface IReranker
 
 | Package | Purpose |
 |---------|---------|
-| **FluxIndex.Core** | Domain models, BM25, local reranking, graph traversal, quantization |
-| **FluxIndex.SDK** | FluxIndexContext, Retriever, Indexer, Builder pattern (includes LMSupply, FileFlux, WebFlux, FluxCurator, FluxImprover) |
-| **FluxIndex.Storage.SQLite** | SQLite with vector extension |
-| **FluxIndex.Storage.PostgreSQL** | PostgreSQL with pgvector |
-| **FluxIndex.Storage.Neo4j** | Neo4j graph database |
-| **FluxIndex.Storage.Qdrant** | Qdrant vector database |
+| **FluxIndex.Core** | Domain models, BM25, graph traversal, quantization, abstract base classes |
+| **FluxIndex.SDK** | FluxIndexContext, Retriever, Indexer, Builder pattern, FileFlux/WebFlux integration |
+| **FluxIndex.Storage.SQLite** | SQLite (Vector + Graph + RDB + Cache) - Local mode |
+| **FluxIndex.Storage.PostgreSQL** | PostgreSQL with pgvector (Vector + Graph + RDB + Cache) |
+| **FluxIndex.Storage.Qdrant** | Qdrant vector database (specialized Vector) |
+| **FluxIndex.Storage.Neo4j** | Neo4j graph database (specialized Graph) |
 | **FluxIndex.Cache.Redis** | Redis-based semantic caching |
 | **FluxIndex.Extensions.FileVault** | Git-like file tracking for RAG indexing |
+
+### Storage Capabilities by Provider
+
+| Provider | Vector | Graph | RDB | Cache | Best For |
+|----------|:------:|:-----:|:---:|:-----:|----------|
+| **SQLite** | ✓ | ✓ | ✓ | ✓ | Development, edge deployment |
+| **PostgreSQL** | ✓ | ✓ | ✓ | ✓ | Production (single DB) |
+| **Qdrant** | ✓ | - | - | - | High-performance vector search |
+| **Neo4j** | - | ✓ | - | - | Complex graph queries |
+| **Redis** | - | - | - | ✓ | Distributed caching |
 
 ---
 

@@ -18,15 +18,18 @@ public class EntityGraphService : IEntityGraphService
 {
     private readonly IAdvancedEntityExtractionService? _entityExtractionService;
     private readonly IEmbeddingService? _embeddingService;
+    private readonly IGraphStore? _graphStore;
     private readonly ILogger<EntityGraphService> _logger;
 
     public EntityGraphService(
         IAdvancedEntityExtractionService? entityExtractionService = null,
         IEmbeddingService? embeddingService = null,
+        IGraphStore? graphStore = null,
         ILogger<EntityGraphService>? logger = null)
     {
         _entityExtractionService = entityExtractionService;
         _embeddingService = embeddingService;
+        _graphStore = graphStore;
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<EntityGraphService>.Instance;
     }
 
@@ -123,12 +126,7 @@ public class EntityGraphService : IEntityGraphService
         // Compute statistics
         var stats = ComputeGraphStats(entityNodes, entityEdges, stopwatch.Elapsed.TotalMilliseconds);
 
-        stopwatch.Stop();
-        _logger.LogInformation(
-            "Built entity graph with {EntityCount} entities and {RelationCount} relations in {ElapsedMs:F2}ms",
-            entityNodes.Count, entityEdges.Count, stopwatch.Elapsed.TotalMilliseconds);
-
-        return new EntityGraphResult
+        var entityGraphResult = new EntityGraphResult
         {
             Entities = entityNodes,
             Relations = entityEdges,
@@ -136,6 +134,79 @@ public class EntityGraphService : IEntityGraphService
             SourceChunkIds = sourceChunkIds,
             Stats = stats
         };
+
+        // Persist to graph store if available
+        if (_graphStore != null && options.PersistToGraphStore)
+        {
+            await PersistGraphAsync(entityGraphResult, cancellationToken);
+        }
+
+        stopwatch.Stop();
+        _logger.LogInformation(
+            "Built entity graph with {EntityCount} entities and {RelationCount} relations in {ElapsedMs:F2}ms",
+            entityNodes.Count, entityEdges.Count, stopwatch.Elapsed.TotalMilliseconds);
+
+        return entityGraphResult;
+    }
+
+    /// <summary>
+    /// Persists the entity graph to the configured graph store (Neo4j, etc.).
+    /// </summary>
+    /// <param name="graph">The entity graph to persist.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    public async Task PersistGraphAsync(EntityGraphResult graph, CancellationToken cancellationToken = default)
+    {
+        if (_graphStore == null)
+        {
+            _logger.LogWarning("No graph store configured, skipping persistence");
+            return;
+        }
+
+        _logger.LogInformation("Persisting entity graph to graph store: {EntityCount} entities, {RelationCount} relations",
+            graph.Entities.Count, graph.Relations.Count);
+
+        // Convert EntityNodes to GraphEntities and store
+        var graphEntities = graph.Entities.Select(e => new GraphEntity
+        {
+            Id = e.Id,
+            Name = e.Name,
+            NormalizedName = e.NormalizedName,
+            Type = e.Type,
+            Confidence = e.Confidence,
+            ImportanceScore = e.ImportanceScore,
+            MentionCount = e.MentionCount,
+            Embedding = e.Embedding,
+            ExternalLinks = e.ExternalLinks,
+            Properties = e.Properties
+        }).ToList();
+
+        if (graphEntities.Count > 0)
+        {
+            await _graphStore.StoreEntitiesBatchAsync(graphEntities, cancellationToken);
+        }
+
+        // Convert EntityEdges to GraphRelationships and store
+        var relationships = graph.Relations.Select(r => new GraphRelationship
+        {
+            Id = r.Id,
+            SourceEntityId = r.SourceEntityId,
+            TargetEntityId = r.TargetEntityId,
+            Type = r.RelationType,
+            Label = r.Label,
+            Confidence = r.Confidence,
+            Weight = r.Weight,
+            IsDirectional = r.IsDirectional,
+            EvidenceChunkIds = r.EvidenceChunkIds,
+            EvidenceTexts = r.EvidenceTexts,
+            Properties = r.Properties
+        }).ToList();
+
+        if (relationships.Count > 0)
+        {
+            await _graphStore.StoreRelationshipsBatchAsync(relationships, cancellationToken);
+        }
+
+        _logger.LogInformation("Entity graph persisted to graph store successfully");
     }
 
     /// <inheritdoc/>

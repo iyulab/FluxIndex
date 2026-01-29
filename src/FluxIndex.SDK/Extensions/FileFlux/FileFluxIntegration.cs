@@ -10,7 +10,7 @@ namespace FluxIndex.SDK.Extensions.FileFlux;
 
 /// <summary>
 /// FileFlux integration service for FluxIndex - bridges FileFlux document processing with FluxIndex indexing
-/// Leverages FileFlux 0.9.x stateful document processor with 4-stage pipeline
+/// Leverages FileFlux 0.10.x stateful document processor with 5-stage pipeline
 /// </summary>
 public class FileFluxIntegration
 {
@@ -23,7 +23,7 @@ public class FileFluxIntegration
     /// <summary>
     /// Current FileFlux version for metadata tracking
     /// </summary>
-    private const string FileFluxVersion = "0.9.4";
+    private const string FileFluxVersion = "0.10.0";
 
     public FileFluxIntegration(
         IDocumentProcessorFactory processorFactory,
@@ -40,7 +40,7 @@ public class FileFluxIntegration
     }
 
     /// <summary>
-    /// Process a file with FileFlux and index with FluxIndex using FileFlux 0.9.x API
+    /// Process a file with FileFlux and index with FluxIndex using FileFlux 0.10.x API
     /// </summary>
     public async Task<string> ProcessAndIndexAsync(
         string filePath,
@@ -81,7 +81,7 @@ public class FileFluxIntegration
             var fluxIndexChunks = new List<FluxIndexDocumentChunk>();
             var chunkIndex = 0;
 
-            // Use FileFlux 0.9.x factory pattern to process document
+            // Use FileFlux 0.10.x factory pattern to process document
             await using var processor = _processorFactory.Create(filePath);
             var processingOpts = new global::FileFlux.Core.ProcessingOptions { Chunking = chunkingOptions };
             await processor.ProcessAsync(processingOpts, cancellationToken);
@@ -188,7 +188,7 @@ public class FileFluxIntegration
             var chunkIndex = 0;
             var totalChunks = 0;
 
-            // Use FileFlux 0.9.x factory pattern with streaming API for memory-efficient processing
+            // Use FileFlux 0.10.x factory pattern with streaming API for memory-efficient processing
             await using var processor = _processorFactory.Create(filePath);
             var processingOpts = new global::FileFlux.Core.ProcessingOptions { Chunking = chunkingOptions };
             await foreach (var fileFluxChunk in processor.ProcessStreamAsync(processingOpts, cancellationToken))

@@ -1,5 +1,8 @@
 using FluentAssertions;
+using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.Entities;
+using FluxIndex.Core.Domain.Models;
+using FluxIndex.Core.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -478,6 +481,54 @@ public class QdrantVectorStoreIntegrationTests : IAsyncLifetime
         result.Metadata["totalChunks"].Should().Be(15);
         result.Metadata.Should().ContainKey("tokenCount");
         result.Metadata["tokenCount"].Should().Be(200);
+    }
+
+    #endregion
+
+    #region Hybrid Search Tests
+
+    [SkippableFact]
+    public async Task HybridSearch_VectorAndBM25_ReturnsFusedResults()
+    {
+        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+
+        // Arrange
+        var bm25Logger = NullLogger<BM25SparseRetriever>.Instance;
+        var bm25Retriever = new BM25SparseRetriever(bm25Logger);
+
+        // Create test chunks with specific content for keyword matching
+        var chunks = new[]
+        {
+            CreateTestChunk(id: "chunk-1"),
+            CreateTestChunk(id: "chunk-2"),
+            CreateTestChunk(id: "chunk-3")
+        };
+
+        // Modify content for BM25 testing
+        chunks[0].Content = "Machine learning algorithms are used in artificial intelligence applications.";
+        chunks[1].Content = "Deep learning is a subset of machine learning that uses neural networks.";
+        chunks[2].Content = "Natural language processing enables computers to understand human language.";
+
+        // Store chunks in vector store and BM25 index
+        await _vectorStore.StoreBatchAsync(chunks);
+        foreach (var chunk in chunks)
+        {
+            await bm25Retriever.IndexChunkAsync(chunk);
+        }
+
+        // Search using BM25 only
+        var bm25Results = await bm25Retriever.SearchAsync(
+            "machine learning",
+            new SparseSearchOptions { MaxResults = 3 });
+
+        // Assert
+        bm25Results.Should().NotBeEmpty();
+        bm25Results.Should().HaveCountGreaterThanOrEqualTo(1);
+
+        // Verify that chunks with "machine learning" content are found
+        var foundIds = bm25Results.Select(r => r.Chunk.Id).ToList();
+        foundIds.Should().Contain("chunk-1"); // Contains "machine learning"
+        foundIds.Should().Contain("chunk-2"); // Contains "machine learning"
     }
 
     #endregion

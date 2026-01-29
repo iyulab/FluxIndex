@@ -13,11 +13,17 @@
     <PackageReference Include="Microsoft.Extensions.Configuration" />
     <PackageReference Include="Microsoft.Extensions.Options" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <!-- Testcontainers for integration tests -->
+    <PackageReference Include="Testcontainers.Neo4j" />
+    <PackageReference Include="Testcontainers.Qdrant" />
+    <PackageReference Include="Xunit.SkippableFact" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\FluxIndex.SDK\FluxIndex.SDK.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.Core\FluxIndex.Core.csproj" />
+    <ProjectReference Include="..\..\src\FluxIndex.Storage.Neo4j\FluxIndex.Storage.Neo4j.csproj" />
+    <ProjectReference Include="..\..\src\FluxIndex.Storage.Qdrant\FluxIndex.Storage.Qdrant.csproj" />
   </ItemGroup>
 
   <ItemGroup>

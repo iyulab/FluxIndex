@@ -5,7 +5,7 @@ using FluxIndex.Stack.Api.Observability;
 using FluxIndex.Stack.Application.Interfaces.Services;
 using FluxIndex.Stack.Infrastructure.Data;
 using FluxIndex.Stack.Infrastructure.Extensions;
-using FluxIndex.Stack.Vault.Extensions;
+// FileVault is now registered via Infrastructure.AddInfrastructure() -> AddFileVault()
 using Microsoft.EntityFrameworkCore;
 using ModelContextProtocol.Server;
 
@@ -55,11 +55,9 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 // Add infrastructure services
+// Note: AddInfrastructure includes AddFileVault() for file system synchronization
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddRedisCache(builder.Configuration);
-
-// Add Vault services (file system synchronization)
-builder.Services.AddFluxIndexVault(builder.Configuration);
 
 // Add OpenTelemetry observability (metrics + tracing)
 builder.Services.AddFluxIndexObservability(builder.Configuration);

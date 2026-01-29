@@ -11,7 +11,7 @@ using Microsoft.Extensions.Logging;
 namespace FluxIndex.Core.Services;
 
 /// <summary>
-/// 문서 인덱싱 서비스 - 고도화된 메타데이터 처리 포함
+/// 문서 인덱싱 서비스 - 고도화된 메타데이터 처리 및 키워드 인덱싱 포함
 /// </summary>
 public class IndexingService
 {
@@ -19,6 +19,7 @@ public class IndexingService
     private readonly IVectorStore _vectorStore;
     private readonly IEmbeddingService _embeddingService;
     private readonly IMetadataEnrichmentService _metadataEnrichmentService;
+    private readonly IKeywordSearchService? _keywordSearchService;
     private readonly ILogger<IndexingService> _logger;
 
     public IndexingService(
@@ -26,12 +27,14 @@ public class IndexingService
         IVectorStore vectorStore,
         IEmbeddingService embeddingService,
         IMetadataEnrichmentService metadataEnrichmentService,
-        ILogger<IndexingService> logger)
+        ILogger<IndexingService> logger,
+        IKeywordSearchService? keywordSearchService = null)
     {
         _documentRepository = documentRepository ?? throw new ArgumentNullException(nameof(documentRepository));
         _vectorStore = vectorStore ?? throw new ArgumentNullException(nameof(vectorStore));
         _embeddingService = embeddingService ?? throw new ArgumentNullException(nameof(embeddingService));
         _metadataEnrichmentService = metadataEnrichmentService ?? throw new ArgumentNullException(nameof(metadataEnrichmentService));
+        _keywordSearchService = keywordSearchService; // Optional: null if keyword search not configured
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -91,6 +94,12 @@ public class IndexingService
                 // Store in vector store
                 await _vectorStore.StoreAsync(chunk, cancellationToken);
 
+                // Index in keyword search (if configured)
+                if (_keywordSearchService != null)
+                {
+                    await _keywordSearchService.IndexChunkAsync(chunk, cancellationToken);
+                }
+
                 // Add to document
                 document.AddChunk(chunk);
 
@@ -125,6 +134,12 @@ public class IndexingService
 
         // Delete chunks from vector store
         var deletedCount = await _vectorStore.DeleteByDocumentIdAsync(documentId, cancellationToken);
+
+        // Delete from keyword index (if configured)
+        if (_keywordSearchService != null)
+        {
+            await _keywordSearchService.DeleteByDocumentIdAsync(documentId, cancellationToken);
+        }
         
         // Delete document from repository
         await _documentRepository.DeleteAsync(documentId, cancellationToken);

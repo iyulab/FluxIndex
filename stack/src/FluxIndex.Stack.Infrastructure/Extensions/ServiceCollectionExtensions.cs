@@ -34,8 +34,8 @@ using StackIChunkingService = FluxIndex.Stack.Application.Interfaces.Services.IC
 using StackSearchService = FluxIndex.Stack.Application.Services.SearchService;
 using StackIndexingService = FluxIndex.Stack.Application.Services.IndexingService;
 
-// Vault types
-using FluxIndex.Stack.Vault.Interfaces;
+// FileVault types (Extensions.FileVault replaces Stack.Vault)
+using FluxIndex.Extensions.FileVault.Extensions;
 
 namespace FluxIndex.Stack.Infrastructure.Extensions;
 
@@ -62,6 +62,7 @@ public static class ServiceCollectionExtensions
         services.AddRedisCache(configuration);
         services.AddAdvancedSearchServices(configuration);
         services.AddNeo4jGraphService(configuration);
+        services.AddFileVault(configuration);
 
         return services;
     }
@@ -176,10 +177,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IChunkEmbeddingRepository, ChunkEmbeddingRepository>();
         services.AddScoped<IReindexingJobRepository, ReindexingJobRepository>();
 
-        // Vault repositories
-        services.AddScoped<IWatchedFolderRepository, WatchedFolderRepository>();
-        services.AddScoped<ITrackedFileRepository, TrackedFileRepository>();
-        services.AddScoped<ITrackedFileVersionRepository, TrackedFileVersionRepository>();
+        // Vault repositories removed - now using Extensions.FileVault
+        // See AddFileVault() in AddInfrastructure()
 
         return services;
     }
@@ -603,6 +602,35 @@ public static class ServiceCollectionExtensions
             var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Neo4jGraphService>>();
             return new Neo4jGraphService(graphStore, embeddingProvider, logger);
         });
+
+        return services;
+    }
+
+    /// <summary>
+    /// Adds FileVault services for file tracking and memorization.
+    /// Uses Extensions.FileVault's file system-based storage (.vault directory).
+    /// </summary>
+    public static IServiceCollection AddFileVault(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        var section = configuration.GetSection("FileVault");
+        var vaultBasePath = section.GetValue<string>("BasePath") ?? "./data/.vault";
+
+        // Register FileVault with FluxIndex integration
+        // This provides: IVault, IVaultStorageService, IFileWatcherService, IVaultQueueService
+        // Adapters: FileFluxExtractor, FileFluxChunker for document processing
+        services.AddFileVaultWithFluxIndex(options =>
+        {
+            options.VaultBasePath = vaultBasePath;
+            options.EnableBackgroundProcessing = section.GetValue<bool>("EnableBackgroundProcessing", true);
+            options.MaxConcurrentProcessing = section.GetValue<int>("MaxConcurrentProcessing", 4);
+            options.EnableRealTimeWatch = section.GetValue<bool>("EnableRealTimeWatch", true);
+            options.VersionRetentionCount = section.GetValue<int>("VersionRetentionCount", 5);
+        });
+
+        // Register the background queue processing service from Extensions.FileVault
+        services.AddHostedService<FluxIndex.Extensions.FileVault.Services.VaultBackgroundService>();
 
         return services;
     }

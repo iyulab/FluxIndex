@@ -1,28 +1,31 @@
+using FluxIndex.Extensions.FileVault.Domain.Entities;
+using FluxIndex.Extensions.FileVault.Domain.Enums;
+using FluxIndex.Extensions.FileVault.Interfaces;
 using FluxIndex.Stack.Application.Interfaces.Repositories;
 using FluxIndex.Stack.Shared.Common;
 using FluxIndex.Stack.Shared.DTOs.Vault;
-using FluxIndex.Stack.Vault.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 
 namespace FluxIndex.Stack.Api.Controllers;
 
 /// <summary>
 /// API controller for vault operations (file system synchronization).
+/// Uses FluxIndex.Extensions.FileVault for core functionality.
 /// </summary>
 [ApiController]
 [Route("api/v1/[controller]")]
 public class VaultController : ControllerBase
 {
-    private readonly IVaultService _vaultService;
+    private readonly IVault _vault;
     private readonly IDocumentRepository _documentRepository;
     private readonly ILogger<VaultController> _logger;
 
     public VaultController(
-        IVaultService vaultService,
+        IVault vault,
         IDocumentRepository documentRepository,
         ILogger<VaultController> logger)
     {
-        _vaultService = vaultService;
+        _vault = vault;
         _documentRepository = documentRepository;
         _logger = logger;
     }
@@ -36,24 +39,8 @@ public class VaultController : ControllerBase
     public async Task<ActionResult<ApiResponse<List<WatchedFolderDto>>>> GetFolders(
         CancellationToken cancellationToken = default)
     {
-        var folders = await _vaultService.GetAllWatchedFoldersAsync(cancellationToken);
-        var dtos = folders.Select(f => new WatchedFolderDto
-        {
-            Id = f.Id,
-            Path = f.Path,
-            Name = f.Name,
-            IsRecursive = f.IsRecursive,
-            IncludePatterns = f.IncludePatterns,
-            ExcludePatterns = f.ExcludePatterns,
-            AutoMemorize = f.AutoMemorize,
-            Status = f.Status.ToString(),
-            ErrorMessage = f.ErrorMessage,
-            CreatedAt = f.CreatedAt,
-            LastScannedAt = f.LastScannedAt,
-            CollectionId = f.CollectionId,
-            TrackedFileCount = f.TrackedFiles?.Count ?? 0,
-            PathExists = Directory.Exists(f.Path)
-        }).ToList();
+        var folders = await _vault.GetAllWatchedFoldersAsync(cancellationToken);
+        var dtos = folders.Select(MapToDto).ToList();
 
         return Ok(ApiResponse<List<WatchedFolderDto>>.Ok(dtos));
     }
@@ -66,31 +53,13 @@ public class VaultController : ControllerBase
         Guid id,
         CancellationToken cancellationToken = default)
     {
-        var folder = await _vaultService.GetWatchedFolderAsync(id, cancellationToken);
+        var folder = await _vault.GetWatchedFolderAsync(id, cancellationToken);
         if (folder == null)
         {
             return NotFound(ApiResponse<WatchedFolderDto>.Fail($"Folder with id '{id}' not found."));
         }
 
-        var dto = new WatchedFolderDto
-        {
-            Id = folder.Id,
-            Path = folder.Path,
-            Name = folder.Name,
-            IsRecursive = folder.IsRecursive,
-            IncludePatterns = folder.IncludePatterns,
-            ExcludePatterns = folder.ExcludePatterns,
-            AutoMemorize = folder.AutoMemorize,
-            Status = folder.Status.ToString(),
-            ErrorMessage = folder.ErrorMessage,
-            CreatedAt = folder.CreatedAt,
-            LastScannedAt = folder.LastScannedAt,
-            CollectionId = folder.CollectionId,
-            TrackedFileCount = folder.TrackedFiles?.Count ?? 0,
-            PathExists = Directory.Exists(folder.Path)
-        };
-
-        return Ok(ApiResponse<WatchedFolderDto>.Ok(dto));
+        return Ok(ApiResponse<WatchedFolderDto>.Ok(MapToDto(folder)));
     }
 
     /// <summary>
@@ -103,32 +72,17 @@ public class VaultController : ControllerBase
     {
         try
         {
-            var folder = await _vaultService.AddWatchedFolderAsync(
+            var folder = await _vault.AddWatchedFolderAsync(
                 request.Path,
                 request.Name,
                 request.IsRecursive,
                 request.AutoMemorize,
                 request.IncludePatterns,
                 request.ExcludePatterns,
-                request.CollectionId,
                 cancellationToken);
 
-            var dto = new WatchedFolderDto
-            {
-                Id = folder.Id,
-                Path = folder.Path,
-                Name = folder.Name,
-                IsRecursive = folder.IsRecursive,
-                IncludePatterns = folder.IncludePatterns,
-                ExcludePatterns = folder.ExcludePatterns,
-                AutoMemorize = folder.AutoMemorize,
-                Status = folder.Status.ToString(),
-                CreatedAt = folder.CreatedAt,
-                CollectionId = folder.CollectionId
-            };
-
             return CreatedAtAction(nameof(GetFolder), new { id = folder.Id },
-                ApiResponse<WatchedFolderDto>.Ok(dto));
+                ApiResponse<WatchedFolderDto>.Ok(MapToDto(folder)));
         }
         catch (DirectoryNotFoundException ex)
         {
@@ -151,7 +105,7 @@ public class VaultController : ControllerBase
     {
         try
         {
-            await _vaultService.RemoveWatchedFolderAsync(id, removeTrackedFiles, cancellationToken);
+            await _vault.RemoveWatchedFolderAsync(id, removeTrackedFiles, cancellationToken);
             return Ok(ApiResponse<bool>.Ok(true));
         }
         catch (KeyNotFoundException ex)
@@ -170,16 +124,16 @@ public class VaultController : ControllerBase
     {
         try
         {
-            var result = await _vaultService.ScanFolderAsync(id, cancellationToken);
+            var result = await _vault.ScanFolderAsync(id, cancellationToken);
             var dto = new ScanResultDto
             {
-                FolderId = result.FolderId,
-                TotalFilesFound = result.TotalFilesFound,
-                NewFilesQueued = result.NewFilesQueued,
-                ChangedFilesQueued = result.ChangedFilesQueued,
-                OrphanedFilesDetected = result.OrphanedFilesDetected,
-                SkippedFiles = result.SkippedFiles,
-                Errors = result.Errors,
+                FolderId = id,
+                TotalFilesFound = result.ScannedCount,
+                NewFilesQueued = result.NewFilesCount,
+                ChangedFilesQueued = result.ChangedFilesCount,
+                OrphanedFilesDetected = result.OrphanedFilesCount,
+                SkippedFiles = result.SkippedFilesCount,
+                Errors = result.Errors.Select(e => e.ErrorMessage).ToList(),
                 DurationSeconds = result.Duration.TotalSeconds
             };
             return Ok(ApiResponse<ScanResultDto>.Ok(dto));
@@ -204,7 +158,7 @@ public class VaultController : ControllerBase
     {
         try
         {
-            await _vaultService.PauseWatchingAsync(id, cancellationToken);
+            await _vault.PauseWatchingAsync(id, cancellationToken);
             return Ok(ApiResponse<bool>.Ok(true));
         }
         catch (KeyNotFoundException ex)
@@ -223,58 +177,12 @@ public class VaultController : ControllerBase
     {
         try
         {
-            await _vaultService.ResumeWatchingAsync(id, cancellationToken);
+            await _vault.ResumeWatchingAsync(id, cancellationToken);
             return Ok(ApiResponse<bool>.Ok(true));
         }
         catch (KeyNotFoundException ex)
         {
             return NotFound(ApiResponse<bool>.Fail(ex.Message));
-        }
-    }
-
-    /// <summary>
-    /// Updates the path of a watched folder.
-    /// Used when the folder has been moved or renamed on the filesystem.
-    /// </summary>
-    [HttpPatch("folders/{id:guid}/path")]
-    public async Task<ActionResult<ApiResponse<WatchedFolderDto>>> UpdateFolderPath(
-        Guid id,
-        [FromBody] UpdateFolderPathRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            var folder = await _vaultService.UpdateFolderPathAsync(id, request.NewPath, cancellationToken);
-            var dto = new WatchedFolderDto
-            {
-                Id = folder.Id,
-                Path = folder.Path,
-                Name = folder.Name,
-                IsRecursive = folder.IsRecursive,
-                IncludePatterns = folder.IncludePatterns,
-                ExcludePatterns = folder.ExcludePatterns,
-                AutoMemorize = folder.AutoMemorize,
-                Status = folder.Status.ToString(),
-                ErrorMessage = folder.ErrorMessage,
-                CreatedAt = folder.CreatedAt,
-                LastScannedAt = folder.LastScannedAt,
-                CollectionId = folder.CollectionId,
-                TrackedFileCount = folder.TrackedFiles?.Count ?? 0,
-                PathExists = Directory.Exists(folder.Path)
-            };
-            return Ok(ApiResponse<WatchedFolderDto>.Ok(dto));
-        }
-        catch (KeyNotFoundException ex)
-        {
-            return NotFound(ApiResponse<WatchedFolderDto>.Fail(ex.Message));
-        }
-        catch (DirectoryNotFoundException ex)
-        {
-            return BadRequest(ApiResponse<WatchedFolderDto>.Fail(ex.Message));
-        }
-        catch (InvalidOperationException ex)
-        {
-            return Conflict(ApiResponse<WatchedFolderDto>.Fail(ex.Message));
         }
     }
 
@@ -286,25 +194,15 @@ public class VaultController : ControllerBase
         Guid id,
         CancellationToken cancellationToken = default)
     {
-        var folder = await _vaultService.GetWatchedFolderAsync(id, cancellationToken);
+        var folder = await _vault.GetWatchedFolderAsync(id, cancellationToken);
         if (folder == null)
         {
             return NotFound(ApiResponse<List<TrackedFileDto>>.Fail($"Folder with id '{id}' not found."));
         }
 
-        var files = await _vaultService.GetTrackedFilesByFolderAsync(id, cancellationToken);
-
-        // Fetch associated documents to get their status
-        var documentIds = files
-            .Where(f => f.DocumentId.HasValue)
-            .Select(f => f.DocumentId!.Value)
-            .Distinct()
-            .ToList();
-
-        var documents = await _documentRepository.GetByIdsAsync(documentIds, cancellationToken);
-        var documentStatusMap = documents.ToDictionary(d => d.Id, d => d.Status.ToString());
-
-        var dtos = files.Select(f => MapToDtoWithDocumentStatus(f, documentStatusMap)).ToList();
+        // List all entries in the vault
+        var entries = await _vault.ListAsync(null, cancellationToken);
+        var dtos = entries.Select(MapToTrackedFileDto).ToList();
 
         return Ok(ApiResponse<List<TrackedFileDto>>.Ok(dtos));
     }
@@ -314,21 +212,20 @@ public class VaultController : ControllerBase
     #region File Endpoints
 
     /// <summary>
-    /// Gets a tracked file by ID.
+    /// Gets a tracked file by path.
     /// </summary>
-    [HttpGet("files/{id:guid}")]
-    public async Task<ActionResult<ApiResponse<TrackedFileDto>>> GetFile(
-        Guid id,
+    [HttpGet("files")]
+    public async Task<ActionResult<ApiResponse<TrackedFileDto>>> GetFileByPath(
+        [FromQuery] string path,
         CancellationToken cancellationToken = default)
     {
-        var file = await _vaultService.GetTrackedFileAsync(id, cancellationToken);
-        if (file == null)
+        var entry = await _vault.GetAsync(path, cancellationToken);
+        if (entry == null)
         {
-            return NotFound(ApiResponse<TrackedFileDto>.Fail($"File with id '{id}' not found."));
+            return NotFound(ApiResponse<TrackedFileDto>.Fail($"File not tracked: {path}"));
         }
 
-        var dto = MapToDto(file);
-        return Ok(ApiResponse<TrackedFileDto>.Ok(dto));
+        return Ok(ApiResponse<TrackedFileDto>.Ok(MapToTrackedFileDto(entry)));
     }
 
     /// <summary>
@@ -341,14 +238,8 @@ public class VaultController : ControllerBase
     {
         try
         {
-            var file = await _vaultService.MemorizeFileAsync(
-                request.SourcePath,
-                request.WatchedFolderId,
-                cancellationToken);
-
-            var dto = MapToDto(file);
-            return CreatedAtAction(nameof(GetFile), new { id = file.Id },
-                ApiResponse<TrackedFileDto>.Ok(dto));
+            var entry = await _vault.MemorizeAsync(request.SourcePath, cancellationToken);
+            return Ok(ApiResponse<TrackedFileDto>.Ok(MapToTrackedFileDto(entry)));
         }
         catch (FileNotFoundException ex)
         {
@@ -363,15 +254,14 @@ public class VaultController : ControllerBase
     /// <summary>
     /// Unmemorizes a file (removes it from the vault).
     /// </summary>
-    [HttpDelete("files/{id:guid}")]
+    [HttpDelete("files")]
     public async Task<ActionResult<ApiResponse<bool>>> UnmemorizeFile(
-        Guid id,
-        [FromQuery] bool deleteArtifacts = true,
+        [FromQuery] string path,
         CancellationToken cancellationToken = default)
     {
         try
         {
-            await _vaultService.UnmemorizeFileAsync(id, deleteArtifacts, cancellationToken);
+            await _vault.RemoveAsync(path, cancellationToken);
             return Ok(ApiResponse<bool>.Ok(true));
         }
         catch (KeyNotFoundException ex)
@@ -381,18 +271,17 @@ public class VaultController : ControllerBase
     }
 
     /// <summary>
-    /// Reprocesses a file.
+    /// Refreshes a file (re-processes vault content without re-extraction).
     /// </summary>
-    [HttpPost("files/{id:guid}/reprocess")]
-    public async Task<ActionResult<ApiResponse<TrackedFileDto>>> ReprocessFile(
-        Guid id,
+    [HttpPost("files/refresh")]
+    public async Task<ActionResult<ApiResponse<TrackedFileDto>>> RefreshFile(
+        [FromBody] RefreshFileRequest request,
         CancellationToken cancellationToken = default)
     {
         try
         {
-            var file = await _vaultService.ReprocessFileAsync(id, cancellationToken);
-            var dto = MapToDto(file);
-            return Ok(ApiResponse<TrackedFileDto>.Ok(dto));
+            var entry = await _vault.RefreshAsync(request.SourcePath, cancellationToken);
+            return Ok(ApiResponse<TrackedFileDto>.Ok(MapToTrackedFileDto(entry)));
         }
         catch (KeyNotFoundException ex)
         {
@@ -402,6 +291,37 @@ public class VaultController : ControllerBase
         {
             return BadRequest(ApiResponse<TrackedFileDto>.Fail(ex.Message));
         }
+    }
+
+    /// <summary>
+    /// Detects changes for a file.
+    /// </summary>
+    [HttpGet("files/changes")]
+    public async Task<ActionResult<ApiResponse<ChangeDetectionResultDto>>> DetectChanges(
+        [FromQuery] string path,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _vault.DetectChangesAsync(path, cancellationToken);
+        var dto = new ChangeDetectionResultDto
+        {
+            FilePath = result.FilePath,
+            FileName = result.FileName,
+            FileExtension = result.FileExtension,
+            FileSize = result.FileSize,
+            FileModifiedAt = result.FileModifiedAt,
+            EntryExists = result.EntryExists,
+            SourceExists = result.SourceExists,
+            SourceChanged = result.SourceChanged,
+            VaultChanged = result.VaultChanged,
+            HasChanges = result.HasChanges,
+            RecommendedAction = result.RecommendedAction.ToString(),
+            Stage = result.Stage?.ToString(),
+            SyncStatus = result.SyncStatus?.ToString(),
+            ChunkCount = result.ChunkCount,
+            LastError = result.LastError
+        };
+
+        return Ok(ApiResponse<ChangeDetectionResultDto>.Ok(dto));
     }
 
     #endregion
@@ -415,19 +335,19 @@ public class VaultController : ControllerBase
     public async Task<ActionResult<ApiResponse<VaultStatusDto>>> GetStatus(
         CancellationToken cancellationToken = default)
     {
-        var status = await _vaultService.GetStatusAsync(cancellationToken);
+        var status = await _vault.StatusAsync(cancellationToken);
         var dto = new VaultStatusDto
         {
-            IsEnabled = status.IsEnabled,
-            ActiveWatchers = status.ActiveWatchers,
-            TotalTrackedFiles = status.TotalTrackedFiles,
-            MemorizedFiles = status.MemorizedFiles,
-            QueuedFiles = status.QueuedFiles,
-            ProcessingFiles = status.ProcessingFiles,
-            StaleFiles = status.StaleFiles,
-            OrphanedFiles = status.OrphanedFiles,
-            ErrorFiles = status.ErrorFiles,
-            LastSyncAt = status.LastSyncAt
+            IsEnabled = true,
+            ActiveWatchers = status.ActiveWatcherCount,
+            TotalTrackedFiles = status.TotalEntries,
+            MemorizedFiles = status.MemorizedCount,
+            QueuedFiles = status.QueuedCount,
+            ProcessingFiles = status.ProcessingCount,
+            StaleFiles = status.SourceModifiedCount + status.VaultModifiedCount,
+            OrphanedFiles = status.OrphanedCount,
+            ErrorFiles = status.ErrorCount,
+            LastSyncAt = status.LastSyncTime?.DateTime
         };
         return Ok(ApiResponse<VaultStatusDto>.Ok(dto));
     }
@@ -439,14 +359,14 @@ public class VaultController : ControllerBase
     public async Task<ActionResult<ApiResponse<SyncResultDto>>> Sync(
         CancellationToken cancellationToken = default)
     {
-        var result = await _vaultService.SyncAllAsync(cancellationToken);
+        var result = await _vault.SyncAsync(cancellationToken);
         var dto = new SyncResultDto
         {
             FoldersScanned = result.FoldersScanned,
-            FilesProcessed = result.FilesProcessed,
-            FilesQueued = result.FilesQueued,
-            OrphanedFilesCleaned = result.OrphanedFilesCleaned,
-            Errors = result.Errors,
+            FilesProcessed = result.NewFilesDiscovered + result.ChangedFilesDetected,
+            FilesQueued = result.TotalQueuedCount,
+            OrphanedFilesCleaned = result.OrphansQueued,
+            Errors = result.Errors.Select(e => e.ErrorMessage).ToList(),
             DurationSeconds = result.Duration.TotalSeconds
         };
         return Ok(ApiResponse<SyncResultDto>.Ok(dto));
@@ -459,100 +379,209 @@ public class VaultController : ControllerBase
     public async Task<ActionResult<ApiResponse<int>>> Cleanup(
         CancellationToken cancellationToken = default)
     {
-        var count = await _vaultService.CleanupOrphanedFilesAsync(cancellationToken);
+        var count = await _vault.CleanupOrphanedEntriesAsync(cancellationToken);
         return Ok(ApiResponse<int>.Ok(count));
+    }
+
+    /// <summary>
+    /// Gets the queue status.
+    /// </summary>
+    [HttpGet("queue")]
+    public async Task<ActionResult<ApiResponse<QueueStatusDto>>> GetQueueStatus(
+        CancellationToken cancellationToken = default)
+    {
+        var status = await _vault.GetQueueStatusAsync(cancellationToken);
+        var dto = new QueueStatusDto
+        {
+            QueuedCount = status.QueuedCount,
+            ProcessingCount = status.ProcessingCount,
+            CompletedCount = status.CompletedCount,
+            FailedCount = status.FailedCount,
+            IsPaused = status.IsPaused,
+            LastProcessedAt = status.LastProcessedAt
+        };
+        return Ok(ApiResponse<QueueStatusDto>.Ok(dto));
+    }
+
+    /// <summary>
+    /// Pauses queue processing.
+    /// </summary>
+    [HttpPost("queue/pause")]
+    public async Task<ActionResult<ApiResponse<bool>>> PauseQueue(
+        CancellationToken cancellationToken = default)
+    {
+        await _vault.PauseQueueAsync(cancellationToken);
+        return Ok(ApiResponse<bool>.Ok(true));
+    }
+
+    /// <summary>
+    /// Resumes queue processing.
+    /// </summary>
+    [HttpPost("queue/resume")]
+    public async Task<ActionResult<ApiResponse<bool>>> ResumeQueue(
+        CancellationToken cancellationToken = default)
+    {
+        await _vault.ResumeQueueAsync(cancellationToken);
+        return Ok(ApiResponse<bool>.Ok(true));
+    }
+
+    #endregion
+
+    #region Git Operations
+
+    /// <summary>
+    /// Gets the diff for a vault entry.
+    /// </summary>
+    [HttpGet("files/diff")]
+    public async Task<ActionResult<ApiResponse<string>>> GetDiff(
+        [FromQuery] string path,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var diff = await _vault.DiffAsync(path, cancellationToken);
+            return Ok(ApiResponse<string>.Ok(diff));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ApiResponse<string>.Fail(ex.Message));
+        }
+    }
+
+    /// <summary>
+    /// Gets the commit history for a vault entry.
+    /// </summary>
+    [HttpGet("files/history")]
+    public async Task<ActionResult<ApiResponse<List<GitCommitDto>>>> GetHistory(
+        [FromQuery] string path,
+        [FromQuery] int maxCount = 10,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var commits = await _vault.LogAsync(path, maxCount, cancellationToken);
+            var dtos = commits.Select(c => new GitCommitDto
+            {
+                Hash = c.Hash,
+                ShortHash = c.ShortHash,
+                Message = c.Message,
+                Author = null, // Extensions.FileVault GitCommit doesn't include Author
+                Timestamp = c.Timestamp
+            }).ToList();
+            return Ok(ApiResponse<List<GitCommitDto>>.Ok(dtos));
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ApiResponse<List<GitCommitDto>>.Fail(ex.Message));
+        }
     }
 
     #endregion
 
     #region Helpers
 
-    private static TrackedFileDto MapToDto(Vault.Entities.TrackedFile file)
+    private static WatchedFolderDto MapToDto(WatchedFolder folder)
     {
+        return new WatchedFolderDto
+        {
+            Id = folder.Id,
+            Path = folder.Path,
+            Name = folder.Name,
+            IsRecursive = folder.IsRecursive,
+            IncludePatterns = folder.IncludePatterns,
+            ExcludePatterns = folder.ExcludePatterns,
+            AutoMemorize = folder.AutoMemorize,
+            Status = folder.Status.ToString(),
+            ErrorMessage = folder.ErrorMessage,
+            CreatedAt = folder.CreatedAt.DateTime,
+            LastScannedAt = folder.LastScannedAt?.DateTime,
+            CollectionId = null, // Extensions.FileVault doesn't have CollectionId
+            TrackedFileCount = 0, // Not tracked in Extensions.FileVault WatchedFolder
+            PathExists = folder.PathExists
+        };
+    }
+
+    private static TrackedFileDto MapToTrackedFileDto(VaultEntry entry)
+    {
+        // Get file info from file system for size and modification time
+        var fileInfo = new FileInfo(entry.SourcePath);
+
         return new TrackedFileDto
         {
-            Id = file.Id,
-            SourcePath = file.SourcePath,
-            FileName = file.FileName,
-            FileExtension = file.FileExtension,
-            FileSize = file.FileSize,
-            ContentHash = file.ContentHash,
-            FileModifiedAt = file.FileModifiedAt,
-            Status = file.Status.ToString(),
-            Version = file.Version,
-            CreatedAt = file.CreatedAt,
-            MemorizedAt = file.MemorizedAt,
-            LastSyncedAt = file.LastSyncedAt,
-            ErrorMessage = file.ErrorMessage,
-            WatchedFolderId = file.WatchedFolderId,
-            DocumentId = file.DocumentId,
+            Id = entry.Id,
+            SourcePath = entry.SourcePath,
+            FileName = entry.FileName,
+            FileExtension = Path.GetExtension(entry.SourcePath),
+            FileSize = fileInfo.Exists ? fileInfo.Length : 0,
+            ContentHash = entry.SourceContentHash?.Value,
+            FileModifiedAt = fileInfo.Exists ? fileInfo.LastWriteTime : DateTime.MinValue,
+            Status = entry.Stage.ToString(),
+            Version = 1, // Extensions.FileVault uses git for versioning
+            CreatedAt = entry.CreatedAt.DateTime,
+            MemorizedAt = entry.Stage == ProcessingStage.Memorized ? entry.LastProcessedAt?.DateTime : null,
+            LastSyncedAt = entry.LastProcessedAt?.DateTime,
+            ErrorMessage = entry.LastError,
+            WatchedFolderId = null, // Not tracked in Extensions.FileVault VaultEntry
+            DocumentId = null, // Not directly available
             DocumentStatus = null,
-            EffectiveStatus = file.Status.ToString()
-        };
-    }
-
-    private static TrackedFileDto MapToDtoWithDocumentStatus(
-        Vault.Entities.TrackedFile file,
-        Dictionary<Guid, string> documentStatusMap)
-    {
-        string? documentStatus = null;
-        if (file.DocumentId.HasValue && documentStatusMap.TryGetValue(file.DocumentId.Value, out var status))
-        {
-            documentStatus = status;
-        }
-
-        // Compute effective status based on TrackedFile and Document status
-        var effectiveStatus = ComputeEffectiveStatus(file.Status.ToString(), documentStatus);
-
-        return new TrackedFileDto
-        {
-            Id = file.Id,
-            SourcePath = file.SourcePath,
-            FileName = file.FileName,
-            FileExtension = file.FileExtension,
-            FileSize = file.FileSize,
-            ContentHash = file.ContentHash,
-            FileModifiedAt = file.FileModifiedAt,
-            Status = file.Status.ToString(),
-            Version = file.Version,
-            CreatedAt = file.CreatedAt,
-            MemorizedAt = file.MemorizedAt,
-            LastSyncedAt = file.LastSyncedAt,
-            ErrorMessage = file.ErrorMessage,
-            WatchedFolderId = file.WatchedFolderId,
-            DocumentId = file.DocumentId,
-            DocumentStatus = documentStatus,
-            EffectiveStatus = effectiveStatus
-        };
-    }
-
-    /// <summary>
-    /// Computes the effective status that should be displayed to users.
-    /// Combines TrackedFile status with Document indexing status.
-    /// </summary>
-    private static string ComputeEffectiveStatus(string trackedFileStatus, string? documentStatus)
-    {
-        // If TrackedFile is not Memorized, use its status directly
-        if (trackedFileStatus != "Memorized")
-        {
-            return trackedFileStatus;
-        }
-
-        // TrackedFile is Memorized, but check Document status
-        if (string.IsNullOrEmpty(documentStatus))
-        {
-            return "Pending"; // Document not found
-        }
-
-        return documentStatus switch
-        {
-            "Indexed" => "Indexed",        // Fully indexed with embeddings
-            "Pending" => "Pending",        // Document created but not indexed
-            "Processing" => "Indexing",    // Currently being indexed
-            "Failed" => "Error",           // Indexing failed
-            _ => documentStatus            // Fallback to document status
+            EffectiveStatus = entry.SyncStatus.ToString()
         };
     }
 
     #endregion
+}
+
+/// <summary>
+/// Request to refresh a file's vault content.
+/// </summary>
+public class RefreshFileRequest
+{
+    public string SourcePath { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// DTO for change detection results.
+/// </summary>
+public class ChangeDetectionResultDto
+{
+    public string FilePath { get; set; } = string.Empty;
+    public string FileName { get; set; } = string.Empty;
+    public string FileExtension { get; set; } = string.Empty;
+    public long? FileSize { get; set; }
+    public DateTimeOffset? FileModifiedAt { get; set; }
+    public bool EntryExists { get; set; }
+    public bool SourceExists { get; set; }
+    public bool SourceChanged { get; set; }
+    public bool VaultChanged { get; set; }
+    public bool HasChanges { get; set; }
+    public string RecommendedAction { get; set; } = string.Empty;
+    public string? Stage { get; set; }
+    public string? SyncStatus { get; set; }
+    public int? ChunkCount { get; set; }
+    public string? LastError { get; set; }
+}
+
+/// <summary>
+/// DTO for queue status.
+/// </summary>
+public class QueueStatusDto
+{
+    public int QueuedCount { get; set; }
+    public int ProcessingCount { get; set; }
+    public int CompletedCount { get; set; }
+    public int FailedCount { get; set; }
+    public bool IsPaused { get; set; }
+    public DateTimeOffset? LastProcessedAt { get; set; }
+}
+
+/// <summary>
+/// DTO for git commits.
+/// </summary>
+public class GitCommitDto
+{
+    public string Hash { get; set; } = string.Empty;
+    public string ShortHash { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
+    public string Author { get; set; } = string.Empty;
+    public DateTimeOffset Timestamp { get; set; }
 }

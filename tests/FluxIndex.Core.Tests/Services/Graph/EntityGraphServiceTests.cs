@@ -31,6 +31,7 @@ public class EntityGraphServiceTests
         return new EntityGraphService(
             withEntityService ? _mockEntityService.Object : null,
             withEmbeddingService ? _mockEmbeddingService.Object : null,
+            graphStore: null, // No graph store for unit tests
             _logger);
     }
 

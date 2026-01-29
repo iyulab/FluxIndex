@@ -1,4 +1,5 @@
 ﻿using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Utilities;
 using FluxIndex.Core.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -319,7 +320,7 @@ public class SQLiteVecVectorStore : IVectorStore
             if (chunkEntity == null)
                 return null;
 
-            return new DocumentChunk
+            var chunk = new DocumentChunk
             {
                 Id = chunkEntity.Id,
                 DocumentId = chunkEntity.DocumentId,
@@ -329,6 +330,9 @@ public class SQLiteVecVectorStore : IVectorStore
                 TokenCount = chunkEntity.TokenCount,
                 Metadata = chunkEntity.Metadata
             };
+
+            RestoreRichMetadataStatic(chunk);
+            return chunk;
         }
         catch (Exception ex)
         {
@@ -1020,6 +1024,27 @@ public class SQLiteVecVectorStore : IVectorStore
         finally
         {
             _initLock.Release();
+        }
+    }
+
+    private static void RestoreRichMetadataStatic(DocumentChunk chunk)
+    {
+        if (chunk.Metadata == null)
+            return;
+
+        var chunkMetadata = MetadataHelper.DeserializeChunkMetadata(chunk.Metadata);
+        if (chunkMetadata != null)
+            chunk.SetMetadata(chunkMetadata);
+
+        var quality = MetadataHelper.DeserializeChunkQuality(chunk.Metadata);
+        if (quality != null)
+            chunk.SetQuality(quality);
+
+        var relationships = MetadataHelper.DeserializeRelationships(chunk.Metadata);
+        if (relationships != null)
+        {
+            foreach (var rel in relationships)
+                chunk.AddRelationship(rel);
         }
     }
 }

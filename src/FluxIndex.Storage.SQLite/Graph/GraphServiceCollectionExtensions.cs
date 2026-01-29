@@ -68,6 +68,109 @@ public static class GraphServiceCollectionExtensions
             options.AutoMigrate = true;
         });
     }
+
+    /// <summary>
+    /// SQLite Entity Graph Store 등록 (IGraphStore 구현)
+    /// Local 모드에서 GraphRAG 기능 지원
+    /// </summary>
+    public static IServiceCollection AddSQLiteEntityGraphStore(
+        this IServiceCollection services,
+        Action<SQLiteEntityGraphOptions> configureOptions)
+    {
+        services.Configure(configureOptions);
+
+        // DbContext 등록
+        services.AddDbContext<SQLiteEntityGraphDbContext>((serviceProvider, dbOptions) =>
+        {
+            var options = serviceProvider.GetRequiredService<IOptions<SQLiteEntityGraphOptions>>().Value;
+            dbOptions.UseSqlite(options.GetConnectionString(), sqliteOptions =>
+            {
+                sqliteOptions.CommandTimeout(options.CommandTimeout);
+            });
+            dbOptions.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
+        }, ServiceLifetime.Scoped);
+
+        // IGraphStore 구현 등록
+        services.AddScoped<IGraphStore, SQLiteEntityGraphStore>();
+        services.AddScoped<SQLiteEntityGraphStore>();
+
+        // 마이그레이션 서비스
+        services.AddHostedService<SQLiteEntityGraphMigrationService>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// SQLite Entity Graph Store 등록 (간단한 설정)
+    /// </summary>
+    public static IServiceCollection AddSQLiteEntityGraphStore(
+        this IServiceCollection services,
+        string databasePath = "fluxindex-entitygraph.db")
+    {
+        return services.AddSQLiteEntityGraphStore(options =>
+        {
+            options.DatabasePath = databasePath;
+            options.AutoMigrate = true;
+        });
+    }
+
+    /// <summary>
+    /// SQLite 인메모리 Entity Graph Store 등록 (테스트용)
+    /// </summary>
+    public static IServiceCollection AddSQLiteInMemoryEntityGraphStore(
+        this IServiceCollection services)
+    {
+        return services.AddSQLiteEntityGraphStore(options =>
+        {
+            options.UseInMemory = true;
+            options.AutoMigrate = true;
+        });
+    }
+}
+
+/// <summary>
+/// SQLite Entity Graph 마이그레이션 서비스
+/// </summary>
+internal class SQLiteEntityGraphMigrationService : IHostedService
+{
+    private readonly IServiceProvider _serviceProvider;
+    private readonly ILogger<SQLiteEntityGraphMigrationService> _logger;
+
+    public SQLiteEntityGraphMigrationService(
+        IServiceProvider serviceProvider,
+        ILogger<SQLiteEntityGraphMigrationService> logger)
+    {
+        _serviceProvider = serviceProvider;
+        _logger = logger;
+    }
+
+    public async Task StartAsync(CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Starting SQLite entity graph database migration");
+
+        using var scope = _serviceProvider.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<SQLiteEntityGraphDbContext>();
+
+        try
+        {
+            await context.Database.EnsureCreatedAsync(cancellationToken);
+
+            var options = scope.ServiceProvider.GetRequiredService<IOptions<SQLiteEntityGraphOptions>>().Value;
+            if (!options.UseInMemory)
+            {
+                await context.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL", cancellationToken);
+            }
+
+            _logger.LogInformation("SQLite entity graph database migration completed");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "SQLite entity graph database migration failed");
+            throw;
+        }
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }
 
 /// <summary>

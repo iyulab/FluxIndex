@@ -1,4 +1,5 @@
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Utilities;
 using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -338,6 +339,9 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
         chunk.Metadata["totalChunks"] = chunk.TotalChunks;
         chunk.Metadata["tokenCount"] = chunk.TokenCount;
 
+        // Restore rich metadata (ChunkMetadata, ChunkQuality, ChunkRelationships)
+        RestoreRichMetadataStatic(chunk);
+
         return chunk;
     }
 
@@ -410,7 +414,31 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
         chunk.Metadata["totalChunks"] = chunk.TotalChunks;
         chunk.Metadata["tokenCount"] = chunk.TokenCount;
 
+        // Restore rich metadata (ChunkMetadata, ChunkQuality, ChunkRelationships)
+        RestoreRichMetadataStatic(chunk);
+
         return chunk;
+    }
+
+    private static void RestoreRichMetadataStatic(DocumentChunk chunk)
+    {
+        if (chunk.Metadata == null)
+            return;
+
+        var chunkMetadata = MetadataHelper.DeserializeChunkMetadata(chunk.Metadata);
+        if (chunkMetadata != null)
+            chunk.SetMetadata(chunkMetadata);
+
+        var quality = MetadataHelper.DeserializeChunkQuality(chunk.Metadata);
+        if (quality != null)
+            chunk.SetQuality(quality);
+
+        var relationships = MetadataHelper.DeserializeRelationships(chunk.Metadata);
+        if (relationships != null)
+        {
+            foreach (var rel in relationships)
+                chunk.AddRelationship(rel);
+        }
     }
 
     #endregion

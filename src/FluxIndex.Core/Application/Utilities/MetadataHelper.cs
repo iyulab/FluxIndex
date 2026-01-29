@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using FluxIndex.Core.Domain.Entities;
 
 namespace FluxIndex.Core.Application.Utilities;
@@ -22,6 +24,29 @@ public static class MetadataHelper
         public const string StoredAt = "storedAt";
         public const string UpdatedAt = "updatedAt";
     }
+
+    /// <summary>
+    /// Reserved metadata keys for internal FluxIndex use.
+    /// These keys store serialized rich metadata (ChunkMetadata, ChunkQuality, ChunkRelationships).
+    /// </summary>
+    public static class ReservedKeys
+    {
+        /// <summary>Serialized ChunkMetadata JSON</summary>
+        public const string ChunkMetadata = "_cm";
+        
+        /// <summary>Serialized ChunkQuality JSON</summary>
+        public const string ChunkQuality = "_cq";
+        
+        /// <summary>Serialized ChunkRelationships JSON array</summary>
+        public const string ChunkRelationships = "_cr";
+    }
+
+    private static readonly JsonSerializerOptions _jsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        WriteIndented = false
+    };
 
     /// <summary>
     /// Ensures metadata dictionary is initialized (never null).
@@ -146,4 +171,166 @@ public static class MetadataHelper
             metadata.Remove(key);
         }
     }
+
+    #region ChunkMetadata Serialization
+
+    /// <summary>
+    /// Serializes ChunkMetadata to JSON and stores it in metadata dictionary.
+    /// </summary>
+    public static void SerializeChunkMetadata(Dictionary<string, object> metadata, ChunkMetadata? chunkMetadata)
+    {
+        ArgumentNullException.ThrowIfNull(metadata);
+        
+        if (chunkMetadata == null || IsDefaultChunkMetadata(chunkMetadata))
+            return;
+
+        metadata[ReservedKeys.ChunkMetadata] = JsonSerializer.Serialize(chunkMetadata, _jsonOptions);
+    }
+
+    /// <summary>
+    /// Deserializes ChunkMetadata from metadata dictionary.
+    /// </summary>
+    public static ChunkMetadata? DeserializeChunkMetadata(Dictionary<string, object>? metadata)
+    {
+        if (metadata == null || !metadata.TryGetValue(ReservedKeys.ChunkMetadata, out var value))
+            return null;
+
+        if (value is string json && !string.IsNullOrEmpty(json))
+        {
+            try
+            {
+                return JsonSerializer.Deserialize<ChunkMetadata>(json, _jsonOptions);
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    #endregion
+
+    #region ChunkQuality Serialization
+
+    /// <summary>
+    /// Serializes ChunkQuality to JSON and stores it in metadata dictionary.
+    /// </summary>
+    public static void SerializeChunkQuality(Dictionary<string, object> metadata, ChunkQuality? quality)
+    {
+        ArgumentNullException.ThrowIfNull(metadata);
+        
+        if (quality == null || IsDefaultChunkQuality(quality))
+            return;
+
+        metadata[ReservedKeys.ChunkQuality] = JsonSerializer.Serialize(quality, _jsonOptions);
+    }
+
+    /// <summary>
+    /// Deserializes ChunkQuality from metadata dictionary.
+    /// </summary>
+    public static ChunkQuality? DeserializeChunkQuality(Dictionary<string, object>? metadata)
+    {
+        if (metadata == null || !metadata.TryGetValue(ReservedKeys.ChunkQuality, out var value))
+            return null;
+
+        if (value is string json && !string.IsNullOrEmpty(json))
+        {
+            try
+            {
+                return JsonSerializer.Deserialize<ChunkQuality>(json, _jsonOptions);
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    #endregion
+
+    #region ChunkRelationships Serialization
+
+    /// <summary>
+    /// Serializes ChunkRelationships to JSON and stores it in metadata dictionary.
+    /// </summary>
+    public static void SerializeRelationships(Dictionary<string, object> metadata, List<ChunkRelationship>? relationships)
+    {
+        ArgumentNullException.ThrowIfNull(metadata);
+        
+        if (relationships == null || relationships.Count == 0)
+            return;
+
+        metadata[ReservedKeys.ChunkRelationships] = JsonSerializer.Serialize(relationships, _jsonOptions);
+    }
+
+    /// <summary>
+    /// Deserializes ChunkRelationships from metadata dictionary.
+    /// </summary>
+    public static List<ChunkRelationship>? DeserializeRelationships(Dictionary<string, object>? metadata)
+    {
+        if (metadata == null || !metadata.TryGetValue(ReservedKeys.ChunkRelationships, out var value))
+            return null;
+
+        if (value is string json && !string.IsNullOrEmpty(json))
+        {
+            try
+            {
+                return JsonSerializer.Deserialize<List<ChunkRelationship>>(json, _jsonOptions);
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    #endregion
+
+    #region Default Value Checks
+
+    private static bool IsDefaultChunkMetadata(ChunkMetadata cm)
+    {
+        return cm.TokenCount == 0 &&
+               cm.CharacterCount == 0 &&
+               cm.SentenceCount == 0 &&
+               cm.ReadabilityScore == 0.0 &&
+               cm.Language == "ko" &&
+               cm.Keywords.Count == 0 &&
+               cm.Entities.Count == 0 &&
+               cm.Topics.Count == 0 &&
+               cm.ContentType == "text" &&
+               cm.SectionLevel == 0 &&
+               string.IsNullOrEmpty(cm.SectionTitle) &&
+               cm.Headings.Count == 0 &&
+               string.IsNullOrEmpty(cm.ContextBefore) &&
+               string.IsNullOrEmpty(cm.ContextAfter) &&
+               cm.ImportanceScore == 0.0 &&
+               cm.SearchableTerms.Count == 0 &&
+               cm.KeywordWeights.Count == 0;
+    }
+
+    private static bool IsDefaultChunkQuality(ChunkQuality cq)
+    {
+        return cq.ContentCompleteness == 0.0 &&
+               cq.InformationDensity == 0.0 &&
+               cq.Coherence == 0.0 &&
+               cq.Uniqueness == 0.0 &&
+               cq.QueryRelevanceScore == 0.0 &&
+               cq.ContextualRelevance == 0.0 &&
+               cq.AuthorityScore == 0.0 &&
+               cq.FreshnessScore == 0.0 &&
+               cq.PositiveFeedback == 0 &&
+               cq.NegativeFeedback == 0 &&
+               cq.UserRating == 0.0 &&
+               cq.RetrievalCount == 0 &&
+               cq.ClickThroughRate == 0.0;
+    }
+
+    #endregion
 }

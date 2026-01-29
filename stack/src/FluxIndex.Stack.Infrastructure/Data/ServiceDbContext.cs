@@ -1,6 +1,4 @@
 ﻿using FluxIndex.Stack.Domain.Entities;
-using FluxIndex.Stack.Vault.Entities;
-using FluxIndex.Stack.Vault.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace FluxIndex.Stack.Infrastructure.Data;
@@ -34,10 +32,8 @@ public class ServiceDbContext : DbContext
     public DbSet<ChunkEmbedding> ChunkEmbeddings => Set<ChunkEmbedding>();
     public DbSet<ReindexingJob> ReindexingJobs => Set<ReindexingJob>();
 
-    // Vault entities
-    public DbSet<WatchedFolder> WatchedFolders => Set<WatchedFolder>();
-    public DbSet<TrackedFile> TrackedFiles => Set<TrackedFile>();
-    public DbSet<TrackedFileVersion> TrackedFileVersions => Set<TrackedFileVersion>();
+    // Vault entities removed - now using Extensions.FileVault
+    // which uses file system-based storage (.vault directory)
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -236,66 +232,7 @@ public class ServiceDbContext : DbContext
                 .OnDelete(DeleteBehavior.SetNull);
         });
 
-        // ===== Vault Entities =====
-
-        // WatchedFolder configuration
-        modelBuilder.Entity<WatchedFolder>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.Path).HasMaxLength(2000).IsRequired();
-            entity.HasIndex(e => e.Path).IsUnique();
-            entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
-            entity.Property(e => e.IncludePatterns).HasColumnType("jsonb");
-            entity.Property(e => e.ExcludePatterns).HasColumnType("jsonb");
-            entity.Property(e => e.Status)
-                .HasConversion<string>()
-                .HasMaxLength(20);
-            entity.Property(e => e.ErrorMessage).HasMaxLength(2000);
-            entity.HasIndex(e => e.Status);
-            entity.HasIndex(e => e.CollectionId);
-        });
-
-        // TrackedFile configuration
-        modelBuilder.Entity<TrackedFile>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.SourcePath).HasMaxLength(2000).IsRequired();
-            entity.HasIndex(e => e.SourcePath).IsUnique();
-            entity.Property(e => e.FileName).HasMaxLength(500).IsRequired();
-            entity.Property(e => e.FileExtension).HasMaxLength(50);
-            entity.Property(e => e.ContentHash).HasMaxLength(64);
-            entity.HasIndex(e => e.ContentHash);
-            entity.Property(e => e.Status)
-                .HasConversion<string>()
-                .HasMaxLength(20);
-            entity.Property(e => e.ErrorMessage).HasMaxLength(2000);
-            entity.HasIndex(e => e.Status);
-            entity.HasIndex(e => e.WatchedFolderId);
-            entity.HasIndex(e => e.DocumentId);
-
-            entity.HasOne(e => e.WatchedFolder)
-                .WithMany(f => f.TrackedFiles)
-                .HasForeignKey(e => e.WatchedFolderId)
-                .OnDelete(DeleteBehavior.SetNull);
-
-            entity.HasOne(e => e.Document)
-                .WithMany()
-                .HasForeignKey(e => e.DocumentId)
-                .OnDelete(DeleteBehavior.SetNull);
-        });
-
-        // TrackedFileVersion configuration
-        modelBuilder.Entity<TrackedFileVersion>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.ContentHash).HasMaxLength(64).IsRequired();
-            entity.HasIndex(e => e.TrackedFileId);
-            entity.HasIndex(e => new { e.TrackedFileId, e.Version }).IsUnique();
-
-            entity.HasOne(e => e.TrackedFile)
-                .WithMany(f => f.Versions)
-                .HasForeignKey(e => e.TrackedFileId)
-                .OnDelete(DeleteBehavior.Cascade);
-        });
+        // Vault entities removed - now using Extensions.FileVault
+        // which uses file system-based storage (.vault directory)
     }
 }

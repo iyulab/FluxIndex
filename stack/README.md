@@ -5,13 +5,13 @@ A complete, self-contained RAG (Retrieval-Augmented Generation) platform built o
 ## Overview
 
 **FluxIndex** is a library/SDK for building LLM AI solutions.
-**FluxIndex Stack** is a complete, self-contained service that leverages ALL FluxIndex capabilities:
+**FluxIndex Stack** is a complete, self-contained service that uses FluxIndex in **Full Mode** (best-in-class configuration):
 
 - **API Server**: RESTful API for document management and search
 - **MCP Server**: Model Context Protocol endpoint for AI assistant integration
 - **Document Pipeline**: Extract → Chunk → Enrich → Index → Memorize
 - **Multi-Provider AI**: OpenAI, Anthropic, Google, Azure, Local models
-- **Full Infrastructure**: PostgreSQL + pgvector, Neo4j, Qdrant, Redis
+- **Full Infrastructure**: PostgreSQL (RDB+Cache) + Qdrant (Vector) + Neo4j (Graph) + Redis (distributed cache)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐

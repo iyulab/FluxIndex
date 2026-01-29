@@ -175,9 +175,9 @@ public class PostgreSQLVectorStore : VectorStoreBase
 
     #region Private Helper Methods
 
-    private static DocumentChunk MapToChunk(VectorEntity entity)
+    private DocumentChunk MapToChunk(VectorEntity entity)
     {
-        return new DocumentChunk
+        var chunk = new DocumentChunk
         {
             Id = entity.Id.ToString(),
             DocumentId = entity.DocumentId,
@@ -187,6 +187,9 @@ public class PostgreSQLVectorStore : VectorStoreBase
             TokenCount = entity.TokenCount,
             Metadata = entity.Metadata
         };
+
+        RestoreRichMetadata(chunk);
+        return chunk;
     }
 
     #endregion

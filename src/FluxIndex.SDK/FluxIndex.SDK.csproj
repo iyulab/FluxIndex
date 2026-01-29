@@ -15,6 +15,8 @@
     <ProjectReference Include="..\FluxIndex.Core\FluxIndex.Core.csproj" />
     <ProjectReference Include="..\FluxIndex.Storage.SQLite\FluxIndex.Storage.SQLite.csproj" />
     <ProjectReference Include="..\FluxIndex.Storage.PostgreSQL\FluxIndex.Storage.PostgreSQL.csproj" />
+    <ProjectReference Include="..\FluxIndex.Storage.Neo4j\FluxIndex.Storage.Neo4j.csproj" />
+    <ProjectReference Include="..\FluxIndex.Storage.Qdrant\FluxIndex.Storage.Qdrant.csproj" />
     <ProjectReference Include="..\FluxIndex.Cache.Redis\FluxIndex.Cache.Redis.csproj" />
   </ItemGroup>
 

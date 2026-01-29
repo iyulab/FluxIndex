@@ -56,19 +56,31 @@ FluxIndex is an **infrastructure library**, NOT an application framework:
 
 FluxIndex supports **privacy-focused, local-first architecture**:
 
-- SQLite for zero-infrastructure deployment
+- SQLite for zero-infrastructure deployment (Vector + Graph + RDB + Cache)
 - In-process search with no network latency
 - MCP server for AI assistant integration
 - Supports 100K-1M vectors in edge environments
 
-### 1.5 Modular & Composable
+### 1.5 Three Storage Modes
+
+FluxIndex provides three deployment patterns:
+
+| Mode | Configuration | Components |
+|------|---------------|------------|
+| **Local** | `UseLocalStorage()` | SQLite handles all (Vector, Graph, RDB, Cache) |
+| **Full** | `UseBestInClass()` | PostgreSQL + Qdrant + Neo4j (best-in-class) |
+| **Custom** | Mix providers | User-defined combination |
+
+**Auto-Maximize Principle**: RDB, VectorDB, GraphDB are not features to toggle. They automatically activate based on configured storage.
+
+### 1.6 Modular & Composable
 
 Each capability is an **independent, optional module**:
 
-- Storage: SQLite, PostgreSQL (pgvector)
-- AI: OpenAI, Anthropic, Google, LocalEmbedder, LocalReranker
-- Cache: Redis, In-Memory
-- Extensions: FileFlux, WebFlux
+- Storage: SQLite, PostgreSQL, Qdrant, Neo4j
+- AI: OpenAI, Azure, LMSupply, custom implementations
+- Cache: Redis, In-Memory, SQLite
+- Extensions: FileFlux, WebFlux, FluxCurator, FluxImprover
 
 ---
 
@@ -327,19 +339,20 @@ public class CustomSemanticCache : ISemanticCacheService { }
 
 ## 6. Evolution Roadmap
 
-### Current State (v0.2.x)
+### Current State (v0.x)
 - ✅ Hybrid search (Vector + BM25 + RRF)
-- ✅ Multiple storage backends
-- ✅ AI provider flexibility
-- ✅ Graph traversal
-- ✅ Vector quantization
+- ✅ Multiple storage backends (SQLite, PostgreSQL, Qdrant, Neo4j)
+- ✅ AI provider flexibility (abstract base classes)
+- ✅ Graph traversal (BFS, DFS, Dijkstra, PageRank)
+- ✅ Vector quantization (Int8, Int4, Binary, Product)
 - ✅ MCP server
+- ✅ GraphRAG (Entity Graph + Community Detection)
+- ✅ Three storage modes (Local, Full, Custom)
 
-### Planned Enhancements
-- [ ] HeadingPath-based contextual headers (pending FileFlux support)
+### In Progress
+- [ ] Storage Provider abstraction refinement
 - [ ] Enhanced metadata filtering API
 - [ ] Query decomposition for complex queries
-- [ ] Agentic indexing via MCP sampling
 
 ---
 

@@ -1,4 +1,5 @@
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Utilities;
 using FluxIndex.Core.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -535,7 +536,7 @@ public class SQLiteQuantizedVectorStore : IQuantizedVectorStore
 
     private static DocumentChunk MapToChunk(QuantizedVectorEntity entity)
     {
-        return new DocumentChunk
+        var chunk = new DocumentChunk
         {
             Id = entity.Id,
             DocumentId = entity.DocumentId,
@@ -545,6 +546,30 @@ public class SQLiteQuantizedVectorStore : IQuantizedVectorStore
             TokenCount = entity.TokenCount,
             Metadata = entity.Metadata
         };
+
+        RestoreRichMetadataStatic(chunk);
+        return chunk;
+    }
+
+    private static void RestoreRichMetadataStatic(DocumentChunk chunk)
+    {
+        if (chunk.Metadata == null)
+            return;
+
+        var chunkMetadata = MetadataHelper.DeserializeChunkMetadata(chunk.Metadata);
+        if (chunkMetadata != null)
+            chunk.SetMetadata(chunkMetadata);
+
+        var quality = MetadataHelper.DeserializeChunkQuality(chunk.Metadata);
+        if (quality != null)
+            chunk.SetQuality(quality);
+
+        var relationships = MetadataHelper.DeserializeRelationships(chunk.Metadata);
+        if (relationships != null)
+        {
+            foreach (var rel in relationships)
+                chunk.AddRelationship(rel);
+        }
     }
 
     private static float ConvertDistanceToScore(float distance)

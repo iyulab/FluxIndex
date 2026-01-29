@@ -41,9 +41,10 @@ public interface IPersistableSparseRetriever
 }
 
 /// <summary>
-/// BM25 based sparse retrieval implementation with optional file persistence
+/// BM25 based sparse retrieval implementation with optional file persistence.
+/// Implements both legacy ISparseRetriever and new unified IKeywordSearchService interfaces.
 /// </summary>
-public class BM25SparseRetriever : ISparseRetriever, IPersistableSparseRetriever
+public class BM25SparseRetriever : ISparseRetriever, IKeywordSearchService, IPersistableSparseRetriever
 {
     private readonly ILogger<BM25SparseRetriever> _logger;
     private readonly ConcurrentDictionary<string, BM25Index> _indexes;
@@ -564,6 +565,171 @@ public class BM25SparseRetriever : ISparseRetriever, IPersistableSparseRetriever
 
         // Average 8 bytes per term + 16 bytes per posting
         return (termCount * 8) + (postingCount * 16);
+    }
+
+    #endregion
+
+    #region IKeywordSearchService Implementation
+
+    /// <inheritdoc />
+    async Task<IReadOnlyList<KeywordSearchResult>> IKeywordSearchService.SearchAsync(
+        string query,
+        KeywordSearchOptions? options,
+        CancellationToken cancellationToken)
+    {
+        var sparseOptions = options != null
+            ? new SparseSearchOptions
+            {
+                MaxResults = options.MaxResults,
+                MinScore = options.MinScore,
+                K1 = options.K1,
+                B = options.B,
+                EnableTermExpansion = options.EnableTermExpansion,
+                EnablePhraseSearch = options.EnablePhraseSearch
+            }
+            : null;
+
+        var results = await SearchAsync(query, sparseOptions, cancellationToken);
+
+        return results.Select(r => new KeywordSearchResult
+        {
+            Chunk = r.Chunk,
+            Score = r.Score,
+            MatchedTerms = r.MatchedTerms,
+            TermFrequencies = r.TermFrequencies,
+            DocumentLength = r.DocumentLength
+        }).ToList();
+    }
+
+    /// <inheritdoc />
+    public Task IndexChunkAsync(DocumentChunk chunk, CancellationToken cancellationToken = default)
+    {
+        return IndexDocumentAsync(chunk, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task IndexChunksAsync(IEnumerable<DocumentChunk> chunks, CancellationToken cancellationToken = default)
+    {
+        foreach (var chunk in chunks)
+        {
+            await IndexDocumentAsync(chunk, cancellationToken);
+        }
+    }
+
+    /// <inheritdoc />
+    public Task DeleteChunkAsync(string chunkId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(chunkId))
+            return Task.CompletedTask;
+
+        var defaultIndex = _indexes.GetOrAdd("default", _ => new BM25Index());
+
+        lock (_lockObject)
+        {
+            // Remove from document index
+            if (defaultIndex.DocumentIndex.TryRemove(chunkId, out _))
+            {
+                // Remove from inverted index
+                foreach (var kvp in defaultIndex.InvertedIndex)
+                {
+                    kvp.Value.RemoveAll(p => p.ChunkId == chunkId);
+                }
+
+                // Recalculate document count
+                defaultIndex.DocumentCount = defaultIndex.DocumentIndex.Count;
+            }
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public Task DeleteByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(documentId))
+            return Task.CompletedTask;
+
+        var defaultIndex = _indexes.GetOrAdd("default", _ => new BM25Index());
+
+        lock (_lockObject)
+        {
+            // Find all chunks for this document
+            var chunkIds = defaultIndex.DocumentIndex
+                .Where(kvp => kvp.Value.DocumentId == documentId)
+                .Select(kvp => kvp.Key)
+                .ToList();
+
+            foreach (var chunkId in chunkIds)
+            {
+                defaultIndex.DocumentIndex.TryRemove(chunkId, out _);
+
+                foreach (var kvp in defaultIndex.InvertedIndex)
+                {
+                    kvp.Value.RemoveAll(p => p.ChunkId == chunkId);
+                }
+            }
+
+            defaultIndex.DocumentCount = defaultIndex.DocumentIndex.Count;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public Task ClearIndexAsync(CancellationToken cancellationToken = default)
+    {
+        lock (_lockObject)
+        {
+            _indexes.Clear();
+        }
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    async Task<KeywordIndexStatistics> IKeywordSearchService.GetStatisticsAsync(CancellationToken cancellationToken)
+    {
+        var stats = await GetIndexStatisticsAsync(cancellationToken);
+
+        return new KeywordIndexStatistics
+        {
+            TotalDocuments = stats.DocumentCount,
+            TotalTerms = stats.UniqueTermCount,
+            TotalTermOccurrences = stats.TotalTermOccurrences,
+            AverageDocumentLength = stats.AverageDocumentLength,
+            IndexSizeBytes = stats.IndexSizeBytes,
+            LastOptimizedAt = stats.LastOptimizedAt,
+            TopFrequentTerms = stats.TopFrequentTerms
+        };
+    }
+
+    /// <inheritdoc />
+    public Task RefreshIDFCacheAsync(CancellationToken cancellationToken = default)
+    {
+        // IDF is computed dynamically in this implementation, no cache to refresh
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public double GetIDF(string term)
+    {
+        var defaultIndex = _indexes.GetOrAdd("default", _ => new BM25Index());
+
+        if (!defaultIndex.InvertedIndex.TryGetValue(term.ToLowerInvariant(), out var postings))
+            return 0;
+
+        var df = postings.Count;
+        var totalDocs = defaultIndex.DocumentCount;
+
+        if (totalDocs == 0 || df == 0)
+            return 0;
+
+        return Math.Log((totalDocs - df + 0.5) / (df + 0.5));
+    }
+
+    /// <inheritdoc />
+    public IEnumerable<string> Tokenize(string text)
+    {
+        return TokenizeContent(text);
     }
 
     #endregion

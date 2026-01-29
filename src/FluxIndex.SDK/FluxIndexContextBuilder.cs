@@ -835,35 +835,61 @@ public class FluxIndexContextBuilder
         switch (provider)
         {
             case "sqlite":
+                // Parse connection string once for both stores
+                var connStr = connectionString;
+                var isInMemory = connStr.Contains(":memory:");
+                string dbPath;
+
+                if (isInMemory)
+                {
+                    dbPath = connStr;
+                }
+                else
+                {
+                    var dataSourcePrefix = "Data Source=";
+                    var startIndex = connStr.IndexOf(dataSourcePrefix, StringComparison.OrdinalIgnoreCase);
+                    if (startIndex >= 0)
+                    {
+                        dbPath = connStr.Substring(startIndex + dataSourcePrefix.Length).Trim();
+                        var semicolonIndex = dbPath.IndexOf(';');
+                        if (semicolonIndex >= 0)
+                            dbPath = dbPath.Substring(0, semicolonIndex).Trim();
+                    }
+                    else
+                    {
+                        dbPath = connStr;
+                    }
+                }
+
+                // IChunkHierarchyRepository for Small-to-Big retrieval
                 _services.AddSQLiteGraphStore(options =>
                 {
-                    // Parse connection string
-                    var connStr = connectionString;
-                    var isInMemory = connStr.Contains(":memory:");
-
                     if (isInMemory)
                     {
                         options.UseInMemory = true;
                     }
                     else
                     {
-                        var dataSourcePrefix = "Data Source=";
-                        var startIndex = connStr.IndexOf(dataSourcePrefix, StringComparison.OrdinalIgnoreCase);
-                        if (startIndex >= 0)
-                        {
-                            var path = connStr.Substring(startIndex + dataSourcePrefix.Length).Trim();
-                            var semicolonIndex = path.IndexOf(';');
-                            if (semicolonIndex >= 0)
-                                path = path.Substring(0, semicolonIndex).Trim();
-                            options.GraphDatabasePath = path;
-                        }
-                        else
-                        {
-                            options.GraphDatabasePath = connStr;
-                        }
+                        options.GraphDatabasePath = dbPath;
                         options.UseInMemory = false;
                     }
+                    options.AutoMigrate = _options.GraphStore.AutoMigrate;
+                });
 
+                // IGraphStore for GraphRAG entity graph
+                _services.AddSQLiteEntityGraphStore(options =>
+                {
+                    if (isInMemory)
+                    {
+                        options.UseInMemory = true;
+                    }
+                    else
+                    {
+                        // Use separate database for entity graph to avoid conflicts
+                        var entityGraphDbPath = System.IO.Path.ChangeExtension(dbPath, null) + "-entitygraph.db";
+                        options.DatabasePath = entityGraphDbPath;
+                        options.UseInMemory = false;
+                    }
                     options.AutoMigrate = _options.GraphStore.AutoMigrate;
                 });
                 break;

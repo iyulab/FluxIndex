@@ -29,6 +29,10 @@ public class Retriever
     private readonly ILogger<Retriever> _logger;
     private readonly RetrieverOptions _options;
 
+    // GraphRAG & Hybrid Search auto-detection support
+    private readonly IHybridSearchService? _hybridSearchService;
+    private readonly IGraphRAGService? _graphRAGService;
+
     // Phase 7.3: In-memory embedding cache for same-query optimization
     private readonly Dictionary<string, float[]> _embeddingCache = new();
     private readonly object _embeddingCacheLock = new();
@@ -60,7 +64,9 @@ public class Retriever
         ICacheService? cacheService = null,
         IRankFusionService? rankFusionService = null,
         IVectorQuantizer? vectorQuantizer = null,
-        ILogger<Retriever>? logger = null)
+        ILogger<Retriever>? logger = null,
+        IHybridSearchService? hybridSearchService = null,
+        IGraphRAGService? graphRAGService = null)
     {
         _vectorStore = vectorStore;
         _documentRepository = documentRepository;
@@ -70,6 +76,8 @@ public class Retriever
         _rankFusionService = rankFusionService; // ?? new RankFusionService();
         _vectorQuantizer = vectorQuantizer;
         _logger = logger ?? new NullLogger<Retriever>();
+        _hybridSearchService = hybridSearchService;
+        _graphRAGService = graphRAGService;
 
         // Check if vector store supports quantization
         _quantizedVectorStore = vectorStore as IQuantizedVectorStore;
@@ -84,6 +92,16 @@ public class Retriever
     /// 양자화기 인스턴스 (읽기 전용)
     /// </summary>
     public IVectorQuantizer? Quantizer => _vectorQuantizer ?? _quantizedVectorStore?.Quantizer;
+
+    /// <summary>
+    /// 하이브리드 검색 지원 여부 확인 (IHybridSearchService 등록 시 true)
+    /// </summary>
+    public bool SupportsHybridSearch => _hybridSearchService != null;
+
+    /// <summary>
+    /// GraphRAG 검색 지원 여부 확인 (IGraphRAGService 등록 시 true)
+    /// </summary>
+    public bool SupportsGraphRAG => _graphRAGService != null;
 
     /// <summary>
     /// 벡터 유사도 검색
@@ -320,6 +338,110 @@ public class Retriever
             });
             throw;
         }
+    }
+
+    /// <summary>
+    /// SearchOptions 기반 검색 (자동 기능 감지 지원).
+    /// UseHybridSearch가 null이면 등록된 서비스에 따라 자동 활성화됩니다.
+    /// GraphRAG는 별도 인덱스 구축이 필요하여 이 메서드에서 자동 활성화되지 않습니다.
+    /// </summary>
+    /// <param name="query">검색 쿼리</param>
+    /// <param name="options">검색 옵션 (null이면 기본값 사용)</param>
+    /// <param name="cancellationToken">취소 토큰</param>
+    /// <returns>검색 응답</returns>
+    public async Task<SearchResponse> SearchAsync(
+        string query,
+        SearchOptions? options,
+        CancellationToken cancellationToken = default)
+    {
+        options ??= new SearchOptions();
+        var startTime = DateTime.UtcNow;
+
+        // Auto-detect Hybrid Search based on registered services
+        var useHybridSearch = options.UseHybridSearch ?? (_hybridSearchService != null);
+
+        // GraphRAG requires pre-built index, so don't auto-activate
+        // Users should use GraphRAG-specific methods for graph-based retrieval
+        var graphRAGAvailable = _graphRAGService != null;
+
+        // Validate explicitly enabled features
+        if (options.UseHybridSearch == true && _hybridSearchService == null)
+        {
+            throw new InvalidOperationException(
+                "UseHybridSearch is enabled but IHybridSearchService is not registered. " +
+                "Use UseQdrantWithHybrid() or register IHybridSearchService manually.");
+        }
+
+        // Convert metadata filters to object dictionary
+        var filter = options.MetadataFilters?.Count > 0
+            ? options.MetadataFilters.ToDictionary(kvp => kvp.Key, kvp => (object)kvp.Value)
+            : null;
+
+        List<SearchResult> results;
+
+        // Hybrid search when enabled
+        if (useHybridSearch && _hybridSearchService != null)
+        {
+            _logger.LogInformation("Hybrid search activated for query: {Query}", query);
+
+            var hybridResults = await _hybridSearchService.SearchAsync(
+                query,
+                new Core.Domain.Models.HybridSearchOptions
+                {
+                    MaxResults = options.TopK,
+                    VectorWeight = 0.7,
+                    SparseWeight = 0.3,
+                    MinFusedScore = options.MinSimilarity
+                },
+                cancellationToken);
+
+            results = hybridResults.Select(r => new SearchResult
+            {
+                Id = r.Chunk.Id,
+                DocumentId = r.Chunk.DocumentId,
+                Content = r.Chunk.Content,
+                Score = (float)r.FusedScore,
+                VectorScore = (float)r.VectorScore,
+                KeywordScore = (float)r.SparseScore,
+                ChunkIndex = r.Chunk.ChunkIndex,
+                Metadata = r.Chunk.Metadata
+            }).ToList();
+        }
+        // Default: Vector-only search
+        else
+        {
+            var vectorResults = await SearchAsync(
+                query,
+                options.TopK,
+                options.MinSimilarity,
+                filter,
+                cancellationToken);
+
+            results = vectorResults.Select(r => new SearchResult
+            {
+                Id = r.DocumentChunk.Id,
+                DocumentId = r.DocumentChunk.DocumentId,
+                Content = r.DocumentChunk.Content,
+                Score = (float)r.Score,
+                VectorScore = (float)r.Score,
+                ChunkIndex = r.DocumentChunk.ChunkIndex,
+                Metadata = r.Metadata ?? new Dictionary<string, object>()
+            }).ToList();
+        }
+
+        return new SearchResponse
+        {
+            Query = query,
+            Results = results,
+            TotalResults = results.Count,
+            SearchTime = DateTime.UtcNow - startTime,
+            Metadata = new Dictionary<string, object>
+            {
+                ["useHybridSearch"] = useHybridSearch,
+                ["hybridSearchAvailable"] = SupportsHybridSearch,
+                ["graphRAGAvailable"] = graphRAGAvailable
+            }
+        };
     }
 
     /// <summary>

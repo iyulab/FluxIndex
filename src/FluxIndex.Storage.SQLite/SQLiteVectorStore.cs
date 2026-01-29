@@ -121,7 +121,6 @@ public class SQLiteVectorStore : VectorStoreBase
         // Load all vectors for optimized in-memory search
         var entities = await _context.Vectors
             .Where(v => v.Embedding != null)
-            .Select(v => new { v.Id, v.DocumentId, v.ChunkIndex, v.Content, v.Embedding, v.TokenCount, v.Metadata })
             .ToListAsync(cancellationToken);
 
         if (!entities.Any()) return [];
@@ -138,17 +137,7 @@ public class SQLiteVectorStore : VectorStoreBase
             if (entity.Embedding == null) continue;
 
             var score = ComputeFastCosineSimilarity(queryEmbedding, entity.Embedding, queryMagnitude);
-            var chunk = new DocumentChunk
-            {
-                Id = entity.Id,
-                DocumentId = entity.DocumentId,
-                ChunkIndex = entity.ChunkIndex,
-                Content = entity.Content,
-                Embedding = entity.Embedding,
-                TokenCount = entity.TokenCount,
-                Metadata = entity.Metadata
-            };
-
+            var chunk = MapToChunk(entity);
             results.Add(new VectorSearchResult(chunk, score));
         }
 
@@ -262,9 +251,9 @@ public class SQLiteVectorStore : VectorStoreBase
 
     #region Private Helper Methods
 
-    private static DocumentChunk MapToChunk(VectorEntity entity)
+    private DocumentChunk MapToChunk(VectorEntity entity)
     {
-        return new DocumentChunk
+        var chunk = new DocumentChunk
         {
             Id = entity.Id,
             DocumentId = entity.DocumentId,
@@ -274,6 +263,9 @@ public class SQLiteVectorStore : VectorStoreBase
             TokenCount = entity.TokenCount,
             Metadata = entity.Metadata
         };
+
+        RestoreRichMetadata(chunk);
+        return chunk;
     }
 
     #endregion
