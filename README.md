@@ -96,16 +96,16 @@ Full benchmarks: [BENCHMARK_RESULTS.md](./benchmarks/FluxIndex.Benchmarks/BENCHM
 
 ## Package Structure
 
-| Package | Description |
-|---------|-------------|
-| **FluxIndex.Core** | Interfaces, abstract base classes, and core logic |
-| **FluxIndex.SDK** | All-in-one SDK with FileFlux, WebFlux, FluxCurator, FluxImprover |
-| **FluxIndex.Storage.SQLite** | SQLite vector store |
-| **FluxIndex.Storage.PostgreSQL** | PostgreSQL with pgvector |
-| **FluxIndex.Storage.Neo4j** | Neo4j graph database |
-| **FluxIndex.Storage.Qdrant** | Qdrant vector database |
-| **FluxIndex.Cache.Redis** | Redis semantic cache |
-| **FluxIndex.Extensions.FileVault** | Git-like file tracking for RAG indexing with folder monitoring |
+| Package | NuGet | Description |
+|---------|-------|-------------|
+| **FluxIndex.Core** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Core.svg)](https://www.nuget.org/packages/FluxIndex.Core/) | Interfaces, abstract base classes, and core logic |
+| **FluxIndex.SDK** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.SDK.svg)](https://www.nuget.org/packages/FluxIndex.SDK/) | All-in-one SDK with FileFlux, WebFlux, FluxCurator, FluxImprover |
+| **FluxIndex.Storage.SQLite** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Storage.SQLite.svg)](https://www.nuget.org/packages/FluxIndex.Storage.SQLite/) | SQLite vector store |
+| **FluxIndex.Storage.PostgreSQL** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Storage.PostgreSQL.svg)](https://www.nuget.org/packages/FluxIndex.Storage.PostgreSQL/) | PostgreSQL with pgvector |
+| **FluxIndex.Storage.Neo4j** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Storage.Neo4j.svg)](https://www.nuget.org/packages/FluxIndex.Storage.Neo4j/) | Neo4j graph database |
+| **FluxIndex.Storage.Qdrant** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Storage.Qdrant.svg)](https://www.nuget.org/packages/FluxIndex.Storage.Qdrant/) | Qdrant vector database |
+| **FluxIndex.Cache.Redis** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Cache.Redis.svg)](https://www.nuget.org/packages/FluxIndex.Cache.Redis/) | Redis semantic cache |
+| **FluxIndex.Extensions.FileVault** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Extensions.FileVault.svg)](https://www.nuget.org/packages/FluxIndex.Extensions.FileVault/) | Git-like file tracking for RAG indexing with folder monitoring |
 
 ## Documentation
 
