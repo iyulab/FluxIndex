@@ -10,6 +10,7 @@ namespace FluxIndex.Storage.Qdrant;
 
 /// <summary>
 /// Qdrant implementation of IVectorStore for high-performance vector similarity search.
+/// Supports dynamic dimension adaptation via CollectionNamingStrategy.
 /// </summary>
 public class QdrantVectorStore : IVectorStore, IAsyncDisposable
 {
@@ -17,6 +18,11 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
     private readonly QdrantOptions _options;
     private readonly ILogger<QdrantVectorStore> _logger;
     private bool _collectionInitialized;
+
+    // Dynamic dimension adaptation fields
+    private string? _resolvedCollectionName;
+    private int? _detectedDimension;
+    private readonly SemaphoreSlim _initLock = new(1, 1);
 
     public QdrantVectorStore(
         IOptions<QdrantOptions> options,
@@ -47,81 +53,155 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
             grpcTimeout: TimeSpan.FromSeconds(_options.TimeoutSeconds));
     }
 
-    private async Task EnsureCollectionAsync(CancellationToken ct)
+    /// <summary>
+    /// Ensures the collection exists for the given embedding dimension.
+    /// With DimensionSuffix strategy, creates dimension-specific collections automatically.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Thrown when collection initialization fails.</exception>
+    private async Task EnsureCollectionForDimensionAsync(int dimension, CancellationToken ct)
     {
-        if (_collectionInitialized) return;
+        // Fast path: already initialized for this dimension
+        if (_detectedDimension == dimension && _collectionInitialized && _resolvedCollectionName != null)
+            return;
 
+        await _initLock.WaitAsync(ct);
         try
         {
-            var collections = await _client.ListCollectionsAsync(ct);
-            var exists = collections.Any(c => c == _options.CollectionName);
+            // Double-check after acquiring lock
+            if (_detectedDimension == dimension && _collectionInitialized && _resolvedCollectionName != null)
+                return;
 
-            if (!exists && _options.CreateCollectionOnStartup)
+            // Resolve collection name based on naming strategy
+            var collectionName = _options.NamingStrategy switch
             {
-                var distance = _options.DistanceMetric switch
+                CollectionNamingStrategy.DimensionSuffix => $"{_options.BaseCollectionName}_{dimension}",
+                _ => _options.BaseCollectionName
+            };
+
+            try
+            {
+                var collections = await _client.ListCollectionsAsync(ct);
+                var exists = collections.Any(c => c == collectionName);
+
+                if (!exists && _options.CreateCollectionOnStartup)
                 {
-                    QdrantDistanceMetric.Cosine => Distance.Cosine,
-                    QdrantDistanceMetric.Euclid => Distance.Euclid,
-                    QdrantDistanceMetric.Dot => Distance.Dot,
-                    _ => Distance.Cosine
-                };
+                    // Set _resolvedCollectionName before creating (used in CreateCollectionWithDimensionAsync)
+                    _resolvedCollectionName = collectionName;
+                    await CreateCollectionWithDimensionAsync(dimension, ct);
+                }
 
-                await _client.CreateCollectionAsync(
-                    collectionName: _options.CollectionName,
-                    vectorsConfig: new VectorParams
-                    {
-                        Size = (ulong)_options.VectorSize,
-                        Distance = distance,
-                        OnDisk = _options.OnDiskPayload
-                    },
-                    hnswConfig: new HnswConfigDiff
-                    {
-                        M = (ulong)_options.HnswM,
-                        EfConstruct = (ulong)_options.HnswEfConstruct
-                    },
-                    cancellationToken: ct);
+                // Only update state after successful initialization
+                _resolvedCollectionName = collectionName;
+                _detectedDimension = dimension;
+                _collectionInitialized = true;
 
-                // Create payload indexes for filtering
-                await _client.CreatePayloadIndexAsync(
-                    collectionName: _options.CollectionName,
-                    fieldName: "document_id",
-                    schemaType: PayloadSchemaType.Keyword,
-                    cancellationToken: ct);
-
-                await _client.CreatePayloadIndexAsync(
-                    collectionName: _options.CollectionName,
-                    fieldName: "chunk_index",
-                    schemaType: PayloadSchemaType.Integer,
-                    cancellationToken: ct);
-
-                _logger.LogInformation("Created Qdrant collection '{CollectionName}' with dimension {Dimension}",
-                    _options.CollectionName, _options.VectorSize);
+                _logger.LogInformation(
+                    "Qdrant collection ready: '{Collection}' (dim={Dimension}, strategy={Strategy})",
+                    _resolvedCollectionName, dimension, _options.NamingStrategy);
             }
+            catch (Exception ex)
+            {
+                // Log warning but still set collection name (assume exists)
+                _logger.LogWarning(ex, "Failed to initialize Qdrant collection '{Collection}' (assuming it exists)", collectionName);
 
-            _collectionInitialized = true;
+                // Set state even on failure to prevent repeated initialization attempts
+                _resolvedCollectionName = collectionName;
+                _detectedDimension = dimension;
+                _collectionInitialized = true;
+            }
         }
-        catch (Exception ex)
+        finally
         {
-            _logger.LogWarning(ex, "Failed to initialize Qdrant collection (may already exist)");
-            _collectionInitialized = true; // Assume it exists
+            _initLock.Release();
         }
     }
+
+    /// <summary>
+    /// Creates a new collection with the specified dimension.
+    /// </summary>
+    private async Task CreateCollectionWithDimensionAsync(int dimension, CancellationToken ct)
+    {
+        var distance = _options.DistanceMetric switch
+        {
+            QdrantDistanceMetric.Cosine => Distance.Cosine,
+            QdrantDistanceMetric.Euclid => Distance.Euclid,
+            QdrantDistanceMetric.Dot => Distance.Dot,
+            _ => Distance.Cosine
+        };
+
+        await _client.CreateCollectionAsync(
+            collectionName: _resolvedCollectionName!,
+            vectorsConfig: new VectorParams
+            {
+                Size = (ulong)dimension,
+                Distance = distance,
+                OnDisk = _options.OnDiskPayload
+            },
+            hnswConfig: new HnswConfigDiff
+            {
+                M = (ulong)_options.HnswM,
+                EfConstruct = (ulong)_options.HnswEfConstruct
+            },
+            cancellationToken: ct);
+
+        // Create payload indexes for filtering
+        await _client.CreatePayloadIndexAsync(
+            collectionName: _resolvedCollectionName!,
+            fieldName: "document_id",
+            schemaType: PayloadSchemaType.Keyword,
+            cancellationToken: ct);
+
+        await _client.CreatePayloadIndexAsync(
+            collectionName: _resolvedCollectionName!,
+            fieldName: "chunk_index",
+            schemaType: PayloadSchemaType.Integer,
+            cancellationToken: ct);
+
+        _logger.LogInformation("Created Qdrant collection '{CollectionName}' with dimension {Dimension}",
+            _resolvedCollectionName, dimension);
+    }
+
+    /// <summary>
+    /// Legacy method for backward compatibility. Uses VectorSize from options.
+    /// Prefer using EnsureCollectionForDimensionAsync with actual embedding dimension.
+    /// </summary>
+    private async Task EnsureCollectionAsync(CancellationToken ct)
+    {
+        // For Fixed strategy or when dimension is unknown, use configured VectorSize
+        var dimension = _options.NamingStrategy == CollectionNamingStrategy.Fixed
+            ? _options.VectorSize
+            : _detectedDimension ?? _options.VectorSize;
+
+        await EnsureCollectionForDimensionAsync(dimension, ct);
+    }
+
+    /// <summary>
+    /// Gets the resolved collection name (with dimension suffix if applicable).
+    /// Returns null if collection hasn't been initialized yet.
+    /// </summary>
+    public string? GetResolvedCollectionName() => _resolvedCollectionName;
+
+    /// <summary>
+    /// Gets the detected embedding dimension. Returns null if not yet detected.
+    /// </summary>
+    public int? GetDetectedDimension() => _detectedDimension;
 
     #region Store Operations
 
     public async Task<string> StoreAsync(DocumentChunk chunk, CancellationToken cancellationToken = default)
     {
-        await EnsureCollectionAsync(cancellationToken);
-
         if (chunk.Embedding == null || chunk.Embedding.Length == 0)
         {
             throw new ArgumentException("Chunk must have embedding", nameof(chunk));
         }
 
+        // Dynamic dimension detection: use actual embedding dimension
+        await EnsureCollectionForDimensionAsync(chunk.Embedding.Length, cancellationToken);
+
         var point = CreatePointFromChunk(chunk);
 
         await _client.UpsertAsync(
-            collectionName: _options.CollectionName,
+            collectionName: _resolvedCollectionName!,
             points: [point],
             cancellationToken: cancellationToken);
 
@@ -133,8 +213,6 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
         IEnumerable<DocumentChunk> chunks,
         CancellationToken cancellationToken = default)
     {
-        await EnsureCollectionAsync(cancellationToken);
-
         var chunkList = chunks.ToList();
         if (chunkList.Count == 0) return [];
 
@@ -145,14 +223,34 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
             return [];
         }
 
+        // Dynamic dimension detection: use dimension from first valid chunk
+        var dimension = validChunks[0].Embedding!.Length;
+
+        // Validate all chunks have consistent dimensions (Critical: prevents data corruption)
+        var inconsistentChunks = validChunks
+            .Where(c => c.Embedding!.Length != dimension)
+            .Select(c => new { c.Id, Dimension = c.Embedding!.Length })
+            .ToList();
+
+        if (inconsistentChunks.Count > 0)
+        {
+            var examples = string.Join(", ", inconsistentChunks.Take(3).Select(c => $"{c.Id}({c.Dimension}d)"));
+            throw new InvalidOperationException(
+                $"Batch contains chunks with inconsistent embedding dimensions. " +
+                $"Expected {dimension}, found mismatches: {examples}" +
+                (inconsistentChunks.Count > 3 ? $" and {inconsistentChunks.Count - 3} more" : ""));
+        }
+
+        await EnsureCollectionForDimensionAsync(dimension, cancellationToken);
+
         var points = validChunks.Select(CreatePointFromChunk).ToList();
 
         await _client.UpsertAsync(
-            collectionName: _options.CollectionName,
+            collectionName: _resolvedCollectionName!,
             points: points,
             cancellationToken: cancellationToken);
 
-        _logger.LogDebug("Stored {Count} chunks in batch", validChunks.Count);
+        _logger.LogDebug("Stored {Count} chunks in batch (dim={Dimension})", validChunks.Count, dimension);
         return validChunks.Select(c => c.Id);
     }
 
@@ -214,7 +312,7 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
             }
 
             var points = await _client.RetrieveAsync(
-                collectionName: _options.CollectionName,
+                collectionName: _resolvedCollectionName!,
                 id: guid,
                 withPayload: true,
                 withVectors: true,
@@ -254,7 +352,7 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
         };
 
         var scrollResponse = await _client.ScrollAsync(
-            collectionName: _options.CollectionName,
+            collectionName: _resolvedCollectionName!,
             filter: filter,
             limit: 10000,
             payloadSelector: new WithPayloadSelector { Enable = true },
@@ -280,7 +378,7 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
             if (Guid.TryParse(id, out var guid))
             {
                 var points = await _client.RetrieveAsync(
-                    collectionName: _options.CollectionName,
+                    collectionName: _resolvedCollectionName!,
                     id: guid,
                     withPayload: true,
                     withVectors: true,
@@ -355,10 +453,20 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
         float minScore = 0.0f,
         CancellationToken cancellationToken = default)
     {
-        await EnsureCollectionAsync(cancellationToken);
+        // Validate dimension consistency if collection is already initialized
+        if (_detectedDimension.HasValue && queryEmbedding.Length != _detectedDimension.Value)
+        {
+            throw new InvalidOperationException(
+                $"Query embedding dimension ({queryEmbedding.Length}) does not match " +
+                $"collection dimension ({_detectedDimension.Value}). " +
+                $"Collection '{_resolvedCollectionName}' was initialized with {_detectedDimension.Value}-dimensional vectors.");
+        }
+
+        // Ensure collection exists for this dimension
+        await EnsureCollectionForDimensionAsync(queryEmbedding.Length, cancellationToken);
 
         var results = await _client.SearchAsync(
-            collectionName: _options.CollectionName,
+            collectionName: _resolvedCollectionName!,
             vector: queryEmbedding,
             limit: (ulong)topK,
             scoreThreshold: minScore,
@@ -447,17 +555,27 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
 
     public async Task<bool> UpdateAsync(DocumentChunk chunk, CancellationToken cancellationToken = default)
     {
-        await EnsureCollectionAsync(cancellationToken);
-
         if (chunk.Embedding == null || chunk.Embedding.Length == 0)
         {
             throw new ArgumentException("Chunk must have embedding for update", nameof(chunk));
         }
 
+        // Validate dimension consistency if collection is already initialized
+        if (_detectedDimension.HasValue && chunk.Embedding.Length != _detectedDimension.Value)
+        {
+            throw new InvalidOperationException(
+                $"Chunk embedding dimension ({chunk.Embedding.Length}) does not match " +
+                $"collection dimension ({_detectedDimension.Value}). " +
+                $"Cannot update chunk '{chunk.Id}' with different dimension.");
+        }
+
+        // Use actual embedding dimension for collection resolution
+        await EnsureCollectionForDimensionAsync(chunk.Embedding.Length, cancellationToken);
+
         var point = CreatePointFromChunk(chunk);
 
         await _client.UpsertAsync(
-            collectionName: _options.CollectionName,
+            collectionName: _resolvedCollectionName!,
             points: [point],
             cancellationToken: cancellationToken);
 
@@ -475,7 +593,7 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
         }
 
         await _client.DeleteAsync(
-            collectionName: _options.CollectionName,
+            collectionName: _resolvedCollectionName!,
             id: guid,
             cancellationToken: cancellationToken);
 
@@ -503,7 +621,7 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
         };
 
         await _client.DeleteAsync(
-            collectionName: _options.CollectionName,
+            collectionName: _resolvedCollectionName!,
             filter: filter,
             cancellationToken: cancellationToken);
 
@@ -530,24 +648,45 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
     {
         await EnsureCollectionAsync(cancellationToken);
 
-        var info = await _client.GetCollectionInfoAsync(_options.CollectionName, cancellationToken);
+        var info = await _client.GetCollectionInfoAsync(_resolvedCollectionName!, cancellationToken);
         return (int)info.PointsCount;
     }
 
     public async Task ClearAsync(CancellationToken cancellationToken = default)
     {
+        await _initLock.WaitAsync(cancellationToken);
         try
         {
-            await _client.DeleteCollectionAsync(_options.CollectionName);
-            _collectionInitialized = false;
-            _logger.LogInformation("Cleared Qdrant collection '{CollectionName}'", _options.CollectionName);
+            // If not initialized, nothing to clear
+            if (_resolvedCollectionName == null)
+            {
+                _logger.LogDebug("Clear called but no collection initialized");
+                return;
+            }
 
-            // Recreate collection
-            await EnsureCollectionAsync(cancellationToken);
+            var collectionToClear = _resolvedCollectionName;
+
+            try
+            {
+                await _client.DeleteCollectionAsync(collectionToClear);
+                _logger.LogInformation("Cleared Qdrant collection '{CollectionName}'", collectionToClear);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to delete Qdrant collection '{CollectionName}'", collectionToClear);
+            }
+
+            // Reset state under lock to prevent race conditions
+            _collectionInitialized = false;
+            _detectedDimension = null;
+            _resolvedCollectionName = null;
+
+            // Note: Do NOT recreate collection here. Let next Store/Search operation
+            // initialize with the correct dimension automatically.
         }
-        catch (Exception ex)
+        finally
         {
-            _logger.LogWarning(ex, "Failed to clear Qdrant collection");
+            _initLock.Release();
         }
     }
 
@@ -590,6 +729,7 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
     public ValueTask DisposeAsync()
     {
         _client.Dispose();
+        _initLock.Dispose();
         return ValueTask.CompletedTask;
     }
 }

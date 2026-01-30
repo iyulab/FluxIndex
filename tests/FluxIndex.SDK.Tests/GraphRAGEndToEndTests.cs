@@ -55,13 +55,14 @@ public class GraphRAGEndToEndTests : IAsyncLifetime
             });
             _graphStore = new Neo4jGraphStore(neo4jOptions, NullLogger<Neo4jGraphStore>.Instance);
 
-            // Initialize Qdrant vector store
+            // Initialize Qdrant vector store (Fixed strategy for explicit dimension control)
             var qdrantOptions = Options.Create(new QdrantOptions
             {
                 Host = _qdrantContainer.Hostname,
                 GrpcPort = _qdrantContainer.GetMappedPublicPort(6334),
-                CollectionName = $"graphrag_test_{Guid.NewGuid():N}",
+                BaseCollectionName = $"graphrag_test_{Guid.NewGuid():N}",
                 VectorSize = 384,
+                NamingStrategy = CollectionNamingStrategy.Fixed,
                 CreateCollectionOnStartup = true
             });
             _vectorStore = new QdrantVectorStore(qdrantOptions, NullLogger<QdrantVectorStore>.Instance);
@@ -260,14 +261,15 @@ public class GraphRAGEndToEndTests : IAsyncLifetime
     {
         Skip.IfNot(IsDockerAvailable, "Docker is not available");
 
-        // Arrange & Act - Build context with both Neo4j and Qdrant
+        // Arrange & Act - Build context with both Neo4j and Qdrant (Fixed strategy)
         var builder = FluxIndexContext.CreateBuilder()
             .UseQdrant(options =>
             {
                 options.Host = _qdrantContainer.Hostname;
                 options.GrpcPort = _qdrantContainer.GetMappedPublicPort(6334);
-                options.CollectionName = $"context_test_{Guid.NewGuid():N}";
+                options.BaseCollectionName = $"context_test_{Guid.NewGuid():N}";
                 options.VectorSize = 384;
+                options.NamingStrategy = CollectionNamingStrategy.Fixed;
                 options.CreateCollectionOnStartup = true;
             })
             .UseNeo4j(

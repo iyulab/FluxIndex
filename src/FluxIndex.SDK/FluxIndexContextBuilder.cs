@@ -294,16 +294,39 @@ public class FluxIndexContextBuilder
     #region Vector Store (Qdrant)
 
     /// <summary>
-    /// Qdrant 벡터 저장소 사용
+    /// Qdrant 벡터 저장소 사용 (동적 차원 적응, 권장)
     /// 고성능 벡터 DB로 대규모 임베딩 저장 및 검색
+    /// 컬렉션 이름에 차원이 자동 추가됨 (예: "my_chunks" → "my_chunks_384")
     /// </summary>
-    public FluxIndexContextBuilder UseQdrant(string host = "localhost", int grpcPort = 6334, string collectionName = "fluxindex_chunks", int vectorSize = 1536)
+    /// <param name="host">Qdrant 서버 호스트</param>
+    /// <param name="grpcPort">gRPC 포트</param>
+    /// <param name="baseCollectionName">기본 컬렉션 이름 (차원 suffix 자동 추가)</param>
+    public FluxIndexContextBuilder UseQdrant(string host = "localhost", int grpcPort = 6334, string baseCollectionName = "fluxindex_chunks")
+    {
+        _options.VectorStore.Provider = "Qdrant";
+        _options.VectorStore.QdrantHost = host;
+        _options.VectorStore.QdrantGrpcPort = grpcPort;
+        _options.VectorStore.QdrantCollectionName = baseCollectionName;
+        _options.VectorStore.QdrantNamingStrategy = CollectionNamingStrategy.DimensionSuffix;
+        return this;
+    }
+
+    /// <summary>
+    /// Qdrant 벡터 저장소 사용 (고정 차원, 레거시 호환)
+    /// 명시적 벡터 차원 설정이 필요한 경우 사용
+    /// </summary>
+    /// <param name="host">Qdrant 서버 호스트</param>
+    /// <param name="grpcPort">gRPC 포트</param>
+    /// <param name="collectionName">컬렉션 이름 (고정)</param>
+    /// <param name="vectorSize">벡터 차원 (고정)</param>
+    public FluxIndexContextBuilder UseQdrantFixed(string host = "localhost", int grpcPort = 6334, string collectionName = "fluxindex_chunks", int vectorSize = 1536)
     {
         _options.VectorStore.Provider = "Qdrant";
         _options.VectorStore.QdrantHost = host;
         _options.VectorStore.QdrantGrpcPort = grpcPort;
         _options.VectorStore.QdrantCollectionName = collectionName;
         _options.VectorStore.QdrantVectorSize = vectorSize;
+        _options.VectorStore.QdrantNamingStrategy = CollectionNamingStrategy.Fixed;
         return this;
     }
 
@@ -318,9 +341,23 @@ public class FluxIndexContextBuilder
     }
 
     /// <summary>
-    /// Qdrant Cloud 벡터 저장소 사용
+    /// Qdrant Cloud 벡터 저장소 사용 (동적 차원 적응, 권장)
     /// </summary>
-    public FluxIndexContextBuilder UseQdrantCloud(string cloudHost, string apiKey, string collectionName = "fluxindex_chunks", int vectorSize = 1536)
+    public FluxIndexContextBuilder UseQdrantCloud(string cloudHost, string apiKey, string baseCollectionName = "fluxindex_chunks")
+    {
+        _options.VectorStore.Provider = "Qdrant";
+        _options.VectorStore.QdrantHost = cloudHost;
+        _options.VectorStore.QdrantApiKey = apiKey;
+        _options.VectorStore.QdrantUseHttps = true;
+        _options.VectorStore.QdrantCollectionName = baseCollectionName;
+        _options.VectorStore.QdrantNamingStrategy = CollectionNamingStrategy.DimensionSuffix;
+        return this;
+    }
+
+    /// <summary>
+    /// Qdrant Cloud 벡터 저장소 사용 (고정 차원, 레거시 호환)
+    /// </summary>
+    public FluxIndexContextBuilder UseQdrantCloudFixed(string cloudHost, string apiKey, string collectionName = "fluxindex_chunks", int vectorSize = 1536)
     {
         _options.VectorStore.Provider = "Qdrant";
         _options.VectorStore.QdrantHost = cloudHost;
@@ -328,6 +365,7 @@ public class FluxIndexContextBuilder
         _options.VectorStore.QdrantUseHttps = true;
         _options.VectorStore.QdrantCollectionName = collectionName;
         _options.VectorStore.QdrantVectorSize = vectorSize;
+        _options.VectorStore.QdrantNamingStrategy = CollectionNamingStrategy.Fixed;
         return this;
     }
 
@@ -748,20 +786,40 @@ public class FluxIndexContextBuilder
                 else if (!string.IsNullOrEmpty(_options.VectorStore.QdrantApiKey))
                 {
                     // Qdrant Cloud
-                    _services.AddQdrantCloudVectorStore(
-                        _options.VectorStore.QdrantHost,
-                        _options.VectorStore.QdrantApiKey,
-                        _options.VectorStore.QdrantCollectionName,
-                        _options.VectorStore.QdrantVectorSize);
+                    if (_options.VectorStore.QdrantNamingStrategy == CollectionNamingStrategy.DimensionSuffix)
+                    {
+                        _services.AddQdrantCloudVectorStore(
+                            _options.VectorStore.QdrantHost,
+                            _options.VectorStore.QdrantApiKey,
+                            _options.VectorStore.QdrantCollectionName);
+                    }
+                    else
+                    {
+                        _services.AddQdrantCloudVectorStore(
+                            _options.VectorStore.QdrantHost,
+                            _options.VectorStore.QdrantApiKey,
+                            _options.VectorStore.QdrantCollectionName,
+                            _options.VectorStore.QdrantVectorSize);
+                    }
                 }
                 else
                 {
                     // Local Qdrant
-                    _services.AddQdrantVectorStore(
-                        _options.VectorStore.QdrantHost,
-                        _options.VectorStore.QdrantGrpcPort,
-                        _options.VectorStore.QdrantCollectionName,
-                        _options.VectorStore.QdrantVectorSize);
+                    if (_options.VectorStore.QdrantNamingStrategy == CollectionNamingStrategy.DimensionSuffix)
+                    {
+                        _services.AddQdrantVectorStore(
+                            _options.VectorStore.QdrantHost,
+                            _options.VectorStore.QdrantGrpcPort,
+                            _options.VectorStore.QdrantCollectionName);
+                    }
+                    else
+                    {
+                        _services.AddQdrantVectorStore(
+                            _options.VectorStore.QdrantHost,
+                            _options.VectorStore.QdrantGrpcPort,
+                            _options.VectorStore.QdrantCollectionName,
+                            _options.VectorStore.QdrantVectorSize);
+                    }
                 }
                 break;
             default:

@@ -78,6 +78,13 @@ public class VectorStoreOptions
     public string? QdrantApiKey { get; set; }
     public bool QdrantUseHttps { get; set; } = false;
     public Action<QdrantOptions>? QdrantOptionsAction { get; set; }
+
+    /// <summary>
+    /// Qdrant collection naming strategy. Default: DimensionSuffix (recommended).
+    /// - DimensionSuffix: {baseName}_{dimension} - auto-adapts to embedding dimension
+    /// - Fixed: exact name specified - requires explicit VectorSize
+    /// </summary>
+    public CollectionNamingStrategy QdrantNamingStrategy { get; set; } = CollectionNamingStrategy.DimensionSuffix;
 }
 
 /// <summary>

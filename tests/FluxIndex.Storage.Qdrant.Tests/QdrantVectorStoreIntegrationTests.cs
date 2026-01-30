@@ -40,8 +40,9 @@ public class QdrantVectorStoreIntegrationTests : IAsyncLifetime
             {
                 Host = _container.Hostname,
                 GrpcPort = _container.GetMappedPublicPort(6334),
-                CollectionName = $"test_{Guid.NewGuid():N}",
+                BaseCollectionName = $"test_{Guid.NewGuid():N}",
                 VectorSize = 384,
+                NamingStrategy = CollectionNamingStrategy.Fixed,
                 CreateCollectionOnStartup = true
             });
 
