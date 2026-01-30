@@ -23,6 +23,7 @@ COPY src/FluxIndex.Storage.SQLite/FluxIndex.Storage.SQLite.csproj src/FluxIndex.
 COPY src/FluxIndex.Storage.Neo4j/FluxIndex.Storage.Neo4j.csproj src/FluxIndex.Storage.Neo4j/
 COPY src/FluxIndex.Storage.Qdrant/FluxIndex.Storage.Qdrant.csproj src/FluxIndex.Storage.Qdrant/
 COPY src/FluxIndex.Cache.Redis/FluxIndex.Cache.Redis.csproj src/FluxIndex.Cache.Redis/
+COPY src/FluxIndex.Extensions.FileVault/FluxIndex.Extensions.FileVault.csproj src/FluxIndex.Extensions.FileVault/
 
 # Restore dependencies
 RUN dotnet restore stack/src/FluxIndex.Stack.Api/FluxIndex.Stack.Api.csproj
