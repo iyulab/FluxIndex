@@ -608,6 +608,32 @@ public sealed class VaultQueueService : IVaultQueueService, IDisposable
         }
     }
 
+    public async Task<int> ClearFailedAsync(CancellationToken ct = default)
+    {
+        await _dbLock.WaitAsync(ct);
+        try
+        {
+            await using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                DELETE FROM vault_jobs
+                WHERE status = @failed
+                """;
+            cmd.Parameters.AddWithValue("@failed", (int)VaultJobStatus.Failed);
+
+            var deleted = await cmd.ExecuteNonQueryAsync(ct);
+            _logger.LogDebug("Cleared {Count} failed jobs", deleted);
+
+            return deleted;
+        }
+        finally
+        {
+            _dbLock.Release();
+        }
+    }
+
     public async Task ClearAllAsync(CancellationToken ct = default)
     {
         await _dbLock.WaitAsync(ct);

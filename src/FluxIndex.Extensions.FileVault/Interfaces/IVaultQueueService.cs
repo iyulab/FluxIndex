@@ -125,6 +125,11 @@ public interface IVaultQueueService
     Task<int> ClearCompletedAsync(CancellationToken ct = default);
 
     /// <summary>
+    /// Clears failed jobs.
+    /// </summary>
+    Task<int> ClearFailedAsync(CancellationToken ct = default);
+
+    /// <summary>
     /// Clears all jobs (use with caution).
     /// </summary>
     Task ClearAllAsync(CancellationToken ct = default);
