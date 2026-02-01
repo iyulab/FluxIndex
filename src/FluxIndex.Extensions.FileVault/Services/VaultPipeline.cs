@@ -4,7 +4,9 @@ using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Extensions.FileVault.Domain.Entities;
 using FluxIndex.Extensions.FileVault.Domain.Enums;
 using FluxIndex.Extensions.FileVault.Interfaces;
+using FluxIndex.Extensions.FileVault.Options;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace FluxIndex.Extensions.FileVault.Services;
 
@@ -14,10 +16,48 @@ namespace FluxIndex.Extensions.FileVault.Services;
 /// </summary>
 public sealed class VaultPipeline : IVaultPipeline
 {
+    /// <summary>
+    /// Built-in text file extensions that can be read directly without FileFlux.
+    /// Includes common text, data, source code, config, and script formats.
+    /// </summary>
+    public static readonly HashSet<string> BuiltInTextExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // Text and documentation
+        ".txt", ".md", ".markdown", ".rst", ".rtf", ".log",
+        // Data formats
+        ".json", ".xml", ".yaml", ".yml", ".csv", ".tsv", ".toml", ".ini", ".cfg", ".conf",
+        // Source code - C family
+        ".cs", ".c", ".cpp", ".cc", ".cxx", ".h", ".hpp", ".hxx", ".m", ".mm",
+        // Source code - JVM
+        ".java", ".kt", ".kts", ".scala", ".groovy", ".gradle",
+        // Source code - Web
+        ".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs", ".vue", ".svelte",
+        ".html", ".htm", ".css", ".scss", ".sass", ".less",
+        // Source code - Scripting
+        ".py", ".pyw", ".rb", ".php", ".pl", ".pm", ".lua", ".r", ".jl",
+        // Source code - Systems
+        ".go", ".rs", ".swift", ".dart", ".zig", ".nim", ".v", ".odin",
+        // Source code - Functional
+        ".hs", ".fs", ".fsx", ".ml", ".mli", ".clj", ".cljs", ".ex", ".exs", ".erl", ".elm",
+        // Shell and scripts
+        ".sh", ".bash", ".zsh", ".fish", ".ps1", ".psm1", ".bat", ".cmd",
+        // Build and config
+        ".makefile", ".dockerfile", ".cmake", ".meson", ".ninja",
+        ".editorconfig", ".gitignore", ".gitattributes", ".dockerignore",
+        // SQL and query
+        ".sql", ".graphql", ".gql",
+        // Markup and templates
+        ".tex", ".bib", ".sty", ".cls",
+        ".njk", ".ejs", ".hbs", ".mustache", ".liquid", ".pug", ".jade",
+        // Other
+        ".proto", ".thrift", ".avsc", ".fbs"
+    };
+
     private readonly IGitService _git;
     private readonly IContentHasher _hasher;
     private readonly IVaultStorageService _storage;
     private readonly ILogger<VaultPipeline> _logger;
+    private readonly FileVaultOptions _options;
 
     // Integration services (optional)
     private readonly IExtractor? _extractor;
@@ -30,6 +70,7 @@ public sealed class VaultPipeline : IVaultPipeline
         IContentHasher hasher,
         IVaultStorageService storage,
         ILogger<VaultPipeline> logger,
+        IOptions<FileVaultOptions>? options = null,
         IExtractor? extractor = null,
         IChunker? chunker = null,
         IVectorStore? vectorStore = null,
@@ -39,6 +80,7 @@ public sealed class VaultPipeline : IVaultPipeline
         _hasher = hasher ?? throw new ArgumentNullException(nameof(hasher));
         _storage = storage ?? throw new ArgumentNullException(nameof(storage));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _options = options?.Value ?? new FileVaultOptions();
         _extractor = extractor;
         _chunker = chunker;
         _vectorStore = vectorStore;
@@ -361,17 +403,56 @@ public sealed class VaultPipeline : IVaultPipeline
         _logger.LogInformation("Indexed {Count} chunks for {DocumentId}", storedIds.Count(), documentId);
     }
 
-    private static async Task<string> ExtractFallbackAsync(string sourcePath, CancellationToken ct)
+    private async Task<string> ExtractFallbackAsync(string sourcePath, CancellationToken ct)
     {
         var extension = Path.GetExtension(sourcePath).ToLowerInvariant();
 
-        // Simple text extraction for supported formats
-        if (extension is ".txt" or ".md" or ".json" or ".xml" or ".yaml" or ".yml" or ".csv")
+        // Check built-in extensions and additional custom extensions
+        if (IsTextExtension(extension))
         {
             return await File.ReadAllTextAsync(sourcePath, ct);
         }
 
         return $"[Content extraction required for {extension} files. Install FileFlux for full support.]";
+    }
+
+    /// <summary>
+    /// Determines if a file extension is recognized as a text file.
+    /// Checks both built-in extensions and user-configured additional extensions.
+    /// </summary>
+    /// <param name="extension">File extension with leading dot (e.g., ".cs")</param>
+    /// <returns>True if the extension is a recognized text file format</returns>
+    public bool IsTextExtension(string extension)
+    {
+        if (string.IsNullOrEmpty(extension))
+            return false;
+
+        // Check built-in list first
+        if (BuiltInTextExtensions.Contains(extension))
+            return true;
+
+        // Check user-configured additional extensions
+        if (_options.AdditionalTextExtensions.Count > 0 &&
+            _options.AdditionalTextExtensions.Contains(extension))
+            return true;
+
+        return false;
+    }
+
+    /// <summary>
+    /// Gets all recognized text extensions (built-in + additional).
+    /// </summary>
+    public IReadOnlySet<string> GetAllTextExtensions()
+    {
+        if (_options.AdditionalTextExtensions.Count == 0)
+            return BuiltInTextExtensions;
+
+        var all = new HashSet<string>(BuiltInTextExtensions, StringComparer.OrdinalIgnoreCase);
+        foreach (var ext in _options.AdditionalTextExtensions)
+        {
+            all.Add(ext);
+        }
+        return all;
     }
 
     private static IReadOnlyList<string> ChunkFallback(string content, int maxChunkSize)

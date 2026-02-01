@@ -188,6 +188,7 @@ public sealed class VaultFactory : IVaultFactory
             _sharedHasher,
             storage,
             pipelineLogger,
+            optionsWrapper,
             _sharedExtractor,
             _sharedChunker,
             _sharedVectorStore,

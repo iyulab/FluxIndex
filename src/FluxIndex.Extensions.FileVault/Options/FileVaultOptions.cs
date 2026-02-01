@@ -80,6 +80,17 @@ public sealed class FileVaultOptions
     ];
 
     /// <summary>
+    /// Additional text file extensions for fallback extraction.
+    /// These extensions are added to the built-in list when FileFlux is not available.
+    /// Use lowercase with leading dot (e.g., ".myext").
+    /// </summary>
+    /// <remarks>
+    /// Built-in extensions include common text, data, source code, and config formats.
+    /// Add custom extensions here for domain-specific text files.
+    /// </remarks>
+    public HashSet<string> AdditionalTextExtensions { get; set; } = [];
+
+    /// <summary>
     /// Default chunking options.
     /// </summary>
     public ChunkingDefaults Chunking { get; set; } = new();
