@@ -17,22 +17,43 @@ namespace FluxIndex.Extensions.FileVault.Services;
 public sealed class VaultPipeline : IVaultPipeline
 {
     /// <summary>
-    /// Built-in text file extensions that can be read directly without FileFlux.
-    /// Includes common text, data, source code, config, and script formats.
+    /// Document file extensions suitable for vector embedding (Memorize).
+    /// These formats contain natural language text that benefits from semantic search.
     /// </summary>
-    public static readonly HashSet<string> BuiltInTextExtensions = new(StringComparer.OrdinalIgnoreCase)
+    /// <remarks>
+    /// For code files, use file-read instead of Memorize.
+    /// Code requires AST-based chunking for effective RAG, which is not yet supported.
+    /// </remarks>
+    public static readonly HashSet<string> DocumentExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         // Text and documentation
         ".txt", ".md", ".markdown", ".rst", ".rtf", ".log",
-        // Data formats
-        ".json", ".xml", ".yaml", ".yml", ".csv", ".tsv", ".toml", ".ini", ".cfg", ".conf",
+        // Web content (natural language)
+        ".html", ".htm",
+        // Data formats (structured but searchable)
+        ".json", ".xml", ".yaml", ".yml", ".csv", ".tsv",
+        // Markup and templates
+        ".tex", ".bib"
+    };
+
+    /// <summary>
+    /// Source code and config file extensions that can be read but are NOT recommended for Memorize.
+    /// These files should be accessed via file-read when needed, not vector embedding.
+    /// </summary>
+    /// <remarks>
+    /// Reason: Standard text chunking breaks code semantics (functions split across chunks).
+    /// Effective code RAG requires AST-based chunking (Tree-sitter) and code-specific embeddings.
+    /// See: https://blog.lancedb.com/rag-codebase-1/
+    /// </remarks>
+    public static readonly HashSet<string> CodeExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
         // Source code - C family
         ".cs", ".c", ".cpp", ".cc", ".cxx", ".h", ".hpp", ".hxx", ".m", ".mm",
         // Source code - JVM
         ".java", ".kt", ".kts", ".scala", ".groovy", ".gradle",
         // Source code - Web
         ".js", ".ts", ".jsx", ".tsx", ".mjs", ".cjs", ".vue", ".svelte",
-        ".html", ".htm", ".css", ".scss", ".sass", ".less",
+        ".css", ".scss", ".sass", ".less",
         // Source code - Scripting
         ".py", ".pyw", ".rb", ".php", ".pl", ".pm", ".lua", ".r", ".jl",
         // Source code - Systems
@@ -43,14 +64,14 @@ public sealed class VaultPipeline : IVaultPipeline
         ".sh", ".bash", ".zsh", ".fish", ".ps1", ".psm1", ".bat", ".cmd",
         // Build and config
         ".makefile", ".dockerfile", ".cmake", ".meson", ".ninja",
+        ".toml", ".ini", ".cfg", ".conf",
         ".editorconfig", ".gitignore", ".gitattributes", ".dockerignore",
         // SQL and query
         ".sql", ".graphql", ".gql",
-        // Markup and templates
-        ".tex", ".bib", ".sty", ".cls",
-        ".njk", ".ejs", ".hbs", ".mustache", ".liquid", ".pug", ".jade",
-        // Other
-        ".proto", ".thrift", ".avsc", ".fbs"
+        // Schema and protocol
+        ".proto", ".thrift", ".avsc", ".fbs",
+        // Templates
+        ".sty", ".cls", ".njk", ".ejs", ".hbs", ".mustache", ".liquid", ".pug", ".jade"
     };
 
     private readonly IGitService _git;
@@ -407,8 +428,8 @@ public sealed class VaultPipeline : IVaultPipeline
     {
         var extension = Path.GetExtension(sourcePath).ToLowerInvariant();
 
-        // Check built-in extensions and additional custom extensions
-        if (IsTextExtension(extension))
+        // Check if file is readable as text (documents + code + custom)
+        if (IsReadableTextExtension(extension))
         {
             return await File.ReadAllTextAsync(sourcePath, ct);
         }
@@ -417,18 +438,18 @@ public sealed class VaultPipeline : IVaultPipeline
     }
 
     /// <summary>
-    /// Determines if a file extension is recognized as a text file.
-    /// Checks both built-in extensions and user-configured additional extensions.
+    /// Determines if a file extension is a readable text file (documents + code).
+    /// Use this for fallback extraction.
     /// </summary>
     /// <param name="extension">File extension with leading dot (e.g., ".cs")</param>
-    /// <returns>True if the extension is a recognized text file format</returns>
-    public bool IsTextExtension(string extension)
+    /// <returns>True if the file can be read as text</returns>
+    public bool IsReadableTextExtension(string extension)
     {
         if (string.IsNullOrEmpty(extension))
             return false;
 
-        // Check built-in list first
-        if (BuiltInTextExtensions.Contains(extension))
+        // Check documents and code extensions
+        if (DocumentExtensions.Contains(extension) || CodeExtensions.Contains(extension))
             return true;
 
         // Check user-configured additional extensions
@@ -440,20 +461,52 @@ public sealed class VaultPipeline : IVaultPipeline
     }
 
     /// <summary>
-    /// Gets all recognized text extensions (built-in + additional).
+    /// Determines if a file extension is suitable for Memorize (vector embedding).
+    /// Only document files are recommended; code files should use file-read instead.
     /// </summary>
-    public IReadOnlySet<string> GetAllTextExtensions()
+    /// <param name="extension">File extension with leading dot (e.g., ".md")</param>
+    /// <returns>True if the file is recommended for vector embedding</returns>
+    public static bool IsDocumentExtension(string extension)
     {
-        if (_options.AdditionalTextExtensions.Count == 0)
-            return BuiltInTextExtensions;
+        if (string.IsNullOrEmpty(extension))
+            return false;
 
-        var all = new HashSet<string>(BuiltInTextExtensions, StringComparer.OrdinalIgnoreCase);
-        foreach (var ext in _options.AdditionalTextExtensions)
-        {
+        return DocumentExtensions.Contains(extension);
+    }
+
+    /// <summary>
+    /// Determines if a file extension is a code/config file (read-only, not for Memorize).
+    /// </summary>
+    /// <param name="extension">File extension with leading dot (e.g., ".cs")</param>
+    /// <returns>True if the file is a code/config file</returns>
+    public static bool IsCodeExtension(string extension)
+    {
+        if (string.IsNullOrEmpty(extension))
+            return false;
+
+        return CodeExtensions.Contains(extension);
+    }
+
+    // Backward compatibility alias
+    [Obsolete("Use IsReadableTextExtension instead")]
+    public bool IsTextExtension(string extension) => IsReadableTextExtension(extension);
+
+    /// <summary>
+    /// Gets all readable text extensions (documents + code + additional).
+    /// </summary>
+    public IReadOnlySet<string> GetAllReadableExtensions()
+    {
+        var all = new HashSet<string>(DocumentExtensions, StringComparer.OrdinalIgnoreCase);
+        foreach (var ext in CodeExtensions)
             all.Add(ext);
-        }
+        foreach (var ext in _options.AdditionalTextExtensions)
+            all.Add(ext);
         return all;
     }
+
+    // Backward compatibility alias
+    [Obsolete("Use GetAllReadableExtensions instead")]
+    public IReadOnlySet<string> GetAllTextExtensions() => GetAllReadableExtensions();
 
     private static IReadOnlyList<string> ChunkFallback(string content, int maxChunkSize)
     {
