@@ -278,6 +278,49 @@ var memorized = await vault.ListAsync(ProcessingStage.Memorized);
 await vault.RemoveAsync("path/to/document.pdf");
 ```
 
+### Search (Path-Scoped)
+
+Search indexed content with path-based scope filtering:
+
+```csharp
+// Search all indexed files
+var results = await vault.SearchAsync("machine learning concepts");
+
+// Search within a specific folder (recursive)
+var results = await vault.SearchAsync("machine learning",
+    VaultSearchOptions.ForFolder("D:/Documents/Research"));
+
+// Search a single file only
+var results = await vault.SearchAsync("neural networks",
+    VaultSearchOptions.ForFile("D:/Documents/Research/ml-paper.pdf"));
+
+// Search multiple paths
+var results = await vault.SearchAsync("deep learning", new VaultSearchOptions
+{
+    PathScope = ["D:/Docs/paper1.pdf", "D:/Docs/papers/"],
+    TopK = 10,
+    MinScore = 0.5f,
+    IncludeContent = true,
+    IncludeMetadata = true
+});
+
+// Process results
+foreach (var item in results.Items)
+{
+    Console.WriteLine($"[{item.Score:F3}] {item.FileName} (chunk {item.ChunkIndex})");
+    Console.WriteLine($"  {item.Content?.Substring(0, 100)}...");
+}
+```
+
+**Path Scope Patterns**:
+
+| Pattern | Behavior |
+|---------|----------|
+| `folder/` | All files in folder (recursive) |
+| `folder/file.pdf` | Single file only |
+| `["a.pdf", "folder/"]` | Multiple paths combined |
+| Empty/null | Search all indexed files |
+
 ### View History and Diff
 
 ```csharp
@@ -912,6 +955,7 @@ Console.WriteLine($"Storage Size: {status.TotalStorageSizeBytes / 1024 / 1024:F1
 | `MemorizeAsync` | Full pipeline processing |
 | `RefreshAsync` | Re-chunk without re-extraction |
 | `SyncAsync` | Sync all watched folders |
+| `SearchAsync` | Path-scoped semantic search |
 | `DetectChangesAsync` | Check for file changes |
 | `GetAsync` | Get entry by file path |
 | `GetByHashAsync` | Get entry by hash |
@@ -958,3 +1002,4 @@ Console.WriteLine($"Storage Size: {status.TotalStorageSizeBytes / 1024 / 1024:F1
 | 0.5.3 | Added status-based query APIs |
 | 0.5.7 | Added RetryCount tracking, Vector Store integration docs, Multi-tenant usage examples |
 | 0.5.8 | Added Refined stage (4-stage pipeline), separated extracted.md/refined.md, QA/AppendText preservation on re-memorize |
+| 0.8.0 | Added `SearchAsync` with path-scoped filtering (folder, file, multiple paths) |

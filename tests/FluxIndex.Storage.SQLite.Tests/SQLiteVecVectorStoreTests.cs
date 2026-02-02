@@ -3,6 +3,7 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Storage.SQLite;
 using FluxIndex.Storage.SQLite.Tests.Infrastructure;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -443,16 +444,34 @@ public class SQLiteVecVectorStoreTests : IDisposable
     {
         _serviceProvider?.Dispose();
 
-        try
+        // SQLite 연결 풀 완전 정리
+        SqliteConnection.ClearAllPools();
+
+        // 재시도 로직으로 파일 정리
+        DeleteDatabaseFileWithRetry(_testDatabasePath);
+    }
+
+    private void DeleteDatabaseFileWithRetry(string path, int maxRetries = 3)
+    {
+        for (int i = 0; i < maxRetries; i++)
         {
-            if (File.Exists(_testDatabasePath))
+            try
             {
-                File.Delete(_testDatabasePath);
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+                return;
             }
-        }
-        catch (Exception ex)
-        {
-            _output.WriteLine($"테스트 데이터베이스 정리 실패: {ex.Message}");
+            catch (IOException) when (i < maxRetries - 1)
+            {
+                Thread.Sleep(100 * (i + 1));
+                SqliteConnection.ClearAllPools();
+            }
+            catch (Exception ex)
+            {
+                _output.WriteLine($"테스트 데이터베이스 정리 실패 (시도 {i + 1}/{maxRetries}): {ex.Message}");
+            }
         }
     }
 }

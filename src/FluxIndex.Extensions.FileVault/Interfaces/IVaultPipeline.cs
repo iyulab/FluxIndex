@@ -35,6 +35,22 @@ public interface IVaultPipeline
     /// Removes chunks from vector store for the given entry.
     /// </summary>
     Task RemoveAsync(VaultEntry entry, CancellationToken ct = default);
+
+    /// <summary>
+    /// Searches indexed content in vector store.
+    /// </summary>
+    /// <param name="query">Search query text.</param>
+    /// <param name="documentIds">Optional filter by document IDs (filepath hashes).</param>
+    /// <param name="topK">Maximum results to return.</param>
+    /// <param name="minScore">Minimum score threshold.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Search results with chunk content and scores.</returns>
+    Task<IReadOnlyList<PipelineSearchResult>> SearchAsync(
+        string query,
+        IEnumerable<string>? documentIds = null,
+        int topK = 10,
+        float minScore = 0.0f,
+        CancellationToken ct = default);
 }
 
 /// <summary>
@@ -135,4 +151,40 @@ public sealed class MemorizeResult
         ErrorMessage = errorMessage,
         Duration = duration
     };
+}
+
+/// <summary>
+/// Search result from pipeline search.
+/// </summary>
+public sealed class PipelineSearchResult
+{
+    /// <summary>
+    /// Document ID (filepath hash).
+    /// </summary>
+    public string DocumentId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Chunk ID.
+    /// </summary>
+    public string ChunkId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Chunk index within the document.
+    /// </summary>
+    public int ChunkIndex { get; init; }
+
+    /// <summary>
+    /// Chunk content.
+    /// </summary>
+    public string Content { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Similarity score.
+    /// </summary>
+    public float Score { get; init; }
+
+    /// <summary>
+    /// Chunk metadata.
+    /// </summary>
+    public Dictionary<string, object>? Metadata { get; init; }
 }

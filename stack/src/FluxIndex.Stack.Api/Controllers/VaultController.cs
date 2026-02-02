@@ -478,6 +478,67 @@ public class VaultController : ControllerBase
 
     #endregion
 
+    #region Search
+
+    /// <summary>
+    /// Searches indexed vault content with path-based scope filtering.
+    /// </summary>
+    /// <remarks>
+    /// Path scope examples:
+    /// - Empty: Search all indexed files
+    /// - ["folder/"]: Search all files in folder (recursive)
+    /// - ["folder/file.pdf"]: Search only in specific file
+    /// - ["folder/a.pdf", "folder/sub/"]: Search in multiple paths
+    /// </remarks>
+    [HttpPost("search")]
+    public async Task<ActionResult<ApiResponse<VaultSearchResponseDto>>> Search(
+        [FromBody] VaultSearchRequestDto request,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var options = new VaultSearchOptions
+            {
+                PathScope = request.PathScope ?? [],
+                TopK = request.TopK,
+                MinScore = request.MinScore,
+                IncludeContent = request.IncludeContent,
+                IncludeMetadata = request.IncludeMetadata
+            };
+
+            var result = await _vault.SearchAsync(request.Query, options, cancellationToken);
+
+            var response = new VaultSearchResponseDto
+            {
+                Query = result.Query,
+                Items = result.Items.Select(i => new VaultSearchResultItemDto
+                {
+                    SourcePath = i.SourcePath,
+                    FileName = i.FileName,
+                    ChunkIndex = i.ChunkIndex,
+                    Content = i.Content,
+                    Score = i.Score,
+                    Metadata = i.Metadata
+                }).ToList(),
+                TotalCount = result.TotalCount,
+                SearchedPaths = result.SearchedPaths.ToList(),
+                DocumentsSearched = result.DocumentsSearched,
+                DurationMs = result.Duration.TotalMilliseconds,
+                IsSuccess = result.IsSuccess,
+                ErrorMessage = result.ErrorMessage
+            };
+
+            return Ok(ApiResponse<VaultSearchResponseDto>.Ok(response));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Vault search failed for query: {Query}", request.Query);
+            return BadRequest(ApiResponse<VaultSearchResponseDto>.Fail(ex.Message));
+        }
+    }
+
+    #endregion
+
     #region Helpers
 
     private static WatchedFolderDto MapToDto(WatchedFolder folder)

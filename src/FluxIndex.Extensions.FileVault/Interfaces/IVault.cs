@@ -184,6 +184,17 @@ public interface IVault
     /// Gets entries that need synchronization (SourceModified or VaultModified).
     /// </summary>
     Task<IReadOnlyList<VaultEntry>> GetEntriesNeedingSyncAsync(CancellationToken ct = default);
+
+    // === Search ===
+
+    /// <summary>
+    /// Searches indexed content with path-based scope filtering.
+    /// </summary>
+    /// <param name="query">Search query text.</param>
+    /// <param name="options">Search options including path scope.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Search results.</returns>
+    Task<VaultSearchResult> SearchAsync(string query, VaultSearchOptions? options = null, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -447,4 +458,168 @@ public sealed class WatchOptions
     public List<string> IncludePatterns { get; set; } = ["*.pdf", "*.docx", "*.md", "*.txt", "*.html"];
     public List<string> ExcludePatterns { get; set; } = ["~$*", "*.tmp", ".*"];
     public bool AutoMemorize { get; set; } = false;
+}
+
+/// <summary>
+/// Search options for vault content search.
+/// </summary>
+public sealed class VaultSearchOptions
+{
+    /// <summary>
+    /// Path scope for search. Can be:
+    /// - Empty/null: Search all indexed files
+    /// - "folder/": Search all files in folder (recursive)
+    /// - "folder/file.pdf": Search only in specific file
+    /// - Multiple paths: Search in all specified paths
+    /// </summary>
+    public IReadOnlyList<string> PathScope { get; init; } = [];
+
+    /// <summary>
+    /// Maximum number of results to return.
+    /// </summary>
+    public int TopK { get; init; } = 10;
+
+    /// <summary>
+    /// Minimum score threshold for results.
+    /// </summary>
+    public float MinScore { get; init; } = 0.0f;
+
+    /// <summary>
+    /// Whether to include chunk content in results.
+    /// </summary>
+    public bool IncludeContent { get; init; } = true;
+
+    /// <summary>
+    /// Whether to include metadata in results.
+    /// </summary>
+    public bool IncludeMetadata { get; init; } = true;
+
+    /// <summary>
+    /// Creates options for searching all files.
+    /// </summary>
+    public static VaultSearchOptions All(int topK = 10) => new() { TopK = topK };
+
+    /// <summary>
+    /// Creates options for searching within specific paths.
+    /// </summary>
+    public static VaultSearchOptions ForPaths(params string[] paths) => new() { PathScope = paths };
+
+    /// <summary>
+    /// Creates options for searching within a single folder.
+    /// </summary>
+    public static VaultSearchOptions ForFolder(string folderPath) => new() { PathScope = [folderPath.TrimEnd('/', '\\')] };
+
+    /// <summary>
+    /// Creates options for searching a single file.
+    /// </summary>
+    public static VaultSearchOptions ForFile(string filePath) => new() { PathScope = [filePath] };
+}
+
+/// <summary>
+/// Single search result item.
+/// </summary>
+public sealed class VaultSearchResultItem
+{
+    /// <summary>
+    /// The vault entry this result belongs to.
+    /// </summary>
+    public VaultEntry Entry { get; init; } = null!;
+
+    /// <summary>
+    /// Source file path.
+    /// </summary>
+    public string SourcePath { get; init; } = string.Empty;
+
+    /// <summary>
+    /// File name.
+    /// </summary>
+    public string FileName { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Chunk index within the document.
+    /// </summary>
+    public int ChunkIndex { get; init; }
+
+    /// <summary>
+    /// Chunk content (if included).
+    /// </summary>
+    public string? Content { get; init; }
+
+    /// <summary>
+    /// Similarity score (0.0 to 1.0).
+    /// </summary>
+    public float Score { get; init; }
+
+    /// <summary>
+    /// Chunk metadata (if included).
+    /// </summary>
+    public Dictionary<string, object>? Metadata { get; init; }
+}
+
+/// <summary>
+/// Search result from vault search.
+/// </summary>
+public sealed class VaultSearchResult
+{
+    /// <summary>
+    /// The search query.
+    /// </summary>
+    public string Query { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Search results ordered by relevance.
+    /// </summary>
+    public IReadOnlyList<VaultSearchResultItem> Items { get; init; } = [];
+
+    /// <summary>
+    /// Total number of results found (before TopK limit).
+    /// </summary>
+    public int TotalCount { get; init; }
+
+    /// <summary>
+    /// Paths that were searched.
+    /// </summary>
+    public IReadOnlyList<string> SearchedPaths { get; init; } = [];
+
+    /// <summary>
+    /// Number of documents that were searched.
+    /// </summary>
+    public int DocumentsSearched { get; init; }
+
+    /// <summary>
+    /// Search duration.
+    /// </summary>
+    public TimeSpan Duration { get; init; }
+
+    /// <summary>
+    /// Whether the search was successful.
+    /// </summary>
+    public bool IsSuccess { get; init; } = true;
+
+    /// <summary>
+    /// Error message if search failed.
+    /// </summary>
+    public string? ErrorMessage { get; init; }
+
+    /// <summary>
+    /// Creates an empty result.
+    /// </summary>
+    public static VaultSearchResult Empty(string query) => new()
+    {
+        Query = query,
+        Items = [],
+        TotalCount = 0
+    };
+
+    /// <summary>
+    /// Creates an error result.
+    /// </summary>
+    public static VaultSearchResult Error(string query, string error) => new()
+    {
+        Query = query,
+        Items = [],
+        TotalCount = 0,
+        IsSuccess = false,
+        ErrorMessage = error
+    };
 }

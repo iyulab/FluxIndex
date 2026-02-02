@@ -153,3 +153,125 @@ public class TrackedFileVersionDto
     public bool HasQA { get; init; }
     public bool HasEnrichment { get; init; }
 }
+
+/// <summary>
+/// Request for vault search with path-based scope filtering.
+/// </summary>
+public class VaultSearchRequestDto
+{
+    /// <summary>
+    /// Search query text.
+    /// </summary>
+    public string Query { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Path scope for search. Can be:
+    /// - Empty/null: Search all indexed files
+    /// - ["folder/"]: Search all files in folder (recursive)
+    /// - ["folder/file.pdf"]: Search only in specific file
+    /// - ["folder/a.pdf", "folder/sub/"]: Search in multiple paths
+    /// </summary>
+    public List<string>? PathScope { get; init; }
+
+    /// <summary>
+    /// Maximum number of results to return.
+    /// </summary>
+    public int TopK { get; init; } = 10;
+
+    /// <summary>
+    /// Minimum score threshold for results.
+    /// </summary>
+    public float MinScore { get; init; } = 0.0f;
+
+    /// <summary>
+    /// Whether to include chunk content in results.
+    /// </summary>
+    public bool IncludeContent { get; init; } = true;
+
+    /// <summary>
+    /// Whether to include metadata in results.
+    /// </summary>
+    public bool IncludeMetadata { get; init; } = true;
+}
+
+/// <summary>
+/// Individual search result item.
+/// </summary>
+public class VaultSearchResultItemDto
+{
+    /// <summary>
+    /// Source file path.
+    /// </summary>
+    public string SourcePath { get; init; } = string.Empty;
+
+    /// <summary>
+    /// File name.
+    /// </summary>
+    public string FileName { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Chunk index within the document.
+    /// </summary>
+    public int ChunkIndex { get; init; }
+
+    /// <summary>
+    /// Chunk content (if included).
+    /// </summary>
+    public string? Content { get; init; }
+
+    /// <summary>
+    /// Similarity score (0.0 to 1.0).
+    /// </summary>
+    public float Score { get; init; }
+
+    /// <summary>
+    /// Chunk metadata (if included).
+    /// </summary>
+    public Dictionary<string, object>? Metadata { get; init; }
+}
+
+/// <summary>
+/// Response from vault search.
+/// </summary>
+public class VaultSearchResponseDto
+{
+    /// <summary>
+    /// The search query.
+    /// </summary>
+    public string Query { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Search results ordered by relevance.
+    /// </summary>
+    public List<VaultSearchResultItemDto> Items { get; init; } = new();
+
+    /// <summary>
+    /// Total number of results found.
+    /// </summary>
+    public int TotalCount { get; init; }
+
+    /// <summary>
+    /// Paths that were searched.
+    /// </summary>
+    public List<string> SearchedPaths { get; init; } = new();
+
+    /// <summary>
+    /// Number of documents that were searched.
+    /// </summary>
+    public int DocumentsSearched { get; init; }
+
+    /// <summary>
+    /// Search duration in milliseconds.
+    /// </summary>
+    public double DurationMs { get; init; }
+
+    /// <summary>
+    /// Whether the search was successful.
+    /// </summary>
+    public bool IsSuccess { get; init; } = true;
+
+    /// <summary>
+    /// Error message if search failed.
+    /// </summary>
+    public string? ErrorMessage { get; init; }
+}

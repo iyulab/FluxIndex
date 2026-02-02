@@ -876,4 +876,128 @@ public sealed class VaultManager : IVault
     }
 
     #endregion
+
+    #region Search
+
+    public async Task<VaultSearchResult> SearchAsync(string query, VaultSearchOptions? options = null, CancellationToken ct = default)
+    {
+        var sw = Stopwatch.StartNew();
+        options ??= VaultSearchOptions.All();
+
+        try
+        {
+            // Get all entries to filter by path scope
+            var allEntries = await ListAsync(ProcessingStage.Memorized, ct);
+            var entriesDict = allEntries.ToDictionary(e => e.FilepathHash, e => e);
+
+            // Filter entries by path scope
+            IReadOnlyList<VaultEntry> targetEntries;
+            var searchedPaths = new List<string>();
+
+            if (options.PathScope.Count == 0)
+            {
+                // Search all
+                targetEntries = allEntries;
+                searchedPaths.Add("*");
+            }
+            else
+            {
+                var filteredEntries = new List<VaultEntry>();
+
+                foreach (var scope in options.PathScope)
+                {
+                    var normalizedScope = Path.GetFullPath(scope.TrimEnd('/', '\\'));
+                    searchedPaths.Add(normalizedScope);
+
+                    // Check if scope is a directory or file
+                    if (Directory.Exists(normalizedScope))
+                    {
+                        // Directory scope - match all files under this directory
+                        var matchingEntries = allEntries.Where(e =>
+                            e.SourcePath.StartsWith(normalizedScope + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+                            e.SourcePath.Equals(normalizedScope, StringComparison.OrdinalIgnoreCase));
+                        filteredEntries.AddRange(matchingEntries);
+                    }
+                    else if (File.Exists(normalizedScope))
+                    {
+                        // File scope - match exact file
+                        var matchingEntry = allEntries.FirstOrDefault(e =>
+                            e.SourcePath.Equals(normalizedScope, StringComparison.OrdinalIgnoreCase));
+                        if (matchingEntry != null)
+                        {
+                            filteredEntries.Add(matchingEntry);
+                        }
+                    }
+                    else
+                    {
+                        // Path doesn't exist - try to match as prefix pattern
+                        var matchingEntries = allEntries.Where(e =>
+                            e.SourcePath.StartsWith(normalizedScope, StringComparison.OrdinalIgnoreCase));
+                        filteredEntries.AddRange(matchingEntries);
+                    }
+                }
+
+                targetEntries = filteredEntries.Distinct().ToList();
+            }
+
+            if (targetEntries.Count == 0)
+            {
+                sw.Stop();
+                return new VaultSearchResult
+                {
+                    Query = query,
+                    Items = [],
+                    TotalCount = 0,
+                    SearchedPaths = searchedPaths,
+                    DocumentsSearched = 0,
+                    Duration = sw.Elapsed
+                };
+            }
+
+            // Get document IDs to filter search
+            var documentIds = targetEntries.Select(e => e.FilepathHash).ToList();
+
+            // Execute pipeline search
+            var pipelineResults = await _pipeline.SearchAsync(query, documentIds, options.TopK, options.MinScore, ct);
+
+            // Map to VaultSearchResultItem
+            var items = pipelineResults.Select(r =>
+            {
+                entriesDict.TryGetValue(r.DocumentId, out var entry);
+                return new VaultSearchResultItem
+                {
+                    Entry = entry!,
+                    SourcePath = entry?.SourcePath ?? r.DocumentId,
+                    FileName = entry?.FileName ?? Path.GetFileName(r.DocumentId),
+                    ChunkIndex = r.ChunkIndex,
+                    Content = options.IncludeContent ? r.Content : null,
+                    Score = r.Score,
+                    Metadata = options.IncludeMetadata ? r.Metadata : null
+                };
+            }).ToList();
+
+            sw.Stop();
+
+            _logger.LogInformation("Search '{Query}' in {Count} documents returned {Results} results in {Duration}ms",
+                query, targetEntries.Count, items.Count, sw.ElapsedMilliseconds);
+
+            return new VaultSearchResult
+            {
+                Query = query,
+                Items = items,
+                TotalCount = items.Count,
+                SearchedPaths = searchedPaths,
+                DocumentsSearched = targetEntries.Count,
+                Duration = sw.Elapsed
+            };
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            _logger.LogError(ex, "Search failed for query: {Query}", query);
+            return VaultSearchResult.Error(query, ex.Message);
+        }
+    }
+
+    #endregion
 }

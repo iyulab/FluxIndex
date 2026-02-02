@@ -335,6 +335,51 @@ public sealed class VaultPipeline : IVaultPipeline
         _logger.LogInformation("Removed chunks for document {DocumentId}", documentId);
     }
 
+    public async Task<IReadOnlyList<PipelineSearchResult>> SearchAsync(
+        string query,
+        IEnumerable<string>? documentIds = null,
+        int topK = 10,
+        float minScore = 0.0f,
+        CancellationToken ct = default)
+    {
+        if (_vectorStore == null || _embeddingService == null)
+        {
+            _logger.LogWarning("Vector store or embedding service not configured, cannot search");
+            return [];
+        }
+
+        // Generate query embedding
+        var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, ct);
+
+        // Search vector store
+        var searchResults = await _vectorStore.SearchAsync(queryEmbedding, topK * 2, minScore, ct);
+
+        // Filter by document IDs if specified
+        var filteredResults = searchResults;
+        if (documentIds != null)
+        {
+            var docIdSet = documentIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            filteredResults = searchResults.Where(r => docIdSet.Contains(r.DocumentId)).ToList();
+        }
+
+        // Map to PipelineSearchResult
+        var results = filteredResults
+            .Take(topK)
+            .Select(r => new PipelineSearchResult
+            {
+                DocumentId = r.DocumentId,
+                ChunkId = r.Id.ToString(),
+                ChunkIndex = r.ChunkIndex,
+                Content = r.Content,
+                Score = r.Score ?? 0f,
+                Metadata = r.Metadata
+            })
+            .ToList();
+
+        _logger.LogInformation("Search for '{Query}' returned {Count} results", query, results.Count);
+        return results;
+    }
+
     private async Task<(int ChunkCount, int ContentLength)> ChunkAndIndexAsync(
         VaultEntry entry,
         MemorizeOptions options,
