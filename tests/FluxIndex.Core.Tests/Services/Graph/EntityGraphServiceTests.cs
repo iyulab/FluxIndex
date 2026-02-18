@@ -3,7 +3,7 @@ using FluxIndex.Core.Application.Services.Graph;
 using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
+using NSubstitute;
 using Xunit;
 
 namespace FluxIndex.Core.Tests.Services.Graph;
@@ -13,14 +13,14 @@ namespace FluxIndex.Core.Tests.Services.Graph;
 /// </summary>
 public class EntityGraphServiceTests
 {
-    private readonly Mock<IAdvancedEntityExtractionService> _mockEntityService;
-    private readonly Mock<IEmbeddingService> _mockEmbeddingService;
+    private readonly IAdvancedEntityExtractionService _mockEntityService;
+    private readonly IEmbeddingService _mockEmbeddingService;
     private readonly ILogger<EntityGraphService> _logger;
 
     public EntityGraphServiceTests()
     {
-        _mockEntityService = new Mock<IAdvancedEntityExtractionService>();
-        _mockEmbeddingService = new Mock<IEmbeddingService>();
+        _mockEntityService = Substitute.For<IAdvancedEntityExtractionService>();
+        _mockEmbeddingService = Substitute.For<IEmbeddingService>();
         _logger = NullLogger<EntityGraphService>.Instance;
     }
 
@@ -29,8 +29,8 @@ public class EntityGraphServiceTests
         bool withEmbeddingService = false)
     {
         return new EntityGraphService(
-            withEntityService ? _mockEntityService.Object : null,
-            withEmbeddingService ? _mockEmbeddingService.Object : null,
+            withEntityService ? _mockEntityService : null,
+            withEmbeddingService ? _mockEmbeddingService : null,
             graphStore: null, // No graph store for unit tests
             _logger);
     }
@@ -81,9 +81,7 @@ public class EntityGraphServiceTests
             Confidence = 0.8
         };
 
-        _mockEntityService
-            .Setup(x => x.ExtractBatchAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<EntityExtractionOptions>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<EntityGraph>
+        _mockEntityService.ExtractBatchAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EntityExtractionOptions>(), Arg.Any<CancellationToken>()).Returns(new List<EntityGraph>
             {
                 CreateMockEntityGraph("1", new List<ExtractedEntity> { entity1, entity2, entity3 }, new List<EntityRelation> { relation }),
                 CreateMockEntityGraph("2", new List<ExtractedEntity> { entity2 }, new List<EntityRelation>())
@@ -132,9 +130,7 @@ public class EntityGraphServiceTests
         var entity1 = new ExtractedEntity { Id = "e1", Text = "Bill Gates", Type = NamedEntityType.Person, Confidence = 0.9 };
         var entity2 = new ExtractedEntity { Id = "e2", Text = "Bill Gates", Type = NamedEntityType.Person, Confidence = 0.85 };
 
-        _mockEntityService
-            .Setup(x => x.ExtractBatchAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<EntityExtractionOptions>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<EntityGraph>
+        _mockEntityService.ExtractBatchAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EntityExtractionOptions>(), Arg.Any<CancellationToken>()).Returns(new List<EntityGraph>
             {
                 CreateMockEntityGraph("1", new List<ExtractedEntity> { entity1 }, new List<EntityRelation>()),
                 CreateMockEntityGraph("2", new List<ExtractedEntity> { entity2 }, new List<EntityRelation>())
@@ -182,9 +178,7 @@ public class EntityGraphServiceTests
             }
         };
 
-        _mockEntityService
-            .Setup(x => x.ExtractEntitiesAsync(It.IsAny<string>(), It.IsAny<EntityExtractionOptions>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<ExtractedEntity>
+        _mockEntityService.ExtractEntitiesAsync(Arg.Any<string>(), Arg.Any<EntityExtractionOptions>(), Arg.Any<CancellationToken>()).Returns(new List<ExtractedEntity>
             {
                 new() { Id = "q1", Text = "Microsoft", Type = NamedEntityType.Organization, Confidence = 0.9 }
             });
@@ -212,9 +206,7 @@ public class EntityGraphServiceTests
             ChunkMappings = new List<EntityChunkMapping>()
         };
 
-        _mockEntityService
-            .Setup(x => x.ExtractEntitiesAsync(It.IsAny<string>(), It.IsAny<EntityExtractionOptions>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<ExtractedEntity>());
+        _mockEntityService.ExtractEntitiesAsync(Arg.Any<string>(), Arg.Any<EntityExtractionOptions>(), Arg.Any<CancellationToken>()).Returns(new List<ExtractedEntity>());
 
         // Act
         var result = await service.SearchByEntitiesAsync("Who founded Microsoft?", entityGraph);

@@ -2,7 +2,7 @@ using FluxIndex.Core.Application.Services;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.Entities;
 using Xunit;
-using Moq;
+using NSubstitute;
 
 namespace FluxIndex.Core.Tests.Services;
 
@@ -145,21 +145,18 @@ public class ImageExtractionServiceTests
         var content = $"Text ![img](data:image/png;base64,{pngBase64}) more";
         var documentId = "test-doc-123";
 
-        var mockStore = new Mock<IImageStore>();
-        mockStore.Setup(s => s.StoreAsync(
-                It.IsAny<string>(), // imageId
-                It.IsAny<string>(), // documentId
-                It.IsAny<byte[]>(),
-                It.IsAny<string>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string imgId, string docId, byte[] data, string mime, CancellationToken ct) =>
-                $"{docId}/{imgId}.png");
+        var mockStore = Substitute.For<IImageStore>();
+        mockStore.StoreAsync(
+                Arg.Any<string>(), // imageId
+                Arg.Any<string>(), // documentId
+                Arg.Any<byte[]>(),
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>()).Returns(callInfo => { var imgId = callInfo.ArgAt<string>(0); var docId = callInfo.ArgAt<string>(1); return $"{docId}/{imgId}.png"; });
 
-        mockStore.Setup(s => s.GetPublicUrl(It.IsAny<string>()))
-            .Returns((string path) => $"http://localhost/images/{path}");
+        mockStore.GetPublicUrl(Arg.Any<string>()).Returns(callInfo => { var path = callInfo.ArgAt<string>(0); return $"http://localhost/images/{path}"; });
 
         // Act
-        var result = await _service.ExtractAndStoreAsync(documentId, content, mockStore.Object);
+        var result = await _service.ExtractAndStoreAsync(documentId, content, mockStore);
 
         // Assert
         Assert.True(result.IsSuccess);
@@ -168,12 +165,12 @@ public class ImageExtractionServiceTests
         Assert.Equal(documentId, result.StoredImages[0].DocumentId);
         Assert.Contains("[Image:", result.ProcessedContent);
 
-        mockStore.Verify(s => s.StoreAsync(
-            It.IsAny<string>(),
+        await mockStore.Received(1).StoreAsync(
+            Arg.Any<string>(),
             documentId,
-            It.IsAny<byte[]>(),
+            Arg.Any<byte[]>(),
             "image/png",
-            It.IsAny<CancellationToken>()), Times.Once);
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]

@@ -76,7 +76,7 @@ public class RedisSemanticCacheOptions
     /// <summary>
     /// Redis 데이터베이스 번호
     /// </summary>
-    public int DatabaseNumber { get; set; } = 0;
+    public int DatabaseNumber { get; set; }
 
     /// <summary>
     /// 연결 타임아웃 (초)
@@ -116,5 +116,5 @@ public class RedisSemanticCacheOptions
     /// <summary>
     /// 상세 로깅 활성화 여부
     /// </summary>
-    public bool EnableDetailedLogging { get; set; } = false;
+    public bool EnableDetailedLogging { get; set; }
 }

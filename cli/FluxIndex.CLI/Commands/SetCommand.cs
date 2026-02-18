@@ -128,7 +128,7 @@ public static class SetCommand
     private static string MaskIfSensitive(string key, string value)
     {
         var sensitiveKeys = new[] { "API_KEY", "SECRET" };
-        if (sensitiveKeys.Any(k => key.ToUpperInvariant().Contains(k)))
+        if (sensitiveKeys.Any(k => key.Contains(k, StringComparison.OrdinalIgnoreCase)))
         {
             if (value.Length <= 8) return "****";
             return value[..4] + "****" + value[^4..];

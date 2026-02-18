@@ -8,7 +8,7 @@ namespace FluxIndex.Stack.Application.Services;
 /// <summary>
 /// Service implementation for managing embedding models and their lifecycle.
 /// </summary>
-public class EmbeddingModelService : IEmbeddingModelService
+public partial class EmbeddingModelService : IEmbeddingModelService
 {
     private readonly IEmbeddingModelRepository _modelRepository;
     private readonly IChunkEmbeddingRepository _embeddingRepository;
@@ -117,13 +117,13 @@ public class EmbeddingModelService : IEmbeddingModelService
         // If the target model is already active, no action needed
         if (currentActive?.Id == modelId)
         {
-            _logger.LogInformation("Model {ModelKey} is already active", targetModel.ModelKey);
+            LogModelAlreadyActive(_logger, targetModel.ModelKey);
             return null;
         }
 
         // Set the new active model
         await _modelRepository.SetActiveModelAsync(modelId, cancellationToken);
-        _logger.LogInformation("Set {ModelKey} as active embedding model", targetModel.ModelKey);
+        LogActiveModelSet(_logger, targetModel.ModelKey);
 
         // Trigger reindexing if requested
         if (triggerReindexing)
@@ -135,11 +135,8 @@ public class EmbeddingModelService : IEmbeddingModelService
                 priority: 10, // High priority for model change
                 cancellationToken);
 
-            _logger.LogInformation(
-                "Created reindexing job {JobId} to migrate from {OldModel} to {NewModel}",
-                job.Id,
-                currentActive?.ModelKey ?? "none",
-                targetModel.ModelKey);
+            var oldModelKey = currentActive?.ModelKey ?? "none";
+            LogReindexingJobCreated(_logger, job.Id, oldModelKey, targetModel.ModelKey);
 
             return job;
         }
@@ -186,11 +183,9 @@ public class EmbeddingModelService : IEmbeddingModelService
             limit: null,
             cancellationToken: cancellationToken);
 
-        _logger.LogInformation(
-            "Detected embedding model change: {OldModel} -> {NewModel}, {AffectedCount} chunks affected",
-            currentActive?.ModelKey ?? "none",
-            configuredModel.ModelKey,
-            chunkIdsWithoutEmbedding.Count);
+        var oldModelKey = currentActive?.ModelKey ?? "none";
+        var affectedCount = chunkIdsWithoutEmbedding.Count;
+        LogModelChangeDetected(_logger, oldModelKey, configuredModel.ModelKey, affectedCount);
 
         return new EmbeddingModelChange(
             currentActive,
@@ -220,4 +215,20 @@ public class EmbeddingModelService : IEmbeddingModelService
         // Default to 1536 for unknown models (OpenAI default)
         return 1536;
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Model {ModelKey} is already active")]
+    private static partial void LogModelAlreadyActive(ILogger logger, string modelKey);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Set {ModelKey} as active embedding model")]
+    private static partial void LogActiveModelSet(ILogger logger, string modelKey);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Created reindexing job {JobId} to migrate from {OldModel} to {NewModel}")]
+    private static partial void LogReindexingJobCreated(ILogger logger, Guid jobId, string oldModel, string newModel);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Detected embedding model change: {OldModel} -> {NewModel}, {AffectedCount} chunks affected")]
+    private static partial void LogModelChangeDetected(ILogger logger, string oldModel, string newModel, int affectedCount);
+
+    #endregion
 }

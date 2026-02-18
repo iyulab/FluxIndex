@@ -11,8 +11,10 @@ namespace FluxIndex.Core.Application.Services.Enrichment;
 /// Provides metadata enrichment, quality evaluation, and relationship analysis
 /// using heuristic rules without LLM dependencies.
 /// </summary>
-public class RuleBasedMetadataEnrichmentService : IMetadataEnrichmentService
+public partial class RuleBasedMetadataEnrichmentService : IMetadataEnrichmentService
 {
+    private static readonly char[] WordSplitSeparators = [' ', '\n', '\r', '\t'];
+
     private readonly ILogger<RuleBasedMetadataEnrichmentService> _logger;
 
     // Language detection character ranges
@@ -42,7 +44,8 @@ public class RuleBasedMetadataEnrichmentService : IMetadataEnrichmentService
         Dictionary<string, object>? documentMetadata = null,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogDebug("Enriching metadata for chunk {ChunkIndex}", chunkIndex);
+        if (_logger.IsEnabled(LogLevel.Debug))
+            LogRuleBasedMetadataEnrichment4(_logger, chunkIndex);
 
         var metadata = new ChunkMetadata
         {
@@ -72,8 +75,7 @@ public class RuleBasedMetadataEnrichmentService : IMetadataEnrichmentService
             KeywordWeights = CalculateKeywordWeights(content)
         };
 
-        _logger.LogDebug("Enriched metadata: Keywords={Keywords}, Entities={Entities}, Topics={Topics}",
-            metadata.Keywords.Count, metadata.Entities.Count, metadata.Topics.Count);
+        LogRuleBasedMetadataEnrichment3(_logger, metadata.Keywords.Count, metadata.Entities.Count, metadata.Topics.Count);
 
         return Task.FromResult(metadata);
     }
@@ -109,8 +111,8 @@ public class RuleBasedMetadataEnrichmentService : IMetadataEnrichmentService
             LastAccessed = DateTime.UtcNow
         };
 
-        _logger.LogDebug("Quality evaluation: Completeness={Completeness:F2}, Density={Density:F2}, Coherence={Coherence:F2}",
-            quality.ContentCompleteness, quality.InformationDensity, quality.Coherence);
+        if (_logger.IsEnabled(LogLevel.Debug))
+            LogRuleBasedMetadataEnrichment2(_logger, quality.ContentCompleteness, quality.InformationDensity, quality.Coherence);
 
         return Task.FromResult(quality);
     }
@@ -164,8 +166,7 @@ public class RuleBasedMetadataEnrichmentService : IMetadataEnrichmentService
             }
         }
 
-        _logger.LogDebug("Found {Count} relationships for chunk {ChunkId}",
-            relationships.Count, sourceChunk.Id);
+        LogRuleBasedMetadataEnrichment1(_logger, relationships.Count, sourceChunk.Id);
 
         return Task.FromResult(relationships);
     }
@@ -190,7 +191,7 @@ public class RuleBasedMetadataEnrichmentService : IMetadataEnrichmentService
             return 0;
 
         // Count sentence-ending punctuation
-        return Regex.Matches(content, @"[.!?]+[\s\n]+|[.!?]+$").Count;
+        return Regex.Count(content, @"[.!?]+[\s\n]+|[.!?]+$");
     }
 
     private static double CalculateReadabilityScore(string content)
@@ -199,7 +200,7 @@ public class RuleBasedMetadataEnrichmentService : IMetadataEnrichmentService
             return 0.5;
 
         var sentences = Math.Max(1, CountSentences(content));
-        var words = content.Split(new[] { ' ', '\n', '\r', '\t' }, StringSplitOptions.RemoveEmptyEntries).Length;
+        var words = content.Split(WordSplitSeparators, StringSplitOptions.RemoveEmptyEntries).Length;
         var avgWordsPerSentence = (double)words / sentences;
 
         // Simple readability: lower avg words per sentence = easier to read
@@ -265,7 +266,7 @@ public class RuleBasedMetadataEnrichmentService : IMetadataEnrichmentService
         var entities = properNouns
             .Cast<Match>()
             .Select(m => m.Value)
-            .Where(e => e.Length > 2 && !StopWords.Contains(e.ToLower()))
+            .Where(e => e.Length > 2 && !StopWords.Contains(e.ToLowerInvariant()))
             .GroupBy(e => e)
             .OrderByDescending(g => g.Count())
             .Take(10);
@@ -345,8 +346,8 @@ public class RuleBasedMetadataEnrichmentService : IMetadataEnrichmentService
             return "table";
 
         // Check for list patterns
-        if (Regex.Matches(content, @"^\s*[-*•]\s+", RegexOptions.Multiline).Count > 2 ||
-            Regex.Matches(content, @"^\s*\d+[\.\)]\s+", RegexOptions.Multiline).Count > 2)
+        if (Regex.Count(content, @"^\s*[-*•]\s+", RegexOptions.Multiline) > 2 ||
+            Regex.Count(content, @"^\s*\d+[\.\)]\s+", RegexOptions.Multiline) > 2)
             return "list";
 
         return "text";
@@ -414,7 +415,7 @@ public class RuleBasedMetadataEnrichmentService : IMetadataEnrichmentService
         if (string.IsNullOrWhiteSpace(content))
             return 0.0;
 
-        var words = content.Split(new[] { ' ', '\n', '\r', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+        var words = content.Split(WordSplitSeparators, StringSplitOptions.RemoveEmptyEntries);
         var uniqueWords = words.Select(w => w.ToLowerInvariant()).Distinct().Count();
 
         if (words.Length == 0)
@@ -546,7 +547,7 @@ public class RuleBasedMetadataEnrichmentService : IMetadataEnrichmentService
         if (content.Length <= maxLength)
             return content;
 
-        return content.Substring(0, maxLength) + "...";
+        return string.Concat(content.AsSpan(0, maxLength), "...");
     }
 
     private static double CalculateImportanceScore(string content, int chunkIndex)
@@ -570,6 +571,19 @@ public class RuleBasedMetadataEnrichmentService : IMetadataEnrichmentService
 
         return Math.Min(1.0, score);
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Enriching metadata for chunk {ChunkIndex}")]
+    private static partial void LogRuleBasedMetadataEnrichment4(ILogger logger, int chunkIndex);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Enriched metadata: Keywords={Keywords}, Entities={Entities}, Topics={Topics}")]
+    private static partial void LogRuleBasedMetadataEnrichment3(ILogger logger, int keywords, int entities, int topics);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Quality evaluation: Completeness={Completeness:F2}, Density={Density:F2}, Coherence={Coherence:F2}")]
+    private static partial void LogRuleBasedMetadataEnrichment2(ILogger logger, double completeness, double density, double coherence);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Found {Count} relationships for chunk {ChunkId}")]
+    private static partial void LogRuleBasedMetadataEnrichment1(ILogger logger, int count, string chunkId);
 
     #endregion
 }

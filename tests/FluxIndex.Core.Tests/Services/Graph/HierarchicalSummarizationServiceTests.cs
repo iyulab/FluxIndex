@@ -5,7 +5,7 @@ using FluxIndex.Core.Domain.ValueObjects;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
+using NSubstitute;
 using Xunit;
 
 namespace FluxIndex.Core.Tests.Services.Graph;
@@ -15,15 +15,15 @@ namespace FluxIndex.Core.Tests.Services.Graph;
 /// </summary>
 public class HierarchicalSummarizationServiceTests
 {
-    private readonly Mock<ITextCompletionService> _mockLlmService;
-    private readonly Mock<IEmbeddingService> _mockEmbeddingService;
+    private readonly ITextCompletionService _mockLlmService;
+    private readonly IEmbeddingService _mockEmbeddingService;
     private readonly IMemoryCache _cache;
     private readonly ILogger<HierarchicalSummarizationService> _logger;
 
     public HierarchicalSummarizationServiceTests()
     {
-        _mockLlmService = new Mock<ITextCompletionService>();
-        _mockEmbeddingService = new Mock<IEmbeddingService>();
+        _mockLlmService = Substitute.For<ITextCompletionService>();
+        _mockEmbeddingService = Substitute.For<IEmbeddingService>();
         _cache = new MemoryCache(new MemoryCacheOptions());
         _logger = NullLogger<HierarchicalSummarizationService>.Instance;
     }
@@ -34,8 +34,8 @@ public class HierarchicalSummarizationServiceTests
         bool withCache = true)
     {
         return new HierarchicalSummarizationService(
-            withLlm ? _mockLlmService.Object : null,
-            withEmbedding ? _mockEmbeddingService.Object : null,
+            withLlm ? _mockLlmService : null,
+            withEmbedding ? _mockEmbeddingService : null,
             withCache ? _cache : null,
             _logger);
     }
@@ -130,9 +130,7 @@ public class HierarchicalSummarizationServiceTests
         var hierarchy = CreateMockHierarchy(levelCount: 1, communitiesPerLevel: 2);
         var chunks = CreateMockChunks(hierarchy);
 
-        _mockLlmService
-            .Setup(x => x.GenerateCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<float>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("This is a generated summary about the community topic.");
+        _mockLlmService.GenerateCompletionAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns("This is a generated summary about the community topic.");
 
         // Act
         var result = await service.GenerateHierarchicalSummariesAsync(hierarchy, chunks);
@@ -173,9 +171,7 @@ public class HierarchicalSummarizationServiceTests
         var hierarchy = CreateMockHierarchy(levelCount: 1, communitiesPerLevel: 2);
         var chunks = CreateMockChunks(hierarchy);
 
-        _mockEmbeddingService
-            .Setup(x => x.GenerateEmbeddingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new float[] { 0.1f, 0.2f, 0.3f });
+        _mockEmbeddingService.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new float[] { 0.1f, 0.2f, 0.3f });
 
         // Act
         var result = await service.GenerateHierarchicalSummariesAsync(hierarchy, chunks);
@@ -217,9 +213,7 @@ public class HierarchicalSummarizationServiceTests
         var hierarchy = CreateMockHierarchy(levelCount: 2, communitiesPerLevel: 3);
         var chunks = CreateMockChunks(hierarchy);
 
-        _mockEmbeddingService
-            .Setup(x => x.GenerateEmbeddingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new float[] { 0.1f, 0.2f, 0.3f });
+        _mockEmbeddingService.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new float[] { 0.1f, 0.2f, 0.3f });
 
         // Generate summaries first
         var summaryResult = await service.GenerateHierarchicalSummariesAsync(hierarchy, chunks);
@@ -241,13 +235,9 @@ public class HierarchicalSummarizationServiceTests
         var hierarchy = CreateMockHierarchy(levelCount: 1, communitiesPerLevel: 2);
         var chunks = CreateMockChunks(hierarchy);
 
-        _mockEmbeddingService
-            .Setup(x => x.GenerateEmbeddingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new float[] { 0.1f, 0.2f, 0.3f });
+        _mockEmbeddingService.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new float[] { 0.1f, 0.2f, 0.3f });
 
-        _mockLlmService
-            .Setup(x => x.GenerateCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<float>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("Based on the community information, here is the synthesized answer about the topic.");
+        _mockLlmService.GenerateCompletionAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns("Based on the community information, here is the synthesized answer about the topic.");
 
         var summaryResult = await service.GenerateHierarchicalSummariesAsync(hierarchy, chunks);
 
@@ -352,9 +342,7 @@ public class HierarchicalSummarizationServiceTests
             }
         };
 
-        _mockLlmService
-            .Setup(x => x.GenerateCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<float>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("Synthesized answer about topic A based on the community.");
+        _mockLlmService.GenerateCompletionAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns("Synthesized answer about topic A based on the community.");
 
         // Act
         var answer = await service.SynthesizeAnswerAsync("query", summaries);

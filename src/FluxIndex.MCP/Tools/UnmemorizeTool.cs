@@ -11,8 +11,13 @@ namespace FluxIndex.MCP.Tools;
 /// MCP Tool for removing content from the FluxIndex knowledge base
 /// </summary>
 [McpServerToolType]
-public class UnmemorizeTool
+public partial class UnmemorizeTool
 {
+    private static readonly JsonSerializerOptions s_indentedJsonOptions = new()
+    {
+        WriteIndented = true
+    };
+
     private readonly FluxIndexWorkspace _workspace;
     private readonly ILogger<UnmemorizeTool> _logger;
 
@@ -30,7 +35,7 @@ public class UnmemorizeTool
 
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Unmemorizing: {Path}", path);
+        LogUnmemorizing(_logger, path);
 
         try
         {
@@ -46,7 +51,7 @@ public class UnmemorizeTool
                     success = true,
                     path,
                     message = $"Successfully removed '{path}' from knowledge base"
-                }, new JsonSerializerOptions { WriteIndented = true });
+                }, s_indentedJsonOptions);
             }
             else
             {
@@ -60,7 +65,7 @@ public class UnmemorizeTool
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to unmemorize: {Path}", path);
+            LogUnmemorizeFailed(_logger, ex, path);
             return JsonSerializer.Serialize(new
             {
                 error = "Unmemorize failed",
@@ -68,4 +73,14 @@ public class UnmemorizeTool
             });
         }
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Unmemorizing: {Path}")]
+    private static partial void LogUnmemorizing(ILogger logger, string path);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to unmemorize: {Path}")]
+    private static partial void LogUnmemorizeFailed(ILogger logger, Exception exception, string path);
+
+    #endregion
 }

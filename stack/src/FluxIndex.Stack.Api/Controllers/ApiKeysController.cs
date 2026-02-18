@@ -11,7 +11,7 @@ namespace FluxIndex.Stack.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/v1/[controller]")]
-public class ApiKeysController : ControllerBase
+public partial class ApiKeysController : ControllerBase
 {
     private readonly IApiKeyService _apiKeyService;
     private readonly ILogger<ApiKeysController> _logger;
@@ -78,7 +78,7 @@ public class ApiKeysController : ControllerBase
         }
 
         var response = await _apiKeyService.CreateAsync(request, cancellationToken);
-        _logger.LogInformation("API key created: {KeyId} - {Name}", response.Id, response.Name);
+        LogApiKeyCreated(_logger, response.Id, response.Name);
 
         return CreatedAtAction(
             nameof(GetApiKey),
@@ -101,7 +101,7 @@ public class ApiKeysController : ControllerBase
         }
 
         var apiKey = await _apiKeyService.UpdateAsync(id, request, cancellationToken);
-        _logger.LogInformation("API key updated: {KeyId}", id);
+        LogApiKeyUpdated(_logger, id);
 
         return Ok(ApiResponse<ApiKeyDto>.Ok(apiKey, "API key updated successfully."));
     }
@@ -120,7 +120,7 @@ public class ApiKeysController : ControllerBase
         }
 
         await _apiKeyService.DeleteAsync(id, cancellationToken);
-        _logger.LogInformation("API key deleted: {KeyId}", id);
+        LogApiKeyDeleted(_logger, id);
 
         return Ok(ApiResponse<object>.Ok(null!, "API key deleted successfully."));
     }
@@ -139,7 +139,7 @@ public class ApiKeysController : ControllerBase
         }
 
         await _apiKeyService.ActivateAsync(id, cancellationToken);
-        _logger.LogInformation("API key activated: {KeyId}", id);
+        LogApiKeyActivated(_logger, id);
 
         return Ok(ApiResponse<object>.Ok(null!, "API key activated successfully."));
     }
@@ -158,8 +158,27 @@ public class ApiKeysController : ControllerBase
         }
 
         await _apiKeyService.DeactivateAsync(id, cancellationToken);
-        _logger.LogInformation("API key deactivated: {KeyId}", id);
+        LogApiKeyDeactivated(_logger, id);
 
         return Ok(ApiResponse<object>.Ok(null!, "API key deactivated successfully."));
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "API key created: {KeyId} - {Name}")]
+    private static partial void LogApiKeyCreated(ILogger logger, Guid keyId, string name);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "API key updated: {KeyId}")]
+    private static partial void LogApiKeyUpdated(ILogger logger, Guid keyId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "API key deleted: {KeyId}")]
+    private static partial void LogApiKeyDeleted(ILogger logger, Guid keyId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "API key activated: {KeyId}")]
+    private static partial void LogApiKeyActivated(ILogger logger, Guid keyId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "API key deactivated: {KeyId}")]
+    private static partial void LogApiKeyDeactivated(ILogger logger, Guid keyId);
+
+    #endregion
 }

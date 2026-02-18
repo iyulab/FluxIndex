@@ -58,7 +58,7 @@ public class VaultOptions
     /// <summary>
     /// Whether to automatically clean up orphaned files.
     /// </summary>
-    public bool AutoCleanupOrphans { get; set; } = false;
+    public bool AutoCleanupOrphans { get; set; }
 
     /// <summary>
     /// Default file patterns configuration.

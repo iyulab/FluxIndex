@@ -13,6 +13,8 @@ namespace FluxIndex.SDK.Services;
 /// </summary>
 public class SimpleChunkingService : IChunkingService
 {
+    private static readonly char[] WordSplitSeparators = [' ', '\t', '\n', '\r'];
+
     private readonly int _defaultChunkSize;
     private readonly int _defaultOverlap;
 
@@ -64,7 +66,7 @@ public class SimpleChunkingService : IChunkingService
         return SplitIntoChunks(text, chunkSize, chunkOverlap);
     }
 
-    private List<string> SplitIntoChunks(string text, int chunkSize, int chunkOverlap)
+    private static List<string> SplitIntoChunks(string text, int chunkSize, int chunkOverlap)
     {
         var chunks = new List<string>();
 
@@ -73,7 +75,7 @@ public class SimpleChunkingService : IChunkingService
             return chunks;
         }
 
-        var words = text.Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+        var words = text.Split(WordSplitSeparators, StringSplitOptions.RemoveEmptyEntries);
 
         if (words.Length == 0)
         {
@@ -119,13 +121,13 @@ public class SimpleChunkingService : IChunkingService
         return chunks;
     }
 
-    private int EstimateTokenCount(string text)
+    private static int EstimateTokenCount(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
             return 0;
 
         // Simple estimation: roughly 0.75 tokens per word
-        var words = text.Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+        var words = text.Split(WordSplitSeparators, StringSplitOptions.RemoveEmptyEntries);
         return (int)(words.Length * 0.75);
     }
 }

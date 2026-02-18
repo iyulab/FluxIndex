@@ -11,8 +11,13 @@ namespace FluxIndex.MCP.Tools;
 /// MCP Tool for checking the status of the FluxIndex knowledge base
 /// </summary>
 [McpServerToolType]
-public class StatusTool
+public partial class StatusTool
 {
+    private static readonly JsonSerializerOptions s_indentedJsonOptions = new()
+    {
+        WriteIndented = true
+    };
+
     private readonly FluxIndexWorkspace _workspace;
     private readonly ILogger<StatusTool> _logger;
 
@@ -26,7 +31,7 @@ public class StatusTool
     [Description("Get the status of the knowledge base including document count and configuration")]
     public async Task<string> GetStatusAsync(CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Getting workspace status");
+        LogGettingStatus(_logger);
 
         try
         {
@@ -59,11 +64,11 @@ public class StatusTool
                     chunkCount = stats.TotalChunks,
                     cacheEnabled = stats.CacheEnabled
                 }
-            }, new JsonSerializerOptions { WriteIndented = true });
+            }, s_indentedJsonOptions);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to get status");
+            LogStatusFailed(_logger, ex);
             return JsonSerializer.Serialize(new
             {
                 error = "Status check failed",
@@ -71,4 +76,14 @@ public class StatusTool
             });
         }
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Getting workspace status")]
+    private static partial void LogGettingStatus(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to get status")]
+    private static partial void LogStatusFailed(ILogger logger, Exception exception);
+
+    #endregion
 }

@@ -2,7 +2,8 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services.Enrichment;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
+using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using Xunit;
 
 namespace FluxIndex.Core.Tests.Services.Enrichment;
@@ -12,43 +13,35 @@ namespace FluxIndex.Core.Tests.Services.Enrichment;
 /// </summary>
 public class DocumentEnrichmentPipelineTests
 {
-    private readonly Mock<IEmbeddingService> _mockEmbeddingService;
-    private readonly Mock<ITextCompletionService> _mockTextCompletionService;
-    private readonly Mock<IAdvancedEntityExtractionService> _mockEntityExtractionService;
+    private readonly IEmbeddingService _mockEmbeddingService;
+    private readonly ITextCompletionService _mockTextCompletionService;
+    private readonly IAdvancedEntityExtractionService _mockEntityExtractionService;
     private readonly ILogger<DocumentEnrichmentPipeline> _logger;
 
     public DocumentEnrichmentPipelineTests()
     {
-        _mockEmbeddingService = new Mock<IEmbeddingService>();
-        _mockTextCompletionService = new Mock<ITextCompletionService>();
-        _mockEntityExtractionService = new Mock<IAdvancedEntityExtractionService>();
+        _mockEmbeddingService = Substitute.For<IEmbeddingService>();
+        _mockTextCompletionService = Substitute.For<ITextCompletionService>();
+        _mockEntityExtractionService = Substitute.For<IAdvancedEntityExtractionService>();
         _logger = NullLogger<DocumentEnrichmentPipeline>.Instance;
 
         // Setup default embedding behavior
-        _mockEmbeddingService
-            .Setup(x => x.GenerateEmbeddingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new float[] { 0.1f, 0.2f, 0.3f, 0.4f, 0.5f });
+        _mockEmbeddingService.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new float[] { 0.1f, 0.2f, 0.3f, 0.4f, 0.5f });
 
-        _mockEmbeddingService
-            .Setup(x => x.GetModelName())
-            .Returns("test-embedding-model");
+        _mockEmbeddingService.GetModelName().Returns("test-embedding-model");
 
         // Setup default text completion behavior
-        _mockTextCompletionService
-            .Setup(x => x.GenerateCompletionAsync(
-                It.IsAny<string>(),
-                It.IsAny<int>(),
-                It.IsAny<float>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync("Generated text response");
+        _mockTextCompletionService.GenerateCompletionAsync(
+                Arg.Any<string>(),
+                Arg.Any<int>(),
+                Arg.Any<float>(),
+                Arg.Any<CancellationToken>()).Returns("Generated text response");
 
         // Setup default entity extraction behavior
-        _mockEntityExtractionService
-            .Setup(x => x.ExtractEntityGraphAsync(
-                It.IsAny<string>(),
-                It.IsAny<EntityExtractionOptions?>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new EntityGraph
+        _mockEntityExtractionService.ExtractEntityGraphAsync(
+                Arg.Any<string>(),
+                Arg.Any<EntityExtractionOptions?>(),
+                Arg.Any<CancellationToken>()).Returns(new EntityGraph
             {
                 SourceId = "test-source",
                 Entities = new List<ExtractedEntity>
@@ -69,10 +62,10 @@ public class DocumentEnrichmentPipelineTests
     private DocumentEnrichmentPipeline CreatePipeline(EnrichmentPipelineConfig? config = null)
     {
         return new DocumentEnrichmentPipeline(
-            _mockEmbeddingService.Object,
+            _mockEmbeddingService,
             _logger,
-            _mockTextCompletionService.Object,
-            _mockEntityExtractionService.Object,
+            _mockTextCompletionService,
+            _mockEntityExtractionService,
             config);
     }
 
@@ -118,9 +111,7 @@ public class DocumentEnrichmentPipelineTests
         Assert.NotNull(result.Embeddings.Content);
         Assert.Equal(5, result.Embeddings.Content.Length);
 
-        _mockEmbeddingService.Verify(
-            x => x.GenerateEmbeddingAsync(input.Content, It.IsAny<CancellationToken>()),
-            Times.Once);
+        await _mockEmbeddingService.Received(1).GenerateEmbeddingAsync(input.Content, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -161,13 +152,11 @@ public class DocumentEnrichmentPipelineTests
             ExtractEntities = false
         };
 
-        _mockTextCompletionService
-            .Setup(x => x.GenerateCompletionAsync(
-                It.Is<string>(s => s.Contains("hypothetical") || s.Contains("HyDE")),
-                It.IsAny<int>(),
-                It.IsAny<float>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync("Machine learning is a field of artificial intelligence that enables computers to learn from data.");
+        _mockTextCompletionService.GenerateCompletionAsync(
+                Arg.Is<string>(s => s.Contains("hypothetical") || s.Contains("HyDE")),
+                Arg.Any<int>(),
+                Arg.Any<float>(),
+                Arg.Any<CancellationToken>()).Returns("Machine learning is a field of artificial intelligence that enables computers to learn from data.");
 
         // Act
         var result = await pipeline.EnrichChunkAsync(input, options);
@@ -192,12 +181,10 @@ public class DocumentEnrichmentPipelineTests
             ExtractRelationships = false
         };
 
-        _mockEntityExtractionService
-            .Setup(x => x.ExtractEntityGraphAsync(
-                It.IsAny<string>(),
-                It.IsAny<EntityExtractionOptions?>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new EntityGraph
+        _mockEntityExtractionService.ExtractEntityGraphAsync(
+                Arg.Any<string>(),
+                Arg.Any<EntityExtractionOptions?>(),
+                Arg.Any<CancellationToken>()).Returns(new EntityGraph
             {
                 SourceId = input.ChunkId,
                 Entities = new List<ExtractedEntity>
@@ -246,12 +233,10 @@ public class DocumentEnrichmentPipelineTests
             ExtractRelationships = true
         };
 
-        _mockEntityExtractionService
-            .Setup(x => x.ExtractEntityGraphAsync(
-                It.IsAny<string>(),
-                It.IsAny<EntityExtractionOptions?>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new EntityGraph
+        _mockEntityExtractionService.ExtractEntityGraphAsync(
+                Arg.Any<string>(),
+                Arg.Any<EntityExtractionOptions?>(),
+                Arg.Any<CancellationToken>()).Returns(new EntityGraph
             {
                 SourceId = input.ChunkId,
                 Entities = new List<ExtractedEntity>
@@ -498,9 +483,7 @@ public class DocumentEnrichmentPipelineTests
     public async Task EnrichChunkAsync_EmbeddingServiceFailure_ThrowsException()
     {
         // Arrange
-        _mockEmbeddingService
-            .Setup(x => x.GenerateEmbeddingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new InvalidOperationException("Embedding service unavailable"));
+        _mockEmbeddingService.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Throws(new InvalidOperationException("Embedding service unavailable"));
 
         var pipeline = CreatePipeline();
         var input = CreateTestInput();
@@ -541,9 +524,7 @@ public class DocumentEnrichmentPipelineTests
 
         // Assert
         Assert.NotNull(result);
-        _mockEmbeddingService.Verify(
-            x => x.GenerateEmbeddingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
-            Times.AtLeastOnce);
+        await _mockEmbeddingService.Received().GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -632,13 +613,11 @@ public class DocumentEnrichmentPipelineTests
         var pipeline = CreatePipeline();
         var chunkContent = "Machine learning algorithms can learn from data.";
 
-        _mockTextCompletionService
-            .Setup(x => x.GenerateCompletionAsync(
-                It.IsAny<string>(),
-                It.IsAny<int>(),
-                It.IsAny<float>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync("This chunk discusses how ML algorithms work with data.");
+        _mockTextCompletionService.GenerateCompletionAsync(
+                Arg.Any<string>(),
+                Arg.Any<int>(),
+                Arg.Any<float>(),
+                Arg.Any<CancellationToken>()).Returns("This chunk discusses how ML algorithms work with data.");
 
         // Act
         var result = await pipeline.GenerateContextualSummaryAsync(chunkContent);
@@ -665,13 +644,11 @@ public class DocumentEnrichmentPipelineTests
 
         // Assert
         Assert.NotNull(result);
-        _mockTextCompletionService.Verify(
-            x => x.GenerateCompletionAsync(
-                It.Is<string>(s => s.Contains(documentContext) || s.Contains("deep learning")),
-                It.IsAny<int>(),
-                It.IsAny<float>(),
-                It.IsAny<CancellationToken>()),
-            Times.AtLeastOnce);
+        await _mockTextCompletionService.Received().GenerateCompletionAsync(
+                Arg.Is<string>(s => s.Contains(documentContext) || s.Contains("deep learning")),
+                Arg.Any<int>(),
+                Arg.Any<float>(),
+                Arg.Any<CancellationToken>());
     }
 
     #endregion
@@ -685,12 +662,10 @@ public class DocumentEnrichmentPipelineTests
         var pipeline = CreatePipeline();
         var content = "Apple Inc. is headquartered in Cupertino, California.";
 
-        _mockEntityExtractionService
-            .Setup(x => x.ExtractEntityGraphAsync(
-                It.IsAny<string>(),
-                It.IsAny<EntityExtractionOptions?>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new EntityGraph
+        _mockEntityExtractionService.ExtractEntityGraphAsync(
+                Arg.Any<string>(),
+                Arg.Any<EntityExtractionOptions?>(),
+                Arg.Any<CancellationToken>()).Returns(new EntityGraph
             {
                 SourceId = "test",
                 Entities = new List<ExtractedEntity>
@@ -731,12 +706,10 @@ public class DocumentEnrichmentPipelineTests
 
         // Assert
         Assert.NotNull(result);
-        _mockEntityExtractionService.Verify(
-            x => x.ExtractEntityGraphAsync(
+        await _mockEntityExtractionService.Received(1).ExtractEntityGraphAsync(
                 content,
-                It.Is<EntityExtractionOptions>(o => o != null && o.MinConfidence >= 0.9),
-                It.IsAny<CancellationToken>()),
-            Times.Once);
+                Arg.Is<EntityExtractionOptions>(o => o != null && o.MinConfidence >= 0.9),
+                Arg.Any<CancellationToken>());
     }
 
     #endregion

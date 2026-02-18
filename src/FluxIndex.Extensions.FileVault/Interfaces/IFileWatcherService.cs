@@ -31,7 +31,7 @@ public interface IFileWatcherService : IDisposable
     /// <summary>
     /// Raised when an error occurs in the watcher.
     /// </summary>
-    event EventHandler<WatcherErrorEventArgs>? Error;
+    event EventHandler<WatcherErrorEventArgs>? ErrorOccurred;
 
     /// <summary>
     /// Starts watching the specified folder.

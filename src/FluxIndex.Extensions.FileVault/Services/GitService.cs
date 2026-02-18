@@ -8,7 +8,7 @@ namespace FluxIndex.Extensions.FileVault.Services;
 /// <summary>
 /// Git operations service using CLI commands.
 /// </summary>
-public sealed class GitService : IGitService
+public sealed partial class GitService : IGitService
 {
     private readonly ILogger<GitService> _logger;
 
@@ -21,7 +21,7 @@ public sealed class GitService : IGitService
     {
         if (IsGitRepository(vaultPath))
         {
-            _logger.LogDebug("Git repository already exists at {Path}", vaultPath);
+            LogRepoAlreadyExists(_logger, vaultPath);
             return;
         }
 
@@ -32,7 +32,7 @@ public sealed class GitService : IGitService
         await RunGitAsync(vaultPath, "config user.email \"fluxindex@local\"", ct);
         await RunGitAsync(vaultPath, "config user.name \"FluxIndex Vault\"", ct);
 
-        _logger.LogInformation("Initialized Git repository at {Path}", vaultPath);
+        LogInitializedRepo(_logger, vaultPath);
     }
 
     public async Task StageAllAsync(string vaultPath, CancellationToken ct = default)
@@ -46,7 +46,7 @@ public sealed class GitService : IGitService
         var status = await StatusAsync(vaultPath, ct);
         if (!status.HasChanges)
         {
-            _logger.LogDebug("No changes to commit at {Path}", vaultPath);
+            LogNoChangesToCommit(_logger, vaultPath);
             return null;
         }
 
@@ -59,7 +59,7 @@ public sealed class GitService : IGitService
         // Get the commit hash
         var commitHash = await RunGitAsync(vaultPath, "rev-parse HEAD", ct);
 
-        _logger.LogInformation("Committed changes at {Path}: {Message} ({Hash})", vaultPath, message, commitHash[..7]);
+        LogCommitted(_logger, vaultPath, message, commitHash[..7]);
         return commitHash;
     }
 
@@ -136,7 +136,7 @@ public sealed class GitService : IGitService
     public async Task CheckoutFileAsync(string vaultPath, string filePath, string commitish, CancellationToken ct = default)
     {
         await RunGitAsync(vaultPath, $"checkout {commitish} -- \"{filePath}\"", ct);
-        _logger.LogInformation("Checked out {File} from {Commit}", filePath, commitish);
+        LogCheckedOut(_logger, filePath, commitish);
     }
 
     public bool IsGitRepository(string vaultPath)
@@ -186,10 +186,32 @@ public sealed class GitService : IGitService
             if (!errorMessage.Contains("nothing to commit") &&
                 !errorMessage.Contains("Already on"))
             {
-                _logger.LogWarning("Git command failed: git {Args} -> {Error}", arguments, errorMessage);
+                LogGitCommandFailed(_logger, arguments, errorMessage);
             }
         }
 
         return output.ToString().Trim();
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Git repository already exists at {Path}")]
+    private static partial void LogRepoAlreadyExists(ILogger logger, string path);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Initialized Git repository at {Path}")]
+    private static partial void LogInitializedRepo(ILogger logger, string path);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "No changes to commit at {Path}")]
+    private static partial void LogNoChangesToCommit(ILogger logger, string path);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Committed changes at {Path}: {Message} ({Hash})")]
+    private static partial void LogCommitted(ILogger logger, string path, string message, string hash);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Checked out {File} from {Commit}")]
+    private static partial void LogCheckedOut(ILogger logger, string file, string commit);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Git command failed: git {Args} -> {Error}")]
+    private static partial void LogGitCommandFailed(ILogger logger, string args, string error);
+
+    #endregion
 }

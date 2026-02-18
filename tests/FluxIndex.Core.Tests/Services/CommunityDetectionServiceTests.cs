@@ -3,7 +3,7 @@ using FluxIndex.Core.Application.Services;
 using FluxIndex.Core.Domain.ValueObjects;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
+using NSubstitute;
 using Xunit;
 
 namespace FluxIndex.Core.Tests.Services;
@@ -13,17 +13,15 @@ namespace FluxIndex.Core.Tests.Services;
 /// </summary>
 public class CommunityDetectionServiceTests
 {
-    private readonly Mock<IEmbeddingService> _mockEmbeddingService;
+    private readonly IEmbeddingService _mockEmbeddingService;
     private readonly ILogger<CommunityDetectionService> _logger;
 
     public CommunityDetectionServiceTests()
     {
-        _mockEmbeddingService = new Mock<IEmbeddingService>();
+        _mockEmbeddingService = Substitute.For<IEmbeddingService>();
         _logger = NullLogger<CommunityDetectionService>.Instance;
 
-        _mockEmbeddingService
-            .Setup(x => x.GetModelName())
-            .Returns("test-model");
+        _mockEmbeddingService.GetModelName().Returns("test-model");
     }
 
     private CommunityDetectionService CreateService()
@@ -36,7 +34,7 @@ public class CommunityDetectionServiceTests
         };
 
         return new CommunityDetectionService(
-            _mockEmbeddingService.Object,
+            _mockEmbeddingService,
             null, // IGraphTraversalService
             null, // ITextCompletionService
             Microsoft.Extensions.Options.Options.Create(options),

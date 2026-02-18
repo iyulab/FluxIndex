@@ -142,7 +142,7 @@ public interface IVaultQueueService
     /// <summary>
     /// Resumes queue processing.
     /// </summary>
-    void Resume();
+    void ResumeProcessing();
 
     /// <summary>
     /// Whether the queue is paused.

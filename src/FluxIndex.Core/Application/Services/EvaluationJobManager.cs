@@ -15,7 +15,7 @@ namespace FluxIndex.Core.Services;
 /// <summary>
 /// 평가 작업 관리 서비스
 /// </summary>
-public class EvaluationJobManager : IEvaluationJobManager
+public partial class EvaluationJobManager : IEvaluationJobManager
 {
     private readonly IRAGEvaluationService _evaluationService;
     private readonly IGoldenDatasetManager _datasetManager;
@@ -68,14 +68,15 @@ public class EvaluationJobManager : IEvaluationJobManager
 
             _jobs.TryAdd(jobId, job);
 
-            _logger.LogInformation("Evaluation job created: JobId={JobId}, Name={Name}, Dataset={Dataset}",
-                jobId, name, datasetId);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogEvaluationJob9(_logger, jobId, name, datasetId);
 
             return jobId;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error creating evaluation job: Name={Name}", name);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogEvaluationJob8(_logger, ex, name);
             throw;
         }
     }
@@ -106,8 +107,8 @@ public class EvaluationJobManager : IEvaluationJobManager
             job.StartedAt = DateTime.UtcNow;
             job.Progress = 0;
 
-            _logger.LogInformation("Evaluation job started: JobId={JobId}, Name={Name}",
-                jobId, job.Name);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogEvaluationJob7(_logger, jobId, job.Name);
 
             var dataset = await _datasetManager.LoadDatasetAsync(job.DatasetId, combinedCts.Token);
             if (!dataset.Any())
@@ -120,8 +121,8 @@ public class EvaluationJobManager : IEvaluationJobManager
             var progressReporter = new Progress<int>(progress =>
             {
                 job.Progress = Math.Max(job.Progress, progress);
-                _logger.LogDebug("Evaluation job progress updated: JobId={JobId}, Progress={Progress}%",
-                    jobId, job.Progress);
+                if (_logger.IsEnabled(LogLevel.Information))
+                    LogEvaluationJob6(_logger, jobId, job.Progress);
             });
 
             var result = await ExecuteBatchEvaluationWithProgressAsync(
@@ -136,8 +137,8 @@ public class EvaluationJobManager : IEvaluationJobManager
 
             _results.TryAdd(jobId, result);
 
-            _logger.LogInformation("Evaluation job completed: JobId={JobId}, TotalQueries={TotalQueries}, Duration={Duration}",
-                jobId, result.TotalQueries, result.TotalDuration);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogEvaluationJob5(_logger, jobId, result.TotalQueries, result.TotalDuration);
 
             return result;
         }
@@ -147,7 +148,8 @@ public class EvaluationJobManager : IEvaluationJobManager
             job.CompletedAt = DateTime.UtcNow;
             job.ErrorMessage = "Job was cancelled.";
 
-            _logger.LogInformation("Evaluation job cancelled: JobId={JobId}", jobId);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogEvaluationJob4(_logger, jobId);
             throw;
         }
         catch (Exception ex)
@@ -156,7 +158,8 @@ public class EvaluationJobManager : IEvaluationJobManager
             job.CompletedAt = DateTime.UtcNow;
             job.ErrorMessage = ex.Message;
 
-            _logger.LogError(ex, "Error executing evaluation job: JobId={JobId}", jobId);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogEvaluationJob3(_logger, ex, jobId);
             throw;
         }
         finally
@@ -207,7 +210,8 @@ public class EvaluationJobManager : IEvaluationJobManager
             cts.Cancel();
         }
 
-        _logger.LogInformation("Evaluation job cancellation requested: JobId={JobId}", jobId);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogEvaluationJob2(_logger, jobId);
     }
 
     /// <summary>
@@ -216,7 +220,7 @@ public class EvaluationJobManager : IEvaluationJobManager
     public async Task<IEnumerable<EvaluationJob>> GetJobsAsync(
         EvaluationStatus? status = null,
         DateTime? from = null,
-        DateTime? to = null,
+        DateTime? toDate = null,
         CancellationToken cancellationToken = default)
     {
         await Task.Delay(1, cancellationToken);
@@ -233,9 +237,9 @@ public class EvaluationJobManager : IEvaluationJobManager
             jobs = jobs.Where(j => j.CreatedAt >= from.Value);
         }
 
-        if (to.HasValue)
+        if (toDate.HasValue)
         {
-            jobs = jobs.Where(j => j.CreatedAt <= to.Value);
+            jobs = jobs.Where(j => j.CreatedAt <= toDate.Value);
         }
 
         return jobs.OrderByDescending(j => j.CreatedAt).ToList();
@@ -296,7 +300,7 @@ public class EvaluationJobManager : IEvaluationJobManager
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Individual query evaluation failed: QueryId={QueryId}", item.Id);
+                LogEvaluationJob1(_logger, ex, item.Id);
                 failedCount++;
             }
         }
@@ -308,7 +312,7 @@ public class EvaluationJobManager : IEvaluationJobManager
             ? (double)batchResult.SuccessfulQueries / batchResult.TotalQueries
             : 0.0;
 
-        if (results.Any())
+        if (results.Count != 0)
         {
             batchResult.AveragePrecision = results.Average(r => r.Precision);
             batchResult.AverageRecall = results.Average(r => r.Recall);
@@ -344,4 +348,27 @@ public class EvaluationJobManager : IEvaluationJobManager
         }
         _cancellationTokens.Clear();
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Evaluation job created: JobId={JobId}, Name={Name}, Dataset={Dataset}")]
+    private static partial void LogEvaluationJob9(ILogger logger, string jobId, string name, string dataset);
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error creating evaluation job: Name={Name}")]
+    private static partial void LogEvaluationJob8(ILogger logger, Exception exception, string name);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Evaluation job started: JobId={JobId}, Name={Name}")]
+    private static partial void LogEvaluationJob7(ILogger logger, string jobId, string name);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Evaluation job progress updated: JobId={JobId}, Progress={Progress}%")]
+    private static partial void LogEvaluationJob6(ILogger logger, string jobId, int progress);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Evaluation job completed: JobId={JobId}, TotalQueries={TotalQueries}, Duration={Duration}")]
+    private static partial void LogEvaluationJob5(ILogger logger, string jobId, int totalQueries, TimeSpan duration);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Evaluation job cancelled: JobId={JobId}")]
+    private static partial void LogEvaluationJob4(ILogger logger, string jobId);
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error executing evaluation job: JobId={JobId}")]
+    private static partial void LogEvaluationJob3(ILogger logger, Exception exception, string jobId);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Evaluation job cancellation requested: JobId={JobId}")]
+    private static partial void LogEvaluationJob2(ILogger logger, string jobId);
+    [LoggerMessage(Level = LogLevel.Error, Message = "Individual query evaluation failed: QueryId={QueryId}")]
+    private static partial void LogEvaluationJob1(ILogger logger, Exception exception, string queryId);
+
+    #endregion
 }

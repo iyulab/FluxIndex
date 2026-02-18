@@ -18,7 +18,7 @@ namespace FluxIndex.Cache.Redis.Services;
 /// Redis 기반 시맨틱 캐시 서비스
 /// 쿼리 임베딩 벡터의 유사도를 계산하여 캐시 히트 판정
 /// </summary>
-public class RedisSemanticCacheService : ISemanticCacheService
+public partial class RedisSemanticCacheService : ISemanticCacheService, IDisposable
 {
     private readonly IDatabase _database;
     private readonly IServer _server;
@@ -66,7 +66,7 @@ public class RedisSemanticCacheService : ISemanticCacheService
         {
             await _semaphore.WaitAsync(cancellationToken);
 
-            _logger.LogDebug("Searching cache for query: {Query}", query);
+            LogSearchingCache(_logger, query);
 
             // 1. 쿼리 임베딩 생성
             var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
@@ -77,7 +77,7 @@ public class RedisSemanticCacheService : ISemanticCacheService
             if (bestMatch == null)
             {
                 await RecordCacheMissAsync();
-                _logger.LogDebug("Cache miss for query: {Query}", query);
+                LogCacheMiss(_logger, query);
                 return null;
             }
 
@@ -97,14 +97,13 @@ public class RedisSemanticCacheService : ISemanticCacheService
             cachedResult.HitCount++;
             cachedResult.LastAccessedAt = DateTime.UtcNow;
 
-            _logger.LogInformation("Cache hit for query '{Query}' -> '{CachedQuery}' (similarity: {Similarity:F3})",
-                query, bestMatch.Value.CachedQuery, bestMatch.Value.Similarity);
+            LogCacheHit(_logger, query, bestMatch.Value.CachedQuery, bestMatch.Value.Similarity);
 
             return cachedResult;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error retrieving cached result for query: {Query}", query);
+            LogRetrieveError(_logger, ex, query);
             await RecordCacheMissAsync();
             return null;
         }
@@ -128,14 +127,13 @@ public class RedisSemanticCacheService : ISemanticCacheService
         if (string.IsNullOrWhiteSpace(query))
             throw new ArgumentException("Query cannot be empty", nameof(query));
 
-        if (results == null)
-            throw new ArgumentNullException(nameof(results));
+        ArgumentNullException.ThrowIfNull(results);
 
         try
         {
             await _semaphore.WaitAsync(cancellationToken);
 
-            _logger.LogDebug("Caching results for query: {Query}", query);
+            LogCachingResults(_logger, query);
 
             // 1. 쿼리 임베딩 생성
             var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
@@ -178,12 +176,11 @@ public class RedisSemanticCacheService : ISemanticCacheService
                 _ = Task.Run(() => EnforceCacheSizeLimitAsync(cancellationToken), cancellationToken);
             }
 
-            _logger.LogInformation("Cached results for query: {Query} (results: {Count}, TTL: {TTL})",
-                query, results.Count, expiry);
+            LogCachedResults(_logger, query, results.Count, expiry);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error caching results for query: {Query}", query);
+            LogCacheError(_logger, ex, query);
             throw;
         }
         finally
@@ -219,12 +216,11 @@ public class RedisSemanticCacheService : ISemanticCacheService
 
             await Task.WhenAll(tasks);
 
-            _logger.LogInformation("Invalidated {Count} cache entries matching pattern: {Pattern}",
-                keyArray.Length, pattern);
+            LogInvalidated(_logger, keyArray.Length, pattern);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error invalidating cache pattern: {Pattern}", pattern);
+            LogInvalidateError(_logger, ex, pattern);
             throw;
         }
     }
@@ -282,7 +278,7 @@ public class RedisSemanticCacheService : ISemanticCacheService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error collecting cache statistics");
+            LogStatisticsError(_logger, ex);
             return new SemanticCacheStatistics { CollectedAt = DateTime.UtcNow };
         }
     }
@@ -295,7 +291,7 @@ public class RedisSemanticCacheService : ISemanticCacheService
         if (popularQueries == null || popularQueries.Count == 0)
             return;
 
-        _logger.LogInformation("Starting cache warmup with {Count} popular queries", popularQueries.Count);
+        LogWarmupStarting(_logger, popularQueries.Count);
 
         var tasks = popularQueries.Select(async query =>
         {
@@ -316,12 +312,12 @@ public class RedisSemanticCacheService : ISemanticCacheService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to warmup query: {Query}", query);
+                LogWarmupQueryFailed(_logger, ex, query);
             }
         });
 
         await Task.WhenAll(tasks);
-        _logger.LogInformation("Cache warmup completed");
+        LogWarmupCompleted(_logger);
     }
 
     /// <summary>
@@ -329,7 +325,7 @@ public class RedisSemanticCacheService : ISemanticCacheService
     /// </summary>
     public async Task CompactCacheAsync(CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Starting cache compaction");
+        LogCompactionStarting(_logger);
 
         try
         {
@@ -357,7 +353,7 @@ public class RedisSemanticCacheService : ISemanticCacheService
                 });
                 await Task.WhenAll(cleanupTasks);
 
-                _logger.LogInformation("Cleaned up {Count} expired cache entries", expiredQueries.Count);
+                LogExpiredCleaned(_logger, expiredQueries.Count);
             }
 
             // 2. 캐시 크기 제한 적용
@@ -366,11 +362,11 @@ public class RedisSemanticCacheService : ISemanticCacheService
                 await EnforceCacheSizeLimitAsync(cancellationToken);
             }
 
-            _logger.LogInformation("Cache compaction completed");
+            LogCompactionCompleted(_logger);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during cache compaction");
+            LogCompactionError(_logger, ex);
             throw;
         }
     }
@@ -396,7 +392,7 @@ public class RedisSemanticCacheService : ISemanticCacheService
             await semaphore.WaitAsync(cancellationToken);
             try
             {
-                var embeddingKey = EMBEDDING_KEY_PREFIX + (string)cachedQuery;
+                var embeddingKey = EMBEDDING_KEY_PREFIX + ((string?)cachedQuery ?? string.Empty);
                 var embeddingBytes = await _database.StringGetAsync(embeddingKey);
 
                 if (!embeddingBytes.HasValue)
@@ -444,7 +440,7 @@ public class RedisSemanticCacheService : ISemanticCacheService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to deserialize cached result for query: {Query}", query);
+            LogDeserializeFailed(_logger, ex, query);
             return null;
         }
     }
@@ -517,7 +513,7 @@ public class RedisSemanticCacheService : ISemanticCacheService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to record cache hit statistics");
+            LogRecordHitFailed(_logger, ex);
         }
     }
 
@@ -532,7 +528,7 @@ public class RedisSemanticCacheService : ISemanticCacheService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to record cache miss statistics");
+            LogRecordMissFailed(_logger, ex);
         }
     }
 
@@ -548,8 +544,7 @@ public class RedisSemanticCacheService : ISemanticCacheService
                 return;
 
             var excessCount = queryCount - _options.MaxCacheEntries;
-            _logger.LogInformation("Cache size ({Current}) exceeds limit ({Limit}), removing {Excess} oldest entries",
-                queryCount, _options.MaxCacheEntries, excessCount);
+            LogCacheSizeExceeded(_logger, queryCount, _options.MaxCacheEntries, excessCount);
 
             // LRU 방식으로 오래된 엔트리 제거 (간단한 구현)
             var queries = await _database.SetMembersAsync(QUERY_INDEX_KEY);
@@ -566,7 +561,7 @@ public class RedisSemanticCacheService : ISemanticCacheService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to enforce cache size limit");
+            LogEnforceSizeLimitFailed(_logger, ex);
         }
     }
 
@@ -600,6 +595,77 @@ public class RedisSemanticCacheService : ISemanticCacheService
     public void Dispose()
     {
         _semaphore?.Dispose();
+        GC.SuppressFinalize(this);
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Searching cache for query: {Query}")]
+    private static partial void LogSearchingCache(ILogger logger, string query);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Cache miss for query: {Query}")]
+    private static partial void LogCacheMiss(ILogger logger, string query);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Cache hit for query '{Query}' -> '{CachedQuery}' (similarity: {Similarity:F3})")]
+    private static partial void LogCacheHit(ILogger logger, string query, string cachedQuery, float similarity);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error retrieving cached result for query: {Query}")]
+    private static partial void LogRetrieveError(ILogger logger, Exception exception, string query);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Caching results for query: {Query}")]
+    private static partial void LogCachingResults(ILogger logger, string query);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Cached results for query: {Query} (results: {Count}, TTL: {TTL})")]
+    private static partial void LogCachedResults(ILogger logger, string query, int count, TimeSpan ttl);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error caching results for query: {Query}")]
+    private static partial void LogCacheError(ILogger logger, Exception exception, string query);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Invalidated {Count} cache entries matching pattern: {Pattern}")]
+    private static partial void LogInvalidated(ILogger logger, int count, string pattern);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error invalidating cache pattern: {Pattern}")]
+    private static partial void LogInvalidateError(ILogger logger, Exception exception, string pattern);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error collecting cache statistics")]
+    private static partial void LogStatisticsError(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting cache warmup with {Count} popular queries")]
+    private static partial void LogWarmupStarting(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to warmup query: {Query}")]
+    private static partial void LogWarmupQueryFailed(ILogger logger, Exception exception, string query);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Cache warmup completed")]
+    private static partial void LogWarmupCompleted(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting cache compaction")]
+    private static partial void LogCompactionStarting(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Cleaned up {Count} expired cache entries")]
+    private static partial void LogExpiredCleaned(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Cache compaction completed")]
+    private static partial void LogCompactionCompleted(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error during cache compaction")]
+    private static partial void LogCompactionError(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to deserialize cached result for query: {Query}")]
+    private static partial void LogDeserializeFailed(ILogger logger, Exception exception, string query);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to record cache hit statistics")]
+    private static partial void LogRecordHitFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to record cache miss statistics")]
+    private static partial void LogRecordMissFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Cache size ({Current}) exceeds limit ({Limit}), removing {Excess} oldest entries")]
+    private static partial void LogCacheSizeExceeded(ILogger logger, long current, long limit, long excess);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to enforce cache size limit")]
+    private static partial void LogEnforceSizeLimitFailed(ILogger logger, Exception exception);
+
+    #endregion
 }
 

@@ -3,6 +3,7 @@ using FluxIndex.Core.Domain.Models;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,7 +13,7 @@ namespace FluxIndex.Core.Services;
 /// <summary>
 /// 벡터 인덱스 자동 튜닝 서비스
 /// </summary>
-public class VectorIndexAutoTuner
+public partial class VectorIndexAutoTuner
 {
     private readonly IVectorIndexBenchmark _benchmark;
     private readonly ILogger<VectorIndexAutoTuner> _logger;
@@ -32,7 +33,8 @@ public class VectorIndexAutoTuner
         HnswAutoTuningOptions options,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("다단계 자동 튜닝 시작 - 전략: {Strategy}", options.Strategy);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogVectorIndexAutoTuner15(_logger, options.Strategy);
 
         // 1단계: 초기 탐색 (Wide Search)
         var initialCandidates = await InitialExplorationAsync(options, cancellationToken);
@@ -43,8 +45,8 @@ public class VectorIndexAutoTuner
         // 3단계: 최종 검증 (Final Validation)
         var bestParameters = await FinalValidationAsync(refinedCandidates, options, cancellationToken);
 
-        _logger.LogInformation("다단계 자동 튜닝 완료 - 최적 매개변수: {Identifier}",
-            bestParameters.GetIdentifier());
+        var bestId = bestParameters.GetIdentifier();
+        LogVectorIndexAutoTuner14(_logger, bestId);
 
         return bestParameters;
     }
@@ -56,7 +58,8 @@ public class VectorIndexAutoTuner
         HnswAutoTuningOptions options,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("적응형 튜닝 시작 - 전략: {Strategy}", options.Strategy);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogVectorIndexAutoTuner13(_logger, options.Strategy);
 
         var bestParameters = HnswParameters.Default;
         var bestScore = 0.0;
@@ -65,8 +68,8 @@ public class VectorIndexAutoTuner
 
         while (iteration < options.MaxTuningAttempts / 3) // 반복 횟수 제한
         {
-            _logger.LogInformation("적응형 튜닝 반복 {Iteration} - 탐색 반경: {Radius}",
-                iteration + 1, searchRadius);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogVectorIndexAutoTuner12(_logger, iteration + 1, searchRadius);
 
             // 현재 최적 매개변수 주변 탐색
             var candidates = GenerateAdaptiveCandidates(bestParameters, searchRadius, options.Strategy);
@@ -81,13 +84,14 @@ public class VectorIndexAutoTuner
                 bestScore = iterationBest.score;
                 bestParameters = iterationBest.parameters;
                 searchRadius = Math.Max(1, searchRadius - 1); // 범위 축소
-                _logger.LogInformation("개선된 매개변수 발견: {Identifier}, 점수: {Score:F3}",
-                    bestParameters.GetIdentifier(), bestScore);
+                var bestId2 = bestParameters.GetIdentifier();
+                LogVectorIndexAutoTuner11(_logger, bestId2, bestScore);
             }
             else
             {
                 searchRadius = Math.Min(5, searchRadius + 1); // 범위 확대
-                _logger.LogInformation("개선 없음 - 탐색 반경 확대: {Radius}", searchRadius);
+                if (_logger.IsEnabled(LogLevel.Information))
+                    LogVectorIndexAutoTuner10(_logger, searchRadius);
             }
 
             iteration++;
@@ -106,7 +110,8 @@ public class VectorIndexAutoTuner
         HnswAutoTuningOptions options,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("스마트 튜닝 시작 - 전략: {Strategy}", options.Strategy);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogVectorIndexAutoTuner9(_logger, options.Strategy);
 
         var evaluatedCombinations = new List<(HnswParameters parameters, double score)>();
         var maxIterations = Math.Min(options.MaxTuningAttempts, 20);
@@ -130,7 +135,7 @@ public class VectorIndexAutoTuner
         }
 
         // 반복적 개선
-        for (int iteration = initialPoints.Count; iteration < maxIterations; iteration++)
+        for (int iteration = initialPoints.Length; iteration < maxIterations; iteration++)
         {
             // 다음 탐색점 선택 (가장 유망한 영역)
             var nextCandidate = SelectNextSmartCandidate(evaluatedCombinations, options.Strategy);
@@ -143,8 +148,8 @@ public class VectorIndexAutoTuner
                 var score = CalculateTuningScore(result, options);
                 evaluatedCombinations.Add((nextCandidate, score));
 
-                _logger.LogInformation("스마트 튜닝 반복 {Iteration}: {Identifier}, 점수: {Score:F3}",
-                    iteration + 1, nextCandidate.GetIdentifier(), score);
+                var candidateId = nextCandidate.GetIdentifier();
+                LogVectorIndexAutoTuner8(_logger, iteration + 1, candidateId, score);
             }
 
             if (cancellationToken.IsCancellationRequested)
@@ -152,8 +157,8 @@ public class VectorIndexAutoTuner
         }
 
         var bestResult = evaluatedCombinations.OrderByDescending(x => x.score).First();
-        _logger.LogInformation("스마트 튜닝 완료 - 최적 매개변수: {Identifier}, 최종 점수: {Score:F3}",
-            bestResult.parameters.GetIdentifier(), bestResult.score);
+        var bestResultId = bestResult.parameters.GetIdentifier();
+        LogVectorIndexAutoTuner7(_logger, bestResultId, bestResult.score);
 
         return bestResult.parameters;
     }
@@ -164,7 +169,7 @@ public class VectorIndexAutoTuner
         HnswAutoTuningOptions options,
         CancellationToken cancellationToken)
     {
-        _logger.LogInformation("1단계: 초기 탐색 시작");
+        LogVectorIndexAutoTuner6(_logger);
 
         // 전략별 초기 후보군 생성
         var initialCandidates = GenerateInitialCandidates(options.Strategy);
@@ -181,7 +186,7 @@ public class VectorIndexAutoTuner
             .Select(r => r.Parameters)
             .ToList();
 
-        _logger.LogInformation("초기 탐색 완료 - {Count}개 후보 선정", successfulResults.Count);
+        LogVectorIndexAutoTuner5(_logger, successfulResults.Count);
         return successfulResults.AsReadOnly();
     }
 
@@ -190,7 +195,7 @@ public class VectorIndexAutoTuner
         HnswAutoTuningOptions options,
         CancellationToken cancellationToken)
     {
-        _logger.LogInformation("2단계: 세밀 조정 시작 - {Count}개 후보", candidates.Count);
+        LogVectorIndexAutoTuner4(_logger, candidates.Count);
 
         var refinedCandidates = new List<HnswParameters>();
 
@@ -213,7 +218,7 @@ public class VectorIndexAutoTuner
             .Select(r => r.Parameters)
             .ToList();
 
-        _logger.LogInformation("세밀 조정 완료 - {Count}개 후보 선정", bestRefined.Count);
+        LogVectorIndexAutoTuner3(_logger, bestRefined.Count);
         return bestRefined.AsReadOnly();
     }
 
@@ -222,9 +227,9 @@ public class VectorIndexAutoTuner
         HnswAutoTuningOptions options,
         CancellationToken cancellationToken)
     {
-        _logger.LogInformation("3단계: 최종 검증 시작 - {Count}개 후보", candidates.Count);
+        LogVectorIndexAutoTuner2(_logger, candidates.Count);
 
-        var bestParameters = candidates.First();
+        var bestParameters = candidates[0];
         var bestScore = 0.0;
 
         // 더 엄격한 벤치마크 옵션으로 최종 검증
@@ -249,13 +254,13 @@ public class VectorIndexAutoTuner
                 break;
         }
 
-        _logger.LogInformation("최종 검증 완료 - 최적 매개변수: {Identifier}, 점수: {Score:F3}",
-            bestParameters.GetIdentifier(), bestScore);
+        var finalId = bestParameters.GetIdentifier();
+        LogVectorIndexAutoTuner1(_logger, finalId, bestScore);
 
         return bestParameters;
     }
 
-    private IReadOnlyList<HnswParameters> GenerateInitialCandidates(TuningStrategy strategy)
+    private static ReadOnlyCollection<HnswParameters> GenerateInitialCandidates(TuningStrategy strategy)
     {
         var candidates = new List<HnswParameters>();
 
@@ -285,7 +290,7 @@ public class VectorIndexAutoTuner
         return candidates.AsReadOnly();
     }
 
-    private IEnumerable<HnswParameters> GenerateSpeedOptimizedCandidates()
+    private static HnswParameters[] GenerateSpeedOptimizedCandidates()
     {
         return new[]
         {
@@ -295,7 +300,7 @@ public class VectorIndexAutoTuner
         };
     }
 
-    private IEnumerable<HnswParameters> GenerateAccuracyOptimizedCandidates()
+    private static HnswParameters[] GenerateAccuracyOptimizedCandidates()
     {
         return new[]
         {
@@ -305,7 +310,7 @@ public class VectorIndexAutoTuner
         };
     }
 
-    private IEnumerable<HnswParameters> GenerateMemoryOptimizedCandidates()
+    private static HnswParameters[] GenerateMemoryOptimizedCandidates()
     {
         return new[]
         {
@@ -315,7 +320,7 @@ public class VectorIndexAutoTuner
         };
     }
 
-    private IEnumerable<HnswParameters> GenerateBalancedCandidates()
+    private static HnswParameters[] GenerateBalancedCandidates()
     {
         return new[]
         {
@@ -325,7 +330,7 @@ public class VectorIndexAutoTuner
         };
     }
 
-    private IEnumerable<HnswParameters> GenerateFineTuningVariations(HnswParameters baseParams)
+    private static IEnumerable<HnswParameters> GenerateFineTuningVariations(HnswParameters baseParams)
     {
         var variations = new List<HnswParameters>();
 
@@ -368,7 +373,7 @@ public class VectorIndexAutoTuner
         return variations.Distinct();
     }
 
-    private IReadOnlyList<HnswParameters> GenerateAdaptiveCandidates(
+    private static ReadOnlyCollection<HnswParameters> GenerateAdaptiveCandidates(
         HnswParameters center,
         int radius,
         TuningStrategy strategy)
@@ -398,7 +403,7 @@ public class VectorIndexAutoTuner
         return candidates.AsReadOnly();
     }
 
-    private int GetInitialSearchRadius(TuningStrategy strategy)
+    private static int GetInitialSearchRadius(TuningStrategy strategy)
     {
         return strategy switch
         {
@@ -409,7 +414,7 @@ public class VectorIndexAutoTuner
         };
     }
 
-    private (HnswParameters parameters, double score) FindBestResult(
+    private static (HnswParameters parameters, double score) FindBestResult(
         IReadOnlyList<HnswBenchmarkResult> results,
         HnswAutoTuningOptions options)
     {
@@ -422,7 +427,7 @@ public class VectorIndexAutoTuner
         return best != null ? (best.Parameters, best.Score) : (HnswParameters.Default, 0.0);
     }
 
-    private IReadOnlyList<HnswParameters> GetSmartInitialPoints(TuningStrategy strategy)
+    private static HnswParameters[] GetSmartInitialPoints(TuningStrategy strategy)
     {
         // 전략별 스마트 초기점들 - 경험적으로 좋은 영역들
         return strategy switch
@@ -454,7 +459,7 @@ public class VectorIndexAutoTuner
         };
     }
 
-    private HnswParameters SelectNextSmartCandidate(
+    private static HnswParameters SelectNextSmartCandidate(
         List<(HnswParameters parameters, double score)> evaluatedCombinations,
         TuningStrategy strategy)
     {
@@ -485,14 +490,14 @@ public class VectorIndexAutoTuner
         };
     }
 
-    private bool AreParametersEqual(HnswParameters a, HnswParameters b)
+    private static bool AreParametersEqual(HnswParameters a, HnswParameters b)
     {
         return a.M == b.M &&
                a.EfConstruction == b.EfConstruction &&
                a.EfSearch == b.EfSearch;
     }
 
-    private HnswBenchmarkOptions CreateValidationBenchmarkOptions(HnswBenchmarkOptions baseOptions)
+    private static HnswBenchmarkOptions CreateValidationBenchmarkOptions(HnswBenchmarkOptions baseOptions)
     {
         // 최종 검증을 위한 더 엄격한 옵션
         return new HnswBenchmarkOptions
@@ -510,7 +515,7 @@ public class VectorIndexAutoTuner
         };
     }
 
-    private bool IsWithinConstraints(HnswBenchmarkResult result, HnswAutoTuningOptions options)
+    private static bool IsWithinConstraints(HnswBenchmarkResult result, HnswAutoTuningOptions options)
     {
         return result.AverageQueryTimeMs <= options.TargetQueryTimeMs &&
                result.RecallAtK >= options.MinRecallRequired &&
@@ -518,7 +523,7 @@ public class VectorIndexAutoTuner
                result.IndexBuildTimeMs <= options.MaxBuildTimeMinutes * 60 * 1000;
     }
 
-    private double CalculateTuningScore(HnswBenchmarkResult result, HnswAutoTuningOptions options)
+    private static double CalculateTuningScore(HnswBenchmarkResult result, HnswAutoTuningOptions options)
     {
         return options.Strategy switch
         {
@@ -528,6 +533,41 @@ public class VectorIndexAutoTuner
             _ => result.CalculatePerformanceScore()
         };
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "다단계 자동 튜닝 시작 - 전략: {Strategy}")]
+    private static partial void LogVectorIndexAutoTuner15(ILogger logger, TuningStrategy strategy);
+    [LoggerMessage(Level = LogLevel.Information, Message = "다단계 자동 튜닝 완료 - 최적 매개변수: {Identifier}")]
+    private static partial void LogVectorIndexAutoTuner14(ILogger logger, string identifier);
+    [LoggerMessage(Level = LogLevel.Information, Message = "적응형 튜닝 시작 - 전략: {Strategy}")]
+    private static partial void LogVectorIndexAutoTuner13(ILogger logger, TuningStrategy strategy);
+    [LoggerMessage(Level = LogLevel.Information, Message = "적응형 튜닝 반복 {Iteration} - 탐색 반경: {Radius}")]
+    private static partial void LogVectorIndexAutoTuner12(ILogger logger, int iteration, int radius);
+    [LoggerMessage(Level = LogLevel.Information, Message = "개선된 매개변수 발견: {Identifier}, 점수: {Score:F3}")]
+    private static partial void LogVectorIndexAutoTuner11(ILogger logger, string identifier, double score);
+    [LoggerMessage(Level = LogLevel.Information, Message = "개선 없음 - 탐색 반경 확대: {Radius}")]
+    private static partial void LogVectorIndexAutoTuner10(ILogger logger, int radius);
+    [LoggerMessage(Level = LogLevel.Information, Message = "스마트 튜닝 시작 - 전략: {Strategy}")]
+    private static partial void LogVectorIndexAutoTuner9(ILogger logger, TuningStrategy strategy);
+    [LoggerMessage(Level = LogLevel.Information, Message = "스마트 튜닝 반복 {Iteration}: {Identifier}, 점수: {Score:F3}")]
+    private static partial void LogVectorIndexAutoTuner8(ILogger logger, int iteration, string identifier, double score);
+    [LoggerMessage(Level = LogLevel.Information, Message = "스마트 튜닝 완료 - 최적 매개변수: {Identifier}, 최종 점수: {Score:F3}")]
+    private static partial void LogVectorIndexAutoTuner7(ILogger logger, string identifier, double score);
+    [LoggerMessage(Level = LogLevel.Information, Message = "1단계: 초기 탐색 시작")]
+    private static partial void LogVectorIndexAutoTuner6(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Information, Message = "초기 탐색 완료 - {Count}개 후보 선정")]
+    private static partial void LogVectorIndexAutoTuner5(ILogger logger, int count);
+    [LoggerMessage(Level = LogLevel.Information, Message = "2단계: 세밀 조정 시작 - {Count}개 후보")]
+    private static partial void LogVectorIndexAutoTuner4(ILogger logger, int count);
+    [LoggerMessage(Level = LogLevel.Information, Message = "세밀 조정 완료 - {Count}개 후보 선정")]
+    private static partial void LogVectorIndexAutoTuner3(ILogger logger, int count);
+    [LoggerMessage(Level = LogLevel.Information, Message = "3단계: 최종 검증 시작 - {Count}개 후보")]
+    private static partial void LogVectorIndexAutoTuner2(ILogger logger, int count);
+    [LoggerMessage(Level = LogLevel.Information, Message = "최종 검증 완료 - 최적 매개변수: {Identifier}, 점수: {Score:F3}")]
+    private static partial void LogVectorIndexAutoTuner1(ILogger logger, string identifier, double score);
 
     #endregion
 }

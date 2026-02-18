@@ -195,7 +195,7 @@ public interface IEvaluationJobManager
     Task<IEnumerable<EvaluationJob>> GetJobsAsync(
         EvaluationStatus? status = null,
         DateTime? from = null,
-        DateTime? to = null,
+        DateTime? toDate = null,
         CancellationToken cancellationToken = default);
 }
 

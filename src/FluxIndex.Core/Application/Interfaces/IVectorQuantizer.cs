@@ -118,7 +118,7 @@ public class QuantizedVector
     /// <summary>
     /// 바이트 크기
     /// </summary>
-    public int SizeBytes => Data.Length + (Metadata?.SizeBytes ?? 0);
+    public int SizeBytes => Data.Length + (Metadata is not null ? QuantizationMetadata.SizeBytes : 0);
 }
 
 /// <summary>
@@ -159,7 +159,7 @@ public class QuantizationMetadata
     /// <summary>
     /// 메타데이터 바이트 크기
     /// </summary>
-    public int SizeBytes => sizeof(float) * 4 + sizeof(int) * 2; // 24 bytes
+    public static int SizeBytes => sizeof(float) * 4 + sizeof(int) * 2; // 24 bytes
 }
 
 /// <summary>

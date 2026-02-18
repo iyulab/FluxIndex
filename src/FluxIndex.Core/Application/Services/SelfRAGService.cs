@@ -20,7 +20,7 @@ namespace FluxIndex.Core.Application.Services;
 /// Self-RAG (Self-Reflective Retrieval Augmented Generation) Service Implementation.
 /// Implements iterative retrieval with quality assessment and automatic query refinement.
 /// </summary>
-public class SelfRAGService : ISelfRAGService
+public partial class SelfRAGService : ISelfRAGService
 {
     private readonly IHybridSearchService _searchService;
     private readonly IEmbeddingService _embeddingService;
@@ -72,7 +72,8 @@ public class SelfRAGService : ISelfRAGService
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                _logger.LogDebug("Starting iteration {Iteration} with query: {Query}", i + 1, currentQuery);
+                if (_logger.IsEnabled(LogLevel.Debug))
+                    LogSelfRAG7(_logger, i + 1, currentQuery);
 
                 // Determine search strategy for this iteration
                 var strategy = DetermineSearchStrategy(currentQuery, lastAssessment, i);
@@ -106,9 +107,8 @@ public class SelfRAGService : ISelfRAGService
                 // Check if quality threshold is met
                 if (lastAssessment.OverallScore >= opts.QualityThreshold)
                 {
-                    _logger.LogInformation(
-                        "Quality threshold met at iteration {Iteration}: {Score:F2} >= {Threshold:F2}",
-                        i + 1, lastAssessment.OverallScore, opts.QualityThreshold);
+                    if (_logger.IsEnabled(LogLevel.Debug))
+                        LogSelfRAG6(_logger, i + 1, lastAssessment.OverallScore, opts.QualityThreshold);
 
                     iteration.ImprovementNotes.Add("Quality threshold met - stopping iteration");
                     allResults.AddRange(searchResults);
@@ -132,7 +132,7 @@ public class SelfRAGService : ISelfRAGService
                 {
                     var refinements = await SuggestQueryRefinementsAsync(currentQuery, lastAssessment, cancellationToken);
 
-                    if (refinements.RefinedQueries.Any())
+                    if (refinements.RefinedQueries.Count != 0)
                     {
                         var bestRefinement = refinements.RefinedQueries
                             .OrderByDescending(r => r.ExpectedImprovementScore)
@@ -145,7 +145,8 @@ public class SelfRAGService : ISelfRAGService
                             RefinementActionType.QueryRefinement,
                             $"Refined query from '{query}' to '{currentQuery}'"));
 
-                        _logger.LogDebug("Query refined to: {Query}", currentQuery);
+                        if (_logger.IsEnabled(LogLevel.Debug))
+                            LogSelfRAG5(_logger, currentQuery);
                     }
                     else
                     {
@@ -167,9 +168,8 @@ public class SelfRAGService : ISelfRAGService
             result.TotalProcessingTime = stopwatch.Elapsed;
             result.IsSuccessful = finalResults.Any() && (lastAssessment?.OverallScore ?? 0) >= opts.QualityThreshold * 0.7;
 
-            _logger.LogInformation(
-                "Self-RAG search completed: {ResultCount} results, {IterationCount} iterations, quality: {Quality:F2}",
-                finalResults.Count(), iterations.Count, result.FinalQualityScore);
+            var resultCount = finalResults.Count();
+            LogSelfRAG4(_logger, resultCount, iterations.Count, result.FinalQualityScore);
 
             return result;
         }
@@ -179,7 +179,8 @@ public class SelfRAGService : ISelfRAGService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Self-RAG search failed for query: {Query}", query);
+            if (_logger.IsEnabled(LogLevel.Debug))
+                LogSelfRAG3(_logger, ex, query);
             stopwatch.Stop();
 
             result.IsSuccessful = false;
@@ -239,7 +240,7 @@ public class SelfRAGService : ISelfRAGService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error assessing result quality");
+            LogSelfRAG2(_logger, ex);
             return assessment;
         }
     }
@@ -302,14 +303,14 @@ public class SelfRAGService : ISelfRAGService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error generating query refinements");
+            LogSelfRAG1(_logger, ex);
             return suggestions;
         }
     }
 
     #region Private Helper Methods
 
-    private SearchStrategy DetermineSearchStrategy(string query, QualityAssessment? lastAssessment, int iteration)
+    private static SearchStrategy DetermineSearchStrategy(string query, QualityAssessment? lastAssessment, int iteration)
     {
         // First iteration - use hybrid search
         if (iteration == 0 || lastAssessment == null)
@@ -393,7 +394,7 @@ public class SelfRAGService : ISelfRAGService
             .Select(g => new Document
             {
                 Id = g.Key,
-                FileName = g.First().Chunk.Metadata.GetValueOrDefault("title")?.ToString() ?? string.Empty,
+                FileName = g.First().Chunk.Metadata?.GetValueOrDefault("title")?.ToString() ?? string.Empty,
                 Content = string.Join("\n", g.Select(r => r.Chunk.Content))
             })
             .Take(opts.MaxResults);
@@ -404,7 +405,7 @@ public class SelfRAGService : ISelfRAGService
         List<Document> results,
         CancellationToken cancellationToken)
     {
-        if (!results.Any()) return 0.0;
+        if (results.Count == 0) return 0.0;
 
         try
         {
@@ -419,7 +420,7 @@ public class SelfRAGService : ISelfRAGService
                 scores.Add(similarity);
             }
 
-            return scores.Any() ? scores.Average() : 0.0;
+            return scores.Count != 0 ? scores.Average() : 0.0;
         }
         catch
         {
@@ -427,16 +428,16 @@ public class SelfRAGService : ISelfRAGService
         }
     }
 
-    private double CalculateCompletenessScore(string query, List<Document> results)
+    private static double CalculateCompletenessScore(string query, List<Document> results)
     {
-        if (!results.Any()) return 0.0;
+        if (results.Count == 0) return 0.0;
 
         // Extract query terms
         var queryTerms = ExtractQueryTerms(query);
-        if (!queryTerms.Any()) return 1.0;
+        if (queryTerms.Count == 0) return 1.0;
 
         // Calculate term coverage
-        var combinedContent = string.Join(" ", results.Select(r => r.Content.ToLower()));
+        var combinedContent = string.Join(" ", results.Select(r => r.Content.ToLowerInvariant()));
         var coveredTerms = queryTerms.Count(term =>
             combinedContent.Contains(term, StringComparison.OrdinalIgnoreCase));
 
@@ -483,9 +484,9 @@ public class SelfRAGService : ISelfRAGService
         }
     }
 
-    private double CalculateCredibilityScore(List<Document> results)
+    private static double CalculateCredibilityScore(List<Document> results)
     {
-        if (!results.Any()) return 0.0;
+        if (results.Count == 0) return 0.0;
 
         var scores = results.Select(doc =>
         {
@@ -513,9 +514,9 @@ public class SelfRAGService : ISelfRAGService
         return scores.Average();
     }
 
-    private double CalculateFreshnessScore(List<Document> results)
+    private static double CalculateFreshnessScore(List<Document> results)
     {
-        if (!results.Any()) return 0.5;
+        if (results.Count == 0) return 0.5;
 
         var now = DateTimeOffset.UtcNow;
         var scores = results.Select(doc =>
@@ -545,7 +546,7 @@ public class SelfRAGService : ISelfRAGService
                (assessment.FreshnessScore * _options.FreshnessWeight);
     }
 
-    private List<QualityIssue> IdentifyQualityIssues(QualityAssessment assessment, List<Document> results)
+    private static List<QualityIssue> IdentifyQualityIssues(QualityAssessment assessment, List<Document> results)
     {
         var issues = new List<QualityIssue>();
 
@@ -607,7 +608,7 @@ public class SelfRAGService : ISelfRAGService
         return issues;
     }
 
-    private List<ImprovementSuggestion> GenerateImprovementSuggestions(QualityAssessment assessment)
+    private static List<ImprovementSuggestion> GenerateImprovementSuggestions(QualityAssessment assessment)
     {
         var suggestions = new List<ImprovementSuggestion>();
 
@@ -650,7 +651,7 @@ public class SelfRAGService : ISelfRAGService
         return suggestions.OrderByDescending(s => s.Priority).ToList();
     }
 
-    private Dictionary<string, string> BuildAssessmentRationale(QualityAssessment assessment)
+    private static Dictionary<string, string> BuildAssessmentRationale(QualityAssessment assessment)
     {
         return new Dictionary<string, string>
         {
@@ -663,7 +664,7 @@ public class SelfRAGService : ISelfRAGService
         };
     }
 
-    private List<RefinedQuery> GenerateRefinementsForIssue(string originalQuery, QualityIssue issue)
+    private static List<RefinedQuery> GenerateRefinementsForIssue(string originalQuery, QualityIssue issue)
     {
         var refinements = new List<RefinedQuery>();
 
@@ -753,7 +754,7 @@ public class SelfRAGService : ISelfRAGService
         }
     }
 
-    private List<string> ExtractSuggestedKeywords(string query, QualityAssessment assessment)
+    private static List<string> ExtractSuggestedKeywords(string query, QualityAssessment assessment)
     {
         var keywords = new List<string>();
 
@@ -769,14 +770,14 @@ public class SelfRAGService : ISelfRAGService
         return keywords;
     }
 
-    private List<string> IdentifyKeywordsToExclude(string query, QualityAssessment assessment)
+    private static List<string> IdentifyKeywordsToExclude(string query, QualityAssessment assessment)
     {
         // Identify potentially noisy keywords
         var stopWords = new[] { "the", "a", "an", "is", "are", "was", "were" };
         return stopWords.Where(w => query.Contains(w, StringComparison.OrdinalIgnoreCase)).ToList();
     }
 
-    private List<SearchStrategy> SuggestAlternativeStrategies(QualityAssessment assessment)
+    private static List<SearchStrategy> SuggestAlternativeStrategies(QualityAssessment assessment)
     {
         var strategies = new List<SearchStrategy>();
 
@@ -792,7 +793,7 @@ public class SelfRAGService : ISelfRAGService
         return strategies;
     }
 
-    private List<string> GenerateContextExpansions(string query)
+    private static List<string> GenerateContextExpansions(string query)
     {
         // Generate context expansion suggestions
         return new List<string>
@@ -803,7 +804,7 @@ public class SelfRAGService : ISelfRAGService
         };
     }
 
-    private string GeneralizeQuery(string query)
+    private static string GeneralizeQuery(string query)
     {
         // Remove specific terms to generalize
         var words = query.Split(' ').ToList();
@@ -815,7 +816,7 @@ public class SelfRAGService : ISelfRAGService
         return query;
     }
 
-    private List<string> ExtractQueryTerms(string query)
+    private static List<string> ExtractQueryTerms(string query)
     {
         var stopWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -825,13 +826,13 @@ public class SelfRAGService : ISelfRAGService
             "to", "of", "in", "for", "on", "with", "at", "by", "from", "or", "and"
         };
 
-        return Regex.Split(query.ToLower(), @"\W+")
+        return Regex.Split(query.ToLowerInvariant(), @"\W+")
             .Where(w => !string.IsNullOrEmpty(w) && w.Length > 2 && !stopWords.Contains(w))
             .Distinct()
             .ToList();
     }
 
-    private IEnumerable<Document> DeduplicateAndRankResults(List<Document> results, SelfRAGOptions opts)
+    private static IEnumerable<Document> DeduplicateAndRankResults(List<Document> results, SelfRAGOptions opts)
     {
         // Deduplicate by content similarity
         var uniqueResults = new List<Document>();
@@ -851,13 +852,13 @@ public class SelfRAGService : ISelfRAGService
         return uniqueResults.Take(opts.MaxResults);
     }
 
-    private double GetContentSimilarity(string content1, string content2)
+    private static double GetContentSimilarity(string content1, string content2)
     {
         if (string.IsNullOrEmpty(content1) || string.IsNullOrEmpty(content2))
             return 0;
 
-        var words1 = new HashSet<string>(content1.ToLower().Split(' '));
-        var words2 = new HashSet<string>(content2.ToLower().Split(' '));
+        var words1 = new HashSet<string>(content1.ToLowerInvariant().Split(' '));
+        var words2 = new HashSet<string>(content2.ToLowerInvariant().Split(' '));
 
         var intersection = words1.Intersect(words2).Count();
         var union = words1.Union(words2).Count();
@@ -885,7 +886,7 @@ public class SelfRAGService : ISelfRAGService
         return denominator > 0 ? dotProduct / denominator : 0;
     }
 
-    private RefinementAction CreateRefinementAction(RefinementActionType type, string description)
+    private static RefinementAction CreateRefinementAction(RefinementActionType type, string description)
     {
         return new RefinementAction
         {
@@ -898,12 +899,31 @@ public class SelfRAGService : ISelfRAGService
     }
 
     #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Starting iteration {Iteration} with query: {Query}")]
+    private static partial void LogSelfRAG7(ILogger logger, int iteration, string query);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Quality threshold met at iteration {Iteration}: {Score:F2} >= {Threshold:F2}")]
+    private static partial void LogSelfRAG6(ILogger logger, int iteration, double score, double threshold);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Query refined to: {Query}")]
+    private static partial void LogSelfRAG5(ILogger logger, string query);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Self-RAG search completed: {ResultCount} results, {IterationCount} iterations, quality: {Quality:F2}")]
+    private static partial void LogSelfRAG4(ILogger logger, int resultCount, int iterationCount, double quality);
+    [LoggerMessage(Level = LogLevel.Error, Message = "Self-RAG search failed for query: {Query}")]
+    private static partial void LogSelfRAG3(ILogger logger, Exception exception, string query);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Error assessing result quality")]
+    private static partial void LogSelfRAG2(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Error generating query refinements")]
+    private static partial void LogSelfRAG1(ILogger logger, Exception exception);
+
+    #endregion
 }
 
 /// <summary>
 /// Configuration options for SelfRAGService.
 /// </summary>
-public class SelfRAGServiceOptions
+public partial class SelfRAGServiceOptions
 {
     /// <summary>
     /// Whether to use LLM for query refinement suggestions.

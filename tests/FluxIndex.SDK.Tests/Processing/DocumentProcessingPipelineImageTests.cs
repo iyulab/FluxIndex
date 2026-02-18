@@ -1,7 +1,8 @@
 using FileFlux.Core;
 using FluxIndex.SDK.Processing;
 using Microsoft.Extensions.Logging;
-using Moq;
+using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using Xunit;
 
 namespace FluxIndex.SDK.Tests.Processing;
@@ -12,23 +13,23 @@ namespace FluxIndex.SDK.Tests.Processing;
 /// </summary>
 public class DocumentProcessingPipelineImageTests : IDisposable
 {
-    private readonly Mock<IDocumentProcessorFactory> _mockProcessorFactory;
-    private readonly Mock<ILogger<DocumentProcessingPipeline>> _mockLogger;
+    private readonly IDocumentProcessorFactory _mockProcessorFactory;
+    private readonly ILogger<DocumentProcessingPipeline> _mockLogger;
     private readonly DocumentProcessingPipeline _pipeline;
     private readonly string _testDir;
 
     public DocumentProcessingPipelineImageTests()
     {
-        _mockProcessorFactory = new Mock<IDocumentProcessorFactory>();
-        _mockLogger = new Mock<ILogger<DocumentProcessingPipeline>>();
+        _mockProcessorFactory = Substitute.For<IDocumentProcessorFactory>();
+        _mockLogger = Substitute.For<ILogger<DocumentProcessingPipeline>>();
 
         _pipeline = new DocumentProcessingPipeline(
-            _mockProcessorFactory.Object,
+            _mockProcessorFactory,
             embeddingService: null,
             textCompletionService: null,
             contextualEnrichmentService: null,
             qaGenerationService: null,
-            _mockLogger.Object);
+            _mockLogger);
 
         _testDir = Path.Combine(Path.GetTempPath(), $"fluxindex_image_test_{Guid.NewGuid()}");
         Directory.CreateDirectory(_testDir);
@@ -246,18 +247,16 @@ public class DocumentProcessingPipelineImageTests : IDisposable
         var testFile = CreateTestFile(".pdf");
 
         // Setup mock processor that throws on ExtractAsync
-        var mockProcessor = new Mock<IDocumentProcessor>();
+        var mockProcessor = Substitute.For<IDocumentProcessor>();
         var chunks = new[] { new DocumentChunk { Content = "Test chunk" } };
 
         var failResult = new ProcessingResult { Chunks = chunks.ToList(), Raw = null };
-        mockProcessor.SetupGet(p => p.Result).Returns(failResult);
-        mockProcessor.Setup(p => p.ProcessAsync(It.IsAny<global::FileFlux.Core.ProcessingOptions>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
-        mockProcessor.Setup(p => p.ExtractAsync(It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new InvalidOperationException("Extraction failed"));
-        mockProcessor.Setup(p => p.DisposeAsync()).Returns(ValueTask.CompletedTask);
+        mockProcessor.Result.Returns(failResult);
+        mockProcessor.ProcessAsync(Arg.Any<global::FileFlux.Core.ProcessingOptions>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+        mockProcessor.ExtractAsync(Arg.Any<CancellationToken>()).Throws(new InvalidOperationException("Extraction failed"));
+        mockProcessor.DisposeAsync().Returns(ValueTask.CompletedTask);
 
-        _mockProcessorFactory.Setup(f => f.Create(testFile)).Returns(mockProcessor.Object);
+        _mockProcessorFactory.Create(testFile).Returns(mockProcessor);
 
         var options = new DocumentProcessingOptions
         {
@@ -296,7 +295,7 @@ public class DocumentProcessingPipelineImageTests : IDisposable
 
     private void SetupMockProcessor(string filePath, RawContent rawContent)
     {
-        var mockProcessor = new Mock<IDocumentProcessor>();
+        var mockProcessor = Substitute.For<IDocumentProcessor>();
 
         // Create real ProcessingResult instance (not mockable - concrete class)
         var chunks = new[]
@@ -315,19 +314,17 @@ public class DocumentProcessingPipelineImageTests : IDisposable
             Raw = rawContent
         };
 
-        mockProcessor.SetupGet(p => p.Result).Returns(result);
+        mockProcessor.Result.Returns(result);
 
         // Setup async methods
-        mockProcessor.Setup(p => p.ExtractAsync(It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
-        mockProcessor.Setup(p => p.ProcessAsync(It.IsAny<global::FileFlux.Core.ProcessingOptions>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+        mockProcessor.ExtractAsync(Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+        mockProcessor.ProcessAsync(Arg.Any<global::FileFlux.Core.ProcessingOptions>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
 
         // Setup IAsyncDisposable
-        mockProcessor.Setup(p => p.DisposeAsync()).Returns(ValueTask.CompletedTask);
+        mockProcessor.DisposeAsync().Returns(ValueTask.CompletedTask);
 
         // Setup factory to return this processor
-        _mockProcessorFactory.Setup(f => f.Create(filePath)).Returns(mockProcessor.Object);
+        _mockProcessorFactory.Create(filePath).Returns(mockProcessor);
     }
 
     #endregion

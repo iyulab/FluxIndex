@@ -464,7 +464,7 @@ public record CacheMaintenanceOptions
     public int TargetMemoryUsagePercent { get; init; } = 80;
 
     /// <summary>Compact data structures</summary>
-    public bool CompactStorage { get; init; } = false;
+    public bool CompactStorage { get; init; }
 
     /// <summary>Update statistics</summary>
     public bool UpdateStatistics { get; init; } = true;

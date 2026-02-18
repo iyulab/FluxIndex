@@ -15,6 +15,7 @@ namespace FluxIndex.Storage.Neo4j.Tests;
 /// These tests require Docker to be running.
 /// </summary>
 [Collection("Neo4j")]
+[Trait("Category", "Integration")]
 public class Neo4jGraphStoreIntegrationTests : IAsyncLifetime
 {
     private readonly Neo4jContainer _container;
@@ -23,8 +24,7 @@ public class Neo4jGraphStoreIntegrationTests : IAsyncLifetime
 
     public Neo4jGraphStoreIntegrationTests()
     {
-        _container = new Neo4jBuilder()
-            .WithImage("neo4j:5-community")
+        _container = new Neo4jBuilder("neo4j:5-community")
             .Build();
         _logger = NullLogger<Neo4jGraphStore>.Instance;
     }

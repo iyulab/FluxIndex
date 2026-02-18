@@ -8,6 +8,12 @@ namespace FluxIndex.MCP.Workspace;
 /// </summary>
 public class WorkspaceConfig
 {
+    private static readonly JsonSerializerOptions s_saveJsonOptions = new()
+    {
+        WriteIndented = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+
     [JsonPropertyName("version")]
     public string Version { get; set; } = "1.0";
 
@@ -40,12 +46,7 @@ public class WorkspaceConfig
     public void Save(string configPath)
     {
         UpdatedAt = DateTime.UtcNow;
-        var options = new JsonSerializerOptions
-        {
-            WriteIndented = true,
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-        };
-        var json = JsonSerializer.Serialize(this, options);
+        var json = JsonSerializer.Serialize(this, s_saveJsonOptions);
         File.WriteAllText(configPath, json);
     }
 }

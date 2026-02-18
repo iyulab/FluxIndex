@@ -4,7 +4,7 @@ using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Core.Domain.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
+using NSubstitute;
 using Xunit;
 
 namespace FluxIndex.Core.Tests.Services;
@@ -14,16 +14,16 @@ namespace FluxIndex.Core.Tests.Services;
 /// </summary>
 public class IterativeRetrievalServiceTests
 {
-    private readonly Mock<IHybridSearchService> _mockSearchService;
-    private readonly Mock<ITextCompletionService> _mockLlmService;
-    private readonly Mock<IAdvancedEntityExtractionService> _mockEntityService;
+    private readonly IHybridSearchService _mockSearchService;
+    private readonly ITextCompletionService _mockLlmService;
+    private readonly IAdvancedEntityExtractionService _mockEntityService;
     private readonly ILogger<IterativeRetrievalService> _logger;
 
     public IterativeRetrievalServiceTests()
     {
-        _mockSearchService = new Mock<IHybridSearchService>();
-        _mockLlmService = new Mock<ITextCompletionService>();
-        _mockEntityService = new Mock<IAdvancedEntityExtractionService>();
+        _mockSearchService = Substitute.For<IHybridSearchService>();
+        _mockLlmService = Substitute.For<ITextCompletionService>();
+        _mockEntityService = Substitute.For<IAdvancedEntityExtractionService>();
         _logger = NullLogger<IterativeRetrievalService>.Instance;
     }
 
@@ -32,9 +32,9 @@ public class IterativeRetrievalServiceTests
         bool withEntityService = true)
     {
         return new IterativeRetrievalService(
-            _mockSearchService.Object,
-            withLlm ? _mockLlmService.Object : null,
-            withEntityService ? _mockEntityService.Object : null,
+            _mockSearchService,
+            withLlm ? _mockLlmService : null,
+            withEntityService ? _mockEntityService : null,
             _logger);
     }
 
@@ -70,9 +70,7 @@ public class IterativeRetrievalServiceTests
             CreateMockResult("2", "Supervised learning uses labeled data...", 0.8)
         };
 
-        _mockSearchService
-            .Setup(x => x.SearchAsync(query, It.IsAny<HybridSearchOptions>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mockResults);
+        _mockSearchService.SearchAsync(query, Arg.Any<HybridSearchOptions>(), Arg.Any<CancellationToken>()).Returns(mockResults);
 
         // Act
         var result = await service.RetrieveWithReasoningAsync(query);
@@ -95,16 +93,11 @@ public class IterativeRetrievalServiceTests
             CreateMockResult("2", "Natural language processing uses ML...", 0.85)
         };
 
-        _mockSearchService
-            .Setup(x => x.SearchAsync(It.IsAny<string>(), It.IsAny<HybridSearchOptions>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mockResults);
+        _mockSearchService.SearchAsync(Arg.Any<string>(), Arg.Any<HybridSearchOptions>(), Arg.Any<CancellationToken>()).Returns(mockResults);
 
         // LLM returns thought indicating more retrieval needed, then a final answer
         var callCount = 0;
-        _mockLlmService
-            .Setup(x => x.GenerateCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<float>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() =>
-            {
+        _mockLlmService.GenerateCompletionAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns(callInfo => {
                 callCount++;
                 if (callCount == 1)
                     return "[Retrieval] healthcare applications of ML";
@@ -131,14 +124,10 @@ public class IterativeRetrievalServiceTests
             CreateMockResult("1", "Some relevant content...", 0.9)
         };
 
-        _mockSearchService
-            .Setup(x => x.SearchAsync(It.IsAny<string>(), It.IsAny<HybridSearchOptions>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mockResults);
+        _mockSearchService.SearchAsync(Arg.Any<string>(), Arg.Any<HybridSearchOptions>(), Arg.Any<CancellationToken>()).Returns(mockResults);
 
         // Always return retrieval action to test max iterations
-        _mockLlmService
-            .Setup(x => x.GenerateCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<float>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("[Retrieval] more data needed");
+        _mockLlmService.GenerateCompletionAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns("[Retrieval] more data needed");
 
         // Act
         var result = await service.RetrieveWithReasoningAsync(query, options);
@@ -163,9 +152,7 @@ public class IterativeRetrievalServiceTests
             CreateMockResult("1", "Python is a programming language...", 0.95)
         };
 
-        _mockSearchService
-            .Setup(x => x.SearchAsync(query, It.IsAny<HybridSearchOptions>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mockResults);
+        _mockSearchService.SearchAsync(query, Arg.Any<HybridSearchOptions>(), Arg.Any<CancellationToken>()).Returns(mockResults);
 
         // Act
         var result = await service.DecomposeAndRetrieveAsync(query);
@@ -188,14 +175,10 @@ public class IterativeRetrievalServiceTests
             CreateMockResult("2", "Java enterprise development...", 0.85)
         };
 
-        _mockSearchService
-            .Setup(x => x.SearchAsync(It.IsAny<string>(), It.IsAny<HybridSearchOptions>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mockResults);
+        _mockSearchService.SearchAsync(Arg.Any<string>(), Arg.Any<HybridSearchOptions>(), Arg.Any<CancellationToken>()).Returns(mockResults);
 
         // LLM decomposes and generates sub-questions
-        _mockLlmService
-            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("""
+        _mockLlmService.GenerateJsonCompletionAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns("""
                 {
                     "sub_questions": [
                         "What are Python's strengths for web development?",
@@ -206,9 +189,7 @@ public class IterativeRetrievalServiceTests
                 }
             """);
 
-        _mockLlmService
-            .Setup(x => x.GenerateCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<float>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("Based on the retrieved documents, Python excels in ML while Java is preferred for enterprise web apps...");
+        _mockLlmService.GenerateCompletionAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns("Based on the retrieved documents, Python excels in ML while Java is preferred for enterprise web apps...");
 
         // Act
         var result = await service.DecomposeAndRetrieveAsync(query);
@@ -233,9 +214,7 @@ public class IterativeRetrievalServiceTests
             CreateMockResult("1", "Bill Gates founded Microsoft in 1975...", 0.95)
         };
 
-        _mockSearchService
-            .Setup(x => x.SearchAsync(It.IsAny<string>(), It.IsAny<HybridSearchOptions>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mockResults);
+        _mockSearchService.SearchAsync(Arg.Any<string>(), Arg.Any<HybridSearchOptions>(), Arg.Any<CancellationToken>()).Returns(mockResults);
 
         // Act
         var result = await service.MultiHopRetrieveAsync(query);
@@ -261,10 +240,7 @@ public class IterativeRetrievalServiceTests
         };
 
         var callCount = 0;
-        _mockSearchService
-            .Setup(x => x.SearchAsync(It.IsAny<string>(), It.IsAny<HybridSearchOptions>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() =>
-            {
+        _mockSearchService.SearchAsync(Arg.Any<string>(), Arg.Any<HybridSearchOptions>(), Arg.Any<CancellationToken>()).Returns(callInfo => {
                 callCount++;
                 return callCount == 1 ? mockResults1 : mockResults2;
             });
@@ -275,9 +251,7 @@ public class IterativeRetrievalServiceTests
             new() { Text = "Microsoft", Type = NamedEntityType.Organization, Confidence = 0.98f }
         };
 
-        _mockEntityService
-            .Setup(x => x.ExtractEntitiesAsync(It.IsAny<string>(), It.IsAny<EntityExtractionOptions>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(extractedEntities);
+        _mockEntityService.ExtractEntitiesAsync(Arg.Any<string>(), Arg.Any<EntityExtractionOptions>(), Arg.Any<CancellationToken>()).Returns(extractedEntities);
 
         // Act
         var result = await service.MultiHopRetrieveAsync(query);
@@ -298,18 +272,14 @@ public class IterativeRetrievalServiceTests
             CreateMockResult("1", "Entity A is related to Entity B...", 0.9)
         };
 
-        _mockSearchService
-            .Setup(x => x.SearchAsync(It.IsAny<string>(), It.IsAny<HybridSearchOptions>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mockResults);
+        _mockSearchService.SearchAsync(Arg.Any<string>(), Arg.Any<HybridSearchOptions>(), Arg.Any<CancellationToken>()).Returns(mockResults);
 
         var extractedEntities = new List<ExtractedEntity>
         {
             new() { Text = "Entity A", Type = NamedEntityType.Organization, Confidence = 0.9f }
         };
 
-        _mockEntityService
-            .Setup(x => x.ExtractEntitiesAsync(It.IsAny<string>(), It.IsAny<EntityExtractionOptions>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(extractedEntities);
+        _mockEntityService.ExtractEntitiesAsync(Arg.Any<string>(), Arg.Any<EntityExtractionOptions>(), Arg.Any<CancellationToken>()).Returns(extractedEntities);
 
         // Act
         var result = await service.MultiHopRetrieveAsync(query, options);
@@ -334,9 +304,7 @@ public class IterativeRetrievalServiceTests
             CreateMockResult("1", "Unit testing best practices include...", 0.9)
         };
 
-        _mockSearchService
-            .Setup(x => x.SearchAsync(query, It.IsAny<HybridSearchOptions>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mockResults);
+        _mockSearchService.SearchAsync(query, Arg.Any<HybridSearchOptions>(), Arg.Any<CancellationToken>()).Returns(mockResults);
 
         // Act
         var result = await service.AgenticRetrieveAsync(query);
@@ -358,16 +326,11 @@ public class IterativeRetrievalServiceTests
             CreateMockResult("2", "Multi-cloud strategies are becoming popular...", 0.88)
         };
 
-        _mockSearchService
-            .Setup(x => x.SearchAsync(It.IsAny<string>(), It.IsAny<HybridSearchOptions>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mockResults);
+        _mockSearchService.SearchAsync(Arg.Any<string>(), Arg.Any<HybridSearchOptions>(), Arg.Any<CancellationToken>()).Returns(mockResults);
 
         // LLM returns actions
         var actionCallCount = 0;
-        _mockLlmService
-            .Setup(x => x.GenerateCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<float>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() =>
-            {
+        _mockLlmService.GenerateCompletionAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns(callInfo => {
                 actionCallCount++;
                 if (actionCallCount == 1)
                     return "Action: Search\nInput: serverless computing trends 2024";
@@ -394,14 +357,10 @@ public class IterativeRetrievalServiceTests
             CreateMockResult("1", "Some content...", 0.8)
         };
 
-        _mockSearchService
-            .Setup(x => x.SearchAsync(It.IsAny<string>(), It.IsAny<HybridSearchOptions>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(mockResults);
+        _mockSearchService.SearchAsync(Arg.Any<string>(), Arg.Any<HybridSearchOptions>(), Arg.Any<CancellationToken>()).Returns(mockResults);
 
         // Always return search action to test max iterations limit
-        _mockLlmService
-            .Setup(x => x.GenerateCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<float>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("Action: Search\nInput: keep searching");
+        _mockLlmService.GenerateCompletionAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns("Action: Search\nInput: keep searching");
 
         // Act
         var result = await service.AgenticRetrieveAsync(query, options);
@@ -420,7 +379,7 @@ public class IterativeRetrievalServiceTests
     {
         // Arrange & Act - Only search service is required
         var service = new IterativeRetrievalService(
-            _mockSearchService.Object,
+            _mockSearchService,
             llmService: null,
             entityService: null,
             logger: null);

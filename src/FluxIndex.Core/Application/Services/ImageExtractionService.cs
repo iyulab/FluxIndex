@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Logging;
+using System.Globalization;
 
 namespace FluxIndex.Core.Application.Services;
 
@@ -151,13 +152,11 @@ public partial class ImageExtractionService : IImageExtractionService
                 processedMatches.Add((match, type, imageIndex, extractedData));
                 imageIndex++;
 
-                _logger?.LogDebug(
-                    "Extracted {Type} image {Index}: {MimeType}, {Size} bytes",
-                    type, imageIndex, mimeType, imageData.Length);
+                if (_logger is not null) LogExtractedImage(_logger, type, imageIndex, mimeType, imageData.Length);
             }
             catch (FormatException ex)
             {
-                _logger?.LogWarning(ex, "Failed to decode base64 {Type} image at position {Position}", type, match.Index);
+                if (_logger is not null) LogDecodeFailure(_logger, ex, type, match.Index);
                 processedMatches.Add((match, type, -1, null));
             }
         }
@@ -174,12 +173,8 @@ public partial class ImageExtractionService : IImageExtractionService
 
         result.CleanedContent = processedContent;
 
-        _logger?.LogInformation(
-            "Extracted {Count} images, total size: {Size} bytes, content reduced from {Original} to {Cleaned} chars",
-            result.ExtractedImages.Count,
-            result.TotalImageBytes,
-            content.Length,
-            processedContent.Length);
+        if (_logger is not null)
+            LogExtractionComplete(_logger, result.ExtractedImages.Count, result.TotalImageBytes, content.Length, processedContent.Length);
 
         return Task.FromResult(result);
     }
@@ -243,7 +238,7 @@ public partial class ImageExtractionService : IImageExtractionService
                 var placeholder = placeholderFormat
                     .Replace("{id}", extractedImage.Id)
                     .Replace("{url}", imageStore.GetPublicUrl(storagePath) ?? storagePath)
-                    .Replace("{index}", (extractedData.PositionIndex + 1).ToString())
+                    .Replace("{index}", (extractedData.PositionIndex + 1).ToString(CultureInfo.InvariantCulture))
                     .Replace("{alt}", extractedData.AltText ?? "Image");
 
                 // Replace original base64 with placeholder
@@ -251,9 +246,7 @@ public partial class ImageExtractionService : IImageExtractionService
 
                 result.StoredImages.Add(extractedImage);
 
-                _logger?.LogDebug(
-                    "Stored image {ImageId} for document {DocumentId} at {StoragePath}",
-                    extractedImage.Id, documentId, storagePath);
+                if (_logger is not null) LogStoredImage(_logger, extractedImage.Id, documentId, storagePath);
             }
             catch (Exception ex)
             {
@@ -262,20 +255,16 @@ public partial class ImageExtractionService : IImageExtractionService
                     ImageIndex = extractedData.PositionIndex,
                     Message = $"Failed to store image: {ex.Message}",
                     Exception = ex,
-                    ContentPosition = content.IndexOf(extractedData.OriginalMarkdown)
+                    ContentPosition = content.IndexOf(extractedData.OriginalMarkdown, StringComparison.Ordinal)
                 });
 
-                _logger?.LogError(ex,
-                    "Failed to store image {Index} for document {DocumentId}",
-                    extractedData.PositionIndex, documentId);
+                if (_logger is not null) LogStoreImageFailed(_logger, ex, extractedData.PositionIndex, documentId);
             }
         }
 
         result.ProcessedContent = processedContent;
 
-        _logger?.LogInformation(
-            "Processed {Count} images for document {DocumentId}, {Errors} errors",
-            result.StoredImages.Count, documentId, result.Errors.Count);
+        if (_logger is not null) LogProcessingComplete(_logger, result.StoredImages.Count, documentId, result.Errors.Count);
 
         return result;
     }
@@ -300,8 +289,8 @@ public partial class ImageExtractionService : IImageExtractionService
         }
 
         var count = 0;
-        count += Base64MarkdownImageRegex().Matches(content).Count;
-        count += Base64HtmlImageRegex().Matches(content).Count;
+        count += Base64MarkdownImageRegex().Count(content);
+        count += Base64HtmlImageRegex().Count(content);
 
         // Count bare base64 images, but exclude those already matched by markdown regex
         var processedContent = content;
@@ -309,7 +298,7 @@ public partial class ImageExtractionService : IImageExtractionService
         {
             processedContent = processedContent.Replace(match.Value, "");
         }
-        count += BareBase64ImageRegex().Matches(processedContent).Count;
+        count += BareBase64ImageRegex().Count(processedContent);
 
         return count;
     }
@@ -353,4 +342,26 @@ public partial class ImageExtractionService : IImageExtractionService
 
         return totalSize;
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Extracted {Type} image {Index}: {MimeType}, {Size} bytes")]
+    private static partial void LogExtractedImage(ILogger logger, string type, int index, string mimeType, int size);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to decode base64 {Type} image at position {Position}")]
+    private static partial void LogDecodeFailure(ILogger logger, Exception exception, string type, int position);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Extracted {Count} images, total size: {Size} bytes, content reduced from {Original} to {Cleaned} chars")]
+    private static partial void LogExtractionComplete(ILogger logger, int count, long size, int original, int cleaned);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Stored image {ImageId} for document {DocumentId} at {StoragePath}")]
+    private static partial void LogStoredImage(ILogger logger, string imageId, string documentId, string storagePath);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to store image {Index} for document {DocumentId}")]
+    private static partial void LogStoreImageFailed(ILogger logger, Exception exception, int index, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Processed {Count} images for document {DocumentId}, {Errors} errors")]
+    private static partial void LogProcessingComplete(ILogger logger, int count, string documentId, int errors);
+
+    #endregion
 }

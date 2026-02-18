@@ -7,6 +7,7 @@ using FluxIndex.SDK.Processing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Spectre.Console;
+using System.Globalization;
 
 namespace FluxIndex.CLI.Commands;
 
@@ -273,10 +274,10 @@ public static class ProcessCommand
             .AddColumn("[bold]Value[/]");
 
         table.AddRow("[yellow]Document ID[/]", result.DocumentId);
-        table.AddRow("[yellow]Characters[/]", result.Metadata.CharacterCount.ToString("N0"));
-        table.AddRow("[yellow]Words[/]", result.Metadata.WordCount.ToString("N0"));
-        table.AddRow("[yellow]Chunks[/]", result.Stats.TotalChunks.ToString());
-        table.AddRow("[yellow]Images[/]", result.Stats.TotalImages.ToString());
+        table.AddRow("[yellow]Characters[/]", result.Metadata.CharacterCount.ToString("N0", CultureInfo.InvariantCulture));
+        table.AddRow("[yellow]Words[/]", result.Metadata.WordCount.ToString("N0", CultureInfo.InvariantCulture));
+        table.AddRow("[yellow]Chunks[/]", result.Stats.TotalChunks.ToString(CultureInfo.InvariantCulture));
+        table.AddRow("[yellow]Images[/]", result.Stats.TotalImages.ToString(CultureInfo.InvariantCulture));
         table.AddRow("[yellow]Duration[/]", $"{result.Stats.Duration.TotalSeconds:F2}s");
 
         if (!string.IsNullOrEmpty(result.Metadata.DetectedLanguage))
@@ -303,17 +304,17 @@ public static class ProcessCommand
 
         tree.AddNode("[dim]metadata.json[/]");
 
-        if (result.Images.Any())
+        if (result.Images.Count != 0)
         {
             tree.AddNode($"[dim]images/ ({result.Images.Count} files)[/]");
         }
 
-        if (result.Chunks.Any())
+        if (result.Chunks.Count != 0)
         {
             tree.AddNode($"[dim]chunks/ ({result.Chunks.Count * 2} files)[/]");
         }
 
-        if (result.QAPairs.Any())
+        if (result.QAPairs.Count != 0)
         {
             tree.AddNode($"[dim]qa_pairs.json ({result.QAPairs.Count} pairs)[/]");
         }

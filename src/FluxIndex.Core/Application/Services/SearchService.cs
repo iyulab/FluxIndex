@@ -13,7 +13,7 @@ namespace FluxIndex.Core.Services;
 /// <summary>
 /// 검색 서비스 - 고급 재순위화 및 메타데이터 활용 포함
 /// </summary>
-public class SearchService
+public partial class SearchService
 {
     private readonly IVectorStore _vectorStore;
     private readonly IEmbeddingService _embeddingService;
@@ -44,7 +44,8 @@ public class SearchService
         float minScore = 0.0f,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Searching for query: {Query}", query);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogSearch9(_logger, query);
 
         // Generate embedding for query
         var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
@@ -69,7 +70,7 @@ public class SearchService
             }
         }
 
-        _logger.LogInformation("Found {ResultCount} results for query", results.Count);
+        LogSearch8(_logger, results.Count);
         return results;
     }
 
@@ -79,7 +80,8 @@ public class SearchService
         float minScore = 0.8f,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Finding similar documents to {DocumentId}", documentId);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogSearch7(_logger, documentId);
 
         // Get document chunks
         var chunks = await _vectorStore.GetByDocumentIdAsync(documentId, cancellationToken);
@@ -87,7 +89,8 @@ public class SearchService
         
         if (firstChunk?.Embedding == null)
         {
-            _logger.LogWarning("No chunks found for document {DocumentId}", documentId);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogSearch6(_logger, documentId);
             return Enumerable.Empty<FluxIndex.Core.Application.Interfaces.SearchResult>();
         }
 
@@ -120,7 +123,7 @@ public class SearchService
             if (results.Count >= topK) break;
         }
 
-        _logger.LogInformation("Found {ResultCount} similar documents", results.Count);
+        LogSearch5(_logger, results.Count);
         return results;
     }
 
@@ -135,8 +138,8 @@ public class SearchService
         Dictionary<string, object>? filters = null,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Advanced search for query: {Query} with strategy: {Strategy}", 
-            query, rerankingStrategy);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogSearch4(_logger, query, rerankingStrategy);
 
         // 1. 기본 벡터 검색 (더 많은 결과 검색 후 재순위화)
         var expandedTopK = Math.Min(topK * 3, 50); // 3배 확장 검색
@@ -157,8 +160,7 @@ public class SearchService
         // 4. 최종 결과 반환
         var finalResults = rerankedResults.Take(topK).ToList();
 
-        _logger.LogInformation("Advanced search completed: {ResultCount} results after reranking", 
-            finalResults.Count);
+        LogSearch3(_logger, finalResults.Count);
 
         return finalResults;
     }
@@ -172,7 +174,8 @@ public class SearchService
         bool includeRelatedChunks = true,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Contextual search for query: {Query}", query);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogSearch2(_logger, query);
 
         // 1. 고급 검색 수행
         var baseResults = await AdvancedSearchAsync(
@@ -200,19 +203,18 @@ public class SearchService
         // 3. 중복 제거 및 점수 재조정
         var uniqueResults = RemoveDuplicatesAndRebalanceScores(expandedResults, topK);
 
-        _logger.LogInformation("Contextual search completed: {ResultCount} results with context", 
-            uniqueResults.Count);
+        LogSearch1(_logger, uniqueResults.Count);
 
         return uniqueResults;
     }
 
     #region Private Helper Methods
 
-    private IEnumerable<FluxIndex.Core.Application.Interfaces.SearchResult> ApplyMetadataFilters(
+    private static IEnumerable<FluxIndex.Core.Application.Interfaces.SearchResult> ApplyMetadataFilters(
         IEnumerable<FluxIndex.Core.Application.Interfaces.SearchResult> results,
         Dictionary<string, object>? filters)
     {
-        if (filters == null || !filters.Any())
+        if (filters == null || filters.Count == 0)
             return results;
 
         return results.Where(result =>
@@ -298,7 +300,7 @@ public class SearchService
         return chunks.FirstOrDefault(c => c.ChunkIndex == chunkIndex);
     }
 
-    private EnhancedSearchResult CreateEnhancedResult(
+    private static EnhancedSearchResult CreateEnhancedResult(
         DocumentChunk chunk, 
         double score, 
         string contextType)
@@ -317,7 +319,7 @@ public class SearchService
         };
     }
 
-    private List<EnhancedSearchResult> RemoveDuplicatesAndRebalanceScores(
+    private static List<EnhancedSearchResult> RemoveDuplicatesAndRebalanceScores(
         List<EnhancedSearchResult> results, 
         int maxResults)
     {
@@ -331,7 +333,7 @@ public class SearchService
             .ToList();
 
         // 점수 정규화 (0.0-1.0 범위)
-        if (unique.Any())
+        if (unique.Count != 0)
         {
             var maxScore = unique.Max(r => r.RerankedScore);
             var minScore = unique.Min(r => r.RerankedScore);
@@ -348,6 +350,29 @@ public class SearchService
 
         return unique;
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Searching for query: {Query}")]
+    private static partial void LogSearch9(ILogger logger, string query);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Found {ResultCount} results for query")]
+    private static partial void LogSearch8(ILogger logger, int resultCount);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Finding similar documents to {DocumentId}")]
+    private static partial void LogSearch7(ILogger logger, string documentId);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No chunks found for document {DocumentId}")]
+    private static partial void LogSearch6(ILogger logger, string documentId);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Found {ResultCount} similar documents")]
+    private static partial void LogSearch5(ILogger logger, int resultCount);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Advanced search for query: {Query} with strategy: {Strategy}")]
+    private static partial void LogSearch4(ILogger logger, string query, RerankingStrategy strategy);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Advanced search completed: {ResultCount} results after reranking")]
+    private static partial void LogSearch3(ILogger logger, int resultCount);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Contextual search for query: {Query}")]
+    private static partial void LogSearch2(ILogger logger, string query);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Contextual search completed: {ResultCount} results with context")]
+    private static partial void LogSearch1(ILogger logger, int resultCount);
 
     #endregion
 }

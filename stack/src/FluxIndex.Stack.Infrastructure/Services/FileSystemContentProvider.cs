@@ -8,7 +8,7 @@ namespace FluxIndex.Stack.Infrastructure.Services;
 /// File system based implementation of IDocumentContentProvider.
 /// Stores document content on disk for efficient large file handling.
 /// </summary>
-public class FileSystemContentProvider : IDocumentContentProvider
+public partial class FileSystemContentProvider : IDocumentContentProvider
 {
     private readonly string _basePath;
     private readonly ILogger<FileSystemContentProvider> _logger;
@@ -24,7 +24,7 @@ public class FileSystemContentProvider : IDocumentContentProvider
         if (!Directory.Exists(_basePath))
         {
             Directory.CreateDirectory(_basePath);
-            _logger.LogInformation("Created content storage directory: {Path}", _basePath);
+            LogCreatedStorageDirectory(_logger, _basePath);
         }
     }
 
@@ -34,7 +34,7 @@ public class FileSystemContentProvider : IDocumentContentProvider
 
         if (!File.Exists(path))
         {
-            _logger.LogWarning("Content file not found for document {DocumentId}", documentId);
+            LogContentFileNotFound(_logger, documentId);
             return string.Empty;
         }
 
@@ -53,7 +53,7 @@ public class FileSystemContentProvider : IDocumentContentProvider
 
         if (!File.Exists(path))
         {
-            _logger.LogWarning("Content file not found for document {DocumentId}", documentId);
+            LogContentFileNotFound(_logger, documentId);
             return Array.Empty<byte>();
         }
 
@@ -76,7 +76,7 @@ public class FileSystemContentProvider : IDocumentContentProvider
         var sanitizedContent = SanitizeContent(content);
 
         await File.WriteAllTextAsync(path, sanitizedContent, cancellationToken);
-        _logger.LogDebug("Stored text content for document {DocumentId} at {Path}", documentId, path);
+        LogStoredTextContent(_logger, documentId, path);
     }
 
     public async Task StoreContentBytesAsync(Guid documentId, byte[] content, CancellationToken cancellationToken = default)
@@ -91,7 +91,7 @@ public class FileSystemContentProvider : IDocumentContentProvider
         }
 
         await File.WriteAllBytesAsync(path, content, cancellationToken);
-        _logger.LogDebug("Stored binary content for document {DocumentId} at {Path}", documentId, path);
+        LogStoredBinaryContent(_logger, documentId, path);
     }
 
     public Task<bool> ContentExistsAsync(Guid documentId, CancellationToken cancellationToken = default)
@@ -110,13 +110,13 @@ public class FileSystemContentProvider : IDocumentContentProvider
         if (File.Exists(textPath))
         {
             File.Delete(textPath);
-            _logger.LogDebug("Deleted text content for document {DocumentId}", documentId);
+            LogDeletedTextContent(_logger, documentId);
         }
 
         if (File.Exists(binPath))
         {
             File.Delete(binPath);
-            _logger.LogDebug("Deleted binary content for document {DocumentId}", documentId);
+            LogDeletedBinaryContent(_logger, documentId);
         }
 
         return Task.CompletedTask;
@@ -140,7 +140,7 @@ public class FileSystemContentProvider : IDocumentContentProvider
 
         // Store image data
         await File.WriteAllBytesAsync(path, imageData, cancellationToken);
-        _logger.LogDebug("Stored image {ImageId} for document {DocumentId} at {Path}", imageId, documentId, path);
+        LogStoredImage(_logger, imageId, documentId, path);
     }
 
     public async Task<(byte[] Data, string ContentType)?> GetImageAsync(Guid documentId, string imageId, CancellationToken cancellationToken = default)
@@ -154,7 +154,7 @@ public class FileSystemContentProvider : IDocumentContentProvider
         // Find the image file (could be any extension)
         var pattern = $"{imageId}.*";
         var files = Directory.GetFiles(imagesDir, pattern);
-        var imageFile = files.FirstOrDefault(f => !f.EndsWith(".meta"));
+        var imageFile = files.FirstOrDefault(f => !f.EndsWith(".meta", StringComparison.Ordinal));
 
         if (imageFile == null || !File.Exists(imageFile))
         {
@@ -183,7 +183,7 @@ public class FileSystemContentProvider : IDocumentContentProvider
 
         // Get all image files (exclude .meta files) and extract image IDs
         var imageIds = Directory.GetFiles(imagesDir)
-            .Where(f => !f.EndsWith(".meta"))
+            .Where(f => !f.EndsWith(".meta", StringComparison.Ordinal))
             .Select(f => Path.GetFileNameWithoutExtension(f))
             .Distinct()
             .OrderBy(id => id)
@@ -198,7 +198,7 @@ public class FileSystemContentProvider : IDocumentContentProvider
         if (Directory.Exists(imagesDir))
         {
             Directory.Delete(imagesDir, recursive: true);
-            _logger.LogDebug("Deleted images directory for document {DocumentId}", documentId);
+            LogDeletedImagesDirectory(_logger, documentId);
         }
 
         return Task.CompletedTask;
@@ -258,4 +258,32 @@ public class FileSystemContentProvider : IDocumentContentProvider
 
         return content.Replace("\0", string.Empty);
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Created content storage directory: {Path}")]
+    private static partial void LogCreatedStorageDirectory(ILogger logger, string path);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Content file not found for document {DocumentId}")]
+    private static partial void LogContentFileNotFound(ILogger logger, Guid documentId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Stored text content for document {DocumentId} at {Path}")]
+    private static partial void LogStoredTextContent(ILogger logger, Guid documentId, string path);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Stored binary content for document {DocumentId} at {Path}")]
+    private static partial void LogStoredBinaryContent(ILogger logger, Guid documentId, string path);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Deleted text content for document {DocumentId}")]
+    private static partial void LogDeletedTextContent(ILogger logger, Guid documentId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Deleted binary content for document {DocumentId}")]
+    private static partial void LogDeletedBinaryContent(ILogger logger, Guid documentId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Stored image {ImageId} for document {DocumentId} at {Path}")]
+    private static partial void LogStoredImage(ILogger logger, string imageId, Guid documentId, string path);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Deleted images directory for document {DocumentId}")]
+    private static partial void LogDeletedImagesDirectory(ILogger logger, Guid documentId);
+
+    #endregion
 }

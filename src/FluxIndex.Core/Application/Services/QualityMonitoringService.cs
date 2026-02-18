@@ -15,7 +15,7 @@ namespace FluxIndex.Core.Application.Services;
 /// 실시간 품질 모니터링 서비스 구현
 /// 메모리 기반 고성능 품질 모니터링 및 알림 시스템
 /// </summary>
-public class QualityMonitoringService : IQualityMonitoringService, IDisposable
+public partial class QualityMonitoringService : IQualityMonitoringService, IDisposable
 {
     private readonly ILogger<QualityMonitoringService> _logger;
     private readonly ConcurrentQueue<QualityMetrics> _metricsBuffer;
@@ -55,7 +55,7 @@ public class QualityMonitoringService : IQualityMonitoringService, IDisposable
         _processingTimer.Elapsed += ProcessMetricsAsync;
         _processingTimer.AutoReset = true;
 
-        _logger.LogInformation("품질 모니터링 서비스 초기화 완료");
+        LogQualityMonitoring12(_logger);
     }
 
     public async Task<QualityMetrics> EvaluateSearchQualityAsync(
@@ -70,11 +70,11 @@ public class QualityMonitoringService : IQualityMonitoringService, IDisposable
             Query = query,
             ResponseTimeMs = responseTime.TotalMilliseconds,
             ResultCount = results.Count,
-            IsSuccessful = results.Any(),
+            IsSuccessful = results.Count != 0,
             Metadata = metadata ?? new Dictionary<string, object>()
         };
 
-        if (results.Any())
+        if (results.Count != 0)
         {
             // 품질 메트릭 계산
             metrics.AverageSimilarity = results.Average(r => r.Score);
@@ -92,8 +92,8 @@ public class QualityMonitoringService : IQualityMonitoringService, IDisposable
         // 실시간 경고 검사
         await CheckQualityAlertsAsync(metrics, cancellationToken);
 
-        _logger.LogDebug("품질 메트릭 평가 완료: Query={Query}, Quality={QualityScore:F1}",
-            query, metrics.QualityScore);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogQualityMonitoring11(_logger, query, metrics.QualityScore);
 
         return metrics;
     }
@@ -107,7 +107,7 @@ public class QualityMonitoringService : IQualityMonitoringService, IDisposable
             .Where(m => m.Timestamp >= cutoffTime)
             .ToList();
 
-        if (!relevantMetrics.Any())
+        if (relevantMetrics.Count == 0)
         {
             return new QualityDashboard { TimeWindow = timeWindow };
         }
@@ -123,17 +123,17 @@ public class QualityMonitoringService : IQualityMonitoringService, IDisposable
             AverageResponseTimeMs = responseTimes.Average(),
             P95ResponseTimeMs = CalculatePercentile(responseTimes, 0.95),
             P99ResponseTimeMs = CalculatePercentile(responseTimes, 0.99),
-            AverageResultCount = successfulMetrics.Any() ? successfulMetrics.Average(m => m.ResultCount) : 0,
-            AverageQualityScore = successfulMetrics.Any() ? successfulMetrics.Average(m => m.QualityScore) : 0,
+            AverageResultCount = successfulMetrics.Count != 0 ? successfulMetrics.Average(m => m.ResultCount) : 0,
+            AverageQualityScore = successfulMetrics.Count != 0 ? successfulMetrics.Average(m => m.QualityScore) : 0,
             CacheHitRate = relevantMetrics.Count(m => m.CacheHit) / (double)relevantMetrics.Count,
-            AverageDiversityScore = successfulMetrics.Any() ? successfulMetrics.Average(m => m.DiversityScore) : 0,
+            AverageDiversityScore = successfulMetrics.Count != 0 ? successfulMetrics.Average(m => m.DiversityScore) : 0,
             ActiveAlerts = _activeAlerts.Count(kvp => !kvp.Value.IsResolved),
             TopQueries = GetTopQueries(relevantMetrics, 10),
             RecentMetrics = relevantMetrics.OrderByDescending(m => m.Timestamp).Take(50).ToList()
         };
 
-        _logger.LogDebug("실시간 대시보드 생성 완료: {TotalQueries}개 쿼리, {SuccessRate:P1} 성공률",
-            dashboard.TotalQueries, dashboard.SuccessRate);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogQualityMonitoring10(_logger, dashboard.TotalQueries, dashboard.SuccessRate);
 
         return dashboard;
     }
@@ -142,8 +142,8 @@ public class QualityMonitoringService : IQualityMonitoringService, IDisposable
     {
         _thresholds = thresholds ?? throw new ArgumentNullException(nameof(thresholds));
 
-        _logger.LogInformation("품질 임계값 업데이트: 응답시간={MaxResponseTime}ms, 최소결과={MinResults}개, 품질점수={MinQuality}",
-            _thresholds.MaxResponseTimeMs, _thresholds.MinResultCount, _thresholds.MinQualityScore);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogQualityMonitoring9(_logger, _thresholds.MaxResponseTimeMs, _thresholds.MinResultCount, _thresholds.MinQualityScore);
 
         return Task.CompletedTask;
     }
@@ -168,7 +168,8 @@ public class QualityMonitoringService : IQualityMonitoringService, IDisposable
 
         var result = alerts.OrderByDescending(a => a.CreatedAt).ToList();
 
-        _logger.LogDebug("품질 경고 조회 완료: {Count}개 ({Severity})", result.Count, severity);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogQualityMonitoring8(_logger, result.Count, severity);
 
         return Task.FromResult<IReadOnlyList<QualityAlert>>(result);
     }
@@ -184,7 +185,7 @@ public class QualityMonitoringService : IQualityMonitoringService, IDisposable
             .OrderBy(m => m.Timestamp)
             .ToList();
 
-        if (!relevantMetrics.Any())
+        if (relevantMetrics.Count == 0)
         {
             return new QualityTrends { Period = period };
         }
@@ -200,15 +201,15 @@ public class QualityMonitoringService : IQualityMonitoringService, IDisposable
                 .Where(m => m.Timestamp >= startTime && m.Timestamp < endTime)
                 .ToList();
 
-            if (periodMetrics.Any())
+            if (periodMetrics.Count != 0)
             {
                 var successfulMetrics = periodMetrics.Where(m => m.IsSuccessful).ToList();
                 dataPoints.Add(new QualityDataPoint
                 {
                     Timestamp = startTime,
                     AvgResponseTime = periodMetrics.Average(m => m.ResponseTimeMs),
-                    AvgQualityScore = successfulMetrics.Any() ? successfulMetrics.Average(m => m.QualityScore) : 0,
-                    AvgResultCount = successfulMetrics.Any() ? successfulMetrics.Average(m => m.ResultCount) : 0,
+                    AvgQualityScore = successfulMetrics.Count != 0 ? successfulMetrics.Average(m => m.QualityScore) : 0,
+                    AvgResultCount = successfulMetrics.Count != 0 ? successfulMetrics.Average(m => m.ResultCount) : 0,
                     SuccessRate = periodMetrics.Count > 0 ? (double)successfulMetrics.Count / periodMetrics.Count : 0,
                     CacheHitRate = periodMetrics.Count > 0 ? (double)periodMetrics.Count(m => m.CacheHit) / periodMetrics.Count : 0
                 });
@@ -234,14 +235,14 @@ public class QualityMonitoringService : IQualityMonitoringService, IDisposable
     {
         if (_isMonitoring)
         {
-            _logger.LogWarning("품질 모니터링이 이미 실행 중입니다");
+            LogQualityMonitoring7(_logger);
             return;
         }
 
         _isMonitoring = true;
         _processingTimer.Start();
 
-        _logger.LogInformation("품질 모니터링 시작");
+        LogQualityMonitoring6(_logger);
     }
 
     public async Task StopMonitoringAsync(CancellationToken cancellationToken = default)
@@ -257,7 +258,7 @@ public class QualityMonitoringService : IQualityMonitoringService, IDisposable
         // 남은 메트릭 처리
         await ProcessPendingMetricsAsync();
 
-        _logger.LogInformation("품질 모니터링 중지");
+        LogQualityMonitoring5(_logger);
     }
 
     private async void ProcessMetricsAsync(object? sender, ElapsedEventArgs e)
@@ -272,7 +273,7 @@ public class QualityMonitoringService : IQualityMonitoringService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "메트릭 처리 중 오류 발생");
+            LogQualityMonitoring4(_logger, ex);
         }
     }
 
@@ -295,7 +296,8 @@ public class QualityMonitoringService : IQualityMonitoringService, IDisposable
 
             if (processedCount > 0)
             {
-                _logger.LogDebug("메트릭 {Count}개 처리 완료", processedCount);
+                if (_logger.IsEnabled(LogLevel.Information))
+                    LogQualityMonitoring3(_logger, processedCount);
             }
         }
         finally
@@ -372,11 +374,11 @@ public class QualityMonitoringService : IQualityMonitoringService, IDisposable
         foreach (var alert in alerts)
         {
             _activeAlerts[alert.Id] = alert;
-            _logger.LogWarning("품질 경고 생성: {Title} - {Message}", alert.Title, alert.Message);
+            LogQualityMonitoring2(_logger, alert.Title, alert.Message);
         }
     }
 
-    private QualityAlert CreateAlert(AlertType type, AlertSeverity severity, string title, string message,
+    private static QualityAlert CreateAlert(AlertType type, AlertSeverity severity, string title, string message,
         string metricName, double currentValue, double thresholdValue)
     {
         return new QualityAlert
@@ -391,7 +393,7 @@ public class QualityMonitoringService : IQualityMonitoringService, IDisposable
         };
     }
 
-    private double CalculateDiversityScore(IReadOnlyList<SearchResult> results)
+    private static double CalculateDiversityScore(IReadOnlyList<SearchResult> results)
     {
         if (results.Count <= 1) return 1.0;
 
@@ -422,16 +424,16 @@ public class QualityMonitoringService : IQualityMonitoringService, IDisposable
         return Math.Min(100, Math.Max(0, score));
     }
 
-    private double CalculatePercentile(List<double> values, double percentile)
+    private static double CalculatePercentile(List<double> values, double percentile)
     {
-        if (!values.Any()) return 0;
+        if (values.Count == 0) return 0;
 
         var sorted = values.OrderBy(x => x).ToList();
         var index = (int)(percentile * (sorted.Count - 1));
         return sorted[index];
     }
 
-    private IReadOnlyList<QueryFrequency> GetTopQueries(List<QualityMetrics> metrics, int count)
+    private static List<QueryFrequency> GetTopQueries(List<QualityMetrics> metrics, int count)
     {
         return metrics
             .Where(m => m.IsSuccessful)
@@ -447,14 +449,14 @@ public class QualityMonitoringService : IQualityMonitoringService, IDisposable
             .ToList();
     }
 
-    private TrendDirection AnalyzeTrendDirection(List<QualityDataPoint> dataPoints)
+    private static TrendDirection AnalyzeTrendDirection(List<QualityDataPoint> dataPoints)
     {
         if (dataPoints.Count < 2) return TrendDirection.Stable;
 
         var recentPoints = dataPoints.TakeLast(Math.Min(10, dataPoints.Count / 2)).ToList();
         var olderPoints = dataPoints.Take(Math.Min(10, dataPoints.Count / 2)).ToList();
 
-        if (!recentPoints.Any() || !olderPoints.Any()) return TrendDirection.Stable;
+        if (recentPoints.Count == 0 || olderPoints.Count == 0) return TrendDirection.Stable;
 
         var recentAvgQuality = recentPoints.Average(p => p.AvgQualityScore);
         var olderAvgQuality = olderPoints.Average(p => p.AvgQualityScore);
@@ -466,11 +468,11 @@ public class QualityMonitoringService : IQualityMonitoringService, IDisposable
         return TrendDirection.Stable;
     }
 
-    private IReadOnlyList<string> GenerateInsights(List<QualityDataPoint> dataPoints, List<QualityMetrics> allMetrics)
+    private List<string> GenerateInsights(List<QualityDataPoint> dataPoints, List<QualityMetrics> allMetrics)
     {
         var insights = new List<string>();
 
-        if (!dataPoints.Any()) return insights;
+        if (dataPoints.Count == 0) return insights;
 
         // 성능 인사이트
         var avgResponseTime = dataPoints.Average(p => p.AvgResponseTime);
@@ -505,6 +507,37 @@ public class QualityMonitoringService : IQualityMonitoringService, IDisposable
         _processingTimer?.Dispose();
         _processingLock?.Dispose();
 
-        _logger.LogInformation("품질 모니터링 서비스 리소스 정리 완료");
+        GC.SuppressFinalize(this);
+
+        LogQualityMonitoring1(_logger);
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "품질 모니터링 서비스 초기화 완료")]
+    private static partial void LogQualityMonitoring12(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "품질 메트릭 평가 완료: Query={Query}, Quality={QualityScore:F1}")]
+    private static partial void LogQualityMonitoring11(ILogger logger, string query, double qualityScore);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "실시간 대시보드 생성 완료: {TotalQueries}개 쿼리, {SuccessRate:P1} 성공률")]
+    private static partial void LogQualityMonitoring10(ILogger logger, long totalQueries, double successRate);
+    [LoggerMessage(Level = LogLevel.Information, Message = "품질 임계값 업데이트: 응답시간={MaxResponseTime}ms, 최소결과={MinResults}개, 품질점수={MinQuality}")]
+    private static partial void LogQualityMonitoring9(ILogger logger, double maxResponseTime, double minResults, double minQuality);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "품질 경고 조회 완료: {Count}개 ({Severity})")]
+    private static partial void LogQualityMonitoring8(ILogger logger, int count, AlertSeverity? severity);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "품질 모니터링이 이미 실행 중입니다")]
+    private static partial void LogQualityMonitoring7(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Information, Message = "품질 모니터링 시작")]
+    private static partial void LogQualityMonitoring6(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Information, Message = "품질 모니터링 중지")]
+    private static partial void LogQualityMonitoring5(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Error, Message = "메트릭 처리 중 오류 발생")]
+    private static partial void LogQualityMonitoring4(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "메트릭 {Count}개 처리 완료")]
+    private static partial void LogQualityMonitoring3(ILogger logger, int count);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "품질 경고 생성: {Title} - {Message}")]
+    private static partial void LogQualityMonitoring2(ILogger logger, string title, string message);
+    [LoggerMessage(Level = LogLevel.Information, Message = "품질 모니터링 서비스 리소스 정리 완료")]
+    private static partial void LogQualityMonitoring1(ILogger logger);
+
+    #endregion
 }

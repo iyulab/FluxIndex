@@ -12,7 +12,7 @@ namespace FluxIndex.SDK.Extensions.FileFlux;
 /// FileFlux integration service for FluxIndex - bridges FileFlux document processing with FluxIndex indexing
 /// Leverages FileFlux 0.10.x stateful document processor with 5-stage pipeline
 /// </summary>
-public class FileFluxIntegration
+public partial class FileFluxIntegration
 {
     private readonly IDocumentProcessorFactory _processorFactory;
     private readonly ILanguageProfileProvider _languageProfileProvider;
@@ -63,8 +63,7 @@ public class FileFluxIntegration
             MetadataSchema = _options.DefaultMetadataSchema
         };
 
-        _logger.LogInformation("Processing file with FileFlux: {FilePath}, Language: {Language}",
-            filePath, options.Language ?? "auto");
+        LogProcessingFile(_logger, filePath, options.Language ?? "auto");
 
         try
         {
@@ -85,17 +84,17 @@ public class FileFluxIntegration
             await using var processor = _processorFactory.Create(filePath);
             var processingOpts = new global::FileFlux.Core.ProcessingOptions { Chunking = chunkingOptions };
             await processor.ProcessAsync(processingOpts, cancellationToken);
-            var fileFluxChunks = processor.Result.Chunks;
+            var fileFluxChunks = processor.Result?.Chunks;
 
-            foreach (var fileFluxChunk in fileFluxChunks)
+            foreach (var fileFluxChunk in fileFluxChunks ?? [])
             {
                 var fluxChunk = ConvertToFluxIndexChunk(fileFluxChunk, chunkIndex++, filePath);
                 fluxIndexChunks.Add(fluxChunk);
             }
 
-            if (!fluxIndexChunks.Any())
+            if (fluxIndexChunks.Count == 0)
             {
-                _logger.LogWarning("No chunks generated from file: {FilePath}", filePath);
+                LogNoChunksGenerated(_logger, filePath);
                 throw new InvalidOperationException($"No chunks generated from file: {filePath}");
             }
 
@@ -127,24 +126,23 @@ public class FileFluxIntegration
                 document: document,
                 cancellationToken: cancellationToken);
 
-            _logger.LogInformation("Successfully processed and indexed {ChunkCount} chunks for document {DocumentId}",
-                fluxIndexChunks.Count, indexedDocumentId);
+            LogSuccessfullyProcessedAndIndexed(_logger, fluxIndexChunks.Count, indexedDocumentId);
 
             return indexedDocumentId;
         }
         catch (FileNotFoundException ex)
         {
-            _logger.LogError(ex, "File not found: {FilePath}", filePath);
+            LogFileNotFound(_logger, ex, filePath);
             throw;
         }
         catch (UnauthorizedAccessException ex)
         {
-            _logger.LogError(ex, "Access denied to file: {FilePath}", filePath);
+            LogAccessDenied(_logger, ex, filePath);
             throw;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unexpected error processing file: {FilePath}", filePath);
+            LogUnexpectedErrorProcessingFile(_logger, ex, filePath);
             throw new InvalidOperationException($"Failed to process file: {filePath}", ex);
         }
     }
@@ -168,8 +166,7 @@ public class FileFluxIntegration
             MetadataSchema = _options.DefaultMetadataSchema
         };
 
-        _logger.LogInformation("Processing file with FileFlux streaming API: {FilePath}, Language: {Language}",
-            filePath, options.Language ?? "auto");
+        LogProcessingFileStreaming(_logger, filePath, options.Language ?? "auto");
 
         try
         {
@@ -200,7 +197,7 @@ public class FileFluxIntegration
                 // Immediate indexing for ultra-large files (if enabled)
                 if (_options.EnableImmediateIndexing && fluxIndexChunks.Count >= _options.ImmediateIndexingBatchSize)
                 {
-                    _logger.LogDebug("Immediate batch indexing: {ChunkCount} chunks", fluxIndexChunks.Count);
+                    LogImmediateBatchIndexing(_logger, fluxIndexChunks.Count);
                     await BatchIndexChunksAsync(documentId, fluxIndexChunks, cancellationToken);
                     fluxIndexChunks.Clear();
                 }
@@ -221,12 +218,12 @@ public class FileFluxIntegration
 
             if (totalChunks == 0)
             {
-                _logger.LogWarning("No chunks generated from file: {FilePath}", filePath);
+                LogNoChunksGenerated(_logger, filePath);
                 throw new InvalidOperationException($"No chunks generated from file: {filePath}");
             }
 
             // Create FluxIndex Document with remaining chunks
-            if (fluxIndexChunks.Any())
+            if (fluxIndexChunks.Count != 0)
             {
                 var document = Document.Create(documentId);
                 document.Content = string.Join("\n", fluxIndexChunks.Select(c => c.Content));
@@ -255,8 +252,7 @@ public class FileFluxIntegration
                     document: document,
                     cancellationToken: cancellationToken);
 
-                _logger.LogInformation("Successfully processed and indexed {ChunkCount} chunks for document {DocumentId} (streaming mode)",
-                    totalChunks, indexedDocumentId);
+                LogSuccessfullyProcessedAndIndexedStreaming(_logger, totalChunks, indexedDocumentId);
 
                 return indexedDocumentId;
             }
@@ -265,17 +261,17 @@ public class FileFluxIntegration
         }
         catch (FileNotFoundException ex)
         {
-            _logger.LogError(ex, "File not found: {FilePath}", filePath);
+            LogFileNotFound(_logger, ex, filePath);
             throw;
         }
         catch (UnauthorizedAccessException ex)
         {
-            _logger.LogError(ex, "Access denied to file: {FilePath}", filePath);
+            LogAccessDenied(_logger, ex, filePath);
             throw;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unexpected error processing file: {FilePath}", filePath);
+            LogUnexpectedErrorProcessingFile(_logger, ex, filePath);
             throw new InvalidOperationException($"Failed to process file: {filePath}", ex);
         }
     }
@@ -288,7 +284,7 @@ public class FileFluxIntegration
         List<FluxIndexDocumentChunk> chunks,
         CancellationToken cancellationToken)
     {
-        if (!chunks.Any()) return;
+        if (chunks.Count == 0) return;
 
         try
         {
@@ -300,11 +296,11 @@ public class FileFluxIntegration
             partialDocument.Metadata["is_partial"] = true;
 
             await _indexer.IndexDocumentAsync(partialDocument, cancellationToken);
-            _logger.LogDebug("Batch indexed {ChunkCount} chunks for document {DocumentId}", chunks.Count, documentId);
+            LogBatchIndexedChunks(_logger, chunks.Count, documentId);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to batch index chunks for document {DocumentId}", documentId);
+            LogFailedToBatchIndexChunks(_logger, ex, documentId);
             // Don't throw - continue processing
         }
     }
@@ -313,7 +309,7 @@ public class FileFluxIntegration
     /// Apply custom properties to FileFlux ChunkingOptions based on ProcessingOptions
     /// Leverages FileFlux 0.4.8 language profiles and metadata enrichment
     /// </summary>
-    private void ApplyCustomProperties(ChunkingOptions chunkingOptions, ProcessingOptions options)
+    private static void ApplyCustomProperties(ChunkingOptions chunkingOptions, ProcessingOptions options)
     {
         // Language-aware chunking (FileFlux 0.4.8 - 11 language profiles)
         if (!string.IsNullOrEmpty(options.Language))
@@ -351,13 +347,12 @@ public class FileFluxIntegration
             try
             {
                 var detectedProfile = _languageProfileProvider.DetectAndGetProfile(contentSample);
-                _logger.LogDebug("Auto-detected language: {Language} ({Script})",
-                    detectedProfile.LanguageCode, detectedProfile.ScriptCode);
+                LogAutoDetectedLanguage(_logger, detectedProfile.LanguageCode, detectedProfile.ScriptCode);
                 return detectedProfile.LanguageCode;
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Language auto-detection failed, using default");
+                LogLanguageAutoDetectionFailed(_logger, ex);
                 return _languageProfileProvider.DefaultProfile.LanguageCode;
             }
         }
@@ -381,16 +376,16 @@ public class FileFluxIntegration
             metadata["ff_script_code"] = profile.ScriptCode;
             metadata["ff_writing_direction"] = profile.WritingDirection.ToString();
 
-            _logger.LogDebug("Added language profile metadata: {Language} ({Script}, {Direction})",
-                profile.LanguageName, profile.ScriptCode, profile.WritingDirection);
+            var writingDirection = profile.WritingDirection.ToString();
+            LogAddedLanguageProfileMetadata(_logger, profile.LanguageName, profile.ScriptCode, writingDirection);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to add language profile metadata for {LanguageCode}", languageCode);
+            LogFailedToAddLanguageProfileMetadata(_logger, ex, languageCode);
         }
     }
 
-    private FluxIndexDocumentChunk ConvertToFluxIndexChunk(FileFluxChunk fileFluxChunk, int chunkIndex, string filePath)
+    private static FluxIndexDocumentChunk ConvertToFluxIndexChunk(FileFluxChunk fileFluxChunk, int chunkIndex, string filePath)
     {
         var documentId = Path.GetFileNameWithoutExtension(filePath);
         var fluxChunk = new FluxIndexDocumentChunk(fileFluxChunk.Content, chunkIndex)
@@ -504,6 +499,55 @@ public class FileFluxIntegration
 
         return fluxChunk;
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Processing file with FileFlux: {FilePath}, Language: {Language}")]
+    private static partial void LogProcessingFile(ILogger logger, string filePath, string language);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No chunks generated from file: {FilePath}")]
+    private static partial void LogNoChunksGenerated(ILogger logger, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Successfully processed and indexed {ChunkCount} chunks for document {DocumentId}")]
+    private static partial void LogSuccessfullyProcessedAndIndexed(ILogger logger, int chunkCount, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "File not found: {FilePath}")]
+    private static partial void LogFileNotFound(ILogger logger, Exception exception, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Access denied to file: {FilePath}")]
+    private static partial void LogAccessDenied(ILogger logger, Exception exception, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Unexpected error processing file: {FilePath}")]
+    private static partial void LogUnexpectedErrorProcessingFile(ILogger logger, Exception exception, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Processing file with FileFlux streaming API: {FilePath}, Language: {Language}")]
+    private static partial void LogProcessingFileStreaming(ILogger logger, string filePath, string language);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Immediate batch indexing: {ChunkCount} chunks")]
+    private static partial void LogImmediateBatchIndexing(ILogger logger, int chunkCount);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Successfully processed and indexed {ChunkCount} chunks for document {DocumentId} (streaming mode)")]
+    private static partial void LogSuccessfullyProcessedAndIndexedStreaming(ILogger logger, int chunkCount, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Batch indexed {ChunkCount} chunks for document {DocumentId}")]
+    private static partial void LogBatchIndexedChunks(ILogger logger, int chunkCount, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to batch index chunks for document {DocumentId}")]
+    private static partial void LogFailedToBatchIndexChunks(ILogger logger, Exception exception, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Auto-detected language: {Language} ({Script})")]
+    private static partial void LogAutoDetectedLanguage(ILogger logger, string language, string script);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Language auto-detection failed, using default")]
+    private static partial void LogLanguageAutoDetectionFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Added language profile metadata: {Language} ({Script}, {Direction})")]
+    private static partial void LogAddedLanguageProfileMetadata(ILogger logger, string language, string script, string direction);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to add language profile metadata for {LanguageCode}")]
+    private static partial void LogFailedToAddLanguageProfileMetadata(ILogger logger, Exception exception, string languageCode);
+
+    #endregion
 }
 
 /// <summary>
@@ -542,7 +586,7 @@ public class ProcessingOptions
     /// <summary>
     /// Enable metadata enrichment with AI-powered extraction
     /// </summary>
-    public bool EnableMetadataEnrichment { get; set; } = false;
+    public bool EnableMetadataEnrichment { get; set; }
 
     /// <summary>
     /// Metadata schema for enrichment (General, Academic, Technical, Legal, Medical)

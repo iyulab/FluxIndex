@@ -13,8 +13,10 @@ namespace FluxIndex.Core.Services.SelfRAG;
 /// <summary>
 /// Self-RAG (Self-Reflective Retrieval Augmented Generation) 서비스 구현
 /// </summary>
-public class SelfRAGService : ISelfRAGService
+public partial class SelfRAGService : ISelfRAGService
 {
+    private static readonly char[] QueryTokenSeparators = [' ', '\t', '\n', ',', '.', '!', '?'];
+
     private readonly IAdaptiveSearchService _adaptiveSearch;
     private readonly IQueryComplexityAnalyzer _queryAnalyzer;
     private readonly ITextCompletionService? _textCompletion;
@@ -40,7 +42,8 @@ public class SelfRAGService : ISelfRAGService
         options ??= new SelfRAGOptions();
         var stopwatch = Stopwatch.StartNew();
 
-        _logger.LogInformation("Starting Self-RAG search for query: {Query}", query);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogSelfRAG14(_logger, query);
 
         var result = new SelfRAGResult
         {
@@ -62,7 +65,8 @@ public class SelfRAGService : ISelfRAGService
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                _logger.LogDebug("Self-RAG iteration {Iteration}/{MaxIterations}", iteration, options.MaxIterations);
+                if (_logger.IsEnabled(LogLevel.Information))
+                    LogSelfRAG13(_logger, iteration, options.MaxIterations);
 
                 var iterationStopwatch = Stopwatch.StartNew();
                 var searchIteration = new SearchIteration
@@ -85,19 +89,20 @@ public class SelfRAGService : ISelfRAGService
 
                 result.Iterations.Add(searchIteration);
 
-                _logger.LogDebug("Iteration {Iteration} completed: Quality={Quality:F2}, Results={Count}",
-                    iteration, qualityAssessment.OverallScore, searchResult.Documents.Count());
+                var docCount = searchResult.Documents.Count();
+                LogSelfRAG12(_logger, iteration, qualityAssessment.OverallScore, docCount);
 
                 // 3. 품질 임계값 확인
                 if (qualityAssessment.OverallScore >= options.QualityThreshold &&
-                    searchResult.Documents.Count() >= options.MinResults)
+                    docCount >= options.MinResults)
                 {
                     result.FinalResults = searchResult.Documents;
                     result.FinalQualityScore = qualityAssessment.OverallScore;
                     result.IsSuccessful = true;
                     result.TerminationReason = $"Quality threshold reached ({qualityAssessment.OverallScore:F2})";
 
-                    _logger.LogInformation("Self-RAG completed successfully after {Iteration} iteration(s)", iteration);
+                    if (_logger.IsEnabled(LogLevel.Information))
+                        LogSelfRAG11(_logger, iteration);
                     break;
                 }
 
@@ -116,7 +121,7 @@ public class SelfRAGService : ISelfRAGService
                 {
                     var refinementSuggestions = await SuggestQueryRefinementsAsync(currentQuery, qualityAssessment, cancellationToken);
                     
-                    if (refinementSuggestions.RefinedQueries.Any())
+                    if (refinementSuggestions.RefinedQueries.Count != 0)
                     {
                         // 가장 유망한 개선 쿼리 선택
                         var bestRefinement = refinementSuggestions.RefinedQueries
@@ -141,7 +146,8 @@ public class SelfRAGService : ISelfRAGService
                         searchIteration.ImprovementNotes.Add($"Query refined: {bestRefinement.Rationale}");
                         searchIteration.NextIterationPlan = $"Retry with refined query: {currentQuery}";
 
-                        _logger.LogDebug("Query refined for next iteration: {RefinedQuery}", currentQuery);
+                        if (_logger.IsEnabled(LogLevel.Information))
+                            LogSelfRAG10(_logger, currentQuery);
                     }
                     else
                     {
@@ -159,7 +165,7 @@ public class SelfRAGService : ISelfRAGService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error in Self-RAG search");
+            LogSelfRAG9(_logger, ex);
             result.IsSuccessful = false;
             result.TerminationReason = $"Error: {ex.Message}";
             throw;
@@ -169,8 +175,8 @@ public class SelfRAGService : ISelfRAGService
             stopwatch.Stop();
             result.TotalProcessingTime = stopwatch.Elapsed;
             
-            _logger.LogInformation("Self-RAG search completed: Success={Success}, Iterations={Count}, Quality={Quality:F2}, Time={Time}ms",
-                result.IsSuccessful, result.Iterations.Count, result.FinalQualityScore, result.TotalProcessingTime.TotalMilliseconds);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogSelfRAG8(_logger, result.IsSuccessful, result.Iterations.Count, result.FinalQualityScore, result.TotalProcessingTime.TotalMilliseconds);
         }
 
         return result;
@@ -187,7 +193,8 @@ public class SelfRAGService : ISelfRAGService
             ResultCount = documents.Count
         };
 
-        _logger.LogDebug("Assessing quality of {Count} results for query: {Query}", documents.Count, query);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogSelfRAG7(_logger, documents.Count, query);
 
         try
         {
@@ -218,12 +225,12 @@ public class SelfRAGService : ISelfRAGService
             // 9. 평가 근거 추가
             PopulateRationale(assessment);
 
-            _logger.LogDebug("Quality assessment completed: Overall={Overall:F2}, Relevance={Relevance:F2}, Issues={IssueCount}",
-                assessment.OverallScore, assessment.RelevanceScore, assessment.Issues.Count);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogSelfRAG6(_logger, assessment.OverallScore, assessment.RelevanceScore, assessment.Issues.Count);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error in quality assessment, using fallback evaluation");
+            LogSelfRAG5(_logger, ex);
             
             // 폴백: 기본적인 휴리스틱 평가
             assessment = CreateFallbackAssessment(documents);
@@ -237,7 +244,8 @@ public class SelfRAGService : ISelfRAGService
         QualityAssessment assessment,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogDebug("Generating query refinement suggestions for: {Query}", originalQuery);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogSelfRAG4(_logger, originalQuery);
 
         var suggestions = new QueryRefinementSuggestions
         {
@@ -285,19 +293,19 @@ public class SelfRAGService : ISelfRAGService
                 .Take(5) // 최대 5개 제안
                 .ToList();
 
-            _logger.LogDebug("Generated {Count} query refinement suggestions", suggestions.RefinedQueries.Count);
+            LogSelfRAG3(_logger, suggestions.RefinedQueries.Count);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Error generating query refinements");
+            LogSelfRAG2(_logger, ex);
         }
 
         return suggestions;
     }
 
-    private async Task<double> AssessRelevanceAsync(string query, List<Document> documents, CancellationToken cancellationToken)
+    private static async Task<double> AssessRelevanceAsync(string query, List<Document> documents, CancellationToken cancellationToken)
     {
-        if (!documents.Any()) return 0.0;
+        if (documents.Count == 0) return 0.0;
 
         // 키워드 매칭 기반 관련성 평가
         var queryTerms = ExtractQueryTerms(query);
@@ -306,8 +314,8 @@ public class SelfRAGService : ISelfRAGService
         foreach (var doc in documents)
         {
             var content = doc.Content.ToLowerInvariant();
-            var matchingTerms = queryTerms.Count(term => content.Contains(term.ToLowerInvariant()));
-            var relevance = queryTerms.Any() ? (double)matchingTerms / queryTerms.Count : 0.0;
+            var matchingTerms = queryTerms.Count(term => content.Contains(term, StringComparison.OrdinalIgnoreCase));
+            var relevance = queryTerms.Count != 0 ? (double)matchingTerms / queryTerms.Count : 0.0;
             relevanceScores.Add(relevance);
         }
 
@@ -315,7 +323,7 @@ public class SelfRAGService : ISelfRAGService
         return relevanceScores.Average();
     }
 
-    private async Task<double> AssessCompletenessAsync(string query, List<Document> documents, CancellationToken cancellationToken)
+    private static async Task<double> AssessCompletenessAsync(string query, List<Document> documents, CancellationToken cancellationToken)
     {
         // 완전성을 결과 수와 내용 다양성으로 평가
         var completeness = 0.0;
@@ -325,7 +333,7 @@ public class SelfRAGService : ISelfRAGService
         completeness += countScore * 0.4;
 
         // 내용 길이 기반 점수
-        if (documents.Any())
+        if (documents.Count != 0)
         {
             var avgLength = documents.Average(d => d.Content.Length);
             var lengthScore = Math.Min(avgLength / 500.0, 1.0); // 500자 이상이면 만점
@@ -340,7 +348,7 @@ public class SelfRAGService : ISelfRAGService
         return Math.Min(completeness, 1.0);
     }
 
-    private double AssessDiversity(List<Document> documents)
+    private static double AssessDiversity(List<Document> documents)
     {
         if (documents.Count <= 1) return 0.0;
 
@@ -356,14 +364,14 @@ public class SelfRAGService : ISelfRAGService
             }
         }
 
-        if (!similarities.Any()) return 1.0;
+        if (similarities.Count == 0) return 1.0;
 
         // 낮은 유사성 = 높은 다양성
         var avgSimilarity = similarities.Average();
         return Math.Max(0.0, 1.0 - avgSimilarity);
     }
 
-    private double AssessCredibility(List<Document> documents)
+    private static double AssessCredibility(List<Document> documents)
     {
         // 문서 메타데이터 기반 신뢰성 평가
         var credibilityScore = 0.8; // 기본 점수
@@ -384,7 +392,7 @@ public class SelfRAGService : ISelfRAGService
         return credibilityScore;
     }
 
-    private double AssessFreshness(List<Document> documents)
+    private static double AssessFreshness(List<Document> documents)
     {
         // 문서의 최신성 평가
         var freshnessScore = 0.7; // 기본 점수
@@ -406,7 +414,7 @@ public class SelfRAGService : ISelfRAGService
         return freshnessScore;
     }
 
-    private double CalculateOverallScore(QualityAssessment assessment)
+    private static double CalculateOverallScore(QualityAssessment assessment)
     {
         // 가중 평균으로 전체 점수 계산
         return assessment.RelevanceScore * 0.35 +
@@ -416,7 +424,7 @@ public class SelfRAGService : ISelfRAGService
                assessment.FreshnessScore * 0.10;
     }
 
-    private List<QualityIssue> IdentifyQualityIssues(string query, List<Document> documents, QualityAssessment assessment)
+    private static List<QualityIssue> IdentifyQualityIssues(string query, List<Document> documents, QualityAssessment assessment)
     {
         var issues = new List<QualityIssue>();
 
@@ -458,7 +466,7 @@ public class SelfRAGService : ISelfRAGService
 
         // 중복된 결과
         var duplicates = FindDuplicateResults(documents);
-        if (duplicates.Any())
+        if (duplicates.Count != 0)
         {
             issues.Add(new QualityIssue
             {
@@ -473,7 +481,7 @@ public class SelfRAGService : ISelfRAGService
         return issues;
     }
 
-    private List<ImprovementSuggestion> GenerateImprovementSuggestions(QualityAssessment assessment)
+    private static List<ImprovementSuggestion> GenerateImprovementSuggestions(QualityAssessment assessment)
     {
         var suggestions = new List<ImprovementSuggestion>();
 
@@ -501,7 +509,7 @@ public class SelfRAGService : ISelfRAGService
         return suggestions.OrderByDescending(s => s.Priority).ToList();
     }
 
-    private async Task GenerateRefinementsForIssueAsync(
+    private static async Task GenerateRefinementsForIssueAsync(
         string originalQuery,
         QualityIssue issue,
         QueryRefinementSuggestions suggestions,
@@ -600,16 +608,16 @@ public class SelfRAGService : ISelfRAGService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to generate advanced refinements, using fallback");
+            LogSelfRAG1(_logger, ex);
             GenerateHeuristicRefinements(originalQuery, suggestions);
         }
     }
 
-    private void GenerateHeuristicRefinements(string originalQuery, QueryRefinementSuggestions suggestions)
+    private static void GenerateHeuristicRefinements(string originalQuery, QueryRefinementSuggestions suggestions)
     {
         // 동의어 추가
         var synonyms = GetSynonyms(originalQuery);
-        if (synonyms.Any())
+        if (synonyms.Count != 0)
         {
             var synonymQuery = $"{originalQuery} {string.Join(" ", synonyms.Take(2))}";
             suggestions.RefinedQueries.Add(new RefinedQuery
@@ -623,25 +631,25 @@ public class SelfRAGService : ISelfRAGService
         }
     }
 
-    private List<string> ExtractQueryTerms(string query)
+    private static List<string> ExtractQueryTerms(string query)
     {
         // 간단한 토큰화
-        return query.Split(new[] { ' ', '\t', '\n', ',', '.', '!', '?' }, StringSplitOptions.RemoveEmptyEntries)
+        return query.Split(QueryTokenSeparators, StringSplitOptions.RemoveEmptyEntries)
             .Where(term => term.Length > 2)
             .ToList();
     }
 
-    private double AssessTopicCoverage(string query, List<Document> documents)
+    private static double AssessTopicCoverage(string query, List<Document> documents)
     {
         var queryTerms = ExtractQueryTerms(query);
-        if (!queryTerms.Any()) return 0.0;
+        if (queryTerms.Count == 0) return 0.0;
 
         var coveredTerms = new HashSet<string>();
         foreach (var doc in documents.Take(20))
         {
             foreach (var term in queryTerms)
             {
-                if (doc.Content.ToLowerInvariant().Contains(term.ToLowerInvariant()))
+                if (doc.Content.Contains(term, StringComparison.OrdinalIgnoreCase))
                 {
                     coveredTerms.Add(term);
                 }
@@ -651,7 +659,7 @@ public class SelfRAGService : ISelfRAGService
         return (double)coveredTerms.Count / queryTerms.Count;
     }
 
-    private double CalculateTextSimilarity(string text1, string text2)
+    private static double CalculateTextSimilarity(string text1, string text2)
     {
         // 간단한 Jaccard 유사도
         var set1 = new HashSet<string>(text1.ToLowerInvariant().Split(' '));
@@ -663,7 +671,7 @@ public class SelfRAGService : ISelfRAGService
         return union == 0 ? 0.0 : (double)intersection / union;
     }
 
-    private List<int> FindDuplicateResults(List<Document> documents)
+    private static List<int> FindDuplicateResults(List<Document> documents)
     {
         var duplicates = new List<int>();
         
@@ -682,7 +690,7 @@ public class SelfRAGService : ISelfRAGService
         return duplicates.Distinct().ToList();
     }
 
-    private string GeneralizeQuery(string query)
+    private static string GeneralizeQuery(string query)
     {
         // 구체적인 용어를 일반적인 용어로 변경
         var generalizedQuery = query
@@ -694,13 +702,13 @@ public class SelfRAGService : ISelfRAGService
         return generalizedQuery.Trim();
     }
 
-    private string SpecifyQuery(string query)
+    private static string SpecifyQuery(string query)
     {
         // 쿼리를 더 구체적으로 만들기
         var specifiedQuery = query;
         
         // 시간 제약 추가
-        if (!query.ToLowerInvariant().Contains("최근") && !query.ToLowerInvariant().Contains("recent"))
+        if (!query.Contains("최근", StringComparison.OrdinalIgnoreCase) && !query.Contains("recent", StringComparison.OrdinalIgnoreCase))
         {
             specifiedQuery = $"최근 {query}";
         }
@@ -708,13 +716,13 @@ public class SelfRAGService : ISelfRAGService
         return specifiedQuery;
     }
 
-    private string AddContextToQuery(string query)
+    private static string AddContextToQuery(string query)
     {
         // 쿼리에 컨텍스트 정보 추가
         return $"{query} 상세 정보 설명";
     }
 
-    private string RestructureQuery(string query)
+    private static string RestructureQuery(string query)
     {
         // 쿼리 구조 변경 (단어 순서 바꾸기 등)
         var words = query.Split(' ');
@@ -727,7 +735,7 @@ public class SelfRAGService : ISelfRAGService
         return query;
     }
 
-    private List<string> GetSynonyms(string query)
+    private static List<string> GetSynonyms(string query)
     {
         // 간단한 동의어 사전
         var synonymDict = new Dictionary<string, List<string>>
@@ -750,7 +758,7 @@ public class SelfRAGService : ISelfRAGService
         return synonyms;
     }
 
-    private SearchStrategy GetAlternativeStrategy(SearchStrategy currentStrategy)
+    private static SearchStrategy GetAlternativeStrategy(SearchStrategy currentStrategy)
     {
         return currentStrategy switch
         {
@@ -763,7 +771,7 @@ public class SelfRAGService : ISelfRAGService
         };
     }
 
-    private QualityAssessment CreateFallbackAssessment(List<Document> documents)
+    private static QualityAssessment CreateFallbackAssessment(List<Document> documents)
     {
         // 기본적인 휴리스틱 평가
         return new QualityAssessment
@@ -787,7 +795,7 @@ public class SelfRAGService : ISelfRAGService
         };
     }
 
-    private void PopulateRationale(QualityAssessment assessment)
+    private static void PopulateRationale(QualityAssessment assessment)
     {
         assessment.Rationale["relevance"] = $"Based on keyword matching: {assessment.RelevanceScore:F2}";
         assessment.Rationale["completeness"] = $"Based on result count and content length: {assessment.CompletenessScore:F2}";
@@ -795,4 +803,37 @@ public class SelfRAGService : ISelfRAGService
         assessment.Rationale["credibility"] = $"Based on source metadata: {assessment.CredibilityScore:F2}";
         assessment.Rationale["freshness"] = $"Based on document timestamps: {assessment.FreshnessScore:F2}";
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting Self-RAG search for query: {Query}")]
+    private static partial void LogSelfRAG14(ILogger logger, string query);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Self-RAG iteration {Iteration}/{MaxIterations}")]
+    private static partial void LogSelfRAG13(ILogger logger, int iteration, int maxIterations);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Iteration {Iteration} completed: Quality={Quality:F2}, Results={Count}")]
+    private static partial void LogSelfRAG12(ILogger logger, int iteration, double quality, double count);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Self-RAG completed successfully after {Iteration} iteration(s)")]
+    private static partial void LogSelfRAG11(ILogger logger, int iteration);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Query refined for next iteration: {RefinedQuery}")]
+    private static partial void LogSelfRAG10(ILogger logger, string refinedQuery);
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error in Self-RAG search")]
+    private static partial void LogSelfRAG9(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Self-RAG search completed: Success={Success}, Iterations={Count}, Quality={Quality:F2}, Time={Time}ms")]
+    private static partial void LogSelfRAG8(ILogger logger, bool success, int count, double quality, double time);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Assessing quality of {Count} results for query: {Query}")]
+    private static partial void LogSelfRAG7(ILogger logger, int count, string query);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Quality assessment completed: Overall={Overall:F2}, Relevance={Relevance:F2}, Issues={IssueCount}")]
+    private static partial void LogSelfRAG6(ILogger logger, double overall, double relevance, double issueCount);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Error in quality assessment, using fallback evaluation")]
+    private static partial void LogSelfRAG5(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Generating query refinement suggestions for: {Query}")]
+    private static partial void LogSelfRAG4(ILogger logger, string query);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Generated {Count} query refinement suggestions")]
+    private static partial void LogSelfRAG3(ILogger logger, int count);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Error generating query refinements")]
+    private static partial void LogSelfRAG2(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to generate advanced refinements, using fallback")]
+    private static partial void LogSelfRAG1(ILogger logger, Exception exception);
+
+    #endregion
 }

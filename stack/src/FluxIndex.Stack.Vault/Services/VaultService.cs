@@ -11,7 +11,7 @@ namespace FluxIndex.Stack.Vault.Services;
 /// <summary>
 /// Core vault service for managing file tracking and memorization.
 /// </summary>
-public class VaultService : IVaultService
+public partial class VaultService : IVaultService
 {
     private readonly ILogger<VaultService> _logger;
     private readonly VaultOptions _options;
@@ -93,7 +93,7 @@ public class VaultService : IVaultService
             await _watcherService.StartWatchingAsync(folder, cancellationToken);
         }
 
-        _logger.LogInformation("Added watched folder: {Path} (ID: {FolderId})", fullPath, folder.Id);
+        LogAddedWatchedFolder(_logger, fullPath, folder.Id);
 
         return folder;
     }
@@ -113,7 +113,7 @@ public class VaultService : IVaultService
         }
 
         await _watchedFolderRepository.DeleteAsync(folderId, cancellationToken);
-        _logger.LogInformation("Removed watched folder: {FolderId}", folderId);
+        LogRemovedWatchedFolder(_logger, folderId);
     }
 
     public async Task PauseWatchingAsync(Guid folderId, CancellationToken cancellationToken = default)
@@ -124,7 +124,7 @@ public class VaultService : IVaultService
         await _watcherService.StopWatchingAsync(folderId, cancellationToken);
         folder.Pause();
         await _watchedFolderRepository.UpdateAsync(folder, cancellationToken);
-        _logger.LogInformation("Paused watching folder: {FolderId}", folderId);
+        LogPausedWatchingFolder(_logger, folderId);
     }
 
     public async Task ResumeWatchingAsync(Guid folderId, CancellationToken cancellationToken = default)
@@ -140,7 +140,7 @@ public class VaultService : IVaultService
             await _watcherService.StartWatchingAsync(folder, cancellationToken);
         }
 
-        _logger.LogInformation("Resumed watching folder: {FolderId}", folderId);
+        LogResumedWatchingFolder(_logger, folderId);
     }
 
     public async Task<WatchedFolder> UpdateFolderPathAsync(Guid folderId, string newPath, CancellationToken cancellationToken = default)
@@ -179,7 +179,7 @@ public class VaultService : IVaultService
             await _watcherService.StartWatchingAsync(folder, cancellationToken);
         }
 
-        _logger.LogInformation("Updated folder path: {OldPath} -> {NewPath} (ID: {FolderId})", oldPath, fullPath, folderId);
+        LogUpdatedFolderPath(_logger, oldPath, fullPath, folderId);
 
         return folder;
     }
@@ -224,7 +224,7 @@ public class VaultService : IVaultService
         {
             if (existing.Status == TrackedFileStatus.Memorized)
             {
-                _logger.LogDebug("File already memorized: {Path}", fullPath);
+                LogFileAlreadyMemorized(_logger, fullPath);
                 return existing;
             }
             // If not memorized, queue for reprocessing
@@ -243,7 +243,7 @@ public class VaultService : IVaultService
 
         await _trackedFileRepository.AddAsync(trackedFile, cancellationToken);
 
-        _logger.LogInformation("Queued file for memorization: {Path}", fullPath);
+        LogQueuedFileForMemorization(_logger, fullPath);
 
         return trackedFile;
     }
@@ -261,7 +261,7 @@ public class VaultService : IVaultService
         file.ResetToUntracked();
         await _trackedFileRepository.UpdateAsync(file, cancellationToken);
 
-        _logger.LogInformation("Unmemorized file: {FileId}", fileId);
+        LogUnmemorizedFile(_logger, fileId);
     }
 
     public async Task<TrackedFile> ReprocessFileAsync(Guid fileId, CancellationToken cancellationToken = default)
@@ -283,7 +283,7 @@ public class VaultService : IVaultService
         file.MarkAsQueued();
         await _trackedFileRepository.UpdateAsync(file, cancellationToken);
 
-        _logger.LogInformation("Queued file for reprocessing: {FileId}", fileId);
+        LogQueuedFileForReprocessing(_logger, fileId);
 
         return file;
     }
@@ -373,7 +373,7 @@ public class VaultService : IVaultService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Error processing file during scan: {Path}", filePath);
+                LogScanFileError(_logger, filePath, ex);
                 errors.Add($"{filePath}: {ex.Message}");
             }
         }
@@ -387,9 +387,8 @@ public class VaultService : IVaultService
 
         stopwatch.Stop();
 
-        _logger.LogInformation(
-            "Scan completed for {Path}: {Total} files, {New} new, {Changed} changed, {Orphaned} orphaned",
-            folder.Path, matchingFiles.Count, newFilesQueued, changedFilesQueued, orphanedCount);
+        var totalFiles = matchingFiles.Count;
+        LogScanCompleted(_logger, folder.Path, totalFiles, newFilesQueued, changedFilesQueued, orphanedCount);
 
         return new ScanResult
         {
@@ -428,7 +427,7 @@ public class VaultService : IVaultService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error syncing folder: {FolderId}", folder.Id);
+                LogSyncFolderError(_logger, folder.Id, ex);
                 errors.Add($"Folder {folder.Path}: {ex.Message}");
             }
         }
@@ -467,7 +466,7 @@ public class VaultService : IVaultService
 
         if (cleaned > 0)
         {
-            _logger.LogInformation("Cleaned up {Count} orphaned files", cleaned);
+            LogCleanedUpOrphanedFiles(_logger, cleaned);
         }
 
         return cleaned;
@@ -515,7 +514,7 @@ public class VaultService : IVaultService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error handling file created event: {Path}", e.FilePath);
+            LogFileCreatedEventError(_logger, e.FilePath, ex);
         }
     }
 
@@ -531,13 +530,13 @@ public class VaultService : IVaultService
                 {
                     trackedFile.MarkAsStale();
                     await _trackedFileRepository.UpdateAsync(trackedFile);
-                    _logger.LogDebug("File marked as stale: {Path}", e.FilePath);
+                    LogFileMarkedAsStale(_logger, e.FilePath);
                 }
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error handling file modified event: {Path}", e.FilePath);
+            LogFileModifiedEventError(_logger, e.FilePath, ex);
         }
     }
 
@@ -550,12 +549,12 @@ public class VaultService : IVaultService
             {
                 trackedFile.MarkAsOrphaned();
                 await _trackedFileRepository.UpdateAsync(trackedFile);
-                _logger.LogDebug("File marked as orphaned: {Path}", e.FilePath);
+                LogFileMarkedAsOrphaned(_logger, e.FilePath);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error handling file deleted event: {Path}", e.FilePath);
+            LogFileDeletedEventError(_logger, e.FilePath, ex);
         }
     }
 
@@ -579,7 +578,7 @@ public class VaultService : IVaultService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error handling file renamed event: {OldPath} -> {NewPath}", e.OldFilePath, e.FilePath);
+            LogFileRenamedEventError(_logger, e.OldFilePath, e.FilePath, ex);
         }
     }
 
@@ -596,9 +595,73 @@ public class VaultService : IVaultService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error handling watcher error event for folder {FolderId}", e.WatchedFolderId);
+            LogWatcherErrorEventError(_logger, e.WatchedFolderId, ex);
         }
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Added watched folder: {Path} (ID: {FolderId})")]
+    private static partial void LogAddedWatchedFolder(ILogger logger, string path, Guid folderId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Removed watched folder: {FolderId}")]
+    private static partial void LogRemovedWatchedFolder(ILogger logger, Guid folderId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Paused watching folder: {FolderId}")]
+    private static partial void LogPausedWatchingFolder(ILogger logger, Guid folderId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Resumed watching folder: {FolderId}")]
+    private static partial void LogResumedWatchingFolder(ILogger logger, Guid folderId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Updated folder path: {OldPath} -> {NewPath} (ID: {FolderId})")]
+    private static partial void LogUpdatedFolderPath(ILogger logger, string oldPath, string newPath, Guid folderId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "File already memorized: {Path}")]
+    private static partial void LogFileAlreadyMemorized(ILogger logger, string path);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Queued file for memorization: {Path}")]
+    private static partial void LogQueuedFileForMemorization(ILogger logger, string path);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Unmemorized file: {FileId}")]
+    private static partial void LogUnmemorizedFile(ILogger logger, Guid fileId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Queued file for reprocessing: {FileId}")]
+    private static partial void LogQueuedFileForReprocessing(ILogger logger, Guid fileId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Error processing file during scan: {Path}")]
+    private static partial void LogScanFileError(ILogger logger, string path, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Scan completed for {Path}: {Total} files, {New} new, {Changed} changed, {Orphaned} orphaned")]
+    private static partial void LogScanCompleted(ILogger logger, string path, int total, int @new, int changed, int orphaned);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error syncing folder: {FolderId}")]
+    private static partial void LogSyncFolderError(ILogger logger, Guid folderId, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Cleaned up {Count} orphaned files")]
+    private static partial void LogCleanedUpOrphanedFiles(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error handling file created event: {Path}")]
+    private static partial void LogFileCreatedEventError(ILogger logger, string path, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "File marked as stale: {Path}")]
+    private static partial void LogFileMarkedAsStale(ILogger logger, string path);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error handling file modified event: {Path}")]
+    private static partial void LogFileModifiedEventError(ILogger logger, string path, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "File marked as orphaned: {Path}")]
+    private static partial void LogFileMarkedAsOrphaned(ILogger logger, string path);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error handling file deleted event: {Path}")]
+    private static partial void LogFileDeletedEventError(ILogger logger, string path, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error handling file renamed event: {OldPath} -> {NewPath}")]
+    private static partial void LogFileRenamedEventError(ILogger logger, string oldPath, string newPath, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error handling watcher error event for folder {FolderId}")]
+    private static partial void LogWatcherErrorEventError(ILogger logger, Guid folderId, Exception? exception);
 
     #endregion
 }

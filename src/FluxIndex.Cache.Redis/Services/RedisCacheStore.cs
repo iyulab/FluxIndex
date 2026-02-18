@@ -11,7 +11,7 @@ namespace FluxIndex.Cache.Redis.Services;
 /// Redis implementation of ICacheStore for polyglot persistence.
 /// Provides embedding cache, hot data cache, query result cache, and entity cache.
 /// </summary>
-public class RedisCacheStore : ICacheStore, IDisposable
+public partial class RedisCacheStore : ICacheStore, IDisposable
 {
     private readonly IDatabase _database;
     private readonly IServer _server;
@@ -453,7 +453,7 @@ public class RedisCacheStore : ICacheStore, IDisposable
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Failed to parse cached query embedding");
+                    LogParseEmbeddingFailed(_logger, ex);
                 }
             }
         }
@@ -638,7 +638,7 @@ public class RedisCacheStore : ICacheStore, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Cache maintenance failed");
+            LogMaintenanceFailed(_logger, ex);
             return new CacheMaintenanceResult
             {
                 Success = false,
@@ -679,12 +679,12 @@ public class RedisCacheStore : ICacheStore, IDisposable
         return _server.Keys(pattern: pattern, database: _options.DatabaseNumber).Count();
     }
 
-    private long ParseMemoryUsage(string info)
+    private static long ParseMemoryUsage(string info)
     {
         var lines = info.Split('\n');
         foreach (var line in lines)
         {
-            if (line.StartsWith("used_memory:"))
+            if (line.StartsWith("used_memory:", StringComparison.Ordinal))
             {
                 if (long.TryParse(line.Split(':')[1].Trim(), out var bytes))
                 {
@@ -705,7 +705,7 @@ public class RedisCacheStore : ICacheStore, IDisposable
                 : 1;
 
             // This is a simplified approach - in production, use HINCRBY or Lua script
-            _logger.LogDebug("Access count for {Key}: {Count}", key, accessCount);
+            LogAccessCount(_logger, key, accessCount);
         }
         catch
         {
@@ -732,7 +732,21 @@ public class RedisCacheStore : ICacheStore, IDisposable
     public void Dispose()
     {
         _semaphore.Dispose();
+        GC.SuppressFinalize(this);
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to parse cached query embedding")]
+    private static partial void LogParseEmbeddingFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Cache maintenance failed")]
+    private static partial void LogMaintenanceFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Access count for {Key}: {Count}")]
+    private static partial void LogAccessCount(ILogger logger, string key, int count);
 
     #endregion
 }

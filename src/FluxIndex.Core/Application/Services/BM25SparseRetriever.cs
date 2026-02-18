@@ -44,7 +44,7 @@ public interface IPersistableSparseRetriever
 /// BM25 based sparse retrieval implementation with optional file persistence.
 /// Implements both legacy ISparseRetriever and new unified IKeywordSearchService interfaces.
 /// </summary>
-public class BM25SparseRetriever : ISparseRetriever, IKeywordSearchService, IPersistableSparseRetriever
+public partial class BM25SparseRetriever : ISparseRetriever, IKeywordSearchService, IPersistableSparseRetriever, IDisposable
 {
     private readonly ILogger<BM25SparseRetriever> _logger;
     private readonly ConcurrentDictionary<string, BM25Index> _indexes;
@@ -52,6 +52,11 @@ public class BM25SparseRetriever : ISparseRetriever, IKeywordSearchService, IPer
     private readonly string? _persistencePath;
     private readonly bool _autoSave;
     private readonly SemaphoreSlim _persistenceLock = new(1, 1);
+
+    private static readonly JsonSerializerOptions s_persistenceJsonOptions = new()
+    {
+        WriteIndented = false
+    };
 
     // BM25 default parameters
     private const double DefaultK1 = 1.2;
@@ -111,7 +116,7 @@ public class BM25SparseRetriever : ISparseRetriever, IKeywordSearchService, IPer
 
         options ??= new SparseSearchOptions();
 
-        _logger.LogInformation("BM25 search started: {Query}", query);
+        LogBM25SearchStarted(_logger, query);
 
         var searchTerms = TokenizeQuery(query, options);
         if (!searchTerms.Any())
@@ -134,7 +139,7 @@ public class BM25SparseRetriever : ISparseRetriever, IKeywordSearchService, IPer
             .Take(options.MaxResults)
             .ToList();
 
-        _logger.LogInformation("BM25 search completed: {ResultCount} results", sortedResults.Count);
+        LogBM25SearchCompleted(_logger, sortedResults.Count);
 
         return sortedResults.AsReadOnly();
     }
@@ -147,7 +152,7 @@ public class BM25SparseRetriever : ISparseRetriever, IKeywordSearchService, IPer
         if (chunk == null)
             return;
 
-        _logger.LogInformation("Indexing chunk started: {ChunkId}", chunk.Id);
+        LogIndexingChunkStarted(_logger, chunk.Id);
 
         var index = _indexes.GetOrAdd("default", _ => new BM25Index());
 
@@ -158,7 +163,7 @@ public class BM25SparseRetriever : ISparseRetriever, IKeywordSearchService, IPer
 
         await AutoSaveIfEnabledAsync(cancellationToken);
 
-        _logger.LogInformation("Indexing chunk completed: {ChunkId}", chunk.Id);
+        LogIndexingChunkCompleted(_logger, chunk.Id);
     }
 
     /// <summary>
@@ -199,7 +204,7 @@ public class BM25SparseRetriever : ISparseRetriever, IKeywordSearchService, IPer
     {
         await Task.Run(() =>
         {
-            _logger.LogInformation("Index optimization started");
+            LogIndexOptimizationStarted(_logger);
 
             var defaultIndex = _indexes.GetOrAdd("default", _ => new BM25Index());
 
@@ -219,8 +224,7 @@ public class BM25SparseRetriever : ISparseRetriever, IKeywordSearchService, IPer
 
                 defaultIndex.LastOptimizedAt = DateTime.UtcNow;
 
-                _logger.LogInformation("Index optimization completed: {RemovedTerms} low-frequency terms removed",
-                    lowFrequencyTerms.Count);
+                LogIndexOptimizationCompleted(_logger, lowFrequencyTerms.Count);
             }
         }, cancellationToken);
 
@@ -235,7 +239,7 @@ public class BM25SparseRetriever : ISparseRetriever, IKeywordSearchService, IPer
         await _persistenceLock.WaitAsync(cancellationToken);
         try
         {
-            _logger.LogInformation("Saving BM25 index to {FilePath}", filePath);
+            LogSavingIndex(_logger, filePath);
 
             var data = new BM25IndexData
             {
@@ -275,16 +279,11 @@ public class BM25SparseRetriever : ISparseRetriever, IKeywordSearchService, IPer
                 Directory.CreateDirectory(directory);
             }
 
-            var options = new JsonSerializerOptions
-            {
-                WriteIndented = false
-            };
-
             await using var stream = File.Create(filePath);
-            await JsonSerializer.SerializeAsync(stream, data, options, cancellationToken);
+            await JsonSerializer.SerializeAsync(stream, data, s_persistenceJsonOptions, cancellationToken);
 
-            _logger.LogInformation("BM25 index saved successfully: {DocumentCount} documents",
-                _indexes.Values.Sum(i => i.DocumentCount));
+            var totalDocs = _indexes.Values.Sum(i => i.DocumentCount);
+            LogIndexSaved(_logger, totalDocs);
         }
         finally
         {
@@ -303,7 +302,7 @@ public class BM25SparseRetriever : ISparseRetriever, IKeywordSearchService, IPer
         await _persistenceLock.WaitAsync(cancellationToken);
         try
         {
-            _logger.LogInformation("Loading BM25 index from {FilePath}", filePath);
+            LogLoadingIndex(_logger, filePath);
 
             await using var stream = File.OpenRead(filePath);
             var data = await JsonSerializer.DeserializeAsync<BM25IndexData>(stream, cancellationToken: cancellationToken);
@@ -353,8 +352,8 @@ public class BM25SparseRetriever : ISparseRetriever, IKeywordSearchService, IPer
                 _indexes[indexKvp.Key] = index;
             }
 
-            _logger.LogInformation("BM25 index loaded successfully: {DocumentCount} documents",
-                _indexes.Values.Sum(i => i.DocumentCount));
+            var totalDocs = _indexes.Values.Sum(i => i.DocumentCount);
+            LogIndexLoaded(_logger, totalDocs);
         }
         finally
         {
@@ -374,7 +373,7 @@ public class BM25SparseRetriever : ISparseRetriever, IKeywordSearchService, IPer
 
     #region Private Methods
 
-    private async Task<IReadOnlyList<SparseSearchResult>> SearchInIndexAsync(
+    private static async Task<IReadOnlyList<SparseSearchResult>> SearchInIndexAsync(
         IReadOnlyList<string> searchTerms,
         BM25Index index,
         SparseSearchOptions options,
@@ -440,7 +439,7 @@ public class BM25SparseRetriever : ISparseRetriever, IKeywordSearchService, IPer
         return results.Values.ToList().AsReadOnly();
     }
 
-    private double CalculateBM25Score(int tf, int df, long totalDocs, int docLength, double avgDocLength, SparseSearchOptions options)
+    private static double CalculateBM25Score(int tf, int df, long totalDocs, int docLength, double avgDocLength, SparseSearchOptions options)
     {
         var k1 = options.K1;
         var b = options.B;
@@ -454,7 +453,7 @@ public class BM25SparseRetriever : ISparseRetriever, IKeywordSearchService, IPer
         return idf * normalizedTf;
     }
 
-    private BM25Components CreateBM25Components(int tf, double idf, int docLength, double avgDocLength, double finalScore, string term)
+    private static BM25Components CreateBM25Components(int tf, double idf, int docLength, double avgDocLength, double finalScore, string term)
     {
         var tfScore = tf / (double)(tf + DefaultK1 * (1 - DefaultB + DefaultB * (docLength / avgDocLength)));
         var docLengthNorm = docLength / avgDocLength;
@@ -506,13 +505,13 @@ public class BM25SparseRetriever : ISparseRetriever, IKeywordSearchService, IPer
         }
     }
 
-    private async Task UpdateIndexStatisticsAsync(BM25Index index, CancellationToken cancellationToken)
+    private static async Task UpdateIndexStatisticsAsync(BM25Index index, CancellationToken cancellationToken)
     {
         await Task.CompletedTask;
         // Additional statistics update logic can be implemented here
     }
 
-    private IReadOnlyList<string> TokenizeQuery(string query, SparseSearchOptions options)
+    private static IReadOnlyList<string> TokenizeQuery(string query, SparseSearchOptions options)
     {
         var tokens = TokenizeContent(query);
 
@@ -525,7 +524,7 @@ public class BM25SparseRetriever : ISparseRetriever, IKeywordSearchService, IPer
         return tokens;
     }
 
-    private IReadOnlyList<string> TokenizeContent(string content)
+    private static IReadOnlyList<string> TokenizeContent(string content)
     {
         if (string.IsNullOrWhiteSpace(content))
             return Array.Empty<string>();
@@ -538,14 +537,14 @@ public class BM25SparseRetriever : ISparseRetriever, IKeywordSearchService, IPer
         return tokens.AsReadOnly();
     }
 
-    private IReadOnlyList<string> ExpandTerms(IReadOnlyList<string> terms)
+    private static IReadOnlyList<string> ExpandTerms(IReadOnlyList<string> terms)
     {
         // Basic implementation: return original without stemming or synonym expansion
         // In real implementation, use Porter Stemmer or synonym dictionary
         return terms;
     }
 
-    private Dictionary<string, int> CountTermFrequencies(IReadOnlyList<string> tokens)
+    private static Dictionary<string, int> CountTermFrequencies(IReadOnlyList<string> tokens)
     {
         var frequencies = new Dictionary<string, int>();
 
@@ -557,7 +556,7 @@ public class BM25SparseRetriever : ISparseRetriever, IKeywordSearchService, IPer
         return frequencies;
     }
 
-    private long EstimateIndexSize(BM25Index index)
+    private static long EstimateIndexSize(BM25Index index)
     {
         // Approximate index size calculation
         var termCount = index.TermFrequencies.Count;
@@ -733,6 +732,47 @@ public class BM25SparseRetriever : ISparseRetriever, IKeywordSearchService, IPer
     }
 
     #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "BM25 search started: {Query}")]
+    private static partial void LogBM25SearchStarted(ILogger logger, string query);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "BM25 search completed: {ResultCount} results")]
+    private static partial void LogBM25SearchCompleted(ILogger logger, int resultCount);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Indexing chunk started: {ChunkId}")]
+    private static partial void LogIndexingChunkStarted(ILogger logger, string chunkId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Indexing chunk completed: {ChunkId}")]
+    private static partial void LogIndexingChunkCompleted(ILogger logger, string chunkId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Index optimization started")]
+    private static partial void LogIndexOptimizationStarted(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Index optimization completed: {RemovedTerms} low-frequency terms removed")]
+    private static partial void LogIndexOptimizationCompleted(ILogger logger, int removedTerms);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Saving BM25 index to {FilePath}")]
+    private static partial void LogSavingIndex(ILogger logger, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "BM25 index saved successfully: {DocumentCount} documents")]
+    private static partial void LogIndexSaved(ILogger logger, long documentCount);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Loading BM25 index from {FilePath}")]
+    private static partial void LogLoadingIndex(ILogger logger, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "BM25 index loaded successfully: {DocumentCount} documents")]
+    private static partial void LogIndexLoaded(ILogger logger, long documentCount);
+
+    #endregion
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        _persistenceLock.Dispose();
+        GC.SuppressFinalize(this);
+    }
 }
 
 #region Data Structures
@@ -740,7 +780,7 @@ public class BM25SparseRetriever : ISparseRetriever, IKeywordSearchService, IPer
 /// <summary>
 /// BM25 index data structure
 /// </summary>
-internal class BM25Index
+internal sealed class BM25Index
 {
     public ConcurrentDictionary<string, DocumentChunk> DocumentIndex { get; } = new();
     public ConcurrentDictionary<string, int> TermFrequencies { get; } = new();
@@ -753,7 +793,7 @@ internal class BM25Index
 /// <summary>
 /// Posting information (document info where term appears)
 /// </summary>
-internal record Posting(string ChunkId, int TermFrequency, int DocumentLength);
+internal sealed record Posting(string ChunkId, int TermFrequency, int DocumentLength);
 
 #endregion
 

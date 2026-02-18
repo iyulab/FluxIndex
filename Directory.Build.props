@@ -25,22 +25,22 @@
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
 
     <!-- NuGet Package Settings -->
     <PackageOutputPath>$(MSBuildThisFileDirectory)nupkgs</PackageOutputPath>
     
     <!-- Suppress NuGet warnings for package management -->
-    <NoWarn>$(NoWarn);NU1506;NU1507;NU1605;NU1107</NoWarn>
+    <NoWarn>$(NoWarn);NU1506;NU1605;NU1107</NoWarn>
     <!-- Suppress XML documentation warnings -->
     <NoWarn>$(NoWarn);CS1591;CS1587</NoWarn>
-    <!-- Suppress nullable reference warnings for simplified development -->
-    <NoWarn>$(NoWarn);CS8601;CS8604;CS8618;CS8600</NoWarn>
-    <!-- Suppress async method warnings for methods that don't need await -->
-    <NoWarn>$(NoWarn);CS1998</NoWarn>
-    <!-- Suppress unreachable code warnings for commented code sections -->
-    <NoWarn>$(NoWarn);CS0162</NoWarn>
+    <!-- CS nullable suppressions removed in cycle-104 -->
+    <!-- CA1001/CA1716: resolved in cycle-90 -->
+    <!-- CA1854/CA1859/CA1861: resolved in cycle-34. CA1848/CA1873: resolved in cycle-66 (Core) + cycle-76 (all non-Core) -->
+    <!-- CS1998/CS0162: resolved cycle-81 (0 violations) -->
     
     <!-- Strong Naming (Optional) -->
     <!--<SignAssembly>true</SignAssembly>

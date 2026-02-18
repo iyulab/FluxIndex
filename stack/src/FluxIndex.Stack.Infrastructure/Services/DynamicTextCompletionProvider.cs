@@ -11,7 +11,7 @@ namespace FluxIndex.Stack.Infrastructure.Services;
 /// Dynamic text completion provider that reads configuration from AiProviderSettings database.
 /// Provides automatic provider selection based on stored settings.
 /// </summary>
-public class DynamicTextCompletionProvider : ITextCompletionService, ITextCompletionProviderCache
+public partial class DynamicTextCompletionProvider : ITextCompletionService, ITextCompletionProviderCache
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ITextCompletionServiceFactory _textCompletionFactory;
@@ -64,9 +64,7 @@ public class DynamicTextCompletionProvider : ITextCompletionService, ITextComple
             // Local providers don't need API key
             if (isLocalProvider || !string.IsNullOrEmpty(defaultProvider.ApiKey))
             {
-                _logger.LogInformation(
-                    "Using configured text completion provider: {Provider}, Model: {Model}, IsLocal: {IsLocal}",
-                    defaultProvider.ProviderName, defaultProvider.LlmModel ?? "default", isLocalProvider);
+                LogUsingConfiguredProvider(_logger, defaultProvider.ProviderName, defaultProvider.LlmModel ?? "default", isLocalProvider);
 
                 provider = await _textCompletionFactory.CreateProviderAsync(
                     defaultProvider.ProviderName,
@@ -77,14 +75,13 @@ public class DynamicTextCompletionProvider : ITextCompletionService, ITextComple
             }
             else
             {
-                _logger.LogInformation("Provider {Provider} is enabled but has no API key. Using MockTextCompletionService.",
-                    defaultProvider.ProviderName);
+                LogProviderEnabledNoApiKey(_logger, defaultProvider.ProviderName);
                 provider = new MockTextCompletionService();
             }
         }
         else
         {
-            _logger.LogInformation("No AI provider configured. Using MockTextCompletionService.");
+            LogNoProviderConfigured(_logger);
             provider = new MockTextCompletionService();
         }
 
@@ -124,7 +121,7 @@ public class DynamicTextCompletionProvider : ITextCompletionService, ITextComple
     public void InvalidateCache()
     {
         _cache.Remove(CacheKey);
-        _logger.LogInformation("Text completion provider cache invalidated.");
+        LogCacheInvalidated(_logger);
     }
 
     public async Task<TextCompletionProviderStatus> GetProviderStatusAsync(CancellationToken cancellationToken = default)
@@ -174,4 +171,20 @@ public class DynamicTextCompletionProvider : ITextCompletionService, ITextComple
             };
         }
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Using configured text completion provider: {Provider}, Model: {Model}, IsLocal: {IsLocal}")]
+    private static partial void LogUsingConfiguredProvider(ILogger logger, string provider, string model, bool isLocal);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Provider {Provider} is enabled but has no API key. Using MockTextCompletionService.")]
+    private static partial void LogProviderEnabledNoApiKey(ILogger logger, string provider);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "No AI provider configured. Using MockTextCompletionService.")]
+    private static partial void LogNoProviderConfigured(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Text completion provider cache invalidated.")]
+    private static partial void LogCacheInvalidated(ILogger logger);
+
+    #endregion
 }

@@ -3,23 +3,23 @@ using FluxIndex.Core.Application.Models;
 using FluxIndex.Core.Application.Services;
 using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Logging;
-using Moq;
+using NSubstitute;
 using Xunit;
 
 namespace FluxIndex.Core.Tests.Services.Quantization;
 
 public class QuantizedVectorStoreDecoratorTests
 {
-    private readonly Mock<IVectorStore> _innerStoreMock;
-    private readonly Mock<IVectorQuantizer> _quantizerMock;
-    private readonly Mock<ILogger<QuantizedVectorStoreDecorator>> _loggerMock;
+    private readonly IVectorStore _innerStoreMock;
+    private readonly IVectorQuantizer _quantizerMock;
+    private readonly ILogger<QuantizedVectorStoreDecorator> _loggerMock;
     private readonly QuantizedVectorStoreOptions _options;
 
     public QuantizedVectorStoreDecoratorTests()
     {
-        _innerStoreMock = new Mock<IVectorStore>();
-        _quantizerMock = new Mock<IVectorQuantizer>();
-        _loggerMock = new Mock<ILogger<QuantizedVectorStoreDecorator>>();
+        _innerStoreMock = Substitute.For<IVectorStore>();
+        _quantizerMock = Substitute.For<IVectorQuantizer>();
+        _loggerMock = Substitute.For<ILogger<QuantizedVectorStoreDecorator>>();
         _options = new QuantizedVectorStoreOptions
         {
             AutoQuantizeOnStore = true
@@ -29,9 +29,9 @@ public class QuantizedVectorStoreDecoratorTests
     private QuantizedVectorStoreDecorator CreateDecorator(QuantizedVectorStoreOptions? options = null)
     {
         return new QuantizedVectorStoreDecorator(
-            _innerStoreMock.Object,
-            _quantizerMock.Object,
-            _loggerMock.Object,
+            _innerStoreMock,
+            _quantizerMock,
+            _loggerMock,
             options ?? _options);
     }
 
@@ -44,8 +44,8 @@ public class QuantizedVectorStoreDecoratorTests
         Assert.Throws<ArgumentNullException>(() =>
             new QuantizedVectorStoreDecorator(
                 null!,
-                _quantizerMock.Object,
-                _loggerMock.Object,
+                _quantizerMock,
+                _loggerMock,
                 _options));
     }
 
@@ -55,9 +55,9 @@ public class QuantizedVectorStoreDecoratorTests
         // Act & Assert
         Assert.Throws<ArgumentNullException>(() =>
             new QuantizedVectorStoreDecorator(
-                _innerStoreMock.Object,
+                _innerStoreMock,
                 null!,
-                _loggerMock.Object,
+                _loggerMock,
                 _options));
     }
 
@@ -70,7 +70,7 @@ public class QuantizedVectorStoreDecoratorTests
         // Assert
         Assert.NotNull(decorator);
         Assert.True(decorator.SupportsQuantization);
-        Assert.Same(_quantizerMock.Object, decorator.Quantizer);
+        Assert.Same(_quantizerMock, decorator.Quantizer);
     }
 
     #endregion
@@ -96,13 +96,9 @@ public class QuantizedVectorStoreDecoratorTests
             OriginalDimension = 4
         };
 
-        _innerStoreMock
-            .Setup(s => s.StoreAsync(chunk, It.IsAny<CancellationToken>()))
-            .ReturnsAsync("chunk-1");
+        _innerStoreMock.StoreAsync(chunk, Arg.Any<CancellationToken>()).Returns("chunk-1");
 
-        _quantizerMock
-            .Setup(q => q.QuantizeAsync(chunk.Embedding, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(quantizedVector);
+        _quantizerMock.QuantizeAsync(chunk.Embedding, Arg.Any<CancellationToken>()).Returns(quantizedVector);
 
         var decorator = CreateDecorator();
 
@@ -111,8 +107,8 @@ public class QuantizedVectorStoreDecoratorTests
 
         // Assert
         Assert.Equal("chunk-1", result);
-        _innerStoreMock.Verify(s => s.StoreAsync(chunk, It.IsAny<CancellationToken>()), Times.Once);
-        _quantizerMock.Verify(q => q.QuantizeAsync(chunk.Embedding, It.IsAny<CancellationToken>()), Times.Once);
+        await _innerStoreMock.Received(1).StoreAsync(chunk, Arg.Any<CancellationToken>());
+        await _quantizerMock.Received(1).QuantizeAsync(chunk.Embedding, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -127,9 +123,7 @@ public class QuantizedVectorStoreDecoratorTests
             Embedding = new float[] { 0.1f, 0.2f, 0.3f, 0.4f }
         };
 
-        _innerStoreMock
-            .Setup(s => s.StoreAsync(chunk, It.IsAny<CancellationToken>()))
-            .ReturnsAsync("chunk-1");
+        _innerStoreMock.StoreAsync(chunk, Arg.Any<CancellationToken>()).Returns("chunk-1");
 
         var options = new QuantizedVectorStoreOptions { AutoQuantizeOnStore = false };
         var decorator = CreateDecorator(options);
@@ -139,8 +133,8 @@ public class QuantizedVectorStoreDecoratorTests
 
         // Assert
         Assert.Equal("chunk-1", result);
-        _innerStoreMock.Verify(s => s.StoreAsync(chunk, It.IsAny<CancellationToken>()), Times.Once);
-        _quantizerMock.Verify(q => q.QuantizeAsync(It.IsAny<float[]>(), It.IsAny<CancellationToken>()), Times.Never);
+        await _innerStoreMock.Received(1).StoreAsync(chunk, Arg.Any<CancellationToken>());
+        await _quantizerMock.DidNotReceive().QuantizeAsync(Arg.Any<float[]>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -155,9 +149,7 @@ public class QuantizedVectorStoreDecoratorTests
             Embedding = null
         };
 
-        _innerStoreMock
-            .Setup(s => s.StoreAsync(chunk, It.IsAny<CancellationToken>()))
-            .ReturnsAsync("chunk-1");
+        _innerStoreMock.StoreAsync(chunk, Arg.Any<CancellationToken>()).Returns("chunk-1");
 
         var decorator = CreateDecorator();
 
@@ -166,7 +158,7 @@ public class QuantizedVectorStoreDecoratorTests
 
         // Assert
         Assert.Equal("chunk-1", result);
-        _quantizerMock.Verify(q => q.QuantizeAsync(It.IsAny<float[]>(), It.IsAny<CancellationToken>()), Times.Never);
+        await _quantizerMock.DidNotReceive().QuantizeAsync(Arg.Any<float[]>(), Arg.Any<CancellationToken>());
     }
 
     #endregion
@@ -192,9 +184,7 @@ public class QuantizedVectorStoreDecoratorTests
             OriginalDimension = 4
         };
 
-        _innerStoreMock
-            .Setup(s => s.StoreAsync(chunk, It.IsAny<CancellationToken>()))
-            .ReturnsAsync("chunk-1");
+        _innerStoreMock.StoreAsync(chunk, Arg.Any<CancellationToken>()).Returns("chunk-1");
 
         var decorator = CreateDecorator();
 
@@ -203,7 +193,7 @@ public class QuantizedVectorStoreDecoratorTests
 
         // Assert
         Assert.Equal("chunk-1", result);
-        _innerStoreMock.Verify(s => s.StoreAsync(chunk, It.IsAny<CancellationToken>()), Times.Once);
+        await _innerStoreMock.Received(1).StoreAsync(chunk, Arg.Any<CancellationToken>());
     }
 
     #endregion
@@ -221,9 +211,7 @@ public class QuantizedVectorStoreDecoratorTests
             new DocumentChunk { Id = "chunk-2", Content = "Result 2" }
         };
 
-        _innerStoreMock
-            .Setup(s => s.SearchAsync(queryEmbedding, 10, 0.0f, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(expectedChunks);
+        _innerStoreMock.SearchAsync(queryEmbedding, 10, 0.0f, Arg.Any<CancellationToken>()).Returns(expectedChunks);
 
         var decorator = CreateDecorator();
 
@@ -232,7 +220,7 @@ public class QuantizedVectorStoreDecoratorTests
 
         // Assert
         Assert.Equal(2, results.Count());
-        _innerStoreMock.Verify(s => s.SearchAsync(queryEmbedding, 10, 0.0f, It.IsAny<CancellationToken>()), Times.Once);
+        await _innerStoreMock.Received(1).SearchAsync(queryEmbedding, 10, 0.0f, Arg.Any<CancellationToken>());
     }
 
     #endregion
@@ -267,18 +255,12 @@ public class QuantizedVectorStoreDecoratorTests
             OriginalDimension = 4
         };
 
-        _quantizerMock
-            .Setup(q => q.ComputeDistance(quantizedQuery, It.IsAny<QuantizedVector>()))
-            .Returns(0.1f);
+        _quantizerMock.ComputeDistance(quantizedQuery, Arg.Any<QuantizedVector>()).Returns(0.1f);
 
         // First store some quantized data
-        _innerStoreMock
-            .Setup(s => s.StoreAsync(It.IsAny<DocumentChunk>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((DocumentChunk c, CancellationToken _) => c.Id);
+        _innerStoreMock.StoreAsync(Arg.Any<DocumentChunk>(), Arg.Any<CancellationToken>()).Returns(callInfo => { var c = callInfo.ArgAt<DocumentChunk>(0); return c.Id; });
 
-        _quantizerMock
-            .Setup(q => q.QuantizeAsync(It.IsAny<float[]>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(quantizedVector1);
+        _quantizerMock.QuantizeAsync(Arg.Any<float[]>(), Arg.Any<CancellationToken>()).Returns(quantizedVector1);
 
         var decorator = CreateDecorator();
 
@@ -318,13 +300,9 @@ public class QuantizedVectorStoreDecoratorTests
             OriginalDimension = 4
         };
 
-        _innerStoreMock
-            .Setup(s => s.StoreAsync(chunk, It.IsAny<CancellationToken>()))
-            .ReturnsAsync("chunk-1");
+        _innerStoreMock.StoreAsync(chunk, Arg.Any<CancellationToken>()).Returns("chunk-1");
 
-        _quantizerMock
-            .Setup(q => q.QuantizeAsync(chunk.Embedding, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(quantizedVector);
+        _quantizerMock.QuantizeAsync(chunk.Embedding, Arg.Any<CancellationToken>()).Returns(quantizedVector);
 
         var decorator = CreateDecorator();
 
@@ -363,17 +341,11 @@ public class QuantizedVectorStoreDecoratorTests
             OriginalDimension = 4
         };
 
-        _innerStoreMock
-            .Setup(s => s.StoreAsync(chunk, It.IsAny<CancellationToken>()))
-            .ReturnsAsync("chunk-1");
+        _innerStoreMock.StoreAsync(chunk, Arg.Any<CancellationToken>()).Returns("chunk-1");
 
-        _innerStoreMock
-            .Setup(s => s.DeleteAsync("chunk-1", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+        _innerStoreMock.DeleteAsync("chunk-1", Arg.Any<CancellationToken>()).Returns(true);
 
-        _quantizerMock
-            .Setup(q => q.QuantizeAsync(chunk.Embedding, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(quantizedVector);
+        _quantizerMock.QuantizeAsync(chunk.Embedding, Arg.Any<CancellationToken>()).Returns(quantizedVector);
 
         var decorator = CreateDecorator();
 
@@ -385,7 +357,7 @@ public class QuantizedVectorStoreDecoratorTests
 
         // Assert
         Assert.True(result);
-        _innerStoreMock.Verify(s => s.DeleteAsync("chunk-1", It.IsAny<CancellationToken>()), Times.Once);
+        await _innerStoreMock.Received(1).DeleteAsync("chunk-1", Arg.Any<CancellationToken>());
     }
 
     #endregion
@@ -411,9 +383,7 @@ public class QuantizedVectorStoreDecoratorTests
             Embedding = new float[] { 0.15f, 0.25f, 0.35f, 0.45f }
         };
 
-        _innerStoreMock
-            .Setup(s => s.SearchAsync(queryEmbedding, It.IsAny<int>(), It.IsAny<float>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { chunk1 });
+        _innerStoreMock.SearchAsync(queryEmbedding, Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns(new[] { chunk1 });
 
         var decorator = CreateDecorator();
 

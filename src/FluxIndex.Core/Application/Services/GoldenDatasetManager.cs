@@ -14,8 +14,14 @@ namespace FluxIndex.Core.Services;
 /// <summary>
 /// 골든 데이터셋 관리 서비스
 /// </summary>
-public class GoldenDatasetManager : IGoldenDatasetManager
+public partial class GoldenDatasetManager : IGoldenDatasetManager
 {
+    private static readonly JsonSerializerOptions s_jsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true
+    };
+
     private readonly ILogger<GoldenDatasetManager> _logger;
     private readonly string _datasetBasePath;
 
@@ -44,28 +50,27 @@ public class GoldenDatasetManager : IGoldenDatasetManager
 
             if (!File.Exists(filePath))
             {
-                _logger.LogWarning("데이터셋 파일이 존재하지 않습니다: {FilePath}", filePath);
+                if (_logger.IsEnabled(LogLevel.Warning))
+                    LogGoldenDataset15(_logger, filePath);
                 return Enumerable.Empty<GoldenDatasetItem>();
             }
 
-            _logger.LogInformation("데이터셋 로드 시작: {DatasetId}", datasetId);
+            if (_logger.IsEnabled(LogLevel.Warning))
+                LogGoldenDataset14(_logger, datasetId);
 
             var jsonContent = await File.ReadAllTextAsync(filePath, cancellationToken);
-            var options = new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                WriteIndented = true
-            };
 
-            var dataset = JsonSerializer.Deserialize<List<GoldenDatasetItem>>(jsonContent, options) ?? new List<GoldenDatasetItem>();
+            var dataset = JsonSerializer.Deserialize<List<GoldenDatasetItem>>(jsonContent, s_jsonOptions) ?? new List<GoldenDatasetItem>();
 
-            _logger.LogInformation("데이터셋 로드 완료: {DatasetId}, Items={ItemCount}", datasetId, dataset.Count);
+            if (_logger.IsEnabled(LogLevel.Warning))
+                LogGoldenDataset13(_logger, datasetId, dataset.Count);
 
             return dataset;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "데이터셋 로드 중 오류 발생: {DatasetId}", datasetId);
+            if (_logger.IsEnabled(LogLevel.Warning))
+                LogGoldenDataset12(_logger, ex, datasetId);
             throw;
         }
     }
@@ -83,7 +88,8 @@ public class GoldenDatasetManager : IGoldenDatasetManager
             var filePath = GetDatasetPath(datasetId);
             var datasetList = dataset.ToList();
 
-            _logger.LogInformation("데이터셋 저장 시작: {DatasetId}, Items={ItemCount}", datasetId, datasetList.Count);
+            if (_logger.IsEnabled(LogLevel.Warning))
+                LogGoldenDataset11(_logger, datasetId, datasetList.Count);
 
             // 업데이트 시간 설정
             var now = DateTime.UtcNow;
@@ -96,20 +102,16 @@ public class GoldenDatasetManager : IGoldenDatasetManager
                 }
             }
 
-            var options = new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                WriteIndented = true
-            };
-
-            var jsonContent = JsonSerializer.Serialize(datasetList, options);
+            var jsonContent = JsonSerializer.Serialize(datasetList, s_jsonOptions);
             await File.WriteAllTextAsync(filePath, jsonContent, cancellationToken);
 
-            _logger.LogInformation("데이터셋 저장 완료: {DatasetId}", datasetId);
+            if (_logger.IsEnabled(LogLevel.Warning))
+                LogGoldenDataset10(_logger, datasetId);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "데이터셋 저장 중 오류 발생: {DatasetId}", datasetId);
+            if (_logger.IsEnabled(LogLevel.Warning))
+                LogGoldenDataset9(_logger, ex, datasetId);
             throw;
         }
     }
@@ -125,8 +127,8 @@ public class GoldenDatasetManager : IGoldenDatasetManager
         try
         {
             var logs = queryLogs.ToList();
-            _logger.LogInformation("로그에서 데이터셋 생성 시작: LogCount={LogCount}, MinRelevanceScore={MinRelevanceScore}",
-                logs.Count, minRelevanceScore);
+            if (_logger.IsEnabled(LogLevel.Warning))
+                LogGoldenDataset8(_logger, logs.Count, minRelevanceScore);
 
             var goldenItems = new List<GoldenDatasetItem>();
 
@@ -141,7 +143,7 @@ public class GoldenDatasetManager : IGoldenDatasetManager
                         .Where((id, index) => index < log.RelevanceScores.Count && log.RelevanceScores[index] >= minRelevanceScore)
                         .ToList();
 
-                    if (relevantChunkIds.Any())
+                    if (relevantChunkIds.Count != 0)
                     {
                         var goldenItem = new GoldenDatasetItem
                         {
@@ -167,13 +169,13 @@ public class GoldenDatasetManager : IGoldenDatasetManager
                 }
             }
 
-            _logger.LogInformation("로그에서 데이터셋 생성 완료: CreatedItems={CreatedItems}", goldenItems.Count);
+            LogGoldenDataset7(_logger, goldenItems.Count);
 
             return goldenItems;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "로그에서 데이터셋 생성 중 오류 발생");
+            LogGoldenDataset6(_logger, ex);
             throw;
         }
     }
@@ -197,14 +199,15 @@ public class GoldenDatasetManager : IGoldenDatasetManager
             var warnings = new List<string>();
             var validItems = 0;
 
-            _logger.LogInformation("데이터셋 검증 시작: TotalItems={TotalItems}", result.TotalItems);
+            if (_logger.IsEnabled(LogLevel.Warning))
+                LogGoldenDataset5(_logger, result.TotalItems);
 
             foreach (var item in datasetList)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var itemErrors = ValidateDatasetItem(item);
-                if (itemErrors.Any())
+                if (itemErrors.Count != 0)
                 {
                     errors.AddRange(itemErrors.Select(e => $"Item {item.Id}: {e}"));
                 }
@@ -219,7 +222,7 @@ public class GoldenDatasetManager : IGoldenDatasetManager
                     warnings.Add($"Item {item.Id}: 기대 답변이 비어있습니다.");
                 }
 
-                if (!item.RelevantChunkIds.Any())
+                if (item.RelevantChunkIds.Count == 0)
                 {
                     warnings.Add($"Item {item.Id}: 관련 청크가 지정되지 않았습니다.");
                 }
@@ -228,7 +231,7 @@ public class GoldenDatasetManager : IGoldenDatasetManager
             result.ValidationErrors = errors;
             result.Warnings = warnings;
             result.ValidItems = validItems;
-            result.IsValid = !errors.Any();
+            result.IsValid = errors.Count == 0;
 
             // 카테고리 분포 계산
             result.CategoryDistribution = datasetList
@@ -241,14 +244,14 @@ public class GoldenDatasetManager : IGoldenDatasetManager
                 .GroupBy(item => item.Difficulty)
                 .ToDictionary(g => g.Key, g => g.Count());
 
-            _logger.LogInformation("데이터셋 검증 완료: ValidItems={ValidItems}, Errors={ErrorCount}, Warnings={WarningCount}",
-                result.ValidItems, result.ValidationErrors.Count, result.Warnings.Count);
+            if (_logger.IsEnabled(LogLevel.Warning))
+                LogGoldenDataset4(_logger, result.ValidItems, result.ValidationErrors.Count, result.Warnings.Count);
 
             return await Task.FromResult(result);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "데이터셋 검증 중 오류 발생");
+            LogGoldenDataset3(_logger, ex);
             throw;
         }
     }
@@ -270,7 +273,7 @@ public class GoldenDatasetManager : IGoldenDatasetManager
                 DatasetId = datasetId,
                 TotalQueries = datasetList.Count,
                 TotalRelevantDocuments = datasetList.SelectMany(item => item.RelevantChunkIds).Distinct().Count(),
-                LastUpdated = datasetList.Any() ? datasetList.Max(item => item.UpdatedAt) : DateTime.MinValue
+                LastUpdated = datasetList.Count != 0 ? datasetList.Max(item => item.UpdatedAt) : DateTime.MinValue
             };
 
             // 카테고리별 개수
@@ -290,14 +293,15 @@ public class GoldenDatasetManager : IGoldenDatasetManager
                 statistics.AverageQueriesPerDocument = (double)statistics.TotalQueries / statistics.TotalRelevantDocuments;
             }
 
-            _logger.LogInformation("데이터셋 통계 정보 조회 완료: {DatasetId}, TotalQueries={TotalQueries}",
-                datasetId, statistics.TotalQueries);
+            if (_logger.IsEnabled(LogLevel.Warning))
+                LogGoldenDataset2(_logger, datasetId, statistics.TotalQueries);
 
             return statistics;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "데이터셋 통계 정보 조회 중 오류 발생: {DatasetId}", datasetId);
+            if (_logger.IsEnabled(LogLevel.Warning))
+                LogGoldenDataset1(_logger, ex, datasetId);
             throw;
         }
     }
@@ -309,7 +313,7 @@ public class GoldenDatasetManager : IGoldenDatasetManager
         return Path.Combine(_datasetBasePath, $"{datasetId}.json");
     }
 
-    private List<string> ValidateDatasetItem(GoldenDatasetItem item)
+    private static List<string> ValidateDatasetItem(GoldenDatasetItem item)
     {
         var errors = new List<string>();
 
@@ -322,18 +326,18 @@ public class GoldenDatasetManager : IGoldenDatasetManager
         if (item.Weight < 0 || item.Weight > 10)
             errors.Add("가중치는 0과 10 사이여야 합니다.");
 
-        if (!Enum.IsDefined(typeof(EvaluationDifficulty), item.Difficulty))
+        if (!Enum.IsDefined(item.Difficulty))
             errors.Add("유효하지 않은 난이도입니다.");
 
         return errors;
     }
 
-    private EvaluationDifficulty ClassifyQueryDifficulty(string query)
+    private static EvaluationDifficulty ClassifyQueryDifficulty(string query)
     {
         // 간단한 휴리스틱 기반 난이도 분류
         var wordCount = query.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
         var hasComplexWords = query.Contains("분석") || query.Contains("비교") || query.Contains("설명");
-        var hasQuestionWords = query.Contains("왜") || query.Contains("어떻게") || query.Contains("무엇");
+        var hasQuestionWords = query.Contains('왜') || query.Contains("어떻게") || query.Contains("무엇");
 
         if (wordCount <= 3 && !hasComplexWords)
             return EvaluationDifficulty.Easy;
@@ -347,7 +351,7 @@ public class GoldenDatasetManager : IGoldenDatasetManager
         return EvaluationDifficulty.Medium;
     }
 
-    private List<string> ExtractQueryCategories(string query)
+    private static List<string> ExtractQueryCategories(string query)
     {
         var categories = new List<string>();
 
@@ -368,8 +372,43 @@ public class GoldenDatasetManager : IGoldenDatasetManager
             }
         }
 
-        return categories.Any() ? categories : new List<string> { "일반" };
+        return categories.Count != 0 ? categories : new List<string> { "일반" };
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "데이터셋 파일이 존재하지 않습니다: {FilePath}")]
+    private static partial void LogGoldenDataset15(ILogger logger, string filePath);
+    [LoggerMessage(Level = LogLevel.Information, Message = "데이터셋 로드 시작: {DatasetId}")]
+    private static partial void LogGoldenDataset14(ILogger logger, string datasetId);
+    [LoggerMessage(Level = LogLevel.Information, Message = "데이터셋 로드 완료: {DatasetId}, Items={ItemCount}")]
+    private static partial void LogGoldenDataset13(ILogger logger, string datasetId, int itemCount);
+    [LoggerMessage(Level = LogLevel.Error, Message = "데이터셋 로드 중 오류 발생: {DatasetId}")]
+    private static partial void LogGoldenDataset12(ILogger logger, Exception exception, string datasetId);
+    [LoggerMessage(Level = LogLevel.Information, Message = "데이터셋 저장 시작: {DatasetId}, Items={ItemCount}")]
+    private static partial void LogGoldenDataset11(ILogger logger, string datasetId, int itemCount);
+    [LoggerMessage(Level = LogLevel.Information, Message = "데이터셋 저장 완료: {DatasetId}")]
+    private static partial void LogGoldenDataset10(ILogger logger, string datasetId);
+    [LoggerMessage(Level = LogLevel.Error, Message = "데이터셋 저장 중 오류 발생: {DatasetId}")]
+    private static partial void LogGoldenDataset9(ILogger logger, Exception exception, string datasetId);
+    [LoggerMessage(Level = LogLevel.Information, Message = "로그에서 데이터셋 생성 시작: LogCount={LogCount}, MinRelevanceScore={MinRelevanceScore}")]
+    private static partial void LogGoldenDataset8(ILogger logger, int logCount, double minRelevanceScore);
+    [LoggerMessage(Level = LogLevel.Information, Message = "로그에서 데이터셋 생성 완료: CreatedItems={CreatedItems}")]
+    private static partial void LogGoldenDataset7(ILogger logger, int createdItems);
+    [LoggerMessage(Level = LogLevel.Error, Message = "로그에서 데이터셋 생성 중 오류 발생")]
+    private static partial void LogGoldenDataset6(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Information, Message = "데이터셋 검증 시작: TotalItems={TotalItems}")]
+    private static partial void LogGoldenDataset5(ILogger logger, int totalItems);
+    [LoggerMessage(Level = LogLevel.Information, Message = "데이터셋 검증 완료: ValidItems={ValidItems}, Errors={ErrorCount}, Warnings={WarningCount}")]
+    private static partial void LogGoldenDataset4(ILogger logger, int validItems, int errorCount, int warningCount);
+    [LoggerMessage(Level = LogLevel.Error, Message = "데이터셋 검증 중 오류 발생")]
+    private static partial void LogGoldenDataset3(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Information, Message = "데이터셋 통계 정보 조회 완료: {DatasetId}, TotalQueries={TotalQueries}")]
+    private static partial void LogGoldenDataset2(ILogger logger, string datasetId, int totalQueries);
+    [LoggerMessage(Level = LogLevel.Error, Message = "데이터셋 통계 정보 조회 중 오류 발생: {DatasetId}")]
+    private static partial void LogGoldenDataset1(ILogger logger, Exception exception, string datasetId);
 
     #endregion
 }

@@ -8,7 +8,7 @@ namespace FluxIndex.Storage.SQLite.Graph;
 /// <summary>
 /// SQLite 기반 그래프 저장소 (IChunkHierarchyRepository 구현)
 /// </summary>
-public class SQLiteGraphStore : IChunkHierarchyRepository
+public partial class SQLiteGraphStore : IChunkHierarchyRepository
 {
     private readonly SQLiteGraphDbContext _context;
     private readonly ILogger<SQLiteGraphStore> _logger;
@@ -52,7 +52,7 @@ public class SQLiteGraphStore : IChunkHierarchyRepository
         }
 
         await _context.SaveChangesAsync(cancellationToken);
-        _logger.LogDebug("Hierarchy saved: {ChunkId}", hierarchy.ChunkId);
+        LogHierarchySaved(_logger, hierarchy.ChunkId);
     }
 
     public async Task<IReadOnlyList<ChunkHierarchy>> GetChildrenAsync(
@@ -103,7 +103,7 @@ public class SQLiteGraphStore : IChunkHierarchyRepository
         }
 
         await _context.SaveChangesAsync(cancellationToken);
-        _logger.LogDebug("Relationship saved: {Id}", relationship.Id);
+        LogRelationshipSaved(_logger, relationship.Id);
     }
 
     public async Task<IReadOnlyList<ChunkRelationshipExtended>> GetRelationshipsAsync(
@@ -142,7 +142,7 @@ public class SQLiteGraphStore : IChunkHierarchyRepository
             .Where(h => h.ChunkId.StartsWith(documentId))
             .ToListAsync(cancellationToken);
 
-        if (!hierarchies.Any())
+        if (hierarchies.Count == 0)
         {
             return new HierarchyStatistics
             {
@@ -166,7 +166,7 @@ public class SQLiteGraphStore : IChunkHierarchyRepository
             .ToDictionary(g => g.Key, g => g.Count());
 
         var parentChunks = hierarchies.Where(h => h.GetChildChunkIds().Count > 0).ToList();
-        var averageBranchingFactor = parentChunks.Any()
+        var averageBranchingFactor = parentChunks.Count != 0
             ? parentChunks.Average(h => h.GetChildChunkIds().Count)
             : 0.0;
 
@@ -313,6 +313,16 @@ public class SQLiteGraphStore : IChunkHierarchyRepository
 
         return connected;
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Hierarchy saved: {ChunkId}")]
+    private static partial void LogHierarchySaved(ILogger logger, string chunkId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Relationship saved: {Id}")]
+    private static partial void LogRelationshipSaved(ILogger logger, string id);
 
     #endregion
 

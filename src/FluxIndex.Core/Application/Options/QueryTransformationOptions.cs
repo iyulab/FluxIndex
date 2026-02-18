@@ -98,7 +98,7 @@ public class OpenAIOptions
     /// <summary>
     /// Azure OpenAI 사용 여부
     /// </summary>
-    public bool IsAzure { get; set; } = false;
+    public bool IsAzure { get; set; }
 
     /// <summary>
     /// 배포 이름 (Azure용)
@@ -128,7 +128,7 @@ public class OpenAIOptions
     /// <summary>
     /// 테스트 모드 여부
     /// </summary>
-    public bool IsTestMode { get; set; } = false;
+    public bool IsTestMode { get; set; }
 
     /// <summary>
     /// 설정 유효성 검증

@@ -54,12 +54,12 @@ public class ChunkEnrichmentOptions
     /// <summary>
     /// Enable summary generation for each chunk.
     /// </summary>
-    public bool GenerateSummary { get; set; } = false;
+    public bool GenerateSummary { get; set; }
 
     /// <summary>
     /// Enable RAG quality evaluation for generated QA pairs.
     /// </summary>
-    public bool EvaluateQuality { get; set; } = false;
+    public bool EvaluateQuality { get; set; }
 
     /// <summary>
     /// Minimum quality score threshold (0-1). QA pairs below this are filtered.

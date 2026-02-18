@@ -14,7 +14,7 @@ namespace FluxIndex.Stack.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/v1/[controller]")]
-public class ChunksController : ControllerBase
+public partial class ChunksController : ControllerBase
 {
     private readonly IChunkService _chunkService;
     private readonly ILogger<ChunksController> _logger;
@@ -89,7 +89,7 @@ public class ChunksController : ControllerBase
         try
         {
             var chunk = await _chunkService.UpdateAsync(id, request, cancellationToken);
-            _logger.LogInformation("Chunk updated: {ChunkId}", id);
+            LogChunkUpdated(_logger, id);
             return Ok(ApiResponse<ChunkDetailDto>.Ok(chunk, "Chunk updated successfully."));
         }
         catch (KeyNotFoundException)
@@ -114,7 +114,7 @@ public class ChunksController : ControllerBase
         try
         {
             await _chunkService.DeleteAsync(id, cancellationToken);
-            _logger.LogInformation("Chunk deleted: {ChunkId}", id);
+            LogChunkDeleted(_logger, id);
             return Ok(ApiResponse<object>.Ok(null!, "Chunk deleted successfully."));
         }
         catch (KeyNotFoundException)
@@ -142,7 +142,7 @@ public class ChunksController : ControllerBase
             var response = await _chunkService.EnrichAsync(id, request ?? new EnrichChunkRequest(), cancellationToken);
             if (response.Success)
             {
-                _logger.LogInformation("Chunk enriched: {ChunkId}", id);
+                LogChunkEnriched(_logger, id);
                 return Ok(ApiResponse<EnrichChunkResponse>.Ok(response, "Chunk enriched successfully."));
             }
             else
@@ -172,7 +172,7 @@ public class ChunksController : ControllerBase
         try
         {
             await _chunkService.RegenerateEmbeddingAsync(id, cancellationToken);
-            _logger.LogInformation("Embedding regenerated for chunk: {ChunkId}", id);
+            LogEmbeddingRegenerated(_logger, id);
             return Ok(ApiResponse<object>.Ok(null!, "Embedding regenerated successfully."));
         }
         catch (KeyNotFoundException)
@@ -184,4 +184,20 @@ public class ChunksController : ControllerBase
             return BadRequest(ApiResponse<object>.Fail(ex.Message));
         }
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Chunk updated: {ChunkId}")]
+    private static partial void LogChunkUpdated(ILogger logger, Guid chunkId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Chunk deleted: {ChunkId}")]
+    private static partial void LogChunkDeleted(ILogger logger, Guid chunkId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Chunk enriched: {ChunkId}")]
+    private static partial void LogChunkEnriched(ILogger logger, Guid chunkId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Embedding regenerated for chunk: {ChunkId}")]
+    private static partial void LogEmbeddingRegenerated(ILogger logger, Guid chunkId);
+
+    #endregion
 }

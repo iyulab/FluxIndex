@@ -5,13 +5,14 @@ using WebFlux.Core.Interfaces;
 using WebFlux.Core.Models;
 using WebFlux.Core.Options;
 using CrawlProgressModel = WebFlux.Core.Models.CrawlProgress;
+using System.Globalization;
 
 namespace FluxIndex.SDK.Extensions.WebFlux;
 
 /// <summary>
 /// WebFlux integration for FluxIndex - processes web content using WebFlux library
 /// </summary>
-public class WebFluxIntegration
+public partial class WebFluxIntegration
 {
     private readonly IWebContentProcessor _webContentProcessor;
     private readonly Indexer _indexer;
@@ -45,7 +46,7 @@ public class WebFluxIntegration
             ChunkOverlap = _options.DefaultChunkOverlap
         };
 
-        _logger.LogInformation("Processing web content from URL: {Url}", url);
+        LogProcessingWebContent(_logger, url);
 
         try
         {
@@ -53,14 +54,13 @@ public class WebFluxIntegration
 
             var documentId = await _indexer.IndexDocumentAsync(document, cancellationToken);
 
-            _logger.LogInformation("Successfully indexed web content. DocumentId: {DocumentId}, Chunks: {ChunkCount}",
-                documentId, document.Chunks?.Count ?? 0);
+            LogSuccessfullyIndexedWebContent(_logger, documentId, document.Chunks?.Count ?? 0);
 
             return documentId;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to index web content from URL: {Url}", url);
+            LogFailedToIndexWebContent(_logger, ex, url);
             throw;
         }
     }
@@ -119,18 +119,16 @@ public class WebFluxIntegration
                 // Use non-streaming API
                 var webChunks = await _webContentProcessor.ProcessUrlAsync(url, chunkingOptions, cancellationToken);
 
-                _logger.LogInformation("=== WEBFLUX CHUNKING: Generated {Count} chunks from URL ===", webChunks.Count);
+                LogWebFluxChunking(_logger, webChunks.Count);
 
                 foreach (var webChunk in webChunks)
                 {
                     var estimatedTokens = webChunk.Content.Length / 4;
-                    _logger.LogInformation("=== WEBFLUX CHUNK {Seq}/{Total}: {Length} chars (~{Tokens} tokens, quality: {Quality}) ===",
-                        webChunk.SequenceNumber, webChunks.Count, webChunk.Content.Length, estimatedTokens, webChunk.QualityScore);
+                    LogWebFluxChunkDetails(_logger, webChunk.SequenceNumber, webChunks.Count, webChunk.Content.Length, estimatedTokens, webChunk.QualityScore);
 
                     if (estimatedTokens > 8000)
                     {
-                        _logger.LogWarning("=== WEBFLUX CHUNK {Seq} EXCEEDS TOKEN LIMIT: ~{Tokens} tokens ===",
-                            webChunk.SequenceNumber, estimatedTokens);
+                        LogWebFluxChunkExceedsTokenLimit(_logger, webChunk.SequenceNumber, estimatedTokens);
                     }
 
                     var documentChunk = ConvertToDocumentChunk(webChunk, chunks.Count, url);
@@ -178,33 +176,6 @@ public class WebFluxIntegration
     }
 
     /// <summary>
-    /// Batch process multiple URLs using WebFlux API (sequential processing)
-    /// </summary>
-    [Obsolete("Use IndexMultipleUrlsBatchAsync for better performance with parallel processing")]
-    public async Task<IEnumerable<string>> IndexMultipleUrlsAsync(
-        IEnumerable<string> urls,
-        WebFluxProcessingOptions? options = null,
-        CancellationToken cancellationToken = default)
-    {
-        var documentIds = new List<string>();
-
-        foreach (var url in urls)
-        {
-            try
-            {
-                var documentId = await IndexWebContentAsync(url, options, cancellationToken);
-                documentIds.Add(documentId);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to process URL: {Url}", url);
-            }
-        }
-
-        return documentIds;
-    }
-
-    /// <summary>
     /// Batch process multiple URLs using WebFlux batch API (5-10x faster than sequential processing)
     /// </summary>
     public async Task<BatchIndexingResult> IndexMultipleUrlsBatchAsync(
@@ -223,7 +194,7 @@ public class WebFluxIntegration
         CancellationToken cancellationToken = default)
     {
         var urlList = urls.ToList();
-        _logger.LogInformation("Batch processing {UrlCount} URLs with WebFlux", urlList.Count);
+        LogBatchProcessingUrls(_logger, urlList.Count);
 
         var result = new BatchIndexingResult
         {
@@ -252,7 +223,7 @@ public class WebFluxIntegration
                 {
                     if (webChunks.Count == 0)
                     {
-                        _logger.LogWarning("No chunks generated for URL: {Url}", url);
+                        LogNoChunksGeneratedForUrl(_logger, url);
                         result.FailedUrls.Add(url, "No chunks generated");
                         continue;
                     }
@@ -266,12 +237,11 @@ public class WebFluxIntegration
                     result.SuccessfulUrls.Add(url, documentId);
                     result.TotalChunksIndexed += webChunks.Count;
 
-                    _logger.LogDebug("Successfully indexed {ChunkCount} chunks from {Url} as document {DocumentId}",
-                        webChunks.Count, url, documentId);
+                    LogSuccessfullyIndexedUrlChunks(_logger, webChunks.Count, url, documentId);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed to index URL: {Url}", url);
+                    LogFailedToIndexUrl(_logger, ex, url);
                     result.FailedUrls.Add(url, ex.Message);
                 }
             }
@@ -279,18 +249,13 @@ public class WebFluxIntegration
             result.EndTime = DateTime.UtcNow;
             result.Duration = result.EndTime - result.StartTime;
 
-            _logger.LogInformation(
-                "Batch processing completed: {SuccessCount}/{TotalCount} URLs indexed successfully in {Duration}ms ({ChunkCount} total chunks)",
-                result.SuccessfulUrls.Count,
-                result.TotalUrls,
-                result.Duration.TotalMilliseconds,
-                result.TotalChunksIndexed);
+            LogBatchProcessingCompleted(_logger, result.SuccessfulUrls.Count, result.TotalUrls, result.Duration.TotalMilliseconds, result.TotalChunksIndexed);
 
             return result;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Batch processing failed");
+            LogBatchProcessingFailed(_logger, ex);
             result.EndTime = DateTime.UtcNow;
             result.Duration = result.EndTime - result.StartTime;
             throw;
@@ -300,7 +265,7 @@ public class WebFluxIntegration
     /// <summary>
     /// Convert WebFlux chunks to FluxIndex document
     /// </summary>
-    private async Task<Document> ConvertToFluxIndexDocumentAsync(
+    private static async Task<Document> ConvertToFluxIndexDocumentAsync(
         IReadOnlyList<WebContentChunk> webChunks,
         string url,
         CancellationToken cancellationToken = default)
@@ -338,7 +303,7 @@ public class WebFluxIntegration
         return await Task.FromResult(document);
     }
 
-    private DocumentChunk ConvertToDocumentChunk(WebContentChunk webChunk, int chunkIndex, string sourceUrl)
+    private static DocumentChunk ConvertToDocumentChunk(WebContentChunk webChunk, int chunkIndex, string sourceUrl)
     {
         var chunk = new DocumentChunk(webChunk.Content, chunkIndex)
         {
@@ -429,7 +394,7 @@ public class WebFluxIntegration
         }
 
         // Preserve additional metadata
-        if (webChunk.AdditionalMetadata?.Any() == true)
+        if (webChunk.AdditionalMetadata?.Count > 0)
         {
             foreach (var prop in webChunk.AdditionalMetadata)
             {
@@ -481,7 +446,7 @@ public class WebFluxIntegration
         ChunkingOptions chunkingOptions)
     {
         var errorMessage = new System.Text.StringBuilder();
-        errorMessage.AppendLine($"Failed to extract content from URL: {url}");
+        errorMessage.AppendLine(CultureInfo.InvariantCulture, $"Failed to extract content from URL: {url}");
         errorMessage.AppendLine();
 
         // Network error
@@ -495,7 +460,7 @@ public class WebFluxIntegration
             errorMessage.AppendLine("   • The site is blocking automated access (403 Forbidden)");
             if (processingException != null)
             {
-                errorMessage.AppendLine($"   • Technical details: {processingException.Message}");
+                errorMessage.AppendLine(CultureInfo.InvariantCulture, $"   • Technical details: {processingException.Message}");
             }
         }
         // Processing error (HTML fetched but no content extracted)
@@ -503,7 +468,7 @@ public class WebFluxIntegration
         {
             errorMessage.AppendLine("⚠️  Content Processing Error:");
             errorMessage.AppendLine("   The page was accessed but no extractable content was found.");
-            errorMessage.AppendLine($"   Error: {processingException.Message}");
+            errorMessage.AppendLine(CultureInfo.InvariantCulture, $"   Error: {processingException.Message}");
         }
         // No error exception but still no content (most common case)
         else
@@ -536,12 +501,52 @@ public class WebFluxIntegration
         errorMessage.AppendLine("   • For JavaScript-heavy sites, consider using a headless browser approach");
         errorMessage.AppendLine();
         errorMessage.AppendLine("📋 Processing Configuration Used:");
-        errorMessage.AppendLine($"   • Strategy: {chunkingOptions.Strategy}");
-        errorMessage.AppendLine($"   • Max Chunk Size: {chunkingOptions.MaxChunkSize}");
-        errorMessage.AppendLine($"   • Chunk Overlap: {chunkingOptions.ChunkOverlap}");
+        errorMessage.AppendLine(CultureInfo.InvariantCulture, $"   • Strategy: {chunkingOptions.Strategy}");
+        errorMessage.AppendLine(CultureInfo.InvariantCulture, $"   • Max Chunk Size: {chunkingOptions.MaxChunkSize}");
+        errorMessage.AppendLine(CultureInfo.InvariantCulture, $"   • Chunk Overlap: {chunkingOptions.ChunkOverlap}");
 
         return errorMessage.ToString();
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Processing web content from URL: {Url}")]
+    private static partial void LogProcessingWebContent(ILogger logger, string url);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Successfully indexed web content. DocumentId: {DocumentId}, Chunks: {ChunkCount}")]
+    private static partial void LogSuccessfullyIndexedWebContent(ILogger logger, string documentId, int chunkCount);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to index web content from URL: {Url}")]
+    private static partial void LogFailedToIndexWebContent(ILogger logger, Exception exception, string url);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "WebFlux chunking: Generated {Count} chunks from URL")]
+    private static partial void LogWebFluxChunking(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "WebFlux chunk {Seq}/{Total}: {Length} chars (~{Tokens} tokens, quality: {Quality})")]
+    private static partial void LogWebFluxChunkDetails(ILogger logger, int seq, int total, int length, int tokens, double quality);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "WebFlux chunk {Seq} exceeds token limit: ~{Tokens} tokens")]
+    private static partial void LogWebFluxChunkExceedsTokenLimit(ILogger logger, int seq, int tokens);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Batch processing {UrlCount} URLs with WebFlux")]
+    private static partial void LogBatchProcessingUrls(ILogger logger, int urlCount);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No chunks generated for URL: {Url}")]
+    private static partial void LogNoChunksGeneratedForUrl(ILogger logger, string url);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Successfully indexed {ChunkCount} chunks from {Url} as document {DocumentId}")]
+    private static partial void LogSuccessfullyIndexedUrlChunks(ILogger logger, int chunkCount, string url, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to index URL: {Url}")]
+    private static partial void LogFailedToIndexUrl(ILogger logger, Exception exception, string url);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Batch processing completed: {SuccessCount}/{TotalCount} URLs indexed successfully in {Duration}ms ({ChunkCount} total chunks)")]
+    private static partial void LogBatchProcessingCompleted(ILogger logger, int successCount, int totalCount, double duration, int chunkCount);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Batch processing failed")]
+    private static partial void LogBatchProcessingFailed(ILogger logger, Exception exception);
+
+    #endregion
 }
 
 /// <summary>
@@ -567,7 +572,7 @@ public class WebFluxOptions
     /// <summary>
     /// Whether to include image processing (default: false, requires IImageToTextService)
     /// </summary>
-    public bool DefaultIncludeImages { get; set; } = false;
+    public bool DefaultIncludeImages { get; set; }
 
     /// <summary>
     /// Enable streaming API for memory-efficient processing of large websites
@@ -598,7 +603,7 @@ public class WebFluxProcessingOptions
     /// <summary>
     /// Whether to include image processing
     /// </summary>
-    public bool IncludeImages { get; set; } = false;
+    public bool IncludeImages { get; set; }
 
     /// <summary>
     /// Optional crawl options for dynamic rendering and SPA support

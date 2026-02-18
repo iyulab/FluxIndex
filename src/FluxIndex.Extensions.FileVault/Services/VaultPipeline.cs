@@ -14,7 +14,7 @@ namespace FluxIndex.Extensions.FileVault.Services;
 /// Pipeline service for processing vault entries.
 /// Simplified flow: Source → Extracted → Memorized (chunks stored in DB only).
 /// </summary>
-public sealed class VaultPipeline : IVaultPipeline
+public sealed partial class VaultPipeline : IVaultPipeline
 {
     /// <summary>
     /// Document file extensions suitable for vector embedding (Memorize).
@@ -115,7 +115,7 @@ public sealed class VaultPipeline : IVaultPipeline
 
         try
         {
-            _logger.LogInformation("Starting memorize for {SourcePath}", entry.SourcePath);
+            LogStartingMemorize(_logger, entry.SourcePath);
 
             // Step 1: Backup user content if preserving (for re-memorize scenarios)
             string? existingQaContent = null;
@@ -128,13 +128,13 @@ public sealed class VaultPipeline : IVaultPipeline
                 if (options.PreserveQaContent && !string.IsNullOrWhiteSpace(vaultContent.QaContent))
                 {
                     existingQaContent = vaultContent.QaContent;
-                    _logger.LogDebug("Backing up existing QA content ({Length} chars)", existingQaContent.Length);
+                    LogBackupQaContent(_logger, existingQaContent.Length);
                 }
 
                 if (options.PreserveAppendText && !string.IsNullOrWhiteSpace(vaultContent.AppendText))
                 {
                     existingAppendText = vaultContent.AppendText;
-                    _logger.LogDebug("Backing up existing append-text ({Length} chars)", existingAppendText.Length);
+                    LogBackupAppendText(_logger, existingAppendText.Length);
                 }
             }
 
@@ -154,13 +154,13 @@ public sealed class VaultPipeline : IVaultPipeline
             if (!string.IsNullOrWhiteSpace(existingQaContent))
             {
                 await _storage.StoreQaContentAsync(entry, existingQaContent, ct);
-                _logger.LogDebug("Restored QA content");
+                LogRestoredQaContent(_logger);
             }
 
             if (!string.IsNullOrWhiteSpace(existingAppendText))
             {
                 await _storage.StoreAppendTextAsync(entry, existingAppendText, ct);
-                _logger.LogDebug("Restored append-text content");
+                LogRestoredAppendText(_logger);
             }
 
             // Step 6: Chunk and index (shared with RefreshAsync)
@@ -180,18 +180,14 @@ public sealed class VaultPipeline : IVaultPipeline
             entry.SaveMetadata();
 
             sw.Stop();
-            _logger.LogInformation(
-                "Memorize completed for {SourcePath}: {ChunkCount} chunks in {Duration:F2}s",
-                entry.SourcePath,
-                result.ChunkCount,
-                sw.Elapsed.TotalSeconds);
+            LogMemorizeCompleted(_logger, entry.SourcePath, result.ChunkCount, sw.Elapsed.TotalSeconds);
 
             return MemorizeResult.Succeeded(result.ChunkCount, result.ContentLength, sw.Elapsed, commitHash);
         }
         catch (Exception ex)
         {
             sw.Stop();
-            _logger.LogError(ex, "Memorize failed for {SourcePath}", entry.SourcePath);
+            LogMemorizeFailed(_logger, ex, entry.SourcePath);
             entry.MarkError(ex.Message);
             entry.SaveMetadata();
             return MemorizeResult.Failed(ex.Message, sw.Elapsed);
@@ -205,7 +201,7 @@ public sealed class VaultPipeline : IVaultPipeline
 
         try
         {
-            _logger.LogInformation("Starting refresh for {SourcePath}", entry.SourcePath);
+            LogStartingRefresh(_logger, entry.SourcePath);
 
             // Verify that extracted content exists
             if (!entry.RefinedExists)
@@ -233,18 +229,14 @@ public sealed class VaultPipeline : IVaultPipeline
             entry.SaveMetadata();
 
             sw.Stop();
-            _logger.LogInformation(
-                "Refresh completed for {SourcePath}: {ChunkCount} chunks in {Duration:F2}s",
-                entry.SourcePath,
-                result.ChunkCount,
-                sw.Elapsed.TotalSeconds);
+            LogRefreshCompleted(_logger, entry.SourcePath, result.ChunkCount, sw.Elapsed.TotalSeconds);
 
             return MemorizeResult.Succeeded(result.ChunkCount, result.ContentLength, sw.Elapsed, commitHash);
         }
         catch (Exception ex)
         {
             sw.Stop();
-            _logger.LogError(ex, "Refresh failed for {SourcePath}", entry.SourcePath);
+            LogRefreshFailed(_logger, ex, entry.SourcePath);
             entry.MarkError(ex.Message);
             entry.SaveMetadata();
             return MemorizeResult.Failed(ex.Message, sw.Elapsed);
@@ -253,7 +245,7 @@ public sealed class VaultPipeline : IVaultPipeline
 
     public async Task ExtractAsync(VaultEntry entry, CancellationToken ct = default)
     {
-        _logger.LogInformation("Extracting content from {SourcePath}", entry.SourcePath);
+        LogExtractingContent(_logger, entry.SourcePath);
 
         // Calculate source content hash
         var contentHash = await _hasher.ComputeHashAsync(entry.SourcePath, ct);
@@ -291,12 +283,12 @@ public sealed class VaultPipeline : IVaultPipeline
         entry.MarkExtracted(contentHash);
         entry.SaveMetadata();
 
-        _logger.LogInformation("Extracted {Length} chars to {Path}", extractedContent.Length, entry.ExtractedMdPath);
+        LogExtracted(_logger, extractedContent.Length, entry.ExtractedMdPath);
     }
 
     public async Task RefineAsync(VaultEntry entry, CancellationToken ct = default)
     {
-        _logger.LogInformation("Refining content for {SourcePath}", entry.SourcePath);
+        LogRefiningContent(_logger, entry.SourcePath);
 
         // Get extracted content
         var extractedContent = await _storage.GetExtractedContentAsync(entry, ct);
@@ -317,14 +309,14 @@ public sealed class VaultPipeline : IVaultPipeline
         entry.MarkRefined();
         entry.SaveMetadata();
 
-        _logger.LogInformation("Refined {Length} chars to {Path}", refinedContent.Length, entry.RefinedMdPath);
+        LogRefined(_logger, refinedContent.Length, entry.RefinedMdPath);
     }
 
     public async Task RemoveAsync(VaultEntry entry, CancellationToken ct = default)
     {
         if (_vectorStore == null)
         {
-            _logger.LogWarning("No vector store configured, skipping removal");
+            LogNoVectorStoreSkipRemoval(_logger);
             return;
         }
 
@@ -332,7 +324,7 @@ public sealed class VaultPipeline : IVaultPipeline
         var documentId = entry.FilepathHash;
         await _vectorStore.DeleteByDocumentIdAsync(documentId, ct);
 
-        _logger.LogInformation("Removed chunks for document {DocumentId}", documentId);
+        LogRemovedChunks(_logger, documentId);
     }
 
     public async Task<IReadOnlyList<PipelineSearchResult>> SearchAsync(
@@ -344,7 +336,7 @@ public sealed class VaultPipeline : IVaultPipeline
     {
         if (_vectorStore == null || _embeddingService == null)
         {
-            _logger.LogWarning("Vector store or embedding service not configured, cannot search");
+            LogNoVectorStoreCannotSearch(_logger);
             return [];
         }
 
@@ -376,7 +368,7 @@ public sealed class VaultPipeline : IVaultPipeline
             })
             .ToList();
 
-        _logger.LogInformation("Search for '{Query}' returned {Count} results", query, results.Count);
+        LogSearchResults(_logger, query, results.Count);
         return results;
     }
 
@@ -391,7 +383,7 @@ public sealed class VaultPipeline : IVaultPipeline
 
         if (string.IsNullOrWhiteSpace(combinedContent))
         {
-            _logger.LogWarning("No content to index for {SourcePath}", entry.SourcePath);
+            LogNoContentToIndex(_logger, entry.SourcePath);
             return (0, 0);
         }
 
@@ -414,7 +406,7 @@ public sealed class VaultPipeline : IVaultPipeline
             chunks = ChunkFallback(combinedContent, options.MaxChunkSize);
         }
 
-        _logger.LogDebug("Created {ChunkCount} chunks from {ContentLength} chars", chunks.Count, combinedContent.Length);
+        LogCreatedChunks(_logger, chunks.Count, combinedContent.Length);
 
         // Index to vector store
         if (_vectorStore != null && _embeddingService != null)
@@ -423,7 +415,7 @@ public sealed class VaultPipeline : IVaultPipeline
         }
         else
         {
-            _logger.LogWarning("No vector store or embedding service configured, skipping indexing");
+            LogNoVectorStoreSkipIndexing(_logger);
         }
 
         return (chunks.Count, combinedContent.Length);
@@ -466,7 +458,8 @@ public sealed class VaultPipeline : IVaultPipeline
 
         // Store in vector store
         var storedIds = await _vectorStore!.StoreBatchAsync(documentChunks, ct);
-        _logger.LogInformation("Indexed {Count} chunks for {DocumentId}", storedIds.Count(), documentId);
+        var storedCount = storedIds.Count();
+        LogIndexedChunks(_logger, storedCount, documentId);
     }
 
     private async Task<string> ExtractFallbackAsync(string sourcePath, CancellationToken ct)
@@ -532,10 +525,6 @@ public sealed class VaultPipeline : IVaultPipeline
         return CodeExtensions.Contains(extension);
     }
 
-    // Backward compatibility alias
-    [Obsolete("Use IsReadableTextExtension instead")]
-    public bool IsTextExtension(string extension) => IsReadableTextExtension(extension);
-
     /// <summary>
     /// Gets all readable text extensions (documents + code + additional).
     /// </summary>
@@ -549,11 +538,7 @@ public sealed class VaultPipeline : IVaultPipeline
         return all;
     }
 
-    // Backward compatibility alias
-    [Obsolete("Use GetAllReadableExtensions instead")]
-    public IReadOnlySet<string> GetAllTextExtensions() => GetAllReadableExtensions();
-
-    private static IReadOnlyList<string> ChunkFallback(string content, int maxChunkSize)
+    private static List<string> ChunkFallback(string content, int maxChunkSize)
     {
         var chunks = new List<string>();
         var lines = content.Split('\n');
@@ -597,6 +582,55 @@ public sealed class VaultPipeline : IVaultPipeline
             _ => "application/octet-stream"
         };
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting memorize for {SourcePath}")]
+    private static partial void LogStartingMemorize(ILogger logger, string sourcePath);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Backing up existing QA content ({Length} chars)")]
+    private static partial void LogBackupQaContent(ILogger logger, int length);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Backing up existing append-text ({Length} chars)")]
+    private static partial void LogBackupAppendText(ILogger logger, int length);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Restored QA content")]
+    private static partial void LogRestoredQaContent(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Restored append-text content")]
+    private static partial void LogRestoredAppendText(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Memorize completed for {SourcePath}: {ChunkCount} chunks in {Duration:F2}s")]
+    private static partial void LogMemorizeCompleted(ILogger logger, string sourcePath, int chunkCount, double duration);
+    [LoggerMessage(Level = LogLevel.Error, Message = "Memorize failed for {SourcePath}")]
+    private static partial void LogMemorizeFailed(ILogger logger, Exception exception, string sourcePath);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting refresh for {SourcePath}")]
+    private static partial void LogStartingRefresh(ILogger logger, string sourcePath);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Refresh completed for {SourcePath}: {ChunkCount} chunks in {Duration:F2}s")]
+    private static partial void LogRefreshCompleted(ILogger logger, string sourcePath, int chunkCount, double duration);
+    [LoggerMessage(Level = LogLevel.Error, Message = "Refresh failed for {SourcePath}")]
+    private static partial void LogRefreshFailed(ILogger logger, Exception exception, string sourcePath);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Extracting content from {SourcePath}")]
+    private static partial void LogExtractingContent(ILogger logger, string sourcePath);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Extracted {Length} chars to {Path}")]
+    private static partial void LogExtracted(ILogger logger, int length, string path);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Refining content for {SourcePath}")]
+    private static partial void LogRefiningContent(ILogger logger, string sourcePath);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Refined {Length} chars to {Path}")]
+    private static partial void LogRefined(ILogger logger, int length, string path);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No vector store configured, skipping removal")]
+    private static partial void LogNoVectorStoreSkipRemoval(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Removed chunks for document {DocumentId}")]
+    private static partial void LogRemovedChunks(ILogger logger, string documentId);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Vector store or embedding service not configured, cannot search")]
+    private static partial void LogNoVectorStoreCannotSearch(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Search for '{Query}' returned {Count} results")]
+    private static partial void LogSearchResults(ILogger logger, string query, int count);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No content to index for {SourcePath}")]
+    private static partial void LogNoContentToIndex(ILogger logger, string sourcePath);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Created {ChunkCount} chunks from {ContentLength} chars")]
+    private static partial void LogCreatedChunks(ILogger logger, int chunkCount, int contentLength);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No vector store or embedding service configured, skipping indexing")]
+    private static partial void LogNoVectorStoreSkipIndexing(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Indexed {Count} chunks for {DocumentId}")]
+    private static partial void LogIndexedChunks(ILogger logger, int count, string documentId);
+
+    #endregion
 }
 
 /// <summary>

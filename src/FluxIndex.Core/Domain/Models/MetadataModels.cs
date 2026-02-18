@@ -87,7 +87,7 @@ public class MetadataExtractionOptions
     /// <summary>
     /// 감정 분석 활성화
     /// </summary>
-    public bool AnalyzeSentiment { get; set; } = false;
+    public bool AnalyzeSentiment { get; set; }
 
     /// <summary>
     /// 개체명 인식 활성화
@@ -148,7 +148,7 @@ public class BatchProcessingOptions
     /// <summary>
     /// 오류 시 중단 여부
     /// </summary>
-    public bool StopOnError { get; set; } = false;
+    public bool StopOnError { get; set; }
 }
 
 /// <summary>

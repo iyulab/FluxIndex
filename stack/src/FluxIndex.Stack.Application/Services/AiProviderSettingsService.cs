@@ -9,9 +9,11 @@ namespace FluxIndex.Stack.Application.Services;
 /// <summary>
 /// Service implementation for AI provider settings management.
 /// </summary>
-public class AiProviderSettingsService : IAiProviderSettingsService
+public partial class AiProviderSettingsService : IAiProviderSettingsService
 {
     private readonly IAiProviderSettingsRepository _repository;
+    private readonly IEmbeddingServiceFactory _embeddingFactory;
+    private readonly ITextCompletionServiceFactory _textCompletionFactory;
     private readonly ILogger<AiProviderSettingsService> _logger;
 
     // Known providers and their models (Updated: December 2025)
@@ -157,9 +159,13 @@ public class AiProviderSettingsService : IAiProviderSettingsService
 
     public AiProviderSettingsService(
         IAiProviderSettingsRepository repository,
+        IEmbeddingServiceFactory embeddingFactory,
+        ITextCompletionServiceFactory textCompletionFactory,
         ILogger<AiProviderSettingsService> logger)
     {
         _repository = repository;
+        _embeddingFactory = embeddingFactory;
+        _textCompletionFactory = textCompletionFactory;
         _logger = logger;
     }
 
@@ -271,7 +277,7 @@ public class AiProviderSettingsService : IAiProviderSettingsService
             await _repository.UpdateAsync(settings, cancellationToken);
         }
 
-        _logger.LogInformation("Updated AI provider settings for {Provider}", providerName);
+        LogProviderSettingsUpdated(_logger, providerName);
 
         return ToDto(settings);
     }
@@ -285,11 +291,36 @@ public class AiProviderSettingsService : IAiProviderSettingsService
             return false;
         }
 
-        // TODO: Implement actual API testing for each provider
-        // For now, just check if API key exists
-        _logger.LogInformation("Testing connection for provider {Provider}", providerName);
+        LogTestingConnection(_logger, providerName);
 
-        return true;
+        try
+        {
+            // Test embedding connection if embedding model is configured
+            if (!string.IsNullOrWhiteSpace(settings.EmbeddingModel))
+            {
+                var provider = await _embeddingFactory.CreateProviderAsync(
+                    providerName, settings.ApiKey, settings.EmbeddingModel,
+                    settings.EndpointUrl, cancellationToken);
+                await provider.GetEmbeddingAsync("connection test", cancellationToken);
+            }
+
+            // Test text completion connection if LLM model is configured
+            if (!string.IsNullOrWhiteSpace(settings.LlmModel))
+            {
+                var service = await _textCompletionFactory.CreateProviderAsync(
+                    providerName, settings.ApiKey, settings.LlmModel,
+                    settings.EndpointUrl, cancellationToken);
+                await service.GenerateCompletionAsync("Say ok", maxTokens: 5, temperature: 0f, cancellationToken);
+            }
+
+            LogConnectionTestSucceeded(_logger, providerName);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LogConnectionTestFailed(_logger, providerName, ex);
+            return false;
+        }
     }
 
     public Task<AvailableModelsDto> GetAvailableModelsAsync(string providerName, CancellationToken cancellationToken = default)
@@ -320,12 +351,12 @@ public class AiProviderSettingsService : IAiProviderSettingsService
                     providerInfo.DisplayName);
 
                 await _repository.AddAsync(settings, cancellationToken);
-                _logger.LogInformation("Initialized default settings for provider {Provider}", providerName);
+                LogDefaultProviderInitialized(_logger, providerName);
             }
         }
     }
 
-    private AiProviderSettingsDto ToDto(AiProviderSettings settings)
+    private static AiProviderSettingsDto ToDto(AiProviderSettings settings)
     {
         KnownProviders.TryGetValue(settings.ProviderName, out var providerInfo);
 
@@ -350,12 +381,31 @@ public class AiProviderSettingsService : IAiProviderSettingsService
         };
     }
 
-    private class ProviderInfo
+    private sealed class ProviderInfo
     {
         public string DisplayName { get; set; } = string.Empty;
-        public bool RequiresEndpoint { get; set; } = false;
-        public bool IsLocalProvider { get; set; } = false;
+        public bool RequiresEndpoint { get; set; }
+        public bool IsLocalProvider { get; set; }
         public ModelInfoDto[] EmbeddingModels { get; set; } = Array.Empty<ModelInfoDto>();
         public ModelInfoDto[] LlmModels { get; set; } = Array.Empty<ModelInfoDto>();
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Updated AI provider settings for {Provider}")]
+    private static partial void LogProviderSettingsUpdated(ILogger logger, string provider);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Testing connection for provider {Provider}")]
+    private static partial void LogTestingConnection(ILogger logger, string provider);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Connection test succeeded for provider {Provider}")]
+    private static partial void LogConnectionTestSucceeded(ILogger logger, string provider);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Connection test failed for provider {Provider}")]
+    private static partial void LogConnectionTestFailed(ILogger logger, string provider, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Initialized default settings for provider {Provider}")]
+    private static partial void LogDefaultProviderInitialized(ILogger logger, string provider);
+
+    #endregion
 }

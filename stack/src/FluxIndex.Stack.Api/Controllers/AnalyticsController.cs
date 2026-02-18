@@ -12,7 +12,7 @@ namespace FluxIndex.Stack.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/v1/[controller]")]
-public class AnalyticsController : ControllerBase
+public partial class AnalyticsController : ControllerBase
 {
     private readonly IAnalyticsService _analyticsService;
     private readonly ISemanticCacheService? _semanticCacheService;
@@ -79,7 +79,7 @@ public class AnalyticsController : ControllerBase
     {
         if (_semanticCacheService == null)
         {
-            _logger.LogWarning("Semantic cache service not configured");
+            LogSemanticCacheServiceNotConfigured(_logger);
             return StatusCode(StatusCodes.Status503ServiceUnavailable,
                 ApiResponse<object>.Fail("Semantic cache service is not configured. Enable Redis cache in configuration."));
         }
@@ -113,7 +113,7 @@ public class AnalyticsController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to retrieve cache statistics");
+            LogRetrieveCacheStatisticsFailed(_logger, ex);
             return StatusCode(StatusCodes.Status500InternalServerError,
                 ApiResponse<object>.Fail($"Failed to retrieve cache statistics: {ex.Message}"));
         }
@@ -147,12 +147,12 @@ public class AnalyticsController : ControllerBase
         try
         {
             await _semanticCacheService.InvalidateCacheAsync(pattern, cancellationToken);
-            _logger.LogInformation("Cache invalidated for pattern: {Pattern}", pattern);
+            LogCacheInvalidated(_logger, pattern);
             return Ok(ApiResponse<string>.Ok($"Cache invalidated for pattern: {pattern}"));
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to invalidate cache for pattern: {Pattern}", pattern);
+            LogInvalidateCacheFailed(_logger, ex, pattern);
             return StatusCode(StatusCodes.Status500InternalServerError,
                 ApiResponse<object>.Fail($"Failed to invalidate cache: {ex.Message}"));
         }
@@ -178,12 +178,12 @@ public class AnalyticsController : ControllerBase
         try
         {
             await _semanticCacheService.CompactCacheAsync(cancellationToken);
-            _logger.LogInformation("Cache compaction completed");
+            LogCacheCompactionCompleted(_logger);
             return Ok(ApiResponse<string>.Ok("Cache compaction completed successfully."));
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to compact cache");
+            LogCompactCacheFailed(_logger, ex);
             return StatusCode(StatusCodes.Status500InternalServerError,
                 ApiResponse<object>.Fail($"Failed to compact cache: {ex.Message}"));
         }
@@ -216,14 +216,43 @@ public class AnalyticsController : ControllerBase
         try
         {
             await _semanticCacheService.WarmupCacheAsync(queries, cancellationToken);
-            _logger.LogInformation("Cache warmup completed for {Count} queries", queries.Count);
+            var queryCount = queries.Count;
+            LogCacheWarmupCompleted(_logger, queryCount);
             return Ok(ApiResponse<string>.Ok($"Cache warmup completed for {queries.Count} queries."));
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to warmup cache");
+            LogWarmupCacheFailed(_logger, ex);
             return StatusCode(StatusCodes.Status500InternalServerError,
                 ApiResponse<object>.Fail($"Failed to warmup cache: {ex.Message}"));
         }
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Semantic cache service not configured")]
+    private static partial void LogSemanticCacheServiceNotConfigured(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to retrieve cache statistics")]
+    private static partial void LogRetrieveCacheStatisticsFailed(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Cache invalidated for pattern: {Pattern}")]
+    private static partial void LogCacheInvalidated(ILogger logger, string pattern);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to invalidate cache for pattern: {Pattern}")]
+    private static partial void LogInvalidateCacheFailed(ILogger logger, Exception? exception, string pattern);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Cache compaction completed")]
+    private static partial void LogCacheCompactionCompleted(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to compact cache")]
+    private static partial void LogCompactCacheFailed(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Cache warmup completed for {Count} queries")]
+    private static partial void LogCacheWarmupCompleted(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to warmup cache")]
+    private static partial void LogWarmupCacheFailed(ILogger logger, Exception? exception);
+
+    #endregion
 }

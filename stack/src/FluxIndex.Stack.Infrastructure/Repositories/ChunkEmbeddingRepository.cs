@@ -113,7 +113,7 @@ public class ChunkEmbeddingRepository : IChunkEmbeddingRepository
             .Where(e => e.ChunkId == chunkId)
             .ToListAsync(cancellationToken);
 
-        if (embeddings.Any())
+        if (embeddings.Count > 0)
         {
             _context.ChunkEmbeddings.RemoveRange(embeddings);
             await _context.SaveChangesAsync(cancellationToken);
@@ -126,7 +126,7 @@ public class ChunkEmbeddingRepository : IChunkEmbeddingRepository
             .Where(e => e.EmbeddingModelId == embeddingModelId)
             .ToListAsync(cancellationToken);
 
-        if (embeddings.Any())
+        if (embeddings.Count > 0)
         {
             _context.ChunkEmbeddings.RemoveRange(embeddings);
             await _context.SaveChangesAsync(cancellationToken);
@@ -163,14 +163,14 @@ public class ChunkEmbeddingRepository : IChunkEmbeddingRepository
         // Start with base query filtering by model
         var query = _context.ChunkEmbeddings
             .Include(e => e.Chunk)
-                .ThenInclude(c => c.Document)
+                .ThenInclude(c => c!.Document)
             .Where(e => e.EmbeddingModelId == embeddingModelId && e.Embedding != null);
 
         // Apply document filter if specified
         if (documentIds != null && documentIds.Any())
         {
             var docIdsList = documentIds.ToList();
-            query = query.Where(e => docIdsList.Contains(e.Chunk.DocumentId));
+            query = query.Where(e => docIdsList.Contains(e.Chunk!.DocumentId));
         }
 
         // Execute query with cosine distance ordering and projection

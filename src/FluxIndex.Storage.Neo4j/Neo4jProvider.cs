@@ -16,7 +16,7 @@ namespace FluxIndex.Storage.Neo4j;
 /// As a specialized provider, Neo4j takes priority over general-purpose
 /// providers (SQLite, PostgreSQL) for graph operations.
 /// </remarks>
-public class Neo4jProvider : IStorageProvider, IGraphCapable
+public partial class Neo4jProvider : IStorageProvider, IGraphCapable
 {
     private readonly IGraphStore _graphStore;
     private readonly ILogger<Neo4jProvider>? _logger;
@@ -33,7 +33,8 @@ public class Neo4jProvider : IStorageProvider, IGraphCapable
         _graphStore = graphStore ?? throw new ArgumentNullException(nameof(graphStore));
         _logger = logger;
 
-        _logger?.LogDebug("Neo4jProvider initialized as specialized graph provider");
+        if (_logger is not null)
+            LogProviderInitialized(_logger);
     }
 
     /// <inheritdoc />
@@ -51,6 +52,13 @@ public class Neo4jProvider : IStorageProvider, IGraphCapable
 
     /// <inheritdoc />
     public IGraphStore GraphStore => _graphStore;
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Neo4jProvider initialized as specialized graph provider")]
+    private static partial void LogProviderInitialized(ILogger logger);
+
+    #endregion
 }
 
 /// <summary>

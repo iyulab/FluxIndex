@@ -53,7 +53,7 @@ public class AdaptiveSearchOptions
     public int MaxResults { get; set; } = 20;
 
     /// <summary>최소 유사도 점수</summary>
-    public double MinScore { get; set; } = 0.0;
+    public double MinScore { get; set; }
 
     /// <summary>검색 타임아웃</summary>
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(30);
@@ -62,10 +62,10 @@ public class AdaptiveSearchOptions
     public SearchStrategy? ForceStrategy { get; set; }
 
     /// <summary>A/B 테스트 모드</summary>
-    public bool EnableABTest { get; set; } = false;
+    public bool EnableABTest { get; set; }
 
     /// <summary>상세 분석 로깅</summary>
-    public bool EnableDetailedLogging { get; set; } = false;
+    public bool EnableDetailedLogging { get; set; }
 
     /// <summary>캐싱 사용</summary>
     public bool UseCache { get; set; } = true;

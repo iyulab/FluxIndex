@@ -42,7 +42,7 @@ public class InMemoryEmbeddingService : IEmbeddingService
     public async Task<IEnumerable<float[]>> GenerateEmbeddingsBatchAsync(IEnumerable<string> texts, CancellationToken cancellationToken = default)
     {
         var textList = texts.ToList();
-        if (!textList.Any())
+        if (textList.Count == 0)
         {
             return Array.Empty<float[]>();
         }
@@ -73,7 +73,7 @@ public class InMemoryEmbeddingService : IEmbeddingService
     /// <summary>
     /// Generate random L2-normalized embedding vector
     /// </summary>
-    private float[] GenerateRandomEmbedding(int dimensions, Random random)
+    private static float[] GenerateRandomEmbedding(int dimensions, Random random)
     {
         var embedding = new float[dimensions];
 

@@ -12,7 +12,7 @@ namespace FluxIndex.Stack.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/v1/[controller]")]
-public class JobsController : ControllerBase
+public partial class JobsController : ControllerBase
 {
     private readonly IIndexingService _indexingService;
     private readonly IIndexingJobLogRepository _logRepository;
@@ -82,7 +82,7 @@ public class JobsController : ControllerBase
         try
         {
             await _indexingService.CancelJobAsync(id, cancellationToken);
-            _logger.LogInformation("Job cancelled: {JobId}", id);
+            LogJobCancelled(_logger, id);
             return Ok(ApiResponse<string>.Ok("Job cancelled successfully."));
         }
         catch (KeyNotFoundException)
@@ -180,4 +180,11 @@ public class JobsController : ControllerBase
 
         return Ok(ApiResponse<IndexingJobDetailDto>.Ok(detail));
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Job cancelled: {JobId}")]
+    private static partial void LogJobCancelled(ILogger logger, Guid jobId);
+
+    #endregion
 }

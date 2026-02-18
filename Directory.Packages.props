@@ -7,40 +7,40 @@
   <!-- Only packages directly referenced in *.csproj files -->
   <ItemGroup>
     <!-- Caching -->
-    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="10.0.2" />
-    <PackageVersion Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.2" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.3" />
     <!-- Configuration -->
-    <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.2" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.2" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.2" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.2" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="10.0.2" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.2" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.3" />
     <!-- DI -->
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.2" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.2" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.3" />
     <!-- Hosting -->
-    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.2" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.2" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.3" />
     <!-- Http -->
-    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.2" />
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.3" />
     <!-- Logging -->
-    <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.2" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.2" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="10.0.2" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="10.0.3" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Testing" Version="10.0.2" />
     <!-- Options -->
-    <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.2" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.3" />
     <!-- Misc -->
     <PackageVersion Include="System.Text.Json" Version="10.0.0" />
   </ItemGroup>
   <!-- Entity Framework Core Packages - .NET 10.0 -->
   <ItemGroup>
-    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.2" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.2" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.2" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.2" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.2" />
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.3" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
     <PackageVersion Include="Pgvector" Version="0.3.0" />
     <PackageVersion Include="Pgvector.EntityFrameworkCore" Version="0.3.0" />
@@ -53,13 +53,13 @@
     <PackageVersion Include="Google.Cloud.AIPlatform.V1" Version="3.54.0" />
     <PackageVersion Include="Mscc.GenerativeAI" Version="2.5.2" />
     <!-- LMSupply: Full AI stack (Embedder + Generator + Reranker) -->
-    <PackageVersion Include="LMSupply.Embedder" Version="0.13.0" />
-    <PackageVersion Include="LMSupply.Generator" Version="0.13.0" />
+    <PackageVersion Include="LMSupply.Embedder" Version="0.13.1" />
+    <PackageVersion Include="LMSupply.Generator" Version="0.13.1" />
     <PackageVersion Include="LMSupply.Reranker" Version="0.13.0" />
   </ItemGroup>
   <!-- Storage/Cache Packages -->
   <ItemGroup>
-    <PackageVersion Include="StackExchange.Redis" Version="2.10.1" />
+    <PackageVersion Include="StackExchange.Redis" Version="2.11.0" />
     <PackageVersion Include="sqlite-vec" Version="0.1.7-alpha.2.1" />
     <!-- Graph Database -->
     <PackageVersion Include="Neo4j.Driver" Version="6.0.0" />
@@ -69,19 +69,19 @@
   </ItemGroup>
   <!-- Document Processing & Quality -->
   <ItemGroup>
-    <PackageVersion Include="FileFlux" Version="0.10.0" />
+    <PackageVersion Include="FileFlux" Version="0.10.1" />
     <PackageVersion Include="FluxCurator" Version="0.7.0" />
     <PackageVersion Include="FluxImprover" Version="0.6.0" />
     <PackageVersion Include="HtmlAgilityPack" Version="1.12.4" />
-    <PackageVersion Include="WebFlux" Version="0.1.9" />
+    <PackageVersion Include="WebFlux" Version="0.4.0" />
   </ItemGroup>
   <!-- Testing Packages -->
   <ItemGroup>
-    <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+    <PackageVersion Include="coverlet.collector" Version="8.0.0" />
     <PackageVersion Include="FluentAssertions" Version="8.8.0" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
-    <PackageVersion Include="Moq" Version="4.20.72" />
+    <PackageVersion Include="NSubstitute" Version="5.3.0" />
     <PackageVersion Include="Testcontainers" Version="4.10.0" />
     <PackageVersion Include="Testcontainers.Neo4j" Version="4.10.0" />
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.10.0" />
@@ -92,9 +92,9 @@
   </ItemGroup>
   <!-- MCP/CLI Packages -->
   <ItemGroup>
-    <PackageVersion Include="ModelContextProtocol" Version="0.7.0-preview.1" />
+    <PackageVersion Include="ModelContextProtocol" Version="0.8.0-preview.1" />
     <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="0.4.1-preview.1" />
-    <PackageVersion Include="System.CommandLine" Version="2.0.2" />
+    <PackageVersion Include="System.CommandLine" Version="2.0.3" />
   </ItemGroup>
   <!-- OpenTelemetry Observability Packages -->
   <ItemGroup>

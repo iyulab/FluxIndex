@@ -7,20 +7,20 @@ using QueryType = FluxIndex.Core.Application.Interfaces.QueryType;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
+using NSubstitute;
 using Xunit;
 
 namespace FluxIndex.Core.Tests.Services.Fusion;
 
 public class LearningBasedFusionServiceTests
 {
-    private readonly Mock<ILogger<LearningBasedFusionService>> _loggerMock;
+    private readonly ILogger<LearningBasedFusionService> _loggerMock;
     private readonly LearningBasedFusionService _sut;
 
     public LearningBasedFusionServiceTests()
     {
-        _loggerMock = new Mock<ILogger<LearningBasedFusionService>>();
-        _sut = new LearningBasedFusionService(_loggerMock.Object);
+        _loggerMock = Substitute.For<ILogger<LearningBasedFusionService>>();
+        _sut = new LearningBasedFusionService(_loggerMock);
     }
 
     #region Constructor Tests

@@ -88,7 +88,7 @@ public class CorrectiveRAGOptions
     /// <summary>
     /// Enable web search as alternative retrieval source.
     /// </summary>
-    public bool EnableWebSearch { get; set; } = false;
+    public bool EnableWebSearch { get; set; }
 
     /// <summary>
     /// Enable query transformation for alternative retrieval.
@@ -113,7 +113,7 @@ public class CorrectiveRAGOptions
     /// <summary>
     /// Enable detailed logging of the correction process.
     /// </summary>
-    public bool EnableDetailedLogging { get; set; } = false;
+    public bool EnableDetailedLogging { get; set; }
 
     /// <summary>
     /// Retry count for failed retrievals.

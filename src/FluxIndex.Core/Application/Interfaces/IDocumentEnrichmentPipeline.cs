@@ -146,13 +146,13 @@ public record EnrichmentOptions
     public bool GenerateContextualEmbedding { get; init; } = true;
 
     /// <summary>Generate hypothetical document embeddings (HyDE)</summary>
-    public bool GenerateHypotheticalEmbedding { get; init; } = false;
+    public bool GenerateHypotheticalEmbedding { get; init; }
 
     /// <summary>Generate entity-based embeddings</summary>
-    public bool GenerateEntityEmbedding { get; init; } = false;
+    public bool GenerateEntityEmbedding { get; init; }
 
     /// <summary>Generate summary embeddings</summary>
-    public bool GenerateSummaryEmbedding { get; init; } = false;
+    public bool GenerateSummaryEmbedding { get; init; }
 
     /// <summary>Extract named entities</summary>
     public bool ExtractEntities { get; init; } = true;
@@ -167,10 +167,10 @@ public record EnrichmentOptions
     public bool ExtractKeywords { get; init; } = true;
 
     /// <summary>Analyze chunk quality</summary>
-    public bool AnalyzeQuality { get; init; } = false;
+    public bool AnalyzeQuality { get; init; }
 
     /// <summary>Generate hypothetical questions for Q&amp;A retrieval</summary>
-    public bool GenerateHypotheticalQuestions { get; init; } = false;
+    public bool GenerateHypotheticalQuestions { get; init; }
 
     /// <summary>Maximum concurrent operations</summary>
     public int MaxConcurrency { get; init; } = 4;
@@ -197,13 +197,13 @@ public record EmbeddingGenerationOptions
     public bool GenerateContentEmbedding { get; init; } = true;
 
     /// <summary>Generate summary embeddings</summary>
-    public bool GenerateSummaryEmbedding { get; init; } = false;
+    public bool GenerateSummaryEmbedding { get; init; }
 
     /// <summary>Generate hypothetical embeddings (HyDE)</summary>
-    public bool GenerateHypotheticalEmbedding { get; init; } = false;
+    public bool GenerateHypotheticalEmbedding { get; init; }
 
     /// <summary>Generate question embeddings for Q&amp;A retrieval</summary>
-    public bool GenerateQuestionEmbeddings { get; init; } = false;
+    public bool GenerateQuestionEmbeddings { get; init; }
 
     /// <summary>Maximum questions for question embedding</summary>
     public int MaxQuestions { get; init; } = 5;
@@ -239,7 +239,7 @@ public record EnrichmentEntityOptions
     public bool ResolveCoreferences { get; init; } = true;
 
     /// <summary>Link to external knowledge bases</summary>
-    public bool LinkExternalKnowledge { get; init; } = false;
+    public bool LinkExternalKnowledge { get; init; }
 
     /// <summary>Maximum entities to extract per chunk</summary>
     public int MaxEntitiesPerChunk { get; init; } = 50;
@@ -263,7 +263,7 @@ public record GraphBuildOptions
     public bool CalculateImportanceScores { get; init; } = true;
 
     /// <summary>Detect communities</summary>
-    public bool DetectCommunities { get; init; } = false;
+    public bool DetectCommunities { get; init; }
 
     /// <summary>Maximum community detection iterations</summary>
     public int MaxCommunityIterations { get; init; } = 100;

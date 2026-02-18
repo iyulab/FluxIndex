@@ -9,7 +9,7 @@ namespace FluxIndex.Core.Application.Services;
 /// Contextual Embedding Service implementing Anthropic's Contextual Retrieval approach.
 /// Prepends LLM-generated context to chunks before embedding, improving retrieval by up to 67%.
 /// </summary>
-public class ContextualEmbeddingService : IContextualEmbeddingService
+public partial class ContextualEmbeddingService : IContextualEmbeddingService
 {
     private readonly IEmbeddingService _embeddingService;
     private readonly IContextualHeaderGenerator _headerGenerator;
@@ -36,7 +36,7 @@ public class ContextualEmbeddingService : IContextualEmbeddingService
     {
         ArgumentNullException.ThrowIfNull(chunk);
 
-        _logger.LogDebug("Generating contextual embedding for chunk {ChunkId}", chunk.ChunkId);
+        LogContextualEmbedding5(_logger, chunk.ChunkId);
 
         // Step 1: Generate contextual header
         var contextualHeader = await _headerGenerator.GenerateAsync(chunk, documentSummary, cancellationToken);
@@ -48,9 +48,7 @@ public class ContextualEmbeddingService : IContextualEmbeddingService
         var embeddingValues = await _embeddingService.GenerateEmbeddingAsync(contextualContent, cancellationToken);
         var embedding = new EmbeddingVector(embeddingValues, _embeddingService.GetModelName());
 
-        _logger.LogDebug(
-            "Generated contextual embedding for chunk {ChunkId}: context length {ContextLength}, total length {TotalLength}",
-            chunk.ChunkId, contextualHeader.Length, contextualContent.Length);
+        LogContextualEmbedding4(_logger, chunk.ChunkId, contextualHeader.Length, contextualContent.Length);
 
         return new ContextualEmbeddingResult
         {
@@ -75,7 +73,7 @@ public class ContextualEmbeddingService : IContextualEmbeddingService
         if (chunkList.Count == 0)
             return Array.Empty<ContextualEmbeddingResult>();
 
-        _logger.LogInformation("Generating contextual embeddings for {Count} chunks", chunkList.Count);
+        LogContextualEmbedding3(_logger, chunkList.Count);
 
         // Step 1: Generate all contextual headers
         var headers = await _headerGenerator.GenerateBatchAsync(chunkList, documentSummary, cancellationToken);
@@ -110,11 +108,9 @@ public class ContextualEmbeddingService : IContextualEmbeddingService
             });
         }
 
-        _logger.LogInformation(
-            "Generated {Count} contextual embeddings (LLM: {LlmCount}, Rule: {RuleCount})",
-            results.Count,
-            results.Count(r => r.ContextSource == ContextSource.LlmGenerated),
-            results.Count(r => r.ContextSource == ContextSource.RuleBased));
+        var llmCount = results.Count(r => r.ContextSource == ContextSource.LlmGenerated);
+        var ruleCount = results.Count(r => r.ContextSource == ContextSource.RuleBased);
+        LogContextualEmbedding2(_logger, results.Count, llmCount, ruleCount);
 
         return results.AsReadOnly();
     }
@@ -127,7 +123,7 @@ public class ContextualEmbeddingService : IContextualEmbeddingService
     {
         ArgumentNullException.ThrowIfNull(chunk);
 
-        _logger.LogDebug("Generating dual embeddings for chunk {ChunkId}", chunk.ChunkId);
+        LogContextualEmbedding1(_logger, chunk.ChunkId);
 
         // Generate contextual embedding
         var contextualResult = await GenerateContextualEmbeddingAsync(chunk, documentSummary, cancellationToken);
@@ -167,6 +163,21 @@ public class ContextualEmbeddingService : IContextualEmbeddingService
             ? ContextSource.LlmGenerated
             : ContextSource.RuleBased;
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Generating contextual embedding for chunk {ChunkId}")]
+    private static partial void LogContextualEmbedding5(ILogger logger, string chunkId);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Generated contextual embedding for chunk {ChunkId}: context length {ContextLength}, total length {TotalLength}")]
+    private static partial void LogContextualEmbedding4(ILogger logger, string chunkId, int contextLength, int totalLength);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Generating contextual embeddings for {Count} chunks")]
+    private static partial void LogContextualEmbedding3(ILogger logger, int count);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Generated {Count} contextual embeddings (LLM: {LlmCount}, Rule: {RuleCount})")]
+    private static partial void LogContextualEmbedding2(ILogger logger, int count, int llmCount, int ruleCount);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Generating dual embeddings for chunk {ChunkId}")]
+    private static partial void LogContextualEmbedding1(ILogger logger, string chunkId);
+
+    #endregion
 }
 
 /// <summary>
@@ -202,7 +213,7 @@ public interface IContextualEmbeddingService
 /// <summary>
 /// Result of contextual embedding generation
 /// </summary>
-public class ContextualEmbeddingResult
+public partial class ContextualEmbeddingResult
 {
     /// <summary>
     /// Chunk identifier
@@ -238,7 +249,7 @@ public class ContextualEmbeddingResult
 /// <summary>
 /// Result containing both contextual and standard embeddings
 /// </summary>
-public class DualEmbeddingResult
+public partial class DualEmbeddingResult
 {
     /// <summary>
     /// Chunk identifier
@@ -311,7 +322,7 @@ public enum ContextPosition
 /// <summary>
 /// Options for contextual embedding generation
 /// </summary>
-public class ContextualEmbeddingOptions
+public partial class ContextualEmbeddingOptions
 {
     /// <summary>
     /// LLM usage threshold based on ContextDependency
@@ -326,7 +337,7 @@ public class ContextualEmbeddingOptions
     /// <summary>
     /// Whether to generate dual embeddings (contextual + standard)
     /// </summary>
-    public bool GenerateDualEmbeddings { get; set; } = false;
+    public bool GenerateDualEmbeddings { get; set; }
 
     /// <summary>
     /// Maximum combined content length before truncation

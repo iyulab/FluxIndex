@@ -9,7 +9,7 @@ using FluxIndex.Extensions.FileVault.Options;
 using FluxIndex.Extensions.FileVault.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
+using NSubstitute;
 using Xunit;
 using Xunit.Abstractions;
 using MsOptions = Microsoft.Extensions.Options.Options;
@@ -31,9 +31,9 @@ public class FileVaultPipelineSimulationTests : IDisposable
     private readonly VaultPipeline _pipeline;
     private readonly VaultStorageService _storage;
     private readonly ContentHasher _hasher;
-    private readonly Mock<IGitService> _gitMock;
-    private readonly Mock<IVaultQueueService> _queueMock;
-    private readonly Mock<IFileWatcherService> _watcherMock;
+    private readonly IGitService _gitMock;
+    private readonly IVaultQueueService _queueMock;
+    private readonly IFileWatcherService _watcherMock;
 
     public FileVaultPipelineSimulationTests(ITestOutputHelper output)
     {
@@ -49,29 +49,25 @@ public class FileVaultPipelineSimulationTests : IDisposable
         _hasher = new ContentHasher();
 
         // Mocks
-        _gitMock = new Mock<IGitService>();
-        _gitMock.Setup(g => g.InitAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
-        _gitMock.Setup(g => g.CommitAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("abc123");
-        _gitMock.Setup(g => g.StatusAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new GitStatus { ModifiedFiles = [] });
+        _gitMock = Substitute.For<IGitService>();
+        _gitMock.InitAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+        _gitMock.CommitAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns("abc123");
+        _gitMock.StatusAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new GitStatus { ModifiedFiles = [] });
 
         _storage = new VaultStorageService(
             NullLogger<VaultStorageService>.Instance,
-            _gitMock.Object,
+            _gitMock,
             MsOptions.Create(new FileVaultOptions { VaultBasePath = _vaultDir }));
 
-        _queueMock = new Mock<IVaultQueueService>();
-        _queueMock.Setup(q => q.GetStatisticsAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new QueueStatistics());
+        _queueMock = Substitute.For<IVaultQueueService>();
+        _queueMock.GetStatisticsAsync(Arg.Any<CancellationToken>()).Returns(new QueueStatistics());
 
-        _watcherMock = new Mock<IFileWatcherService>();
-        _watcherMock.Setup(w => w.GetAllWatchers()).Returns([]);
+        _watcherMock = Substitute.For<IFileWatcherService>();
+        _watcherMock.GetAllWatchers().Returns([]);
 
         // Pipeline with real vector store and embedding
         _pipeline = new VaultPipeline(
-            _gitMock.Object,
+            _gitMock,
             _hasher,
             _storage,
             NullLogger<VaultPipeline>.Instance,
@@ -84,10 +80,10 @@ public class FileVaultPipelineSimulationTests : IDisposable
 
         _vault = new VaultManager(
             _hasher,
-            _gitMock.Object,
+            _gitMock,
             _pipeline,
-            _queueMock.Object,
-            _watcherMock.Object,
+            _queueMock,
+            _watcherMock,
             _storage,
             NullLogger<VaultManager>.Instance,
             options);

@@ -14,7 +14,7 @@ namespace FluxIndex.Core.Application.Services;
 /// <summary>
 /// 그래프 탐색 서비스 구현 - RAG를 위한 청크 관계 그래프 탐색
 /// </summary>
-public class GraphTraversalService : IGraphTraversalService
+public partial class GraphTraversalService : IGraphTraversalService
 {
     private readonly IChunkHierarchyRepository _hierarchyRepository;
     private readonly ILogger<GraphTraversalService> _logger;
@@ -650,8 +650,8 @@ public class GraphTraversalService : IGraphTraversalService
         if (hierarchy?.ParentChunkId == null)
             return;
 
-        if (!ancestors.ContainsKey(hierarchy.ParentChunkId) ||
-            ancestors[hierarchy.ParentChunkId] > currentDepth + 1)
+        if (!ancestors.TryGetValue(hierarchy.ParentChunkId, out var existingDepth) ||
+            existingDepth > currentDepth + 1)
         {
             ancestors[hierarchy.ParentChunkId] = currentDepth + 1;
             await TraverseAncestorsAsync(
@@ -937,7 +937,7 @@ public class GraphTraversalService : IGraphTraversalService
 
             if (diff < options.ConvergenceThreshold)
             {
-                _logger.LogDebug("PageRank converged after {Iterations} iterations", iter + 1);
+                LogPageRankConverged(_logger, iter + 1);
                 break;
             }
         }
@@ -1272,7 +1272,7 @@ public class GraphTraversalService : IGraphTraversalService
         return new PathFindingResult { PathExists = false };
     }
 
-    private PathFindingResult BuildPathResult(
+    private static PathFindingResult BuildPathResult(
         string sourceChunkId,
         string targetChunkId,
         Dictionary<string, (string? Parent, ChunkRelationshipExtended? Relationship)> visited,
@@ -1310,7 +1310,7 @@ public class GraphTraversalService : IGraphTraversalService
         };
     }
 
-    private PathFindingResult BuildPathResultFromParents(
+    private static PathFindingResult BuildPathResultFromParents(
         string sourceChunkId,
         string targetChunkId,
         Dictionary<string, (string? Parent, ChunkRelationshipExtended? Relationship)> parents,
@@ -1319,7 +1319,7 @@ public class GraphTraversalService : IGraphTraversalService
         return BuildPathResult(sourceChunkId, targetChunkId, parents, stopwatch);
     }
 
-    private List<string> ReconstructPath(
+    private static List<string> ReconstructPath(
         Dictionary<string, (string? Parent, ChunkRelationshipExtended? Relationship)> visited,
         string chunkId)
     {
@@ -1336,7 +1336,7 @@ public class GraphTraversalService : IGraphTraversalService
         return path;
     }
 
-    private IReadOnlyList<string> ReconstructPathToChunk(
+    private static List<string> ReconstructPathToChunk(
         GraphTraversalResult traversalResult,
         string targetChunkId)
     {
@@ -1368,4 +1368,11 @@ public class GraphTraversalService : IGraphTraversalService
 
         return chunkIds;
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "PageRank converged after {Iterations} iterations")]
+    private static partial void LogPageRankConverged(ILogger logger, int iterations);
+
+    #endregion
 }

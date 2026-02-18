@@ -9,8 +9,13 @@ namespace FluxIndex.Core.Application.Services;
 /// <summary>
 /// LLM 기반 청크 분류 서비스
 /// </summary>
-public class LlmChunkClassificationService : IChunkClassificationService
+public partial class LlmChunkClassificationService : IChunkClassificationService
 {
+    private static readonly JsonSerializerOptions s_caseInsensitiveJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
     private readonly ITextCompletionService? _textCompletion;
     private readonly IClassificationValidationService _validationService;
     private readonly IClassificationCacheService? _cacheService;
@@ -41,9 +46,7 @@ public class LlmChunkClassificationService : IChunkClassificationService
 
         if (!validation.RequiresLlmClassification)
         {
-            _logger.LogDebug(
-                "Skipping LLM classification for chunk {ChunkId}: {Reason}",
-                chunk.ChunkId, validation.SkipReason);
+            LogLlmChunkClassification8(_logger, chunk.ChunkId, validation.SkipReason ?? string.Empty);
 
             return validation.ExistingClassification ?? CreateSkippedClassification(validation.SkipReason);
         }
@@ -51,7 +54,7 @@ public class LlmChunkClassificationService : IChunkClassificationService
         // 2. LLM 서비스 확인
         if (_textCompletion == null)
         {
-            _logger.LogWarning("LLM service not available, returning empty classification");
+            LogLlmChunkClassification7(_logger);
             return CreateSkippedClassification("LLM service not configured");
         }
 
@@ -76,7 +79,7 @@ public class LlmChunkClassificationService : IChunkClassificationService
         var chunkList = chunks.ToList();
         var results = new Dictionary<string, ChunkClassification>();
 
-        _logger.LogInformation("Starting batch classification for {Count} chunks", chunkList.Count);
+        LogLlmChunkClassification6(_logger, chunkList.Count);
 
         // 1. 배치 검증
         var validations = await _validationService.ValidateBatchAsync(chunkList, cancellationToken);
@@ -115,9 +118,7 @@ public class LlmChunkClassificationService : IChunkClassificationService
             }
         }
 
-        _logger.LogInformation(
-            "Batch classification complete: {LlmProcessed} LLM, {Skipped} skipped",
-            chunksRequiringLlm.Count, chunkList.Count - chunksRequiringLlm.Count);
+        LogLlmChunkClassification5(_logger, chunksRequiringLlm.Count, chunkList.Count - chunksRequiringLlm.Count);
 
         return results;
     }
@@ -149,15 +150,13 @@ public class LlmChunkClassificationService : IChunkClassificationService
                     return classification;
                 }
 
-                _logger.LogWarning(
-                    "Classification output validation failed for chunk {ChunkId}, retry {Retry}/{Max}",
-                    chunk.ChunkId, retry + 1, _options.MaxRetries);
+                if (_logger.IsEnabled(LogLevel.Debug))
+                    LogLlmChunkClassification4(_logger, chunk.ChunkId, retry + 1, _options.MaxRetries);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex,
-                    "LLM classification failed for chunk {ChunkId}, retry {Retry}/{Max}",
-                    chunk.ChunkId, retry + 1, _options.MaxRetries);
+                if (_logger.IsEnabled(LogLevel.Debug))
+                    LogLlmChunkClassification3(_logger, ex, chunk.ChunkId, retry + 1, _options.MaxRetries);
 
                 if (retry == _options.MaxRetries)
                     throw;
@@ -176,17 +175,14 @@ public class LlmChunkClassificationService : IChunkClassificationService
         var results = new Dictionary<string, ChunkClassification>();
 
         // 배치 단위로 처리
+        var totalBatches = (int)Math.Ceiling((double)chunks.Count / _options.BatchSize);
         for (int i = 0; i < chunks.Count; i += _options.BatchSize)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
             var batch = chunks.Skip(i).Take(_options.BatchSize).ToList();
 
-            _logger.LogDebug(
-                "Processing batch {BatchNum}/{TotalBatches} ({Count} chunks)",
-                (i / _options.BatchSize) + 1,
-                (int)Math.Ceiling((double)chunks.Count / _options.BatchSize),
-                batch.Count);
+            LogLlmChunkClassification2(_logger, (i / _options.BatchSize) + 1, totalBatches, batch.Count);
 
             // 개별 처리 (향후 배치 프롬프트 최적화 가능)
             foreach (var chunk in batch)
@@ -271,12 +267,8 @@ public class LlmChunkClassificationService : IChunkClassificationService
             if (jsonStart >= 0 && jsonEnd > jsonStart)
             {
                 var json = response.Substring(jsonStart, jsonEnd - jsonStart + 1);
-                var options = new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                };
 
-                var parsed = JsonSerializer.Deserialize<LlmClassificationResponse>(json, options);
+                var parsed = JsonSerializer.Deserialize<LlmClassificationResponse>(json, s_caseInsensitiveJsonOptions);
 
                 return new ChunkClassification
                 {
@@ -293,7 +285,8 @@ public class LlmChunkClassificationService : IChunkClassificationService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to parse LLM response: {Response}", response);
+            if (_logger.IsEnabled(LogLevel.Debug))
+                LogLlmChunkClassification1(_logger, ex, response);
         }
 
         return new ChunkClassification
@@ -316,7 +309,7 @@ public class LlmChunkClassificationService : IChunkClassificationService
     /// <summary>
     /// LLM 응답 파싱용 내부 클래스
     /// </summary>
-    private class LlmClassificationResponse
+    private sealed class LlmClassificationResponse
     {
         public List<string>? Topics { get; set; }
         public List<string>? Categories { get; set; }
@@ -326,4 +319,25 @@ public class LlmChunkClassificationService : IChunkClassificationService
         public List<string>? PotentialQuestions { get; set; }
         public double Confidence { get; set; }
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Skipping LLM classification for chunk {ChunkId}: {Reason}")]
+    private static partial void LogLlmChunkClassification8(ILogger logger, string chunkId, string reason);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "LLM service not available, returning empty classification")]
+    private static partial void LogLlmChunkClassification7(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting batch classification for {Count} chunks")]
+    private static partial void LogLlmChunkClassification6(ILogger logger, int count);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Batch classification complete: {LlmProcessed} LLM, {Skipped} skipped")]
+    private static partial void LogLlmChunkClassification5(ILogger logger, int llmProcessed, int skipped);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Classification output validation failed for chunk {ChunkId}, retry {Retry}/{Max}")]
+    private static partial void LogLlmChunkClassification4(ILogger logger, string chunkId, int retry, int max);
+    [LoggerMessage(Level = LogLevel.Error, Message = "LLM classification failed for chunk {ChunkId}, retry {Retry}/{Max}")]
+    private static partial void LogLlmChunkClassification3(ILogger logger, Exception exception, string chunkId, int retry, int max);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Processing batch {BatchNum}/{TotalBatches} ({Count} chunks)")]
+    private static partial void LogLlmChunkClassification2(ILogger logger, int batchNum, int totalBatches, int count);
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to parse LLM response: {Response}")]
+    private static partial void LogLlmChunkClassification1(ILogger logger, Exception exception, string response);
+
+    #endregion
 }

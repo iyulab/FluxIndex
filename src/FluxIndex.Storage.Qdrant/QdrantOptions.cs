@@ -41,7 +41,7 @@ public class QdrantOptions
     /// <summary>
     /// Whether to use HTTPS for connection.
     /// </summary>
-    public bool UseHttps { get; set; } = false;
+    public bool UseHttps { get; set; }
 
     /// <summary>
     /// API key for Qdrant Cloud authentication.
@@ -100,7 +100,7 @@ public class QdrantOptions
     /// <summary>
     /// On-disk payload storage for large metadata.
     /// </summary>
-    public bool OnDiskPayload { get; set; } = false;
+    public bool OnDiskPayload { get; set; }
 
     /// <summary>
     /// Connection timeout in seconds.

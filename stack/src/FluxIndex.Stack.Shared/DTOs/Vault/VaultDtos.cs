@@ -181,7 +181,7 @@ public class VaultSearchRequestDto
     /// <summary>
     /// Minimum score threshold for results.
     /// </summary>
-    public float MinScore { get; init; } = 0.0f;
+    public float MinScore { get; init; }
 
     /// <summary>
     /// Whether to include chunk content in results.

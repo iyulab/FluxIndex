@@ -149,7 +149,7 @@ public class EntityLinkingOptions
     /// <summary>
     /// Whether to use embeddings for entity similarity
     /// </summary>
-    public bool UseEmbeddings { get; set; } = false;
+    public bool UseEmbeddings { get; set; }
 }
 
 /// <summary>

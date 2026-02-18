@@ -25,9 +25,9 @@ namespace FluxIndex.Core.Application.Services.Base;
 ///     }
 /// }
 /// </example>
-public abstract class VectorStoreBase : IVectorStore
+public abstract partial class VectorStoreBase : IVectorStore
 {
-    protected readonly ILogger? Logger;
+    protected ILogger? Logger { get; }
 
     protected VectorStoreBase()
     {
@@ -265,7 +265,7 @@ public abstract class VectorStoreBase : IVectorStore
 
         if (string.IsNullOrWhiteSpace(chunk.Content))
         {
-            Logger?.LogWarning("Storing chunk with empty content (DocumentId: {DocumentId})", chunk.DocumentId);
+            if (Logger is not null) LogStoringEmptyContent(Logger, chunk.DocumentId);
         }
     }
 
@@ -335,6 +335,13 @@ public abstract class VectorStoreBase : IVectorStore
     {
         return VectorMathUtilities.FastCosineSimilarity(query, candidate, queryMagnitude);
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Storing chunk with empty content (DocumentId: {DocumentId})")]
+    private static partial void LogStoringEmptyContent(ILogger logger, string documentId);
 
     #endregion
 }

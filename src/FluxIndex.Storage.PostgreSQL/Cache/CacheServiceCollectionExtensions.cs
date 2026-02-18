@@ -70,7 +70,7 @@ public static class CacheServiceCollectionExtensions
 /// <summary>
 /// PostgreSQL Cache 마이그레이션 서비스
 /// </summary>
-internal class PostgresCacheMigrationService : IHostedService
+internal sealed partial class PostgresCacheMigrationService : IHostedService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<PostgresCacheMigrationService> _logger;
@@ -90,11 +90,11 @@ internal class PostgresCacheMigrationService : IHostedService
 
         if (!options.AutoMigrate)
         {
-            _logger.LogInformation("PostgreSQL cache auto-migration is disabled");
+            LogAutoMigrationDisabled(_logger);
             return;
         }
 
-        _logger.LogInformation("Starting PostgreSQL cache database migration");
+        LogStartingMigration(_logger);
 
         var context = scope.ServiceProvider.GetRequiredService<PostgresCacheDbContext>();
 
@@ -119,11 +119,11 @@ internal class PostgresCacheMigrationService : IHostedService
             // 인덱스 생성
             await CreateIndexesAsync(context, options, cancellationToken);
 
-            _logger.LogInformation("PostgreSQL cache database migration completed");
+            LogMigrationCompleted(_logger);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "PostgreSQL cache database migration failed");
+            LogMigrationFailed(_logger, ex);
             throw;
         }
     }
@@ -138,11 +138,11 @@ internal class PostgresCacheMigrationService : IHostedService
         {
             await context.Database.ExecuteSqlRawAsync(
                 "CREATE EXTENSION IF NOT EXISTS vector", cancellationToken);
-            _logger.LogDebug("pgvector extension enabled");
+            LogPgVectorEnabled(_logger);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to create vector extension, it may already exist or require superuser");
+            LogPgVectorExtensionFailed(_logger, ex);
         }
     }
 
@@ -180,7 +180,7 @@ internal class PostgresCacheMigrationService : IHostedService
         ";
 
         await context.Database.ExecuteSqlRawAsync(createTableSql, cancellationToken);
-        _logger.LogDebug("UNLOGGED tables created for semantic cache");
+        LogUnloggedTablesCreated(_logger);
     }
 
     private async Task CreateIndexesAsync(
@@ -216,19 +216,56 @@ internal class PostgresCacheMigrationService : IHostedService
                         ON semantic_cache USING hnsw (""Embedding"" vector_cosine_ops)
                         WITH (m = 16, ef_construction = 64);
                     ", cancellationToken);
-                    _logger.LogDebug("HNSW index created for vector similarity search");
+                    LogHnswIndexCreated(_logger);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Failed to create HNSW index, falling back to sequential scan");
+                    LogHnswIndexFailed(_logger, ex);
                 }
             }
 
-            _logger.LogDebug("Cache indexes created");
+            LogCacheIndexesCreated(_logger);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to create some indexes, continuing");
+            LogIndexCreationFailed(_logger, ex);
         }
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "PostgreSQL cache auto-migration is disabled")]
+    private static partial void LogAutoMigrationDisabled(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting PostgreSQL cache database migration")]
+    private static partial void LogStartingMigration(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "PostgreSQL cache database migration completed")]
+    private static partial void LogMigrationCompleted(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "PostgreSQL cache database migration failed")]
+    private static partial void LogMigrationFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "pgvector extension enabled")]
+    private static partial void LogPgVectorEnabled(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to create vector extension, it may already exist or require superuser")]
+    private static partial void LogPgVectorExtensionFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "UNLOGGED tables created for semantic cache")]
+    private static partial void LogUnloggedTablesCreated(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "HNSW index created for vector similarity search")]
+    private static partial void LogHnswIndexCreated(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to create HNSW index, falling back to sequential scan")]
+    private static partial void LogHnswIndexFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Cache indexes created")]
+    private static partial void LogCacheIndexesCreated(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to create some indexes, continuing")]
+    private static partial void LogIndexCreationFailed(ILogger logger, Exception exception);
+
+    #endregion
 }

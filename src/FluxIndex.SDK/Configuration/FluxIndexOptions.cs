@@ -66,7 +66,7 @@ public class VectorStoreOptions
     public string ConnectionString { get; set; } = string.Empty;
     public int MaxConnections { get; set; } = 10;
     public TimeSpan ConnectionTimeout { get; set; } = TimeSpan.FromSeconds(30);
-    public bool EnableAutoMigration { get; set; } = false;
+    public bool EnableAutoMigration { get; set; }
     public Dictionary<string, object> ProviderSpecificOptions { get; set; } = new();
 
     // Qdrant-specific options
@@ -76,7 +76,7 @@ public class VectorStoreOptions
     public string QdrantCollectionName { get; set; } = "fluxindex_chunks";
     public int QdrantVectorSize { get; set; } = 1536;
     public string? QdrantApiKey { get; set; }
-    public bool QdrantUseHttps { get; set; } = false;
+    public bool QdrantUseHttps { get; set; }
     public Action<QdrantOptions>? QdrantOptionsAction { get; set; }
 
     /// <summary>
@@ -123,7 +123,7 @@ public class ChunkingDefaults
     public string Strategy { get; set; } = "Auto";
     public int MaxChunkSize { get; set; } = 512;
     public int OverlapSize { get; set; } = 64;
-    public bool PreserveFormatting { get; set; } = false;
+    public bool PreserveFormatting { get; set; }
 }
 
 /// <summary>
@@ -132,7 +132,7 @@ public class ChunkingDefaults
 public class SearchConfiguration
 {
     public int DefaultMaxResults { get; set; } = 10;
-    public float DefaultMinScore { get; set; } = 0.0f;
+    public float DefaultMinScore { get; set; }
     public float DefaultVectorWeight { get; set; } = 0.7f;
     public float DefaultKeywordWeight { get; set; } = 0.3f;
     public bool EnableHighlighting { get; set; } = true;
@@ -258,8 +258,8 @@ public class SemanticCacheOptions
 /// </summary>
 public class QualityMonitoringOptions
 {
-    public bool EnableMonitoring { get; set; } = false;
-    public bool EnableRealTimeAlerts { get; set; } = false;
+    public bool EnableMonitoring { get; set; }
+    public bool EnableRealTimeAlerts { get; set; }
     public TimeSpan MetricsInterval { get; set; } = TimeSpan.FromMinutes(1);
     public TimeSpan AlertCheckInterval { get; set; } = TimeSpan.FromMinutes(5);
     public int MaxMetricsHistory { get; set; } = 1440; // 24 hours at 1 minute intervals
@@ -347,7 +347,7 @@ public class LateChunkingConfiguration
     /// <summary>
     /// Enable Late Chunking embedding approach
     /// </summary>
-    public bool Enabled { get; set; } = false;
+    public bool Enabled { get; set; }
 
     /// <summary>
     /// Maximum document length for full document embedding.
@@ -379,7 +379,7 @@ public class MultiHyDEConfiguration
     /// <summary>
     /// Enable Multi-Hypothetical HyDE for query transformation
     /// </summary>
-    public bool Enabled { get; set; } = false;
+    public bool Enabled { get; set; }
 
     /// <summary>
     /// Number of hypothetical documents to generate (1-10).
@@ -414,7 +414,7 @@ public class ContextualRetrievalConfiguration
     /// <summary>
     /// Enable Contextual Retrieval enrichment
     /// </summary>
-    public bool Enabled { get; set; } = false;
+    public bool Enabled { get; set; }
 
     /// <summary>
     /// LLM usage threshold for context generation (0.0-1.0).
@@ -425,7 +425,7 @@ public class ContextualRetrievalConfiguration
     /// <summary>
     /// Generate both contextual and standard embeddings for hybrid search
     /// </summary>
-    public bool GenerateDualEmbeddings { get; set; } = false;
+    public bool GenerateDualEmbeddings { get; set; }
 
     /// <summary>
     /// Enable prompt caching for reduced LLM costs (if provider supports)

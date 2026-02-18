@@ -13,7 +13,7 @@ namespace FluxIndex.Core.Application.Services;
 /// <summary>
 /// 질의 분석 서비스
 /// </summary>
-public class QueryAnalysisService : IQueryAnalysisService
+public partial class QueryAnalysisService : IQueryAnalysisService
 {
     private readonly ITokenCounter _tokenCounter;
     private readonly ILogger<QueryAnalysisService> _logger;
@@ -104,9 +104,7 @@ public class QueryAnalysisService : IQueryAnalysisService
         analysis.RecommendedStrategy = RecommendStrategy(analysis);
         analysis.RecommendedTopK = RecommendTopK(analysis);
 
-        _logger.LogDebug(
-            "Query analyzed: Language={Language}, Intent={Intent}, Complexity={Complexity}, Strategy={Strategy}",
-            analysis.Language, analysis.Intent, analysis.Complexity, analysis.RecommendedStrategy);
+        LogQueryAnalyzed(_logger, analysis.Language, analysis.Intent, analysis.Complexity, analysis.RecommendedStrategy);
 
         return Task.FromResult(analysis);
     }
@@ -233,6 +231,13 @@ public class QueryAnalysisService : IQueryAnalysisService
             _ => 10
         };
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Query analyzed: Language={Language}, Intent={Intent}, Complexity={Complexity}, Strategy={Strategy}")]
+    private static partial void LogQueryAnalyzed(ILogger logger, string language, QueryIntent intent, QueryComplexityLevel complexity, SearchStrategy strategy);
+
+    #endregion
 }
 
 /// <summary>

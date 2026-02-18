@@ -1,4 +1,4 @@
-﻿using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Logging;
 using System;
@@ -8,13 +8,14 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Globalization;
 
 namespace FluxIndex.Core.Services;
 
 /// <summary>
 /// 적응형 검색 서비스 구현체 - 쿼리 복잡도에 따른 동적 전략 선택
 /// </summary>
-public class AdaptiveSearchService : IAdaptiveSearchService
+public partial class AdaptiveSearchService : IAdaptiveSearchService
 {
     private readonly IHybridSearchService _hybridSearchService;
     private readonly ISmallToBigRetriever _smallToBigRetriever;
@@ -29,8 +30,8 @@ public class AdaptiveSearchService : IAdaptiveSearchService
     private readonly ConcurrentDictionary<string, AdaptiveSearchResult> _searchCache;
 
     // 캐시 성능 통계
-    private long _totalSearches = 0;
-    private long _cacheHits = 0;
+    private long _totalSearches;
+    private long _cacheHits;
 
     public AdaptiveSearchService(
         IHybridSearchService hybridSearchService,
@@ -55,7 +56,7 @@ public class AdaptiveSearchService : IAdaptiveSearchService
 
         if (_semanticCache != null)
         {
-            _logger.LogInformation("시맨틱 캐시 활성화됨");
+            LogSemanticCacheEnabled(_logger);
         }
     }
 
@@ -73,7 +74,7 @@ public class AdaptiveSearchService : IAdaptiveSearchService
         options ??= new AdaptiveSearchOptions();
         var totalStopwatch = Stopwatch.StartNew();
 
-        _logger.LogInformation("적응형 검색 시작: {Query}", query);
+        LogAdaptiveSearchStarted(_logger, query);
 
         try
         {
@@ -94,8 +95,7 @@ public class AdaptiveSearchService : IAdaptiveSearchService
                         Interlocked.Increment(ref _cacheHits);
 
                         var hitRate = (double)_cacheHits / _totalSearches;
-                        _logger.LogInformation("🎯 시맨틱 캐시 히트: {Query} (유사도: {Similarity:F3}, 히트율: {HitRate:P1})",
-                            query, cachedResult.SimilarityScore, hitRate);
+                        LogSemanticCacheHit(_logger, query, cachedResult.SimilarityScore, hitRate);
 
                         // 캐시된 DocumentChunk를 Document 객체로 변환
                         var documents = cachedResult.Results
@@ -154,22 +154,22 @@ public class AdaptiveSearchService : IAdaptiveSearchService
                     }
 
                     var missRate = 1.0 - ((double)_cacheHits / _totalSearches);
-                    _logger.LogDebug("시맨틱 캐시 미스: {Query} (현재 히트율: {HitRate:P1})", query, 1.0 - missRate);
+                    LogSemanticCacheMiss(_logger, query, 1.0 - missRate);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "시맨틱 캐시 조회 실패, 일반 검색 진행: {Query}", query);
+                    LogSemanticCacheLookupFailed(_logger, ex, query);
                 }
             }
             else if (options.UseCache && _semanticCache == null)
             {
-                _logger.LogDebug("시맨틱 캐시가 구성되지 않음, in-memory 캐시 사용");
+                LogSemanticCacheNotConfigured(_logger);
 
                 // Fallback: in-memory 캐시
                 var cacheKey = GenerateCacheKey(query, options);
                 if (_searchCache.TryGetValue(cacheKey, out var memCachedResult))
                 {
-                    _logger.LogDebug("In-memory 캐시 히트: {Query}", query);
+                    LogInMemoryCacheHit(_logger, query);
                     return memCachedResult;
                 }
             }
@@ -179,8 +179,7 @@ public class AdaptiveSearchService : IAdaptiveSearchService
             var queryAnalysis = await _queryAnalyzer.AnalyzeAsync(query, cancellationToken);
             analysisStopwatch.Stop();
 
-            _logger.LogDebug("쿼리 분석 완료: {Type}, {Complexity}, {ConfidenceScore:F3}",
-                queryAnalysis.Type, queryAnalysis.Complexity, queryAnalysis.ConfidenceScore);
+            LogQueryAnalysisCompleted(_logger, queryAnalysis.Type, queryAnalysis.Complexity, queryAnalysis.ConfidenceScore);
 
             // 3. 검색 전략 결정
             var strategy = options.ForceStrategy ?? DetermineOptimalStrategy(queryAnalysis);
@@ -197,8 +196,8 @@ public class AdaptiveSearchService : IAdaptiveSearchService
                 strategyReasons.Add($"분석 신뢰도: {queryAnalysis.ConfidenceScore:F3}");
             }
 
-            _logger.LogDebug("선택된 전략: {Strategy}, 이유: {Reasons}",
-                strategy, string.Join(", ", strategyReasons));
+            var reasonsText = string.Join(", ", strategyReasons);
+            LogSelectedStrategy(_logger, strategy, reasonsText);
 
             // 4. 검색 실행 (Fallback 전략 포함)
             var searchStopwatch = Stopwatch.StartNew();
@@ -257,15 +256,15 @@ public class AdaptiveSearchService : IAdaptiveSearchService
                         var documentChunks = searchResults
                             .Select(doc => new FluxIndex.Core.Domain.Models.CacheDocumentChunk
                             {
-                                Id = doc.Metadata.ContainsKey("chunk_id")
-                                    ? doc.Metadata["chunk_id"]?.ToString() ?? doc.Id
+                                Id = doc.Metadata.TryGetValue("chunk_id", out var chunkIdVal)
+                                    ? chunkIdVal?.ToString() ?? doc.Id
                                     : doc.Id,
                                 DocumentId = doc.Id,
-                                Content = doc.Metadata.ContainsKey("chunk_content")
-                                    ? doc.Metadata["chunk_content"]?.ToString() ?? ""
+                                Content = doc.Metadata.TryGetValue("chunk_content", out var chunkContentVal)
+                                    ? chunkContentVal?.ToString() ?? ""
                                     : "",
-                                Score = doc.Metadata.ContainsKey("relevance_score")
-                                    ? Convert.ToSingle(doc.Metadata["relevance_score"])
+                                Score = doc.Metadata.TryGetValue("relevance_score", out var relevanceScoreVal)
+                                    ? Convert.ToSingle(relevanceScoreVal, CultureInfo.InvariantCulture)
                                     : 0.0f,
                                 Metadata = doc.Metadata
                             })
@@ -285,11 +284,11 @@ public class AdaptiveSearchService : IAdaptiveSearchService
                             TimeSpan.FromHours(1),
                             cancellationToken);
 
-                        _logger.LogDebug("시맨틱 캐시 저장 완료: {Query}, {Count}개 결과", query, result.Performance.ResultCount);
+                        LogSemanticCacheSaved(_logger, query, result.Performance.ResultCount);
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning(ex, "시맨틱 캐시 저장 실패: {Query}", query);
+                        LogSemanticCacheSaveFailed(_logger, ex, query);
                     }
                 }
                 else
@@ -303,14 +302,13 @@ public class AdaptiveSearchService : IAdaptiveSearchService
             // 8. 성능 통계 업데이트
             await UpdateStrategyMetricsAsync(strategy, result);
 
-            _logger.LogInformation("적응형 검색 완료: {Strategy}, {ResultCount}개 결과, {ElapsedMs}ms",
-                strategy, result.Performance.ResultCount, totalStopwatch.ElapsedMilliseconds);
+            LogAdaptiveSearchCompleted(_logger, strategy, result.Performance.ResultCount, totalStopwatch.ElapsedMilliseconds);
 
             return result;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "적응형 검색 중 오류 발생: {Query}", query);
+            LogAdaptiveSearchError(_logger, ex, query);
             throw;
         }
     }
@@ -339,7 +337,7 @@ public class AdaptiveSearchService : IAdaptiveSearchService
         UserFeedback feedback,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogDebug("사용자 피드백 업데이트: {Query}, 만족도: {Satisfaction}", query, feedback.Satisfaction);
+        LogFeedbackUpdate(_logger, query, feedback.Satisfaction);
 
         // 전략별 통계에 피드백 반영
         if (_strategyMetrics.TryGetValue(result.UsedStrategy, out var metrics))
@@ -405,7 +403,7 @@ public class AdaptiveSearchService : IAdaptiveSearchService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Redis 캐시 통계 조회 실패");
+                LogRedisCacheStatsFailed(_logger, ex);
                 stats["redis_cache_error"] = ex.Message;
             }
         }
@@ -476,12 +474,11 @@ public class AdaptiveSearchService : IAdaptiveSearchService
         int minResults = Math.Max(1, options.MaxResults / 3); // 최소 목표: MaxResults의 1/3
         if (resultCount >= minResults)
         {
-            _logger.LogDebug("주 전략 성공: {Strategy}, {Count}개 결과", primaryStrategy, resultCount);
+            LogPrimaryStrategySuccess(_logger, primaryStrategy, resultCount);
             return results;
         }
 
-        _logger.LogWarning("주 전략 결과 부족: {Strategy}, {Count}/{MinCount}개",
-            primaryStrategy, resultCount, minResults);
+        LogPrimaryStrategyInsufficient(_logger, primaryStrategy, resultCount, minResults);
 
         // 2차 시도: Fallback 전략 정의
         var fallbackStrategies = GetFallbackStrategies(primaryStrategy);
@@ -490,15 +487,14 @@ public class AdaptiveSearchService : IAdaptiveSearchService
         {
             try
             {
-                _logger.LogInformation("Fallback 시도: {Strategy}", fallbackStrategy);
+                LogFallbackAttempt(_logger, fallbackStrategy);
 
                 var fallbackResults = await ExecuteSearchWithStrategy(query, fallbackStrategy, options, cancellationToken);
                 var fallbackCount = fallbackResults.Count();
 
                 if (fallbackCount > resultCount)
                 {
-                    _logger.LogInformation("Fallback 성공: {Strategy}, {Count}개 결과",
-                        fallbackStrategy, fallbackCount);
+                    LogFallbackSuccess(_logger, fallbackStrategy, fallbackCount);
 
                     strategyReasons.Add($"Fallback 적용: {primaryStrategy} → {fallbackStrategy} ({resultCount} → {fallbackCount}개)");
                     return fallbackResults;
@@ -506,14 +502,14 @@ public class AdaptiveSearchService : IAdaptiveSearchService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Fallback 전략 실패: {Strategy}", fallbackStrategy);
+                LogFallbackStrategyFailed(_logger, ex, fallbackStrategy);
             }
         }
 
         // 3차 시도: Zero-Result 방지 - minScore 완화하여 재시도
         if (resultCount == 0 && options.MinScore > 0.0)
         {
-            _logger.LogWarning("Zero-Result 감지, minScore 완화 재시도");
+            LogZeroResultDetected(_logger);
 
             var relaxedOptions = new AdaptiveSearchOptions
             {
@@ -527,13 +523,15 @@ public class AdaptiveSearchService : IAdaptiveSearchService
             if (relaxedResults.Any())
             {
                 strategyReasons.Add($"Zero-Result 방지: minScore 완화 ({options.MinScore:F2} → 0.0)");
-                _logger.LogInformation("Zero-Result 방지 성공: {Count}개 결과", relaxedResults.Count());
+                var relaxedCount = relaxedResults.Count();
+                if (_logger.IsEnabled(LogLevel.Information))
+                    LogZeroResultPrevented(_logger, relaxedCount);
                 return relaxedResults;
             }
         }
 
         // 모든 시도 실패: 원본 결과 반환 (빈 결과 포함)
-        _logger.LogWarning("모든 Fallback 전략 실패, 원본 결과 반환: {Count}개", resultCount);
+        LogAllFallbacksFailed(_logger, resultCount);
         strategyReasons.Add($"Fallback 실패: {resultCount}개 결과만 반환");
         return results;
     }
@@ -541,7 +539,7 @@ public class AdaptiveSearchService : IAdaptiveSearchService
     /// <summary>
     /// 전략별 Fallback 체인 정의
     /// </summary>
-    private List<SearchStrategy> GetFallbackStrategies(SearchStrategy primary)
+    private static List<SearchStrategy> GetFallbackStrategies(SearchStrategy primary)
     {
         return primary switch
         {
@@ -649,12 +647,12 @@ public class AdaptiveSearchService : IAdaptiveSearchService
                 hybridOptions.SparseWeight = datConfig.SparseWeight;
                 hybridOptions.FusionMethod = datConfig.RecommendedFusion;
 
-                _logger.LogDebug("DAT applied: Vector={VectorWeight:F2}, Sparse={SparseWeight:F2}, Fusion={Fusion}",
-                    datConfig.VectorWeight, datConfig.SparseWeight, datConfig.RecommendedFusion);
+                if (_logger.IsEnabled(LogLevel.Debug))
+                    LogDatApplied(_logger, datConfig.VectorWeight, datConfig.SparseWeight, datConfig.RecommendedFusion);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "DAT calculation failed, using default weights");
+                LogDatCalculationFailed(_logger, ex);
             }
         }
 
@@ -712,7 +710,7 @@ public class AdaptiveSearchService : IAdaptiveSearchService
         return await ExecuteHybridSearch(query, options, cancellationToken);
     }
 
-    private Document CreateDocumentFromChunk(FluxIndex.Core.Domain.Models.CacheDocumentChunk chunk)
+    private static Document CreateDocumentFromChunk(FluxIndex.Core.Domain.Models.CacheDocumentChunk chunk)
     {
         var document = Document.Create(chunk.DocumentId);
         document.Metadata = chunk.Metadata ?? new Dictionary<string, object>();
@@ -722,7 +720,7 @@ public class AdaptiveSearchService : IAdaptiveSearchService
         return document;
     }
 
-    private Document CreateDocumentFromChunk(FluxIndex.Core.Domain.Entities.DocumentChunk chunk)
+    private static Document CreateDocumentFromChunk(FluxIndex.Core.Domain.Entities.DocumentChunk chunk)
     {
         var document = Document.Create(chunk.DocumentId);
         document.Metadata = chunk.Metadata ?? new Dictionary<string, object>();
@@ -732,7 +730,7 @@ public class AdaptiveSearchService : IAdaptiveSearchService
         return document;
     }
 
-    private List<string> GenerateQueryExpansions(string query)
+    private static List<string> GenerateQueryExpansions(string query)
     {
         // 간단한 쿼리 확장 로직
         var expansions = new List<string> { query };
@@ -784,12 +782,12 @@ public class AdaptiveSearchService : IAdaptiveSearchService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "A/B 테스트 중 오류: {TestId}", testId);
+            LogABTestError(_logger, ex, testId);
             return null;
         }
     }
 
-    private SearchStrategy GetAlternativeStrategy(SearchStrategy primary)
+    private static SearchStrategy GetAlternativeStrategy(SearchStrategy primary)
     {
         return primary switch
         {
@@ -848,7 +846,7 @@ public class AdaptiveSearchService : IAdaptiveSearchService
     private OverallStatistics CalculateOverallStatistics()
     {
         var allMetrics = _strategyMetrics.Values;
-        if (!allMetrics.Any()) return new OverallStatistics();
+        if (allMetrics.Count == 0) return new OverallStatistics();
 
         var totalSearches = allMetrics.Sum(m => m.TotalUses);
         var mostUsedStrategy = _strategyMetrics
@@ -875,7 +873,7 @@ public class AdaptiveSearchService : IAdaptiveSearchService
         };
     }
 
-    private List<TrendData> GenerateTrendData()
+    private static List<TrendData> GenerateTrendData()
     {
         // 실제로는 시계열 데이터로부터 생성
         var trends = new List<TrendData>();
@@ -895,18 +893,100 @@ public class AdaptiveSearchService : IAdaptiveSearchService
         return trends;
     }
 
-    private string GenerateCacheKey(string query, AdaptiveSearchOptions options)
+    private static string GenerateCacheKey(string query, AdaptiveSearchOptions options)
     {
         var keyParts = new[]
         {
-            query.GetHashCode().ToString(),
-            options.MaxResults.ToString(),
-            options.MinScore.ToString("F2"),
+            query.GetHashCode().ToString(CultureInfo.InvariantCulture),
+            options.MaxResults.ToString(CultureInfo.InvariantCulture),
+            options.MinScore.ToString("F2", CultureInfo.InvariantCulture),
             options.ForceStrategy?.ToString() ?? "auto"
         };
 
         return string.Join("_", keyParts);
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "시맨틱 캐시 활성화됨")]
+    private static partial void LogSemanticCacheEnabled(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "적응형 검색 시작: {Query}")]
+    private static partial void LogAdaptiveSearchStarted(ILogger logger, string query);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "시맨틱 캐시 히트: {Query} (유사도: {Similarity}, 히트율: {HitRate})")]
+    private static partial void LogSemanticCacheHit(ILogger logger, string query, float similarity, double hitRate);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "시맨틱 캐시 미스: {Query} (현재 히트율: {HitRate})")]
+    private static partial void LogSemanticCacheMiss(ILogger logger, string query, double hitRate);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "시맨틱 캐시 조회 실패, 일반 검색 진행: {Query}")]
+    private static partial void LogSemanticCacheLookupFailed(ILogger logger, Exception ex, string query);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "시맨틱 캐시가 구성되지 않음, in-memory 캐시 사용")]
+    private static partial void LogSemanticCacheNotConfigured(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "In-memory 캐시 히트: {Query}")]
+    private static partial void LogInMemoryCacheHit(ILogger logger, string query);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "쿼리 분석 완료: {Type}, {Complexity}, {ConfidenceScore}")]
+    private static partial void LogQueryAnalysisCompleted(ILogger logger, QueryType type, ComplexityLevel complexity, double confidenceScore);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "선택된 전략: {Strategy}, 이유: {Reasons}")]
+    private static partial void LogSelectedStrategy(ILogger logger, SearchStrategy strategy, string reasons);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "시맨틱 캐시 저장 완료: {Query}, {Count}개 결과")]
+    private static partial void LogSemanticCacheSaved(ILogger logger, string query, int count);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "시맨틱 캐시 저장 실패: {Query}")]
+    private static partial void LogSemanticCacheSaveFailed(ILogger logger, Exception ex, string query);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "적응형 검색 완료: {Strategy}, {ResultCount}개 결과, {ElapsedMs}ms")]
+    private static partial void LogAdaptiveSearchCompleted(ILogger logger, SearchStrategy strategy, int resultCount, long elapsedMs);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "적응형 검색 중 오류 발생: {Query}")]
+    private static partial void LogAdaptiveSearchError(ILogger logger, Exception ex, string query);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Redis 캐시 통계 조회 실패")]
+    private static partial void LogRedisCacheStatsFailed(ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "주 전략 성공: {Strategy}, {Count}개 결과")]
+    private static partial void LogPrimaryStrategySuccess(ILogger logger, SearchStrategy strategy, int count);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "주 전략 결과 부족: {Strategy}, {Count}/{MinCount}개")]
+    private static partial void LogPrimaryStrategyInsufficient(ILogger logger, SearchStrategy strategy, int count, int minCount);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Fallback 시도: {Strategy}")]
+    private static partial void LogFallbackAttempt(ILogger logger, SearchStrategy strategy);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Fallback 성공: {Strategy}, {Count}개 결과")]
+    private static partial void LogFallbackSuccess(ILogger logger, SearchStrategy strategy, int count);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Fallback 전략 실패: {Strategy}")]
+    private static partial void LogFallbackStrategyFailed(ILogger logger, Exception ex, SearchStrategy strategy);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Zero-Result 감지, minScore 완화 재시도")]
+    private static partial void LogZeroResultDetected(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Zero-Result 방지 성공: {Count}개 결과")]
+    private static partial void LogZeroResultPrevented(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "모든 Fallback 전략 실패, 원본 결과 반환: {Count}개")]
+    private static partial void LogAllFallbacksFailed(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "DAT applied: Vector={VectorWeight}, Sparse={SparseWeight}, Fusion={Fusion}")]
+    private static partial void LogDatApplied(ILogger logger, double vectorWeight, double sparseWeight, Domain.Models.FusionMethod fusion);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "DAT calculation failed, using default weights")]
+    private static partial void LogDatCalculationFailed(ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "A/B 테스트 중 오류: {TestId}")]
+    private static partial void LogABTestError(ILogger logger, Exception ex, string testId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "사용자 피드백 업데이트: {Query}, 만족도: {Satisfaction}")]
+    private static partial void LogFeedbackUpdate(ILogger logger, string query, double satisfaction);
 
     #endregion
 }

@@ -9,6 +9,7 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Core.Domain.ValueObjects;
 using Microsoft.Extensions.Logging;
+using System.Globalization;
 
 namespace FluxIndex.Core.Application.Services.Graph;
 
@@ -17,7 +18,7 @@ namespace FluxIndex.Core.Application.Services.Graph;
 /// and hierarchical summarization for comprehensive retrieval-augmented generation.
 /// Supports both local (entity-centric) and global (community-level) search strategies.
 /// </summary>
-public class GraphRAGService : IGraphRAGService
+public partial class GraphRAGService : IGraphRAGService
 {
     private readonly IEntityGraphService _entityGraphService;
     private readonly ILeidenCommunityService _leidenCommunityService;
@@ -83,7 +84,7 @@ public class GraphRAGService : IGraphRAGService
             chunkList = chunkList.Take(options.MaxChunks.Value).ToList();
         }
 
-        _logger.LogInformation("Building GraphRAG index for {ChunkCount} chunks", chunkList.Count);
+        LogGraphRAG13(_logger, chunkList.Count);
 
         // Phase 1: Build entity graph
         var entityGraphTask = BuildEntityGraphAsync(chunkList, options, cancellationToken);
@@ -128,9 +129,8 @@ public class GraphRAGService : IGraphRAGService
             BuildTimeMs = sw.Elapsed.TotalMilliseconds
         };
 
-        _logger.LogInformation(
-            "GraphRAG index built: {Entities} entities, {Communities} communities, {Summaries} summaries in {TimeMs:F0}ms",
-            stats.TotalEntities, stats.TotalCommunities, stats.TotalSummaries, stats.BuildTimeMs);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogGraphRAG12(_logger, stats.TotalEntities, stats.TotalCommunities, stats.TotalSummaries, stats.BuildTimeMs);
 
         var index = new GraphRAGIndex
         {
@@ -158,7 +158,7 @@ public class GraphRAGService : IGraphRAGService
     {
         if (_graphStore == null) return;
 
-        _logger.LogDebug("Persisting communities to graph store");
+        LogGraphRAG11(_logger);
 
         var persistedCount = 0;
 
@@ -191,7 +191,8 @@ public class GraphRAGService : IGraphRAGService
             }
         }
 
-        _logger.LogInformation("Persisted {CommunityCount} communities to graph store", persistedCount);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogGraphRAG10(_logger, persistedCount);
     }
 
     /// <inheritdoc />
@@ -204,7 +205,8 @@ public class GraphRAGService : IGraphRAGService
         var sw = Stopwatch.StartNew();
         options ??= new GraphRAGQueryOptions();
 
-        _logger.LogDebug("GraphRAG query: {Query}", query);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogGraphRAG9(_logger, query);
 
         // Detect query scope (or use forced scope)
         var scopeResult = options.ForceScope.HasValue
@@ -295,7 +297,7 @@ public class GraphRAGService : IGraphRAGService
         double answerTime = 0;
         double confidence = 0;
 
-        if (_textCompletionService != null && documents.Any())
+        if (_textCompletionService != null && documents.Count != 0)
         {
             var answerSw = Stopwatch.StartNew();
             var (generatedAnswer, generatedCitations) = await GenerateAnswerAsync(
@@ -309,7 +311,7 @@ public class GraphRAGService : IGraphRAGService
         {
             // If no LLM, construct answer from top documents
             answer = ConstructFallbackAnswer(query, documents);
-            confidence = documents.Any() ? documents.Average(d => d.Score) : 0;
+            confidence = documents.Count != 0 ? documents.Average(d => d.Score) : 0;
         }
 
         sw.Stop();
@@ -349,7 +351,8 @@ public class GraphRAGService : IGraphRAGService
         var sw = Stopwatch.StartNew();
         options ??= new LocalSearchOptions();
 
-        _logger.LogDebug("Local search: {Query}", query);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogGraphRAG8(_logger, query);
 
         // Use entity graph service for entity-centric search
         var entitySearchOptions = new EntitySearchOptions
@@ -379,7 +382,7 @@ public class GraphRAGService : IGraphRAGService
 
         // Get entity relationships
         var relationships = new List<EntityRelationInfo>();
-        if (entitySearchResult.QueryEntities.Any())
+        if (entitySearchResult.QueryEntities.Count != 0)
         {
             var traversalResult = await _entityGraphService.TraverseEntityRelationsAsync(
                 entitySearchResult.QueryEntities.Select(e => e.Id),
@@ -404,7 +407,7 @@ public class GraphRAGService : IGraphRAGService
 
         // Generate answer if LLM is available
         string? answer = null;
-        if (_textCompletionService != null && documents.Any())
+        if (_textCompletionService != null && documents.Count != 0)
         {
             var context = string.Join("\n\n", documents.Take(5).Select(d => d.Content));
             answer = await GenerateLocalAnswerAsync(query, context, cancellationToken);
@@ -426,7 +429,7 @@ public class GraphRAGService : IGraphRAGService
             Documents = documents,
             Relationships = relationships,
             Answer = answer,
-            Confidence = documents.Any() ? documents.Average(d => d.Score) : 0,
+            Confidence = documents.Count != 0 ? documents.Average(d => d.Score) : 0,
             ProcessingTimeMs = sw.Elapsed.TotalMilliseconds
         };
     }
@@ -441,7 +444,8 @@ public class GraphRAGService : IGraphRAGService
         var sw = Stopwatch.StartNew();
         options ??= new GlobalSearchOptions();
 
-        _logger.LogDebug("Global search: {Query}", query);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogGraphRAG7(_logger, query);
 
         // Use hierarchical summarization service for global search
         var globalResult = await _summarizationService.GlobalSearchAsync(
@@ -475,7 +479,8 @@ public class GraphRAGService : IGraphRAGService
         var sw = Stopwatch.StartNew();
         options ??= new HybridGraphSearchOptions();
 
-        _logger.LogDebug("Hybrid search: {Query}", query);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogGraphRAG6(_logger, query);
 
         // Execute local and global searches in parallel
         var localTask = LocalSearchAsync(query, index, options.LocalOptions, cancellationToken);
@@ -505,7 +510,7 @@ public class GraphRAGService : IGraphRAGService
         else
         {
             answer = localResult.Answer ?? globalResult.Answer.Text;
-            confidence = fusedDocuments.Any() ? fusedDocuments.Average(d => d.Score) : 0;
+            confidence = fusedDocuments.Count != 0 ? fusedDocuments.Average(d => d.Score) : 0;
         }
 
         sw.Stop();
@@ -620,7 +625,7 @@ public class GraphRAGService : IGraphRAGService
         options ??= new GraphRAGUpdateOptions();
         var chunkList = newChunks.ToList();
 
-        _logger.LogInformation("Updating GraphRAG index with {NewChunkCount} chunks", chunkList.Count);
+        LogGraphRAG5(_logger, chunkList.Count);
 
         // Build entity graph for new chunks
         var newEntityGraph = await _entityGraphService.BuildEntityGraphAsync(
@@ -742,7 +747,7 @@ public class GraphRAGService : IGraphRAGService
         GraphRAGBuildOptions options,
         CancellationToken cancellationToken)
     {
-        _logger.LogDebug("Building entity graph from {Count} chunks", chunks.Count);
+        LogGraphRAG4(_logger, chunks.Count);
 
         return await _entityGraphService.BuildEntityGraphAsync(
             chunks,
@@ -755,12 +760,12 @@ public class GraphRAGService : IGraphRAGService
         GraphRAGBuildOptions options,
         CancellationToken cancellationToken)
     {
-        _logger.LogDebug("Building community hierarchy from {Count} chunks", chunks.Count);
+        LogGraphRAG3(_logger, chunks.Count);
 
         // Ensure all chunks have embeddings
         var chunksWithEmbeddings = chunks.Where(c => c.Embedding != null).ToList();
 
-        if (!chunksWithEmbeddings.Any())
+        if (chunksWithEmbeddings.Count == 0)
         {
             // Generate embeddings if service is available
             if (_embeddingService != null && options.GenerateSummaryEmbeddings)
@@ -769,7 +774,7 @@ public class GraphRAGService : IGraphRAGService
             }
             else
             {
-                _logger.LogWarning("No chunks with embeddings found and embedding service unavailable");
+                LogGraphRAG2(_logger);
                 return new CommunityHierarchy();
             }
         }
@@ -795,7 +800,8 @@ public class GraphRAGService : IGraphRAGService
         GraphRAGBuildOptions options,
         CancellationToken cancellationToken)
     {
-        _logger.LogDebug("Generating hierarchical summaries for {LevelCount} levels", hierarchy.LevelCount);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogGraphRAG1(_logger, hierarchy.LevelCount);
 
         return await _summarizationService.GenerateHierarchicalSummariesAsync(
             hierarchy,
@@ -835,7 +841,7 @@ public class GraphRAGService : IGraphRAGService
         return result;
     }
 
-    private List<GraphRAGDocument> FuseResults(
+    private static List<GraphRAGDocument> FuseResults(
         IReadOnlyList<GraphRAGDocument> localDocs,
         List<GraphRAGDocument> globalDocs,
         HybridGraphSearchOptions options)
@@ -849,7 +855,7 @@ public class GraphRAGService : IGraphRAGService
         };
     }
 
-    private List<GraphRAGDocument> FuseWeightedSum(
+    private static List<GraphRAGDocument> FuseWeightedSum(
         IReadOnlyList<GraphRAGDocument> localDocs,
         List<GraphRAGDocument> globalDocs,
         HybridGraphSearchOptions options)
@@ -908,7 +914,7 @@ public class GraphRAGService : IGraphRAGService
             .ToList();
     }
 
-    private List<GraphRAGDocument> FuseRRF(
+    private static List<GraphRAGDocument> FuseRRF(
         IReadOnlyList<GraphRAGDocument> localDocs,
         List<GraphRAGDocument> globalDocs,
         HybridGraphSearchOptions options)
@@ -974,7 +980,7 @@ public class GraphRAGService : IGraphRAGService
             .ToList();
     }
 
-    private List<GraphRAGDocument> FuseInterleaved(
+    private static List<GraphRAGDocument> FuseInterleaved(
         IReadOnlyList<GraphRAGDocument> localDocs,
         List<GraphRAGDocument> globalDocs,
         HybridGraphSearchOptions options)
@@ -1059,7 +1065,7 @@ public class GraphRAGService : IGraphRAGService
         return result;
     }
 
-    private List<GraphRAGDocument> ConvertGlobalToDocuments(GlobalSearchResult globalResult)
+    private static List<GraphRAGDocument> ConvertGlobalToDocuments(GlobalSearchResult globalResult)
     {
         var documents = new List<GraphRAGDocument>();
 
@@ -1186,30 +1192,30 @@ Provide a comprehensive answer that integrates both perspectives:";
             cancellationToken);
     }
 
-    private string BuildAnswerContext(List<GraphRAGDocument> documents, List<GraphRAGCommunity> communities)
+    private static string BuildAnswerContext(List<GraphRAGDocument> documents, List<GraphRAGCommunity> communities)
     {
         var context = new System.Text.StringBuilder();
 
         for (int i = 0; i < Math.Min(documents.Count, 5); i++)
         {
             var doc = documents[i];
-            context.AppendLine($"[{i + 1}] {doc.Content}");
+            context.AppendLine(CultureInfo.InvariantCulture, $"[{i + 1}] {doc.Content}");
             context.AppendLine();
         }
 
-        if (communities.Any())
+        if (communities.Count != 0)
         {
             context.AppendLine("Community Context:");
             foreach (var community in communities.Take(3))
             {
-                context.AppendLine($"- {community.Title ?? community.Id}: {community.Summary}");
+                context.AppendLine(CultureInfo.InvariantCulture, $"- {community.Title ?? community.Id}: {community.Summary}");
             }
         }
 
         return context.ToString();
     }
 
-    private List<AnswerCitation> ExtractCitations(
+    private static List<AnswerCitation> ExtractCitations(
         string response,
         List<GraphRAGDocument> documents,
         List<GraphRAGCommunity> communities)
@@ -1227,7 +1233,7 @@ Provide a comprehensive answer that integrates both perspectives:";
                     Index = i + 1,
                     CommunityId = doc.CommunityId ?? "",
                     CommunityTitle = communities.FirstOrDefault(c => c.Id == doc.CommunityId)?.Title,
-                    Excerpt = doc.Content.Length > 200 ? doc.Content.Substring(0, 200) + "..." : doc.Content,
+                    Excerpt = doc.Content.Length > 200 ? string.Concat(doc.Content.AsSpan(0, 200), "...") : doc.Content,
                     Relevance = doc.Score
                 });
             }
@@ -1236,42 +1242,42 @@ Provide a comprehensive answer that integrates both perspectives:";
         return citations;
     }
 
-    private string ConstructFallbackAnswer(string query, List<GraphRAGDocument> documents)
+    private static string ConstructFallbackAnswer(string query, List<GraphRAGDocument> documents)
     {
-        if (!documents.Any())
+        if (documents.Count == 0)
             return $"No relevant information found for: {query}";
 
         var topDoc = documents.First();
         return $"Based on available information: {topDoc.Content.Substring(0, Math.Min(500, topDoc.Content.Length))}...";
     }
 
-    private double CalculateAnswerConfidence(
+    private static double CalculateAnswerConfidence(
         List<GraphRAGDocument> documents,
         List<GraphRAGEntity> entities,
         List<GraphRAGCommunity> communities)
     {
-        if (!documents.Any()) return 0;
+        if (documents.Count == 0) return 0;
 
         var docScore = documents.Average(d => d.Score);
-        var entityScore = entities.Any() ? entities.Average(e => e.Relevance) : 0.5;
-        var communityScore = communities.Any() ? communities.Average(c => c.Relevance) : 0.5;
+        var entityScore = entities.Count != 0 ? entities.Average(e => e.Relevance) : 0.5;
+        var communityScore = communities.Count != 0 ? communities.Average(c => c.Relevance) : 0.5;
 
         return (docScore * 0.5 + entityScore * 0.25 + communityScore * 0.25);
     }
 
-    private double CalculateHybridConfidence(
+    private static double CalculateHybridConfidence(
         LocalSearchResult localResult,
         GlobalSearchResult globalResult,
         List<GraphRAGDocument> fusedDocs)
     {
         var localConf = localResult.Confidence;
         var globalConf = globalResult.Answer.Confidence;
-        var fusedConf = fusedDocs.Any() ? fusedDocs.Average(d => d.Score) : 0;
+        var fusedConf = fusedDocs.Count != 0 ? fusedDocs.Average(d => d.Score) : 0;
 
         return (localConf * 0.3 + globalConf * 0.3 + fusedConf * 0.4);
     }
 
-    private double CalculateSpecificityScore(string query)
+    private static double CalculateSpecificityScore(string query)
     {
         var words = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
@@ -1279,13 +1285,13 @@ Provide a comprehensive answer that integrates both perspectives:";
         double lengthFactor = Math.Max(0, 1 - (words.Length - 5) * 0.1);
 
         // Check for specific patterns
-        bool hasQuotes = query.Contains("\"");
+        bool hasQuotes = query.Contains('"');
         bool hasProperNoun = words.Any(w => char.IsUpper(w[0]) && w.Length > 1);
 
         return (lengthFactor * 0.5 + (hasQuotes ? 0.3 : 0) + (hasProperNoun ? 0.2 : 0));
     }
 
-    private double CalculateThematicScore(string query)
+    private static double CalculateThematicScore(string query)
     {
         string[] thematicWords = { "theme", "topic", "concept", "idea", "trend", "pattern",
                                    "overall", "general", "main", "key", "summary", "overview" };
@@ -1294,7 +1300,7 @@ Provide a comprehensive answer that integrates both perspectives:";
         return Math.Min(matchCount * 0.2, 1.0);
     }
 
-    private List<string> DetectEntityMentions(string query)
+    private static List<string> DetectEntityMentions(string query)
     {
         var entities = new List<string>();
         var words = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -1313,8 +1319,8 @@ Provide a comprehensive answer that integrates both perspectives:";
         if (words.Length > 0)
         {
             var first = words[0].TrimEnd('.', ',', '?', '!');
-            if (!LocalQueryIndicators.Contains(first.ToLower()) &&
-                !GlobalQueryIndicators.Contains(first.ToLower()) &&
+            if (!LocalQueryIndicators.Contains(first.ToLowerInvariant()) &&
+                !GlobalQueryIndicators.Contains(first.ToLowerInvariant()) &&
                 char.IsUpper(first[0]))
             {
                 entities.Add(first);
@@ -1324,7 +1330,7 @@ Provide a comprehensive answer that integrates both perspectives:";
         return entities.Distinct().ToList();
     }
 
-    private IReadOnlyList<string> DetectThemes(string query)
+    private static List<string> DetectThemes(string query)
     {
         var themes = new List<string>();
 
@@ -1348,7 +1354,7 @@ Provide a comprehensive answer that integrates both perspectives:";
         return themes;
     }
 
-    private string GetDocumentId(string chunkId, GraphRAGIndex index)
+    private static string GetDocumentId(string chunkId, GraphRAGIndex index)
     {
         if (index.Chunks.TryGetValue(chunkId, out var chunk))
         {
@@ -1356,6 +1362,37 @@ Provide a comprehensive answer that integrates both perspectives:";
         }
         return chunkId.Split(':').FirstOrDefault() ?? chunkId;
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Building GraphRAG index for {ChunkCount} chunks")]
+    private static partial void LogGraphRAG13(ILogger logger, int chunkCount);
+    [LoggerMessage(Level = LogLevel.Information, Message = "GraphRAG index built: {Entities} entities, {Communities} communities, {Summaries} summaries in {TimeMs:F0}ms")]
+    private static partial void LogGraphRAG12(ILogger logger, int entities, int communities, int summaries, double timeMs);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Persisting communities to graph store")]
+    private static partial void LogGraphRAG11(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Persisted {CommunityCount} communities to graph store")]
+    private static partial void LogGraphRAG10(ILogger logger, int communityCount);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "GraphRAG query: {Query}")]
+    private static partial void LogGraphRAG9(ILogger logger, string query);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Local search: {Query}")]
+    private static partial void LogGraphRAG8(ILogger logger, string query);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Global search: {Query}")]
+    private static partial void LogGraphRAG7(ILogger logger, string query);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Hybrid search: {Query}")]
+    private static partial void LogGraphRAG6(ILogger logger, string query);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Updating GraphRAG index with {NewChunkCount} chunks")]
+    private static partial void LogGraphRAG5(ILogger logger, int newChunkCount);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Building entity graph from {Count} chunks")]
+    private static partial void LogGraphRAG4(ILogger logger, int count);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Building community hierarchy from {Count} chunks")]
+    private static partial void LogGraphRAG3(ILogger logger, int count);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No chunks with embeddings found and embedding service unavailable")]
+    private static partial void LogGraphRAG2(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Generating hierarchical summaries for {LevelCount} levels")]
+    private static partial void LogGraphRAG1(ILogger logger, int levelCount);
 
     #endregion
 }

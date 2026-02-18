@@ -66,7 +66,7 @@ stack/
 ├── docker/                            # Docker configurations
 ├── docker-compose.yml                 # Production compose
 ├── docker-compose.dev.yml             # Development compose
-└── FluxIndex.Stack.sln               # Solution file
+└── FluxIndex.Stack.slnx              # Solution file
 ```
 
 ## Core Features
@@ -228,7 +228,7 @@ ENABLE_NEO4J=true
 
 ```bash
 # Restore and build
-dotnet build FluxIndex.Stack.sln
+dotnet build FluxIndex.Stack.slnx
 
 # Run API server
 cd src/FluxIndex.Stack.Api

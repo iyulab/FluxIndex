@@ -12,6 +12,7 @@ using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Core.Domain.ValueObjects;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
+using System.Globalization;
 
 namespace FluxIndex.Core.Application.Services.Graph;
 
@@ -19,8 +20,10 @@ namespace FluxIndex.Core.Application.Services.Graph;
 /// Hierarchical summarization service implementing map-reduce pattern
 /// for community-level summarization supporting GraphRAG global search.
 /// </summary>
-public class HierarchicalSummarizationService : IHierarchicalSummarizationService
+public partial class HierarchicalSummarizationService : IHierarchicalSummarizationService
 {
+    private static readonly char[] SentenceSplitSeparators = ['.', '!', '?'];
+
     private readonly ITextCompletionService? _llmService;
     private readonly IEmbeddingService? _embeddingService;
     private readonly IMemoryCache? _cache;
@@ -58,9 +61,8 @@ public class HierarchicalSummarizationService : IHierarchicalSummarizationServic
         var summariesByLevel = new Dictionary<int, IReadOnlyList<CommunitySummary>>();
         var statistics = new SummarizationStatisticsBuilder();
 
-        _logger?.LogDebug(
-            "Starting hierarchical summarization for hierarchy {Id} with {Levels} levels",
-            hierarchy.Id, hierarchy.LevelCount);
+        if (_logger is not null)
+            LogStartingSummarization(_logger, hierarchy.Id, hierarchy.LevelCount);
 
         // Determine which levels to summarize
         var levelsToProcess = options.LevelsToSummarize ??
@@ -135,9 +137,8 @@ public class HierarchicalSummarizationService : IHierarchicalSummarizationServic
             ChunkLookup = chunkLookup
         };
 
-        _logger?.LogInformation(
-            "Hierarchical summarization complete: {Count} summaries across {Levels} levels in {Time}ms",
-            result.TotalCommunitiesSummarized, summariesByLevel.Count, stopwatch.ElapsedMilliseconds);
+        if (_logger is not null)
+            LogSummarizationComplete(_logger, result.TotalCommunitiesSummarized, summariesByLevel.Count, stopwatch.ElapsedMilliseconds);
 
         return result;
     }
@@ -152,7 +153,7 @@ public class HierarchicalSummarizationService : IHierarchicalSummarizationServic
         options ??= new GlobalSearchOptions();
         var stopwatch = Stopwatch.StartNew();
 
-        _logger?.LogDebug("Starting global search for query: {Query}", query);
+        if (_logger is not null) LogStartingGlobalSearch(_logger, query);
 
         // Get query embedding
         EmbeddingVector? queryEmbedding = null;
@@ -236,7 +237,7 @@ public class HierarchicalSummarizationService : IHierarchicalSummarizationServic
             return existingResult;
         }
 
-        _logger?.LogDebug("Updating {Count} affected communities", affectedIds.Count);
+        if (_logger is not null) LogUpdatingCommunities(_logger, affectedIds.Count);
 
         // Merge new chunks into lookup
         var updatedChunkLookup = new Dictionary<string, DocumentChunk>(existingResult.ChunkLookup);
@@ -368,7 +369,7 @@ public class HierarchicalSummarizationService : IHierarchicalSummarizationServic
         }
         catch (Exception ex)
         {
-            _logger?.LogWarning(ex, "Failed to synthesize answer, using fallback");
+            if (_logger is not null) LogSynthesizeFailed(_logger, ex);
             return CreateFallbackAnswer(query, summaryList, options);
         }
     }
@@ -389,7 +390,9 @@ public class HierarchicalSummarizationService : IHierarchicalSummarizationServic
             _cache.Remove(CacheKeyPrefix + id);
         }
 
-        _logger?.LogDebug("Invalidated {Count} cached summaries", communityIds.Count());
+        var invalidatedCount = communityIds.Count();
+        if (_logger is not null)
+            LogInvalidatedSummaries(_logger, invalidatedCount);
 
         return Task.CompletedTask;
     }
@@ -598,7 +601,7 @@ public class HierarchicalSummarizationService : IHierarchicalSummarizationServic
         return summary;
     }
 
-    private List<string> GetCommunityChunkContents(
+    private static List<string> GetCommunityChunkContents(
         LeidenCommunity community,
         Dictionary<string, DocumentChunk> chunkLookup,
         HierarchicalSummarizationOptions options)
@@ -640,7 +643,7 @@ public class HierarchicalSummarizationService : IHierarchicalSummarizationServic
         prompt = prompt
             .Replace("{content}", string.Join("\n\n---\n\n", contents.Take(5)))
             .Replace("{keywords}", string.Join(", ", keywords.Take(10)))
-            .Replace("{size}", contents.Count.ToString());
+            .Replace("{size}", contents.Count.ToString(CultureInfo.InvariantCulture));
 
         try
         {
@@ -652,7 +655,7 @@ public class HierarchicalSummarizationService : IHierarchicalSummarizationServic
         }
         catch (Exception ex)
         {
-            _logger?.LogWarning(ex, "Map phase LLM call failed, using fallback");
+            if (_logger is not null) LogMapPhaseFailed(_logger, ex);
             return GenerateFallbackSummary(contents, keywords);
         }
     }
@@ -672,8 +675,8 @@ public class HierarchicalSummarizationService : IHierarchicalSummarizationServic
         prompt = prompt
             .Replace("{summaries}", string.Join("\n\n", childSummaries.Select(s =>
                 $"[{s.Title ?? "Section"}]: {s.Summary}")))
-            .Replace("{level}", level.ToString())
-            .Replace("{count}", childSummaries.Count.ToString());
+            .Replace("{level}", level.ToString(CultureInfo.InvariantCulture))
+            .Replace("{count}", childSummaries.Count.ToString(CultureInfo.InvariantCulture));
 
         try
         {
@@ -685,12 +688,12 @@ public class HierarchicalSummarizationService : IHierarchicalSummarizationServic
         }
         catch (Exception ex)
         {
-            _logger?.LogWarning(ex, "Reduce phase LLM call failed, using fallback");
+            if (_logger is not null) LogReducePhaseFailed(_logger, ex);
             return string.Join(" ", childSummaries.Select(s => s.Summary));
         }
     }
 
-    private string GenerateFallbackSummary(List<string> contents, IReadOnlyList<string> keywords)
+    private static string GenerateFallbackSummary(List<string> contents, IReadOnlyList<string> keywords)
     {
         var topKeywords = string.Join(", ", keywords.Take(5));
         var firstContent = contents.FirstOrDefault() ?? "";
@@ -699,7 +702,7 @@ public class HierarchicalSummarizationService : IHierarchicalSummarizationServic
         return $"This section covers topics related to {topKeywords}. {preview}";
     }
 
-    private string? GenerateTitle(IReadOnlyList<string> keywords, string summary)
+    private static string? GenerateTitle(IReadOnlyList<string> keywords, string summary)
     {
         if (keywords.Count == 0)
         {
@@ -709,7 +712,7 @@ public class HierarchicalSummarizationService : IHierarchicalSummarizationServic
         return string.Join(" & ", keywords.Take(3));
     }
 
-    private double CalculateConfidence(int sourceCount, int summaryLength)
+    private static double CalculateConfidence(int sourceCount, int summaryLength)
     {
         // More sources and reasonable summary length = higher confidence
         var sourceScore = Math.Min(sourceCount / 10.0, 1.0);
@@ -718,7 +721,7 @@ public class HierarchicalSummarizationService : IHierarchicalSummarizationServic
         return (sourceScore + lengthScore) / 2.0;
     }
 
-    private List<ExtractedSummaryEntity> ExtractEntitiesFromContent(List<string> contents)
+    private static List<ExtractedSummaryEntity> ExtractEntitiesFromContent(List<string> contents)
     {
         var entityCounts = new Dictionary<string, (string type, int count)>(StringComparer.OrdinalIgnoreCase);
 
@@ -760,7 +763,7 @@ public class HierarchicalSummarizationService : IHierarchicalSummarizationServic
             .ToList();
     }
 
-    private List<ExtractedClaim> ExtractClaimsFromContent(
+    private static List<ExtractedClaim> ExtractClaimsFromContent(
         List<string> contents,
         List<string> chunkIds)
     {
@@ -771,7 +774,7 @@ public class HierarchicalSummarizationService : IHierarchicalSummarizationServic
 
         foreach (var content in contents.Take(5))
         {
-            var sentences = content.Split(new[] { '.', '!', '?' }, StringSplitOptions.RemoveEmptyEntries);
+            var sentences = content.Split(SentenceSplitSeparators, StringSplitOptions.RemoveEmptyEntries);
 
             foreach (var sentence in sentences.Take(10))
             {
@@ -803,7 +806,7 @@ public class HierarchicalSummarizationService : IHierarchicalSummarizationServic
         return claims;
     }
 
-    private List<ExtractedSummaryEntity> AggregateEntities(List<CommunitySummary> summaries)
+    private static List<ExtractedSummaryEntity> AggregateEntities(List<CommunitySummary> summaries)
     {
         var aggregated = new Dictionary<string, ExtractedSummaryEntity>(StringComparer.OrdinalIgnoreCase);
 
@@ -834,7 +837,7 @@ public class HierarchicalSummarizationService : IHierarchicalSummarizationServic
             .ToList();
     }
 
-    private List<ExtractedClaim> AggregateClaims(List<CommunitySummary> summaries)
+    private static List<ExtractedClaim> AggregateClaims(List<CommunitySummary> summaries)
     {
         return summaries
             .SelectMany(s => s.Claims)
@@ -843,7 +846,7 @@ public class HierarchicalSummarizationService : IHierarchicalSummarizationServic
             .ToList();
     }
 
-    private void LinkSummaryHierarchy(Dictionary<int, IReadOnlyList<CommunitySummary>> summariesByLevel)
+    private static void LinkSummaryHierarchy(Dictionary<int, IReadOnlyList<CommunitySummary>> summariesByLevel)
     {
         var levels = summariesByLevel.Keys.OrderBy(l => l).ToList();
 
@@ -860,7 +863,7 @@ public class HierarchicalSummarizationService : IHierarchicalSummarizationServic
         }
     }
 
-    private async Task<List<MatchedCommunity>> FindRelevantCommunitiesAsync(
+    private static async Task<List<MatchedCommunity>> FindRelevantCommunitiesAsync(
         string query,
         EmbeddingVector? queryEmbedding,
         IReadOnlyList<CommunitySummary> summaries,
@@ -914,7 +917,7 @@ public class HierarchicalSummarizationService : IHierarchicalSummarizationServic
         return rankedMatches;
     }
 
-    private async Task<List<MatchedCommunity>> ExpandWithChildCommunitiesAsync(
+    private static async Task<List<MatchedCommunity>> ExpandWithChildCommunitiesAsync(
         List<MatchedCommunity> parentMatches,
         HierarchicalSummaryResult summaryResult,
         int searchLevel,
@@ -955,7 +958,7 @@ public class HierarchicalSummarizationService : IHierarchicalSummarizationServic
         return expanded;
     }
 
-    private string BuildSynthesisPrompt(
+    private static string BuildSynthesisPrompt(
         string query,
         List<CommunitySummary> summaries,
         AnswerSynthesisOptions options)
@@ -966,7 +969,7 @@ public class HierarchicalSummarizationService : IHierarchicalSummarizationServic
         for (int i = 0; i < summaries.Count; i++)
         {
             var summary = summaries[i];
-            summaryTexts.AppendLine($"[Source {i + 1}: {summary.Title ?? "Section"}]");
+            summaryTexts.AppendLine(CultureInfo.InvariantCulture, $"[Source {i + 1}: {summary.Title ?? "Section"}]");
             summaryTexts.AppendLine(summary.Summary);
             summaryTexts.AppendLine();
         }
@@ -974,10 +977,10 @@ public class HierarchicalSummarizationService : IHierarchicalSummarizationServic
         return prompt
             .Replace("{query}", query)
             .Replace("{summaries}", summaryTexts.ToString())
-            .Replace("{count}", summaries.Count.ToString());
+            .Replace("{count}", summaries.Count.ToString(CultureInfo.InvariantCulture));
     }
 
-    private SynthesizedAnswer ParseSynthesizedAnswer(
+    private static SynthesizedAnswer ParseSynthesizedAnswer(
         string response,
         List<CommunitySummary> summaries,
         AnswerSynthesisOptions options)
@@ -1012,7 +1015,7 @@ public class HierarchicalSummarizationService : IHierarchicalSummarizationServic
         };
     }
 
-    private SynthesizedAnswer CreateFallbackAnswer(
+    private static SynthesizedAnswer CreateFallbackAnswer(
         string query,
         List<CommunitySummary> summaries,
         AnswerSynthesisOptions options)
@@ -1037,7 +1040,7 @@ public class HierarchicalSummarizationService : IHierarchicalSummarizationServic
         };
     }
 
-    private GlobalSearchResult CreateEmptySearchResult(
+    private static GlobalSearchResult CreateEmptySearchResult(
         string query,
         GlobalSearchOptions options,
         double processingTime)
@@ -1128,7 +1131,7 @@ public class HierarchicalSummarizationService : IHierarchicalSummarizationServic
 
     #region Statistics Builder
 
-    private class SummarizationStatisticsBuilder
+    private sealed class SummarizationStatisticsBuilder
     {
         private int _cacheHits;
         private int _cacheMisses;
@@ -1167,6 +1170,34 @@ public class HierarchicalSummarizationService : IHierarchicalSummarizationServic
             };
         }
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Starting hierarchical summarization for hierarchy {Id} with {Levels} levels")]
+    private static partial void LogStartingSummarization(ILogger logger, string id, int levels);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Hierarchical summarization complete: {Count} summaries across {Levels} levels in {Time}ms")]
+    private static partial void LogSummarizationComplete(ILogger logger, int count, int levels, long time);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Starting global search for query: {Query}")]
+    private static partial void LogStartingGlobalSearch(ILogger logger, string query);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Updating {Count} affected communities")]
+    private static partial void LogUpdatingCommunities(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to synthesize answer, using fallback")]
+    private static partial void LogSynthesizeFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Invalidated {Count} cached summaries")]
+    private static partial void LogInvalidatedSummaries(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Map phase LLM call failed, using fallback")]
+    private static partial void LogMapPhaseFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Reduce phase LLM call failed, using fallback")]
+    private static partial void LogReducePhaseFailed(ILogger logger, Exception exception);
 
     #endregion
 }

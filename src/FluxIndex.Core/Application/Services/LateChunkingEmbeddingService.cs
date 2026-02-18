@@ -10,7 +10,7 @@ namespace FluxIndex.Core.Application.Services;
 /// Generates embeddings for the full document first, then derives chunk embeddings
 /// from the full document representation, preserving more contextual information.
 /// </summary>
-public class LateChunkingEmbeddingService : ILateChunkingEmbeddingService
+public partial class LateChunkingEmbeddingService : ILateChunkingEmbeddingService
 {
     private readonly IEmbeddingService _embeddingService;
     private readonly LateChunkingOptions _options;
@@ -44,9 +44,7 @@ public class LateChunkingEmbeddingService : ILateChunkingEmbeddingService
             };
         }
 
-        _logger.LogInformation(
-            "Generating late chunking embeddings for document with {ChunkCount} chunks",
-            chunkBoundaries.Count);
+        LogLateChunkingEmbedding5(_logger, chunkBoundaries.Count);
 
         // Strategy selection based on document length
         if (documentContent.Length <= _options.MaxDocumentLength)
@@ -70,9 +68,8 @@ public class LateChunkingEmbeddingService : ILateChunkingEmbeddingService
         if (chunks.Count == 0)
             return Array.Empty<ChunkEmbeddingInfo>();
 
-        _logger.LogInformation(
-            "Generating chunk embeddings with context window {WindowSize} for {Count} chunks",
-            contextWindowSize, chunks.Count);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogLateChunkingEmbedding4(_logger, contextWindowSize, chunks.Count);
 
         var results = new List<ChunkEmbeddingInfo>();
 
@@ -100,9 +97,7 @@ public class LateChunkingEmbeddingService : ILateChunkingEmbeddingService
             });
         }
 
-        _logger.LogInformation(
-            "Generated {Count} chunk embeddings with context",
-            results.Count);
+        LogLateChunkingEmbedding3(_logger, results.Count);
 
         return results.AsReadOnly();
     }
@@ -116,7 +111,7 @@ public class LateChunkingEmbeddingService : ILateChunkingEmbeddingService
         IReadOnlyList<ChunkBoundary> chunkBoundaries,
         CancellationToken cancellationToken)
     {
-        _logger.LogDebug("Using full document approach for late chunking");
+        LogLateChunkingEmbedding2(_logger);
 
         var modelName = _embeddingService.GetModelName();
 
@@ -177,7 +172,7 @@ public class LateChunkingEmbeddingService : ILateChunkingEmbeddingService
         IReadOnlyList<ChunkBoundary> chunkBoundaries,
         CancellationToken cancellationToken)
     {
-        _logger.LogDebug("Using sliding window approach for late chunking (document too long)");
+        LogLateChunkingEmbedding1(_logger);
 
         var modelName = _embeddingService.GetModelName();
         var chunkEmbeddings = new List<ChunkEmbeddingInfo>();
@@ -232,7 +227,7 @@ public class LateChunkingEmbeddingService : ILateChunkingEmbeddingService
         return $"{beforeContext}[[{chunkContent}]]{afterContext}";
     }
 
-    private string BuildContextualContent(IReadOnlyList<IEnrichedChunk> chunks, int currentIndex, int windowSize)
+    private static string BuildContextualContent(IReadOnlyList<IEnrichedChunk> chunks, int currentIndex, int windowSize)
     {
         var parts = new List<string>();
 
@@ -256,7 +251,7 @@ public class LateChunkingEmbeddingService : ILateChunkingEmbeddingService
         return string.Join("\n\n", parts);
     }
 
-    private EmbeddingVector CombineEmbeddings(EmbeddingVector chunkEmbedding, EmbeddingVector documentEmbedding, double documentWeight)
+    private static EmbeddingVector CombineEmbeddings(EmbeddingVector chunkEmbedding, EmbeddingVector documentEmbedding, double documentWeight)
     {
         var chunkWeight = 1.0 - documentWeight;
         var combinedValues = new float[chunkEmbedding.Dimension];
@@ -279,7 +274,7 @@ public class LateChunkingEmbeddingService : ILateChunkingEmbeddingService
         return new EmbeddingVector(combinedValues, chunkEmbedding.ModelName);
     }
 
-    private EmbeddingVector? AverageEmbeddings(IReadOnlyList<EmbeddingVector> embeddings)
+    private static EmbeddingVector? AverageEmbeddings(List<EmbeddingVector> embeddings)
     {
         if (embeddings.Count == 0)
             return null;
@@ -313,6 +308,21 @@ public class LateChunkingEmbeddingService : ILateChunkingEmbeddingService
 
         return new EmbeddingVector(averaged, modelName);
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Generating late chunking embeddings for document with {ChunkCount} chunks")]
+    private static partial void LogLateChunkingEmbedding5(ILogger logger, int chunkCount);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Generating chunk embeddings with context window {WindowSize} for {Count} chunks")]
+    private static partial void LogLateChunkingEmbedding4(ILogger logger, int windowSize, int count);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Generated {Count} chunk embeddings with context")]
+    private static partial void LogLateChunkingEmbedding3(ILogger logger, int count);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Using full document approach for late chunking")]
+    private static partial void LogLateChunkingEmbedding2(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Using sliding window approach for late chunking (document too long)")]
+    private static partial void LogLateChunkingEmbedding1(ILogger logger);
+
+    #endregion
 }
 
 /// <summary>
@@ -340,7 +350,7 @@ public interface ILateChunkingEmbeddingService
 /// <summary>
 /// Result of late chunking embedding generation
 /// </summary>
-public class LateChunkingResult
+public partial class LateChunkingResult
 {
     /// <summary>
     /// Full document embedding
@@ -356,7 +366,7 @@ public class LateChunkingResult
 /// <summary>
 /// Information about a chunk's embedding
 /// </summary>
-public class ChunkEmbeddingInfo
+public partial class ChunkEmbeddingInfo
 {
     /// <summary>
     /// Chunk identifier
@@ -407,7 +417,7 @@ public class ChunkEmbeddingInfo
 /// <summary>
 /// Represents chunk boundaries in a document
 /// </summary>
-public class ChunkBoundary
+public partial class ChunkBoundary
 {
     /// <summary>
     /// Chunk identifier
@@ -459,7 +469,7 @@ public enum ContextIntegrationMode
 /// <summary>
 /// Options for late chunking embedding
 /// </summary>
-public class LateChunkingOptions
+public partial class LateChunkingOptions
 {
     /// <summary>
     /// Maximum document length for full document processing

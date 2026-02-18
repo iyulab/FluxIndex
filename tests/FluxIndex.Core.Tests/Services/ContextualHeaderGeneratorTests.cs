@@ -2,7 +2,7 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Moq;
+using NSubstitute;
 using Xunit;
 
 using MsOptions = Microsoft.Extensions.Options.Options;
@@ -11,12 +11,12 @@ namespace FluxIndex.Core.Tests.Services;
 
 public class ContextualHeaderGeneratorTests
 {
-    private readonly Mock<ILogger<HybridContextualHeaderGenerator>> _loggerMock;
+    private readonly ILogger<HybridContextualHeaderGenerator> _loggerMock;
     private readonly ContextualHeaderOptions _options;
 
     public ContextualHeaderGeneratorTests()
     {
-        _loggerMock = new Mock<ILogger<HybridContextualHeaderGenerator>>();
+        _loggerMock = Substitute.For<ILogger<HybridContextualHeaderGenerator>>();
         _options = new ContextualHeaderOptions
         {
             LlmThreshold = 0.7,
@@ -62,16 +62,14 @@ public class ContextualHeaderGeneratorTests
     public async Task GenerateAsync_WithHighContextDependency_WithLlm_UsesLlm()
     {
         // Arrange
-        var textCompletionMock = new Mock<ITextCompletionService>();
-        textCompletionMock
-            .Setup(x => x.GenerateCompletionAsync(
-                It.IsAny<string>(),
-                It.IsAny<int>(),
-                It.IsAny<float>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync("This chunk discusses the implementation details of the authentication system.");
+        var textCompletionMock = Substitute.For<ITextCompletionService>();
+        textCompletionMock.GenerateCompletionAsync(
+                Arg.Any<string>(),
+                Arg.Any<int>(),
+                Arg.Any<float>(),
+                Arg.Any<CancellationToken>()).Returns("This chunk discusses the implementation details of the authentication system.");
 
-        var generator = CreateGenerator(textCompletionMock.Object);
+        var generator = CreateGenerator(textCompletionMock);
         var chunk = CreateTestChunk(contextDependency: 0.9);
 
         // Act
@@ -79,11 +77,11 @@ public class ContextualHeaderGeneratorTests
 
         // Assert
         Assert.Contains("authentication", header);
-        textCompletionMock.Verify(x => x.GenerateCompletionAsync(
-            It.IsAny<string>(),
-            It.IsAny<int>(),
-            It.IsAny<float>(),
-            It.IsAny<CancellationToken>()), Times.Once);
+        await textCompletionMock.Received(1).GenerateCompletionAsync(
+            Arg.Any<string>(),
+            Arg.Any<int>(),
+            Arg.Any<float>(),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -118,16 +116,14 @@ public class ContextualHeaderGeneratorTests
     public async Task GenerateBatchAsync_ProcessesMixedContextDependency()
     {
         // Arrange
-        var textCompletionMock = new Mock<ITextCompletionService>();
-        textCompletionMock
-            .Setup(x => x.GenerateCompletionAsync(
-                It.IsAny<string>(),
-                It.IsAny<int>(),
-                It.IsAny<float>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync("LLM generated header");
+        var textCompletionMock = Substitute.For<ITextCompletionService>();
+        textCompletionMock.GenerateCompletionAsync(
+                Arg.Any<string>(),
+                Arg.Any<int>(),
+                Arg.Any<float>(),
+                Arg.Any<CancellationToken>()).Returns("LLM generated header");
 
-        var generator = CreateGenerator(textCompletionMock.Object);
+        var generator = CreateGenerator(textCompletionMock);
 
         var chunks = new[]
         {
@@ -146,11 +142,11 @@ public class ContextualHeaderGeneratorTests
         Assert.Contains("chunk3", headers.Keys);
 
         // Only chunk2 should use LLM
-        textCompletionMock.Verify(x => x.GenerateCompletionAsync(
-            It.IsAny<string>(),
-            It.IsAny<int>(),
-            It.IsAny<float>(),
-            It.IsAny<CancellationToken>()), Times.Once);
+        await textCompletionMock.Received(1).GenerateCompletionAsync(
+            Arg.Any<string>(),
+            Arg.Any<int>(),
+            Arg.Any<float>(),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -165,7 +161,7 @@ public class ContextualHeaderGeneratorTests
         };
         var generator = new HybridContextualHeaderGenerator(
             MsOptions.Create(shortOptions),
-            _loggerMock.Object);
+            _loggerMock);
 
         var chunk = CreateTestChunk();
 
@@ -188,7 +184,7 @@ public class ContextualHeaderGeneratorTests
         };
         var generator = new HybridContextualHeaderGenerator(
             MsOptions.Create(options),
-            _loggerMock.Object);
+            _loggerMock);
 
         var chunk = CreateTestChunk();
 
@@ -206,19 +202,18 @@ public class ContextualHeaderGeneratorTests
     {
         if (withLlm && textCompletion == null)
         {
-            var mock = new Mock<ITextCompletionService>();
-            mock.Setup(x => x.GenerateCompletionAsync(
-                    It.IsAny<string>(),
-                    It.IsAny<int>(),
-                    It.IsAny<float>(),
-                    It.IsAny<CancellationToken>()))
-                .ReturnsAsync("Mock LLM response");
-            textCompletion = mock.Object;
+            var mock = Substitute.For<ITextCompletionService>();
+            mock.GenerateCompletionAsync(
+                    Arg.Any<string>(),
+                    Arg.Any<int>(),
+                    Arg.Any<float>(),
+                    Arg.Any<CancellationToken>()).Returns("Mock LLM response");
+            textCompletion = mock;
         }
 
         return new HybridContextualHeaderGenerator(
             MsOptions.Create(_options),
-            _loggerMock.Object,
+            _loggerMock,
             textCompletion);
     }
 

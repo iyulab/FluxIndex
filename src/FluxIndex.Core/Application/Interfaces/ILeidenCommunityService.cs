@@ -124,7 +124,7 @@ public class LeidenOptions
     /// Whether to generate summaries during detection.
     /// Default: false (generate on-demand)
     /// </summary>
-    public bool GenerateSummariesOnDetection { get; set; } = false;
+    public bool GenerateSummariesOnDetection { get; set; }
 
     /// <summary>
     /// Random seed for reproducibility.

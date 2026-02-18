@@ -2,13 +2,14 @@ using FluxIndex.Core.Application.Interfaces;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Neo4j.Driver;
+using System.Globalization;
 
 namespace FluxIndex.Storage.Neo4j;
 
 /// <summary>
 /// Neo4j implementation of IGraphStore for GraphRAG entity and relationship storage.
 /// </summary>
-public class Neo4jGraphStore : IGraphStore, IAsyncDisposable
+public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable
 {
     private readonly IDriver _driver;
     private readonly Neo4jOptions _options;
@@ -75,11 +76,11 @@ public class Neo4jGraphStore : IGraphStore, IAsyncDisposable
                 });
             }
 
-            _logger.LogInformation("Neo4j indexes created successfully");
+            LogIndexesCreated(_logger);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to create Neo4j indexes (may already exist)");
+            LogIndexCreationFailed(_logger, ex);
         }
     }
 
@@ -134,7 +135,7 @@ public class Neo4jGraphStore : IGraphStore, IAsyncDisposable
             await tx.RunAsync(query, parameters);
         });
 
-        _logger.LogDebug("Stored entity {EntityId} ({EntityName})", id, entity.Name);
+        LogEntityStored(_logger, id, entity.Name);
         return id;
     }
 
@@ -191,7 +192,7 @@ public class Neo4jGraphStore : IGraphStore, IAsyncDisposable
             }
         });
 
-        _logger.LogDebug("Stored {Count} entities in batch", ids.Count);
+        LogEntitiesBatchStored(_logger, ids.Count);
         return ids;
     }
 
@@ -405,8 +406,7 @@ public class Neo4jGraphStore : IGraphStore, IAsyncDisposable
             await tx.RunAsync(query, parameters);
         });
 
-        _logger.LogDebug("Stored relationship {RelId} from {Source} to {Target}",
-            id, relationship.SourceEntityId, relationship.TargetEntityId);
+        LogRelationshipStored(_logger, id, relationship.SourceEntityId, relationship.TargetEntityId);
         return id;
     }
 
@@ -458,7 +458,7 @@ public class Neo4jGraphStore : IGraphStore, IAsyncDisposable
             }
         });
 
-        _logger.LogDebug("Stored {Count} relationships in batch", ids.Count);
+        LogRelationshipsBatchStored(_logger, ids.Count);
         return ids;
     }
 
@@ -826,7 +826,7 @@ public class Neo4jGraphStore : IGraphStore, IAsyncDisposable
             }
         });
 
-        _logger.LogDebug("Stored community {CommunityId} ({CommunityName})", id, community.Name);
+        LogCommunityStored(_logger, id, community.Name);
         return id;
     }
 
@@ -986,14 +986,14 @@ public class Neo4jGraphStore : IGraphStore, IAsyncDisposable
             await tx.RunAsync($"MATCH (n:{CommunityLabel}) DETACH DELETE n");
         });
 
-        _logger.LogInformation("Cleared all data from Neo4j graph store");
+        LogDataCleared(_logger);
     }
 
     #endregion
 
     #region Helper Methods
 
-    private async Task<GraphEntity?> GetEntityByIdInternalAsync(IAsyncQueryRunner tx, string id)
+    private static async Task<GraphEntity?> GetEntityByIdInternalAsync(IAsyncQueryRunner tx, string id)
     {
         var query = $"MATCH (e:{EntityLabel} {{id: $id}}) RETURN e";
         var cursor = await tx.RunAsync(query, new { id });
@@ -1020,7 +1020,7 @@ public class Neo4jGraphStore : IGraphStore, IAsyncDisposable
             SurfaceForms = props.TryGetValue("surfaceForms", out var sf) ? sf.As<List<object>>().Select(x => x.ToString()!).ToList() : [],
             Description = props.TryGetValue("description", out var d) ? d.As<string?>() : null,
             Embedding = props.TryGetValue("embedding", out var emb) && emb != null
-                ? emb.As<List<object>>().Select(x => Convert.ToSingle(x)).ToArray()
+                ? emb.As<List<object>>().Select(x => Convert.ToSingle(x, CultureInfo.InvariantCulture)).ToArray()
                 : null,
             Confidence = props.TryGetValue("confidence", out var c) ? c.As<double>() : 0,
             ImportanceScore = props.TryGetValue("importanceScore", out var ims) ? ims.As<double>() : 0,
@@ -1029,8 +1029,8 @@ public class Neo4jGraphStore : IGraphStore, IAsyncDisposable
             DocumentIds = props.TryGetValue("documentIds", out var dids) ? dids.As<List<object>>().Select(x => x.ToString()!).ToList() : [],
             ExternalLinks = props.TryGetValue("externalLinks", out var el) ? DeserializeDict<string>(el.As<string>()) : new Dictionary<string, string>(),
             Properties = props.TryGetValue("properties", out var p) ? DeserializeDict<object>(p.As<string>()) : new Dictionary<string, object>(),
-            CreatedAt = props.TryGetValue("createdAt", out var ca) ? DateTimeOffset.Parse(ca.As<string>()) : DateTimeOffset.UtcNow,
-            UpdatedAt = props.TryGetValue("updatedAt", out var ua) ? DateTimeOffset.Parse(ua.As<string>()) : DateTimeOffset.UtcNow
+            CreatedAt = props.TryGetValue("createdAt", out var ca) ? DateTimeOffset.Parse(ca.As<string>(), CultureInfo.InvariantCulture) : DateTimeOffset.UtcNow,
+            UpdatedAt = props.TryGetValue("updatedAt", out var ua) ? DateTimeOffset.Parse(ua.As<string>(), CultureInfo.InvariantCulture) : DateTimeOffset.UtcNow
         };
     }
 
@@ -1055,7 +1055,7 @@ public class Neo4jGraphStore : IGraphStore, IAsyncDisposable
                 ? etexts.As<List<object>>().Select(x => x.ToString()!).ToList()
                 : [],
             Properties = props.TryGetValue("properties", out var p) ? DeserializeDict<object>(p.As<string>()) : new Dictionary<string, object>(),
-            CreatedAt = props.TryGetValue("createdAt", out var ca) ? DateTimeOffset.Parse(ca.As<string>()) : DateTimeOffset.UtcNow
+            CreatedAt = props.TryGetValue("createdAt", out var ca) ? DateTimeOffset.Parse(ca.As<string>(), CultureInfo.InvariantCulture) : DateTimeOffset.UtcNow
         };
     }
 
@@ -1074,9 +1074,9 @@ public class Neo4jGraphStore : IGraphStore, IAsyncDisposable
             Level = props.TryGetValue("level", out var lvl) ? lvl.As<int>() : 0,
             ParentCommunityId = props.TryGetValue("parentCommunityId", out var pcid) ? pcid.As<string?>() : null,
             Embedding = props.TryGetValue("embedding", out var emb) && emb != null
-                ? emb.As<List<object>>().Select(x => Convert.ToSingle(x)).ToArray()
+                ? emb.As<List<object>>().Select(x => Convert.ToSingle(x, CultureInfo.InvariantCulture)).ToArray()
                 : null,
-            CreatedAt = props.TryGetValue("createdAt", out var ca) ? DateTimeOffset.Parse(ca.As<string>()) : DateTimeOffset.UtcNow
+            CreatedAt = props.TryGetValue("createdAt", out var ca) ? DateTimeOffset.Parse(ca.As<string>(), CultureInfo.InvariantCulture) : DateTimeOffset.UtcNow
         };
     }
 
@@ -1113,7 +1113,7 @@ public class Neo4jGraphStore : IGraphStore, IAsyncDisposable
         return System.Text.Json.JsonSerializer.Serialize(dict);
     }
 
-    private static IReadOnlyDictionary<string, T> DeserializeDict<T>(string json)
+    private static Dictionary<string, T> DeserializeDict<T>(string json)
     {
         if (string.IsNullOrEmpty(json)) return new Dictionary<string, T>();
         try
@@ -1131,5 +1131,34 @@ public class Neo4jGraphStore : IGraphStore, IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await _driver.DisposeAsync();
+        GC.SuppressFinalize(this);
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Neo4j indexes created successfully")]
+    private static partial void LogIndexesCreated(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to create Neo4j indexes (may already exist)")]
+    private static partial void LogIndexCreationFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Stored entity {EntityId} ({EntityName})")]
+    private static partial void LogEntityStored(ILogger logger, string entityId, string entityName);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Stored {Count} entities in batch")]
+    private static partial void LogEntitiesBatchStored(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Stored relationship {RelId} from {Source} to {Target}")]
+    private static partial void LogRelationshipStored(ILogger logger, string relId, string source, string target);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Stored {Count} relationships in batch")]
+    private static partial void LogRelationshipsBatchStored(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Stored community {CommunityId} ({CommunityName})")]
+    private static partial void LogCommunityStored(ILogger logger, string communityId, string communityName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Cleared all data from Neo4j graph store")]
+    private static partial void LogDataCleared(ILogger logger);
+
+    #endregion
 }

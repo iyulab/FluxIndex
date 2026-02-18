@@ -2,13 +2,14 @@ using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Runtime.InteropServices;
+using System.Globalization;
 
 namespace FluxIndex.Storage.SQLite;
 
 /// <summary>
 /// sqlite-vec 확장 로더 구현
 /// </summary>
-public class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
+public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
 {
     private readonly ILogger<SQLiteVecExtensionLoader> _logger;
     private readonly SQLiteVecOptions _options;
@@ -29,11 +30,11 @@ public class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
 
             if (!ExtensionFileExists())
             {
-                _logger.LogWarning("sqlite-vec 확장 파일을 찾을 수 없습니다: {ExtensionPath}", extensionPath);
+                LogExtensionNotFound(_logger, extensionPath);
 
                 if (_options.FallbackToInMemoryOnError)
                 {
-                    _logger.LogInformation("폴백 모드 활성화: in-memory 벡터 검색 사용");
+                    LogFallbackActivated(_logger);
                     return false;
                 }
 
@@ -52,25 +53,25 @@ public class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
             // Load the extension using connection method
             connection.LoadExtension(extensionPath);
 
-            _logger.LogInformation("sqlite-vec 확장이 성공적으로 로드되었습니다: {ExtensionPath}", extensionPath);
+            LogExtensionLoaded(_logger, extensionPath);
 
             // 로드 확인
             var isLoaded = await IsExtensionLoadedAsync(connection, cancellationToken);
             if (isLoaded)
             {
                 var version = await GetExtensionVersionAsync(connection, cancellationToken);
-                _logger.LogInformation("sqlite-vec 확장 버전: {Version}", version ?? "unknown");
+                LogExtensionVersion(_logger, version ?? "unknown");
             }
 
             return isLoaded;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "sqlite-vec 확장 로드 실패: {ExtensionPath}", GetExtensionPath());
+            LogExtensionLoadFailed(_logger, ex, GetExtensionPath());
 
             if (_options.FallbackToInMemoryOnError)
             {
-                _logger.LogInformation("폴백 모드 활성화: in-memory 벡터 검색 사용");
+                LogFallbackActivated(_logger);
                 return false;
             }
 
@@ -86,7 +87,7 @@ public class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
             command.CommandText = "SELECT COUNT(*) FROM pragma_module_list WHERE name = 'vec0'";
 
             var result = await command.ExecuteScalarAsync(cancellationToken);
-            return Convert.ToInt32(result) > 0;
+            return Convert.ToInt32(result, CultureInfo.InvariantCulture) > 0;
         }
         catch
         {
@@ -132,12 +133,12 @@ public class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
 
             await command.ExecuteNonQueryAsync(cancellationToken);
 
-            _logger.LogInformation("vec0 가상 테이블 생성됨: {TableName}, 차원: {Dimension}", tableName, vectorDimension);
+            LogVecTableCreated(_logger, tableName, vectorDimension);
             return true;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "vec0 테이블 생성 실패: {TableName}", tableName);
+            LogVecTableCreateFailed(_logger, ex, tableName);
             return false;
         }
     }
@@ -158,12 +159,37 @@ public class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
             return null;
         }
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "sqlite-vec 확장 파일을 찾을 수 없습니다: {ExtensionPath}")]
+    private static partial void LogExtensionNotFound(ILogger logger, string extensionPath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "폴백 모드 활성화: in-memory 벡터 검색 사용")]
+    private static partial void LogFallbackActivated(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "sqlite-vec 확장이 성공적으로 로드되었습니다: {ExtensionPath}")]
+    private static partial void LogExtensionLoaded(ILogger logger, string extensionPath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "sqlite-vec 확장 버전: {Version}")]
+    private static partial void LogExtensionVersion(ILogger logger, string version);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "sqlite-vec 확장 로드 실패: {ExtensionPath}")]
+    private static partial void LogExtensionLoadFailed(ILogger logger, Exception exception, string extensionPath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "vec0 가상 테이블 생성됨: {TableName}, 차원: {Dimension}")]
+    private static partial void LogVecTableCreated(ILogger logger, string tableName, int dimension);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "vec0 테이블 생성 실패: {TableName}")]
+    private static partial void LogVecTableCreateFailed(ILogger logger, Exception exception, string tableName);
+
+    #endregion
 }
 
 /// <summary>
 /// sqlite-vec 확장을 사용하지 않는 더미 로더 (폴백용)
 /// </summary>
-public class NoOpSQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
+public partial class NoOpSQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
 {
     private readonly ILogger<NoOpSQLiteVecExtensionLoader> _logger;
 
@@ -174,7 +200,7 @@ public class NoOpSQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
 
     public Task<bool> LoadExtensionAsync(SqliteConnection connection, CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("sqlite-vec 확장을 사용하지 않음 (in-memory 벡터 검색 사용)");
+        LogNoOpExtensionSkipped(_logger);
         return Task.FromResult(false);
     }
 
@@ -200,7 +226,7 @@ public class NoOpSQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
         string options = "metric=cosine",
         CancellationToken cancellationToken = default)
     {
-        _logger.LogWarning("vec0 테이블 생성 요청이 있었지만 sqlite-vec 확장을 사용하지 않음");
+        LogNoOpVecTableSkipped(_logger);
         return Task.FromResult(false);
     }
 
@@ -208,4 +234,14 @@ public class NoOpSQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
     {
         return Task.FromResult<string?>(null);
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "sqlite-vec 확장을 사용하지 않음 (in-memory 벡터 검색 사용)")]
+    private static partial void LogNoOpExtensionSkipped(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "vec0 테이블 생성 요청이 있었지만 sqlite-vec 확장을 사용하지 않음")]
+    private static partial void LogNoOpVecTableSkipped(ILogger logger);
+
+    #endregion
 }

@@ -10,7 +10,7 @@ namespace FluxIndex.Storage.PostgreSQL.Graph;
 /// PostgreSQL 기반 그래프 저장소 (IChunkHierarchyRepository 구현)
 /// JSONB + 재귀 CTE를 활용한 고성능 구현
 /// </summary>
-public class PostgresGraphStore : IChunkHierarchyRepository
+public partial class PostgresGraphStore : IChunkHierarchyRepository
 {
     private readonly PostgresGraphDbContext _context;
     private readonly PostgresGraphOptions _options;
@@ -57,7 +57,7 @@ public class PostgresGraphStore : IChunkHierarchyRepository
         }
 
         await _context.SaveChangesAsync(cancellationToken);
-        _logger.LogDebug("Hierarchy saved: {ChunkId}", hierarchy.ChunkId);
+        LogHierarchySaved(_logger, hierarchy.ChunkId);
     }
 
     public async Task<IReadOnlyList<ChunkHierarchy>> GetChildrenAsync(
@@ -108,7 +108,7 @@ public class PostgresGraphStore : IChunkHierarchyRepository
         }
 
         await _context.SaveChangesAsync(cancellationToken);
-        _logger.LogDebug("Relationship saved: {Id}", relationship.Id);
+        LogRelationshipSaved(_logger, relationship.Id);
     }
 
     public async Task<IReadOnlyList<ChunkRelationshipExtended>> GetRelationshipsAsync(
@@ -147,7 +147,7 @@ public class PostgresGraphStore : IChunkHierarchyRepository
             .Where(h => h.ChunkId.StartsWith(documentId))
             .ToListAsync(cancellationToken);
 
-        if (!hierarchies.Any())
+        if (hierarchies.Count == 0)
         {
             return new HierarchyStatistics
             {
@@ -171,7 +171,7 @@ public class PostgresGraphStore : IChunkHierarchyRepository
             .ToDictionary(g => g.Key, g => g.Count());
 
         var parentChunks = hierarchies.Where(h => h.ChildChunkIds.Count > 0).ToList();
-        var averageBranchingFactor = parentChunks.Any()
+        var averageBranchingFactor = parentChunks.Count != 0
             ? parentChunks.Average(h => h.ChildChunkIds.Count)
             : 0.0;
 
@@ -382,8 +382,7 @@ public class PostgresGraphStore : IChunkHierarchyRepository
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Shortest path search failed from {Source} to {Target}",
-                sourceChunkId, targetChunkId);
+            LogShortestPathFailed(_logger, ex, sourceChunkId, targetChunkId);
             return Array.Empty<string>();
         }
     }
@@ -503,6 +502,19 @@ public class PostgresGraphStore : IChunkHierarchyRepository
         entity.Description = relationship.Description;
         entity.Metadata = relationship.Metadata;
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Hierarchy saved: {ChunkId}")]
+    private static partial void LogHierarchySaved(ILogger logger, string chunkId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Relationship saved: {Id}")]
+    private static partial void LogRelationshipSaved(ILogger logger, string id);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Shortest path search failed from {Source} to {Target}")]
+    private static partial void LogShortestPathFailed(ILogger logger, Exception exception, string source, string target);
 
     #endregion
 }

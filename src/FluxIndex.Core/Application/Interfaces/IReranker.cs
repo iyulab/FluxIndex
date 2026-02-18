@@ -73,12 +73,12 @@ public class RerankOptions
     /// <summary>
     /// Minimum score threshold for results
     /// </summary>
-    public float ScoreThreshold { get; set; } = 0.0f;
+    public float ScoreThreshold { get; set; }
 
     /// <summary>
     /// Whether to include explanations for reranking decisions
     /// </summary>
-    public bool IncludeExplanation { get; set; } = false;
+    public bool IncludeExplanation { get; set; }
 
     /// <summary>
     /// Maximum length of content to consider (for performance)

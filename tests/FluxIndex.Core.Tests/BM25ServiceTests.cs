@@ -4,29 +4,29 @@ using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
+using NSubstitute;
 using Xunit;
 
 namespace FluxIndex.Core.Tests;
 
 public class BM25ServiceTests
 {
-    private readonly Mock<IDocumentRepository> _mockDocumentRepository;
-    private readonly Mock<IVectorStore> _mockVectorStore;
+    private readonly IDocumentRepository _mockDocumentRepository;
+    private readonly IVectorStore _mockVectorStore;
     private readonly IMemoryCache _cache;
     private readonly ILogger<BM25Service> _logger;
     private readonly BM25Service _service;
 
     public BM25ServiceTests()
     {
-        _mockDocumentRepository = new Mock<IDocumentRepository>();
-        _mockVectorStore = new Mock<IVectorStore>();
+        _mockDocumentRepository = Substitute.For<IDocumentRepository>();
+        _mockVectorStore = Substitute.For<IVectorStore>();
         _cache = new MemoryCache(new MemoryCacheOptions());
         _logger = NullLogger<BM25Service>.Instance;
 
         _service = new BM25Service(
-            _mockDocumentRepository.Object,
-            _mockVectorStore.Object,
+            _mockDocumentRepository,
+            _mockVectorStore,
             _cache,
             _logger);
     }
@@ -47,14 +47,10 @@ public class BM25ServiceTests
         var chunk2 = new DocumentChunk { Id = "chunk2", DocumentId = "doc2", Content = "Some other content about different topics" };
         var chunk3 = new DocumentChunk { Id = "chunk3", DocumentId = "doc3", Content = "data science and neural networks" };
 
-        _mockDocumentRepository.Setup(x => x.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { doc1, doc2, doc3 });
-        _mockVectorStore.Setup(x => x.GetByDocumentIdAsync("doc1", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { chunk1 });
-        _mockVectorStore.Setup(x => x.GetByDocumentIdAsync("doc2", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { chunk2 });
-        _mockVectorStore.Setup(x => x.GetByDocumentIdAsync("doc3", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { chunk3 });
+        _mockDocumentRepository.GetAllAsync(Arg.Any<CancellationToken>()).Returns(new[] { doc1, doc2, doc3 });
+        _mockVectorStore.GetByDocumentIdAsync("doc1", Arg.Any<CancellationToken>()).Returns(new[] { chunk1 });
+        _mockVectorStore.GetByDocumentIdAsync("doc2", Arg.Any<CancellationToken>()).Returns(new[] { chunk2 });
+        _mockVectorStore.GetByDocumentIdAsync("doc3", Arg.Any<CancellationToken>()).Returns(new[] { chunk3 });
 
         // Initialize IDF cache
         await _service.UpdateIDFCacheAsync();
@@ -139,18 +135,12 @@ public class BM25ServiceTests
         var chunk4 = new DocumentChunk { Id = "chunk4", DocumentId = "doc4", Content = "machine learning models" };
         var chunk5 = new DocumentChunk { Id = "chunk5", DocumentId = "doc5", Content = "neural network architecture" };
 
-        _mockDocumentRepository.Setup(x => x.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { document1, document2, document3, document4, document5 });
-        _mockVectorStore.Setup(x => x.GetByDocumentIdAsync("doc1", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { chunk1 });
-        _mockVectorStore.Setup(x => x.GetByDocumentIdAsync("doc2", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { chunk2 });
-        _mockVectorStore.Setup(x => x.GetByDocumentIdAsync("doc3", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { chunk3 });
-        _mockVectorStore.Setup(x => x.GetByDocumentIdAsync("doc4", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { chunk4 });
-        _mockVectorStore.Setup(x => x.GetByDocumentIdAsync("doc5", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { chunk5 });
+        _mockDocumentRepository.GetAllAsync(Arg.Any<CancellationToken>()).Returns(new[] { document1, document2, document3, document4, document5 });
+        _mockVectorStore.GetByDocumentIdAsync("doc1", Arg.Any<CancellationToken>()).Returns(new[] { chunk1 });
+        _mockVectorStore.GetByDocumentIdAsync("doc2", Arg.Any<CancellationToken>()).Returns(new[] { chunk2 });
+        _mockVectorStore.GetByDocumentIdAsync("doc3", Arg.Any<CancellationToken>()).Returns(new[] { chunk3 });
+        _mockVectorStore.GetByDocumentIdAsync("doc4", Arg.Any<CancellationToken>()).Returns(new[] { chunk4 });
+        _mockVectorStore.GetByDocumentIdAsync("doc5", Arg.Any<CancellationToken>()).Returns(new[] { chunk5 });
 
         // Initialize IDF cache
         await _service.UpdateIDFCacheAsync();
@@ -229,12 +219,9 @@ public class BM25ServiceTests
         var chunk1 = new DocumentChunk { Id = "chunk1", DocumentId = "doc1", Content = "test content" };
         var chunk2 = new DocumentChunk { Id = "chunk2", DocumentId = "doc2", Content = "other document" };
 
-        _mockDocumentRepository.Setup(x => x.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { doc1, doc2 });
-        _mockVectorStore.Setup(x => x.GetByDocumentIdAsync("doc1", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { chunk1 });
-        _mockVectorStore.Setup(x => x.GetByDocumentIdAsync("doc2", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { chunk2 });
+        _mockDocumentRepository.GetAllAsync(Arg.Any<CancellationToken>()).Returns(new[] { doc1, doc2 });
+        _mockVectorStore.GetByDocumentIdAsync("doc1", Arg.Any<CancellationToken>()).Returns(new[] { chunk1 });
+        _mockVectorStore.GetByDocumentIdAsync("doc2", Arg.Any<CancellationToken>()).Returns(new[] { chunk2 });
 
         // Initialize IDF cache
         await _service.UpdateIDFCacheAsync();
@@ -251,8 +238,7 @@ public class BM25ServiceTests
     {
         // Arrange
         var query = "test query";
-        _mockDocumentRepository.Setup(x => x.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Enumerable.Empty<Document>());
+        _mockDocumentRepository.GetAllAsync(Arg.Any<CancellationToken>()).Returns(Enumerable.Empty<Document>());
 
         // Act
         var results = await _service.SearchAsync(query);
@@ -292,17 +278,13 @@ public class BM25ServiceTests
             Content = "This is about data science and analytics"
         };
 
-        _mockDocumentRepository.Setup(x => x.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { doc1, doc2, doc3 });
+        _mockDocumentRepository.GetAllAsync(Arg.Any<CancellationToken>()).Returns(new[] { doc1, doc2, doc3 });
 
-        _mockVectorStore.Setup(x => x.GetByDocumentIdAsync("doc1", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { chunk1 });
+        _mockVectorStore.GetByDocumentIdAsync("doc1", Arg.Any<CancellationToken>()).Returns(new[] { chunk1 });
 
-        _mockVectorStore.Setup(x => x.GetByDocumentIdAsync("doc2", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { chunk2 });
+        _mockVectorStore.GetByDocumentIdAsync("doc2", Arg.Any<CancellationToken>()).Returns(new[] { chunk2 });
 
-        _mockVectorStore.Setup(x => x.GetByDocumentIdAsync("doc3", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { chunk3 });
+        _mockVectorStore.GetByDocumentIdAsync("doc3", Arg.Any<CancellationToken>()).Returns(new[] { chunk3 });
 
         // Act
         var results = await _service.SearchAsync(query, topK: 10);
@@ -350,8 +332,7 @@ public class BM25ServiceTests
             "computer vision processing"
         };
 
-        _mockDocumentRepository.Setup(x => x.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(documents);
+        _mockDocumentRepository.GetAllAsync(Arg.Any<CancellationToken>()).Returns(documents);
 
         for (int i = 0; i < documents.Count; i++)
         {
@@ -363,8 +344,7 @@ public class BM25ServiceTests
                 Content = contents[i]
             };
 
-            _mockVectorStore.Setup(x => x.GetByDocumentIdAsync(doc.Id, It.IsAny<CancellationToken>()))
-                .ReturnsAsync(new[] { chunk });
+            _mockVectorStore.GetByDocumentIdAsync(doc.Id, Arg.Any<CancellationToken>()).Returns(new[] { chunk });
         }
 
         // Act
@@ -403,17 +383,13 @@ public class BM25ServiceTests
             Content = "data science and analytics"
         };
 
-        _mockDocumentRepository.Setup(x => x.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { doc1, doc2, doc3 });
+        _mockDocumentRepository.GetAllAsync(Arg.Any<CancellationToken>()).Returns(new[] { doc1, doc2, doc3 });
 
-        _mockVectorStore.Setup(x => x.GetByDocumentIdAsync("doc1", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { chunk1 });
+        _mockVectorStore.GetByDocumentIdAsync("doc1", Arg.Any<CancellationToken>()).Returns(new[] { chunk1 });
 
-        _mockVectorStore.Setup(x => x.GetByDocumentIdAsync("doc2", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { chunk2 });
+        _mockVectorStore.GetByDocumentIdAsync("doc2", Arg.Any<CancellationToken>()).Returns(new[] { chunk2 });
 
-        _mockVectorStore.Setup(x => x.GetByDocumentIdAsync("doc3", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { chunk3 });
+        _mockVectorStore.GetByDocumentIdAsync("doc3", Arg.Any<CancellationToken>()).Returns(new[] { chunk3 });
 
         // Act
         await _service.UpdateIDFCacheAsync();
@@ -436,8 +412,7 @@ public class BM25ServiceTests
     public async Task UpdateIDFCacheAsync_NoDocuments_HandlesGracefully()
     {
         // Arrange
-        _mockDocumentRepository.Setup(x => x.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Enumerable.Empty<Document>());
+        _mockDocumentRepository.GetAllAsync(Arg.Any<CancellationToken>()).Returns(Enumerable.Empty<Document>());
 
         // Act & Assert - Should not throw
         await _service.UpdateIDFCacheAsync();
@@ -455,8 +430,8 @@ public class BM25ServiceTests
     {
         // Act
         var customService = new BM25Service(
-            _mockDocumentRepository.Object,
-            _mockVectorStore.Object,
+            _mockDocumentRepository,
+            _mockVectorStore,
             _cache,
             _logger,
             k1,

@@ -1,5 +1,11 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
+  <!-- Remove framework-included packages inherited from Directory.Build.props (NU1510) -->
+  <ItemGroup>
+    <PackageReference Remove="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Remove="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\FluxIndex.Stack.Application\FluxIndex.Stack.Application.csproj" />
     <ProjectReference Include="..\FluxIndex.Stack.Infrastructure\FluxIndex.Stack.Infrastructure.csproj" />

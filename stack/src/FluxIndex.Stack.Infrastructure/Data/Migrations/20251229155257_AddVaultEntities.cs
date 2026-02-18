@@ -1,6 +1,7 @@
 ﻿using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
+#pragma warning disable CA1861 // Prefer 'static readonly' fields over constant array arguments (auto-generated migration)
 #nullable disable
 
 namespace FluxIndex.Stack.Infrastructure.Data.Migrations

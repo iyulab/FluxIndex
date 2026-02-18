@@ -137,8 +137,7 @@ public class ExtractedImage
     /// </summary>
     private static string ComputeHash(byte[] data)
     {
-        using var sha256 = System.Security.Cryptography.SHA256.Create();
-        var hashBytes = sha256.ComputeHash(data);
+        var hashBytes = System.Security.Cryptography.SHA256.HashData(data);
         return Convert.ToHexString(hashBytes).ToLowerInvariant();
     }
 

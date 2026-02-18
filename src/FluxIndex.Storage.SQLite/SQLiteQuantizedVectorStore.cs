@@ -13,13 +13,13 @@ namespace FluxIndex.Storage.SQLite;
 /// SQLite vector store with native quantized embedding storage support.
 /// Stores quantized embeddings in a separate table for efficient retrieval.
 /// </summary>
-public class SQLiteQuantizedVectorStore : IQuantizedVectorStore
+public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDisposable
 {
     private readonly SQLiteQuantizedDbContext _context;
     private readonly IVectorQuantizer _quantizer;
     private readonly ILogger<SQLiteQuantizedVectorStore> _logger;
     private readonly SQLiteQuantizedOptions _options;
-    private bool _initialized = false;
+    private bool _initialized;
     private readonly SemaphoreSlim _initLock = new(1, 1);
 
     public SQLiteQuantizedVectorStore(
@@ -76,7 +76,7 @@ public class SQLiteQuantizedVectorStore : IQuantizedVectorStore
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to auto-quantize embedding for chunk {ChunkId}", id);
+                LogAutoQuantizeFailed(_logger, ex, id);
             }
         }
 
@@ -127,7 +127,7 @@ public class SQLiteQuantizedVectorStore : IQuantizedVectorStore
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Failed to batch quantize embeddings");
+                    LogBatchQuantizeFailed(_logger, ex);
                 }
             }
         }
@@ -184,7 +184,7 @@ public class SQLiteQuantizedVectorStore : IQuantizedVectorStore
             .Where(v => v.Embedding != null)
             .ToListAsync(cancellationToken);
 
-        if (!entities.Any()) return Enumerable.Empty<DocumentChunk>();
+        if (entities.Count == 0) return Enumerable.Empty<DocumentChunk>();
 
         var queryMagnitude = ComputeMagnitude(queryEmbedding);
         if (queryMagnitude == 0) return Enumerable.Empty<DocumentChunk>();
@@ -226,7 +226,7 @@ public class SQLiteQuantizedVectorStore : IQuantizedVectorStore
             .Where(v => v.DocumentId == documentId)
             .ToListAsync(cancellationToken);
 
-        if (!entities.Any()) return false;
+        if (entities.Count == 0) return false;
 
         var chunkIds = entities.Select(e => e.Id).ToList();
         var quantizedEntities = await _context.QuantizedVectors
@@ -336,7 +336,7 @@ public class SQLiteQuantizedVectorStore : IQuantizedVectorStore
         await EnsureInitializedAsync(cancellationToken);
 
         var quantizedEntities = await _context.QuantizedVectors.ToListAsync(cancellationToken);
-        if (!quantizedEntities.Any()) return Enumerable.Empty<(DocumentChunk, float)>();
+        if (quantizedEntities.Count == 0) return Enumerable.Empty<(DocumentChunk, float)>();
 
         // Compute distances and rank
         var candidates = quantizedEntities
@@ -485,6 +485,25 @@ public class SQLiteQuantizedVectorStore : IQuantizedVectorStore
             QuantizationType = quantizationType
         };
     }
+
+    #endregion
+
+    /// <summary>
+    /// Disposes the initialization lock semaphore.
+    /// </summary>
+    public void Dispose()
+    {
+        _initLock.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to auto-quantize embedding for chunk {ChunkId}")]
+    private static partial void LogAutoQuantizeFailed(ILogger logger, Exception exception, string chunkId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to batch quantize embeddings")]
+    private static partial void LogBatchQuantizeFailed(ILogger logger, Exception exception);
 
     #endregion
 

@@ -245,17 +245,17 @@ public class GraphTraversalOptions
     /// <summary>
     /// 최소 관계 강도
     /// </summary>
-    public double MinRelationshipStrength { get; set; } = 0.0;
+    public double MinRelationshipStrength { get; set; }
 
     /// <summary>
     /// 방향 고려 여부 (true: 단방향만, false: 양방향 포함)
     /// </summary>
-    public bool DirectedOnly { get; set; } = false;
+    public bool DirectedOnly { get; set; }
 
     /// <summary>
     /// 계층적 관계만 탐색
     /// </summary>
-    public bool HierarchicalOnly { get; set; } = false;
+    public bool HierarchicalOnly { get; set; }
 
     /// <summary>
     /// 문서 ID 필터 (null이면 모든 문서)
@@ -281,7 +281,7 @@ public class PathFindingOptions
     /// <summary>
     /// 최소 관계 강도
     /// </summary>
-    public double MinRelationshipStrength { get; set; } = 0.0;
+    public double MinRelationshipStrength { get; set; }
 
     /// <summary>
     /// 가중치 계산 방식
@@ -291,7 +291,7 @@ public class PathFindingOptions
     /// <summary>
     /// 경로 가중치에 관계 강도 반영
     /// </summary>
-    public bool UseRelationshipStrength { get; set; } = false;
+    public bool UseRelationshipStrength { get; set; }
 
     /// <summary>
     /// 탐색 타임아웃 (밀리초)

@@ -3,7 +3,7 @@ using FluxIndex.Core.Domain.Models;
 using FluxIndex.Core.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
+using NSubstitute;
 using Xunit;
 
 namespace FluxIndex.Core.Tests;

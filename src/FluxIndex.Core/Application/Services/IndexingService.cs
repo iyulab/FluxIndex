@@ -13,7 +13,7 @@ namespace FluxIndex.Core.Services;
 /// <summary>
 /// 문서 인덱싱 서비스 - 고도화된 메타데이터 처리 및 키워드 인덱싱 포함
 /// </summary>
-public class IndexingService
+public partial class IndexingService
 {
     private readonly IDocumentRepository _documentRepository;
     private readonly IVectorStore _vectorStore;
@@ -44,7 +44,8 @@ public class IndexingService
         DocumentMetadata metadata,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Starting document indexing for {DocumentId}", documentId);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogIndexing8(_logger, documentId);
 
         // Create document entity
         var document = Document.Create(documentId);
@@ -103,8 +104,8 @@ public class IndexingService
                 // Add to document
                 document.AddChunk(chunk);
 
-                _logger.LogDebug("Indexed chunk {ChunkIndex}/{TotalChunks} with enriched metadata for document {DocumentId}",
-                    i + 1, totalChunks, document.Id);
+                if (_logger.IsEnabled(LogLevel.Information))
+                    LogIndexing7(_logger, i + 1, totalChunks, document.Id);
             }
             
             // Analyze relationships between chunks
@@ -114,14 +115,15 @@ public class IndexingService
             document.MarkAsIndexed();
             await _documentRepository.UpdateAsync(document, cancellationToken);
 
-            _logger.LogInformation("Successfully indexed document {DocumentId} with {ChunkCount} chunks",
-                document.Id, totalChunks);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogIndexing6(_logger, document.Id, totalChunks);
 
             return document;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to index document {DocumentId}", documentId);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogIndexing5(_logger, ex, documentId);
             document.MarkAsFailed();
             await _documentRepository.UpdateAsync(document, cancellationToken);
             throw;
@@ -130,7 +132,8 @@ public class IndexingService
 
     public async Task<bool> DeleteDocumentAsync(string documentId, CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Deleting document {DocumentId}", documentId);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogIndexing4(_logger, documentId);
 
         // Delete chunks from vector store
         var deletedCount = await _vectorStore.DeleteByDocumentIdAsync(documentId, cancellationToken);
@@ -144,8 +147,8 @@ public class IndexingService
         // Delete document from repository
         await _documentRepository.DeleteAsync(documentId, cancellationToken);
 
-        _logger.LogInformation("Deleted document {DocumentId} and {ChunkCount} chunks",
-            documentId, deletedCount);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogIndexing3(_logger, documentId, deletedCount);
 
         return true;
     }
@@ -157,7 +160,7 @@ public class IndexingService
         List<DocumentChunk> chunks, 
         CancellationToken cancellationToken)
     {
-        _logger.LogDebug("Analyzing relationships between {ChunkCount} chunks", chunks.Count);
+        LogIndexing2(_logger, chunks.Count);
         
         foreach (var sourceChunk in chunks)
         {
@@ -173,12 +176,33 @@ public class IndexingService
         // Update chunks in vector store with relationship information
         foreach (var chunk in chunks)
         {
-            if (chunk.Relationships.Any())
+            if (chunk.Relationships.Count != 0)
             {
                 await _vectorStore.UpdateAsync(chunk, cancellationToken);
             }
         }
         
-        _logger.LogDebug("Relationship analysis completed");
+        LogIndexing1(_logger);
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting document indexing for {DocumentId}")]
+    private static partial void LogIndexing8(ILogger logger, string documentId);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Indexed chunk {ChunkIndex}/{TotalChunks} with enriched metadata for document {DocumentId}")]
+    private static partial void LogIndexing7(ILogger logger, int chunkIndex, int totalChunks, string documentId);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Successfully indexed document {DocumentId} with {ChunkCount} chunks")]
+    private static partial void LogIndexing6(ILogger logger, string documentId, int chunkCount);
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to index document {DocumentId}")]
+    private static partial void LogIndexing5(ILogger logger, Exception exception, string documentId);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Deleting document {DocumentId}")]
+    private static partial void LogIndexing4(ILogger logger, string documentId);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Deleted document {DocumentId} and {ChunkCount} chunks")]
+    private static partial void LogIndexing3(ILogger logger, string documentId, bool chunkCount);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Analyzing relationships between {ChunkCount} chunks")]
+    private static partial void LogIndexing2(ILogger logger, int chunkCount);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Relationship analysis completed")]
+    private static partial void LogIndexing1(ILogger logger);
+
+    #endregion
 }

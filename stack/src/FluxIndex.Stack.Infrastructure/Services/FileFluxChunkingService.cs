@@ -18,7 +18,7 @@ namespace FluxIndex.Stack.Infrastructure.Services;
 /// Provides intelligent language-aware chunking using FileFlux library.
 /// Uses FileFlux 0.9.x factory pattern for stateful document processing.
 /// </summary>
-public class FileFluxChunkingService : IChunkingService
+public partial class FileFluxChunkingService : IChunkingService
 {
     private readonly IDocumentProcessorFactory _processorFactory;
     private readonly ILanguageProfileProvider _languageProfileProvider;
@@ -78,8 +78,7 @@ public class FileFluxChunkingService : IChunkingService
         // Detect language if not specified
         var language = options.Language ?? DetectLanguage(processedContent);
 
-        _logger.LogDebug("Chunking document {DocumentId} with strategy {Strategy}, language {Language}",
-            documentId, options.Strategy, language ?? "auto");
+        LogChunkingDocument(_logger, documentId, options.Strategy, language ?? "auto");
 
         // Configure FileFlux chunking options
         var fileFluxOptions = new FileFluxChunkingOptions
@@ -117,8 +116,9 @@ public class FileFluxChunkingService : IChunkingService
                     result.Chunks.Add(chunk);
                 }
 
-                _logger.LogInformation("Document {DocumentId} chunked into {ChunkCount} segments with {ImageCount} images using {Strategy} strategy (FileFlux)",
-                    documentId, result.Chunks.Count, result.Images.Count, options.Strategy);
+                var chunkCount = result.Chunks.Count;
+                var imageCount = result.Images.Count;
+                LogDocumentChunked(_logger, documentId, chunkCount, imageCount, options.Strategy);
 
                 return result;
             }
@@ -130,8 +130,7 @@ public class FileFluxChunkingService : IChunkingService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "FileFlux chunking failed for document {DocumentId}, falling back to simple chunking",
-                documentId);
+            LogChunkingFailed(_logger, documentId, ex);
 
             // Fallback to simple chunking
             result.Chunks = FallbackChunking(processedContent, documentId, options);
@@ -157,7 +156,7 @@ public class FileFluxChunkingService : IChunkingService
             return (content, images);
         }
 
-        _logger.LogInformation("Document {DocumentId} detected as HTML, preprocessing with HtmlDocumentReader", documentId);
+        LogHtmlDetected(_logger, documentId);
 
         try
         {
@@ -202,20 +201,16 @@ public class FileFluxChunkingService : IChunkingService
                     }
                 }
 
-                _logger.LogInformation(
-                    "Document {DocumentId}: Extracted {EmbeddedCount} embedded images ({TotalSize:N0} bytes)",
-                    documentId, embeddedCount, totalImageSize);
+                LogExtractedImages(_logger, documentId, embeddedCount, totalImageSize);
             }
 
-            _logger.LogInformation(
-                "HTML preprocessing complete for {DocumentId}: {OriginalLength} -> {ExtractedLength} chars ({ReductionPercent:F1}% reduction)",
-                documentId, originalLength, extractedLength, reductionPercent);
+            LogHtmlPreprocessingComplete(_logger, documentId, originalLength, extractedLength, reductionPercent);
 
             return (extractedText, images);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "HTML preprocessing failed for {DocumentId}, using original content", documentId);
+            LogHtmlPreprocessingFailed(_logger, documentId, ex);
             return (content, images);
         }
     }
@@ -302,18 +297,17 @@ public class FileFluxChunkingService : IChunkingService
         {
             // Use FileFlux language profile provider for detection
             var profile = _languageProfileProvider.DetectAndGetProfile(content);
-            _logger.LogDebug("Detected language: {Language} ({Script})",
-                profile.LanguageCode, profile.ScriptCode);
+            LogDetectedLanguage(_logger, profile.LanguageCode, profile.ScriptCode);
             return profile.LanguageCode;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Language detection failed, using default");
+            LogLanguageDetectionFailed(_logger, ex);
             return _languageProfileProvider.DefaultProfile.LanguageCode;
         }
     }
 
-    private StackDocumentChunk ConvertToStackChunk(
+    private static StackDocumentChunk ConvertToStackChunk(
         FileFluxChunk fileFluxChunk,
         Guid documentId,
         int chunkIndex,
@@ -375,7 +369,7 @@ public class FileFluxChunkingService : IChunkingService
         return chunk;
     }
 
-    private List<StackDocumentChunk> FallbackChunking(
+    private static List<StackDocumentChunk> FallbackChunking(
         string content,
         Guid documentId,
         StackChunkingOptions options)
@@ -449,6 +443,37 @@ public class FileFluxChunkingService : IChunkingService
 
         return content.Replace("\0", string.Empty);
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Chunking document {DocumentId} with strategy {Strategy}, language {Language}")]
+    private static partial void LogChunkingDocument(ILogger logger, Guid documentId, string strategy, string language);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Document {DocumentId} chunked into {ChunkCount} segments with {ImageCount} images using {Strategy} strategy (FileFlux)")]
+    private static partial void LogDocumentChunked(ILogger logger, Guid documentId, int chunkCount, int imageCount, string strategy);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "FileFlux chunking failed for document {DocumentId}, falling back to simple chunking")]
+    private static partial void LogChunkingFailed(ILogger logger, Guid documentId, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Document {DocumentId} detected as HTML, preprocessing with HtmlDocumentReader")]
+    private static partial void LogHtmlDetected(ILogger logger, Guid documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Document {DocumentId}: Extracted {EmbeddedCount} embedded images ({TotalSize:N0} bytes)")]
+    private static partial void LogExtractedImages(ILogger logger, Guid documentId, int embeddedCount, long totalSize);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "HTML preprocessing complete for {DocumentId}: {OriginalLength} -> {ExtractedLength} chars ({ReductionPercent:F1}% reduction)")]
+    private static partial void LogHtmlPreprocessingComplete(ILogger logger, Guid documentId, int originalLength, int extractedLength, double reductionPercent);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "HTML preprocessing failed for {DocumentId}, using original content")]
+    private static partial void LogHtmlPreprocessingFailed(ILogger logger, Guid documentId, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Detected language: {Language} ({Script})")]
+    private static partial void LogDetectedLanguage(ILogger logger, string language, string script);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Language detection failed, using default")]
+    private static partial void LogLanguageDetectionFailed(ILogger logger, Exception? exception);
+
+    #endregion
 }
 
 /// <summary>

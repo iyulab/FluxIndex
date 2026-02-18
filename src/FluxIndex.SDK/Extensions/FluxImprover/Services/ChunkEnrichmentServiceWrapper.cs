@@ -90,7 +90,7 @@ public sealed class ChunkEnrichmentServiceWrapper
     /// <summary>
     /// Merges FluxImprover enriched result with FluxIndex metadata.
     /// </summary>
-    private static FluxImproverChunk MergeWithFluxIndexMetadata(
+    private static EnrichedChunk MergeWithFluxIndexMetadata(
         EnrichedChunk enrichedResult,
         EnrichedChunkAdapter adapter)
     {

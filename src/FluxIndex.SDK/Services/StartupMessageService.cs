@@ -9,7 +9,7 @@ namespace FluxIndex.SDK.Services;
 /// </summary>
 public static class StartupMessageService
 {
-    private static bool _messageDisplayed = false;
+    private static bool _messageDisplayed;
 
     /// <summary>
     /// Display AI service configuration status and LMSupply guidance.
@@ -31,8 +31,8 @@ public static class StartupMessageService
         var hasReranker = serviceProvider.GetService<IReranker>() != null;
         var hasContextualEnrichment = serviceProvider.GetService<IContextualEnrichmentService>() != null;
 
-        var isLMSupplyEmbedding = embeddingProvider?.ToLower() is "LMSupply" or "localembedder" or null;
-        var isInMemoryEmbedding = embeddingProvider?.ToLower() == "inmemory";
+        var isLMSupplyEmbedding = embeddingProvider?.ToLowerInvariant() is "LMSupply" or "localembedder" or null;
+        var isInMemoryEmbedding = embeddingProvider?.ToLowerInvariant() == "inmemory";
 
         // Count active AI services
         var activeCount = (hasEmbedding ? 1 : 0) + (hasTextCompletion ? 1 : 0) + (hasReranker ? 1 : 0);
@@ -124,7 +124,7 @@ public static class StartupMessageService
     /// </summary>
     private static void DisplayVectorStoreWarning(string? vectorStoreProvider)
     {
-        var provider = vectorStoreProvider?.ToLower();
+        var provider = vectorStoreProvider?.ToLowerInvariant();
 
         // 명시적으로 SQLite나 PostgreSQL을 설정한 경우 경고 없음
         if (provider is "sqlite" or "postgresql")
@@ -159,7 +159,7 @@ public static class StartupMessageService
 
     private static string GetEmbeddingDescription(string? provider)
     {
-        return provider?.ToLower() switch
+        return provider?.ToLowerInvariant() switch
         {
             "LMSupply" or "localembedder" => "LMSupply (ONNX)",
             "inmemory" => "InMemory (Test)",

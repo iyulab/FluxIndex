@@ -11,7 +11,7 @@ namespace FluxIndex.Stack.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/v1/[controller]")]
-public class SearchController : ControllerBase
+public partial class SearchController : ControllerBase
 {
     private readonly ISearchService _searchService;
     private readonly ILogger<SearchController> _logger;
@@ -40,13 +40,11 @@ public class SearchController : ControllerBase
         var apiKey = HttpContext.GetApiKey();
         var apiKeyPrefix = apiKey?.KeyPrefix;
 
-        _logger.LogInformation("Search request: {Query} in collection: {CollectionId}",
-            request.Query, request.CollectionId);
+        LogSearchRequest(_logger, request.Query, request.CollectionId);
 
         var response = await _searchService.SearchAsync(request, apiKeyPrefix, cancellationToken);
 
-        _logger.LogInformation("Search completed: {ResultCount} results in {ExecutionTime}ms",
-            response.TotalResults, response.ExecutionTimeMs);
+        LogSearchCompleted(_logger, response.TotalResults, response.ExecutionTimeMs);
 
         return Ok(ApiResponse<SearchResponse>.Ok(response));
     }
@@ -147,10 +145,23 @@ public class SearchController : ControllerBase
 
         await _searchService.ClearCacheAsync(collectionId, cancellationToken);
 
-        _logger.LogInformation("Cache cleared for collection: {CollectionId}", collectionId);
+        LogCacheCleared(_logger, collectionId);
 
         return Ok(ApiResponse<object>.Ok(null!, "Cache cleared successfully."));
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Search request: {Query} in collection: {CollectionId}")]
+    private static partial void LogSearchRequest(ILogger logger, string query, Guid? collectionId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Search completed: {ResultCount} results in {ExecutionTime}ms")]
+    private static partial void LogSearchCompleted(ILogger logger, int resultCount, double executionTime);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Cache cleared for collection: {CollectionId}")]
+    private static partial void LogCacheCleared(ILogger logger, Guid? collectionId);
+
+    #endregion
 }
 
 /// <summary>

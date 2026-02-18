@@ -8,7 +8,7 @@ public class SearchRequest
     public string Query { get; set; } = string.Empty;
     public Guid? CollectionId { get; set; }
     public int TopK { get; set; } = 10;
-    public double MinScore { get; set; } = 0.0;
+    public double MinScore { get; set; }
 
     /// <summary>
     /// Search mode. Default is Auto which automatically selects the best strategy.
@@ -23,7 +23,7 @@ public class SearchRequest
     /// Enable cross-encoder reranking for higher quality results.
     /// Only used when Mode is not Auto. In Auto mode, reranking is applied based on QualityPreference.
     /// </summary>
-    public bool EnableReranking { get; set; } = false;
+    public bool EnableReranking { get; set; }
 
     /// <summary>
     /// Quality preference for Auto mode. Ignored when Mode is explicitly set.
@@ -36,13 +36,13 @@ public class SearchRequest
     /// <summary>
     /// Include detailed explanation of search strategy (only in Auto mode).
     /// </summary>
-    public bool IncludeExplanation { get; set; } = false;
+    public bool IncludeExplanation { get; set; }
 
     /// <summary>
     /// Enable HyDE (Hypothetical Document Embeddings) for query expansion.
     /// When enabled, generates hypothetical answer documents to improve retrieval.
     /// </summary>
-    public bool EnableHyDE { get; set; } = false;
+    public bool EnableHyDE { get; set; }
 
     /// <summary>
     /// Number of hypothetical documents to generate when HyDE is enabled.

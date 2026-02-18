@@ -16,6 +16,7 @@ namespace FluxIndex.Storage.Qdrant.Tests;
 /// These tests require Docker to be running.
 /// </summary>
 [Collection("Qdrant")]
+[Trait("Category", "Integration")]
 public class QdrantVectorStoreIntegrationTests : IAsyncLifetime
 {
     private readonly QdrantContainer _container;
@@ -24,8 +25,7 @@ public class QdrantVectorStoreIntegrationTests : IAsyncLifetime
 
     public QdrantVectorStoreIntegrationTests()
     {
-        _container = new QdrantBuilder()
-            .WithImage("qdrant/qdrant:latest")
+        _container = new QdrantBuilder("qdrant/qdrant:latest")
             .Build();
         _logger = NullLogger<QdrantVectorStore>.Instance;
     }

@@ -17,7 +17,7 @@ namespace FluxIndex.Stack.Infrastructure.Services;
 /// Neo4j graph service implementation for Stack.
 /// Wraps Core's IGraphStore with Stack-specific functionality.
 /// </summary>
-public class Neo4jGraphService : INeo4jGraphService
+public partial class Neo4jGraphService : INeo4jGraphService
 {
     private readonly IGraphStore? _graphStore;
     private readonly IEmbeddingProvider? _embeddingProvider;
@@ -36,11 +36,11 @@ public class Neo4jGraphService : INeo4jGraphService
 
         if (_isAvailable)
         {
-            _logger.LogInformation("Neo4j graph service initialized and available");
+            LogServiceInitialized(_logger);
         }
         else
         {
-            _logger.LogWarning("Neo4j graph service is not available (IGraphStore not registered)");
+            LogServiceNotAvailable(_logger);
         }
     }
 
@@ -55,7 +55,7 @@ public class Neo4jGraphService : INeo4jGraphService
     {
         if (!_isAvailable || _graphStore is null)
         {
-            _logger.LogDebug("Neo4j not available, returning empty related entities");
+            LogNeo4jNotAvailableRelatedEntities(_logger);
             return [];
         }
 
@@ -99,13 +99,13 @@ public class Neo4jGraphService : INeo4jGraphService
                 }
             }
 
-            _logger.LogDebug(
-                "Found {Count} related entities for {EntityCount} source entities with {MaxHops} max hops",
-                relationships.Count, entityIdList.Count, maxHops);
+            var relationshipCount = relationships.Count;
+            var entityCount = entityIdList.Count;
+            LogFoundRelatedEntities(_logger, relationshipCount, entityCount, maxHops);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting related entities from Neo4j");
+            LogGetRelatedEntitiesFailed(_logger, ex);
         }
 
         return relationships;
@@ -119,7 +119,7 @@ public class Neo4jGraphService : INeo4jGraphService
     {
         if (!_isAvailable || _graphStore is null)
         {
-            _logger.LogDebug("Neo4j not available, returning empty query expansion");
+            LogNeo4jNotAvailableQueryExpansion(_logger);
             return [];
         }
 
@@ -173,13 +173,12 @@ public class Neo4jGraphService : INeo4jGraphService
                 }
             }
 
-            _logger.LogDebug(
-                "Expanded query '{Query}' with {Count} related terms",
-                query, expandedTerms.Count);
+            var expandedCount = expandedTerms.Count;
+            LogExpandedQuery(_logger, query, expandedCount);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error expanding query with related entities");
+            LogExpandQueryFailed(_logger, ex);
         }
 
         return expandedTerms.Take(maxEntities).ToList();
@@ -192,7 +191,7 @@ public class Neo4jGraphService : INeo4jGraphService
     {
         if (!_isAvailable || _graphStore is null)
         {
-            _logger.LogWarning("Cannot store entity: Neo4j is not available");
+            LogCannotStoreEntity(_logger);
             return;
         }
 
@@ -201,11 +200,11 @@ public class Neo4jGraphService : INeo4jGraphService
             var coreEntity = MapToCoreEntity(entity);
             await _graphStore.StoreEntityAsync(coreEntity, cancellationToken);
 
-            _logger.LogDebug("Stored entity {EntityId} ({EntityName}) in Neo4j", entity.Id, entity.Name);
+            LogStoredEntity(_logger, entity.Id, entity.Name);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error storing entity {EntityId} in Neo4j", entity.Id);
+            LogStoreEntityFailed(_logger, entity.Id, ex);
             throw;
         }
     }
@@ -220,7 +219,7 @@ public class Neo4jGraphService : INeo4jGraphService
     {
         if (!_isAvailable || _graphStore is null)
         {
-            _logger.LogWarning("Cannot store relationship: Neo4j is not available");
+            LogCannotStoreRelationship(_logger);
             return;
         }
 
@@ -242,15 +241,11 @@ public class Neo4jGraphService : INeo4jGraphService
 
             await _graphStore.StoreRelationshipAsync(relationship, cancellationToken);
 
-            _logger.LogDebug(
-                "Stored relationship {Source} -[{Type}]-> {Target} in Neo4j",
-                sourceEntityId, relationshipType, targetEntityId);
+            LogStoredRelationship(_logger, sourceEntityId, relationshipType, targetEntityId);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex,
-                "Error storing relationship {Source} -> {Target} in Neo4j",
-                sourceEntityId, targetEntityId);
+            LogStoreRelationshipFailed(_logger, sourceEntityId, targetEntityId, ex);
             throw;
         }
     }
@@ -264,7 +259,7 @@ public class Neo4jGraphService : INeo4jGraphService
     {
         if (!_isAvailable || _graphStore is null)
         {
-            _logger.LogDebug("Neo4j not available, returning empty paths");
+            LogNeo4jNotAvailablePaths(_logger);
             return [];
         }
 
@@ -284,15 +279,12 @@ public class Neo4jGraphService : INeo4jGraphService
                 paths.Add(MapToStackPath(shortestPath));
             }
 
-            _logger.LogDebug(
-                "Found {Count} paths between {Source} and {Target}",
-                paths.Count, sourceEntityId, targetEntityId);
+            var pathCount = paths.Count;
+            LogFoundPaths(_logger, pathCount, sourceEntityId, targetEntityId);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex,
-                "Error finding paths between {Source} and {Target}",
-                sourceEntityId, targetEntityId);
+            LogFindPathsFailed(_logger, sourceEntityId, targetEntityId, ex);
         }
 
         return paths;
@@ -305,7 +297,7 @@ public class Neo4jGraphService : INeo4jGraphService
     {
         if (!_isAvailable || _graphStore is null)
         {
-            _logger.LogDebug("Neo4j not available, returning null community");
+            LogNeo4jNotAvailableCommunity(_logger);
             return null;
         }
 
@@ -324,7 +316,7 @@ public class Neo4jGraphService : INeo4jGraphService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting community for entity {EntityId}", entityId);
+            LogGetCommunityFailed(_logger, entityId, ex);
             return null;
         }
     }
@@ -336,7 +328,7 @@ public class Neo4jGraphService : INeo4jGraphService
     {
         if (!_isAvailable || _graphStore is null)
         {
-            _logger.LogDebug("Neo4j not available, returning empty chunk list");
+            LogNeo4jNotAvailableChunkList(_logger);
             return [];
         }
 
@@ -359,13 +351,13 @@ public class Neo4jGraphService : INeo4jGraphService
                 }
             }
 
-            _logger.LogDebug(
-                "Found {Count} chunks for {EntityCount} entities",
-                chunkIds.Count, entityIds.Count());
+            var chunkCount = chunkIds.Count;
+            var entityCount = entityIds.Count();
+            LogFoundChunksForEntities(_logger, chunkCount, entityCount);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting chunks for entities");
+            LogGetChunksForEntitiesFailed(_logger, ex);
         }
 
         return chunkIds.ToList();
@@ -379,7 +371,7 @@ public class Neo4jGraphService : INeo4jGraphService
     {
         if (!_isAvailable || _graphStore is null)
         {
-            _logger.LogWarning("Cannot link chunk to entities: Neo4j is not available");
+            LogCannotLinkChunkToEntities(_logger);
             return;
         }
 
@@ -407,13 +399,12 @@ public class Neo4jGraphService : INeo4jGraphService
                 }
             }
 
-            _logger.LogDebug(
-                "Linked chunk {ChunkId} to {EntityCount} entities",
-                chunkId, entityIds.Count());
+            var entityCount = entityIds.Count();
+            LogLinkedChunkToEntities(_logger, chunkId, entityCount);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error linking chunk {ChunkId} to entities", chunkId);
+            LogLinkChunkFailed(_logger, chunkId, ex);
             throw;
         }
     }
@@ -425,7 +416,7 @@ public class Neo4jGraphService : INeo4jGraphService
     {
         if (!_isAvailable || _graphStore is null)
         {
-            _logger.LogWarning("Cannot run community detection: Neo4j is not available");
+            LogCannotRunCommunityDetection(_logger);
             return 0;
         }
 
@@ -433,16 +424,15 @@ public class Neo4jGraphService : INeo4jGraphService
         {
             // Note: Full community detection requires Neo4j Graph Data Science (GDS) plugin
             // This is a simplified implementation that groups entities by their connections
-            _logger.LogInformation(
-                "Running community detection (collection: {CollectionId})",
-                collectionId?.ToString() ?? "all");
+            var collectionIdStr = collectionId?.ToString() ?? "all";
+            LogRunningCommunityDetection(_logger, collectionIdStr);
 
             // Get statistics to estimate the graph size
             var stats = await _graphStore.GetStatisticsAsync(cancellationToken);
 
             if (stats.EntityCount == 0)
             {
-                _logger.LogInformation("No entities found for community detection");
+                LogNoEntitiesForCommunityDetection(_logger);
                 return 0;
             }
 
@@ -450,15 +440,13 @@ public class Neo4jGraphService : INeo4jGraphService
             // Full Louvain algorithm would require GDS plugin or custom implementation
             var communitiesCreated = await DetectCommunitiesSimpleAsync(cancellationToken);
 
-            _logger.LogInformation(
-                "Community detection completed. Created {Count} communities",
-                communitiesCreated);
+            LogCommunityDetectionCompleted(_logger, communitiesCreated);
 
             return communitiesCreated;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error running community detection");
+            LogCommunityDetectionFailed(_logger, ex);
             return 0;
         }
     }
@@ -468,7 +456,7 @@ public class Neo4jGraphService : INeo4jGraphService
     {
         if (!_isAvailable || _graphStore is null)
         {
-            _logger.LogDebug("Neo4j not available, returning empty statistics");
+            LogNeo4jNotAvailableStatistics(_logger);
             return new GraphStatistics(0, 0, 0, new Dictionary<string, long>(), new Dictionary<string, long>());
         }
 
@@ -492,7 +480,7 @@ public class Neo4jGraphService : INeo4jGraphService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting graph statistics");
+            LogGetStatisticsFailed(_logger, ex);
             return new GraphStatistics(0, 0, 0, new Dictionary<string, long>(), new Dictionary<string, long>());
         }
     }
@@ -665,6 +653,106 @@ public class Neo4jGraphService : INeo4jGraphService
             _ => RelationType.Custom
         };
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Neo4j graph service initialized and available")]
+    private static partial void LogServiceInitialized(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Neo4j graph service is not available (IGraphStore not registered)")]
+    private static partial void LogServiceNotAvailable(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Neo4j not available, returning empty related entities")]
+    private static partial void LogNeo4jNotAvailableRelatedEntities(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Found {Count} related entities for {EntityCount} source entities with {MaxHops} max hops")]
+    private static partial void LogFoundRelatedEntities(ILogger logger, int count, int entityCount, int maxHops);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error getting related entities from Neo4j")]
+    private static partial void LogGetRelatedEntitiesFailed(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Neo4j not available, returning empty query expansion")]
+    private static partial void LogNeo4jNotAvailableQueryExpansion(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Expanded query '{Query}' with {Count} related terms")]
+    private static partial void LogExpandedQuery(ILogger logger, string query, int count);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error expanding query with related entities")]
+    private static partial void LogExpandQueryFailed(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Cannot store entity: Neo4j is not available")]
+    private static partial void LogCannotStoreEntity(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Stored entity {EntityId} ({EntityName}) in Neo4j")]
+    private static partial void LogStoredEntity(ILogger logger, string entityId, string entityName);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error storing entity {EntityId} in Neo4j")]
+    private static partial void LogStoreEntityFailed(ILogger logger, string entityId, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Cannot store relationship: Neo4j is not available")]
+    private static partial void LogCannotStoreRelationship(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Stored relationship {Source} -[{Type}]-> {Target} in Neo4j")]
+    private static partial void LogStoredRelationship(ILogger logger, string source, string type, string target);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error storing relationship {Source} -> {Target} in Neo4j")]
+    private static partial void LogStoreRelationshipFailed(ILogger logger, string source, string target, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Neo4j not available, returning empty paths")]
+    private static partial void LogNeo4jNotAvailablePaths(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Found {Count} paths between {Source} and {Target}")]
+    private static partial void LogFoundPaths(ILogger logger, int count, string source, string target);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error finding paths between {Source} and {Target}")]
+    private static partial void LogFindPathsFailed(ILogger logger, string source, string target, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Neo4j not available, returning null community")]
+    private static partial void LogNeo4jNotAvailableCommunity(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error getting community for entity {EntityId}")]
+    private static partial void LogGetCommunityFailed(ILogger logger, string entityId, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Neo4j not available, returning empty chunk list")]
+    private static partial void LogNeo4jNotAvailableChunkList(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Found {Count} chunks for {EntityCount} entities")]
+    private static partial void LogFoundChunksForEntities(ILogger logger, int count, int entityCount);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error getting chunks for entities")]
+    private static partial void LogGetChunksForEntitiesFailed(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Cannot link chunk to entities: Neo4j is not available")]
+    private static partial void LogCannotLinkChunkToEntities(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Linked chunk {ChunkId} to {EntityCount} entities")]
+    private static partial void LogLinkedChunkToEntities(ILogger logger, Guid chunkId, int entityCount);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error linking chunk {ChunkId} to entities")]
+    private static partial void LogLinkChunkFailed(ILogger logger, Guid chunkId, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Cannot run community detection: Neo4j is not available")]
+    private static partial void LogCannotRunCommunityDetection(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Running community detection (collection: {CollectionId})")]
+    private static partial void LogRunningCommunityDetection(ILogger logger, string collectionId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "No entities found for community detection")]
+    private static partial void LogNoEntitiesForCommunityDetection(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Community detection completed. Created {Count} communities")]
+    private static partial void LogCommunityDetectionCompleted(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error running community detection")]
+    private static partial void LogCommunityDetectionFailed(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Neo4j not available, returning empty statistics")]
+    private static partial void LogNeo4jNotAvailableStatistics(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error getting graph statistics")]
+    private static partial void LogGetStatisticsFailed(ILogger logger, Exception? exception);
 
     #endregion
 }

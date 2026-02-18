@@ -15,7 +15,7 @@ namespace FluxIndex.Storage.Qdrant;
 /// As a specialized provider, Qdrant takes priority over general-purpose
 /// providers (SQLite, PostgreSQL) for vector operations.
 /// </remarks>
-public class QdrantProvider : IStorageProvider, IVectorCapable
+public partial class QdrantProvider : IStorageProvider, IVectorCapable
 {
     private readonly IVectorStore _vectorStore;
     private readonly ILogger<QdrantProvider>? _logger;
@@ -32,7 +32,8 @@ public class QdrantProvider : IStorageProvider, IVectorCapable
         _vectorStore = vectorStore ?? throw new ArgumentNullException(nameof(vectorStore));
         _logger = logger;
 
-        _logger?.LogDebug("QdrantProvider initialized as specialized vector provider");
+        if (_logger is not null)
+            LogProviderInitialized(_logger);
     }
 
     /// <inheritdoc />
@@ -50,6 +51,13 @@ public class QdrantProvider : IStorageProvider, IVectorCapable
 
     /// <inheritdoc />
     public IVectorStore VectorStore => _vectorStore;
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "QdrantProvider initialized as specialized vector provider")]
+    private static partial void LogProviderInitialized(ILogger logger);
+
+    #endregion
 }
 
 /// <summary>

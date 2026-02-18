@@ -8,7 +8,7 @@ namespace FluxIndex.Stack.Application.Services;
 /// <summary>
 /// Service implementation for managing reindexing operations when embedding models change.
 /// </summary>
-public class ReindexingService : IReindexingService
+public partial class ReindexingService : IReindexingService
 {
     private readonly IReindexingJobRepository _jobRepository;
     private readonly IChunkEmbeddingRepository _embeddingRepository;
@@ -58,10 +58,7 @@ public class ReindexingService : IReindexingService
 
         await _jobRepository.AddAsync(job, cancellationToken);
 
-        _logger.LogInformation(
-            "Created system reindexing job {JobId} for {TotalChunks} chunks",
-            job.Id,
-            totalChunks);
+        LogSystemReindexingJobCreated(_logger, job.Id, totalChunks);
 
         return job;
     }
@@ -92,11 +89,7 @@ public class ReindexingService : IReindexingService
 
         await _jobRepository.AddAsync(job, cancellationToken);
 
-        _logger.LogInformation(
-            "Created collection reindexing job {JobId} for collection {CollectionId} with {TotalChunks} chunks",
-            job.Id,
-            collectionId,
-            totalChunks);
+        LogCollectionReindexingJobCreated(_logger, job.Id, collectionId, totalChunks);
 
         return job;
     }
@@ -121,11 +114,7 @@ public class ReindexingService : IReindexingService
 
         await _jobRepository.AddAsync(job, cancellationToken);
 
-        _logger.LogInformation(
-            "Created document reindexing job {JobId} for document {DocumentId} with {TotalChunks} chunks",
-            job.Id,
-            documentId,
-            totalChunks);
+        LogDocumentReindexingJobCreated(_logger, job.Id, documentId, totalChunks);
 
         return job;
     }
@@ -152,7 +141,7 @@ public class ReindexingService : IReindexingService
 
         if (job.Status != ReindexingJobStatus.Pending && job.Status != ReindexingJobStatus.Processing)
         {
-            _logger.LogWarning("Job {JobId} is in status {Status}, cannot process", jobId, job.Status);
+            LogJobCannotProcess(_logger, jobId, job.Status);
             return;
         }
 
@@ -161,7 +150,7 @@ public class ReindexingService : IReindexingService
             job.Start();
             await _jobRepository.UpdateAsync(job, cancellationToken);
 
-            _logger.LogInformation("Starting reindexing job {JobId}", jobId);
+            LogReindexingJobStarted(_logger, jobId);
 
             // Get chunk IDs to process based on scope
             var chunkIds = await GetChunkIdsForJobAsync(job, cancellationToken);
@@ -176,11 +165,7 @@ public class ReindexingService : IReindexingService
             // Intersect with job scope
             var targetChunkIds = chunkIds.Intersect(chunkIdsToProcess).ToList();
 
-            _logger.LogInformation(
-                "Job {JobId}: {Count} chunks need embeddings for model {ModelId}",
-                jobId,
-                targetChunkIds.Count,
-                job.TargetModelId);
+            LogChunksNeedEmbeddings(_logger, jobId, targetChunkIds.Count, job.TargetModelId);
 
             // Process in batches
             var processedCount = 0;
@@ -188,7 +173,7 @@ public class ReindexingService : IReindexingService
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    _logger.LogWarning("Job {JobId} cancelled", jobId);
+                    LogJobCancelled(_logger, jobId);
                     break;
                 }
 
@@ -199,11 +184,7 @@ public class ReindexingService : IReindexingService
                 job.UpdateProgress(processedCount);
                 await _jobRepository.UpdateAsync(job, cancellationToken);
 
-                _logger.LogDebug(
-                    "Job {JobId}: Processed {Processed}/{Total} chunks",
-                    jobId,
-                    processedCount,
-                    targetChunkIds.Count);
+                LogJobProgress(_logger, jobId, processedCount, targetChunkIds.Count);
             }
 
             // Delete old embeddings if requested
@@ -215,14 +196,11 @@ public class ReindexingService : IReindexingService
             job.Complete();
             await _jobRepository.UpdateAsync(job, cancellationToken);
 
-            _logger.LogInformation(
-                "Completed reindexing job {JobId}: {Processed} chunks processed",
-                jobId,
-                processedCount);
+            LogReindexingJobCompleted(_logger, jobId, processedCount);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to process reindexing job {JobId}", jobId);
+            LogReindexingJobFailed(_logger, jobId, ex);
             job.Fail(ex.Message);
             await _jobRepository.UpdateAsync(job, cancellationToken);
             throw;
@@ -239,14 +217,14 @@ public class ReindexingService : IReindexingService
 
         if (job.Status != ReindexingJobStatus.Pending && job.Status != ReindexingJobStatus.Processing)
         {
-            _logger.LogWarning("Cannot cancel job {JobId} in status {Status}", jobId, job.Status);
+            LogCannotCancelJob(_logger, jobId, job.Status);
             return;
         }
 
         job.Cancel();
         await _jobRepository.UpdateAsync(job, cancellationToken);
 
-        _logger.LogInformation("Cancelled reindexing job {JobId}", jobId);
+        LogReindexingJobCancelled(_logger, jobId);
     }
 
     public async Task<ReindexingStatus> GetStatusAsync(CancellationToken cancellationToken = default)
@@ -298,7 +276,7 @@ public class ReindexingService : IReindexingService
         var chunk = await _chunkRepository.GetByIdAsync(chunkId, cancellationToken);
         if (chunk == null)
         {
-            _logger.LogWarning("Chunk {ChunkId} not found for reindexing", chunkId);
+            LogChunkNotFound(_logger, chunkId);
             return null;
         }
 
@@ -306,7 +284,7 @@ public class ReindexingService : IReindexingService
         var model = await _modelRepository.GetByIdAsync(targetModelId, cancellationToken);
         if (model == null)
         {
-            _logger.LogWarning("Embedding model {ModelId} not found", targetModelId);
+            LogEmbeddingModelNotFound(_logger, targetModelId);
             return null;
         }
 
@@ -321,7 +299,7 @@ public class ReindexingService : IReindexingService
         model.MarkUsed();
         await _modelRepository.UpdateAsync(model, cancellationToken);
 
-        _logger.LogDebug("Created embedding for chunk {ChunkId} with model {ModelKey}", chunkId, model.ModelKey);
+        LogEmbeddingCreated(_logger, chunkId, model.ModelKey);
 
         return chunkEmbedding;
     }
@@ -343,7 +321,7 @@ public class ReindexingService : IReindexingService
         var readyChunkIds = existingEmbeddings.Select(e => e.ChunkId).ToList();
         var missingChunkIds = chunkIdList.Except(readyChunkIds).ToList();
 
-        if (!missingChunkIds.Any())
+        if (missingChunkIds.Count == 0)
         {
             return new ReindexingEnsureResult(readyChunkIds, new List<Guid>(), null);
         }
@@ -442,9 +420,58 @@ public class ReindexingService : IReindexingService
             await _embeddingRepository.DeleteByChunkAndModelAsync(chunkId, sourceModelId, cancellationToken);
         }
 
-        _logger.LogInformation(
-            "Deleted {Count} old embeddings for model {ModelId}",
-            chunkIds.Count,
-            sourceModelId);
+        LogOldEmbeddingsDeleted(_logger, chunkIds.Count, sourceModelId);
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Created system reindexing job {JobId} for {TotalChunks} chunks")]
+    private static partial void LogSystemReindexingJobCreated(ILogger logger, Guid jobId, int totalChunks);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Created collection reindexing job {JobId} for collection {CollectionId} with {TotalChunks} chunks")]
+    private static partial void LogCollectionReindexingJobCreated(ILogger logger, Guid jobId, Guid collectionId, int totalChunks);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Created document reindexing job {JobId} for document {DocumentId} with {TotalChunks} chunks")]
+    private static partial void LogDocumentReindexingJobCreated(ILogger logger, Guid jobId, Guid documentId, int totalChunks);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Job {JobId} is in status {Status}, cannot process")]
+    private static partial void LogJobCannotProcess(ILogger logger, Guid jobId, ReindexingJobStatus status);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting reindexing job {JobId}")]
+    private static partial void LogReindexingJobStarted(ILogger logger, Guid jobId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Job {JobId}: {Count} chunks need embeddings for model {ModelId}")]
+    private static partial void LogChunksNeedEmbeddings(ILogger logger, Guid jobId, int count, Guid modelId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Job {JobId} cancelled")]
+    private static partial void LogJobCancelled(ILogger logger, Guid jobId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Job {JobId}: Processed {Processed}/{Total} chunks")]
+    private static partial void LogJobProgress(ILogger logger, Guid jobId, int processed, int total);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Completed reindexing job {JobId}: {Processed} chunks processed")]
+    private static partial void LogReindexingJobCompleted(ILogger logger, Guid jobId, int processed);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to process reindexing job {JobId}")]
+    private static partial void LogReindexingJobFailed(ILogger logger, Guid jobId, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Cannot cancel job {JobId} in status {Status}")]
+    private static partial void LogCannotCancelJob(ILogger logger, Guid jobId, ReindexingJobStatus status);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Cancelled reindexing job {JobId}")]
+    private static partial void LogReindexingJobCancelled(ILogger logger, Guid jobId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Chunk {ChunkId} not found for reindexing")]
+    private static partial void LogChunkNotFound(ILogger logger, Guid chunkId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Embedding model {ModelId} not found")]
+    private static partial void LogEmbeddingModelNotFound(ILogger logger, Guid modelId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Created embedding for chunk {ChunkId} with model {ModelKey}")]
+    private static partial void LogEmbeddingCreated(ILogger logger, Guid chunkId, string modelKey);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Deleted {Count} old embeddings for model {ModelId}")]
+    private static partial void LogOldEmbeddingsDeleted(ILogger logger, int count, Guid modelId);
+
+    #endregion
 }

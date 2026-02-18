@@ -3,7 +3,7 @@ using FluxIndex.Core.Application.Services;
 using FluxIndex.Core.Domain.ValueObjects;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
+using NSubstitute;
 using Xunit;
 
 namespace FluxIndex.Core.Tests.Services;
@@ -13,23 +13,19 @@ namespace FluxIndex.Core.Tests.Services;
 /// </summary>
 public class ContextualEmbeddingServiceTests
 {
-    private readonly Mock<IEmbeddingService> _mockEmbeddingService;
-    private readonly Mock<IContextualHeaderGenerator> _mockHeaderGenerator;
+    private readonly IEmbeddingService _mockEmbeddingService;
+    private readonly IContextualHeaderGenerator _mockHeaderGenerator;
     private readonly ILogger<ContextualEmbeddingService> _logger;
 
     public ContextualEmbeddingServiceTests()
     {
-        _mockEmbeddingService = new Mock<IEmbeddingService>();
-        _mockHeaderGenerator = new Mock<IContextualHeaderGenerator>();
+        _mockEmbeddingService = Substitute.For<IEmbeddingService>();
+        _mockHeaderGenerator = Substitute.For<IContextualHeaderGenerator>();
         _logger = NullLogger<ContextualEmbeddingService>.Instance;
 
-        _mockEmbeddingService
-            .Setup(x => x.GetModelName())
-            .Returns("test-model");
+        _mockEmbeddingService.GetModelName().Returns("test-model");
 
-        _mockEmbeddingService
-            .Setup(x => x.GenerateEmbeddingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new float[] { 0.1f, 0.2f, 0.3f });
+        _mockEmbeddingService.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new float[] { 0.1f, 0.2f, 0.3f });
     }
 
     private ContextualEmbeddingService CreateService()
@@ -43,18 +39,18 @@ public class ContextualEmbeddingServiceTests
         };
 
         return new ContextualEmbeddingService(
-            _mockEmbeddingService.Object,
-            _mockHeaderGenerator.Object,
+            _mockEmbeddingService,
+            _mockHeaderGenerator,
             Microsoft.Extensions.Options.Options.Create(options),
             _logger);
     }
 
-    private Mock<IEnrichedChunk> CreateMockChunk(string content, double contextDependency = 0.5)
+    private IEnrichedChunk CreateMockChunk(string content, double contextDependency = 0.5)
     {
-        var mockChunk = new Mock<IEnrichedChunk>();
-        mockChunk.Setup(x => x.ChunkId).Returns(Guid.NewGuid().ToString());
-        mockChunk.Setup(x => x.Content).Returns(content);
-        mockChunk.Setup(x => x.ContextDependency).Returns(contextDependency);
+        var mockChunk = Substitute.For<IEnrichedChunk>();
+        mockChunk.ChunkId.Returns(Guid.NewGuid().ToString());
+        mockChunk.Content.Returns(content);
+        mockChunk.ContextDependency.Returns(contextDependency);
         return mockChunk;
     }
 
@@ -68,16 +64,14 @@ public class ContextualEmbeddingServiceTests
         var chunk = CreateMockChunk("Test content about machine learning.");
         var contextHeader = "This chunk discusses ML concepts.";
 
-        _mockHeaderGenerator
-            .Setup(x => x.GenerateAsync(It.IsAny<IEnrichedChunk>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(contextHeader);
+        _mockHeaderGenerator.GenerateAsync(Arg.Any<IEnrichedChunk>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(contextHeader);
 
         // Act
-        var result = await service.GenerateContextualEmbeddingAsync(chunk.Object);
+        var result = await service.GenerateContextualEmbeddingAsync(chunk);
 
         // Assert
         Assert.NotNull(result);
-        Assert.Equal(chunk.Object.ChunkId, result.ChunkId);
+        Assert.Equal(chunk.ChunkId, result.ChunkId);
         Assert.Equal(contextHeader, result.ContextualHeader);
         Assert.NotNull(result.Embedding);
     }
@@ -91,18 +85,14 @@ public class ContextualEmbeddingServiceTests
         var documentSummary = "This is a document about AI.";
         var contextHeader = "Context header";
 
-        _mockHeaderGenerator
-            .Setup(x => x.GenerateAsync(It.IsAny<IEnrichedChunk>(), documentSummary, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(contextHeader);
+        _mockHeaderGenerator.GenerateAsync(Arg.Any<IEnrichedChunk>(), documentSummary, Arg.Any<CancellationToken>()).Returns(contextHeader);
 
         // Act
-        var result = await service.GenerateContextualEmbeddingAsync(chunk.Object, documentSummary);
+        var result = await service.GenerateContextualEmbeddingAsync(chunk, documentSummary);
 
         // Assert
         Assert.NotNull(result);
-        _mockHeaderGenerator.Verify(
-            x => x.GenerateAsync(It.IsAny<IEnrichedChunk>(), documentSummary, It.IsAny<CancellationToken>()),
-            Times.Once);
+        await _mockHeaderGenerator.Received(1).GenerateAsync(Arg.Any<IEnrichedChunk>(), documentSummary, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -112,16 +102,14 @@ public class ContextualEmbeddingServiceTests
         var service = CreateService();
         var chunk = CreateMockChunk("Original content.");
 
-        _mockHeaderGenerator
-            .Setup(x => x.GenerateAsync(It.IsAny<IEnrichedChunk>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(string.Empty);
+        _mockHeaderGenerator.GenerateAsync(Arg.Any<IEnrichedChunk>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(string.Empty);
 
         // Act
-        var result = await service.GenerateContextualEmbeddingAsync(chunk.Object);
+        var result = await service.GenerateContextualEmbeddingAsync(chunk);
 
         // Assert
         Assert.NotNull(result);
-        Assert.Equal(chunk.Object.Content, result.ContextualContent);
+        Assert.Equal(chunk.Content, result.ContextualContent);
     }
 
     #endregion
@@ -135,9 +123,9 @@ public class ContextualEmbeddingServiceTests
         var service = CreateService();
         var chunks = new List<IEnrichedChunk>
         {
-            CreateMockChunk("Content 1").Object,
-            CreateMockChunk("Content 2").Object,
-            CreateMockChunk("Content 3").Object
+            CreateMockChunk("Content 1"),
+            CreateMockChunk("Content 2"),
+            CreateMockChunk("Content 3")
         };
 
         var headers = new Dictionary<string, string>
@@ -147,13 +135,9 @@ public class ContextualEmbeddingServiceTests
             { chunks[2].ChunkId, "Header 3" }
         };
 
-        _mockHeaderGenerator
-            .Setup(x => x.GenerateBatchAsync(It.IsAny<IEnumerable<IEnrichedChunk>>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(headers);
+        _mockHeaderGenerator.GenerateBatchAsync(Arg.Any<IEnumerable<IEnrichedChunk>>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(headers);
 
-        _mockEmbeddingService
-            .Setup(x => x.GenerateEmbeddingsBatchAsync(It.IsAny<IEnumerable<string>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<float[]>
+        _mockEmbeddingService.GenerateEmbeddingsBatchAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>()).Returns(new List<float[]>
             {
                 new float[] { 0.1f, 0.2f },
                 new float[] { 0.3f, 0.4f },
@@ -195,12 +179,10 @@ public class ContextualEmbeddingServiceTests
         var chunk = CreateMockChunk("Test content.");
         var contextHeader = "Contextual header";
 
-        _mockHeaderGenerator
-            .Setup(x => x.GenerateAsync(It.IsAny<IEnrichedChunk>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(contextHeader);
+        _mockHeaderGenerator.GenerateAsync(Arg.Any<IEnrichedChunk>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns(contextHeader);
 
         // Act
-        var result = await service.GenerateDualEmbeddingAsync(chunk.Object);
+        var result = await service.GenerateDualEmbeddingAsync(chunk);
 
         // Assert
         Assert.NotNull(result);
@@ -220,12 +202,10 @@ public class ContextualEmbeddingServiceTests
         var service = CreateService();
         var chunk = CreateMockChunk("Content", contextDependency: 0.9);
 
-        _mockHeaderGenerator
-            .Setup(x => x.GenerateAsync(It.IsAny<IEnrichedChunk>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("Header");
+        _mockHeaderGenerator.GenerateAsync(Arg.Any<IEnrichedChunk>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns("Header");
 
         // Act
-        var result = await service.GenerateContextualEmbeddingAsync(chunk.Object);
+        var result = await service.GenerateContextualEmbeddingAsync(chunk);
 
         // Assert
         Assert.Equal(ContextSource.LlmGenerated, result.ContextSource);
@@ -238,12 +218,10 @@ public class ContextualEmbeddingServiceTests
         var service = CreateService();
         var chunk = CreateMockChunk("Content", contextDependency: 0.3);
 
-        _mockHeaderGenerator
-            .Setup(x => x.GenerateAsync(It.IsAny<IEnrichedChunk>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("Header");
+        _mockHeaderGenerator.GenerateAsync(Arg.Any<IEnrichedChunk>(), Arg.Any<string?>(), Arg.Any<CancellationToken>()).Returns("Header");
 
         // Act
-        var result = await service.GenerateContextualEmbeddingAsync(chunk.Object);
+        var result = await service.GenerateContextualEmbeddingAsync(chunk);
 
         // Assert
         Assert.Equal(ContextSource.RuleBased, result.ContextSource);

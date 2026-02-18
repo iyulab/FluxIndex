@@ -41,8 +41,13 @@ public interface IPersistableHierarchyRepository
 /// <summary>
 /// In-memory chunk hierarchy repository (SDK) with optional file persistence
 /// </summary>
-public class InMemoryChunkHierarchyRepository : IChunkHierarchyRepository, IPersistableHierarchyRepository
+public partial class InMemoryChunkHierarchyRepository : IChunkHierarchyRepository, IPersistableHierarchyRepository, IDisposable
 {
+    private static readonly JsonSerializerOptions s_persistenceJsonOptions = new()
+    {
+        WriteIndented = false
+    };
+
     private readonly ConcurrentDictionary<string, ChunkHierarchy> _hierarchies = new();
     private readonly ConcurrentDictionary<string, ChunkRelationshipExtended> _relationships = new();
     private readonly ILogger<InMemoryChunkHierarchyRepository> _logger;
@@ -106,8 +111,7 @@ public class InMemoryChunkHierarchyRepository : IChunkHierarchyRepository, IPers
     /// </summary>
     public async Task SaveHierarchyAsync(ChunkHierarchy hierarchy, CancellationToken cancellationToken = default)
     {
-        if (hierarchy == null)
-            throw new ArgumentNullException(nameof(hierarchy));
+        ArgumentNullException.ThrowIfNull(hierarchy);
 
         hierarchy.UpdatedAt = DateTime.UtcNow;
         _hierarchies.AddOrUpdate(hierarchy.ChunkId, hierarchy, (key, existing) =>
@@ -123,7 +127,7 @@ public class InMemoryChunkHierarchyRepository : IChunkHierarchyRepository, IPers
             return existing;
         });
 
-        _logger.LogDebug("Chunk hierarchy saved: {ChunkId}", hierarchy.ChunkId);
+        LogChunkHierarchySaved(_logger, hierarchy.ChunkId);
 
         await AutoSaveIfEnabledAsync(cancellationToken);
     }
@@ -157,7 +161,7 @@ public class InMemoryChunkHierarchyRepository : IChunkHierarchyRepository, IPers
 
         // Simple implementation: assumes ChunkId contains documentId
         var chunks = _hierarchies.Values
-            .Where(h => h.ChunkId.StartsWith(documentId) && h.HierarchyLevel == level)
+            .Where(h => h.ChunkId.StartsWith(documentId, StringComparison.Ordinal) && h.HierarchyLevel == level)
             .OrderBy(h => h.Boundary.StartPosition)
             .ToList();
 
@@ -169,8 +173,7 @@ public class InMemoryChunkHierarchyRepository : IChunkHierarchyRepository, IPers
     /// </summary>
     public async Task SaveRelationshipAsync(ChunkRelationshipExtended relationship, CancellationToken cancellationToken = default)
     {
-        if (relationship == null)
-            throw new ArgumentNullException(nameof(relationship));
+        ArgumentNullException.ThrowIfNull(relationship);
 
         _relationships.AddOrUpdate(relationship.Id, relationship, (key, existing) =>
         {
@@ -185,7 +188,7 @@ public class InMemoryChunkHierarchyRepository : IChunkHierarchyRepository, IPers
             return existing;
         });
 
-        _logger.LogDebug("Chunk relationship saved: {RelationshipId}", relationship.Id);
+        LogChunkRelationshipSaved(_logger, relationship.Id);
 
         await AutoSaveIfEnabledAsync(cancellationToken);
     }
@@ -230,10 +233,10 @@ public class InMemoryChunkHierarchyRepository : IChunkHierarchyRepository, IPers
 
         // Get all hierarchy info for the document
         var hierarchies = _hierarchies.Values
-            .Where(h => h.ChunkId.StartsWith(documentId))
+            .Where(h => h.ChunkId.StartsWith(documentId, StringComparison.Ordinal))
             .ToList();
 
-        if (!hierarchies.Any())
+        if (hierarchies.Count == 0)
         {
             return Task.FromResult(new HierarchyStatistics
             {
@@ -260,7 +263,7 @@ public class InMemoryChunkHierarchyRepository : IChunkHierarchyRepository, IPers
 
         // Calculate average branching factor
         var parentChunks = hierarchies.Where(h => h.ChildChunkIds.Count > 0).ToList();
-        var averageBranchingFactor = parentChunks.Any()
+        var averageBranchingFactor = parentChunks.Count != 0
             ? parentChunks.Average(h => h.ChildChunkIds.Count)
             : 0.0;
 
@@ -302,7 +305,7 @@ public class InMemoryChunkHierarchyRepository : IChunkHierarchyRepository, IPers
         await _persistenceLock.WaitAsync(cancellationToken);
         try
         {
-            _logger.LogInformation("Saving hierarchy data to {FilePath}", filePath);
+            LogSavingHierarchyData(_logger, filePath);
 
             var data = new HierarchyRepositoryData
             {
@@ -343,16 +346,10 @@ public class InMemoryChunkHierarchyRepository : IChunkHierarchyRepository, IPers
                 Directory.CreateDirectory(directory);
             }
 
-            var options = new JsonSerializerOptions
-            {
-                WriteIndented = false
-            };
-
             await using var stream = File.Create(filePath);
-            await JsonSerializer.SerializeAsync(stream, data, options, cancellationToken);
+            await JsonSerializer.SerializeAsync(stream, data, s_persistenceJsonOptions, cancellationToken);
 
-            _logger.LogInformation("Hierarchy data saved successfully: {HierarchyCount} hierarchies, {RelationshipCount} relationships",
-                _hierarchies.Count, _relationships.Count);
+            LogHierarchyDataSaved(_logger, _hierarchies.Count, _relationships.Count);
         }
         finally
         {
@@ -371,7 +368,7 @@ public class InMemoryChunkHierarchyRepository : IChunkHierarchyRepository, IPers
         await _persistenceLock.WaitAsync(cancellationToken);
         try
         {
-            _logger.LogInformation("Loading hierarchy data from {FilePath}", filePath);
+            LogLoadingHierarchyData(_logger, filePath);
 
             await using var stream = File.OpenRead(filePath);
             var data = await JsonSerializer.DeserializeAsync<HierarchyRepositoryData>(stream, cancellationToken: cancellationToken);
@@ -430,14 +427,13 @@ public class InMemoryChunkHierarchyRepository : IChunkHierarchyRepository, IPers
                     Type = relType,
                     Strength = r.Strength,
                     Direction = direction,
-                    Description = r.Description
+                    Description = r.Description ?? string.Empty
                 };
 
                 _relationships[r.Id] = relationship;
             }
 
-            _logger.LogInformation("Hierarchy data loaded successfully: {HierarchyCount} hierarchies, {RelationshipCount} relationships",
-                _hierarchies.Count, _relationships.Count);
+            LogHierarchyDataLoaded(_logger, _hierarchies.Count, _relationships.Count);
         }
         finally
         {
@@ -462,8 +458,33 @@ public class InMemoryChunkHierarchyRepository : IChunkHierarchyRepository, IPers
     {
         _hierarchies.Clear();
         _relationships.Clear();
-        _logger.LogDebug("All hierarchy info has been cleared.");
+        LogHierarchyCleared(_logger);
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Chunk hierarchy saved: {ChunkId}")]
+    private static partial void LogChunkHierarchySaved(ILogger logger, string chunkId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Chunk relationship saved: {RelationshipId}")]
+    private static partial void LogChunkRelationshipSaved(ILogger logger, string relationshipId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Saving hierarchy data to {FilePath}")]
+    private static partial void LogSavingHierarchyData(ILogger logger, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Hierarchy data saved successfully: {HierarchyCount} hierarchies, {RelationshipCount} relationships")]
+    private static partial void LogHierarchyDataSaved(ILogger logger, int hierarchyCount, int relationshipCount);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Loading hierarchy data from {FilePath}")]
+    private static partial void LogLoadingHierarchyData(ILogger logger, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Hierarchy data loaded successfully: {HierarchyCount} hierarchies, {RelationshipCount} relationships")]
+    private static partial void LogHierarchyDataLoaded(ILogger logger, int hierarchyCount, int relationshipCount);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "All hierarchy info has been cleared.")]
+    private static partial void LogHierarchyCleared(ILogger logger);
+
+    #endregion
 
     /// <summary>
     /// Get current hierarchy count
@@ -474,6 +495,15 @@ public class InMemoryChunkHierarchyRepository : IChunkHierarchyRepository, IPers
     /// Get current relationship count
     /// </summary>
     public int GetRelationshipCount() => _relationships.Count;
+
+    /// <summary>
+    /// Disposes the persistence lock semaphore.
+    /// </summary>
+    public void Dispose()
+    {
+        _persistenceLock.Dispose();
+        GC.SuppressFinalize(this);
+    }
 }
 
 #region Persistence Data Classes

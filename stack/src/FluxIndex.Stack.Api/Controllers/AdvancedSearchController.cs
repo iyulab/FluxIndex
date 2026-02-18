@@ -12,7 +12,7 @@ namespace FluxIndex.Stack.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/v1/search/advanced")]
-public class AdvancedSearchController : ControllerBase
+public partial class AdvancedSearchController : ControllerBase
 {
     private readonly IAdvancedSearchService _advancedSearchService;
     private readonly ILogger<AdvancedSearchController> _logger;
@@ -50,18 +50,13 @@ public class AdvancedSearchController : ControllerBase
         var apiKey = HttpContext.GetApiKey();
         var apiKeyPrefix = apiKey?.KeyPrefix;
 
-        _logger.LogInformation(
-            "Advanced search: {Query} in collection: {CollectionId} " +
-            "(DynamicFusion: {DynamicFusion}, Listwise: {Listwise}, Entities: {Entities}, Community: {Community})",
-            request.Query, request.CollectionId,
+        LogAdvancedSearch(_logger, request.Query, request.CollectionId,
             request.EnableDynamicFusion, request.EnableListwiseReranking,
             request.EnableEntityExtraction, request.EnableCommunitySearch);
 
         var response = await _advancedSearchService.SearchAsync(request, apiKeyPrefix, cancellationToken);
 
-        _logger.LogInformation(
-            "Advanced search completed: {ResultCount} results in {ExecutionTime}ms",
-            response.TotalResults, response.ExecutionTimeMs);
+        LogAdvancedSearchCompleted(_logger, response.TotalResults, response.ExecutionTimeMs);
 
         return Ok(ApiResponse<AdvancedSearchResponse>.Ok(response));
     }
@@ -122,9 +117,7 @@ public class AdvancedSearchController : ControllerBase
         var communityInfo = await _advancedSearchService.BuildCommunitiesAsync(
             collectionId, maxLevels, cancellationToken);
 
-        _logger.LogInformation(
-            "Built {Count} communities for collection {CollectionId}",
-            communityInfo.TotalCommunities, collectionId);
+        LogBuiltCommunities(_logger, communityInfo.TotalCommunities, collectionId);
 
         return Ok(ApiResponse<CommunitySearchInfoDto>.Ok(communityInfo));
     }
@@ -145,4 +138,17 @@ public class AdvancedSearchController : ControllerBase
 
         return Ok(ApiResponse<List<CommunityDto>>.Ok(communities));
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Advanced search: {Query} in collection: {CollectionId} (DynamicFusion: {DynamicFusion}, Listwise: {Listwise}, Entities: {Entities}, Community: {Community})")]
+    private static partial void LogAdvancedSearch(ILogger logger, string query, Guid? collectionId, bool dynamicFusion, bool listwise, bool entities, bool community);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Advanced search completed: {ResultCount} results in {ExecutionTime}ms")]
+    private static partial void LogAdvancedSearchCompleted(ILogger logger, int resultCount, double executionTime);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Built {Count} communities for collection {CollectionId}")]
+    private static partial void LogBuiltCommunities(ILogger logger, int count, Guid collectionId);
+
+    #endregion
 }

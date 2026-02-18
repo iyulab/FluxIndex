@@ -145,7 +145,7 @@ public class EntityGraphBuildOptions
     /// <summary>
     /// Whether to compute entity embeddings
     /// </summary>
-    public bool ComputeEntityEmbeddings { get; set; } = false;
+    public bool ComputeEntityEmbeddings { get; set; }
 
     /// <summary>
     /// Batch size for processing chunks
@@ -186,7 +186,7 @@ public class EntitySearchOptions
     /// <summary>
     /// Minimum score threshold for results
     /// </summary>
-    public double MinScore { get; set; } = 0.0;
+    public double MinScore { get; set; }
 
     /// <summary>
     /// Whether to include entity explanations
@@ -289,7 +289,7 @@ public class EntityGraphMergeOptions
     /// <summary>
     /// Whether to use embeddings for entity matching
     /// </summary>
-    public bool UseEmbeddingsForMatching { get; set; } = false;
+    public bool UseEmbeddingsForMatching { get; set; }
 }
 
 /// <summary>

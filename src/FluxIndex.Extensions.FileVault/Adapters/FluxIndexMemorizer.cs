@@ -10,7 +10,7 @@ namespace FluxIndex.Extensions.FileVault.Adapters;
 /// FluxIndex adapter for standalone chunk memorization.
 /// Note: VaultPipeline now handles indexing internally. This adapter is for custom scenarios.
 /// </summary>
-public sealed class FluxIndexMemorizer
+public sealed partial class FluxIndexMemorizer
 {
     private readonly IVectorStore _vectorStore;
     private readonly IEmbeddingService _embeddingService;
@@ -34,10 +34,7 @@ public sealed class FluxIndexMemorizer
     /// </summary>
     public async Task<int> MemorizeFromVaultAsync(VaultEntry entry, IReadOnlyList<string> chunks, CancellationToken ct = default)
     {
-        _logger.LogInformation(
-            "Memorizing {ChunkCount} chunks for {SourcePath}",
-            chunks.Count,
-            entry.SourcePath);
+        LogMemorizing(_logger, chunks.Count, entry.SourcePath);
 
         // Use filepath hash as document ID
         var documentId = entry.FilepathHash;
@@ -77,11 +74,7 @@ public sealed class FluxIndexMemorizer
         var storedIds = await _vectorStore.StoreBatchAsync(documentChunks, ct);
         var storedCount = storedIds.Count();
 
-        _logger.LogInformation(
-            "Memorized {StoredCount}/{TotalCount} chunks for document {DocumentId}",
-            storedCount,
-            chunks.Count,
-            documentId);
+        LogMemorized(_logger, storedCount, chunks.Count, documentId);
 
         return storedCount;
     }
@@ -93,6 +86,19 @@ public sealed class FluxIndexMemorizer
     {
         var documentId = entry.FilepathHash;
         await _vectorStore.DeleteByDocumentIdAsync(documentId, ct);
-        _logger.LogInformation("Removed chunks for document {DocumentId}", documentId);
+        LogRemovedChunks(_logger, documentId);
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Memorizing {ChunkCount} chunks for {SourcePath}")]
+    private static partial void LogMemorizing(ILogger logger, int chunkCount, string sourcePath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Memorized {StoredCount}/{TotalCount} chunks for document {DocumentId}")]
+    private static partial void LogMemorized(ILogger logger, int storedCount, int totalCount, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Removed chunks for document {DocumentId}")]
+    private static partial void LogRemovedChunks(ILogger logger, string documentId);
+
+    #endregion
 }

@@ -18,7 +18,7 @@ public class RedisCacheStoreOptions
     /// <summary>
     /// Redis database number.
     /// </summary>
-    public int DatabaseNumber { get; set; } = 0;
+    public int DatabaseNumber { get; set; }
 
     /// <summary>
     /// Default TTL for general cache entries.
@@ -68,5 +68,5 @@ public class RedisCacheStoreOptions
     /// <summary>
     /// Enable detailed logging.
     /// </summary>
-    public bool EnableDetailedLogging { get; set; } = false;
+    public bool EnableDetailedLogging { get; set; }
 }

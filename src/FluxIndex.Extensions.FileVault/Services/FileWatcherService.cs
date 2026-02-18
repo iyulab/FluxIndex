@@ -10,7 +10,7 @@ namespace FluxIndex.Extensions.FileVault.Services;
 /// <summary>
 /// File watcher service with debouncing and event-based architecture.
 /// </summary>
-public sealed class FileWatcherService : IFileWatcherService
+public sealed partial class FileWatcherService : IFileWatcherService
 {
     private readonly ILogger<FileWatcherService> _logger;
     private readonly FileVaultOptions _options;
@@ -22,7 +22,7 @@ public sealed class FileWatcherService : IFileWatcherService
     public event EventHandler<FileChangeEventArgs>? FileModified;
     public event EventHandler<FileChangeEventArgs>? FileDeleted;
     public event EventHandler<FileRenamedEventArgs>? FileRenamed;
-    public event EventHandler<WatcherErrorEventArgs>? Error;
+    public event EventHandler<WatcherErrorEventArgs>? ErrorOccurred;
 
     public FileWatcherService(
         ILogger<FileWatcherService> logger,
@@ -34,18 +34,17 @@ public sealed class FileWatcherService : IFileWatcherService
 
     public Task StartWatchingAsync(WatchedFolder folder, CancellationToken ct = default)
     {
-        if (_disposed)
-            throw new ObjectDisposedException(nameof(FileWatcherService));
+        ObjectDisposedException.ThrowIf(_disposed, nameof(FileWatcherService));
 
         if (!Directory.Exists(folder.Path))
         {
-            _logger.LogWarning("Cannot start watching: folder does not exist: {Path}", folder.Path);
+            LogFolderNotExists(_logger, folder.Path);
             return Task.CompletedTask;
         }
 
         if (_watchers.ContainsKey(folder.Id))
         {
-            _logger.LogDebug("Watcher already exists for folder {FolderId}", folder.Id);
+            LogWatcherAlreadyExists(_logger, folder.Id);
             return Task.CompletedTask;
         }
 
@@ -81,9 +80,7 @@ public sealed class FileWatcherService : IFileWatcherService
             if (_watchers.TryAdd(folder.Id, context))
             {
                 watcher.EnableRaisingEvents = true;
-                _logger.LogInformation(
-                    "Started watching folder {FolderId}: {Path} (recursive={IsRecursive})",
-                    folder.Id, folder.Path, folder.IsRecursive);
+                LogStartedWatching(_logger, folder.Id, folder.Path, folder.IsRecursive);
             }
             else
             {
@@ -92,7 +89,7 @@ public sealed class FileWatcherService : IFileWatcherService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to start watching folder {Path}", folder.Path);
+            LogFailedToStartWatching(_logger, ex, folder.Path);
             OnError(new WatcherErrorEventArgs
             {
                 FolderId = folder.Id,
@@ -111,7 +108,7 @@ public sealed class FileWatcherService : IFileWatcherService
         {
             context.Watcher.EnableRaisingEvents = false;
             context.Watcher.Dispose();
-            _logger.LogInformation("Stopped watching folder {FolderId}", folderId);
+            LogStoppedWatching(_logger, folderId);
         }
 
         return Task.CompletedTask;
@@ -225,8 +222,7 @@ public sealed class FileWatcherService : IFileWatcherService
 
     private void OnWatcherError(WatcherContext context, Exception exception)
     {
-        _logger.LogError(exception, "FileSystemWatcher error for folder {FolderId}: {Path}",
-            context.Folder.Id, context.Folder.Path);
+        LogWatcherError(_logger, exception, context.Folder.Id, context.Folder.Path);
 
         OnError(new WatcherErrorEventArgs
         {
@@ -247,36 +243,36 @@ public sealed class FileWatcherService : IFileWatcherService
             context.Watcher.EnableRaisingEvents = false;
             Thread.Sleep(1000); // Brief pause before restart
             context.Watcher.EnableRaisingEvents = true;
-            _logger.LogInformation("Successfully restarted watcher for folder {FolderId}", context.Folder.Id);
+            LogRestartedWatcher(_logger, context.Folder.Id);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to restart watcher for folder {FolderId}", context.Folder.Id);
+            LogFailedToRestartWatcher(_logger, ex, context.Folder.Id);
             context.Folder.MarkAsError(ex.Message);
         }
     }
 
     private void OnFileCreated(FileChangeEventArgs e)
     {
-        _logger.LogDebug("File created: {FilePath}", e.FilePath);
+        LogFileCreated(_logger, e.FilePath);
         FileCreated?.Invoke(this, e);
     }
 
     private void OnFileModified(FileChangeEventArgs e)
     {
-        _logger.LogDebug("File modified: {FilePath}", e.FilePath);
+        LogFileModified(_logger, e.FilePath);
         FileModified?.Invoke(this, e);
     }
 
     private void OnFileDeleted(FileChangeEventArgs e)
     {
-        _logger.LogDebug("File deleted: {FilePath}", e.FilePath);
+        LogFileDeleted(_logger, e.FilePath);
         FileDeleted?.Invoke(this, e);
     }
 
     private void OnError(WatcherErrorEventArgs e)
     {
-        Error?.Invoke(this, e);
+        ErrorOccurred?.Invoke(this, e);
     }
 
     public void Dispose()
@@ -299,6 +295,43 @@ public sealed class FileWatcherService : IFileWatcherService
         }
         _debounceContexts.Clear();
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Cannot start watching: folder does not exist: {Path}")]
+    private static partial void LogFolderNotExists(ILogger logger, string path);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Watcher already exists for folder {FolderId}")]
+    private static partial void LogWatcherAlreadyExists(ILogger logger, Guid folderId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Started watching folder {FolderId}: {Path} (recursive={IsRecursive})")]
+    private static partial void LogStartedWatching(ILogger logger, Guid folderId, string path, bool isRecursive);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to start watching folder {Path}")]
+    private static partial void LogFailedToStartWatching(ILogger logger, Exception exception, string path);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Stopped watching folder {FolderId}")]
+    private static partial void LogStoppedWatching(ILogger logger, Guid folderId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "FileSystemWatcher error for folder {FolderId}: {Path}")]
+    private static partial void LogWatcherError(ILogger logger, Exception exception, Guid folderId, string path);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Successfully restarted watcher for folder {FolderId}")]
+    private static partial void LogRestartedWatcher(ILogger logger, Guid folderId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to restart watcher for folder {FolderId}")]
+    private static partial void LogFailedToRestartWatcher(ILogger logger, Exception exception, Guid folderId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "File created: {FilePath}")]
+    private static partial void LogFileCreated(ILogger logger, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "File modified: {FilePath}")]
+    private static partial void LogFileModified(ILogger logger, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "File deleted: {FilePath}")]
+    private static partial void LogFileDeleted(ILogger logger, string filePath);
+
+    #endregion
 
     private enum FileEventType
     {

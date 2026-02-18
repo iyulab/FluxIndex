@@ -236,7 +236,7 @@ public class GlobalSearchOptions
     /// Whether to use query expansion.
     /// Default: false
     /// </summary>
-    public bool UseQueryExpansion { get; set; } = false;
+    public bool UseQueryExpansion { get; set; }
 }
 
 /// <summary>
@@ -266,7 +266,7 @@ public class AnswerSynthesisOptions
     /// Whether to structure the answer with sections.
     /// Default: false
     /// </summary>
-    public bool StructuredAnswer { get; set; } = false;
+    public bool StructuredAnswer { get; set; }
 
     /// <summary>
     /// Custom synthesis prompt template.

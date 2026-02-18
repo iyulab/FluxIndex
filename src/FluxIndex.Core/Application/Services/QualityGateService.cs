@@ -13,7 +13,7 @@ namespace FluxIndex.Core.Services;
 /// <summary>
 /// 품질 게이트 서비스 - CI/CD 통합용
 /// </summary>
-public class QualityGateService : IQualityGateService
+public partial class QualityGateService : IQualityGateService
 {
     private readonly IRAGEvaluationService _evaluationService;
     private readonly IGoldenDatasetManager _datasetManager;
@@ -50,8 +50,8 @@ public class QualityGateService : IQualityGateService
 
         try
         {
-            _logger.LogInformation("품질 게이트 실행 시작: Version={Version}, Dataset={Dataset}",
-                systemVersion, datasetId);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogQualityGate12(_logger, systemVersion, datasetId);
 
             // 1. 골든 데이터셋 로드
             var dataset = await _datasetManager.LoadDatasetAsync(datasetId, cancellationToken);
@@ -87,14 +87,15 @@ public class QualityGateService : IQualityGateService
             // 5. 요약 정보 생성
             result.Summary = GenerateQualityGateSummary(result.EvaluationResult, thresholds, passedValidation);
 
-            _logger.LogInformation("품질 게이트 실행 완료: Version={Version}, Passed={Passed}, FailedCriteria={FailedCount}",
-                systemVersion, result.Passed, result.FailedCriteria.Count);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogQualityGate11(_logger, systemVersion, result.Passed, result.FailedCriteria.Count);
 
             return result;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "품질 게이트 실행 중 오류 발생: Version={Version}", systemVersion);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogQualityGate10(_logger, ex, systemVersion);
             result.Passed = false;
             result.FailedCriteria.Add($"실행 오류: {ex.Message}");
             throw;
@@ -112,8 +113,8 @@ public class QualityGateService : IQualityGateService
     {
         try
         {
-            _logger.LogInformation("성능 비교 시작: Current={Current}, Baseline={Baseline}",
-                currentVersion, baselineVersion);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogQualityGate9(_logger, currentVersion, baselineVersion);
 
             // 현재 버전 평가
             var currentResult = await EvaluateVersion(currentVersion, datasetId, cancellationToken);
@@ -138,7 +139,7 @@ public class QualityGateService : IQualityGateService
             // 개선사항과 회귀사항 분류
             foreach (var metric in comparison)
             {
-                if (metric.Key.EndsWith("_improvement") && metric.Value is double improvement)
+                if (metric.Key.EndsWith("_improvement", StringComparison.Ordinal) && metric.Value is double improvement)
                 {
                     var metricName = metric.Key.Replace("_improvement", "");
                     if (improvement > 0)
@@ -152,15 +153,15 @@ public class QualityGateService : IQualityGateService
                 }
             }
 
-            _logger.LogInformation("성능 비교 완료: OverallImprovement={Improvement:F3}, Regressions={RegressionCount}",
-                result.OverallImprovement, result.Regressions.Count);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogQualityGate8(_logger, result.OverallImprovement, result.Regressions.Count);
 
             return result;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "성능 비교 중 오류 발생: Current={Current}, Baseline={Baseline}",
-                currentVersion, baselineVersion);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogQualityGate7(_logger, ex, currentVersion, baselineVersion);
             throw;
         }
     }
@@ -199,27 +200,27 @@ public class QualityGateService : IQualityGateService
                 if (difference < -regressionThreshold)
                 {
                     regressions.Add((metric, Math.Abs(difference)));
-                    _logger.LogWarning("품질 회귀 감지: {Metric} = {Regression:F3} (임계값: {Threshold:F3})",
-                        metric, Math.Abs(difference), regressionThreshold);
+                    if (_logger.IsEnabled(LogLevel.Information))
+                        LogQualityGate6(_logger, metric, Math.Abs(difference), regressionThreshold);
                 }
             }
 
-            var hasRegression = regressions.Any();
+            var hasRegression = regressions.Count != 0;
 
             if (hasRegression)
             {
-                _logger.LogWarning("품질 회귀 감지됨: RegressionCount={Count}", regressions.Count);
+                LogQualityGate5(_logger, regressions.Count);
             }
             else
             {
-                _logger.LogInformation("품질 회귀 없음: 모든 지표가 임계값 내에 있습니다.");
+                LogQualityGate4(_logger);
             }
 
             return hasRegression;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "품질 회귀 감지 중 오류 발생");
+            LogQualityGate3(_logger, ex);
             throw;
         }
     }
@@ -237,8 +238,8 @@ public class QualityGateService : IQualityGateService
             var cachedResult = await _resultCache.GetAsync(version, datasetId, cancellationToken);
             if (cachedResult != null)
             {
-                _logger.LogDebug("Using cached evaluation result for version={Version}, dataset={DatasetId}", 
-                    version, datasetId);
+                if (_logger.IsEnabled(LogLevel.Information))
+                    LogQualityGate2(_logger, version, datasetId);
                 return cachedResult;
             }
         }
@@ -259,14 +260,14 @@ public class QualityGateService : IQualityGateService
         if (_resultCache != null)
         {
             await _resultCache.SetAsync(version, datasetId, result, TimeSpan.FromHours(24), cancellationToken);
-            _logger.LogDebug("Cached evaluation result for version={Version}, dataset={DatasetId}", 
-                version, datasetId);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogQualityGate1(_logger, version, datasetId);
         }
 
         return result;
     }
 
-    private List<string> IdentifyFailedCriteria(BatchEvaluationResult result, EvaluationThresholds thresholds)
+    private static List<string> IdentifyFailedCriteria(BatchEvaluationResult result, EvaluationThresholds thresholds)
     {
         var failedCriteria = new List<string>();
 
@@ -303,7 +304,7 @@ public class QualityGateService : IQualityGateService
         return failedCriteria;
     }
 
-    private Dictionary<string, object> GenerateQualityGateSummary(
+    private static Dictionary<string, object> GenerateQualityGateSummary(
         BatchEvaluationResult result,
         EvaluationThresholds thresholds,
         bool passed)
@@ -327,7 +328,7 @@ public class QualityGateService : IQualityGateService
         };
     }
 
-    private Dictionary<string, double> ExtractMetrics(BatchEvaluationResult result)
+    private static Dictionary<string, double> ExtractMetrics(BatchEvaluationResult result)
     {
         return new Dictionary<string, double>
         {
@@ -344,13 +345,13 @@ public class QualityGateService : IQualityGateService
         };
     }
 
-    private bool DetectSignificantRegression(Dictionary<string, object> comparison)
+    private static bool DetectSignificantRegression(Dictionary<string, object> comparison)
     {
         var significantRegressionThreshold = -0.05; // 5% 이상 성능 저하
 
         foreach (var metric in comparison)
         {
-            if (metric.Key.EndsWith("_improvement") && metric.Value is double improvement)
+            if (metric.Key.EndsWith("_improvement", StringComparison.Ordinal) && metric.Value is double improvement)
             {
                 if (improvement < significantRegressionThreshold)
                 {
@@ -361,6 +362,35 @@ public class QualityGateService : IQualityGateService
 
         return false;
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "품질 게이트 실행 시작: Version={Version}, Dataset={Dataset}")]
+    private static partial void LogQualityGate12(ILogger logger, string version, string dataset);
+    [LoggerMessage(Level = LogLevel.Information, Message = "품질 게이트 실행 완료: Version={Version}, Passed={Passed}, FailedCriteria={FailedCount}")]
+    private static partial void LogQualityGate11(ILogger logger, string version, bool passed, int failedCount);
+    [LoggerMessage(Level = LogLevel.Error, Message = "품질 게이트 실행 중 오류 발생: Version={Version}")]
+    private static partial void LogQualityGate10(ILogger logger, Exception exception, string version);
+    [LoggerMessage(Level = LogLevel.Information, Message = "성능 비교 시작: Current={Current}, Baseline={Baseline}")]
+    private static partial void LogQualityGate9(ILogger logger, string current, string baseline);
+    [LoggerMessage(Level = LogLevel.Information, Message = "성능 비교 완료: OverallImprovement={Improvement:F3}, Regressions={RegressionCount}")]
+    private static partial void LogQualityGate8(ILogger logger, double improvement, double regressionCount);
+    [LoggerMessage(Level = LogLevel.Error, Message = "성능 비교 중 오류 발생: Current={Current}, Baseline={Baseline}")]
+    private static partial void LogQualityGate7(ILogger logger, Exception exception, string current, string baseline);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "품질 회귀 감지: {Metric} = {Regression:F3} (임계값: {Threshold:F3})")]
+    private static partial void LogQualityGate6(ILogger logger, string metric, double regression, double threshold);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "품질 회귀 감지됨: RegressionCount={Count}")]
+    private static partial void LogQualityGate5(ILogger logger, int count);
+    [LoggerMessage(Level = LogLevel.Information, Message = "품질 회귀 없음: 모든 지표가 임계값 내에 있습니다.")]
+    private static partial void LogQualityGate4(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Error, Message = "품질 회귀 감지 중 오류 발생")]
+    private static partial void LogQualityGate3(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Using cached evaluation result for version={Version}, dataset={DatasetId}")]
+    private static partial void LogQualityGate2(ILogger logger, string version, string datasetId);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Cached evaluation result for version={Version}, dataset={DatasetId}")]
+    private static partial void LogQualityGate1(ILogger logger, string version, string datasetId);
 
     #endregion
 }

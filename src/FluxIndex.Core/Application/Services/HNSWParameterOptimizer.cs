@@ -13,7 +13,7 @@ namespace FluxIndex.Core.Services;
 /// Intelligent HNSW parameter optimizer based on dataset characteristics and target requirements
 /// Uses machine learning-inspired heuristics and empirical performance models
 /// </summary>
-public class HNSWParameterOptimizer : IVectorIndexOptimizer
+public partial class HNSWParameterOptimizer : IVectorIndexOptimizer
 {
     private readonly ILogger<HNSWParameterOptimizer> _logger;
     private readonly HNSWOptimizerOptions _options;
@@ -64,8 +64,8 @@ public class HNSWParameterOptimizer : IVectorIndexOptimizer
         QualityTarget target,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Optimizing HNSW parameters for {DatasetSize} vectors, {Dimensions}D, target: {Target}",
-            datasetSize, dimensions, target);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogHNSWParameter8(_logger, datasetSize, dimensions, target);
 
         var template = Templates[target];
         var parameters = new HNSWParameters();
@@ -95,7 +95,7 @@ public class HNSWParameterOptimizer : IVectorIndexOptimizer
 
         if (!validation.IsValid)
         {
-            _logger.LogWarning("Initial parameters failed validation, applying corrections");
+            LogHNSWParameter7(_logger);
             parameters = ApplyValidationFixes(parameters, validation);
         }
 
@@ -125,11 +125,7 @@ public class HNSWParameterOptimizer : IVectorIndexOptimizer
 
         long totalMemory = vectorMemory + graphMemory + layerMemory + overheadMemory;
 
-        _logger.LogDebug("Memory estimation: Vectors={VectorMB}MB, Graph={GraphMB}MB, " +
-                        "Layers={LayerMB}MB, Overhead={OverheadMB}MB, Total={TotalMB}MB",
-            vectorMemory / (1024 * 1024), graphMemory / (1024 * 1024),
-            layerMemory / (1024 * 1024), overheadMemory / (1024 * 1024),
-            totalMemory / (1024 * 1024));
+        LogHNSWParameter6(_logger, vectorMemory / (1024 * 1024), graphMemory / (1024 * 1024), layerMemory / (1024 * 1024), overheadMemory / (1024 * 1024), totalMemory / (1024 * 1024));
 
         return totalMemory;
     }
@@ -237,7 +233,7 @@ public class HNSWParameterOptimizer : IVectorIndexOptimizer
         return result;
     }
 
-    private int OptimizeM(int baseM, double sizeAdjustment, double dimensionAdjustment, QualityTarget target)
+    private static int OptimizeM(int baseM, double sizeAdjustment, double dimensionAdjustment, QualityTarget target)
     {
         double adjustedM = baseM * sizeAdjustment * dimensionAdjustment;
 
@@ -254,7 +250,7 @@ public class HNSWParameterOptimizer : IVectorIndexOptimizer
         return Math.Max(8, Math.Min(optimizedM, 64));
     }
 
-    private int OptimizeEfConstruction(int baseEf, int m, double sizeAdjustment, QualityTarget target)
+    private static int OptimizeEfConstruction(int baseEf, int m, double sizeAdjustment, QualityTarget target)
     {
         // EfConstruction should be proportional to M and dataset characteristics
         double adjustedEf = baseEf * sizeAdjustment;
@@ -273,7 +269,7 @@ public class HNSWParameterOptimizer : IVectorIndexOptimizer
         return Math.Max(m, Math.Min((int)adjustedEf, 800));
     }
 
-    private int OptimizeEfSearch(int baseEf, int m, QualityTarget target)
+    private static int OptimizeEfSearch(int baseEf, int m, QualityTarget target)
     {
         // EfSearch optimization based on target and M
         double optimizedEf = target switch
@@ -286,7 +282,7 @@ public class HNSWParameterOptimizer : IVectorIndexOptimizer
         return Math.Max(10, Math.Min((int)optimizedEf, 500));
     }
 
-    private double OptimizeMaxLayerFactor(int datasetSize, int dimensions)
+    private static double OptimizeMaxLayerFactor(int datasetSize, int dimensions)
     {
         // Slightly adjust based on dataset characteristics
         double baseFactor = 1.44; // ln(2)
@@ -297,7 +293,7 @@ public class HNSWParameterOptimizer : IVectorIndexOptimizer
         return Math.Max(1.1, Math.Min(baseFactor, 2.0));
     }
 
-    private DistanceMetric SelectOptimalDistanceMetric(int dimensions, QualityTarget target)
+    private static DistanceMetric SelectOptimalDistanceMetric(int dimensions, QualityTarget target)
     {
         // Default to cosine for most embedding use cases
         if (dimensions >= 512) return DistanceMetric.Cosine;
@@ -306,7 +302,7 @@ public class HNSWParameterOptimizer : IVectorIndexOptimizer
         return target == QualityTarget.Speed ? DistanceMetric.DotProduct : DistanceMetric.Euclidean;
     }
 
-    private double CalculateSizeAdjustment(int datasetSize)
+    private static double CalculateSizeAdjustment(int datasetSize)
     {
         // Logarithmic adjustment based on dataset size
         return datasetSize switch
@@ -319,7 +315,7 @@ public class HNSWParameterOptimizer : IVectorIndexOptimizer
         };
     }
 
-    private double CalculateDimensionAdjustment(int dimensions)
+    private static double CalculateDimensionAdjustment(int dimensions)
     {
         // Higher dimensions benefit from more connections
         return dimensions switch
@@ -347,8 +343,7 @@ public class HNSWParameterOptimizer : IVectorIndexOptimizer
                 double reductionFactor = Math.Sqrt((double)maxMemoryBytes / estimatedMemory);
                 constrained.M = Math.Max(8, (int)(constrained.M * reductionFactor));
                 
-                _logger.LogInformation("Applied memory constraint: reduced M from {Original} to {New}",
-                    parameters.M, constrained.M);
+                LogHNSWParameter5(_logger, parameters.M, constrained.M);
             }
         }
 
@@ -363,15 +358,14 @@ public class HNSWParameterOptimizer : IVectorIndexOptimizer
                 constrained.EfConstruction = Math.Max(constrained.M, 
                     (int)(constrained.EfConstruction * Math.Sqrt(reductionFactor)));
                 
-                _logger.LogInformation("Applied time constraint: reduced EfConstruction from {Original} to {New}",
-                    parameters.EfConstruction, constrained.EfConstruction);
+                LogHNSWParameter4(_logger, parameters.EfConstruction, constrained.EfConstruction);
             }
         }
 
         return constrained;
     }
 
-    private HNSWParameters ApplyValidationFixes(HNSWParameters parameters, ParameterValidationResult validation)
+    private static HNSWParameters ApplyValidationFixes(HNSWParameters parameters, ParameterValidationResult validation)
     {
         var fixedParams = parameters.Clone();
 
@@ -411,7 +405,7 @@ public class HNSWParameterOptimizer : IVectorIndexOptimizer
         };
     }
 
-    private double EstimateRecall(HNSWParameters parameters, int datasetSize)
+    private static double EstimateRecall(HNSWParameters parameters, int datasetSize)
     {
         // Empirical formula based on research papers
         double baseRecall = 0.85;
@@ -432,15 +426,15 @@ public class HNSWParameterOptimizer : IVectorIndexOptimizer
 
     private void LogOptimizationResults(HNSWParameters parameters, HNSWPerformanceProfile profile, QualityTarget target)
     {
-        _logger.LogInformation("HNSW optimization completed for target: {Target}", target);
-        _logger.LogInformation("Optimized parameters: {Parameters}", parameters);
-        _logger.LogInformation("Expected performance: Recall={Recall:P1}, QPS={QPS:F0}, " +
-                              "Memory={Memory:F1}MB, Construction={Construction:F1}min",
-            profile.ExpectedRecall, profile.ExpectedQPS, 
-            profile.ExpectedMemoryMB, profile.ExpectedConstructionMinutes);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogHNSWParameter3(_logger, target);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogHNSWParameter2(_logger, parameters);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogHNSWParameter1(_logger, profile.ExpectedRecall, profile.ExpectedQPS, profile.ExpectedMemoryMB, profile.ExpectedConstructionMinutes);
     }
 
-    private class ParameterTemplate
+    private sealed class ParameterTemplate
     {
         public int BaseM { get; set; }
         public int BaseEfConstruction { get; set; }
@@ -449,22 +443,43 @@ public class HNSWParameterOptimizer : IVectorIndexOptimizer
         public double AccuracyMultiplier { get; set; }
         public double SpeedMultiplier { get; set; }
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Optimizing HNSW parameters for {DatasetSize} vectors, {Dimensions}D, target: {Target}")]
+    private static partial void LogHNSWParameter8(ILogger logger, int datasetSize, int dimensions, QualityTarget target);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Initial parameters failed validation, applying corrections")]
+    private static partial void LogHNSWParameter7(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Memory estimation: Vectors={VectorMB}MB, Graph={GraphMB}MB, Layers={LayerMB}MB, Overhead={OverheadMB}MB, Total={TotalMB}MB")]
+    private static partial void LogHNSWParameter6(ILogger logger, long vectorMB, long graphMB, long layerMB, long overheadMB, long totalMB);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Applied memory constraint: reduced M from {Original} to {New}")]
+    private static partial void LogHNSWParameter5(ILogger logger, int original, int @new);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Applied time constraint: reduced EfConstruction from {Original} to {New}")]
+    private static partial void LogHNSWParameter4(ILogger logger, int original, int @new);
+    [LoggerMessage(Level = LogLevel.Information, Message = "HNSW optimization completed for target: {Target}")]
+    private static partial void LogHNSWParameter3(ILogger logger, QualityTarget target);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Optimized parameters: {Parameters}")]
+    private static partial void LogHNSWParameter2(ILogger logger, HNSWParameters parameters);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Expected performance: Recall={Recall:P1}, QPS={QPS:F0}, Memory={Memory:F1}MB, Construction={Construction:F1}min")]
+    private static partial void LogHNSWParameter1(ILogger logger, double recall, double qPS, double memory, double construction);
+
+    #endregion
 }
 
 /// <summary>
 /// Configuration options for HNSW parameter optimizer
 /// </summary>
-public class HNSWOptimizerOptions
+public partial class HNSWOptimizerOptions
 {
     /// <summary>
     /// Maximum memory usage constraint in MB (0 = no limit)
     /// </summary>
-    public int MaxMemoryMB { get; set; } = 0;
+    public int MaxMemoryMB { get; set; }
 
     /// <summary>
     /// Maximum index construction time in minutes (0 = no limit)
     /// </summary>
-    public double MaxConstructionMinutes { get; set; } = 0;
+    public double MaxConstructionMinutes { get; set; }
 
     /// <summary>
     /// Number of CPU cores available for optimization calculations
@@ -485,7 +500,7 @@ public class HNSWOptimizerOptions
 /// <summary>
 /// Weights for different performance aspects in optimization
 /// </summary>
-public class PerformanceWeights
+public partial class PerformanceWeights
 {
     /// <summary>
     /// Weight for query speed (0.0 to 1.0)

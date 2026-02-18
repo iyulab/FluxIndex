@@ -248,13 +248,22 @@ if (app.Environment.IsDevelopment())
         var settingsService = scope.ServiceProvider.GetRequiredService<IAiProviderSettingsService>();
         await settingsService.InitializeDefaultProvidersAsync();
 
-        logger.LogInformation("Database initialized successfully");
+        LogDatabaseInitialized(logger);
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "Failed to initialize database");
+        LogDatabaseInitializationFailed(logger, ex);
         throw;
     }
 }
 
 app.Run();
+
+public partial class Program
+{
+    [LoggerMessage(Level = LogLevel.Information, Message = "Database initialized successfully")]
+    private static partial void LogDatabaseInitialized(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to initialize database")]
+    private static partial void LogDatabaseInitializationFailed(ILogger logger, Exception? exception);
+}

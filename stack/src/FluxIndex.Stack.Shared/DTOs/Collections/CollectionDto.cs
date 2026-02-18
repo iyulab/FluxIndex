@@ -22,8 +22,8 @@ public class CollectionSettingsDto
     public int ChunkSize { get; init; } = 1000;
     public int ChunkOverlap { get; init; } = 200;
     public string ChunkingStrategy { get; init; } = "intelligent";
-    public bool EnableQAGeneration { get; init; } = false;
-    public bool EnableEnrichment { get; init; } = false;
+    public bool EnableQAGeneration { get; init; }
+    public bool EnableEnrichment { get; init; }
     public Dictionary<string, object> CustomSettings { get; init; } = new();
 }
 

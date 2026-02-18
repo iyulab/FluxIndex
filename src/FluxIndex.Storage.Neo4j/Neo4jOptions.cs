@@ -48,5 +48,5 @@ public class Neo4jOptions
     /// <summary>
     /// Whether to encrypt connections (for production environments).
     /// </summary>
-    public bool Encrypted { get; set; } = false;
+    public bool Encrypted { get; set; }
 }

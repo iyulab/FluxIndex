@@ -11,6 +11,7 @@ using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Core.Domain.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Globalization;
 
 namespace FluxIndex.Core.Application.Services;
 
@@ -18,8 +19,11 @@ namespace FluxIndex.Core.Application.Services;
 /// Agentic Retrieval Router implementation.
 /// Intelligently routes queries to the most appropriate retrieval strategy.
 /// </summary>
-public class AgenticRetrievalRouter : IAgenticRetrievalRouter
+public partial class AgenticRetrievalRouter : IAgenticRetrievalRouter
 {
+    private static readonly char[] QuerySplitSeparators = [' ', ',', '.', '?', '!'];
+    private static readonly string[] ConjunctionSeparators = [" and ", " AND "];
+
     private readonly IHybridSearchService _hybridSearchService;
     private readonly ISelfRAGService? _selfRAGService;
     private readonly ICorrectiveRAGService? _correctiveRAGService;
@@ -56,7 +60,7 @@ public class AgenticRetrievalRouter : IAgenticRetrievalRouter
 
     private void InitializeStrategyPerformance()
     {
-        foreach (RetrievalStrategy strategy in Enum.GetValues(typeof(RetrievalStrategy)))
+        foreach (var strategy in Enum.GetValues<RetrievalStrategy>())
         {
             _strategyPerformance[strategy] = new StrategyPerformance
             {
@@ -120,7 +124,7 @@ public class AgenticRetrievalRouter : IAgenticRetrievalRouter
 
         try
         {
-            _logger.LogDebug("Routing query: {Query}", query);
+            LogRoutingQuery(_logger, query);
 
             // Step 1: Analyze query and make routing decision
             var decision = await AnalyzeQueryAsync(query, context, cancellationToken);
@@ -141,8 +145,7 @@ public class AgenticRetrievalRouter : IAgenticRetrievalRouter
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _logger.LogWarning(ex, "Primary strategy {Strategy} failed, trying fallbacks",
-                    decision.PrimaryStrategy);
+                LogPrimaryStrategyFailed(_logger, ex, decision.PrimaryStrategy);
 
                 // Try fallback strategies
                 foreach (var fallback in decision.FallbackStrategies)
@@ -157,7 +160,7 @@ public class AgenticRetrievalRouter : IAgenticRetrievalRouter
                     }
                     catch (Exception fallbackEx) when (fallbackEx is not OperationCanceledException)
                     {
-                        _logger.LogWarning(fallbackEx, "Fallback strategy {Strategy} also failed", fallback);
+                        LogFallbackStrategyFailed(_logger, fallbackEx, fallback);
                     }
                 }
 
@@ -193,16 +196,14 @@ public class AgenticRetrievalRouter : IAgenticRetrievalRouter
                 RoutingExplanation = decision.Explanation
             };
 
-            _logger.LogInformation(
-                "Routing completed: Strategy={Strategy}, Documents={Count}, Quality={Quality:F2}, Time={Time}ms",
-                executedStrategy, documents.Count, qualityScore, totalStopwatch.ElapsedMilliseconds);
+            LogRoutingCompleted(_logger, executedStrategy, documents.Count, qualityScore, totalStopwatch.ElapsedMilliseconds);
 
             return result;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             totalStopwatch.Stop();
-            _logger.LogError(ex, "Routing failed for query: {Query}", query);
+            LogRoutingFailed(_logger, ex, query);
 
             return new RoutingResult
             {
@@ -408,7 +409,7 @@ public class AgenticRetrievalRouter : IAgenticRetrievalRouter
                     var allPrerequisitesComplete = prerequisites.All(p =>
                         stepResults.Any(r => r.StepId == p && r.IsSuccessful));
 
-                    if (!allPrerequisitesComplete && prerequisites.Any())
+                    if (!allPrerequisitesComplete && prerequisites.Count != 0)
                     {
                         throw new InvalidOperationException(
                             $"Prerequisites for step {step.StepNumber} not completed");
@@ -436,7 +437,7 @@ public class AgenticRetrievalRouter : IAgenticRetrievalRouter
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     stepStopwatch.Stop();
-                    _logger.LogError(ex, "Step {StepNumber} failed", step.StepNumber);
+                    LogStepFailed(_logger, ex, step.StepNumber);
 
                     stepResults.Add(new StepResult
                     {
@@ -471,7 +472,7 @@ public class AgenticRetrievalRouter : IAgenticRetrievalRouter
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             stopwatch.Stop();
-            _logger.LogError(ex, "Plan execution failed");
+            LogPlanExecutionFailed(_logger, ex);
 
             return new MultiStepRetrievalResult
             {
@@ -496,16 +497,14 @@ public class AgenticRetrievalRouter : IAgenticRetrievalRouter
 
         _feedbackHistory[routingId] = feedback;
 
-        _logger.LogDebug(
-            "Recorded feedback for routing {RoutingId}: Satisfactory={Satisfactory}, Rating={Rating}",
-            routingId, feedback.WasSatisfactory, feedback.QualityRating);
+        LogRecordedFeedback(_logger, routingId, feedback.WasSatisfactory, feedback.QualityRating);
 
         return Task.CompletedTask;
     }
 
     #region Private Helper Methods
 
-    private async Task<RoutingQueryAnalysis> AnalyzeQueryCharacteristicsAsync(
+    private static async Task<RoutingQueryAnalysis> AnalyzeQueryCharacteristicsAsync(
         string query,
         CancellationToken cancellationToken)
     {
@@ -541,17 +540,17 @@ public class AgenticRetrievalRouter : IAgenticRetrievalRouter
         };
     }
 
-    private RoutingQueryType ClassifyQueryType(string query)
+    private static RoutingQueryType ClassifyQueryType(string query)
     {
         var lowerQuery = query.ToLowerInvariant();
 
-        if (lowerQuery.StartsWith("what is") || lowerQuery.StartsWith("define"))
+        if (lowerQuery.StartsWith("what is", StringComparison.Ordinal) || lowerQuery.StartsWith("define", StringComparison.Ordinal))
             return RoutingQueryType.Definition;
 
-        if (lowerQuery.StartsWith("how to") || lowerQuery.StartsWith("how do"))
+        if (lowerQuery.StartsWith("how to", StringComparison.Ordinal) || lowerQuery.StartsWith("how do", StringComparison.Ordinal))
             return RoutingQueryType.Procedural;
 
-        if (lowerQuery.StartsWith("why") || lowerQuery.Contains("reason"))
+        if (lowerQuery.StartsWith("why", StringComparison.Ordinal) || lowerQuery.Contains("reason"))
             return RoutingQueryType.Causal;
 
         if (lowerQuery.Contains("compare") || lowerQuery.Contains("difference") ||
@@ -562,25 +561,25 @@ public class AgenticRetrievalRouter : IAgenticRetrievalRouter
             lowerQuery.Contains("should"))
             return RoutingQueryType.Opinion;
 
-        if (lowerQuery.Contains(" and ") && lowerQuery.Contains("?"))
+        if (lowerQuery.Contains(" and ") && lowerQuery.Contains('?'))
             return RoutingQueryType.Complex;
 
         if (lowerQuery.Contains("list") || lowerQuery.Contains("all") ||
             lowerQuery.Contains("summary"))
             return RoutingQueryType.Aggregation;
 
-        if (lowerQuery.StartsWith("where") || lowerQuery.StartsWith("find"))
+        if (lowerQuery.StartsWith("where", StringComparison.Ordinal) || lowerQuery.StartsWith("find", StringComparison.Ordinal))
             return RoutingQueryType.Navigation;
 
         // Check for factual patterns
-        if (lowerQuery.StartsWith("who") || lowerQuery.StartsWith("when") ||
-            lowerQuery.StartsWith("what") || lowerQuery.Contains("?"))
+        if (lowerQuery.StartsWith("who", StringComparison.Ordinal) || lowerQuery.StartsWith("when", StringComparison.Ordinal) ||
+            lowerQuery.StartsWith("what", StringComparison.Ordinal) || lowerQuery.Contains('?'))
             return RoutingQueryType.Factual;
 
         return RoutingQueryType.Unknown;
     }
 
-    private RoutingQueryIntent ClassifyQueryIntent(string query)
+    private static RoutingQueryIntent ClassifyQueryIntent(string query)
     {
         var lowerQuery = query.ToLowerInvariant();
 
@@ -603,7 +602,7 @@ public class AgenticRetrievalRouter : IAgenticRetrievalRouter
         return RoutingQueryIntent.Informational;
     }
 
-    private double CalculateQueryComplexity(string query)
+    private static double CalculateQueryComplexity(string query)
     {
         var factors = new List<double>();
 
@@ -614,23 +613,23 @@ public class AgenticRetrievalRouter : IAgenticRetrievalRouter
         // Question word count
         var questionWords = new[] { "what", "why", "how", "when", "where", "who", "which" };
         var questionWordCount = questionWords.Count(w =>
-            query.ToLowerInvariant().Contains(w));
+            query.Contains(w, StringComparison.OrdinalIgnoreCase));
         factors.Add(Math.Min(questionWordCount / 3.0, 1.0));
 
         // Conjunction count (suggests compound query)
         var conjunctions = new[] { " and ", " or ", " but ", " because " };
-        var conjunctionCount = conjunctions.Count(c => query.ToLowerInvariant().Contains(c));
+        var conjunctionCount = conjunctions.Count(c => query.Contains(c, StringComparison.OrdinalIgnoreCase));
         factors.Add(Math.Min(conjunctionCount / 2.0, 1.0));
 
         // Technical terms (rough heuristic)
         var technicalPattern = new Regex(@"\b[A-Z][a-z]+[A-Z]\w*\b|\b\w+\.\w+\b");
-        var technicalCount = technicalPattern.Matches(query).Count;
+        var technicalCount = technicalPattern.Count(query);
         factors.Add(Math.Min(technicalCount / 3.0, 1.0));
 
         return factors.Average();
     }
 
-    private IReadOnlyList<string> ExtractEntities(string query)
+    private static List<string> ExtractEntities(string query)
     {
         var entities = new List<string>();
 
@@ -648,7 +647,7 @@ public class AgenticRetrievalRouter : IAgenticRetrievalRouter
         return entities.Distinct().ToList();
     }
 
-    private IReadOnlyList<string> ExtractKeyConcepts(string query)
+    private static List<string> ExtractKeyConcepts(string query)
     {
         // Simple concept extraction - remove stop words and get significant terms
         var stopWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -666,7 +665,7 @@ public class AgenticRetrievalRouter : IAgenticRetrievalRouter
         };
 
         var words = query.ToLowerInvariant()
-            .Split(new[] { ' ', ',', '.', '?', '!' }, StringSplitOptions.RemoveEmptyEntries)
+            .Split(QuerySplitSeparators, StringSplitOptions.RemoveEmptyEntries)
             .Where(w => w.Length > 2 && !stopWords.Contains(w))
             .Distinct()
             .ToList();
@@ -674,10 +673,10 @@ public class AgenticRetrievalRouter : IAgenticRetrievalRouter
         return words;
     }
 
-    private IReadOnlyList<string> DecomposeQuery(string query)
+    private static IReadOnlyList<string> DecomposeQuery(string query)
     {
         // Check for explicit sub-questions
-        if (query.Contains("?") && query.Count(c => c == '?') > 1)
+        if (query.Contains('?') && query.Count(c => c == '?') > 1)
         {
             return query.Split('?', StringSplitOptions.RemoveEmptyEntries)
                 .Select(q => q.Trim() + "?")
@@ -686,9 +685,9 @@ public class AgenticRetrievalRouter : IAgenticRetrievalRouter
         }
 
         // Check for conjunctions suggesting compound query
-        if (query.ToLowerInvariant().Contains(" and ") && query.Length > 50)
+        if (query.Contains(" and ", StringComparison.OrdinalIgnoreCase) && query.Length > 50)
         {
-            var parts = query.Split(new[] { " and ", " AND " }, StringSplitOptions.RemoveEmptyEntries);
+            var parts = query.Split(ConjunctionSeparators, StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length > 1 && parts.All(p => p.Length > 10))
             {
                 return parts.Select(p => p.Trim()).ToList();
@@ -699,7 +698,7 @@ public class AgenticRetrievalRouter : IAgenticRetrievalRouter
         return new[] { query };
     }
 
-    private int EstimateOptimalResultCount(RoutingQueryType type, double complexity)
+    private static int EstimateOptimalResultCount(RoutingQueryType type, double complexity)
     {
         var baseCount = type switch
         {
@@ -720,7 +719,7 @@ public class AgenticRetrievalRouter : IAgenticRetrievalRouter
         return Math.Min(adjustedCount, 15);
     }
 
-    private IReadOnlyList<QueryFeature> DetectQueryFeatures(string query, RoutingQueryAnalysis analysis)
+    private static List<QueryFeature> DetectQueryFeatures(string query, RoutingQueryAnalysis analysis)
     {
         var features = new List<QueryFeature>();
 
@@ -855,7 +854,7 @@ public class AgenticRetrievalRouter : IAgenticRetrievalRouter
         return (strategy, 0.75, explanation);
     }
 
-    private IReadOnlyList<RetrievalStrategy> DetermineFallbackStrategies(
+    private static List<RetrievalStrategy> DetermineFallbackStrategies(
         RetrievalStrategy primary,
         RoutingQueryAnalysis analysis,
         RoutingContext? context)
@@ -1018,15 +1017,14 @@ public class AgenticRetrievalRouter : IAgenticRetrievalRouter
 
             default:
                 // Fallback to hybrid search for unsupported strategies
-                _logger.LogWarning("Strategy {Strategy} not fully supported, falling back to hybrid search",
-                    strategy);
+                LogStrategyNotSupported(_logger, strategy);
                 return await ExecuteStrategyAsync(RetrievalStrategy.HybridSearch, query, context, cancellationToken);
         }
 
         return documents;
     }
 
-    private static double CalculateQualityScore(IReadOnlyList<RoutedDocument> documents)
+    private static double CalculateQualityScore(List<RoutedDocument> documents)
     {
         if (documents.Count == 0) return 0;
 
@@ -1056,7 +1054,7 @@ public class AgenticRetrievalRouter : IAgenticRetrievalRouter
         }
     }
 
-    private static IReadOnlyList<RetrievalStep> TopologicalSort(
+    private static List<RetrievalStep> TopologicalSort(
         IReadOnlyList<RetrievalStep> steps,
         IReadOnlyList<StepDependency> dependencies)
     {
@@ -1094,7 +1092,7 @@ public class AgenticRetrievalRouter : IAgenticRetrievalRouter
         return result;
     }
 
-    private static IReadOnlyList<RoutedDocument> MergeStepResults(
+    private static List<RoutedDocument> MergeStepResults(
         IEnumerable<IReadOnlyList<RoutedDocument>> stepResults)
     {
         var allDocs = stepResults.SelectMany(r => r).ToList();
@@ -1109,20 +1107,51 @@ public class AgenticRetrievalRouter : IAgenticRetrievalRouter
         return merged;
     }
 
-    private static string GeneratePlanExplanation(RoutingQueryAnalysis analysis, IReadOnlyList<RetrievalStep> steps)
+    private static string GeneratePlanExplanation(RoutingQueryAnalysis analysis, List<RetrievalStep> steps)
     {
         var explanation = new System.Text.StringBuilder();
-        explanation.AppendLine($"Query Type: {analysis.Type}");
-        explanation.AppendLine($"Complexity: {analysis.Complexity:F2}");
-        explanation.AppendLine($"Steps: {steps.Count}");
+        explanation.AppendLine(CultureInfo.InvariantCulture, $"Query Type: {analysis.Type}");
+        explanation.AppendLine(CultureInfo.InvariantCulture, $"Complexity: {analysis.Complexity:F2}");
+        explanation.AppendLine(CultureInfo.InvariantCulture, $"Steps: {steps.Count}");
 
         foreach (var step in steps)
         {
-            explanation.AppendLine($"  Step {step.StepNumber}: {step.Strategy} - {step.Purpose}");
+            explanation.AppendLine(CultureInfo.InvariantCulture, $"  Step {step.StepNumber}: {step.Strategy} - {step.Purpose}");
         }
 
         return explanation.ToString();
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Routing query: {Query}")]
+    private static partial void LogRoutingQuery(ILogger logger, string query);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Primary strategy {Strategy} failed, trying fallbacks")]
+    private static partial void LogPrimaryStrategyFailed(ILogger logger, Exception ex, RetrievalStrategy strategy);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Fallback strategy {Strategy} also failed")]
+    private static partial void LogFallbackStrategyFailed(ILogger logger, Exception ex, RetrievalStrategy strategy);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Routing completed: Strategy={Strategy}, Documents={Count}, Quality={Quality}, Time={Time}ms")]
+    private static partial void LogRoutingCompleted(ILogger logger, RetrievalStrategy strategy, int count, double quality, long time);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Routing failed for query: {Query}")]
+    private static partial void LogRoutingFailed(ILogger logger, Exception ex, string query);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Recorded feedback for routing {RoutingId}: Satisfactory={Satisfactory}, Rating={Rating}")]
+    private static partial void LogRecordedFeedback(ILogger logger, string routingId, bool satisfactory, double rating);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Step {StepNumber} failed")]
+    private static partial void LogStepFailed(ILogger logger, Exception ex, int stepNumber);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Plan execution failed")]
+    private static partial void LogPlanExecutionFailed(ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Strategy {Strategy} not fully supported, falling back to hybrid search")]
+    private static partial void LogStrategyNotSupported(ILogger logger, RetrievalStrategy strategy);
 
     #endregion
 }
@@ -1130,7 +1159,7 @@ public class AgenticRetrievalRouter : IAgenticRetrievalRouter
 /// <summary>
 /// Performance metrics for a retrieval strategy.
 /// </summary>
-internal class StrategyPerformance
+internal sealed class StrategyPerformance
 {
     public RetrievalStrategy Strategy { get; init; }
     public TimeSpan AverageLatency { get; set; }
@@ -1172,7 +1201,7 @@ public class AgenticRetrievalRouterOptions
     /// <summary>
     /// Enable detailed routing explanations.
     /// </summary>
-    public bool EnableDetailedExplanations { get; set; } = false;
+    public bool EnableDetailedExplanations { get; set; }
 
     /// <summary>
     /// Enable performance tracking.

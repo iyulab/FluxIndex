@@ -16,7 +16,7 @@ namespace FluxIndex.Storage.PostgreSQL;
 /// Note: PostgreSQL is a general-purpose provider, not specialized.
 /// Specialized providers (Qdrant, Neo4j) take priority when available.
 /// </remarks>
-public class PostgreSQLUnifiedProvider : IStorageProvider, IVectorCapable, ISemanticCacheCapable
+public partial class PostgreSQLUnifiedProvider : IStorageProvider, IVectorCapable, ISemanticCacheCapable
 {
     private readonly IVectorStore _vectorStore;
     private readonly ISemanticCacheService? _semanticCache;
@@ -44,9 +44,8 @@ public class PostgreSQLUnifiedProvider : IStorageProvider, IVectorCapable, ISema
 
         Capabilities = caps;
 
-        _logger?.LogDebug(
-            "PostgreSQLUnifiedProvider initialized with capabilities: {Capabilities}",
-            Capabilities);
+        if (_logger is not null)
+            LogProviderInitialized(_logger, Capabilities);
     }
 
     /// <inheritdoc />
@@ -69,6 +68,13 @@ public class PostgreSQLUnifiedProvider : IStorageProvider, IVectorCapable, ISema
     public ISemanticCacheService SemanticCache =>
         _semanticCache ?? throw new InvalidOperationException(
             "Semantic cache is not configured for this PostgreSQL provider.");
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "PostgreSQLUnifiedProvider initialized with capabilities: {Capabilities}")]
+    private static partial void LogProviderInitialized(ILogger logger, StorageCapabilities capabilities);
+
+    #endregion
 }
 
 /// <summary>

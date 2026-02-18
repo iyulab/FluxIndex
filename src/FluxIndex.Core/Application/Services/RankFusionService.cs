@@ -8,7 +8,7 @@ namespace FluxIndex.Core.Services;
 /// <summary>
 /// Implementation of rank fusion algorithms for combining multiple search result sets.
 /// </summary>
-public class RankFusionService : IRankFusionService
+public partial class RankFusionService : IRankFusionService
 {
     private readonly ILogger<RankFusionService> _logger;
 
@@ -26,14 +26,14 @@ public class RankFusionService : IRankFusionService
         int k = 60,
         int topN = 10)
     {
-        if (resultSets == null || !resultSets.Any())
+        if (resultSets == null || resultSets.Count == 0)
         {
-            _logger.LogWarning("No result sets provided for RRF fusion");
+            LogRankFusion8(_logger);
             return Enumerable.Empty<RankedResult>();
         }
 
-        _logger.LogInformation("Performing RRF fusion on {Count} result sets with k={K}",
-            resultSets.Count, k);
+        if (_logger.IsEnabled(LogLevel.Warning))
+            LogRankFusion7(_logger, resultSets.Count, k);
 
         // Dictionary to accumulate RRF scores
         var rrfScores = new Dictionary<string, (RankedResult result, double score)>();
@@ -61,8 +61,8 @@ public class RankFusionService : IRankFusionService
                         score: existing.score + rrfScore
                     );
 
-                    _logger.LogDebug("Accumulated RRF score for {Key}: {Score}",
-                        key, rrfScores[key].score);
+                    if (_logger.IsEnabled(LogLevel.Warning))
+                        LogRankFusion6(_logger, key, rrfScores[key].score);
                 }
                 else
                 {
@@ -84,8 +84,7 @@ public class RankFusionService : IRankFusionService
             .Take(topN)
             .ToList();
 
-        _logger.LogInformation("RRF fusion completed: {Count} unique results, returning top {TopN}",
-            rrfScores.Count, fusedResults.Count);
+        LogRankFusion5(_logger, rrfScores.Count, fusedResults.Count);
 
         return fusedResults;
     }
@@ -97,20 +96,20 @@ public class RankFusionService : IRankFusionService
         Dictionary<string, (IEnumerable<RankedResult> results, double weight)> resultSets,
         int topN = 10)
     {
-        if (resultSets == null || !resultSets.Any())
+        if (resultSets == null || resultSets.Count == 0)
         {
-            _logger.LogWarning("No result sets provided for weighted fusion");
+            LogRankFusion4(_logger);
             return Enumerable.Empty<RankedResult>();
         }
 
-        _logger.LogInformation("Performing weighted fusion on {Count} result sets",
-            resultSets.Count);
+        LogRankFusion3(_logger, resultSets.Count);
 
         // Normalize weights to sum to 1
         var totalWeight = resultSets.Sum(rs => rs.Value.weight);
         if (totalWeight <= 0)
         {
-            _logger.LogError("Invalid weights: total weight is {TotalWeight}", totalWeight);
+            if (_logger.IsEnabled(LogLevel.Warning))
+                LogRankFusion2(_logger, totalWeight);
             throw new ArgumentException("Total weight must be positive", nameof(resultSets));
         }
 
@@ -157,8 +156,7 @@ public class RankFusionService : IRankFusionService
             .Take(topN)
             .ToList();
 
-        _logger.LogInformation("Weighted fusion completed: {Count} unique results, returning top {TopN}",
-            weightedScores.Count, fusedResults.Count);
+        LogRankFusion1(_logger, weightedScores.Count, fusedResults.Count);
 
         return fusedResults;
     }
@@ -169,7 +167,7 @@ public class RankFusionService : IRankFusionService
     public IEnumerable<RankedResult> NormalizeScores(IEnumerable<RankedResult> results)
     {
         var resultList = results.ToList();
-        if (!resultList.Any())
+        if (resultList.Count == 0)
         {
             return resultList;
         }
@@ -228,4 +226,25 @@ public class RankFusionService : IRankFusionService
 
         return existing;
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No result sets provided for RRF fusion")]
+    private static partial void LogRankFusion8(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Performing RRF fusion on {Count} result sets with k={K}")]
+    private static partial void LogRankFusion7(ILogger logger, int count, int k);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Accumulated RRF score for {Key}: {Score}")]
+    private static partial void LogRankFusion6(ILogger logger, string key, double score);
+    [LoggerMessage(Level = LogLevel.Information, Message = "RRF fusion completed: {Count} unique results, returning top {TopN}")]
+    private static partial void LogRankFusion5(ILogger logger, int count, int topN);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No result sets provided for weighted fusion")]
+    private static partial void LogRankFusion4(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Performing weighted fusion on {Count} result sets")]
+    private static partial void LogRankFusion3(ILogger logger, int count);
+    [LoggerMessage(Level = LogLevel.Error, Message = "Invalid weights: total weight is {TotalWeight}")]
+    private static partial void LogRankFusion2(ILogger logger, double totalWeight);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Weighted fusion completed: {Count} unique results, returning top {TopN}")]
+    private static partial void LogRankFusion1(ILogger logger, int count, int topN);
+
+    #endregion
 }

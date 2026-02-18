@@ -5,14 +5,17 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Text.Json;
+using System.Globalization;
 
 namespace FluxIndex.Storage.SQLite;
 
 /// <summary>
 /// sqlite-vec 확장을 사용하는 고성능 SQLite 벡터 저장소
 /// </summary>
-public class SQLiteVecVectorStore : IVectorStore
+public partial class SQLiteVecVectorStore : IVectorStore, IDisposable
 {
+    private static readonly char[] FtsQuerySeparators = [' ', '\t', '\n'];
+
     private readonly SQLiteVecDbContext _context;
     private readonly ILogger<SQLiteVecVectorStore> _logger;
     private readonly SQLiteVecOptions _options;
@@ -96,7 +99,7 @@ public class SQLiteVecVectorStore : IVectorStore
                     await _context.SaveChangesAsync(cancellationToken);
                     await transaction.CommitAsync(cancellationToken);
 
-                    _logger.LogDebug("벡터 저장 완료: {Id}, Document: {DocumentId}", id, chunk.DocumentId);
+                    LogVectorStored(_logger, id, chunk.DocumentId);
                     return id;
                 }
                 catch
@@ -112,7 +115,7 @@ public class SQLiteVecVectorStore : IVectorStore
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "벡터 저장 실패: Document {DocumentId}", chunk.DocumentId);
+            LogVectorStoreFailed(_logger, ex, chunk.DocumentId);
             throw;
         }
     }
@@ -120,7 +123,7 @@ public class SQLiteVecVectorStore : IVectorStore
     public async Task<IEnumerable<string>> StoreBatchAsync(IEnumerable<DocumentChunk> chunks, CancellationToken cancellationToken = default)
     {
         var chunkList = chunks.ToList();
-        if (!chunkList.Any())
+        if (chunkList.Count == 0)
             return Enumerable.Empty<string>();
 
         try
@@ -151,9 +154,7 @@ public class SQLiteVecVectorStore : IVectorStore
             var isLargeBatch = chunkList.Count > 1000;
             if (isLargeBatch)
             {
-                _logger.LogInformation(
-                    "대용량 배치 저장 시작: 총 {TotalCount}개 항목, {BatchCount}개 배치 (배치당 {BatchSize}개)",
-                    chunkList.Count, totalBatches, batchSize);
+                LogLargeBatchStart(_logger, chunkList.Count, totalBatches, batchSize);
             }
 
             for (int i = 0; i < chunkList.Count; i += batchSize)
@@ -174,9 +175,7 @@ public class SQLiteVecVectorStore : IVectorStore
                     var remaining = TimeSpan.FromTicks(
                         (long)(elapsed.Ticks * (chunkList.Count - processedCount) / (double)processedCount));
 
-                    _logger.LogDebug(
-                        "배치 저장 진행: {Processed}/{Total} ({Percent:P0}), 경과: {Elapsed:mm\\:ss}, 예상 남은 시간: {Remaining:mm\\:ss}",
-                        processedCount, chunkList.Count, (double)processedCount / chunkList.Count,
+                    LogBatchProgress(_logger, processedCount, chunkList.Count, (double)processedCount / chunkList.Count,
                         elapsed, remaining);
                 }
             }
@@ -184,15 +183,13 @@ public class SQLiteVecVectorStore : IVectorStore
             var totalElapsed = DateTime.UtcNow - startTime;
             var rate = totalElapsed.TotalSeconds > 0 ? ids.Count / totalElapsed.TotalSeconds : 0;
 
-            _logger.LogInformation(
-                "배치 벡터 저장 완료: {Count}개 항목, 소요 시간: {Elapsed:mm\\:ss\\.fff}, 처리율: {Rate:F0}개/초",
-                ids.Count, totalElapsed, rate);
+            LogBatchStoreCompleted(_logger, ids.Count, totalElapsed, rate);
 
             return ids;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "배치 벡터 저장 실패: {Count}개 항목", chunkList.Count);
+            LogBatchStoreFailed(_logger, ex, chunkList.Count);
             throw;
         }
     }
@@ -241,7 +238,7 @@ public class SQLiteVecVectorStore : IVectorStore
                 await _context.SaveChangesAsync(cancellationToken);
 
                 // 3단계: 벡터 배치 삽입 (단일 SQL 문으로 최적화)
-                if (vectorBatch.Any())
+                if (vectorBatch.Count != 0)
                 {
                     await StoreBatchVectorsAsync(vectorBatch, cancellationToken);
                 }
@@ -267,7 +264,7 @@ public class SQLiteVecVectorStore : IVectorStore
     /// </summary>
     private async Task StoreBatchVectorsAsync(List<(string Id, float[] Embedding)> vectorBatch, CancellationToken cancellationToken)
     {
-        if (!vectorBatch.Any()) return;
+        if (vectorBatch.Count == 0) return;
 
         try
         {
@@ -282,7 +279,7 @@ public class SQLiteVecVectorStore : IVectorStore
                 int paramIndex = 0;
                 foreach (var (id, embedding) in batch)
                 {
-                    var vectorString = "[" + string.Join(",", embedding.Select(f => f.ToString("F6"))) + "]";
+                    var vectorString = "[" + string.Join(",", embedding.Select(f => f.ToString("F6", CultureInfo.InvariantCulture))) + "]";
                     valuesClauses.Add($"({{{paramIndex}}}, {{{paramIndex + 1}}})");
                     parameters.Add(id);
                     parameters.Add(vectorString);
@@ -293,12 +290,12 @@ public class SQLiteVecVectorStore : IVectorStore
                 var sql = $"INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES {string.Join(", ", valuesClauses)}";
                 await _context.Database.ExecuteSqlRawAsync(sql, parameters.ToArray(), cancellationToken);
 
-                _logger.LogDebug("배치 벡터 삽입 완료: {Count}개", batch.Count);
+                LogBatchVectorInserted(_logger, batch.Count);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "배치 벡터 삽입 실패");
+            LogBatchVectorInsertFailed(_logger, ex);
             throw;
         }
     }
@@ -336,7 +333,7 @@ public class SQLiteVecVectorStore : IVectorStore
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "벡터 조회 실패: {Id}", id);
+            LogVectorGetFailed(_logger, ex, id);
             throw;
         }
     }
@@ -369,12 +366,12 @@ public class SQLiteVecVectorStore : IVectorStore
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "벡터 검색 실패");
+            LogVectorSearchFailed(_logger, ex);
 
             // 폴백 모드 활성화
             if (_options.FallbackToInMemoryOnError)
             {
-                _logger.LogInformation("폴백 모드로 검색 재시도");
+                LogFallbackRetry(_logger);
                 _sqliteVecAvailable = false;
                 return await _fallbackStore.Value.SearchAsync(queryEmbedding, topK, minScore, cancellationToken);
             }
@@ -390,7 +387,7 @@ public class SQLiteVecVectorStore : IVectorStore
         CancellationToken cancellationToken)
     {
         // sqlite-vec 네이티브 검색 사용
-        var vectorString = "[" + string.Join(",", queryEmbedding.Select(f => f.ToString("F6"))) + "]";
+        var vectorString = "[" + string.Join(",", queryEmbedding.Select(f => f.ToString("F6", CultureInfo.InvariantCulture))) + "]";
 
         var sql = @"
             SELECT
@@ -443,12 +440,12 @@ public class SQLiteVecVectorStore : IVectorStore
                 results.Add(chunk);
             }
 
-            _logger.LogDebug("sqlite-vec 검색 완료: {Count}개 결과", results.Count);
+            LogVecSearchCompleted(_logger, results.Count);
             return results;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "sqlite-vec 네이티브 검색 실패");
+            LogVecNativeSearchFailed(_logger, ex);
             throw;
         }
     }
@@ -538,15 +535,13 @@ public class SQLiteVecVectorStore : IVectorStore
                 .Take(topK)
                 .ToList();
 
-            _logger.LogDebug(
-                "하이브리드 검색 완료: 벡터={VectorCount}개, FTS={FtsCount}개, 결합={CombinedCount}개",
-                vectorResults.Count, ftsResults.Count, finalResults.Count);
+            LogHybridSearchCompleted(_logger, vectorResults.Count, ftsResults.Count, finalResults.Count);
 
             return finalResults;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "하이브리드 검색 실패");
+            LogHybridSearchFailed(_logger, ex);
             throw;
         }
     }
@@ -614,12 +609,12 @@ public class SQLiteVecVectorStore : IVectorStore
                 results.Add((chunk, -bm25Score)); // 음수를 양수로 변환
             }
 
-            _logger.LogDebug("FTS5 검색 완료: {Count}개 결과, 쿼리: {Query}", results.Count, escapedQuery);
+            LogFts5SearchCompleted(_logger, results.Count, escapedQuery);
             return results;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "FTS5 검색 실패, 빈 결과 반환");
+            LogFts5SearchFailed(_logger, ex);
             return Enumerable.Empty<(DocumentChunk, float)>();
         }
     }
@@ -637,7 +632,7 @@ public class SQLiteVecVectorStore : IVectorStore
             .Trim();
 
         // 각 단어를 따옴표로 감싸서 특수문자 문제 방지
-        var words = escaped.Split(new[] { ' ', '\t', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        var words = escaped.Split(FtsQuerySeparators, StringSplitOptions.RemoveEmptyEntries);
         if (words.Length == 0) return "*"; // 빈 쿼리 처리
 
         return string.Join(" OR ", words.Select(w => $"\"{w}\""));
@@ -653,7 +648,7 @@ public class SQLiteVecVectorStore : IVectorStore
     {
         if (!_options.UseFts5)
         {
-            _logger.LogWarning("FTS5가 비활성화되어 있어 텍스트 검색을 수행할 수 없습니다.");
+            LogFts5Disabled(_logger);
             return Enumerable.Empty<DocumentChunk>();
         }
 
@@ -690,7 +685,7 @@ public class SQLiteVecVectorStore : IVectorStore
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "문서 청크 조회 실패: {DocumentId}", documentId);
+            LogGetByDocumentFailed(_logger, ex, documentId);
             throw;
         }
     }
@@ -746,7 +741,7 @@ public class SQLiteVecVectorStore : IVectorStore
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "벡터 삭제 실패: {Id}", id);
+            LogVectorDeleteFailed(_logger, ex, id);
             throw;
         }
     }
@@ -774,7 +769,7 @@ public class SQLiteVecVectorStore : IVectorStore
                         .Where(c => c.DocumentId == documentId)
                         .ToListAsync(cancellationToken);
 
-                    if (!entities.Any())
+                    if (entities.Count == 0)
                         return false;
 
                     // vec0 테이블에서 벡터들 삭제
@@ -805,7 +800,7 @@ public class SQLiteVecVectorStore : IVectorStore
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "문서 벡터 삭제 실패: {DocumentId}", documentId);
+            LogDeleteByDocumentFailed(_logger, ex, documentId);
             throw;
         }
     }
@@ -905,7 +900,7 @@ public class SQLiteVecVectorStore : IVectorStore
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "벡터 업데이트 실패: {Id}", chunk.Id);
+            LogVectorUpdateFailed(_logger, ex, chunk.Id);
             throw;
         }
     }
@@ -958,7 +953,7 @@ public class SQLiteVecVectorStore : IVectorStore
                     await _context.SaveChangesAsync(cancellationToken);
                     await transaction.CommitAsync(cancellationToken);
 
-                    _logger.LogInformation("벡터 저장소 클리어 완료");
+                    LogStoreClearCompleted(_logger);
                 }
                 catch
                 {
@@ -973,7 +968,7 @@ public class SQLiteVecVectorStore : IVectorStore
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "벡터 저장소 클리어 실패");
+            LogStoreClearFailed(_logger, ex);
             throw;
         }
     }
@@ -1026,6 +1021,92 @@ public class SQLiteVecVectorStore : IVectorStore
             _initLock.Release();
         }
     }
+
+    /// <summary>
+    /// Disposes the initialization and write lock semaphores.
+    /// </summary>
+    public void Dispose()
+    {
+        _initLock.Dispose();
+        _writeLock.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "벡터 저장 완료: {Id}, Document: {DocumentId}")]
+    private static partial void LogVectorStored(ILogger logger, string id, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "벡터 저장 실패: Document {DocumentId}")]
+    private static partial void LogVectorStoreFailed(ILogger logger, Exception exception, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "대용량 배치 저장 시작: 총 {TotalCount}개 항목, {BatchCount}개 배치 (배치당 {BatchSize}개)")]
+    private static partial void LogLargeBatchStart(ILogger logger, int totalCount, int batchCount, int batchSize);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "배치 저장 진행: {Processed}/{Total} ({Percent:P0}), 경과: {Elapsed}, 예상 남은 시간: {Remaining}")]
+    private static partial void LogBatchProgress(ILogger logger, int processed, int total, double percent, TimeSpan elapsed, TimeSpan remaining);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "배치 벡터 저장 완료: {Count}개 항목, 소요 시간: {Elapsed}, 처리율: {Rate:F0}개/초")]
+    private static partial void LogBatchStoreCompleted(ILogger logger, int count, TimeSpan elapsed, double rate);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "배치 벡터 저장 실패: {Count}개 항목")]
+    private static partial void LogBatchStoreFailed(ILogger logger, Exception exception, int count);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "배치 벡터 삽입 완료: {Count}개")]
+    private static partial void LogBatchVectorInserted(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "배치 벡터 삽입 실패")]
+    private static partial void LogBatchVectorInsertFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "벡터 조회 실패: {Id}")]
+    private static partial void LogVectorGetFailed(ILogger logger, Exception exception, string id);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "벡터 검색 실패")]
+    private static partial void LogVectorSearchFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "폴백 모드로 검색 재시도")]
+    private static partial void LogFallbackRetry(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "sqlite-vec 검색 완료: {Count}개 결과")]
+    private static partial void LogVecSearchCompleted(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "sqlite-vec 네이티브 검색 실패")]
+    private static partial void LogVecNativeSearchFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "하이브리드 검색 완료: 벡터={VectorCount}개, FTS={FtsCount}개, 결합={CombinedCount}개")]
+    private static partial void LogHybridSearchCompleted(ILogger logger, int vectorCount, int ftsCount, int combinedCount);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "하이브리드 검색 실패")]
+    private static partial void LogHybridSearchFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "FTS5 검색 완료: {Count}개 결과, 쿼리: {Query}")]
+    private static partial void LogFts5SearchCompleted(ILogger logger, int count, string query);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "FTS5 검색 실패, 빈 결과 반환")]
+    private static partial void LogFts5SearchFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "FTS5가 비활성화되어 있어 텍스트 검색을 수행할 수 없습니다.")]
+    private static partial void LogFts5Disabled(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "문서 청크 조회 실패: {DocumentId}")]
+    private static partial void LogGetByDocumentFailed(ILogger logger, Exception exception, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "벡터 삭제 실패: {Id}")]
+    private static partial void LogVectorDeleteFailed(ILogger logger, Exception exception, string id);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "문서 벡터 삭제 실패: {DocumentId}")]
+    private static partial void LogDeleteByDocumentFailed(ILogger logger, Exception exception, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "벡터 업데이트 실패: {Id}")]
+    private static partial void LogVectorUpdateFailed(ILogger logger, Exception exception, string id);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "벡터 저장소 클리어 완료")]
+    private static partial void LogStoreClearCompleted(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "벡터 저장소 클리어 실패")]
+    private static partial void LogStoreClearFailed(ILogger logger, Exception exception);
+
+    #endregion
 
     private static void RestoreRichMetadataStatic(DocumentChunk chunk)
     {

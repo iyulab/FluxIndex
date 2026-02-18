@@ -11,7 +11,7 @@ namespace FluxIndex.Core.Application.Services;
 /// Query Transformation Service implementing advanced RAG techniques.
 /// Supports HyDE, Multi-Query, Query Decomposition, and Query Intent Analysis.
 /// </summary>
-public class QueryTransformationService : IQueryTransformationService
+public partial class QueryTransformationService : IQueryTransformationService
 {
     private readonly ITextCompletionService? _completionService;
     private readonly QueryTransformationOptions _options;
@@ -56,13 +56,12 @@ public class QueryTransformationService : IQueryTransformationService
         var startTime = DateTime.UtcNow;
         var documentCount = Math.Clamp(options.DocumentCount, 1, 10);
 
-        _logger.LogDebug(
-            "Generating {Count} hypothetical document(s) for query: {Query}",
-            documentCount, query);
+        if (_logger.IsEnabled(LogLevel.Debug))
+            LogQueryTransformation17(_logger, documentCount, query);
 
         if (_completionService == null)
         {
-            _logger.LogWarning("Text completion service not available, returning empty HyDE result");
+            LogQueryTransformation16(_logger);
             return new HyDEResult
             {
                 OriginalQuery = query,
@@ -87,7 +86,8 @@ public class QueryTransformationService : IQueryTransformationService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to generate hypothetical document(s) for query: {Query}", query);
+            if (_logger.IsEnabled(LogLevel.Debug))
+                LogQueryTransformation15(_logger, ex, query);
             return new HyDEResult
             {
                 OriginalQuery = query,
@@ -116,9 +116,8 @@ public class QueryTransformationService : IQueryTransformationService
         var elapsedMs = (long)(DateTime.UtcNow - startTime).TotalMilliseconds;
         var qualityScore = EvaluateHyDEQuality(query, hypotheticalDoc);
 
-        _logger.LogDebug(
-            "Generated hypothetical document with quality score {Score} in {Elapsed}ms",
-            qualityScore, elapsedMs);
+        if (_logger.IsEnabled(LogLevel.Debug))
+            LogQueryTransformation14(_logger, qualityScore, elapsedMs);
 
         return new HyDEResult
         {
@@ -141,9 +140,8 @@ public class QueryTransformationService : IQueryTransformationService
     {
         var perspectives = GetPerspectives(options, documentCount);
 
-        _logger.LogDebug(
-            "Generating {Count} hypothetical documents with perspectives: {Perspectives}",
-            documentCount, string.Join(", ", perspectives));
+        var perspectivesStr = string.Join(", ", perspectives);
+        LogQueryTransformation13(_logger, documentCount, perspectivesStr);
 
         List<string> documents;
         List<float> qualityScores;
@@ -203,9 +201,8 @@ public class QueryTransformationService : IQueryTransformationService
         var avgQualityScore = qualityScores.Count > 0 ? qualityScores.Average() : 0f;
         var totalTokens = documents.Sum(doc => _completionService!.CountTokens(doc));
 
-        _logger.LogDebug(
-            "Generated {Count} hypothetical documents with avg quality {AvgScore:F2} in {Elapsed}ms",
-            documents.Count, avgQualityScore, elapsedMs);
+        if (_logger.IsEnabled(LogLevel.Debug))
+            LogQueryTransformation12(_logger, documents.Count, avgQualityScore, elapsedMs);
 
         return new HyDEResult
         {
@@ -228,7 +225,7 @@ public class QueryTransformationService : IQueryTransformationService
         "problem-solving troubleshooting guide"
     };
 
-    private List<string> GetPerspectives(HyDEOptions options, int count)
+    private static List<string> GetPerspectives(HyDEOptions options, int count)
     {
         if (options.Perspectives.Count > 0)
         {
@@ -251,7 +248,8 @@ public class QueryTransformationService : IQueryTransformationService
         ArgumentNullException.ThrowIfNull(query);
         options ??= QuOTEOptions.CreateDefault();
 
-        _logger.LogDebug("Generating question-oriented embedding for query: {Query}", query);
+        if (_logger.IsEnabled(LogLevel.Debug))
+            LogQueryTransformation11(_logger, query);
 
         if (_completionService == null)
         {
@@ -271,7 +269,7 @@ public class QueryTransformationService : IQueryTransformationService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to generate QuOTE, falling back to rule-based");
+            LogQueryTransformation10(_logger, ex);
             return GenerateRuleBasedQuOTE(query, options);
         }
     }
@@ -285,7 +283,8 @@ public class QueryTransformationService : IQueryTransformationService
         ArgumentNullException.ThrowIfNull(query);
         count = Math.Clamp(count, 1, _options.MaxMultiQueryCount);
 
-        _logger.LogDebug("Generating {Count} query variations for: {Query}", count, query);
+        if (_logger.IsEnabled(LogLevel.Debug))
+            LogQueryTransformation9(_logger, count, query);
 
         if (_completionService == null)
         {
@@ -309,12 +308,12 @@ public class QueryTransformationService : IQueryTransformationService
                 queries = queries.Prepend(query).Take(count).ToList();
             }
 
-            _logger.LogDebug("Generated {Count} query variations", queries.Count);
+            LogQueryTransformation8(_logger, queries.Count);
             return queries.AsReadOnly();
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to generate multiple queries, using rule-based fallback");
+            LogQueryTransformation7(_logger, ex);
             return GenerateRuleBasedQueryVariations(query, count);
         }
     }
@@ -326,15 +325,14 @@ public class QueryTransformationService : IQueryTransformationService
     {
         ArgumentNullException.ThrowIfNull(query);
 
-        _logger.LogDebug("Decomposing query: {Query}", query);
+        if (_logger.IsEnabled(LogLevel.Debug))
+            LogQueryTransformation6(_logger, query);
 
         // First, try rule-based decomposition
         var ruleBasedResult = TryRuleBasedDecomposition(query);
         if (ruleBasedResult.SubQueries.Count > 1 && ruleBasedResult.Confidence >= 0.7f)
         {
-            _logger.LogDebug(
-                "Rule-based decomposition successful: {Count} sub-queries with {Confidence} confidence",
-                ruleBasedResult.SubQueries.Count, ruleBasedResult.Confidence);
+            LogQueryTransformation5(_logger, ruleBasedResult.SubQueries.Count, ruleBasedResult.Confidence);
             return ruleBasedResult;
         }
 
@@ -357,9 +355,7 @@ public class QueryTransformationService : IQueryTransformationService
             // Use LLM result if it has higher confidence
             if (llmResult.Confidence > ruleBasedResult.Confidence)
             {
-                _logger.LogDebug(
-                    "LLM-based decomposition: {Count} sub-queries with {Confidence} confidence",
-                    llmResult.SubQueries.Count, llmResult.Confidence);
+                LogQueryTransformation4(_logger, llmResult.SubQueries.Count, llmResult.Confidence);
                 return llmResult;
             }
 
@@ -367,7 +363,7 @@ public class QueryTransformationService : IQueryTransformationService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to decompose query with LLM, using rule-based result");
+            LogQueryTransformation3(_logger, ex);
             return ruleBasedResult;
         }
     }
@@ -379,7 +375,8 @@ public class QueryTransformationService : IQueryTransformationService
     {
         ArgumentNullException.ThrowIfNull(query);
 
-        _logger.LogDebug("Analyzing query intent: {Query}", query);
+        if (_logger.IsEnabled(LogLevel.Debug))
+            LogQueryTransformation2(_logger, query);
 
         // Rule-based intent analysis (fast path)
         var ruleBasedResult = AnalyzeIntentRuleBased(query);
@@ -401,7 +398,7 @@ public class QueryTransformationService : IQueryTransformationService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to analyze query intent with LLM, using rule-based result");
+            LogQueryTransformation1(_logger, ex);
             return ruleBasedResult;
         }
     }
@@ -417,7 +414,7 @@ public class QueryTransformationService : IQueryTransformationService
 
     #region Prompt Builders
 
-    private string BuildHyDEPrompt(string query, HyDEOptions options, string? perspective)
+    private static string BuildHyDEPrompt(string query, HyDEOptions options, string? perspective)
     {
         var domainContext = string.IsNullOrEmpty(options.DomainContext)
             ? ""
@@ -440,7 +437,7 @@ public class QueryTransformationService : IQueryTransformationService
             """;
     }
 
-    private string BuildQuOTEPrompt(string query, QuOTEOptions options)
+    private static string BuildQuOTEPrompt(string query, QuOTEOptions options)
     {
         return $"""
             Analyze the following query and generate expanded queries and related questions.
@@ -456,7 +453,7 @@ public class QueryTransformationService : IQueryTransformationService
             """;
     }
 
-    private string BuildMultiQueryPrompt(string query, int count)
+    private static string BuildMultiQueryPrompt(string query, int count)
     {
         return $"""
             Generate {count} alternative phrasings of the following query. Each variation should:
@@ -470,7 +467,7 @@ public class QueryTransformationService : IQueryTransformationService
             """;
     }
 
-    private string BuildDecompositionPrompt(string query)
+    private static string BuildDecompositionPrompt(string query)
     {
         return $"""
             Analyze the following complex query and decompose it into simpler sub-queries.
@@ -491,7 +488,7 @@ public class QueryTransformationService : IQueryTransformationService
             """;
     }
 
-    private string BuildIntentAnalysisPrompt(string query)
+    private static string BuildIntentAnalysisPrompt(string query)
     {
         return $"""
             Analyze the intent and characteristics of the following query.
@@ -514,7 +511,7 @@ public class QueryTransformationService : IQueryTransformationService
 
     #region Response Parsers
 
-    private QuOTEResult ParseQuOTEResponse(string originalQuery, string jsonResponse, QuOTEOptions options)
+    private static QuOTEResult ParseQuOTEResponse(string originalQuery, string jsonResponse, QuOTEOptions options)
     {
         try
         {
@@ -565,7 +562,7 @@ public class QueryTransformationService : IQueryTransformationService
         }
     }
 
-    private List<string> ParseMultiQueryResponse(string response, int maxCount)
+    private static List<string> ParseMultiQueryResponse(string response, int maxCount)
     {
         var queries = response
             .Split('\n', StringSplitOptions.RemoveEmptyEntries)
@@ -578,7 +575,7 @@ public class QueryTransformationService : IQueryTransformationService
         return queries;
     }
 
-    private QueryDecompositionResult ParseDecompositionResponse(string originalQuery, string jsonResponse)
+    private static QueryDecompositionResult ParseDecompositionResponse(string originalQuery, string jsonResponse)
     {
         try
         {
@@ -641,7 +638,7 @@ public class QueryTransformationService : IQueryTransformationService
         }
     }
 
-    private QueryIntentResult ParseIntentAnalysisResponse(
+    private static QueryIntentResult ParseIntentAnalysisResponse(
         string originalQuery,
         string jsonResponse,
         QueryIntentResult fallback)
@@ -715,7 +712,7 @@ public class QueryTransformationService : IQueryTransformationService
 
     #region Rule-Based Fallbacks
 
-    private QueryDecompositionResult TryRuleBasedDecomposition(string query)
+    private static QueryDecompositionResult TryRuleBasedDecomposition(string query)
     {
         var subQueries = new List<string>();
         var confidence = 0.5f;
@@ -788,7 +785,7 @@ public class QueryTransformationService : IQueryTransformationService
         };
     }
 
-    private List<string> ExtractComparisonSubjects(string query)
+    private static List<string> ExtractComparisonSubjects(string query)
     {
         var vsMatch = Regex.Match(query, @"(.+?)\s+(?:vs\.?|versus|vs)\s+(.+?)(?:\?|$)", RegexOptions.IgnoreCase);
         if (vsMatch.Success)
@@ -813,7 +810,7 @@ public class QueryTransformationService : IQueryTransformationService
         return new List<string>();
     }
 
-    private QuOTEResult GenerateRuleBasedQuOTE(string query, QuOTEOptions options)
+    private static QuOTEResult GenerateRuleBasedQuOTE(string query, QuOTEOptions options)
     {
         var expandedQueries = new List<string> { query };
         var relatedQuestions = new List<string>();
@@ -844,12 +841,12 @@ public class QueryTransformationService : IQueryTransformationService
         };
     }
 
-    private List<string> GenerateRuleBasedQueryVariations(string query, int count)
+    private static List<string> GenerateRuleBasedQueryVariations(string query, int count)
     {
         var variations = new List<string> { query };
 
         // Add question form variations
-        if (!query.EndsWith("?"))
+        if (!query.EndsWith('?'))
         {
             variations.Add(query + "?");
         }
@@ -872,7 +869,7 @@ public class QueryTransformationService : IQueryTransformationService
         return variations.Take(count).ToList();
     }
 
-    private QueryIntentResult AnalyzeIntentRuleBased(string query)
+    private static QueryIntentResult AnalyzeIntentRuleBased(string query)
     {
         var queryLower = query.ToLowerInvariant();
 
@@ -880,9 +877,9 @@ public class QueryTransformationService : IQueryTransformationService
         var intent = Domain.Models.QueryIntent.Reference;
         if (queryLower.Contains("how") || queryLower.Contains("방법") || queryLower.Contains("어떻게"))
             intent = Domain.Models.QueryIntent.ProblemSolving;
-        else if (queryLower.Contains("what") || queryLower.Contains("무엇") || queryLower.Contains("뭐"))
+        else if (queryLower.Contains("what") || queryLower.Contains("무엇") || queryLower.Contains('뭐'))
             intent = Domain.Models.QueryIntent.Learning;
-        else if (queryLower.Contains("why") || queryLower.Contains("왜"))
+        else if (queryLower.Contains("why") || queryLower.Contains('왜'))
             intent = Domain.Models.QueryIntent.Research;
         else if (queryLower.Contains("should") || queryLower.Contains("best") || queryLower.Contains("추천"))
             intent = Domain.Models.QueryIntent.DecisionSupport;
@@ -939,7 +936,7 @@ public class QueryTransformationService : IQueryTransformationService
         };
     }
 
-    private float EvaluateHyDEQuality(string query, string hypotheticalDoc)
+    private static float EvaluateHyDEQuality(string query, string hypotheticalDoc)
     {
         if (string.IsNullOrWhiteSpace(hypotheticalDoc))
             return 0;
@@ -967,12 +964,51 @@ public class QueryTransformationService : IQueryTransformationService
     }
 
     #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Generating {Count} hypothetical document(s) for query: {Query}")]
+    private static partial void LogQueryTransformation17(ILogger logger, int count, string query);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Text completion service not available, returning empty HyDE result")]
+    private static partial void LogQueryTransformation16(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to generate hypothetical document(s) for query: {Query}")]
+    private static partial void LogQueryTransformation15(ILogger logger, Exception exception, string query);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Generated hypothetical document with quality score {Score} in {Elapsed}ms")]
+    private static partial void LogQueryTransformation14(ILogger logger, float score, float elapsed);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Generating {Count} hypothetical documents with perspectives: {Perspectives}")]
+    private static partial void LogQueryTransformation13(ILogger logger, int count, string perspectives);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Generated {Count} hypothetical documents with avg quality {AvgScore:F2} in {Elapsed}ms")]
+    private static partial void LogQueryTransformation12(ILogger logger, int count, float avgScore, float elapsed);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Generating question-oriented embedding for query: {Query}")]
+    private static partial void LogQueryTransformation11(ILogger logger, string query);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to generate QuOTE, falling back to rule-based")]
+    private static partial void LogQueryTransformation10(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Generating {Count} query variations for: {Query}")]
+    private static partial void LogQueryTransformation9(ILogger logger, int count, string query);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Generated {Count} query variations")]
+    private static partial void LogQueryTransformation8(ILogger logger, int count);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to generate multiple queries, using rule-based fallback")]
+    private static partial void LogQueryTransformation7(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Decomposing query: {Query}")]
+    private static partial void LogQueryTransformation6(ILogger logger, string query);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Rule-based decomposition successful: {Count} sub-queries with {Confidence} confidence")]
+    private static partial void LogQueryTransformation5(ILogger logger, int count, double confidence);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "LLM-based decomposition: {Count} sub-queries with {Confidence} confidence")]
+    private static partial void LogQueryTransformation4(ILogger logger, int count, double confidence);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to decompose query with LLM, using rule-based result")]
+    private static partial void LogQueryTransformation3(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Analyzing query intent: {Query}")]
+    private static partial void LogQueryTransformation2(ILogger logger, string query);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to analyze query intent with LLM, using rule-based result")]
+    private static partial void LogQueryTransformation1(ILogger logger, Exception exception);
+
+    #endregion
 }
 
 /// <summary>
 /// Options for query transformation service
 /// </summary>
-public class QueryTransformationOptions
+public partial class QueryTransformationOptions
 {
     /// <summary>
     /// Temperature for HyDE generation (lower = more focused)

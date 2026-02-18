@@ -14,8 +14,10 @@ namespace FluxIndex.Core.Services.Reranking;
 /// Uses TF-IDF, BM25, and optional semantic similarity for reranking.
 /// This is a lightweight alternative to neural cross-encoder rerankers (see FluxIndex.AI.LocalReranker).
 /// </summary>
-public class AlgorithmicReranker : IReranker
+public partial class AlgorithmicReranker : IReranker
 {
+    private static readonly char[] TokenizeSeparators = [' ', '\t', '\n', '\r', '.', ',', ';', ':', '!', '?'];
+
     private readonly ILogger<AlgorithmicReranker> _logger;
     private readonly IEmbeddingService? _embeddingService;
     private readonly AlgorithmicRerankOptions _options;
@@ -39,13 +41,13 @@ public class AlgorithmicReranker : IReranker
         var rerankOptions = options ?? new RerankOptions();
         var candidateList = candidates.ToList();
 
-        if (!candidateList.Any())
+        if (candidateList.Count == 0)
         {
-            _logger.LogWarning("No candidates provided for reranking");
+            LogAlgorithmicReranker5(_logger);
             return Enumerable.Empty<RerankResult>();
         }
 
-        _logger.LogInformation("Reranking {Count} candidates with local similarity", candidateList.Count);
+        LogAlgorithmicReranker4(_logger, candidateList.Count);
 
         var results = new List<RerankResult>();
 
@@ -89,8 +91,7 @@ public class AlgorithmicReranker : IReranker
             .Take(rerankOptions.TopN)
             .ToList();
 
-        _logger.LogInformation("Local reranking completed: {Original} → {Final} results", 
-            candidateList.Count, rankedResults.Count);
+        LogAlgorithmicReranker3(_logger, candidateList.Count, rankedResults.Count);
 
         return rankedResults;
     }
@@ -155,9 +156,9 @@ public class AlgorithmicReranker : IReranker
         return Math.Max(0.0f, Math.Min(1.0f, finalScore));
     }
 
-    private float CalculateTfIdfSimilarity(List<string> queryTokens, List<string> contentTokens)
+    private static float CalculateTfIdfSimilarity(List<string> queryTokens, List<string> contentTokens)
     {
-        if (!queryTokens.Any() || !contentTokens.Any())
+        if (queryTokens.Count == 0 || contentTokens.Count == 0)
             return 0.0f;
 
         var queryTermFreq = CalculateTermFrequency(queryTokens);
@@ -193,7 +194,7 @@ public class AlgorithmicReranker : IReranker
 
     private float CalculateBM25Score(List<string> queryTokens, List<string> contentTokens, int contentLength)
     {
-        if (!queryTokens.Any() || !contentTokens.Any())
+        if (queryTokens.Count == 0 || contentTokens.Count == 0)
             return 0.0f;
 
         var k1 = _options.BM25K1;
@@ -233,12 +234,12 @@ public class AlgorithmicReranker : IReranker
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to calculate semantic similarity");
+            LogAlgorithmicReranker2(_logger, ex);
             return 0.0f;
         }
     }
 
-    private float CalculateCosineSimilarity(float[] vec1, float[] vec2)
+    private static float CalculateCosineSimilarity(float[] vec1, float[] vec2)
     {
         if (vec1.Length != vec2.Length)
             return 0.0f;
@@ -272,28 +273,28 @@ public class AlgorithmicReranker : IReranker
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to generate query embedding");
+            LogAlgorithmicReranker1(_logger, ex);
             return null;
         }
     }
 
-    private List<string> TokenizeText(string text)
+    private static List<string> TokenizeText(string text)
     {
         return text.ToLowerInvariant()
-            .Split(new[] { ' ', '\t', '\n', '\r', '.', ',', ';', ':', '!', '?' }, 
+            .Split(TokenizeSeparators,
                    StringSplitOptions.RemoveEmptyEntries)
             .Where(token => token.Length > 1)
             .ToList();
     }
 
-    private Dictionary<string, int> CalculateTermFrequency(List<string> tokens)
+    private static Dictionary<string, int> CalculateTermFrequency(List<string> tokens)
     {
         var termFreq = new Dictionary<string, int>();
         
         foreach (var token in tokens)
         {
-            if (termFreq.ContainsKey(token))
-                termFreq[token]++;
+            if (termFreq.TryGetValue(token, out var count))
+                termFreq[token] = count + 1;
             else
                 termFreq[token] = 1;
         }
@@ -301,7 +302,7 @@ public class AlgorithmicReranker : IReranker
         return termFreq;
     }
 
-    private string GenerateExplanation(float initialScore, float rerankScore)
+    private static string GenerateExplanation(float initialScore, float rerankScore)
     {
         var change = rerankScore - initialScore;
         var direction = change > 0 ? "increased" : "decreased";
@@ -312,12 +313,27 @@ public class AlgorithmicReranker : IReranker
         
         return $"Score {direction} by {magnitude:F3} due to local similarity analysis";
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No candidates provided for reranking")]
+    private static partial void LogAlgorithmicReranker5(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Reranking {Count} candidates with local similarity")]
+    private static partial void LogAlgorithmicReranker4(ILogger logger, int count);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Local reranking completed: {Original} → {Final} results")]
+    private static partial void LogAlgorithmicReranker3(ILogger logger, int original, int final);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to calculate semantic similarity")]
+    private static partial void LogAlgorithmicReranker2(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to generate query embedding")]
+    private static partial void LogAlgorithmicReranker1(ILogger logger, Exception exception);
+
+    #endregion
 }
 
 /// <summary>
 /// Configuration options for AlgorithmicReranker
 /// </summary>
-public class AlgorithmicRerankOptions
+public partial class AlgorithmicRerankOptions
 {
     /// <summary>
     /// Weight for TF-IDF similarity component

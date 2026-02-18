@@ -83,12 +83,11 @@ public class ServiceDbContext : DbContext
         });
 
         // DocumentChunk configuration
+        // Note: Legacy Embedding column removed. Vector search now uses ChunkEmbeddings table.
         modelBuilder.Entity<DocumentChunk>(entity =>
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Content).IsRequired();
-            entity.Property(e => e.Embedding)
-                .HasColumnType($"vector({EmbeddingDimension})"); // Dynamic dimension from config
             entity.HasIndex(e => e.DocumentId);
             entity.Property(e => e.Metadata)
                 .HasColumnType("jsonb");
@@ -96,11 +95,6 @@ public class ServiceDbContext : DbContext
                 .WithMany()
                 .HasForeignKey(e => e.DocumentId)
                 .OnDelete(DeleteBehavior.Cascade);
-
-            // Create HNSW index for vector similarity search
-            entity.HasIndex(e => e.Embedding)
-                .HasMethod("hnsw")
-                .HasOperators("vector_cosine_ops");
         });
 
         // ApiKey configuration

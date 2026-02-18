@@ -278,7 +278,7 @@ public sealed class CachedPipelineExecutor : IDisposable
                     {
                         Question = qa.Question,
                         Answer = qa.Answer,
-                        Context = qa.Context,
+                        Context = qa.Context ?? string.Empty,
                         Evaluation = evaluation
                     });
                 }
@@ -310,9 +310,8 @@ public sealed class CachedPipelineExecutor : IDisposable
             keyBuilder.Append(options.GetHashCode());
         }
 
-        using var sha256 = SHA256.Create();
         var bytes = Encoding.UTF8.GetBytes(keyBuilder.ToString());
-        var hash = sha256.ComputeHash(bytes);
+        var hash = SHA256.HashData(bytes);
         return Convert.ToBase64String(hash);
     }
 

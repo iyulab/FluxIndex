@@ -7,7 +7,7 @@ namespace FluxIndex.MCP.Workspace;
 /// <summary>
 /// Manages a FluxIndex workspace including initialization, configuration, and context creation
 /// </summary>
-public class FluxIndexWorkspace : IDisposable
+public partial class FluxIndexWorkspace : IDisposable
 {
     private readonly string _workspaceRoot;
     private readonly WorkspaceConfig _config;
@@ -74,7 +74,8 @@ public class FluxIndexWorkspace : IDisposable
         var configPath = WorkspaceLocator.GetConfigPath(targetPath);
         config.Save(configPath);
 
-        logger?.LogInformation("Initialized FluxIndex workspace at {Path}", workspaceDir);
+        if (logger is not null)
+            LogWorkspaceInitialized(logger, workspaceDir);
 
         return new FluxIndexWorkspace(targetPath, config, logger);
     }
@@ -104,7 +105,8 @@ public class FluxIndexWorkspace : IDisposable
         }
 
         _context = builder.Build();
-        _logger?.LogInformation("Created FluxIndexContext for workspace at {Path}", _workspaceRoot);
+        if (_logger is not null)
+            LogContextCreated(_logger, _workspaceRoot);
 
         return _context;
     }
@@ -127,7 +129,7 @@ public class FluxIndexWorkspace : IDisposable
         }
     }
 
-    private void ConfigureCompletionService(FluxIndexContextBuilder builder)
+    private static void ConfigureCompletionService(FluxIndexContextBuilder builder)
     {
         // Completion service configuration can be extended here
         // Currently OpenAI is used for both embedding and completion
@@ -139,7 +141,8 @@ public class FluxIndexWorkspace : IDisposable
     public void SaveConfig()
     {
         _config.Save(ConfigPath);
-        _logger?.LogInformation("Saved configuration to {Path}", ConfigPath);
+        if (_logger is not null)
+            LogConfigSaved(_logger, ConfigPath);
     }
 
     /// <summary>
@@ -161,5 +164,19 @@ public class FluxIndexWorkspace : IDisposable
             disposable.Dispose();
         }
         _context = null;
+        GC.SuppressFinalize(this);
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Initialized FluxIndex workspace at {Path}")]
+    private static partial void LogWorkspaceInitialized(ILogger logger, string path);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Created FluxIndexContext for workspace at {Path}")]
+    private static partial void LogContextCreated(ILogger logger, string path);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Saved configuration to {Path}")]
+    private static partial void LogConfigSaved(ILogger logger, string path);
+
+    #endregion
 }

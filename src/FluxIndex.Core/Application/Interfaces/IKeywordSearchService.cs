@@ -157,7 +157,7 @@ public class KeywordSearchOptions
     /// <summary>
     /// Minimum BM25 score threshold. Default: 0.0.
     /// </summary>
-    public double MinScore { get; set; } = 0.0;
+    public double MinScore { get; set; }
 
     /// <summary>
     /// BM25 k1 parameter controlling term frequency saturation. Default: 1.2.
@@ -174,12 +174,12 @@ public class KeywordSearchOptions
     /// <summary>
     /// Enable term expansion using synonyms. Default: false.
     /// </summary>
-    public bool EnableTermExpansion { get; set; } = false;
+    public bool EnableTermExpansion { get; set; }
 
     /// <summary>
     /// Enable phrase search for better precision. Default: false.
     /// </summary>
-    public bool EnablePhraseSearch { get; set; } = false;
+    public bool EnablePhraseSearch { get; set; }
 
     /// <summary>
     /// Filter results by document ID. Default: null (no filter).

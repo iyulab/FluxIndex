@@ -8,6 +8,7 @@ using IFluxIndexEmbeddingService = FluxIndex.Core.Application.Interfaces.IEmbedd
 using IFluxIndexTextCompletionService = FluxIndex.Core.Application.Interfaces.ITextCompletionService;
 using IFluxIndexContextualEnrichmentService = FluxIndex.Core.Application.Interfaces.IContextualEnrichmentService;
 using IFluxIndexQAGenerationService = FluxIndex.Core.Application.Interfaces.IQAGenerationService;
+using System.Globalization;
 
 namespace FluxIndex.SDK.Processing;
 
@@ -24,8 +25,15 @@ namespace FluxIndex.SDK.Processing;
 /// 6. QAGenerate - Generate QA pairs for evaluation (optional)
 /// 7. Save - Output files
 /// </summary>
-public class DocumentProcessingPipeline
+public partial class DocumentProcessingPipeline
 {
+    private static readonly char[] WordSplitSeparators = [' ', '\t', '\n', '\r'];
+    private static readonly JsonSerializerOptions s_camelCaseJsonOptions = new()
+    {
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
     private readonly IDocumentProcessorFactory _processorFactory;
     private readonly IFluxIndexEmbeddingService? _embeddingService;
     private readonly IFluxIndexTextCompletionService? _textCompletionService;
@@ -130,7 +138,7 @@ public class DocumentProcessingPipeline
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Image extraction failed, continuing without images");
+                    LogImageExtractionFailed(_logger, ex);
                 }
             }
 
@@ -142,7 +150,7 @@ public class DocumentProcessingPipeline
             await using var chunkProcessor = _processorFactory.Create(filePath);
             var processingOptions = new FileFlux.Core.ProcessingOptions { Chunking = chunkingOptions };
             await chunkProcessor.ProcessAsync(processingOptions, cancellationToken);
-            var chunkList = chunkProcessor.Result.Chunks.ToList();
+            var chunkList = (chunkProcessor.Result.Chunks ?? []).ToList();
 
             // Reconstruct full text from chunks for statistics and enrichment
             var fullText = string.Join("\n\n", chunkList.Select(c => c.Content));
@@ -151,8 +159,7 @@ public class DocumentProcessingPipeline
             result.Metadata.WordCount = CountWords(result.ExtractedText);
             result.Stats.ExtractionTime = DateTime.UtcNow - extractStart;
 
-            _logger.LogInformation("Extracted {CharCount} characters, {WordCount} words from {FilePath}",
-                result.Metadata.CharacterCount, result.Metadata.WordCount, filePath);
+            LogExtractedContent(_logger, result.Metadata.CharacterCount, result.Metadata.WordCount, filePath);
 
             // Extract language from FileFlux metadata (v0.8.4+)
             var firstChunk = chunkList.FirstOrDefault();
@@ -200,7 +207,7 @@ public class DocumentProcessingPipeline
             result.Stats.ChunkingTime = DateTime.UtcNow - chunkStart;
             result.Stats.TotalChunks = result.Chunks.Count;
 
-            _logger.LogInformation("Created {ChunkCount} chunks", result.Chunks.Count);
+            LogCreatedChunks(_logger, result.Chunks.Count);
 
             // Stage 5: Contextual Enrichment BEFORE embedding (if enabled)
             if (options.EnableContextualEnrichment && _contextualEnrichmentService != null)
@@ -222,8 +229,7 @@ public class DocumentProcessingPipeline
                 result.Stats.ContextualEnrichmentTime = DateTime.UtcNow - enrichStart;
                 result.Stats.EnrichedChunks = contextSummaries.Count(s => !string.IsNullOrEmpty(s));
 
-                _logger.LogInformation("Enriched {EnrichedCount}/{TotalCount} chunks with context",
-                    result.Stats.EnrichedChunks, result.Chunks.Count);
+                LogEnrichedChunks(_logger, result.Stats.EnrichedChunks, result.Chunks.Count);
             }
 
             // Stage 6: Generate embeddings (uses contextualized text if available)
@@ -246,7 +252,7 @@ public class DocumentProcessingPipeline
                 }
 
                 result.Stats.EmbeddingTime = DateTime.UtcNow - embedStart;
-                _logger.LogInformation("Generated embeddings for {ChunkCount} chunks", result.Chunks.Count);
+                LogGeneratedEmbeddings(_logger, result.Chunks.Count);
             }
 
             // Stage 7: Enrich metadata (if enabled)
@@ -289,8 +295,7 @@ public class DocumentProcessingPipeline
                 result.Stats.QAGenerationTime = DateTime.UtcNow - qaStart;
                 result.Stats.TotalQAPairs = result.QAPairs.Count;
 
-                _logger.LogInformation("Generated {QACount} QA pairs from {ChunkCount} chunks",
-                    result.QAPairs.Count, result.Chunks.Count);
+                LogGeneratedQAPairs(_logger, result.QAPairs.Count, result.Chunks.Count);
             }
 
             // Stage 9: Save output files
@@ -301,13 +306,13 @@ public class DocumentProcessingPipeline
             result.Success = true;
 
             ReportProgress(options, ProcessingStage.Complete, 100, "Processing complete!");
-            _logger.LogInformation("Document processing completed in {Duration}ms", result.Stats.Duration.TotalMilliseconds);
+            LogDocumentProcessingCompleted(_logger, result.Stats.Duration.TotalMilliseconds);
 
             return result;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Document processing failed for {FilePath}", filePath);
+            LogDocumentProcessingFailed(_logger, ex, filePath);
 
             result.Success = false;
             result.ErrorMessage = ex.Message;
@@ -389,8 +394,7 @@ public class DocumentProcessingPipeline
             result.Metadata.CharacterCount = result.ExtractedText.Length;
             result.Metadata.WordCount = CountWords(result.ExtractedText);
 
-            _logger.LogInformation("Extracted {CharCount} characters from {FilePath}",
-                result.Metadata.CharacterCount, filePath);
+            LogExtractedCharacters(_logger, result.Metadata.CharacterCount, filePath);
 
             // Extract images if enabled
             if (options.ExtractImages)
@@ -427,10 +431,7 @@ public class DocumentProcessingPipeline
                 result.MarkdownText = markdownResult.markdown;
                 result.MarkdownStatistics = markdownResult.statistics;
 
-                _logger.LogInformation("Converted to Markdown: {Headings} headings, {Tables} tables, {Lists} lists",
-                    markdownResult.statistics?.HeadingCount ?? 0,
-                    markdownResult.statistics?.TableCount ?? 0,
-                    markdownResult.statistics?.ListCount ?? 0);
+                LogConvertedToMarkdown(_logger, markdownResult.statistics?.HeadingCount ?? 0, markdownResult.statistics?.TableCount ?? 0, markdownResult.statistics?.ListCount ?? 0);
             }
 
             result.ExtractedAt = DateTime.UtcNow;
@@ -440,7 +441,7 @@ public class DocumentProcessingPipeline
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Extraction failed for {FilePath}", filePath);
+            LogExtractionFailed(_logger, ex, filePath);
             result.Success = false;
             result.ErrorMessage = ex.Message;
             return result;
@@ -554,7 +555,7 @@ public class DocumentProcessingPipeline
                 await using var tempProcessor = _processorFactory.Create(tempFilePath);
                 var tempProcessingOptions = new FileFlux.Core.ProcessingOptions { Chunking = chunkingOptions };
                 await tempProcessor.ProcessAsync(tempProcessingOptions, cancellationToken);
-                chunkList = tempProcessor.Result.Chunks.ToList();
+                chunkList = (tempProcessor.Result.Chunks ?? []).ToList();
             }
             finally
             {
@@ -605,7 +606,7 @@ public class DocumentProcessingPipeline
             result.Stats.ChunkingTime = DateTime.UtcNow - chunkStart;
             result.Stats.TotalChunks = result.Chunks.Count;
 
-            _logger.LogInformation("Created {ChunkCount} chunks from content", result.Chunks.Count);
+            LogCreatedChunksFromContent(_logger, result.Chunks.Count);
 
             // Stage: Contextual Enrichment (if enabled)
             if (options.EnableContextualEnrichment && _contextualEnrichmentService != null)
@@ -645,7 +646,7 @@ public class DocumentProcessingPipeline
                 }
 
                 result.Stats.EmbeddingTime = DateTime.UtcNow - embedStart;
-                _logger.LogInformation("Generated embeddings for {ChunkCount} chunks", result.Chunks.Count);
+                LogGeneratedEmbeddings(_logger, result.Chunks.Count);
             }
 
             // Stage: Generate QA pairs (if enabled)
@@ -686,13 +687,13 @@ public class DocumentProcessingPipeline
             result.Success = true;
 
             ReportContentProgress(options, ProcessingStage.Complete, 100, "Processing complete!");
-            _logger.LogInformation("Content processing completed in {Duration}ms", result.Stats.Duration.TotalMilliseconds);
+            LogContentProcessingCompleted(_logger, result.Stats.Duration.TotalMilliseconds);
 
             return result;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Content processing failed");
+            LogContentProcessingFailed(_logger, ex);
             result.Success = false;
             result.ErrorMessage = ex.Message;
             result.Stats.EndTime = DateTime.UtcNow;
@@ -719,7 +720,7 @@ public class DocumentProcessingPipeline
         // Validate extraction result
         if (!extractionResult.Success)
         {
-            _logger.LogWarning("Cannot process from failed extraction: {ErrorMessage}", extractionResult.ErrorMessage);
+            LogCannotProcessFromFailedExtraction(_logger, extractionResult.ErrorMessage);
             return new DocumentProcessingResult
             {
                 DocumentId = extractionResult.DocumentId,
@@ -803,7 +804,7 @@ public class DocumentProcessingPipeline
         };
         await fullDocProcessor.ProcessAsync(fullDocOptions, cancellationToken);
 
-        return string.Join("\n\n", fullDocProcessor.Result.Chunks.Select(c => c.Content));
+        return string.Join("\n\n", (fullDocProcessor.Result.Chunks ?? []).Select(c => c.Content));
     }
 
     private async Task<string> ExtractPdfWithQualityCheckAsync(string filePath, CancellationToken cancellationToken)
@@ -818,24 +819,19 @@ public class DocumentProcessingPipeline
             if (rawContent.Hints != null)
             {
                 var tablesDetected = rawContent.Hints.TryGetValue("TablesDetected", out var tablesObj)
-                    ? Convert.ToInt32(tablesObj) : 0;
+                    ? Convert.ToInt32(tablesObj, CultureInfo.InvariantCulture) : 0;
                 var lowConfidenceTables = rawContent.Hints.TryGetValue("LowConfidenceTables", out var lowConfObj)
-                    ? Convert.ToInt32(lowConfObj) : 0;
+                    ? Convert.ToInt32(lowConfObj, CultureInfo.InvariantCulture) : 0;
                 var minConfidence = rawContent.Hints.TryGetValue("MinTableConfidence", out var confObj)
-                    ? Convert.ToDouble(confObj) : 1.0;
+                    ? Convert.ToDouble(confObj, CultureInfo.InvariantCulture) : 1.0;
 
                 if (tablesDetected > 0)
                 {
-                    _logger.LogInformation(
-                        "PDF table quality: {Tables} tables detected, {LowConf} low-confidence, min score: {MinConf:F2}",
-                        tablesDetected, lowConfidenceTables, minConfidence);
+                    LogPdfTableQuality(_logger, tablesDetected, lowConfidenceTables, minConfidence);
 
                     if (lowConfidenceTables > 0)
                     {
-                        _logger.LogWarning(
-                            "PDF contains {Count} low-confidence tables (score < 0.5). " +
-                            "Table content may be formatted as plain text for better readability.",
-                            lowConfidenceTables);
+                        LogPdfLowConfidenceTables(_logger, lowConfidenceTables);
                     }
                 }
             }
@@ -844,7 +840,7 @@ public class DocumentProcessingPipeline
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "PDF quality check failed for {FilePath}, falling back to standard extraction", filePath);
+            LogPdfQualityCheckFailed(_logger, ex, filePath);
 
             // Fallback to standard FileFlux extraction
             await using var fallbackProcessor = _processorFactory.Create(filePath);
@@ -858,7 +854,7 @@ public class DocumentProcessingPipeline
             };
             await fallbackProcessor.ProcessAsync(fallbackOptions, cancellationToken);
 
-            return string.Join("\n\n", fallbackProcessor.Result.Chunks.Select(c => c.Content));
+            return string.Join("\n\n", (fallbackProcessor.Result.Chunks ?? []).Select(c => c.Content));
         }
     }
 
@@ -877,7 +873,7 @@ public class DocumentProcessingPipeline
 
         if (!supportedFormats.Contains(extension))
         {
-            _logger.LogDebug("Image extraction not supported for format: {Extension}", extension);
+            LogImageExtractionNotSupported(_logger, extension);
             return images;
         }
 
@@ -903,12 +899,12 @@ public class DocumentProcessingPipeline
                     }
                 }
 
-                _logger.LogDebug("Extracted {Count} images from {FilePath}", images.Count, filePath);
+                LogExtractedImages(_logger, images.Count, filePath);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to extract images from {FilePath}", filePath);
+            LogFailedToExtractImages(_logger, ex, filePath);
         }
 
         return images;
@@ -938,7 +934,7 @@ Cleaned text:";
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Text cleaning failed, using original text");
+            LogTextCleaningFailed(_logger, ex);
             return text;
         }
     }
@@ -996,7 +992,7 @@ JSON response:";
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Metadata enrichment failed");
+            LogMetadataEnrichmentFailed(_logger, ex);
         }
     }
 
@@ -1015,7 +1011,7 @@ JSON response:";
         {
             var extractPath = Path.Combine(options.OutputDirectory, "extract.md");
             await File.WriteAllTextAsync(extractPath, result.ExtractedText, cancellationToken);
-            _logger.LogDebug("Saved extracted text to {Path}", extractPath);
+            LogSavedExtractedText(_logger, extractPath);
         }
 
         // Save cleaned text
@@ -1023,11 +1019,11 @@ JSON response:";
         {
             var cleanedPath = Path.Combine(options.OutputDirectory, "cleaned.md");
             await File.WriteAllTextAsync(cleanedPath, result.CleanedText, cancellationToken);
-            _logger.LogDebug("Saved cleaned text to {Path}", cleanedPath);
+            LogSavedCleanedText(_logger, cleanedPath);
         }
 
         // Save images
-        if (result.Images.Any())
+        if (result.Images.Count != 0)
         {
             var imagesDir = Path.Combine(options.OutputDirectory, "images");
             Directory.CreateDirectory(imagesDir);
@@ -1037,24 +1033,20 @@ JSON response:";
                 var imagePath = Path.Combine(imagesDir, name);
                 await File.WriteAllBytesAsync(imagePath, data, cancellationToken);
             }
-            _logger.LogDebug("Saved {Count} images to {Path}", result.Images.Count, imagesDir);
+            LogSavedImages(_logger, result.Images.Count, imagesDir);
         }
 
         // Save metadata
         if (options.SaveMetadata)
         {
             var metadataPath = Path.Combine(options.OutputDirectory, "metadata.json");
-            var metadataJson = JsonSerializer.Serialize(result.Metadata, new JsonSerializerOptions
-            {
-                WriteIndented = true,
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-            });
+            var metadataJson = JsonSerializer.Serialize(result.Metadata, s_camelCaseJsonOptions);
             await File.WriteAllTextAsync(metadataPath, metadataJson, cancellationToken);
-            _logger.LogDebug("Saved metadata to {Path}", metadataPath);
+            LogSavedMetadata(_logger, metadataPath);
         }
 
         // Save chunks
-        if (options.SaveChunks && result.Chunks.Any())
+        if (options.SaveChunks && result.Chunks.Count != 0)
         {
             var chunksDir = Path.Combine(options.OutputDirectory, "chunks");
             Directory.CreateDirectory(chunksDir);
@@ -1079,31 +1071,23 @@ JSON response:";
                 };
 
                 var chunkJsonPath = Path.Combine(chunksDir, $"{chunk.Index:D3}.json");
-                var chunkJson = JsonSerializer.Serialize(chunkMetadata, new JsonSerializerOptions
-                {
-                    WriteIndented = true,
-                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-                });
+                var chunkJson = JsonSerializer.Serialize(chunkMetadata, s_camelCaseJsonOptions);
                 await File.WriteAllTextAsync(chunkJsonPath, chunkJson, cancellationToken);
             }
-            _logger.LogDebug("Saved {Count} chunks to {Path}", result.Chunks.Count, chunksDir);
+            LogSavedChunks(_logger, result.Chunks.Count, chunksDir);
         }
 
         // Save QA pairs
-        if (options.SaveQAPairs && result.QAPairs.Any())
+        if (options.SaveQAPairs && result.QAPairs.Count != 0)
         {
             var qaPath = Path.Combine(options.OutputDirectory, "qa_pairs.json");
-            var qaJson = JsonSerializer.Serialize(result.QAPairs, new JsonSerializerOptions
-            {
-                WriteIndented = true,
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-            });
+            var qaJson = JsonSerializer.Serialize(result.QAPairs, s_camelCaseJsonOptions);
             await File.WriteAllTextAsync(qaPath, qaJson, cancellationToken);
-            _logger.LogDebug("Saved {Count} QA pairs to {Path}", result.QAPairs.Count, qaPath);
+            LogSavedQAPairs(_logger, result.QAPairs.Count, qaPath);
         }
     }
 
-    private void ReportProgress(DocumentProcessingOptions options, ProcessingStage stage, int percentage, string message)
+    private static void ReportProgress(DocumentProcessingOptions options, ProcessingStage stage, int percentage, string message)
     {
         options.OnProgress?.Invoke(new ProcessingProgress
         {
@@ -1113,7 +1097,7 @@ JSON response:";
         });
     }
 
-    private void ReportContentProgress(ContentProcessingOptions options, ProcessingStage stage, int percentage, string message)
+    private static void ReportContentProgress(ContentProcessingOptions options, ProcessingStage stage, int percentage, string message)
     {
         options.OnProgress?.Invoke(new ProcessingProgress
         {
@@ -1126,7 +1110,7 @@ JSON response:";
     private static int CountWords(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return 0;
-        return text.Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries).Length;
+        return text.Split(WordSplitSeparators, StringSplitOptions.RemoveEmptyEntries).Length;
     }
 
     private static int EstimateTokenCount(string text)
@@ -1150,4 +1134,95 @@ JSON response:";
             _ => ".jpg"
         };
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Image extraction failed, continuing without images")]
+    private static partial void LogImageExtractionFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Extracted {CharCount} characters, {WordCount} words from {FilePath}")]
+    private static partial void LogExtractedContent(ILogger logger, int charCount, int wordCount, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Created {ChunkCount} chunks")]
+    private static partial void LogCreatedChunks(ILogger logger, int chunkCount);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Enriched {EnrichedCount}/{TotalCount} chunks with context")]
+    private static partial void LogEnrichedChunks(ILogger logger, int enrichedCount, int totalCount);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Generated embeddings for {ChunkCount} chunks")]
+    private static partial void LogGeneratedEmbeddings(ILogger logger, int chunkCount);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Generated {QACount} QA pairs from {ChunkCount} chunks")]
+    private static partial void LogGeneratedQAPairs(ILogger logger, int qaCount, int chunkCount);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Document processing completed in {Duration}ms")]
+    private static partial void LogDocumentProcessingCompleted(ILogger logger, double duration);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Document processing failed for {FilePath}")]
+    private static partial void LogDocumentProcessingFailed(ILogger logger, Exception exception, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Extracted {CharCount} characters from {FilePath}")]
+    private static partial void LogExtractedCharacters(ILogger logger, int charCount, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Converted to Markdown: {Headings} headings, {Tables} tables, {Lists} lists")]
+    private static partial void LogConvertedToMarkdown(ILogger logger, int headings, int tables, int lists);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Extraction failed for {FilePath}")]
+    private static partial void LogExtractionFailed(ILogger logger, Exception exception, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Created {ChunkCount} chunks from content")]
+    private static partial void LogCreatedChunksFromContent(ILogger logger, int chunkCount);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Content processing completed in {Duration}ms")]
+    private static partial void LogContentProcessingCompleted(ILogger logger, double duration);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Content processing failed")]
+    private static partial void LogContentProcessingFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Cannot process from failed extraction: {ErrorMessage}")]
+    private static partial void LogCannotProcessFromFailedExtraction(ILogger logger, string? errorMessage);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "PDF table quality: {Tables} tables detected, {LowConf} low-confidence, min score: {MinConf:F2}")]
+    private static partial void LogPdfTableQuality(ILogger logger, int tables, int lowConf, double minConf);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "PDF contains {Count} low-confidence tables (score < 0.5). Table content may be formatted as plain text for better readability.")]
+    private static partial void LogPdfLowConfidenceTables(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "PDF quality check failed for {FilePath}, falling back to standard extraction")]
+    private static partial void LogPdfQualityCheckFailed(ILogger logger, Exception exception, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Image extraction not supported for format: {Extension}")]
+    private static partial void LogImageExtractionNotSupported(ILogger logger, string extension);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Extracted {Count} images from {FilePath}")]
+    private static partial void LogExtractedImages(ILogger logger, int count, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to extract images from {FilePath}")]
+    private static partial void LogFailedToExtractImages(ILogger logger, Exception exception, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Text cleaning failed, using original text")]
+    private static partial void LogTextCleaningFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Metadata enrichment failed")]
+    private static partial void LogMetadataEnrichmentFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Saved extracted text to {Path}")]
+    private static partial void LogSavedExtractedText(ILogger logger, string path);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Saved cleaned text to {Path}")]
+    private static partial void LogSavedCleanedText(ILogger logger, string path);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Saved {Count} images to {Path}")]
+    private static partial void LogSavedImages(ILogger logger, int count, string path);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Saved metadata to {Path}")]
+    private static partial void LogSavedMetadata(ILogger logger, string path);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Saved {Count} chunks to {Path}")]
+    private static partial void LogSavedChunks(ILogger logger, int count, string path);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Saved {Count} QA pairs to {Path}")]
+    private static partial void LogSavedQAPairs(ILogger logger, int count, string path);
+
+    #endregion
 }

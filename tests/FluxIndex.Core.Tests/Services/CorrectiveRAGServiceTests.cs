@@ -3,7 +3,7 @@ using FluxIndex.Core.Application.Services;
 using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Core.Domain.Models;
 using Microsoft.Extensions.Logging;
-using Moq;
+using NSubstitute;
 using Xunit;
 
 using HybridSearchResult = FluxIndex.Core.Domain.Models.HybridSearchResult;
@@ -16,46 +16,42 @@ namespace FluxIndex.Core.Tests.Services;
 /// </summary>
 public class CorrectiveRAGServiceTests
 {
-    private readonly Mock<IHybridSearchService> _mockSearchService;
-    private readonly Mock<IEmbeddingService> _mockEmbeddingService;
-    private readonly Mock<IRetrievalVerificationService> _mockVerificationService;
-    private readonly Mock<ITextCompletionService> _mockCompletionService;
-    private readonly Mock<ILogger<CorrectiveRAGService>> _mockLogger;
+    private readonly IHybridSearchService _mockSearchService;
+    private readonly IEmbeddingService _mockEmbeddingService;
+    private readonly IRetrievalVerificationService _mockVerificationService;
+    private readonly ITextCompletionService _mockCompletionService;
+    private readonly ILogger<CorrectiveRAGService> _mockLogger;
     private readonly CorrectiveRAGService _service;
 
     public CorrectiveRAGServiceTests()
     {
-        _mockSearchService = new Mock<IHybridSearchService>();
-        _mockEmbeddingService = new Mock<IEmbeddingService>();
-        _mockVerificationService = new Mock<IRetrievalVerificationService>();
-        _mockCompletionService = new Mock<ITextCompletionService>();
-        _mockLogger = new Mock<ILogger<CorrectiveRAGService>>();
+        _mockSearchService = Substitute.For<IHybridSearchService>();
+        _mockEmbeddingService = Substitute.For<IEmbeddingService>();
+        _mockVerificationService = Substitute.For<IRetrievalVerificationService>();
+        _mockCompletionService = Substitute.For<ITextCompletionService>();
+        _mockLogger = Substitute.For<ILogger<CorrectiveRAGService>>();
 
         SetupDefaultMocks();
 
         _service = new CorrectiveRAGService(
-            _mockSearchService.Object,
-            _mockEmbeddingService.Object,
-            _mockVerificationService.Object,
-            _mockCompletionService.Object,
+            _mockSearchService,
+            _mockEmbeddingService,
+            _mockVerificationService,
+            _mockCompletionService,
             Microsoft.Extensions.Options.Options.Create(new CorrectiveRAGServiceOptions()),
-            _mockLogger.Object);
+            _mockLogger);
     }
 
     private void SetupDefaultMocks()
     {
-        _mockSearchService
-            .Setup(x => x.SearchAsync(
-                It.IsAny<string>(),
-                It.IsAny<HybridSearchOptions>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CreateDefaultHybridResults(5));
+        _mockSearchService.SearchAsync(
+                Arg.Any<string>(),
+                Arg.Any<HybridSearchOptions>(),
+                Arg.Any<CancellationToken>()).Returns(CreateDefaultHybridResults(5));
 
-        _mockEmbeddingService
-            .Setup(x => x.GenerateEmbeddingAsync(
-                It.IsAny<string>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CreateRandomEmbedding());
+        _mockEmbeddingService.GenerateEmbeddingAsync(
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>()).Returns(CreateRandomEmbedding());
     }
 
     private static IReadOnlyList<HybridSearchResult> CreateDefaultHybridResults(int count)
@@ -206,12 +202,10 @@ public class CorrectiveRAGServiceTests
         await _service.RetrieveWithCorrectionAsync(query);
 
         // Assert
-        _mockSearchService.Verify(
-            x => x.SearchAsync(
+        await _mockSearchService.Received().SearchAsync(
                 query,
-                It.IsAny<HybridSearchOptions>(),
-                It.IsAny<CancellationToken>()),
-            Times.AtLeastOnce);
+                Arg.Any<HybridSearchOptions>(),
+                Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -593,12 +587,10 @@ public class CorrectiveRAGServiceTests
     {
         // Arrange
         var query = "test query";
-        _mockSearchService
-            .Setup(x => x.SearchAsync(
-                It.IsAny<string>(),
-                It.IsAny<HybridSearchOptions>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CreateHighRelevanceResults());
+        _mockSearchService.SearchAsync(
+                Arg.Any<string>(),
+                Arg.Any<HybridSearchOptions>(),
+                Arg.Any<CancellationToken>()).Returns(CreateHighRelevanceResults());
 
         var service = CreateService();
 
@@ -616,12 +608,10 @@ public class CorrectiveRAGServiceTests
     {
         // Arrange
         var query = "test query";
-        _mockSearchService
-            .Setup(x => x.SearchAsync(
-                It.IsAny<string>(),
-                It.IsAny<HybridSearchOptions>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CreateLowRelevanceResults());
+        _mockSearchService.SearchAsync(
+                Arg.Any<string>(),
+                Arg.Any<HybridSearchOptions>(),
+                Arg.Any<CancellationToken>()).Returns(CreateLowRelevanceResults());
 
         var service = CreateService();
 
@@ -667,12 +657,12 @@ public class CorrectiveRAGServiceTests
     private CorrectiveRAGService CreateService()
     {
         return new CorrectiveRAGService(
-            _mockSearchService.Object,
-            _mockEmbeddingService.Object,
-            _mockVerificationService.Object,
-            _mockCompletionService.Object,
+            _mockSearchService,
+            _mockEmbeddingService,
+            _mockVerificationService,
+            _mockCompletionService,
             Microsoft.Extensions.Options.Options.Create(new CorrectiveRAGServiceOptions()),
-            _mockLogger.Object);
+            _mockLogger);
     }
 
     #endregion
@@ -707,12 +697,10 @@ public class CorrectiveRAGServiceTests
     {
         // Arrange
         var query = "test query";
-        _mockSearchService
-            .Setup(x => x.SearchAsync(
-                It.IsAny<string>(),
-                It.IsAny<HybridSearchOptions>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<HybridSearchResult>());
+        _mockSearchService.SearchAsync(
+                Arg.Any<string>(),
+                Arg.Any<HybridSearchOptions>(),
+                Arg.Any<CancellationToken>()).Returns(new List<HybridSearchResult>());
 
         var service = CreateService();
 

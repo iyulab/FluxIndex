@@ -3,7 +3,7 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Core.Domain.Models;
 using DocumentChunkEntity = FluxIndex.Core.Domain.Entities.DocumentChunk;
-using Moq;
+using NSubstitute;
 using Xunit;
 
 namespace FluxIndex.SDK.Tests.Integration;
@@ -122,8 +122,7 @@ public class ProgressAndEventsTests
         var progress = new Progress<IndexingProgress>(p => progressReports.Add(p));
 
         // Mock successful indexing
-        mocks.VectorStore.Setup(vs => vs.StoreBatchAsync(It.IsAny<IEnumerable<DocumentChunkEntity>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<string> { "chunk1", "chunk2" });
+        mocks.VectorStore.StoreBatchAsync(Arg.Any<IEnumerable<DocumentChunkEntity>>(), Arg.Any<CancellationToken>()).Returns(new List<string> { "chunk1", "chunk2" });
 
         // Act
         await indexer.IndexDocumentAsync(document, progress);
@@ -145,8 +144,7 @@ public class ProgressAndEventsTests
         indexer.IndexingStarted += (sender, e) => capturedEvent = e;
 
         // Mock successful indexing
-        mocks.VectorStore.Setup(vs => vs.StoreBatchAsync(It.IsAny<IEnumerable<DocumentChunkEntity>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<string> { "chunk1" });
+        mocks.VectorStore.StoreBatchAsync(Arg.Any<IEnumerable<DocumentChunkEntity>>(), Arg.Any<CancellationToken>()).Returns(new List<string> { "chunk1" });
 
         // Act
         await indexer.IndexDocumentAsync(document);
@@ -167,8 +165,7 @@ public class ProgressAndEventsTests
         indexer.IndexingCompleted += (sender, e) => capturedEvent = e;
 
         // Mock successful indexing
-        mocks.VectorStore.Setup(vs => vs.StoreBatchAsync(It.IsAny<IEnumerable<DocumentChunkEntity>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<string> { "chunk1" });
+        mocks.VectorStore.StoreBatchAsync(Arg.Any<IEnumerable<DocumentChunkEntity>>(), Arg.Any<CancellationToken>()).Returns(new List<string> { "chunk1" });
 
         // Act
         await indexer.IndexDocumentAsync(document);
@@ -284,10 +281,8 @@ public class ProgressAndEventsTests
         var progress = new Progress<SearchProgress>(p => progressReports.Add(p));
 
         // Mock successful search
-        mocks.EmbeddingService.Setup(es => es.GenerateEmbeddingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new float[] { 0.1f, 0.2f, 0.3f });
-        mocks.VectorStore.Setup(vs => vs.SearchAsync(It.IsAny<float[]>(), It.IsAny<int>(), It.IsAny<float>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<DocumentChunkEntity>());
+        mocks.EmbeddingService.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new float[] { 0.1f, 0.2f, 0.3f });
+        mocks.VectorStore.SearchAsync(Arg.Any<float[]>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns(new List<DocumentChunkEntity>());
 
         // Act
         await retriever.SearchAsync(query, progress);
@@ -309,10 +304,8 @@ public class ProgressAndEventsTests
         retriever.SearchStarted += (sender, e) => capturedEvent = e;
 
         // Mock successful search
-        mocks.EmbeddingService.Setup(es => es.GenerateEmbeddingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new float[] { 0.1f, 0.2f, 0.3f });
-        mocks.VectorStore.Setup(vs => vs.SearchAsync(It.IsAny<float[]>(), It.IsAny<int>(), It.IsAny<float>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<DocumentChunkEntity>());
+        mocks.EmbeddingService.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new float[] { 0.1f, 0.2f, 0.3f });
+        mocks.VectorStore.SearchAsync(Arg.Any<float[]>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns(new List<DocumentChunkEntity>());
 
         // Act
         await retriever.SearchAsync(query);
@@ -333,10 +326,8 @@ public class ProgressAndEventsTests
         retriever.SearchCompleted += (sender, e) => capturedEvent = e;
 
         // Mock successful search
-        mocks.EmbeddingService.Setup(es => es.GenerateEmbeddingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new float[] { 0.1f, 0.2f, 0.3f });
-        mocks.VectorStore.Setup(vs => vs.SearchAsync(It.IsAny<float[]>(), It.IsAny<int>(), It.IsAny<float>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<DocumentChunkEntity>());
+        mocks.EmbeddingService.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new float[] { 0.1f, 0.2f, 0.3f });
+        mocks.VectorStore.SearchAsync(Arg.Any<float[]>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns(new List<DocumentChunkEntity>());
 
         // Act
         await retriever.SearchAsync(query);
@@ -435,40 +426,39 @@ public class ProgressAndEventsTests
 
     #region Helper Methods
 
-    private (Indexer indexer, (Mock<IVectorStore> VectorStore, Mock<IDocumentRepository> DocumentRepository, Mock<IEmbeddingService> EmbeddingService, Mock<IChunkingService> ChunkingService) mocks) CreateIndexer()
+    private (Indexer indexer, (IVectorStore VectorStore, IDocumentRepository DocumentRepository, IEmbeddingService EmbeddingService, IChunkingService ChunkingService) mocks) CreateIndexer()
     {
-        var vectorStore = new Mock<IVectorStore>();
-        var documentRepository = new Mock<IDocumentRepository>();
-        var embeddingService = new Mock<IEmbeddingService>();
-        var chunkingService = new Mock<IChunkingService>();
+        var vectorStore = Substitute.For<IVectorStore>();
+        var documentRepository = Substitute.For<IDocumentRepository>();
+        var embeddingService = Substitute.For<IEmbeddingService>();
+        var chunkingService = Substitute.For<IChunkingService>();
 
-        documentRepository.Setup(dr => dr.AddAsync(It.IsAny<Document>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((Document doc, CancellationToken ct) => doc.Id);
+        documentRepository.AddAsync(Arg.Any<Document>(), Arg.Any<CancellationToken>()).Returns(callInfo => callInfo.ArgAt<Document>(0).Id);
 
         var indexer = new Indexer(
-            vectorStore.Object,
-            documentRepository.Object,
-            embeddingService.Object,
-            chunkingService.Object,
+            vectorStore,
+            documentRepository,
+            embeddingService,
+            chunkingService,
             new IndexerOptions());
 
         return (indexer, (vectorStore, documentRepository, embeddingService, chunkingService));
     }
 
-    private (Retriever retriever, (Mock<IVectorStore> VectorStore, Mock<IDocumentRepository> DocumentRepository, Mock<IEmbeddingService> EmbeddingService, Mock<IRankFusionService> RankFusion) mocks) CreateRetriever()
+    private (Retriever retriever, (IVectorStore VectorStore, IDocumentRepository DocumentRepository, IEmbeddingService EmbeddingService, IRankFusionService RankFusion) mocks) CreateRetriever()
     {
-        var vectorStore = new Mock<IVectorStore>();
-        var documentRepository = new Mock<IDocumentRepository>();
-        var embeddingService = new Mock<IEmbeddingService>();
-        var rankFusion = new Mock<IRankFusionService>();
+        var vectorStore = Substitute.For<IVectorStore>();
+        var documentRepository = Substitute.For<IDocumentRepository>();
+        var embeddingService = Substitute.For<IEmbeddingService>();
+        var rankFusion = Substitute.For<IRankFusionService>();
 
         var retriever = new Retriever(
-            vectorStore.Object,
-            documentRepository.Object,
-            embeddingService.Object,
+            vectorStore,
+            documentRepository,
+            embeddingService,
             new RetrieverOptions(),
             null,
-            rankFusion.Object);
+            rankFusion);
 
         return (retriever, (vectorStore, documentRepository, embeddingService, rankFusion));
     }

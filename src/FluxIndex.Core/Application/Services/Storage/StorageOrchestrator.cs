@@ -7,7 +7,7 @@ namespace FluxIndex.Core.Application.Services.Storage;
 /// Default implementation of <see cref="IStorageOrchestrator"/>.
 /// Automatically selects the best provider for each capability based on priority rules.
 /// </summary>
-public class StorageOrchestrator : IStorageOrchestrator
+public partial class StorageOrchestrator : IStorageOrchestrator
 {
     private readonly ILogger<StorageOrchestrator>? _logger;
     private readonly List<IStorageProvider> _providers;
@@ -92,17 +92,15 @@ public class StorageOrchestrator : IStorageOrchestrator
         {
             // Last registered specialized provider wins
             var selected = specialized[^1];
-            _logger?.LogDebug(
-                "Selected specialized provider {Provider} for {Capability}",
-                selected.ProviderName, capability);
+            if (_logger is not null)
+                LogSpecializedProvider(_logger, selected.ProviderName, capability);
             return selected;
         }
 
         // Fall back to general-purpose (last registered)
         var generalPurpose = candidates[^1];
-        _logger?.LogDebug(
-            "Selected general-purpose provider {Provider} for {Capability}",
-            generalPurpose.ProviderName, capability);
+        if (_logger is not null)
+            LogGeneralPurposeProvider(_logger, generalPurpose.ProviderName, capability);
         return generalPurpose;
     }
 
@@ -112,21 +110,32 @@ public class StorageOrchestrator : IStorageOrchestrator
 
         if (_providers.Count == 0)
         {
-            _logger.LogWarning("No storage providers registered");
+            LogStorageOrchestrator3(_logger);
             return;
         }
 
-        _logger.LogInformation(
-            "Storage configuration: {Configuration}",
-            _configuration.ToString());
+        var configStr = _configuration.ToString();
+        LogStorageOrchestrator2(_logger, configStr);
 
         foreach (var provider in _providers)
         {
-            _logger.LogDebug(
-                "Registered provider: {Provider} (Capabilities: {Capabilities}, Specialized: {IsSpecialized})",
-                provider.ProviderName,
-                provider.Capabilities,
-                provider.IsSpecialized);
+            if (_logger is not null && _logger.IsEnabled(LogLevel.Warning))
+                LogStorageOrchestrator1(_logger, provider.ProviderName, provider.Capabilities, provider.IsSpecialized);
         }
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No storage providers registered")]
+    private static partial void LogStorageOrchestrator3(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Storage configuration: {Configuration}")]
+    private static partial void LogStorageOrchestrator2(ILogger logger, string configuration);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Registered provider: {Provider} (Capabilities: {Capabilities}, Specialized: {IsSpecialized})")]
+    private static partial void LogStorageOrchestrator1(ILogger logger, string provider, StorageCapabilities capabilities, bool isSpecialized);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Selected specialized provider {Provider} for {Capability}")]
+    private static partial void LogSpecializedProvider(ILogger logger, string provider, StorageCapabilities capability);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Selected general-purpose provider {Provider} for {Capability}")]
+    private static partial void LogGeneralPurposeProvider(ILogger logger, string provider, StorageCapabilities capability);
+
+    #endregion
 }

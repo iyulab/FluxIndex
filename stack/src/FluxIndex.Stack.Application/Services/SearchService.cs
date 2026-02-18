@@ -27,19 +27,19 @@ namespace FluxIndex.Stack.Application.Services;
 /// Unified search service - thin wrapper around Core's search services.
 ///
 /// This service delegates core search algorithms to FluxIndex.Core:
-/// - Query analysis → IQueryComplexityAnalyzer
-/// - Strategy selection → IAdaptiveSearchService
-/// - Hybrid search → IHybridSearchService
-/// - Dynamic fusion → IDynamicFusionService
-/// - Reranking → IReranker, IListwiseReranker
+/// - Query analysis -> IQueryComplexityAnalyzer
+/// - Strategy selection -> IAdaptiveSearchService
+/// - Hybrid search -> IHybridSearchService
+/// - Dynamic fusion -> IDynamicFusionService
+/// - Reranking -> IReranker, IListwiseReranker
 ///
 /// Stack-specific responsibilities:
-/// - DTO conversion (SearchRequest ↔ Core options)
+/// - DTO conversion (SearchRequest <-> Core options)
 /// - Stack entity access (Document, DocumentChunk)
 /// - Search history recording
 /// - Optional backend integration (Qdrant, Neo4j)
 /// </summary>
-public class SearchService : ISearchService
+public partial class SearchService : ISearchService
 {
     private readonly IDocumentChunkRepository _chunkRepository;
     private readonly StackIDocumentRepository _documentRepository;
@@ -107,8 +107,7 @@ public class SearchService : ISearchService
     {
         var stopwatch = Stopwatch.StartNew();
 
-        _logger.LogInformation("Search request: {Query}, Mode: {Mode}, Preference: {Preference}",
-            request.Query, request.Mode, request.QualityPreference);
+        LogSearchRequest(_logger, request.Query, request.Mode, request.QualityPreference);
 
         // Route to appropriate search method
         var response = request.Mode == SearchMode.Auto
@@ -169,13 +168,12 @@ public class SearchService : ISearchService
                 if (hydeResult.IsSuccessful && hydeResult.HypotheticalDocuments.Count > 0)
                 {
                     hydeDocuments = hydeResult.HypotheticalDocuments.ToArray();
-                    _logger.LogInformation("Generated {Count} hypothetical documents for HyDE",
-                        hydeDocuments.Length);
+                    LogHyDEDocumentsGenerated(_logger, hydeDocuments.Length);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "HyDE generation failed, falling back to original query");
+                LogHyDEGenerationFailed(_logger, ex);
             }
         }
 
@@ -231,7 +229,7 @@ public class SearchService : ISearchService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "HyDE document search failed");
+                LogHyDEDocumentSearchFailed(_logger, ex);
                 return null;
             }
         });
@@ -247,7 +245,7 @@ public class SearchService : ISearchService
     /// Merges multiple search results using Reciprocal Rank Fusion (RRF).
     /// RRF provides robust result merging without score normalization.
     /// </summary>
-    private CoreAdaptiveSearchResult MergeHyDEResults(
+    private static CoreAdaptiveSearchResult MergeHyDEResults(
         CoreAdaptiveSearchResult original,
         List<CoreAdaptiveSearchResult> allResults)
     {
@@ -274,7 +272,7 @@ public class SearchService : ISearchService
         // Sort by RRF score and return top results
         var mergedDocs = rrfScores
             .OrderByDescending(kv => kv.Value)
-            .Take(original.Documents.Count() > 0 ? original.Documents.Count() * 2 : 20)
+            .Take(original.Documents.Any() ? original.Documents.Count() * 2 : 20)
             .Select(kv => docMap[kv.Key])
             .ToList();
 
@@ -373,7 +371,7 @@ public class SearchService : ISearchService
             var (documents, _) = await _documentRepository.GetPagedAsync(
                 1, 1000, request.CollectionId, DocumentStatus.Indexed, cancellationToken);
 
-            if (!documents.Any())
+            if (documents.Count == 0)
             {
                 return CreateEmptyResponse(request, stopwatch);
             }
@@ -417,7 +415,7 @@ public class SearchService : ISearchService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during manual search for query: {Query}", request.Query);
+            LogManualSearchFailed(_logger, request.Query, ex);
             throw;
         }
 
@@ -465,7 +463,7 @@ public class SearchService : ISearchService
             .ToList();
     }
 
-    private List<SearchResultDto> ExecuteKeywordSearch(
+    private static List<SearchResultDto> ExecuteKeywordSearch(
         SearchRequest request,
         List<DocumentChunk> chunks,
         Dictionary<Guid, Document> docLookup)
@@ -549,12 +547,12 @@ public class SearchService : ISearchService
         Stopwatch stopwatch,
         CancellationToken cancellationToken)
     {
-        _logger.LogWarning("Core search services unavailable, using fallback search");
+        LogCoreSearchServicesUnavailable(_logger);
 
         var (documents, _) = await _documentRepository.GetPagedAsync(
             1, 1000, request.CollectionId, DocumentStatus.Indexed, cancellationToken);
 
-        if (!documents.Any())
+        if (documents.Count == 0)
         {
             return CreateEmptyResponse(request, stopwatch);
         }
@@ -678,7 +676,7 @@ public class SearchService : ISearchService
         };
     }
 
-    private SearchResultDto MapHybridResultToDto(HybridSearchResult result, SearchRequest request, int rank)
+    private static SearchResultDto MapHybridResultToDto(HybridSearchResult result, SearchRequest request, int rank)
     {
         return new SearchResultDto
         {
@@ -711,7 +709,7 @@ public class SearchService : ISearchService
         {
             var chunkId = doc.Metadata.TryGetValue("chunk_id", out var cid) ? cid?.ToString() : doc.Id;
             var content = doc.Metadata.TryGetValue("chunk_content", out var cc) ? cc?.ToString() : "";
-            var score = doc.Metadata.TryGetValue("relevance_score", out var rs) ? Convert.ToDouble(rs) : 0.5;
+            var score = doc.Metadata.TryGetValue("relevance_score", out var rs) ? Convert.ToDouble(rs, System.Globalization.CultureInfo.InvariantCulture) : 0.5;
 
             var result = new SearchResultDto
             {
@@ -757,7 +755,7 @@ public class SearchService : ISearchService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Entity extraction failed");
+            LogEntityExtractionFailed(_logger, ex);
             return results;
         }
     }
@@ -868,7 +866,7 @@ public class SearchService : ISearchService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Cache lookup failed");
+            LogCacheLookupFailed(_logger, ex);
         }
 
         return null;
@@ -892,7 +890,7 @@ public class SearchService : ISearchService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to cache response");
+            LogCacheResponseFailed(_logger, ex);
         }
     }
 
@@ -907,7 +905,7 @@ public class SearchService : ISearchService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to clear cache");
+            LogClearCacheFailed(_logger, ex);
         }
     }
 
@@ -989,7 +987,7 @@ public class SearchService : ISearchService
 
     private static SearchQualityInfo CalculateQuality(List<SearchResultDto> results)
     {
-        if (!results.Any())
+        if (results.Count == 0)
         {
             return new SearchQualityInfo
             {
@@ -1069,9 +1067,46 @@ public class SearchService : ISearchService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to record search history");
+            LogRecordSearchHistoryFailed(_logger, ex);
         }
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Search request: {Query}, Mode: {Mode}, Preference: {Preference}")]
+    private static partial void LogSearchRequest(ILogger logger, string query, SearchMode mode, QualityPreference preference);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Generated {Count} hypothetical documents for HyDE")]
+    private static partial void LogHyDEDocumentsGenerated(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "HyDE generation failed, falling back to original query")]
+    private static partial void LogHyDEGenerationFailed(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "HyDE document search failed")]
+    private static partial void LogHyDEDocumentSearchFailed(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error during manual search for query: {Query}")]
+    private static partial void LogManualSearchFailed(ILogger logger, string query, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Core search services unavailable, using fallback search")]
+    private static partial void LogCoreSearchServicesUnavailable(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Entity extraction failed")]
+    private static partial void LogEntityExtractionFailed(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Cache lookup failed")]
+    private static partial void LogCacheLookupFailed(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to cache response")]
+    private static partial void LogCacheResponseFailed(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to clear cache")]
+    private static partial void LogClearCacheFailed(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to record search history")]
+    private static partial void LogRecordSearchHistoryFailed(ILogger logger, Exception? exception);
 
     #endregion
 }

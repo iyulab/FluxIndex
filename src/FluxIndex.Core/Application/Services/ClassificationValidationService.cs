@@ -10,7 +10,7 @@ namespace FluxIndex.Core.Application.Services;
 /// <summary>
 /// 분류 검증 서비스 - LLM 호출 최소화를 위한 검증 게이트
 /// </summary>
-public class ClassificationValidationService : IClassificationValidationService
+public partial class ClassificationValidationService : IClassificationValidationService
 {
     private readonly ClassificationOptions _options;
     private readonly IClassificationCacheService? _cacheService;
@@ -44,7 +44,7 @@ public class ClassificationValidationService : IClassificationValidationService
             result.RequiresLlmClassification = false;
             result.SkipReason = $"Quality below threshold: {chunk.Quality:F2} < {_options.Validation.MinQualityThreshold}";
             result.ValidationScore = 0;
-            _logger.LogDebug("Skipping chunk {ChunkId}: {Reason}", chunk.ChunkId, result.SkipReason);
+            LogClassificationValidation11(_logger, chunk.ChunkId, result.SkipReason);
             return result;
         }
 
@@ -54,7 +54,7 @@ public class ClassificationValidationService : IClassificationValidationService
             result.RequiresLlmClassification = false;
             result.SkipReason = $"Content too short: {chunk.Content.Length} < {_options.Validation.MinContentLength}";
             result.ValidationScore = 0;
-            _logger.LogDebug("Skipping chunk {ChunkId}: {Reason}", chunk.ChunkId, result.SkipReason);
+            LogClassificationValidation10(_logger, chunk.ChunkId, result.SkipReason);
             return result;
         }
 
@@ -68,7 +68,7 @@ public class ClassificationValidationService : IClassificationValidationService
                 result.SkipReason = "Found in cache";
                 result.ExistingClassification = cached;
                 result.ValidationScore = 0;
-                _logger.LogDebug("Using cached classification for chunk {ChunkId}", chunk.ChunkId);
+                LogClassificationValidation9(_logger, chunk.ChunkId);
                 return result;
             }
 
@@ -96,7 +96,7 @@ public class ClassificationValidationService : IClassificationValidationService
                     CreatedAt = similar.CreatedAt
                 };
                 result.ValidationScore = 0;
-                _logger.LogDebug("Inheriting classification for chunk {ChunkId} from similar chunk", chunk.ChunkId);
+                LogClassificationValidation8(_logger, chunk.ChunkId);
                 return result;
             }
         }
@@ -110,7 +110,7 @@ public class ClassificationValidationService : IClassificationValidationService
                 result.RequiresLlmClassification = false;
                 result.SkipReason = "Duplicate content detected";
                 result.ValidationScore = 0;
-                _logger.LogDebug("Skipping duplicate chunk {ChunkId}", chunk.ChunkId);
+                LogClassificationValidation7(_logger, chunk.ChunkId);
                 return result;
             }
             _processedHashes.Add(contentHash);
@@ -123,7 +123,7 @@ public class ClassificationValidationService : IClassificationValidationService
             // 메타데이터가 충분하면 범위 축소
             result.RecommendedScope &= ~ClassificationScope.Keywords;
             result.ValidationScore *= 0.8;
-            _logger.LogDebug("Chunk {ChunkId} has sufficient keywords, reducing scope", chunk.ChunkId);
+            LogClassificationValidation6(_logger, chunk.ChunkId);
         }
 
         // 6. ContextDependency 기반 범위 조정
@@ -150,9 +150,7 @@ public class ClassificationValidationService : IClassificationValidationService
         }
 
         var requiresLlm = results.Count(r => r.Value.RequiresLlmClassification);
-        _logger.LogInformation(
-            "Validation complete: {RequiresLlm}/{Total} chunks require LLM classification",
-            requiresLlm, results.Count);
+        LogClassificationValidation5(_logger, requiresLlm, results.Count);
 
         return results;
     }
@@ -169,9 +167,7 @@ public class ClassificationValidationService : IClassificationValidationService
         // 신뢰도 검증
         if (classification.Confidence < _options.Validation.MinConfidenceThreshold)
         {
-            _logger.LogWarning(
-                "Classification confidence below threshold: {Confidence:F2} < {Threshold}",
-                classification.Confidence, _options.Validation.MinConfidenceThreshold);
+            LogClassificationValidation4(_logger, classification.Confidence, _options.Validation.MinConfidenceThreshold);
             return false;
         }
 
@@ -183,7 +179,7 @@ public class ClassificationValidationService : IClassificationValidationService
 
         if (!hasContent)
         {
-            _logger.LogWarning("Classification has no content");
+            LogClassificationValidation3(_logger);
             return false;
         }
 
@@ -193,16 +189,14 @@ public class ClassificationValidationService : IClassificationValidationService
             classification.Tags.Count > _options.MaxTags ||
             classification.PotentialQuestions.Count > _options.MaxQuestions)
         {
-            _logger.LogWarning("Classification exceeds maximum counts");
+            LogClassificationValidation2(_logger);
             return false;
         }
 
         // 요약 길이 검증
         if (classification.Summary?.Length > _options.MaxSummaryLength)
         {
-            _logger.LogWarning(
-                "Summary exceeds maximum length: {Length} > {Max}",
-                classification.Summary.Length, _options.MaxSummaryLength);
+            LogClassificationValidation1(_logger, classification.Summary.Length, _options.MaxSummaryLength);
             return false;
         }
 
@@ -216,4 +210,31 @@ public class ClassificationValidationService : IClassificationValidationService
         var hash = SHA256.HashData(bytes);
         return Convert.ToBase64String(hash);
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Skipping chunk {ChunkId}: {Reason}")]
+    private static partial void LogClassificationValidation11(ILogger logger, string chunkId, string? reason);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Skipping chunk {ChunkId}: {Reason}")]
+    private static partial void LogClassificationValidation10(ILogger logger, string chunkId, string? reason);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Using cached classification for chunk {ChunkId}")]
+    private static partial void LogClassificationValidation9(ILogger logger, string chunkId);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Inheriting classification for chunk {ChunkId} from similar chunk")]
+    private static partial void LogClassificationValidation8(ILogger logger, string chunkId);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Skipping duplicate chunk {ChunkId}")]
+    private static partial void LogClassificationValidation7(ILogger logger, string chunkId);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Chunk {ChunkId} has sufficient keywords, reducing scope")]
+    private static partial void LogClassificationValidation6(ILogger logger, string chunkId);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Validation complete: {RequiresLlm}/{Total} chunks require LLM classification")]
+    private static partial void LogClassificationValidation5(ILogger logger, int requiresLlm, int total);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Classification confidence below threshold: {Confidence} < {Threshold}")]
+    private static partial void LogClassificationValidation4(ILogger logger, double confidence, double threshold);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Classification has no content")]
+    private static partial void LogClassificationValidation3(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Classification exceeds maximum counts")]
+    private static partial void LogClassificationValidation2(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Summary exceeds maximum length: {Length} > {Max}")]
+    private static partial void LogClassificationValidation1(ILogger logger, int length, int max);
+
+    #endregion
 }

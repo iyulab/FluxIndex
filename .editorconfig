@@ -1,0 +1,5 @@
+root = true
+
+# Test projects: allow underscores in test method names (e.g., Method_Should_Work)
+[{tests,stack/tests}/**/*.cs]
+dotnet_diagnostic.CA1707.severity = none

@@ -12,7 +12,7 @@ namespace FluxIndex.Storage.PostgreSQL.Cache;
 /// <summary>
 /// PostgreSQL 기반 시맨틱 캐시 구현 (pgvector + UNLOGGED 테이블)
 /// </summary>
-public class PostgresSemanticCache : ISemanticCache
+public partial class PostgresSemanticCache : ISemanticCache, IDisposable
 {
     private readonly PostgresCacheDbContext _context;
     private readonly IEmbeddingService _embeddingService;
@@ -74,7 +74,7 @@ public class PostgresSemanticCache : ISemanticCache
         await _context.SaveChangesAsync(cancellationToken);
         await UpdateStatsAsync(true, cancellationToken);
 
-        _logger.LogDebug("Cache hit for query: similarity={Similarity:F3}", similarity);
+        LogCacheHit(_logger, similarity);
 
         return new CacheResult
         {
@@ -152,7 +152,7 @@ public class PostgresSemanticCache : ISemanticCache
         }
 
         await _context.SaveChangesAsync(cancellationToken);
-        _logger.LogDebug("Cache set for query hash: {Hash}", queryHash);
+        LogCacheSet(_logger, queryHash);
     }
 
     public async Task<bool> HasSimilarQueryAsync(
@@ -207,8 +207,7 @@ public class PostgresSemanticCache : ISemanticCache
         _context.SemanticCache.RemoveRange(toDelete);
         await _context.SaveChangesAsync(cancellationToken);
 
-        _logger.LogInformation("Invalidated {Count} cache entries matching pattern: {Pattern}",
-            toDelete.Count, pattern);
+        LogCacheInvalidated(_logger, toDelete.Count, pattern);
 
         return toDelete.Count;
     }
@@ -219,7 +218,7 @@ public class PostgresSemanticCache : ISemanticCache
         await _context.Database.ExecuteSqlRawAsync(
             "TRUNCATE TABLE semantic_cache", cancellationToken);
 
-        _logger.LogInformation("Cache cleared");
+        LogCacheCleared(_logger);
     }
 
     public async Task<CacheStatistics> GetStatisticsAsync(
@@ -283,15 +282,13 @@ public class PostgresSemanticCache : ISemanticCache
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "VACUUM ANALYZE failed, continuing without it");
+            LogVacuumAnalyzeFailed(_logger, ex);
             messages.Add("VACUUM ANALYZE skipped");
         }
 
         var duration = DateTime.UtcNow - startTime;
 
-        _logger.LogInformation(
-            "Cache optimization completed: {ExpiredRemoved} expired, {LruRemoved} LRU evicted in {Duration}ms",
-            expiredCount, lruRemoved, duration.TotalMilliseconds);
+        LogCacheOptimizationCompleted(_logger, expiredCount, lruRemoved, duration.TotalMilliseconds);
 
         return new CacheOptimizationResult
         {
@@ -300,6 +297,15 @@ public class PostgresSemanticCache : ISemanticCache
             Success = true,
             Messages = messages
         };
+    }
+
+    /// <summary>
+    /// Disposes the cleanup lock semaphore.
+    /// </summary>
+    public void Dispose()
+    {
+        _cleanupLock.Dispose();
+        GC.SuppressFinalize(this);
     }
 
     #region Private Methods
@@ -356,7 +362,7 @@ public class PostgresSemanticCache : ISemanticCache
                 await _context.SaveChangesAsync(cancellationToken);
             }
 
-            _logger.LogDebug("Evicted {Count} entries due to capacity limit", removeCount);
+            LogEvictedEntries(_logger, removeCount);
         }
     }
 
@@ -381,7 +387,7 @@ public class PostgresSemanticCache : ISemanticCache
 
             if (deleted > 0)
             {
-                _logger.LogDebug("Auto-cleanup removed {Count} expired entries", deleted);
+                LogAutoCleanup(_logger, deleted);
             }
         }
         finally
@@ -389,6 +395,34 @@ public class PostgresSemanticCache : ISemanticCache
             _cleanupLock.Release();
         }
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Cache hit for query: similarity={Similarity:F3}")]
+    private static partial void LogCacheHit(ILogger logger, float similarity);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Cache set for query hash: {Hash}")]
+    private static partial void LogCacheSet(ILogger logger, string hash);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Invalidated {Count} cache entries matching pattern: {Pattern}")]
+    private static partial void LogCacheInvalidated(ILogger logger, int count, string pattern);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Cache cleared")]
+    private static partial void LogCacheCleared(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "VACUUM ANALYZE failed, continuing without it")]
+    private static partial void LogVacuumAnalyzeFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Cache optimization completed: {ExpiredRemoved} expired, {LruRemoved} LRU evicted in {Duration}ms")]
+    private static partial void LogCacheOptimizationCompleted(ILogger logger, int expiredRemoved, int lruRemoved, double duration);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Evicted {Count} entries due to capacity limit")]
+    private static partial void LogEvictedEntries(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Auto-cleanup removed {Count} expired entries")]
+    private static partial void LogAutoCleanup(ILogger logger, int count);
 
     #endregion
 }

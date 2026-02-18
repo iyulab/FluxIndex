@@ -4,20 +4,20 @@ using FluxIndex.Core.Domain.ValueObjects;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Moq;
+using NSubstitute;
 using Xunit;
 
 namespace FluxIndex.Core.Tests.Services;
 
 public class LateChunkingEmbeddingServiceTests
 {
-    private readonly Mock<IEmbeddingService> _mockEmbeddingService;
+    private readonly IEmbeddingService _mockEmbeddingService;
     private readonly ILogger<LateChunkingEmbeddingService> _logger;
     private readonly LateChunkingOptions _options;
 
     public LateChunkingEmbeddingServiceTests()
     {
-        _mockEmbeddingService = new Mock<IEmbeddingService>();
+        _mockEmbeddingService = Substitute.For<IEmbeddingService>();
         _logger = NullLogger<LateChunkingEmbeddingService>.Instance;
         _options = new LateChunkingOptions
         {
@@ -28,19 +28,15 @@ public class LateChunkingEmbeddingServiceTests
             DocumentContextWeight = 0.3
         };
 
-        _mockEmbeddingService
-            .Setup(x => x.GetModelName())
-            .Returns("test-model");
+        _mockEmbeddingService.GetModelName().Returns("test-model");
 
-        _mockEmbeddingService
-            .Setup(x => x.GenerateEmbeddingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new float[] { 0.1f, 0.2f, 0.3f, 0.4f, 0.5f });
+        _mockEmbeddingService.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new float[] { 0.1f, 0.2f, 0.3f, 0.4f, 0.5f });
     }
 
     private LateChunkingEmbeddingService CreateService()
     {
         return new LateChunkingEmbeddingService(
-            _mockEmbeddingService.Object,
+            _mockEmbeddingService,
             Microsoft.Extensions.Options.Options.Create(_options),
             _logger);
     }
@@ -68,12 +64,12 @@ public class LateChunkingEmbeddingServiceTests
         return boundaries;
     }
 
-    private Mock<IEnrichedChunk> CreateMockEnrichedChunk(string content, int index)
+    private IEnrichedChunk CreateMockEnrichedChunk(string content, int index)
     {
-        var mockChunk = new Mock<IEnrichedChunk>();
-        mockChunk.Setup(x => x.ChunkId).Returns($"chunk_{index}");
-        mockChunk.Setup(x => x.Content).Returns(content);
-        mockChunk.Setup(x => x.ContextDependency).Returns(0.5);
+        var mockChunk = Substitute.For<IEnrichedChunk>();
+        mockChunk.ChunkId.Returns($"chunk_{index}");
+        mockChunk.Content.Returns(content);
+        mockChunk.ContextDependency.Returns(0.5);
         return mockChunk;
     }
 
@@ -141,7 +137,7 @@ public class LateChunkingEmbeddingServiceTests
         // Arrange
         var longOptions = new LateChunkingOptions { MaxDocumentLength = 100 };
         var service = new LateChunkingEmbeddingService(
-            _mockEmbeddingService.Object,
+            _mockEmbeddingService,
             Microsoft.Extensions.Options.Options.Create(longOptions),
             _logger);
 
@@ -167,9 +163,9 @@ public class LateChunkingEmbeddingServiceTests
         var service = CreateService();
         var chunks = new List<IEnrichedChunk>
         {
-            CreateMockEnrichedChunk("First chunk content.", 0).Object,
-            CreateMockEnrichedChunk("Second chunk content.", 1).Object,
-            CreateMockEnrichedChunk("Third chunk content.", 2).Object
+            CreateMockEnrichedChunk("First chunk content.", 0),
+            CreateMockEnrichedChunk("Second chunk content.", 1),
+            CreateMockEnrichedChunk("Third chunk content.", 2)
         };
 
         // Act
@@ -192,9 +188,9 @@ public class LateChunkingEmbeddingServiceTests
         var service = CreateService();
         var chunks = new List<IEnrichedChunk>
         {
-            CreateMockEnrichedChunk("First chunk.", 0).Object,
-            CreateMockEnrichedChunk("Second chunk.", 1).Object,
-            CreateMockEnrichedChunk("Third chunk.", 2).Object
+            CreateMockEnrichedChunk("First chunk.", 0),
+            CreateMockEnrichedChunk("Second chunk.", 1),
+            CreateMockEnrichedChunk("Third chunk.", 2)
         };
 
         // Act
@@ -213,9 +209,9 @@ public class LateChunkingEmbeddingServiceTests
         var service = CreateService();
         var chunks = new List<IEnrichedChunk>
         {
-            CreateMockEnrichedChunk("First chunk.", 0).Object,
-            CreateMockEnrichedChunk("Second chunk.", 1).Object,
-            CreateMockEnrichedChunk("Third chunk.", 2).Object
+            CreateMockEnrichedChunk("First chunk.", 0),
+            CreateMockEnrichedChunk("Second chunk.", 1),
+            CreateMockEnrichedChunk("Third chunk.", 2)
         };
 
         // Act
@@ -242,7 +238,7 @@ public class LateChunkingEmbeddingServiceTests
             SurroundingContextSize = 50
         };
         var service = new LateChunkingEmbeddingService(
-            _mockEmbeddingService.Object,
+            _mockEmbeddingService,
             Microsoft.Extensions.Options.Options.Create(surroundingOptions),
             _logger);
 
@@ -279,7 +275,7 @@ public class LateChunkingEmbeddingServiceTests
             DocumentContextWeight = 0.3
         };
         var service = new LateChunkingEmbeddingService(
-            _mockEmbeddingService.Object,
+            _mockEmbeddingService,
             Microsoft.Extensions.Options.Options.Create(weightedOptions),
             _logger);
 
@@ -340,7 +336,7 @@ public class LateChunkingEmbeddingServiceTests
         var service = CreateService();
         var chunks = new List<IEnrichedChunk>
         {
-            CreateMockEnrichedChunk("Only chunk.", 0).Object
+            CreateMockEnrichedChunk("Only chunk.", 0)
         };
 
         // Act

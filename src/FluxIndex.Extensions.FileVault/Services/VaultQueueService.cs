@@ -5,6 +5,7 @@ using FluxIndex.Extensions.FileVault.Options;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Globalization;
 
 namespace FluxIndex.Extensions.FileVault.Services;
 
@@ -12,7 +13,7 @@ namespace FluxIndex.Extensions.FileVault.Services;
 /// SQLite-backed vault processing queue service.
 /// Provides persistence and crash recovery for processing jobs.
 /// </summary>
-public sealed class VaultQueueService : IVaultQueueService, IDisposable
+public sealed partial class VaultQueueService : IVaultQueueService, IDisposable
 {
     private readonly ILogger<VaultQueueService> _logger;
     private readonly string _connectionString;
@@ -81,7 +82,7 @@ public sealed class VaultQueueService : IVaultQueueService, IDisposable
             cmd.ExecuteNonQuery();
         }
 
-        _logger.LogDebug("Vault queue database initialized");
+        LogDatabaseInitialized(_logger);
     }
 
     private SqliteConnection CreateConnection() => new(_connectionString);
@@ -178,7 +179,7 @@ public sealed class VaultQueueService : IVaultQueueService, IDisposable
             _dbLock.Release();
         }
 
-        _logger.LogDebug("Enqueued {JobType} job for {FilePath}", jobType, filePath);
+        LogEnqueued(_logger, jobType, filePath);
         JobEnqueued?.Invoke(this, job);
 
         return job;
@@ -248,7 +249,7 @@ public sealed class VaultQueueService : IVaultQueueService, IDisposable
             await updateCmd.ExecuteNonQueryAsync(ct);
 
             job.TryStart();
-            _logger.LogDebug("Dequeued job {JobId} for {FilePath}", job.Id, job.FilePath);
+            LogDequeued(_logger, job.Id, job.FilePath);
 
             return job;
         }
@@ -281,7 +282,7 @@ public sealed class VaultQueueService : IVaultQueueService, IDisposable
             await cmd.ExecuteNonQueryAsync(ct);
 
             _lastProcessedAt = completedAt;
-            _logger.LogDebug("Completed job {JobId}", jobId);
+            LogCompleted(_logger, jobId);
 
             var job = await GetJobInternalAsync(connection, jobId, ct);
             if (job != null)
@@ -326,7 +327,7 @@ public sealed class VaultQueueService : IVaultQueueService, IDisposable
             cmd.Parameters.AddWithValue("@error_message", errorMessage);
 
             await cmd.ExecuteNonQueryAsync(ct);
-            _logger.LogWarning("Failed job {JobId}: {Error}", jobId, errorMessage);
+            LogFailed(_logger, jobId, errorMessage);
         }
         finally
         {
@@ -361,7 +362,7 @@ public sealed class VaultQueueService : IVaultQueueService, IDisposable
             var rows = await cmd.ExecuteNonQueryAsync(ct);
             if (rows > 0)
             {
-                _logger.LogDebug("Retrying job {JobId}, attempt {RetryCount}", jobId, job.RetryCount + 1);
+                LogRetrying(_logger, jobId, job.RetryCount + 1);
                 return true;
             }
 
@@ -396,7 +397,7 @@ public sealed class VaultQueueService : IVaultQueueService, IDisposable
             var rows = await cmd.ExecuteNonQueryAsync(ct);
             if (rows > 0)
             {
-                _logger.LogDebug("Cancelled job {JobId}", jobId);
+                LogCancelled(_logger, jobId);
                 return true;
             }
 
@@ -570,7 +571,7 @@ public sealed class VaultQueueService : IVaultQueueService, IDisposable
 
             if (recovered > 0)
             {
-                _logger.LogInformation("Recovered {Count} stuck processing jobs", recovered);
+                LogRecovered(_logger, recovered);
             }
 
             return recovered;
@@ -598,7 +599,7 @@ public sealed class VaultQueueService : IVaultQueueService, IDisposable
             cmd.Parameters.AddWithValue("@cancelled", (int)VaultJobStatus.Cancelled);
 
             var deleted = await cmd.ExecuteNonQueryAsync(ct);
-            _logger.LogDebug("Cleared {Count} completed/cancelled jobs", deleted);
+            LogClearedCompleted(_logger, deleted);
 
             return deleted;
         }
@@ -624,7 +625,7 @@ public sealed class VaultQueueService : IVaultQueueService, IDisposable
             cmd.Parameters.AddWithValue("@failed", (int)VaultJobStatus.Failed);
 
             var deleted = await cmd.ExecuteNonQueryAsync(ct);
-            _logger.LogDebug("Cleared {Count} failed jobs", deleted);
+            LogClearedFailed(_logger, deleted);
 
             return deleted;
         }
@@ -646,7 +647,7 @@ public sealed class VaultQueueService : IVaultQueueService, IDisposable
             cmd.CommandText = "DELETE FROM vault_jobs";
             await cmd.ExecuteNonQueryAsync(ct);
 
-            _logger.LogInformation("Cleared all queue jobs");
+            LogClearedAll(_logger);
         }
         finally
         {
@@ -661,20 +662,20 @@ public sealed class VaultQueueService : IVaultQueueService, IDisposable
     public void Pause()
     {
         _isPaused = true;
-        _logger.LogInformation("Queue processing paused");
+        LogPaused(_logger);
     }
 
-    public void Resume()
+    public void ResumeProcessing()
     {
         _isPaused = false;
-        _logger.LogInformation("Queue processing resumed");
+        LogResumed(_logger);
     }
 
     #endregion
 
     #region Helpers
 
-    private static VaultJob ReadJob(IDataReader reader)
+    private static VaultJob ReadJob(SqliteDataReader reader)
     {
         return VaultJob.Restore(
             id: Guid.Parse(reader.GetString(0)),
@@ -683,9 +684,9 @@ public sealed class VaultQueueService : IVaultQueueService, IDisposable
             jobType: (VaultJobType)reader.GetInt32(3),
             status: (VaultJobStatus)reader.GetInt32(4),
             priority: (VaultJobPriority)reader.GetInt32(5),
-            queuedAt: DateTimeOffset.Parse(reader.GetString(6)),
-            startedAt: reader.IsDBNull(7) ? null : DateTimeOffset.Parse(reader.GetString(7)),
-            completedAt: reader.IsDBNull(8) ? null : DateTimeOffset.Parse(reader.GetString(8)),
+            queuedAt: DateTimeOffset.Parse(reader.GetString(6), CultureInfo.InvariantCulture),
+            startedAt: reader.IsDBNull(7) ? null : DateTimeOffset.Parse(reader.GetString(7), CultureInfo.InvariantCulture),
+            completedAt: reader.IsDBNull(8) ? null : DateTimeOffset.Parse(reader.GetString(8), CultureInfo.InvariantCulture),
             retryCount: reader.GetInt32(9),
             maxRetries: reader.GetInt32(10),
             errorMessage: reader.IsDBNull(11) ? null : reader.GetString(11)
@@ -700,6 +701,37 @@ public sealed class VaultQueueService : IVaultQueueService, IDisposable
         _dbLock.Dispose();
         _disposed = true;
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Vault queue database initialized")]
+    private static partial void LogDatabaseInitialized(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Enqueued {JobType} job for {FilePath}")]
+    private static partial void LogEnqueued(ILogger logger, VaultJobType jobType, string filePath);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Dequeued job {JobId} for {FilePath}")]
+    private static partial void LogDequeued(ILogger logger, Guid jobId, string filePath);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Completed job {JobId}")]
+    private static partial void LogCompleted(ILogger logger, Guid jobId);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed job {JobId}: {Error}")]
+    private static partial void LogFailed(ILogger logger, Guid jobId, string error);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Retrying job {JobId}, attempt {RetryCount}")]
+    private static partial void LogRetrying(ILogger logger, Guid jobId, int retryCount);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Cancelled job {JobId}")]
+    private static partial void LogCancelled(ILogger logger, Guid jobId);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Recovered {Count} stuck processing jobs")]
+    private static partial void LogRecovered(ILogger logger, int count);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Cleared {Count} completed/cancelled jobs")]
+    private static partial void LogClearedCompleted(ILogger logger, int count);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Cleared {Count} failed jobs")]
+    private static partial void LogClearedFailed(ILogger logger, int count);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Cleared all queue jobs")]
+    private static partial void LogClearedAll(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Queue processing paused")]
+    private static partial void LogPaused(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Queue processing resumed")]
+    private static partial void LogResumed(ILogger logger);
 
     #endregion
 }

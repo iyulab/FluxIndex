@@ -171,7 +171,7 @@ public sealed class QAGenerationService
                 SourceId = cr.SourceId,
                 Question = qa.Question,
                 Answer = qa.Answer,
-                Context = qa.Context,
+                Context = qa.Context ?? string.Empty,
                 Evaluation = qa.Evaluation
             }))
             .ToList();

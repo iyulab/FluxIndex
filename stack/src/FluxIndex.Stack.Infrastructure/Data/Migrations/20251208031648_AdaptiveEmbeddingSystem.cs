@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Pgvector;
 
+#pragma warning disable CA1861 // Prefer 'static readonly' fields over constant array arguments (auto-generated migration)
 #nullable disable
 
 namespace FluxIndex.Stack.Infrastructure.Data.Migrations

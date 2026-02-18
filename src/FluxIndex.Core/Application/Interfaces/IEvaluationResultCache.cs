@@ -70,7 +70,7 @@ public class InMemoryEvaluationResultCache : IEvaluationResultCache
 {
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, CacheEntry> _cache = new();
 
-    private record CacheEntry(BatchEvaluationResult Result, DateTime? ExpiresAt);
+    private sealed record CacheEntry(BatchEvaluationResult Result, DateTime? ExpiresAt);
 
     private static string GetKey(string version, string datasetId) => $"{version}:{datasetId}";
 

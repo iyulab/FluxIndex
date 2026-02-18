@@ -19,8 +19,12 @@ namespace FluxIndex.Core.Application.Services;
 /// Implements CRAG (Corrective RAG) patterns for hallucination detection,
 /// relevance verification, factual grounding, and confidence-based filtering.
 /// </summary>
-public class RetrievalVerificationService : Interfaces.IRetrievalVerificationService
+public partial class RetrievalVerificationService : Interfaces.IRetrievalVerificationService
 {
+    private static readonly char[] TokenizeSeparators = [' ', ',', '.', '!', '?', ';', ':', '\n', '\r', '\t', '(', ')', '[', ']', '"'];
+    private static readonly string[] ClaimSplitSeparators = [" and ", " or ", ",", ";"];
+    private static readonly char[] SentenceSplitSeparators = ['.', '!', '?'];
+
     private readonly IEmbeddingService _embeddingService;
     private readonly ITextCompletionService? _completionService;
     private readonly RetrievalVerificationServiceOptions _options;
@@ -61,7 +65,8 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
             return CreateEmptyResult(query, "No documents to verify");
         }
 
-        _logger.LogDebug("Verifying {Count} documents for query: {Query}", documentList.Count, query);
+        if (_logger.IsEnabled(LogLevel.Debug))
+            LogRetrievalVerification4(_logger, documentList.Count, query);
 
         try
         {
@@ -107,9 +112,8 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
                 ProcessingTime = stopwatch.Elapsed
             };
 
-            _logger.LogInformation(
-                "Verification complete: {Status}, confidence: {Confidence:F3}, {RelevantCount}/{TotalCount} relevant",
-                status, overallConfidence, statistics.RelevantCount, statistics.TotalDocuments);
+            if (_logger.IsEnabled(LogLevel.Debug))
+                LogRetrievalVerification3(_logger, status, overallConfidence, statistics.RelevantCount, statistics.TotalDocuments);
 
             return result;
         }
@@ -119,7 +123,8 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Verification failed for query: {Query}", query);
+            if (_logger.IsEnabled(LogLevel.Debug))
+                LogRetrievalVerification2(_logger, ex, query);
             return CreateFailedResult(query, ex.Message, stopwatch.Elapsed);
         }
     }
@@ -185,7 +190,7 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to grade document {DocumentId}", document.Id);
+            LogRetrievalVerification1(_logger, ex, document.Id);
             return new DocumentGrade
             {
                 Relevance = Interfaces.RelevanceGrade.Unknown,
@@ -546,7 +551,7 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
                     return (Index: index, Document: doc, Grade: new DocumentGrade
                     {
                         Relevance = Interfaces.RelevanceGrade.Unknown,
-                        Issues = new[] { "Verification timeout" }
+                        Issues = ["Verification timeout"]
                     }, Success: false);
                 }
             });
@@ -628,13 +633,12 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
 
     private static string ComputeHash(string text)
     {
-        using var sha = System.Security.Cryptography.SHA256.Create();
         var bytes = System.Text.Encoding.UTF8.GetBytes(text);
-        var hash = sha.ComputeHash(bytes);
+        var hash = System.Security.Cryptography.SHA256.HashData(bytes);
         return Convert.ToBase64String(hash);
     }
 
-    private double CalculateCosineSimilarity(float[] a, float[] b)
+    private static double CalculateCosineSimilarity(float[] a, float[] b)
     {
         if (a == null || b == null || a.Length != b.Length) return 0;
 
@@ -650,7 +654,7 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
         return denominator > 0 ? dotProduct / denominator : 0;
     }
 
-    private double CalculateKeywordMatch(string query, string content)
+    private static double CalculateKeywordMatch(string query, string content)
     {
         var queryTokens = Tokenize(query);
         var contentTokens = Tokenize(content);
@@ -661,18 +665,18 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
         return (double)overlap / queryTokens.Count;
     }
 
-    private HashSet<string> Tokenize(string text)
+    private static HashSet<string> Tokenize(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return new HashSet<string>();
 
         return text.ToLowerInvariant()
-            .Split(new[] { ' ', ',', '.', '!', '?', ';', ':', '\n', '\r', '\t', '(', ')', '[', ']', '"' },
+            .Split(TokenizeSeparators,
                 StringSplitOptions.RemoveEmptyEntries)
             .Where(t => t.Length > 2)
             .ToHashSet();
     }
 
-    private double CalculateEntityOverlap(string query, string content)
+    private static double CalculateEntityOverlap(string query, string content)
     {
         // Simple entity extraction using capitalized words and patterns
         var queryEntities = ExtractSimpleEntities(query);
@@ -684,7 +688,7 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
         return (double)overlap / queryEntities.Count;
     }
 
-    private HashSet<string> ExtractSimpleEntities(string text)
+    private static HashSet<string> ExtractSimpleEntities(string text)
     {
         var entities = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -705,7 +709,7 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
         return entities;
     }
 
-    private double CalculateContextualFit(string query, string content)
+    private static double CalculateContextualFit(string query, string content)
     {
         // Check for contextual indicators
         var score = 0.5; // Base score
@@ -731,21 +735,21 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
         return Math.Min(1.0, score);
     }
 
-    private bool IsQuestion(string text)
+    private static bool IsQuestion(string text)
     {
         var questionWords = new[] { "what", "where", "when", "why", "how", "who", "which", "is", "are", "can", "does" };
         var lowerText = text.ToLowerInvariant();
-        return text.Contains('?') || questionWords.Any(w => lowerText.StartsWith(w + " "));
+        return text.Contains('?') || questionWords.Any(w => lowerText.StartsWith(w + " ", StringComparison.Ordinal));
     }
 
-    private bool ContainsAnswerIndicators(string content)
+    private static bool ContainsAnswerIndicators(string content)
     {
         var indicators = new[] { "is", "are", "was", "were", "because", "therefore", "means", "refers to" };
         var lowerContent = content.ToLowerInvariant();
         return indicators.Any(i => lowerContent.Contains(i));
     }
 
-    private HashSet<string> GetBigrams(string text)
+    private static HashSet<string> GetBigrams(string text)
     {
         var tokens = Tokenize(text).ToList();
         var bigrams = new HashSet<string>();
@@ -758,7 +762,7 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
         return bigrams;
     }
 
-    private Interfaces.RelevanceGrade DetermineRelevanceGrade(double confidenceScore)
+    private static Interfaces.RelevanceGrade DetermineRelevanceGrade(double confidenceScore)
     {
         return confidenceScore switch
         {
@@ -769,7 +773,7 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
         };
     }
 
-    private IReadOnlyList<string> DetectDocumentIssues(
+    private static List<string> DetectDocumentIssues(
         string query, DocumentChunk document,
         double semanticSimilarity, double keywordMatch)
     {
@@ -793,7 +797,7 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
         return issues;
     }
 
-    private double CalculateDocumentHallucinationRisk(DocumentChunk document, double semanticSimilarity)
+    private static double CalculateDocumentHallucinationRisk(DocumentChunk document, double semanticSimilarity)
     {
         var risk = 0.0;
 
@@ -838,7 +842,7 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
         }
     }
 
-    private async Task<HallucinationRiskFactor?> CheckForContradictionsAsync(
+    private static async Task<HallucinationRiskFactor?> CheckForContradictionsAsync(
         List<DocumentChunk> documents,
         CancellationToken cancellationToken)
     {
@@ -873,7 +877,7 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
         };
     }
 
-    private bool HasPotentialContradiction(string content1, string content2)
+    private static bool HasPotentialContradiction(string content1, string content2)
     {
         var negationPatterns = new[] { "not ", "never ", "no ", "don't", "doesn't", "won't", "isn't", "aren't", "false", "incorrect" };
 
@@ -900,7 +904,7 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
         return false;
     }
 
-    private HallucinationRiskFactor? CheckForInsufficientEvidence(string query, List<DocumentChunk> documents)
+    private static HallucinationRiskFactor? CheckForInsufficientEvidence(string query, List<DocumentChunk> documents)
     {
         var queryComplexity = EstimateQueryComplexity(query);
         var expectedMinDocs = queryComplexity switch
@@ -924,7 +928,7 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
         return null;
     }
 
-    private double EstimateQueryComplexity(string query)
+    private static double EstimateQueryComplexity(string query)
     {
         var complexity = 0.0;
 
@@ -943,7 +947,7 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
         return Math.Min(1.0, complexity);
     }
 
-    private HallucinationRiskFactor? CheckForLackOfSpecificity(string query, List<DocumentChunk> documents)
+    private static HallucinationRiskFactor? CheckForLackOfSpecificity(string query, List<DocumentChunk> documents)
     {
         var queryEntities = ExtractSimpleEntities(query);
         if (queryEntities.Count == 0) return null;
@@ -968,7 +972,7 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
         return null;
     }
 
-    private HallucinationRiskFactor? CheckForEntityConfusion(string query, List<DocumentChunk> documents)
+    private static HallucinationRiskFactor? CheckForEntityConfusion(string query, List<DocumentChunk> documents)
     {
         var queryEntities = ExtractSimpleEntities(query);
         if (queryEntities.Count == 0) return null;
@@ -1005,7 +1009,7 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
         };
     }
 
-    private bool IsSimilarEntity(string entity1, string entity2)
+    private static bool IsSimilarEntity(string entity1, string entity2)
     {
         // Simple similarity check
         var e1 = entity1.ToLowerInvariant();
@@ -1034,7 +1038,7 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
         return CalculateDocumentHallucinationRisk(document, similarity);
     }
 
-    private HallucinationRiskLevel ClassifyRiskLevel(double risk)
+    private static HallucinationRiskLevel ClassifyRiskLevel(double risk)
     {
         return risk switch
         {
@@ -1046,7 +1050,7 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
         };
     }
 
-    private IReadOnlyList<string> GenerateMitigationSuggestions(
+    private static List<string> GenerateMitigationSuggestions(
         List<HallucinationRiskFactor> factors,
         HallucinationRiskLevel level)
     {
@@ -1084,12 +1088,12 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
         return suggestions.Distinct().ToList();
     }
 
-    private List<string> ExtractClaimsFromQuery(string query)
+    private static List<string> ExtractClaimsFromQuery(string query)
     {
         // Simple claim extraction - split on conjunctions
         var claims = new List<string>();
 
-        var parts = query.Split(new[] { " and ", " or ", ",", ";" },
+        var parts = query.Split(ClaimSplitSeparators,
             StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
         foreach (var part in parts)
@@ -1151,12 +1155,12 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
         };
     }
 
-    private string? ExtractRelevantExcerpt(string claim, string content)
+    private static string? ExtractRelevantExcerpt(string claim, string content)
     {
         var claimWords = Tokenize(claim).Take(5).ToList();
         if (claimWords.Count == 0) return null;
 
-        var sentences = content.Split(new[] { '.', '!', '?' },
+        var sentences = content.Split(SentenceSplitSeparators,
             StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
         foreach (var sentence in sentences)
@@ -1166,14 +1170,14 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
 
             if (overlap >= 2)
             {
-                return sentence.Length > 200 ? sentence.Substring(0, 200) + "..." : sentence;
+                return sentence.Length > 200 ? string.Concat(sentence.AsSpan(0, 200), "...") : sentence;
             }
         }
 
         return null;
     }
 
-    private double CalculateQueryCoverage(string query, List<DocumentChunk> documents)
+    private static double CalculateQueryCoverage(string query, List<DocumentChunk> documents)
     {
         var queryWords = Tokenize(query);
         if (queryWords.Count == 0) return 0;
@@ -1213,7 +1217,7 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
         return similarities.Count > 0 ? similarities.Average() : 0;
     }
 
-    private double CalculateSourceDiversity(List<DocumentChunk> documents)
+    private static double CalculateSourceDiversity(List<DocumentChunk> documents)
     {
         if (documents.Count <= 1) return 0;
 
@@ -1231,7 +1235,7 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
         return (diversityFromSources + diversityFromContent) / 2;
     }
 
-    private IReadOnlyList<string> GenerateGroundingImprovements(
+    private static List<string> GenerateGroundingImprovements(
         double overallScore, double coverage, double diversity,
         List<string> ungroundedAspects)
     {
@@ -1314,7 +1318,7 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
         };
     }
 
-    private SupportType DetermineSupportType(string claim, string content, double similarity)
+    private static SupportType DetermineSupportType(string claim, string content, double similarity)
     {
         // Check for contradiction indicators
         var claimLower = claim.ToLowerInvariant();
@@ -1338,7 +1342,7 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
         };
     }
 
-    private IReadOnlyList<VerificationIssue> IdentifyVerificationIssues(
+    private static List<VerificationIssue> IdentifyVerificationIssues(
         IReadOnlyList<GradedDocument> gradedDocs,
         HallucinationRiskAssessment? hallucinationRisk,
         FactualGroundingResult? factualGrounding,
@@ -1384,7 +1388,7 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
                 Type = VerificationIssueType.InsufficientGrounding,
                 Severity = 1 - factualGrounding.OverallScore,
                 Description = $"Factual grounding score: {factualGrounding.OverallScore:F2}",
-                SuggestedResolution = factualGrounding.ImprovementSuggestions.FirstOrDefault()
+                SuggestedResolution = factualGrounding.ImprovementSuggestions.Count > 0 ? factualGrounding.ImprovementSuggestions[0] : null
             });
         }
 
@@ -1403,7 +1407,7 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
         return issues;
     }
 
-    private double CalculateOverallConfidence(IReadOnlyList<GradedDocument> gradedDocs)
+    private static double CalculateOverallConfidence(IReadOnlyList<GradedDocument> gradedDocs)
     {
         if (gradedDocs.Count == 0) return 0;
 
@@ -1426,9 +1430,9 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
         return (avgScore * 0.7) + (coverage * 0.3);
     }
 
-    private Interfaces.VerificationStatus DetermineVerificationStatus(
+    private static Interfaces.VerificationStatus DetermineVerificationStatus(
         IReadOnlyList<GradedDocument> gradedDocs,
-        IReadOnlyList<VerificationIssue> issues,
+        List<VerificationIssue> issues,
         VerificationOptions options)
     {
         var relevantCount = gradedDocs.Count(d =>
@@ -1475,7 +1479,7 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
         return Interfaces.VerificationStatus.Failed;
     }
 
-    private VerificationStatistics GenerateStatistics(
+    private static VerificationStatistics GenerateStatistics(
         IReadOnlyList<GradedDocument> gradedDocs,
         HallucinationRiskAssessment? hallucinationRisk,
         bool llmUsed)
@@ -1493,7 +1497,7 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
         };
     }
 
-    private string GenerateRecommendationReasoning(
+    private static string GenerateRecommendationReasoning(
         RetrievalVerificationResult result,
         RecommendedAction action)
     {
@@ -1518,7 +1522,7 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
         return string.Join(". ", reasons);
     }
 
-    private RetrievalVerificationResult CreateEmptyResult(string query, string message)
+    private static RetrievalVerificationResult CreateEmptyResult(string query, string message)
     {
         return new RetrievalVerificationResult
         {
@@ -1539,7 +1543,7 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
         };
     }
 
-    private RetrievalVerificationResult CreateFailedResult(string query, string error, TimeSpan processingTime)
+    private static RetrievalVerificationResult CreateFailedResult(string query, string error, TimeSpan processingTime)
     {
         return new RetrievalVerificationResult
         {
@@ -1562,12 +1566,25 @@ public class RetrievalVerificationService : Interfaces.IRetrievalVerificationSer
     }
 
     #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Verifying {Count} documents for query: {Query}")]
+    private static partial void LogRetrievalVerification4(ILogger logger, int count, string query);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Verification complete: {Status}, confidence: {Confidence:F3}, {RelevantCount}/{TotalCount} relevant")]
+    private static partial void LogRetrievalVerification3(ILogger logger, VerificationStatus status, double confidence, double relevantCount, int totalCount);
+    [LoggerMessage(Level = LogLevel.Error, Message = "Verification failed for query: {Query}")]
+    private static partial void LogRetrievalVerification2(ILogger logger, Exception exception, string query);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to grade document {DocumentId}")]
+    private static partial void LogRetrievalVerification1(ILogger logger, Exception exception, string documentId);
+
+    #endregion
 }
 
 /// <summary>
 /// Options for the retrieval verification service.
 /// </summary>
-public class RetrievalVerificationServiceOptions
+public partial class RetrievalVerificationServiceOptions
 {
     /// <summary>
     /// Default grading criteria.
@@ -1577,12 +1594,12 @@ public class RetrievalVerificationServiceOptions
     /// <summary>
     /// Whether to always check for hallucination.
     /// </summary>
-    public bool AlwaysCheckHallucination { get; set; } = false;
+    public bool AlwaysCheckHallucination { get; set; }
 
     /// <summary>
     /// Whether to use LLM for document grading.
     /// </summary>
-    public bool UseLlmForGrading { get; set; } = false;
+    public bool UseLlmForGrading { get; set; }
 
     /// <summary>
     /// Minimum grounding score for claims.

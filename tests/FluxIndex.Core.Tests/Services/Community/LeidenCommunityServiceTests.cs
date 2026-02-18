@@ -3,7 +3,8 @@ using FluxIndex.Core.Application.Services;
 using FluxIndex.Core.Domain.Models;
 using FluxIndex.Core.Domain.ValueObjects;
 using Microsoft.Extensions.Logging;
-using Moq;
+using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using Xunit;
 
 namespace FluxIndex.Core.Tests.Services.Community;
@@ -14,13 +15,13 @@ namespace FluxIndex.Core.Tests.Services.Community;
 /// </summary>
 public class LeidenCommunityServiceTests
 {
-    private readonly Mock<ILogger<LeidenCommunityService>> _loggerMock;
-    private readonly Mock<ITextCompletionService> _llmServiceMock;
+    private readonly ILogger<LeidenCommunityService> _loggerMock;
+    private readonly ITextCompletionService _llmServiceMock;
 
     public LeidenCommunityServiceTests()
     {
-        _loggerMock = new Mock<ILogger<LeidenCommunityService>>();
-        _llmServiceMock = new Mock<ITextCompletionService>();
+        _loggerMock = Substitute.For<ILogger<LeidenCommunityService>>();
+        _llmServiceMock = Substitute.For<ITextCompletionService>();
     }
 
     #region Constructor Tests
@@ -29,7 +30,7 @@ public class LeidenCommunityServiceTests
     public void Constructor_WithLogger_Succeeds()
     {
         // Act
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
 
         // Assert
         Assert.NotNull(service);
@@ -39,7 +40,7 @@ public class LeidenCommunityServiceTests
     public void Constructor_WithLoggerAndLlmService_Succeeds()
     {
         // Act
-        var service = new LeidenCommunityService(_loggerMock.Object, _llmServiceMock.Object);
+        var service = new LeidenCommunityService(_loggerMock, _llmServiceMock);
 
         // Assert
         Assert.NotNull(service);
@@ -60,7 +61,7 @@ public class LeidenCommunityServiceTests
     public async Task DetectHierarchicalCommunitiesAsync_EmptyChunks_ReturnsEmptyHierarchy()
     {
         // Arrange
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
         var chunks = Enumerable.Empty<LeidenChunk>();
 
         // Act
@@ -75,7 +76,7 @@ public class LeidenCommunityServiceTests
     public async Task DetectHierarchicalCommunitiesAsync_SingleChunk_ReturnsHierarchyWithOneChunk()
     {
         // Arrange
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
         var chunks = new List<LeidenChunk>
         {
             CreateChunk("1", "Test content", CreateRandomEmbedding())
@@ -93,7 +94,7 @@ public class LeidenCommunityServiceTests
     public async Task DetectHierarchicalCommunitiesAsync_MultipleChunks_DetectsCommunities()
     {
         // Arrange
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
         var baseEmbedding = CreateRandomEmbedding();
         var chunks = new List<LeidenChunk>
         {
@@ -117,7 +118,7 @@ public class LeidenCommunityServiceTests
     public async Task DetectHierarchicalCommunitiesAsync_WithOptions_UsesProvidedOptions()
     {
         // Arrange
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
         var chunks = CreateTestChunks(5);
         var options = new LeidenOptions
         {
@@ -139,7 +140,7 @@ public class LeidenCommunityServiceTests
     public async Task DetectHierarchicalCommunitiesAsync_WithRandomSeed_ProducesReproducibleResults()
     {
         // Arrange
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
         var chunks = CreateTestChunks(10);
         var options = new LeidenOptions { RandomSeed = 42, MinCommunitySize = 1 };
 
@@ -155,7 +156,7 @@ public class LeidenCommunityServiceTests
     public async Task DetectHierarchicalCommunitiesAsync_IncludesStatistics()
     {
         // Arrange
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
         var chunks = CreateTestChunks(5);
         var options = new LeidenOptions { MinCommunitySize = 1 };
 
@@ -172,7 +173,7 @@ public class LeidenCommunityServiceTests
     {
         // Arrange
         var cts = new CancellationTokenSource();
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
         var chunks = CreateTestChunks(3);
 
         // Act
@@ -188,7 +189,7 @@ public class LeidenCommunityServiceTests
         // Arrange
         var cts = new CancellationTokenSource();
         cts.Cancel();
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
         var chunks = CreateTestChunks(10);
 
         // Act & Assert
@@ -200,7 +201,7 @@ public class LeidenCommunityServiceTests
     public async Task DetectHierarchicalCommunitiesAsync_CalculatesCentroids()
     {
         // Arrange
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
         var baseEmbedding = CreateRandomEmbedding();
         var chunks = new List<LeidenChunk>
         {
@@ -227,7 +228,7 @@ public class LeidenCommunityServiceTests
     public async Task DetectHierarchicalCommunitiesAsync_ExtractsKeywords()
     {
         // Arrange
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
         var baseEmbedding = CreateRandomEmbedding();
         var chunks = new List<LeidenChunk>
         {
@@ -252,7 +253,7 @@ public class LeidenCommunityServiceTests
     public async Task DetectHierarchicalCommunitiesAsync_SelectsRepresentatives()
     {
         // Arrange
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
         var baseEmbedding = CreateRandomEmbedding();
         var chunks = new List<LeidenChunk>
         {
@@ -279,7 +280,7 @@ public class LeidenCommunityServiceTests
     public async Task DetectHierarchicalCommunitiesAsync_WithRefinement_RefinesPartition()
     {
         // Arrange
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
         var chunks = CreateTestChunks(10);
         var options = new LeidenOptions { UseRefinement = true, MinCommunitySize = 1 };
 
@@ -294,14 +295,13 @@ public class LeidenCommunityServiceTests
     public async Task DetectHierarchicalCommunitiesAsync_WithSummaryGeneration_GeneratesSummaries()
     {
         // Arrange
-        _llmServiceMock.Setup(x => x.GenerateCompletionAsync(
-                It.IsAny<string>(),
-                It.IsAny<int>(),
-                It.IsAny<float>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync("This community focuses on machine learning topics.");
+        _llmServiceMock.GenerateCompletionAsync(
+                Arg.Any<string>(),
+                Arg.Any<int>(),
+                Arg.Any<float>(),
+                Arg.Any<CancellationToken>()).Returns("This community focuses on machine learning topics.");
 
-        var service = new LeidenCommunityService(_loggerMock.Object, _llmServiceMock.Object);
+        var service = new LeidenCommunityService(_loggerMock, _llmServiceMock);
         var baseEmbedding = CreateRandomEmbedding();
         var chunks = new List<LeidenChunk>
         {
@@ -331,7 +331,7 @@ public class LeidenCommunityServiceTests
     public async Task GenerateSummariesAsync_InvalidLevel_ReturnsEmptyList()
     {
         // Arrange
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
         var hierarchy = new CommunityHierarchy
         {
             Levels = new List<CommunityLevel>(),
@@ -350,7 +350,7 @@ public class LeidenCommunityServiceTests
     public async Task GenerateSummariesAsync_NegativeLevel_ReturnsEmptyList()
     {
         // Arrange
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
         var hierarchy = new CommunityHierarchy
         {
             Levels = new List<CommunityLevel>
@@ -372,7 +372,7 @@ public class LeidenCommunityServiceTests
     public async Task GenerateSummariesAsync_WithoutLlmService_ReturnsKeywordBasedSummaries()
     {
         // Arrange
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
         var community = new LeidenCommunity
         {
             Index = 0,
@@ -406,14 +406,13 @@ public class LeidenCommunityServiceTests
     public async Task GenerateSummariesAsync_WithLlmService_GeneratesLlmSummaries()
     {
         // Arrange
-        _llmServiceMock.Setup(x => x.GenerateCompletionAsync(
-                It.IsAny<string>(),
-                It.IsAny<int>(),
-                It.IsAny<float>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync("A community about machine learning and AI.");
+        _llmServiceMock.GenerateCompletionAsync(
+                Arg.Any<string>(),
+                Arg.Any<int>(),
+                Arg.Any<float>(),
+                Arg.Any<CancellationToken>()).Returns("A community about machine learning and AI.");
 
-        var service = new LeidenCommunityService(_loggerMock.Object, _llmServiceMock.Object);
+        var service = new LeidenCommunityService(_loggerMock, _llmServiceMock);
         var community = new LeidenCommunity
         {
             Index = 0,
@@ -447,14 +446,13 @@ public class LeidenCommunityServiceTests
     public async Task GenerateSummariesAsync_LlmFailure_ReturnsNull()
     {
         // Arrange
-        _llmServiceMock.Setup(x => x.GenerateCompletionAsync(
-                It.IsAny<string>(),
-                It.IsAny<int>(),
-                It.IsAny<float>(),
-                It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new Exception("LLM service unavailable"));
+        _llmServiceMock.GenerateCompletionAsync(
+                Arg.Any<string>(),
+                Arg.Any<int>(),
+                Arg.Any<float>(),
+                Arg.Any<CancellationToken>()).Throws(new Exception("LLM service unavailable"));
 
-        var service = new LeidenCommunityService(_loggerMock.Object, _llmServiceMock.Object);
+        var service = new LeidenCommunityService(_loggerMock, _llmServiceMock);
         var community = new LeidenCommunity
         {
             Index = 0,
@@ -489,7 +487,7 @@ public class LeidenCommunityServiceTests
         // Arrange
         var cts = new CancellationTokenSource();
         cts.Cancel();
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
         var hierarchy = new CommunityHierarchy
         {
             Levels = new List<CommunityLevel>
@@ -520,7 +518,7 @@ public class LeidenCommunityServiceTests
     public async Task FindRelevantCommunitiesAsync_InvalidLevel_ReturnsEmptyList()
     {
         // Arrange
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
         var queryEmbedding = new EmbeddingVector(CreateRandomFloatArray(128), "test-model");
         var hierarchy = new CommunityHierarchy
         {
@@ -540,7 +538,7 @@ public class LeidenCommunityServiceTests
     public async Task FindRelevantCommunitiesAsync_NegativeLevel_ReturnsEmptyList()
     {
         // Arrange
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
         var queryEmbedding = new EmbeddingVector(CreateRandomFloatArray(128), "test-model");
         var hierarchy = new CommunityHierarchy
         {
@@ -563,7 +561,7 @@ public class LeidenCommunityServiceTests
     public async Task FindRelevantCommunitiesAsync_ReturnsSortedBySimilarity()
     {
         // Arrange
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
         var queryValues = CreateRandomFloatArray(128);
         var queryEmbedding = new EmbeddingVector(queryValues, "test-model");
 
@@ -603,7 +601,7 @@ public class LeidenCommunityServiceTests
     public async Task FindRelevantCommunitiesAsync_RespectsTopK()
     {
         // Arrange
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
         var queryEmbedding = new EmbeddingVector(CreateRandomFloatArray(128), "test-model");
         var centroid = new EmbeddingVector(CreateRandomFloatArray(128), "test-model");
 
@@ -639,7 +637,7 @@ public class LeidenCommunityServiceTests
     public async Task FindRelevantCommunitiesAsync_SkipsCommunitiesWithoutCentroid()
     {
         // Arrange
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
         var queryEmbedding = new EmbeddingVector(CreateRandomFloatArray(128), "test-model");
         var centroid = new EmbeddingVector(CreateRandomFloatArray(128), "test-model");
 
@@ -672,7 +670,7 @@ public class LeidenCommunityServiceTests
     public async Task FindRelevantCommunitiesAsync_IncludesCorrectLevel()
     {
         // Arrange
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
         var queryEmbedding = new EmbeddingVector(CreateRandomFloatArray(128), "test-model");
         var centroid = new EmbeddingVector(CreateRandomFloatArray(128), "test-model");
 
@@ -709,7 +707,7 @@ public class LeidenCommunityServiceTests
     public async Task UpdateHierarchyAsync_WithNewChunks_ReturnsUpdatedHierarchy()
     {
         // Arrange
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
         var existingHierarchy = new CommunityHierarchy
         {
             Levels = new List<CommunityLevel>(),
@@ -729,7 +727,7 @@ public class LeidenCommunityServiceTests
     public async Task UpdateHierarchyAsync_UsesProvidedOptions()
     {
         // Arrange
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
         var existingHierarchy = new CommunityHierarchy
         {
             Levels = new List<CommunityLevel>(),
@@ -750,7 +748,7 @@ public class LeidenCommunityServiceTests
     public async Task UpdateHierarchyAsync_FallsBackToExistingOptions()
     {
         // Arrange
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
         var existingOptions = new LeidenOptions { Resolution = 1.5, MinCommunitySize = 1 };
         var existingHierarchy = new CommunityHierarchy
         {
@@ -773,7 +771,7 @@ public class LeidenCommunityServiceTests
         // Arrange
         var cts = new CancellationTokenSource();
         cts.Cancel();
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
         var existingHierarchy = new CommunityHierarchy
         {
             Levels = new List<CommunityLevel>(),
@@ -795,7 +793,7 @@ public class LeidenCommunityServiceTests
     public async Task DetectHierarchicalCommunitiesAsync_HighResolution_ProducesMoreCommunities()
     {
         // Arrange
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
         var chunks = CreateTestChunks(20);
         var lowResOptions = new LeidenOptions { Resolution = 0.5, MinCommunitySize = 1 };
         var highResOptions = new LeidenOptions { Resolution = 2.0, MinCommunitySize = 1 };
@@ -813,7 +811,7 @@ public class LeidenCommunityServiceTests
     public async Task DetectHierarchicalCommunitiesAsync_MinCommunitySize_FiltersSmallCommunities()
     {
         // Arrange
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
         var chunks = CreateTestChunks(10);
         var options = new LeidenOptions { MinCommunitySize = 3 };
 
@@ -831,7 +829,7 @@ public class LeidenCommunityServiceTests
     public async Task DetectHierarchicalCommunitiesAsync_LowSimilarityThreshold_MoreConnections()
     {
         // Arrange
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
         var chunks = CreateTestChunks(10);
         var options = new LeidenOptions
         {
@@ -851,7 +849,7 @@ public class LeidenCommunityServiceTests
     public async Task DetectHierarchicalCommunitiesAsync_MaxNeighbors_LimitsConnections()
     {
         // Arrange
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
         var chunks = CreateTestChunks(10);
         var options = new LeidenOptions
         {
@@ -870,7 +868,7 @@ public class LeidenCommunityServiceTests
     public async Task DetectHierarchicalCommunitiesAsync_CohesionCalculation_IsValid()
     {
         // Arrange
-        var service = new LeidenCommunityService(_loggerMock.Object);
+        var service = new LeidenCommunityService(_loggerMock);
         var baseEmbedding = CreateRandomEmbedding();
         var chunks = new List<LeidenChunk>
         {

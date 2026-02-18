@@ -127,30 +127,34 @@ public class DocumentChunkRepository : IDocumentChunkRepository
     {
         var queryVector = new Vector(queryEmbedding);
 
-        // Start with base query filtering only chunks with embeddings
-        var query = _context.DocumentChunks
-            .Where(c => c.Embedding != null);
+        // Query through ChunkEmbeddings (model-aware embedding storage)
+        var query = _context.ChunkEmbeddings
+            .Include(e => e.Chunk)
+                .ThenInclude(c => c!.Document)
+            .Where(e => e.Embedding != null);
 
         // Apply document filter if specified
         if (documentIds != null && documentIds.Any())
         {
             var docIdsList = documentIds.ToList();
-            query = query.Where(c => docIdsList.Contains(c.DocumentId));
+            query = query.Where(e => docIdsList.Contains(e.Chunk!.DocumentId));
         }
 
         // Execute query with cosine distance ordering and projection
         var results = await query
-            .OrderBy(c => c.Embedding!.CosineDistance(queryVector))
+            .OrderBy(e => e.Embedding!.CosineDistance(queryVector))
             .Take(limit * 2) // Get more to allow for score filtering
-            .Select(c => new
+            .Select(e => new
             {
-                Chunk = c,
-                Distance = c.Embedding!.CosineDistance(queryVector)
+                Chunk = e.Chunk!,
+                Distance = e.Embedding!.CosineDistance(queryVector)
             })
             .ToListAsync(cancellationToken);
 
-        // Convert distance to similarity score (1 - distance) and filter by minimum score
+        // Convert distance to similarity score (1 - distance), deduplicate by chunk, and filter by minimum score
         return results
+            .GroupBy(r => r.Chunk.Id)
+            .Select(g => g.OrderByDescending(r => 1.0 - r.Distance).First())
             .Select(r => (r.Chunk, Score: 1.0 - r.Distance))
             .Where(r => r.Score >= minScore)
             .Take(limit)

@@ -10,7 +10,7 @@ namespace FluxIndex.Core.Application.Services;
 /// IEnrichedChunk를 처리하는 향상된 인덱싱 서비스
 /// FileFlux/WebFlux의 청크를 Contextual Header와 함께 인덱싱
 /// </summary>
-public class EnrichedChunkIndexingService
+public partial class EnrichedChunkIndexingService
 {
     private readonly IDocumentRepository _documentRepository;
     private readonly IVectorStore _vectorStore;
@@ -53,9 +53,8 @@ public class EnrichedChunkIndexingService
         var sourceId = chunkList[0].Source.SourceId;
         var sourceTitle = chunkList[0].Source.Title;
 
-        _logger.LogInformation(
-            "Starting enriched chunk indexing for {SourceId} ({Title}) with {ChunkCount} chunks",
-            sourceId, sourceTitle, chunkList.Count);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogEnrichedChunkIndexing5(_logger, sourceId, sourceTitle, chunkList.Count);
 
         // Create document entity
         var document = Document.Create(sourceId);
@@ -68,7 +67,7 @@ public class EnrichedChunkIndexingService
             await _documentRepository.AddAsync(document, cancellationToken);
 
             // Generate Contextual Headers in batch
-            _logger.LogDebug("Generating contextual headers for {Count} chunks", chunkList.Count);
+            LogEnrichedChunkIndexing4(_logger, chunkList.Count);
             var headers = await _headerGenerator.GenerateBatchAsync(
                 chunkList, documentSummary, cancellationToken);
 
@@ -112,24 +111,23 @@ public class EnrichedChunkIndexingService
                 // Add to document
                 document.AddChunk(documentChunk);
 
-                _logger.LogDebug(
-                    "Indexed chunk {Index}/{Total} for {SourceId} (ContextDependency: {Dependency:F2})",
-                    i + 1, chunkList.Count, sourceId, enrichedChunk.ContextDependency);
+                if (_logger.IsEnabled(LogLevel.Information))
+                    LogEnrichedChunkIndexing3(_logger, i + 1, chunkList.Count, sourceId, enrichedChunk.ContextDependency);
             }
 
             // Mark document as indexed
             document.MarkAsIndexed();
             await _documentRepository.UpdateAsync(document, cancellationToken);
 
-            _logger.LogInformation(
-                "Successfully indexed document {SourceId} with {ChunkCount} chunks",
-                sourceId, chunkList.Count);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogEnrichedChunkIndexing2(_logger, sourceId, chunkList.Count);
 
             return document;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to index enriched chunks for {SourceId}", sourceId);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogEnrichedChunkIndexing1(_logger, ex, sourceId);
             document.MarkAsFailed();
             await _documentRepository.UpdateAsync(document, cancellationToken);
             throw;
@@ -248,4 +246,19 @@ public class EnrichedChunkIndexingService
 
         return chunk;
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting enriched chunk indexing for {SourceId} ({Title}) with {ChunkCount} chunks")]
+    private static partial void LogEnrichedChunkIndexing5(ILogger logger, string sourceId, string title, int chunkCount);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Generating contextual headers for {Count} chunks")]
+    private static partial void LogEnrichedChunkIndexing4(ILogger logger, int count);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Indexed chunk {Index}/{Total} for {SourceId} (ContextDependency: {Dependency:F2})")]
+    private static partial void LogEnrichedChunkIndexing3(ILogger logger, int index, int total, string sourceId, double dependency);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Successfully indexed document {SourceId} with {ChunkCount} chunks")]
+    private static partial void LogEnrichedChunkIndexing2(ILogger logger, string sourceId, int chunkCount);
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to index enriched chunks for {SourceId}")]
+    private static partial void LogEnrichedChunkIndexing1(ILogger logger, Exception exception, string sourceId);
+
+    #endregion
 }

@@ -2,18 +2,18 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services.Quantization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Moq;
+using NSubstitute;
 using Xunit;
 
 namespace FluxIndex.Core.Tests.Services.Quantization;
 
 public class ProductQuantizerTests
 {
-    private readonly Mock<ILogger<ProductQuantizer>> _loggerMock;
+    private readonly ILogger<ProductQuantizer> _loggerMock;
 
     public ProductQuantizerTests()
     {
-        _loggerMock = new Mock<ILogger<ProductQuantizer>>();
+        _loggerMock = Substitute.For<ILogger<ProductQuantizer>>();
     }
 
     private ProductQuantizer CreateQuantizer(int dimension = 16, int numSubvectors = 4, int codebookSize = 256)
@@ -27,7 +27,7 @@ public class ProductQuantizerTests
             KMeansIterations = 5 // 테스트용으로 적게
         });
 
-        return new ProductQuantizer(options, _loggerMock.Object);
+        return new ProductQuantizer(options, _loggerMock);
     }
 
     private List<float[]> GenerateTrainingVectors(int count, int dimension)
@@ -269,7 +269,7 @@ public class ProductQuantizerTests
 
         // Act
         var table = quantizer.BuildDistanceTable(queryVector);
-        var distanceWithTable = quantizer.ComputeDistanceWithTable(table, quantizedTarget.Data);
+        var distanceWithTable = ProductQuantizer.ComputeDistanceWithTable(table, quantizedTarget.Data);
         var directDistance = quantizer.ComputeDistanceToVector(quantizedTarget, queryVector);
 
         // Assert
@@ -383,7 +383,7 @@ public class ProductQuantizerTests
         });
 
         Assert.Throws<ArgumentException>(() =>
-            new ProductQuantizer(options, _loggerMock.Object));
+            new ProductQuantizer(options, _loggerMock));
     }
 
     [Fact]
@@ -399,7 +399,7 @@ public class ProductQuantizerTests
         });
 
         Assert.Throws<ArgumentException>(() =>
-            new ProductQuantizer(options, _loggerMock.Object));
+            new ProductQuantizer(options, _loggerMock));
     }
 
     #endregion

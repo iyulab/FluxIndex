@@ -5,7 +5,7 @@ namespace FluxIndex.Stack.Api.Middleware;
 /// <summary>
 /// Middleware for global exception handling.
 /// </summary>
-public class ExceptionHandlingMiddleware
+public partial class ExceptionHandlingMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly ILogger<ExceptionHandlingMiddleware> _logger;
@@ -32,7 +32,7 @@ public class ExceptionHandlingMiddleware
 
     private async Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
-        _logger.LogError(exception, "An unhandled exception occurred: {Message}", exception.Message);
+        LogUnhandledException(_logger, exception, exception.Message);
 
         var (statusCode, response) = exception switch
         {
@@ -76,4 +76,11 @@ public class ExceptionHandlingMiddleware
         context.Response.ContentType = "application/json";
         await context.Response.WriteAsJsonAsync(response);
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "An unhandled exception occurred: {Message}")]
+    private static partial void LogUnhandledException(ILogger logger, Exception? exception, string message);
+
+    #endregion
 }

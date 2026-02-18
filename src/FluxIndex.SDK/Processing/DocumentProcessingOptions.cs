@@ -39,20 +39,20 @@ public class DocumentProcessingOptions
     /// <summary>
     /// Enable metadata enrichment via LLM
     /// </summary>
-    public bool EnableMetadataEnrichment { get; set; } = false;
+    public bool EnableMetadataEnrichment { get; set; }
 
     /// <summary>
     /// Enable text cleaning/preprocessing (noise removal, OCR fixes).
     /// Applied to full text BEFORE chunking.
     /// </summary>
-    public bool EnableTextCleaning { get; set; } = false;
+    public bool EnableTextCleaning { get; set; }
 
     /// <summary>
     /// Enable contextual enrichment for chunks (Anthropic Contextual Retrieval).
     /// Adds document-level context to each chunk BEFORE embedding for 49-67% better retrieval.
     /// Requires LLM service.
     /// </summary>
-    public bool EnableContextualEnrichment { get; set; } = false;
+    public bool EnableContextualEnrichment { get; set; }
 
     /// <summary>
     /// Enable QA pair generation from chunks.
@@ -60,7 +60,7 @@ public class DocumentProcessingOptions
     /// Runs AFTER embedding as final optional stage.
     /// Requires LLM service.
     /// </summary>
-    public bool EnableQAGeneration { get; set; } = false;
+    public bool EnableQAGeneration { get; set; }
 
     /// <summary>
     /// Maximum QA pairs to generate per chunk (default: 3).

@@ -9,7 +9,7 @@ namespace FluxIndex.Core.Application.Services.Quantization;
 /// 스칼라 양자화 구현
 /// float32 벡터를 int8/uint8로 변환하여 4배 압축
 /// </summary>
-public class ScalarQuantizer : IVectorQuantizer
+public partial class ScalarQuantizer : IVectorQuantizer
 {
     private readonly QuantizationOptions _options;
     private readonly ILogger<ScalarQuantizer> _logger;
@@ -98,8 +98,7 @@ public class ScalarQuantizer : IVectorQuantizer
 
     public Task<float[]> DequantizeAsync(QuantizedVector quantizedVector, CancellationToken cancellationToken = default)
     {
-        if (quantizedVector == null)
-            throw new ArgumentNullException(nameof(quantizedVector));
+        ArgumentNullException.ThrowIfNull(quantizedVector);
 
         var result = quantizedVector.Type switch
         {
@@ -132,8 +131,7 @@ public class ScalarQuantizer : IVectorQuantizer
 
     public float ComputeDistanceToVector(QuantizedVector quantized, float[] vector)
     {
-        if (quantized == null)
-            throw new ArgumentNullException(nameof(quantized));
+        ArgumentNullException.ThrowIfNull(quantized);
         if (vector == null || vector.Length == 0)
             throw new ArgumentException("Vector cannot be null or empty", nameof(vector));
 
@@ -148,12 +146,12 @@ public class ScalarQuantizer : IVectorQuantizer
 
         if (vectors.Count == 0)
         {
-            _logger.LogWarning("No training vectors provided, using default scale");
+            LogScalarQuantizer3(_logger);
             _isTrained = true;
             return Task.CompletedTask;
         }
 
-        _logger.LogInformation("Training scalar quantizer with {Count} vectors", vectors.Count);
+        LogScalarQuantizer2(_logger, vectors.Count);
 
         // 전역 최소/최대값 계산
         _globalMin = float.MaxValue;
@@ -188,9 +186,8 @@ public class ScalarQuantizer : IVectorQuantizer
 
         _isTrained = true;
 
-        _logger.LogInformation(
-            "Scalar quantizer trained: min={Min}, max={Max}, scale={Scale}, offset={Offset}",
-            _globalMin, _globalMax, _globalScale, _globalOffset);
+        if (_logger.IsEnabled(LogLevel.Warning))
+            LogScalarQuantizer1(_logger, _globalMin, _globalMax, _globalScale, _globalOffset);
 
         return Task.CompletedTask;
     }
@@ -298,7 +295,7 @@ public class ScalarQuantizer : IVectorQuantizer
 
     #region UInt8 Quantization
 
-    private QuantizedVector QuantizeUInt8(float[] vector)
+    private static QuantizedVector QuantizeUInt8(float[] vector)
     {
         var quantized = new byte[vector.Length];
         float min = float.MaxValue, max = float.MinValue;
@@ -333,7 +330,7 @@ public class ScalarQuantizer : IVectorQuantizer
         };
     }
 
-    private float[] DequantizeUInt8(QuantizedVector quantized)
+    private static float[] DequantizeUInt8(QuantizedVector quantized)
     {
         var result = new float[quantized.OriginalDimension];
         var scale = quantized.Metadata?.Scale ?? 1.0f;
@@ -370,7 +367,7 @@ public class ScalarQuantizer : IVectorQuantizer
 
     #region Int4 Quantization
 
-    private QuantizedVector QuantizeInt4(float[] vector)
+    private static QuantizedVector QuantizeInt4(float[] vector)
     {
         // 2개의 4비트 값을 1바이트에 저장
         var quantizedSize = (vector.Length + 1) / 2;
@@ -412,7 +409,7 @@ public class ScalarQuantizer : IVectorQuantizer
         };
     }
 
-    private float[] DequantizeInt4(QuantizedVector quantized)
+    private static float[] DequantizeInt4(QuantizedVector quantized)
     {
         var result = new float[quantized.OriginalDimension];
         var scale = quantized.Metadata?.Scale ?? 1.0f;
@@ -485,6 +482,17 @@ public class ScalarQuantizer : IVectorQuantizer
 
         return (float)Math.Sqrt(sumSq);
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No training vectors provided, using default scale")]
+    private static partial void LogScalarQuantizer3(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Training scalar quantizer with {Count} vectors")]
+    private static partial void LogScalarQuantizer2(ILogger logger, int count);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Scalar quantizer trained: min={Min}, max={Max}, scale={Scale}, offset={Offset}")]
+    private static partial void LogScalarQuantizer1(ILogger logger, float min, float max, float scale, float offset);
 
     #endregion
 }

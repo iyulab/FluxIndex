@@ -1,0 +1,46 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/10. base/">
+    <Project Path="src/FluxIndex.Core/FluxIndex.Core.csproj" />
+    <Project Path="src/FluxIndex.MCP/FluxIndex.MCP.csproj" />
+    <Project Path="src/FluxIndex.SDK/FluxIndex.SDK.csproj" />
+    <Project Path="src/FluxIndex.Storage.Neo4j/FluxIndex.Storage.Neo4j.csproj" />
+    <Project Path="src/FluxIndex.Storage.Qdrant/FluxIndex.Storage.Qdrant.csproj" />
+  </Folder>
+  <Folder Name="/40. Storages/">
+    <Project Path="src/FluxIndex.Storage.PostgreSQL/FluxIndex.Storage.PostgreSQL.csproj" />
+    <Project Path="src/FluxIndex.Storage.SQLite/FluxIndex.Storage.SQLite.csproj" />
+  </Folder>
+  <Folder Name="/50. Caches/">
+    <Project Path="src/FluxIndex.Cache.Redis/FluxIndex.Cache.Redis.csproj" />
+  </Folder>
+  <Folder Name="/90. tests/">
+    <Project Path="tests/FluxIndex.Cache.Redis.Tests/FluxIndex.Cache.Redis.Tests.csproj" />
+    <Project Path="tests/FluxIndex.Core.Tests/FluxIndex.Core.Tests.csproj" />
+    <Project Path="tests/FluxIndex.SDK.Tests/FluxIndex.SDK.Tests.csproj" />
+    <Project Path="tests/FluxIndex.Storage.PostgreSQL.Tests/FluxIndex.Storage.PostgreSQL.Tests.csproj" />
+    <Project Path="tests/FluxIndex.Storage.SQLite.Tests/FluxIndex.Storage.SQLite.Tests.csproj" />
+  </Folder>
+  <Folder Name="/cli/">
+    <Project Path="cli/FluxIndex.CLI/FluxIndex.CLI.csproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/RealQualityTest/RealQualityTest.csproj" />
+    <Project Path="samples/WebFluxSample/WebFluxSample.csproj" />
+  </Folder>
+  <Folder Name="/Solution Items/">
+    <File Path="Directory.Packages.props" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/FluxIndex.Extensions.FileVault/FluxIndex.Extensions.FileVault.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/FluxIndex.Extensions.FileVault.Tests/FluxIndex.Extensions.FileVault.Tests.csproj" />
+    <Project Path="tests/FluxIndex.Storage.Neo4j.Tests/FluxIndex.Storage.Neo4j.Tests.csproj" />
+    <Project Path="tests/FluxIndex.Storage.Qdrant.Tests/FluxIndex.Storage.Qdrant.Tests.csproj" />
+  </Folder>
+</Solution>

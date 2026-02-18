@@ -43,7 +43,7 @@ public class QueryAnalysis
     
     // Technical domain analysis
     public List<string> TechnicalDomains { get; set; } = new();
-    public bool ContainsTechnicalTerms => TechnicalDomains.Count > 0 || Concepts.Any();
+    public bool ContainsTechnicalTerms => TechnicalDomains.Count > 0 || Concepts.Count != 0;
 
     // 추론형 쿼리 특성
     public bool RequiresReasoning { get; set; }

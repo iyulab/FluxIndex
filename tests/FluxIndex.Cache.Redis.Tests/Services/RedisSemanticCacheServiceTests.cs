@@ -5,7 +5,7 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Moq;
+using NSubstitute;
 using StackExchange.Redis;
 using System;
 using System.Collections.Generic;
@@ -20,6 +20,7 @@ namespace FluxIndex.Cache.Redis.Tests.Services;
 /// <summary>
 /// Redis 시맨틱 캐시 서비스 테스트
 /// </summary>
+[Trait("Category", "Integration")]
 public class RedisSemanticCacheServiceTests : RedisTestBase
 {
     private IDatabase? _redis;
@@ -42,17 +43,17 @@ public class RedisSemanticCacheServiceTests : RedisTestBase
             DefaultTtl = TimeSpan.FromMinutes(5)
         });
 
-        var logger = new Mock<ILogger<RedisSemanticCacheService>>();
-        var embeddingService = new Mock<IEmbeddingService>();
+        var logger = Substitute.For<ILogger<RedisSemanticCacheService>>();
+        var embeddingService = Substitute.For<IEmbeddingService>();
 
-        embeddingService.Setup(x => x.GenerateEmbeddingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string text, CancellationToken _) => CreateMockEmbedding(text));
+        embeddingService.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo => CreateMockEmbedding(callInfo.ArgAt<string>(0)));
 
         _cacheService = new RedisSemanticCacheService(
             redis,
-            embeddingService.Object,
+            embeddingService,
             options,
-            logger.Object);
+            logger);
     }
 
     protected override Task OnDockerDisposingAsync()

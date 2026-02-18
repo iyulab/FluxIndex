@@ -10,7 +10,7 @@ namespace FluxIndex.Core.Application.Services.Quantization;
 /// 벡터를 서브벡터로 분할하고 각각을 코드북으로 양자화
 /// 높은 압축률과 빠른 거리 계산 제공
 /// </summary>
-public class ProductQuantizer : IVectorQuantizer
+public partial class ProductQuantizer : IVectorQuantizer
 {
     private readonly QuantizationOptions _options;
     private readonly ILogger<ProductQuantizer> _logger;
@@ -123,8 +123,7 @@ public class ProductQuantizer : IVectorQuantizer
         if (!_isTrained)
             throw new InvalidOperationException("Product quantizer must be trained before use");
 
-        if (quantizedVector == null)
-            throw new ArgumentNullException(nameof(quantizedVector));
+        ArgumentNullException.ThrowIfNull(quantizedVector);
 
         var result = new float[_options.Dimension];
 
@@ -214,7 +213,7 @@ public class ProductQuantizer : IVectorQuantizer
     /// 사전 계산된 거리 테이블을 사용한 빠른 거리 계산
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public float ComputeDistanceWithTable(float[][] distanceTable, byte[] codes)
+    public static float ComputeDistanceWithTable(float[][] distanceTable, byte[] codes)
     {
         float sumSq = 0;
         for (int m = 0; m < codes.Length; m++)
@@ -230,22 +229,20 @@ public class ProductQuantizer : IVectorQuantizer
 
         if (vectors.Count < _options.CodebookSize)
         {
-            _logger.LogWarning(
-                "Training set size ({Count}) is smaller than codebook size ({CodebookSize}). " +
-                "Using simple initialization.",
-                vectors.Count, _options.CodebookSize);
+            if (_logger.IsEnabled(LogLevel.Warning))
+                LogProductQuantizer4(_logger, vectors.Count, _options.CodebookSize);
         }
 
-        _logger.LogInformation(
-            "Training Product Quantizer: {Count} vectors, {NumSubvectors} subvectors, {CodebookSize} codes",
-            vectors.Count, _options.NumSubvectors, _options.CodebookSize);
+        if (_logger.IsEnabled(LogLevel.Warning))
+            LogProductQuantizer3(_logger, vectors.Count, _options.NumSubvectors, _options.CodebookSize);
 
         // 각 서브벡터 공간에 대해 K-Means 클러스터링
         for (int m = 0; m < _options.NumSubvectors; m++)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            _logger.LogDebug("Training codebook for subvector {Index}/{Total}", m + 1, _options.NumSubvectors);
+            if (_logger.IsEnabled(LogLevel.Warning))
+                LogProductQuantizer2(_logger, m + 1, _options.NumSubvectors);
 
             // 서브벡터 추출
             var subvectors = vectors
@@ -258,7 +255,7 @@ public class ProductQuantizer : IVectorQuantizer
 
         _isTrained = true;
 
-        _logger.LogInformation("Product Quantizer training completed");
+        LogProductQuantizer1(_logger);
     }
 
     #region K-Means Training
@@ -410,7 +407,7 @@ public class ProductQuantizer : IVectorQuantizer
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private int FindNearestCodewordInCodebook(float[] subvector, float[][] codebook)
+    private static int FindNearestCodewordInCodebook(float[] subvector, float[][] codebook)
     {
         int nearestIdx = 0;
         float minDist = float.MaxValue;
@@ -439,6 +436,19 @@ public class ProductQuantizer : IVectorQuantizer
         }
         return sumSq; // 제곱 거리 반환 (sqrt는 나중에)
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Training set size ({Count}) is smaller than codebook size ({CodebookSize}). Using simple initialization.")]
+    private static partial void LogProductQuantizer4(ILogger logger, int count, int codebookSize);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Training Product Quantizer: {Count} vectors, {NumSubvectors} subvectors, {CodebookSize} codes")]
+    private static partial void LogProductQuantizer3(ILogger logger, int count, int numSubvectors, int codebookSize);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Training codebook for subvector {Index}/{Total}")]
+    private static partial void LogProductQuantizer2(ILogger logger, int index, int total);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Product Quantizer training completed")]
+    private static partial void LogProductQuantizer1(ILogger logger);
 
     #endregion
 }

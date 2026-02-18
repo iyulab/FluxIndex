@@ -13,6 +13,7 @@ namespace FluxIndex.Stack.Api.Tests;
 /// Integration tests for the complete RAG pipeline.
 /// Tests document upload, indexing, enrichment, and search functionality.
 /// </summary>
+[Trait("Category", "Integration")]
 public class RAGPipelineTests : IClassFixture<TestWebApplicationFactory>
 {
     private readonly HttpClient _client;
@@ -578,13 +579,13 @@ public class SearchRequest
     public string Query { get; set; } = string.Empty;
     public SearchMode Mode { get; set; } = SearchMode.Hybrid;
     public int TopK { get; set; } = 10;
-    public float MinScore { get; set; } = 0;
+    public float MinScore { get; set; }
     public Guid? CollectionId { get; set; }
-    public bool IncludeContent { get; set; } = false;
-    public bool IncludeMetadata { get; set; } = false;
+    public bool IncludeContent { get; set; }
+    public bool IncludeMetadata { get; set; }
     public Dictionary<string, object>? Filters { get; set; }
 
     // New parameters for enhanced search
-    public bool EnableReranking { get; set; } = false;
-    public bool IncludeGraphContext { get; set; } = false;
+    public bool EnableReranking { get; set; }
+    public bool IncludeGraphContext { get; set; }
 }

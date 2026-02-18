@@ -10,7 +10,7 @@ namespace FluxIndex.Stack.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/v1/[controller]")]
-public class SettingsController : ControllerBase
+public partial class SettingsController : ControllerBase
 {
     private readonly IAiProviderSettingsService _settingsService;
     private readonly IEmbeddingProviderCache? _embeddingProviderCache;
@@ -81,7 +81,7 @@ public class SettingsController : ControllerBase
         try
         {
             var provider = await _settingsService.UpdateProviderAsync(providerName, request, cancellationToken);
-            _logger.LogInformation("Updated AI provider settings for {Provider}", providerName);
+            LogUpdatedAiProviderSettings(_logger, providerName);
 
             // Invalidate embedding provider cache when settings change
             // This ensures the new configuration takes effect immediately
@@ -89,7 +89,7 @@ public class SettingsController : ControllerBase
                 request.IsDefaultEmbedding == true || request.IsEnabled != null)
             {
                 _embeddingProviderCache?.InvalidateCache();
-                _logger.LogInformation("Embedding provider cache invalidated due to settings change");
+                LogEmbeddingProviderCacheInvalidated(_logger);
             }
 
             // Invalidate text completion provider cache when LLM settings change
@@ -97,7 +97,7 @@ public class SettingsController : ControllerBase
                 request.IsDefaultLlm == true || request.IsEnabled != null)
             {
                 _textCompletionProviderCache?.InvalidateCache();
-                _logger.LogInformation("Text completion provider cache invalidated due to settings change");
+                LogTextCompletionProviderCacheInvalidated(_logger);
             }
 
             return Ok(ApiResponse<AiProviderSettingsDto>.Ok(provider, "Provider settings updated successfully"));
@@ -108,7 +108,7 @@ public class SettingsController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to update provider {Provider}", providerName);
+            LogUpdateProviderFailed(_logger, ex, providerName);
             return BadRequest(ApiResponse<AiProviderSettingsDto>.Fail(ex.Message));
         }
     }
@@ -165,12 +165,19 @@ public class SettingsController : ControllerBase
     {
         var status = await _settingsService.GetConfigurationStatusAsync(cancellationToken);
 
+        var modelName = embeddingProvider != null
+            ? await embeddingProvider.GetModelNameAsync(cancellationToken)
+            : "unknown";
+        var dimensions = embeddingProvider != null
+            ? await embeddingProvider.GetEmbeddingDimensionAsync(cancellationToken)
+            : 0;
+
         var dto = new EmbeddingProviderStatusDto
         {
             IsConfigured = status.HasEmbeddingProvider,
             ProviderName = status.DefaultEmbeddingProvider ?? "Local",
-            ModelName = embeddingProvider?.ModelName ?? "unknown",
-            Dimensions = embeddingProvider?.EmbeddingDimension ?? 0,
+            ModelName = modelName,
+            Dimensions = dimensions,
             IsUsingLocalFallback = !status.HasEmbeddingProvider || status.DefaultEmbeddingProvider == "Local"
         };
 
@@ -185,7 +192,7 @@ public class SettingsController : ControllerBase
     public IActionResult RefreshEmbeddingProvider()
     {
         _embeddingProviderCache?.InvalidateCache();
-        _logger.LogInformation("Embedding provider cache manually refreshed");
+        LogEmbeddingProviderCacheManuallyRefreshed(_logger);
         return Ok(ApiResponse<string>.Ok("Cache refreshed", "Embedding provider will be reconfigured on next request"));
     }
 
@@ -219,9 +226,31 @@ public class SettingsController : ControllerBase
     public IActionResult RefreshLlmProvider()
     {
         _textCompletionProviderCache?.InvalidateCache();
-        _logger.LogInformation("LLM provider cache manually refreshed");
+        LogLlmProviderCacheManuallyRefreshed(_logger);
         return Ok(ApiResponse<string>.Ok("Cache refreshed", "LLM provider will be reconfigured on next request"));
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Updated AI provider settings for {Provider}")]
+    private static partial void LogUpdatedAiProviderSettings(ILogger logger, string provider);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Embedding provider cache invalidated due to settings change")]
+    private static partial void LogEmbeddingProviderCacheInvalidated(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Text completion provider cache invalidated due to settings change")]
+    private static partial void LogTextCompletionProviderCacheInvalidated(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to update provider {Provider}")]
+    private static partial void LogUpdateProviderFailed(ILogger logger, Exception? exception, string provider);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Embedding provider cache manually refreshed")]
+    private static partial void LogEmbeddingProviderCacheManuallyRefreshed(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "LLM provider cache manually refreshed")]
+    private static partial void LogLlmProviderCacheManuallyRefreshed(ILogger logger);
+
+    #endregion
 }
 
 /// <summary>

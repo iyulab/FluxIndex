@@ -4,7 +4,7 @@ using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Moq;
+using NSubstitute;
 using Xunit;
 
 namespace FluxIndex.Core.Tests.Services;
@@ -16,25 +16,21 @@ namespace FluxIndex.Core.Tests.Services;
 /// </summary>
 public class RetrievalVerificationServiceTests
 {
-    private readonly Mock<IEmbeddingService> _mockEmbeddingService;
-    private readonly Mock<ITextCompletionService> _mockCompletionService;
+    private readonly IEmbeddingService _mockEmbeddingService;
+    private readonly ITextCompletionService _mockCompletionService;
     private readonly ILogger<RetrievalVerificationService> _logger;
     private readonly RetrievalVerificationServiceOptions _defaultOptions;
 
     public RetrievalVerificationServiceTests()
     {
-        _mockEmbeddingService = new Mock<IEmbeddingService>();
-        _mockCompletionService = new Mock<ITextCompletionService>();
+        _mockEmbeddingService = Substitute.For<IEmbeddingService>();
+        _mockCompletionService = Substitute.For<ITextCompletionService>();
         _logger = NullLogger<RetrievalVerificationService>.Instance;
         _defaultOptions = new RetrievalVerificationServiceOptions();
 
-        _mockEmbeddingService
-            .Setup(x => x.GetModelName())
-            .Returns("test-model");
+        _mockEmbeddingService.GetModelName().Returns("test-model");
 
-        _mockEmbeddingService
-            .Setup(x => x.GenerateEmbeddingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new float[] { 0.1f, 0.2f, 0.3f, 0.4f, 0.5f });
+        _mockEmbeddingService.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new float[] { 0.1f, 0.2f, 0.3f, 0.4f, 0.5f });
     }
 
     private RetrievalVerificationService CreateService(
@@ -44,8 +40,8 @@ public class RetrievalVerificationServiceTests
         var opts = options ?? _defaultOptions;
 
         return new RetrievalVerificationService(
-            _mockEmbeddingService.Object,
-            withLlm ? _mockCompletionService.Object : null,
+            _mockEmbeddingService,
+            withLlm ? _mockCompletionService : null,
             Microsoft.Extensions.Options.Options.Create(opts),
             _logger);
     }
@@ -126,7 +122,7 @@ public class RetrievalVerificationServiceTests
         Assert.Throws<ArgumentNullException>(() =>
             new RetrievalVerificationService(
                 null!,
-                _mockCompletionService.Object,
+                _mockCompletionService,
                 Microsoft.Extensions.Options.Options.Create(_defaultOptions),
                 _logger));
     }
@@ -147,8 +143,8 @@ public class RetrievalVerificationServiceTests
         // Arrange & Act & Assert
         Assert.Throws<ArgumentNullException>(() =>
             new RetrievalVerificationService(
-                _mockEmbeddingService.Object,
-                _mockCompletionService.Object,
+                _mockEmbeddingService,
+                _mockCompletionService,
                 Microsoft.Extensions.Options.Options.Create(_defaultOptions),
                 null!));
     }
@@ -315,13 +311,9 @@ public class RetrievalVerificationServiceTests
         };
 
         // Normalize the embedding so it's close to query embedding
-        _mockEmbeddingService
-            .Setup(x => x.GenerateEmbeddingAsync("machine learning algorithms", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new float[] { 0.9f, 0.1f, 0.1f, 0.1f, 0.1f });
+        _mockEmbeddingService.GenerateEmbeddingAsync("machine learning algorithms", Arg.Any<CancellationToken>()).Returns(new float[] { 0.9f, 0.1f, 0.1f, 0.1f, 0.1f });
 
-        _mockEmbeddingService
-            .Setup(x => x.GenerateEmbeddingAsync(It.Is<string>(s => s.Contains("Machine learning algorithms")), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new float[] { 0.9f, 0.1f, 0.1f, 0.1f, 0.1f });
+        _mockEmbeddingService.GenerateEmbeddingAsync(Arg.Is<string>(s => s.Contains("Machine learning algorithms")), Arg.Any<CancellationToken>()).Returns(new float[] { 0.9f, 0.1f, 0.1f, 0.1f, 0.1f });
 
         // Act
         var grade = await service.GradeDocumentAsync(query, document);
@@ -375,9 +367,7 @@ public class RetrievalVerificationServiceTests
         // Assert
         Assert.NotNull(grade);
         // Should not call GenerateEmbeddingAsync for the document content
-        _mockEmbeddingService.Verify(
-            x => x.GenerateEmbeddingAsync(document.Content, It.IsAny<CancellationToken>()),
-            Times.Never);
+        await _mockEmbeddingService.DidNotReceive().GenerateEmbeddingAsync(document.Content, Arg.Any<CancellationToken>());
     }
 
     #endregion
@@ -766,9 +756,7 @@ public class RetrievalVerificationServiceTests
         var query = "test query";
         var documents = CreateTestChunks(2);
 
-        _mockCompletionService
-            .Setup(x => x.GenerateJsonCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("{\"risk_level\": \"low\", \"factors\": []}");
+        _mockCompletionService.GenerateJsonCompletionAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns("{\"risk_level\": \"low\", \"factors\": []}");
 
         // Act
         var result = await service.VerifyAsync(query, documents);

@@ -12,11 +12,11 @@ namespace FluxIndex.Storage.SQLite;
 /// SQLite storage implementation for FluxIndex (development and testing)
 /// Vector search performed in memory using VectorMathUtilities
 /// </summary>
-public class SQLiteVectorStore : VectorStoreBase
+public class SQLiteVectorStore : VectorStoreBase, IDisposable
 {
     private readonly SQLiteDbContext _context;
     private readonly SQLiteOptions _options;
-    private bool _initialized = false;
+    private bool _initialized;
     private readonly SemaphoreSlim _initLock = new(1, 1);
 
     public SQLiteVectorStore(
@@ -93,7 +93,7 @@ public class SQLiteVectorStore : VectorStoreBase
             Content = chunk.Content,
             Embedding = chunk.Embedding?.ToArray(),
             TokenCount = chunk.TokenCount,
-            Metadata = chunk.Metadata
+            Metadata = chunk.Metadata ?? new()
         };
 
         _context.Vectors.Add(entity);
@@ -123,7 +123,7 @@ public class SQLiteVectorStore : VectorStoreBase
             .Where(v => v.Embedding != null)
             .ToListAsync(cancellationToken);
 
-        if (!entities.Any()) return [];
+        if (entities.Count == 0) return [];
 
         // Pre-compute query magnitude for optimization
         var queryMagnitude = ComputeMagnitude(queryEmbedding);
@@ -171,7 +171,7 @@ public class SQLiteVectorStore : VectorStoreBase
         entity.Content = chunk.Content;
         entity.Embedding = chunk.Embedding?.ToArray();
         entity.TokenCount = chunk.TokenCount;
-        entity.Metadata = chunk.Metadata;
+        entity.Metadata = chunk.Metadata ?? new();
 
         await _context.SaveChangesAsync(cancellationToken);
         return true;
@@ -201,7 +201,7 @@ public class SQLiteVectorStore : VectorStoreBase
             .Where(v => v.DocumentId == documentId)
             .ToListAsync(cancellationToken);
 
-        if (!entities.Any()) return false;
+        if (entities.Count == 0) return false;
 
         _context.Vectors.RemoveRange(entities);
         await _context.SaveChangesAsync(cancellationToken);
@@ -248,6 +248,15 @@ public class SQLiteVectorStore : VectorStoreBase
     }
 
     #endregion
+
+    /// <summary>
+    /// Disposes the initialization lock semaphore.
+    /// </summary>
+    public void Dispose()
+    {
+        _initLock.Dispose();
+        GC.SuppressFinalize(this);
+    }
 
     #region Private Helper Methods
 

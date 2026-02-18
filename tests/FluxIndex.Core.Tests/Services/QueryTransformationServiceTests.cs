@@ -3,7 +3,7 @@ using FluxIndex.Core.Application.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Moq;
+using NSubstitute;
 using Xunit;
 
 namespace FluxIndex.Core.Tests.Services;
@@ -13,12 +13,12 @@ namespace FluxIndex.Core.Tests.Services;
 /// </summary>
 public class QueryTransformationServiceTests
 {
-    private readonly Mock<ITextCompletionService> _mockCompletionService;
+    private readonly ITextCompletionService _mockCompletionService;
     private readonly ILogger<QueryTransformationService> _logger;
 
     public QueryTransformationServiceTests()
     {
-        _mockCompletionService = new Mock<ITextCompletionService>();
+        _mockCompletionService = Substitute.For<ITextCompletionService>();
         _logger = NullLogger<QueryTransformationService>.Instance;
     }
 
@@ -26,7 +26,7 @@ public class QueryTransformationServiceTests
     {
         var options = new Application.Services.QueryTransformationOptions();
         return new QueryTransformationService(
-            withLlm ? _mockCompletionService.Object : null,
+            withLlm ? _mockCompletionService : null,
             Microsoft.Extensions.Options.Options.Create(options),
             _logger);
     }
@@ -57,9 +57,7 @@ public class QueryTransformationServiceTests
         var query = "What is machine learning?";
         var hypotheticalDoc = "Machine learning is a subset of artificial intelligence...";
 
-        _mockCompletionService
-            .Setup(x => x.GenerateCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<float>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(hypotheticalDoc);
+        _mockCompletionService.GenerateCompletionAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns(hypotheticalDoc);
 
         // Act
         var result = await service.GenerateHypotheticalDocumentAsync(query);
@@ -97,9 +95,7 @@ public class QueryTransformationServiceTests
         var query = "How does photosynthesis work?";
         var llmResponse = "[\"What is photosynthesis?\", \"Explain photosynthesis\"]";
 
-        _mockCompletionService
-            .Setup(x => x.GenerateCompletionAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<float>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(llmResponse);
+        _mockCompletionService.GenerateCompletionAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns(llmResponse);
 
         // Act
         var result = await service.GenerateMultipleQueriesAsync(query, count: 3);

@@ -5,7 +5,8 @@ using FluxIndex.Core.Domain.Models;
 using FluxIndex.Core.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
+using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using Xunit;
 
 namespace FluxIndex.Core.Tests.Services;
@@ -15,18 +16,18 @@ namespace FluxIndex.Core.Tests.Services;
 /// </summary>
 public class HybridSearchQuantizationTests
 {
-    private readonly Mock<IVectorStore> _mockVectorStore;
-    private readonly Mock<ISparseRetriever> _mockSparseRetriever;
-    private readonly Mock<IEmbeddingService> _mockEmbeddingService;
-    private readonly Mock<IVectorQuantizer> _mockQuantizer;
+    private readonly IVectorStore _mockVectorStore;
+    private readonly ISparseRetriever _mockSparseRetriever;
+    private readonly IEmbeddingService _mockEmbeddingService;
+    private readonly IVectorQuantizer _mockQuantizer;
     private readonly ILogger<HybridSearchService> _logger;
 
     public HybridSearchQuantizationTests()
     {
-        _mockVectorStore = new Mock<IVectorStore>();
-        _mockSparseRetriever = new Mock<ISparseRetriever>();
-        _mockEmbeddingService = new Mock<IEmbeddingService>();
-        _mockQuantizer = new Mock<IVectorQuantizer>();
+        _mockVectorStore = Substitute.For<IVectorStore>();
+        _mockSparseRetriever = Substitute.For<ISparseRetriever>();
+        _mockEmbeddingService = Substitute.For<IEmbeddingService>();
+        _mockQuantizer = Substitute.For<IVectorQuantizer>();
         _logger = NullLogger<HybridSearchService>.Instance;
     }
 
@@ -37,10 +38,10 @@ public class HybridSearchQuantizationTests
     {
         // Arrange & Act
         var service = new HybridSearchService(
-            _mockVectorStore.Object,
-            _mockSparseRetriever.Object,
-            _mockEmbeddingService.Object,
-            _mockQuantizer.Object,
+            _mockVectorStore,
+            _mockSparseRetriever,
+            _mockEmbeddingService,
+            _mockQuantizer,
             _logger);
 
         // Assert - 양자화 지원 확인 (VectorStore가 IQuantizedVectorStore가 아니므로 false)
@@ -52,9 +53,9 @@ public class HybridSearchQuantizationTests
     {
         // Arrange & Act
         var service = new HybridSearchService(
-            _mockVectorStore.Object,
-            _mockSparseRetriever.Object,
-            _mockEmbeddingService.Object,
+            _mockVectorStore,
+            _mockSparseRetriever,
+            _mockEmbeddingService,
             null,
             _logger);
 
@@ -67,9 +68,9 @@ public class HybridSearchQuantizationTests
     {
         // Arrange & Act
         var service = new HybridSearchService(
-            _mockVectorStore.Object,
-            _mockSparseRetriever.Object,
-            _mockEmbeddingService.Object,
+            _mockVectorStore,
+            _mockSparseRetriever,
+            _mockEmbeddingService,
             _logger);
 
         // Assert
@@ -84,14 +85,13 @@ public class HybridSearchQuantizationTests
     public void SupportsQuantizedSearch_WithQuantizerAndQuantizedStore_ReturnsTrue()
     {
         // Arrange
-        var mockQuantizedStore = new Mock<IQuantizedVectorStore>();
-        mockQuantizedStore.As<IVectorStore>();
+        var mockQuantizedStore = Substitute.For<IQuantizedVectorStore, IVectorStore>();
 
         var service = new HybridSearchService(
-            mockQuantizedStore.Object,
-            _mockSparseRetriever.Object,
-            _mockEmbeddingService.Object,
-            _mockQuantizer.Object,
+            (IVectorStore)mockQuantizedStore,
+            _mockSparseRetriever,
+            _mockEmbeddingService,
+            _mockQuantizer,
             _logger);
 
         // Act & Assert
@@ -103,10 +103,10 @@ public class HybridSearchQuantizationTests
     {
         // Arrange
         var service = new HybridSearchService(
-            _mockVectorStore.Object, // regular IVectorStore, not IQuantizedVectorStore
-            _mockSparseRetriever.Object,
-            _mockEmbeddingService.Object,
-            _mockQuantizer.Object,
+            _mockVectorStore, // regular IVectorStore, not IQuantizedVectorStore
+            _mockSparseRetriever,
+            _mockEmbeddingService,
+            _mockQuantizer,
             _logger);
 
         // Act & Assert
@@ -117,13 +117,12 @@ public class HybridSearchQuantizationTests
     public void SupportsQuantizedSearch_WithoutQuantizer_ReturnsFalse()
     {
         // Arrange
-        var mockQuantizedStore = new Mock<IQuantizedVectorStore>();
-        mockQuantizedStore.As<IVectorStore>();
+        var mockQuantizedStore = Substitute.For<IQuantizedVectorStore, IVectorStore>();
 
         var service = new HybridSearchService(
-            mockQuantizedStore.Object,
-            _mockSparseRetriever.Object,
-            _mockEmbeddingService.Object,
+            (IVectorStore)mockQuantizedStore,
+            _mockSparseRetriever,
+            _mockEmbeddingService,
             null, // no quantizer
             _logger);
 
@@ -139,8 +138,7 @@ public class HybridSearchQuantizationTests
     public async Task SearchAsync_WithUseQuantizedSearchTrue_UsesQuantizedSearch()
     {
         // Arrange
-        var mockQuantizedStore = new Mock<IQuantizedVectorStore>();
-        mockQuantizedStore.As<IVectorStore>();
+        var mockQuantizedStore = Substitute.For<IQuantizedVectorStore, IVectorStore>();
 
         var query = "test query";
         var embedding = new float[] { 0.1f, 0.2f, 0.3f };
@@ -157,29 +155,25 @@ public class HybridSearchQuantizationTests
             (CreateTestChunk("chunk2", "Content 2"), 0.85f)
         };
 
-        _mockEmbeddingService.Setup(x => x.GenerateEmbeddingAsync(query, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(embedding);
+        _mockEmbeddingService.GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
 
-        _mockQuantizer.Setup(x => x.QuantizeAsync(embedding, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(quantizedVector);
+        _mockQuantizer.QuantizeAsync(embedding, Arg.Any<CancellationToken>()).Returns(quantizedVector);
 
-        mockQuantizedStore.Setup(x => x.SearchWithRerankAsync(
+        mockQuantizedStore.SearchWithRerankAsync(
                 embedding,
                 quantizedVector,
                 10,
                 3,
                 0.0f,
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(searchResults);
+                Arg.Any<CancellationToken>()).Returns(searchResults);
 
-        _mockSparseRetriever.Setup(x => x.SearchAsync(query, It.IsAny<SparseSearchOptions>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<SparseSearchResult>());
+        _mockSparseRetriever.SearchAsync(query, Arg.Any<SparseSearchOptions>(), Arg.Any<CancellationToken>()).Returns(new List<SparseSearchResult>());
 
         var service = new HybridSearchService(
-            mockQuantizedStore.Object,
-            _mockSparseRetriever.Object,
-            _mockEmbeddingService.Object,
-            _mockQuantizer.Object,
+            (IVectorStore)mockQuantizedStore,
+            _mockSparseRetriever,
+            _mockEmbeddingService,
+            _mockQuantizer,
             _logger);
 
         var options = new HybridSearchOptions
@@ -194,13 +188,13 @@ public class HybridSearchQuantizationTests
         var results = await service.SearchAsync(query, options);
 
         // Assert
-        mockQuantizedStore.Verify(x => x.SearchWithRerankAsync(
+        await mockQuantizedStore.Received(1).SearchWithRerankAsync(
             embedding,
             quantizedVector,
-            It.IsAny<int>(),
+            Arg.Any<int>(),
             3,
             0.0f,
-            It.IsAny<CancellationToken>()), Times.Once);
+            Arg.Any<CancellationToken>());
 
         Assert.Equal(2, results.Count);
         Assert.Equal("chunk1", results[0].Chunk.Id);
@@ -210,8 +204,7 @@ public class HybridSearchQuantizationTests
     public async Task SearchAsync_WithUseQuantizedSearchFalse_UsesRegularSearch()
     {
         // Arrange
-        var mockQuantizedStore = new Mock<IQuantizedVectorStore>();
-        mockQuantizedStore.As<IVectorStore>();
+        var mockQuantizedStore = Substitute.For<IQuantizedVectorStore, IVectorStore>();
 
         var query = "test query";
         var embedding = new float[] { 0.1f, 0.2f, 0.3f };
@@ -222,21 +215,18 @@ public class HybridSearchQuantizationTests
             CreateTestChunk("chunk2", "Content 2", 0.8f)
         };
 
-        _mockEmbeddingService.Setup(x => x.GenerateEmbeddingAsync(query, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(embedding);
+        _mockEmbeddingService.GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
 
-        mockQuantizedStore.As<IVectorStore>()
-            .Setup(x => x.SearchAsync(embedding, It.IsAny<int>(), It.IsAny<float>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(vectorResults);
+        ((IVectorStore)mockQuantizedStore).SearchAsync(embedding, Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>())
+            .Returns(vectorResults);
 
-        _mockSparseRetriever.Setup(x => x.SearchAsync(query, It.IsAny<SparseSearchOptions>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<SparseSearchResult>());
+        _mockSparseRetriever.SearchAsync(query, Arg.Any<SparseSearchOptions>(), Arg.Any<CancellationToken>()).Returns(new List<SparseSearchResult>());
 
         var service = new HybridSearchService(
-            mockQuantizedStore.Object,
-            _mockSparseRetriever.Object,
-            _mockEmbeddingService.Object,
-            _mockQuantizer.Object,
+            (IVectorStore)mockQuantizedStore,
+            _mockSparseRetriever,
+            _mockEmbeddingService,
+            _mockQuantizer,
             _logger);
 
         var options = new HybridSearchOptions
@@ -249,27 +239,26 @@ public class HybridSearchQuantizationTests
         var results = await service.SearchAsync(query, options);
 
         // Assert
-        mockQuantizedStore.Verify(x => x.SearchWithRerankAsync(
-            It.IsAny<float[]>(),
-            It.IsAny<QuantizedVector>(),
-            It.IsAny<int>(),
-            It.IsAny<int>(),
-            It.IsAny<float>(),
-            It.IsAny<CancellationToken>()), Times.Never);
+        await mockQuantizedStore.DidNotReceive().SearchWithRerankAsync(
+            Arg.Any<float[]>(),
+            Arg.Any<QuantizedVector>(),
+            Arg.Any<int>(),
+            Arg.Any<int>(),
+            Arg.Any<float>(),
+            Arg.Any<CancellationToken>());
 
-        mockQuantizedStore.As<IVectorStore>().Verify(x => x.SearchAsync(
+        await ((IVectorStore)mockQuantizedStore).Received(1).SearchAsync(
             embedding,
-            It.IsAny<int>(),
-            It.IsAny<float>(),
-            It.IsAny<CancellationToken>()), Times.Once);
+            Arg.Any<int>(),
+            Arg.Any<float>(),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task SearchAsync_WhenQuantizedSearchFails_FallsBackToRegularSearch()
     {
         // Arrange
-        var mockQuantizedStore = new Mock<IQuantizedVectorStore>();
-        mockQuantizedStore.As<IVectorStore>();
+        var mockQuantizedStore = Substitute.For<IQuantizedVectorStore, IVectorStore>();
 
         var query = "test query";
         var embedding = new float[] { 0.1f, 0.2f, 0.3f };
@@ -285,24 +274,20 @@ public class HybridSearchQuantizationTests
             CreateTestChunk("chunk1", "Content 1", 0.9f)
         };
 
-        _mockEmbeddingService.Setup(x => x.GenerateEmbeddingAsync(query, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(embedding);
+        _mockEmbeddingService.GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
 
-        _mockQuantizer.Setup(x => x.QuantizeAsync(embedding, It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new InvalidOperationException("Quantization failed"));
+        _mockQuantizer.QuantizeAsync(embedding, Arg.Any<CancellationToken>()).Throws(new InvalidOperationException("Quantization failed"));
 
-        mockQuantizedStore.As<IVectorStore>()
-            .Setup(x => x.SearchAsync(embedding, It.IsAny<int>(), It.IsAny<float>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(regularResults);
+        ((IVectorStore)mockQuantizedStore).SearchAsync(embedding, Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>())
+            .Returns(regularResults);
 
-        _mockSparseRetriever.Setup(x => x.SearchAsync(query, It.IsAny<SparseSearchOptions>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<SparseSearchResult>());
+        _mockSparseRetriever.SearchAsync(query, Arg.Any<SparseSearchOptions>(), Arg.Any<CancellationToken>()).Returns(new List<SparseSearchResult>());
 
         var service = new HybridSearchService(
-            mockQuantizedStore.Object,
-            _mockSparseRetriever.Object,
-            _mockEmbeddingService.Object,
-            _mockQuantizer.Object,
+            (IVectorStore)mockQuantizedStore,
+            _mockSparseRetriever,
+            _mockEmbeddingService,
+            _mockQuantizer,
             _logger);
 
         var options = new HybridSearchOptions
@@ -318,19 +303,18 @@ public class HybridSearchQuantizationTests
         Assert.Single(results);
         Assert.Equal("chunk1", results[0].Chunk.Id);
 
-        mockQuantizedStore.As<IVectorStore>().Verify(x => x.SearchAsync(
+        await ((IVectorStore)mockQuantizedStore).Received(1).SearchAsync(
             embedding,
-            It.IsAny<int>(),
-            It.IsAny<float>(),
-            It.IsAny<CancellationToken>()), Times.Once);
+            Arg.Any<int>(),
+            Arg.Any<float>(),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task SearchAsync_WithQuantizedSearchAndCustomMultiplier_UsesCorrectMultiplier()
     {
         // Arrange
-        var mockQuantizedStore = new Mock<IQuantizedVectorStore>();
-        mockQuantizedStore.As<IVectorStore>();
+        var mockQuantizedStore = Substitute.For<IQuantizedVectorStore, IVectorStore>();
 
         var query = "test query";
         var embedding = new float[] { 0.1f, 0.2f, 0.3f };
@@ -341,29 +325,25 @@ public class HybridSearchQuantizationTests
             OriginalDimension = 3
         };
 
-        _mockEmbeddingService.Setup(x => x.GenerateEmbeddingAsync(query, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(embedding);
+        _mockEmbeddingService.GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
 
-        _mockQuantizer.Setup(x => x.QuantizeAsync(embedding, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(quantizedVector);
+        _mockQuantizer.QuantizeAsync(embedding, Arg.Any<CancellationToken>()).Returns(quantizedVector);
 
-        mockQuantizedStore.Setup(x => x.SearchWithRerankAsync(
-                It.IsAny<float[]>(),
-                It.IsAny<QuantizedVector>(),
-                It.IsAny<int>(),
+        mockQuantizedStore.SearchWithRerankAsync(
+                Arg.Any<float[]>(),
+                Arg.Any<QuantizedVector>(),
+                Arg.Any<int>(),
                 5, // Custom multiplier
-                It.IsAny<float>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<(DocumentChunk, float)>());
+                Arg.Any<float>(),
+                Arg.Any<CancellationToken>()).Returns(new List<(DocumentChunk, float)>());
 
-        _mockSparseRetriever.Setup(x => x.SearchAsync(query, It.IsAny<SparseSearchOptions>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<SparseSearchResult>());
+        _mockSparseRetriever.SearchAsync(query, Arg.Any<SparseSearchOptions>(), Arg.Any<CancellationToken>()).Returns(new List<SparseSearchResult>());
 
         var service = new HybridSearchService(
-            mockQuantizedStore.Object,
-            _mockSparseRetriever.Object,
-            _mockEmbeddingService.Object,
-            _mockQuantizer.Object,
+            (IVectorStore)mockQuantizedStore,
+            _mockSparseRetriever,
+            _mockEmbeddingService,
+            _mockQuantizer,
             _logger);
 
         var options = new HybridSearchOptions
@@ -377,21 +357,20 @@ public class HybridSearchQuantizationTests
         await service.SearchAsync(query, options);
 
         // Assert
-        mockQuantizedStore.Verify(x => x.SearchWithRerankAsync(
+        await mockQuantizedStore.Received(1).SearchWithRerankAsync(
             embedding,
             quantizedVector,
-            It.IsAny<int>(),
+            Arg.Any<int>(),
             5, // Verify custom multiplier was used
-            It.IsAny<float>(),
-            It.IsAny<CancellationToken>()), Times.Once);
+            Arg.Any<float>(),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task SearchAsync_WithQuantizedSearchAndMinScore_UsesCorrectMinScore()
     {
         // Arrange
-        var mockQuantizedStore = new Mock<IQuantizedVectorStore>();
-        mockQuantizedStore.As<IVectorStore>();
+        var mockQuantizedStore = Substitute.For<IQuantizedVectorStore, IVectorStore>();
 
         var query = "test query";
         var embedding = new float[] { 0.1f, 0.2f, 0.3f };
@@ -402,29 +381,25 @@ public class HybridSearchQuantizationTests
             OriginalDimension = 3
         };
 
-        _mockEmbeddingService.Setup(x => x.GenerateEmbeddingAsync(query, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(embedding);
+        _mockEmbeddingService.GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
 
-        _mockQuantizer.Setup(x => x.QuantizeAsync(embedding, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(quantizedVector);
+        _mockQuantizer.QuantizeAsync(embedding, Arg.Any<CancellationToken>()).Returns(quantizedVector);
 
-        mockQuantizedStore.Setup(x => x.SearchWithRerankAsync(
-                It.IsAny<float[]>(),
-                It.IsAny<QuantizedVector>(),
-                It.IsAny<int>(),
-                It.IsAny<int>(),
+        mockQuantizedStore.SearchWithRerankAsync(
+                Arg.Any<float[]>(),
+                Arg.Any<QuantizedVector>(),
+                Arg.Any<int>(),
+                Arg.Any<int>(),
                 0.5f, // Custom min score
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<(DocumentChunk, float)>());
+                Arg.Any<CancellationToken>()).Returns(new List<(DocumentChunk, float)>());
 
-        _mockSparseRetriever.Setup(x => x.SearchAsync(query, It.IsAny<SparseSearchOptions>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<SparseSearchResult>());
+        _mockSparseRetriever.SearchAsync(query, Arg.Any<SparseSearchOptions>(), Arg.Any<CancellationToken>()).Returns(new List<SparseSearchResult>());
 
         var service = new HybridSearchService(
-            mockQuantizedStore.Object,
-            _mockSparseRetriever.Object,
-            _mockEmbeddingService.Object,
-            _mockQuantizer.Object,
+            (IVectorStore)mockQuantizedStore,
+            _mockSparseRetriever,
+            _mockEmbeddingService,
+            _mockQuantizer,
             _logger);
 
         var options = new HybridSearchOptions
@@ -438,13 +413,13 @@ public class HybridSearchQuantizationTests
         await service.SearchAsync(query, options);
 
         // Assert
-        mockQuantizedStore.Verify(x => x.SearchWithRerankAsync(
+        await mockQuantizedStore.Received(1).SearchWithRerankAsync(
             embedding,
             quantizedVector,
-            It.IsAny<int>(),
-            It.IsAny<int>(),
+            Arg.Any<int>(),
+            Arg.Any<int>(),
             0.5f, // Verify custom min score was used
-            It.IsAny<CancellationToken>()), Times.Once);
+            Arg.Any<CancellationToken>());
     }
 
     #endregion

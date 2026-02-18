@@ -58,7 +58,7 @@ public class EnrichChunkRequest
     /// <summary>
     /// Whether to overwrite existing metadata.
     /// </summary>
-    public bool OverwriteExisting { get; init; } = false;
+    public bool OverwriteExisting { get; init; }
 }
 
 /// <summary>

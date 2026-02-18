@@ -1,0 +1,15 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/src/">
+    <Project Path="src/FluxIndex.Stack.Api/FluxIndex.Stack.Api.csproj" />
+    <Project Path="src/FluxIndex.Stack.Application/FluxIndex.Stack.Application.csproj" />
+    <Project Path="src/FluxIndex.Stack.Domain/FluxIndex.Stack.Domain.csproj" />
+    <Project Path="src/FluxIndex.Stack.Infrastructure/FluxIndex.Stack.Infrastructure.csproj" />
+    <Project Path="src/FluxIndex.Stack.Shared/FluxIndex.Stack.Shared.csproj" />
+    <Project Path="src/FluxIndex.Stack.Vault/FluxIndex.Stack.Vault.csproj" />
+  </Folder>
+</Solution>

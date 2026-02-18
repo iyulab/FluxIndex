@@ -8,7 +8,7 @@ public class AdvancedSearchRequest
     public string Query { get; set; } = string.Empty;
     public Guid? CollectionId { get; set; }
     public int TopK { get; set; } = 10;
-    public double MinScore { get; set; } = 0.0;
+    public double MinScore { get; set; }
     public Dictionary<string, object>? Filters { get; set; }
     public bool IncludeContent { get; set; } = true;
     public bool IncludeMetadata { get; set; } = true;
@@ -26,7 +26,7 @@ public class AdvancedSearchRequest
     /// <summary>
     /// Enable listwise reranking for improved result quality.
     /// </summary>
-    public bool EnableListwiseReranking { get; set; } = false;
+    public bool EnableListwiseReranking { get; set; }
 
     /// <summary>
     /// Listwise reranking method to use.
@@ -36,22 +36,22 @@ public class AdvancedSearchRequest
     /// <summary>
     /// Enable entity extraction and linking.
     /// </summary>
-    public bool EnableEntityExtraction { get; set; } = false;
+    public bool EnableEntityExtraction { get; set; }
 
     /// <summary>
     /// Enable community-based search for hierarchical document organization.
     /// </summary>
-    public bool EnableCommunitySearch { get; set; } = false;
+    public bool EnableCommunitySearch { get; set; }
 
     /// <summary>
     /// Include query analysis details in the response.
     /// </summary>
-    public bool IncludeQueryAnalysis { get; set; } = false;
+    public bool IncludeQueryAnalysis { get; set; }
 
     /// <summary>
     /// Include fusion details in the response.
     /// </summary>
-    public bool IncludeFusionDetails { get; set; } = false;
+    public bool IncludeFusionDetails { get; set; }
 }
 
 /// <summary>

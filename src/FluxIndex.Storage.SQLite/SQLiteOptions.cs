@@ -15,12 +15,12 @@ public class SQLiteOptions
     /// 메모리 데이터베이스 사용 여부
     /// true일 경우 ":memory:" 사용 (테스트용)
     /// </summary>
-    public bool UseInMemory { get; set; } = false;
+    public bool UseInMemory { get; set; }
 
     /// <summary>
     /// 중복 문서 허용 여부
     /// </summary>
-    public bool AllowDuplicates { get; set; } = false;
+    public bool AllowDuplicates { get; set; }
 
     /// <summary>
     /// 데이터베이스 마이그레이션 자동 실행 여부

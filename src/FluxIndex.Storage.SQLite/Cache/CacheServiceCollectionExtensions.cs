@@ -73,7 +73,7 @@ public static class CacheServiceCollectionExtensions
 /// <summary>
 /// SQLite Cache 마이그레이션 서비스
 /// </summary>
-internal class SQLiteCacheMigrationService : IHostedService
+internal sealed partial class SQLiteCacheMigrationService : IHostedService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<SQLiteCacheMigrationService> _logger;
@@ -88,7 +88,7 @@ internal class SQLiteCacheMigrationService : IHostedService
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Starting SQLite cache database migration");
+        LogMigrationStarting(_logger);
 
         using var scope = _serviceProvider.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<SQLiteCacheDbContext>();
@@ -103,11 +103,11 @@ internal class SQLiteCacheMigrationService : IHostedService
                 await ApplyCachePragmasAsync(context, options, cancellationToken);
             }
 
-            _logger.LogInformation("SQLite cache database migration completed");
+            LogMigrationCompleted(_logger);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "SQLite cache database migration failed");
+            LogMigrationFailed(_logger, ex);
             throw;
         }
     }
@@ -123,11 +123,27 @@ internal class SQLiteCacheMigrationService : IHostedService
 
 #pragma warning disable EF1002
         await context.Database.ExecuteSqlRawAsync(
-            $"PRAGMA synchronous={options.Synchronous.ToString().ToUpper()}", cancellationToken);
+            $"PRAGMA synchronous={options.Synchronous.ToString().ToUpperInvariant()}", cancellationToken);
         await context.Database.ExecuteSqlRawAsync(
             $"PRAGMA cache_size={options.CacheSize}", cancellationToken);
 #pragma warning restore EF1002
 
-        _logger.LogDebug("Cache database PRAGMA optimizations applied");
+        LogPragmaApplied(_logger);
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting SQLite cache database migration")]
+    private static partial void LogMigrationStarting(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "SQLite cache database migration completed")]
+    private static partial void LogMigrationCompleted(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "SQLite cache database migration failed")]
+    private static partial void LogMigrationFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Cache database PRAGMA optimizations applied")]
+    private static partial void LogPragmaApplied(ILogger logger);
+
+    #endregion
 }

@@ -457,7 +457,7 @@ public sealed class WatchOptions
     public bool IsRecursive { get; set; } = true;
     public List<string> IncludePatterns { get; set; } = ["*.pdf", "*.docx", "*.md", "*.txt", "*.html"];
     public List<string> ExcludePatterns { get; set; } = ["~$*", "*.tmp", ".*"];
-    public bool AutoMemorize { get; set; } = false;
+    public bool AutoMemorize { get; set; }
 }
 
 /// <summary>
@@ -482,7 +482,7 @@ public sealed class VaultSearchOptions
     /// <summary>
     /// Minimum score threshold for results.
     /// </summary>
-    public float MinScore { get; init; } = 0.0f;
+    public float MinScore { get; init; }
 
     /// <summary>
     /// Whether to include chunk content in results.

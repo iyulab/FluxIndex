@@ -2,6 +2,7 @@ using FileFlux.Core;
 using FluxIndex.Core.Application.Interfaces;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
+using System.Globalization;
 using System.Text;
 using IFluxIndexTextCompletionService = FluxIndex.Core.Application.Interfaces.ITextCompletionService;
 
@@ -11,7 +12,7 @@ namespace FluxIndex.SDK.Extensions.FileFlux;
 /// Adapter that bridges FluxIndex's ITextCompletionService to FileFlux's ILlmRefiner interface.
 /// Enables FileFlux to use FluxIndex's text completion implementation for LLM-based content refinement.
 /// </summary>
-public class LlmRefinerAdapter : ILlmRefiner
+public partial class LlmRefinerAdapter : ILlmRefiner
 {
     private readonly IFluxIndexTextCompletionService _completionService;
     private readonly ILogger<LlmRefinerAdapter> _logger;
@@ -39,15 +40,14 @@ public class LlmRefinerAdapter : ILlmRefiner
         LlmRefineOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        if (refined == null)
-            throw new ArgumentNullException(nameof(refined));
+        ArgumentNullException.ThrowIfNull(refined);
 
         options ??= LlmRefineOptions.Default;
 
         // Skip if no improvements are enabled
         if (!options.HasAnyImprovementEnabled)
         {
-            _logger.LogDebug("LLM refinement skipped: no improvements enabled");
+            LogRefinementSkipped(_logger);
             return LlmRefinedContent.FromRefinedContent(refined);
         }
 
@@ -57,7 +57,7 @@ public class LlmRefinerAdapter : ILlmRefiner
 
         try
         {
-            _logger.LogInformation("Starting LLM refinement for content ({CharCount} chars)", refined.CharCount);
+            LogStartingRefinement(_logger, refined.CharCount);
 
             // Build the refinement prompt
             var prompt = BuildRefinementPrompt(refined.Text, options);
@@ -112,9 +112,7 @@ public class LlmRefinerAdapter : ILlmRefiner
                 Warnings = warnings
             };
 
-            _logger.LogInformation(
-                "LLM refinement completed: {InputChars} -> {OutputChars} chars ({Ratio:P1}), {Duration}ms",
-                refined.CharCount, refinedText.Length, quality.CompressionRatio, stopwatch.ElapsedMilliseconds);
+            LogRefinementCompleted(_logger, refined.CharCount, refinedText.Length, quality.CompressionRatio, stopwatch.ElapsedMilliseconds);
 
             return new LlmRefinedContent
             {
@@ -131,7 +129,7 @@ public class LlmRefinerAdapter : ILlmRefiner
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "LLM refinement failed, falling back to original content");
+            LogRefinementFailed(_logger, ex);
             warnings.Add($"LLM refinement failed: {ex.Message}");
 
             return new LlmRefinedContent
@@ -167,7 +165,7 @@ public class LlmRefinerAdapter : ILlmRefiner
         }
     }
 
-    private string BuildRefinementPrompt(string content, LlmRefineOptions options)
+    private static string BuildRefinementPrompt(string content, LlmRefineOptions options)
     {
         var sb = new StringBuilder();
         sb.AppendLine("You are a document refinement expert. Your task is to improve the following document content for RAG (Retrieval-Augmented Generation) optimization.");
@@ -197,13 +195,13 @@ public class LlmRefinerAdapter : ILlmRefiner
         if (options.DocumentType != DocumentTypeHint.Auto)
         {
             sb.AppendLine();
-            sb.AppendLine($"## Document Type: {options.DocumentType}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"## Document Type: {options.DocumentType}");
         }
 
         if (!string.IsNullOrEmpty(options.TargetLanguage))
         {
             sb.AppendLine();
-            sb.AppendLine($"## Target Language: {options.TargetLanguage}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"## Target Language: {options.TargetLanguage}");
         }
 
         sb.AppendLine();
@@ -218,7 +216,7 @@ public class LlmRefinerAdapter : ILlmRefiner
         return sb.ToString();
     }
 
-    private double CalculateImprovementScore(string original, string refined)
+    private static double CalculateImprovementScore(string original, string refined)
     {
         if (string.IsNullOrEmpty(original) || string.IsNullOrEmpty(refined))
             return 0.0;
@@ -242,14 +240,14 @@ public class LlmRefinerAdapter : ILlmRefiner
         return 0.5; // Too much change might indicate issues
     }
 
-    private int EstimateNoiseRemoval(string original, string refined)
+    private static int EstimateNoiseRemoval(string original, string refined)
     {
         // Estimate based on character reduction
         var reduction = original.Length - refined.Length;
         return reduction > 0 ? Math.Max(1, reduction / 500) : 0;
     }
 
-    private int EstimateSentencesRestored(string original, string refined)
+    private static int EstimateSentencesRestored(string original, string refined)
     {
         // Count line breaks that were removed (potential sentence joins)
         var originalLineBreaks = original.Count(c => c == '\n');
@@ -258,17 +256,33 @@ public class LlmRefinerAdapter : ILlmRefiner
         return reduction > 0 ? Math.Max(1, reduction / 3) : 0;
     }
 
-    private int EstimateOcrCorrections(string original, string refined)
+    private static int EstimateOcrCorrections(string original, string refined)
     {
         // Simple heuristic: look for common OCR error patterns
         // This is a rough estimate
         return Math.Max(0, (original.Length - refined.Length) / 100);
     }
 
-    private int EstimateDuplicatesMerged(string original, string refined)
+    private static int EstimateDuplicatesMerged(string original, string refined)
     {
         // Estimate based on significant content reduction
         var reduction = original.Length - refined.Length;
         return reduction > 200 ? Math.Max(1, reduction / 500) : 0;
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "LLM refinement skipped: no improvements enabled")]
+    private static partial void LogRefinementSkipped(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting LLM refinement for content ({CharCount} chars)")]
+    private static partial void LogStartingRefinement(ILogger logger, int charCount);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "LLM refinement completed: {InputChars} -> {OutputChars} chars ({Ratio:P1}), {Duration}ms")]
+    private static partial void LogRefinementCompleted(ILogger logger, int inputChars, int outputChars, double ratio, long duration);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "LLM refinement failed, falling back to original content")]
+    private static partial void LogRefinementFailed(ILogger logger, Exception exception);
+
+    #endregion
 }

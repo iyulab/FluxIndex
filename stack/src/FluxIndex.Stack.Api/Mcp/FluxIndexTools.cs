@@ -12,7 +12,7 @@ namespace FluxIndex.Stack.Api.Mcp;
 /// Provides LLM-invocable tools for memorizing, searching, and managing knowledge base.
 /// </summary>
 [McpServerToolType]
-public class FluxIndexTools
+public partial class FluxIndexTools
 {
     private readonly IFluxIndexContext? _fluxIndex;
     private readonly IDocumentService _documentService;
@@ -47,7 +47,7 @@ public class FluxIndexTools
         [Description("Optional JSON metadata string (e.g., '{\"author\": \"John\", \"tags\": [\"docs\"]}')")] string? metadata = null,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("MCP Tool Memorize: {Title}", title);
+        LogMcpToolMemorize(_logger, title);
 
         try
         {
@@ -85,7 +85,7 @@ public class FluxIndexTools
                     metadataDict,
                     cancellationToken);
 
-                _logger.LogInformation("MCP Memorize completed: {DocumentId}", documentId);
+                LogMcpToolMemorizeCompleted(_logger, documentId);
 
                 return new MemorizeToolResult
                 {
@@ -120,7 +120,7 @@ public class FluxIndexTools
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "MCP Memorize failed");
+            LogMcpToolMemorizeFailed(_logger, ex);
             return new MemorizeToolResult
             {
                 Success = false,
@@ -147,7 +147,7 @@ public class FluxIndexTools
         [Description("Search type: 'vector', 'hybrid', or 'quantized'")] string searchType = "vector",
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("MCP Tool Search: {Query}", query);
+        LogMcpToolSearch(_logger, query);
 
         try
         {
@@ -204,7 +204,7 @@ public class FluxIndexTools
                 {
                     DocumentId = r.DocumentId.ToString(),
                     ChunkId = r.ChunkId.ToString(),
-                    Content = r.Content,
+                    Content = r.Content ?? string.Empty,
                     Score = (float)r.Score
                 }).ToList();
 
@@ -219,7 +219,7 @@ public class FluxIndexTools
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "MCP Search failed");
+            LogMcpToolSearchFailed(_logger, ex);
             return new SearchToolResult
             {
                 Success = false,
@@ -240,7 +240,7 @@ public class FluxIndexTools
         [Description("The document ID to remove from knowledge base")] string documentId,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("MCP Tool Unmemorize: {DocumentId}", documentId);
+        LogMcpToolUnmemorize(_logger, documentId);
 
         try
         {
@@ -293,7 +293,7 @@ public class FluxIndexTools
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "MCP Unmemorize failed");
+            LogMcpToolUnmemorizeFailed(_logger, ex);
             return new UnmemorizeToolResult
             {
                 Success = false,
@@ -311,7 +311,7 @@ public class FluxIndexTools
     [Description("Get the current status and statistics of the RAG knowledge base, including document counts and capabilities.")]
     public async Task<StatusToolResult> Status(CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("MCP Tool Status");
+        LogMcpToolStatus(_logger);
 
         try
         {
@@ -347,7 +347,7 @@ public class FluxIndexTools
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "MCP Status check failed");
+            LogMcpToolStatusCheckFailed(_logger, ex);
             return new StatusToolResult
             {
                 Success = false,
@@ -369,7 +369,7 @@ public class FluxIndexTools
         [Description("The document ID to get chunks for")] string documentId,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("MCP Tool GetChunks: {DocumentId}", documentId);
+        LogMcpToolGetChunks(_logger, documentId);
 
         try
         {
@@ -444,7 +444,7 @@ public class FluxIndexTools
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "MCP GetChunks failed");
+            LogMcpToolGetChunksFailed(_logger, ex);
             return new GetChunksToolResult
             {
                 Success = false,
@@ -465,7 +465,7 @@ public class FluxIndexTools
         [Description("The document ID to re-index")] string documentId,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("MCP Tool Reindex: {DocumentId}", documentId);
+        LogMcpToolReindex(_logger, documentId);
 
         try
         {
@@ -508,7 +508,7 @@ public class FluxIndexTools
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "MCP Reindex failed");
+            LogMcpToolReindexFailed(_logger, ex);
             return new ReindexToolResult
             {
                 Success = false,
@@ -516,6 +516,49 @@ public class FluxIndexTools
             };
         }
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "MCP Tool Memorize: {Title}")]
+    private static partial void LogMcpToolMemorize(ILogger logger, string title);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "MCP Memorize completed: {DocumentId}")]
+    private static partial void LogMcpToolMemorizeCompleted(ILogger logger, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "MCP Memorize failed")]
+    private static partial void LogMcpToolMemorizeFailed(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "MCP Tool Search: {Query}")]
+    private static partial void LogMcpToolSearch(ILogger logger, string query);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "MCP Search failed")]
+    private static partial void LogMcpToolSearchFailed(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "MCP Tool Unmemorize: {DocumentId}")]
+    private static partial void LogMcpToolUnmemorize(ILogger logger, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "MCP Unmemorize failed")]
+    private static partial void LogMcpToolUnmemorizeFailed(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "MCP Tool Status")]
+    private static partial void LogMcpToolStatus(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "MCP Status check failed")]
+    private static partial void LogMcpToolStatusCheckFailed(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "MCP Tool GetChunks: {DocumentId}")]
+    private static partial void LogMcpToolGetChunks(ILogger logger, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "MCP GetChunks failed")]
+    private static partial void LogMcpToolGetChunksFailed(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "MCP Tool Reindex: {DocumentId}")]
+    private static partial void LogMcpToolReindex(ILogger logger, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "MCP Reindex failed")]
+    private static partial void LogMcpToolReindexFailed(ILogger logger, Exception? exception);
+
+    #endregion
 }
 
 #region Tool Result DTOs

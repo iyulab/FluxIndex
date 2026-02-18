@@ -131,7 +131,7 @@ public static class GraphServiceCollectionExtensions
 /// <summary>
 /// SQLite Entity Graph 마이그레이션 서비스
 /// </summary>
-internal class SQLiteEntityGraphMigrationService : IHostedService
+internal sealed partial class SQLiteEntityGraphMigrationService : IHostedService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<SQLiteEntityGraphMigrationService> _logger;
@@ -146,7 +146,7 @@ internal class SQLiteEntityGraphMigrationService : IHostedService
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Starting SQLite entity graph database migration");
+        LogMigrationStarting(_logger);
 
         using var scope = _serviceProvider.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<SQLiteEntityGraphDbContext>();
@@ -161,22 +161,35 @@ internal class SQLiteEntityGraphMigrationService : IHostedService
                 await context.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL", cancellationToken);
             }
 
-            _logger.LogInformation("SQLite entity graph database migration completed");
+            LogMigrationCompleted(_logger);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "SQLite entity graph database migration failed");
+            LogMigrationFailed(_logger, ex);
             throw;
         }
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting SQLite entity graph database migration")]
+    private static partial void LogMigrationStarting(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "SQLite entity graph database migration completed")]
+    private static partial void LogMigrationCompleted(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "SQLite entity graph database migration failed")]
+    private static partial void LogMigrationFailed(ILogger logger, Exception exception);
+
+    #endregion
 }
 
 /// <summary>
 /// SQLite Graph 마이그레이션 서비스
 /// </summary>
-internal class SQLiteGraphMigrationService : IHostedService
+internal sealed partial class SQLiteGraphMigrationService : IHostedService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<SQLiteGraphMigrationService> _logger;
@@ -191,7 +204,7 @@ internal class SQLiteGraphMigrationService : IHostedService
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Starting SQLite graph database migration");
+        LogMigrationStarting(_logger);
 
         using var scope = _serviceProvider.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<SQLiteGraphDbContext>();
@@ -206,11 +219,11 @@ internal class SQLiteGraphMigrationService : IHostedService
                 await ApplyGraphPragmasAsync(context, options, cancellationToken);
             }
 
-            _logger.LogInformation("SQLite graph database migration completed");
+            LogMigrationCompleted(_logger);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "SQLite graph database migration failed");
+            LogMigrationFailed(_logger, ex);
             throw;
         }
     }
@@ -226,11 +239,27 @@ internal class SQLiteGraphMigrationService : IHostedService
 
 #pragma warning disable EF1002
         await context.Database.ExecuteSqlRawAsync(
-            $"PRAGMA synchronous={options.Synchronous.ToString().ToUpper()}", cancellationToken);
+            $"PRAGMA synchronous={options.Synchronous.ToString().ToUpperInvariant()}", cancellationToken);
         await context.Database.ExecuteSqlRawAsync(
             $"PRAGMA cache_size={options.CacheSize}", cancellationToken);
 #pragma warning restore EF1002
 
-        _logger.LogDebug("Graph database PRAGMA optimizations applied");
+        LogPragmaApplied(_logger);
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting SQLite graph database migration")]
+    private static partial void LogMigrationStarting(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "SQLite graph database migration completed")]
+    private static partial void LogMigrationCompleted(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "SQLite graph database migration failed")]
+    private static partial void LogMigrationFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Graph database PRAGMA optimizations applied")]
+    private static partial void LogPragmaApplied(ILogger logger);
+
+    #endregion
 }

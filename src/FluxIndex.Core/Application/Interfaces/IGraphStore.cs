@@ -330,13 +330,13 @@ public record GraphStoreTraversalOptions
     public IReadOnlyList<NamedEntityType> EntityTypes { get; init; } = [];
 
     /// <summary>Minimum relationship weight to traverse</summary>
-    public double MinWeight { get; init; } = 0.0;
+    public double MinWeight { get; init; }
 
     /// <summary>Direction to traverse</summary>
     public TraversalDirection Direction { get; init; } = TraversalDirection.Outgoing;
 
     /// <summary>Include entity embeddings in results</summary>
-    public bool IncludeEmbeddings { get; init; } = false;
+    public bool IncludeEmbeddings { get; init; }
 
     /// <summary>Include relationship evidence</summary>
     public bool IncludeEvidence { get; init; } = true;

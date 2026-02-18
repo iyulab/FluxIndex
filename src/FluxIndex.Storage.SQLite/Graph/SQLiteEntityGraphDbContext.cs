@@ -33,7 +33,7 @@ public class SQLiteEntityGraphDbContext : DbContext
         ConfigureEntityCommunityMemberEntity(modelBuilder);
     }
 
-    private void ConfigureEntityGraphEntity(ModelBuilder modelBuilder)
+    private static void ConfigureEntityGraphEntity(ModelBuilder modelBuilder)
     {
         var entity = modelBuilder.Entity<SQLiteEntityGraphEntity>();
 
@@ -60,7 +60,7 @@ public class SQLiteEntityGraphDbContext : DbContext
             .OnDelete(DeleteBehavior.Cascade);
     }
 
-    private void ConfigureEntityGraphRelationshipEntity(ModelBuilder modelBuilder)
+    private static void ConfigureEntityGraphRelationshipEntity(ModelBuilder modelBuilder)
     {
         var entity = modelBuilder.Entity<SQLiteEntityGraphRelationshipEntity>();
 
@@ -82,7 +82,7 @@ public class SQLiteEntityGraphDbContext : DbContext
         entity.HasIndex(e => e.Weight);
     }
 
-    private void ConfigureEntityCommunityEntity(ModelBuilder modelBuilder)
+    private static void ConfigureEntityCommunityEntity(ModelBuilder modelBuilder)
     {
         var entity = modelBuilder.Entity<SQLiteEntityCommunityEntity>();
 
@@ -104,7 +104,7 @@ public class SQLiteEntityGraphDbContext : DbContext
             .OnDelete(DeleteBehavior.SetNull);
     }
 
-    private void ConfigureEntityCommunityMemberEntity(ModelBuilder modelBuilder)
+    private static void ConfigureEntityCommunityMemberEntity(ModelBuilder modelBuilder)
     {
         var entity = modelBuilder.Entity<SQLiteEntityCommunityMemberEntity>();
 
@@ -143,7 +143,7 @@ public class SQLiteEntityGraphOptions
     /// <summary>
     /// Use in-memory database.
     /// </summary>
-    public bool UseInMemory { get; set; } = false;
+    public bool UseInMemory { get; set; }
 
     /// <summary>
     /// Maximum traversal depth for recursive queries.

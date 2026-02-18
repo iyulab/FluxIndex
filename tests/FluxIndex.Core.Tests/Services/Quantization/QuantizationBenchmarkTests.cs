@@ -5,7 +5,7 @@ using FluxIndex.Core.Application.Services.Quantization;
 using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Moq;
+using NSubstitute;
 using System.Diagnostics;
 using Xunit;
 using Xunit.Abstractions;
@@ -19,20 +19,20 @@ namespace FluxIndex.Core.Tests.Services.Quantization;
 public class QuantizationBenchmarkTests
 {
     private readonly ITestOutputHelper _output;
-    private readonly Mock<IVectorStore> _innerStoreMock;
-    private readonly Mock<ILogger<QuantizedVectorStoreDecorator>> _loggerMock;
-    private readonly Mock<ILogger<ScalarQuantizer>> _scalarLoggerMock;
-    private readonly Mock<ILogger<BinaryQuantizer>> _binaryLoggerMock;
-    private readonly Mock<ILogger<ProductQuantizer>> _productLoggerMock;
+    private readonly IVectorStore _innerStoreMock;
+    private readonly ILogger<QuantizedVectorStoreDecorator> _loggerMock;
+    private readonly ILogger<ScalarQuantizer> _scalarLoggerMock;
+    private readonly ILogger<BinaryQuantizer> _binaryLoggerMock;
+    private readonly ILogger<ProductQuantizer> _productLoggerMock;
 
     public QuantizationBenchmarkTests(ITestOutputHelper output)
     {
         _output = output;
-        _innerStoreMock = new Mock<IVectorStore>();
-        _loggerMock = new Mock<ILogger<QuantizedVectorStoreDecorator>>();
-        _scalarLoggerMock = new Mock<ILogger<ScalarQuantizer>>();
-        _binaryLoggerMock = new Mock<ILogger<BinaryQuantizer>>();
-        _productLoggerMock = new Mock<ILogger<ProductQuantizer>>();
+        _innerStoreMock = Substitute.For<IVectorStore>();
+        _loggerMock = Substitute.For<ILogger<QuantizedVectorStoreDecorator>>();
+        _scalarLoggerMock = Substitute.For<ILogger<ScalarQuantizer>>();
+        _binaryLoggerMock = Substitute.For<ILogger<BinaryQuantizer>>();
+        _productLoggerMock = Substitute.For<ILogger<ProductQuantizer>>();
     }
 
     #region Quantizer Factory Methods
@@ -45,7 +45,7 @@ public class QuantizationBenchmarkTests
             Dimension = dimension,
             UseSymmetricQuantization = true
         });
-        return new ScalarQuantizer(options, _scalarLoggerMock.Object);
+        return new ScalarQuantizer(options, _scalarLoggerMock);
     }
 
     private BinaryQuantizer CreateBinaryQuantizer(int dimension)
@@ -55,7 +55,7 @@ public class QuantizationBenchmarkTests
             Type = QuantizationType.Binary,
             Dimension = dimension
         });
-        return new BinaryQuantizer(options, _binaryLoggerMock.Object);
+        return new BinaryQuantizer(options, _binaryLoggerMock);
     }
 
     private ProductQuantizer CreateProductQuantizer(int dimension, int numSubvectors = 8, int codebookSize = 256)
@@ -68,7 +68,7 @@ public class QuantizationBenchmarkTests
             CodebookSize = codebookSize,
             KMeansIterations = 5 // 테스트용으로 적게
         });
-        return new ProductQuantizer(options, _productLoggerMock.Object);
+        return new ProductQuantizer(options, _productLoggerMock);
     }
 
     #endregion

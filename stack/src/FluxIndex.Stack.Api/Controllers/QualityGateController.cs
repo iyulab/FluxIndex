@@ -12,7 +12,7 @@ namespace FluxIndex.Stack.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/v1/[controller]")]
-public class QualityGateController : ControllerBase
+public partial class QualityGateController : ControllerBase
 {
     private readonly IQualityGateService _qualityGateService;
     private readonly ILogger<QualityGateController> _logger;
@@ -52,9 +52,7 @@ public class QualityGateController : ControllerBase
         try
         {
             var startTime = DateTime.UtcNow;
-            _logger.LogInformation(
-                "Executing quality gate for version {Version} against dataset {DatasetId}",
-                request.SystemVersion, request.DatasetId);
+            LogExecutingQualityGate(_logger, request.SystemVersion, request.DatasetId);
 
             // Convert DTO thresholds to Core thresholds
             var coreThresholds = new EvaluationThresholds
@@ -102,20 +100,20 @@ public class QualityGateController : ControllerBase
                 DurationMs = (long)(DateTime.UtcNow - startTime).TotalMilliseconds
             };
 
-            _logger.LogInformation(
-                "Quality gate {Status} for version {Version}: {FailedCount} criteria failed",
-                dto.Passed ? "PASSED" : "FAILED", request.SystemVersion, dto.FailedCriteria.Count);
+            var status = dto.Passed ? "PASSED" : "FAILED";
+            var failedCount = dto.FailedCriteria.Count;
+            LogQualityGateResult(_logger, status, request.SystemVersion, failedCount);
 
             return Ok(ApiResponse<QualityGateResultDto>.Ok(dto));
         }
         catch (ArgumentException ex)
         {
-            _logger.LogWarning(ex, "Quality gate validation error for version {Version}", request.SystemVersion);
+            LogQualityGateValidationError(_logger, ex, request.SystemVersion);
             return BadRequest(ApiResponse<object>.Fail(ex.Message));
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Quality gate execution failed for version {Version}", request.SystemVersion);
+            LogQualityGateExecutionFailed(_logger, ex, request.SystemVersion);
             return StatusCode(StatusCodes.Status500InternalServerError,
                 ApiResponse<object>.Fail($"Quality gate execution failed: {ex.Message}"));
         }
@@ -152,9 +150,7 @@ public class QualityGateController : ControllerBase
 
         try
         {
-            _logger.LogInformation(
-                "Comparing versions: {CurrentVersion} vs {BaselineVersion}",
-                request.CurrentVersion, request.BaselineVersion);
+            LogComparingVersions(_logger, request.CurrentVersion, request.BaselineVersion);
 
             var result = await _qualityGateService.CompareWithBaselineAsync(
                 request.CurrentVersion,
@@ -175,20 +171,18 @@ public class QualityGateController : ControllerBase
                 Recommendation = GetRecommendation(result)
             };
 
-            _logger.LogInformation(
-                "Version comparison completed: {OverallChange:P2} overall change, regression={HasRegression}",
-                result.OverallImprovement, result.HasSignificantRegression);
+            LogVersionComparisonCompleted(_logger, result.OverallImprovement, result.HasSignificantRegression);
 
             return Ok(ApiResponse<VersionComparisonResultDto>.Ok(dto));
         }
         catch (ArgumentException ex)
         {
-            _logger.LogWarning(ex, "Version comparison validation error");
+            LogVersionComparisonValidationError(_logger, ex);
             return BadRequest(ApiResponse<object>.Fail(ex.Message));
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Version comparison failed");
+            LogVersionComparisonFailed(_logger, ex);
             return StatusCode(StatusCodes.Status500InternalServerError,
                 ApiResponse<object>.Fail($"Version comparison failed: {ex.Message}"));
         }
@@ -249,7 +243,7 @@ public class QualityGateController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Quick check failed for version {Version}", version);
+            LogQuickCheckFailed(_logger, ex, version);
             return StatusCode(StatusCodes.Status500InternalServerError,
                 ApiResponse<object>.Fail($"Quick check failed: {ex.Message}"));
         }
@@ -288,4 +282,35 @@ public class QualityGateController : ControllerBase
         return $"REVIEW: Minor regression of {Math.Abs(result.OverallImprovement):P1} detected. " +
                $"Manual review recommended.";
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Executing quality gate for version {Version} against dataset {DatasetId}")]
+    private static partial void LogExecutingQualityGate(ILogger logger, string version, string datasetId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Quality gate {Status} for version {Version}: {FailedCount} criteria failed")]
+    private static partial void LogQualityGateResult(ILogger logger, string status, string version, int failedCount);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Quality gate validation error for version {Version}")]
+    private static partial void LogQualityGateValidationError(ILogger logger, Exception? exception, string version);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Quality gate execution failed for version {Version}")]
+    private static partial void LogQualityGateExecutionFailed(ILogger logger, Exception? exception, string version);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Comparing versions: {CurrentVersion} vs {BaselineVersion}")]
+    private static partial void LogComparingVersions(ILogger logger, string currentVersion, string baselineVersion);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Version comparison completed: {OverallChange:P2} overall change, regression={HasRegression}")]
+    private static partial void LogVersionComparisonCompleted(ILogger logger, double overallChange, bool hasRegression);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Version comparison validation error")]
+    private static partial void LogVersionComparisonValidationError(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Version comparison failed")]
+    private static partial void LogVersionComparisonFailed(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Quick check failed for version {Version}")]
+    private static partial void LogQuickCheckFailed(ILogger logger, Exception? exception, string version);
+
+    #endregion
 }

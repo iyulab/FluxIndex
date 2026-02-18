@@ -2,7 +2,7 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Models;
 using FluxIndex.Core.Application.Services;
 using Microsoft.Extensions.Logging;
-using Moq;
+using NSubstitute;
 using Xunit;
 
 using MsOptions = Microsoft.Extensions.Options.Options;
@@ -11,14 +11,14 @@ namespace FluxIndex.Core.Tests.Services;
 
 public class ChunkClassificationServiceTests
 {
-    private readonly Mock<ILogger<ClassificationValidationService>> _validationLoggerMock;
-    private readonly Mock<ILogger<LlmChunkClassificationService>> _classificationLoggerMock;
+    private readonly ILogger<ClassificationValidationService> _validationLoggerMock;
+    private readonly ILogger<LlmChunkClassificationService> _classificationLoggerMock;
     private readonly ClassificationOptions _options;
 
     public ChunkClassificationServiceTests()
     {
-        _validationLoggerMock = new Mock<ILogger<ClassificationValidationService>>();
-        _classificationLoggerMock = new Mock<ILogger<LlmChunkClassificationService>>();
+        _validationLoggerMock = Substitute.For<ILogger<ClassificationValidationService>>();
+        _classificationLoggerMock = Substitute.For<ILogger<LlmChunkClassificationService>>();
         _options = new ClassificationOptions
         {
             Enabled = true,
@@ -224,7 +224,7 @@ public class ChunkClassificationServiceTests
         var classificationService = new LlmChunkClassificationService(
             MsOptions.Create(_options),
             validationService,
-            _classificationLoggerMock.Object,
+            _classificationLoggerMock,
             textCompletion: null);
 
         var chunk = CreateTestChunk();
@@ -244,7 +244,7 @@ public class ChunkClassificationServiceTests
         var classificationService = new LlmChunkClassificationService(
             MsOptions.Create(_options),
             validationService,
-            _classificationLoggerMock.Object);
+            _classificationLoggerMock);
 
         var chunk = CreateTestChunk(quality: 0.1);
 
@@ -259,14 +259,12 @@ public class ChunkClassificationServiceTests
     public async Task ClassifyAsync_WithLlm_ReturnsClassification()
     {
         // Arrange
-        var textCompletionMock = new Mock<ITextCompletionService>();
-        textCompletionMock
-            .Setup(x => x.GenerateCompletionAsync(
-                It.IsAny<string>(),
-                It.IsAny<int>(),
-                It.IsAny<float>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(@"{
+        var textCompletionMock = Substitute.For<ITextCompletionService>();
+        textCompletionMock.GenerateCompletionAsync(
+                Arg.Any<string>(),
+                Arg.Any<int>(),
+                Arg.Any<float>(),
+                Arg.Any<CancellationToken>()).Returns(@"{
                 ""topics"": [""RAG"", ""Vector Search""],
                 ""categories"": [""Technical""],
                 ""tags"": [""search"", ""ai""],
@@ -278,8 +276,8 @@ public class ChunkClassificationServiceTests
         var classificationService = new LlmChunkClassificationService(
             MsOptions.Create(_options),
             validationService,
-            _classificationLoggerMock.Object,
-            textCompletionMock.Object);
+            _classificationLoggerMock,
+            textCompletionMock);
 
         var chunk = CreateTestChunk();
 
@@ -297,14 +295,12 @@ public class ChunkClassificationServiceTests
     public async Task ClassifyBatchAsync_MixedChunks_ProcessesCorrectly()
     {
         // Arrange
-        var textCompletionMock = new Mock<ITextCompletionService>();
-        textCompletionMock
-            .Setup(x => x.GenerateCompletionAsync(
-                It.IsAny<string>(),
-                It.IsAny<int>(),
-                It.IsAny<float>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(@"{
+        var textCompletionMock = Substitute.For<ITextCompletionService>();
+        textCompletionMock.GenerateCompletionAsync(
+                Arg.Any<string>(),
+                Arg.Any<int>(),
+                Arg.Any<float>(),
+                Arg.Any<CancellationToken>()).Returns(@"{
                 ""topics"": [""Topic1""],
                 ""confidence"": 0.8
             }");
@@ -313,8 +309,8 @@ public class ChunkClassificationServiceTests
         var classificationService = new LlmChunkClassificationService(
             MsOptions.Create(_options),
             validationService,
-            _classificationLoggerMock.Object,
-            textCompletionMock.Object);
+            _classificationLoggerMock,
+            textCompletionMock);
 
         var chunks = new[]
         {
@@ -333,32 +329,30 @@ public class ChunkClassificationServiceTests
         Assert.Equal(ClassificationSource.Llm, results["chunk3"].Source);
 
         // LLM should be called only twice
-        textCompletionMock.Verify(x => x.GenerateCompletionAsync(
-            It.IsAny<string>(),
-            It.IsAny<int>(),
-            It.IsAny<float>(),
-            It.IsAny<CancellationToken>()), Times.Exactly(2));
+        await textCompletionMock.Received(2).GenerateCompletionAsync(
+            Arg.Any<string>(),
+            Arg.Any<int>(),
+            Arg.Any<float>(),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task ClassifyAsync_InvalidJsonResponse_ReturnsEmptyClassification()
     {
         // Arrange
-        var textCompletionMock = new Mock<ITextCompletionService>();
-        textCompletionMock
-            .Setup(x => x.GenerateCompletionAsync(
-                It.IsAny<string>(),
-                It.IsAny<int>(),
-                It.IsAny<float>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync("Invalid JSON response");
+        var textCompletionMock = Substitute.For<ITextCompletionService>();
+        textCompletionMock.GenerateCompletionAsync(
+                Arg.Any<string>(),
+                Arg.Any<int>(),
+                Arg.Any<float>(),
+                Arg.Any<CancellationToken>()).Returns("Invalid JSON response");
 
         var validationService = CreateValidationService();
         var classificationService = new LlmChunkClassificationService(
             MsOptions.Create(_options),
             validationService,
-            _classificationLoggerMock.Object,
-            textCompletionMock.Object);
+            _classificationLoggerMock,
+            textCompletionMock);
 
         var chunk = CreateTestChunk();
 
@@ -377,7 +371,7 @@ public class ChunkClassificationServiceTests
     {
         return new ClassificationValidationService(
             MsOptions.Create(_options),
-            _validationLoggerMock.Object);
+            _validationLoggerMock);
     }
 
     private static TestEnrichedChunk CreateTestChunk(

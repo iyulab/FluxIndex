@@ -21,6 +21,17 @@ namespace FluxIndex.Extensions.FileVault.Domain.Entities;
 /// </summary>
 public sealed class VaultEntry
 {
+    private static readonly JsonSerializerOptions s_readJsonOptions = new()
+    {
+        Converters = { new JsonStringEnumConverter() }
+    };
+
+    private static readonly JsonSerializerOptions s_writeJsonOptions = new()
+    {
+        WriteIndented = true,
+        Converters = { new JsonStringEnumConverter() }
+    };
+
     /// <summary>
     /// Unique identifier for this vault entry.
     /// </summary>
@@ -135,10 +146,7 @@ public sealed class VaultEntry
         try
         {
             var json = File.ReadAllText(metaPath);
-            var meta = JsonSerializer.Deserialize<EntryMetadata>(json, new JsonSerializerOptions
-            {
-                Converters = { new JsonStringEnumConverter() }
-            });
+            var meta = JsonSerializer.Deserialize<EntryMetadata>(json, s_readJsonOptions);
             if (meta == null)
                 return null;
 
@@ -353,11 +361,7 @@ public sealed class VaultEntry
             RemovalPhase = RemovalPhase
         };
 
-        var json = JsonSerializer.Serialize(meta, new JsonSerializerOptions
-        {
-            WriteIndented = true,
-            Converters = { new JsonStringEnumConverter() }
-        });
+        var json = JsonSerializer.Serialize(meta, s_writeJsonOptions);
 
         File.WriteAllText(MetaPath, json);
     }

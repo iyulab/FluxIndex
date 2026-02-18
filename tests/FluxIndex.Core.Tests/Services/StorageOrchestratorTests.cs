@@ -3,7 +3,7 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services.Storage;
 using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Logging;
-using Moq;
+using NSubstitute;
 using Xunit;
 
 namespace FluxIndex.Core.Tests.Services;
@@ -20,9 +20,9 @@ public class StorageOrchestratorTests
         public string ProviderName { get; set; } = "TestGeneral";
         public StorageCapabilities Capabilities => StorageCapabilities.Vector | StorageCapabilities.Graph | StorageCapabilities.SemanticCache;
         public bool IsSpecialized => false;
-        public IVectorStore VectorStore { get; set; } = new Mock<IVectorStore>().Object;
-        public IGraphStore GraphStore { get; set; } = new Mock<IGraphStore>().Object;
-        public ISemanticCacheService SemanticCache { get; set; } = new Mock<ISemanticCacheService>().Object;
+        public IVectorStore VectorStore { get; set; } = Substitute.For<IVectorStore>();
+        public IGraphStore GraphStore { get; set; } = Substitute.For<IGraphStore>();
+        public ISemanticCacheService SemanticCache { get; set; } = Substitute.For<ISemanticCacheService>();
     }
 
     private class TestSpecializedVectorProvider : IStorageProvider, IVectorCapable
@@ -30,7 +30,7 @@ public class StorageOrchestratorTests
         public string ProviderName { get; set; } = "TestSpecializedVector";
         public StorageCapabilities Capabilities => StorageCapabilities.Vector;
         public bool IsSpecialized => true;
-        public IVectorStore VectorStore { get; set; } = new Mock<IVectorStore>().Object;
+        public IVectorStore VectorStore { get; set; } = Substitute.For<IVectorStore>();
     }
 
     private class TestSpecializedGraphProvider : IStorageProvider, IGraphCapable
@@ -38,7 +38,7 @@ public class StorageOrchestratorTests
         public string ProviderName { get; set; } = "TestSpecializedGraph";
         public StorageCapabilities Capabilities => StorageCapabilities.Graph;
         public bool IsSpecialized => true;
-        public IGraphStore GraphStore { get; set; } = new Mock<IGraphStore>().Object;
+        public IGraphStore GraphStore { get; set; } = Substitute.For<IGraphStore>();
     }
 
     #endregion

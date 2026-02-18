@@ -73,7 +73,7 @@ public class DocumentChunk
 
     public void SetEmbedding(EmbeddingVector embedding)
     {
-        if (embedding == null) throw new ArgumentNullException(nameof(embedding));
+        ArgumentNullException.ThrowIfNull(embedding);
         Embedding = embedding.Values;
     }
 
@@ -97,7 +97,7 @@ public class DocumentChunk
 
     public void AddRelationship(ChunkRelationship relationship)
     {
-        if (relationship == null) throw new ArgumentNullException(nameof(relationship));
+        ArgumentNullException.ThrowIfNull(relationship);
         Relationships.Add(relationship);
     }
 

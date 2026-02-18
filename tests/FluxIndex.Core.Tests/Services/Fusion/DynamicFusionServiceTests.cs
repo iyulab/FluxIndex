@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.Models;
 using FluxIndex.Core.Services;
 using Microsoft.Extensions.Logging;
-using Moq;
+using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using Xunit;
 
 // Alias to avoid ambiguity with Domain.Models.QueryType
@@ -16,15 +18,15 @@ namespace FluxIndex.Core.Tests.Services.Fusion;
 
 public class DynamicFusionServiceTests
 {
-    private readonly Mock<IQueryComplexityAnalyzer> _mockQueryAnalyzer;
-    private readonly Mock<ILogger<DynamicFusionService>> _mockLogger;
+    private readonly IQueryComplexityAnalyzer _mockQueryAnalyzer;
+    private readonly ILogger<DynamicFusionService> _mockLogger;
     private readonly DynamicFusionService _service;
 
     public DynamicFusionServiceTests()
     {
-        _mockQueryAnalyzer = new Mock<IQueryComplexityAnalyzer>();
-        _mockLogger = new Mock<ILogger<DynamicFusionService>>();
-        _service = new DynamicFusionService(_mockQueryAnalyzer.Object, _mockLogger.Object);
+        _mockQueryAnalyzer = Substitute.For<IQueryComplexityAnalyzer>();
+        _mockLogger = Substitute.For<ILogger<DynamicFusionService>>();
+        _service = new DynamicFusionService(_mockQueryAnalyzer, _mockLogger);
     }
 
     #region Constructor Tests
@@ -33,20 +35,20 @@ public class DynamicFusionServiceTests
     public void Constructor_WithNullQueryAnalyzer_ThrowsArgumentNullException()
     {
         Assert.Throws<ArgumentNullException>(() =>
-            new DynamicFusionService(null!, _mockLogger.Object));
+            new DynamicFusionService(null!, _mockLogger));
     }
 
     [Fact]
     public void Constructor_WithNullLogger_ThrowsArgumentNullException()
     {
         Assert.Throws<ArgumentNullException>(() =>
-            new DynamicFusionService(_mockQueryAnalyzer.Object, null!));
+            new DynamicFusionService(_mockQueryAnalyzer, null!));
     }
 
     [Fact]
     public void Constructor_WithValidParameters_Succeeds()
     {
-        var service = new DynamicFusionService(_mockQueryAnalyzer.Object, _mockLogger.Object);
+        var service = new DynamicFusionService(_mockQueryAnalyzer, _mockLogger);
         Assert.NotNull(service);
     }
 
@@ -484,7 +486,8 @@ public class DynamicFusionServiceTests
     [Fact]
     public async Task UpdatePerformanceFeedbackAsync_LogsFeedback()
     {
-        // Arrange
+        // Arrange — LoggerMessage source generators check IsEnabled before calling Log
+        _mockLogger.IsEnabled(Arg.Any<LogLevel>()).Returns(true);
         var config = new DynamicFusionConfiguration
         {
             VectorWeight = 0.6,
@@ -502,15 +505,10 @@ public class DynamicFusionServiceTests
         // Act
         await _service.UpdatePerformanceFeedbackAsync(config, feedback);
 
-        // Assert - Verify logging occurred
-        _mockLogger.Verify(
-            x => x.Log(
-                LogLevel.Information,
-                It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((v, t) => true),
-                It.IsAny<Exception>(),
-                It.Is<Func<It.IsAnyType, Exception?, string>>((v, t) => true)),
-            Times.Once);
+        // Assert - Verify logging occurred (source-generated LoggerMessage uses internal TState types)
+        var logCalls = _mockLogger.ReceivedCalls()
+            .Where(c => c.GetMethodInfo().Name == "Log");
+        Assert.NotEmpty(logCalls);
     }
 
     [Fact]
@@ -536,9 +534,7 @@ public class DynamicFusionServiceTests
         var cts = new CancellationTokenSource();
         cts.Cancel();
 
-        _mockQueryAnalyzer
-            .Setup(x => x.AnalyzeAsync(query, It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new OperationCanceledException());
+        _mockQueryAnalyzer.AnalyzeAsync(query, Arg.Any<CancellationToken>()).Throws(new OperationCanceledException());
 
         // Act & Assert
         await Assert.ThrowsAsync<OperationCanceledException>(
@@ -573,9 +569,7 @@ public class DynamicFusionServiceTests
             Keywords = keywords ?? new List<string> { "test", "query" }
         };
 
-        _mockQueryAnalyzer
-            .Setup(x => x.AnalyzeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(analysis);
+        _mockQueryAnalyzer.AnalyzeAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(analysis);
     }
 
     #endregion

@@ -17,6 +17,7 @@ namespace FluxIndex.SDK.Tests;
 /// These tests require Docker to be running.
 /// </summary>
 [Collection("GraphRAG")]
+[Trait("Category", "Integration")]
 public class GraphRAGEndToEndTests : IAsyncLifetime
 {
     private readonly Neo4jContainer _neo4jContainer;
@@ -26,12 +27,10 @@ public class GraphRAGEndToEndTests : IAsyncLifetime
 
     public GraphRAGEndToEndTests()
     {
-        _neo4jContainer = new Neo4jBuilder()
-            .WithImage("neo4j:5-community")
+        _neo4jContainer = new Neo4jBuilder("neo4j:5-community")
             .Build();
 
-        _qdrantContainer = new QdrantBuilder()
-            .WithImage("qdrant/qdrant:latest")
+        _qdrantContainer = new QdrantBuilder("qdrant/qdrant:latest")
             .Build();
     }
 

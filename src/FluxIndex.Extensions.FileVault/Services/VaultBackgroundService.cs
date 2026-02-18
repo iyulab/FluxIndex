@@ -14,7 +14,7 @@ namespace FluxIndex.Extensions.FileVault.Services;
 /// Handles memorize, refresh, and remove operations.
 /// Uses IServiceScopeFactory to access scoped services like IVaultPipeline.
 /// </summary>
-public sealed class VaultBackgroundService : BackgroundService
+public sealed partial class VaultBackgroundService : BackgroundService
 {
     private readonly ILogger<VaultBackgroundService> _logger;
     private readonly IVaultQueueService _queueService;
@@ -50,19 +50,19 @@ public sealed class VaultBackgroundService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("Vault background service starting...");
+        LogServiceStarting(_logger);
 
         // Recover any stuck jobs from previous run
         var recovered = await _queueService.RecoverStuckJobsAsync(stoppingToken);
         if (recovered > 0)
         {
-            _logger.LogInformation("Recovered {Count} stuck jobs from previous run", recovered);
+            LogRecoveredStuckJobs(_logger, recovered);
         }
 
         // Recover entries in partial removal or deleted states
         await RecoverPartialRemovalsAsync(stoppingToken);
 
-        _logger.LogInformation("Vault background service started");
+        LogServiceStarted(_logger);
 
         var consecutiveEmptyCount = 0;
 
@@ -101,19 +101,19 @@ public sealed class VaultBackgroundService : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error in vault background service loop");
+                LogServiceLoopError(_logger, ex);
                 await Task.Delay(1000, stoppingToken);
             }
         }
 
-        _logger.LogInformation("Vault background service stopped");
+        LogServiceStopped(_logger);
     }
 
     private async Task ProcessJobAsync(VaultJob job, CancellationToken ct)
     {
         try
         {
-            _logger.LogDebug("Processing {JobType} job {JobId}: {FilePath}", job.JobType, job.Id, job.FilePath);
+            LogProcessingJob(_logger, job.JobType, job.Id, job.FilePath);
 
             // Load or create entry
             var entry = VaultEntry.LoadByHash(job.FilepathHash, _storage.BasePath)
@@ -142,16 +142,16 @@ public sealed class VaultBackgroundService : BackgroundService
             }
 
             await _queueService.CompleteAsync(job.Id, ct);
-            _logger.LogDebug("Completed {JobType} job {JobId}", job.JobType, job.Id);
+            LogCompletedJob(_logger, job.JobType, job.Id);
         }
         catch (FileNotFoundException ex)
         {
-            _logger.LogWarning("File not found for job {JobId}: {FilePath}", job.Id, job.FilePath);
+            LogFileNotFoundForJob(_logger, job.Id, job.FilePath);
             await _queueService.FailAsync(job.Id, $"File not found: {ex.Message}", ct);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed {JobType} job {JobId}: {FilePath}", job.JobType, job.Id, job.FilePath);
+            LogFailedJob(_logger, ex, job.JobType, job.Id, job.FilePath);
             await _queueService.FailAsync(job.Id, ex.Message, ct);
 
             // Auto-retry if enabled
@@ -170,13 +170,13 @@ public sealed class VaultBackgroundService : BackgroundService
     /// </summary>
     private async Task ProcessRemoveJobAsync(VaultEntry entry, IVaultPipeline pipeline, CancellationToken ct)
     {
-        _logger.LogInformation("Processing remove job for {SourcePath}", entry.SourcePath);
+        LogProcessingRemove(_logger, entry.SourcePath);
 
         // Check if we're recovering from a partial removal
         if (entry.SyncStatus == SyncStatus.RemovalPartial && entry.RemovalPhase == "Vector")
         {
             // Vector already deleted, skip to storage deletion
-            _logger.LogInformation("Recovering partial removal for {SourcePath}, skipping vector deletion", entry.SourcePath);
+            LogRecoveringPartialRemoval(_logger, entry.SourcePath);
         }
         else
         {
@@ -191,11 +191,11 @@ public sealed class VaultBackgroundService : BackgroundService
                 // Mark vector phase complete
                 entry.MarkRemovalPartial("Vector");
                 entry.SaveMetadata();
-                _logger.LogDebug("Vector removal completed for {SourcePath}", entry.SourcePath);
+                LogVectorRemovalCompleted(_logger, entry.SourcePath);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Vector removal failed for {SourcePath}", entry.SourcePath);
+                LogVectorRemovalFailed(_logger, ex, entry.SourcePath);
                 entry.MarkSyncError($"Vector removal failed: {ex.Message}");
                 entry.SaveMetadata();
                 throw;
@@ -206,12 +206,12 @@ public sealed class VaultBackgroundService : BackgroundService
         try
         {
             await _storage.DeleteEntryStorageAsync(entry, ct);
-            _logger.LogInformation("Storage removal completed for {SourcePath}", entry.SourcePath);
+            LogStorageRemovalCompleted(_logger, entry.SourcePath);
             // Entry directory is now deleted, no need to save metadata
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Storage removal failed for {SourcePath}", entry.SourcePath);
+            LogStorageRemovalFailed(_logger, ex, entry.SourcePath);
             // Entry is in RemovalPartial state with Vector phase complete
             // Next retry will skip vector deletion
             throw;
@@ -242,8 +242,7 @@ public sealed class VaultBackgroundService : BackgroundService
             if (entry.SyncStatus == SyncStatus.RemovalPending ||
                 entry.SyncStatus == SyncStatus.RemovalPartial)
             {
-                _logger.LogInformation("Recovering partial removal for {SourcePath} (status: {Status}, phase: {Phase})",
-                    entry.SourcePath, entry.SyncStatus, entry.RemovalPhase ?? "none");
+                LogRecoveringPartialRemovalStartup(_logger, entry.SourcePath, entry.SyncStatus, entry.RemovalPhase ?? "none");
 
                 await _queueService.EnqueueRemoveAsync(
                     entry.FilepathHash,
@@ -256,7 +255,7 @@ public sealed class VaultBackgroundService : BackgroundService
             // Also recover entries marked as SourceDeleted that weren't queued
             else if (entry.SyncStatus == SyncStatus.SourceDeleted)
             {
-                _logger.LogInformation("Re-queueing source-deleted entry for {SourcePath}", entry.SourcePath);
+                LogRequeueingSourceDeleted(_logger, entry.SourcePath);
 
                 await _queueService.EnqueueRemoveAsync(
                     entry.FilepathHash,
@@ -270,13 +269,13 @@ public sealed class VaultBackgroundService : BackgroundService
 
         if (recovered > 0)
         {
-            _logger.LogInformation("Recovered {Count} entries in removal/deleted states", recovered);
+            LogRecoveredRemovalEntries(_logger, recovered);
         }
     }
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Vault background service stopping...");
+        LogServiceStopping(_logger);
 
         // Wait for active jobs to complete (with timeout)
         var waitStart = DateTime.UtcNow;
@@ -286,7 +285,7 @@ public sealed class VaultBackgroundService : BackgroundService
         {
             if (DateTime.UtcNow - waitStart > maxWait)
             {
-                _logger.LogWarning("Timeout waiting for active jobs to complete");
+                LogTimeoutWaiting(_logger);
                 break;
             }
 
@@ -301,4 +300,68 @@ public sealed class VaultBackgroundService : BackgroundService
         _concurrencyLimiter.Dispose();
         base.Dispose();
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Vault background service starting...")]
+    private static partial void LogServiceStarting(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Recovered {Count} stuck jobs from previous run")]
+    private static partial void LogRecoveredStuckJobs(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Vault background service started")]
+    private static partial void LogServiceStarted(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error in vault background service loop")]
+    private static partial void LogServiceLoopError(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Vault background service stopped")]
+    private static partial void LogServiceStopped(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Processing {JobType} job {JobId}: {FilePath}")]
+    private static partial void LogProcessingJob(ILogger logger, VaultJobType jobType, Guid jobId, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Completed {JobType} job {JobId}")]
+    private static partial void LogCompletedJob(ILogger logger, VaultJobType jobType, Guid jobId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "File not found for job {JobId}: {FilePath}")]
+    private static partial void LogFileNotFoundForJob(ILogger logger, Guid jobId, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed {JobType} job {JobId}: {FilePath}")]
+    private static partial void LogFailedJob(ILogger logger, Exception exception, VaultJobType jobType, Guid jobId, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Processing remove job for {SourcePath}")]
+    private static partial void LogProcessingRemove(ILogger logger, string sourcePath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Recovering partial removal for {SourcePath}, skipping vector deletion")]
+    private static partial void LogRecoveringPartialRemoval(ILogger logger, string sourcePath);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Vector removal completed for {SourcePath}")]
+    private static partial void LogVectorRemovalCompleted(ILogger logger, string sourcePath);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Vector removal failed for {SourcePath}")]
+    private static partial void LogVectorRemovalFailed(ILogger logger, Exception exception, string sourcePath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Storage removal completed for {SourcePath}")]
+    private static partial void LogStorageRemovalCompleted(ILogger logger, string sourcePath);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Storage removal failed for {SourcePath}")]
+    private static partial void LogStorageRemovalFailed(ILogger logger, Exception exception, string sourcePath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Recovering partial removal for {SourcePath} (status: {Status}, phase: {Phase})")]
+    private static partial void LogRecoveringPartialRemovalStartup(ILogger logger, string sourcePath, SyncStatus status, string phase);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Re-queueing source-deleted entry for {SourcePath}")]
+    private static partial void LogRequeueingSourceDeleted(ILogger logger, string sourcePath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Recovered {Count} entries in removal/deleted states")]
+    private static partial void LogRecoveredRemovalEntries(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Vault background service stopping...")]
+    private static partial void LogServiceStopping(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Timeout waiting for active jobs to complete")]
+    private static partial void LogTimeoutWaiting(ILogger logger);
+
+    #endregion
 }

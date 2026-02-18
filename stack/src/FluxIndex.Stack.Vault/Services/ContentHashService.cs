@@ -9,7 +9,7 @@ namespace FluxIndex.Stack.Vault.Services;
 /// <summary>
 /// Service for computing content hashes using SHA256.
 /// </summary>
-public class ContentHashService : IContentHashService
+public partial class ContentHashService : IContentHashService
 {
     private readonly ILogger<ContentHashService> _logger;
     private readonly VaultOptions _options;
@@ -45,7 +45,7 @@ public class ContentHashService : IContentHashService
         }
         catch (IOException ex) when (ex is not FileNotFoundException)
         {
-            _logger.LogWarning(ex, "Failed to compute hash for locked file: {FilePath}", filePath);
+            LogHashComputeFailed(_logger, filePath, ex);
             throw;
         }
     }
@@ -66,4 +66,11 @@ public class ContentHashService : IContentHashService
 
         return string.Equals(hash1, hash2, StringComparison.OrdinalIgnoreCase);
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to compute hash for locked file: {FilePath}")]
+    private static partial void LogHashComputeFailed(ILogger logger, string filePath, Exception? exception);
+
+    #endregion
 }

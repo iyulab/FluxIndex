@@ -11,7 +11,7 @@ namespace FluxIndex.Core.Application.Services.Quantization;
 /// 각 차원을 1비트로 표현하여 32배 압축
 /// 해밍 거리로 빠른 유사도 계산 가능
 /// </summary>
-public class BinaryQuantizer : IVectorQuantizer
+public partial class BinaryQuantizer : IVectorQuantizer
 {
     private readonly QuantizationOptions _options;
     private readonly ILogger<BinaryQuantizer> _logger;
@@ -85,8 +85,7 @@ public class BinaryQuantizer : IVectorQuantizer
 
     public Task<float[]> DequantizeAsync(QuantizedVector quantizedVector, CancellationToken cancellationToken = default)
     {
-        if (quantizedVector == null)
-            throw new ArgumentNullException(nameof(quantizedVector));
+        ArgumentNullException.ThrowIfNull(quantizedVector);
 
         var result = new float[quantizedVector.OriginalDimension];
 
@@ -131,13 +130,13 @@ public class BinaryQuantizer : IVectorQuantizer
 
         if (vectors.Count == 0)
         {
-            _logger.LogWarning("No training vectors provided, using zero threshold");
+            LogBinaryQuantizer3(_logger);
             _thresholds = new float[_options.Dimension];
             _isTrained = true;
             return Task.CompletedTask;
         }
 
-        _logger.LogInformation("Training binary quantizer with {Count} vectors", vectors.Count);
+        LogBinaryQuantizer2(_logger, vectors.Count);
 
         // 각 차원의 중간값(median)을 임계값으로 사용
         _thresholds = new float[_options.Dimension];
@@ -152,7 +151,7 @@ public class BinaryQuantizer : IVectorQuantizer
 
         _isTrained = true;
 
-        _logger.LogInformation("Binary quantizer training completed");
+        LogBinaryQuantizer1(_logger);
 
         return Task.CompletedTask;
     }
@@ -192,7 +191,7 @@ public class BinaryQuantizer : IVectorQuantizer
     /// <summary>
     /// SIMD를 활용한 배치 해밍 거리 계산
     /// </summary>
-    public int[] ComputeHammingDistancesBatch(byte[] query, IEnumerable<byte[]> candidates)
+    public static int[] ComputeHammingDistancesBatch(byte[] query, IEnumerable<byte[]> candidates)
     {
         return candidates
             .Select(c => ComputeHammingDistance(query, c))
@@ -207,7 +206,7 @@ public class BinaryQuantizer : IVectorQuantizer
     /// 코사인 유사도를 근사하는 해밍 유사도 계산
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public float ComputeHammingSimilarity(QuantizedVector a, QuantizedVector b)
+    public static float ComputeHammingSimilarity(QuantizedVector a, QuantizedVector b)
     {
         var hammingDist = ComputeHammingDistance(a.Data, b.Data);
         // 해밍 유사도: 1 - (hamming_distance / dimension)
@@ -235,6 +234,17 @@ public class BinaryQuantizer : IVectorQuantizer
         }
         return new string(chars);
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No training vectors provided, using zero threshold")]
+    private static partial void LogBinaryQuantizer3(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Training binary quantizer with {Count} vectors")]
+    private static partial void LogBinaryQuantizer2(ILogger logger, int count);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Binary quantizer training completed")]
+    private static partial void LogBinaryQuantizer1(ILogger logger);
 
     #endregion
 }

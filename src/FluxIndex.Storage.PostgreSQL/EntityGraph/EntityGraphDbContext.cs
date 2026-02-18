@@ -72,7 +72,7 @@ public class EntityGraphDbContext : DbContext
             .OnDelete(DeleteBehavior.Cascade);
     }
 
-    private void ConfigureEntityGraphRelationshipEntity(ModelBuilder modelBuilder)
+    private static void ConfigureEntityGraphRelationshipEntity(ModelBuilder modelBuilder)
     {
         var entity = modelBuilder.Entity<EntityGraphRelationshipEntity>();
 
@@ -125,7 +125,7 @@ public class EntityGraphDbContext : DbContext
             .OnDelete(DeleteBehavior.SetNull);
     }
 
-    private void ConfigureEntityCommunityMemberEntity(ModelBuilder modelBuilder)
+    private static void ConfigureEntityCommunityMemberEntity(ModelBuilder modelBuilder)
     {
         var entity = modelBuilder.Entity<EntityCommunityMemberEntity>();
 

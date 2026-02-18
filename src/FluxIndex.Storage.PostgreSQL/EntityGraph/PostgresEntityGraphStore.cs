@@ -12,7 +12,7 @@ namespace FluxIndex.Storage.PostgreSQL.EntityGraph;
 /// PostgreSQL implementation of IGraphStore using adjacency list + recursive CTEs.
 /// Provides entity graph storage for the Hybrid Tier in polyglot persistence.
 /// </summary>
-public class PostgresEntityGraphStore : IGraphStore
+public partial class PostgresEntityGraphStore : IGraphStore
 {
     private readonly EntityGraphDbContext _context;
     private readonly EntityGraphOptions _options;
@@ -302,7 +302,7 @@ public class PostgresEntityGraphStore : IGraphStore
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Traversal CTE failed, falling back to iterative traversal");
+            LogTraversalCteFailed(_logger, ex);
             // Fallback to iterative BFS
             await TraverseIterativeAsync(
                 startEntityId, options, traversedEntityIds,
@@ -392,7 +392,7 @@ LIMIT 1";
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Shortest path CTE failed");
+            LogShortestPathCteFailed(_logger, ex);
             return null;
         }
     }
@@ -642,9 +642,8 @@ LIMIT {options.MaxNodes}";
                     ? rel.TargetEntityId
                     : rel.SourceEntityId;
 
-                if (!visitedEntities.Contains(nextId))
+                if (visitedEntities.Add(nextId))
                 {
-                    visitedEntities.Add(nextId);
                     queue.Enqueue((nextId, depth + 1));
                 }
             }
@@ -772,9 +771,19 @@ LIMIT {options.MaxNodes}";
 
     #endregion
 
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Traversal CTE failed, falling back to iterative traversal")]
+    private static partial void LogTraversalCteFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Shortest path CTE failed")]
+    private static partial void LogShortestPathCteFailed(ILogger logger, Exception exception);
+
+    #endregion
+
     #region Helper Types
 
-    private class TraversalResultRow
+    private sealed class TraversalResultRow
     {
         public string EntityId { get; set; } = string.Empty;
         public string? RelationshipId { get; set; }
@@ -783,7 +792,7 @@ LIMIT {options.MaxNodes}";
         public double TotalWeight { get; set; }
     }
 
-    private class ShortestPathRow
+    private sealed class ShortestPathRow
     {
         public string[]? Path { get; set; }
         public string[]? RelPath { get; set; }

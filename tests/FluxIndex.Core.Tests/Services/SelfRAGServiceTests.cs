@@ -5,7 +5,7 @@ using FluxIndex.Core.Domain.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Moq;
+using NSubstitute;
 using Xunit;
 
 namespace FluxIndex.Core.Tests.Services;
@@ -16,17 +16,17 @@ namespace FluxIndex.Core.Tests.Services;
 /// </summary>
 public class SelfRAGServiceTests
 {
-    private readonly Mock<IHybridSearchService> _mockSearchService;
-    private readonly Mock<IEmbeddingService> _mockEmbeddingService;
-    private readonly Mock<ITextCompletionService> _mockCompletionService;
+    private readonly IHybridSearchService _mockSearchService;
+    private readonly IEmbeddingService _mockEmbeddingService;
+    private readonly ITextCompletionService _mockCompletionService;
     private readonly ILogger<SelfRAGService> _logger;
     private readonly SelfRAGServiceOptions _defaultOptions;
 
     public SelfRAGServiceTests()
     {
-        _mockSearchService = new Mock<IHybridSearchService>();
-        _mockEmbeddingService = new Mock<IEmbeddingService>();
-        _mockCompletionService = new Mock<ITextCompletionService>();
+        _mockSearchService = Substitute.For<IHybridSearchService>();
+        _mockEmbeddingService = Substitute.For<IEmbeddingService>();
+        _mockCompletionService = Substitute.For<ITextCompletionService>();
         _logger = NullLogger<SelfRAGService>.Instance;
         _defaultOptions = new SelfRAGServiceOptions();
 
@@ -35,20 +35,14 @@ public class SelfRAGServiceTests
 
     private void SetupDefaultMocks()
     {
-        _mockEmbeddingService
-            .Setup(x => x.GetModelName())
-            .Returns("test-model");
+        _mockEmbeddingService.GetModelName().Returns("test-model");
 
-        _mockEmbeddingService
-            .Setup(x => x.GenerateEmbeddingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new float[] { 0.1f, 0.2f, 0.3f, 0.4f, 0.5f });
+        _mockEmbeddingService.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new float[] { 0.1f, 0.2f, 0.3f, 0.4f, 0.5f });
 
-        _mockSearchService
-            .Setup(x => x.SearchAsync(
-                It.IsAny<string>(),
-                It.IsAny<HybridSearchOptions>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CreateDefaultHybridResults(5));
+        _mockSearchService.SearchAsync(
+                Arg.Any<string>(),
+                Arg.Any<HybridSearchOptions>(),
+                Arg.Any<CancellationToken>()).Returns(CreateDefaultHybridResults(5));
     }
 
     private SelfRAGService CreateService(
@@ -58,9 +52,9 @@ public class SelfRAGServiceTests
         var opts = options ?? _defaultOptions;
 
         return new SelfRAGService(
-            _mockSearchService.Object,
-            _mockEmbeddingService.Object,
-            withLlm ? _mockCompletionService.Object : null,
+            _mockSearchService,
+            _mockEmbeddingService,
+            withLlm ? _mockCompletionService : null,
             Microsoft.Extensions.Options.Options.Create(opts),
             _logger);
     }
@@ -146,8 +140,8 @@ public class SelfRAGServiceTests
         Assert.Throws<ArgumentNullException>(() =>
             new SelfRAGService(
                 null!,
-                _mockEmbeddingService.Object,
-                _mockCompletionService.Object,
+                _mockEmbeddingService,
+                _mockCompletionService,
                 Microsoft.Extensions.Options.Options.Create(_defaultOptions),
                 _logger));
     }
@@ -158,9 +152,9 @@ public class SelfRAGServiceTests
         // Arrange & Act & Assert
         Assert.Throws<ArgumentNullException>(() =>
             new SelfRAGService(
-                _mockSearchService.Object,
+                _mockSearchService,
                 null!,
-                _mockCompletionService.Object,
+                _mockCompletionService,
                 Microsoft.Extensions.Options.Options.Create(_defaultOptions),
                 _logger));
     }
@@ -181,9 +175,9 @@ public class SelfRAGServiceTests
         // Arrange & Act & Assert
         Assert.Throws<ArgumentNullException>(() =>
             new SelfRAGService(
-                _mockSearchService.Object,
-                _mockEmbeddingService.Object,
-                _mockCompletionService.Object,
+                _mockSearchService,
+                _mockEmbeddingService,
+                _mockCompletionService,
                 Microsoft.Extensions.Options.Options.Create(_defaultOptions),
                 null!));
     }
@@ -216,12 +210,10 @@ public class SelfRAGServiceTests
         var query = "Test query";
         var options = new SelfRAGOptions { MaxResults = 3 };
 
-        _mockSearchService
-            .Setup(x => x.SearchAsync(
-                It.IsAny<string>(),
-                It.Is<HybridSearchOptions>(o => o.MaxResults <= 3),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CreateDefaultHybridResults(3));
+        _mockSearchService.SearchAsync(
+                Arg.Any<string>(),
+                Arg.Is<HybridSearchOptions>(o => o.MaxResults <= 3),
+                Arg.Any<CancellationToken>()).Returns(CreateDefaultHybridResults(3));
 
         // Act
         var result = await service.SearchAsync(query, options);
@@ -328,12 +320,10 @@ public class SelfRAGServiceTests
     {
         // Arrange
         var lowQualityResults = CreateDefaultHybridResults(2);
-        _mockSearchService
-            .Setup(x => x.SearchAsync(
-                It.IsAny<string>(),
-                It.IsAny<HybridSearchOptions>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(lowQualityResults);
+        _mockSearchService.SearchAsync(
+                Arg.Any<string>(),
+                Arg.Any<HybridSearchOptions>(),
+                Arg.Any<CancellationToken>()).Returns(lowQualityResults);
 
         var options = new SelfRAGOptions
         {
@@ -834,12 +824,10 @@ public class SelfRAGServiceTests
     public async Task SearchAsync_NoResultsFromSearch_HandlesGracefully()
     {
         // Arrange
-        _mockSearchService
-            .Setup(x => x.SearchAsync(
-                It.IsAny<string>(),
-                It.IsAny<HybridSearchOptions>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<HybridSearchResult>());
+        _mockSearchService.SearchAsync(
+                Arg.Any<string>(),
+                Arg.Any<HybridSearchOptions>(),
+                Arg.Any<CancellationToken>()).Returns(new List<HybridSearchResult>());
 
         var service = CreateService(withLlm: false);
 

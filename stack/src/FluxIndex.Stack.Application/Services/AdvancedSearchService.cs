@@ -19,7 +19,7 @@ namespace FluxIndex.Stack.Application.Services;
 /// Advanced search service with dynamic fusion, listwise reranking,
 /// entity extraction, and community-based search capabilities.
 /// </summary>
-public class AdvancedSearchService : IAdvancedSearchService
+public partial class AdvancedSearchService : IAdvancedSearchService
 {
     private readonly IDocumentChunkRepository _chunkRepository;
     private readonly StackIDocumentRepository _documentRepository;
@@ -63,8 +63,7 @@ public class AdvancedSearchService : IAdvancedSearchService
     {
         var stopwatch = Stopwatch.StartNew();
 
-        _logger.LogInformation("Advanced search for: {Query} in collection: {CollectionId}",
-            request.Query, request.CollectionId);
+        LogAdvancedSearchStarted(_logger, request.Query, request.CollectionId);
 
         var results = new List<AdvancedSearchResultDto>();
         QueryAnalysisDto? queryAnalysis = null;
@@ -81,9 +80,9 @@ public class AdvancedSearchService : IAdvancedSearchService
                 DocumentStatus.Indexed,
                 cancellationToken);
 
-            if (!documents.Any())
+            if (documents.Count == 0)
             {
-                _logger.LogInformation("No indexed documents found for search");
+                LogNoIndexedDocumentsFound(_logger);
                 return CreateEmptyResponse(request, stopwatch);
             }
 
@@ -191,7 +190,7 @@ public class AdvancedSearchService : IAdvancedSearchService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during advanced search for query: {Query}", request.Query);
+            LogAdvancedSearchFailed(_logger, request.Query, ex);
             throw;
         }
 
@@ -229,7 +228,7 @@ public class AdvancedSearchService : IAdvancedSearchService
     {
         if (_entityService == null)
         {
-            _logger.LogWarning("Entity extraction service not available");
+            LogEntityExtractionServiceUnavailable(_logger);
             return new List<ExtractedEntityDto>();
         }
 
@@ -265,7 +264,7 @@ public class AdvancedSearchService : IAdvancedSearchService
     {
         if (_communityService == null)
         {
-            _logger.LogWarning("Community service not available");
+            LogCommunityServiceUnavailable(_logger);
             return new CommunitySearchInfoDto { TotalCommunities = 0, CommunitiesSearched = 0 };
         }
 
@@ -283,19 +282,22 @@ public class AdvancedSearchService : IAdvancedSearchService
         var leidenChunks = new List<LeidenChunk>();
         foreach (var chunk in allChunks)
         {
-#pragma warning disable CS0618 // Type or member is obsolete
-            if (chunk.Embedding != null && chunk.Embedding.ToArray().Length > 0)
+            var firstEmbedding = chunk.ChunkEmbeddings.FirstOrDefault();
+            if (firstEmbedding != null)
             {
-                leidenChunks.Add(new LeidenChunk
+                var embeddingArray = firstEmbedding.GetEmbeddingArray();
+                if (embeddingArray.Length > 0)
                 {
-                    Id = chunk.Id.ToString(),
-                    Content = chunk.Content,
-                    Embedding = new EmbeddingVector(chunk.Embedding.ToArray(), "default"),
-                    DocumentId = chunk.DocumentId.ToString(),
-                    Metadata = chunk.Metadata
-                });
+                    leidenChunks.Add(new LeidenChunk
+                    {
+                        Id = chunk.Id.ToString(),
+                        Content = chunk.Content,
+                        Embedding = new EmbeddingVector(embeddingArray, "default"),
+                        DocumentId = chunk.DocumentId.ToString(),
+                        Metadata = chunk.Metadata
+                    });
+                }
             }
-#pragma warning restore CS0618
         }
 
         if (leidenChunks.Count == 0)
@@ -377,7 +379,7 @@ public class AdvancedSearchService : IAdvancedSearchService
         };
     }
 
-    private async Task<List<AdvancedSearchResultDto>> PerformKeywordSearchAsync(
+    private static async Task<List<AdvancedSearchResultDto>> PerformKeywordSearchAsync(
         AdvancedSearchRequest request,
         List<DocumentChunk> chunks,
         List<Document> documents,
@@ -453,12 +455,12 @@ public class AdvancedSearchService : IAdvancedSearchService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Vector search failed, returning empty results");
+            LogVectorSearchFailed(_logger, ex);
             return new List<AdvancedSearchResultDto>();
         }
     }
 
-    private List<AdvancedSearchResultDto> FuseWithDynamicAlpha(
+    private static List<AdvancedSearchResultDto> FuseWithDynamicAlpha(
         DynamicFusionConfiguration config,
         List<AdvancedSearchResultDto> keywordResults,
         List<AdvancedSearchResultDto> vectorResults)
@@ -467,7 +469,7 @@ public class AdvancedSearchService : IAdvancedSearchService
         return MergeWithWeightedSum(keywordResults, vectorResults, config.SparseWeight);
     }
 
-    private List<AdvancedSearchResultDto> StaticFuse(
+    private static List<AdvancedSearchResultDto> StaticFuse(
         List<AdvancedSearchResultDto> keywordResults,
         List<AdvancedSearchResultDto> vectorResults,
         FusionMethodDto method)
@@ -480,7 +482,7 @@ public class AdvancedSearchService : IAdvancedSearchService
         };
     }
 
-    private List<AdvancedSearchResultDto> MergeWithRRF(
+    private static List<AdvancedSearchResultDto> MergeWithRRF(
         List<AdvancedSearchResultDto> keywordResults,
         List<AdvancedSearchResultDto> vectorResults,
         int k = 60)
@@ -519,7 +521,7 @@ public class AdvancedSearchService : IAdvancedSearchService
             .ToList();
     }
 
-    private List<AdvancedSearchResultDto> MergeWithWeightedSum(
+    private static List<AdvancedSearchResultDto> MergeWithWeightedSum(
         List<AdvancedSearchResultDto> keywordResults,
         List<AdvancedSearchResultDto> vectorResults,
         double alpha)
@@ -611,7 +613,7 @@ public class AdvancedSearchService : IAdvancedSearchService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Listwise reranking failed, returning original results");
+            LogListwiseRerankingFailed(_logger, ex);
             return results;
         }
     }
@@ -634,7 +636,7 @@ public class AdvancedSearchService : IAdvancedSearchService
         }).ToList();
     }
 
-    private async Task<CommunitySearchInfoDto> GetCommunityInfoAsync(
+    private static async Task<CommunitySearchInfoDto> GetCommunityInfoAsync(
         Guid collectionId,
         List<AdvancedSearchResultDto> results,
         CancellationToken cancellationToken)
@@ -714,7 +716,7 @@ public class AdvancedSearchService : IAdvancedSearchService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to record search history");
+            LogRecordSearchHistoryFailed(_logger, ex);
         }
     }
 
@@ -730,6 +732,34 @@ public class AdvancedSearchService : IAdvancedSearchService
             TokenCount = analysis.Keywords.Count // Approximate token count
         };
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Advanced search for: {Query} in collection: {CollectionId}")]
+    private static partial void LogAdvancedSearchStarted(ILogger logger, string query, Guid? collectionId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "No indexed documents found for search")]
+    private static partial void LogNoIndexedDocumentsFound(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error during advanced search for query: {Query}")]
+    private static partial void LogAdvancedSearchFailed(ILogger logger, string query, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Entity extraction service not available")]
+    private static partial void LogEntityExtractionServiceUnavailable(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Community service not available")]
+    private static partial void LogCommunityServiceUnavailable(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Vector search failed, returning empty results")]
+    private static partial void LogVectorSearchFailed(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Listwise reranking failed, returning original results")]
+    private static partial void LogListwiseRerankingFailed(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to record search history")]
+    private static partial void LogRecordSearchHistoryFailed(ILogger logger, Exception? exception);
 
     #endregion
 }

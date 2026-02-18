@@ -34,7 +34,7 @@ public class FluxIndexContextBuilder
     private readonly FluxIndexOptions _options;
     private readonly RetrieverOptions _retrieverOptions;
     private readonly IndexerOptions _indexerOptions;
-    private bool _suppressStartupMessages = false;
+    private bool _suppressStartupMessages;
 
     public FluxIndexContextBuilder()
     {
@@ -137,8 +137,7 @@ public class FluxIndexContextBuilder
     /// </example>
     public FluxIndexContextBuilder UseEmbeddingService(FluxIndex.Core.Application.Interfaces.IEmbeddingService embeddingService)
     {
-        if (embeddingService == null)
-            throw new ArgumentNullException(nameof(embeddingService));
+        ArgumentNullException.ThrowIfNull(embeddingService);
 
         // Provider를 "Custom"으로 설정하여 ConfigureEmbeddingService에서 자동 등록 방지
         _options.Embedding.Provider = "Custom";
@@ -155,8 +154,7 @@ public class FluxIndexContextBuilder
     /// </summary>
     public FluxIndexContextBuilder UseEmbeddingService(Func<IServiceProvider, FluxIndex.Core.Application.Interfaces.IEmbeddingService> factory)
     {
-        if (factory == null)
-            throw new ArgumentNullException(nameof(factory));
+        ArgumentNullException.ThrowIfNull(factory);
 
         _options.Embedding.Provider = "Custom";
         _services.AddSingleton(factory);
@@ -663,7 +661,7 @@ public class FluxIndexContextBuilder
         var serviceProvider = _services.BuildServiceProvider();
 
         // Initialize database if using SQLite (console app support)
-        if (_options.VectorStore.Provider?.ToLower() == "sqlite")
+        if (_options.VectorStore.Provider?.ToLowerInvariant() == "sqlite")
         {
             InitializeDatabaseSync(serviceProvider);
         }
@@ -708,7 +706,7 @@ public class FluxIndexContextBuilder
     /// IHostedService는 IHost를 사용하는 앱에서만 자동 실행되므로,
     /// 콘솔 앱에서는 명시적으로 데이터베이스를 초기화해야 함
     /// </summary>
-    private void InitializeDatabaseSync(IServiceProvider serviceProvider)
+    private static void InitializeDatabaseSync(IServiceProvider serviceProvider)
     {
         using var scope = serviceProvider.CreateScope();
 
@@ -732,7 +730,7 @@ public class FluxIndexContextBuilder
 
     private void ConfigureVectorStore()
     {
-        switch (_options.VectorStore.Provider?.ToLower())
+        switch (_options.VectorStore.Provider?.ToLowerInvariant())
         {
             case "postgresql":
                 _services.AddPostgreSQLVectorStore(_options.VectorStore.ConnectionString);
@@ -831,7 +829,7 @@ public class FluxIndexContextBuilder
 
     private void ConfigureEmbeddingService()
     {
-        switch (_options.Embedding.Provider?.ToLower())
+        switch (_options.Embedding.Provider?.ToLowerInvariant())
         {
             case "inmemory":
                 // In-memory embedding service for testing (generates random embeddings)
@@ -853,7 +851,7 @@ public class FluxIndexContextBuilder
 
     private void ConfigureCacheService()
     {
-        switch (_options.Cache.CacheProvider?.ToLower())
+        switch (_options.Cache.CacheProvider?.ToLowerInvariant())
         {
             case "redis":
                 _services.AddRedisCacheStore(_options.Cache.RedisConnectionString!);
@@ -879,7 +877,7 @@ public class FluxIndexContextBuilder
 
     private void ConfigureGraphStore()
     {
-        var provider = _options.GraphStore.Provider?.ToLower();
+        var provider = _options.GraphStore.Provider?.ToLowerInvariant();
         if (string.IsNullOrEmpty(provider) || provider == "none")
         {
             // 기본: InMemory 사용 (이미 Build()에서 등록)
@@ -980,7 +978,7 @@ public class FluxIndexContextBuilder
 
     private void ConfigureSemanticCache()
     {
-        var provider = _options.SemanticCache.Provider?.ToLower();
+        var provider = _options.SemanticCache.Provider?.ToLowerInvariant();
         if (string.IsNullOrEmpty(provider) || provider == "none")
         {
             // 시맨틱 캐시 미사용

@@ -184,6 +184,6 @@ public class EvaluationJob
     public EvaluationConfiguration Configuration { get; set; } = new();
     public QualityThresholds Thresholds { get; set; } = new();
     public string ErrorMessage { get; set; } = string.Empty;
-    public int Progress { get; set; } = 0; // 0-100
+    public int Progress { get; set; } // 0-100
     public Dictionary<string, object> Metadata { get; set; } = new();
 }

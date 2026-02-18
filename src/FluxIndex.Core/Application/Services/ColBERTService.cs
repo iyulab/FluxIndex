@@ -18,8 +18,10 @@ namespace FluxIndex.Core.Application.Services;
 /// This provides fine-grained token-level matching while being more efficient
 /// than full cross-attention models.
 /// </remarks>
-public class ColBERTService : IColBERTService
+public partial class ColBERTService : IColBERTService
 {
+    private static readonly char[] TokenizeSeparators = [' ', '\t', '\n', '\r', '.', ',', '!', '?', ';', ':', '"', '\''];
+
     private readonly IEmbeddingService? _embeddingService;
     private readonly ILogger<ColBERTService> _logger;
 
@@ -123,9 +125,7 @@ public class ColBERTService : IColBERTService
             });
 
         stopwatch.Stop();
-        _logger.LogDebug(
-            "Computed ColBERT scores for {Count} documents in {Time}ms",
-            documentList.Count, stopwatch.ElapsedMilliseconds);
+        LogColBERT3(_logger, documentList.Count, stopwatch.ElapsedMilliseconds);
 
         return results;
     }
@@ -169,7 +169,7 @@ public class ColBERTService : IColBERTService
 
         if (validCandidates.Count == 0)
         {
-            _logger.LogWarning("No valid candidates with embeddings for ColBERT ranking");
+            LogColBERT2(_logger);
             return Array.Empty<ColBERTRankedResult>();
         }
 
@@ -232,9 +232,7 @@ public class ColBERTService : IColBERTService
         }
 
         stopwatch.Stop();
-        _logger.LogDebug(
-            "ColBERT ranked {Count} candidates in {Time}ms",
-            results.Count, stopwatch.ElapsedMilliseconds);
+        LogColBERT1(_logger, results.Count, stopwatch.ElapsedMilliseconds);
 
         return results;
     }
@@ -313,7 +311,7 @@ public class ColBERTService : IColBERTService
                 compressedData = CompressFloat16(embeddings);
                 break;
 
-            case ColBERTCompressionType.Int8:
+            case ColBERTCompressionType.Scalar8Bit:
                 (compressedData, scale, offset) = CompressInt8(embeddings);
                 break;
 
@@ -359,7 +357,7 @@ public class ColBERTService : IColBERTService
                 embeddings = DecompressFloat16(compressed);
                 break;
 
-            case ColBERTCompressionType.Int8:
+            case ColBERTCompressionType.Scalar8Bit:
                 embeddings = DecompressInt8(compressed);
                 break;
 
@@ -463,7 +461,7 @@ public class ColBERTService : IColBERTService
         // Simple word-based tokenization
         // For production, use a proper tokenizer (e.g., WordPiece, BPE)
         var words = text.Split(
-            new[] { ' ', '\t', '\n', '\r', '.', ',', '!', '?', ';', ':', '"', '\'' },
+            TokenizeSeparators,
             StringSplitOptions.RemoveEmptyEntries);
 
         // For queries, we might use different tokenization strategy
@@ -666,6 +664,17 @@ public class ColBERTService : IColBERTService
     }
 
     #endregion
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Computed ColBERT scores for {Count} documents in {Time}ms")]
+    private static partial void LogColBERT3(ILogger logger, int count, long time);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No valid candidates with embeddings for ColBERT ranking")]
+    private static partial void LogColBERT2(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "ColBERT ranked {Count} candidates in {Time}ms")]
+    private static partial void LogColBERT1(ILogger logger, int count, long time);
 
     #endregion
 }

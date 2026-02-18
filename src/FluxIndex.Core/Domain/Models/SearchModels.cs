@@ -113,7 +113,7 @@ public class SparseSearchOptions
     /// <summary>
     /// 최소 점수
     /// </summary>
-    public double MinScore { get; set; } = 0.0;
+    public double MinScore { get; set; }
 
     /// <summary>
     /// BM25 k1 매개변수
@@ -128,12 +128,12 @@ public class SparseSearchOptions
     /// <summary>
     /// 용어 확장 활성화
     /// </summary>
-    public bool EnableTermExpansion { get; set; } = false;
+    public bool EnableTermExpansion { get; set; }
 
     /// <summary>
     /// 구문 검색 활성화
     /// </summary>
-    public bool EnablePhraseSearch { get; set; } = false;
+    public bool EnablePhraseSearch { get; set; }
 }
 
 /// <summary>
@@ -190,7 +190,7 @@ public class VectorSearchOptions
     /// <summary>
     /// 최소 점수
     /// </summary>
-    public double MinScore { get; set; } = 0.0;
+    public double MinScore { get; set; }
 
     /// <summary>
     /// 유사도 메트릭

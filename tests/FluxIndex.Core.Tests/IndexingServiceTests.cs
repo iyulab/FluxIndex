@@ -4,33 +4,34 @@ using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Core.Domain.ValueObjects;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
+using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using Xunit;
 
 namespace FluxIndex.Core.Tests;
 
 public class IndexingServiceTests
 {
-    private readonly Mock<IDocumentRepository> _mockDocumentRepository;
-    private readonly Mock<IVectorStore> _mockVectorStore;
-    private readonly Mock<IEmbeddingService> _mockEmbeddingService;
-    private readonly Mock<IMetadataEnrichmentService> _mockMetadataEnrichmentService;
+    private readonly IDocumentRepository _mockDocumentRepository;
+    private readonly IVectorStore _mockVectorStore;
+    private readonly IEmbeddingService _mockEmbeddingService;
+    private readonly IMetadataEnrichmentService _mockMetadataEnrichmentService;
     private readonly ILogger<IndexingService> _logger;
     private readonly IndexingService _service;
 
     public IndexingServiceTests()
     {
-        _mockDocumentRepository = new Mock<IDocumentRepository>();
-        _mockVectorStore = new Mock<IVectorStore>();
-        _mockEmbeddingService = new Mock<IEmbeddingService>();
-        _mockMetadataEnrichmentService = new Mock<IMetadataEnrichmentService>();
+        _mockDocumentRepository = Substitute.For<IDocumentRepository>();
+        _mockVectorStore = Substitute.For<IVectorStore>();
+        _mockEmbeddingService = Substitute.For<IEmbeddingService>();
+        _mockMetadataEnrichmentService = Substitute.For<IMetadataEnrichmentService>();
         _logger = NullLogger<IndexingService>.Instance;
 
         _service = new IndexingService(
-            _mockDocumentRepository.Object,
-            _mockVectorStore.Object,
-            _mockEmbeddingService.Object,
-            _mockMetadataEnrichmentService.Object,
+            _mockDocumentRepository,
+            _mockVectorStore,
+            _mockEmbeddingService,
+            _mockMetadataEnrichmentService,
             _logger);
     }
 
@@ -69,41 +70,33 @@ public class IndexingServiceTests
             Coherence = 0.88
         };
 
-        _mockEmbeddingService.Setup(x => x.GenerateEmbeddingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(embedding);
+        _mockEmbeddingService.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(embedding);
 
-        _mockMetadataEnrichmentService.Setup(x => x.EnrichMetadataAsync(
-                It.IsAny<string>(),
-                It.IsAny<int>(),
-                It.IsAny<string?>(),
-                It.IsAny<string?>(),
-                It.IsAny<Dictionary<string, object>?>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(enrichedMetadata);
+        _mockMetadataEnrichmentService.EnrichMetadataAsync(
+                Arg.Any<string>(),
+                Arg.Any<int>(),
+                Arg.Any<string?>(),
+                Arg.Any<string?>(),
+                Arg.Any<Dictionary<string, object>?>(),
+                Arg.Any<CancellationToken>()).Returns(enrichedMetadata);
 
-        _mockMetadataEnrichmentService.Setup(x => x.EvaluateQualityAsync(
-                It.IsAny<DocumentChunk>(),
-                It.IsAny<string?>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(quality);
+        _mockMetadataEnrichmentService.EvaluateQualityAsync(
+                Arg.Any<DocumentChunk>(),
+                Arg.Any<string?>(),
+                Arg.Any<CancellationToken>()).Returns(quality);
 
-        _mockMetadataEnrichmentService.Setup(x => x.AnalyzeRelationshipsAsync(
-                It.IsAny<DocumentChunk>(),
-                It.IsAny<IEnumerable<DocumentChunk>>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<ChunkRelationship>());
+        _mockMetadataEnrichmentService.AnalyzeRelationshipsAsync(
+                Arg.Any<DocumentChunk>(),
+                Arg.Any<IEnumerable<DocumentChunk>>(),
+                Arg.Any<CancellationToken>()).Returns(new List<ChunkRelationship>());
 
-        _mockDocumentRepository.Setup(x => x.AddAsync(It.IsAny<Document>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(documentId);
+        _mockDocumentRepository.AddAsync(Arg.Any<Document>(), Arg.Any<CancellationToken>()).Returns(documentId);
 
-        _mockDocumentRepository.Setup(x => x.UpdateAsync(It.IsAny<Document>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+        _mockDocumentRepository.UpdateAsync(Arg.Any<Document>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
 
-        _mockVectorStore.Setup(x => x.StoreAsync(It.IsAny<DocumentChunk>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("chunk-id");
+        _mockVectorStore.StoreAsync(Arg.Any<DocumentChunk>(), Arg.Any<CancellationToken>()).Returns("chunk-id");
 
-        _mockVectorStore.Setup(x => x.UpdateAsync(It.IsAny<DocumentChunk>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+        _mockVectorStore.UpdateAsync(Arg.Any<DocumentChunk>(), Arg.Any<CancellationToken>()).Returns(true);
 
         // Act
         var result = await _service.IndexDocumentAsync(documentId, chunks, metadata);
@@ -115,10 +108,10 @@ public class IndexingServiceTests
         Assert.Equal(2, result.Chunks.Count);
 
         // Verify all chunks were processed
-        _mockEmbeddingService.Verify(x => x.GenerateEmbeddingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
-        _mockVectorStore.Verify(x => x.StoreAsync(It.IsAny<DocumentChunk>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
-        _mockDocumentRepository.Verify(x => x.AddAsync(It.IsAny<Document>(), It.IsAny<CancellationToken>()), Times.Once);
-        _mockDocumentRepository.Verify(x => x.UpdateAsync(It.IsAny<Document>(), It.IsAny<CancellationToken>()), Times.Once);
+        await _mockEmbeddingService.Received(2).GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _mockVectorStore.Received(2).StoreAsync(Arg.Any<DocumentChunk>(), Arg.Any<CancellationToken>());
+        await _mockDocumentRepository.Received(1).AddAsync(Arg.Any<Document>(), Arg.Any<CancellationToken>());
+        await _mockDocumentRepository.Received(1).UpdateAsync(Arg.Any<Document>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -156,78 +149,67 @@ public class IndexingServiceTests
 
         var metadata = new DocumentMetadata();
 
-        _mockEmbeddingService.Setup(x => x.GenerateEmbeddingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new float[] { 0.1f, 0.2f, 0.3f });
+        _mockEmbeddingService.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new float[] { 0.1f, 0.2f, 0.3f });
 
-        _mockMetadataEnrichmentService.Setup(x => x.EnrichMetadataAsync(
-                It.IsAny<string>(),
-                It.IsAny<int>(),
-                It.IsAny<string?>(),
-                It.IsAny<string?>(),
-                It.IsAny<Dictionary<string, object>?>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ChunkMetadata());
+        _mockMetadataEnrichmentService.EnrichMetadataAsync(
+                Arg.Any<string>(),
+                Arg.Any<int>(),
+                Arg.Any<string?>(),
+                Arg.Any<string?>(),
+                Arg.Any<Dictionary<string, object>?>(),
+                Arg.Any<CancellationToken>()).Returns(new ChunkMetadata());
 
-        _mockMetadataEnrichmentService.Setup(x => x.EvaluateQualityAsync(
-                It.IsAny<DocumentChunk>(),
-                It.IsAny<string?>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ChunkQuality
+        _mockMetadataEnrichmentService.EvaluateQualityAsync(
+                Arg.Any<DocumentChunk>(),
+                Arg.Any<string?>(),
+                Arg.Any<CancellationToken>()).Returns(new ChunkQuality
             {
                 ContentCompleteness = 0.9,
                 InformationDensity = 0.85,
                 Coherence = 0.88
             });
 
-        _mockMetadataEnrichmentService.Setup(x => x.AnalyzeRelationshipsAsync(
-                It.IsAny<DocumentChunk>(),
-                It.IsAny<IEnumerable<DocumentChunk>>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<ChunkRelationship>());
+        _mockMetadataEnrichmentService.AnalyzeRelationshipsAsync(
+                Arg.Any<DocumentChunk>(),
+                Arg.Any<IEnumerable<DocumentChunk>>(),
+                Arg.Any<CancellationToken>()).Returns(new List<ChunkRelationship>());
 
-        _mockDocumentRepository.Setup(x => x.AddAsync(It.IsAny<Document>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(documentId);
+        _mockDocumentRepository.AddAsync(Arg.Any<Document>(), Arg.Any<CancellationToken>()).Returns(documentId);
 
-        _mockDocumentRepository.Setup(x => x.UpdateAsync(It.IsAny<Document>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+        _mockDocumentRepository.UpdateAsync(Arg.Any<Document>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
 
-        _mockVectorStore.Setup(x => x.StoreAsync(It.IsAny<DocumentChunk>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("chunk-id");
+        _mockVectorStore.StoreAsync(Arg.Any<DocumentChunk>(), Arg.Any<CancellationToken>()).Returns("chunk-id");
 
-        _mockVectorStore.Setup(x => x.UpdateAsync(It.IsAny<DocumentChunk>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+        _mockVectorStore.UpdateAsync(Arg.Any<DocumentChunk>(), Arg.Any<CancellationToken>()).Returns(true);
 
         // Act
         await _service.IndexDocumentAsync(documentId, chunks, metadata);
 
         // Assert
         // Verify enrichment called for each chunk with correct context
-        _mockMetadataEnrichmentService.Verify(x => x.EnrichMetadataAsync(
+        await _mockMetadataEnrichmentService.Received(1).EnrichMetadataAsync(
             "First chunk",  // First chunk has no previous
             0,
             null,
             "Middle chunk",
-            It.IsAny<Dictionary<string, object>?>(),
-            It.IsAny<CancellationToken>()),
-            Times.Once);
+            Arg.Any<Dictionary<string, object>?>(),
+            Arg.Any<CancellationToken>());
 
-        _mockMetadataEnrichmentService.Verify(x => x.EnrichMetadataAsync(
+        await _mockMetadataEnrichmentService.Received(1).EnrichMetadataAsync(
             "Middle chunk",  // Middle chunk has both previous and next
             1,
             "First chunk",
             "Last chunk",
-            It.IsAny<Dictionary<string, object>?>(),
-            It.IsAny<CancellationToken>()),
-            Times.Once);
+            Arg.Any<Dictionary<string, object>?>(),
+            Arg.Any<CancellationToken>());
 
-        _mockMetadataEnrichmentService.Verify(x => x.EnrichMetadataAsync(
+        await _mockMetadataEnrichmentService.Received(1).EnrichMetadataAsync(
             "Last chunk",  // Last chunk has no next
             2,
             "Middle chunk",
             null,
-            It.IsAny<Dictionary<string, object>?>(),
-            It.IsAny<CancellationToken>()),
-            Times.Once);
+            Arg.Any<Dictionary<string, object>?>(),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -256,51 +238,42 @@ public class IndexingServiceTests
             Uniqueness = 0.75
         };
 
-        _mockEmbeddingService.Setup(x => x.GenerateEmbeddingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new float[] { 0.1f, 0.2f, 0.3f });
+        _mockEmbeddingService.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new float[] { 0.1f, 0.2f, 0.3f });
 
-        _mockMetadataEnrichmentService.Setup(x => x.EnrichMetadataAsync(
-                It.IsAny<string>(),
-                It.IsAny<int>(),
-                It.IsAny<string?>(),
-                It.IsAny<string?>(),
-                It.IsAny<Dictionary<string, object>?>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ChunkMetadata());
+        _mockMetadataEnrichmentService.EnrichMetadataAsync(
+                Arg.Any<string>(),
+                Arg.Any<int>(),
+                Arg.Any<string?>(),
+                Arg.Any<string?>(),
+                Arg.Any<Dictionary<string, object>?>(),
+                Arg.Any<CancellationToken>()).Returns(new ChunkMetadata());
 
-        _mockMetadataEnrichmentService.Setup(x => x.EvaluateQualityAsync(
-                It.IsAny<DocumentChunk>(),
-                It.IsAny<string?>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(quality);
+        _mockMetadataEnrichmentService.EvaluateQualityAsync(
+                Arg.Any<DocumentChunk>(),
+                Arg.Any<string?>(),
+                Arg.Any<CancellationToken>()).Returns(quality);
 
-        _mockMetadataEnrichmentService.Setup(x => x.AnalyzeRelationshipsAsync(
-                It.IsAny<DocumentChunk>(),
-                It.IsAny<IEnumerable<DocumentChunk>>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<ChunkRelationship>());
+        _mockMetadataEnrichmentService.AnalyzeRelationshipsAsync(
+                Arg.Any<DocumentChunk>(),
+                Arg.Any<IEnumerable<DocumentChunk>>(),
+                Arg.Any<CancellationToken>()).Returns(new List<ChunkRelationship>());
 
-        _mockDocumentRepository.Setup(x => x.AddAsync(It.IsAny<Document>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(documentId);
+        _mockDocumentRepository.AddAsync(Arg.Any<Document>(), Arg.Any<CancellationToken>()).Returns(documentId);
 
-        _mockDocumentRepository.Setup(x => x.UpdateAsync(It.IsAny<Document>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+        _mockDocumentRepository.UpdateAsync(Arg.Any<Document>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
 
-        _mockVectorStore.Setup(x => x.StoreAsync(It.IsAny<DocumentChunk>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("chunk-id");
+        _mockVectorStore.StoreAsync(Arg.Any<DocumentChunk>(), Arg.Any<CancellationToken>()).Returns("chunk-id");
 
-        _mockVectorStore.Setup(x => x.UpdateAsync(It.IsAny<DocumentChunk>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+        _mockVectorStore.UpdateAsync(Arg.Any<DocumentChunk>(), Arg.Any<CancellationToken>()).Returns(true);
 
         // Act
         await _service.IndexDocumentAsync(documentId, chunks, metadata);
 
         // Assert
-        _mockMetadataEnrichmentService.Verify(x => x.EvaluateQualityAsync(
-            It.IsAny<DocumentChunk>(),
-            It.IsAny<string?>(),
-            It.IsAny<CancellationToken>()),
-            Times.Once);
+        await _mockMetadataEnrichmentService.Received(1).EvaluateQualityAsync(
+            Arg.Any<DocumentChunk>(),
+            Arg.Any<string?>(),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -322,41 +295,35 @@ public class IndexingServiceTests
 
         var metadata = new DocumentMetadata();
 
-        _mockDocumentRepository.Setup(x => x.AddAsync(It.IsAny<Document>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(documentId);
+        _mockDocumentRepository.AddAsync(Arg.Any<Document>(), Arg.Any<CancellationToken>()).Returns(documentId);
 
         // Setup metadata enrichment to return valid metadata
-        _mockMetadataEnrichmentService.Setup(x => x.EnrichMetadataAsync(
-            It.IsAny<string>(),
-            It.IsAny<int>(),
-            It.IsAny<string?>(),
-            It.IsAny<string?>(),
-            It.IsAny<Dictionary<string, object>?>(),
-            It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ChunkMetadata());
+        _mockMetadataEnrichmentService.EnrichMetadataAsync(
+            Arg.Any<string>(),
+            Arg.Any<int>(),
+            Arg.Any<string?>(),
+            Arg.Any<string?>(),
+            Arg.Any<Dictionary<string, object>?>(),
+            Arg.Any<CancellationToken>()).Returns(new ChunkMetadata());
 
         // Setup quality evaluation to return valid quality
-        _mockMetadataEnrichmentService.Setup(x => x.EvaluateQualityAsync(
-            It.IsAny<DocumentChunk>(),
-            It.IsAny<string?>(),
-            It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ChunkQuality());
+        _mockMetadataEnrichmentService.EvaluateQualityAsync(
+            Arg.Any<DocumentChunk>(),
+            Arg.Any<string?>(),
+            Arg.Any<CancellationToken>()).Returns(new ChunkQuality());
 
-        _mockEmbeddingService.Setup(x => x.GenerateEmbeddingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new Exception("Embedding service error"));
+        _mockEmbeddingService.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Throws(new Exception("Embedding service error"));
 
-        _mockDocumentRepository.Setup(x => x.UpdateAsync(It.IsAny<Document>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+        _mockDocumentRepository.UpdateAsync(Arg.Any<Document>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
 
         // Act & Assert
         await Assert.ThrowsAsync<Exception>(() =>
             _service.IndexDocumentAsync(documentId, chunks, metadata));
 
         // Verify document was marked as failed
-        _mockDocumentRepository.Verify(x => x.UpdateAsync(
-            It.Is<Document>(d => d.Id == documentId && d.Status == DocumentStatus.Failed),
-            It.IsAny<CancellationToken>()),
-            Times.Once);
+        await _mockDocumentRepository.Received(1).UpdateAsync(
+            Arg.Is<Document>(d => d.Id == documentId && d.Status == DocumentStatus.Failed),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -365,11 +332,9 @@ public class IndexingServiceTests
         // Arrange
         var documentId = "doc1";
 
-        _mockVectorStore.Setup(x => x.DeleteByDocumentIdAsync(documentId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+        _mockVectorStore.DeleteByDocumentIdAsync(documentId, Arg.Any<CancellationToken>()).Returns(true);
 
-        _mockDocumentRepository.Setup(x => x.DeleteAsync(documentId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+        _mockDocumentRepository.DeleteAsync(documentId, Arg.Any<CancellationToken>()).Returns(true);
 
         // Act
         var result = await _service.DeleteDocumentAsync(documentId);
@@ -377,8 +342,8 @@ public class IndexingServiceTests
         // Assert
         Assert.True(result);
 
-        _mockVectorStore.Verify(x => x.DeleteByDocumentIdAsync(documentId, It.IsAny<CancellationToken>()), Times.Once);
-        _mockDocumentRepository.Verify(x => x.DeleteAsync(documentId, It.IsAny<CancellationToken>()), Times.Once);
+        await _mockVectorStore.Received(1).DeleteByDocumentIdAsync(documentId, Arg.Any<CancellationToken>());
+        await _mockDocumentRepository.Received(1).DeleteAsync(documentId, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -418,63 +383,53 @@ public class IndexingServiceTests
             }
         };
 
-        _mockEmbeddingService.Setup(x => x.GenerateEmbeddingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new float[] { 0.1f, 0.2f, 0.3f });
+        _mockEmbeddingService.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new float[] { 0.1f, 0.2f, 0.3f });
 
-        _mockMetadataEnrichmentService.Setup(x => x.EnrichMetadataAsync(
-                It.IsAny<string>(),
-                It.IsAny<int>(),
-                It.IsAny<string?>(),
-                It.IsAny<string?>(),
-                It.IsAny<Dictionary<string, object>?>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ChunkMetadata());
+        _mockMetadataEnrichmentService.EnrichMetadataAsync(
+                Arg.Any<string>(),
+                Arg.Any<int>(),
+                Arg.Any<string?>(),
+                Arg.Any<string?>(),
+                Arg.Any<Dictionary<string, object>?>(),
+                Arg.Any<CancellationToken>()).Returns(new ChunkMetadata());
 
-        _mockMetadataEnrichmentService.Setup(x => x.EvaluateQualityAsync(
-                It.IsAny<DocumentChunk>(),
-                It.IsAny<string?>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ChunkQuality
+        _mockMetadataEnrichmentService.EvaluateQualityAsync(
+                Arg.Any<DocumentChunk>(),
+                Arg.Any<string?>(),
+                Arg.Any<CancellationToken>()).Returns(new ChunkQuality
             {
                 ContentCompleteness = 0.9,
                 InformationDensity = 0.85,
                 Coherence = 0.88
             });
 
-        _mockMetadataEnrichmentService.Setup(x => x.AnalyzeRelationshipsAsync(
-                It.IsAny<DocumentChunk>(),
-                It.IsAny<IEnumerable<DocumentChunk>>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(relationships);
+        _mockMetadataEnrichmentService.AnalyzeRelationshipsAsync(
+                Arg.Any<DocumentChunk>(),
+                Arg.Any<IEnumerable<DocumentChunk>>(),
+                Arg.Any<CancellationToken>()).Returns(relationships);
 
-        _mockDocumentRepository.Setup(x => x.AddAsync(It.IsAny<Document>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(documentId);
+        _mockDocumentRepository.AddAsync(Arg.Any<Document>(), Arg.Any<CancellationToken>()).Returns(documentId);
 
-        _mockDocumentRepository.Setup(x => x.UpdateAsync(It.IsAny<Document>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+        _mockDocumentRepository.UpdateAsync(Arg.Any<Document>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
 
-        _mockVectorStore.Setup(x => x.StoreAsync(It.IsAny<DocumentChunk>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("chunk-id");
+        _mockVectorStore.StoreAsync(Arg.Any<DocumentChunk>(), Arg.Any<CancellationToken>()).Returns("chunk-id");
 
-        _mockVectorStore.Setup(x => x.UpdateAsync(It.IsAny<DocumentChunk>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+        _mockVectorStore.UpdateAsync(Arg.Any<DocumentChunk>(), Arg.Any<CancellationToken>()).Returns(true);
 
         // Act
         await _service.IndexDocumentAsync(documentId, chunks, metadata);
 
         // Assert
         // Verify relationship analysis was called for each chunk
-        _mockMetadataEnrichmentService.Verify(x => x.AnalyzeRelationshipsAsync(
-            It.IsAny<DocumentChunk>(),
-            It.IsAny<IEnumerable<DocumentChunk>>(),
-            It.IsAny<CancellationToken>()),
-            Times.Exactly(2));
+        await _mockMetadataEnrichmentService.Received(2).AnalyzeRelationshipsAsync(
+            Arg.Any<DocumentChunk>(),
+            Arg.Any<IEnumerable<DocumentChunk>>(),
+            Arg.Any<CancellationToken>());
 
         // Verify chunks were updated with relationships
-        _mockVectorStore.Verify(x => x.UpdateAsync(
-            It.IsAny<DocumentChunk>(),
-            It.IsAny<CancellationToken>()),
-            Times.Exactly(2));
+        await _mockVectorStore.Received(2).UpdateAsync(
+            Arg.Any<DocumentChunk>(),
+            Arg.Any<CancellationToken>());
     }
 
     [Theory]
@@ -498,53 +453,45 @@ public class IndexingServiceTests
 
         var metadata = new DocumentMetadata();
 
-        _mockEmbeddingService.Setup(x => x.GenerateEmbeddingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new float[] { 0.1f, 0.2f, 0.3f });
+        _mockEmbeddingService.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new float[] { 0.1f, 0.2f, 0.3f });
 
-        _mockMetadataEnrichmentService.Setup(x => x.EnrichMetadataAsync(
-                It.IsAny<string>(),
-                It.IsAny<int>(),
-                It.IsAny<string?>(),
-                It.IsAny<string?>(),
-                It.IsAny<Dictionary<string, object>?>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ChunkMetadata());
+        _mockMetadataEnrichmentService.EnrichMetadataAsync(
+                Arg.Any<string>(),
+                Arg.Any<int>(),
+                Arg.Any<string?>(),
+                Arg.Any<string?>(),
+                Arg.Any<Dictionary<string, object>?>(),
+                Arg.Any<CancellationToken>()).Returns(new ChunkMetadata());
 
-        _mockMetadataEnrichmentService.Setup(x => x.EvaluateQualityAsync(
-                It.IsAny<DocumentChunk>(),
-                It.IsAny<string?>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ChunkQuality
+        _mockMetadataEnrichmentService.EvaluateQualityAsync(
+                Arg.Any<DocumentChunk>(),
+                Arg.Any<string?>(),
+                Arg.Any<CancellationToken>()).Returns(new ChunkQuality
             {
                 ContentCompleteness = 0.9,
                 InformationDensity = 0.85,
                 Coherence = 0.88
             });
 
-        _mockMetadataEnrichmentService.Setup(x => x.AnalyzeRelationshipsAsync(
-                It.IsAny<DocumentChunk>(),
-                It.IsAny<IEnumerable<DocumentChunk>>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<ChunkRelationship>());
+        _mockMetadataEnrichmentService.AnalyzeRelationshipsAsync(
+                Arg.Any<DocumentChunk>(),
+                Arg.Any<IEnumerable<DocumentChunk>>(),
+                Arg.Any<CancellationToken>()).Returns(new List<ChunkRelationship>());
 
-        _mockDocumentRepository.Setup(x => x.AddAsync(It.IsAny<Document>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(documentId);
+        _mockDocumentRepository.AddAsync(Arg.Any<Document>(), Arg.Any<CancellationToken>()).Returns(documentId);
 
-        _mockDocumentRepository.Setup(x => x.UpdateAsync(It.IsAny<Document>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+        _mockDocumentRepository.UpdateAsync(Arg.Any<Document>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
 
-        _mockVectorStore.Setup(x => x.StoreAsync(It.IsAny<DocumentChunk>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("chunk-id");
+        _mockVectorStore.StoreAsync(Arg.Any<DocumentChunk>(), Arg.Any<CancellationToken>()).Returns("chunk-id");
 
-        _mockVectorStore.Setup(x => x.UpdateAsync(It.IsAny<DocumentChunk>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+        _mockVectorStore.UpdateAsync(Arg.Any<DocumentChunk>(), Arg.Any<CancellationToken>()).Returns(true);
 
         // Act
         var result = await _service.IndexDocumentAsync(documentId, chunks, metadata);
 
         // Assert
         Assert.Equal(chunkCount, result.Chunks.Count);
-        _mockEmbeddingService.Verify(x => x.GenerateEmbeddingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Exactly(chunkCount));
-        _mockVectorStore.Verify(x => x.StoreAsync(It.IsAny<DocumentChunk>(), It.IsAny<CancellationToken>()), Times.Exactly(chunkCount));
+        await _mockEmbeddingService.Received().GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _mockVectorStore.Received().StoreAsync(Arg.Any<DocumentChunk>(), Arg.Any<CancellationToken>());
     }
 }

@@ -7,8 +7,8 @@ namespace FluxIndex.Extensions.FileVault.Services;
 /// </summary>
 public sealed class PatternMatcher
 {
-    private readonly IReadOnlyList<FilePattern> _includePatterns;
-    private readonly IReadOnlyList<FilePattern> _excludePatterns;
+    private readonly List<FilePattern> _includePatterns;
+    private readonly List<FilePattern> _excludePatterns;
 
     public PatternMatcher(
         IEnumerable<string>? includePatterns = null,
@@ -60,7 +60,7 @@ public sealed class PatternMatcher
     /// <param name="includePatterns">Patterns to include.</param>
     /// <param name="excludePatterns">Patterns to exclude.</param>
     /// <returns>True if the file should be included.</returns>
-    public bool ShouldInclude(string filePath, IEnumerable<string>? includePatterns, IEnumerable<string>? excludePatterns)
+    public static bool ShouldInclude(string filePath, IEnumerable<string>? includePatterns, IEnumerable<string>? excludePatterns)
     {
         if (string.IsNullOrEmpty(filePath))
             return false;

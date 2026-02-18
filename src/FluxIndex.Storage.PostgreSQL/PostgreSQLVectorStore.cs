@@ -39,9 +39,9 @@ public class PostgreSQLVectorStore : VectorStoreBase
             DocumentId = chunk.DocumentId,
             ChunkIndex = chunk.ChunkIndex,
             Content = chunk.Content,
-            Embedding = new Vector(chunk.Embedding.ToArray()),
+            Embedding = chunk.Embedding is not null ? new Vector(chunk.Embedding.ToArray()) : new Vector(Array.Empty<float>()),
             TokenCount = chunk.TokenCount,
-            Metadata = chunk.Metadata
+            Metadata = chunk.Metadata ?? new()
         };
 
         _context.Vectors.Add(entity);
@@ -101,9 +101,9 @@ public class PostgreSQLVectorStore : VectorStoreBase
         if (entity == null) return false;
 
         entity.Content = chunk.Content;
-        entity.Embedding = new Vector(chunk.Embedding.ToArray());
+        entity.Embedding = chunk.Embedding is not null ? new Vector(chunk.Embedding.ToArray()) : new Vector(Array.Empty<float>());
         entity.TokenCount = chunk.TokenCount;
-        entity.Metadata = chunk.Metadata;
+        entity.Metadata = chunk.Metadata ?? new();
 
         // Explicitly mark Metadata as modified for EF Core change tracking
         _context.Entry(entity).Property(e => e.Metadata).IsModified = true;
@@ -132,7 +132,7 @@ public class PostgreSQLVectorStore : VectorStoreBase
             .Where(v => v.DocumentId == documentId)
             .ToListAsync(cancellationToken);
 
-        if (!entities.Any()) return false;
+        if (entities.Count == 0) return false;
 
         _context.Vectors.RemoveRange(entities);
         await _context.SaveChangesAsync(cancellationToken);

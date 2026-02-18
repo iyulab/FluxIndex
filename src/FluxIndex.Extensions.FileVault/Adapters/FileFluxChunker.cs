@@ -11,7 +11,7 @@ namespace FluxIndex.Extensions.FileVault.Adapters;
 /// FileFlux adapter for content chunking.
 /// Bridges IChunker to FileFlux's chunking capabilities.
 /// </summary>
-public sealed class FileFluxChunker : IChunker
+public sealed partial class FileFluxChunker : IChunker
 {
     private readonly IDocumentProcessorFactory _processorFactory;
     private readonly ILogger<FileFluxChunker> _logger;
@@ -29,11 +29,7 @@ public sealed class FileFluxChunker : IChunker
         VaultChunkingOptions options,
         CancellationToken ct = default)
     {
-        _logger.LogDebug(
-            "Chunking content: {ContentLength} chars, Strategy={Strategy}, MaxSize={MaxSize}",
-            content.Length,
-            options.Strategy,
-            options.MaxChunkSize);
+        LogChunking(_logger, content.Length, options.Strategy, options.MaxChunkSize);
 
         try
         {
@@ -65,15 +61,12 @@ public sealed class FileFluxChunker : IChunker
 
                 await processor.ProcessAsync(processingOptions, ct);
 
-                var chunks = processor.Result.Chunks
+                var chunks = (processor.Result.Chunks ?? [])
                     .Select(c => c.Content)
                     .Where(t => !string.IsNullOrWhiteSpace(t))
                     .ToList();
 
-                _logger.LogInformation(
-                    "Created {ChunkCount} chunks from {ContentLength} chars",
-                    chunks.Count,
-                    content.Length);
+                LogCreatedChunks(_logger, chunks.Count, content.Length);
 
                 return chunks;
             }
@@ -85,10 +78,23 @@ public sealed class FileFluxChunker : IChunker
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to chunk content");
+            LogChunkingFailed(_logger, ex);
             throw;
         }
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Chunking content: {ContentLength} chars, Strategy={Strategy}, MaxSize={MaxSize}")]
+    private static partial void LogChunking(ILogger logger, int contentLength, string strategy, int maxSize);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Created {ChunkCount} chunks from {ContentLength} chars")]
+    private static partial void LogCreatedChunks(ILogger logger, int chunkCount, int contentLength);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to chunk content")]
+    private static partial void LogChunkingFailed(ILogger logger, Exception exception);
+
+    #endregion
 
     private static string MapStrategy(string vaultStrategy) => vaultStrategy.ToLowerInvariant() switch
     {

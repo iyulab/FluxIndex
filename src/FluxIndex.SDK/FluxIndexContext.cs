@@ -23,7 +23,7 @@ namespace FluxIndex.SDK;
 /// FluxIndex 컨텍스트 - Retriever와 Indexer를 통한 간편한 진입점
 /// 시맨틱 캐싱을 통한 성능 최적화 지원
 /// </summary>
-public class FluxIndexContext : IFluxIndexContext, IDisposable
+public partial class FluxIndexContext : IFluxIndexContext, IDisposable
 {
     private readonly Retriever _retriever;
     private readonly Indexer _indexer;
@@ -33,7 +33,7 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
     private readonly IQualityMonitoringService? _qualityMonitor;
     private readonly IAdaptiveSearchService? _adaptiveSearchService;
     private readonly ILogger<FluxIndexContext> _logger;
-    private bool _disposed = false;
+    private bool _disposed;
 
     public FluxIndexContext(
         Retriever retriever,
@@ -58,28 +58,28 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
 
         if (_cacheService != null)
         {
-            _logger.LogInformation("FluxIndexContext initialized with semantic caching enabled");
+            LogSemanticCachingEnabled(_logger);
         }
 
         if (_qualityMonitor != null)
         {
-            _logger.LogInformation("FluxIndexContext initialized with quality monitoring enabled");
+            LogQualityMonitoringEnabled(_logger);
             _ = _qualityMonitor.StartMonitoringAsync();
         }
 
         if (_hybridSearchService != null)
         {
-            _logger.LogInformation("FluxIndexClient initialized with hybrid search enabled");
+            LogHybridSearchEnabled(_logger);
         }
 
         if (_smallToBigRetriever != null)
         {
-            _logger.LogInformation("FluxIndexClient initialized with Small-to-Big retrieval enabled");
+            LogSmallToBigEnabled(_logger);
         }
 
         if (_adaptiveSearchService != null)
         {
-            _logger.LogInformation("FluxIndexClient initialized with adaptive search (DAT) enabled");
+            LogAdaptiveSearchEnabled(_logger);
         }
     }
 
@@ -131,8 +131,7 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
                 var cachedResult = await _cacheService.GetCachedResultAsync(query, 0.95f, cancellationToken);
                 if (cachedResult != null)
                 {
-                    _logger.LogInformation("Cache hit for query: '{Query}' (similarity: {Similarity:F3})",
-                        query, cachedResult.SimilarityScore);
+                    LogCacheHit(_logger, query, cachedResult.SimilarityScore);
 
                     var cachedResults = ConvertCachedToSDKSearchResults(cachedResult.Results);
 
@@ -153,7 +152,7 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
                     return cachedResults;
                 }
 
-                _logger.LogDebug("Cache miss for query: '{Query}' - proceeding with retrieval", query);
+                LogCacheMiss(_logger, query);
             }
 
             // 2. 실제 검색 수행
@@ -161,7 +160,7 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
             var sdkResults = ConvertToSDKSearchResults(coreResults).ToList();
 
             // 3. 결과 캐싱 (검색 결과가 있는 경우만)
-            if (_cacheService != null && sdkResults.Any())
+            if (_cacheService != null && sdkResults.Count != 0)
             {
                 var searchResultsForCache = sdkResults.Select(r => new DocumentChunkModel
                 {
@@ -181,7 +180,7 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
                     null, // 기본 만료 시간 사용
                     cancellationToken);
 
-                _logger.LogDebug("Cached search results for query: '{Query}' ({Count} results)", query, sdkResults.Count);
+                LogCachedSearchResults(_logger, query, sdkResults.Count);
             }
 
             var duration = DateTime.UtcNow - startTime;
@@ -199,8 +198,7 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
                 _ = _qualityMonitor.EvaluateSearchQualityAsync(query, coreSearchResults, duration, metadata, cancellationToken);
             }
 
-            _logger.LogInformation("Search completed: query='{Query}', results={Count}, duration={Duration}ms",
-                query, sdkResults.Count, duration.TotalMilliseconds);
+            LogSearchCompleted(_logger, query, sdkResults.Count, duration.TotalMilliseconds);
 
             return sdkResults;
         }
@@ -223,7 +221,7 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
                 _ = _qualityMonitor.EvaluateSearchQualityAsync(query, coreFailedResults, duration, metadata, cancellationToken);
             }
 
-            _logger.LogError(ex, "Search failed: query='{Query}', duration={Duration}ms", query, duration.TotalMilliseconds);
+            LogSearchFailed(_logger, ex, query, duration.TotalMilliseconds);
             throw;
         }
     }
@@ -267,14 +265,13 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
             var results = await _hybridSearchService.SearchAsync(query, options, cancellationToken);
             var duration = DateTime.UtcNow - startTime;
 
-            _logger.LogInformation("Hybrid search completed: query='{Query}', results={Count}, duration={Duration}ms",
-                query, results.Count, duration.TotalMilliseconds);
+            LogHybridSearchCompleted(_logger, query, results.Count, duration.TotalMilliseconds);
 
             return results;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Hybrid search failed: query='{Query}'", query);
+            LogHybridSearchFailed(_logger, ex, query);
             throw;
         }
     }
@@ -313,15 +310,15 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
             var result = await _adaptiveSearchService.SearchAsync(query, options, cancellationToken);
             var duration = DateTime.UtcNow - startTime;
 
-            _logger.LogInformation(
-                "Adaptive search completed: query='{Query}', strategy={Strategy}, results={Count}, duration={Duration}ms",
-                query, result.UsedStrategy, result.Documents.Count(), duration.TotalMilliseconds);
+            var resultCount = result.Documents.Count();
+            var strategyName = result.UsedStrategy.ToString();
+            LogAdaptiveSearchCompleted(_logger, query, strategyName, resultCount, duration.TotalMilliseconds);
 
             return result;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Adaptive search failed: query='{Query}'", query);
+            LogAdaptiveSearchFailed(_logger, ex, query);
             throw;
         }
     }
@@ -390,12 +387,12 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
     {
         if (_adaptiveSearchService == null)
         {
-            _logger.LogWarning("Feedback ignored: AdaptiveSearchService is not configured");
+            LogFeedbackIgnored(_logger);
             return;
         }
 
         await _adaptiveSearchService.UpdateFeedbackAsync(query, result, feedback, cancellationToken);
-        _logger.LogDebug("Search feedback recorded for query: '{Query}'", query);
+        LogSearchFeedbackRecorded(_logger, query);
     }
 
     #endregion
@@ -607,7 +604,7 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to get cache statistics");
+            LogFailedToGetCacheStatistics(_logger, ex);
             return null;
         }
     }
@@ -621,7 +618,7 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
     {
         if (_cacheService == null)
         {
-            _logger.LogWarning("Cache service is not available for warmup");
+            LogCacheNotAvailableForWarmup(_logger);
             return false;
         }
 
@@ -632,7 +629,7 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Cache warmup failed");
+            LogCacheWarmupFailed(_logger, ex);
             return false;
         }
     }
@@ -644,25 +641,25 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
     {
         if (_cacheService == null)
         {
-            _logger.LogWarning("Cache service is not available for optimization");
+            LogCacheNotAvailableForOptimization(_logger);
             return;
         }
 
         try
         {
             await _cacheService.CompactCacheAsync(cancellationToken);
-            _logger.LogInformation("Cache optimization completed successfully");
+            LogCacheOptimizationCompleted(_logger);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Cache optimization failed");
+            LogCacheOptimizationFailed(_logger, ex);
         }
     }
 
     /// <summary>
     /// Convert VectorSearchResult to SDK SearchResult
     /// </summary>
-    private IEnumerable<SearchResult> ConvertToSDKSearchResults(IEnumerable<VectorSearchResult> vectorResults)
+    private static IEnumerable<SearchResult> ConvertToSDKSearchResults(IEnumerable<VectorSearchResult> vectorResults)
     {
         return vectorResults.Select(vr => new SearchResult
         {
@@ -685,7 +682,7 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
     {
         if (_smallToBigRetriever == null)
         {
-            _logger.LogWarning("Small-to-Big retriever is not configured");
+            LogSmallToBigNotConfigured(_logger);
             return Enumerable.Empty<SmallToBigSearchResult>();
         }
 
@@ -707,7 +704,7 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Small-to-Big search failed for query: {Query}", query);
+            LogSmallToBigSearchFailed(_logger, ex, query);
             throw;
         }
     }
@@ -721,7 +718,7 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
     {
         if (_smallToBigRetriever == null)
         {
-            _logger.LogWarning("Small-to-Big retriever is not configured");
+            LogSmallToBigNotConfigured(_logger);
             return null;
         }
 
@@ -740,7 +737,7 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Query complexity analysis failed for: {Query}", query);
+            LogQueryComplexityAnalysisFailed(_logger, ex, query);
             return null;
         }
     }
@@ -748,7 +745,7 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
     /// <summary>
     /// Convert cached SearchResult to SDK SearchResult
     /// </summary>
-    private IEnumerable<SearchResult> ConvertCachedToSDKSearchResults(IReadOnlyList<DocumentChunkModel> cachedResults)
+    private static IEnumerable<SearchResult> ConvertCachedToSDKSearchResults(IReadOnlyList<DocumentChunkModel> cachedResults)
     {
         return cachedResults.Select(cr => new SearchResult
         {
@@ -764,7 +761,7 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
     /// <summary>
     /// Core DocumentChunk를 SDK DocumentChunk로 변환
     /// </summary>
-    private DocumentChunkModel ConvertToSDKChunk(DocumentChunkEntity coreChunk)
+    private static DocumentChunkModel ConvertToSDKChunk(DocumentChunkEntity coreChunk)
     {
         var sdkChunk = DocumentChunkModel.Create(
             coreChunk.DocumentId,
@@ -792,7 +789,7 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
         };
     }
 
-    private DocumentChunkEntity ConvertToEntityChunk(DocumentChunkModel modelChunk)
+    private static DocumentChunkEntity ConvertToEntityChunk(DocumentChunkModel modelChunk)
     {
         return DocumentChunkEntity.Create(
             modelChunk.DocumentId,
@@ -827,7 +824,7 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
     {
         if (_qualityMonitor == null)
         {
-            _logger.LogWarning("Quality monitoring is not enabled");
+            LogQualityMonitoringNotEnabled(_logger);
             return null;
         }
 
@@ -845,7 +842,7 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
     {
         if (_qualityMonitor == null)
         {
-            _logger.LogWarning("Quality monitoring is not enabled");
+            LogQualityMonitoringNotEnabled(_logger);
             return null;
         }
 
@@ -862,7 +859,7 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
     {
         if (_qualityMonitor == null)
         {
-            _logger.LogWarning("Quality monitoring is not enabled");
+            LogQualityMonitoringNotEnabled(_logger);
             return null;
         }
 
@@ -881,18 +878,18 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
     {
         if (_qualityMonitor == null)
         {
-            _logger.LogWarning("Quality monitoring is not enabled");
+            LogQualityMonitoringNotEnabled(_logger);
             return;
         }
 
         await _qualityMonitor.SetQualityThresholdsAsync(thresholds, cancellationToken);
-        _logger.LogInformation("Quality thresholds updated successfully");
+        LogQualityThresholdsUpdated(_logger);
     }
 
     /// <summary>
     /// SDK HybridSearchOptions를 Core HybridSearchOptions로 변환
     /// </summary>
-    private FluxIndex.Core.Domain.Models.HybridSearchOptions ConvertToCore(HybridSearchOptions sdkOptions)
+    private static FluxIndex.Core.Domain.Models.HybridSearchOptions ConvertToCore(HybridSearchOptions sdkOptions)
     {
         return new FluxIndex.Core.Domain.Models.HybridSearchOptions
         {
@@ -960,7 +957,7 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning(ex, "Failed to stop quality monitoring");
+                        LogFailedToStopQualityMonitoring(_logger, ex);
                     }
                 }
 
@@ -989,16 +986,110 @@ public class FluxIndexContext : IFluxIndexContext, IDisposable
                     disposableProvider.Dispose();
                 }
 
-                _logger.LogInformation("FluxIndexContext disposed successfully");
+                LogDisposedSuccessfully(_logger);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error disposing FluxIndexContext");
+                LogDisposeError(_logger, ex);
             }
         }
 
         _disposed = true;
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "FluxIndexContext initialized with semantic caching enabled")]
+    private static partial void LogSemanticCachingEnabled(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "FluxIndexContext initialized with quality monitoring enabled")]
+    private static partial void LogQualityMonitoringEnabled(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "FluxIndexClient initialized with hybrid search enabled")]
+    private static partial void LogHybridSearchEnabled(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "FluxIndexClient initialized with Small-to-Big retrieval enabled")]
+    private static partial void LogSmallToBigEnabled(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "FluxIndexClient initialized with adaptive search (DAT) enabled")]
+    private static partial void LogAdaptiveSearchEnabled(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Cache hit for query: '{Query}' (similarity: {Similarity:F3})")]
+    private static partial void LogCacheHit(ILogger logger, string query, float similarity);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Cache miss for query: '{Query}' - proceeding with retrieval")]
+    private static partial void LogCacheMiss(ILogger logger, string query);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Cached search results for query: '{Query}' ({Count} results)")]
+    private static partial void LogCachedSearchResults(ILogger logger, string query, int count);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Search completed: query='{Query}', results={Count}, duration={Duration}ms")]
+    private static partial void LogSearchCompleted(ILogger logger, string query, int count, double duration);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Search failed: query='{Query}', duration={Duration}ms")]
+    private static partial void LogSearchFailed(ILogger logger, Exception exception, string query, double duration);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Hybrid search completed: query='{Query}', results={Count}, duration={Duration}ms")]
+    private static partial void LogHybridSearchCompleted(ILogger logger, string query, int count, double duration);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Hybrid search failed: query='{Query}'")]
+    private static partial void LogHybridSearchFailed(ILogger logger, Exception exception, string query);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Adaptive search completed: query='{Query}', strategy={Strategy}, results={Count}, duration={Duration}ms")]
+    private static partial void LogAdaptiveSearchCompleted(ILogger logger, string query, string strategy, int count, double duration);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Adaptive search failed: query='{Query}'")]
+    private static partial void LogAdaptiveSearchFailed(ILogger logger, Exception exception, string query);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Feedback ignored: AdaptiveSearchService is not configured")]
+    private static partial void LogFeedbackIgnored(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Search feedback recorded for query: '{Query}'")]
+    private static partial void LogSearchFeedbackRecorded(ILogger logger, string query);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to get cache statistics")]
+    private static partial void LogFailedToGetCacheStatistics(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Cache service is not available for warmup")]
+    private static partial void LogCacheNotAvailableForWarmup(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Cache warmup failed")]
+    private static partial void LogCacheWarmupFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Cache service is not available for optimization")]
+    private static partial void LogCacheNotAvailableForOptimization(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Cache optimization completed successfully")]
+    private static partial void LogCacheOptimizationCompleted(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Cache optimization failed")]
+    private static partial void LogCacheOptimizationFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Small-to-Big retriever is not configured")]
+    private static partial void LogSmallToBigNotConfigured(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Small-to-Big search failed for query: {Query}")]
+    private static partial void LogSmallToBigSearchFailed(ILogger logger, Exception exception, string query);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Query complexity analysis failed for: {Query}")]
+    private static partial void LogQueryComplexityAnalysisFailed(ILogger logger, Exception exception, string query);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Quality monitoring is not enabled")]
+    private static partial void LogQualityMonitoringNotEnabled(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Quality thresholds updated successfully")]
+    private static partial void LogQualityThresholdsUpdated(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to stop quality monitoring")]
+    private static partial void LogFailedToStopQualityMonitoring(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "FluxIndexContext disposed successfully")]
+    private static partial void LogDisposedSuccessfully(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error disposing FluxIndexContext")]
+    private static partial void LogDisposeError(ILogger logger, Exception exception);
+
+    #endregion
 }
 
 /// <summary>

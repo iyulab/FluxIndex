@@ -12,7 +12,7 @@ namespace FluxIndex.Extensions.FileVault.Services;
 /// <summary>
 /// Main vault implementation providing file-based tracking with queue-based processing.
 /// </summary>
-public sealed class VaultManager : IVault
+public sealed partial class VaultManager : IVault
 {
     private readonly IContentHasher _hasher;
     private readonly IGitService _git;
@@ -67,7 +67,7 @@ public sealed class VaultManager : IVault
         // Queue memorize job (full pipeline: extract → chunk → embed → commit)
         await _queue.EnqueueMemorizeAsync(entry.FilepathHash, fullPath, ct);
 
-        _logger.LogInformation("Queued memorize job for {FilePath}", fullPath);
+        LogQueuedMemorize(_logger, fullPath);
         return entry;
     }
 
@@ -85,7 +85,7 @@ public sealed class VaultManager : IVault
         // Queue refresh job (chunk → embed → commit, skip extraction)
         await _queue.EnqueueRefreshAsync(entry.FilepathHash, fullPath, ct);
 
-        _logger.LogInformation("Queued refresh job for {FilePath}", fullPath);
+        LogQueuedRefresh(_logger, fullPath);
         return entry;
     }
 
@@ -170,7 +170,7 @@ public sealed class VaultManager : IVault
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to scan folder {Path}", folder.Path);
+                LogFailedToScanFolder(_logger, ex, folder.Path);
                 errors.Add(new SyncError
                 {
                     FilePath = folder.Path,
@@ -385,7 +385,7 @@ public sealed class VaultManager : IVault
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to load vault entry from {Path}", dir);
+                LogFailedToLoadEntry(_logger, ex, dir);
             }
         }
 
@@ -399,13 +399,13 @@ public sealed class VaultManager : IVault
 
         if (entry == null)
         {
-            _logger.LogWarning("No entry found for {FilePath}", fullPath);
+            LogNoEntryFound(_logger, fullPath);
             return;
         }
 
         // Queue remove job
         await _queue.EnqueueRemoveAsync(entry.FilepathHash, fullPath, ct);
-        _logger.LogInformation("Queued remove job for {FilePath}", fullPath);
+        LogQueuedRemove(_logger, fullPath);
     }
 
     private async Task<VaultEntry> GetOrCreateEntryAsync(string fullPath, CancellationToken ct)
@@ -438,7 +438,7 @@ public sealed class VaultManager : IVault
         // Save metadata
         entry.SaveMetadata();
 
-        _logger.LogInformation("Created vault entry for {FilePath} -> {EntryPath}", fullPath, entry.EntryPath);
+        LogCreatedEntry(_logger, fullPath, entry.EntryPath);
         return entry;
     }
 
@@ -600,7 +600,7 @@ public sealed class VaultManager : IVault
             f.Path.Equals(fullPath, StringComparison.OrdinalIgnoreCase));
         if (existing != null)
         {
-            _logger.LogWarning("Folder already being watched: {Path}", fullPath);
+            LogFolderAlreadyWatched(_logger, fullPath);
             return existing;
         }
 
@@ -619,7 +619,7 @@ public sealed class VaultManager : IVault
         // Start watching
         await _fileWatcher.StartWatchingAsync(folder, ct);
 
-        _logger.LogInformation("Added watched folder: {Name} ({Path})", folder.Name, folder.Path);
+        LogAddedWatchedFolder(_logger, folder.Name, folder.Path);
         return folder;
     }
 
@@ -650,7 +650,7 @@ public sealed class VaultManager : IVault
             }
         }
 
-        _logger.LogInformation("Removed watched folder: {Name} ({Path})", folder.Name, folder.Path);
+        LogRemovedWatchedFolder(_logger, folder.Name, folder.Path);
     }
 
     public async Task PauseWatchingAsync(Guid folderId, CancellationToken ct = default)
@@ -660,7 +660,7 @@ public sealed class VaultManager : IVault
 
         folder.Pause();
         await _fileWatcher.StopWatchingAsync(folderId, ct);
-        _logger.LogInformation("Paused watching folder: {Name}", folder.Name);
+        LogPausedWatching(_logger, folder.Name);
     }
 
     public async Task ResumeWatchingAsync(Guid folderId, CancellationToken ct = default)
@@ -670,7 +670,7 @@ public sealed class VaultManager : IVault
 
         folder.Resume();
         await _fileWatcher.StartWatchingAsync(folder, ct);
-        _logger.LogInformation("Resumed watching folder: {Name}", folder.Name);
+        LogResumedWatching(_logger, folder.Name);
     }
 
     public async Task<ScanResult> ScanFolderAsync(string folderPath, CancellationToken ct = default)
@@ -711,7 +711,7 @@ public sealed class VaultManager : IVault
             scannedCount++;
 
             // Check patterns
-            if (!_patternMatcher.ShouldInclude(file, includePatterns, excludePatterns))
+            if (!PatternMatcher.ShouldInclude(file, includePatterns, excludePatterns))
             {
                 skippedCount++;
                 continue;
@@ -743,13 +743,12 @@ public sealed class VaultManager : IVault
             catch (Exception ex)
             {
                 errors.Add(new ScanError { FilePath = file, ErrorMessage = ex.Message });
-                _logger.LogWarning(ex, "Failed to detect changes for file: {Path}", file);
+                LogFailedToDetectChanges(_logger, ex, file);
             }
         }
 
         sw.Stop();
-        _logger.LogInformation("Scanned folder {Path}: {New} new, {Changed} changed, {Existing} existing in {Duration}ms",
-            fullPath, newCount, changedCount, existingCount, sw.ElapsedMilliseconds);
+        LogScannedFolder(_logger, fullPath, newCount, changedCount, existingCount, sw.ElapsedMilliseconds);
 
         return new ScanResult
         {
@@ -781,14 +780,14 @@ public sealed class VaultManager : IVault
     public Task PauseQueueAsync(CancellationToken ct = default)
     {
         _queue.Pause();
-        _logger.LogInformation("Paused queue processing");
+        LogPausedQueue(_logger);
         return Task.CompletedTask;
     }
 
     public Task ResumeQueueAsync(CancellationToken ct = default)
     {
-        _queue.Resume();
-        _logger.LogInformation("Resumed queue processing");
+        _queue.ResumeProcessing();
+        LogResumedQueue(_logger);
         return Task.CompletedTask;
     }
 
@@ -824,13 +823,13 @@ public sealed class VaultManager : IVault
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to queue cleanup for orphaned entry: {Path}", entry.SourcePath);
+                LogFailedToQueueCleanup(_logger, ex, entry.SourcePath);
             }
         }
 
         if (cleanedCount > 0)
         {
-            _logger.LogInformation("Queued cleanup for {Count} orphaned entries", cleanedCount);
+            LogQueuedCleanup(_logger, cleanedCount);
         }
 
         return cleanedCount;
@@ -978,8 +977,7 @@ public sealed class VaultManager : IVault
 
             sw.Stop();
 
-            _logger.LogInformation("Search '{Query}' in {Count} documents returned {Results} results in {Duration}ms",
-                query, targetEntries.Count, items.Count, sw.ElapsedMilliseconds);
+            LogSearchCompleted(_logger, query, targetEntries.Count, items.Count, sw.ElapsedMilliseconds);
 
             return new VaultSearchResult
             {
@@ -994,10 +992,74 @@ public sealed class VaultManager : IVault
         catch (Exception ex)
         {
             sw.Stop();
-            _logger.LogError(ex, "Search failed for query: {Query}", query);
+            LogSearchFailed(_logger, ex, query);
             return VaultSearchResult.Error(query, ex.Message);
         }
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Queued memorize job for {FilePath}")]
+    private static partial void LogQueuedMemorize(ILogger logger, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Queued refresh job for {FilePath}")]
+    private static partial void LogQueuedRefresh(ILogger logger, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to scan folder {Path}")]
+    private static partial void LogFailedToScanFolder(ILogger logger, Exception exception, string path);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to load vault entry from {Path}")]
+    private static partial void LogFailedToLoadEntry(ILogger logger, Exception exception, string path);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No entry found for {FilePath}")]
+    private static partial void LogNoEntryFound(ILogger logger, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Queued remove job for {FilePath}")]
+    private static partial void LogQueuedRemove(ILogger logger, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Created vault entry for {FilePath} -> {EntryPath}")]
+    private static partial void LogCreatedEntry(ILogger logger, string filePath, string entryPath);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Folder already being watched: {Path}")]
+    private static partial void LogFolderAlreadyWatched(ILogger logger, string path);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Added watched folder: {Name} ({Path})")]
+    private static partial void LogAddedWatchedFolder(ILogger logger, string name, string path);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Removed watched folder: {Name} ({Path})")]
+    private static partial void LogRemovedWatchedFolder(ILogger logger, string name, string path);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Paused watching folder: {Name}")]
+    private static partial void LogPausedWatching(ILogger logger, string name);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Resumed watching folder: {Name}")]
+    private static partial void LogResumedWatching(ILogger logger, string name);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to detect changes for file: {Path}")]
+    private static partial void LogFailedToDetectChanges(ILogger logger, Exception exception, string path);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Scanned folder {Path}: {New} new, {Changed} changed, {Existing} existing in {Duration}ms")]
+    private static partial void LogScannedFolder(ILogger logger, string path, int @new, int changed, int existing, long duration);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Paused queue processing")]
+    private static partial void LogPausedQueue(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Resumed queue processing")]
+    private static partial void LogResumedQueue(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to queue cleanup for orphaned entry: {Path}")]
+    private static partial void LogFailedToQueueCleanup(ILogger logger, Exception exception, string path);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Queued cleanup for {Count} orphaned entries")]
+    private static partial void LogQueuedCleanup(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Search '{Query}' in {Count} documents returned {Results} results in {Duration}ms")]
+    private static partial void LogSearchCompleted(ILogger logger, string query, int count, int results, long duration);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Search failed for query: {Query}")]
+    private static partial void LogSearchFailed(ILogger logger, Exception exception, string query);
 
     #endregion
 }

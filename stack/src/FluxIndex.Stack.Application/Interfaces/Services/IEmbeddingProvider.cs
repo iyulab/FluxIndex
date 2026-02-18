@@ -25,4 +25,18 @@ public interface IEmbeddingProvider
     /// Gets the name of the embedding model being used.
     /// </summary>
     string ModelName { get; }
+
+    /// <summary>
+    /// Asynchronously gets the embedding dimension.
+    /// Override this in implementations that require async provider resolution.
+    /// </summary>
+    Task<int> GetEmbeddingDimensionAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(EmbeddingDimension);
+
+    /// <summary>
+    /// Asynchronously gets the model name.
+    /// Override this in implementations that require async provider resolution.
+    /// </summary>
+    Task<string> GetModelNameAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(ModelName);
 }

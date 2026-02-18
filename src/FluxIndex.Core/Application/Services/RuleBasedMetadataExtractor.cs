@@ -2,6 +2,7 @@ using FluxIndex.Core.Interfaces;
 using FluxIndex.Core.Models;
 using Microsoft.Extensions.Logging;
 using System.Text.RegularExpressions;
+using System.Globalization;
 
 namespace FluxIndex.Core.Services;
 
@@ -10,8 +11,11 @@ namespace FluxIndex.Core.Services;
 /// 패턴 매칭과 휴리스틱으로 기본 메타데이터 추출
 /// FileFlux RuleBasedMetadataExtractor 포팅
 /// </summary>
-public class RuleBasedMetadataExtractor : IRuleBasedMetadataExtractor
+public partial class RuleBasedMetadataExtractor : IRuleBasedMetadataExtractor
 {
+    private static readonly char[] WordSplitSeparators = [' ', '\n', '\r', '\t'];
+    private static readonly string[] ParagraphSplitSeparators = ["\n\n", "\r\n\r\n"];
+
     private readonly ILogger<RuleBasedMetadataExtractor> _logger;
 
     public RuleBasedMetadataExtractor(ILogger<RuleBasedMetadataExtractor>? logger = null)
@@ -27,7 +31,8 @@ public class RuleBasedMetadataExtractor : IRuleBasedMetadataExtractor
         MetadataSchema schema,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogDebug("Starting rule-based extraction with schema: {Schema}", schema);
+        if (_logger.IsEnabled(LogLevel.Debug))
+            LogRuleBasedMetadata3(_logger, schema);
 
         var metadata = schema switch
         {
@@ -43,7 +48,7 @@ public class RuleBasedMetadataExtractor : IRuleBasedMetadataExtractor
         metadata.Source = MetadataSource.RuleBased;
         metadata.ExtractedAt = DateTimeOffset.UtcNow;
 
-        _logger.LogInformation("Rule-based extraction complete. Confidence: {Confidence}", metadata.OverallConfidence);
+        LogRuleBasedMetadata2(_logger, metadata.OverallConfidence);
 
         return Task.FromResult(metadata);
     }
@@ -103,8 +108,8 @@ public class RuleBasedMetadataExtractor : IRuleBasedMetadataExtractor
             merged.FieldSources[field] = MetadataSource.Merged;
         }
 
-        _logger.LogInformation("Merged metadata from {PrimaryMethod} and {FallbackMethod}",
-            primary.ExtractionMethod, fallback.ExtractionMethod);
+        if (_logger.IsEnabled(LogLevel.Debug))
+            LogRuleBasedMetadata1(_logger, primary.ExtractionMethod, fallback.ExtractionMethod);
 
         return merged;
     }
@@ -113,7 +118,7 @@ public class RuleBasedMetadataExtractor : IRuleBasedMetadataExtractor
     // Private: Schema-specific extraction methods
     // ===================================================================
 
-    private ExtractedMetadata ExtractProductManualMetadata(string content)
+    private static ExtractedMetadata ExtractProductManualMetadata(string content)
     {
         var metadata = new ExtractedMetadata
         {
@@ -199,7 +204,7 @@ public class RuleBasedMetadataExtractor : IRuleBasedMetadataExtractor
             {
                 if (DateTime.TryParse(match.Groups[1].Value, out var date))
                 {
-                    metadata.SchemaSpecificData["releaseDate"] = date.ToString("yyyy-MM-dd");
+                    metadata.SchemaSpecificData["releaseDate"] = date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
                     metadata.FieldConfidence["releaseDate"] = 0.75f;
                 }
                 break;
@@ -217,7 +222,7 @@ public class RuleBasedMetadataExtractor : IRuleBasedMetadataExtractor
         return metadata;
     }
 
-    private ExtractedMetadata ExtractTechnicalDocMetadata(string content)
+    private static ExtractedMetadata ExtractTechnicalDocMetadata(string content)
     {
         var metadata = new ExtractedMetadata
         {
@@ -257,7 +262,7 @@ public class RuleBasedMetadataExtractor : IRuleBasedMetadataExtractor
             }
         }
 
-        if (libraries.Any())
+        if (libraries.Count != 0)
         {
             metadata.SchemaSpecificData["libraries"] = libraries.Take(15).ToArray();
             metadata.FieldConfidence["libraries"] = 0.90f;
@@ -277,7 +282,7 @@ public class RuleBasedMetadataExtractor : IRuleBasedMetadataExtractor
             .Take(10)
             .ToArray();
 
-        if (foundFrameworks.Any())
+        if (foundFrameworks.Length != 0)
         {
             metadata.SchemaSpecificData["frameworks"] = foundFrameworks;
             metadata.FieldConfidence["frameworks"] = 0.85f;
@@ -297,7 +302,7 @@ public class RuleBasedMetadataExtractor : IRuleBasedMetadataExtractor
             .Take(10)
             .ToArray();
 
-        if (foundTech.Any())
+        if (foundTech.Length != 0)
         {
             metadata.SchemaSpecificData["technologies"] = foundTech;
             metadata.FieldConfidence["technologies"] = 0.80f;
@@ -313,7 +318,7 @@ public class RuleBasedMetadataExtractor : IRuleBasedMetadataExtractor
         return metadata;
     }
 
-    private ExtractedMetadata ExtractArticleMetadata(string content)
+    private static ExtractedMetadata ExtractArticleMetadata(string content)
     {
         var metadata = new ExtractedMetadata
         {
@@ -358,7 +363,7 @@ public class RuleBasedMetadataExtractor : IRuleBasedMetadataExtractor
             {
                 if (DateTime.TryParse(match.Groups[1].Value, out var date))
                 {
-                    metadata.SchemaSpecificData["publishedDate"] = date.ToString("yyyy-MM-dd");
+                    metadata.SchemaSpecificData["publishedDate"] = date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
                     metadata.FieldConfidence["publishedDate"] = 0.80f;
                 }
                 break;
@@ -366,7 +371,7 @@ public class RuleBasedMetadataExtractor : IRuleBasedMetadataExtractor
         }
 
         // Reading time estimation (rough: 200 words/min)
-        var wordCount = content.Split(new[] { ' ', '\n', '\r', '\t' }, StringSplitOptions.RemoveEmptyEntries).Length;
+        var wordCount = content.Split(WordSplitSeparators, StringSplitOptions.RemoveEmptyEntries).Length;
         var readingTimeMinutes = Math.Max(1, wordCount / 200);
         metadata.SchemaSpecificData["readingTimeMinutes"] = readingTimeMinutes;
 
@@ -386,7 +391,7 @@ public class RuleBasedMetadataExtractor : IRuleBasedMetadataExtractor
         return metadata;
     }
 
-    private ExtractedMetadata ExtractGeneralMetadata(string content)
+    private static ExtractedMetadata ExtractGeneralMetadata(string content)
     {
         var metadata = new ExtractedMetadata
         {
@@ -411,7 +416,7 @@ public class RuleBasedMetadataExtractor : IRuleBasedMetadataExtractor
     // Private: Helper methods
     // ===================================================================
 
-    private string[] ExtractTopicsFromHeaders(string content)
+    private static string[] ExtractTopicsFromHeaders(string content)
     {
         var topics = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -449,7 +454,7 @@ public class RuleBasedMetadataExtractor : IRuleBasedMetadataExtractor
         return result;
     }
 
-    private string[] ExtractKeywords(string content, bool isManual = false, bool isTechnical = false)
+    private static string[] ExtractKeywords(string content, bool isManual = false, bool isTechnical = false)
     {
         var keywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -477,12 +482,12 @@ public class RuleBasedMetadataExtractor : IRuleBasedMetadataExtractor
         return keywords.Take(10).ToArray();
     }
 
-    private string ExtractDescription(string content)
+    private static string ExtractDescription(string content)
     {
         if (string.IsNullOrWhiteSpace(content))
             return string.Empty;
 
-        var paragraphs = content.Split(new[] { "\n\n", "\r\n\r\n" }, StringSplitOptions.RemoveEmptyEntries);
+        var paragraphs = content.Split(ParagraphSplitSeparators, StringSplitOptions.RemoveEmptyEntries);
 
         foreach (var para in paragraphs)
         {
@@ -497,7 +502,7 @@ public class RuleBasedMetadataExtractor : IRuleBasedMetadataExtractor
                     var desc = sentences[0].Trim();
                     if (desc.Length > 20)
                     {
-                        return desc.Length > 200 ? desc.Substring(0, 200) + "..." : desc;
+                        return desc.Length > 200 ? string.Concat(desc.AsSpan(0, 200), "...") : desc;
                     }
                 }
             }
@@ -506,7 +511,7 @@ public class RuleBasedMetadataExtractor : IRuleBasedMetadataExtractor
         return string.Empty;
     }
 
-    private string DetectDocumentType(string content)
+    private static string DetectDocumentType(string content)
     {
         if (string.IsNullOrWhiteSpace(content))
             return "unknown";
@@ -536,7 +541,7 @@ public class RuleBasedMetadataExtractor : IRuleBasedMetadataExtractor
         return "document";
     }
 
-    private string DetectLanguage(string content)
+    private static string DetectLanguage(string content)
     {
         if (string.IsNullOrWhiteSpace(content))
             return "unknown";
@@ -556,7 +561,7 @@ public class RuleBasedMetadataExtractor : IRuleBasedMetadataExtractor
         return "en";
     }
 
-    private float CalculateConfidence(ExtractedMetadata metadata)
+    private static float CalculateConfidence(ExtractedMetadata metadata)
     {
         var score = 0.0f;
         var maxScore = 0.0f;
@@ -581,7 +586,7 @@ public class RuleBasedMetadataExtractor : IRuleBasedMetadataExtractor
         return Math.Min(score / maxScore, 1.0f);
     }
 
-    private string[] MergeArrays(string[] primary, string[] fallback)
+    private static string[] MergeArrays(string[] primary, string[] fallback)
     {
         var merged = new HashSet<string>(primary, StringComparer.OrdinalIgnoreCase);
         foreach (var item in fallback)
@@ -590,4 +595,15 @@ public class RuleBasedMetadataExtractor : IRuleBasedMetadataExtractor
         }
         return merged.ToArray();
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Starting rule-based extraction with schema: {Schema}")]
+    private static partial void LogRuleBasedMetadata3(ILogger logger, MetadataSchema schema);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Rule-based extraction complete. Confidence: {Confidence}")]
+    private static partial void LogRuleBasedMetadata2(ILogger logger, double confidence);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Merged metadata from {PrimaryMethod} and {FallbackMethod}")]
+    private static partial void LogRuleBasedMetadata1(ILogger logger, string primaryMethod, string fallbackMethod);
+
+    #endregion
 }

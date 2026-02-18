@@ -35,8 +35,7 @@ public abstract class RedisTestBase : IAsyncLifetime
         try
         {
             // Create container only when Docker is available
-            RedisContainer = new RedisBuilder()
-                .WithImage("redis:7-alpine")
+            RedisContainer = new RedisBuilder("redis:7-alpine")
                 .WithPortBinding(6379, true)
                 .Build();
 

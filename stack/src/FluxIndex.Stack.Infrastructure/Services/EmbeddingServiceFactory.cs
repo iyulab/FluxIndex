@@ -12,7 +12,7 @@ namespace FluxIndex.Stack.Infrastructure.Services;
 /// LMSupply package is directly referenced following FluxIndex SDK design principles
 /// (consumer app implements AI service wrappers).
 /// </summary>
-public class EmbeddingServiceFactory : IEmbeddingServiceFactory
+public partial class EmbeddingServiceFactory : IEmbeddingServiceFactory
 {
     private readonly IMemoryCache _cache;
     private readonly ILoggerFactory _loggerFactory;
@@ -49,16 +49,12 @@ public class EmbeddingServiceFactory : IEmbeddingServiceFactory
         string? endpointUrl = null,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation(
-            "Creating embedding provider: Provider={Provider}, Model={Model}",
-            providerName, modelName ?? "default");
+        LogCreatingEmbeddingProvider(_logger, providerName, modelName ?? "default");
 
         // If no API key is provided, fall back to local LMSupply
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning(
-                "No API key provided for {Provider}. Falling back to LMSupply local embedder.",
-                providerName);
+            LogNoApiKeyFallback(_logger, providerName);
             return CreateLocalProviderAsync(modelName, cancellationToken);
         }
 
@@ -95,9 +91,7 @@ public class EmbeddingServiceFactory : IEmbeddingServiceFactory
         // Map common model names to LMSupply model IDs
         var effectiveModel = MapToLMSupplyModel(modelName);
 
-        _logger.LogInformation(
-            "Creating LMSupply local embedding provider with model: {Model}",
-            effectiveModel);
+        LogCreatingLocalProvider(_logger, effectiveModel);
 
         try
         {
@@ -108,7 +102,7 @@ public class EmbeddingServiceFactory : IEmbeddingServiceFactory
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to load LMSupply embedding model {Model}", effectiveModel);
+            LogLoadModelFailed(_logger, effectiveModel, ex);
             throw;
         }
     }
@@ -119,15 +113,20 @@ public class EmbeddingServiceFactory : IEmbeddingServiceFactory
         string? endpointUrl,
         CancellationToken cancellationToken)
     {
-        // For now, fall back to local provider
-        // TODO: Implement external provider support via FluxIndex.Core interfaces
-        _logger.LogWarning(
-            "External embedding providers require consumer implementation. " +
-            "Falling back to LMSupply local embedder. " +
-            "Requested: Model={Model}, Endpoint={Endpoint}",
-            modelName, endpointUrl ?? "default");
+        var effectiveModel = modelName ?? "text-embedding-3-small";
+        LogCreatingOpenAIProvider(_logger, effectiveModel, endpointUrl ?? "api.openai.com");
 
-        return CreateLocalProviderAsync(modelName, cancellationToken);
+        try
+        {
+            var providerLogger = _loggerFactory.CreateLogger<OpenAIEmbeddingProvider>();
+            var provider = new OpenAIEmbeddingProvider(apiKey, effectiveModel, endpointUrl, providerLogger);
+            return Task.FromResult<IEmbeddingProvider>(provider);
+        }
+        catch (Exception ex)
+        {
+            LogOpenAIProviderCreationFailed(_logger, effectiveModel, ex);
+            throw;
+        }
     }
 
     private Task<IEmbeddingProvider> HandleUnsupportedProvider(
@@ -135,9 +134,7 @@ public class EmbeddingServiceFactory : IEmbeddingServiceFactory
         string? modelName,
         CancellationToken cancellationToken)
     {
-        _logger.LogWarning(
-            "{Provider} embedding not yet implemented. Falling back to LMSupply local embedder.",
-            providerName);
+        LogUnsupportedProviderFallback(_logger, providerName);
         return CreateLocalProviderAsync(modelName, cancellationToken);
     }
 
@@ -158,20 +155,46 @@ public class EmbeddingServiceFactory : IEmbeddingServiceFactory
             _ => modelName // Use as-is for LMSupply model IDs
         };
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Creating embedding provider: Provider={Provider}, Model={Model}")]
+    private static partial void LogCreatingEmbeddingProvider(ILogger logger, string provider, string model);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No API key provided for {Provider}. Falling back to LMSupply local embedder.")]
+    private static partial void LogNoApiKeyFallback(ILogger logger, string provider);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Creating LMSupply local embedding provider with model: {Model}")]
+    private static partial void LogCreatingLocalProvider(ILogger logger, string model);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to load LMSupply embedding model {Model}")]
+    private static partial void LogLoadModelFailed(ILogger logger, string model, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Creating OpenAI embedding provider: Model={Model}, Endpoint={Endpoint}")]
+    private static partial void LogCreatingOpenAIProvider(ILogger logger, string model, string endpoint);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to create OpenAI embedding provider for model {Model}")]
+    private static partial void LogOpenAIProviderCreationFailed(ILogger logger, string model, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{Provider} embedding not yet implemented. Falling back to LMSupply local embedder.")]
+    private static partial void LogUnsupportedProviderFallback(ILogger logger, string provider);
+
+    #endregion
 }
 
 /// <summary>
 /// Wrapper that adapts LMSupply IEmbeddingModel to IEmbeddingProvider (Stack Application).
 /// Consumer app pattern: directly wraps LMSupply without SDK intermediary.
 /// </summary>
-internal class LMSupplyEmbeddingWrapper : IEmbeddingProvider, IAsyncDisposable
+internal sealed class LMSupplyEmbeddingWrapper : IEmbeddingProvider, IAsyncDisposable
 {
     private readonly IEmbeddingModel _model;
     private readonly ILogger _logger;
 
     public LMSupplyEmbeddingWrapper(IEmbeddingModel model, ILogger logger)
     {
-        _model = model ?? throw new ArgumentNullException(nameof(model));
+        ArgumentNullException.ThrowIfNull(model);
+        _model = model;
         _logger = logger;
     }
 

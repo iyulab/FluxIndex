@@ -68,13 +68,19 @@ public static class ServiceCollectionExtensions
             // Configure PII masking if enabled
             if (options.EnablePIIMasking)
             {
-                curator.WithPIIMasking(options.PIIMaskingOptions);
+                if (options.PIIMaskingOptions is not null)
+                    curator.WithPIIMasking(options.PIIMaskingOptions);
+                else
+                    curator.WithPIIMasking();
             }
 
             // Configure content filtering if enabled
             if (options.EnableContentFiltering)
             {
-                curator.WithContentFiltering(options.ContentFilterOptions);
+                if (options.ContentFilterOptions is not null)
+                    curator.WithContentFiltering(options.ContentFilterOptions);
+                else
+                    curator.WithContentFiltering();
             }
 
             // Configure chunking options if provided
@@ -115,12 +121,18 @@ public static class ServiceCollectionExtensions
 
             if (options.EnablePIIMasking)
             {
-                curator.WithPIIMasking(options.PIIMaskingOptions);
+                if (options.PIIMaskingOptions is not null)
+                    curator.WithPIIMasking(options.PIIMaskingOptions);
+                else
+                    curator.WithPIIMasking();
             }
 
             if (options.EnableContentFiltering)
             {
-                curator.WithContentFiltering(options.ContentFilterOptions);
+                if (options.ContentFilterOptions is not null)
+                    curator.WithContentFiltering(options.ContentFilterOptions);
+                else
+                    curator.WithContentFiltering();
             }
 
             if (options.DefaultChunkOptions != null)

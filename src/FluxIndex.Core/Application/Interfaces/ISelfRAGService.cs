@@ -66,7 +66,7 @@ public class SelfRAGOptions
     public bool EnableMultiPerspectiveSearch { get; set; } = true;
 
     /// <summary>상세 로깅</summary>
-    public bool EnableDetailedLogging { get; set; } = false;
+    public bool EnableDetailedLogging { get; set; }
 
     /// <summary>사용자 컨텍스트</summary>
     public Dictionary<string, object> UserContext { get; set; } = new();

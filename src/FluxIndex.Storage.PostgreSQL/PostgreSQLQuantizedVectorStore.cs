@@ -14,7 +14,7 @@ namespace FluxIndex.Storage.PostgreSQL;
 /// PostgreSQL vector store with native quantized embedding storage support.
 /// Uses pgvector for original embeddings and a separate table for quantized data.
 /// </summary>
-public class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
+public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
 {
     private readonly FluxIndexQuantizedDbContext _context;
     private readonly IVectorQuantizer _quantizer;
@@ -47,7 +47,7 @@ public class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
             DocumentId = chunk.DocumentId,
             ChunkIndex = chunk.ChunkIndex,
             Content = chunk.Content,
-            Embedding = chunk.Embedding != null ? new Vector(chunk.Embedding) : null,
+            Embedding = chunk.Embedding != null ? new Vector(chunk.Embedding) : new Vector(Array.Empty<float>()),
             TokenCount = chunk.TokenCount,
             Metadata = chunk.Metadata ?? new Dictionary<string, object>()
         };
@@ -65,7 +65,7 @@ public class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to auto-quantize embedding for chunk {ChunkId}", id);
+                LogAutoQuantizeFailed(_logger, ex, id);
             }
         }
 
@@ -91,7 +91,7 @@ public class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
                 DocumentId = chunk.DocumentId,
                 ChunkIndex = chunk.ChunkIndex,
                 Content = chunk.Content,
-                Embedding = chunk.Embedding != null ? new Vector(chunk.Embedding) : null,
+                Embedding = chunk.Embedding != null ? new Vector(chunk.Embedding) : new Vector(Array.Empty<float>()),
                 TokenCount = chunk.TokenCount,
                 Metadata = chunk.Metadata ?? new Dictionary<string, object>()
             };
@@ -123,7 +123,7 @@ public class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Failed to batch quantize embeddings");
+                    LogBatchQuantizeFailed(_logger, ex);
                 }
             }
         }
@@ -216,7 +216,7 @@ public class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
             .Where(v => v.DocumentId == documentId)
             .ToListAsync(cancellationToken);
 
-        if (!entities.Any()) return false;
+        if (entities.Count == 0) return false;
 
         var chunkIds = entities.Select(e => e.Id.ToString()).ToList();
         var quantizedEntities = await _context.QuantizedVectors
@@ -246,7 +246,7 @@ public class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
         if (entity == null) return false;
 
         entity.Content = chunk.Content;
-        entity.Embedding = chunk.Embedding != null ? new Vector(chunk.Embedding) : null;
+        entity.Embedding = chunk.Embedding != null ? new Vector(chunk.Embedding) : new Vector(Array.Empty<float>());
         entity.TokenCount = chunk.TokenCount;
         entity.Metadata = chunk.Metadata ?? new Dictionary<string, object>();
 
@@ -284,7 +284,7 @@ public class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
             DocumentId = chunk.DocumentId,
             ChunkIndex = chunk.ChunkIndex,
             Content = chunk.Content,
-            Embedding = chunk.Embedding != null ? new Vector(chunk.Embedding) : null,
+            Embedding = chunk.Embedding != null ? new Vector(chunk.Embedding) : new Vector(Array.Empty<float>()),
             TokenCount = chunk.TokenCount,
             Metadata = chunk.Metadata ?? new Dictionary<string, object>()
         };
@@ -314,7 +314,7 @@ public class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
                 DocumentId = chunk.DocumentId,
                 ChunkIndex = chunk.ChunkIndex,
                 Content = chunk.Content,
-                Embedding = chunk.Embedding != null ? new Vector(chunk.Embedding) : null,
+                Embedding = chunk.Embedding != null ? new Vector(chunk.Embedding) : new Vector(Array.Empty<float>()),
                 TokenCount = chunk.TokenCount,
                 Metadata = chunk.Metadata ?? new Dictionary<string, object>()
             };
@@ -334,7 +334,7 @@ public class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
         CancellationToken cancellationToken = default)
     {
         var quantizedEntities = await _context.QuantizedVectors.ToListAsync(cancellationToken);
-        if (!quantizedEntities.Any()) return Enumerable.Empty<(DocumentChunk, float)>();
+        if (quantizedEntities.Count == 0) return Enumerable.Empty<(DocumentChunk, float)>();
 
         // Compute distances in memory (quantized search)
         var candidates = quantizedEntities
@@ -568,6 +568,16 @@ public class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
         var mag = (float)Math.Sqrt(magA) * (float)Math.Sqrt(magB);
         return mag == 0 ? 0 : dotProduct / mag;
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to auto-quantize embedding for chunk {ChunkId}")]
+    private static partial void LogAutoQuantizeFailed(ILogger logger, Exception exception, Guid chunkId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to batch quantize embeddings")]
+    private static partial void LogBatchQuantizeFailed(ILogger logger, Exception exception);
 
     #endregion
 }

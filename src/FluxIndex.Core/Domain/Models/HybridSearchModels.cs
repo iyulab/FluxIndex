@@ -149,7 +149,7 @@ public record HybridSearchOptions
     /// <summary>
     /// 최소 융합 점수
     /// </summary>
-    public double MinFusedScore { get; set; } = 0.0;
+    public double MinFusedScore { get; set; }
 
     /// <summary>
     /// 검색 타임아웃 (밀리초)
@@ -159,7 +159,7 @@ public record HybridSearchOptions
     /// <summary>
     /// 결과 다양성 활성화
     /// </summary>
-    public bool EnableDiversity { get; set; } = false;
+    public bool EnableDiversity { get; set; }
 
     /// <summary>
     /// 다양성 임계값
@@ -169,7 +169,7 @@ public record HybridSearchOptions
     /// <summary>
     /// 양자화 검색 사용 여부 (Two-Stage 검색)
     /// </summary>
-    public bool UseQuantizedSearch { get; set; } = false;
+    public bool UseQuantizedSearch { get; set; }
 
     /// <summary>
     /// 양자화 검색 후보 배수 (리랭킹 시 원본 결과 대비 후보 수 배율)
@@ -179,14 +179,14 @@ public record HybridSearchOptions
     /// <summary>
     /// 양자화 검색 최소 점수 임계값
     /// </summary>
-    public float QuantizedMinScore { get; set; } = 0.0f;
+    public float QuantizedMinScore { get; set; }
 
     /// <summary>
     /// Dynamic Alpha Tuning (DAT) 활성화 여부.
     /// 활성화 시 쿼리 유형에 따라 최적의 융합 가중치를 자동 결정합니다.
     /// 연구 결과 6.6% 검색 품질 향상이 확인되었습니다.
     /// </summary>
-    public bool EnableDynamicAlphaTuning { get; set; } = false;
+    public bool EnableDynamicAlphaTuning { get; set; }
 }
 
 /// <summary>

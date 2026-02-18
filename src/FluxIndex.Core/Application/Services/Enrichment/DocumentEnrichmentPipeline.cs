@@ -9,7 +9,7 @@ namespace FluxIndex.Core.Application.Services.Enrichment;
 /// Coordinates multi-representation embedding generation, entity extraction,
 /// contextual enrichment, and graph building during document indexing.
 /// </summary>
-public class DocumentEnrichmentPipeline : IDocumentEnrichmentPipeline
+public partial class DocumentEnrichmentPipeline : IDocumentEnrichmentPipeline
 {
     private readonly IEmbeddingService _embeddingService;
     private readonly ITextCompletionService? _textCompletionService;
@@ -40,7 +40,7 @@ public class DocumentEnrichmentPipeline : IDocumentEnrichmentPipeline
         var sw = Stopwatch.StartNew();
         options ??= _config.DefaultOptions;
 
-        _logger.LogDebug("Enriching chunk {ChunkId} from document {DocumentId}", input.ChunkId, input.DocumentId);
+        LogDocumentEnrichment7(_logger, input.ChunkId, input.DocumentId);
 
         var embeddings = new MultiRepresentationEmbeddings();
         ContextualSummary? contextualSummary = null;
@@ -99,11 +99,7 @@ public class DocumentEnrichmentPipeline : IDocumentEnrichmentPipeline
             }
 
             sw.Stop();
-            _logger.LogDebug(
-                "Enriched chunk {ChunkId} in {ElapsedMs}ms (embeddings: {HasEmb}, entities: {EntityCount})",
-                input.ChunkId, sw.ElapsedMilliseconds,
-                embeddings.Content != null,
-                entities.Count);
+            LogDocumentEnrichment6(_logger, input.ChunkId, sw.ElapsedMilliseconds, embeddings.Content != null, entities.Count);
 
             return new EnrichedChunk
             {
@@ -121,7 +117,7 @@ public class DocumentEnrichmentPipeline : IDocumentEnrichmentPipeline
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error enriching chunk {ChunkId}", input.ChunkId);
+            LogDocumentEnrichment5(_logger, ex, input.ChunkId);
             throw;
         }
     }
@@ -135,7 +131,7 @@ public class DocumentEnrichmentPipeline : IDocumentEnrichmentPipeline
         var inputList = inputs.ToList();
         if (inputList.Count == 0) return [];
 
-        _logger.LogDebug("Enriching batch of {Count} chunks", inputList.Count);
+        LogDocumentEnrichment4(_logger, inputList.Count);
         options ??= _config.DefaultOptions;
 
         // Process in parallel with configurable concurrency
@@ -166,8 +162,7 @@ public class DocumentEnrichmentPipeline : IDocumentEnrichmentPipeline
         var sw = Stopwatch.StartNew();
         options ??= _config.DefaultOptions;
 
-        _logger.LogDebug("Enriching document {DocumentId} with {ChunkCount} chunks",
-            input.DocumentId, input.Chunks.Count);
+        LogDocumentEnrichment3(_logger, input.DocumentId, input.Chunks.Count);
 
         // Generate document-level summary first if we have full content and LLM
         string? documentSummary = null;
@@ -324,7 +319,7 @@ public class DocumentEnrichmentPipeline : IDocumentEnrichmentPipeline
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error extracting entities from content");
+            LogDocumentEnrichment2(_logger, ex);
             return new EntityExtractionResult();
         }
     }
@@ -369,7 +364,7 @@ public class DocumentEnrichmentPipeline : IDocumentEnrichmentPipeline
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to generate contextual summary, using fallback");
+            LogDocumentEnrichment1(_logger, ex);
             var combined = BuildCombinedText(chunkContent, documentContext);
             return new ContextualSummary
             {
@@ -678,10 +673,11 @@ Keywords:";
 
         foreach (var rel in relationships)
         {
-            if (adjacency.ContainsKey(rel.SourceEntityId) && adjacency.ContainsKey(rel.TargetEntityId))
+            if (adjacency.TryGetValue(rel.SourceEntityId, out var sourceAdj) &&
+                adjacency.TryGetValue(rel.TargetEntityId, out var targetAdj))
             {
-                adjacency[rel.SourceEntityId].Add(rel.TargetEntityId);
-                adjacency[rel.TargetEntityId].Add(rel.SourceEntityId);
+                sourceAdj.Add(rel.TargetEntityId);
+                targetAdj.Add(rel.SourceEntityId);
             }
         }
 
@@ -780,7 +776,7 @@ Keywords:";
         return result;
     }
 
-    private static IReadOnlyList<EnrichmentEntity> MergeEntities(List<EnrichmentEntity> entities)
+    private static List<EnrichmentEntity> MergeEntities(List<EnrichmentEntity> entities)
     {
         return entities
             .GroupBy(e => e.NormalizedName.ToLowerInvariant())
@@ -808,6 +804,25 @@ Keywords:";
             .Select(g => g.Key)
             .ToList();
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Enriching chunk {ChunkId} from document {DocumentId}")]
+    private static partial void LogDocumentEnrichment7(ILogger logger, string chunkId, string documentId);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Enriched chunk {ChunkId} in {ElapsedMs}ms (embeddings: {HasEmb}, entities: {EntityCount})")]
+    private static partial void LogDocumentEnrichment6(ILogger logger, string chunkId, long elapsedMs, bool hasEmb, int entityCount);
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error enriching chunk {ChunkId}")]
+    private static partial void LogDocumentEnrichment5(ILogger logger, Exception exception, string chunkId);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Enriching batch of {Count} chunks")]
+    private static partial void LogDocumentEnrichment4(ILogger logger, int count);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Enriching document {DocumentId} with {ChunkCount} chunks")]
+    private static partial void LogDocumentEnrichment3(ILogger logger, string documentId, int chunkCount);
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error extracting entities from content")]
+    private static partial void LogDocumentEnrichment2(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to generate contextual summary, using fallback")]
+    private static partial void LogDocumentEnrichment1(ILogger logger, Exception exception);
 
     #endregion
 }

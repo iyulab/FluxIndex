@@ -67,7 +67,7 @@ public static class GraphServiceCollectionExtensions
 /// <summary>
 /// PostgreSQL Graph 마이그레이션 서비스
 /// </summary>
-internal class PostgresGraphMigrationService : IHostedService
+internal sealed partial class PostgresGraphMigrationService : IHostedService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<PostgresGraphMigrationService> _logger;
@@ -87,11 +87,11 @@ internal class PostgresGraphMigrationService : IHostedService
 
         if (!options.AutoMigrate)
         {
-            _logger.LogInformation("PostgreSQL graph auto-migration is disabled");
+            LogGraphAutoMigrationDisabled(_logger);
             return;
         }
 
-        _logger.LogInformation("Starting PostgreSQL graph database migration");
+        LogStartingGraphMigration(_logger);
 
         var context = scope.ServiceProvider.GetRequiredService<PostgresGraphDbContext>();
 
@@ -105,11 +105,11 @@ internal class PostgresGraphMigrationService : IHostedService
                 await CreateGinIndexesAsync(context, cancellationToken);
             }
 
-            _logger.LogInformation("PostgreSQL graph database migration completed");
+            LogGraphMigrationCompleted(_logger);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "PostgreSQL graph database migration failed");
+            LogGraphMigrationFailed(_logger, ex);
             throw;
         }
     }
@@ -131,11 +131,33 @@ internal class PostgresGraphMigrationService : IHostedService
                 ON chunk_relationships USING gin (""Metadata"");
             ", cancellationToken);
 
-            _logger.LogDebug("GIN indexes created for JSONB columns");
+            LogGinIndexesCreated(_logger);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to create GIN indexes, continuing without them");
+            LogGinIndexesFailed(_logger, ex);
         }
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "PostgreSQL graph auto-migration is disabled")]
+    private static partial void LogGraphAutoMigrationDisabled(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting PostgreSQL graph database migration")]
+    private static partial void LogStartingGraphMigration(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "PostgreSQL graph database migration completed")]
+    private static partial void LogGraphMigrationCompleted(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "PostgreSQL graph database migration failed")]
+    private static partial void LogGraphMigrationFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "GIN indexes created for JSONB columns")]
+    private static partial void LogGinIndexesCreated(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to create GIN indexes, continuing without them")]
+    private static partial void LogGinIndexesFailed(ILogger logger, Exception exception);
+
+    #endregion
 }

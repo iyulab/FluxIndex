@@ -1,4 +1,4 @@
-﻿using FluxIndex.Core.Application.Services;
+using FluxIndex.Core.Application.Services;
 using FluxIndex.Core.Services;
 using IContextualEmbeddingService = FluxIndex.Core.Application.Services.IContextualEmbeddingService;
 using IEnrichedChunk = FluxIndex.Core.Application.Interfaces.IEnrichedChunk;
@@ -22,7 +22,7 @@ namespace FluxIndex.Stack.Application.Services;
 /// Manages indexing job lifecycle and document processing.
 /// Integrates with FluxIndex SDK for chunking and embedding generation.
 /// </summary>
-public class IndexingService : IIndexingService
+public partial class IndexingService : IIndexingService
 {
     private readonly IIndexingJobRepository _jobRepository;
     private readonly IDocumentRepository _documentRepository;
@@ -36,6 +36,7 @@ public class IndexingService : IIndexingService
     private readonly IContextualEmbeddingService? _contextualEmbeddingService;
     private readonly IAdvancedEntityExtractionService? _entityExtractionService;
     private readonly INeo4jGraphService? _graphService;
+    private readonly IEmbeddingModelRepository? _embeddingModelRepository;
     private readonly ILogger<IndexingService> _logger;
 
     // Default chunking configuration (fallback when IChunkingService not available)
@@ -55,7 +56,8 @@ public class IndexingService : IIndexingService
         ILateChunkingEmbeddingService? lateChunkingService = null,
         IContextualEmbeddingService? contextualEmbeddingService = null,
         IAdvancedEntityExtractionService? entityExtractionService = null,
-        INeo4jGraphService? graphService = null)
+        INeo4jGraphService? graphService = null,
+        IEmbeddingModelRepository? embeddingModelRepository = null)
     {
         _jobRepository = jobRepository;
         _documentRepository = documentRepository;
@@ -69,6 +71,7 @@ public class IndexingService : IIndexingService
         _contextualEmbeddingService = contextualEmbeddingService;
         _entityExtractionService = entityExtractionService;
         _graphService = graphService;
+        _embeddingModelRepository = embeddingModelRepository;
         _logger = logger;
     }
 
@@ -86,8 +89,25 @@ public class IndexingService : IIndexingService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to save job log for job {JobId}", jobId);
+            LogJobLogSaveFailed(_logger, jobId, ex);
         }
+    }
+
+    /// <summary>
+    /// Resolves the active embedding model ID from the repository.
+    /// Returns Guid.Empty if no repository is configured or no active model exists.
+    /// </summary>
+    private async Task<Guid> ResolveActiveEmbeddingModelIdAsync(CancellationToken cancellationToken)
+    {
+        if (_embeddingModelRepository == null)
+            return Guid.Empty;
+
+        var activeModel = await _embeddingModelRepository.GetActiveModelAsync(cancellationToken);
+        if (activeModel != null)
+            return activeModel.Id;
+
+        LogNoActiveEmbeddingModel(_logger);
+        return Guid.Empty;
     }
 
     public async Task<Guid> QueueIndexingJobAsync(Guid documentId, CancellationToken cancellationToken = default)
@@ -99,14 +119,14 @@ public class IndexingService : IIndexingService
         var existingJob = await _jobRepository.GetByDocumentIdAsync(documentId, cancellationToken);
         if (existingJob != null && (existingJob.Status == IndexingJobStatus.Queued || existingJob.Status == IndexingJobStatus.Processing))
         {
-            _logger.LogWarning("Document {DocumentId} already has a pending job: {JobId}", documentId, existingJob.Id);
+            LogDocumentAlreadyHasPendingJob(_logger, documentId, existingJob.Id);
             return existingJob.Id;
         }
 
         var job = IndexingJob.Create(documentId);
         await _jobRepository.AddAsync(job, cancellationToken);
 
-        _logger.LogInformation("Indexing job queued: {JobId} for document {DocumentId}", job.Id, documentId);
+        LogIndexingJobQueued(_logger, job.Id, documentId);
 
         return job.Id;
     }
@@ -119,7 +139,7 @@ public class IndexingService : IIndexingService
             return; // No jobs to process
         }
 
-        _logger.LogInformation("Processing indexing job: {JobId} for document {DocumentId}", job.Id, job.DocumentId);
+        LogProcessingIndexingJob(_logger, job.Id, job.DocumentId);
 
         // IMPORTANT: Mark job as Processing immediately to prevent duplicate pickup
         job.MarkAsProcessing();
@@ -136,7 +156,7 @@ public class IndexingService : IIndexingService
                 await AddLogAsync(job.Id, IndexingJobLogLevel.Error, "Document not found", $"Document ID: {job.DocumentId}", "Initialize");
                 job.Fail("Document not found");
                 await _jobRepository.UpdateAsync(job, cancellationToken);
-                _logger.LogError("Document not found for job {JobId}: {DocumentId}", job.Id, job.DocumentId);
+                LogDocumentNotFoundForJob(_logger, job.Id, job.DocumentId);
                 return;
             }
 
@@ -188,14 +208,14 @@ public class IndexingService : IIndexingService
             await _documentRepository.UpdateAsync(document, cancellationToken);
 
             await AddLogAsync(job.Id, IndexingJobLogLevel.Info, $"Indexing completed successfully with {totalChunks} chunks", phase: "Complete");
-            _logger.LogInformation("Indexing job completed: {JobId} with {ChunkCount} chunks", job.Id, totalChunks);
+            LogIndexingJobCompleted(_logger, job.Id, totalChunks);
         }
         catch (OperationCanceledException)
         {
             await AddLogAsync(job.Id, IndexingJobLogLevel.Warning, "Job cancelled", phase: "Cancelled");
             job.Cancel();
             await _jobRepository.UpdateAsync(job, cancellationToken);
-            _logger.LogWarning("Indexing job cancelled: {JobId}", job.Id);
+            LogIndexingJobCancelled(_logger, job.Id);
         }
         catch (Exception ex)
         {
@@ -211,7 +231,7 @@ public class IndexingService : IIndexingService
                 await _documentRepository.UpdateAsync(document, CancellationToken.None);
             }
 
-            _logger.LogError(ex, "Indexing job failed: {JobId}", job.Id);
+            LogIndexingJobFailed(_logger, job.Id, ex);
         }
     }
 
@@ -228,14 +248,14 @@ public class IndexingService : IIndexingService
         else
         {
             // Fallback: use document title as minimal content for testing
-            _logger.LogWarning("Document content provider not available, using minimal content for {DocumentId}", document.Id);
+            LogContentProviderUnavailable(_logger, document.Id);
             await AddLogAsync(job.Id, IndexingJobLogLevel.Warning, "Content provider not available, using minimal content", phase: "ContentRetrieval");
             content = $"Document: {document.Title}";
         }
 
         if (string.IsNullOrWhiteSpace(content))
         {
-            _logger.LogWarning("Document content is empty: {DocumentId}", document.Id);
+            LogDocumentContentEmpty(_logger, document.Id);
             await AddLogAsync(job.Id, IndexingJobLogLevel.Warning, "Document content is empty", phase: "ContentRetrieval");
             return 0;
         }
@@ -248,7 +268,7 @@ public class IndexingService : IIndexingService
         if (_chunkingService != null)
         {
             // Use FileFlux intelligent chunking with image extraction
-            _logger.LogInformation("Using FileFlux intelligent chunking for document {DocumentId}", document.Id);
+            LogUsingFileFluxChunking(_logger, document.Id);
             await AddLogAsync(job.Id, IndexingJobLogLevel.Info, "Using intelligent chunking (FileFlux)", phase: "Chunking");
 
             var detectedLanguage = _chunkingService.DetectLanguage(content);
@@ -275,12 +295,12 @@ public class IndexingService : IIndexingService
         else
         {
             // Fallback to simple chunking
-            _logger.LogWarning("FileFlux not available, using fallback chunking for document {DocumentId}", document.Id);
+            LogFileFluxUnavailableFallback(_logger, document.Id);
             await AddLogAsync(job.Id, IndexingJobLogLevel.Warning, "Using fallback chunking (FileFlux not available)", phase: "Chunking");
             chunkList = ChunkContent(content, document.Id).ToList();
         }
 
-        _logger.LogInformation("Document {DocumentId} split into {ChunkCount} chunks", document.Id, chunkList.Count);
+        LogDocumentChunked(_logger, document.Id, chunkList.Count);
         await AddLogAsync(job.Id, IndexingJobLogLevel.Info, $"Content split into {chunkList.Count} chunks", phase: "Chunking");
 
         // 2.1 Store extracted images if any
@@ -295,10 +315,10 @@ public class IndexingService : IIndexingService
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Failed to store image {ImageId} for document {DocumentId}", imageId, document.Id);
+                    LogImageStoreFailed(_logger, imageId, document.Id, ex);
                 }
             }
-            _logger.LogInformation("Stored {ImageCount} images for document {DocumentId}", extractedImages.Count, document.Id);
+            LogImagesStored(_logger, extractedImages.Count, document.Id);
             await AddLogAsync(job.Id, IndexingJobLogLevel.Info, $"Successfully stored {extractedImages.Count} images", phase: "ImageStorage");
         }
 
@@ -307,7 +327,7 @@ public class IndexingService : IIndexingService
         {
             ExtractAndSetDocumentMetadata(document, chunkList[0]);
             await _documentRepository.UpdateAsync(document, cancellationToken);
-            _logger.LogDebug("Document-level metadata extracted and saved for {DocumentId}", document.Id);
+            LogDocumentMetadataExtracted(_logger, document.Id);
         }
 
         // 3. Generate embeddings - use Late Chunking if available and enabled, otherwise use standard embedding
@@ -333,6 +353,7 @@ public class IndexingService : IIndexingService
                     cancellationToken);
 
                 // Apply embeddings from Late Chunking result
+                var lateChunkModelId = await ResolveActiveEmbeddingModelIdAsync(cancellationToken);
                 foreach (var chunkEmbedding in lateChunkingResult.ChunkEmbeddings)
                 {
                     if (Guid.TryParse(chunkEmbedding.ChunkId, out var chunkId))
@@ -340,21 +361,20 @@ public class IndexingService : IIndexingService
                         var chunk = chunkList.FirstOrDefault(c => c.Id == chunkId);
                         if (chunk != null && chunkEmbedding.Embedding != null)
                         {
-                            chunk.SetEmbedding(chunkEmbedding.Embedding.Values);
+                            chunk.ChunkEmbeddings.Add(
+                                ChunkEmbedding.Create(chunk.Id, lateChunkModelId, chunkEmbedding.Embedding.Values));
                         }
                     }
                 }
 
-                _logger.LogInformation(
-                    "Generated Late Chunking embeddings for {ChunkCount} chunks of document {DocumentId}",
-                    lateChunkingResult.ChunkEmbeddings.Count, document.Id);
+                LogLateChunkingEmbeddingsGenerated(_logger, lateChunkingResult.ChunkEmbeddings.Count, document.Id);
                 await AddLogAsync(job.Id, IndexingJobLogLevel.Info,
                     $"Generated Late Chunking embeddings for {lateChunkingResult.ChunkEmbeddings.Count} chunks (contextual)",
                     phase: "Embedding");
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Late Chunking failed, falling back to standard embedding for document {DocumentId}", document.Id);
+                LogLateChunkingFailed(_logger, document.Id, ex);
                 await AddLogAsync(job.Id, IndexingJobLogLevel.Warning,
                     $"Late Chunking failed: {ex.Message}. Falling back to standard embedding.",
                     ex.StackTrace, "Embedding");
@@ -369,7 +389,7 @@ public class IndexingService : IIndexingService
         }
         else
         {
-            _logger.LogWarning("Embedding provider not available, chunks will have no embeddings: {DocumentId}", document.Id);
+            LogEmbeddingProviderUnavailable(_logger, document.Id);
             await AddLogAsync(job.Id, IndexingJobLogLevel.Warning, "Embedding provider not available, chunks will have no embeddings", phase: "Embedding");
         }
 
@@ -396,7 +416,7 @@ public class IndexingService : IIndexingService
                     {
                         if (processed % 5 == 0 || processed == total)
                         {
-                            _logger.LogDebug("Enrichment progress: {Processed}/{Total}", processed, total);
+                            LogEnrichmentProgress(_logger, processed, total);
                         }
                     },
                     cancellationToken);
@@ -416,7 +436,7 @@ public class IndexingService : IIndexingService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to enrich chunks for document {DocumentId}", document.Id);
+                LogChunkEnrichmentFailed(_logger, document.Id, ex);
                 await AddLogAsync(job.Id, IndexingJobLogLevel.Warning,
                     $"Chunk enrichment failed: {ex.Message}",
                     ex.StackTrace,
@@ -426,7 +446,7 @@ public class IndexingService : IIndexingService
         }
         else
         {
-            _logger.LogDebug("Chunk enrichment skipped: service not available for document {DocumentId}", document.Id);
+            LogChunkEnrichmentSkipped(_logger, document.Id);
             await AddLogAsync(job.Id, IndexingJobLogLevel.Debug,
                 "Chunk enrichment skipped (LLM service not configured)",
                 phase: "Enrichment");
@@ -525,7 +545,7 @@ public class IndexingService : IIndexingService
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning(ex, "Failed to extract entities from chunk {ChunkId}", chunk.Id);
+                        LogEntityExtractionFromChunkFailed(_logger, chunk.Id, ex);
                         // Continue with other chunks
                     }
                 }
@@ -539,9 +559,7 @@ public class IndexingService : IIndexingService
                     }
                 }
 
-                _logger.LogInformation(
-                    "Entity extraction completed for document {DocumentId}: {EntityCount} entities, {RelationCount} relations",
-                    document.Id, allEntities.Count, allRelations.Count);
+                LogEntityExtractionCompleted(_logger, document.Id, allEntities.Count, allRelations.Count);
 
                 await AddLogAsync(job.Id, IndexingJobLogLevel.Info,
                     $"Entity extraction completed: {allEntities.Count} entities, {allRelations.Count} relations",
@@ -549,7 +567,7 @@ public class IndexingService : IIndexingService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to extract entities for document {DocumentId}", document.Id);
+                LogEntityExtractionForDocumentFailed(_logger, document.Id, ex);
                 await AddLogAsync(job.Id, IndexingJobLogLevel.Warning,
                     $"Entity extraction failed: {ex.Message}",
                     ex.StackTrace,
@@ -562,7 +580,7 @@ public class IndexingService : IIndexingService
             var reason = _entityExtractionService == null
                 ? "Entity extraction service not configured"
                 : "Neo4j graph service not available";
-            _logger.LogDebug("Entity extraction skipped: {Reason} for document {DocumentId}", reason, document.Id);
+            LogEntityExtractionSkipped(_logger, reason, document.Id);
             await AddLogAsync(job.Id, IndexingJobLogLevel.Debug,
                 $"Entity extraction skipped ({reason})",
                 phase: "EntityExtraction");
@@ -579,7 +597,7 @@ public class IndexingService : IIndexingService
     /// <summary>
     /// Chunks content into smaller segments with overlap.
     /// </summary>
-    private IEnumerable<DocumentChunk> ChunkContent(string content, Guid documentId)
+    private static IEnumerable<DocumentChunk> ChunkContent(string content, Guid documentId)
     {
         if (string.IsNullOrWhiteSpace(content))
             yield break;
@@ -682,7 +700,7 @@ public class IndexingService : IIndexingService
     {
         if (_embeddingProvider == null)
         {
-            _logger.LogWarning("Embedding provider not available for standard embedding: {DocumentId}", document.Id);
+            LogEmbeddingProviderUnavailableForStandard(_logger, document.Id);
             return;
         }
 
@@ -699,9 +717,7 @@ public class IndexingService : IIndexingService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex,
-                    "Contextual embedding failed, falling back to standard embedding for document {DocumentId}",
-                    document.Id);
+                LogContextualEmbeddingFailed(_logger, document.Id, ex);
                 await AddLogAsync(job.Id, IndexingJobLogLevel.Warning,
                     $"Contextual embedding failed: {ex.Message}. Falling back to standard embedding.",
                     ex.StackTrace, "Embedding");
@@ -716,18 +732,19 @@ public class IndexingService : IIndexingService
         {
             var embeddings = await _embeddingProvider.GetEmbeddingsAsync(chunkContents, cancellationToken);
 
+            var embeddingModelId = await ResolveActiveEmbeddingModelIdAsync(cancellationToken);
             for (int i = 0; i < chunkList.Count && i < embeddings.Length; i++)
             {
-                chunkList[i].SetEmbedding(embeddings[i]);
+                chunkList[i].ChunkEmbeddings.Add(
+                    ChunkEmbedding.Create(chunkList[i].Id, embeddingModelId, embeddings[i]));
             }
 
-            _logger.LogInformation("Generated standard embeddings for {ChunkCount} chunks of document {DocumentId}",
-                chunkList.Count, document.Id);
+            LogStandardEmbeddingsGenerated(_logger, chunkList.Count, document.Id);
             await AddLogAsync(job.Id, IndexingJobLogLevel.Info, $"Generated standard embeddings for {chunkList.Count} chunks", phase: "Embedding");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to generate embeddings for document {DocumentId}", document.Id);
+            LogEmbeddingGenerationFailed(_logger, document.Id, ex);
             await AddLogAsync(job.Id, IndexingJobLogLevel.Warning, $"Embedding generation failed: {ex.Message}", ex.StackTrace, "Embedding");
             // Continue without embeddings - can be regenerated later
         }
@@ -765,12 +782,17 @@ public class IndexingService : IIndexingService
         var resultDict = contextualResults.ToDictionary(r => r.ChunkId, r => r);
         var appliedCount = 0;
 
+        var contextualModelId = await ResolveActiveEmbeddingModelIdAsync(cancellationToken);
         foreach (var chunk in chunkList)
         {
             var chunkIdStr = chunk.Id.ToString();
             if (resultDict.TryGetValue(chunkIdStr, out var result))
             {
-                chunk.SetEmbedding(result.Embedding.Values);
+                if (result.Embedding is not null)
+                {
+                    chunk.ChunkEmbeddings.Add(
+                        ChunkEmbedding.Create(chunk.Id, contextualModelId, result.Embedding.Values));
+                }
 
                 // Store contextual header in metadata for reference
                 if (!string.IsNullOrEmpty(result.ContextualHeader))
@@ -782,9 +804,7 @@ public class IndexingService : IIndexingService
             }
         }
 
-        _logger.LogInformation(
-            "Generated contextual embeddings for {AppliedCount}/{TotalCount} chunks of document {DocumentId}",
-            appliedCount, chunkList.Count, document.Id);
+        LogContextualEmbeddingsGenerated(_logger, appliedCount, chunkList.Count, document.Id);
         await AddLogAsync(job.Id, IndexingJobLogLevel.Info,
             $"Generated contextual embeddings for {appliedCount}/{chunkList.Count} chunks (Contextual Retrieval)",
             phase: "Embedding");
@@ -845,10 +865,10 @@ public class IndexingService : IIndexingService
         public ISourceMetadata Source => _source;
 
         private int? GetMetadataInt(string key) =>
-            _chunk.Metadata.TryGetValue(key, out var value) ? Convert.ToInt32(value) : null;
+            _chunk.Metadata.TryGetValue(key, out var value) ? Convert.ToInt32(value, System.Globalization.CultureInfo.InvariantCulture) : null;
 
         private double GetMetadataDouble(string key, double defaultValue) =>
-            _chunk.Metadata.TryGetValue(key, out var value) ? Convert.ToDouble(value) : defaultValue;
+            _chunk.Metadata.TryGetValue(key, out var value) ? Convert.ToDouble(value, System.Globalization.CultureInfo.InvariantCulture) : defaultValue;
     }
 
     /// <summary>
@@ -884,7 +904,7 @@ public class IndexingService : IIndexingService
             _chunk.Metadata.TryGetValue(key, out var v) ? v?.ToString() ?? defaultValue : defaultValue;
 
         private int GetMetadataInt(string key, int defaultValue) =>
-            _chunk.Metadata.TryGetValue(key, out var v) ? Convert.ToInt32(v) : defaultValue;
+            _chunk.Metadata.TryGetValue(key, out var v) ? Convert.ToInt32(v, System.Globalization.CultureInfo.InvariantCulture) : defaultValue;
 
         private string? GetUrl()
         {
@@ -954,7 +974,7 @@ public class IndexingService : IIndexingService
         job.Cancel();
         await _jobRepository.UpdateAsync(job, cancellationToken);
 
-        _logger.LogInformation("Indexing job cancelled by request: {JobId}", jobId);
+        LogIndexingJobCancelledByRequest(_logger, jobId);
     }
 
     public async Task<JobStatusSummaryDto> GetStatusSummaryAsync(CancellationToken cancellationToken = default)
@@ -983,9 +1003,7 @@ public class IndexingService : IIndexingService
 
         if (recoveredCount > 0)
         {
-            _logger.LogWarning(
-                "Recovered {Count} stuck indexing jobs from Processing state. These jobs will be reprocessed.",
-                recoveredCount);
+            LogStuckJobsRecovered(_logger, recoveredCount);
 
             // Also reset the document statuses for these jobs
             // Jobs with Processing status have their documents in Processing state
@@ -1003,6 +1021,112 @@ public class IndexingService : IIndexingService
 
         return recoveredCount;
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to save job log for job {JobId}")]
+    private static partial void LogJobLogSaveFailed(ILogger logger, Guid jobId, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No active embedding model configured — embeddings will use Guid.Empty as model reference")]
+    private static partial void LogNoActiveEmbeddingModel(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Document {DocumentId} already has a pending job: {JobId}")]
+    private static partial void LogDocumentAlreadyHasPendingJob(ILogger logger, Guid documentId, Guid jobId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Indexing job queued: {JobId} for document {DocumentId}")]
+    private static partial void LogIndexingJobQueued(ILogger logger, Guid jobId, Guid documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Processing indexing job: {JobId} for document {DocumentId}")]
+    private static partial void LogProcessingIndexingJob(ILogger logger, Guid jobId, Guid documentId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Document not found for job {JobId}: {DocumentId}")]
+    private static partial void LogDocumentNotFoundForJob(ILogger logger, Guid jobId, Guid documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Indexing job completed: {JobId} with {ChunkCount} chunks")]
+    private static partial void LogIndexingJobCompleted(ILogger logger, Guid jobId, int chunkCount);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Indexing job cancelled: {JobId}")]
+    private static partial void LogIndexingJobCancelled(ILogger logger, Guid jobId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Indexing job failed: {JobId}")]
+    private static partial void LogIndexingJobFailed(ILogger logger, Guid jobId, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Document content provider not available, using minimal content for {DocumentId}")]
+    private static partial void LogContentProviderUnavailable(ILogger logger, Guid documentId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Document content is empty: {DocumentId}")]
+    private static partial void LogDocumentContentEmpty(ILogger logger, Guid documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Using FileFlux intelligent chunking for document {DocumentId}")]
+    private static partial void LogUsingFileFluxChunking(ILogger logger, Guid documentId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "FileFlux not available, using fallback chunking for document {DocumentId}")]
+    private static partial void LogFileFluxUnavailableFallback(ILogger logger, Guid documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Document {DocumentId} split into {ChunkCount} chunks")]
+    private static partial void LogDocumentChunked(ILogger logger, Guid documentId, int chunkCount);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to store image {ImageId} for document {DocumentId}")]
+    private static partial void LogImageStoreFailed(ILogger logger, string imageId, Guid documentId, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Stored {ImageCount} images for document {DocumentId}")]
+    private static partial void LogImagesStored(ILogger logger, int imageCount, Guid documentId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Document-level metadata extracted and saved for {DocumentId}")]
+    private static partial void LogDocumentMetadataExtracted(ILogger logger, Guid documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Generated Late Chunking embeddings for {ChunkCount} chunks of document {DocumentId}")]
+    private static partial void LogLateChunkingEmbeddingsGenerated(ILogger logger, int chunkCount, Guid documentId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Late Chunking failed, falling back to standard embedding for document {DocumentId}")]
+    private static partial void LogLateChunkingFailed(ILogger logger, Guid documentId, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Embedding provider not available, chunks will have no embeddings: {DocumentId}")]
+    private static partial void LogEmbeddingProviderUnavailable(ILogger logger, Guid documentId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Enrichment progress: {Processed}/{Total}")]
+    private static partial void LogEnrichmentProgress(ILogger logger, int processed, int total);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to enrich chunks for document {DocumentId}")]
+    private static partial void LogChunkEnrichmentFailed(ILogger logger, Guid documentId, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Chunk enrichment skipped: service not available for document {DocumentId}")]
+    private static partial void LogChunkEnrichmentSkipped(ILogger logger, Guid documentId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to extract entities from chunk {ChunkId}")]
+    private static partial void LogEntityExtractionFromChunkFailed(ILogger logger, Guid chunkId, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Entity extraction completed for document {DocumentId}: {EntityCount} entities, {RelationCount} relations")]
+    private static partial void LogEntityExtractionCompleted(ILogger logger, Guid documentId, int entityCount, int relationCount);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to extract entities for document {DocumentId}")]
+    private static partial void LogEntityExtractionForDocumentFailed(ILogger logger, Guid documentId, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Entity extraction skipped: {Reason} for document {DocumentId}")]
+    private static partial void LogEntityExtractionSkipped(ILogger logger, string reason, Guid documentId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Embedding provider not available for standard embedding: {DocumentId}")]
+    private static partial void LogEmbeddingProviderUnavailableForStandard(ILogger logger, Guid documentId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Contextual embedding failed, falling back to standard embedding for document {DocumentId}")]
+    private static partial void LogContextualEmbeddingFailed(ILogger logger, Guid documentId, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Generated standard embeddings for {ChunkCount} chunks of document {DocumentId}")]
+    private static partial void LogStandardEmbeddingsGenerated(ILogger logger, int chunkCount, Guid documentId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to generate embeddings for document {DocumentId}")]
+    private static partial void LogEmbeddingGenerationFailed(ILogger logger, Guid documentId, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Generated contextual embeddings for {AppliedCount}/{TotalCount} chunks of document {DocumentId}")]
+    private static partial void LogContextualEmbeddingsGenerated(ILogger logger, int appliedCount, int totalCount, Guid documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Indexing job cancelled by request: {JobId}")]
+    private static partial void LogIndexingJobCancelledByRequest(ILogger logger, Guid jobId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Recovered {Count} stuck indexing jobs from Processing state. These jobs will be reprocessed.")]
+    private static partial void LogStuckJobsRecovered(ILogger logger, int count);
+
+    #endregion
 }
 
 /// <summary>

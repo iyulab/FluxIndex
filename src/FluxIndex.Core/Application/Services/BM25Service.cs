@@ -15,7 +15,7 @@ namespace FluxIndex.Core.Services;
 /// <summary>
 /// Implementation of BM25 (Best Matching 25) ranking algorithm
 /// </summary>
-public class BM25Service : IBM25Service
+public partial class BM25Service : IBM25Service
 {
     private readonly IDocumentRepository _documentRepository;
     private readonly IVectorStore _vectorStore;
@@ -100,7 +100,7 @@ public class BM25Service : IBM25Service
         int topK = 10,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("BM25 search for: {Query}", query);
+        LogBM25Search(_logger, query);
 
         // Ensure IDF cache is populated
         if (_totalDocuments == 0)
@@ -109,9 +109,9 @@ public class BM25Service : IBM25Service
         }
 
         var queryTerms = Tokenize(query).ToList();
-        if (!queryTerms.Any())
+        if (queryTerms.Count == 0)
         {
-            _logger.LogWarning("No valid tokens in query: {Query}", query);
+            LogNoValidTokens(_logger, query);
             return Enumerable.Empty<BM25Result>();
         }
 
@@ -152,7 +152,7 @@ public class BM25Service : IBM25Service
             .Take(topK)
             .ToList();
 
-        _logger.LogInformation("BM25 search found {Count} results", results.Count);
+        LogBM25SearchResults(_logger, results.Count);
         return results;
     }
 
@@ -161,14 +161,14 @@ public class BM25Service : IBM25Service
     /// </summary>
     public async Task UpdateIDFCacheAsync(CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Updating IDF cache");
+        LogUpdatingIdfCache(_logger);
 
         var allDocuments = await _documentRepository.GetAllAsync(cancellationToken);
         _totalDocuments = allDocuments.Count();
-        
+
         if (_totalDocuments == 0)
         {
-            _logger.LogWarning("No documents found for IDF calculation");
+            LogNoDocumentsForIdf(_logger);
             return;
         }
 
@@ -205,7 +205,7 @@ public class BM25Service : IBM25Service
             _idfCache[kvp.Key] = Math.Max(0, idf); // Ensure non-negative
         }
 
-        _logger.LogInformation("IDF cache updated with {Count} terms", _idfCache.Count);
+        LogIdfCacheUpdated(_logger, _idfCache.Count);
     }
 
     /// <summary>
@@ -249,16 +249,16 @@ public class BM25Service : IBM25Service
     /// <summary>
     /// Calculates term frequencies in a document
     /// </summary>
-    private Dictionary<string, int> CalculateTermFrequencies(IEnumerable<string> terms)
+    private static Dictionary<string, int> CalculateTermFrequencies(IEnumerable<string> terms)
     {
         var frequencies = new Dictionary<string, int>();
         
         foreach (var term in terms)
         {
             var lowerTerm = term.ToLowerInvariant();
-            if (frequencies.ContainsKey(lowerTerm))
+            if (frequencies.TryGetValue(lowerTerm, out var count))
             {
-                frequencies[lowerTerm]++;
+                frequencies[lowerTerm] = count + 1;
             }
             else
             {
@@ -268,4 +268,26 @@ public class BM25Service : IBM25Service
         
         return frequencies;
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "BM25 search for: {Query}")]
+    private static partial void LogBM25Search(ILogger logger, string query);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No valid tokens in query: {Query}")]
+    private static partial void LogNoValidTokens(ILogger logger, string query);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "BM25 search found {Count} results")]
+    private static partial void LogBM25SearchResults(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Updating IDF cache")]
+    private static partial void LogUpdatingIdfCache(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No documents found for IDF calculation")]
+    private static partial void LogNoDocumentsForIdf(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "IDF cache updated with {Count} terms")]
+    private static partial void LogIdfCacheUpdated(ILogger logger, int count);
+
+    #endregion
 }

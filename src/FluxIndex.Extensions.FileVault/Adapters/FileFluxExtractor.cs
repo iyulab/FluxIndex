@@ -9,7 +9,7 @@ namespace FluxIndex.Extensions.FileVault.Adapters;
 /// FileFlux adapter for content extraction.
 /// Bridges IExtractor to FileFlux's IDocumentProcessorFactory.
 /// </summary>
-public sealed class FileFluxExtractor : IExtractor
+public sealed partial class FileFluxExtractor : IExtractor
 {
     private readonly IDocumentProcessorFactory _processorFactory;
     private readonly ILogger<FileFluxExtractor> _logger;
@@ -24,7 +24,7 @@ public sealed class FileFluxExtractor : IExtractor
 
     public async Task<ExtractionResult> ExtractAsync(string sourcePath, CancellationToken ct = default)
     {
-        _logger.LogDebug("Extracting content from {SourcePath}", sourcePath);
+        LogExtracting(_logger, sourcePath);
 
         try
         {
@@ -67,11 +67,7 @@ public sealed class FileFluxExtractor : IExtractor
                 }
             }
 
-            _logger.LogInformation(
-                "Extracted {ContentLength} chars and {ImageCount} images from {SourcePath}",
-                content.Length,
-                images?.Count ?? 0,
-                sourcePath);
+            LogExtracted(_logger, content.Length, images?.Count ?? 0, sourcePath);
 
             return new ExtractionResult
             {
@@ -81,10 +77,23 @@ public sealed class FileFluxExtractor : IExtractor
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to extract content from {SourcePath}", sourcePath);
+            LogExtractionFailed(_logger, ex, sourcePath);
             throw;
         }
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Extracting content from {SourcePath}")]
+    private static partial void LogExtracting(ILogger logger, string sourcePath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Extracted {ContentLength} chars and {ImageCount} images from {SourcePath}")]
+    private static partial void LogExtracted(ILogger logger, int contentLength, int imageCount, string sourcePath);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to extract content from {SourcePath}")]
+    private static partial void LogExtractionFailed(ILogger logger, Exception exception, string sourcePath);
+
+    #endregion
 
     /// <summary>
     /// Get file extension from content type.

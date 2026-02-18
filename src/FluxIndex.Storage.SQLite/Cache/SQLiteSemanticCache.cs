@@ -11,7 +11,7 @@ namespace FluxIndex.Storage.SQLite.Cache;
 /// <summary>
 /// SQLite 기반 시맨틱 캐시 구현
 /// </summary>
-public class SQLiteSemanticCache : ISemanticCache
+public partial class SQLiteSemanticCache : ISemanticCache, IDisposable
 {
     private readonly SQLiteCacheDbContext _context;
     private readonly IEmbeddingService _embeddingService;
@@ -48,7 +48,7 @@ public class SQLiteSemanticCache : ISemanticCache
             .Where(c => c.ExpiresAt > DateTime.UtcNow)
             .ToListAsync(cancellationToken);
 
-        if (!cacheEntries.Any())
+        if (cacheEntries.Count == 0)
         {
             await UpdateStatsAsync(false, cancellationToken);
             return null;
@@ -67,7 +67,7 @@ public class SQLiteSemanticCache : ISemanticCache
             .Take(maxResults)
             .ToList();
 
-        if (!similarities.Any())
+        if (similarities.Count == 0)
         {
             await UpdateStatsAsync(false, cancellationToken);
             return null;
@@ -81,7 +81,7 @@ public class SQLiteSemanticCache : ISemanticCache
         await _context.SaveChangesAsync(cancellationToken);
         await UpdateStatsAsync(true, cancellationToken);
 
-        _logger.LogDebug("Cache hit for query: similarity={Similarity:F3}", bestMatch.Similarity);
+        LogCacheHit(_logger, bestMatch.Similarity);
 
         return new CacheResult
         {
@@ -146,7 +146,7 @@ public class SQLiteSemanticCache : ISemanticCache
         }
 
         await _context.SaveChangesAsync(cancellationToken);
-        _logger.LogDebug("Cache set for query hash: {Hash}", queryHash);
+        LogCacheSet(_logger, queryHash);
     }
 
     public async Task<bool> HasSimilarQueryAsync(
@@ -200,8 +200,7 @@ public class SQLiteSemanticCache : ISemanticCache
         _context.SemanticCache.RemoveRange(toDelete);
         await _context.SaveChangesAsync(cancellationToken);
 
-        _logger.LogInformation("Invalidated {Count} cache entries matching pattern: {Pattern}",
-            toDelete.Count, pattern);
+        LogCacheInvalidated(_logger, toDelete.Count, pattern);
 
         return toDelete.Count;
     }
@@ -211,7 +210,7 @@ public class SQLiteSemanticCache : ISemanticCache
         await _context.Database.ExecuteSqlRawAsync(
             "DELETE FROM semantic_cache", cancellationToken);
 
-        _logger.LogInformation("Cache cleared");
+        LogCacheCleared(_logger);
     }
 
     public async Task<CacheStatistics> GetStatisticsAsync(
@@ -274,9 +273,7 @@ public class SQLiteSemanticCache : ISemanticCache
 
         var duration = DateTime.UtcNow - startTime;
 
-        _logger.LogInformation(
-            "Cache optimization completed: {ExpiredRemoved} expired, {LruRemoved} LRU evicted in {Duration}ms",
-            expiredCount, lruRemoved, duration.TotalMilliseconds);
+        LogCacheOptimized(_logger, expiredCount, lruRemoved, duration.TotalMilliseconds);
 
         return new CacheOptimizationResult
         {
@@ -285,6 +282,15 @@ public class SQLiteSemanticCache : ISemanticCache
             Success = true,
             Messages = messages
         };
+    }
+
+    /// <summary>
+    /// Disposes the cleanup lock semaphore.
+    /// </summary>
+    public void Dispose()
+    {
+        _cleanupLock.Dispose();
+        GC.SuppressFinalize(this);
     }
 
     #region Private Methods
@@ -358,7 +364,7 @@ public class SQLiteSemanticCache : ISemanticCache
 
             await _context.SaveChangesAsync(cancellationToken);
 
-            _logger.LogDebug("Evicted {Count} entries due to capacity limit", removeCount);
+            LogCacheEvicted(_logger, removeCount);
         }
     }
 
@@ -383,7 +389,7 @@ public class SQLiteSemanticCache : ISemanticCache
 
             if (deleted > 0)
             {
-                _logger.LogDebug("Auto-cleanup removed {Count} expired entries", deleted);
+                LogAutoCleanup(_logger, deleted);
             }
         }
         finally
@@ -391,6 +397,31 @@ public class SQLiteSemanticCache : ISemanticCache
             _cleanupLock.Release();
         }
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Cache hit for query: similarity={Similarity:F3}")]
+    private static partial void LogCacheHit(ILogger logger, float similarity);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Cache set for query hash: {Hash}")]
+    private static partial void LogCacheSet(ILogger logger, string hash);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Invalidated {Count} cache entries matching pattern: {Pattern}")]
+    private static partial void LogCacheInvalidated(ILogger logger, int count, string pattern);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Cache cleared")]
+    private static partial void LogCacheCleared(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Cache optimization completed: {ExpiredRemoved} expired, {LruRemoved} LRU evicted in {DurationMs}ms")]
+    private static partial void LogCacheOptimized(ILogger logger, int expiredRemoved, int lruRemoved, double durationMs);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Evicted {Count} entries due to capacity limit")]
+    private static partial void LogCacheEvicted(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Auto-cleanup removed {Count} expired entries")]
+    private static partial void LogAutoCleanup(ILogger logger, int count);
 
     #endregion
 }

@@ -138,12 +138,12 @@ public class VerificationOptions
     /// <summary>
     /// Include detailed reasoning in verification results.
     /// </summary>
-    public bool IncludeDetailedReasoning { get; init; } = false;
+    public bool IncludeDetailedReasoning { get; init; }
 
     /// <summary>
     /// Strict mode - fail on any verification concern.
     /// </summary>
-    public bool StrictMode { get; init; } = false;
+    public bool StrictMode { get; init; }
 
     /// <summary>
     /// Custom grading criteria.

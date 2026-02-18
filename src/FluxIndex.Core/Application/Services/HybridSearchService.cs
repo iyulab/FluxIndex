@@ -1,9 +1,10 @@
-﻿using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Models;
 using FluxIndex.Core.Domain.Models;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
@@ -17,7 +18,7 @@ namespace FluxIndex.Core.Services;
 /// <summary>
 /// 하이브리드 검색 서비스 - 벡터 + 키워드 융합 검색
 /// </summary>
-public class HybridSearchService : IHybridSearchService
+public partial class HybridSearchService : IHybridSearchService
 {
     private readonly IVectorStore _vectorStore;
     private readonly ISparseRetriever _sparseRetriever;
@@ -88,7 +89,8 @@ public class HybridSearchService : IHybridSearchService
 
         options ??= new HybridSearchOptions();
 
-        _logger.LogInformation("하이브리드 검색 시작: {Query}", query);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogHybridSearch16(_logger, query);
         var stopwatch = Stopwatch.StartNew();
 
         try
@@ -98,18 +100,16 @@ public class HybridSearchService : IHybridSearchService
             {
                 var datConfig = await _dynamicFusion.CalculateDynamicWeightsAsync(query, cancellationToken);
                 options = ApplyDynamicFusionConfiguration(options, datConfig);
-                _logger.LogInformation(
-                    "DAT 적용: Vector={VectorWeight:F2}, Sparse={SparseWeight:F2}, " +
-                    "Fusion={Fusion}, Type={QueryType}",
-                    datConfig.VectorWeight, datConfig.SparseWeight,
-                    datConfig.RecommendedFusion, datConfig.QueryType);
+                if (_logger.IsEnabled(LogLevel.Information))
+                    LogHybridSearch15(_logger, datConfig.VectorWeight, datConfig.SparseWeight, datConfig.RecommendedFusion, datConfig.QueryType);
             }
             // 2. 검색 전략 자동 선택 (DAT 미적용 시 폴백)
             else if (options.EnableAutoStrategy)
             {
                 var strategy = await RecommendSearchStrategyAsync(query, cancellationToken);
                 options = ApplySearchStrategy(options, strategy);
-                _logger.LogInformation("자동 전략 선택: {Strategy}", strategy.Type);
+                if (_logger.IsEnabled(LogLevel.Information))
+                    LogHybridSearch14(_logger, strategy.Type);
             }
 
             // 2. 병렬로 벡터 검색과 키워드 검색 실행
@@ -121,21 +121,20 @@ public class HybridSearchService : IHybridSearchService
             var vectorResults = await vectorTask;
             var sparseResults = await sparseTask;
 
-            _logger.LogInformation("개별 검색 완료 - 벡터: {VectorCount}, 키워드: {SparseCount}",
-                vectorResults.Count, sparseResults.Count);
+            LogHybridSearch13(_logger, vectorResults.Count, sparseResults.Count);
 
             // 3. 결과 융합
             var fusedResults = await FuseSearchResultsAsync(vectorResults, sparseResults, options, cancellationToken);
 
             stopwatch.Stop();
-            _logger.LogInformation("하이브리드 검색 완료: {ResultCount}개 결과, {ElapsedMs}ms",
-                fusedResults.Count, stopwatch.ElapsedMilliseconds);
+            LogHybridSearch12(_logger, fusedResults.Count, stopwatch.ElapsedMilliseconds);
 
             return fusedResults;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "하이브리드 검색 중 오류 발생: {Query}", query);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogHybridSearch11(_logger, ex, query);
             throw;
         }
     }
@@ -153,7 +152,7 @@ public class HybridSearchService : IHybridSearchService
 
         options ??= new HybridSearchOptions();
 
-        _logger.LogInformation("배치 하이브리드 검색 시작: {QueryCount}개 쿼리", queries.Count);
+        LogHybridSearch10(_logger, queries.Count);
 
         var batchResults = new List<BatchHybridSearchResult>();
 
@@ -188,7 +187,7 @@ public class HybridSearchService : IHybridSearchService
                 break;
         }
 
-        _logger.LogInformation("배치 하이브리드 검색 완료: {QueryCount}개 쿼리 처리", batchResults.Count);
+        LogHybridSearch9(_logger, batchResults.Count);
         return batchResults.AsReadOnly();
     }
 
@@ -204,7 +203,8 @@ public class HybridSearchService : IHybridSearchService
         var characteristics = AnalyzeQueryCharacteristics(query);
         var strategy = DetermineOptimalStrategy(characteristics);
 
-        _logger.LogDebug("검색 전략 추천: {Query} → {Strategy}", query, strategy.Type);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogHybridSearch8(_logger, query, strategy.Type);
 
         return strategy;
     }
@@ -220,7 +220,7 @@ public class HybridSearchService : IHybridSearchService
         if (testQueries.Count != groundTruth.Count)
             throw new ArgumentException("테스트 쿼리와 정답 데이터의 개수가 일치하지 않습니다.");
 
-        _logger.LogInformation("융합 성능 평가 시작: {QueryCount}개 쿼리", testQueries.Count);
+        LogHybridSearch7(_logger, testQueries.Count);
 
         var metrics = new List<QueryMetrics>();
         var searchTimes = new List<double>();
@@ -265,8 +265,8 @@ public class HybridSearchService : IHybridSearchService
             ContributionRatio = (0.7, 0.3) // 기본 가중치 기반
         };
 
-        _logger.LogInformation("융합 성능 평가 완료 - P: {Precision:F3}, R: {Recall:F3}, F1: {F1:F3}",
-            avgPrecision, avgRecall, avgF1);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogHybridSearch6(_logger, avgPrecision, avgRecall, avgF1);
 
         return performanceMetrics;
     }
@@ -319,7 +319,7 @@ public class HybridSearchService : IHybridSearchService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "벡터 검색 실패, 빈 결과 반환");
+            LogHybridSearch5(_logger, ex);
             return Array.Empty<VectorSearchResult>();
         }
     }
@@ -342,8 +342,8 @@ public class HybridSearchService : IHybridSearchService
             // 쿼리 벡터 양자화
             var quantizedQuery = await _quantizer.QuantizeAsync(embedding, cancellationToken);
 
-            _logger.LogDebug("양자화 Two-Stage 검색 실행: TopK={TopK}, CandidateMultiplier={Multiplier}",
-                options.VectorOptions.MaxResults, options.QuantizedCandidateMultiplier);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogHybridSearch4(_logger, options.VectorOptions.MaxResults, options.QuantizedCandidateMultiplier);
 
             // Two-Stage 검색: 양자화 검색 후 원본 벡터로 리랭킹
             var results = await quantizedStore.SearchWithRerankAsync(
@@ -358,7 +358,7 @@ public class HybridSearchService : IHybridSearchService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "양자화 검색 실패, 일반 검색으로 폴백");
+            LogHybridSearch3(_logger, ex);
             return null;
         }
     }
@@ -374,12 +374,12 @@ public class HybridSearchService : IHybridSearchService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "키워드 검색 실패, 빈 결과 반환");
+            LogHybridSearch2(_logger, ex);
             return Array.Empty<SparseSearchResult>();
         }
     }
 
-    private async Task<IReadOnlyList<HybridSearchResult>> FuseSearchResultsAsync(
+    private static async Task<IReadOnlyList<HybridSearchResult>> FuseSearchResultsAsync(
         IReadOnlyList<VectorSearchResult> vectorResults,
         IReadOnlyList<SparseSearchResult> sparseResults,
         HybridSearchOptions options,
@@ -399,7 +399,7 @@ public class HybridSearchService : IHybridSearchService
         };
     }
 
-    private IReadOnlyList<HybridSearchResult> FuseWithRRF(
+    private static ReadOnlyCollection<HybridSearchResult> FuseWithRRF(
         IReadOnlyList<VectorSearchResult> vectorResults,
         IReadOnlyList<SparseSearchResult> sparseResults,
         HybridSearchOptions options)
@@ -474,7 +474,7 @@ public class HybridSearchService : IHybridSearchService
         return sortedResults.AsReadOnly();
     }
 
-    private IReadOnlyList<HybridSearchResult> FuseWithWeightedSum(
+    private static ReadOnlyCollection<HybridSearchResult> FuseWithWeightedSum(
         IReadOnlyList<VectorSearchResult> vectorResults,
         IReadOnlyList<SparseSearchResult> sparseResults,
         HybridSearchOptions options)
@@ -544,7 +544,7 @@ public class HybridSearchService : IHybridSearchService
         return OrderAndLimitResults(fusedResults.Values, options);
     }
 
-    private IReadOnlyList<HybridSearchResult> FuseWithProduct(
+    private static ReadOnlyCollection<HybridSearchResult> FuseWithProduct(
         IReadOnlyList<VectorSearchResult> vectorResults,
         IReadOnlyList<SparseSearchResult> sparseResults,
         HybridSearchOptions options)
@@ -580,7 +580,7 @@ public class HybridSearchService : IHybridSearchService
         return OrderAndLimitResults(fusedResults, options);
     }
 
-    private IReadOnlyList<HybridSearchResult> FuseWithMaximum(
+    private static ReadOnlyCollection<HybridSearchResult> FuseWithMaximum(
         IReadOnlyList<VectorSearchResult> vectorResults,
         IReadOnlyList<SparseSearchResult> sparseResults,
         HybridSearchOptions options)
@@ -622,7 +622,7 @@ public class HybridSearchService : IHybridSearchService
         return OrderAndLimitResults(fusedResults.Values, options);
     }
 
-    private IReadOnlyList<HybridSearchResult> FuseWithHarmonicMean(
+    private static ReadOnlyCollection<HybridSearchResult> FuseWithHarmonicMean(
         IReadOnlyList<VectorSearchResult> vectorResults,
         IReadOnlyList<SparseSearchResult> sparseResults,
         HybridSearchOptions options)
@@ -662,7 +662,7 @@ public class HybridSearchService : IHybridSearchService
         return OrderAndLimitResults(fusedResults, options);
     }
 
-    private IReadOnlyList<HybridSearchResult> FuseWithRelativeScoreFusion(
+    private static ReadOnlyCollection<HybridSearchResult> FuseWithRelativeScoreFusion(
         IReadOnlyList<VectorSearchResult> vectorResults,
         IReadOnlyList<SparseSearchResult> sparseResults,
         HybridSearchOptions options)
@@ -783,7 +783,7 @@ public class HybridSearchService : IHybridSearchService
         return Math.Clamp(confidence, 0.0, 1.0);
     }
 
-    private IReadOnlyList<HybridSearchResult> OrderAndLimitResults(
+    private static ReadOnlyCollection<HybridSearchResult> OrderAndLimitResults(
         IEnumerable<HybridSearchResult> results,
         HybridSearchOptions options)
     {
@@ -796,7 +796,7 @@ public class HybridSearchService : IHybridSearchService
             .AsReadOnly();
     }
 
-    private QueryCharacteristics AnalyzeQueryCharacteristics(string query)
+    private static QueryCharacteristics AnalyzeQueryCharacteristics(string query)
     {
         var tokens = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var length = tokens.Length;
@@ -818,7 +818,7 @@ public class HybridSearchService : IHybridSearchService
         };
     }
 
-    private SearchStrategy DetermineOptimalStrategy(QueryCharacteristics characteristics)
+    private static SearchStrategy DetermineOptimalStrategy(QueryCharacteristics characteristics)
     {
         var strategyType = characteristics.Length switch
         {
@@ -850,7 +850,7 @@ public class HybridSearchService : IHybridSearchService
         };
     }
 
-    private HybridSearchOptions ApplySearchStrategy(HybridSearchOptions options, SearchStrategy strategy)
+    private static HybridSearchOptions ApplySearchStrategy(HybridSearchOptions options, SearchStrategy strategy)
     {
         return options with
         {
@@ -876,7 +876,7 @@ public class HybridSearchService : IHybridSearchService
         };
     }
 
-    private FluxIndex.Core.Domain.Models.QueryType DetermineQueryType(string query)
+    private static FluxIndex.Core.Domain.Models.QueryType DetermineQueryType(string query)
     {
         if (query.Contains('"'))
             return FluxIndex.Core.Domain.Models.QueryType.Phrase;
@@ -887,7 +887,7 @@ public class HybridSearchService : IHybridSearchService
         return FluxIndex.Core.Domain.Models.QueryType.Natural;
     }
 
-    private double CalculateComplexity(string query, string[] tokens)
+    private static double CalculateComplexity(string query, string[] tokens)
     {
         var complexity = 0.0;
         complexity += Math.Min(tokens.Length / 10.0, 1.0); // 길이 기준
@@ -895,13 +895,13 @@ public class HybridSearchService : IHybridSearchService
         return Math.Min(complexity, 1.0);
     }
 
-    private bool ContainsNamedEntities(string query)
+    private static bool ContainsNamedEntities(string query)
     {
         // 간단한 대문자 패턴 검사
         return query.Split(' ').Any(token => char.IsUpper(token.FirstOrDefault()));
     }
 
-    private bool ContainsTechnicalTerms(string[] tokens)
+    private static bool ContainsTechnicalTerms(string[] tokens)
     {
         // 간단한 기술 용어 패턴 검사
         var technicalPatterns = new[] { "API", "HTTP", "JSON", "SQL", "AI", "ML" };
@@ -909,7 +909,7 @@ public class HybridSearchService : IHybridSearchService
             token.Contains(pattern, StringComparison.OrdinalIgnoreCase)));
     }
 
-    private QueryMetrics CalculateQueryMetrics(IReadOnlyList<HybridSearchResult> results, IReadOnlyList<string> groundTruth)
+    private static QueryMetrics CalculateQueryMetrics(IReadOnlyList<HybridSearchResult> results, IReadOnlyList<string> groundTruth)
     {
         var resultIds = results.Select(r => r.Chunk.Id).ToHashSet();
         var truthSet = groundTruth.ToHashSet();
@@ -943,7 +943,7 @@ public class HybridSearchService : IHybridSearchService
         };
     }
 
-    private double CalculateNDCG(IReadOnlyList<HybridSearchResult> results, HashSet<string> groundTruth)
+    private static double CalculateNDCG(IReadOnlyList<HybridSearchResult> results, HashSet<string> groundTruth)
     {
         // 간단한 NDCG 계산
         double dcg = 0.0;
@@ -981,10 +981,48 @@ public class HybridSearchService : IHybridSearchService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "청크 조회 실패: {ChunkId}", chunkId);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogHybridSearch1(_logger, ex, chunkId);
             return null;
         }
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "하이브리드 검색 시작: {Query}")]
+    private static partial void LogHybridSearch16(ILogger logger, string query);
+    [LoggerMessage(Level = LogLevel.Information, Message = "DAT 적용: Vector={VectorWeight:F2}, Sparse={SparseWeight:F2}, Fusion={Fusion}, Type={QueryType}")]
+    private static partial void LogHybridSearch15(ILogger logger, double vectorWeight, double sparseWeight, FusionMethod fusion, FluxIndex.Core.Application.Interfaces.QueryType queryType);
+    [LoggerMessage(Level = LogLevel.Information, Message = "자동 전략 선택: {Strategy}")]
+    private static partial void LogHybridSearch14(ILogger logger, SearchStrategyType strategy);
+    [LoggerMessage(Level = LogLevel.Information, Message = "개별 검색 완료 - 벡터: {VectorCount}, 키워드: {SparseCount}")]
+    private static partial void LogHybridSearch13(ILogger logger, int vectorCount, int sparseCount);
+    [LoggerMessage(Level = LogLevel.Information, Message = "하이브리드 검색 완료: {ResultCount}개 결과, {ElapsedMs}ms")]
+    private static partial void LogHybridSearch12(ILogger logger, int resultCount, long elapsedMs);
+    [LoggerMessage(Level = LogLevel.Error, Message = "하이브리드 검색 중 오류 발생: {Query}")]
+    private static partial void LogHybridSearch11(ILogger logger, Exception exception, string query);
+    [LoggerMessage(Level = LogLevel.Information, Message = "배치 하이브리드 검색 시작: {QueryCount}개 쿼리")]
+    private static partial void LogHybridSearch10(ILogger logger, int queryCount);
+    [LoggerMessage(Level = LogLevel.Information, Message = "배치 하이브리드 검색 완료: {QueryCount}개 쿼리 처리")]
+    private static partial void LogHybridSearch9(ILogger logger, int queryCount);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "검색 전략 추천: {Query} → {Strategy}")]
+    private static partial void LogHybridSearch8(ILogger logger, string query, SearchStrategyType strategy);
+    [LoggerMessage(Level = LogLevel.Information, Message = "융합 성능 평가 시작: {QueryCount}개 쿼리")]
+    private static partial void LogHybridSearch7(ILogger logger, int queryCount);
+    [LoggerMessage(Level = LogLevel.Information, Message = "융합 성능 평가 완료 - P: {Precision:F3}, R: {Recall:F3}, F1: {F1:F3}")]
+    private static partial void LogHybridSearch6(ILogger logger, double precision, double recall, double f1);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "벡터 검색 실패, 빈 결과 반환")]
+    private static partial void LogHybridSearch5(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "양자화 Two-Stage 검색 실행: TopK={TopK}, CandidateMultiplier={Multiplier}")]
+    private static partial void LogHybridSearch4(ILogger logger, int topK, int multiplier);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "양자화 검색 실패, 일반 검색으로 폴백")]
+    private static partial void LogHybridSearch3(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "키워드 검색 실패, 빈 결과 반환")]
+    private static partial void LogHybridSearch2(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "청크 조회 실패: {ChunkId}")]
+    private static partial void LogHybridSearch1(ILogger logger, Exception exception, string chunkId);
+
+    #endregion
 }
 
 #region Helper Classes
@@ -992,7 +1030,7 @@ public class HybridSearchService : IHybridSearchService
 /// <summary>
 /// 쿼리별 메트릭
 /// </summary>
-internal class QueryMetrics
+internal sealed class QueryMetrics
 {
     public double Precision { get; init; }
     public double Recall { get; init; }

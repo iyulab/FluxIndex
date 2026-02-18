@@ -13,7 +13,7 @@ namespace FluxIndex.Stack.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/v1/[controller]")]
-public class EvaluationController : ControllerBase
+public partial class EvaluationController : ControllerBase
 {
     private readonly IEvaluationJobManager _evaluationJobManager;
     private readonly IGoldenDatasetManager _datasetManager;
@@ -42,15 +42,15 @@ public class EvaluationController : ControllerBase
         [FromBody] RunEvaluationRequest request,
         CancellationToken cancellationToken = default)
     {
-        if (request.Queries == null || !request.Queries.Any())
+        if (request.Queries == null || request.Queries.Count == 0)
         {
             return BadRequest(ApiResponse<object>.Fail("At least one query is required for evaluation."));
         }
 
         try
         {
-            _logger.LogInformation("Starting evaluation job: {JobName} with {QueryCount} queries",
-                request.JobName, request.Queries.Count);
+            var queryCount = request.Queries.Count;
+            LogStartingEvaluationJob(_logger, request.JobName, queryCount);
 
             // Create golden dataset from request queries
             var datasetId = $"inline_{Guid.NewGuid():N}";
@@ -101,7 +101,7 @@ public class EvaluationController : ControllerBase
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Background evaluation job failed: {JobId}", jobId);
+                    LogBackgroundEvaluationJobFailed(_logger, ex, jobId);
                 }
             }, CancellationToken.None);
 
@@ -115,12 +115,12 @@ public class EvaluationController : ControllerBase
                 EstimatedCompletionAt = DateTime.UtcNow.AddMinutes(request.Queries.Count * 0.5)
             };
 
-            _logger.LogInformation("Evaluation job created: {JobId}", jobId);
+            LogEvaluationJobCreated(_logger, jobId);
             return Ok(ApiResponse<EvaluationJobResponseDto>.Ok(response));
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to start evaluation job: {JobName}", request.JobName);
+            LogStartEvaluationJobFailed(_logger, ex, request.JobName);
             return BadRequest(ApiResponse<object>.Fail($"Failed to start evaluation: {ex.Message}"));
         }
     }
@@ -191,7 +191,7 @@ public class EvaluationController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to get evaluation results: {JobId}", jobId);
+            LogGetEvaluationResultsFailed(_logger, ex, jobId);
             return BadRequest(ApiResponse<object>.Fail($"Failed to get results: {ex.Message}"));
         }
     }
@@ -251,7 +251,7 @@ public class EvaluationController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to list evaluation jobs");
+            LogListEvaluationJobsFailed(_logger, ex);
             return BadRequest(ApiResponse<object>.Fail($"Failed to list jobs: {ex.Message}"));
         }
     }
@@ -273,7 +273,7 @@ public class EvaluationController : ControllerBase
         try
         {
             await _evaluationJobManager.CancelJobAsync(jobId, cancellationToken);
-            _logger.LogInformation("Evaluation job cancelled: {JobId}", jobId);
+            LogEvaluationJobCancelled(_logger, jobId);
             return Ok(ApiResponse<string>.Ok("Evaluation job cancelled successfully."));
         }
         catch (ArgumentException)
@@ -286,7 +286,7 @@ public class EvaluationController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to cancel evaluation job: {JobId}", jobId);
+            LogCancelEvaluationJobFailed(_logger, ex, jobId);
             return BadRequest(ApiResponse<object>.Fail($"Failed to cancel job: {ex.Message}"));
         }
     }
@@ -328,8 +328,39 @@ public class EvaluationController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to get job status: {JobId}", jobId);
+            LogGetJobStatusFailed(_logger, ex, jobId);
             return BadRequest(ApiResponse<object>.Fail($"Failed to get job status: {ex.Message}"));
         }
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting evaluation job: {JobName} with {QueryCount} queries")]
+    private static partial void LogStartingEvaluationJob(ILogger logger, string jobName, int queryCount);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Background evaluation job failed: {JobId}")]
+    private static partial void LogBackgroundEvaluationJobFailed(ILogger logger, Exception? exception, string jobId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Evaluation job created: {JobId}")]
+    private static partial void LogEvaluationJobCreated(ILogger logger, string jobId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to start evaluation job: {JobName}")]
+    private static partial void LogStartEvaluationJobFailed(ILogger logger, Exception? exception, string jobName);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to get evaluation results: {JobId}")]
+    private static partial void LogGetEvaluationResultsFailed(ILogger logger, Exception? exception, string jobId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to list evaluation jobs")]
+    private static partial void LogListEvaluationJobsFailed(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Evaluation job cancelled: {JobId}")]
+    private static partial void LogEvaluationJobCancelled(ILogger logger, string jobId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to cancel evaluation job: {JobId}")]
+    private static partial void LogCancelEvaluationJobFailed(ILogger logger, Exception? exception, string jobId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to get job status: {JobId}")]
+    private static partial void LogGetJobStatusFailed(ILogger logger, Exception? exception, string jobId);
+
+    #endregion
 }

@@ -2,13 +2,14 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Text.Json;
+using System.Globalization;
 
 namespace FluxIndex.Storage.SQLite;
 
 /// <summary>
 /// sqlite-vec 확장을 지원하는 SQLite 데이터베이스 컨텍스트
 /// </summary>
-public class SQLiteVecDbContext : DbContext
+public partial class SQLiteVecDbContext : DbContext
 {
     private readonly SQLiteVecOptions _options;
     private readonly ISQLiteVecExtensionLoader _extensionLoader;
@@ -113,7 +114,7 @@ public class SQLiteVecDbContext : DbContext
         if (_options.UseSQLiteVec)
         {
             // sqlite-vec 확장 사용 시 추가 설정
-            optionsBuilder.LogTo(message => _logger.LogDebug("EF Core SQL: {Message}", message));
+            optionsBuilder.LogTo(message => LogEfCoreSql(_logger, message));
         }
     }
 
@@ -142,11 +143,11 @@ public class SQLiteVecDbContext : DbContext
                 await MigrateFromLegacyAsync(cancellationToken);
             }
 
-            _logger.LogInformation("SQLite 데이터베이스 초기화 완료");
+            LogDbInitialized(_logger);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "SQLite 데이터베이스 초기화 실패");
+            LogDbInitFailed(_logger, ex);
             throw;
         }
     }
@@ -167,7 +168,7 @@ public class SQLiteVecDbContext : DbContext
             // FTS5 테이블이 이미 존재하는지 확인
             using var checkCommand = connection.CreateCommand();
             checkCommand.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='chunk_fts'";
-            var tableExists = Convert.ToInt32(await checkCommand.ExecuteScalarAsync(cancellationToken)) > 0;
+            var tableExists = Convert.ToInt32(await checkCommand.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture) > 0;
 
             if (!tableExists)
             {
@@ -208,16 +209,16 @@ public class SQLiteVecDbContext : DbContext
                     END";
                 await updateTrigger.ExecuteNonQueryAsync(cancellationToken);
 
-                _logger.LogInformation("FTS5 전문 검색 테이블 및 트리거 생성 완료 (토크나이저: {Tokenizer})", _options.Fts5Tokenizer);
+                LogFts5Created(_logger, _options.Fts5Tokenizer);
             }
             else
             {
-                _logger.LogDebug("FTS5 테이블이 이미 존재함");
+                LogFts5AlreadyExists(_logger);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "FTS5 전문 검색 테이블 초기화 실패");
+            LogFts5InitFailed(_logger, ex);
             // FTS5 실패는 치명적이지 않음 - 벡터 검색은 계속 작동
         }
     }
@@ -235,7 +236,7 @@ public class SQLiteVecDbContext : DbContext
                 await connection.OpenAsync(cancellationToken);
             }
 
-            _logger.LogInformation("FTS5 인덱스 재구성 시작");
+            LogFts5RebuildStarted(_logger);
 
             // 기존 FTS 데이터 삭제 후 재구성
             using var rebuildCommand = connection.CreateCommand();
@@ -244,11 +245,11 @@ public class SQLiteVecDbContext : DbContext
                 INSERT INTO chunk_fts(rowid, content) SELECT rowid, Content FROM vector_chunks";
             await rebuildCommand.ExecuteNonQueryAsync(cancellationToken);
 
-            _logger.LogInformation("FTS5 인덱스 재구성 완료");
+            LogFts5RebuildCompleted(_logger);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "FTS5 인덱스 재구성 실패");
+            LogFts5RebuildFailed(_logger, ex);
             throw;
         }
     }
@@ -279,7 +280,7 @@ public class SQLiteVecDbContext : DbContext
                     _options.VecTableOptions,
                     cancellationToken);
 
-                _logger.LogInformation("sqlite-vec 확장 초기화 완료");
+                LogVecExtensionInitialized(_logger);
             }
             else
             {
@@ -289,19 +290,19 @@ public class SQLiteVecDbContext : DbContext
                         "sqlite-vec 확장을 로드할 수 없습니다. " +
                         "확장 파일이 존재하는지 확인하거나 FallbackToInMemoryOnError 옵션을 활성화하세요.");
                 }
-                _logger.LogWarning("sqlite-vec 확장 로드 실패, in-memory 벡터 검색으로 폴백");
+                LogVecExtensionFallback(_logger);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "sqlite-vec 확장 초기화 중 오류 발생");
+            LogVecExtensionInitError(_logger, ex);
 
             if (!_options.FallbackToInMemoryOnError)
             {
                 throw;
             }
 
-            _logger.LogInformation("폴백 모드로 계속 진행");
+            LogContinueWithFallback(_logger);
         }
     }
 
@@ -319,18 +320,18 @@ public class SQLiteVecDbContext : DbContext
 
             if (!hasLegacyData)
             {
-                _logger.LogInformation("마이그레이션할 레거시 데이터가 없음");
+                LogNoLegacyData(_logger);
                 return;
             }
 
             var legacyCount = await LegacyVectors.CountAsync(cancellationToken);
             if (legacyCount == 0)
             {
-                _logger.LogInformation("레거시 테이블은 있지만 데이터가 없음");
+                LogLegacyTableEmpty(_logger);
                 return;
             }
 
-            _logger.LogInformation("레거시 데이터 마이그레이션 시작: {Count}개 항목", legacyCount);
+            LogMigrationStarted(_logger, legacyCount);
 
             // 배치 단위로 마이그레이션
             const int batchSize = 1000;
@@ -369,14 +370,14 @@ public class SQLiteVecDbContext : DbContext
                 await SaveChangesAsync(cancellationToken);
                 processed += legacyBatch.Count;
 
-                _logger.LogInformation("마이그레이션 진행률: {Processed}/{Total}", processed, legacyCount);
+                LogMigrationProgress(_logger, processed, legacyCount);
             }
 
-            _logger.LogInformation("레거시 데이터 마이그레이션 완료");
+            LogMigrationCompleted(_logger);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "레거시 데이터 마이그레이션 실패");
+            LogMigrationFailed(_logger, ex);
             throw;
         }
     }
@@ -392,7 +393,7 @@ public class SQLiteVecDbContext : DbContext
         try
         {
             // 벡터를 적절한 형식으로 변환
-            var vectorString = "[" + string.Join(",", embedding.Select(f => f.ToString("F6"))) + "]";
+            var vectorString = "[" + string.Join(",", embedding.Select(f => f.ToString("F6", CultureInfo.InvariantCulture))) + "]";
 
             // vec0 가상 테이블은 INSERT OR REPLACE를 지원하지 않으므로 DELETE + INSERT 사용
             // 먼저 기존 벡터 삭제 (존재하지 않아도 오류 없음)
@@ -409,7 +410,7 @@ public class SQLiteVecDbContext : DbContext
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "vec0 테이블에 벡터 저장 실패: {ChunkId}", chunkId);
+            LogVecStoreError(_logger, ex, chunkId);
             throw;
         }
     }
@@ -431,7 +432,7 @@ public class SQLiteVecDbContext : DbContext
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "vec0 테이블에서 벡터 삭제 실패: {ChunkId}", chunkId);
+            LogVecDeleteError(_logger, ex, chunkId);
             // 벡터 삭제 실패는 치명적이지 않으므로 로그만 남김
         }
     }
@@ -454,6 +455,73 @@ public class SQLiteVecDbContext : DbContext
             return false;
         }
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "EF Core SQL: {Message}")]
+    private static partial void LogEfCoreSql(ILogger logger, string message);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "데이터베이스 초기화 완료")]
+    private static partial void LogDbInitialized(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "데이터베이스 초기화 실패")]
+    private static partial void LogDbInitFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "FTS5 테이블 생성 완료: tokenizer={Tokenizer}")]
+    private static partial void LogFts5Created(ILogger logger, string tokenizer);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "FTS5 테이블이 이미 존재합니다")]
+    private static partial void LogFts5AlreadyExists(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "FTS5 초기화 실패")]
+    private static partial void LogFts5InitFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "FTS5 인덱스 재구성 시작")]
+    private static partial void LogFts5RebuildStarted(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "FTS5 인덱스 재구성 완료")]
+    private static partial void LogFts5RebuildCompleted(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "FTS5 인덱스 재구성 실패")]
+    private static partial void LogFts5RebuildFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "sqlite-vec 확장 초기화 완료")]
+    private static partial void LogVecExtensionInitialized(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "sqlite-vec 확장 로드 실패, 폴백 모드 사용")]
+    private static partial void LogVecExtensionFallback(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "sqlite-vec 확장 초기화 오류")]
+    private static partial void LogVecExtensionInitError(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "폴백 모드로 계속 진행")]
+    private static partial void LogContinueWithFallback(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "레거시 데이터 없음")]
+    private static partial void LogNoLegacyData(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "레거시 테이블이 비어있습니다")]
+    private static partial void LogLegacyTableEmpty(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "레거시 데이터 마이그레이션 시작: {Count}건")]
+    private static partial void LogMigrationStarted(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "마이그레이션 진행: {Processed}/{Total}")]
+    private static partial void LogMigrationProgress(ILogger logger, int processed, int total);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "레거시 데이터 마이그레이션 완료")]
+    private static partial void LogMigrationCompleted(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "레거시 데이터 마이그레이션 실패")]
+    private static partial void LogMigrationFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "vec0 테이블에 벡터 저장 실패: {ChunkId}")]
+    private static partial void LogVecStoreError(ILogger logger, Exception exception, string chunkId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "vec0 테이블에서 벡터 삭제 실패: {ChunkId}")]
+    private static partial void LogVecDeleteError(ILogger logger, Exception exception, string chunkId);
+
+    #endregion
 }
 
 /// <summary>

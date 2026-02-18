@@ -12,10 +12,10 @@ public class SearchRequest
     public string Query { get; set; } = string.Empty;
     public SearchType Type { get; set; } = SearchType.Hybrid;
     public int MaxResults { get; set; } = 10;
-    public int Offset { get; set; } = 0;
+    public int Offset { get; set; }
     public Dictionary<string, string> Filters { get; set; } = new();
     public bool IncludeMetadata { get; set; } = true;
-    public float MinScore { get; set; } = 0.0f;
+    public float MinScore { get; set; }
 
     /// <summary>
     /// GraphRAG 검색 활성화.
@@ -23,7 +23,7 @@ public class SearchRequest
     /// - true: 강제 활성화 (서비스 미등록 시 오류)
     /// - false: 강제 비활성화
     /// </summary>
-    public bool? UseGraphRAG { get; set; } = null;
+    public bool? UseGraphRAG { get; set; }
 
     /// <summary>
     /// GraphRAG 쿼리 옵션.
@@ -37,7 +37,7 @@ public class SearchRequest
     /// - true: 강제 활성화 (서비스 미등록 시 오류)
     /// - false: 강제 비활성화
     /// </summary>
-    public bool? UseHybridSearch { get; set; } = null;
+    public bool? UseHybridSearch { get; set; }
 }
 
 /// <summary>
@@ -74,8 +74,8 @@ public class SearchResult
 public class SearchOptions
 {
     public int TopK { get; set; } = 10;
-    public float MinSimilarity { get; set; } = 0.0f;
-    public bool IncludeVectors { get; set; } = false;
+    public float MinSimilarity { get; set; }
+    public bool IncludeVectors { get; set; }
     public Dictionary<string, string> MetadataFilters { get; set; } = new();
 
     /// <summary>
@@ -84,7 +84,7 @@ public class SearchOptions
     /// - true: 강제 활성화 (서비스 미등록 시 오류)
     /// - false: 강제 비활성화
     /// </summary>
-    public bool? UseGraphRAG { get; set; } = null;
+    public bool? UseGraphRAG { get; set; }
 
     /// <summary>
     /// GraphRAG 쿼리 옵션.
@@ -98,7 +98,7 @@ public class SearchOptions
     /// - true: 강제 활성화 (서비스 미등록 시 오류)
     /// - false: 강제 비활성화
     /// </summary>
-    public bool? UseHybridSearch { get; set; } = null;
+    public bool? UseHybridSearch { get; set; }
 }
 
 /// <summary>
@@ -116,7 +116,7 @@ public class SemanticSearchOptions : SearchOptions
 public class KeywordSearchOptions : SearchOptions
 {
     public bool UseFullTextSearch { get; set; } = true;
-    public bool CaseSensitive { get; set; } = false;
+    public bool CaseSensitive { get; set; }
     public string[] SearchFields { get; set; } = Array.Empty<string>();
 }
 

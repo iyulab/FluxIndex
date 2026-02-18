@@ -1,5 +1,10 @@
+using System.Text;
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Services.Base;
 using FluxIndex.Stack.Application.Interfaces.Services;
+using LMSupply.Generator;
+using LMSupply.Generator.Abstractions;
+using LMSupply.Generator.Models;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 
@@ -7,23 +12,22 @@ namespace FluxIndex.Stack.Infrastructure.Services;
 
 /// <summary>
 /// Factory for creating text completion service providers based on configuration.
-/// Supports OpenAI, Azure OpenAI, and mock providers.
-/// Local text completion via LMSupply.Generator is planned for future implementation.
+/// Supports LMSupply (local), OpenAI, Azure OpenAI, and mock providers.
 /// </summary>
-public class TextCompletionServiceFactory : ITextCompletionServiceFactory
+public partial class TextCompletionServiceFactory : ITextCompletionServiceFactory
 {
     private readonly IMemoryCache _cache;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<TextCompletionServiceFactory> _logger;
 
-    private static readonly List<string> _supportedProviders = new()
-    {
+    private static readonly List<string> _supportedProviders =
+    [
         "OpenAI",
         "Azure",
         "LMSupply",
         "Local",
         "Mock"
-    };
+    ];
 
     public TextCompletionServiceFactory(
         IMemoryCache cache,
@@ -44,9 +48,7 @@ public class TextCompletionServiceFactory : ITextCompletionServiceFactory
         string? endpointUrl = null,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation(
-            "Creating text completion provider: Provider={Provider}, Model={Model}",
-            providerName, modelName ?? "default");
+        LogCreatingTextCompletionProvider(_logger, providerName, modelName ?? "default");
 
         var normalizedProvider = providerName.ToLowerInvariant();
 
@@ -59,9 +61,7 @@ public class TextCompletionServiceFactory : ITextCompletionServiceFactory
         // If no API key is provided, fall back to mock
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning(
-                "No API key provided for {Provider}. Falling back to mock text completion.",
-                providerName);
+            LogNoApiKeyFallbackToMock(_logger, providerName);
             return Task.FromResult<ITextCompletionService>(new MockTextCompletionService());
         }
 
@@ -75,23 +75,26 @@ public class TextCompletionServiceFactory : ITextCompletionServiceFactory
         };
     }
 
-    public Task<ITextCompletionService> CreateLocalProviderAsync(
+    public async Task<ITextCompletionService> CreateLocalProviderAsync(
         string? modelName = null,
         CancellationToken cancellationToken = default)
     {
         var effectiveModel = MapToLMSupplyModel(modelName);
 
-        _logger.LogInformation(
-            "Creating local text completion provider with model: {Model}",
-            effectiveModel);
+        LogCreatingLocalTextCompletionProvider(_logger, effectiveModel);
 
-        // TODO: Implement LMSupply.Generator integration
-        // For now, return mock service
-        _logger.LogWarning(
-            "LMSupply.Generator integration not yet implemented. Using mock text completion. " +
-            "External providers (OpenAI, Azure) are recommended for production use.");
-
-        return Task.FromResult<ITextCompletionService>(new MockTextCompletionService());
+        try
+        {
+            var generatorModel = await LocalGenerator.LoadAsync(effectiveModel, cancellationToken: cancellationToken);
+            var wrapper = new LMSupplyTextCompletionWrapper(generatorModel, _logger);
+            LogLMSupplyGeneratorLoaded(_logger, effectiveModel);
+            return wrapper;
+        }
+        catch (Exception ex)
+        {
+            LogLMSupplyGeneratorLoadFailed(_logger, effectiveModel, ex);
+            throw;
+        }
     }
 
     private Task<ITextCompletionService> CreateExternalProviderAsync(
@@ -100,15 +103,20 @@ public class TextCompletionServiceFactory : ITextCompletionServiceFactory
         string? endpointUrl,
         CancellationToken cancellationToken)
     {
-        // For now, fall back to mock provider
-        // TODO: Implement external provider support via FluxIndex.Core interfaces
-        _logger.LogWarning(
-            "External text completion providers require consumer implementation. " +
-            "Falling back to mock completion. " +
-            "Requested: Model={Model}, Endpoint={Endpoint}",
-            modelName, endpointUrl ?? "default");
+        var effectiveModel = modelName ?? "gpt-4o-mini";
+        LogCreatingExternalProvider(_logger, effectiveModel, endpointUrl ?? "api.openai.com");
 
-        return Task.FromResult<ITextCompletionService>(new MockTextCompletionService());
+        try
+        {
+            var serviceLogger = _loggerFactory.CreateLogger<OpenAITextCompletionService>();
+            var service = new OpenAITextCompletionService(apiKey, effectiveModel, endpointUrl, serviceLogger);
+            return Task.FromResult<ITextCompletionService>(service);
+        }
+        catch (Exception ex)
+        {
+            LogExternalProviderCreationFailed(_logger, effectiveModel, ex);
+            throw;
+        }
     }
 
     private static string MapToLMSupplyModel(string? modelName)
@@ -124,5 +132,68 @@ public class TextCompletionServiceFactory : ITextCompletionServiceFactory
             "large" => "large", // Qwen2.5-3B
             _ => modelName // Use as-is for LMSupply model IDs
         };
+    }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Creating text completion provider: Provider={Provider}, Model={Model}")]
+    private static partial void LogCreatingTextCompletionProvider(ILogger logger, string provider, string model);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No API key provided for {Provider}. Falling back to mock text completion.")]
+    private static partial void LogNoApiKeyFallbackToMock(ILogger logger, string provider);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Creating local text completion provider with model: {Model}")]
+    private static partial void LogCreatingLocalTextCompletionProvider(ILogger logger, string model);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "LMSupply.Generator model loaded successfully: {Model}")]
+    private static partial void LogLMSupplyGeneratorLoaded(ILogger logger, string model);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to load LMSupply.Generator model: {Model}")]
+    private static partial void LogLMSupplyGeneratorLoadFailed(ILogger logger, string model, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Creating external text completion provider: Model={Model}, Endpoint={Endpoint}")]
+    private static partial void LogCreatingExternalProvider(ILogger logger, string model, string endpoint);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to create external text completion provider: {Model}")]
+    private static partial void LogExternalProviderCreationFailed(ILogger logger, string model, Exception? exception);
+
+    #endregion
+}
+
+/// <summary>
+/// Wrapper that adapts LMSupply ITextGenerator to ITextCompletionService (FluxIndex Core).
+/// Uses <see cref="TextCompletionServiceBase"/> for default JSON extraction and token counting.
+/// Consumer app pattern: directly wraps LMSupply without SDK intermediary.
+/// </summary>
+internal sealed class LMSupplyTextCompletionWrapper : TextCompletionServiceBase, IAsyncDisposable
+{
+    private readonly ITextGenerator _generator;
+    private readonly ILogger _logger;
+
+    public LMSupplyTextCompletionWrapper(ITextGenerator generator, ILogger logger)
+    {
+        ArgumentNullException.ThrowIfNull(generator);
+        _generator = generator;
+        _logger = logger;
+    }
+
+    protected override async Task<string> GenerateCoreAsync(
+        string prompt,
+        int maxTokens,
+        float temperature,
+        CancellationToken cancellationToken)
+    {
+        var options = new GenerationOptions
+        {
+            MaxTokens = maxTokens,
+            Temperature = temperature,
+        };
+
+        return await _generator.GenerateCompleteAsync(prompt, options, cancellationToken);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await _generator.DisposeAsync();
     }
 }

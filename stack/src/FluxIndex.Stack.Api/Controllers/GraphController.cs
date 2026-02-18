@@ -12,7 +12,7 @@ namespace FluxIndex.Stack.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/v1/[controller]")]
-public class GraphController : ControllerBase
+public partial class GraphController : ControllerBase
 {
     private readonly INeo4jGraphService _graphService;
     private readonly ILogger<GraphController> _logger;
@@ -95,9 +95,8 @@ public class GraphController : ControllerBase
             }, "Graph service not available"));
         }
 
-        _logger.LogInformation(
-            "Getting related entities for {Count} entities with {MaxHops} max hops",
-            request.EntityIds.Count, request.MaxHops);
+        var entityCount = request.EntityIds.Count;
+        LogGettingRelatedEntities(_logger, entityCount, request.MaxHops);
 
         var relationships = await _graphService.GetRelatedEntitiesAsync(
             request.EntityIds,
@@ -135,9 +134,7 @@ public class GraphController : ControllerBase
             return BadRequest(ApiResponse<QueryExpansionResponse>.Fail("Query cannot be empty."));
         }
 
-        _logger.LogInformation(
-            "Expanding query '{Query}' with max {MaxEntities} entities",
-            request.Query, request.MaxEntities);
+        LogExpandingQuery(_logger, request.Query, request.MaxEntities);
 
         var relatedTerms = await _graphService.ExpandQueryWithRelatedEntitiesAsync(
             request.Query,
@@ -188,9 +185,7 @@ public class GraphController : ControllerBase
             }, "Graph service not available"));
         }
 
-        _logger.LogInformation(
-            "Finding paths from {Source} to {Target} with max length {MaxLength}",
-            request.SourceEntityId, request.TargetEntityId, request.MaxPathLength);
+        LogFindingPaths(_logger, request.SourceEntityId, request.TargetEntityId, request.MaxPathLength);
 
         var paths = await _graphService.FindPathsAsync(
             request.SourceEntityId,
@@ -306,9 +301,7 @@ public class GraphController : ControllerBase
             return StatusCode(503, ApiResponse<object>.Fail("Neo4j graph service is not available"));
         }
 
-        _logger.LogInformation(
-            "Storing entity {EntityId} ({EntityName}) of type {EntityType}",
-            request.Id, request.Name, request.Type);
+        LogStoringEntity(_logger, request.Id, request.Name, request.Type);
 
         var entity = new GraphEntity(
             request.Id,
@@ -354,9 +347,7 @@ public class GraphController : ControllerBase
             return StatusCode(503, ApiResponse<object>.Fail("Neo4j graph service is not available"));
         }
 
-        _logger.LogInformation(
-            "Storing relationship {Source} -[{Type}]-> {Target}",
-            request.SourceEntityId, request.RelationshipType, request.TargetEntityId);
+        LogStoringRelationship(_logger, request.SourceEntityId, request.RelationshipType, request.TargetEntityId);
 
         await _graphService.StoreRelationshipAsync(
             request.SourceEntityId,
@@ -393,9 +384,8 @@ public class GraphController : ControllerBase
             return BadRequest(ApiResponse<object>.Fail("At least one entity ID is required."));
         }
 
-        _logger.LogInformation(
-            "Linking chunk {ChunkId} to {Count} entities",
-            request.ChunkId, request.EntityIds.Count);
+        var linkedEntityCount = request.EntityIds.Count;
+        LogLinkingChunkToEntities(_logger, request.ChunkId, linkedEntityCount);
 
         await _graphService.LinkChunkToEntitiesAsync(
             request.ChunkId,
@@ -426,9 +416,8 @@ public class GraphController : ControllerBase
 
         var stopwatch = Stopwatch.StartNew();
 
-        _logger.LogInformation(
-            "Running community detection (collection: {CollectionId})",
-            request?.CollectionId?.ToString() ?? "all");
+        var collectionIdStr = request?.CollectionId?.ToString() ?? "all";
+        LogRunningCommunityDetection(_logger, collectionIdStr);
 
         var communitiesDetected = await _graphService.RunCommunityDetectionAsync(
             request?.CollectionId,
@@ -442,10 +431,36 @@ public class GraphController : ControllerBase
             ExecutionTimeMs = stopwatch.Elapsed.TotalMilliseconds
         };
 
-        _logger.LogInformation(
-            "Community detection completed: {Count} communities in {Time}ms",
-            communitiesDetected, stopwatch.Elapsed.TotalMilliseconds);
+        LogCommunityDetectionCompleted(_logger, communitiesDetected, stopwatch.Elapsed.TotalMilliseconds);
 
         return Ok(ApiResponse<RunCommunityDetectionResponse>.Ok(response));
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Getting related entities for {Count} entities with {MaxHops} max hops")]
+    private static partial void LogGettingRelatedEntities(ILogger logger, int count, int maxHops);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Expanding query '{Query}' with max {MaxEntities} entities")]
+    private static partial void LogExpandingQuery(ILogger logger, string query, int maxEntities);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Finding paths from {Source} to {Target} with max length {MaxLength}")]
+    private static partial void LogFindingPaths(ILogger logger, string source, string target, int maxLength);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Storing entity {EntityId} ({EntityName}) of type {EntityType}")]
+    private static partial void LogStoringEntity(ILogger logger, string entityId, string entityName, string? entityType);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Storing relationship {Source} -[{Type}]-> {Target}")]
+    private static partial void LogStoringRelationship(ILogger logger, string source, string type, string target);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Linking chunk {ChunkId} to {Count} entities")]
+    private static partial void LogLinkingChunkToEntities(ILogger logger, Guid chunkId, int count);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Running community detection (collection: {CollectionId})")]
+    private static partial void LogRunningCommunityDetection(ILogger logger, string collectionId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Community detection completed: {Count} communities in {Time}ms")]
+    private static partial void LogCommunityDetectionCompleted(ILogger logger, int count, double time);
+
+    #endregion
 }

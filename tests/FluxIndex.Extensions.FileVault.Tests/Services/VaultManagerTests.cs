@@ -6,7 +6,7 @@ using FluxIndex.Extensions.FileVault.Options;
 using FluxIndex.Extensions.FileVault.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
+using NSubstitute;
 using Xunit;
 using MsOptions = Microsoft.Extensions.Options.Options;
 
@@ -15,11 +15,11 @@ namespace FluxIndex.Extensions.FileVault.Tests.Services;
 public class VaultManagerTests : IDisposable
 {
     private readonly ContentHasher _contentHasher;
-    private readonly Mock<IGitService> _gitServiceMock;
-    private readonly Mock<IVaultPipeline> _pipelineMock;
-    private readonly Mock<IVaultQueueService> _queueServiceMock;
-    private readonly Mock<IFileWatcherService> _fileWatcherMock;
-    private readonly Mock<IVaultStorageService> _storageMock;
+    private readonly IGitService _gitServiceMock;
+    private readonly IVaultPipeline _pipelineMock;
+    private readonly IVaultQueueService _queueServiceMock;
+    private readonly IFileWatcherService _fileWatcherMock;
+    private readonly IVaultStorageService _storageMock;
     private readonly VaultManager _vault;
     private readonly string _testDir;
     private readonly string _vaultDir;
@@ -27,11 +27,11 @@ public class VaultManagerTests : IDisposable
     public VaultManagerTests()
     {
         _contentHasher = new ContentHasher();
-        _gitServiceMock = new Mock<IGitService>();
-        _pipelineMock = new Mock<IVaultPipeline>();
-        _queueServiceMock = new Mock<IVaultQueueService>();
-        _fileWatcherMock = new Mock<IFileWatcherService>();
-        _storageMock = new Mock<IVaultStorageService>();
+        _gitServiceMock = Substitute.For<IGitService>();
+        _pipelineMock = Substitute.For<IVaultPipeline>();
+        _queueServiceMock = Substitute.For<IVaultQueueService>();
+        _fileWatcherMock = Substitute.For<IFileWatcherService>();
+        _storageMock = Substitute.For<IVaultStorageService>();
 
         // Create test directories first
         _testDir = Path.Combine(Path.GetTempPath(), "FileVaultTests_" + Guid.NewGuid().ToString("N"));
@@ -40,29 +40,21 @@ public class VaultManagerTests : IDisposable
         Directory.CreateDirectory(_vaultDir);
 
         // Setup default mock returns
-        _fileWatcherMock.Setup(f => f.GetAllWatchers()).Returns([]);
-        _storageMock.Setup(s => s.BasePath).Returns(_vaultDir);
-        _storageMock.Setup(s => s.GetStorageSizeAsync(It.IsAny<VaultEntry>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(0L);
-        _storageMock.Setup(s => s.EntryStorageExists(It.IsAny<VaultEntry>())).Returns(false);
-        _storageMock.Setup(s => s.InitializeEntryAsync(It.IsAny<VaultEntry>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+        _fileWatcherMock.GetAllWatchers().Returns([]);
+        _storageMock.BasePath.Returns(_vaultDir);
+        _storageMock.GetStorageSizeAsync(Arg.Any<VaultEntry>(), Arg.Any<CancellationToken>()).Returns(0L);
+        _storageMock.EntryStorageExists(Arg.Any<VaultEntry>()).Returns(false);
+        _storageMock.InitializeEntryAsync(Arg.Any<VaultEntry>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
 
         // Setup pipeline mock to return success
-        _pipelineMock.Setup(p => p.MemorizeAsync(It.IsAny<VaultEntry>(), It.IsAny<MemorizeOptions>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(MemorizeResult.Succeeded(5, 1000, TimeSpan.FromSeconds(1)));
-        _pipelineMock.Setup(p => p.RefreshAsync(It.IsAny<VaultEntry>(), It.IsAny<MemorizeOptions>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(MemorizeResult.Succeeded(5, 1000, TimeSpan.FromSeconds(1)));
-        _pipelineMock.Setup(p => p.ExtractAsync(It.IsAny<VaultEntry>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+        _pipelineMock.MemorizeAsync(Arg.Any<VaultEntry>(), Arg.Any<MemorizeOptions>(), Arg.Any<CancellationToken>()).Returns(MemorizeResult.Succeeded(5, 1000, TimeSpan.FromSeconds(1)));
+        _pipelineMock.RefreshAsync(Arg.Any<VaultEntry>(), Arg.Any<MemorizeOptions>(), Arg.Any<CancellationToken>()).Returns(MemorizeResult.Succeeded(5, 1000, TimeSpan.FromSeconds(1)));
+        _pipelineMock.ExtractAsync(Arg.Any<VaultEntry>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
 
         // Setup queue mock
-        _queueServiceMock.Setup(q => q.EnqueueMemorizeAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string hash, string path, CancellationToken _) => CreateTestJob(hash, path, VaultJobType.Memorize));
-        _queueServiceMock.Setup(q => q.EnqueueRefreshAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string hash, string path, CancellationToken _) => CreateTestJob(hash, path, VaultJobType.Refresh));
-        _queueServiceMock.Setup(q => q.GetStatisticsAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new QueueStatistics());
+        _queueServiceMock.EnqueueMemorizeAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(callInfo => { var hash = callInfo.ArgAt<string>(0); var path = callInfo.ArgAt<string>(1); return CreateTestJob(hash, path, VaultJobType.Memorize); });
+        _queueServiceMock.EnqueueRefreshAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(callInfo => { var hash = callInfo.ArgAt<string>(0); var path = callInfo.ArgAt<string>(1); return CreateTestJob(hash, path, VaultJobType.Refresh); });
+        _queueServiceMock.GetStatisticsAsync(Arg.Any<CancellationToken>()).Returns(new QueueStatistics());
 
         var options = MsOptions.Create(new FileVaultOptions
         {
@@ -73,11 +65,11 @@ public class VaultManagerTests : IDisposable
 
         _vault = new VaultManager(
             _contentHasher,
-            _gitServiceMock.Object,
-            _pipelineMock.Object,
-            _queueServiceMock.Object,
-            _fileWatcherMock.Object,
-            _storageMock.Object,
+            _gitServiceMock,
+            _pipelineMock,
+            _queueServiceMock,
+            _fileWatcherMock,
+            _storageMock,
             logger,
             options);
     }
@@ -109,10 +101,10 @@ public class VaultManagerTests : IDisposable
         // Assert
         result.Should().NotBeNull();
         result.SourcePath.Should().Be(Path.GetFullPath(filePath));
-        _queueServiceMock.Verify(q => q.EnqueueMemorizeAsync(
-            It.IsAny<string>(),
+        await _queueServiceMock.Received(1).EnqueueMemorizeAsync(
+            Arg.Any<string>(),
             Path.GetFullPath(filePath),
-            It.IsAny<CancellationToken>()), Times.Once);
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -136,9 +128,9 @@ public class VaultManagerTests : IDisposable
         await _vault.MemorizeAsync(filePath);
 
         // Assert
-        _storageMock.Verify(s => s.InitializeEntryAsync(
-            It.IsAny<VaultEntry>(),
-            It.IsAny<CancellationToken>()), Times.Once);
+        await _storageMock.Received(1).InitializeEntryAsync(
+            Arg.Any<VaultEntry>(),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -174,10 +166,10 @@ public class VaultManagerTests : IDisposable
 
         // Assert
         result.Should().NotBeNull();
-        _queueServiceMock.Verify(q => q.EnqueueRefreshAsync(
-            It.IsAny<string>(),
+        await _queueServiceMock.Received(1).EnqueueRefreshAsync(
+            Arg.Any<string>(),
             Path.GetFullPath(filePath),
-            It.IsAny<CancellationToken>()), Times.Once);
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -248,18 +240,17 @@ public class VaultManagerTests : IDisposable
         // Arrange - Create entry with metadata on disk
         var filePath = CreateTestFile("test.txt", "Hello, World!");
         CreateEntryWithMetadata(filePath);
-        _gitServiceMock.Setup(g => g.DiffAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("diff output");
+        _gitServiceMock.DiffAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns("diff output");
 
         // Act
         var diff = await _vault.DiffAsync(filePath);
 
         // Assert
         diff.Should().Be("diff output");
-        _gitServiceMock.Verify(g => g.DiffAsync(
-            It.IsAny<string>(),
-            It.IsAny<string>(),
-            It.IsAny<CancellationToken>()), Times.Once);
+        await _gitServiceMock.Received(1).DiffAsync(
+            Arg.Any<string>(),
+            Arg.Any<string>(),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -268,17 +259,16 @@ public class VaultManagerTests : IDisposable
         // Arrange - Create entry with metadata on disk
         var filePath = CreateTestFile("test.txt", "Hello, World!");
         CreateEntryWithMetadata(filePath);
-        _gitServiceMock.Setup(g => g.LogAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync([]);
+        _gitServiceMock.LogAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns([]);
 
         // Act
         var logs = await _vault.LogAsync(filePath);
 
         // Assert
-        _gitServiceMock.Verify(g => g.LogAsync(
-            It.IsAny<string>(),
+        await _gitServiceMock.Received(1).LogAsync(
+            Arg.Any<string>(),
             10,
-            It.IsAny<CancellationToken>()), Times.Once);
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -326,19 +316,17 @@ public class VaultManagerTests : IDisposable
         var filePath = CreateTestFile("test.txt", "Hello, World!");
         CreateEntryWithMetadata(filePath);
 
-        _pipelineMock.Setup(p => p.RemoveAsync(It.IsAny<VaultEntry>(), It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
-        _queueServiceMock.Setup(q => q.EnqueueRemoveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string hash, string path, CancellationToken _) => CreateTestJob(hash, path, VaultJobType.Remove));
+        _pipelineMock.RemoveAsync(Arg.Any<VaultEntry>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+        _queueServiceMock.EnqueueRemoveAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(callInfo => { var hash = callInfo.ArgAt<string>(0); var path = callInfo.ArgAt<string>(1); return CreateTestJob(hash, path, VaultJobType.Remove); });
 
         // Act
         await _vault.RemoveAsync(filePath);
 
         // Assert
-        _queueServiceMock.Verify(q => q.EnqueueRemoveAsync(
-            It.IsAny<string>(),
+        await _queueServiceMock.Received(1).EnqueueRemoveAsync(
+            Arg.Any<string>(),
             Path.GetFullPath(filePath),
-            It.IsAny<CancellationToken>()), Times.Once);
+            Arg.Any<CancellationToken>());
     }
 
     private string CreateTestFile(string fileName, string content)
@@ -528,8 +516,7 @@ public class VaultManagerTests : IDisposable
         File.WriteAllText(filePath, "Modified content that is different");
 
         // Setup git service to return no vault changes
-        _gitServiceMock.Setup(g => g.StatusAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new GitStatus { ModifiedFiles = [] });
+        _gitServiceMock.StatusAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new GitStatus { ModifiedFiles = [] });
 
         // Act
         var changes = await _vault.DetectChangesAsync(filePath);

@@ -14,7 +14,7 @@ namespace FluxIndex.Stack.Api.Controllers;
 [ApiController]
 [Route("mcp")]
 [AllowAnonymous] // MCP endpoints use their own authentication
-public class McpController : ControllerBase
+public partial class McpController : ControllerBase
 {
     private readonly IFluxIndexContext? _fluxIndex;
     private readonly IDocumentService _documentService;
@@ -74,7 +74,7 @@ public class McpController : ControllerBase
         [FromBody] MemorizeRequest request,
         CancellationToken cancellationToken)
     {
-        _logger.LogInformation("MCP Memorize: {Title}", request.Title ?? request.SourcePath);
+        LogMcpMemorize(_logger, request.Title ?? request.SourcePath);
 
         try
         {
@@ -94,7 +94,7 @@ public class McpController : ControllerBase
             // If source path is provided and content is empty, try to read the file
             if (string.IsNullOrEmpty(content) && !string.IsNullOrEmpty(request.SourcePath))
             {
-                if (request.SourcePath.StartsWith("http://") || request.SourcePath.StartsWith("https://"))
+                if (request.SourcePath.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || request.SourcePath.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
                 {
                     // URL - would need WebFlux integration
                     return BadRequest(new McpErrorResponse
@@ -129,7 +129,7 @@ public class McpController : ControllerBase
                     metadataDict,
                     cancellationToken);
 
-                _logger.LogInformation("MCP Memorize completed: {DocumentId}", documentId);
+                LogMcpMemorizeCompleted(_logger, documentId);
 
                 return Ok(new MemorizeResponse
                 {
@@ -167,7 +167,7 @@ public class McpController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "MCP Memorize failed");
+            LogMcpMemorizeFailed(_logger, ex);
             return StatusCode(500, new McpErrorResponse
             {
                 Error = "Memorize failed",
@@ -184,7 +184,7 @@ public class McpController : ControllerBase
         [FromBody] McpSearchRequest request,
         CancellationToken cancellationToken)
     {
-        _logger.LogInformation("MCP Search: {Query}", request.Query);
+        LogMcpSearch(_logger, request.Query);
 
         try
         {
@@ -268,7 +268,7 @@ public class McpController : ControllerBase
                 {
                     DocumentId = r.DocumentId.ToString(),
                     ChunkId = r.ChunkId.ToString(),
-                    Content = r.Content,
+                    Content = r.Content ?? string.Empty,
                     Score = (float)r.Score,
                     Metadata = r.Metadata
                 }).ToList();
@@ -284,7 +284,7 @@ public class McpController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "MCP Search failed");
+            LogMcpSearchFailed(_logger, ex);
             return StatusCode(500, new McpErrorResponse
             {
                 Error = "Search failed",
@@ -314,7 +314,7 @@ public class McpController : ControllerBase
             });
         }
 
-        _logger.LogInformation("MCP Unmemorize: {DocumentId}", docId);
+        LogMcpUnmemorize(_logger, docId);
 
         try
         {
@@ -359,7 +359,7 @@ public class McpController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "MCP Unmemorize failed");
+            LogMcpUnmemorizeFailed(_logger, ex);
             return StatusCode(500, new McpErrorResponse
             {
                 Error = "Unmemorize failed",
@@ -421,7 +421,7 @@ public class McpController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "MCP Status check failed");
+            LogMcpStatusCheckFailed(_logger, ex);
             return StatusCode(500, new McpErrorResponse
             {
                 Error = "Status check failed",
@@ -438,7 +438,7 @@ public class McpController : ControllerBase
         string documentId,
         CancellationToken cancellationToken)
     {
-        _logger.LogInformation("MCP GetChunks: {DocumentId}", documentId);
+        LogMcpGetChunks(_logger, documentId);
 
         try
         {
@@ -506,7 +506,7 @@ public class McpController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "MCP GetChunks failed");
+            LogMcpGetChunksFailed(_logger, ex);
             return StatusCode(500, new McpErrorResponse
             {
                 Error = "GetChunks failed",
@@ -523,7 +523,7 @@ public class McpController : ControllerBase
         string documentId,
         CancellationToken cancellationToken)
     {
-        _logger.LogInformation("MCP Reindex: {DocumentId}", documentId);
+        LogMcpReindex(_logger, documentId);
 
         try
         {
@@ -557,7 +557,7 @@ public class McpController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "MCP Reindex failed");
+            LogMcpReindexFailed(_logger, ex);
             return StatusCode(500, new McpErrorResponse
             {
                 Error = "Reindex failed",
@@ -565,6 +565,46 @@ public class McpController : ControllerBase
             });
         }
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "MCP Memorize: {Title}")]
+    private static partial void LogMcpMemorize(ILogger logger, string? title);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "MCP Memorize completed: {DocumentId}")]
+    private static partial void LogMcpMemorizeCompleted(ILogger logger, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "MCP Memorize failed")]
+    private static partial void LogMcpMemorizeFailed(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "MCP Search: {Query}")]
+    private static partial void LogMcpSearch(ILogger logger, string query);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "MCP Search failed")]
+    private static partial void LogMcpSearchFailed(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "MCP Unmemorize: {DocumentId}")]
+    private static partial void LogMcpUnmemorize(ILogger logger, string? documentId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "MCP Unmemorize failed")]
+    private static partial void LogMcpUnmemorizeFailed(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "MCP Status check failed")]
+    private static partial void LogMcpStatusCheckFailed(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "MCP GetChunks: {DocumentId}")]
+    private static partial void LogMcpGetChunks(ILogger logger, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "MCP GetChunks failed")]
+    private static partial void LogMcpGetChunksFailed(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "MCP Reindex: {DocumentId}")]
+    private static partial void LogMcpReindex(ILogger logger, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "MCP Reindex failed")]
+    private static partial void LogMcpReindexFailed(ILogger logger, Exception? exception);
+
+    #endregion
 }
 
 #region Request/Response DTOs

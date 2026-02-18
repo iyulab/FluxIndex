@@ -18,7 +18,7 @@ namespace FluxIndex.SDK;
 /// <summary>
 /// Indexer - 문서 인덱싱 및 저장 담당 (Phase 3: DX 개선으로 이벤트 및 진행률 모니터링 지원)
 /// </summary>
-public class Indexer
+public partial class Indexer
 {
     private readonly IVectorStore _vectorStore;
     private readonly IDocumentRepository _documentRepository;
@@ -182,7 +182,7 @@ public class Indexer
     {
         var jobId = Guid.NewGuid().ToString();
         var startTime = DateTime.UtcNow;
-        _logger.LogInformation("Indexing document: {DocumentId}, JobId: {JobId}", document.Id, jobId);
+        LogIndexingDocument(_logger, document.Id, jobId);
 
         try
         {
@@ -213,7 +213,7 @@ public class Indexer
             {
                 try
                 {
-                    _logger.LogInformation("Extracting AI metadata for document {DocumentId}", document.Id);
+                    LogExtractingAIMetadata(_logger, document.Id);
 
                     // IndexingOptions에서 AI 메타데이터 설정 확인
                     var indexingOptions = new IndexingOptions();
@@ -255,13 +255,12 @@ public class Indexer
                         document.SetMetadata("MetadataExtractionMethod", extractedMetadata.ExtractionMethod);
                         document.SetMetadata("MetadataConfidence", extractedMetadata.OverallConfidence);
 
-                        _logger.LogInformation("AI metadata extracted: confidence={Confidence}, topics={Topics}",
-                            extractedMetadata.OverallConfidence, extractedMetadata.Topics.Length);
+                        LogAIMetadataExtracted(_logger, extractedMetadata.OverallConfidence, extractedMetadata.Topics.Length);
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Failed to extract AI metadata for document {DocumentId}, continuing without it", document.Id);
+                    LogFailedToExtractAIMetadata(_logger, ex, document.Id);
                     // Continue indexing without AI metadata
                 }
             }
@@ -270,9 +269,9 @@ public class Indexer
             await _documentRepository.AddAsync(document, cancellationToken);
 
             // Process chunks
-            if (!chunks.Any())
+            if (chunks.Count == 0)
             {
-                _logger.LogWarning("Document {DocumentId} has no chunks", document.Id);
+                LogDocumentHasNoChunks(_logger, document.Id);
 
                 IndexingCompleted?.Invoke(this, new IndexingCompletedEventArgs
                 {
@@ -301,7 +300,7 @@ public class Indexer
 
             // Convert to Entity chunks first with automatic oversized chunk splitting
             Console.WriteLine($"=== INDEXER: Converting {chunks.Count} DocumentChunks to entities ===");
-            _logger.LogInformation("=== INDEXER: Converting {Count} DocumentChunks to entities ===", chunks.Count);
+            LogConvertingChunksToEntities(_logger, chunks.Count);
 
             var entityChunks = new List<DocumentChunkEntity>();
             var chunkIndex = 0;
@@ -310,15 +309,13 @@ public class Indexer
             {
                 var estimatedTokens = chunk.Content.Length / 4;
                 Console.WriteLine($"=== INDEXER CHUNK {chunk.ChunkIndex}/{chunks.Count}: {chunk.Content.Length} chars (~{estimatedTokens} tokens) ===");
-                _logger.LogInformation("=== INDEXER CHUNK {Index}/{Total}: {Length} chars (~{Tokens} tokens) ===",
-                    chunk.ChunkIndex, chunks.Count, chunk.Content.Length, estimatedTokens);
+                LogChunkDetails(_logger, chunk.ChunkIndex, chunks.Count, chunk.Content.Length, estimatedTokens);
 
                 // SAFETY: Split oversized chunks automatically (WebFlux chunking bug workaround)
                 if (estimatedTokens > 8000)
                 {
                     Console.WriteLine($"=== INDEXER: Chunk {chunk.ChunkIndex} EXCEEDS TOKEN LIMIT (~{estimatedTokens} tokens) - Auto-splitting ===");
-                    _logger.LogWarning("Chunk {Index} exceeds token limit (~{Tokens} tokens) - splitting into smaller chunks",
-                        chunk.ChunkIndex, estimatedTokens);
+                    LogChunkExceedsTokenLimit(_logger, chunk.ChunkIndex, estimatedTokens);
 
                     // Split into chunks of ~2000 tokens (8000 chars) to be safe
                     const int maxChunkChars = 8000; // ~2000 tokens
@@ -347,8 +344,7 @@ public class Indexer
                         Console.WriteLine($"=== INDEXER: Created sub-chunk {i + 1}/{subChunkCount}: {subContent.Length} chars (~{subContent.Length / 4} tokens) ===");
                     }
 
-                    _logger.LogInformation("Split oversized chunk {Index} into {SubChunks} smaller chunks",
-                        chunk.ChunkIndex, subChunkCount);
+                    LogSplitOversizedChunk(_logger, chunk.ChunkIndex, subChunkCount);
                 }
                 else
                 {
@@ -372,7 +368,7 @@ public class Indexer
                 Message = "Generating embeddings"
             });
 
-            _logger.LogInformation("=== INDEXER: Converted {Count} entities, calling GenerateEmbeddingsAsync ===", entityChunks.Count);
+            LogCallingGenerateEmbeddings(_logger, entityChunks.Count);
 
             // Generate embeddings for entity chunks
             var embeddedEntityChunks = await GenerateEmbeddingsAsync(entityChunks, cancellationToken);
@@ -417,9 +413,9 @@ public class Indexer
                     Message = "Building GraphRAG index"
                 });
 
-                _logger.LogInformation("Building GraphRAG index for document {DocumentId}", document.Id);
+                LogBuildingGraphRAGIndex(_logger, document.Id);
                 await _graphRAGService.BuildIndexAsync(embeddedEntityChunks, options?.GraphRAGOptions, cancellationToken);
-                _logger.LogInformation("GraphRAG index built successfully for document {DocumentId}", document.Id);
+                LogGraphRAGIndexBuilt(_logger, document.Id);
             }
 
             // Phase 3: 진행률 보고 - 완료
@@ -434,8 +430,7 @@ public class Indexer
                 Message = "Indexing completed successfully"
             });
 
-            _logger.LogInformation("Successfully indexed document {DocumentId} with {ChunkCount} chunks",
-                document.Id, chunks.Count);
+            LogSuccessfullyIndexedDocument(_logger, document.Id, chunks.Count);
 
             // Phase 3: 이벤트 발생 - 인덱싱 완료
             IndexingCompleted?.Invoke(this, new IndexingCompletedEventArgs
@@ -452,7 +447,7 @@ public class Indexer
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to index document {DocumentId}", document.Id);
+            LogFailedToIndexDocument(_logger, ex, document.Id);
 
             // Phase 3: 이벤트 발생 - 인덱싱 실패
             IndexingFailed?.Invoke(this, new IndexingFailedEventArgs
@@ -477,7 +472,7 @@ public class Indexer
         CancellationToken cancellationToken = default)
     {
         documentId ??= Guid.NewGuid().ToString();
-        _logger.LogInformation("Indexing chunks as document: {DocumentId}", documentId);
+        LogIndexingChunksAsDocument(_logger, documentId);
 
         // Materialize chunks for multiple iterations
         var chunkList = chunks.ToList();
@@ -535,7 +530,7 @@ public class Indexer
         var documentList = documents.ToList();
         var totalDocuments = documentList.Count;
 
-        _logger.LogInformation("Batch indexing {Count} documents, BatchId: {BatchId}", totalDocuments, batchId);
+        LogBatchIndexing(_logger, totalDocuments, batchId);
 
         // Phase 3: 이벤트 발생 - 배치 시작
         BatchStarted?.Invoke(this, new BatchStartedEventArgs
@@ -595,7 +590,7 @@ public class Indexer
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to index document {DocumentId} in batch {BatchId}", doc.Id, batchId);
+                LogFailedToIndexDocumentInBatch(_logger, ex, doc.Id, batchId);
 
                 // Phase 3: 진행률 업데이트 (실패)
                 lock (lockObject)
@@ -639,8 +634,7 @@ public class Indexer
             FailedItems = failedCount
         });
 
-        _logger.LogInformation("Batch indexing completed. Indexed {Success}/{Total} documents (BatchId: {BatchId})",
-            successCount, totalDocuments, batchId);
+        LogBatchIndexingCompleted(_logger, successCount, totalDocuments, batchId);
 
         // Phase 3: 이벤트 발생 - 배치 완료
         BatchCompleted?.Invoke(this, new BatchCompletedEventArgs
@@ -663,7 +657,7 @@ public class Indexer
         Document updatedDocument,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Updating document: {DocumentId}", documentId);
+        LogUpdatingDocument(_logger, documentId);
 
         // Delete existing chunks
         await _vectorStore.DeleteByDocumentIdAsync(documentId, cancellationToken);
@@ -673,13 +667,13 @@ public class Indexer
 
         // Process new chunks
         var chunks = updatedDocument.Chunks.ToList();
-        if (chunks.Any())
+        if (chunks.Count != 0)
         {
             chunks = await GenerateEmbeddingsAsync(chunks, cancellationToken);
             await _vectorStore.StoreBatchAsync(chunks, cancellationToken);
         }
 
-        _logger.LogInformation("Successfully updated document {DocumentId}", documentId);
+        LogSuccessfullyUpdatedDocument(_logger, documentId);
     }
 
     /// <summary>
@@ -690,8 +684,8 @@ public class Indexer
         IEnumerable<string> chunkTexts,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Adding {Count} chunks to document: {DocumentId}", 
-            chunkTexts.Count(), documentId);
+        var chunkCount = chunkTexts.Count();
+        LogAddingChunks(_logger, chunkCount, documentId);
 
         // Get existing document
         var document = await _documentRepository.GetByIdAsync(documentId, cancellationToken);
@@ -718,8 +712,7 @@ public class Indexer
         newChunks = await GenerateEmbeddingsAsync(newChunks, cancellationToken);
         await _vectorStore.StoreBatchAsync(newChunks, cancellationToken);
 
-        _logger.LogInformation("Successfully added {Count} chunks to document {DocumentId}", 
-            newChunks.Count, documentId);
+        LogSuccessfullyAddedChunks(_logger, newChunks.Count, documentId);
     }
 
     /// <summary>
@@ -729,7 +722,7 @@ public class Indexer
         string documentId,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Deleting document: {DocumentId}", documentId);
+        LogDeletingDocument(_logger, documentId);
 
         try
         {
@@ -741,18 +734,18 @@ public class Indexer
 
             if (deleted)
             {
-                _logger.LogInformation("Successfully deleted document {DocumentId}", documentId);
+                LogSuccessfullyDeletedDocument(_logger, documentId);
             }
             else
             {
-                _logger.LogWarning("Document {DocumentId} not found", documentId);
+                LogDocumentNotFound(_logger, documentId);
             }
 
             return deleted;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to delete document {DocumentId}", documentId);
+            LogFailedToDeleteDocument(_logger, ex, documentId);
             throw;
         }
     }
@@ -764,7 +757,7 @@ public class Indexer
         string chunkId,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Deleting chunk: {ChunkId}", chunkId);
+        LogDeletingChunk(_logger, chunkId);
         return await _vectorStore.DeleteAsync(chunkId, cancellationToken);
     }
 
@@ -775,7 +768,7 @@ public class Indexer
         string documentId,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Reindexing document: {DocumentId}", documentId);
+        LogReindexingDocument(_logger, documentId);
 
         // Get document
         var document = await _documentRepository.GetByIdAsync(documentId, cancellationToken);
@@ -793,8 +786,7 @@ public class Indexer
         await _vectorStore.DeleteByDocumentIdAsync(documentId, cancellationToken);
         await _vectorStore.StoreBatchAsync(chunksList, cancellationToken);
 
-        _logger.LogInformation("Successfully reindexed document {DocumentId} with {ChunkCount} chunks", 
-            documentId, chunksList.Count);
+        LogSuccessfullyReindexedDocument(_logger, documentId, chunksList.Count);
     }
 
     /// <summary>
@@ -826,21 +818,20 @@ public class Indexer
         try
         {
             var texts = chunks.Select(c => c.Content).ToList();
-            _logger.LogInformation("=== INDEXER GenerateEmbeddings: Extracted {Count} texts from chunks ===", texts.Count);
+            LogExtractedTextsFromChunks(_logger, texts.Count);
 
             for (int i = 0; i < texts.Count; i++)
             {
                 var tokens = texts[i].Length / 4;
-                _logger.LogInformation("=== INDEXER TEXT {Index}/{Total}: {Length} chars (~{Tokens} tokens) ===",
-                    i, texts.Count, texts[i].Length, tokens);
+                LogTextDetails(_logger, i, texts.Count, texts[i].Length, tokens);
 
                 if (tokens > 8000)
                 {
-                    _logger.LogError("=== INDEXER TEXT {Index} EXCEEDS LIMIT: ~{Tokens} tokens ===", i, tokens);
+                    LogTextExceedsLimit(_logger, i, tokens);
                 }
             }
 
-            _logger.LogInformation("=== INDEXER: Calling GenerateEmbeddingsBatchAsync with {Count} texts ===", texts.Count);
+            LogCallingGenerateEmbeddingsBatch(_logger, texts.Count);
             var embeddings = await _embeddingService.GenerateEmbeddingsBatchAsync(texts, cancellationToken);
             var embeddingArray = embeddings.ToArray();
 
@@ -859,12 +850,12 @@ public class Indexer
                 };
             }
 
-            _logger.LogInformation("배치 임베딩 생성 완료: {Count}개 청크", chunks.Count);
+            LogBatchEmbeddingCompleted(_logger, chunks.Count);
             return chunks;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "배치 임베딩 실패, 개별 처리로 대체");
+            LogBatchEmbeddingFailed(_logger, ex);
 
             // Fallback: 개별 임베딩 생성 (기존 병렬 처리 방식)
             if (_options.ParallelEmbedding && chunks.Count > 1)
@@ -925,7 +916,7 @@ public class Indexer
         }
     }
 
-    private DocumentChunkEntity ConvertToEntityChunk(DocumentChunkModel modelChunk)
+    private static DocumentChunkEntity ConvertToEntityChunk(DocumentChunkModel modelChunk)
     {
         return DocumentChunkEntity.Create(
             modelChunk.DocumentId,
@@ -935,7 +926,7 @@ public class Indexer
         );
     }
 
-    private DocumentChunkModel ConvertToModelChunk(DocumentChunkEntity entityChunk)
+    private static DocumentChunkModel ConvertToModelChunk(DocumentChunkEntity entityChunk)
     {
         return DocumentChunkModel.Create(
             entityChunk.DocumentId,
@@ -949,7 +940,7 @@ public class Indexer
         );
     }
 
-    private int EstimateTokenCount(string text)
+    private static int EstimateTokenCount(string text)
     {
         // Simple estimation: ~4 characters per token
         return text.Length / 4;
@@ -971,7 +962,7 @@ public class Indexer
         if (metadata == null || metadata.Count == 0)
             throw new ArgumentException("Metadata cannot be null or empty", nameof(metadata));
 
-        _logger.LogInformation("Updating metadata for document {DocumentId}", documentId);
+        LogUpdatingMetadata(_logger, documentId);
 
         // Get existing document
         var document = await _documentRepository.GetByIdAsync(documentId, cancellationToken);
@@ -993,7 +984,7 @@ public class Indexer
         // Save updated document
         await _documentRepository.UpdateAsync(document, cancellationToken);
 
-        _logger.LogInformation("Metadata updated successfully for document {DocumentId}", documentId);
+        LogMetadataUpdated(_logger, documentId);
     }
 
     /// <summary>
@@ -1009,10 +1000,9 @@ public class Indexer
     {
         if (string.IsNullOrWhiteSpace(documentId))
             throw new ArgumentException("Document ID cannot be empty", nameof(documentId));
-        if (correctedMetadata == null)
-            throw new ArgumentNullException(nameof(correctedMetadata));
+        ArgumentNullException.ThrowIfNull(correctedMetadata);
 
-        _logger.LogInformation("Correcting extracted metadata for document {DocumentId}", documentId);
+        LogCorrectingExtractedMetadata(_logger, documentId);
 
         // Get existing document
         var document = await _documentRepository.GetByIdAsync(documentId, cancellationToken);
@@ -1034,7 +1024,7 @@ public class Indexer
         // Save updated document
         await _documentRepository.UpdateAsync(document, cancellationToken);
 
-        _logger.LogInformation("Extracted metadata corrected successfully for document {DocumentId}", documentId);
+        LogExtractedMetadataCorrected(_logger, documentId);
     }
 
     /// <summary>
@@ -1090,12 +1080,12 @@ public class Indexer
         }
 
         var docList = documents.ToList();
-        if (!docList.Any())
+        if (docList.Count == 0)
         {
             throw new ArgumentException("Document list cannot be empty", nameof(documents));
         }
 
-        _logger.LogInformation("Starting batch metadata extraction for {Count} documents", docList.Count);
+        LogStartingBatchMetadataExtraction(_logger, docList.Count);
 
         // Create batch request
         var request = new BatchMetadataExtractionRequest
@@ -1138,9 +1128,7 @@ public class Indexer
             progressCallback,
             cancellationToken);
 
-        _logger.LogInformation(
-            "Batch metadata extraction completed: {Successful}/{Total} documents succeeded",
-            result.SuccessfulItems, result.TotalItems);
+        LogBatchMetadataExtractionCompleted(_logger, result.SuccessfulItems, result.TotalItems);
 
         return result;
     }
@@ -1160,14 +1148,14 @@ public class Indexer
         CancellationToken cancellationToken = default)
     {
         var docList = documents.ToList();
-        if (!docList.Any())
+        if (docList.Count == 0)
         {
             throw new ArgumentException("Document list cannot be empty", nameof(documents));
         }
 
         options ??= new IndexingOptions();
 
-        _logger.LogInformation("Starting batch document indexing for {Count} documents", docList.Count);
+        LogStartingBatchDocumentIndexing(_logger, docList.Count);
 
         var result = new BatchIndexingResult
         {
@@ -1210,7 +1198,7 @@ public class Indexer
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to index document: {DocumentId}", documentId);
+                LogFailedToIndexDocumentWarning(_logger, ex, documentId);
 
                 result.FailedDocuments++;
                 result.Results.Add(new IndexingResult
@@ -1243,12 +1231,146 @@ public class Indexer
             Message = $"Batch indexing completed: {result.SuccessfulDocuments} succeeded, {result.FailedDocuments} failed"
         });
 
-        _logger.LogInformation(
-            "Batch document indexing completed: {Successful}/{Total} documents succeeded, Time={Time}ms",
-            result.SuccessfulDocuments, result.TotalDocuments, result.TotalProcessingTime.TotalMilliseconds);
+        LogBatchDocumentIndexingCompleted(_logger, result.SuccessfulDocuments, result.TotalDocuments, result.TotalProcessingTime.TotalMilliseconds);
 
         return result;
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Indexing document {DocumentId}, JobId: {JobId}")]
+    private static partial void LogIndexingDocument(ILogger logger, string documentId, string jobId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Extracting AI metadata for document {DocumentId}")]
+    private static partial void LogExtractingAIMetadata(ILogger logger, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "AI metadata extracted: confidence={Confidence}, topics={TopicCount}")]
+    private static partial void LogAIMetadataExtracted(ILogger logger, float confidence, int topicCount);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to extract AI metadata for document {DocumentId}, continuing without it")]
+    private static partial void LogFailedToExtractAIMetadata(ILogger logger, Exception exception, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Document {DocumentId} has no chunks")]
+    private static partial void LogDocumentHasNoChunks(ILogger logger, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Converting {Count} DocumentChunks to entities")]
+    private static partial void LogConvertingChunksToEntities(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Chunk {Index}/{Total}: {Length} chars (~{Tokens} tokens)")]
+    private static partial void LogChunkDetails(ILogger logger, int index, int total, int length, int tokens);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Chunk {Index} exceeds token limit (~{Tokens} tokens) - splitting into smaller chunks")]
+    private static partial void LogChunkExceedsTokenLimit(ILogger logger, int index, int tokens);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Split oversized chunk {Index} into {SubChunks} smaller chunks")]
+    private static partial void LogSplitOversizedChunk(ILogger logger, int index, int subChunks);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Converted {Count} entities, calling GenerateEmbeddingsAsync")]
+    private static partial void LogCallingGenerateEmbeddings(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Building GraphRAG index for document {DocumentId}")]
+    private static partial void LogBuildingGraphRAGIndex(ILogger logger, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "GraphRAG index built successfully for document {DocumentId}")]
+    private static partial void LogGraphRAGIndexBuilt(ILogger logger, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Successfully indexed document {DocumentId} with {ChunkCount} chunks")]
+    private static partial void LogSuccessfullyIndexedDocument(ILogger logger, string documentId, int chunkCount);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to index document {DocumentId}")]
+    private static partial void LogFailedToIndexDocument(ILogger logger, Exception exception, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Indexing chunks as document: {DocumentId}")]
+    private static partial void LogIndexingChunksAsDocument(ILogger logger, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Batch indexing {Count} documents, BatchId: {BatchId}")]
+    private static partial void LogBatchIndexing(ILogger logger, int count, string batchId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to index document {DocumentId} in batch {BatchId}")]
+    private static partial void LogFailedToIndexDocumentInBatch(ILogger logger, Exception exception, string documentId, string batchId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Batch indexing completed. Indexed {Success}/{Total} documents (BatchId: {BatchId})")]
+    private static partial void LogBatchIndexingCompleted(ILogger logger, int success, int total, string batchId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Updating document: {DocumentId}")]
+    private static partial void LogUpdatingDocument(ILogger logger, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Successfully updated document {DocumentId}")]
+    private static partial void LogSuccessfullyUpdatedDocument(ILogger logger, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Adding {Count} chunks to document: {DocumentId}")]
+    private static partial void LogAddingChunks(ILogger logger, int count, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Successfully added {Count} chunks to document {DocumentId}")]
+    private static partial void LogSuccessfullyAddedChunks(ILogger logger, int count, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Deleting document: {DocumentId}")]
+    private static partial void LogDeletingDocument(ILogger logger, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Successfully deleted document {DocumentId}")]
+    private static partial void LogSuccessfullyDeletedDocument(ILogger logger, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Document {DocumentId} not found")]
+    private static partial void LogDocumentNotFound(ILogger logger, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to delete document {DocumentId}")]
+    private static partial void LogFailedToDeleteDocument(ILogger logger, Exception exception, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Deleting chunk: {ChunkId}")]
+    private static partial void LogDeletingChunk(ILogger logger, string chunkId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Reindexing document: {DocumentId}")]
+    private static partial void LogReindexingDocument(ILogger logger, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Successfully reindexed document {DocumentId} with {ChunkCount} chunks")]
+    private static partial void LogSuccessfullyReindexedDocument(ILogger logger, string documentId, int chunkCount);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Extracted {Count} texts from chunks for embedding")]
+    private static partial void LogExtractedTextsFromChunks(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Text {Index}/{Total}: {Length} chars (~{Tokens} tokens)")]
+    private static partial void LogTextDetails(ILogger logger, int index, int total, int length, int tokens);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Text {Index} exceeds limit: ~{Tokens} tokens")]
+    private static partial void LogTextExceedsLimit(ILogger logger, int index, int tokens);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Calling GenerateEmbeddingsBatchAsync with {Count} texts")]
+    private static partial void LogCallingGenerateEmbeddingsBatch(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Batch embedding completed: {Count} chunks")]
+    private static partial void LogBatchEmbeddingCompleted(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Batch embedding failed, falling back to individual processing")]
+    private static partial void LogBatchEmbeddingFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Updating metadata for document {DocumentId}")]
+    private static partial void LogUpdatingMetadata(ILogger logger, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Metadata updated successfully for document {DocumentId}")]
+    private static partial void LogMetadataUpdated(ILogger logger, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Correcting extracted metadata for document {DocumentId}")]
+    private static partial void LogCorrectingExtractedMetadata(ILogger logger, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Extracted metadata corrected successfully for document {DocumentId}")]
+    private static partial void LogExtractedMetadataCorrected(ILogger logger, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting batch metadata extraction for {Count} documents")]
+    private static partial void LogStartingBatchMetadataExtraction(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Batch metadata extraction completed: {Successful}/{Total} documents succeeded")]
+    private static partial void LogBatchMetadataExtractionCompleted(ILogger logger, int successful, int total);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting batch document indexing for {Count} documents")]
+    private static partial void LogStartingBatchDocumentIndexing(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to index document: {DocumentId}")]
+    private static partial void LogFailedToIndexDocumentWarning(ILogger logger, Exception exception, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Batch document indexing completed: {Successful}/{Total} documents succeeded, Time={Time}ms")]
+    private static partial void LogBatchDocumentIndexingCompleted(ILogger logger, int successful, int total, double time);
+
+    #endregion
 }
 
 /// <summary>

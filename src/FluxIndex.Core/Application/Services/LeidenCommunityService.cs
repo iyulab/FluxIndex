@@ -18,8 +18,10 @@ namespace FluxIndex.Core.Application.Services;
 /// Reference: Traag, V.A., Waltman, L. &amp; van Eck, N.J. From Louvain to Leiden:
 /// guaranteeing well-connected communities. Sci Rep 9, 5233 (2019).
 /// </summary>
-public class LeidenCommunityService : ILeidenCommunityService
+public partial class LeidenCommunityService : ILeidenCommunityService
 {
+    private static readonly char[] WordSplitSeparators = [' ', '\t', '\n', '\r', '.', ',', '!', '?', ';', ':', '"', '\''];
+
     private readonly ITextCompletionService? _llmService;
     private readonly ILogger<LeidenCommunityService> _logger;
     private Random _random = new();
@@ -57,7 +59,7 @@ public class LeidenCommunityService : ILeidenCommunityService
             ? new Random(options.RandomSeed.Value)
             : new Random();
 
-        _logger.LogDebug("Starting Leiden community detection on {Count} chunks", chunkList.Count);
+        LogLeidenCommunity4(_logger, chunkList.Count);
 
         // Step 1: Build similarity graph
         var graph = BuildSimilarityGraph(chunkList, options);
@@ -102,9 +104,8 @@ public class LeidenCommunityService : ILeidenCommunityService
                 Resolution = options.Resolution
             });
 
-            _logger.LogDebug(
-                "Level {Level}: {Communities} communities, modularity {Modularity:F4}",
-                level, communities.Count, modularity);
+            if (_logger.IsEnabled(LogLevel.Debug))
+                LogLeidenCommunity3(_logger, level, communities.Count, modularity);
 
             // Check if we should stop
             if (communities.Count == 1 ||
@@ -148,11 +149,8 @@ public class LeidenCommunityService : ILeidenCommunityService
             }
         }
 
-        _logger.LogInformation(
-            "Leiden detection complete: {Levels} levels, {Communities} communities at finest level in {Time}ms",
-            hierarchy.LevelCount,
-            levels.FirstOrDefault()?.CommunityCount ?? 0,
-            stopwatch.ElapsedMilliseconds);
+        if (_logger.IsEnabled(LogLevel.Debug))
+            LogLeidenCommunity2(_logger, hierarchy.LevelCount, levels.FirstOrDefault()?.CommunityCount ?? 0, stopwatch.ElapsedMilliseconds);
 
         return hierarchy;
     }
@@ -249,7 +247,7 @@ public class LeidenCommunityService : ILeidenCommunityService
     /// <summary>
     /// Builds a k-NN similarity graph from chunk embeddings
     /// </summary>
-    private Dictionary<int, List<(int neighbor, double weight)>> BuildSimilarityGraph(
+    private static Dictionary<int, List<(int neighbor, double weight)>> BuildSimilarityGraph(
         List<LeidenChunk> chunks,
         LeidenOptions options)
     {
@@ -299,7 +297,7 @@ public class LeidenCommunityService : ILeidenCommunityService
     /// <summary>
     /// Initializes each node in its own community
     /// </summary>
-    private Dictionary<int, int> InitializePartition(List<LeidenChunk> chunks)
+    private static Dictionary<int, int> InitializePartition(List<LeidenChunk> chunks)
     {
         return chunks.Select((_, i) => i).ToDictionary(i => i, i => i);
     }
@@ -307,7 +305,7 @@ public class LeidenCommunityService : ILeidenCommunityService
     /// <summary>
     /// Resets partition for aggregated graph
     /// </summary>
-    private Dictionary<int, int> ResetPartition(int count)
+    private static Dictionary<int, int> ResetPartition(int count)
     {
         return Enumerable.Range(0, count).ToDictionary(i => i, i => i);
     }
@@ -400,7 +398,7 @@ public class LeidenCommunityService : ILeidenCommunityService
     /// <summary>
     /// Refines partition to ensure well-connected communities
     /// </summary>
-    private Dictionary<int, int> RefinePartition(
+    private static Dictionary<int, int> RefinePartition(
         Dictionary<int, List<(int neighbor, double weight)>> graph,
         Dictionary<int, int> partition,
         double resolution,
@@ -448,7 +446,7 @@ public class LeidenCommunityService : ILeidenCommunityService
     /// <summary>
     /// Finds connected components in a subgraph
     /// </summary>
-    private List<List<int>> FindConnectedComponents(Dictionary<int, List<int>> subgraph)
+    private static List<List<int>> FindConnectedComponents(Dictionary<int, List<int>> subgraph)
     {
         var visited = new HashSet<int>();
         var components = new List<List<int>>();
@@ -487,7 +485,7 @@ public class LeidenCommunityService : ILeidenCommunityService
     /// <summary>
     /// Calculates modularity of the current partition
     /// </summary>
-    private double CalculateModularity(
+    private static double CalculateModularity(
         Dictionary<int, List<(int neighbor, double weight)>> graph,
         Dictionary<int, int> partition,
         double resolution,
@@ -531,7 +529,7 @@ public class LeidenCommunityService : ILeidenCommunityService
     /// <summary>
     /// Calculates modularity gain for moving a node to a new community
     /// </summary>
-    private double CalculateModularityGain(
+    private static double CalculateModularityGain(
         Dictionary<int, List<(int neighbor, double weight)>> graph,
         Dictionary<int, int> partition,
         int node,
@@ -589,7 +587,7 @@ public class LeidenCommunityService : ILeidenCommunityService
     /// <summary>
     /// Renumbers communities to be consecutive starting from 0
     /// </summary>
-    private Dictionary<int, int> RenumberCommunities(Dictionary<int, int> partition)
+    private static Dictionary<int, int> RenumberCommunities(Dictionary<int, int> partition)
     {
         var communityMap = partition.Values.Distinct().Select((c, i) => (c, i))
             .ToDictionary(x => x.c, x => x.i);
@@ -600,7 +598,7 @@ public class LeidenCommunityService : ILeidenCommunityService
     /// <summary>
     /// Aggregates graph by combining nodes in the same community
     /// </summary>
-    private Dictionary<int, List<(int neighbor, double weight)>> AggregateGraph(
+    private static Dictionary<int, List<(int neighbor, double weight)>> AggregateGraph(
         Dictionary<int, List<(int neighbor, double weight)>> graph,
         Dictionary<int, int> partition)
     {
@@ -647,7 +645,7 @@ public class LeidenCommunityService : ILeidenCommunityService
     /// <summary>
     /// Builds communities from the final partition
     /// </summary>
-    private List<LeidenCommunity> BuildCommunitiesFromPartition(
+    private static List<LeidenCommunity> BuildCommunitiesFromPartition(
         Dictionary<int, int> partition,
         List<LeidenChunk> chunks,
         int level,
@@ -679,7 +677,9 @@ public class LeidenCommunityService : ILeidenCommunityService
             var keywords = ExtractKeywords(contents);
 
             // Select representative chunks (closest to centroid)
-            var representatives = SelectRepresentatives(embeddings, centroid, chunkIds, 3);
+            var representatives = centroid is not null
+                ? SelectRepresentatives(embeddings, centroid, chunkIds, 3)
+                : chunkIds.Take(3).ToList();
 
             communities.Add(new LeidenCommunity
             {
@@ -698,7 +698,7 @@ public class LeidenCommunityService : ILeidenCommunityService
     /// <summary>
     /// Links parent-child relationships between hierarchy levels
     /// </summary>
-    private void LinkHierarchyLevels(List<CommunityLevel> levels)
+    private static void LinkHierarchyLevels(List<CommunityLevel> levels)
     {
         for (int i = 0; i < levels.Count - 1; i++)
         {
@@ -765,12 +765,12 @@ public class LeidenCommunityService : ILeidenCommunityService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to generate summary for community {Id}", community.Id);
+            LogLeidenCommunity1(_logger, ex, community.Id);
             return null;
         }
     }
 
-    private string BuildSummaryPrompt(LeidenCommunity community)
+    private static string BuildSummaryPrompt(LeidenCommunity community)
     {
         return $"""
             Summarize the main theme of this document cluster in 1-2 sentences.
@@ -889,7 +889,7 @@ public class LeidenCommunityService : ILeidenCommunityService
 
         foreach (var content in contents)
         {
-            var words = content.Split(new[] { ' ', '\t', '\n', '\r', '.', ',', '!', '?', ';', ':', '"', '\'' },
+            var words = content.Split(WordSplitSeparators,
                 StringSplitOptions.RemoveEmptyEntries);
 
             foreach (var word in words)
@@ -937,6 +937,19 @@ public class LeidenCommunityService : ILeidenCommunityService
             (list[i], list[j]) = (list[j], list[i]);
         }
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Starting Leiden community detection on {Count} chunks")]
+    private static partial void LogLeidenCommunity4(ILogger logger, int count);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Level {Level}: {Communities} communities, modularity {Modularity:F4}")]
+    private static partial void LogLeidenCommunity3(ILogger logger, int level, int communities, double modularity);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Leiden detection complete: {Levels} levels, {Communities} communities at finest level in {Time}ms")]
+    private static partial void LogLeidenCommunity2(ILogger logger, int levels, int communities, long time);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to generate summary for community {Id}")]
+    private static partial void LogLeidenCommunity1(ILogger logger, Exception exception, string id);
 
     #endregion
 }

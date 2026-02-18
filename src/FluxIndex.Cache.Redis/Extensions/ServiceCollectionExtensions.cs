@@ -24,11 +24,9 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         string connectionString)
     {
-        if (services == null)
-            throw new ArgumentNullException(nameof(services));
+        ArgumentNullException.ThrowIfNull(services);
 
-        if (connectionString == null)
-            throw new ArgumentNullException(nameof(connectionString));
+        ArgumentNullException.ThrowIfNull(connectionString);
 
         return services.AddRedisSemanticCache(options =>
         {
@@ -46,11 +44,9 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         Action<RedisSemanticCacheOptions> configureOptions)
     {
-        if (services == null)
-            throw new ArgumentNullException(nameof(services));
+        ArgumentNullException.ThrowIfNull(services);
 
-        if (configureOptions == null)
-            throw new ArgumentNullException(nameof(configureOptions));
+        ArgumentNullException.ThrowIfNull(configureOptions);
 
         var options = new RedisSemanticCacheOptions();
         configureOptions(options);
@@ -87,11 +83,9 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         Action<RedisSemanticCacheOptions> configureOptions)
     {
-        if (services == null)
-            throw new ArgumentNullException(nameof(services));
+        ArgumentNullException.ThrowIfNull(services);
 
-        if (configureOptions == null)
-            throw new ArgumentNullException(nameof(configureOptions));
+        ArgumentNullException.ThrowIfNull(configureOptions);
 
         // Redis 캐시 옵션만 등록 (연결은 이미 등록된 것을 사용)
         services.Configure(configureOptions);

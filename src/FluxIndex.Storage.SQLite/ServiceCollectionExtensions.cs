@@ -323,7 +323,7 @@ public static class ServiceCollectionExtensions
 /// <summary>
 /// SQLite 양자화 데이터베이스 마이그레이션 서비스
 /// </summary>
-internal class SQLiteQuantizedMigrationService : IHostedService
+internal sealed partial class SQLiteQuantizedMigrationService : IHostedService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<SQLiteQuantizedMigrationService> _logger;
@@ -338,7 +338,7 @@ internal class SQLiteQuantizedMigrationService : IHostedService
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Starting SQLite quantized database migration");
+        LogMigrationStarting(_logger);
 
         using var scope = _serviceProvider.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<SQLiteQuantizedDbContext>();
@@ -353,22 +353,35 @@ internal class SQLiteQuantizedMigrationService : IHostedService
                 await SQLitePragmaHelper.ApplyPragmaOptimizationsAsync(context, options, _logger, cancellationToken);
             }
 
-            _logger.LogInformation("SQLite quantized database migration completed");
+            LogMigrationCompleted(_logger);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "SQLite quantized database migration failed");
+            LogMigrationFailed(_logger, ex);
             throw;
         }
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting SQLite quantized database migration")]
+    private static partial void LogMigrationStarting(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "SQLite quantized database migration completed")]
+    private static partial void LogMigrationCompleted(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "SQLite quantized database migration failed")]
+    private static partial void LogMigrationFailed(ILogger logger, Exception exception);
+
+    #endregion
 }
 
 /// <summary>
 /// SQLite PRAGMA 최적화 설정 헬퍼
 /// </summary>
-internal static class SQLitePragmaHelper
+internal static partial class SQLitePragmaHelper
 {
     /// <summary>
     /// 공통 PRAGMA 최적화 설정을 적용합니다.
@@ -387,7 +400,7 @@ internal static class SQLitePragmaHelper
         // 동기화 모드 설정 (내부적으로 제어되는 enum 값 - SQL injection 안전)
 #pragma warning disable EF1002
         await context.Database.ExecuteSqlRawAsync(
-            $"PRAGMA synchronous={options.Synchronous.ToString().ToUpper()}",
+            $"PRAGMA synchronous={options.Synchronous.ToString().ToUpperInvariant()}",
             cancellationToken);
 #pragma warning restore EF1002
 
@@ -411,7 +424,7 @@ internal static class SQLitePragmaHelper
         // 임시 저장소 설정
 #pragma warning disable EF1002
         await context.Database.ExecuteSqlRawAsync(
-            $"PRAGMA temp_store={options.TempStore.ToString().ToUpper()}",
+            $"PRAGMA temp_store={options.TempStore.ToString().ToUpperInvariant()}",
             cancellationToken);
 #pragma warning restore EF1002
 
@@ -436,16 +449,22 @@ internal static class SQLitePragmaHelper
             cancellationToken);
 #pragma warning restore EF1002
 
-        logger.LogInformation(
-            "SQLite 성능 최적화 설정 완료: WAL 모드, {CacheSize}KB 캐시, {MmapSize}B mmap, Temp={TempStore}",
-            Math.Abs(options.CacheSize), options.MmapSize, options.TempStore);
+        var cacheSize = Math.Abs(options.CacheSize);
+        LogPragmaOptimizationsApplied(logger, cacheSize, options.MmapSize, options.TempStore);
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "SQLite 성능 최적화 설정 완료: WAL 모드, {CacheSize}KB 캐시, {MmapSize}B mmap, Temp={TempStore}")]
+    private static partial void LogPragmaOptimizationsApplied(ILogger logger, int cacheSize, long mmapSize, TempStoreMode tempStore);
+
+    #endregion
 }
 
 /// <summary>
 /// SQLite 데이터베이스 마이그레이션 서비스
 /// </summary>
-internal class SQLiteMigrationService : IHostedService
+internal sealed partial class SQLiteMigrationService : IHostedService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<SQLiteMigrationService> _logger;
@@ -460,7 +479,7 @@ internal class SQLiteMigrationService : IHostedService
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Starting SQLite database migration");
+        LogMigrationStarting(_logger);
 
         using var scope = _serviceProvider.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<SQLiteDbContext>();
@@ -477,11 +496,11 @@ internal class SQLiteMigrationService : IHostedService
                 await SQLitePragmaHelper.ApplyPragmaOptimizationsAsync(context, options, _logger, cancellationToken);
             }
 
-            _logger.LogInformation("SQLite database migration completed successfully");
+            LogMigrationCompleted(_logger);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "SQLite database migration failed");
+            LogMigrationFailed(_logger, ex);
             throw;
         }
     }
@@ -490,12 +509,25 @@ internal class SQLiteMigrationService : IHostedService
     {
         return Task.CompletedTask;
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting SQLite database migration")]
+    private static partial void LogMigrationStarting(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "SQLite database migration completed successfully")]
+    private static partial void LogMigrationCompleted(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "SQLite database migration failed")]
+    private static partial void LogMigrationFailed(ILogger logger, Exception exception);
+
+    #endregion
 }
 
 /// <summary>
 /// SQLite-vec 데이터베이스 초기화 및 마이그레이션 서비스
 /// </summary>
-internal class SQLiteVecMigrationService : IHostedService
+internal sealed partial class SQLiteVecMigrationService : IHostedService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<SQLiteVecMigrationService> _logger;
@@ -510,7 +542,7 @@ internal class SQLiteVecMigrationService : IHostedService
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("SQLite-vec 데이터베이스 초기화 시작");
+        LogVecInitStarting(_logger);
 
         using var scope = _serviceProvider.CreateScope();
 
@@ -531,17 +563,17 @@ internal class SQLiteVecMigrationService : IHostedService
                 await SQLitePragmaHelper.ApplyPragmaOptimizationsAsync(context, options, _logger, cancellationToken);
             }
 
-            _logger.LogInformation("SQLite-vec 데이터베이스 초기화 완료");
+            LogVecInitCompleted(_logger);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "SQLite-vec 데이터베이스 초기화 실패");
+            LogVecInitFailed(_logger, ex);
 
             // 옵션에 따라 폴백 모드 여부 결정
             var options = scope.ServiceProvider.GetService<IOptions<SQLiteVecOptions>>()?.Value;
             if (options?.FallbackToInMemoryOnError == true)
             {
-                _logger.LogInformation("폴백 모드로 계속 진행");
+                LogVecFallbackContinue(_logger);
             }
             else
             {
@@ -554,4 +586,20 @@ internal class SQLiteVecMigrationService : IHostedService
     {
         return Task.CompletedTask;
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "SQLite-vec 데이터베이스 초기화 시작")]
+    private static partial void LogVecInitStarting(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "SQLite-vec 데이터베이스 초기화 완료")]
+    private static partial void LogVecInitCompleted(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "SQLite-vec 데이터베이스 초기화 실패")]
+    private static partial void LogVecInitFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "폴백 모드로 계속 진행")]
+    private static partial void LogVecFallbackContinue(ILogger logger);
+
+    #endregion
 }

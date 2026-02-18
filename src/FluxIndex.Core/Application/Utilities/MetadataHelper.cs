@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using FluxIndex.Core.Domain.Entities;
+using System.Globalization;
 
 namespace FluxIndex.Core.Application.Utilities;
 
@@ -112,7 +113,7 @@ public static class MetadataHelper
         // Try conversion for common types
         try
         {
-            return (T)Convert.ChangeType(value, typeof(T));
+            return (T)Convert.ChangeType(value, typeof(T), CultureInfo.InvariantCulture);
         }
         catch
         {

@@ -11,7 +11,7 @@ namespace FluxIndex.Stack.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/v1/[controller]")]
-public class DocumentsController : ControllerBase
+public partial class DocumentsController : ControllerBase
 {
     private readonly IDocumentService _documentService;
     private readonly IDocumentContentProvider? _contentProvider;
@@ -108,7 +108,7 @@ public class DocumentsController : ControllerBase
         await using var stream = file.OpenReadStream();
         var response = await _documentService.UploadAsync(request, stream, file.FileName, cancellationToken);
 
-        _logger.LogInformation("Document uploaded: {DocumentId} - {Title}", response.DocumentId, title);
+        LogDocumentUploaded(_logger, response.DocumentId, title);
 
         return CreatedAtAction(
             nameof(GetDocument),
@@ -131,7 +131,7 @@ public class DocumentsController : ControllerBase
 
         var response = await _documentService.UploadContentAsync(request, cancellationToken);
 
-        _logger.LogInformation("Document content uploaded: {DocumentId} - {Title}", response.DocumentId, request.Title);
+        LogDocumentContentUploaded(_logger, response.DocumentId, request.Title);
 
         return CreatedAtAction(
             nameof(GetDocument),
@@ -156,7 +156,7 @@ public class DocumentsController : ControllerBase
         try
         {
             var document = await _documentService.UpdateAsync(id, request, cancellationToken);
-            _logger.LogInformation("Document updated: {DocumentId}", id);
+            LogDocumentUpdated(_logger, id);
             return Ok(ApiResponse<DocumentDto>.Ok(document, "Document updated successfully."));
         }
         catch (KeyNotFoundException)
@@ -181,7 +181,7 @@ public class DocumentsController : ControllerBase
         try
         {
             await _documentService.DeleteAsync(id, cancellationToken);
-            _logger.LogInformation("Document deleted: {DocumentId}", id);
+            LogDocumentDeleted(_logger, id);
             return Ok(ApiResponse<object>.Ok(null!, "Document deleted successfully."));
         }
         catch (KeyNotFoundException)
@@ -206,7 +206,7 @@ public class DocumentsController : ControllerBase
         try
         {
             await _documentService.ReindexAsync(id, cancellationToken);
-            _logger.LogInformation("Document queued for reindexing: {DocumentId}", id);
+            LogDocumentQueuedForReindexing(_logger, id);
             return Ok(ApiResponse<object>.Ok(null!, "Document queued for reindexing."));
         }
         catch (KeyNotFoundException)
@@ -236,8 +236,7 @@ public class DocumentsController : ControllerBase
         try
         {
             var response = await _documentService.GenerateQAAsync(id, maxPairs, cancellationToken);
-            _logger.LogInformation("Generated {Count} Q&A pairs for document: {DocumentId}",
-                response.QAPairsGenerated, id);
+            LogGeneratedQAPairs(_logger, response.QAPairsGenerated, id);
             return Ok(ApiResponse<GenerateQAResponse>.Ok(response));
         }
         catch (KeyNotFoundException)
@@ -315,6 +314,28 @@ public class DocumentsController : ControllerBase
             ImageIds = imageIds.ToArray()
         }));
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Document uploaded: {DocumentId} - {Title}")]
+    private static partial void LogDocumentUploaded(ILogger logger, Guid documentId, string title);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Document content uploaded: {DocumentId} - {Title}")]
+    private static partial void LogDocumentContentUploaded(ILogger logger, Guid documentId, string title);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Document updated: {DocumentId}")]
+    private static partial void LogDocumentUpdated(ILogger logger, Guid documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Document deleted: {DocumentId}")]
+    private static partial void LogDocumentDeleted(ILogger logger, Guid documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Document queued for reindexing: {DocumentId}")]
+    private static partial void LogDocumentQueuedForReindexing(ILogger logger, Guid documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Generated {Count} Q&A pairs for document: {DocumentId}")]
+    private static partial void LogGeneratedQAPairs(ILogger logger, int count, Guid documentId);
+
+    #endregion
 }
 
 /// <summary>

@@ -12,7 +12,7 @@ namespace FluxIndex.Core.Services;
 /// <summary>
 /// 쿼리 복잡도 분석기 구현체
 /// </summary>
-public class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
+public partial class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
 {
     private readonly ILogger<QueryComplexityAnalyzer> _logger;
 
@@ -145,7 +145,8 @@ public class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
             }
         };
 
-        _logger.LogDebug("쿼리 분석 완료: {Query} → {Type}, {Complexity}", query, analysis.Type, analysis.Complexity);
+        if (_logger.IsEnabled(LogLevel.Debug))
+            LogQueryComplexity2(_logger, query, analysis.Type, analysis.Complexity);
 
         return analysis;
     }
@@ -176,15 +177,15 @@ public class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
         CancellationToken cancellationToken = default)
     {
         // 실제 구현에서는 성능 데이터베이스에 저장
-        _logger.LogDebug("성능 통계 업데이트: {QueryType}, 결과 수: {ResultCount}",
-            analysis.Type, result.ResultCount);
+        if (_logger.IsEnabled(LogLevel.Debug))
+            LogQueryComplexity1(_logger, analysis.Type, result.ResultCount);
 
         await Task.CompletedTask;
     }
 
     #region Private Methods
 
-    private List<string> DetectTechnicalDomains(string query, string[] tokens)
+    private static List<string> DetectTechnicalDomains(string query, string[] tokens)
     {
         var domains = new List<string>();
         var lowerQuery = query.ToLowerInvariant();
@@ -197,7 +198,7 @@ public class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
             // Check multi-word terms in the query
             var multiWordMatches = terms
                 .Where(term => term.Contains(' '))
-                .Count(term => lowerQuery.Contains(term.ToLowerInvariant()));
+                .Count(term => lowerQuery.Contains(term, StringComparison.OrdinalIgnoreCase));
 
             if (tokenMatches > 0 || multiWordMatches > 0)
             {
@@ -208,7 +209,7 @@ public class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
         return domains;
     }
 
-    private string[] TokenizeQuery(string query)
+    private static string[] TokenizeQuery(string query)
     {
         // 단순한 토크나이징: 공백 및 구두점으로 분리
         return Regex.Split(query.ToLowerInvariant(), @"\s+|[.,;:!?()""']")
@@ -216,7 +217,7 @@ public class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
             .ToArray();
     }
 
-    private QueryType DetermineQueryType(string query, string[] tokens)
+    private static QueryType DetermineQueryType(string query, string[] tokens)
     {
         // 질문 단어가 있으면 자연어 질문
         if (tokens.Any(t => QuestionWords.Contains(t)))
@@ -258,7 +259,7 @@ public class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
         return QueryType.SimpleKeyword;
     }
 
-    private ComplexityLevel DetermineComplexityLevel(string query, string[] tokens)
+    private static ComplexityLevel DetermineComplexityLevel(string query, string[] tokens)
     {
         var complexityScore = 0;
 
@@ -309,7 +310,7 @@ public class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
         };
     }
 
-    private double CalculateSpecificity(string[] tokens)
+    private static double CalculateSpecificity(string[] tokens)
     {
         // 고유 토큰 비율과 기술 용어 비율로 특정성 계산
         var uniqueTokens = tokens.Distinct().Count();
@@ -322,26 +323,26 @@ public class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
         return Math.Min(1.0, (uniquenessRatio + technicalRatio) / 2.0);
     }
 
-    private List<string> ExtractEntities(string[] tokens)
+    private static List<string> ExtractEntities(string[] tokens)
     {
         // 대문자로 시작하는 단어를 개체명으로 간주
         return tokens.Where(t => t.Length > 1 && char.IsUpper(t[0])).ToList();
     }
 
-    private List<string> ExtractConcepts(string[] tokens)
+    private static List<string> ExtractConcepts(string[] tokens)
     {
         // 기술 용어와 긴 단어들을 개념으로 간주
         return tokens.Where(t => TechnicalTerms.Contains(t) || t.Length > 6).ToList();
     }
 
-    private List<string> ExtractKeywords(string[] tokens)
+    private static List<string> ExtractKeywords(string[] tokens)
     {
         // 불용어 제외한 의미 있는 키워드들
         var stopWords = new HashSet<string> { "the", "a", "an", "is", "are", "was", "were", "을", "를", "이", "가", "은", "는" };
         return tokens.Where(t => !stopWords.Contains(t) && t.Length > 2).ToList();
     }
 
-    private QueryIntent DetermineIntent(string query, string[] tokens)
+    private static QueryIntent DetermineIntent(string query, string[] tokens)
     {
         // "how to", "what is" → 정보적
         if (tokens.Any(t => QuestionWords.Contains(t)))
@@ -358,7 +359,7 @@ public class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
         return QueryIntent.Informational;
     }
 
-    private Language DetectLanguage(string query)
+    private static Language DetectLanguage(string query)
     {
         var koreanPattern = @"[가-힣]";
         var englishPattern = @"[a-zA-Z]";
@@ -373,7 +374,7 @@ public class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
         return Language.Other;
     }
 
-    private bool RequiresReasoning(string query, string[] tokens)
+    private static bool RequiresReasoning(string query, string[] tokens)
     {
         var reasoningPatterns = new[]
         {
@@ -385,17 +386,17 @@ public class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
                tokens.Any(t => new[] { "why", "how", "explain", "reason", "effective", "because" }.Contains(t, StringComparer.OrdinalIgnoreCase));
     }
 
-    private bool HasTemporalContext(string[] tokens)
+    private static bool HasTemporalContext(string[] tokens)
     {
         return tokens.Any(t => TemporalWords.Contains(t));
     }
 
-    private bool HasComparativeContext(string[] tokens)
+    private static bool HasComparativeContext(string[] tokens)
     {
         return tokens.Any(t => ComparisonWords.Contains(t));
     }
 
-    private bool IsMultiHop(string query, string[] tokens)
+    private static bool IsMultiHop(string query, string[] tokens)
     {
         // "and then", "after that", "다음에" 등의 패턴
         var multiHopPatterns = new[]
@@ -407,7 +408,7 @@ public class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
                tokens.Count(t => LogicalOperators.Contains(t)) > 1;
     }
 
-    private TimeSpan EstimateProcessingTime(string query, string[] tokens)
+    private static TimeSpan EstimateProcessingTime(string query, string[] tokens)
     {
         var baseTimeMs = 500; // 기본 500ms
 
@@ -422,7 +423,7 @@ public class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
         return TimeSpan.FromMilliseconds(Math.Min(baseTimeMs, 10000)); // 최대 10초
     }
 
-    private double CalculateConfidenceScore(string query, string[] tokens)
+    private static double CalculateConfidenceScore(string query, string[] tokens)
     {
         var confidence = 0.5; // 기본 신뢰도
 
@@ -440,7 +441,7 @@ public class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
         return Math.Max(0.1, Math.Min(1.0, confidence));
     }
 
-    private SearchStrategy RecommendSimpleStrategy(QueryAnalysis analysis)
+    private static SearchStrategy RecommendSimpleStrategy(QueryAnalysis analysis)
     {
         // Technical domain queries benefit from keyword matching
         if (analysis.ContainsTechnicalTerms)
@@ -450,7 +451,7 @@ public class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
         return SearchStrategy.DirectVector;
     }
 
-    private SearchStrategy RecommendModerateStrategy(QueryAnalysis analysis)
+    private static SearchStrategy RecommendModerateStrategy(QueryAnalysis analysis)
     {
         // AI/ML domain queries benefit from HyDE
         if (analysis.TechnicalDomains.Contains("ai_ml"))
@@ -463,7 +464,7 @@ public class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
         return SearchStrategy.Hybrid;
     }
 
-    private SearchStrategy RecommendComplexStrategy(QueryAnalysis analysis)
+    private static SearchStrategy RecommendComplexStrategy(QueryAnalysis analysis)
     {
         // Multi-domain technical queries
         if (analysis.TechnicalDomains.Count >= 2)
@@ -478,7 +479,7 @@ public class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
         return SearchStrategy.Hybrid;
     }
 
-    private SearchStrategy RecommendVeryComplexStrategy(QueryAnalysis analysis)
+    private static SearchStrategy RecommendVeryComplexStrategy(QueryAnalysis analysis)
     {
         if (analysis.IsMultiHop && analysis.RequiresReasoning)
             return SearchStrategy.SelfRAG;
@@ -517,7 +518,7 @@ public class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
         };
     }
 
-    private (double VectorWeight, double SparseWeight) CalculateOptimalWeights(QueryAnalysis analysis)
+    private static (double VectorWeight, double SparseWeight) CalculateOptimalWeights(QueryAnalysis analysis)
     {
         // Base weights
         double vectorWeight = 0.6;
@@ -559,7 +560,7 @@ public class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
         return (vectorWeight / total, sparseWeight / total);
     }
 
-    private string SelectFusionMethod(QueryAnalysis analysis, SearchStrategy strategy)
+    private static string SelectFusionMethod(QueryAnalysis analysis, SearchStrategy strategy)
     {
         // Technical queries benefit from weighted sum
         if (analysis.ContainsTechnicalTerms && analysis.Specificity > 0.5)
@@ -577,7 +578,7 @@ public class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
         return "RRF";
     }
 
-    private string GenerateReasoning(QueryAnalysis analysis, SearchStrategy strategy, string fusionMethod)
+    private static string GenerateReasoning(QueryAnalysis analysis, SearchStrategy strategy, string fusionMethod)
     {
         var parts = new List<string>
         {
@@ -602,12 +603,21 @@ public class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
     }
 
     #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "쿼리 분석 완료: {Query} → {Type}, {Complexity}")]
+    private static partial void LogQueryComplexity2(ILogger logger, string query, QueryType type, ComplexityLevel complexity);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "성능 통계 업데이트: {QueryType}, 결과 수: {ResultCount}")]
+    private static partial void LogQueryComplexity1(ILogger logger, QueryType queryType, int resultCount);
+
+    #endregion
 }
 
 /// <summary>
 /// Recommendation for hybrid search configuration
 /// </summary>
-public class HybridSearchRecommendation
+public partial class HybridSearchRecommendation
 {
     /// <summary>
     /// Recommended search strategy

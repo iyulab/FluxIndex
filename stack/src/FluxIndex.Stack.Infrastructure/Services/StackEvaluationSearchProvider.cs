@@ -12,7 +12,7 @@ namespace FluxIndex.Stack.Infrastructure.Services;
 /// Stack implementation of IEvaluationSearchProvider.
 /// Bridges Stack's search infrastructure with Core's RAG evaluation framework.
 /// </summary>
-public class StackEvaluationSearchProvider : IEvaluationSearchProvider
+public partial class StackEvaluationSearchProvider : IEvaluationSearchProvider
 {
     private readonly ISearchService _searchService;
     private readonly ITextCompletionService? _textCompletionService;
@@ -81,10 +81,10 @@ public class StackEvaluationSearchProvider : IEvaluationSearchProvider
             HitRate = _cacheEvaluationEntries.Count > 0
                 ? (double)hits.Count / _cacheEvaluationEntries.Count
                 : 0,
-            AverageSimilarity = hits.Any()
+            AverageSimilarity = hits.Count > 0
                 ? hits.Average(h => h.Similarity)
                 : 0,
-            AverageLatencySavingsMs = hits.Any()
+            AverageLatencySavingsMs = hits.Count > 0
                 ? hits.Average(h => h.LatencySavedMs)
                 : 0,
             Entries = _cacheEvaluationEntries.ToList()
@@ -105,7 +105,7 @@ public class StackEvaluationSearchProvider : IEvaluationSearchProvider
         int topK = 5,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogDebug("Retrieving chunks for evaluation. Query: {Query}, TopK: {TopK}", query, topK);
+        LogRetrievingChunks(_logger, query, topK);
 
         var searchRequest = new SearchRequest
         {
@@ -151,13 +151,13 @@ public class StackEvaluationSearchProvider : IEvaluationSearchProvider
                     }).ToList();
 
                     _cacheEvaluationEntries.Add(cacheEntry);
-                    _logger.LogDebug("Cache hit for query with similarity {Similarity}", cachedResult.SimilarityScore);
+                    LogCacheHit(_logger, cachedResult.SimilarityScore);
                     return cachedChunks;
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to check semantic cache during evaluation");
+                LogCacheCheckFailed(_logger, ex);
             }
         }
 
@@ -196,12 +196,12 @@ public class StackEvaluationSearchProvider : IEvaluationSearchProvider
                 _cacheEvaluationEntries.Add(cacheEntry);
             }
 
-            _logger.LogDebug("Retrieved {Count} chunks for evaluation query", chunks.Count);
+            LogRetrievedChunks(_logger, chunks.Count);
             return chunks;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to retrieve chunks for evaluation. Query: {Query}", query);
+            LogRetrieveChunksFailed(_logger, query, ex);
             throw;
         }
     }
@@ -214,11 +214,11 @@ public class StackEvaluationSearchProvider : IEvaluationSearchProvider
     {
         if (_textCompletionService == null)
         {
-            _logger.LogWarning("Text completion service not available. Returning concatenated context as answer.");
+            LogTextCompletionNotAvailable(_logger);
             return ConcatenateChunkContents(retrievedChunks);
         }
 
-        _logger.LogDebug("Generating answer for evaluation. Query: {Query}", query);
+        LogGeneratingAnswer(_logger, query);
 
         try
         {
@@ -233,12 +233,13 @@ public class StackEvaluationSearchProvider : IEvaluationSearchProvider
                 temperature: 0.3f,
                 cancellationToken);
 
-            _logger.LogDebug("Generated answer of length {Length} for evaluation query", answer?.Length ?? 0);
+            var answerLength = answer?.Length ?? 0;
+            LogGeneratedAnswer(_logger, answerLength);
             return answer ?? string.Empty;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to generate answer for evaluation. Query: {Query}", query);
+            LogGenerateAnswerFailed(_logger, query, ex);
             throw;
         }
     }
@@ -253,7 +254,7 @@ public class StackEvaluationSearchProvider : IEvaluationSearchProvider
 
         foreach (var chunk in chunks)
         {
-            var title = chunk.Metadata.TryGetValue("document_title", out var t) ? t?.ToString() : "Unknown";
+            var title = chunk.Metadata!.TryGetValue("document_title", out var t) ? t?.ToString() : "Unknown";
             contextParts.Add($"[Document {index}: {title}]\n{chunk.Content}");
             index++;
         }
@@ -287,6 +288,37 @@ public class StackEvaluationSearchProvider : IEvaluationSearchProvider
     {
         return string.Join("\n\n---\n\n", chunks.Select(c => c.Content));
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Retrieving chunks for evaluation. Query: {Query}, TopK: {TopK}")]
+    private static partial void LogRetrievingChunks(ILogger logger, string query, int topK);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Cache hit for query with similarity {Similarity}")]
+    private static partial void LogCacheHit(ILogger logger, double similarity);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to check semantic cache during evaluation")]
+    private static partial void LogCacheCheckFailed(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Retrieved {Count} chunks for evaluation query")]
+    private static partial void LogRetrievedChunks(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to retrieve chunks for evaluation. Query: {Query}")]
+    private static partial void LogRetrieveChunksFailed(ILogger logger, string query, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Text completion service not available. Returning concatenated context as answer.")]
+    private static partial void LogTextCompletionNotAvailable(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Generating answer for evaluation. Query: {Query}")]
+    private static partial void LogGeneratingAnswer(ILogger logger, string query);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Generated answer of length {Length} for evaluation query")]
+    private static partial void LogGeneratedAnswer(ILogger logger, int length);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to generate answer for evaluation. Query: {Query}")]
+    private static partial void LogGenerateAnswerFailed(ILogger logger, string query, Exception? exception);
+
+    #endregion
 }
 
 /// <summary>

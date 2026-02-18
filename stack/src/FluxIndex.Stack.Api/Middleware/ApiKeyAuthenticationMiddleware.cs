@@ -6,7 +6,7 @@ namespace FluxIndex.Stack.Api.Middleware;
 /// <summary>
 /// Middleware for API key authentication.
 /// </summary>
-public class ApiKeyAuthenticationMiddleware
+public partial class ApiKeyAuthenticationMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly ILogger<ApiKeyAuthenticationMiddleware> _logger;
@@ -36,7 +36,7 @@ public class ApiKeyAuthenticationMiddleware
         var path = context.Request.Path.Value?.ToLowerInvariant() ?? "";
 
         // Skip authentication for public endpoints
-        if (PublicEndpoints.Any(e => path.StartsWith(e)))
+        if (PublicEndpoints.Any(e => path.StartsWith(e, StringComparison.Ordinal)))
         {
             await _next(context);
             return;
@@ -46,7 +46,7 @@ public class ApiKeyAuthenticationMiddleware
         if (_environment.IsDevelopment() &&
             !context.Request.Headers.ContainsKey(ApiKeyHeaderName))
         {
-            _logger.LogDebug("Development mode: bypassing API key authentication for {Path}", path);
+            LogBypassingAuthentication(_logger, path);
 
             // Set a mock admin context for development
             context.Items["ApiKey"] = new ApiKeyDto
@@ -66,7 +66,7 @@ public class ApiKeyAuthenticationMiddleware
         // Check for API key header
         if (!context.Request.Headers.TryGetValue(ApiKeyHeaderName, out var apiKeyValue))
         {
-            _logger.LogWarning("API key not provided for request to {Path}", path);
+            LogApiKeyNotProvided(_logger, path);
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
             await context.Response.WriteAsJsonAsync(new { error = "API key required" });
             return;
@@ -77,7 +77,7 @@ public class ApiKeyAuthenticationMiddleware
 
         if (validatedKey == null)
         {
-            _logger.LogWarning("Invalid API key used for request to {Path}", path);
+            LogInvalidApiKey(_logger, path);
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
             await context.Response.WriteAsJsonAsync(new { error = "Invalid API key" });
             return;
@@ -89,6 +89,19 @@ public class ApiKeyAuthenticationMiddleware
 
         await _next(context);
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Development mode: bypassing API key authentication for {Path}")]
+    private static partial void LogBypassingAuthentication(ILogger logger, string path);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "API key not provided for request to {Path}")]
+    private static partial void LogApiKeyNotProvided(ILogger logger, string path);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Invalid API key used for request to {Path}")]
+    private static partial void LogInvalidApiKey(ILogger logger, string path);
+
+    #endregion
 }
 
 /// <summary>

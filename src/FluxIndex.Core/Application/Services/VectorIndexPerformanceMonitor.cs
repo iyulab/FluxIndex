@@ -3,6 +3,7 @@ using FluxIndex.Core.Domain.Models;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,7 +13,7 @@ namespace FluxIndex.Core.Services;
 /// <summary>
 /// 벡터 인덱스 성능 모니터링 서비스
 /// </summary>
-public class VectorIndexPerformanceMonitor
+public partial class VectorIndexPerformanceMonitor
 {
     private readonly IVectorIndexBenchmark _benchmark;
     private readonly ILogger<VectorIndexPerformanceMonitor> _logger;
@@ -36,7 +37,8 @@ public class VectorIndexPerformanceMonitor
         HnswBenchmarkOptions options,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("성능 기준선 설정 시작: {IndexName}", indexName);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogVectorIndexPerformance8(_logger, indexName);
 
         var benchmarkResult = await _benchmark.BenchmarkHnswIndexAsync(options, cancellationToken);
 
@@ -56,8 +58,8 @@ public class VectorIndexPerformanceMonitor
             _baselines[indexName] = baseline;
         }
 
-        _logger.LogInformation("성능 기준선 설정 완료: {IndexName} - 평균 쿼리 시간: {Time:F2}ms, Recall: {Recall:P2}",
-            indexName, baseline.BaselineQueryTimeMs, baseline.BaselineRecall);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogVectorIndexPerformance7(_logger, indexName, baseline.BaselineQueryTimeMs, baseline.BaselineRecall);
 
         return baseline;
     }
@@ -74,7 +76,8 @@ public class VectorIndexPerformanceMonitor
             throw new InvalidOperationException($"인덱스 {indexName}에 대한 기준선이 설정되지 않았습니다.");
         }
 
-        _logger.LogInformation("성능 회귀 감지 시작: {IndexName}", indexName);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogVectorIndexPerformance6(_logger, indexName);
 
         var currentResult = await _benchmark.BenchmarkHnswIndexAsync(
             baseline.BenchmarkOptions, cancellationToken);
@@ -118,8 +121,8 @@ public class VectorIndexPerformanceMonitor
 
         report.OverallRegressionSeverity = CalculateOverallSeverity(report.Regressions);
 
-        _logger.LogInformation("성능 회귀 감지 완료: {IndexName} - {Count}개 회귀 발견, 심각도: {Severity}",
-            indexName, report.Regressions.Count, report.OverallRegressionSeverity);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogVectorIndexPerformance5(_logger, indexName, report.Regressions.Count, report.OverallRegressionSeverity);
 
         return report;
     }
@@ -138,8 +141,8 @@ public class VectorIndexPerformanceMonitor
             throw new InvalidOperationException($"인덱스 {indexName}에 대한 기준선이 설정되지 않았습니다.");
         }
 
-        _logger.LogInformation("연속 성능 모니터링 시작: {IndexName} - 기간: {Duration}, 간격: {Interval}",
-            indexName, monitoringDuration, sampleInterval);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogVectorIndexPerformance4(_logger, indexName, monitoringDuration, sampleInterval);
 
         var report = new ContinuousMonitoringReport
         {
@@ -176,15 +179,16 @@ public class VectorIndexPerformanceMonitor
 
                 if (anomalies.Count > 0)
                 {
-                    _logger.LogWarning("성능 이상 감지: {IndexName} - {Count}개 이상 징후",
-                        indexName, anomalies.Count);
+                    if (_logger.IsEnabled(LogLevel.Information))
+                        LogVectorIndexPerformance3(_logger, indexName, anomalies.Count);
                 }
 
                 await Task.Delay(sampleInterval, cancellationToken);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "연속 모니터링 중 오류 발생: {IndexName}", indexName);
+                if (_logger.IsEnabled(LogLevel.Information))
+                    LogVectorIndexPerformance2(_logger, ex, indexName);
             }
         }
 
@@ -194,8 +198,8 @@ public class VectorIndexPerformanceMonitor
         // 모니터링 요약 계산
         CalculateMonitoringSummary(report);
 
-        _logger.LogInformation("연속 성능 모니터링 완료: {IndexName} - {Samples}개 샘플, {Anomalies}개 이상 징후",
-            indexName, report.PerformanceSamples.Count, report.DetectedAnomalies.Count);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogVectorIndexPerformance1(_logger, indexName, report.PerformanceSamples.Count, report.DetectedAnomalies.Count);
 
         return report;
     }
@@ -203,7 +207,7 @@ public class VectorIndexPerformanceMonitor
     /// <summary>
     /// 성능 트렌드 분석
     /// </summary>
-    public PerformanceTrendAnalysis AnalyzePerformanceTrends(
+    public static PerformanceTrendAnalysis AnalyzePerformanceTrends(
         IReadOnlyList<PerformanceSample> samples,
         TimeSpan analysisWindow)
     {
@@ -246,7 +250,7 @@ public class VectorIndexPerformanceMonitor
 
     #region Private Methods
 
-    private PerformanceRegression CalculateQueryTimeRegression(
+    private static PerformanceRegression CalculateQueryTimeRegression(
         PerformanceBaseline baseline,
         HnswBenchmarkResult current)
     {
@@ -267,7 +271,7 @@ public class VectorIndexPerformanceMonitor
         };
     }
 
-    private PerformanceRegression CalculateRecallRegression(
+    private static PerformanceRegression CalculateRecallRegression(
         PerformanceBaseline baseline,
         HnswBenchmarkResult current)
     {
@@ -288,7 +292,7 @@ public class VectorIndexPerformanceMonitor
         };
     }
 
-    private PerformanceRegression CalculateMemoryRegression(
+    private static PerformanceRegression CalculateMemoryRegression(
         PerformanceBaseline baseline,
         HnswBenchmarkResult current)
     {
@@ -309,7 +313,7 @@ public class VectorIndexPerformanceMonitor
         };
     }
 
-    private PerformanceRegression CalculateQPSRegression(
+    private static PerformanceRegression CalculateQPSRegression(
         PerformanceBaseline baseline,
         HnswBenchmarkResult current)
     {
@@ -330,7 +334,7 @@ public class VectorIndexPerformanceMonitor
         };
     }
 
-    private RegressionSeverity CalculateOverallSeverity(IReadOnlyList<PerformanceRegression> regressions)
+    private static RegressionSeverity CalculateOverallSeverity(IReadOnlyList<PerformanceRegression> regressions)
     {
         var maxSeverity = RegressionSeverity.None;
 
@@ -345,10 +349,10 @@ public class VectorIndexPerformanceMonitor
         return maxSeverity;
     }
 
-    private IReadOnlyList<PerformanceAnomaly> DetectAnomalies(
+    private static ReadOnlyCollection<PerformanceAnomaly> DetectAnomalies(
         PerformanceSample currentSample,
         PerformanceBaseline baseline,
-        IReadOnlyList<PerformanceSample> historicalSamples)
+        List<PerformanceSample> historicalSamples)
     {
         var anomalies = new List<PerformanceAnomaly>();
 
@@ -390,7 +394,7 @@ public class VectorIndexPerformanceMonitor
         return anomalies.AsReadOnly();
     }
 
-    private void CalculateMonitoringSummary(ContinuousMonitoringReport report)
+    private static void CalculateMonitoringSummary(ContinuousMonitoringReport report)
     {
         if (report.PerformanceSamples.Count == 0) return;
 
@@ -416,7 +420,7 @@ public class VectorIndexPerformanceMonitor
         };
     }
 
-    private TrendInfo CalculateTrend(IReadOnlyList<double> values, string metricName)
+    private static TrendInfo CalculateTrend(List<double> values, string metricName)
     {
         if (values.Count < 2)
         {
@@ -462,7 +466,7 @@ public class VectorIndexPerformanceMonitor
         };
     }
 
-    private TrendDirection DetermineOverallTrend(IEnumerable<TrendInfo> trends)
+    private static TrendDirection DetermineOverallTrend(IEnumerable<TrendInfo> trends)
     {
         var increasingCount = 0;
         var decreasingCount = 0;
@@ -493,6 +497,27 @@ public class VectorIndexPerformanceMonitor
     }
 
     #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "성능 기준선 설정 시작: {IndexName}")]
+    private static partial void LogVectorIndexPerformance8(ILogger logger, string indexName);
+    [LoggerMessage(Level = LogLevel.Information, Message = "성능 기준선 설정 완료: {IndexName} - 평균 쿼리 시간: {Time:F2}ms, Recall: {Recall:P2}")]
+    private static partial void LogVectorIndexPerformance7(ILogger logger, string indexName, double time, double recall);
+    [LoggerMessage(Level = LogLevel.Information, Message = "성능 회귀 감지 시작: {IndexName}")]
+    private static partial void LogVectorIndexPerformance6(ILogger logger, string indexName);
+    [LoggerMessage(Level = LogLevel.Information, Message = "성능 회귀 감지 완료: {IndexName} - {Count}개 회귀 발견, 심각도: {Severity}")]
+    private static partial void LogVectorIndexPerformance5(ILogger logger, string indexName, int count, RegressionSeverity severity);
+    [LoggerMessage(Level = LogLevel.Information, Message = "연속 성능 모니터링 시작: {IndexName} - 기간: {Duration}, 간격: {Interval}")]
+    private static partial void LogVectorIndexPerformance4(ILogger logger, string indexName, TimeSpan duration, TimeSpan interval);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "성능 이상 감지: {IndexName} - {Count}개 이상 징후")]
+    private static partial void LogVectorIndexPerformance3(ILogger logger, string indexName, int count);
+    [LoggerMessage(Level = LogLevel.Error, Message = "연속 모니터링 중 오류 발생: {IndexName}")]
+    private static partial void LogVectorIndexPerformance2(ILogger logger, Exception exception, string indexName);
+    [LoggerMessage(Level = LogLevel.Information, Message = "연속 성능 모니터링 완료: {IndexName} - {Samples}개 샘플, {Anomalies}개 이상 징후")]
+    private static partial void LogVectorIndexPerformance1(ILogger logger, string indexName, int samples, int anomalies);
+
+    #endregion
 }
 
 #region Data Models
@@ -500,7 +525,7 @@ public class VectorIndexPerformanceMonitor
 /// <summary>
 /// 성능 기준선
 /// </summary>
-public class PerformanceBaseline
+public partial class PerformanceBaseline
 {
     public string IndexName { get; set; } = string.Empty;
     public DateTime EstablishedAt { get; set; }
@@ -514,7 +539,7 @@ public class PerformanceBaseline
 /// <summary>
 /// 성능 회귀 보고서
 /// </summary>
-public class PerformanceRegressionReport
+public partial class PerformanceRegressionReport
 {
     public string IndexName { get; set; } = string.Empty;
     public DateTime TestTimestamp { get; set; }
@@ -527,7 +552,7 @@ public class PerformanceRegressionReport
 /// <summary>
 /// 성능 회귀
 /// </summary>
-public class PerformanceRegression
+public partial class PerformanceRegression
 {
     public string MetricName { get; set; } = string.Empty;
     public bool HasRegression { get; set; }
@@ -541,7 +566,7 @@ public class PerformanceRegression
 /// <summary>
 /// 연속 모니터링 보고서
 /// </summary>
-public class ContinuousMonitoringReport
+public partial class ContinuousMonitoringReport
 {
     public string IndexName { get; set; } = string.Empty;
     public DateTime MonitoringStartTime { get; set; }
@@ -557,7 +582,7 @@ public class ContinuousMonitoringReport
 /// <summary>
 /// 성능 샘플
 /// </summary>
-public class PerformanceSample
+public partial class PerformanceSample
 {
     public int SampleNumber { get; set; }
     public DateTime Timestamp { get; set; }
@@ -567,7 +592,7 @@ public class PerformanceSample
 /// <summary>
 /// 성능 이상
 /// </summary>
-public class PerformanceAnomaly
+public partial class PerformanceAnomaly
 {
     public DateTime DetectedAt { get; set; }
     public string AnomalyType { get; set; } = string.Empty;
@@ -579,7 +604,7 @@ public class PerformanceAnomaly
 /// <summary>
 /// 모니터링 요약
 /// </summary>
-public class MonitoringSummary
+public partial class MonitoringSummary
 {
     public double AverageEfficiencyScore { get; set; }
     public double MinEfficiencyScore { get; set; }
@@ -594,7 +619,7 @@ public class MonitoringSummary
 /// <summary>
 /// 성능 트렌드 분석
 /// </summary>
-public class PerformanceTrendAnalysis
+public partial class PerformanceTrendAnalysis
 {
     public DateTime AnalysisTimestamp { get; set; }
     public TimeSpan AnalysisWindow { get; set; }
@@ -606,7 +631,7 @@ public class PerformanceTrendAnalysis
 /// <summary>
 /// 트렌드 정보
 /// </summary>
-public class TrendInfo
+public partial class TrendInfo
 {
     public string MetricName { get; set; } = string.Empty;
     public TrendDirection Direction { get; set; }

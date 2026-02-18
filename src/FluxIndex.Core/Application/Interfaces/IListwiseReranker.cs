@@ -65,7 +65,7 @@ public class ListwiseRerankOptions
     /// <summary>
     /// Minimum score threshold for inclusion
     /// </summary>
-    public float ScoreThreshold { get; set; } = 0.0f;
+    public float ScoreThreshold { get; set; }
 
     /// <summary>
     /// Window size for sliding window method.
@@ -95,7 +95,7 @@ public class ListwiseRerankOptions
     /// <summary>
     /// LLM temperature for ranking decisions
     /// </summary>
-    public float LlmTemperature { get; set; } = 0.0f;
+    public float LlmTemperature { get; set; }
 
     /// <summary>
     /// Whether to use attention-based scoring with embeddings
@@ -112,7 +112,7 @@ public class ListwiseRerankOptions
     /// <summary>
     /// Whether to include detailed explanations
     /// </summary>
-    public bool IncludeExplanation { get; set; } = false;
+    public bool IncludeExplanation { get; set; }
 
     /// <summary>
     /// Maximum content length per document for LLM processing

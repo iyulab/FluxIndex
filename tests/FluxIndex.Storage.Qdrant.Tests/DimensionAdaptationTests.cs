@@ -14,6 +14,7 @@ namespace FluxIndex.Storage.Qdrant.Tests;
 /// Verifies that collections are automatically created with dimension suffixes.
 /// </summary>
 [Collection("Qdrant")]
+[Trait("Category", "Integration")]
 public class DimensionAdaptationTests : IAsyncLifetime
 {
     private readonly QdrantContainer _container;
@@ -22,8 +23,7 @@ public class DimensionAdaptationTests : IAsyncLifetime
 
     public DimensionAdaptationTests()
     {
-        _container = new QdrantBuilder()
-            .WithImage("qdrant/qdrant:latest")
+        _container = new QdrantBuilder("qdrant/qdrant:latest")
             .Build();
         _logger = NullLogger<QdrantVectorStore>.Instance;
     }

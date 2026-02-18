@@ -11,6 +11,7 @@ using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Core.Domain.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Globalization;
 
 namespace FluxIndex.Core.Application.Services;
 
@@ -18,7 +19,7 @@ namespace FluxIndex.Core.Application.Services;
 /// Implementation of iterative retrieval service supporting IRCOT,
 /// multi-hop retrieval, query decomposition, and agentic retrieval patterns.
 /// </summary>
-public class IterativeRetrievalService : IIterativeRetrievalService
+public partial class IterativeRetrievalService : IIterativeRetrievalService
 {
     private readonly IHybridSearchService _searchService;
     private readonly ITextCompletionService? _llmService;
@@ -48,7 +49,8 @@ public class IterativeRetrievalService : IIterativeRetrievalService
         options ??= new IterativeRetrievalOptions();
         var stopwatch = Stopwatch.StartNew();
 
-        _logger.LogInformation("Starting iterative retrieval for query: {Query}", query);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogIterativeRetrieval8(_logger, query);
 
         var iterations = new List<ReasoningIteration>();
         var allDocs = new List<IterativeSearchResult>();
@@ -63,7 +65,8 @@ public class IterativeRetrievalService : IIterativeRetrievalService
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            _logger.LogDebug("Iteration {Iteration}: query = {Query}", i + 1, currentQuery);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogIterativeRetrieval7(_logger, i + 1, currentQuery);
 
             // Step 1: Reason about what to do next
             var (thought, action, actionInput) = await ReasonNextStepAsync(
@@ -149,7 +152,7 @@ public class IterativeRetrievalService : IIterativeRetrievalService
         }
 
         // Generate final answer if not already done
-        if (finalAnswer == null && _llmService != null && allDocs.Any())
+        if (finalAnswer == null && _llmService != null && allDocs.Count != 0)
         {
             finalAnswer = await GenerateFinalAnswerAsync(query, allDocs, cancellationToken);
         }
@@ -223,12 +226,12 @@ public class IterativeRetrievalService : IIterativeRetrievalService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to get LLM reasoning, using fallback");
+            LogIterativeRetrieval6(_logger, ex);
             return ("LLM reasoning failed, continuing with search", "retrieve", currentQuery);
         }
     }
 
-    private (string thought, string action, string actionInput) ParseReasoningResponse(string response)
+    private static (string thought, string action, string actionInput) ParseReasoningResponse(string response)
     {
         var thought = "";
         var action = "retrieve";
@@ -255,30 +258,30 @@ public class IterativeRetrievalService : IIterativeRetrievalService
         return (thought, action, actionInput);
     }
 
-    private string BuildReasoningContext(string query, List<ReasoningIteration> iterations, List<IterativeSearchResult> docs)
+    private static string BuildReasoningContext(string query, List<ReasoningIteration> iterations, List<IterativeSearchResult> docs)
     {
         var sb = new StringBuilder();
 
-        if (iterations.Any())
+        if (iterations.Count != 0)
         {
             sb.AppendLine("Previous iterations:");
             foreach (var iter in iterations.TakeLast(3))
             {
-                sb.AppendLine($"- Iteration {iter.IterationNumber}:");
-                sb.AppendLine($"  Thought: {iter.Thought}");
-                sb.AppendLine($"  Action: {iter.Action}({iter.ActionInput})");
-                sb.AppendLine($"  Observation: {iter.Observation}");
+                sb.AppendLine(CultureInfo.InvariantCulture, $"- Iteration {iter.IterationNumber}:");
+                sb.AppendLine(CultureInfo.InvariantCulture, $"  Thought: {iter.Thought}");
+                sb.AppendLine(CultureInfo.InvariantCulture, $"  Action: {iter.Action}({iter.ActionInput})");
+                sb.AppendLine(CultureInfo.InvariantCulture, $"  Observation: {iter.Observation}");
             }
             sb.AppendLine();
         }
 
-        if (docs.Any())
+        if (docs.Count != 0)
         {
-            sb.AppendLine($"Current documents ({docs.Count} total):");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"Current documents ({docs.Count} total):");
             foreach (var doc in docs.Take(5))
             {
-                var snippet = doc.Content.Length > 200 ? doc.Content.Substring(0, 200) + "..." : doc.Content;
-                sb.AppendLine($"- {snippet}");
+                var snippet = doc.Content.Length > 200 ? string.Concat(doc.Content.AsSpan(0, 200), "...") : doc.Content;
+                sb.AppendLine(CultureInfo.InvariantCulture, $"- {snippet}");
             }
         }
         else
@@ -296,9 +299,9 @@ public class IterativeRetrievalService : IIterativeRetrievalService
         IterativeRetrievalOptions options,
         CancellationToken cancellationToken)
     {
-        if (_llmService == null || !docs.Any())
+        if (_llmService == null || docs.Count == 0)
         {
-            return docs.Any() ? 0.5f : 0.1f;
+            return docs.Count != 0 ? 0.5f : 0.1f;
         }
 
         // Simple heuristic-based confidence
@@ -342,16 +345,16 @@ public class IterativeRetrievalService : IIterativeRetrievalService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to generate final answer");
+            LogIterativeRetrieval5(_logger, ex);
             return SummarizeDocuments(docs.Take(5).ToList());
         }
     }
 
-    private string SummarizeDocuments(List<IterativeSearchResult> docs)
+    private static string SummarizeDocuments(List<IterativeSearchResult> docs)
     {
-        if (!docs.Any()) return "No documents";
+        if (docs.Count == 0) return "No documents";
         return string.Join("; ", docs.Take(3).Select(d =>
-            d.Content.Length > 100 ? d.Content.Substring(0, 100) + "..." : d.Content));
+            d.Content.Length > 100 ? string.Concat(d.Content.AsSpan(0, 100), "...") : d.Content));
     }
 
     #endregion
@@ -367,7 +370,8 @@ public class IterativeRetrievalService : IIterativeRetrievalService
         options ??= new QueryDecompositionOptions();
         var stopwatch = Stopwatch.StartNew();
 
-        _logger.LogInformation("Decomposing query: {Query}", query);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogIterativeRetrieval4(_logger, query);
 
         // Step 1: Decompose query into sub-questions
         var subQuestions = await DecomposeQueryAsync(query, options, cancellationToken);
@@ -394,7 +398,7 @@ public class IterativeRetrievalService : IIterativeRetrievalService
                 docs = searchResults.Select(IterativeSearchResult.FromHybridResult).ToList();
                 allDocs.AddRange(docs);
 
-                if (options.SynthesizeSubAnswers && _llmService != null && docs.Any())
+                if (options.SynthesizeSubAnswers && _llmService != null && docs.Count != 0)
                 {
                     (answer, confidence) = await AnswerSubQuestionAsync(
                         subQ.Question, docs, cancellationToken);
@@ -477,7 +481,7 @@ public class IterativeRetrievalService : IIterativeRetrievalService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to decompose query");
+            LogIterativeRetrieval3(_logger, ex);
             return new List<SubQuestion>
             {
                 new SubQuestion { Question = query, Dependencies = Array.Empty<int>() }
@@ -485,7 +489,7 @@ public class IterativeRetrievalService : IIterativeRetrievalService
         }
     }
 
-    private List<SubQuestion> ParseSubQuestions(string response)
+    private static List<SubQuestion> ParseSubQuestions(string response)
     {
         var questions = new List<SubQuestion>();
         var lines = response.Split('\n');
@@ -520,7 +524,7 @@ public class IterativeRetrievalService : IIterativeRetrievalService
             }
         }
 
-        return questions.Any() ? questions : new List<SubQuestion>
+        return questions.Count != 0 ? questions : new List<SubQuestion>
         {
             new SubQuestion { Question = response.Trim(), Dependencies = Array.Empty<int>() }
         };
@@ -590,7 +594,7 @@ public class IterativeRetrievalService : IIterativeRetrievalService
                 cancellationToken: cancellationToken);
 
             var answeredQuestions = subQuestions.Where(q => q.Confidence > 0).ToList();
-            var avgConfidence = answeredQuestions.Any() ? answeredQuestions.Average(q => q.Confidence) : 0f;
+            var avgConfidence = answeredQuestions.Count != 0 ? answeredQuestions.Average(q => q.Confidence) : 0f;
             return (answer, (float)avgConfidence);
         }
         catch
@@ -612,7 +616,8 @@ public class IterativeRetrievalService : IIterativeRetrievalService
         options ??= new MultiHopOptions();
         var stopwatch = Stopwatch.StartNew();
 
-        _logger.LogInformation("Starting multi-hop retrieval for: {Query}", query);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogIterativeRetrieval2(_logger, query);
 
         var hops = new List<RetrievalHop>();
         var allDocs = new List<IterativeSearchResult>();
@@ -631,7 +636,7 @@ public class IterativeRetrievalService : IIterativeRetrievalService
         allDocs.AddRange(initialDocs);
 
         // Extract entities from initial results
-        if (_entityService != null && initialDocs.Any())
+        if (_entityService != null && initialDocs.Count != 0)
         {
             var combinedContent = string.Join(" ", initialDocs.Select(d => d.Content));
             var graph = await _entityService.ExtractEntityGraphAsync(combinedContent, cancellationToken: cancellationToken);
@@ -651,10 +656,10 @@ public class IterativeRetrievalService : IIterativeRetrievalService
             Reasoning = "Initial retrieval based on user query"
         });
 
-        reasoningPath.AppendLine($"Hop 0: Searched for '{query}', found {initialDocs.Count} documents");
+        reasoningPath.AppendLine(CultureInfo.InvariantCulture, $"Hop 0: Searched for '{query}', found {initialDocs.Count} documents");
 
         // Follow-up hops based on entities
-        for (int hop = 1; hop <= options.MaxHops && currentEntities.Any(); hop++)
+        for (int hop = 1; hop <= options.MaxHops && currentEntities.Count != 0; hop++)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -663,7 +668,7 @@ public class IterativeRetrievalService : IIterativeRetrievalService
                 .Take(options.MaxEntitiesPerHop)
                 .ToList();
 
-            if (!entitiesToFollow.Any())
+            if (entitiesToFollow.Count == 0)
                 break;
 
             var hopDocs = new List<IterativeSearchResult>();
@@ -681,7 +686,7 @@ public class IterativeRetrievalService : IIterativeRetrievalService
                 hopDocs.AddRange(entityDocs);
 
                 // Extract more entities
-                if (_entityService != null && entityDocs.Any())
+                if (_entityService != null && entityDocs.Count != 0)
                 {
                     var content = string.Join(" ", entityDocs.Select(d => d.Content));
                     var graph = await _entityService.ExtractEntityGraphAsync(content, cancellationToken: cancellationToken);
@@ -706,7 +711,7 @@ public class IterativeRetrievalService : IIterativeRetrievalService
             allDocs.AddRange(hopDocs);
             currentEntities = hopEntities.Except(entitiesToFollow).ToList();
 
-            reasoningPath.AppendLine($"Hop {hop}: Followed {entitiesToFollow.Count} entities, found {hopDocs.Count} documents");
+            reasoningPath.AppendLine(CultureInfo.InvariantCulture, $"Hop {hop}: Followed {entitiesToFollow.Count} entities, found {hopDocs.Count} documents");
 
             // Check if we found an answer
             if (options.StopOnAnswerFound && _llmService != null)
@@ -715,7 +720,7 @@ public class IterativeRetrievalService : IIterativeRetrievalService
                 if (hasAnswer)
                 {
                     answer = await GenerateFinalAnswerAsync(query, allDocs, cancellationToken);
-                    reasoningPath.AppendLine($"Answer found at hop {hop}");
+                    reasoningPath.AppendLine(CultureInfo.InvariantCulture, $"Answer found at hop {hop}");
                     break;
                 }
             }
@@ -723,7 +728,7 @@ public class IterativeRetrievalService : IIterativeRetrievalService
 
         // Build entity graph if tracking relationships
         EntityGraph? discoveredGraph = null;
-        if (options.TrackRelationships && _entityService != null && allDocs.Any())
+        if (options.TrackRelationships && _entityService != null && allDocs.Count != 0)
         {
             var allContent = string.Join(" ", allDocs.Select(d => d.Content));
             discoveredGraph = await _entityService.ExtractEntityGraphAsync(allContent, cancellationToken: cancellationToken);
@@ -742,11 +747,11 @@ public class IterativeRetrievalService : IIterativeRetrievalService
         };
     }
 
-    private List<ExtractedEntity> FilterEntities(List<ExtractedEntity> entities, MultiHopOptions options)
+    private static List<ExtractedEntity> FilterEntities(List<ExtractedEntity> entities, MultiHopOptions options)
     {
         var filtered = entities.Where(e => e.Confidence >= options.MinEntityConfidence);
 
-        if (options.EntityTypesToFollow != null && options.EntityTypesToFollow.Any())
+        if (options.EntityTypesToFollow != null && options.EntityTypesToFollow.Count != 0)
         {
             filtered = filtered.Where(e => options.EntityTypesToFollow.Contains(e.Type));
         }
@@ -759,7 +764,7 @@ public class IterativeRetrievalService : IIterativeRetrievalService
         List<IterativeSearchResult> docs,
         CancellationToken cancellationToken)
     {
-        if (_llmService == null || !docs.Any())
+        if (_llmService == null || docs.Count == 0)
             return false;
 
         var context = string.Join("\n", docs.Take(5).Select(d => d.Content.Substring(0, Math.Min(200, d.Content.Length))));
@@ -783,7 +788,7 @@ public class IterativeRetrievalService : IIterativeRetrievalService
                 temperature: 0.0f,
                 cancellationToken: cancellationToken);
 
-            return response.Trim().ToUpperInvariant().Contains("YES");
+            return response.Trim().Contains("YES", StringComparison.OrdinalIgnoreCase);
         }
         catch
         {
@@ -804,7 +809,8 @@ public class IterativeRetrievalService : IIterativeRetrievalService
         options ??= new AgenticRetrievalOptions();
         var stopwatch = Stopwatch.StartNew();
 
-        _logger.LogInformation("Starting agentic retrieval for: {Query}", query);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogIterativeRetrieval1(_logger, query);
 
         var availableTools = options.AvailableTools?.ToList() ?? new List<RetrievalTool>
         {
@@ -861,7 +867,7 @@ public class IterativeRetrievalService : IIterativeRetrievalService
         }
 
         // Generate final answer
-        if (_llmService != null && allDocs.Any())
+        if (_llmService != null && allDocs.Count != 0)
         {
             finalAnswer = await GenerateFinalAnswerAsync(query, allDocs, cancellationToken);
         }
@@ -890,7 +896,7 @@ public class IterativeRetrievalService : IIterativeRetrievalService
         if (_llmService == null)
         {
             // Simple heuristic planning
-            if (!previousActions.Any())
+            if (previousActions.Count == 0)
             {
                 return (RetrievalTool.HybridSearch, "Starting with hybrid search", new Dictionary<string, object> { ["query"] = query });
             }
@@ -934,7 +940,7 @@ public class IterativeRetrievalService : IIterativeRetrievalService
         }
     }
 
-    private (RetrievalTool tool, string thought, Dictionary<string, object> input) ParseAgentPlan(
+    private static (RetrievalTool tool, string thought, Dictionary<string, object> input) ParseAgentPlan(
         string response,
         List<RetrievalTool> availableTools,
         string defaultQuery)
@@ -998,7 +1004,7 @@ public class IterativeRetrievalService : IIterativeRetrievalService
                         new HybridSearchOptions { MaxResults = 5 },
                         cancellationToken);
                     var docs = results.Select(IterativeSearchResult.FromHybridResult).ToList();
-                    return (docs, $"Retrieved {docs.Count} documents", docs.Any());
+                    return (docs, $"Retrieved {docs.Count} documents", docs.Count != 0);
 
                 case RetrievalTool.QueryReformulation:
                     var reformulated = await ReformulateQueryAsync(query, cancellationToken);
@@ -1083,6 +1089,27 @@ public class IterativeRetrievalService : IIterativeRetrievalService
             return (false, "Reflection failed");
         }
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting iterative retrieval for query: {Query}")]
+    private static partial void LogIterativeRetrieval8(ILogger logger, string query);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Iteration {Iteration}: query = {Query}")]
+    private static partial void LogIterativeRetrieval7(ILogger logger, int iteration, string query);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to get LLM reasoning, using fallback")]
+    private static partial void LogIterativeRetrieval6(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to generate final answer")]
+    private static partial void LogIterativeRetrieval5(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Decomposing query: {Query}")]
+    private static partial void LogIterativeRetrieval4(ILogger logger, string query);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to decompose query")]
+    private static partial void LogIterativeRetrieval3(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting multi-hop retrieval for: {Query}")]
+    private static partial void LogIterativeRetrieval2(ILogger logger, string query);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting agentic retrieval for: {Query}")]
+    private static partial void LogIterativeRetrieval1(ILogger logger, string query);
 
     #endregion
 }

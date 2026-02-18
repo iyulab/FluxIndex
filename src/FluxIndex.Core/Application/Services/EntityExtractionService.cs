@@ -15,7 +15,7 @@ namespace FluxIndex.Core.Application.Services;
 /// Uses regex patterns for common entities and optional LLM for complex extraction.
 /// Foundation for GraphRAG entity graph construction.
 /// </summary>
-public class EntityExtractionService : IAdvancedEntityExtractionService
+public partial class EntityExtractionService : IAdvancedEntityExtractionService
 {
     private readonly ITextCompletionService? _llmService;
     private readonly ILogger<EntityExtractionService> _logger;
@@ -137,15 +137,14 @@ public class EntityExtractionService : IAdvancedEntityExtractionService
                 .ToList();
 
             stopwatch.Stop();
-            _logger.LogDebug(
-                "Extracted {Count} entities from content in {Time}ms (LLM: {UsedLlm})",
-                entities.Count, stopwatch.ElapsedMilliseconds, options.UseLlm && _llmService != null);
+            if (_logger.IsEnabled(LogLevel.Debug))
+                LogEntityExtraction6(_logger, entities.Count, stopwatch.ElapsedMilliseconds, options.UseLlm && _llmService != null);
 
             return entities;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error extracting entities from content");
+            LogEntityExtraction5(_logger, ex);
             throw;
         }
     }
@@ -337,7 +336,7 @@ public class EntityExtractionService : IAdvancedEntityExtractionService
 
     #region Private Methods
 
-    private List<ExtractedEntity> ExtractWithPatterns(string content, EntityExtractionOptions options)
+    private static List<ExtractedEntity> ExtractWithPatterns(string content, EntityExtractionOptions options)
     {
         var entities = new List<ExtractedEntity>();
 
@@ -372,7 +371,7 @@ public class EntityExtractionService : IAdvancedEntityExtractionService
         return entities;
     }
 
-    private List<ExtractedEntity> ExtractCapitalizedSequences(string content, EntityExtractionOptions options)
+    private static List<ExtractedEntity> ExtractCapitalizedSequences(string content, EntityExtractionOptions options)
     {
         var entities = new List<ExtractedEntity>();
 
@@ -459,12 +458,12 @@ public class EntityExtractionService : IAdvancedEntityExtractionService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "LLM entity extraction failed, falling back to pattern-only extraction");
+            LogEntityExtraction4(_logger, ex);
             return new List<ExtractedEntity>();
         }
     }
 
-    private List<EntityRelation> ExtractRelationsWithPatterns(
+    private static List<EntityRelation> ExtractRelationsWithPatterns(
         string content,
         IReadOnlyList<ExtractedEntity> entities)
     {
@@ -529,12 +528,12 @@ public class EntityExtractionService : IAdvancedEntityExtractionService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "LLM relation extraction failed");
+            LogEntityExtraction3(_logger, ex);
             return new List<EntityRelation>();
         }
     }
 
-    private List<ExtractedEntity> DeduplicateEntities(List<ExtractedEntity> entities, string content)
+    private static List<ExtractedEntity> DeduplicateEntities(List<ExtractedEntity> entities, string content)
     {
         // Group by normalized text and type, merge occurrences
         var grouped = entities
@@ -569,7 +568,7 @@ public class EntityExtractionService : IAdvancedEntityExtractionService
         return grouped;
     }
 
-    private List<EntityRelation> DeduplicateRelations(List<EntityRelation> relations)
+    private static List<EntityRelation> DeduplicateRelations(List<EntityRelation> relations)
     {
         return relations
             .GroupBy(r => (r.SourceEntityId, r.TargetEntityId, r.Type))
@@ -835,7 +834,7 @@ public class EntityExtractionService : IAdvancedEntityExtractionService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to parse LLM entity response");
+            LogEntityExtraction2(_logger, ex);
         }
 
         return entities;
@@ -894,7 +893,7 @@ public class EntityExtractionService : IAdvancedEntityExtractionService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to parse LLM relation response");
+            LogEntityExtraction1(_logger, ex);
         }
 
         return relations;
@@ -920,20 +919,37 @@ public class EntityExtractionService : IAdvancedEntityExtractionService
 
     #region Helper Classes for JSON Parsing
 
-    private class LlmEntityResult
+    private sealed class LlmEntityResult
     {
         public string Text { get; set; } = string.Empty;
         public string Type { get; set; } = string.Empty;
         public double Confidence { get; set; }
     }
 
-    private class LlmRelationResult
+    private sealed class LlmRelationResult
     {
         public string Source { get; set; } = string.Empty;
         public string Target { get; set; } = string.Empty;
         public string Type { get; set; } = string.Empty;
         public double Confidence { get; set; }
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Extracted {Count} entities from content in {Time}ms (LLM: {UsedLlm})")]
+    private static partial void LogEntityExtraction6(ILogger logger, int count, long time, bool usedLlm);
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error extracting entities from content")]
+    private static partial void LogEntityExtraction5(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "LLM entity extraction failed, falling back to pattern-only extraction")]
+    private static partial void LogEntityExtraction4(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "LLM relation extraction failed")]
+    private static partial void LogEntityExtraction3(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to parse LLM entity response")]
+    private static partial void LogEntityExtraction2(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to parse LLM relation response")]
+    private static partial void LogEntityExtraction1(ILogger logger, Exception exception);
 
     #endregion
 }

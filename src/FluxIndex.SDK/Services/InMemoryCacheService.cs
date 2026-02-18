@@ -13,7 +13,7 @@ namespace FluxIndex.SDK.Services;
 /// <summary>
 /// 메모리 기반 캐시 서비스 구현 (Core 인터페이스)
 /// </summary>
-internal class InMemoryCacheService : ICacheService
+internal sealed partial class InMemoryCacheService : ICacheService
 {
     private readonly IMemoryCache _cache;
     private readonly ILogger<InMemoryCacheService> _logger;
@@ -33,16 +33,16 @@ internal class InMemoryCacheService : ICacheService
         };
     }
 
-    public Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default) 
+    public Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default)
         where T : class
     {
         if (_cache.TryGetValue<T>(key, out var value))
         {
-            _logger.LogDebug("Cache hit for key: {Key}", key);
+            LogCacheHit(_logger, key);
             return Task.FromResult<T?>(value);
         }
-        
-        _logger.LogDebug("Cache miss for key: {Key}", key);
+
+        LogCacheMiss(_logger, key);
         return Task.FromResult<T?>(null);
     }
 
@@ -58,22 +58,22 @@ internal class InMemoryCacheService : ICacheService
             : _defaultOptions;
         
         _cache.Set(key, value, options);
-        _logger.LogDebug("Cached value for key: {Key}", key);
-        
+        LogCachedValue(_logger, key);
+
         return Task.CompletedTask;
     }
 
     public Task<bool> RemoveAsync(string key, CancellationToken cancellationToken = default)
     {
         _cache.Remove(key);
-        _logger.LogDebug("Removed cached value for key: {Key}", key);
+        LogRemovedCachedValue(_logger, key);
         return Task.FromResult(true);
     }
 
     public Task<long> RemoveByPatternAsync(string pattern, CancellationToken cancellationToken = default)
     {
         // In-memory cache doesn't support pattern-based removal
-        _logger.LogWarning("Pattern-based removal is not supported in memory cache");
+        LogPatternRemovalNotSupported(_logger);
         return Task.FromResult(0L);
     }
 
@@ -100,7 +100,7 @@ internal class InMemoryCacheService : ICacheService
     public Task<bool> ExistsAsync(string key, CancellationToken cancellationToken = default)
     {
         var exists = _cache.TryGetValue(key, out _);
-        _logger.LogDebug("Cache key exists check for: {Key} = {Exists}", key, exists);
+        LogCacheKeyExistsCheck(_logger, key, exists);
         return Task.FromResult(exists);
     }
 
@@ -110,14 +110,38 @@ internal class InMemoryCacheService : ICacheService
         {
             memoryCache.Compact(1.0);
         }
-        _logger.LogDebug("Cache cleared");
+        LogCacheCleared(_logger);
         return Task.CompletedTask;
     }
 
-    private string ComputeHash(string text)
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Cache hit for key: {Key}")]
+    private static partial void LogCacheHit(ILogger logger, string key);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Cache miss for key: {Key}")]
+    private static partial void LogCacheMiss(ILogger logger, string key);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Cached value for key: {Key}")]
+    private static partial void LogCachedValue(ILogger logger, string key);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Removed cached value for key: {Key}")]
+    private static partial void LogRemovedCachedValue(ILogger logger, string key);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Pattern-based removal is not supported in memory cache")]
+    private static partial void LogPatternRemovalNotSupported(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Cache key exists check for: {Key} = {Exists}")]
+    private static partial void LogCacheKeyExistsCheck(ILogger logger, string key, bool exists);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Cache cleared")]
+    private static partial void LogCacheCleared(ILogger logger);
+
+    #endregion
+
+    private static string ComputeHash(string text)
     {
-        using var sha256 = System.Security.Cryptography.SHA256.Create();
-        var bytes = sha256.ComputeHash(System.Text.Encoding.UTF8.GetBytes(text));
+        var bytes = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text));
         return Convert.ToBase64String(bytes).Replace("/", "_").Replace("+", "-");
     }
 }

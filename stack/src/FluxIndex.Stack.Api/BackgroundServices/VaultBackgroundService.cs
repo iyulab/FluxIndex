@@ -10,7 +10,7 @@ namespace FluxIndex.Stack.Api.BackgroundServices;
 /// The actual processing is handled by FluxIndex.Extensions.FileVault's VaultBackgroundService.
 /// This service only handles Stack-specific initialization.
 /// </summary>
-public class VaultBackgroundService : BackgroundService
+public partial class VaultBackgroundService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IFileWatcherService _fileWatcherService;
@@ -28,7 +28,7 @@ public class VaultBackgroundService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("Vault background service started (using Extensions.FileVault)");
+        LogVaultBackgroundServiceStarted(_logger);
 
         try
         {
@@ -46,16 +46,17 @@ public class VaultBackgroundService : BackgroundService
                     try
                     {
                         await _fileWatcherService.StartWatchingAsync(folder, stoppingToken);
-                        _logger.LogInformation("Started watching folder: {Path}", folder.Path);
+                        LogStartedWatchingFolder(_logger, folder.Path);
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Failed to start watcher for folder: {Path}", folder.Path);
+                        LogStartWatcherFailed(_logger, ex, folder.Path);
                     }
                 }
             }
 
-            _logger.LogInformation("Initialized {Count} file watchers", folders.Count);
+            var watcherCount = folders.Count;
+            LogInitializedFileWatchers(_logger, watcherCount);
 
             // Keep the service running until stopped
             await Task.Delay(Timeout.Infinite, stoppingToken);
@@ -66,13 +67,35 @@ public class VaultBackgroundService : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error in vault background service");
+            LogVaultBackgroundServiceError(_logger, ex);
         }
         finally
         {
             // Cleanup on shutdown
-            await _fileWatcherService.StopAllAsync();
-            _logger.LogInformation("Vault background service stopped");
+            await _fileWatcherService.StopAllAsync(CancellationToken.None);
+            LogVaultBackgroundServiceStopped(_logger);
         }
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Vault background service started (using Extensions.FileVault)")]
+    private static partial void LogVaultBackgroundServiceStarted(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Started watching folder: {Path}")]
+    private static partial void LogStartedWatchingFolder(ILogger logger, string path);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to start watcher for folder: {Path}")]
+    private static partial void LogStartWatcherFailed(ILogger logger, Exception? exception, string path);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Initialized {Count} file watchers")]
+    private static partial void LogInitializedFileWatchers(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error in vault background service")]
+    private static partial void LogVaultBackgroundServiceError(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Vault background service stopped")]
+    private static partial void LogVaultBackgroundServiceStopped(ILogger logger);
+
+    #endregion
 }

@@ -8,7 +8,7 @@ namespace FluxIndex.Core.Application.Services.Quantization;
 /// <summary>
 /// 기존 벡터를 양자화 형식으로 일괄 변환하는 마이그레이션 서비스
 /// </summary>
-public class VectorQuantizationMigrationService
+public partial class VectorQuantizationMigrationService
 {
     private readonly IVectorStore _vectorStore;
     private readonly IVectorQuantizer _quantizer;
@@ -36,19 +36,19 @@ public class VectorQuantizationMigrationService
         var result = new MigrationResult();
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
-        _logger.LogInformation("Starting vector quantization migration with batch size {BatchSize}", options.BatchSize);
+        LogVectorQuantizationMigration11(_logger, options.BatchSize);
 
         try
         {
             // Product Quantization인 경우 먼저 학습이 필요
             if (_quantizer.QuantizationType == QuantizationType.ProductQuantization)
             {
-                _logger.LogInformation("Product Quantization detected - training required");
+                LogVectorQuantizationMigration10(_logger);
                 var trainingVectors = await CollectTrainingVectorsAsync(options.TrainingSampleSize, cancellationToken);
 
                 if (trainingVectors.Count > 0)
                 {
-                    _logger.LogInformation("Training with {Count} vectors", trainingVectors.Count);
+                    LogVectorQuantizationMigration9(_logger, trainingVectors.Count);
                     await _quantizer.TrainAsync(trainingVectors, cancellationToken);
                 }
             }
@@ -86,9 +86,8 @@ public class VectorQuantizationMigrationService
                     SkippedCount = result.SkippedCount
                 });
 
-                _logger.LogDebug(
-                    "Batch {BatchNumber}: Processed {Count} vectors (Success: {Success}, Failed: {Failed}, Skipped: {Skipped})",
-                    batchNumber, chunks.Count(), batchResult.SuccessCount, batchResult.FailureCount, batchResult.SkippedCount);
+                var chunkCount = chunks.Count();
+                LogVectorQuantizationMigration8(_logger, batchNumber, chunkCount, batchResult.SuccessCount, batchResult.FailureCount, batchResult.SkippedCount);
 
                 // 배치 간 지연
                 if (options.BatchDelayMs > 0)
@@ -101,23 +100,21 @@ public class VectorQuantizationMigrationService
             result.ElapsedTime = sw.Elapsed;
             result.IsSuccess = result.FailureCount == 0;
 
-            _logger.LogInformation(
-                "Migration completed in {Elapsed}. Total: {Total}, Success: {Success}, Failed: {Failed}, Skipped: {Skipped}",
-                sw.Elapsed, totalProcessed, result.SuccessCount, result.FailureCount, result.SkippedCount);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogVectorQuantizationMigration7(_logger, sw.ElapsedMilliseconds, totalProcessed, result.SuccessCount, result.FailureCount, result.SkippedCount);
 
             if (result.TotalBytesOriginal > 0)
             {
                 var compressionRatio = (double)result.TotalBytesQuantized / result.TotalBytesOriginal;
-                _logger.LogInformation(
-                    "Compression: {Original:N0} bytes -> {Quantized:N0} bytes ({Ratio:P2})",
-                    result.TotalBytesOriginal, result.TotalBytesQuantized, compressionRatio);
+                if (_logger.IsEnabled(LogLevel.Information))
+                    LogVectorQuantizationMigration6(_logger, result.TotalBytesOriginal, result.TotalBytesQuantized, compressionRatio);
             }
 
             return result;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Migration failed");
+            LogVectorQuantizationMigration5(_logger, ex);
             sw.Stop();
             result.ElapsedTime = sw.Elapsed;
             result.IsSuccess = false;
@@ -140,7 +137,7 @@ public class VectorQuantizationMigrationService
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
         var documentIdList = documentIds.ToList();
-        _logger.LogInformation("Starting selective migration for {Count} documents", documentIdList.Count);
+        LogVectorQuantizationMigration4(_logger, documentIdList.Count);
 
         try
         {
@@ -179,15 +176,14 @@ public class VectorQuantizationMigrationService
             result.ElapsedTime = sw.Elapsed;
             result.IsSuccess = result.FailureCount == 0;
 
-            _logger.LogInformation(
-                "Selective migration completed. Documents: {Total}, Success: {Success}, Failed: {Failed}",
-                documentIdList.Count, result.SuccessCount, result.FailureCount);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogVectorQuantizationMigration3(_logger, documentIdList.Count, result.SuccessCount, result.FailureCount);
 
             return result;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Selective migration failed");
+            LogVectorQuantizationMigration2(_logger, ex);
             sw.Stop();
             result.ElapsedTime = sw.Elapsed;
             result.IsSuccess = false;
@@ -206,7 +202,7 @@ public class VectorQuantizationMigrationService
         var result = new QuantizationAnalysisResult();
         var vectorList = vectors.ToList();
 
-        if (!vectorList.Any())
+        if (vectorList.Count == 0)
             return result;
 
         result.VectorCount = vectorList.Count;
@@ -349,7 +345,7 @@ public class VectorQuantizationMigrationService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to quantize chunk {ChunkId}", chunk.Id);
+                LogVectorQuantizationMigration1(_logger, ex, chunk.Id);
                 result.FailureCount++;
 
                 if (!options.ContinueOnError)
@@ -359,12 +355,39 @@ public class VectorQuantizationMigrationService
 
         return result;
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting vector quantization migration with batch size {BatchSize}")]
+    private static partial void LogVectorQuantizationMigration11(ILogger logger, int batchSize);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Product Quantization detected - training required")]
+    private static partial void LogVectorQuantizationMigration10(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Training with {Count} vectors")]
+    private static partial void LogVectorQuantizationMigration9(ILogger logger, int count);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Batch {BatchNumber}: Processed {Count} vectors (Success: {Success}, Failed: {Failed}, Skipped: {Skipped})")]
+    private static partial void LogVectorQuantizationMigration8(ILogger logger, int batchNumber, int count, int success, int failed, int skipped);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Migration completed in {Elapsed}. Total: {Total}, Success: {Success}, Failed: {Failed}, Skipped: {Skipped}")]
+    private static partial void LogVectorQuantizationMigration7(ILogger logger, long elapsed, int total, int success, int failed, int skipped);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Compression: {Original:N0} bytes -> {Quantized:N0} bytes ({Ratio:P2})")]
+    private static partial void LogVectorQuantizationMigration6(ILogger logger, long original, long quantized, double ratio);
+    [LoggerMessage(Level = LogLevel.Error, Message = "Migration failed")]
+    private static partial void LogVectorQuantizationMigration5(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting selective migration for {Count} documents")]
+    private static partial void LogVectorQuantizationMigration4(ILogger logger, int count);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Selective migration completed. Documents: {Total}, Success: {Success}, Failed: {Failed}")]
+    private static partial void LogVectorQuantizationMigration3(ILogger logger, int total, int success, int failed);
+    [LoggerMessage(Level = LogLevel.Error, Message = "Selective migration failed")]
+    private static partial void LogVectorQuantizationMigration2(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to quantize chunk {ChunkId}")]
+    private static partial void LogVectorQuantizationMigration1(ILogger logger, Exception exception, string chunkId);
+
+    #endregion
 }
 
 /// <summary>
 /// 마이그레이션 옵션
 /// </summary>
-public class MigrationOptions
+public partial class MigrationOptions
 {
     /// <summary>
     /// 배치 크기 (한 번에 처리할 벡터 수)
@@ -379,7 +402,7 @@ public class MigrationOptions
     /// <summary>
     /// 배치 간 지연 시간 (밀리초)
     /// </summary>
-    public int BatchDelayMs { get; set; } = 0;
+    public int BatchDelayMs { get; set; }
 
     /// <summary>
     /// 오류 발생 시 계속 진행할지 여부
@@ -389,13 +412,13 @@ public class MigrationOptions
     /// <summary>
     /// 원본 스토어 업데이트 여부
     /// </summary>
-    public bool UpdateOriginalStore { get; set; } = false;
+    public bool UpdateOriginalStore { get; set; }
 }
 
 /// <summary>
 /// 마이그레이션 결과
 /// </summary>
-public class MigrationResult
+public partial class MigrationResult
 {
     public bool IsSuccess { get; set; }
     public int SuccessCount { get; set; }
@@ -414,7 +437,7 @@ public class MigrationResult
 /// <summary>
 /// 마이그레이션 진행 상황
 /// </summary>
-public class MigrationProgress
+public partial class MigrationProgress
 {
     public int ProcessedCount { get; set; }
     public int TotalCount { get; set; }
@@ -431,7 +454,7 @@ public class MigrationProgress
 /// <summary>
 /// 양자화 분석 결과
 /// </summary>
-public class QuantizationAnalysisResult
+public partial class QuantizationAnalysisResult
 {
     public int VectorCount { get; set; }
     public int Dimension { get; set; }
@@ -447,7 +470,7 @@ public class QuantizationAnalysisResult
 /// <summary>
 /// 배치 마이그레이션 결과 (내부용)
 /// </summary>
-internal class BatchMigrationResult
+internal sealed class BatchMigrationResult
 {
     public int SuccessCount { get; set; }
     public int FailureCount { get; set; }

@@ -14,7 +14,7 @@ namespace FluxIndex.Core.Application.Services.Fusion;
 /// to predict optimal fusion weights based on query characteristics.
 /// Implements online learning for continuous improvement.
 /// </summary>
-public class LearningBasedFusionService : ILearningBasedFusionService
+public partial class LearningBasedFusionService : ILearningBasedFusionService
 {
     private readonly ILogger<LearningBasedFusionService> _logger;
 
@@ -65,11 +65,11 @@ public class LearningBasedFusionService : ILearningBasedFusionService
         var examplesList = examples.ToList();
         if (examplesList.Count == 0)
         {
-            _logger.LogWarning("No training examples provided");
+            LogLearningBasedFusion14(_logger);
             return;
         }
 
-        _logger.LogInformation("Training fusion model with {Count} examples", examplesList.Count);
+        LogLearningBasedFusion13(_logger, examplesList.Count);
 
         try
         {
@@ -101,18 +101,17 @@ public class LearningBasedFusionService : ILearningBasedFusionService
             _lastTrainedAt = DateTimeOffset.UtcNow;
             _isModelTrained = _trainingCount >= MinTrainingExamples;
 
-            _logger.LogInformation(
-                "Training completed. Total examples: {Total}, Model trained: {IsTrained}",
-                _trainingCount, _isModelTrained);
+            if (_logger.IsEnabled(LogLevel.Warning))
+                LogLearningBasedFusion12(_logger, _trainingCount, _isModelTrained);
         }
         catch (OperationCanceledException)
         {
-            _logger.LogWarning("Training was cancelled");
+            LogLearningBasedFusion11(_logger);
             throw;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during training");
+            LogLearningBasedFusion10(_logger, ex);
             throw;
         }
     }
@@ -147,9 +146,8 @@ public class LearningBasedFusionService : ILearningBasedFusionService
                            $"based on {model.TrainingCount} examples)"
             };
 
-            _logger.LogDebug(
-                "Predicted weights for query type {QueryType}: Vector={VectorWeight:F3}, Sparse={SparseWeight:F3}",
-                queryType, prediction.Weights.VectorWeight, prediction.Weights.SparseWeight);
+            if (_logger.IsEnabled(LogLevel.Warning))
+                LogLearningBasedFusion9(_logger, queryType, prediction.Weights.VectorWeight, prediction.Weights.SparseWeight);
 
             return await Task.FromResult(prediction);
         }
@@ -157,9 +155,8 @@ public class LearningBasedFusionService : ILearningBasedFusionService
         // Fall back to heuristic-based prediction
         var heuristicPrediction = PredictFromHeuristics(features, vectorList, sparseList);
 
-        _logger.LogDebug(
-            "Using heuristic prediction for query type {QueryType}: Vector={VectorWeight:F3}, Sparse={SparseWeight:F3}",
-            queryType, heuristicPrediction.Weights.VectorWeight, heuristicPrediction.Weights.SparseWeight);
+        if (_logger.IsEnabled(LogLevel.Warning))
+            LogLearningBasedFusion8(_logger, queryType, heuristicPrediction.Weights.VectorWeight, heuristicPrediction.Weights.SparseWeight);
 
         return await Task.FromResult(heuristicPrediction);
     }
@@ -171,7 +168,7 @@ public class LearningBasedFusionService : ILearningBasedFusionService
     {
         ArgumentNullException.ThrowIfNull(feedback);
 
-        _logger.LogDebug("Processing online update for query: {Query}", feedback.Query);
+        LogLearningBasedFusion7(_logger, feedback.Query);
 
         try
         {
@@ -222,15 +219,14 @@ public class LearningBasedFusionService : ILearningBasedFusionService
                     _trainingBuffer.TryRemove(oldestKey, out _);
             }
 
-            _logger.LogDebug(
-                "Online update completed for query type {QueryType}. Relevance: {Relevance:F3}, Error: {Error:F3}",
-                queryType, relevanceScore, error);
+            if (_logger.IsEnabled(LogLevel.Warning))
+                LogLearningBasedFusion6(_logger, queryType, relevanceScore, error);
 
             await Task.CompletedTask;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during online update");
+            LogLearningBasedFusion5(_logger, ex);
             throw;
         }
     }
@@ -253,9 +249,8 @@ public class LearningBasedFusionService : ILearningBasedFusionService
             feedbackList.Add((resultId, relevanceScore));
         }
 
-        _logger.LogDebug(
-            "Recorded feedback for query {QueryId}, result {ResultId}: {Relevance:F3}",
-            queryId, resultId, relevanceScore);
+        if (_logger.IsEnabled(LogLevel.Warning))
+            LogLearningBasedFusion4(_logger, queryId, resultId, relevanceScore);
 
         await Task.CompletedTask;
     }
@@ -329,7 +324,7 @@ public class LearningBasedFusionService : ILearningBasedFusionService
         });
         state = state with { Checksum = ComputeChecksum(json) };
 
-        _logger.LogInformation("Exported model state with {TypeCount} query type models", learnedWeights.Count);
+        LogLearningBasedFusion3(_logger, learnedWeights.Count);
 
         return await Task.FromResult(state);
     }
@@ -393,9 +388,8 @@ public class LearningBasedFusionService : ILearningBasedFusionService
         _lastUpdatedAt = state.Statistics.LastUpdatedAt;
         _isModelTrained = state.Statistics.IsModelTrained;
 
-        _logger.LogInformation(
-            "Imported model state: {TypeCount} query type models, {TrainingCount} training examples",
-            _queryTypeModels.Count, _trainingCount);
+        if (_logger.IsEnabled(LogLevel.Warning))
+            LogLearningBasedFusion2(_logger, _queryTypeModels.Count, _trainingCount);
 
         await Task.CompletedTask;
     }
@@ -416,7 +410,7 @@ public class LearningBasedFusionService : ILearningBasedFusionService
 
         InitializeDefaultModels();
 
-        _logger.LogInformation("Model reset to initial state");
+        LogLearningBasedFusion1(_logger);
     }
 
     #region Private Methods
@@ -442,7 +436,7 @@ public class LearningBasedFusionService : ILearningBasedFusionService
         }
     }
 
-    private LearnedQueryTypeModel CreateDefaultModel(QueryType queryType, double vectorWeight = 0.5, double sparseWeight = 0.5)
+    private static LearnedQueryTypeModel CreateDefaultModel(QueryType queryType, double vectorWeight = 0.5, double sparseWeight = 0.5)
     {
         return new LearnedQueryTypeModel
         {
@@ -456,7 +450,7 @@ public class LearningBasedFusionService : ILearningBasedFusionService
         };
     }
 
-    private QueryPredictionFeatures ExtractQueryFeatures(
+    private static QueryPredictionFeatures ExtractQueryFeatures(
         string query,
         List<RankedResult> vectorResults,
         List<RankedResult> sparseResults)
@@ -482,9 +476,9 @@ public class LearningBasedFusionService : ILearningBasedFusionService
             UniqueTermCount = uniqueTerms,
             QueryType = queryType,
             Complexity = complexity,
-            VectorAvgScore = vectorScores.Any() ? vectorScores.Average() : 0,
+            VectorAvgScore = vectorScores.Count != 0 ? vectorScores.Average() : 0,
             VectorScoreVariance = CalculateVariance(vectorScores),
-            SparseAvgScore = sparseScores.Any() ? sparseScores.Average() : 0,
+            SparseAvgScore = sparseScores.Count != 0 ? sparseScores.Average() : 0,
             SparseScoreVariance = CalculateVariance(sparseScores),
             ResultOverlapRatio = overlapRatio,
             ContainsTechnicalTerms = ContainsTechnicalTerms(query),
@@ -492,7 +486,7 @@ public class LearningBasedFusionService : ILearningBasedFusionService
         };
     }
 
-    private QueryType DetectQueryType(string query)
+    private static QueryType DetectQueryType(string query)
     {
         var lowerQuery = query.ToLowerInvariant();
 
@@ -524,7 +518,7 @@ public class LearningBasedFusionService : ILearningBasedFusionService
         return QueryType.SimpleKeyword;
     }
 
-    private ComplexityLevel DetectComplexity(string query)
+    private static ComplexityLevel DetectComplexity(string query)
     {
         var words = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
@@ -537,44 +531,44 @@ public class LearningBasedFusionService : ILearningBasedFusionService
         return ComplexityLevel.VeryComplex;
     }
 
-    private bool IsNaturalLanguageQuestion(string query)
+    private static bool IsNaturalLanguageQuestion(string query)
     {
         var questionStarters = new[] { "what", "how", "why", "when", "where", "who", "which", "can", "could", "would", "should", "is", "are", "does", "do" };
         var lowerQuery = query.ToLowerInvariant().Trim();
-        return query.Contains('?') || questionStarters.Any(qs => lowerQuery.StartsWith(qs + " "));
+        return query.Contains('?') || questionStarters.Any(qs => lowerQuery.StartsWith(qs + " ", StringComparison.Ordinal));
     }
 
-    private bool ContainsSemanticIndicators(string query)
+    private static bool ContainsSemanticIndicators(string query)
     {
         var indicators = new[] { "similar to", "like", "related to", "meaning", "concept", "explain", "describe" };
         return indicators.Any(ind => query.Contains(ind));
     }
 
-    private bool ContainsMultiHopIndicators(string query)
+    private static bool ContainsMultiHopIndicators(string query)
     {
         var indicators = new[] { "and then", "after that", "which leads to", "in order to", "step by step", "first...then" };
         return indicators.Any(ind => query.Contains(ind));
     }
 
-    private bool ContainsReasoningIndicators(string query)
+    private static bool ContainsReasoningIndicators(string query)
     {
         var indicators = new[] { "why", "because", "reason", "cause", "explain why", "how come" };
         return indicators.Any(ind => query.Contains(ind));
     }
 
-    private bool ContainsComparisonIndicators(string query)
+    private static bool ContainsComparisonIndicators(string query)
     {
         var indicators = new[] { "compare", "versus", "vs", "difference between", "better", "worse", "or" };
         return indicators.Any(ind => query.Contains(ind));
     }
 
-    private bool ContainsTemporalIndicators(string query)
+    private static bool ContainsTemporalIndicators(string query)
     {
         var indicators = new[] { "when", "before", "after", "during", "since", "until", "latest", "recent", "history" };
         return indicators.Any(ind => query.Contains(ind));
     }
 
-    private bool ContainsTechnicalTerms(string query)
+    private static bool ContainsTechnicalTerms(string query)
     {
         var technicalPatterns = new[]
         {
@@ -589,7 +583,7 @@ public class LearningBasedFusionService : ILearningBasedFusionService
             System.Text.RegularExpressions.Regex.IsMatch(query, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase));
     }
 
-    private (List<double[]> features, List<double> labels) ExtractFeaturesAndLabels(List<FusionTrainingExample> examples)
+    private static (List<double[]> features, List<double> labels) ExtractFeaturesAndLabels(List<FusionTrainingExample> examples)
     {
         var features = new List<double[]>();
         var labels = new List<double>();
@@ -605,7 +599,7 @@ public class LearningBasedFusionService : ILearningBasedFusionService
         return (features, labels);
     }
 
-    private QueryPredictionFeatures ExtractQueryFeaturesFromExample(FusionTrainingExample example)
+    private static QueryPredictionFeatures ExtractQueryFeaturesFromExample(FusionTrainingExample example)
     {
         var vectorScores = example.VectorResults.Select(r => r.Score).ToList();
         var sparseScores = example.SparseResults.Select(r => r.Score).ToList();
@@ -624,9 +618,9 @@ public class LearningBasedFusionService : ILearningBasedFusionService
             UniqueTermCount = words.Distinct(StringComparer.OrdinalIgnoreCase).Count(),
             QueryType = DetectQueryType(example.Query),
             Complexity = DetectComplexity(example.Query),
-            VectorAvgScore = vectorScores.Any() ? vectorScores.Average() : 0,
+            VectorAvgScore = vectorScores.Count != 0 ? vectorScores.Average() : 0,
             VectorScoreVariance = CalculateVariance(vectorScores),
-            SparseAvgScore = sparseScores.Any() ? sparseScores.Average() : 0,
+            SparseAvgScore = sparseScores.Count != 0 ? sparseScores.Average() : 0,
             SparseScoreVariance = CalculateVariance(sparseScores),
             ResultOverlapRatio = overlapRatio,
             ContainsTechnicalTerms = ContainsTechnicalTerms(example.Query),
@@ -686,7 +680,7 @@ public class LearningBasedFusionService : ILearningBasedFusionService
             for (int i = 0; i < model.FeatureCentroid.Length; i++)
             {
                 var values = features.Where(f => i < f.Length).Select(f => f[i]).ToList();
-                if (values.Any())
+                if (values.Count != 0)
                     model.FeatureCentroid[i] = values.Average();
             }
 
@@ -740,7 +734,7 @@ public class LearningBasedFusionService : ILearningBasedFusionService
         await Task.CompletedTask;
     }
 
-    private double ComputePredictedScore(double[] features, LearnedQueryTypeModel model)
+    private static double ComputePredictedScore(double[] features, LearnedQueryTypeModel model)
     {
         double score = 0;
         for (int i = 0; i < model.Weights.Length && i < features.Length; i++)
@@ -778,7 +772,7 @@ public class LearningBasedFusionService : ILearningBasedFusionService
         };
     }
 
-    private FusionWeightPrediction PredictFromHeuristics(
+    private static FusionWeightPrediction PredictFromHeuristics(
         QueryPredictionFeatures features,
         List<RankedResult> vectorResults,
         List<RankedResult> sparseResults)
@@ -874,13 +868,13 @@ public class LearningBasedFusionService : ILearningBasedFusionService
         };
     }
 
-    private double CalculateRelevanceFromFeedback(FusionFeedback feedback)
+    private static double CalculateRelevanceFromFeedback(FusionFeedback feedback)
     {
         // Start with implicit relevance from click behavior
         var relevance = feedback.CalculateImplicitRelevance();
 
         // Factor in explicit relevance judgments if available
-        if (feedback.RelevanceJudgments.Any())
+        if (feedback.RelevanceJudgments.Count != 0)
         {
             var avgExplicit = feedback.RelevanceJudgments.Values.Average();
             relevance = (relevance + avgExplicit) / 2;
@@ -889,7 +883,7 @@ public class LearningBasedFusionService : ILearningBasedFusionService
         return Math.Clamp(relevance, 0, 1);
     }
 
-    private FusionTrainingExample CreateExampleFromFeedback(FusionFeedback feedback, double relevanceScore)
+    private static FusionTrainingExample CreateExampleFromFeedback(FusionFeedback feedback, double relevanceScore)
     {
         return new FusionTrainingExample
         {
@@ -903,7 +897,7 @@ public class LearningBasedFusionService : ILearningBasedFusionService
 
     private double? CalculateTrainingAccuracy()
     {
-        if (_trainingBuffer.Count == 0) return null;
+        if (_trainingBuffer.IsEmpty) return null;
 
         double totalError = 0;
         int count = 0;
@@ -935,7 +929,7 @@ public class LearningBasedFusionService : ILearningBasedFusionService
                 confidences.Add(Math.Min(1.0, model.TrainingCount / 100.0));
             }
         }
-        return confidences.Any() ? confidences.Average() : 0.5;
+        return confidences.Count != 0 ? confidences.Average() : 0.5;
     }
 
     private static double CalculateVariance(List<double> values)
@@ -963,8 +957,7 @@ public class LearningBasedFusionService : ILearningBasedFusionService
 
     private static string ComputeChecksum(string data)
     {
-        using var sha256 = SHA256.Create();
-        var bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(data));
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(data));
         return Convert.ToBase64String(bytes);
     }
 
@@ -972,7 +965,7 @@ public class LearningBasedFusionService : ILearningBasedFusionService
 
     #region Internal Types
 
-    private class LearnedQueryTypeModel
+    private sealed class LearnedQueryTypeModel
     {
         public QueryType QueryType { get; init; }
         public double[] Weights { get; set; } = new double[11];
@@ -983,6 +976,39 @@ public class LearningBasedFusionService : ILearningBasedFusionService
         public int OnlineUpdateCount { get; set; }
         public DateTimeOffset? LastUpdatedAt { get; set; }
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No training examples provided")]
+    private static partial void LogLearningBasedFusion14(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Training fusion model with {Count} examples")]
+    private static partial void LogLearningBasedFusion13(ILogger logger, int count);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Training completed. Total examples: {Total}, Model trained: {IsTrained}")]
+    private static partial void LogLearningBasedFusion12(ILogger logger, int total, bool isTrained);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Training was cancelled")]
+    private static partial void LogLearningBasedFusion11(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error during training")]
+    private static partial void LogLearningBasedFusion10(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Predicted weights for query type {QueryType}: Vector={VectorWeight:F3}, Sparse={SparseWeight:F3}")]
+    private static partial void LogLearningBasedFusion9(ILogger logger, QueryType queryType, double vectorWeight, double sparseWeight);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Using heuristic prediction for query type {QueryType}: Vector={VectorWeight:F3}, Sparse={SparseWeight:F3}")]
+    private static partial void LogLearningBasedFusion8(ILogger logger, QueryType queryType, double vectorWeight, double sparseWeight);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Processing online update for query: {Query}")]
+    private static partial void LogLearningBasedFusion7(ILogger logger, string query);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Online update completed for query type {QueryType}. Relevance: {Relevance:F3}, Error: {Error:F3}")]
+    private static partial void LogLearningBasedFusion6(ILogger logger, QueryType queryType, double relevance, double error);
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error during online update")]
+    private static partial void LogLearningBasedFusion5(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Recorded feedback for query {QueryId}, result {ResultId}: {Relevance:F3}")]
+    private static partial void LogLearningBasedFusion4(ILogger logger, string queryId, string resultId, double relevance);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Exported model state with {TypeCount} query type models")]
+    private static partial void LogLearningBasedFusion3(ILogger logger, int typeCount);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Imported model state: {TypeCount} query type models, {TrainingCount} training examples")]
+    private static partial void LogLearningBasedFusion2(ILogger logger, int typeCount, int trainingCount);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Model reset to initial state")]
+    private static partial void LogLearningBasedFusion1(ILogger logger);
 
     #endregion
 }

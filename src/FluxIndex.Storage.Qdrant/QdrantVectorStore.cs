@@ -1,6 +1,7 @@
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Utilities;
 using FluxIndex.Core.Domain.Entities;
+using Google.Protobuf.Collections;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Qdrant.Client;
@@ -12,7 +13,7 @@ namespace FluxIndex.Storage.Qdrant;
 /// Qdrant implementation of IVectorStore for high-performance vector similarity search.
 /// Supports dynamic dimension adaptation via CollectionNamingStrategy.
 /// </summary>
-public class QdrantVectorStore : IVectorStore, IAsyncDisposable
+public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
 {
     private readonly QdrantClient _client;
     private readonly QdrantOptions _options;
@@ -95,14 +96,12 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
                 _detectedDimension = dimension;
                 _collectionInitialized = true;
 
-                _logger.LogInformation(
-                    "Qdrant collection ready: '{Collection}' (dim={Dimension}, strategy={Strategy})",
-                    _resolvedCollectionName, dimension, _options.NamingStrategy);
+                LogCollectionReady(_logger, _resolvedCollectionName!, dimension, _options.NamingStrategy);
             }
             catch (Exception ex)
             {
                 // Log warning but still set collection name (assume exists)
-                _logger.LogWarning(ex, "Failed to initialize Qdrant collection '{Collection}' (assuming it exists)", collectionName);
+                LogCollectionInitFailed(_logger, ex, collectionName);
 
                 // Set state even on failure to prevent repeated initialization attempts
                 _resolvedCollectionName = collectionName;
@@ -157,8 +156,7 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
             schemaType: PayloadSchemaType.Integer,
             cancellationToken: ct);
 
-        _logger.LogInformation("Created Qdrant collection '{CollectionName}' with dimension {Dimension}",
-            _resolvedCollectionName, dimension);
+        LogCollectionCreated(_logger, _resolvedCollectionName!, dimension);
     }
 
     /// <summary>
@@ -205,7 +203,7 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
             points: [point],
             cancellationToken: cancellationToken);
 
-        _logger.LogDebug("Stored chunk {ChunkId} for document {DocumentId}", chunk.Id, chunk.DocumentId);
+        LogChunkStored(_logger, chunk.Id, chunk.DocumentId);
         return chunk.Id;
     }
 
@@ -219,7 +217,7 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
         var validChunks = chunkList.Where(c => c.Embedding != null && c.Embedding.Length > 0).ToList();
         if (validChunks.Count == 0)
         {
-            _logger.LogWarning("No chunks with embeddings to store");
+            LogNoChunksToStore(_logger);
             return [];
         }
 
@@ -250,7 +248,7 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
             points: points,
             cancellationToken: cancellationToken);
 
-        _logger.LogDebug("Stored {Count} chunks in batch (dim={Dimension})", validChunks.Count, dimension);
+        LogBatchStored(_logger, validChunks.Count, dimension);
         return validChunks.Select(c => c.Id);
     }
 
@@ -307,7 +305,7 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
         {
             if (!Guid.TryParse(id, out var guid))
             {
-                _logger.LogDebug("Invalid chunk ID format: {ChunkId}", id);
+                LogInvalidChunkIdFormat(_logger, id);
                 return null;
             }
 
@@ -318,14 +316,14 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
                 withVectors: true,
                 cancellationToken: cancellationToken);
 
-            var point = points.FirstOrDefault();
+            var point = points.Count > 0 ? points[0] : null;
             if (point == null) return null;
 
             return MapPointToChunk(point);
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "Failed to retrieve chunk {ChunkId}", id);
+            LogRetrieveChunkFailed(_logger, ex, id);
             return null;
         }
     }
@@ -384,7 +382,7 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
                     withVectors: true,
                     cancellationToken: cancellationToken);
 
-                var point = points.FirstOrDefault();
+                var point = points.Count > 0 ? points[0] : null;
                 if (point != null)
                 {
                     results.Add(MapPointToChunk(point));
@@ -418,7 +416,7 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
         }
 
         // Extract custom properties
-        foreach (var kv in payload.Where(p => p.Key.StartsWith("prop_")))
+        foreach (var kv in payload.Where(p => p.Key.StartsWith("prop_", StringComparison.Ordinal)))
         {
             var key = kv.Key[5..]; // Remove "prop_" prefix
             chunk.AddProperty(key, GetPayloadString(payload, kv.Key));
@@ -426,7 +424,7 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
 
         // Extract metadata
         chunk.Metadata = new Dictionary<string, object>();
-        foreach (var kv in payload.Where(p => p.Key.StartsWith("meta_")))
+        foreach (var kv in payload.Where(p => p.Key.StartsWith("meta_", StringComparison.Ordinal)))
         {
             var key = kv.Key[5..]; // Remove "meta_" prefix
             chunk.Metadata[key] = GetPayloadString(payload, kv.Key);
@@ -480,7 +478,7 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
         });
     }
 
-    private DocumentChunk MapScoredPointToChunk(ScoredPoint point)
+    private static DocumentChunk MapScoredPointToChunk(ScoredPoint point)
     {
         var payload = point.Payload;
 
@@ -503,7 +501,7 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
         }
 
         // Extract custom properties
-        foreach (var kv in payload.Where(p => p.Key.StartsWith("prop_")))
+        foreach (var kv in payload.Where(p => p.Key.StartsWith("prop_", StringComparison.Ordinal)))
         {
             var key = kv.Key[5..];
             chunk.AddProperty(key, GetPayloadString(payload, kv.Key));
@@ -511,7 +509,7 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
 
         // Extract metadata
         chunk.Metadata = new Dictionary<string, object>();
-        foreach (var kv in payload.Where(p => p.Key.StartsWith("meta_")))
+        foreach (var kv in payload.Where(p => p.Key.StartsWith("meta_", StringComparison.Ordinal)))
         {
             var key = kv.Key[5..];
             chunk.Metadata[key] = GetPayloadString(payload, kv.Key);
@@ -588,7 +586,7 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
 
         if (!Guid.TryParse(id, out var guid))
         {
-            _logger.LogWarning("Invalid chunk ID format for delete: {ChunkId}", id);
+            LogInvalidDeleteId(_logger, id);
             return false;
         }
 
@@ -597,7 +595,7 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
             id: guid,
             cancellationToken: cancellationToken);
 
-        _logger.LogDebug("Deleted chunk {ChunkId}", id);
+        LogChunkDeleted(_logger, id);
         return true;
     }
 
@@ -625,7 +623,7 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
             filter: filter,
             cancellationToken: cancellationToken);
 
-        _logger.LogDebug("Deleted chunks for document {DocumentId}", documentId);
+        LogDocumentChunksDeleted(_logger, documentId);
         return true;
     }
 
@@ -660,7 +658,7 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
             // If not initialized, nothing to clear
             if (_resolvedCollectionName == null)
             {
-                _logger.LogDebug("Clear called but no collection initialized");
+                LogClearNoCollection(_logger);
                 return;
             }
 
@@ -668,12 +666,14 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
 
             try
             {
+#pragma warning disable CA2016 // Qdrant SDK does not accept CancellationToken for DeleteCollectionAsync
                 await _client.DeleteCollectionAsync(collectionToClear);
-                _logger.LogInformation("Cleared Qdrant collection '{CollectionName}'", collectionToClear);
+#pragma warning restore CA2016
+                LogCollectionCleared(_logger, collectionToClear);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to delete Qdrant collection '{CollectionName}'", collectionToClear);
+                LogDeleteCollectionFailed(_logger, ex, collectionToClear);
             }
 
             // Reset state under lock to prevent race conditions
@@ -694,7 +694,7 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
 
     #region Helper Methods
 
-    private static string GetPayloadString(IDictionary<string, Value> payload, string key)
+    private static string GetPayloadString(MapField<string, Value> payload, string key)
     {
         if (payload.TryGetValue(key, out var value))
         {
@@ -703,7 +703,7 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
         return string.Empty;
     }
 
-    private static int GetPayloadInt(IDictionary<string, Value> payload, string key)
+    private static int GetPayloadInt(MapField<string, Value> payload, string key)
     {
         if (payload.TryGetValue(key, out var value))
         {
@@ -712,7 +712,7 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
         return 0;
     }
 
-    private static DateTime GetPayloadDateTime(IDictionary<string, Value> payload, string key)
+    private static DateTime GetPayloadDateTime(MapField<string, Value> payload, string key)
     {
         if (payload.TryGetValue(key, out var value) && !string.IsNullOrEmpty(value.StringValue))
         {
@@ -730,6 +730,53 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
     {
         _client.Dispose();
         _initLock.Dispose();
+        GC.SuppressFinalize(this);
         return ValueTask.CompletedTask;
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Qdrant collection ready: '{Collection}' (dim={Dimension}, strategy={Strategy})")]
+    private static partial void LogCollectionReady(ILogger logger, string collection, int dimension, CollectionNamingStrategy strategy);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to initialize Qdrant collection '{Collection}' (assuming it exists)")]
+    private static partial void LogCollectionInitFailed(ILogger logger, Exception exception, string collection);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Created Qdrant collection '{CollectionName}' with dimension {Dimension}")]
+    private static partial void LogCollectionCreated(ILogger logger, string collectionName, int dimension);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Stored chunk {ChunkId} for document {DocumentId}")]
+    private static partial void LogChunkStored(ILogger logger, string chunkId, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No chunks with embeddings to store")]
+    private static partial void LogNoChunksToStore(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Stored {Count} chunks in batch (dim={Dimension})")]
+    private static partial void LogBatchStored(ILogger logger, int count, int dimension);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Invalid chunk ID format: {ChunkId}")]
+    private static partial void LogInvalidChunkIdFormat(ILogger logger, string chunkId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Failed to retrieve chunk {ChunkId}")]
+    private static partial void LogRetrieveChunkFailed(ILogger logger, Exception exception, string chunkId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Invalid chunk ID format for delete: {ChunkId}")]
+    private static partial void LogInvalidDeleteId(ILogger logger, string chunkId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Deleted chunk {ChunkId}")]
+    private static partial void LogChunkDeleted(ILogger logger, string chunkId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Deleted chunks for document {DocumentId}")]
+    private static partial void LogDocumentChunksDeleted(ILogger logger, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Clear called but no collection initialized")]
+    private static partial void LogClearNoCollection(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Cleared Qdrant collection '{CollectionName}'")]
+    private static partial void LogCollectionCleared(ILogger logger, string collectionName);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to delete Qdrant collection '{CollectionName}'")]
+    private static partial void LogDeleteCollectionFailed(ILogger logger, Exception exception, string collectionName);
+
+    #endregion
 }

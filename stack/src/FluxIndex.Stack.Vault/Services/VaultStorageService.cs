@@ -9,7 +9,7 @@ namespace FluxIndex.Stack.Vault.Services;
 /// <summary>
 /// Service for managing vault artifact storage on the file system.
 /// </summary>
-public class VaultStorageService : IVaultStorageService
+public partial class VaultStorageService : IVaultStorageService
 {
     private readonly ILogger<VaultStorageService> _logger;
     private readonly VaultOptions _options;
@@ -64,7 +64,7 @@ public class VaultStorageService : IVaultStorageService
 
         var mdPath = Path.Combine(extractPath, "content.md");
         await File.WriteAllTextAsync(mdPath, markdownContent, cancellationToken);
-        _logger.LogDebug("Stored markdown extract for {FileId}: {Path}", trackedFileId, mdPath);
+        LogStoredMarkdownExtract(_logger, trackedFileId, mdPath);
 
         if (!string.IsNullOrEmpty(plainTextContent))
         {
@@ -106,7 +106,8 @@ public class VaultStorageService : IVaultStorageService
         var json = JsonSerializer.Serialize(manifest, JsonOptions);
         await File.WriteAllTextAsync(manifestPath, json, cancellationToken);
 
-        _logger.LogDebug("Stored {Count} images for {FileId}", imageList.Count, trackedFileId);
+        var imageCount = imageList.Count;
+        LogStoredImages(_logger, imageCount, trackedFileId);
     }
 
     public async Task StoreChunksAsync(
@@ -121,7 +122,7 @@ public class VaultStorageService : IVaultStorageService
         var json = JsonSerializer.Serialize(chunkData, JsonOptions);
         await File.WriteAllTextAsync(filePath, json, cancellationToken);
 
-        _logger.LogDebug("Stored chunks for {FileId}", trackedFileId);
+        LogStoredChunks(_logger, trackedFileId);
     }
 
     public async Task StoreQAPairsAsync(
@@ -136,7 +137,7 @@ public class VaultStorageService : IVaultStorageService
         var json = JsonSerializer.Serialize(qaPairs, JsonOptions);
         await File.WriteAllTextAsync(filePath, json, cancellationToken);
 
-        _logger.LogDebug("Stored QA pairs for {FileId}", trackedFileId);
+        LogStoredQAPairs(_logger, trackedFileId);
     }
 
     public async Task StoreEnrichmentAsync(
@@ -151,7 +152,7 @@ public class VaultStorageService : IVaultStorageService
         var json = JsonSerializer.Serialize(enrichmentData, JsonOptions);
         await File.WriteAllTextAsync(filePath, json, cancellationToken);
 
-        _logger.LogDebug("Stored enrichment for {FileId}", trackedFileId);
+        LogStoredEnrichment(_logger, trackedFileId);
     }
 
     public async Task<(string? Markdown, string? PlainText)> GetExtractAsync(
@@ -248,7 +249,7 @@ public class VaultStorageService : IVaultStorageService
         var json = JsonSerializer.Serialize(manifest, JsonOptions);
         await File.WriteAllTextAsync(manifestPath, json, cancellationToken);
 
-        _logger.LogDebug("Created version {Version} snapshot for {FileId}", version, trackedFileId);
+        LogCreatedVersionSnapshot(_logger, version, trackedFileId);
     }
 
     public Task DeleteArtifactsAsync(Guid trackedFileId, CancellationToken cancellationToken = default)
@@ -258,7 +259,7 @@ public class VaultStorageService : IVaultStorageService
         if (Directory.Exists(basePath))
         {
             Directory.Delete(basePath, recursive: true);
-            _logger.LogInformation("Deleted artifacts for {FileId}", trackedFileId);
+            LogDeletedArtifacts(_logger, trackedFileId);
         }
 
         return Task.CompletedTask;
@@ -287,7 +288,7 @@ public class VaultStorageService : IVaultStorageService
             Directory.EnumerateFiles(basePath, "*", SearchOption.AllDirectories).Any());
     }
 
-    private class ImageManifestEntry
+    private sealed class ImageManifestEntry
     {
         public string FileName { get; init; } = string.Empty;
         public string ContentType { get; init; } = string.Empty;
@@ -297,10 +298,35 @@ public class VaultStorageService : IVaultStorageService
         public long Size { get; init; }
     }
 
-    private class VersionManifest
+    private sealed class VersionManifest
     {
         public int Version { get; init; }
         public DateTime CreatedAt { get; init; }
         public List<string> Artifacts { get; init; } = new();
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Stored markdown extract for {FileId}: {Path}")]
+    private static partial void LogStoredMarkdownExtract(ILogger logger, Guid fileId, string path);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Stored {Count} images for {FileId}")]
+    private static partial void LogStoredImages(ILogger logger, int count, Guid fileId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Stored chunks for {FileId}")]
+    private static partial void LogStoredChunks(ILogger logger, Guid fileId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Stored QA pairs for {FileId}")]
+    private static partial void LogStoredQAPairs(ILogger logger, Guid fileId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Stored enrichment for {FileId}")]
+    private static partial void LogStoredEnrichment(ILogger logger, Guid fileId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Created version {Version} snapshot for {FileId}")]
+    private static partial void LogCreatedVersionSnapshot(ILogger logger, int version, Guid fileId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Deleted artifacts for {FileId}")]
+    private static partial void LogDeletedArtifacts(ILogger logger, Guid fileId);
+
+    #endregion
 }

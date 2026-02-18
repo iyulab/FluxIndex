@@ -4,6 +4,7 @@ using FluxIndex.Cache.Redis.Configuration;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services;
 using FluxIndex.Core.Application.Services.Reranking;
+using FluxIndex.Core.Interfaces;
 using FluxIndex.Core.Services;
 using CoreQualityThresholds = FluxIndex.Core.Domain.Models.QualityThresholds;
 using FluxIndex.SDK.Extensions.FluxImprover;
@@ -19,6 +20,7 @@ using FluxIndex.Stack.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 
 // Type aliases to resolve collisions with Core interfaces
@@ -148,7 +150,7 @@ public static class ServiceCollectionExtensions
         var originalDb = builder.Database ?? "fluxindex";
 
         // Don't append if dimension suffix already exists
-        if (!originalDb.EndsWith($"_{dimension}"))
+        if (!originalDb.EndsWith($"_{dimension}", StringComparison.Ordinal))
         {
             // Remove any existing dimension suffix (e.g., _1536, _384)
             var baseName = System.Text.RegularExpressions.Regex.Replace(originalDb, @"_\d+$", "");
@@ -194,6 +196,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IDocumentService, DocumentService>();
         services.AddScoped<ISearchService, StackSearchService>();
         services.AddScoped<IIndexingService, StackIndexingService>();
+        services.AddSingleton<IRuleBasedMetadataExtractor, RuleBasedMetadataExtractor>();
         services.AddScoped<IChunkService, ChunkService>();
         services.AddScoped<IAiProviderSettingsService, AiProviderSettingsService>();
         // ChunkEnrichmentService with explicit dependency injection
@@ -318,9 +321,8 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Adds LocalReranker cross-encoder based semantic reranking.
-    /// TODO: Implement LMSupply.Reranker integration directly in Stack
-    /// following the consumer app pattern (direct package reference instead of SDK wrapper).
+    /// Adds LocalReranker cross-encoder based semantic reranking via LMSupply.Reranker.
+    /// Configuration section: "LocalReranker" with "Enabled" (bool) and optional "ModelId" (string).
     /// </summary>
     public static IServiceCollection AddLocalRerankerService(
         this IServiceCollection services,
@@ -328,15 +330,19 @@ public static class ServiceCollectionExtensions
     {
         var section = configuration.GetSection("LocalReranker");
 
-        // TODO: LMSupply.Reranker integration planned for future implementation
-        // Stack should directly reference LMSupply.Reranker and implement a wrapper
-        // similar to EmbeddingServiceFactory pattern
-        if (section.Exists() && section.GetValue<bool>("Enabled", false))
+        if (!section.Exists() || !section.GetValue<bool>("Enabled", false))
         {
-            Console.WriteLine(
-                "[FluxIndex] LocalReranker configuration detected but not yet implemented. " +
-                "Consider using Core's IRerankingService with external API providers.");
+            return services;
         }
+
+        var modelId = section.GetValue<string>("ModelId") ?? "default";
+
+        services.AddSingleton<IReranker>(sp =>
+        {
+            var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger<LMSupplyRerankerWrapper>();
+            var rerankerModel = LMSupply.Reranker.LocalReranker.LoadAsync(modelId).GetAwaiter().GetResult();
+            return new LMSupplyRerankerWrapper(rerankerModel, logger);
+        });
 
         return services;
     }

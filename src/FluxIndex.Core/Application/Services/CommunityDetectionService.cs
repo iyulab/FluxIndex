@@ -2,6 +2,7 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.ValueObjects;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Collections.ObjectModel;
 
 namespace FluxIndex.Core.Application.Services;
 
@@ -10,7 +11,7 @@ namespace FluxIndex.Core.Application.Services;
 /// Implements embedding-based clustering and graph-based community detection
 /// to organize documents into thematic groups for improved retrieval.
 /// </summary>
-public class CommunityDetectionService : ICommunityDetectionService
+public partial class CommunityDetectionService : ICommunityDetectionService
 {
     private readonly IEmbeddingService _embeddingService;
     private readonly IGraphTraversalService? _graphService;
@@ -47,9 +48,8 @@ public class CommunityDetectionService : ICommunityDetectionService
 
         options ??= _options;
 
-        _logger.LogInformation(
-            "Detecting communities for {Count} chunks using {Algorithm}",
-            chunks.Count, options.Algorithm);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogCommunityDetection14(_logger, chunks.Count, options.Algorithm);
 
         var startTime = DateTime.UtcNow;
 
@@ -73,9 +73,8 @@ public class CommunityDetectionService : ICommunityDetectionService
 
         var elapsedMs = (DateTime.UtcNow - startTime).TotalMilliseconds;
 
-        _logger.LogInformation(
-            "Detected {Count} communities in {Elapsed}ms (silhouette: {Silhouette:F3})",
-            communities.Count, elapsedMs, metrics.SilhouetteScore);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogCommunityDetection13(_logger, communities.Count, elapsedMs, metrics.SilhouetteScore);
 
         return new CommunityDetectionResult
         {
@@ -97,7 +96,8 @@ public class CommunityDetectionService : ICommunityDetectionService
         if (communities.Count <= 1)
             return communities;
 
-        _logger.LogDebug("Merging communities with similarity threshold {Threshold}", similarityThreshold);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogCommunityDetection12(_logger, similarityThreshold);
 
         var mergedCommunities = new List<Community>(communities);
         bool merged;
@@ -138,7 +138,7 @@ public class CommunityDetectionService : ICommunityDetectionService
             mergedCommunities[i] = mergedCommunities[i] with { CommunityId = i };
         }
 
-        _logger.LogDebug("Merged to {Count} communities", mergedCommunities.Count);
+        LogCommunityDetection11(_logger, mergedCommunities.Count);
         return mergedCommunities.AsReadOnly();
     }
 
@@ -173,9 +173,8 @@ public class CommunityDetectionService : ICommunityDetectionService
             }
         }
 
-        _logger.LogDebug(
-            "Found best community {CommunityId} with similarity {Similarity:F3}",
-            bestCommunity?.CommunityId, bestSimilarity);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogCommunityDetection10(_logger, bestCommunity?.CommunityId, bestSimilarity);
 
         return bestCommunity;
     }
@@ -217,7 +216,7 @@ public class CommunityDetectionService : ICommunityDetectionService
             .Take(topK)
             .ToList();
 
-        _logger.LogDebug("Found {Count} relevant communities", topMatches.Count);
+        LogCommunityDetection9(_logger, topMatches.Count);
         return topMatches.AsReadOnly();
     }
 
@@ -232,7 +231,8 @@ public class CommunityDetectionService : ICommunityDetectionService
             ? options.NumClusters
             : EstimateOptimalK(chunks.Count);
 
-        _logger.LogDebug("Running K-Means with k={K}", k);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogCommunityDetection8(_logger, k);
 
         var embeddings = chunks.Select(c => c.Embedding.Values).ToList();
         var dimension = embeddings[0].Length;
@@ -265,11 +265,12 @@ public class CommunityDetectionService : ICommunityDetectionService
             iteration++;
         }
 
-        _logger.LogDebug("K-Means converged after {Iterations} iterations", iteration);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogCommunityDetection7(_logger, iteration);
 
         // Build communities
         var communities = BuildCommunities(chunks, assignments, centroids, k);
-        return Task.FromResult(communities);
+        return Task.FromResult<IReadOnlyList<Community>>(communities);
     }
 
     private Task<IReadOnlyList<Community>> DetectWithDBSCANAsync(
@@ -277,8 +278,8 @@ public class CommunityDetectionService : ICommunityDetectionService
         CommunityDetectionOptions options,
         CancellationToken cancellationToken)
     {
-        _logger.LogDebug("Running DBSCAN with eps={Eps}, minPts={MinPts}",
-            options.Epsilon, options.MinPoints);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogCommunityDetection6(_logger, options.Epsilon, options.MinPoints);
 
         var embeddings = chunks.Select(c => c.Embedding.Values).ToList();
         var n = embeddings.Count;
@@ -341,7 +342,7 @@ public class CommunityDetectionService : ICommunityDetectionService
 
         // Build communities (excluding noise)
         var communities = BuildCommunitiesFromLabels(chunks, labels, embeddings);
-        return Task.FromResult(communities);
+        return Task.FromResult<IReadOnlyList<Community>>(communities);
     }
 
     private Task<IReadOnlyList<Community>> DetectWithHierarchicalAsync(
@@ -349,7 +350,7 @@ public class CommunityDetectionService : ICommunityDetectionService
         CommunityDetectionOptions options,
         CancellationToken cancellationToken)
     {
-        _logger.LogDebug("Running Hierarchical clustering");
+        LogCommunityDetection5(_logger);
 
         var n = chunks.Count;
         if (n <= 1)
@@ -410,11 +411,11 @@ public class CommunityDetectionService : ICommunityDetectionService
         CommunityDetectionOptions options,
         CancellationToken cancellationToken)
     {
-        _logger.LogDebug("Running Label Propagation");
+        LogCommunityDetection4(_logger);
 
         if (_graphService == null)
         {
-            _logger.LogWarning("Graph service not available, falling back to K-Means");
+            LogCommunityDetection3(_logger);
             return await DetectWithKMeansAsync(chunks, options, cancellationToken);
         }
 
@@ -462,7 +463,8 @@ public class CommunityDetectionService : ICommunityDetectionService
             iteration++;
         }
 
-        _logger.LogDebug("Label Propagation converged after {Iterations} iterations", iteration);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogCommunityDetection2(_logger, iteration);
 
         // Build communities from labels
         var communities = BuildCommunitiesFromLabels(chunks, labels, embeddings);
@@ -473,13 +475,13 @@ public class CommunityDetectionService : ICommunityDetectionService
 
     #region Helper Methods
 
-    private int EstimateOptimalK(int n)
+    private static int EstimateOptimalK(int n)
     {
         // Rule of thumb: sqrt(n/2)
         return Math.Max(2, (int)Math.Sqrt(n / 2.0));
     }
 
-    private float[][] InitializeCentroidsKMeansPlusPlus(IReadOnlyList<float[]> embeddings, int k)
+    private static float[][] InitializeCentroidsKMeansPlusPlus(List<float[]> embeddings, int k)
     {
         var centroids = new List<float[]>();
         var random = Random.Shared;
@@ -518,7 +520,7 @@ public class CommunityDetectionService : ICommunityDetectionService
         return centroids.ToArray();
     }
 
-    private int[] AssignToCentroids(IReadOnlyList<float[]> embeddings, float[][] centroids)
+    private static int[] AssignToCentroids(List<float[]> embeddings, float[][] centroids)
     {
         var assignments = new int[embeddings.Count];
 
@@ -543,8 +545,8 @@ public class CommunityDetectionService : ICommunityDetectionService
         return assignments;
     }
 
-    private float[][] UpdateCentroids(
-        IReadOnlyList<float[]> embeddings,
+    private static float[][] UpdateCentroids(
+        List<float[]> embeddings,
         int[] assignments,
         int k,
         int dimension)
@@ -581,7 +583,7 @@ public class CommunityDetectionService : ICommunityDetectionService
         return newCentroids;
     }
 
-    private IReadOnlyList<Community> BuildCommunities(
+    private static ReadOnlyCollection<Community> BuildCommunities(
         IReadOnlyList<ChunkWithEmbedding> chunks,
         int[] assignments,
         float[][] centroids,
@@ -621,10 +623,10 @@ public class CommunityDetectionService : ICommunityDetectionService
         return communities.AsReadOnly();
     }
 
-    private IReadOnlyList<Community> BuildCommunitiesFromLabels(
+    private static ReadOnlyCollection<Community> BuildCommunitiesFromLabels(
         IReadOnlyList<ChunkWithEmbedding> chunks,
         int[] labels,
-        IReadOnlyList<float[]> embeddings)
+        List<float[]> embeddings)
     {
         var clusterGroups = new Dictionary<int, List<int>>();
 
@@ -659,7 +661,7 @@ public class CommunityDetectionService : ICommunityDetectionService
         return communities.AsReadOnly();
     }
 
-    private Community CreateSingleCommunity(IReadOnlyList<ChunkWithEmbedding> chunks, int id)
+    private static Community CreateSingleCommunity(IReadOnlyList<ChunkWithEmbedding> chunks, int id)
     {
         var embeddings = chunks.Select(c => c.Embedding.Values).ToList();
         var centroid = CalculateCentroid(embeddings);
@@ -674,7 +676,7 @@ public class CommunityDetectionService : ICommunityDetectionService
         };
     }
 
-    private List<int> GetNeighbors(IReadOnlyList<float[]> embeddings, int pointIndex, double epsilon)
+    private static List<int> GetNeighbors(List<float[]> embeddings, int pointIndex, double epsilon)
     {
         var neighbors = new List<int>();
 
@@ -690,8 +692,8 @@ public class CommunityDetectionService : ICommunityDetectionService
         return neighbors;
     }
 
-    private Dictionary<int, List<int>> BuildSimilarityGraph(
-        IReadOnlyList<float[]> embeddings,
+    private static Dictionary<int, List<int>> BuildSimilarityGraph(
+        List<float[]> embeddings,
         double threshold)
     {
         var adjacency = new Dictionary<int, List<int>>();
@@ -717,7 +719,7 @@ public class CommunityDetectionService : ICommunityDetectionService
         return adjacency;
     }
 
-    private double[,] ComputeDistanceMatrix(IReadOnlyList<float[]> embeddings)
+    private static double[,] ComputeDistanceMatrix(List<float[]> embeddings)
     {
         var n = embeddings.Count;
         var distances = new double[n, n];
@@ -735,7 +737,7 @@ public class CommunityDetectionService : ICommunityDetectionService
         return distances;
     }
 
-    private (int, int, double) FindClosestClusters(
+    private static (int, int, double) FindClosestClusters(
         List<List<int>> clusters,
         double[,] distances,
         IReadOnlyList<float[]> embeddings)
@@ -762,7 +764,7 @@ public class CommunityDetectionService : ICommunityDetectionService
         return (bestI, bestJ, minDist);
     }
 
-    private double CalculateAverageLinkage(
+    private static double CalculateAverageLinkage(
         List<int> cluster1,
         List<int> cluster2,
         IReadOnlyList<float[]> embeddings)
@@ -782,7 +784,7 @@ public class CommunityDetectionService : ICommunityDetectionService
         return count > 0 ? totalDist / count : double.MaxValue;
     }
 
-    private float[] CalculateCentroid(IReadOnlyList<float[]> embeddings)
+    private static float[] CalculateCentroid(List<float[]> embeddings)
     {
         if (embeddings.Count == 0)
             return Array.Empty<float>();
@@ -806,7 +808,7 @@ public class CommunityDetectionService : ICommunityDetectionService
         return centroid;
     }
 
-    private double CalculateClusterCoherence(IReadOnlyList<float[]> embeddings, float[] centroid)
+    private static double CalculateClusterCoherence(List<float[]> embeddings, float[] centroid)
     {
         if (embeddings.Count == 0)
             return 0;
@@ -817,7 +819,7 @@ public class CommunityDetectionService : ICommunityDetectionService
         return avgSimilarity;
     }
 
-    private double CalculateCosineSimilarity(float[] a, float[] b)
+    private static double CalculateCosineSimilarity(float[] a, float[] b)
     {
         if (a.Length != b.Length)
             return 0;
@@ -837,7 +839,7 @@ public class CommunityDetectionService : ICommunityDetectionService
         return denominator > 0 ? dotProduct / denominator : 0;
     }
 
-    private double CalculateEuclideanDistance(float[] a, float[] b)
+    private static double CalculateEuclideanDistance(float[] a, float[] b)
     {
         double sum = 0;
         for (int i = 0; i < a.Length; i++)
@@ -848,7 +850,7 @@ public class CommunityDetectionService : ICommunityDetectionService
         return Math.Sqrt(sum);
     }
 
-    private double CalculateCommunitySimilarity(Community a, Community b)
+    private static double CalculateCommunitySimilarity(Community a, Community b)
     {
         if (a.Centroid == null || b.Centroid == null)
             return 0;
@@ -856,7 +858,7 @@ public class CommunityDetectionService : ICommunityDetectionService
         return CalculateCosineSimilarity(a.Centroid.Values, b.Centroid.Values);
     }
 
-    private Community MergeTwoCommunities(Community a, Community b)
+    private static Community MergeTwoCommunities(Community a, Community b)
     {
         var mergedChunkIds = a.ChunkIds.Concat(b.ChunkIds).Distinct().ToList();
 
@@ -935,7 +937,7 @@ public class CommunityDetectionService : ICommunityDetectionService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to generate summary for community {Id}", community.CommunityId);
+                LogCommunityDetection1(_logger, ex, community.CommunityId);
                 updatedCommunities.Add(community);
             }
         }
@@ -943,7 +945,7 @@ public class CommunityDetectionService : ICommunityDetectionService
         return updatedCommunities.AsReadOnly();
     }
 
-    private CommunityMetrics CalculateCommunityMetrics(
+    private static CommunityMetrics CalculateCommunityMetrics(
         IReadOnlyList<Community> communities,
         IReadOnlyList<ChunkWithEmbedding> chunks)
     {
@@ -973,7 +975,7 @@ public class CommunityDetectionService : ICommunityDetectionService
         };
     }
 
-    private double CalculateSilhouetteScore(
+    private static double CalculateSilhouetteScore(
         IReadOnlyList<Community> communities,
         IReadOnlyList<ChunkWithEmbedding> chunks)
     {
@@ -1042,6 +1044,39 @@ public class CommunityDetectionService : ICommunityDetectionService
     }
 
     #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Detecting communities for {Count} chunks using {Algorithm}")]
+    private static partial void LogCommunityDetection14(ILogger logger, int count, ClusteringAlgorithm algorithm);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Detected {Count} communities in {Elapsed}ms (silhouette: {Silhouette:F3})")]
+    private static partial void LogCommunityDetection13(ILogger logger, int count, double elapsed, double silhouette);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Merging communities with similarity threshold {Threshold}")]
+    private static partial void LogCommunityDetection12(ILogger logger, double threshold);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Merged to {Count} communities")]
+    private static partial void LogCommunityDetection11(ILogger logger, int count);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Found best community {CommunityId} with similarity {Similarity:F3}")]
+    private static partial void LogCommunityDetection10(ILogger logger, int? communityId, double similarity);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Found {Count} relevant communities")]
+    private static partial void LogCommunityDetection9(ILogger logger, int count);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Running K-Means with k={K}")]
+    private static partial void LogCommunityDetection8(ILogger logger, int k);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "K-Means converged after {Iterations} iterations")]
+    private static partial void LogCommunityDetection7(ILogger logger, int iterations);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Running DBSCAN with eps={Eps}, minPts={MinPts}")]
+    private static partial void LogCommunityDetection6(ILogger logger, double eps, double minPts);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Running Hierarchical clustering")]
+    private static partial void LogCommunityDetection5(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Running Label Propagation")]
+    private static partial void LogCommunityDetection4(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Graph service not available, falling back to K-Means")]
+    private static partial void LogCommunityDetection3(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Label Propagation converged after {Iterations} iterations")]
+    private static partial void LogCommunityDetection2(ILogger logger, int iterations);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to generate summary for community {Id}")]
+    private static partial void LogCommunityDetection1(ILogger logger, Exception exception, int id);
+
+    #endregion
 }
 
 /// <summary>
@@ -1087,7 +1122,7 @@ public interface ICommunityDetectionService
 /// <summary>
 /// Options for community detection
 /// </summary>
-public class CommunityDetectionOptions
+public partial class CommunityDetectionOptions
 {
     /// <summary>
     /// Clustering algorithm to use
@@ -1097,7 +1132,7 @@ public class CommunityDetectionOptions
     /// <summary>
     /// Number of clusters (for K-Means and Hierarchical)
     /// </summary>
-    public int NumClusters { get; set; } = 0; // 0 = auto-detect
+    public int NumClusters { get; set; } // 0 = auto-detect
 
     /// <summary>
     /// Maximum iterations for iterative algorithms
@@ -1122,7 +1157,7 @@ public class CommunityDetectionOptions
     /// <summary>
     /// Whether to generate community summaries
     /// </summary>
-    public bool GenerateSummaries { get; set; } = false;
+    public bool GenerateSummaries { get; set; }
 }
 
 /// <summary>
@@ -1146,7 +1181,7 @@ public enum ClusteringAlgorithm
 /// <summary>
 /// Chunk with its embedding
 /// </summary>
-public class ChunkWithEmbedding
+public partial class ChunkWithEmbedding
 {
     /// <summary>
     /// Chunk identifier
@@ -1208,7 +1243,7 @@ public record Community
 /// <summary>
 /// Community match result
 /// </summary>
-public class CommunityMatch
+public partial class CommunityMatch
 {
     /// <summary>
     /// Matched community
@@ -1224,7 +1259,7 @@ public class CommunityMatch
 /// <summary>
 /// Community detection result
 /// </summary>
-public class CommunityDetectionResult
+public partial class CommunityDetectionResult
 {
     /// <summary>
     /// Detected communities
@@ -1259,7 +1294,7 @@ public class CommunityDetectionResult
 /// <summary>
 /// Community detection metrics
 /// </summary>
-public class CommunityMetrics
+public partial class CommunityMetrics
 {
     /// <summary>
     /// Total number of communities

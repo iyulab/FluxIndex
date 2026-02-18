@@ -16,7 +16,7 @@ namespace FluxIndex.Core.Services;
 /// Provides query-adaptive fusion weight optimization based on research findings
 /// showing 6.6% improvement with query-type specific weights.
 /// </summary>
-public class DynamicFusionService : IDynamicFusionService
+public partial class DynamicFusionService : IDynamicFusionService
 {
     private readonly IQueryComplexityAnalyzer _queryAnalyzer;
     private readonly ILogger<DynamicFusionService> _logger;
@@ -155,10 +155,7 @@ public class DynamicFusionService : IDynamicFusionService
             TechnicalDomains = analysis.TechnicalDomains
         };
 
-        _logger.LogDebug(
-            "DAT calculated: Vector={VectorWeight:F2}, Sparse={SparseWeight:F2}, " +
-            "Type={QueryType}, Fusion={Fusion}, Confidence={Confidence:F2}",
-            config.VectorWeight, config.SparseWeight, config.QueryType,
+        LogDatCalculated(_logger, config.VectorWeight, config.SparseWeight, config.QueryType,
             config.RecommendedFusion, config.Confidence);
 
         return config;
@@ -171,16 +168,9 @@ public class DynamicFusionService : IDynamicFusionService
         CancellationToken cancellationToken = default)
     {
         // Log performance feedback for potential weight tuning
-        _logger.LogInformation(
-            "DAT performance feedback: QueryType={QueryType}, Weights=({Vector:F2}/{Sparse:F2}), " +
-            "Results={Results}/{Total}, MRR={MRR:F3}, Latency={Latency}ms",
-            configuration.QueryType,
-            configuration.VectorWeight,
-            configuration.SparseWeight,
-            metrics.RelevantResults,
-            metrics.TotalResults,
-            metrics.MRR,
-            metrics.LatencyMs);
+        LogDatFeedback(_logger, configuration.QueryType, configuration.VectorWeight,
+            configuration.SparseWeight, metrics.RelevantResults, metrics.TotalResults,
+            metrics.MRR, metrics.LatencyMs);
 
         // Future: Implement online learning to adjust weights based on feedback
         // For now, just log for analysis
@@ -376,6 +366,16 @@ public class DynamicFusionService : IDynamicFusionService
             TechnicalDomains = Array.Empty<string>()
         };
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "DAT calculated: Vector={VectorWeight}, Sparse={SparseWeight}, Type={QueryType}, Fusion={Fusion}, Confidence={Confidence}")]
+    private static partial void LogDatCalculated(ILogger logger, double vectorWeight, double sparseWeight, AppQueryType queryType, FusionMethod fusion, double confidence);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "DAT performance feedback: QueryType={QueryType}, Weights=({Vector}/{Sparse}), Results={Results}/{Total}, MRR={MRR}, Latency={Latency}ms")]
+    private static partial void LogDatFeedback(ILogger logger, AppQueryType queryType, double vector, double sparse, int results, int total, double? mrr, double latency);
 
     #endregion
 }

@@ -10,7 +10,7 @@ namespace FluxIndex.Storage.SQLite.Graph;
 /// SQLite implementation of IGraphStore for entity graph storage.
 /// Provides entity graph storage for local mode.
 /// </summary>
-public class SQLiteEntityGraphStore : IGraphStore
+public partial class SQLiteEntityGraphStore : IGraphStore
 {
     private readonly SQLiteEntityGraphDbContext _context;
     private readonly SQLiteEntityGraphOptions _options;
@@ -284,9 +284,8 @@ public class SQLiteEntityGraphStore : IGraphStore
 
                     var neighborId = rel.SourceEntityId == entityId ? rel.TargetEntityId : rel.SourceEntityId;
 
-                    if (!visited.Contains(neighborId))
+                    if (visited.Add(neighborId))
                     {
-                        visited.Add(neighborId);
                         traversedRelationshipIds.Add(rel.Id);
 
                         var parentPath = paths[entityId];
@@ -591,8 +590,15 @@ public class SQLiteEntityGraphStore : IGraphStore
         _context.Entities.RemoveRange(_context.Entities);
 
         await _context.SaveChangesAsync(ct);
-        _logger.LogInformation("SQLite entity graph store cleared");
+        LogStoreCleared(_logger);
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "SQLite entity graph store cleared")]
+    private static partial void LogStoreCleared(ILogger logger);
 
     #endregion
 

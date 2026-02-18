@@ -8,7 +8,7 @@ namespace FluxIndex.Stack.Api.BackgroundServices;
 /// <summary>
 /// Background service that continuously processes pending indexing jobs.
 /// </summary>
-public class IndexingBackgroundService : BackgroundService
+public partial class IndexingBackgroundService : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<IndexingBackgroundService> _logger;
@@ -25,7 +25,7 @@ public class IndexingBackgroundService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("Indexing background service started");
+        LogIndexingBackgroundServiceStarted(_logger);
 
         // Recover any jobs stuck in Processing state (from previous server shutdown)
         await RecoverStuckJobsAsync(stoppingToken);
@@ -39,7 +39,7 @@ public class IndexingBackgroundService : BackgroundService
 
                 if (indexingService == null)
                 {
-                    _logger.LogWarning("IIndexingService not registered, waiting...");
+                    LogIndexingServiceNotRegistered(_logger);
                     await Task.Delay(_idleInterval, stoppingToken);
                     continue;
                 }
@@ -49,7 +49,7 @@ public class IndexingBackgroundService : BackgroundService
 
                 if (summary.QueuedCount > 0)
                 {
-                    _logger.LogDebug("Processing next job ({QueuedCount} queued)", summary.QueuedCount);
+                    LogProcessingNextJob(_logger, summary.QueuedCount);
                     await indexingService.ProcessNextJobAsync(stoppingToken);
                     await Task.Delay(_pollingInterval, stoppingToken);
                 }
@@ -66,12 +66,12 @@ public class IndexingBackgroundService : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error in indexing background service");
+                LogIndexingBackgroundServiceError(_logger, ex);
                 await Task.Delay(_idleInterval, stoppingToken);
             }
         }
 
-        _logger.LogInformation("Indexing background service stopped");
+        LogIndexingBackgroundServiceStopped(_logger);
     }
 
     /// <summary>
@@ -87,19 +87,47 @@ public class IndexingBackgroundService : BackgroundService
 
             if (indexingService == null)
             {
-                _logger.LogWarning("IIndexingService not available for stuck job recovery");
+                LogIndexingServiceNotAvailableForRecovery(_logger);
                 return;
             }
 
             var recoveredCount = await indexingService.RecoverStuckJobsAsync(stoppingToken);
             if (recoveredCount > 0)
             {
-                _logger.LogWarning("Recovered {Count} stuck jobs from Processing state", recoveredCount);
+                LogRecoveredStuckJobs(_logger, recoveredCount);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error recovering stuck jobs on startup");
+            LogRecoverStuckJobsError(_logger, ex);
         }
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Indexing background service started")]
+    private static partial void LogIndexingBackgroundServiceStarted(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "IIndexingService not registered, waiting...")]
+    private static partial void LogIndexingServiceNotRegistered(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Processing next job ({QueuedCount} queued)")]
+    private static partial void LogProcessingNextJob(ILogger logger, int queuedCount);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error in indexing background service")]
+    private static partial void LogIndexingBackgroundServiceError(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Indexing background service stopped")]
+    private static partial void LogIndexingBackgroundServiceStopped(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "IIndexingService not available for stuck job recovery")]
+    private static partial void LogIndexingServiceNotAvailableForRecovery(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Recovered {Count} stuck jobs from Processing state")]
+    private static partial void LogRecoveredStuckJobs(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error recovering stuck jobs on startup")]
+    private static partial void LogRecoverStuckJobsError(ILogger logger, Exception? exception);
+
+    #endregion
 }

@@ -14,7 +14,7 @@ namespace FluxIndex.Stack.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/v1/[controller]")]
-public class VaultController : ControllerBase
+public partial class VaultController : ControllerBase
 {
     private readonly IVault _vault;
     private readonly IDocumentRepository _documentRepository;
@@ -465,7 +465,7 @@ public class VaultController : ControllerBase
                 Hash = c.Hash,
                 ShortHash = c.ShortHash,
                 Message = c.Message,
-                Author = null, // Extensions.FileVault GitCommit doesn't include Author
+                // Author defaults to empty — Extensions.FileVault GitCommit doesn't include Author
                 Timestamp = c.Timestamp
             }).ToList();
             return Ok(ApiResponse<List<GitCommitDto>>.Ok(dtos));
@@ -532,10 +532,17 @@ public class VaultController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Vault search failed for query: {Query}", request.Query);
+            LogVaultSearchFailed(_logger, ex, request.Query);
             return BadRequest(ApiResponse<VaultSearchResponseDto>.Fail(ex.Message));
         }
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Vault search failed for query: {Query}")]
+    private static partial void LogVaultSearchFailed(ILogger logger, Exception? exception, string query);
 
     #endregion
 

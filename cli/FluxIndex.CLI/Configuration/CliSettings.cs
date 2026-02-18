@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Globalization;
 
 namespace FluxIndex.CLI.Configuration;
 
@@ -86,17 +87,17 @@ public class CliSettings
     /// <summary>
     /// Enable metadata enrichment via LLM
     /// </summary>
-    public bool EnableMetadataEnrichment { get; set; } = false;
+    public bool EnableMetadataEnrichment { get; set; }
 
     /// <summary>
     /// Enable text cleaning/preprocessing before chunking
     /// </summary>
-    public bool EnableTextCleaning { get; set; } = false;
+    public bool EnableTextCleaning { get; set; }
 
     /// <summary>
     /// Enable contextual enrichment (Anthropic Contextual Retrieval)
     /// </summary>
-    public bool EnableContextualEnrichment { get; set; } = false;
+    public bool EnableContextualEnrichment { get; set; }
 
     /// <summary>
     /// Load settings from file
@@ -229,8 +230,8 @@ public class CliSettings
             "GPUSTACK_EMBEDDING_MODEL_NAME" => GPUStackEmbeddingModelName,
             "DEFAULT_LANGUAGE" or "LANGUAGE" => DefaultLanguage,
             "CHUNKING_STRATEGY" => ChunkingStrategy,
-            "MAX_CHUNK_SIZE" => MaxChunkSize.ToString(),
-            "OVERLAP_SIZE" => OverlapSize.ToString(),
+            "MAX_CHUNK_SIZE" => MaxChunkSize.ToString(CultureInfo.InvariantCulture),
+            "OVERLAP_SIZE" => OverlapSize.ToString(CultureInfo.InvariantCulture),
             "ENABLE_METADATA_ENRICHMENT" => EnableMetadataEnrichment.ToString().ToLowerInvariant(),
             "ENABLE_TEXT_CLEANING" => EnableTextCleaning.ToString().ToLowerInvariant(),
             "ENABLE_CONTEXTUAL_ENRICHMENT" => EnableContextualEnrichment.ToString().ToLowerInvariant(),
@@ -257,8 +258,8 @@ public class CliSettings
             ["GPUSTACK_EMBEDDING_MODEL_NAME"] = GPUStackEmbeddingModelName,
             ["DEFAULT_LANGUAGE"] = DefaultLanguage,
             ["CHUNKING_STRATEGY"] = ChunkingStrategy,
-            ["MAX_CHUNK_SIZE"] = MaxChunkSize.ToString(),
-            ["OVERLAP_SIZE"] = OverlapSize.ToString(),
+            ["MAX_CHUNK_SIZE"] = MaxChunkSize.ToString(CultureInfo.InvariantCulture),
+            ["OVERLAP_SIZE"] = OverlapSize.ToString(CultureInfo.InvariantCulture),
             ["ENABLE_METADATA_ENRICHMENT"] = EnableMetadataEnrichment.ToString().ToLowerInvariant(),
             ["ENABLE_TEXT_CLEANING"] = EnableTextCleaning.ToString().ToLowerInvariant(),
             ["ENABLE_CONTEXTUAL_ENRICHMENT"] = EnableContextualEnrichment.ToString().ToLowerInvariant()

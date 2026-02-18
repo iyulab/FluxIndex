@@ -18,7 +18,7 @@ namespace FluxIndex.Storage.SQLite;
 /// 
 /// Note: SQLite is a general-purpose provider, not specialized.
 /// </remarks>
-public class SQLiteUnifiedProvider : IStorageProvider, IVectorCapable, ISemanticCacheCapable
+public partial class SQLiteUnifiedProvider : IStorageProvider, IVectorCapable, ISemanticCacheCapable
 {
     private readonly IVectorStore _vectorStore;
     private readonly ISemanticCacheService? _semanticCache;
@@ -46,9 +46,10 @@ public class SQLiteUnifiedProvider : IStorageProvider, IVectorCapable, ISemantic
 
         Capabilities = caps;
 
-        _logger?.LogDebug(
-            "SQLiteUnifiedProvider initialized with capabilities: {Capabilities}",
-            Capabilities);
+        if (_logger is not null)
+        {
+            LogProviderInitialized(_logger, Capabilities);
+        }
     }
 
     /// <inheritdoc />
@@ -70,6 +71,13 @@ public class SQLiteUnifiedProvider : IStorageProvider, IVectorCapable, ISemantic
     public ISemanticCacheService SemanticCache =>
         _semanticCache ?? throw new InvalidOperationException(
             "Semantic cache is not configured for this SQLite provider.");
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "SQLiteUnifiedProvider initialized with capabilities: {Capabilities}")]
+    private static partial void LogProviderInitialized(ILogger logger, StorageCapabilities capabilities);
+
+    #endregion
 }
 
 /// <summary>

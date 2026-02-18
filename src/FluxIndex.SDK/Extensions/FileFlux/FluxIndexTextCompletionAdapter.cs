@@ -14,7 +14,7 @@ namespace FluxIndex.SDK.Extensions.FileFlux;
 /// Adapter that bridges FluxIndex's ITextCompletionService to FileFlux's ITextCompletionService interface
 /// Enables FileFlux to use FluxIndex's OpenAI text completion implementation
 /// </summary>
-public class FluxIndexTextCompletionAdapter : IFileFluxTextCompletionService
+public partial class FluxIndexTextCompletionAdapter : IFileFluxTextCompletionService
 {
     private readonly IFluxIndexTextCompletionService _fluxIndexService;
     private readonly ILogger<FluxIndexTextCompletionAdapter> _logger;
@@ -77,7 +77,7 @@ public class FluxIndexTextCompletionAdapter : IFileFluxTextCompletionService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to generate text completion");
+            LogFailedToGenerateTextCompletion(_logger, ex);
             throw;
         }
     }
@@ -92,7 +92,7 @@ public class FluxIndexTextCompletionAdapter : IFileFluxTextCompletionService
     {
         try
         {
-            _logger.LogInformation("Analyzing document structure for type: {DocumentType}", documentType);
+            LogAnalyzingDocumentStructure(_logger, documentType);
 
             // Build structured prompt for structure analysis
             var structuredPrompt = $@"{prompt}
@@ -119,7 +119,7 @@ Respond with a JSON object in this exact format:
                 maxTokens: 4000,
                 cancellationToken: cancellationToken);
 
-            _logger.LogDebug("Structure analysis response: {Response}", jsonResponse);
+            LogStructureAnalysisResponse(_logger, jsonResponse);
 
             // Parse JSON response
             var result = ParseStructureAnalysis(jsonResponse, documentType);
@@ -130,7 +130,7 @@ Respond with a JSON object in this exact format:
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to analyze document structure");
+            LogFailedToAnalyzeDocumentStructure(_logger, ex);
 
             // Return fallback result
             return new StructureAnalysisResult
@@ -153,7 +153,7 @@ Respond with a JSON object in this exact format:
     {
         try
         {
-            _logger.LogInformation("Summarizing content with max length: {MaxLength}", maxLength);
+            LogSummarizingContent(_logger, maxLength);
 
             var structuredPrompt = $@"{prompt}
 
@@ -172,7 +172,7 @@ Keep the summary under {maxLength} characters.";
                 maxTokens: maxLength * 2,
                 cancellationToken: cancellationToken);
 
-            _logger.LogDebug("Summary response: {Response}", jsonResponse);
+            LogSummaryResponse(_logger, jsonResponse);
 
             var result = ParseContentSummary(jsonResponse, prompt.Length);
             result.TokensUsed = _fluxIndexService.CountTokens(prompt) + _fluxIndexService.CountTokens(jsonResponse);
@@ -181,7 +181,7 @@ Keep the summary under {maxLength} characters.";
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to summarize content");
+            LogFailedToSummarizeContent(_logger, ex);
 
             return new ContentSummary
             {
@@ -204,7 +204,7 @@ Keep the summary under {maxLength} characters.";
     {
         try
         {
-            _logger.LogInformation("Extracting metadata for document type: {DocumentType}", documentType);
+            LogExtractingMetadata(_logger, documentType);
 
             var structuredPrompt = $@"{prompt}
 
@@ -230,7 +230,7 @@ Respond with a JSON object in this exact format:
                 maxTokens: 3000,
                 cancellationToken: cancellationToken);
 
-            _logger.LogDebug("Metadata extraction response: {Response}", jsonResponse);
+            LogMetadataExtractionResponse(_logger, jsonResponse);
 
             var result = ParseMetadataExtraction(jsonResponse);
             result.TokensUsed = _fluxIndexService.CountTokens(prompt) + _fluxIndexService.CountTokens(jsonResponse);
@@ -239,7 +239,7 @@ Respond with a JSON object in this exact format:
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to extract metadata");
+            LogFailedToExtractMetadata(_logger, ex);
 
             return new MetadataExtractionResult
             {
@@ -260,7 +260,7 @@ Respond with a JSON object in this exact format:
     {
         try
         {
-            _logger.LogInformation("Assessing quality");
+            LogAssessingQuality(_logger);
 
             var structuredPrompt = $@"{prompt}
 
@@ -290,7 +290,7 @@ Respond with a JSON object in this exact format:
                 maxTokens: 3000,
                 cancellationToken: cancellationToken);
 
-            _logger.LogDebug("Quality assessment response: {Response}", jsonResponse);
+            LogQualityAssessmentResponse(_logger, jsonResponse);
 
             var result = ParseQualityAssessment(jsonResponse);
             result.TokensUsed = _fluxIndexService.CountTokens(prompt) + _fluxIndexService.CountTokens(jsonResponse);
@@ -299,7 +299,7 @@ Respond with a JSON object in this exact format:
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to assess quality");
+            LogFailedToAssessQuality(_logger, ex);
 
             return new FileFluxQualityAssessment
             {
@@ -354,7 +354,7 @@ Respond with a JSON object in this exact format:
         }
         catch (JsonException ex)
         {
-            _logger.LogWarning(ex, "Failed to parse structure analysis JSON, using fallback");
+            LogFailedToParseStructureAnalysisJson(_logger, ex);
             return new StructureAnalysisResult
             {
                 DocumentType = documentType,
@@ -382,7 +382,7 @@ Respond with a JSON object in this exact format:
         }
         catch (JsonException ex)
         {
-            _logger.LogWarning(ex, "Failed to parse content summary JSON, using fallback");
+            LogFailedToParseContentSummaryJson(_logger, ex);
             return new ContentSummary
             {
                 Summary = string.Empty,
@@ -434,7 +434,7 @@ Respond with a JSON object in this exact format:
         }
         catch (JsonException ex)
         {
-            _logger.LogWarning(ex, "Failed to parse metadata extraction JSON, using fallback");
+            LogFailedToParseMetadataExtractionJson(_logger, ex);
             return new MetadataExtractionResult
             {
                 Keywords = Array.Empty<string>(),
@@ -499,7 +499,7 @@ Respond with a JSON object in this exact format:
         }
         catch (JsonException ex)
         {
-            _logger.LogWarning(ex, "Failed to parse quality assessment JSON, using fallback");
+            LogFailedToParseQualityAssessmentJson(_logger, ex);
             return new FileFluxQualityAssessment
             {
                 ConfidenceScore = 0.0,
@@ -510,7 +510,7 @@ Respond with a JSON object in this exact format:
         }
     }
 
-    private SectionType ParseSectionType(string? typeString)
+    private static SectionType ParseSectionType(string? typeString)
     {
         return typeString?.ToUpperInvariant() switch
         {
@@ -538,7 +538,7 @@ Respond with a JSON object in this exact format:
         };
     }
 
-    private RecommendationType ParseRecommendationType(string? typeString)
+    private static RecommendationType ParseRecommendationType(string? typeString)
     {
         return typeString?.ToUpperInvariant() switch
         {
@@ -558,6 +558,61 @@ Respond with a JSON object in this exact format:
             _ => RecommendationType.CHUNK_SIZE_OPTIMIZATION
         };
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to generate text completion")]
+    private static partial void LogFailedToGenerateTextCompletion(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Analyzing document structure for type: {DocumentType}")]
+    private static partial void LogAnalyzingDocumentStructure(ILogger logger, DocumentType documentType);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Structure analysis response: {Response}")]
+    private static partial void LogStructureAnalysisResponse(ILogger logger, string response);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to analyze document structure")]
+    private static partial void LogFailedToAnalyzeDocumentStructure(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Summarizing content with max length: {MaxLength}")]
+    private static partial void LogSummarizingContent(ILogger logger, int maxLength);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Summary response: {Response}")]
+    private static partial void LogSummaryResponse(ILogger logger, string response);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to summarize content")]
+    private static partial void LogFailedToSummarizeContent(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Extracting metadata for document type: {DocumentType}")]
+    private static partial void LogExtractingMetadata(ILogger logger, DocumentType documentType);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Metadata extraction response: {Response}")]
+    private static partial void LogMetadataExtractionResponse(ILogger logger, string response);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to extract metadata")]
+    private static partial void LogFailedToExtractMetadata(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Assessing quality")]
+    private static partial void LogAssessingQuality(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Quality assessment response: {Response}")]
+    private static partial void LogQualityAssessmentResponse(ILogger logger, string response);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to assess quality")]
+    private static partial void LogFailedToAssessQuality(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to parse structure analysis JSON, using fallback")]
+    private static partial void LogFailedToParseStructureAnalysisJson(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to parse content summary JSON, using fallback")]
+    private static partial void LogFailedToParseContentSummaryJson(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to parse metadata extraction JSON, using fallback")]
+    private static partial void LogFailedToParseMetadataExtractionJson(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to parse quality assessment JSON, using fallback")]
+    private static partial void LogFailedToParseQualityAssessmentJson(ILogger logger, Exception exception);
 
     #endregion
 }

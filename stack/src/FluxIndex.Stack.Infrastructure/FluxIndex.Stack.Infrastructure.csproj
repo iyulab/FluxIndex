@@ -20,8 +20,12 @@
     <PackageReference Include="Pgvector.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" />
     <PackageReference Include="StackExchange.Redis" />
-    <!-- LMSupply for local embedding (consumer app direct reference) -->
+    <!-- LMSupply for local AI inference (consumer app direct reference) -->
     <PackageReference Include="LMSupply.Embedder" />
+    <PackageReference Include="LMSupply.Generator" />
+    <PackageReference Include="LMSupply.Reranker" />
+    <!-- OpenAI/Azure OpenAI for external embedding providers -->
+    <PackageReference Include="Azure.AI.OpenAI" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -29,5 +33,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="FluxIndex.Stack.Api.Tests" />
+  </ItemGroup>
 
 </Project>

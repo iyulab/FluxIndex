@@ -3,7 +3,7 @@ using FluxIndex.Core.Application.Models;
 using FluxIndex.Core.Application.Services;
 using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Logging;
-using Moq;
+using NSubstitute;
 using Xunit;
 
 // Use types from Models namespace for token-aware search
@@ -17,21 +17,21 @@ namespace FluxIndex.Core.Tests.Services;
 
 public class TokenAwareSearchServiceTests
 {
-    private readonly Mock<IVectorStore> _vectorStoreMock;
-    private readonly Mock<IEmbeddingService> _embeddingServiceMock;
-    private readonly Mock<ILogger<QueryAnalysisService>> _queryLoggerMock;
-    private readonly Mock<ILogger<TokenAwareSearchService>> _searchLoggerMock;
+    private readonly IVectorStore _vectorStoreMock;
+    private readonly IEmbeddingService _embeddingServiceMock;
+    private readonly ILogger<QueryAnalysisService> _queryLoggerMock;
+    private readonly ILogger<TokenAwareSearchService> _searchLoggerMock;
     private readonly ITokenCounter _tokenCounter;
     private readonly IQueryAnalysisService _queryAnalysisService;
 
     public TokenAwareSearchServiceTests()
     {
-        _vectorStoreMock = new Mock<IVectorStore>();
-        _embeddingServiceMock = new Mock<IEmbeddingService>();
-        _queryLoggerMock = new Mock<ILogger<QueryAnalysisService>>();
-        _searchLoggerMock = new Mock<ILogger<TokenAwareSearchService>>();
+        _vectorStoreMock = Substitute.For<IVectorStore>();
+        _embeddingServiceMock = Substitute.For<IEmbeddingService>();
+        _queryLoggerMock = Substitute.For<ILogger<QueryAnalysisService>>();
+        _searchLoggerMock = Substitute.For<ILogger<TokenAwareSearchService>>();
         _tokenCounter = new SimpleTokenCounter();
-        _queryAnalysisService = new QueryAnalysisService(_tokenCounter, _queryLoggerMock.Object);
+        _queryAnalysisService = new QueryAnalysisService(_tokenCounter, _queryLoggerMock);
     }
 
     #region QueryAnalysisService Tests
@@ -332,26 +332,22 @@ public class TokenAwareSearchServiceTests
     private TokenAwareSearchService CreateSearchService()
     {
         return new TokenAwareSearchService(
-            _vectorStoreMock.Object,
-            _embeddingServiceMock.Object,
+            _vectorStoreMock,
+            _embeddingServiceMock,
             _queryAnalysisService,
             _tokenCounter,
-            _searchLoggerMock.Object);
+            _searchLoggerMock);
     }
 
     private void SetupMocks(List<TestSearchResult> results)
     {
-        _embeddingServiceMock
-            .Setup(x => x.GenerateEmbeddingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new float[384]);
+        _embeddingServiceMock.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new float[384]);
 
-        _vectorStoreMock
-            .Setup(x => x.SearchAsync(
-                It.IsAny<float[]>(),
-                It.IsAny<int>(),
-                It.IsAny<float>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(results.Select(r => new DocumentChunk
+        _vectorStoreMock.SearchAsync(
+                Arg.Any<float[]>(),
+                Arg.Any<int>(),
+                Arg.Any<float>(),
+                Arg.Any<CancellationToken>()).Returns(results.Select(r => new DocumentChunk
             {
                 Id = r.ChunkId,
                 DocumentId = r.DocumentId,

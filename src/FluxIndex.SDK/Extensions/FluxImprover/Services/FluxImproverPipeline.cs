@@ -100,7 +100,7 @@ public sealed class FluxImproverPipeline
                     {
                         Question = qa.Question,
                         Answer = qa.Answer,
-                        Context = qa.Context,
+                        Context = qa.Context ?? string.Empty,
                         Evaluation = evaluation
                     });
                 }

@@ -10,7 +10,7 @@ namespace FluxIndex.Extensions.FileVault.Services;
 /// <summary>
 /// File-based vault storage service implementing the new directory structure.
 /// </summary>
-public sealed class VaultStorageService : IVaultStorageService
+public sealed partial class VaultStorageService : IVaultStorageService
 {
     private readonly ILogger<VaultStorageService> _logger;
     private readonly IGitService _gitService;
@@ -67,7 +67,7 @@ public sealed class VaultStorageService : IVaultStorageService
         // Save entry metadata
         entry.SaveMetadata();
 
-        _logger.LogDebug("Initialized entry storage at {EntryPath}", entry.EntryPath);
+        LogInitializedEntry(_logger, entry.EntryPath);
     }
 
     public async Task CreateGitignoreAsync(VaultEntry entry, CancellationToken ct = default)
@@ -79,7 +79,7 @@ public sealed class VaultStorageService : IVaultStorageService
     {
         Directory.CreateDirectory(entry.EntryPath);
         await File.WriteAllTextAsync(entry.ExtractedMdPath, content, ct);
-        _logger.LogDebug("Stored extracted content for entry {EntryId}", entry.Id);
+        LogStoredExtracted(_logger, entry.Id);
     }
 
     public async Task<string?> GetExtractedContentAsync(VaultEntry entry, CancellationToken ct = default)
@@ -94,7 +94,7 @@ public sealed class VaultStorageService : IVaultStorageService
     {
         Directory.CreateDirectory(entry.VaultPath);
         await File.WriteAllTextAsync(entry.RefinedMdPath, content, ct);
-        _logger.LogDebug("Stored refined content for entry {EntryId}", entry.Id);
+        LogStoredRefined(_logger, entry.Id);
     }
 
     public async Task<string?> GetRefinedContentAsync(VaultEntry entry, CancellationToken ct = default)
@@ -139,7 +139,7 @@ public sealed class VaultStorageService : IVaultStorageService
         var manifestJson = JsonSerializer.Serialize(manifest, JsonOptions);
         await File.WriteAllTextAsync(entry.ImagesManifestPath, manifestJson, ct);
 
-        _logger.LogDebug("Stored {Count} images for entry {EntryId}", index, entry.Id);
+        LogStoredImages(_logger, index, entry.Id);
     }
 
     public async Task<IReadOnlyList<ImageArtifact>> GetImagesAsync(VaultEntry entry, CancellationToken ct = default)
@@ -202,14 +202,14 @@ public sealed class VaultStorageService : IVaultStorageService
     {
         Directory.CreateDirectory(entry.VaultPath);
         await File.WriteAllTextAsync(entry.AppendTextPath, content, ct);
-        _logger.LogDebug("Stored append-text for entry {EntryId}", entry.Id);
+        LogStoredAppendText(_logger, entry.Id);
     }
 
     public async Task StoreQaContentAsync(VaultEntry entry, string content, CancellationToken ct = default)
     {
         Directory.CreateDirectory(entry.VaultPath);
         await File.WriteAllTextAsync(entry.QaPath, content, ct);
-        _logger.LogDebug("Stored QA content for entry {EntryId}", entry.Id);
+        LogStoredQa(_logger, entry.Id);
     }
 
     public Task DeleteEntryStorageAsync(VaultEntry entry, CancellationToken ct = default)
@@ -224,7 +224,7 @@ public sealed class VaultStorageService : IVaultStorageService
             }
 
             Directory.Delete(entry.EntryPath, recursive: true);
-            _logger.LogDebug("Deleted storage for entry {EntryId}", entry.Id);
+            LogDeletedStorage(_logger, entry.Id);
         }
 
         return Task.CompletedTask;
@@ -286,6 +286,31 @@ public sealed class VaultStorageService : IVaultStorageService
         "image/svg+xml" => ".svg",
         _ => ".bin"
     };
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Initialized entry storage at {EntryPath}")]
+    private static partial void LogInitializedEntry(ILogger logger, string entryPath);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Stored extracted content for entry {EntryId}")]
+    private static partial void LogStoredExtracted(ILogger logger, Guid entryId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Stored refined content for entry {EntryId}")]
+    private static partial void LogStoredRefined(ILogger logger, Guid entryId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Stored {Count} images for entry {EntryId}")]
+    private static partial void LogStoredImages(ILogger logger, int count, Guid entryId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Stored append-text for entry {EntryId}")]
+    private static partial void LogStoredAppendText(ILogger logger, Guid entryId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Stored QA content for entry {EntryId}")]
+    private static partial void LogStoredQa(ILogger logger, Guid entryId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Deleted storage for entry {EntryId}")]
+    private static partial void LogDeletedStorage(ILogger logger, Guid entryId);
+
+    #endregion
 
     private sealed class ImageManifestEntry
     {

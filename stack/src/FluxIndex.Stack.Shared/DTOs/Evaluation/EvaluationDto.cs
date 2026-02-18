@@ -40,7 +40,7 @@ public class RunEvaluationRequest
     /// Whether to evaluate semantic cache performance.
     /// When enabled, tracks cache hits/misses and latency savings.
     /// </summary>
-    public bool EvaluateCache { get; set; } = false;
+    public bool EvaluateCache { get; set; }
 
     /// <summary>
     /// Similarity threshold for semantic cache during evaluation.

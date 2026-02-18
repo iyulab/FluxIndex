@@ -11,38 +11,38 @@ using FluxIndex.Core.Domain.ValueObjects;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
-using Moq;
+using NSubstitute;
 using Xunit;
 
 namespace FluxIndex.Core.Tests.Services.Graph;
 
 public class GraphRAGServiceTests
 {
-    private readonly Mock<IEntityGraphService> _mockEntityGraphService;
-    private readonly Mock<ILeidenCommunityService> _mockLeidenCommunityService;
-    private readonly Mock<IHierarchicalSummarizationService> _mockSummarizationService;
-    private readonly Mock<IEmbeddingService> _mockEmbeddingService;
-    private readonly Mock<ITextCompletionService> _mockTextCompletionService;
-    private readonly Mock<ILogger<GraphRAGService>> _mockLogger;
+    private readonly IEntityGraphService _mockEntityGraphService;
+    private readonly ILeidenCommunityService _mockLeidenCommunityService;
+    private readonly IHierarchicalSummarizationService _mockSummarizationService;
+    private readonly IEmbeddingService _mockEmbeddingService;
+    private readonly ITextCompletionService _mockTextCompletionService;
+    private readonly ILogger<GraphRAGService> _mockLogger;
     private readonly GraphRAGService _service;
 
     public GraphRAGServiceTests()
     {
-        _mockEntityGraphService = new Mock<IEntityGraphService>();
-        _mockLeidenCommunityService = new Mock<ILeidenCommunityService>();
-        _mockSummarizationService = new Mock<IHierarchicalSummarizationService>();
-        _mockEmbeddingService = new Mock<IEmbeddingService>();
-        _mockTextCompletionService = new Mock<ITextCompletionService>();
-        _mockLogger = new Mock<ILogger<GraphRAGService>>();
+        _mockEntityGraphService = Substitute.For<IEntityGraphService>();
+        _mockLeidenCommunityService = Substitute.For<ILeidenCommunityService>();
+        _mockSummarizationService = Substitute.For<IHierarchicalSummarizationService>();
+        _mockEmbeddingService = Substitute.For<IEmbeddingService>();
+        _mockTextCompletionService = Substitute.For<ITextCompletionService>();
+        _mockLogger = Substitute.For<ILogger<GraphRAGService>>();
 
         _service = new GraphRAGService(
-            _mockEntityGraphService.Object,
-            _mockLeidenCommunityService.Object,
-            _mockSummarizationService.Object,
-            _mockEmbeddingService.Object,
-            _mockTextCompletionService.Object,
+            _mockEntityGraphService,
+            _mockLeidenCommunityService,
+            _mockSummarizationService,
+            _mockEmbeddingService,
+            _mockTextCompletionService,
             graphStore: null, // No graph store for unit tests
-            _mockLogger.Object);
+            _mockLogger);
     }
 
     #region Constructor Tests
@@ -52,25 +52,25 @@ public class GraphRAGServiceTests
     {
         Assert.Throws<ArgumentNullException>(() => new GraphRAGService(
             null!,
-            _mockLeidenCommunityService.Object,
-            _mockSummarizationService.Object));
+            _mockLeidenCommunityService,
+            _mockSummarizationService));
     }
 
     [Fact]
     public void Constructor_WithNullLeidenService_ThrowsArgumentNullException()
     {
         Assert.Throws<ArgumentNullException>(() => new GraphRAGService(
-            _mockEntityGraphService.Object,
+            _mockEntityGraphService,
             null!,
-            _mockSummarizationService.Object));
+            _mockSummarizationService));
     }
 
     [Fact]
     public void Constructor_WithNullSummarizationService_ThrowsArgumentNullException()
     {
         Assert.Throws<ArgumentNullException>(() => new GraphRAGService(
-            _mockEntityGraphService.Object,
-            _mockLeidenCommunityService.Object,
+            _mockEntityGraphService,
+            _mockLeidenCommunityService,
             null!));
     }
 
@@ -78,9 +78,9 @@ public class GraphRAGServiceTests
     public void Constructor_WithOptionalServicesNull_Succeeds()
     {
         var service = new GraphRAGService(
-            _mockEntityGraphService.Object,
-            _mockLeidenCommunityService.Object,
-            _mockSummarizationService.Object,
+            _mockEntityGraphService,
+            _mockLeidenCommunityService,
+            _mockSummarizationService,
             null,
             null,
             null);
@@ -173,11 +173,11 @@ public class GraphRAGServiceTests
 
         // Assert
         Assert.Equal(QueryScope.Local, result.UsedScope);
-        _mockEntityGraphService.Verify(s => s.SearchByEntitiesAsync(
-            It.IsAny<string>(),
-            It.IsAny<EntityGraphResult>(),
-            It.IsAny<EntitySearchOptions>(),
-            It.IsAny<CancellationToken>()), Times.Once);
+        await _mockEntityGraphService.Received(1).SearchByEntitiesAsync(
+            Arg.Any<string>(),
+            Arg.Any<EntityGraphResult>(),
+            Arg.Any<EntitySearchOptions>(),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -193,11 +193,11 @@ public class GraphRAGServiceTests
 
         // Assert
         Assert.Equal(QueryScope.Global, result.UsedScope);
-        _mockSummarizationService.Verify(s => s.GlobalSearchAsync(
-            It.IsAny<string>(),
-            It.IsAny<HierarchicalSummaryResult>(),
-            It.IsAny<GlobalSearchOptions>(),
-            It.IsAny<CancellationToken>()), Times.Once);
+        await _mockSummarizationService.Received(1).GlobalSearchAsync(
+            Arg.Any<string>(),
+            Arg.Any<HierarchicalSummaryResult>(),
+            Arg.Any<GlobalSearchOptions>(),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -337,11 +337,11 @@ public class GraphRAGServiceTests
         var result = await _service.LocalSearchAsync("query", index, options);
 
         // Assert
-        _mockEntityGraphService.Verify(s => s.SearchByEntitiesAsync(
-            It.IsAny<string>(),
-            It.IsAny<EntityGraphResult>(),
-            It.Is<EntitySearchOptions>(o => o.TopK == 5),
-            It.IsAny<CancellationToken>()), Times.Once);
+        await _mockEntityGraphService.Received(1).SearchByEntitiesAsync(
+            Arg.Any<string>(),
+            Arg.Any<EntityGraphResult>(),
+            Arg.Is<EntitySearchOptions>(o => o.TopK == 5),
+            Arg.Any<CancellationToken>());
     }
 
     #endregion
@@ -376,11 +376,11 @@ public class GraphRAGServiceTests
         var result = await _service.GlobalSearchAsync("query", index, options);
 
         // Assert
-        _mockSummarizationService.Verify(s => s.GlobalSearchAsync(
-            It.IsAny<string>(),
-            It.IsAny<HierarchicalSummaryResult>(),
-            It.Is<GlobalSearchOptions>(o => o.MaxCommunities == 3),
-            It.IsAny<CancellationToken>()), Times.Once);
+        await _mockSummarizationService.Received(1).GlobalSearchAsync(
+            Arg.Any<string>(),
+            Arg.Any<HierarchicalSummaryResult>(),
+            Arg.Is<GlobalSearchOptions>(o => o.MaxCommunities == 3),
+            Arg.Any<CancellationToken>());
     }
 
     #endregion
@@ -476,10 +476,10 @@ public class GraphRAGServiceTests
         var result = await _service.UpdateIndexAsync(index, newChunks, options);
 
         // Assert
-        _mockLeidenCommunityService.Verify(s => s.DetectHierarchicalCommunitiesAsync(
-            It.IsAny<IEnumerable<LeidenChunk>>(),
-            It.IsAny<LeidenOptions>(),
-            It.IsAny<CancellationToken>()), Times.Once);
+        await _mockLeidenCommunityService.Received(1).DetectHierarchicalCommunitiesAsync(
+            Arg.Any<IEnumerable<LeidenChunk>>(),
+            Arg.Any<LeidenOptions>(),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -495,11 +495,11 @@ public class GraphRAGServiceTests
         var result = await _service.UpdateIndexAsync(index, newChunks, options);
 
         // Assert
-        _mockSummarizationService.Verify(s => s.UpdateSummariesAsync(
-            It.IsAny<HierarchicalSummaryResult>(),
-            It.IsAny<IEnumerable<DocumentChunk>>(),
-            It.IsAny<IEnumerable<string>>(),
-            It.IsAny<CancellationToken>()), Times.Once);
+        await _mockSummarizationService.Received(1).UpdateSummariesAsync(
+            Arg.Any<HierarchicalSummaryResult>(),
+            Arg.Any<IEnumerable<DocumentChunk>>(),
+            Arg.Any<IEnumerable<string>>(),
+            Arg.Any<CancellationToken>());
     }
 
     #endregion
@@ -511,9 +511,9 @@ public class GraphRAGServiceTests
     {
         // Arrange
         var services = new ServiceCollection();
-        services.AddScoped<IEntityGraphService>(_ => _mockEntityGraphService.Object);
-        services.AddScoped<ILeidenCommunityService>(_ => _mockLeidenCommunityService.Object);
-        services.AddScoped<IHierarchicalSummarizationService>(_ => _mockSummarizationService.Object);
+        services.AddScoped<IEntityGraphService>(_ => _mockEntityGraphService);
+        services.AddScoped<ILeidenCommunityService>(_ => _mockLeidenCommunityService);
+        services.AddScoped<IHierarchicalSummarizationService>(_ => _mockSummarizationService);
 
         // Act
         services.AddGraphRAGService();
@@ -637,34 +637,28 @@ public class GraphRAGServiceTests
 
     private void SetupMocksForBuildIndex()
     {
-        _mockEntityGraphService
-            .Setup(s => s.BuildEntityGraphAsync(
-                It.IsAny<IEnumerable<DocumentChunk>>(),
-                It.IsAny<EntityGraphBuildOptions>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new EntityGraphResult
+        _mockEntityGraphService.BuildEntityGraphAsync(
+                Arg.Any<IEnumerable<DocumentChunk>>(),
+                Arg.Any<EntityGraphBuildOptions>(),
+                Arg.Any<CancellationToken>()).Returns(new EntityGraphResult
             {
                 Entities = new List<EntityNode>(),
                 Relations = new List<EntityEdge>()
             });
 
-        _mockLeidenCommunityService
-            .Setup(s => s.DetectHierarchicalCommunitiesAsync(
-                It.IsAny<IEnumerable<LeidenChunk>>(),
-                It.IsAny<LeidenOptions>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new CommunityHierarchy
+        _mockLeidenCommunityService.DetectHierarchicalCommunitiesAsync(
+                Arg.Any<IEnumerable<LeidenChunk>>(),
+                Arg.Any<LeidenOptions>(),
+                Arg.Any<CancellationToken>()).Returns(new CommunityHierarchy
             {
                 Levels = new List<CommunityLevel>()
             });
 
-        _mockSummarizationService
-            .Setup(s => s.GenerateHierarchicalSummariesAsync(
-                It.IsAny<CommunityHierarchy>(),
-                It.IsAny<IEnumerable<DocumentChunk>>(),
-                It.IsAny<HierarchicalSummarizationOptions>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new HierarchicalSummaryResult
+        _mockSummarizationService.GenerateHierarchicalSummariesAsync(
+                Arg.Any<CommunityHierarchy>(),
+                Arg.Any<IEnumerable<DocumentChunk>>(),
+                Arg.Any<HierarchicalSummarizationOptions>(),
+                Arg.Any<CancellationToken>()).Returns(new HierarchicalSummaryResult
             {
                 SummariesByLevel = new Dictionary<int, IReadOnlyList<CommunitySummary>>()
             });
@@ -672,13 +666,11 @@ public class GraphRAGServiceTests
 
     private void SetupMocksForSearch()
     {
-        _mockEntityGraphService
-            .Setup(s => s.SearchByEntitiesAsync(
-                It.IsAny<string>(),
-                It.IsAny<EntityGraphResult>(),
-                It.IsAny<EntitySearchOptions>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new EntitySearchResult
+        _mockEntityGraphService.SearchByEntitiesAsync(
+                Arg.Any<string>(),
+                Arg.Any<EntityGraphResult>(),
+                Arg.Any<EntitySearchOptions>(),
+                Arg.Any<CancellationToken>()).Returns(new EntitySearchResult
             {
                 Query = "test",
                 QueryEntities = new List<EntityNode>(),
@@ -688,24 +680,20 @@ public class GraphRAGServiceTests
                 }
             });
 
-        _mockEntityGraphService
-            .Setup(s => s.TraverseEntityRelationsAsync(
-                It.IsAny<IEnumerable<string>>(),
-                It.IsAny<EntityGraphResult>(),
-                It.IsAny<EntityTraversalOptions>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new EntityTraversalResult
+        _mockEntityGraphService.TraverseEntityRelationsAsync(
+                Arg.Any<IEnumerable<string>>(),
+                Arg.Any<EntityGraphResult>(),
+                Arg.Any<EntityTraversalOptions>(),
+                Arg.Any<CancellationToken>()).Returns(new EntityTraversalResult
             {
                 Paths = new List<EntityPath>()
             });
 
-        _mockSummarizationService
-            .Setup(s => s.GlobalSearchAsync(
-                It.IsAny<string>(),
-                It.IsAny<HierarchicalSummaryResult>(),
-                It.IsAny<GlobalSearchOptions>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new GlobalSearchResult
+        _mockSummarizationService.GlobalSearchAsync(
+                Arg.Any<string>(),
+                Arg.Any<HierarchicalSummaryResult>(),
+                Arg.Any<GlobalSearchOptions>(),
+                Arg.Any<CancellationToken>()).Returns(new GlobalSearchResult
             {
                 Query = "test",
                 Answer = new SynthesizedAnswer { Text = "Global answer", Confidence = 0.8 },
@@ -721,67 +709,55 @@ public class GraphRAGServiceTests
                 }
             });
 
-        _mockTextCompletionService
-            .Setup(s => s.GenerateCompletionAsync(
-                It.IsAny<string>(),
-                It.IsAny<int>(),
-                It.IsAny<float>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync("Generated answer");
+        _mockTextCompletionService.GenerateCompletionAsync(
+                Arg.Any<string>(),
+                Arg.Any<int>(),
+                Arg.Any<float>(),
+                Arg.Any<CancellationToken>()).Returns("Generated answer");
     }
 
     private void SetupMocksForUpdate()
     {
-        _mockEntityGraphService
-            .Setup(s => s.BuildEntityGraphAsync(
-                It.IsAny<IEnumerable<DocumentChunk>>(),
-                It.IsAny<EntityGraphBuildOptions>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new EntityGraphResult
+        _mockEntityGraphService.BuildEntityGraphAsync(
+                Arg.Any<IEnumerable<DocumentChunk>>(),
+                Arg.Any<EntityGraphBuildOptions>(),
+                Arg.Any<CancellationToken>()).Returns(new EntityGraphResult
             {
                 Entities = new List<EntityNode>(),
                 Relations = new List<EntityEdge>()
             });
 
-        _mockEntityGraphService
-            .Setup(s => s.MergeEntityGraphsAsync(
-                It.IsAny<IEnumerable<EntityGraphResult>>(),
-                It.IsAny<EntityGraphMergeOptions>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new EntityGraphResult
+        _mockEntityGraphService.MergeEntityGraphsAsync(
+                Arg.Any<IEnumerable<EntityGraphResult>>(),
+                Arg.Any<EntityGraphMergeOptions>(),
+                Arg.Any<CancellationToken>()).Returns(new EntityGraphResult
             {
                 Entities = new List<EntityNode>(),
                 Relations = new List<EntityEdge>()
             });
 
-        _mockLeidenCommunityService
-            .Setup(s => s.UpdateHierarchyAsync(
-                It.IsAny<CommunityHierarchy>(),
-                It.IsAny<IEnumerable<LeidenChunk>>(),
-                It.IsAny<LeidenOptions>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new CommunityHierarchy
+        _mockLeidenCommunityService.UpdateHierarchyAsync(
+                Arg.Any<CommunityHierarchy>(),
+                Arg.Any<IEnumerable<LeidenChunk>>(),
+                Arg.Any<LeidenOptions>(),
+                Arg.Any<CancellationToken>()).Returns(new CommunityHierarchy
             {
                 Levels = new List<CommunityLevel>()
             });
 
-        _mockLeidenCommunityService
-            .Setup(s => s.DetectHierarchicalCommunitiesAsync(
-                It.IsAny<IEnumerable<LeidenChunk>>(),
-                It.IsAny<LeidenOptions>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new CommunityHierarchy
+        _mockLeidenCommunityService.DetectHierarchicalCommunitiesAsync(
+                Arg.Any<IEnumerable<LeidenChunk>>(),
+                Arg.Any<LeidenOptions>(),
+                Arg.Any<CancellationToken>()).Returns(new CommunityHierarchy
             {
                 Levels = new List<CommunityLevel>()
             });
 
-        _mockSummarizationService
-            .Setup(s => s.UpdateSummariesAsync(
-                It.IsAny<HierarchicalSummaryResult>(),
-                It.IsAny<IEnumerable<DocumentChunk>>(),
-                It.IsAny<IEnumerable<string>>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new HierarchicalSummaryResult
+        _mockSummarizationService.UpdateSummariesAsync(
+                Arg.Any<HierarchicalSummaryResult>(),
+                Arg.Any<IEnumerable<DocumentChunk>>(),
+                Arg.Any<IEnumerable<string>>(),
+                Arg.Any<CancellationToken>()).Returns(new HierarchicalSummaryResult
             {
                 SummariesByLevel = new Dictionary<int, IReadOnlyList<CommunitySummary>>()
             });

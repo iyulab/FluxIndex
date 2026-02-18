@@ -15,7 +15,7 @@ namespace FluxIndex.Stack.Infrastructure.Services;
 /// Implementation of IChunkEnrichmentService using FluxImprover pipeline.
 /// Enriches chunks with AI-generated QA pairs, keywords, and summaries.
 /// </summary>
-public class ChunkEnrichmentService : IChunkEnrichmentService
+public partial class ChunkEnrichmentService : IChunkEnrichmentService
 {
     private readonly FluxImproverPipeline? _pipeline;
     private readonly ITextCompletionService? _textCompletionService;
@@ -51,19 +51,16 @@ public class ChunkEnrichmentService : IChunkEnrichmentService
 
         if (!IsAvailable)
         {
-            _logger.LogWarning(
-                "Chunk enrichment skipped: FluxImprover pipeline or LLM service not available. " +
-                "Pipeline: {HasPipeline}, LLM: {HasLLM}",
-                _pipeline != null, _textCompletionService != null);
+            var hasPipeline = _pipeline != null;
+            var hasLlm = _textCompletionService != null;
+            LogEnrichmentSkipped(_logger, hasPipeline, hasLlm);
 
             result.Errors.Add("Enrichment service not available - LLM service not configured");
             result.DurationMs = sw.ElapsedMilliseconds;
             return result;
         }
 
-        _logger.LogInformation(
-            "Starting chunk enrichment for document {DocumentId} ({Title}): {ChunkCount} chunks",
-            document.Id, document.Title, chunks.Count);
+        LogStartingEnrichment(_logger, document.Id, document.Title, chunks.Count);
 
         var processedCount = 0;
         var totalQualityScore = 0.0;
@@ -113,18 +110,15 @@ public class ChunkEnrichmentService : IChunkEnrichmentService
                         }
                     }
 
-                    _logger.LogDebug(
-                        "Enriched chunk {ChunkIndex}/{Total}: {QACount} QA pairs",
-                        chunk.ChunkIndex, chunks.Count, pipelineResult.GeneratedQAPairs?.Count ?? 0);
+                    var qaCount = pipelineResult.GeneratedQAPairs?.Count ?? 0;
+                    LogEnrichedChunk(_logger, chunk.ChunkIndex, chunks.Count, qaCount);
                 }
                 else
                 {
                     result.FailedChunks++;
                     result.Errors.Add($"Chunk {chunk.ChunkIndex}: {pipelineResult.ErrorMessage}");
 
-                    _logger.LogWarning(
-                        "Failed to enrich chunk {ChunkIndex}: {Error}",
-                        chunk.ChunkIndex, pipelineResult.ErrorMessage);
+                    LogEnrichChunkFailed(_logger, chunk.ChunkIndex, pipelineResult.ErrorMessage);
                 }
             }
             catch (Exception ex)
@@ -132,9 +126,7 @@ public class ChunkEnrichmentService : IChunkEnrichmentService
                 result.FailedChunks++;
                 result.Errors.Add($"Chunk {chunk.ChunkIndex}: {ex.Message}");
 
-                _logger.LogError(ex,
-                    "Exception while enriching chunk {ChunkIndex} of document {DocumentId}",
-                    chunk.ChunkIndex, document.Id);
+                LogEnrichChunkException(_logger, chunk.ChunkIndex, document.Id, ex);
             }
 
             processedCount++;
@@ -145,10 +137,7 @@ public class ChunkEnrichmentService : IChunkEnrichmentService
         result.DurationMs = sw.ElapsedMilliseconds;
         result.AverageQualityScore = qualityScoreCount > 0 ? totalQualityScore / qualityScoreCount : null;
 
-        _logger.LogInformation(
-            "Chunk enrichment completed for document {DocumentId}: " +
-            "{Enriched}/{Total} chunks, {QAPairs} QA pairs, {Duration}ms",
-            document.Id, result.EnrichedChunks, result.TotalChunks,
+        LogEnrichmentCompleted(_logger, document.Id, result.EnrichedChunks, result.TotalChunks,
             result.TotalQAPairs, result.DurationMs);
 
         return result;
@@ -157,7 +146,7 @@ public class ChunkEnrichmentService : IChunkEnrichmentService
     /// <summary>
     /// Updates chunk metadata with enrichment results.
     /// </summary>
-    private void UpdateChunkMetadata(
+    private static void UpdateChunkMetadata(
         DocumentChunk chunk,
         PipelineResult pipelineResult,
         ChunkEnrichmentOptions options)
@@ -209,4 +198,26 @@ public class ChunkEnrichmentService : IChunkEnrichmentService
         chunk.Metadata["enriched"] = true;
         chunk.Metadata["enriched_at"] = DateTime.UtcNow.ToString("O");
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Chunk enrichment skipped: FluxImprover pipeline or LLM service not available. Pipeline: {HasPipeline}, LLM: {HasLLM}")]
+    private static partial void LogEnrichmentSkipped(ILogger logger, bool hasPipeline, bool hasLLM);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting chunk enrichment for document {DocumentId} ({Title}): {ChunkCount} chunks")]
+    private static partial void LogStartingEnrichment(ILogger logger, Guid documentId, string title, int chunkCount);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Enriched chunk {ChunkIndex}/{Total}: {QACount} QA pairs")]
+    private static partial void LogEnrichedChunk(ILogger logger, int chunkIndex, int total, int qaCount);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to enrich chunk {ChunkIndex}: {Error}")]
+    private static partial void LogEnrichChunkFailed(ILogger logger, int chunkIndex, string? error);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Exception while enriching chunk {ChunkIndex} of document {DocumentId}")]
+    private static partial void LogEnrichChunkException(ILogger logger, int chunkIndex, Guid documentId, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Chunk enrichment completed for document {DocumentId}: {Enriched}/{Total} chunks, {QAPairs} QA pairs, {Duration}ms")]
+    private static partial void LogEnrichmentCompleted(ILogger logger, Guid documentId, int enriched, int total, int qaPairs, long duration);
+
+    #endregion
 }

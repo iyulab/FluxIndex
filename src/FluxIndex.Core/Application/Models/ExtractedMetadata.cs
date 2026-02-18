@@ -97,7 +97,7 @@ public class ExtractedMetadata
     /// <summary>
     /// 사용자가 메타데이터를 검증했는지 여부
     /// </summary>
-    public bool UserVerified { get; set; } = false;
+    public bool UserVerified { get; set; }
 
     /// <summary>
     /// 사용자 수정 사항

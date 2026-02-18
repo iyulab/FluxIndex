@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Globalization;
 
 namespace FluxIndex.Storage.SQLite.KeywordSearch;
 
@@ -12,7 +13,7 @@ namespace FluxIndex.Storage.SQLite.KeywordSearch;
 /// SQLite RDB-backed implementation of IKeywordSearchService.
 /// Uses persistent inverted index tables for efficient BM25 keyword search.
 /// </summary>
-public class SQLiteKeywordSearchService : IKeywordSearchService
+public partial class SQLiteKeywordSearchService : IKeywordSearchService, IDisposable
 {
     private readonly string _connectionString;
     private readonly ILogger<SQLiteKeywordSearchService> _logger;
@@ -95,7 +96,7 @@ public class SQLiteKeywordSearchService : IKeywordSearchService
             await command.ExecuteNonQueryAsync(cancellationToken);
 
             _initialized = true;
-            _logger.LogInformation("SQLiteKeywordSearchService initialized");
+            LogServiceInitialized(_logger);
         }
         finally
         {
@@ -122,7 +123,7 @@ public class SQLiteKeywordSearchService : IKeywordSearchService
         if (terms.Count == 0)
             return [];
 
-        _logger.LogDebug("BM25 search started: {Query} ({TermCount} terms)", query, terms.Count);
+        LogSearchStarted(_logger, query, terms.Count);
 
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
@@ -247,7 +248,7 @@ public class SQLiteKeywordSearchService : IKeywordSearchService
             }
         }
 
-        _logger.LogDebug("BM25 search completed: {ResultCount} results", results.Count);
+        LogSearchCompleted(_logger, results.Count);
         return results;
     }
 
@@ -286,7 +287,7 @@ public class SQLiteKeywordSearchService : IKeywordSearchService
                 await using var termCmd = connection.CreateCommand();
                 termCmd.CommandText = upsertTermSql;
                 termCmd.Parameters.AddWithValue("@term", term);
-                var termId = Convert.ToInt32(await termCmd.ExecuteScalarAsync(cancellationToken));
+                var termId = Convert.ToInt32(await termCmd.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture);
 
                 // Insert posting
                 var insertPostingSql = """
@@ -307,7 +308,7 @@ public class SQLiteKeywordSearchService : IKeywordSearchService
             await UpdateStatisticsAsync(connection, cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);
-            _logger.LogDebug("Indexed chunk {ChunkId} with {TermCount} terms", chunk.Id, termFrequencies.Count);
+            LogChunkIndexed(_logger, chunk.Id, termFrequencies.Count);
         }
         catch
         {
@@ -363,7 +364,7 @@ public class SQLiteKeywordSearchService : IKeywordSearchService
             await UpdateStatisticsAsync(connection, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
 
-            _logger.LogDebug("Deleted chunk {ChunkId} from keyword index", chunkId);
+            LogChunkDeleted(_logger, chunkId);
         }
         catch
         {
@@ -418,7 +419,7 @@ public class SQLiteKeywordSearchService : IKeywordSearchService
         command.CommandText = clearSql;
         await command.ExecuteNonQueryAsync(cancellationToken);
 
-        _logger.LogInformation("Keyword index cleared");
+        LogIndexCleared(_logger);
     }
 
     #endregion
@@ -439,13 +440,13 @@ public class SQLiteKeywordSearchService : IKeywordSearchService
         var termCountSql = "SELECT COUNT(*) FROM bm25_terms";
         await using var termCountCmd = connection.CreateCommand();
         termCountCmd.CommandText = termCountSql;
-        var termCount = Convert.ToInt32(await termCountCmd.ExecuteScalarAsync(cancellationToken));
+        var termCount = Convert.ToInt32(await termCountCmd.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture);
 
         // Get total occurrences
         var totalOccSql = "SELECT COALESCE(SUM(term_frequency), 0) FROM bm25_postings";
         await using var totalOccCmd = connection.CreateCommand();
         totalOccCmd.CommandText = totalOccSql;
-        var totalOccurrences = Convert.ToInt64(await totalOccCmd.ExecuteScalarAsync(cancellationToken));
+        var totalOccurrences = Convert.ToInt64(await totalOccCmd.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture);
 
         // Get top terms
         var topTermsSql = """
@@ -495,7 +496,7 @@ public class SQLiteKeywordSearchService : IKeywordSearchService
         vacuumCmd.CommandText = vacuumSql;
         await vacuumCmd.ExecuteNonQueryAsync(cancellationToken);
 
-        _logger.LogInformation("Keyword index optimized");
+        LogIndexOptimized(_logger);
     }
 
     public Task RefreshIDFCacheAsync(CancellationToken cancellationToken = default)
@@ -529,7 +530,7 @@ public class SQLiteKeywordSearchService : IKeywordSearchService
         if (result == null || result == DBNull.Value)
             return 0;
 
-        var df = Convert.ToInt32(result);
+        var df = Convert.ToInt32(result, CultureInfo.InvariantCulture);
         return Math.Log((totalDocs - df + 0.5) / (df + 0.5));
     }
 
@@ -552,7 +553,7 @@ public class SQLiteKeywordSearchService : IKeywordSearchService
 
     #region Private Helpers
 
-    private async Task<double> GetStatValueAsync(SqliteConnection connection, string key, CancellationToken cancellationToken)
+    private static async Task<double> GetStatValueAsync(SqliteConnection connection, string key, CancellationToken cancellationToken)
     {
         var sql = "SELECT value FROM bm25_statistics WHERE key = @key";
         await using var cmd = connection.CreateCommand();
@@ -560,10 +561,10 @@ public class SQLiteKeywordSearchService : IKeywordSearchService
         cmd.Parameters.AddWithValue("@key", key);
 
         var result = await cmd.ExecuteScalarAsync(cancellationToken);
-        return result != null && result != DBNull.Value ? Convert.ToDouble(result) : 0;
+        return result != null && result != DBNull.Value ? Convert.ToDouble(result, CultureInfo.InvariantCulture) : 0;
     }
 
-    private double GetStatValueSync(SqliteConnection connection, string key)
+    private static double GetStatValueSync(SqliteConnection connection, string key)
     {
         var sql = "SELECT value FROM bm25_statistics WHERE key = @key";
         using var cmd = connection.CreateCommand();
@@ -571,23 +572,23 @@ public class SQLiteKeywordSearchService : IKeywordSearchService
         cmd.Parameters.AddWithValue("@key", key);
 
         var result = cmd.ExecuteScalar();
-        return result != null && result != DBNull.Value ? Convert.ToDouble(result) : 0;
+        return result != null && result != DBNull.Value ? Convert.ToDouble(result, CultureInfo.InvariantCulture) : 0;
     }
 
-    private async Task UpdateStatisticsAsync(SqliteConnection connection, CancellationToken cancellationToken)
+    private static async Task UpdateStatisticsAsync(SqliteConnection connection, CancellationToken cancellationToken)
     {
         // Calculate total documents
         var totalDocsSql = "SELECT COUNT(DISTINCT chunk_id) FROM bm25_postings";
         await using var totalDocsCmd = connection.CreateCommand();
         totalDocsCmd.CommandText = totalDocsSql;
-        var totalDocs = Convert.ToDouble(await totalDocsCmd.ExecuteScalarAsync(cancellationToken));
+        var totalDocs = Convert.ToDouble(await totalDocsCmd.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture);
 
         // Calculate average document length
         var avgLengthSql = "SELECT AVG(document_length) FROM (SELECT DISTINCT chunk_id, document_length FROM bm25_postings)";
         await using var avgLengthCmd = connection.CreateCommand();
         avgLengthCmd.CommandText = avgLengthSql;
         var avgLengthResult = await avgLengthCmd.ExecuteScalarAsync(cancellationToken);
-        var avgLength = avgLengthResult != null && avgLengthResult != DBNull.Value ? Convert.ToDouble(avgLengthResult) : 0;
+        var avgLength = avgLengthResult != null && avgLengthResult != DBNull.Value ? Convert.ToDouble(avgLengthResult, CultureInfo.InvariantCulture) : 0;
 
         // Update statistics
         var updateSql = """
@@ -600,6 +601,40 @@ public class SQLiteKeywordSearchService : IKeywordSearchService
         updateCmd.Parameters.AddWithValue("@avgLength", avgLength);
         await updateCmd.ExecuteNonQueryAsync(cancellationToken);
     }
+
+    #endregion
+
+    /// <summary>
+    /// Disposes the initialization lock semaphore.
+    /// </summary>
+    public void Dispose()
+    {
+        _initLock.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "SQLiteKeywordSearchService initialized")]
+    private static partial void LogServiceInitialized(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "BM25 search started: {Query} ({TermCount} terms)")]
+    private static partial void LogSearchStarted(ILogger logger, string query, int termCount);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "BM25 search completed: {ResultCount} results")]
+    private static partial void LogSearchCompleted(ILogger logger, int resultCount);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Indexed chunk {ChunkId} with {TermCount} terms")]
+    private static partial void LogChunkIndexed(ILogger logger, string chunkId, int termCount);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Deleted chunk {ChunkId} from keyword index")]
+    private static partial void LogChunkDeleted(ILogger logger, string chunkId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Keyword index cleared")]
+    private static partial void LogIndexCleared(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Keyword index optimized")]
+    private static partial void LogIndexOptimized(ILogger logger);
 
     #endregion
 }

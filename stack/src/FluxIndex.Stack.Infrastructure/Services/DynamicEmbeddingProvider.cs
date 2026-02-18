@@ -11,7 +11,7 @@ namespace FluxIndex.Stack.Infrastructure.Services;
 /// Falls back to LocalEmbedder when no API is configured.
 /// Uses IServiceScopeFactory to access scoped repository from singleton context.
 /// </summary>
-public class DynamicEmbeddingProvider : IEmbeddingProvider, IEmbeddingProviderCache
+public partial class DynamicEmbeddingProvider : IEmbeddingProvider, IEmbeddingProviderCache
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IEmbeddingServiceFactory _embeddingServiceFactory;
@@ -53,9 +53,7 @@ public class DynamicEmbeddingProvider : IEmbeddingProvider, IEmbeddingProviderCa
 
         if (defaultEmbedding != null && !string.IsNullOrEmpty(defaultEmbedding.ApiKey))
         {
-            _logger.LogInformation(
-                "Using configured embedding provider: {Provider}, Model: {Model}",
-                defaultEmbedding.ProviderName, defaultEmbedding.EmbeddingModel);
+            LogUsingConfiguredEmbeddingProvider(_logger, defaultEmbedding.ProviderName, defaultEmbedding.EmbeddingModel);
 
             provider = await _embeddingServiceFactory.CreateProviderAsync(
                 defaultEmbedding.ProviderName,
@@ -66,8 +64,7 @@ public class DynamicEmbeddingProvider : IEmbeddingProvider, IEmbeddingProviderCa
         }
         else
         {
-            _logger.LogInformation(
-                "No API-configured embedding provider found. Using LocalEmbedder fallback.");
+            LogNoConfiguredEmbeddingProvider(_logger);
 
             provider = await _embeddingServiceFactory.CreateLocalProviderAsync(null, cancellationToken);
         }
@@ -82,21 +79,21 @@ public class DynamicEmbeddingProvider : IEmbeddingProvider, IEmbeddingProviderCa
     }
 
     public int EmbeddingDimension
-    {
-        get
-        {
-            var provider = GetActiveProviderAsync(CancellationToken.None).GetAwaiter().GetResult();
-            return provider.EmbeddingDimension;
-        }
-    }
+        => GetEmbeddingDimensionAsync().GetAwaiter().GetResult();
 
     public string ModelName
+        => GetModelNameAsync().GetAwaiter().GetResult();
+
+    public async Task<int> GetEmbeddingDimensionAsync(CancellationToken cancellationToken = default)
     {
-        get
-        {
-            var provider = GetActiveProviderAsync(CancellationToken.None).GetAwaiter().GetResult();
-            return provider.ModelName;
-        }
+        var provider = await GetActiveProviderAsync(cancellationToken);
+        return provider.EmbeddingDimension;
+    }
+
+    public async Task<string> GetModelNameAsync(CancellationToken cancellationToken = default)
+    {
+        var provider = await GetActiveProviderAsync(cancellationToken);
+        return provider.ModelName;
     }
 
     public async Task<float[]> GetEmbeddingAsync(string text, CancellationToken cancellationToken = default)
@@ -118,6 +115,19 @@ public class DynamicEmbeddingProvider : IEmbeddingProvider, IEmbeddingProviderCa
     public void InvalidateCache()
     {
         _cache.Remove(CacheKey);
-        _logger.LogInformation("Embedding provider cache invalidated. Will reconfigure on next request.");
+        LogEmbeddingCacheInvalidated(_logger);
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Using configured embedding provider: {Provider}, Model: {Model}")]
+    private static partial void LogUsingConfiguredEmbeddingProvider(ILogger logger, string provider, string? model);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "No API-configured embedding provider found. Using LocalEmbedder fallback.")]
+    private static partial void LogNoConfiguredEmbeddingProvider(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Embedding provider cache invalidated. Will reconfigure on next request.")]
+    private static partial void LogEmbeddingCacheInvalidated(ILogger logger);
+
+    #endregion
 }

@@ -2,7 +2,8 @@ using FluentAssertions;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services;
 using Microsoft.Extensions.Logging;
-using Moq;
+using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using Xunit;
 
 namespace FluxIndex.Core.Tests.Services;
@@ -12,15 +13,15 @@ namespace FluxIndex.Core.Tests.Services;
 /// </summary>
 public class ColBERTServiceTests
 {
-    private readonly Mock<ILogger<ColBERTService>> _loggerMock;
-    private readonly Mock<IEmbeddingService> _embeddingServiceMock;
+    private readonly ILogger<ColBERTService> _loggerMock;
+    private readonly IEmbeddingService _embeddingServiceMock;
     private readonly ColBERTService _service;
 
     public ColBERTServiceTests()
     {
-        _loggerMock = new Mock<ILogger<ColBERTService>>();
-        _embeddingServiceMock = new Mock<IEmbeddingService>();
-        _service = new ColBERTService(_loggerMock.Object, _embeddingServiceMock.Object);
+        _loggerMock = Substitute.For<ILogger<ColBERTService>>();
+        _embeddingServiceMock = Substitute.For<IEmbeddingService>();
+        _service = new ColBERTService(_loggerMock, _embeddingServiceMock);
     }
 
     #region ComputeMaxSimScore Tests
@@ -355,7 +356,7 @@ public class ColBERTServiceTests
             new float[] { 0.5f, -0.5f, 0f }
         };
 
-        var options = new ColBERTCompressionOptions { CompressionType = ColBERTCompressionType.Int8 };
+        var options = new ColBERTCompressionOptions { CompressionType = ColBERTCompressionType.Scalar8Bit };
 
         // Act
         var compressed = await _service.CompressEmbeddingsAsync(embeddings, options);
@@ -416,7 +417,7 @@ public class ColBERTServiceTests
         var float16 = await _service.CompressEmbeddingsAsync(embeddings,
             new ColBERTCompressionOptions { CompressionType = ColBERTCompressionType.Float16 });
         var int8 = await _service.CompressEmbeddingsAsync(embeddings,
-            new ColBERTCompressionOptions { CompressionType = ColBERTCompressionType.Int8 });
+            new ColBERTCompressionOptions { CompressionType = ColBERTCompressionType.Scalar8Bit });
         var binary = await _service.CompressEmbeddingsAsync(embeddings,
             new ColBERTCompressionOptions { CompressionType = ColBERTCompressionType.Binary });
 
@@ -441,7 +442,7 @@ public class ColBERTServiceTests
     public async Task GenerateTokenEmbeddingsAsync_ShouldThrow_WhenNoEmbeddingService()
     {
         // Arrange
-        var serviceWithoutEmbedding = new ColBERTService(_loggerMock.Object, null);
+        var serviceWithoutEmbedding = new ColBERTService(_loggerMock, null);
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(
@@ -452,10 +453,7 @@ public class ColBERTServiceTests
     public async Task GenerateTokenEmbeddingsAsync_ShouldGeneratePerTokenEmbeddings()
     {
         // Arrange
-        _embeddingServiceMock
-            .Setup(e => e.GenerateEmbeddingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string text, CancellationToken _) =>
-                new float[] { text.Length, 0, 0 });
+        _embeddingServiceMock.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(callInfo => { var text = callInfo.ArgAt<string>(0); return new float[] { text.Length, 0, 0 }; });
 
         // Act
         var embeddings = await _service.GenerateTokenEmbeddingsAsync(
@@ -532,9 +530,7 @@ public class ColBERTServiceTests
         };
 
         // Mock embedding service to not generate embeddings
-        _embeddingServiceMock
-            .Setup(e => e.GenerateEmbeddingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new NotImplementedException());
+        _embeddingServiceMock.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Throws(new NotImplementedException());
 
         // Act
         var results = await _service.RankAsync(queryEmbeddings, candidates);

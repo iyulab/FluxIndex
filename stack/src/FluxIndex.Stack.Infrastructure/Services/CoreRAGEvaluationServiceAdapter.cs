@@ -13,7 +13,7 @@ namespace FluxIndex.Stack.Infrastructure.Services;
 /// Adapts FluxImprover's RAGEvaluationService to Core's IRAGEvaluationService interface.
 /// Bridges the gap between Stack's FluxImprover integration and Core's evaluation framework.
 /// </summary>
-public class CoreRAGEvaluationServiceAdapter : IRAGEvaluationService
+public partial class CoreRAGEvaluationServiceAdapter : IRAGEvaluationService
 {
     private readonly FluxImproverRAGService? _fluxImproverService;
     private readonly ILogger<CoreRAGEvaluationServiceAdapter> _logger;
@@ -50,7 +50,7 @@ public class CoreRAGEvaluationServiceAdapter : IRAGEvaluationService
             // Calculate retrieval metrics
             var retrievalMetrics = await CalculateRetrievalMetricsAsync(
                 chunkList,
-                goldenItem.RelevantChunkIds.Any() ? goldenItem.RelevantChunkIds : goldenItem.RelevantDocumentIds,
+                goldenItem.RelevantChunkIds.Count > 0 ? goldenItem.RelevantChunkIds : goldenItem.RelevantDocumentIds,
                 goldenItem.RelevantChunkIds.Count + goldenItem.RelevantDocumentIds.Count,
                 cancellationToken);
 
@@ -81,7 +81,7 @@ public class CoreRAGEvaluationServiceAdapter : IRAGEvaluationService
                 var contextMetrics = await EvaluateContextQualityAsync(
                     query,
                     chunkList,
-                    goldenItem.RelevantChunkIds.Any() ? goldenItem.RelevantChunkIds : goldenItem.RelevantDocumentIds,
+                    goldenItem.RelevantChunkIds.Count > 0 ? goldenItem.RelevantChunkIds : goldenItem.RelevantDocumentIds,
                     cancellationToken);
 
                 result.ContextRelevancy = contextMetrics.GetValueOrDefault("ContextRelevancy", 0);
@@ -92,12 +92,11 @@ public class CoreRAGEvaluationServiceAdapter : IRAGEvaluationService
             result.RetrievedDocumentsCount = chunkList.Count;
             result.Duration = DateTime.UtcNow - startTime;
 
-            _logger.LogDebug("Evaluated query {QueryId}: Precision={Precision:F3}, Recall={Recall:F3}",
-                goldenItem.Id, result.Precision, result.Recall);
+            LogEvaluatedQuery(_logger, goldenItem.Id, result.Precision, result.Recall);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to evaluate query: {QueryId}", goldenItem.Id);
+            LogEvaluateQueryFailed(_logger, goldenItem.Id, ex);
             throw;
         }
 
@@ -120,7 +119,7 @@ public class CoreRAGEvaluationServiceAdapter : IRAGEvaluationService
         var datasetList = goldenDataset.ToList();
         batchResult.TotalQueries = datasetList.Count;
 
-        _logger.LogInformation("Starting batch evaluation with {Count} queries", datasetList.Count);
+        LogStartingBatchEvaluation(_logger, datasetList.Count);
 
         // Note: This method expects retrievedChunks and generatedAnswer to be pre-computed
         // In the full implementation, this would use IEvaluationSearchProvider to retrieve and generate
@@ -209,7 +208,7 @@ public class CoreRAGEvaluationServiceAdapter : IRAGEvaluationService
 
         if (_fluxImproverService == null)
         {
-            _logger.LogWarning("FluxImprover RAGEvaluationService not available. Using default scores.");
+            LogFluxImproverNotAvailable(_logger);
             return result;
         }
 
@@ -229,7 +228,7 @@ public class CoreRAGEvaluationServiceAdapter : IRAGEvaluationService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to evaluate answer quality with FluxImprover. Using default scores.");
+            LogAnswerQualityEvaluationFailed(_logger, ex);
         }
 
         return result;
@@ -275,7 +274,8 @@ public class CoreRAGEvaluationServiceAdapter : IRAGEvaluationService
             && evaluationResult.AverageMRR >= thresholds.MinMRR
             && evaluationResult.AverageNDCG >= thresholds.MinNDCG;
 
-        _logger.LogInformation("Quality threshold validation: {Result}", passed ? "PASSED" : "FAILED");
+        var resultStr = passed ? "PASSED" : "FAILED";
+        LogQualityThresholdValidation(_logger, resultStr);
 
         return Task.FromResult(passed);
     }
@@ -298,4 +298,26 @@ public class CoreRAGEvaluationServiceAdapter : IRAGEvaluationService
 
         return Task.FromResult(comparison);
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Evaluated query {QueryId}: Precision={Precision:F3}, Recall={Recall:F3}")]
+    private static partial void LogEvaluatedQuery(ILogger logger, string queryId, double precision, double recall);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to evaluate query: {QueryId}")]
+    private static partial void LogEvaluateQueryFailed(ILogger logger, string queryId, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting batch evaluation with {Count} queries")]
+    private static partial void LogStartingBatchEvaluation(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "FluxImprover RAGEvaluationService not available. Using default scores.")]
+    private static partial void LogFluxImproverNotAvailable(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to evaluate answer quality with FluxImprover. Using default scores.")]
+    private static partial void LogAnswerQualityEvaluationFailed(ILogger logger, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Quality threshold validation: {Result}")]
+    private static partial void LogQualityThresholdValidation(ILogger logger, string result);
+
+    #endregion
 }

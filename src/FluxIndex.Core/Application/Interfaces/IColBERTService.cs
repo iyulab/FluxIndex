@@ -138,8 +138,8 @@ public enum ColBERTCompressionType
     /// <summary>Float16 (half precision)</summary>
     Float16,
 
-    /// <summary>Int8 scalar quantization (4x compression)</summary>
-    Int8,
+    /// <summary>Scalar 8-bit quantization (4x compression)</summary>
+    Scalar8Bit,
 
     /// <summary>Binary quantization (32x compression)</summary>
     Binary,
@@ -190,7 +190,7 @@ public class ColBERTOptions
 /// </summary>
 public class ColBERTCompressionOptions
 {
-    public ColBERTCompressionType CompressionType { get; set; } = ColBERTCompressionType.Int8;
+    public ColBERTCompressionType CompressionType { get; set; } = ColBERTCompressionType.Scalar8Bit;
 
     /// <summary>
     /// Number of subvectors for product quantization.

@@ -14,7 +14,7 @@ public class IndexingOptions
     public int OverlapSize { get; set; } = 64;
     public bool GenerateEmbeddings { get; set; } = true;
     public bool ExtractMetadata { get; set; } = true;
-    public bool EnableOCR { get; set; } = false;
+    public bool EnableOCR { get; set; }
     public Dictionary<string, object> CustomOptions { get; set; } = new();
 
     /// <summary>
@@ -23,7 +23,7 @@ public class IndexingOptions
     /// - true: 강제 활성화 (서비스 미등록 시 오류)
     /// - false: 강제 비활성화
     /// </summary>
-    public bool? EnableGraphRAG { get; set; } = null;
+    public bool? EnableGraphRAG { get; set; }
 
     /// <summary>
     /// GraphRAG 빌드 옵션.

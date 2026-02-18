@@ -3,7 +3,8 @@ using FluxIndex.Core.Application.Services;
 using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Core.Domain.Models;
 using Microsoft.Extensions.Logging;
-using Moq;
+using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using Xunit;
 
 using HybridSearchResult = FluxIndex.Core.Domain.Models.HybridSearchResult;
@@ -16,80 +17,68 @@ namespace FluxIndex.Core.Tests.Services;
 /// </summary>
 public class AgenticRetrievalRouterTests
 {
-    private readonly Mock<IHybridSearchService> _mockHybridSearchService;
-    private readonly Mock<IEmbeddingService> _mockEmbeddingService;
-    private readonly Mock<ISelfRAGService> _mockSelfRAGService;
-    private readonly Mock<ICorrectiveRAGService> _mockCorrectiveRAGService;
-    private readonly Mock<ISmallToBigRetriever> _mockSmallToBigRetriever;
-    private readonly Mock<IIterativeRetrievalService> _mockIterativeRetrievalService;
-    private readonly Mock<ILogger<AgenticRetrievalRouter>> _mockLogger;
+    private readonly IHybridSearchService _mockHybridSearchService;
+    private readonly IEmbeddingService _mockEmbeddingService;
+    private readonly ISelfRAGService _mockSelfRAGService;
+    private readonly ICorrectiveRAGService _mockCorrectiveRAGService;
+    private readonly ISmallToBigRetriever _mockSmallToBigRetriever;
+    private readonly IIterativeRetrievalService _mockIterativeRetrievalService;
+    private readonly ILogger<AgenticRetrievalRouter> _mockLogger;
     private readonly AgenticRetrievalRouter _router;
 
     public AgenticRetrievalRouterTests()
     {
-        _mockHybridSearchService = new Mock<IHybridSearchService>();
-        _mockEmbeddingService = new Mock<IEmbeddingService>();
-        _mockSelfRAGService = new Mock<ISelfRAGService>();
-        _mockCorrectiveRAGService = new Mock<ICorrectiveRAGService>();
-        _mockSmallToBigRetriever = new Mock<ISmallToBigRetriever>();
-        _mockIterativeRetrievalService = new Mock<IIterativeRetrievalService>();
-        _mockLogger = new Mock<ILogger<AgenticRetrievalRouter>>();
+        _mockHybridSearchService = Substitute.For<IHybridSearchService>();
+        _mockEmbeddingService = Substitute.For<IEmbeddingService>();
+        _mockSelfRAGService = Substitute.For<ISelfRAGService>();
+        _mockCorrectiveRAGService = Substitute.For<ICorrectiveRAGService>();
+        _mockSmallToBigRetriever = Substitute.For<ISmallToBigRetriever>();
+        _mockIterativeRetrievalService = Substitute.For<IIterativeRetrievalService>();
+        _mockLogger = Substitute.For<ILogger<AgenticRetrievalRouter>>();
 
         SetupDefaultMocks();
 
         _router = new AgenticRetrievalRouter(
-            _mockHybridSearchService.Object,
-            _mockEmbeddingService.Object,
-            _mockSelfRAGService.Object,
-            _mockCorrectiveRAGService.Object,
-            _mockSmallToBigRetriever.Object,
-            _mockIterativeRetrievalService.Object,
+            _mockHybridSearchService,
+            _mockEmbeddingService,
+            _mockSelfRAGService,
+            _mockCorrectiveRAGService,
+            _mockSmallToBigRetriever,
+            _mockIterativeRetrievalService,
             Microsoft.Extensions.Options.Options.Create(new AgenticRetrievalRouterOptions()),
-            _mockLogger.Object);
+            _mockLogger);
     }
 
     private void SetupDefaultMocks()
     {
-        _mockHybridSearchService
-            .Setup(x => x.SearchAsync(
-                It.IsAny<string>(),
-                It.IsAny<HybridSearchOptions>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CreateDefaultHybridResults(5));
+        _mockHybridSearchService.SearchAsync(
+                Arg.Any<string>(),
+                Arg.Any<HybridSearchOptions>(),
+                Arg.Any<CancellationToken>()).Returns(CreateDefaultHybridResults(5));
 
-        _mockEmbeddingService
-            .Setup(x => x.GenerateEmbeddingAsync(
-                It.IsAny<string>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CreateRandomEmbedding());
+        _mockEmbeddingService.GenerateEmbeddingAsync(
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>()).Returns(CreateRandomEmbedding());
 
-        _mockSelfRAGService
-            .Setup(x => x.SearchAsync(
-                It.IsAny<string>(),
-                It.IsAny<SelfRAGOptions>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CreateDefaultSelfRAGResult());
+        _mockSelfRAGService.SearchAsync(
+                Arg.Any<string>(),
+                Arg.Any<SelfRAGOptions>(),
+                Arg.Any<CancellationToken>()).Returns(CreateDefaultSelfRAGResult());
 
-        _mockCorrectiveRAGService
-            .Setup(x => x.RetrieveWithCorrectionAsync(
-                It.IsAny<string>(),
-                It.IsAny<CorrectiveRAGOptions>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CreateDefaultCorrectiveRAGResult());
+        _mockCorrectiveRAGService.RetrieveWithCorrectionAsync(
+                Arg.Any<string>(),
+                Arg.Any<CorrectiveRAGOptions>(),
+                Arg.Any<CancellationToken>()).Returns(CreateDefaultCorrectiveRAGResult());
 
-        _mockSmallToBigRetriever
-            .Setup(x => x.SearchAsync(
-                It.IsAny<string>(),
-                It.IsAny<SmallToBigOptions>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CreateDefaultSmallToBigResults());
+        _mockSmallToBigRetriever.SearchAsync(
+                Arg.Any<string>(),
+                Arg.Any<SmallToBigOptions>(),
+                Arg.Any<CancellationToken>()).Returns(CreateDefaultSmallToBigResults());
 
-        _mockIterativeRetrievalService
-            .Setup(x => x.RetrieveWithReasoningAsync(
-                It.IsAny<string>(),
-                It.IsAny<IterativeRetrievalOptions>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(CreateDefaultIterativeResult());
+        _mockIterativeRetrievalService.RetrieveWithReasoningAsync(
+                Arg.Any<string>(),
+                Arg.Any<IterativeRetrievalOptions>(),
+                Arg.Any<CancellationToken>()).Returns(CreateDefaultIterativeResult());
     }
 
     #region Constructor Tests
@@ -99,11 +88,11 @@ public class AgenticRetrievalRouterTests
     {
         // Arrange & Act
         var router = new AgenticRetrievalRouter(
-            _mockHybridSearchService.Object,
-            _mockEmbeddingService.Object,
+            _mockHybridSearchService,
+            _mockEmbeddingService,
             null, null, null, null,
             Microsoft.Extensions.Options.Options.Create(new AgenticRetrievalRouterOptions()),
-            _mockLogger.Object);
+            _mockLogger);
 
         // Assert
         Assert.NotNull(router);
@@ -115,10 +104,10 @@ public class AgenticRetrievalRouterTests
         // Arrange & Act & Assert
         Assert.Throws<ArgumentNullException>(() => new AgenticRetrievalRouter(
             null!,
-            _mockEmbeddingService.Object,
+            _mockEmbeddingService,
             null, null, null, null,
             Microsoft.Extensions.Options.Options.Create(new AgenticRetrievalRouterOptions()),
-            _mockLogger.Object));
+            _mockLogger));
     }
 
     [Fact]
@@ -126,11 +115,11 @@ public class AgenticRetrievalRouterTests
     {
         // Arrange & Act & Assert
         Assert.Throws<ArgumentNullException>(() => new AgenticRetrievalRouter(
-            _mockHybridSearchService.Object,
+            _mockHybridSearchService,
             null!,
             null, null, null, null,
             Microsoft.Extensions.Options.Options.Create(new AgenticRetrievalRouterOptions()),
-            _mockLogger.Object));
+            _mockLogger));
     }
 
     [Fact]
@@ -138,8 +127,8 @@ public class AgenticRetrievalRouterTests
     {
         // Arrange & Act & Assert
         Assert.Throws<ArgumentNullException>(() => new AgenticRetrievalRouter(
-            _mockHybridSearchService.Object,
-            _mockEmbeddingService.Object,
+            _mockHybridSearchService,
+            _mockEmbeddingService,
             null, null, null, null,
             Microsoft.Extensions.Options.Options.Create(new AgenticRetrievalRouterOptions()),
             null!));
@@ -534,12 +523,10 @@ public class AgenticRetrievalRouterTests
     {
         // Arrange
         var query = "What is machine learning?";
-        _mockSelfRAGService
-            .Setup(x => x.SearchAsync(
-                It.IsAny<string>(),
-                It.IsAny<SelfRAGOptions>(),
-                It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new InvalidOperationException("Service unavailable"));
+        _mockSelfRAGService.SearchAsync(
+                Arg.Any<string>(),
+                Arg.Any<SelfRAGOptions>(),
+                Arg.Any<CancellationToken>()).Throws(new InvalidOperationException("Service unavailable"));
 
         // Act
         var result = await _router.RouteAndRetrieveAsync(query);

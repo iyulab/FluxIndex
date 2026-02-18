@@ -3,7 +3,8 @@ using FluxIndex.Core.Application.Services;
 using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Core.Domain.Models;
 using Microsoft.Extensions.Logging;
-using Moq;
+using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using Xunit;
 
 namespace FluxIndex.Core.Tests.Services.EntityExtraction;
@@ -13,13 +14,13 @@ namespace FluxIndex.Core.Tests.Services.EntityExtraction;
 /// </summary>
 public class EntityExtractionServiceTests
 {
-    private readonly Mock<ILogger<EntityExtractionService>> _loggerMock;
-    private readonly Mock<ITextCompletionService> _llmServiceMock;
+    private readonly ILogger<EntityExtractionService> _loggerMock;
+    private readonly ITextCompletionService _llmServiceMock;
 
     public EntityExtractionServiceTests()
     {
-        _loggerMock = new Mock<ILogger<EntityExtractionService>>();
-        _llmServiceMock = new Mock<ITextCompletionService>();
+        _loggerMock = Substitute.For<ILogger<EntityExtractionService>>();
+        _llmServiceMock = Substitute.For<ITextCompletionService>();
     }
 
     #region Constructor Tests
@@ -28,7 +29,7 @@ public class EntityExtractionServiceTests
     public void Constructor_WithLogger_Succeeds()
     {
         // Act
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
 
         // Assert
         Assert.NotNull(service);
@@ -38,7 +39,7 @@ public class EntityExtractionServiceTests
     public void Constructor_WithLoggerAndLlmService_Succeeds()
     {
         // Act
-        var service = new EntityExtractionService(_loggerMock.Object, _llmServiceMock.Object);
+        var service = new EntityExtractionService(_loggerMock, _llmServiceMock);
 
         // Assert
         Assert.NotNull(service);
@@ -59,7 +60,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractEntitiesAsync_EmptyContent_ReturnsEmptyList()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
 
         // Act
         var result = await service.ExtractEntitiesAsync("");
@@ -72,7 +73,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractEntitiesAsync_NullContent_ReturnsEmptyList()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
 
         // Act
         var result = await service.ExtractEntitiesAsync(null!);
@@ -85,7 +86,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractEntitiesAsync_ExtractsEmailAddresses()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var content = "Contact us at support@example.com for more information.";
 
         // Act
@@ -99,7 +100,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractEntitiesAsync_ExtractsUrls()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var content = "Visit https://www.example.com for more details.";
 
         // Act
@@ -113,7 +114,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractEntitiesAsync_ExtractsPhoneNumbers()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var content = "Call us at +1-800-555-1234 for support.";
 
         // Act
@@ -127,7 +128,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractEntitiesAsync_ExtractsDates()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var content = "The event was held on January 15, 2024 at the convention center.";
 
         // Act
@@ -141,7 +142,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractEntitiesAsync_ExtractsMoney()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var content = "The product costs $99.99 plus tax.";
 
         // Act
@@ -155,7 +156,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractEntitiesAsync_ExtractsPercentages()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var content = "Sales increased by 25.5% last quarter.";
 
         // Act
@@ -169,7 +170,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractEntitiesAsync_ExtractsTechnologies()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var content = "We use Python and React for our development stack.";
 
         // Act
@@ -184,7 +185,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractEntitiesAsync_ExtractsQuantities()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var content = "The file size is 100MB and transfer speed is 10Mbps.";
 
         // Act
@@ -198,7 +199,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractEntitiesAsync_ExtractsOrganizations()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var content = "Microsoft Corp announced new products today.";
 
         // Act
@@ -212,7 +213,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractEntitiesAsync_WithOptions_FiltersEntityTypes()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var content = "Contact us at support@example.com. Visit https://example.com.";
         var options = new EntityExtractionOptions
         {
@@ -230,7 +231,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractEntitiesAsync_WithMinConfidence_FiltersLowConfidenceEntities()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var content = "John Smith works at Microsoft Corp.";
         var options = new EntityExtractionOptions
         {
@@ -248,7 +249,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractEntitiesAsync_WithMaxEntities_LimitsResults()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var content = "Python, JavaScript, TypeScript, Java, C#, Go, Rust are popular languages.";
         var options = new EntityExtractionOptions
         {
@@ -266,7 +267,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractEntitiesAsync_WithContext_IncludesContextInResults()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var content = "Microsoft Corp announced new products today at the annual conference.";
         var options = new EntityExtractionOptions
         {
@@ -286,7 +287,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractEntitiesAsync_DeduplicatesEntities()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var content = "Python is great. I love Python. We use Python daily.";
 
         // Act
@@ -302,14 +303,13 @@ public class EntityExtractionServiceTests
     public async Task ExtractEntitiesAsync_WithLlm_IncludesLlmExtractedEntities()
     {
         // Arrange
-        _llmServiceMock.Setup(x => x.GenerateCompletionAsync(
-                It.IsAny<string>(),
-                It.IsAny<int>(),
-                It.IsAny<float>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync("[{\"text\": \"Apple\", \"type\": \"Organization\", \"confidence\": 0.95}]");
+        _llmServiceMock.GenerateCompletionAsync(
+                Arg.Any<string>(),
+                Arg.Any<int>(),
+                Arg.Any<float>(),
+                Arg.Any<CancellationToken>()).Returns("[{\"text\": \"Apple\", \"type\": \"Organization\", \"confidence\": 0.95}]");
 
-        var service = new EntityExtractionService(_loggerMock.Object, _llmServiceMock.Object);
+        var service = new EntityExtractionService(_loggerMock, _llmServiceMock);
         var content = "Apple announced new products today.";
         var options = new EntityExtractionOptions { UseLlm = true };
 
@@ -317,11 +317,11 @@ public class EntityExtractionServiceTests
         var result = await service.ExtractEntitiesAsync(content, options);
 
         // Assert
-        _llmServiceMock.Verify(x => x.GenerateCompletionAsync(
-            It.IsAny<string>(),
-            It.IsAny<int>(),
-            It.IsAny<float>(),
-            It.IsAny<CancellationToken>()), Times.Once);
+        await _llmServiceMock.Received(1).GenerateCompletionAsync(
+            Arg.Any<string>(),
+            Arg.Any<int>(),
+            Arg.Any<float>(),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -329,7 +329,7 @@ public class EntityExtractionServiceTests
     {
         // Arrange
         var cts = new CancellationTokenSource();
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var content = "Test content";
 
         // Act
@@ -347,7 +347,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractRelationsAsync_EmptyContent_ReturnsEmptyList()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
 
         // Act
         var result = await service.ExtractRelationsAsync("");
@@ -360,7 +360,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractRelationsAsync_SingleEntity_ReturnsEmptyList()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var content = "Python is popular.";
 
         // Act
@@ -374,7 +374,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractRelationsAsync_WithProvidedEntities_UsesThoseEntities()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var content = "John works for Microsoft.";
         var entities = new List<ExtractedEntity>
         {
@@ -393,7 +393,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractRelationsAsync_DetectsWorksForRelation()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var content = "John works for Microsoft Corp.";
         var entities = new List<ExtractedEntity>
         {
@@ -412,7 +412,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractRelationsAsync_DetectsLocatedInRelation()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var content = "Microsoft is located in Seattle.";
         var entities = new List<ExtractedEntity>
         {
@@ -431,7 +431,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractRelationsAsync_DetectsFoundedByRelation()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var content = "Microsoft was founded by Bill Gates.";
         var entities = new List<ExtractedEntity>
         {
@@ -450,7 +450,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractRelationsAsync_DetectsUsesRelation()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var content = "Our company uses Python for development.";
         var entities = new List<ExtractedEntity>
         {
@@ -469,7 +469,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractRelationsAsync_DeduplicatesRelations()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var content = "John works for Microsoft. John works for Microsoft.";
         var entities = new List<ExtractedEntity>
         {
@@ -493,7 +493,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractEntityGraphAsync_EmptyContent_ReturnsEmptyGraph()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var options = new EntityExtractionOptions();
 
         // Act
@@ -508,7 +508,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractEntityGraphAsync_ReturnsEntitiesAndRelations()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var content = "Microsoft Corp uses Python. Microsoft is located in Seattle.";
         var options = new EntityExtractionOptions { ExtractRelations = true };
 
@@ -524,7 +524,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractEntityGraphAsync_IncludesStatistics()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var content = "Python and JavaScript are popular programming languages.";
         var options = new EntityExtractionOptions();
 
@@ -541,7 +541,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractEntityGraphAsync_WithoutRelations_ReturnsEmptyRelations()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var content = "Python and JavaScript are popular.";
         var options = new EntityExtractionOptions { ExtractRelations = false };
 
@@ -556,7 +556,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractEntityGraphAsync_GeneratesUniqueSourceId()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var content = "Test content";
 
         // Act
@@ -575,7 +575,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractBatchAsync_EmptyInput_ReturnsEmptyList()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
 
         // Act
         var result = await service.ExtractBatchAsync(Enumerable.Empty<string>());
@@ -588,7 +588,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractBatchAsync_MultipleContents_ReturnsMultipleGraphs()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var contents = new[] { "Python is great.", "JavaScript is popular.", "C# is powerful." };
 
         // Act
@@ -604,7 +604,7 @@ public class EntityExtractionServiceTests
         // Arrange
         var cts = new CancellationTokenSource();
         cts.Cancel();
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var contents = new[] { "Test 1", "Test 2", "Test 3" };
 
         // Act & Assert
@@ -616,7 +616,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractBatchAsync_PassesOptions()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var contents = new[] { "support@example.com", "test@domain.com" };
         var options = new EntityExtractionOptions
         {
@@ -639,7 +639,7 @@ public class EntityExtractionServiceTests
     public async Task LinkEntitiesAsync_EmptyGraphs_ReturnsEmptyLinkedGraph()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var graphs = Enumerable.Empty<EntityGraph>();
 
         // Act
@@ -654,7 +654,7 @@ public class EntityExtractionServiceTests
     public async Task LinkEntitiesAsync_MergesIdenticalEntities()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var graphs = new List<EntityGraph>
         {
             new()
@@ -689,7 +689,7 @@ public class EntityExtractionServiceTests
     public async Task LinkEntitiesAsync_CombinesSurfaceForms()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var graphs = new List<EntityGraph>
         {
             new()
@@ -724,7 +724,7 @@ public class EntityExtractionServiceTests
     public async Task LinkEntitiesAsync_UpdatesRelationIds()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var graphs = new List<EntityGraph>
         {
             new()
@@ -756,7 +756,7 @@ public class EntityExtractionServiceTests
     public async Task LinkEntitiesAsync_CalculatesImportanceScore()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var graphs = new List<EntityGraph>
         {
             new()
@@ -782,7 +782,7 @@ public class EntityExtractionServiceTests
     public async Task LinkEntitiesAsync_IncludesStatistics()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var graphs = new List<EntityGraph>
         {
             new()
@@ -808,7 +808,7 @@ public class EntityExtractionServiceTests
     public async Task LinkEntitiesAsync_WithRequireSameType_SeparatesEntitiesByType()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var graphs = new List<EntityGraph>
         {
             new()
@@ -839,7 +839,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractEntitiesAsync_SpecialCharactersInContent_HandlesGracefully()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var content = "Test <script>alert('xss')</script> content with 特殊字符 and €100.";
 
         // Act
@@ -855,7 +855,7 @@ public class EntityExtractionServiceTests
     public async Task ExtractEntitiesAsync_VeryLongContent_ProcessesSuccessfully()
     {
         // Arrange
-        var service = new EntityExtractionService(_loggerMock.Object);
+        var service = new EntityExtractionService(_loggerMock);
         var content = string.Join(" ", Enumerable.Repeat("Python JavaScript C# Go Rust", 100));
 
         // Act
@@ -870,14 +870,13 @@ public class EntityExtractionServiceTests
     public async Task ExtractEntitiesAsync_LlmFailure_FallsBackToPatterns()
     {
         // Arrange
-        _llmServiceMock.Setup(x => x.GenerateCompletionAsync(
-                It.IsAny<string>(),
-                It.IsAny<int>(),
-                It.IsAny<float>(),
-                It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new Exception("LLM service unavailable"));
+        _llmServiceMock.GenerateCompletionAsync(
+                Arg.Any<string>(),
+                Arg.Any<int>(),
+                Arg.Any<float>(),
+                Arg.Any<CancellationToken>()).Throws(new Exception("LLM service unavailable"));
 
-        var service = new EntityExtractionService(_loggerMock.Object, _llmServiceMock.Object);
+        var service = new EntityExtractionService(_loggerMock, _llmServiceMock);
         var content = "Python is a great programming language.";
         var options = new EntityExtractionOptions { UseLlm = true };
 
@@ -893,14 +892,13 @@ public class EntityExtractionServiceTests
     public async Task ExtractEntitiesAsync_InvalidLlmResponse_HandlesGracefully()
     {
         // Arrange
-        _llmServiceMock.Setup(x => x.GenerateCompletionAsync(
-                It.IsAny<string>(),
-                It.IsAny<int>(),
-                It.IsAny<float>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync("This is not valid JSON");
+        _llmServiceMock.GenerateCompletionAsync(
+                Arg.Any<string>(),
+                Arg.Any<int>(),
+                Arg.Any<float>(),
+                Arg.Any<CancellationToken>()).Returns("This is not valid JSON");
 
-        var service = new EntityExtractionService(_loggerMock.Object, _llmServiceMock.Object);
+        var service = new EntityExtractionService(_loggerMock, _llmServiceMock);
         var content = "Python is great.";
         var options = new EntityExtractionOptions { UseLlm = true };
 

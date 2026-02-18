@@ -17,6 +17,7 @@ namespace FluxIndex.Cache.Redis.Tests.Extensions;
 /// <summary>
 /// 서비스 컬렉션 확장 메서드 테스트
 /// </summary>
+[Trait("Category", "Integration")]
 public class ServiceCollectionExtensionsTests : RedisTestBase
 {
     public ServiceCollectionExtensionsTests(ITestOutputHelper output) : base(output)

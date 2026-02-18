@@ -422,10 +422,7 @@ public static class FluxIndexServiceExtensions
         this IServiceCollection services,
         Action<FluxIndexContextBuilder> configureBuilder)
     {
-        if (configureBuilder == null)
-        {
-            throw new ArgumentNullException(nameof(configureBuilder));
-        }
+        ArgumentNullException.ThrowIfNull(configureBuilder);
 
         // Create builder and apply configuration
         var builder = new FluxIndexContextBuilder();

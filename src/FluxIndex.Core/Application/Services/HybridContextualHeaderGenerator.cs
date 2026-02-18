@@ -8,7 +8,7 @@ namespace FluxIndex.Core.Application.Services;
 /// 하이브리드 Contextual Header 생성기
 /// 규칙 기반 + LLM 기반 접근을 결합하여 비용 최적화
 /// </summary>
-public class HybridContextualHeaderGenerator : IContextualHeaderGenerator
+public partial class HybridContextualHeaderGenerator : IContextualHeaderGenerator
 {
     private readonly ITextCompletionService? _textCompletion;
     private readonly ContextualHeaderOptions _options;
@@ -32,25 +32,19 @@ public class HybridContextualHeaderGenerator : IContextualHeaderGenerator
         // ContextDependency가 임계값 미만이면 규칙 기반
         if (chunk.ContextDependency < _options.LlmThreshold)
         {
-            _logger.LogDebug(
-                "Using rule-based header for chunk {ChunkId} (ContextDependency: {Dependency})",
-                chunk.ChunkId, chunk.ContextDependency);
+            LogHybridContextualHeader6(_logger, chunk.ChunkId, chunk.ContextDependency);
             return GenerateRuleBased(chunk);
         }
 
         // LLM이 있으면 LLM 기반
         if (_textCompletion != null)
         {
-            _logger.LogDebug(
-                "Using LLM-based header for chunk {ChunkId} (ContextDependency: {Dependency})",
-                chunk.ChunkId, chunk.ContextDependency);
+            LogHybridContextualHeader5(_logger, chunk.ChunkId, chunk.ContextDependency);
             return await GenerateLlmBasedAsync(chunk, documentSummary, cancellationToken);
         }
 
         // LLM이 없으면 규칙 기반 폴백
-        _logger.LogDebug(
-            "Falling back to rule-based header (no LLM available) for chunk {ChunkId}",
-            chunk.ChunkId);
+        LogHybridContextualHeader4(_logger, chunk.ChunkId);
         return GenerateRuleBased(chunk);
     }
 
@@ -75,9 +69,7 @@ public class HybridContextualHeaderGenerator : IContextualHeaderGenerator
         // LLM 기반 처리
         if (_textCompletion != null && llmBasedChunks.Count > 0)
         {
-            _logger.LogInformation(
-                "Processing {Count} chunks with LLM (out of {Total} total)",
-                llmBasedChunks.Count, chunkList.Count);
+            LogHybridContextualHeader3(_logger, llmBasedChunks.Count, chunkList.Count);
 
             foreach (var chunk in llmBasedChunks)
             {
@@ -94,9 +86,7 @@ public class HybridContextualHeaderGenerator : IContextualHeaderGenerator
             }
         }
 
-        _logger.LogInformation(
-            "Generated headers: {RuleBased} rule-based, {LlmBased} LLM-based",
-            ruleBasedChunks.Count, llmBasedChunks.Count);
+        LogHybridContextualHeader2(_logger, ruleBasedChunks.Count, llmBasedChunks.Count);
 
         return results;
     }
@@ -174,7 +164,7 @@ public class HybridContextualHeaderGenerator : IContextualHeaderGenerator
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "LLM header generation failed for chunk {ChunkId}, falling back to rule-based", chunk.ChunkId);
+            LogHybridContextualHeader1(_logger, ex, chunk.ChunkId);
             return GenerateRuleBased(chunk);
         }
     }
@@ -182,7 +172,7 @@ public class HybridContextualHeaderGenerator : IContextualHeaderGenerator
     /// <summary>
     /// Contextual Retrieval 프롬프트 생성
     /// </summary>
-    private string BuildPrompt(IEnrichedChunk chunk, string? documentSummary)
+    private static string BuildPrompt(IEnrichedChunk chunk, string? documentSummary)
     {
         var contextInfo = new List<string>
         {
@@ -218,4 +208,21 @@ public class HybridContextualHeaderGenerator : IContextualHeaderGenerator
             Please give a short succinct context to situate this chunk within the overall document for the purposes of improving search retrieval of the chunk. Answer only with the succinct context and nothing else. Keep it under 100 words.
             """;
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Using rule-based header for chunk {ChunkId} (ContextDependency: {Dependency})")]
+    private static partial void LogHybridContextualHeader6(ILogger logger, string chunkId, double dependency);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Using LLM-based header for chunk {ChunkId} (ContextDependency: {Dependency})")]
+    private static partial void LogHybridContextualHeader5(ILogger logger, string chunkId, double dependency);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Falling back to rule-based header (no LLM available) for chunk {ChunkId}")]
+    private static partial void LogHybridContextualHeader4(ILogger logger, string chunkId);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Processing {Count} chunks with LLM (out of {Total} total)")]
+    private static partial void LogHybridContextualHeader3(ILogger logger, int count, int total);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Generated headers: {RuleBased} rule-based, {LlmBased} LLM-based")]
+    private static partial void LogHybridContextualHeader2(ILogger logger, int ruleBased, int llmBased);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "LLM header generation failed for chunk {ChunkId}, falling back to rule-based")]
+    private static partial void LogHybridContextualHeader1(ILogger logger, Exception exception, string chunkId);
+
+    #endregion
 }

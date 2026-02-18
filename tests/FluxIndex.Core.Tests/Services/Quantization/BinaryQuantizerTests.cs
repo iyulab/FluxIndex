@@ -2,18 +2,18 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services.Quantization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Moq;
+using NSubstitute;
 using Xunit;
 
 namespace FluxIndex.Core.Tests.Services.Quantization;
 
 public class BinaryQuantizerTests
 {
-    private readonly Mock<ILogger<BinaryQuantizer>> _loggerMock;
+    private readonly ILogger<BinaryQuantizer> _loggerMock;
 
     public BinaryQuantizerTests()
     {
-        _loggerMock = new Mock<ILogger<BinaryQuantizer>>();
+        _loggerMock = Substitute.For<ILogger<BinaryQuantizer>>();
     }
 
     private BinaryQuantizer CreateQuantizer(int dimension = 32)
@@ -24,7 +24,7 @@ public class BinaryQuantizerTests
             Dimension = dimension
         });
 
-        return new BinaryQuantizer(options, _loggerMock.Object);
+        return new BinaryQuantizer(options, _loggerMock);
     }
 
     #region Quantization Tests
@@ -199,7 +199,7 @@ public class BinaryQuantizerTests
         var q2 = await quantizer.QuantizeAsync(vector2);
 
         // Act
-        var similarity = quantizer.ComputeHammingSimilarity(q1, q2);
+        var similarity = BinaryQuantizer.ComputeHammingSimilarity(q1, q2);
         var distance = quantizer.ComputeDistance(q1, q2);
 
         // Assert
@@ -337,7 +337,7 @@ public class BinaryQuantizerTests
         var qCandidates = await quantizer.QuantizeBatchAsync(candidates);
 
         // Act
-        var distances = quantizer.ComputeHammingDistancesBatch(
+        var distances = BinaryQuantizer.ComputeHammingDistancesBatch(
             qQuery.Data,
             qCandidates.Select(c => c.Data));
 

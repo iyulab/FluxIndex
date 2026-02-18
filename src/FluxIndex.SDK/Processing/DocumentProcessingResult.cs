@@ -123,12 +123,12 @@ public class ContentProcessingOptions
     /// <summary>
     /// Enable contextual enrichment for chunks
     /// </summary>
-    public bool EnableContextualEnrichment { get; set; } = false;
+    public bool EnableContextualEnrichment { get; set; }
 
     /// <summary>
     /// Enable QA pair generation from chunks
     /// </summary>
-    public bool EnableQAGeneration { get; set; } = false;
+    public bool EnableQAGeneration { get; set; }
 
     /// <summary>
     /// Maximum QA pairs to generate per chunk
@@ -457,7 +457,7 @@ public class ExtractionOptions
     /// <summary>
     /// Convert extracted text to structured Markdown (FileFlux v0.8.6+)
     /// </summary>
-    public bool ConvertToMarkdown { get; set; } = false;
+    public bool ConvertToMarkdown { get; set; }
 
     /// <summary>
     /// Markdown conversion options (used when ConvertToMarkdown is true)
@@ -494,7 +494,7 @@ public class MarkdownOptions
     /// Use LLM for structure inference when heuristics fail
     /// (requires ITextCompletionService)
     /// </summary>
-    public bool UseLLMInference { get; set; } = false;
+    public bool UseLLMInference { get; set; }
 
     /// <summary>
     /// Detect and preserve code blocks

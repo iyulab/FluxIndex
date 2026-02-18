@@ -13,6 +13,7 @@ namespace FluxIndex.Stack.Api.Tests;
 /// Integration tests for RAG Enhancement features.
 /// Tests Late Chunking, Multi-Hypothetical HyDE, and Contextual Retrieval configurations.
 /// </summary>
+[Trait("Category", "Integration")]
 public class RAGEnhancementTests : IClassFixture<TestWebApplicationFactory>
 {
     private readonly HttpClient _client;

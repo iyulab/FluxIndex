@@ -64,7 +64,7 @@ public class CollectionSettings
     public int ChunkSize { get; set; } = 1000;
     public int ChunkOverlap { get; set; } = 200;
     public string ChunkingStrategy { get; set; } = "intelligent";
-    public bool EnableQAGeneration { get; set; } = false;
-    public bool EnableEnrichment { get; set; } = false;
+    public bool EnableQAGeneration { get; set; }
+    public bool EnableEnrichment { get; set; }
     public Dictionary<string, object> CustomSettings { get; set; } = new();
 }

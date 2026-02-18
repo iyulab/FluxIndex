@@ -11,7 +11,7 @@ namespace FluxIndex.Storage.Qdrant;
 /// Qdrant-backed hybrid search service combining vector similarity search with BM25 keyword search.
 /// Uses Qdrant for vector operations and in-memory BM25 index for sparse retrieval.
 /// </summary>
-public class QdrantHybridSearchService : IHybridSearchService
+public partial class QdrantHybridSearchService : IHybridSearchService
 {
     private readonly QdrantVectorStore _vectorStore;
     private readonly BM25SparseRetriever _bm25Retriever;
@@ -39,7 +39,7 @@ public class QdrantHybridSearchService : IHybridSearchService
         options ??= new HybridSearchOptions();
         var candidateCount = options.MaxResults * 3; // Fetch more candidates for fusion
 
-        _logger.LogDebug("Executing hybrid search for query: {Query}", query);
+        LogHybridSearch(_logger, query);
 
         // Execute vector and BM25 searches in parallel
         var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
@@ -56,8 +56,7 @@ public class QdrantHybridSearchService : IHybridSearchService
         var vectorResults = (await vectorTask).ToList();
         var bm25Results = (await bm25Task).ToList();
 
-        _logger.LogDebug("Vector results: {VectorCount}, BM25 results: {BM25Count}",
-            vectorResults.Count, bm25Results.Count);
+        LogSearchResults(_logger, vectorResults.Count, bm25Results.Count);
 
         // Fuse results using RRF
         var fusedResults = FuseResultsRRF(vectorResults, bm25Results, options);
@@ -193,9 +192,9 @@ public class QdrantHybridSearchService : IHybridSearchService
     /// <summary>
     /// Fuses vector and BM25 results using Reciprocal Rank Fusion (RRF).
     /// </summary>
-    private List<HybridSearchResult> FuseResultsRRF(
+    private static List<HybridSearchResult> FuseResultsRRF(
         List<DocumentChunk> vectorResults,
-        IReadOnlyList<SparseSearchResult> bm25Results,
+        List<SparseSearchResult> bm25Results,
         HybridSearchOptions options)
     {
         var k = options.RrfK;
@@ -270,4 +269,14 @@ public class QdrantHybridSearchService : IHybridSearchService
 
         return fusedResults;
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Executing hybrid search for query: {Query}")]
+    private static partial void LogHybridSearch(ILogger logger, string query);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Vector results: {VectorCount}, BM25 results: {BM25Count}")]
+    private static partial void LogSearchResults(ILogger logger, int vectorCount, int bm25Count);
+
+    #endregion
 }

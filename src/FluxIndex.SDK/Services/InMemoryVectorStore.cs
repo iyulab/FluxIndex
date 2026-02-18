@@ -37,8 +37,13 @@ public interface IPersistableStore
 /// Memory-based vector store implementation with optional file persistence.
 /// Inherits common functionality from VectorStoreBase.
 /// </summary>
-public class InMemoryVectorStore : VectorStoreBase, IPersistableStore
+public class InMemoryVectorStore : VectorStoreBase, IPersistableStore, IDisposable
 {
+    private static readonly JsonSerializerOptions s_persistenceJsonOptions = new()
+    {
+        WriteIndented = false
+    };
+
     private readonly ConcurrentDictionary<string, (DocumentChunk chunk, float[] embedding)> _chunks = new();
     private readonly ConcurrentDictionary<string, List<string>> _documentChunks = new();
     private readonly string? _persistencePath;
@@ -79,7 +84,7 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore
 
     #region VectorStoreBase Core Implementations
 
-    protected override Task<string> StoreCoreAsync(DocumentChunk chunk, CancellationToken cancellationToken)
+    protected override async Task<string> StoreCoreAsync(DocumentChunk chunk, CancellationToken cancellationToken)
     {
         if (string.IsNullOrEmpty(chunk.Id))
         {
@@ -105,8 +110,8 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore
                 });
         }
 
-        AutoSaveIfEnabledAsync(cancellationToken).GetAwaiter().GetResult();
-        return Task.FromResult(chunk.Id);
+        await AutoSaveIfEnabledAsync(cancellationToken);
+        return chunk.Id;
     }
 
     protected override Task<DocumentChunk?> GetCoreAsync(string id, CancellationToken cancellationToken)
@@ -140,7 +145,7 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore
                 _documentChunks.TryGetValue(item.chunk.DocumentId, out var chunkIds))
             {
                 chunkIds.Remove(id);
-                if (!chunkIds.Any())
+                if (chunkIds.Count == 0)
                     _documentChunks.TryRemove(item.chunk.DocumentId, out _);
             }
 
@@ -300,13 +305,8 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore
                 Directory.CreateDirectory(directory);
             }
 
-            var options = new JsonSerializerOptions
-            {
-                WriteIndented = false // Compact for performance
-            };
-
             await using var stream = File.Create(filePath);
-            await JsonSerializer.SerializeAsync(stream, data, options, cancellationToken);
+            await JsonSerializer.SerializeAsync(stream, data, s_persistenceJsonOptions, cancellationToken);
         }
         finally
         {
@@ -380,6 +380,15 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore
     }
 
     #endregion
+
+    /// <summary>
+    /// Disposes the persistence lock semaphore.
+    /// </summary>
+    public void Dispose()
+    {
+        _persistenceLock.Dispose();
+        GC.SuppressFinalize(this);
+    }
 
     #region Persistence Data Classes
 

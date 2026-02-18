@@ -24,8 +24,7 @@ public class EmbeddingVector : IEquatable<EmbeddingVector>
 
     public float CosineSimilarity(EmbeddingVector other)
     {
-        if (other == null)
-            throw new ArgumentNullException(nameof(other));
+        ArgumentNullException.ThrowIfNull(other);
         if (other.Dimension != Dimension)
             throw new ArgumentException($"Dimension mismatch: {Dimension} vs {other.Dimension}");
 

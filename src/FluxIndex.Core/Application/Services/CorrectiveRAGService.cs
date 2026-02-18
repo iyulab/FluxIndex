@@ -18,7 +18,7 @@ namespace FluxIndex.Core.Application.Services;
 /// Evaluates retrieved documents for relevance and performs corrective actions
 /// based on the grading results following the CRAG paper methodology.
 /// </summary>
-public class CorrectiveRAGService : ICorrectiveRAGService
+public partial class CorrectiveRAGService : ICorrectiveRAGService
 {
     private readonly IHybridSearchService _searchService;
     private readonly IEmbeddingService _embeddingService;
@@ -59,7 +59,8 @@ public class CorrectiveRAGService : ICorrectiveRAGService
 
         try
         {
-            _logger.LogDebug("Starting Corrective RAG for query: {Query}", query);
+            if (_logger.IsEnabled(LogLevel.Debug))
+                LogCorrectiveRAG6(_logger, query);
 
             // Step 1: Initial Retrieval
             var retrievalStopwatch = Stopwatch.StartNew();
@@ -79,7 +80,8 @@ public class CorrectiveRAGService : ICorrectiveRAGService
 
             if (initialDocuments.Count == 0)
             {
-                _logger.LogWarning("No initial documents retrieved for query: {Query}", query);
+                if (_logger.IsEnabled(LogLevel.Debug))
+                    LogCorrectiveRAG5(_logger, query);
                 return CreateEmptyResult(stopwatch.Elapsed, correctionSteps);
             }
 
@@ -101,7 +103,8 @@ public class CorrectiveRAGService : ICorrectiveRAGService
 
             // Step 3: Determine Correction Action
             var action = DetermineAction(gradingResult);
-            _logger.LogDebug("Correction action determined: {Action}", action);
+            if (_logger.IsEnabled(LogLevel.Debug))
+                LogCorrectiveRAG4(_logger, action);
 
             var correctedDocuments = new List<CorrectedDocument>();
             bool usedAlternativeRetrieval = false;
@@ -288,7 +291,8 @@ public class CorrectiveRAGService : ICorrectiveRAGService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during corrective RAG for query: {Query}", query);
+            if (_logger.IsEnabled(LogLevel.Debug))
+                LogCorrectiveRAG3(_logger, ex, query);
             stopwatch.Stop();
 
             return new CorrectiveRAGResult
@@ -513,7 +517,8 @@ public class CorrectiveRAGService : ICorrectiveRAGService
         catch (Exception ex)
         {
             stopwatch.Stop();
-            _logger.LogWarning(ex, "Alternative retrieval failed for query: {Query}", query);
+            if (_logger.IsEnabled(LogLevel.Debug))
+                LogCorrectiveRAG2(_logger, ex, query);
 
             return new AlternativeRetrievalResult
             {
@@ -543,7 +548,7 @@ public class CorrectiveRAGService : ICorrectiveRAGService
         return results.Select(r => r.Chunk).ToList();
     }
 
-    private CorrectionAction DetermineAction(DocumentGradingResult gradingResult)
+    private static CorrectionAction DetermineAction(DocumentGradingResult gradingResult)
     {
         return gradingResult.Assessment switch
         {
@@ -554,7 +559,7 @@ public class CorrectiveRAGService : ICorrectiveRAGService
         };
     }
 
-    private CorrectedDocument CreateCorrectedDocument(GradedDocumentInfo gradedDoc, DocumentSource source)
+    private static CorrectedDocument CreateCorrectedDocument(GradedDocumentInfo gradedDoc, DocumentSource source)
     {
         return new CorrectedDocument
         {
@@ -576,7 +581,7 @@ public class CorrectiveRAGService : ICorrectiveRAGService
         return DocumentRelevanceGrade.Incorrect;
     }
 
-    private OverallAssessment DetermineOverallAssessment(
+    private static OverallAssessment DetermineOverallAssessment(
         int correctCount, int ambiguousCount, int incorrectCount, int total)
     {
         if (total == 0) return OverallAssessment.Incorrect;
@@ -649,7 +654,7 @@ public class CorrectiveRAGService : ICorrectiveRAGService
         return $"{explanation} (score: {relevanceScore:F2}, semantic: {semanticSimilarity:F2}, keyword: {keywordScore:F2})";
     }
 
-    private string TransformQuery(string query, IEnumerable<DocumentChunk> originalDocuments)
+    private static string TransformQuery(string query, IEnumerable<DocumentChunk> originalDocuments)
     {
         // Simple query transformation: expand with related terms
         var terms = ExtractQueryTerms(query);
@@ -680,7 +685,7 @@ public class CorrectiveRAGService : ICorrectiveRAGService
             .Select(s => new
             {
                 Sentence = s,
-                Score = queryTerms.Count(t => s.ToLowerInvariant().Contains(t))
+                Score = queryTerms.Count(t => s.Contains(t, StringComparison.OrdinalIgnoreCase))
             })
             .Where(x => x.Score > 0)
             .OrderByDescending(x => x.Score)
@@ -760,7 +765,7 @@ public class CorrectiveRAGService : ICorrectiveRAGService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to generate summary");
+            LogCorrectiveRAG1(_logger, ex);
             return null;
         }
     }
@@ -805,12 +810,29 @@ public class CorrectiveRAGService : ICorrectiveRAGService
     }
 
     #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Starting Corrective RAG for query: {Query}")]
+    private static partial void LogCorrectiveRAG6(ILogger logger, string query);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No initial documents retrieved for query: {Query}")]
+    private static partial void LogCorrectiveRAG5(ILogger logger, string query);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Correction action determined: {Action}")]
+    private static partial void LogCorrectiveRAG4(ILogger logger, CorrectionAction action);
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error during corrective RAG for query: {Query}")]
+    private static partial void LogCorrectiveRAG3(ILogger logger, Exception exception, string query);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Alternative retrieval failed for query: {Query}")]
+    private static partial void LogCorrectiveRAG2(ILogger logger, Exception exception, string query);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to generate summary")]
+    private static partial void LogCorrectiveRAG1(ILogger logger, Exception exception);
+
+    #endregion
 }
 
 /// <summary>
 /// Configuration options for CorrectiveRAGService.
 /// </summary>
-public class CorrectiveRAGServiceOptions
+public partial class CorrectiveRAGServiceOptions
 {
     /// <summary>
     /// Threshold for considering a document as "correct" (relevant).

@@ -9,6 +9,7 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.ValueObjects;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Globalization;
 
 namespace FluxIndex.Core.Application.Services.Reranking;
 
@@ -19,8 +20,11 @@ namespace FluxIndex.Core.Application.Services.Reranking;
 /// Reference: "Learning to Rank: From Pairwise Approach to Listwise Approach"
 /// https://www.microsoft.com/en-us/research/publication/learning-to-rank-from-pairwise-approach-to-listwise-approach/
 /// </summary>
-public class ListwiseReranker : IListwiseReranker
+public partial class ListwiseReranker : IListwiseReranker
 {
+    private static readonly char[] RankingSplitSeparators = [',', ' ', '\n', '\r'];
+    private static readonly char[] TokenizeSeparators = [' ', '\t', '\n', '\r', '.', ',', ';', ':', '!', '?'];
+
     private readonly ITextCompletionService? _llmService;
     private readonly IEmbeddingService? _embeddingService;
     private readonly ILogger<ListwiseReranker> _logger;
@@ -47,14 +51,14 @@ public class ListwiseReranker : IListwiseReranker
         options ??= new ListwiseRerankOptions();
         var candidateList = candidates.ToList();
 
-        if (!candidateList.Any())
+        if (candidateList.Count == 0)
         {
-            _logger.LogWarning("No candidates provided for listwise reranking");
+            LogListwiseReranker11(_logger);
             return Array.Empty<ListwiseRerankResult>();
         }
 
-        _logger.LogInformation("Listwise reranking {Count} candidates using {Method}",
-            candidateList.Count, options.Method);
+        if (_logger.IsEnabled(LogLevel.Warning))
+            LogListwiseReranker10(_logger, candidateList.Count, options.Method);
 
         var results = options.Method switch
         {
@@ -74,8 +78,7 @@ public class ListwiseReranker : IListwiseReranker
             .Select((r, i) => r with { NewRank = i + 1 })
             .ToList();
 
-        _logger.LogInformation("Listwise reranking complete: {Input} → {Output} results",
-            candidateList.Count, finalResults.Count);
+        LogListwiseReranker9(_logger, candidateList.Count, finalResults.Count);
 
         return finalResults;
     }
@@ -152,7 +155,7 @@ public class ListwiseReranker : IListwiseReranker
     {
         if (_llmService == null)
         {
-            _logger.LogWarning("LLM not available for sliding window, falling back to attention-based");
+            LogListwiseReranker8(_logger);
             return await RerankAttentionBasedAsync(query, candidates, options, cancellationToken);
         }
 
@@ -193,7 +196,7 @@ public class ListwiseReranker : IListwiseReranker
         var results = candidates.Select(candidate =>
         {
             var positions = positionScores[candidate.Id];
-            var avgPosition = positions.Any() ? positions.Average() : candidates.Count;
+            var avgPosition = positions.Count != 0 ? positions.Average() : candidates.Count;
             var score = (float)(1.0 - (avgPosition - 1) / Math.Max(1, candidates.Count - 1));
 
             // Blend with initial score
@@ -209,7 +212,7 @@ public class ListwiseReranker : IListwiseReranker
                 InitialScore = candidate.InitialScore,
                 InitialRank = candidate.InitialRank,
                 ListwiseScore = (float)blendedScore,
-                Confidence = positions.Any() ? 1.0f / (1 + StandardDeviation(positions)) : 0.5f,
+                Confidence = positions.Count != 0 ? 1.0f / (1 + StandardDeviation(positions)) : 0.5f,
                 Components = new ListwiseScoreComponents
                 {
                     SlidingWindowScore = score,
@@ -247,24 +250,24 @@ public class ListwiseReranker : IListwiseReranker
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to rank window with LLM, using initial order");
+            LogListwiseReranker7(_logger, ex);
             return window.Select(c => c.Id).ToList();
         }
     }
 
-    private string BuildWindowRankingPrompt(string query, List<RetrievalCandidate> window, int maxContentLength)
+    private static string BuildWindowRankingPrompt(string query, List<RetrievalCandidate> window, int maxContentLength)
     {
         var sb = new StringBuilder();
         sb.AppendLine("Given the query below, rank the following documents from most to least relevant.");
         sb.AppendLine();
-        sb.AppendLine($"Query: {query}");
+        sb.AppendLine(CultureInfo.InvariantCulture, $"Query: {query}");
         sb.AppendLine();
         sb.AppendLine("Documents:");
 
         for (int i = 0; i < window.Count; i++)
         {
             var content = TruncateContent(window[i].Content, maxContentLength);
-            sb.AppendLine($"[{i + 1}] {content}");
+            sb.AppendLine(CultureInfo.InvariantCulture, $"[{i + 1}] {content}");
             sb.AppendLine();
         }
 
@@ -276,10 +279,10 @@ public class ListwiseReranker : IListwiseReranker
         return sb.ToString();
     }
 
-    private List<string> ParseRankingResponse(string response, List<RetrievalCandidate> window)
+    private static List<string> ParseRankingResponse(string response, List<RetrievalCandidate> window)
     {
         var numbers = response
-            .Split(new[] { ',', ' ', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
+            .Split(RankingSplitSeparators, StringSplitOptions.RemoveEmptyEntries)
             .Select(s => s.Trim())
             .Where(s => int.TryParse(s, out _))
             .Select(int.Parse)
@@ -329,7 +332,7 @@ public class ListwiseReranker : IListwiseReranker
         // Generate comparison pairs
         var pairs = GenerateComparisonPairs(candidates, options.MaxPairwiseComparisons);
 
-        _logger.LogDebug("Running {Count} pairwise comparisons", pairs.Count);
+        LogListwiseReranker6(_logger, pairs.Count);
 
         // Process comparisons in batches
         var tasks = new List<Task<(string winnerId, string loserId, float confidence)>>();
@@ -451,7 +454,7 @@ public class ListwiseReranker : IListwiseReranker
         };
     }
 
-    private Dictionary<string, float> CalculateBradleyTerryScores(
+    private static Dictionary<string, float> CalculateBradleyTerryScores(
         Dictionary<string, int> wins,
         Dictionary<string, int> comparisons)
     {
@@ -486,7 +489,7 @@ public class ListwiseReranker : IListwiseReranker
     {
         if (_llmService == null)
         {
-            _logger.LogWarning("LLM not available for direct ranking, falling back to attention-based");
+            LogListwiseReranker5(_logger);
             return await RerankAttentionBasedAsync(query, candidates, options, cancellationToken);
         }
 
@@ -575,7 +578,7 @@ public class ListwiseReranker : IListwiseReranker
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to generate query embedding");
+                LogListwiseReranker4(_logger, ex);
             }
         }
 
@@ -642,7 +645,7 @@ public class ListwiseReranker : IListwiseReranker
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to calculate attention score");
+            LogListwiseReranker3(_logger, ex);
             return 0.5f;
         }
     }
@@ -735,7 +738,7 @@ public class ListwiseReranker : IListwiseReranker
         return results;
     }
 
-    private Dictionary<string, float> FuseScores(Dictionary<string, List<(string method, float score)>> scores)
+    private static Dictionary<string, float> FuseScores(Dictionary<string, List<(string method, float score)>> scores)
     {
         const float k = 60.0f; // RRF constant
 
@@ -743,7 +746,7 @@ public class ListwiseReranker : IListwiseReranker
 
         foreach (var (id, methodScores) in scores)
         {
-            if (!methodScores.Any())
+            if (methodScores.Count == 0)
             {
                 fusedScores[id] = 0.5f;
                 continue;
@@ -814,14 +817,14 @@ public class ListwiseReranker : IListwiseReranker
 
             return new PairwisePreference
             {
-                Preference = choice.Contains("A") ? 1 : choice.Contains("B") ? -1 : 0,
+                Preference = choice.Contains('A') ? 1 : choice.Contains('B') ? -1 : 0,
                 Confidence = 0.9f,
                 Reason = $"LLM preference: {choice}"
             };
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed LLM pairwise comparison");
+            LogListwiseReranker2(_logger, ex);
             return new PairwisePreference { Preference = 0, Confidence = 0.0f };
         }
     }
@@ -852,12 +855,12 @@ public class ListwiseReranker : IListwiseReranker
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed embedding pairwise comparison");
+            LogListwiseReranker1(_logger, ex);
             return new PairwisePreference { Preference = 0, Confidence = 0.0f };
         }
     }
 
-    private PairwisePreference ComputeLexicalPairwisePreference(string query, string docA, string docB)
+    private static PairwisePreference ComputeLexicalPairwisePreference(string query, string docA, string docB)
     {
         var simA = CalculateLexicalSimilarity(query, docA);
         var simB = CalculateLexicalSimilarity(query, docB);
@@ -875,7 +878,7 @@ public class ListwiseReranker : IListwiseReranker
 
     #region Utility Methods
 
-    private float CalculateCosineSimilarity(float[] a, float[] b)
+    private static float CalculateCosineSimilarity(float[] a, float[] b)
     {
         if (a.Length != b.Length) return 0;
 
@@ -894,38 +897,65 @@ public class ListwiseReranker : IListwiseReranker
         return denom > 0 ? (float)(dot / denom) : 0;
     }
 
-    private float CalculateLexicalSimilarity(string query, string content)
+    private static float CalculateLexicalSimilarity(string query, string content)
     {
         var queryTokens = Tokenize(query.ToLowerInvariant());
         var contentTokens = new HashSet<string>(Tokenize(content.ToLowerInvariant()));
 
-        if (!queryTokens.Any() || !contentTokens.Any()) return 0;
+        if (queryTokens.Count == 0 || contentTokens.Count == 0) return 0;
 
         var matches = queryTokens.Count(t => contentTokens.Contains(t));
         return (float)matches / queryTokens.Count;
     }
 
-    private List<string> Tokenize(string text)
+    private static List<string> Tokenize(string text)
     {
-        return text.Split(new[] { ' ', '\t', '\n', '\r', '.', ',', ';', ':', '!', '?' },
+        return text.Split(TokenizeSeparators,
                           StringSplitOptions.RemoveEmptyEntries)
                    .Where(t => t.Length > 1)
                    .ToList();
     }
 
-    private string TruncateContent(string content, int maxLength)
+    private static string TruncateContent(string content, int maxLength)
     {
         if (content.Length <= maxLength) return content;
-        return content.Substring(0, maxLength) + "...";
+        return string.Concat(content.AsSpan(0, maxLength), "...");
     }
 
-    private float StandardDeviation(List<int> values)
+    private static float StandardDeviation(List<int> values)
     {
-        if (!values.Any()) return 0;
+        if (values.Count == 0) return 0;
         var avg = values.Average();
         var variance = values.Average(v => Math.Pow(v - avg, 2));
         return (float)Math.Sqrt(variance);
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No candidates provided for listwise reranking")]
+    private static partial void LogListwiseReranker11(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Listwise reranking {Count} candidates using {Method}")]
+    private static partial void LogListwiseReranker10(ILogger logger, int count, ListwiseMethod method);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Listwise reranking complete: {Input} → {Output} results")]
+    private static partial void LogListwiseReranker9(ILogger logger, int input, int output);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "LLM not available for sliding window, falling back to attention-based")]
+    private static partial void LogListwiseReranker8(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to rank window with LLM, using initial order")]
+    private static partial void LogListwiseReranker7(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Running {Count} pairwise comparisons")]
+    private static partial void LogListwiseReranker6(ILogger logger, int count);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "LLM not available for direct ranking, falling back to attention-based")]
+    private static partial void LogListwiseReranker5(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to generate query embedding")]
+    private static partial void LogListwiseReranker4(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to calculate attention score")]
+    private static partial void LogListwiseReranker3(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed LLM pairwise comparison")]
+    private static partial void LogListwiseReranker2(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed embedding pairwise comparison")]
+    private static partial void LogListwiseReranker1(ILogger logger, Exception exception);
 
     #endregion
 }

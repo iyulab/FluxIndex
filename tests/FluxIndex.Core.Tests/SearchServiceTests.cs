@@ -3,36 +3,36 @@ using FluxIndex.Core.Services;
 using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
+using NSubstitute;
 using Xunit;
 
 namespace FluxIndex.Core.Tests;
 
 public class SearchServiceTests
 {
-    private readonly Mock<IVectorStore> _mockVectorStore;
-    private readonly Mock<IEmbeddingService> _mockEmbeddingService;
-    private readonly Mock<IDocumentRepository> _mockDocumentRepository;
-    private readonly Mock<IAdvancedRerankingService> _mockRerankingService;
-    private readonly Mock<IMetadataEnrichmentService> _mockMetadataEnrichmentService;
+    private readonly IVectorStore _mockVectorStore;
+    private readonly IEmbeddingService _mockEmbeddingService;
+    private readonly IDocumentRepository _mockDocumentRepository;
+    private readonly IAdvancedRerankingService _mockRerankingService;
+    private readonly IMetadataEnrichmentService _mockMetadataEnrichmentService;
     private readonly ILogger<SearchService> _logger;
     private readonly SearchService _service;
 
     public SearchServiceTests()
     {
-        _mockVectorStore = new Mock<IVectorStore>();
-        _mockEmbeddingService = new Mock<IEmbeddingService>();
-        _mockDocumentRepository = new Mock<IDocumentRepository>();
-        _mockRerankingService = new Mock<IAdvancedRerankingService>();
-        _mockMetadataEnrichmentService = new Mock<IMetadataEnrichmentService>();
+        _mockVectorStore = Substitute.For<IVectorStore>();
+        _mockEmbeddingService = Substitute.For<IEmbeddingService>();
+        _mockDocumentRepository = Substitute.For<IDocumentRepository>();
+        _mockRerankingService = Substitute.For<IAdvancedRerankingService>();
+        _mockMetadataEnrichmentService = Substitute.For<IMetadataEnrichmentService>();
         _logger = NullLogger<SearchService>.Instance;
 
         _service = new SearchService(
-            _mockVectorStore.Object,
-            _mockEmbeddingService.Object,
-            _mockDocumentRepository.Object,
-            _mockRerankingService.Object,
-            _mockMetadataEnrichmentService.Object,
+            _mockVectorStore,
+            _mockEmbeddingService,
+            _mockDocumentRepository,
+            _mockRerankingService,
+            _mockMetadataEnrichmentService,
             _logger);
     }
 
@@ -60,14 +60,11 @@ public class SearchServiceTests
         document.FileName = "test.txt";
         document.SetMetadata("title", "Test Document");
 
-        _mockEmbeddingService.Setup(x => x.GenerateEmbeddingAsync(query, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(embedding);
+        _mockEmbeddingService.GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
 
-        _mockVectorStore.Setup(x => x.SearchAsync(embedding, topK, 0.0f, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(chunks);
+        _mockVectorStore.SearchAsync(embedding, topK, 0.0f, Arg.Any<CancellationToken>()).Returns(chunks);
 
-        _mockDocumentRepository.Setup(x => x.GetByIdAsync("doc1", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(document);
+        _mockDocumentRepository.GetByIdAsync("doc1", Arg.Any<CancellationToken>()).Returns(document);
 
         // Act
         var results = await _service.SearchAsync(query, topK);
@@ -81,8 +78,8 @@ public class SearchServiceTests
         Assert.Equal(0.9f, result.Score);
         Assert.Equal("test.txt", result.FileName);
 
-        _mockEmbeddingService.Verify(x => x.GenerateEmbeddingAsync(query, It.IsAny<CancellationToken>()), Times.Once);
-        _mockVectorStore.Verify(x => x.SearchAsync(embedding, topK, 0.0f, It.IsAny<CancellationToken>()), Times.Once);
+        await _mockEmbeddingService.Received(1).GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>());
+        await _mockVectorStore.Received(1).SearchAsync(embedding, topK, 0.0f, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -92,11 +89,9 @@ public class SearchServiceTests
         var query = "non-existent query";
         var embedding = new float[] { 0.1f, 0.2f, 0.3f };
 
-        _mockEmbeddingService.Setup(x => x.GenerateEmbeddingAsync(query, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(embedding);
+        _mockEmbeddingService.GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
 
-        _mockVectorStore.Setup(x => x.SearchAsync(embedding, It.IsAny<int>(), It.IsAny<float>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Enumerable.Empty<DocumentChunk>());
+        _mockVectorStore.SearchAsync(embedding, Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns(Enumerable.Empty<DocumentChunk>());
 
         // Act
         var results = await _service.SearchAsync(query);
@@ -116,17 +111,15 @@ public class SearchServiceTests
         var query = "test query";
         var embedding = new float[] { 0.1f, 0.2f, 0.3f };
 
-        _mockEmbeddingService.Setup(x => x.GenerateEmbeddingAsync(query, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(embedding);
+        _mockEmbeddingService.GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
 
-        _mockVectorStore.Setup(x => x.SearchAsync(embedding, topK, minScore, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Enumerable.Empty<DocumentChunk>());
+        _mockVectorStore.SearchAsync(embedding, topK, minScore, Arg.Any<CancellationToken>()).Returns(Enumerable.Empty<DocumentChunk>());
 
         // Act
         await _service.SearchAsync(query, topK, minScore);
 
         // Assert
-        _mockVectorStore.Verify(x => x.SearchAsync(embedding, topK, minScore, It.IsAny<CancellationToken>()), Times.Once);
+        await _mockVectorStore.Received(1).SearchAsync(embedding, topK, minScore, Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -160,14 +153,11 @@ public class SearchServiceTests
         var document2 = Document.Create("doc2");
         document2.FileName = "similar.txt";
 
-        _mockVectorStore.Setup(x => x.GetByDocumentIdAsync(documentId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new[] { sourceChunk });
+        _mockVectorStore.GetByDocumentIdAsync(documentId, Arg.Any<CancellationToken>()).Returns(new[] { sourceChunk });
 
-        _mockVectorStore.Setup(x => x.SearchAsync(embedding, topK + 1, It.IsAny<float>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(similarChunks);
+        _mockVectorStore.SearchAsync(embedding, topK + 1, Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns(similarChunks);
 
-        _mockDocumentRepository.Setup(x => x.GetByIdAsync("doc2", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(document2);
+        _mockDocumentRepository.GetByIdAsync("doc2", Arg.Any<CancellationToken>()).Returns(document2);
 
         // Act
         var results = await _service.FindSimilarAsync(documentId, topK);
@@ -187,8 +177,7 @@ public class SearchServiceTests
         // Arrange
         var documentId = "non-existent";
 
-        _mockVectorStore.Setup(x => x.GetByDocumentIdAsync(documentId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Enumerable.Empty<DocumentChunk>());
+        _mockVectorStore.GetByDocumentIdAsync(documentId, Arg.Any<CancellationToken>()).Returns(Enumerable.Empty<DocumentChunk>());
 
         // Act
         var results = await _service.FindSimilarAsync(documentId);
@@ -233,21 +222,17 @@ public class SearchServiceTests
             }
         };
 
-        _mockEmbeddingService.Setup(x => x.GenerateEmbeddingAsync(query, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(embedding);
+        _mockEmbeddingService.GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
 
-        _mockVectorStore.Setup(x => x.SearchAsync(embedding, It.IsAny<int>(), It.IsAny<float>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(chunks);
+        _mockVectorStore.SearchAsync(embedding, Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns(chunks);
 
-        _mockDocumentRepository.Setup(x => x.GetByIdAsync("doc1", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(document);
+        _mockDocumentRepository.GetByIdAsync("doc1", Arg.Any<CancellationToken>()).Returns(document);
 
-        _mockRerankingService.Setup(x => x.RerankAsync(
+        _mockRerankingService.RerankAsync(
                 query,
-                It.IsAny<IEnumerable<FluxIndex.Core.Application.Interfaces.SearchResult>>(),
+                Arg.Any<IEnumerable<FluxIndex.Core.Application.Interfaces.SearchResult>>(),
                 RerankingStrategy.Adaptive,
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<EnhancedSearchResult>(enhancedResults));
+                Arg.Any<CancellationToken>()).Returns(new List<EnhancedSearchResult>(enhancedResults));
 
         // Act
         var results = await _service.AdvancedSearchAsync(query, topK);
@@ -259,12 +244,11 @@ public class SearchServiceTests
         var result = results.First();
         Assert.Equal(0.95, result.RerankedScore);
 
-        _mockRerankingService.Verify(x => x.RerankAsync(
+        await _mockRerankingService.Received(1).RerankAsync(
             query,
-            It.IsAny<IEnumerable<FluxIndex.Core.Application.Interfaces.SearchResult>>(),
+            Arg.Any<IEnumerable<FluxIndex.Core.Application.Interfaces.SearchResult>>(),
             RerankingStrategy.Adaptive,
-            It.IsAny<CancellationToken>()),
-            Times.Once);
+            Arg.Any<CancellationToken>());
     }
 
     [Theory]
@@ -292,31 +276,26 @@ public class SearchServiceTests
         var document = Document.Create("doc1");
         document.FileName = "test.txt";
 
-        _mockEmbeddingService.Setup(x => x.GenerateEmbeddingAsync(query, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(embedding);
+        _mockEmbeddingService.GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
 
-        _mockVectorStore.Setup(x => x.SearchAsync(embedding, It.IsAny<int>(), It.IsAny<float>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(chunks);
+        _mockVectorStore.SearchAsync(embedding, Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns(chunks);
 
-        _mockDocumentRepository.Setup(x => x.GetByIdAsync("doc1", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(document);
+        _mockDocumentRepository.GetByIdAsync("doc1", Arg.Any<CancellationToken>()).Returns(document);
 
-        _mockRerankingService.Setup(x => x.RerankAsync(
+        _mockRerankingService.RerankAsync(
                 query,
-                It.IsAny<IEnumerable<FluxIndex.Core.Application.Interfaces.SearchResult>>(),
+                Arg.Any<IEnumerable<FluxIndex.Core.Application.Interfaces.SearchResult>>(),
                 strategy,
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<EnhancedSearchResult>());
+                Arg.Any<CancellationToken>()).Returns(new List<EnhancedSearchResult>());
 
         // Act
         await _service.AdvancedSearchAsync(query, rerankingStrategy: strategy);
 
         // Assert
-        _mockRerankingService.Verify(x => x.RerankAsync(
+        await _mockRerankingService.Received(1).RerankAsync(
             query,
-            It.IsAny<IEnumerable<FluxIndex.Core.Application.Interfaces.SearchResult>>(),
+            Arg.Any<IEnumerable<FluxIndex.Core.Application.Interfaces.SearchResult>>(),
             strategy,
-            It.IsAny<CancellationToken>()),
-            Times.Once);
+            Arg.Any<CancellationToken>());
     }
 }

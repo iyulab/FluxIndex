@@ -2,22 +2,22 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services;
 using FluxIndex.Core.Domain.Models;
 using Microsoft.Extensions.Logging;
-using Moq;
+using NSubstitute;
 using Xunit;
 
 namespace FluxIndex.Core.Tests.Services;
 
 public class GraphTraversalServiceTests
 {
-    private readonly Mock<IChunkHierarchyRepository> _hierarchyRepositoryMock;
-    private readonly Mock<ILogger<GraphTraversalService>> _loggerMock;
+    private readonly IChunkHierarchyRepository _hierarchyRepositoryMock;
+    private readonly ILogger<GraphTraversalService> _loggerMock;
     private readonly GraphTraversalService _service;
 
     public GraphTraversalServiceTests()
     {
-        _hierarchyRepositoryMock = new Mock<IChunkHierarchyRepository>();
-        _loggerMock = new Mock<ILogger<GraphTraversalService>>();
-        _service = new GraphTraversalService(_hierarchyRepositoryMock.Object, _loggerMock.Object);
+        _hierarchyRepositoryMock = Substitute.For<IChunkHierarchyRepository>();
+        _loggerMock = Substitute.For<ILogger<GraphTraversalService>>();
+        _service = new GraphTraversalService(_hierarchyRepositoryMock, _loggerMock);
     }
 
     #region BFS Tests
@@ -95,17 +95,15 @@ public class GraphTraversalServiceTests
         var sequentialRel = CreateRelationship("chunk1", "chunk2", RelationshipType.Sequential);
 
         // Setup to return only sequential when filtered
-        _hierarchyRepositoryMock.Setup(r => r.GetRelationshipsAsync(
+        _hierarchyRepositoryMock.GetRelationshipsAsync(
             "chunk1",
-            It.Is<IEnumerable<RelationshipType>?>(types => types != null && types.Contains(RelationshipType.Sequential)),
-            It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<ChunkRelationshipExtended> { sequentialRel });
+            Arg.Is<IEnumerable<RelationshipType>?>(types => types != null && types.Contains(RelationshipType.Sequential)),
+            Arg.Any<CancellationToken>()).Returns(new List<ChunkRelationshipExtended> { sequentialRel });
 
-        _hierarchyRepositoryMock.Setup(r => r.GetRelationshipsAsync(
+        _hierarchyRepositoryMock.GetRelationshipsAsync(
             "chunk2",
-            It.IsAny<IEnumerable<RelationshipType>?>(),
-            It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<ChunkRelationshipExtended>());
+            Arg.Any<IEnumerable<RelationshipType>?>(),
+            Arg.Any<CancellationToken>()).Returns(new List<ChunkRelationshipExtended>());
 
         var options = new GraphTraversalOptions
         {
@@ -557,22 +555,19 @@ public class GraphTraversalServiceTests
 
     private void SetupEmptyRelationships()
     {
-        _hierarchyRepositoryMock.Setup(r => r.GetRelationshipsAsync(
-            It.IsAny<string>(),
-            It.IsAny<IEnumerable<RelationshipType>?>(),
-            It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<ChunkRelationshipExtended>());
+        _hierarchyRepositoryMock.GetRelationshipsAsync(
+            Arg.Any<string>(),
+            Arg.Any<IEnumerable<RelationshipType>?>(),
+            Arg.Any<CancellationToken>()).Returns(new List<ChunkRelationshipExtended>());
     }
 
     private void SetupRelationships(Dictionary<string, List<ChunkRelationshipExtended>> relationships)
     {
-        _hierarchyRepositoryMock.Setup(r => r.GetRelationshipsAsync(
-            It.IsAny<string>(),
-            It.IsAny<IEnumerable<RelationshipType>?>(),
-            It.IsAny<CancellationToken>()))
-            .Returns((string chunkId, IEnumerable<RelationshipType>? _, CancellationToken __) =>
-                Task.FromResult<IReadOnlyList<ChunkRelationshipExtended>>(
-                    relationships.GetValueOrDefault(chunkId) ?? new List<ChunkRelationshipExtended>()));
+        _hierarchyRepositoryMock.GetRelationshipsAsync(
+            Arg.Any<string>(),
+            Arg.Any<IEnumerable<RelationshipType>?>(),
+            Arg.Any<CancellationToken>()).Returns(callInfo => { var chunkId = callInfo.ArgAt<string>(0); return Task.FromResult<IReadOnlyList<ChunkRelationshipExtended>>(
+                    relationships.GetValueOrDefault(chunkId) ?? new List<ChunkRelationshipExtended>()); });
     }
 
     private void SetupChunksByLevel(List<string> chunkIds)
@@ -580,14 +575,12 @@ public class GraphTraversalServiceTests
         // Setup GetChunksByLevelAsync to return chunks at level 0 only
         var hierarchies = chunkIds.Select(id => new ChunkHierarchy { ChunkId = id }).ToList();
 
-        _hierarchyRepositoryMock.Setup(r => r.GetChunksByLevelAsync(
-            It.IsAny<string>(), 0, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(hierarchies);
+        _hierarchyRepositoryMock.GetChunksByLevelAsync(
+            Arg.Any<string>(), 0, Arg.Any<CancellationToken>()).Returns(hierarchies);
 
         // Return empty for other levels
-        _hierarchyRepositoryMock.Setup(r => r.GetChunksByLevelAsync(
-            It.IsAny<string>(), It.Is<int>(level => level > 0), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<ChunkHierarchy>());
+        _hierarchyRepositoryMock.GetChunksByLevelAsync(
+            Arg.Any<string>(), Arg.Is<int>(level => level > 0), Arg.Any<CancellationToken>()).Returns(new List<ChunkHierarchy>());
     }
 
     private static ChunkRelationshipExtended CreateRelationship(

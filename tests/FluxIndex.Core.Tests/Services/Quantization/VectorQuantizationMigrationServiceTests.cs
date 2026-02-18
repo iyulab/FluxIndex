@@ -4,7 +4,7 @@ using FluxIndex.Core.Application.Services.Quantization;
 using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Moq;
+using NSubstitute;
 using Xunit;
 
 namespace FluxIndex.Core.Tests.Services.Quantization;
@@ -14,27 +14,27 @@ namespace FluxIndex.Core.Tests.Services.Quantization;
 /// </summary>
 public class VectorQuantizationMigrationServiceTests
 {
-    private readonly Mock<IVectorStore> _vectorStoreMock;
-    private readonly Mock<IVectorQuantizer> _quantizerMock;
-    private readonly Mock<ILogger<VectorQuantizationMigrationService>> _loggerMock;
+    private readonly IVectorStore _vectorStoreMock;
+    private readonly IVectorQuantizer _quantizerMock;
+    private readonly ILogger<VectorQuantizationMigrationService> _loggerMock;
 
     public VectorQuantizationMigrationServiceTests()
     {
-        _vectorStoreMock = new Mock<IVectorStore>();
-        _quantizerMock = new Mock<IVectorQuantizer>();
-        _loggerMock = new Mock<ILogger<VectorQuantizationMigrationService>>();
+        _vectorStoreMock = Substitute.For<IVectorStore>();
+        _quantizerMock = Substitute.For<IVectorQuantizer>();
+        _loggerMock = Substitute.For<ILogger<VectorQuantizationMigrationService>>();
 
         // 기본 설정
-        _quantizerMock.Setup(q => q.OriginalDimension).Returns(128);
-        _quantizerMock.Setup(q => q.QuantizationType).Returns(QuantizationType.ScalarInt8);
+        _quantizerMock.OriginalDimension.Returns(128);
+        _quantizerMock.QuantizationType.Returns(QuantizationType.ScalarInt8);
     }
 
     private VectorQuantizationMigrationService CreateService()
     {
         return new VectorQuantizationMigrationService(
-            _vectorStoreMock.Object,
-            _quantizerMock.Object,
-            _loggerMock.Object);
+            _vectorStoreMock,
+            _quantizerMock,
+            _loggerMock);
     }
 
     #region Constructor Tests
@@ -46,8 +46,8 @@ public class VectorQuantizationMigrationServiceTests
         Assert.Throws<ArgumentNullException>(() =>
             new VectorQuantizationMigrationService(
                 null!,
-                _quantizerMock.Object,
-                _loggerMock.Object));
+                _quantizerMock,
+                _loggerMock));
     }
 
     [Fact]
@@ -56,9 +56,9 @@ public class VectorQuantizationMigrationServiceTests
         // Act & Assert
         Assert.Throws<ArgumentNullException>(() =>
             new VectorQuantizationMigrationService(
-                _vectorStoreMock.Object,
+                _vectorStoreMock,
                 null!,
-                _loggerMock.Object));
+                _loggerMock));
     }
 
     [Fact]
@@ -67,8 +67,8 @@ public class VectorQuantizationMigrationServiceTests
         // Act & Assert
         Assert.Throws<ArgumentNullException>(() =>
             new VectorQuantizationMigrationService(
-                _vectorStoreMock.Object,
-                _quantizerMock.Object,
+                _vectorStoreMock,
+                _quantizerMock,
                 null!));
     }
 
@@ -122,13 +122,9 @@ public class VectorQuantizationMigrationServiceTests
             OriginalDimension = dimension
         };
 
-        _quantizerMock
-            .Setup(q => q.QuantizeAsync(It.IsAny<float[]>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(quantizedVector);
+        _quantizerMock.QuantizeAsync(Arg.Any<float[]>(), Arg.Any<CancellationToken>()).Returns(quantizedVector);
 
-        _quantizerMock
-            .Setup(q => q.DequantizeAsync(It.IsAny<QuantizedVector>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((QuantizedVector qv, CancellationToken _) => new float[qv.OriginalDimension]);
+        _quantizerMock.DequantizeAsync(Arg.Any<QuantizedVector>(), Arg.Any<CancellationToken>()).Returns(callInfo => { var qv = callInfo.ArgAt<QuantizedVector>(0); return new float[qv.OriginalDimension]; });
 
         // Act
         var result = await service.AnalyzeQuantizationAsync(vectors);
@@ -160,14 +156,10 @@ public class VectorQuantizationMigrationServiceTests
             OriginalDimension = dimension
         };
 
-        _quantizerMock.Setup(q => q.QuantizationType).Returns(QuantizationType.Binary);
-        _quantizerMock
-            .Setup(q => q.QuantizeAsync(It.IsAny<float[]>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(quantizedVector);
+        _quantizerMock.QuantizationType.Returns(QuantizationType.Binary);
+        _quantizerMock.QuantizeAsync(Arg.Any<float[]>(), Arg.Any<CancellationToken>()).Returns(quantizedVector);
 
-        _quantizerMock
-            .Setup(q => q.DequantizeAsync(It.IsAny<QuantizedVector>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((QuantizedVector qv, CancellationToken _) => new float[qv.OriginalDimension]);
+        _quantizerMock.DequantizeAsync(Arg.Any<QuantizedVector>(), Arg.Any<CancellationToken>()).Returns(callInfo => { var qv = callInfo.ArgAt<QuantizedVector>(0); return new float[qv.OriginalDimension]; });
 
         // Act
         var result = await service.AnalyzeQuantizationAsync(vectors);
@@ -192,13 +184,11 @@ public class VectorQuantizationMigrationServiceTests
         // Arrange
         var service = CreateService();
 
-        _vectorStoreMock
-            .Setup(s => s.SearchAsync(
-                It.IsAny<float[]>(),
-                It.IsAny<int>(),
-                It.IsAny<float>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Enumerable.Empty<DocumentChunk>());
+        _vectorStoreMock.SearchAsync(
+                Arg.Any<float[]>(),
+                Arg.Any<int>(),
+                Arg.Any<float>(),
+                Arg.Any<CancellationToken>()).Returns(Enumerable.Empty<DocumentChunk>());
 
         // Act
         var result = await service.MigrateAllAsync();
@@ -218,22 +208,17 @@ public class VectorQuantizationMigrationServiceTests
         var quantizedVector = CreateQuantizedVector(128);
         var callCount = 0;
 
-        _vectorStoreMock
-            .Setup(s => s.SearchAsync(
-                It.IsAny<float[]>(),
-                It.IsAny<int>(),
-                It.IsAny<float>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() =>
-            {
+        _vectorStoreMock.SearchAsync(
+                Arg.Any<float[]>(),
+                Arg.Any<int>(),
+                Arg.Any<float>(),
+                Arg.Any<CancellationToken>()).Returns(callInfo => {
                 callCount++;
                 // 첫 번째 호출에만 청크 반환
                 return callCount == 1 ? chunks : Enumerable.Empty<DocumentChunk>();
             });
 
-        _quantizerMock
-            .Setup(q => q.QuantizeAsync(It.IsAny<float[]>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(quantizedVector);
+        _quantizerMock.QuantizeAsync(Arg.Any<float[]>(), Arg.Any<CancellationToken>()).Returns(quantizedVector);
 
         // Act
         var result = await service.MigrateAllAsync();
@@ -242,7 +227,7 @@ public class VectorQuantizationMigrationServiceTests
         Assert.True(result.IsSuccess);
         Assert.Equal(5, result.SuccessCount);
         Assert.Equal(0, result.FailureCount);
-        _quantizerMock.Verify(q => q.QuantizeAsync(It.IsAny<float[]>(), It.IsAny<CancellationToken>()), Times.Exactly(5));
+        await _quantizerMock.Received(5).QuantizeAsync(Arg.Any<float[]>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -257,14 +242,11 @@ public class VectorQuantizationMigrationServiceTests
         };
         var callCount = 0;
 
-        _vectorStoreMock
-            .Setup(s => s.SearchAsync(
-                It.IsAny<float[]>(),
-                It.IsAny<int>(),
-                It.IsAny<float>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() =>
-            {
+        _vectorStoreMock.SearchAsync(
+                Arg.Any<float[]>(),
+                Arg.Any<int>(),
+                Arg.Any<float>(),
+                Arg.Any<CancellationToken>()).Returns(callInfo => {
                 callCount++;
                 return callCount == 1 ? chunks : Enumerable.Empty<DocumentChunk>();
             });
@@ -276,7 +258,7 @@ public class VectorQuantizationMigrationServiceTests
         Assert.True(result.IsSuccess);
         Assert.Equal(0, result.SuccessCount);
         Assert.Equal(2, result.SkippedCount);
-        _quantizerMock.Verify(q => q.QuantizeAsync(It.IsAny<float[]>(), It.IsAny<CancellationToken>()), Times.Never);
+        await _quantizerMock.DidNotReceive().QuantizeAsync(Arg.Any<float[]>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -290,21 +272,16 @@ public class VectorQuantizationMigrationServiceTests
         var progress = new Progress<MigrationProgress>(p => progressReports.Add(p));
         var callCount = 0;
 
-        _vectorStoreMock
-            .Setup(s => s.SearchAsync(
-                It.IsAny<float[]>(),
-                It.IsAny<int>(),
-                It.IsAny<float>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() =>
-            {
+        _vectorStoreMock.SearchAsync(
+                Arg.Any<float[]>(),
+                Arg.Any<int>(),
+                Arg.Any<float>(),
+                Arg.Any<CancellationToken>()).Returns(callInfo => {
                 callCount++;
                 return callCount == 1 ? chunks : Enumerable.Empty<DocumentChunk>();
             });
 
-        _quantizerMock
-            .Setup(q => q.QuantizeAsync(It.IsAny<float[]>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(quantizedVector);
+        _quantizerMock.QuantizeAsync(Arg.Any<float[]>(), Arg.Any<CancellationToken>()).Returns(quantizedVector);
 
         // Act
         var result = await service.MigrateAllAsync(progress: progress);
@@ -326,22 +303,16 @@ public class VectorQuantizationMigrationServiceTests
         var failedOnSecond = false;
         var callCount = 0;
 
-        _vectorStoreMock
-            .Setup(s => s.SearchAsync(
-                It.IsAny<float[]>(),
-                It.IsAny<int>(),
-                It.IsAny<float>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() =>
-            {
+        _vectorStoreMock.SearchAsync(
+                Arg.Any<float[]>(),
+                Arg.Any<int>(),
+                Arg.Any<float>(),
+                Arg.Any<CancellationToken>()).Returns(callInfo => {
                 callCount++;
                 return callCount == 1 ? chunks : Enumerable.Empty<DocumentChunk>();
             });
 
-        _quantizerMock
-            .Setup(q => q.QuantizeAsync(It.IsAny<float[]>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() =>
-            {
+        _quantizerMock.QuantizeAsync(Arg.Any<float[]>(), Arg.Any<CancellationToken>()).Returns(callInfo => {
                 if (!failedOnSecond)
                 {
                     failedOnSecond = true;
@@ -377,21 +348,16 @@ public class VectorQuantizationMigrationServiceTests
         };
         var callCount = 0;
 
-        _vectorStoreMock
-            .Setup(s => s.SearchAsync(
-                It.IsAny<float[]>(),
-                It.IsAny<int>(),
-                It.IsAny<float>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() =>
-            {
+        _vectorStoreMock.SearchAsync(
+                Arg.Any<float[]>(),
+                Arg.Any<int>(),
+                Arg.Any<float>(),
+                Arg.Any<CancellationToken>()).Returns(callInfo => {
                 callCount++;
                 return callCount == 1 ? chunks : Enumerable.Empty<DocumentChunk>();
             });
 
-        _quantizerMock
-            .Setup(q => q.QuantizeAsync(It.IsAny<float[]>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(quantizedVector);
+        _quantizerMock.QuantizeAsync(Arg.Any<float[]>(), Arg.Any<CancellationToken>()).Returns(quantizedVector);
 
         // Act
         var result = await service.MigrateAllAsync();
@@ -440,17 +406,13 @@ public class VectorQuantizationMigrationServiceTests
 
         var quantizedVector = CreateQuantizedVector(dimension);
 
-        _vectorStoreMock
-            .Setup(s => s.SearchAsync(
-                It.IsAny<float[]>(),
-                It.IsAny<int>(),
-                It.IsAny<float>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(allChunks);
+        _vectorStoreMock.SearchAsync(
+                Arg.Any<float[]>(),
+                Arg.Any<int>(),
+                Arg.Any<float>(),
+                Arg.Any<CancellationToken>()).Returns(allChunks);
 
-        _quantizerMock
-            .Setup(q => q.QuantizeAsync(It.IsAny<float[]>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(quantizedVector);
+        _quantizerMock.QuantizeAsync(Arg.Any<float[]>(), Arg.Any<CancellationToken>()).Returns(quantizedVector);
 
         // Act - doc1만 마이그레이션
         var result = await service.MigrateByDocumentIdsAsync(new[] { "doc1" });
@@ -475,22 +437,16 @@ public class VectorQuantizationMigrationServiceTests
         var quantizeCallCount = 0;
         var callCount = 0;
 
-        _vectorStoreMock
-            .Setup(s => s.SearchAsync(
-                It.IsAny<float[]>(),
-                It.IsAny<int>(),
-                It.IsAny<float>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() =>
-            {
+        _vectorStoreMock.SearchAsync(
+                Arg.Any<float[]>(),
+                Arg.Any<int>(),
+                Arg.Any<float>(),
+                Arg.Any<CancellationToken>()).Returns(callInfo => {
                 callCount++;
                 return callCount == 1 ? chunks : Enumerable.Empty<DocumentChunk>();
             });
 
-        _quantizerMock
-            .Setup(q => q.QuantizeAsync(It.IsAny<float[]>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(() =>
-            {
+        _quantizerMock.QuantizeAsync(Arg.Any<float[]>(), Arg.Any<CancellationToken>()).Returns(callInfo => {
                 quantizeCallCount++;
                 if (quantizeCallCount >= 10)
                 {

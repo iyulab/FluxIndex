@@ -13,7 +13,7 @@ namespace FluxIndex.SDK.Extensions.FluxImprover.Services;
 /// <summary>
 /// 병렬 파이프라인 실행기 - 대용량 청크 처리를 위한 최적화된 병렬 실행
 /// </summary>
-public sealed class ParallelPipelineExecutor
+public sealed partial class ParallelPipelineExecutor
 {
     private readonly ChunkEnrichmentServiceWrapper? _enrichmentService;
     private readonly QAGenerationService? _qaService;
@@ -77,7 +77,7 @@ public sealed class ParallelPipelineExecutor
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Failed to enrich chunk {ChunkId}", chunk.ChunkId);
+                    LogFailedToEnrichChunk(_logger, chunk.ChunkId, ex);
                     results.Add(new EnrichmentResult
                     {
                         ChunkId = chunk.ChunkId,
@@ -133,7 +133,7 @@ public sealed class ParallelPipelineExecutor
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Failed to generate QA for chunk {ChunkId}", chunk.ChunkId);
+                    LogFailedToGenerateQA(_logger, chunk.ChunkId, ex);
                     results.Add(new QAGenerationResult
                     {
                         ChunkId = chunk.ChunkId,
@@ -306,7 +306,7 @@ public sealed class ParallelPipelineExecutor
                     {
                         Question = qa.Question,
                         Answer = qa.Answer,
-                        Context = qa.Context,
+                        Context = qa.Context ?? string.Empty,
                         Evaluation = evaluation
                     });
                 }
@@ -320,11 +320,24 @@ public sealed class ParallelPipelineExecutor
         {
             result.Success = false;
             result.ErrorMessage = ex.Message;
-            _logger.LogWarning(ex, "Failed to process chunk {ChunkId}", chunk.ChunkId);
+            LogFailedToProcessChunk(_logger, chunk.ChunkId, ex);
         }
 
         return result;
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to enrich chunk {ChunkId}")]
+    private static partial void LogFailedToEnrichChunk(ILogger logger, string chunkId, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to generate QA for chunk {ChunkId}")]
+    private static partial void LogFailedToGenerateQA(ILogger logger, string chunkId, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to process chunk {ChunkId}")]
+    private static partial void LogFailedToProcessChunk(ILogger logger, string chunkId, Exception exception);
+
+    #endregion
 }
 
 /// <summary>

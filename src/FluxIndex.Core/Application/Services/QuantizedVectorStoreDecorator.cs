@@ -9,7 +9,7 @@ namespace FluxIndex.Core.Application.Services;
 /// Decorator that adds quantization support to any IVectorStore implementation.
 /// Stores quantized embeddings alongside original embeddings for flexible search strategies.
 /// </summary>
-public class QuantizedVectorStoreDecorator : IQuantizedVectorStore
+public partial class QuantizedVectorStoreDecorator : IQuantizedVectorStore
 {
     private readonly IVectorStore _innerStore;
     private readonly IVectorQuantizer _quantizer;
@@ -49,7 +49,7 @@ public class QuantizedVectorStoreDecorator : IQuantizedVectorStore
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to auto-quantize embedding for chunk {ChunkId}", id);
+                LogAutoQuantizeFailed(_logger, ex, id);
             }
         }
 
@@ -92,7 +92,7 @@ public class QuantizedVectorStoreDecorator : IQuantizedVectorStore
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Failed to auto-quantize batch embeddings");
+                    LogAutoQuantizeBatchFailed(_logger, ex);
                 }
             }
         }
@@ -196,7 +196,7 @@ public class QuantizedVectorStoreDecorator : IQuantizedVectorStore
     {
         if (_quantizedEmbeddings.IsEmpty)
         {
-            _logger.LogWarning("No quantized embeddings available for search");
+            LogNoQuantizedEmbeddings(_logger);
             return Enumerable.Empty<(DocumentChunk, float)>();
         }
 
@@ -357,6 +357,19 @@ public class QuantizedVectorStoreDecorator : IQuantizedVectorStore
         var magnitude = (float)Math.Sqrt(magnitudeA) * (float)Math.Sqrt(magnitudeB);
         return magnitude == 0 ? 0 : dotProduct / magnitude;
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to auto-quantize embedding for chunk {ChunkId}")]
+    private static partial void LogAutoQuantizeFailed(ILogger logger, Exception exception, string chunkId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to auto-quantize batch embeddings")]
+    private static partial void LogAutoQuantizeBatchFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No quantized embeddings available for search")]
+    private static partial void LogNoQuantizedEmbeddings(ILogger logger);
 
     #endregion
 }

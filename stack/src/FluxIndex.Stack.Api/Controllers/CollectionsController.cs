@@ -11,7 +11,7 @@ namespace FluxIndex.Stack.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/v1/[controller]")]
-public class CollectionsController : ControllerBase
+public partial class CollectionsController : ControllerBase
 {
     private readonly ICollectionService _collectionService;
     private readonly ILogger<CollectionsController> _logger;
@@ -85,7 +85,7 @@ public class CollectionsController : ControllerBase
         }
 
         var collection = await _collectionService.CreateAsync(request, cancellationToken);
-        _logger.LogInformation("Collection created: {CollectionId} - {Name}", collection.Id, collection.Name);
+        LogCollectionCreated(_logger, collection.Id, collection.Name);
 
         return CreatedAtAction(
             nameof(GetCollection),
@@ -108,7 +108,7 @@ public class CollectionsController : ControllerBase
         }
 
         var collection = await _collectionService.UpdateAsync(id, request, cancellationToken);
-        _logger.LogInformation("Collection updated: {CollectionId}", id);
+        LogCollectionUpdated(_logger, id);
 
         return Ok(ApiResponse<CollectionDto>.Ok(collection, "Collection updated successfully."));
     }
@@ -127,8 +127,21 @@ public class CollectionsController : ControllerBase
         }
 
         await _collectionService.DeleteAsync(id, cancellationToken);
-        _logger.LogInformation("Collection deleted: {CollectionId}", id);
+        LogCollectionDeleted(_logger, id);
 
         return Ok(ApiResponse<object>.Ok(null!, "Collection deleted successfully."));
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Collection created: {CollectionId} - {Name}")]
+    private static partial void LogCollectionCreated(ILogger logger, Guid collectionId, string name);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Collection updated: {CollectionId}")]
+    private static partial void LogCollectionUpdated(ILogger logger, Guid collectionId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Collection deleted: {CollectionId}")]
+    private static partial void LogCollectionDeleted(ILogger logger, Guid collectionId);
+
+    #endregion
 }

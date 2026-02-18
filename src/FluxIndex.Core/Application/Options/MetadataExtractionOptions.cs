@@ -69,7 +69,7 @@ public class MetadataExtractionOptions
     /// <summary>
     /// 디버그 모드 (상세 로깅)
     /// </summary>
-    public bool EnableDebugLogging { get; set; } = false;
+    public bool EnableDebugLogging { get; set; }
 
     /// <summary>
     /// 비용 추적 활성화

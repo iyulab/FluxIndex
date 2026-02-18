@@ -140,7 +140,7 @@ public sealed class ChunkFilteringServiceWrapper
     /// <summary>
     /// Maps FluxImprover filtered results back to FluxIndex chunks.
     /// </summary>
-    private static IReadOnlyList<FilteredFluxIndexChunk> MapFilteredResults(
+    private static List<FilteredFluxIndexChunk> MapFilteredResults(
         IReadOnlyList<FilteredChunk> filteredResults,
         IReadOnlyList<FluxIndexChunk> originalChunks)
     {

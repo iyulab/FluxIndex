@@ -11,8 +11,13 @@ namespace FluxIndex.MCP.Tools;
 /// MCP Tool for searching the FluxIndex knowledge base
 /// </summary>
 [McpServerToolType]
-public class SearchTool
+public partial class SearchTool
 {
+    private static readonly JsonSerializerOptions s_indentedJsonOptions = new()
+    {
+        WriteIndented = true
+    };
+
     private readonly FluxIndexWorkspace _workspace;
     private readonly ILogger<SearchTool> _logger;
 
@@ -36,7 +41,7 @@ public class SearchTool
 
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Searching for: {Query} with strategy: {Strategy}", query, strategy);
+        LogSearching(_logger, query, strategy);
 
         try
         {
@@ -68,11 +73,11 @@ public class SearchTool
                 strategy,
                 count = results.Count(),
                 results = response
-            }, new JsonSerializerOptions { WriteIndented = true });
+            }, s_indentedJsonOptions);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Search failed for query: {Query}", query);
+            LogSearchFailed(_logger, ex, query);
             return JsonSerializer.Serialize(new
             {
                 error = "Search failed",
@@ -80,4 +85,14 @@ public class SearchTool
             });
         }
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Searching for: {Query} with strategy: {Strategy}")]
+    private static partial void LogSearching(ILogger logger, string query, string strategy);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Search failed for query: {Query}")]
+    private static partial void LogSearchFailed(ILogger logger, Exception exception, string query);
+
+    #endregion
 }

@@ -2,18 +2,18 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services.Quantization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Moq;
+using NSubstitute;
 using Xunit;
 
 namespace FluxIndex.Core.Tests.Services.Quantization;
 
 public class ScalarQuantizerTests
 {
-    private readonly Mock<ILogger<ScalarQuantizer>> _loggerMock;
+    private readonly ILogger<ScalarQuantizer> _loggerMock;
 
     public ScalarQuantizerTests()
     {
-        _loggerMock = new Mock<ILogger<ScalarQuantizer>>();
+        _loggerMock = Substitute.For<ILogger<ScalarQuantizer>>();
     }
 
     private ScalarQuantizer CreateQuantizer(QuantizationType type = QuantizationType.ScalarInt8, int dimension = 8)
@@ -25,7 +25,7 @@ public class ScalarQuantizerTests
             UseSymmetricQuantization = true
         });
 
-        return new ScalarQuantizer(options, _loggerMock.Object);
+        return new ScalarQuantizer(options, _loggerMock);
     }
 
     #region Int8 Quantization Tests

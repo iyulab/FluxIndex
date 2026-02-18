@@ -1,11 +1,8 @@
-﻿using Pgvector;
-
-namespace FluxIndex.Stack.Domain.Entities;
+﻿namespace FluxIndex.Stack.Domain.Entities;
 
 /// <summary>
 /// Represents a chunk of a document with its embedding vectors.
 /// Supports multiple embedding models through ChunkEmbeddings collection.
-/// Legacy Embedding property is deprecated - use ChunkEmbeddings for new code.
 /// </summary>
 public class DocumentChunk
 {
@@ -14,12 +11,6 @@ public class DocumentChunk
     public int ChunkIndex { get; private set; }
     public string Content { get; private set; } = string.Empty;
 
-    /// <summary>
-    /// Legacy embedding vector. Deprecated - use ChunkEmbeddings for model-aware embeddings.
-    /// Kept for backward compatibility during migration.
-    /// </summary>
-    [Obsolete("Use ChunkEmbeddings collection for model-aware embedding storage")]
-    public Vector? Embedding { get; private set; }
     public int TokenCount { get; private set; }
     public int StartPosition { get; private set; }
     public int EndPosition { get; private set; }
@@ -60,23 +51,6 @@ public class DocumentChunk
         };
     }
 
-    public void SetEmbedding(float[] embedding)
-    {
-        ArgumentNullException.ThrowIfNull(embedding);
-        Embedding = new Vector(embedding);
-    }
-
-    public void SetEmbedding(Vector embedding)
-    {
-        ArgumentNullException.ThrowIfNull(embedding);
-        Embedding = embedding;
-    }
-
-    public float[]? GetEmbeddingArray()
-    {
-        return Embedding?.ToArray();
-    }
-
     public void SetMetadata(Dictionary<string, object> metadata)
     {
         Metadata = metadata ?? new Dictionary<string, object>();
@@ -89,13 +63,12 @@ public class DocumentChunk
 
     /// <summary>
     /// Updates the chunk content.
+    /// Note: caller should clear/regenerate ChunkEmbeddings after content changes.
     /// </summary>
     public void UpdateContent(string content)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(content);
         Content = content;
-        // Clear embedding since content changed
-        Embedding = null;
     }
 
     /// <summary>

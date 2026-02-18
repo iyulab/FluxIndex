@@ -18,14 +18,14 @@ public class Program
         rootCommand.Add(ProcessCommand.Create());
 
         // Default behavior: if first arg is a file path, treat as process command
-        if (args.Length > 0 && !args[0].StartsWith("-") && args[0] != "set" && args[0] != "process")
+        if (args.Length > 0 && !args[0].StartsWith('-') && args[0] != "set" && args[0] != "process")
         {
             // Check if it looks like a file path
             var possiblePath = args[0];
             if (File.Exists(possiblePath) || possiblePath.Contains('.') || possiblePath.Contains(Path.DirectorySeparatorChar))
             {
                 // Prepend "process" to args
-                args = new[] { "process" }.Concat(args).ToArray();
+                args = args.Prepend("process").ToArray();
             }
         }
 

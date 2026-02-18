@@ -1,4 +1,4 @@
-﻿using System.Security.Cryptography;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using FileFlux;
@@ -17,7 +17,7 @@ namespace FluxIndex.Stack.Application.Services;
 /// <summary>
 /// Service implementation for document operations.
 /// </summary>
-public class DocumentService : IDocumentService
+public partial class DocumentService : IDocumentService
 {
     private readonly IDocumentRepository _documentRepository;
     private readonly IDocumentChunkRepository _chunkRepository;
@@ -27,6 +27,9 @@ public class DocumentService : IDocumentService
     private readonly IDocumentProcessorFactory? _processorFactory;
     private readonly ITextCompletionService? _textCompletionService;
     private readonly ILogger<DocumentService> _logger;
+
+    // Cached JSON options for Q&A pair parsing
+    private static readonly JsonSerializerOptions QAPairJsonOptions = new() { PropertyNameCaseInsensitive = true };
 
     // File extensions that require FileFlux extraction (binary formats)
     private static readonly HashSet<string> BinaryExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -128,7 +131,7 @@ public class DocumentService : IDocumentService
         // Check for duplicate
         if (await _documentRepository.ContentHashExistsAsync(contentHash, cancellationToken))
         {
-            _logger.LogWarning("Document with same content already exists: {Hash}", contentHash);
+            LogDuplicateContentDetected(_logger, contentHash);
         }
 
         // Create document
@@ -148,7 +151,7 @@ public class DocumentService : IDocumentService
 
         await _documentRepository.AddAsync(document, cancellationToken);
 
-        _logger.LogInformation("Document uploaded: {DocumentId} - {Title}", document.Id, document.Title);
+        LogDocumentUploaded(_logger, document.Id, document.Title);
 
         // Store content for later indexing
         if (_contentProvider != null)
@@ -156,16 +159,16 @@ public class DocumentService : IDocumentService
             try
             {
                 await _contentProvider.StoreContentAsync(document.Id, content, cancellationToken);
-                _logger.LogInformation("Document content stored: {DocumentId}, Size: {Size} bytes", document.Id, content.Length);
+                LogDocumentContentStored(_logger, document.Id, content.Length);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to store document content: {DocumentId}", document.Id);
+                LogDocumentContentStoreFailed(_logger, document.Id, ex);
             }
         }
         else
         {
-            _logger.LogWarning("Content provider not available, document content not stored: {DocumentId}", document.Id);
+            LogContentProviderUnavailable(_logger, document.Id);
         }
 
         // Queue for indexing if service available
@@ -178,7 +181,7 @@ public class DocumentService : IDocumentService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to queue document for indexing: {DocumentId}", document.Id);
+                LogQueueIndexingFailed(_logger, document.Id, ex);
             }
         }
 
@@ -217,7 +220,7 @@ public class DocumentService : IDocumentService
 
         await _documentRepository.AddAsync(document, cancellationToken);
 
-        _logger.LogInformation("Document content uploaded: {DocumentId} - {Title}", document.Id, document.Title);
+        LogDocumentContentUploaded(_logger, document.Id, document.Title);
 
         // Store content for later indexing
         if (_contentProvider != null)
@@ -225,16 +228,16 @@ public class DocumentService : IDocumentService
             try
             {
                 await _contentProvider.StoreContentAsync(document.Id, request.Content, cancellationToken);
-                _logger.LogInformation("Document content stored: {DocumentId}, Size: {Size} bytes", document.Id, request.Content.Length);
+                LogDocumentContentStored(_logger, document.Id, request.Content.Length);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to store document content: {DocumentId}", document.Id);
+                LogDocumentContentStoreFailed(_logger, document.Id, ex);
             }
         }
         else
         {
-            _logger.LogWarning("Content provider not available, document content not stored: {DocumentId}", document.Id);
+            LogContentProviderUnavailable(_logger, document.Id);
         }
 
         // Queue for indexing if service available
@@ -247,7 +250,7 @@ public class DocumentService : IDocumentService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to queue document for indexing: {DocumentId}", document.Id);
+                LogQueueIndexingFailed(_logger, document.Id, ex);
             }
         }
 
@@ -273,7 +276,7 @@ public class DocumentService : IDocumentService
         document.Update(request.Title, request.Metadata);
         await _documentRepository.UpdateAsync(document, cancellationToken);
 
-        _logger.LogInformation("Document updated: {DocumentId}", id);
+        LogDocumentUpdated(_logger, id);
 
         return document.ToDto();
     }
@@ -293,14 +296,14 @@ public class DocumentService : IDocumentService
             {
                 job.Cancel();
                 await _jobRepository.UpdateAsync(job, cancellationToken);
-                _logger.LogInformation("Cancelled indexing job {JobId} for document {DocumentId}", job.Id, id);
+                LogIndexingJobCancelled(_logger, job.Id, id);
             }
         }
 
         // Chunks are deleted via cascade
         await _documentRepository.DeleteAsync(id, cancellationToken);
 
-        _logger.LogInformation("Document deleted: {DocumentId}", id);
+        LogDocumentDeleted(_logger, id);
     }
 
     public async Task ReindexAsync(Guid id, CancellationToken cancellationToken = default)
@@ -322,7 +325,7 @@ public class DocumentService : IDocumentService
 
         // Queue a new indexing job
         var jobId = await _indexingService.QueueIndexingJobAsync(id, cancellationToken);
-        _logger.LogInformation("Document queued for reindexing: {DocumentId}, JobId: {JobId}", id, jobId);
+        LogDocumentQueuedForReindexing(_logger, id, jobId);
     }
 
     public async Task<GenerateQAResponse> GenerateQAAsync(
@@ -397,8 +400,7 @@ public class DocumentService : IDocumentService
             document.SetQAPairs(domainQAPairs);
             await _documentRepository.UpdateAsync(document, cancellationToken);
 
-            _logger.LogInformation("Generated {Count} Q&A pairs for document {DocumentId}",
-                qaPairs.Count, id);
+            LogQAPairsGenerated(_logger, qaPairs.Count, id);
 
             return new GenerateQAResponse
             {
@@ -410,7 +412,7 @@ public class DocumentService : IDocumentService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to generate Q&A pairs for document {DocumentId}", id);
+            LogQAPairGenerationFailed(_logger, id, ex);
             throw new InvalidOperationException($"Failed to generate Q&A pairs: {ex.Message}", ex);
         }
     }
@@ -428,8 +430,7 @@ public class DocumentService : IDocumentService
             if (jsonStart >= 0 && jsonEnd > jsonStart)
             {
                 var jsonContent = response[jsonStart..(jsonEnd + 1)];
-                var pairs = JsonSerializer.Deserialize<List<QAPairJson>>(jsonContent,
-                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                var pairs = JsonSerializer.Deserialize<List<QAPairJson>>(jsonContent, QAPairJsonOptions);
 
                 if (pairs != null)
                 {
@@ -477,10 +478,7 @@ public class DocumentService : IDocumentService
     {
         if (_processorFactory == null)
         {
-            _logger.LogWarning(
-                "FileFlux processor not available for binary file extraction. " +
-                "File '{FileName}' will be stored as raw bytes which may cause display issues.",
-                fileName);
+            LogFileFluxProcessorUnavailable(_logger, fileName);
 
             // Fallback: read as text (will likely produce garbage for binary files)
             fileStream.Position = 0;
@@ -500,7 +498,7 @@ public class DocumentService : IDocumentService
                 await fileStream.CopyToAsync(tempFile, cancellationToken);
             }
 
-            _logger.LogInformation("Extracting text from binary file: {FileName} ({TempPath})", fileName, tempPath);
+            LogExtractingTextFromBinary(_logger, fileName, tempPath);
 
             // Use FileFlux to extract text
             await using var processor = _processorFactory.Create(tempPath);
@@ -524,15 +522,13 @@ public class DocumentService : IDocumentService
 
             var result = extractedText.ToString();
 
-            _logger.LogInformation(
-                "Text extraction completed for {FileName}: {OriginalSize} bytes -> {ExtractedLength} chars",
-                fileName, fileStream.Length, result.Length);
+            LogTextExtractionCompleted(_logger, fileName, fileStream.Length, result.Length);
 
             return result;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to extract text from binary file: {FileName}", fileName);
+            LogTextExtractionFailed(_logger, fileName, ex);
 
             // Return empty string rather than corrupted binary data
             return $"[Text extraction failed for {fileName}: {ex.Message}]";
@@ -549,8 +545,66 @@ public class DocumentService : IDocumentService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to delete temp file: {TempPath}", tempPath);
+                LogTempFileDeleteFailed(_logger, tempPath, ex);
             }
         }
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Document with same content already exists: {Hash}")]
+    private static partial void LogDuplicateContentDetected(ILogger logger, string hash);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Document uploaded: {DocumentId} - {Title}")]
+    private static partial void LogDocumentUploaded(ILogger logger, Guid documentId, string title);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Document content stored: {DocumentId}, Size: {Size} bytes")]
+    private static partial void LogDocumentContentStored(ILogger logger, Guid documentId, int size);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to store document content: {DocumentId}")]
+    private static partial void LogDocumentContentStoreFailed(ILogger logger, Guid documentId, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Content provider not available, document content not stored: {DocumentId}")]
+    private static partial void LogContentProviderUnavailable(ILogger logger, Guid documentId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to queue document for indexing: {DocumentId}")]
+    private static partial void LogQueueIndexingFailed(ILogger logger, Guid documentId, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Document content uploaded: {DocumentId} - {Title}")]
+    private static partial void LogDocumentContentUploaded(ILogger logger, Guid documentId, string title);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Document updated: {DocumentId}")]
+    private static partial void LogDocumentUpdated(ILogger logger, Guid documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Cancelled indexing job {JobId} for document {DocumentId}")]
+    private static partial void LogIndexingJobCancelled(ILogger logger, Guid jobId, Guid documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Document deleted: {DocumentId}")]
+    private static partial void LogDocumentDeleted(ILogger logger, Guid documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Document queued for reindexing: {DocumentId}, JobId: {JobId}")]
+    private static partial void LogDocumentQueuedForReindexing(ILogger logger, Guid documentId, Guid jobId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Generated {Count} Q&A pairs for document {DocumentId}")]
+    private static partial void LogQAPairsGenerated(ILogger logger, int count, Guid documentId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to generate Q&A pairs for document {DocumentId}")]
+    private static partial void LogQAPairGenerationFailed(ILogger logger, Guid documentId, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "FileFlux processor not available for binary file extraction. File '{FileName}' will be stored as raw bytes which may cause display issues.")]
+    private static partial void LogFileFluxProcessorUnavailable(ILogger logger, string fileName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Extracting text from binary file: {FileName} ({TempPath})")]
+    private static partial void LogExtractingTextFromBinary(ILogger logger, string fileName, string tempPath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Text extraction completed for {FileName}: {OriginalSize} bytes -> {ExtractedLength} chars")]
+    private static partial void LogTextExtractionCompleted(ILogger logger, string fileName, long originalSize, int extractedLength);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to extract text from binary file: {FileName}")]
+    private static partial void LogTextExtractionFailed(ILogger logger, string fileName, Exception? exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to delete temp file: {TempPath}")]
+    private static partial void LogTempFileDeleteFailed(ILogger logger, string tempPath, Exception? exception);
+
+    #endregion
 }

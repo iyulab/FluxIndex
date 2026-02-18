@@ -58,7 +58,7 @@ public sealed class FileVaultOptions
     /// <summary>
     /// Automatically cleanup orphaned files during sync.
     /// </summary>
-    public bool AutoCleanupOrphans { get; set; } = false;
+    public bool AutoCleanupOrphans { get; set; }
 
     /// <summary>
     /// Default glob patterns for files to include.

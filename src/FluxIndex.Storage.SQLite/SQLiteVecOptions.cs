@@ -47,7 +47,7 @@ public class SQLiteVecOptions : SQLiteOptions
     /// <summary>
     /// 벡터 검색 시 기본 최소 유사도 점수
     /// </summary>
-    public float DefaultMinScore { get; set; } = 0.0f;
+    public float DefaultMinScore { get; set; }
 
     /// <summary>
     /// 배치 삽입 시 최대 배치 크기.

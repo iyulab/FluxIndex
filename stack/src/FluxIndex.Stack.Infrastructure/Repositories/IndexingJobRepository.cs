@@ -101,7 +101,7 @@ public class IndexingJobRepository : IIndexingJobRepository
             .Where(j => j.Status == IndexingJobStatus.Completed && j.StartedAt.HasValue && j.CompletedAt.HasValue)
             .ToListAsync(cancellationToken);
 
-        if (!completedJobs.Any()) return 0;
+        if (completedJobs.Count == 0) return 0;
 
         return completedJobs
             .Average(j => (j.CompletedAt!.Value - j.StartedAt!.Value).TotalMilliseconds);

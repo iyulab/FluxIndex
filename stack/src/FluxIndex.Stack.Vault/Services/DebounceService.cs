@@ -7,7 +7,7 @@ namespace FluxIndex.Stack.Vault.Services;
 /// Service for debouncing rapid file system events.
 /// Uses MemoryCache to coalesce multiple events within the debounce interval.
 /// </summary>
-public class DebounceService : IDisposable
+public partial class DebounceService : IDisposable
 {
     private readonly ILogger<DebounceService> _logger;
     private readonly MemoryCache _cache;
@@ -68,7 +68,7 @@ public class DebounceService : IDisposable
         catch (OperationCanceledException)
         {
             // Debounced - a newer event will handle this
-            _logger.LogTrace("Debounced event for key: {Key}", key);
+            LogDebouncedEvent(_logger, key);
         }
     }
 
@@ -110,5 +110,13 @@ public class DebounceService : IDisposable
         if (_disposed) return;
         _disposed = true;
         _cache.Dispose();
+        GC.SuppressFinalize(this);
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Trace, Message = "Debounced event for key: {Key}")]
+    private static partial void LogDebouncedEvent(ILogger logger, string key);
+
+    #endregion
 }

@@ -14,7 +14,7 @@ namespace FluxIndex.Core.Application.Services.Graph;
 /// Entity Graph Service implementation for entity-centric indexing and retrieval.
 /// Provides GraphRAG capabilities through entity-based search and traversal.
 /// </summary>
-public class EntityGraphService : IEntityGraphService
+public partial class EntityGraphService : IEntityGraphService
 {
     private readonly IAdvancedEntityExtractionService? _entityExtractionService;
     private readonly IEmbeddingService? _embeddingService;
@@ -43,7 +43,7 @@ public class EntityGraphService : IEntityGraphService
         var stopwatch = Stopwatch.StartNew();
 
         var chunkList = chunks.ToList();
-        _logger.LogInformation("Building entity graph from {ChunkCount} chunks", chunkList.Count);
+        LogEntityGraph8(_logger, chunkList.Count);
 
         var allEntities = new List<ExtractedEntity>();
         var allRelations = new List<EntityRelation>();
@@ -142,9 +142,7 @@ public class EntityGraphService : IEntityGraphService
         }
 
         stopwatch.Stop();
-        _logger.LogInformation(
-            "Built entity graph with {EntityCount} entities and {RelationCount} relations in {ElapsedMs:F2}ms",
-            entityNodes.Count, entityEdges.Count, stopwatch.Elapsed.TotalMilliseconds);
+        LogEntityGraph7(_logger, entityNodes.Count, entityEdges.Count, stopwatch.Elapsed.TotalMilliseconds);
 
         return entityGraphResult;
     }
@@ -158,12 +156,11 @@ public class EntityGraphService : IEntityGraphService
     {
         if (_graphStore == null)
         {
-            _logger.LogWarning("No graph store configured, skipping persistence");
+            LogEntityGraph6(_logger);
             return;
         }
 
-        _logger.LogInformation("Persisting entity graph to graph store: {EntityCount} entities, {RelationCount} relations",
-            graph.Entities.Count, graph.Relations.Count);
+        LogEntityGraph5(_logger, graph.Entities.Count, graph.Relations.Count);
 
         // Convert EntityNodes to GraphEntities and store
         var graphEntities = graph.Entities.Select(e => new GraphEntity
@@ -206,7 +203,7 @@ public class EntityGraphService : IEntityGraphService
             await _graphStore.StoreRelationshipsBatchAsync(relationships, cancellationToken);
         }
 
-        _logger.LogInformation("Entity graph persisted to graph store successfully");
+        LogEntityGraph4(_logger);
     }
 
     /// <inheritdoc/>
@@ -219,14 +216,15 @@ public class EntityGraphService : IEntityGraphService
         options ??= new EntitySearchOptions();
         var stopwatch = Stopwatch.StartNew();
 
-        _logger.LogDebug("Searching by entities for query: {Query}", query);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogEntityGraph3(_logger, query);
 
         // Extract entities from query
         var queryEntities = await ExtractQueryEntitiesAsync(query, entityGraph, cancellationToken);
 
-        if (!queryEntities.Any())
+        if (queryEntities.Count == 0)
         {
-            _logger.LogDebug("No entities found in query, returning empty results");
+            LogEntityGraph2(_logger);
             return new EntitySearchResult
             {
                 Query = query,
@@ -342,7 +340,7 @@ public class EntityGraphService : IEntityGraphService
             .Where(e => startEntityIds.Contains(e.Id) || startEntityIds.Contains(e.Name))
             .ToList();
 
-        if (!startNodes.Any())
+        if (startNodes.Count == 0)
         {
             return new EntityTraversalResult
             {
@@ -382,7 +380,7 @@ public class EntityGraphService : IEntityGraphService
                     {
                         Entities = path.ToList(),
                         Relations = edges.ToList(),
-                        Strength = edges.Any() ? edges.Average(e => e.Weight) : 1.0
+                        Strength = edges.Count != 0 ? edges.Average(e => e.Weight) : 1.0
                     });
                 }
                 continue;
@@ -471,7 +469,7 @@ public class EntityGraphService : IEntityGraphService
         var stopwatch = Stopwatch.StartNew();
 
         var graphList = graphs.ToList();
-        if (!graphList.Any())
+        if (graphList.Count == 0)
         {
             return new EntityGraphResult();
         }
@@ -673,7 +671,7 @@ public class EntityGraphService : IEntityGraphService
 
         if (_entityExtractionService == null)
         {
-            _logger.LogWarning("Entity extraction service not available, returning empty results");
+            LogEntityGraph1(_logger);
             foreach (var chunk in chunks)
             {
                 results.Add((chunk.Id, new List<ExtractedEntity>(), new List<EntityRelation>()));
@@ -708,7 +706,7 @@ public class EntityGraphService : IEntityGraphService
         return results;
     }
 
-    private (List<EntityNode> Nodes, List<EntityChunkMapping> Mappings) LinkEntitiesAcrossChunks(
+    private static (List<EntityNode> Nodes, List<EntityChunkMapping> Mappings) LinkEntitiesAcrossChunks(
         List<ExtractedEntity> entities,
         List<EntityChunkMapping> mappings)
     {
@@ -768,7 +766,7 @@ public class EntityGraphService : IEntityGraphService
         return (linkedNodes, updatedMappings);
     }
 
-    private string NormalizeEntityText(string text, NamedEntityType type)
+    private static string NormalizeEntityText(string text, NamedEntityType type)
     {
         var normalized = text.ToLowerInvariant().Trim();
 
@@ -785,7 +783,7 @@ public class EntityGraphService : IEntityGraphService
         return normalized;
     }
 
-    private EntityNode ConvertToEntityNode(ExtractedEntity entity)
+    private static EntityNode ConvertToEntityNode(ExtractedEntity entity)
     {
         return new EntityNode
         {
@@ -802,7 +800,7 @@ public class EntityGraphService : IEntityGraphService
         };
     }
 
-    private EntityEdge ConvertToEntityEdge(EntityRelation relation)
+    private static EntityEdge ConvertToEntityEdge(EntityRelation relation)
     {
         return new EntityEdge
         {
@@ -851,7 +849,7 @@ public class EntityGraphService : IEntityGraphService
         }
     }
 
-    private EntityGraphStats ComputeGraphStats(
+    private static EntityGraphStats ComputeGraphStats(
         List<EntityNode> entities,
         List<EntityEdge> edges,
         double processingTimeMs)
@@ -884,9 +882,9 @@ public class EntityGraphService : IEntityGraphService
         };
     }
 
-    private int CountConnectedComponents(List<EntityNode> entities, List<EntityEdge> edges)
+    private static int CountConnectedComponents(List<EntityNode> entities, List<EntityEdge> edges)
     {
-        if (!entities.Any()) return 0;
+        if (entities.Count == 0) return 0;
 
         var parent = entities.ToDictionary(e => e.Id, e => e.Id);
 
@@ -946,13 +944,13 @@ public class EntityGraphService : IEntityGraphService
         }
 
         // Fallback: simple text matching
-        if (!matchedEntities.Any())
+        if (matchedEntities.Count == 0)
         {
             var queryLower = query.ToLowerInvariant();
             foreach (var entity in entityGraph.Entities)
             {
                 if (queryLower.Contains(entity.NormalizedName) ||
-                    entity.SurfaceForms.Any(sf => queryLower.Contains(sf.ToLowerInvariant())))
+                    entity.SurfaceForms.Any(sf => queryLower.Contains(sf, StringComparison.OrdinalIgnoreCase)))
                 {
                     matchedEntities.Add(entity);
                 }
@@ -962,7 +960,7 @@ public class EntityGraphService : IEntityGraphService
         return matchedEntities;
     }
 
-    private async Task<(IReadOnlyDictionary<string, double> Scores, int Iterations)>
+    private static async Task<(IReadOnlyDictionary<string, double> Scores, int Iterations)>
         ComputePersonalizedPageRankInternalAsync(
             EntityGraphResult entityGraph,
             IEnumerable<string>? seedEntities,
@@ -993,26 +991,26 @@ public class EntityGraphService : IEntityGraphService
         {
             var weight = options.UseEdgeWeights ? edge.Weight : 1.0;
 
-            if (inLinks.ContainsKey(edge.TargetEntityId))
+            if (inLinks.TryGetValue(edge.TargetEntityId, out var targetInLinks))
             {
-                inLinks[edge.TargetEntityId].Add((edge.SourceEntityId, weight));
+                targetInLinks.Add((edge.SourceEntityId, weight));
             }
 
-            if (outDegree.ContainsKey(edge.SourceEntityId))
+            if (outDegree.TryGetValue(edge.SourceEntityId, out var sourceOutDegree))
             {
-                outDegree[edge.SourceEntityId] += weight;
+                outDegree[edge.SourceEntityId] = sourceOutDegree + weight;
             }
 
             // Handle bidirectional edges
             if (!edge.IsDirectional)
             {
-                if (inLinks.ContainsKey(edge.SourceEntityId))
+                if (inLinks.TryGetValue(edge.SourceEntityId, out var sourceInLinks))
                 {
-                    inLinks[edge.SourceEntityId].Add((edge.TargetEntityId, weight));
+                    sourceInLinks.Add((edge.TargetEntityId, weight));
                 }
-                if (outDegree.ContainsKey(edge.TargetEntityId))
+                if (outDegree.TryGetValue(edge.TargetEntityId, out var targetOutDegree))
                 {
-                    outDegree[edge.TargetEntityId] += weight;
+                    outDegree[edge.TargetEntityId] = targetOutDegree + weight;
                 }
             }
         }
@@ -1070,7 +1068,7 @@ public class EntityGraphService : IEntityGraphService
         return (scores, iterations);
     }
 
-    private IReadOnlyDictionary<string, double> ComputeSimpleEntityScores(
+    private static Dictionary<string, double> ComputeSimpleEntityScores(
         List<EntityNode> queryEntities,
         EntityGraphResult entityGraph)
     {
@@ -1085,7 +1083,7 @@ public class EntityGraphService : IEntityGraphService
         return scores;
     }
 
-    private Dictionary<string, List<(string NeighborId, EntityEdge Edge)>> BuildAdjacencyList(
+    private static Dictionary<string, List<(string NeighborId, EntityEdge Edge)>> BuildAdjacencyList(
         EntityGraphResult entityGraph,
         EntityTraversalOptions options)
     {
@@ -1106,21 +1104,21 @@ public class EntityGraphService : IEntityGraphService
             if (edge.Weight < options.MinRelationStrength)
                 continue;
 
-            if (adjacency.ContainsKey(edge.SourceEntityId))
+            if (adjacency.TryGetValue(edge.SourceEntityId, out var sourceAdj))
             {
-                adjacency[edge.SourceEntityId].Add((edge.TargetEntityId, edge));
+                sourceAdj.Add((edge.TargetEntityId, edge));
             }
 
-            if (options.BidirectionalTraversal && adjacency.ContainsKey(edge.TargetEntityId))
+            if (options.BidirectionalTraversal && adjacency.TryGetValue(edge.TargetEntityId, out var targetAdj))
             {
-                adjacency[edge.TargetEntityId].Add((edge.SourceEntityId, edge));
+                targetAdj.Add((edge.SourceEntityId, edge));
             }
         }
 
         return adjacency;
     }
 
-    private Dictionary<string, List<string>> BuildSimpleAdjacencyList(EntityGraphResult entityGraph)
+    private static Dictionary<string, List<string>> BuildSimpleAdjacencyList(EntityGraphResult entityGraph)
     {
         var adjacency = new Dictionary<string, List<string>>();
 
@@ -1131,20 +1129,20 @@ public class EntityGraphService : IEntityGraphService
 
         foreach (var edge in entityGraph.Relations)
         {
-            if (adjacency.ContainsKey(edge.SourceEntityId))
+            if (adjacency.TryGetValue(edge.SourceEntityId, out var sourceAdj))
             {
-                adjacency[edge.SourceEntityId].Add(edge.TargetEntityId);
+                sourceAdj.Add(edge.TargetEntityId);
             }
-            if (!edge.IsDirectional && adjacency.ContainsKey(edge.TargetEntityId))
+            if (!edge.IsDirectional && adjacency.TryGetValue(edge.TargetEntityId, out var targetAdj))
             {
-                adjacency[edge.TargetEntityId].Add(edge.SourceEntityId);
+                targetAdj.Add(edge.SourceEntityId);
             }
         }
 
         return adjacency;
     }
 
-    private List<EntitySearchHit> GetChunksForEntityIds(
+    private static List<EntitySearchHit> GetChunksForEntityIds(
         List<string> entityIds,
         EntityGraphResult entityGraph)
     {
@@ -1181,7 +1179,7 @@ public class EntityGraphService : IEntityGraphService
             .ToList();
     }
 
-    private List<EntityNode> FindRelatedEntities(
+    private static List<EntityNode> FindRelatedEntities(
         List<EntityNode> queryEntities,
         EntityGraphResult entityGraph,
         int maxRelated)
@@ -1208,14 +1206,14 @@ public class EntityGraphService : IEntityGraphService
             .ToList();
     }
 
-    private string GenerateExplanation(List<EntityNode> chunkEntities, List<EntityNode> queryEntities)
+    private static string GenerateExplanation(List<EntityNode> chunkEntities, List<EntityNode> queryEntities)
     {
         var matchedNames = chunkEntities
             .Where(ce => queryEntities.Any(qe => qe.Id == ce.Id))
             .Select(e => e.Name)
             .ToList();
 
-        if (matchedNames.Any())
+        if (matchedNames.Count != 0)
         {
             return $"Contains query entities: {string.Join(", ", matchedNames)}";
         }
@@ -1224,7 +1222,7 @@ public class EntityGraphService : IEntityGraphService
         return $"Contains related entities: {string.Join(", ", relatedNames)}";
     }
 
-    private EntityNode? FindMatchingEntity(
+    private static EntityNode? FindMatchingEntity(
         EntityNode entity,
         IEnumerable<EntityNode> existingEntities,
         EntityGraphMergeOptions options)
@@ -1259,7 +1257,7 @@ public class EntityGraphService : IEntityGraphService
         return null;
     }
 
-    private EntityNode MergeEntityNodes(EntityNode existing, EntityNode newEntity)
+    private static EntityNode MergeEntityNodes(EntityNode existing, EntityNode newEntity)
     {
         var mergedSurfaceForms = existing.SurfaceForms
             .Concat(newEntity.SurfaceForms)
@@ -1293,7 +1291,7 @@ public class EntityGraphService : IEntityGraphService
         };
     }
 
-    private double ComputeStringSimilarity(string a, string b)
+    private static double ComputeStringSimilarity(string a, string b)
     {
         if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b))
             return 0;
@@ -1308,7 +1306,7 @@ public class EntityGraphService : IEntityGraphService
         return (longer.Length - editDistance) / (double)longer.Length;
     }
 
-    private int ComputeLevenshteinDistance(string s, string t)
+    private static int ComputeLevenshteinDistance(string s, string t)
     {
         var n = s.Length;
         var m = t.Length;
@@ -1334,7 +1332,7 @@ public class EntityGraphService : IEntityGraphService
         return d[n, m];
     }
 
-    private async Task<Dictionary<string, double>> ComputeBetweennessCentralityAsync(
+    private static async Task<Dictionary<string, double>> ComputeBetweennessCentralityAsync(
         EntityGraphResult entityGraph,
         Dictionary<string, List<string>> adjacency,
         CancellationToken cancellationToken)
@@ -1362,7 +1360,7 @@ public class EntityGraphService : IEntityGraphService
 
                 foreach (var w in adjacency.GetValueOrDefault(v, new List<string>()))
                 {
-                    if (!dist.ContainsKey(w))
+                    if (!dist.TryGetValue(w, out _))
                     {
                         dist[w] = dist[v] + 1;
                         queue.Enqueue(w);
@@ -1407,7 +1405,7 @@ public class EntityGraphService : IEntityGraphService
         return betweenness;
     }
 
-    private int EstimateClustersConnected(
+    private static int EstimateClustersConnected(
         string entityId,
         Dictionary<string, List<string>> adjacency,
         EntityGraphResult entityGraph)
@@ -1447,6 +1445,27 @@ public class EntityGraphService : IEntityGraphService
 
         return clusters;
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Building entity graph from {ChunkCount} chunks")]
+    private static partial void LogEntityGraph8(ILogger logger, int chunkCount);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Built entity graph with {EntityCount} entities and {RelationCount} relations in {ElapsedMs:F2}ms")]
+    private static partial void LogEntityGraph7(ILogger logger, int entityCount, int relationCount, double elapsedMs);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No graph store configured, skipping persistence")]
+    private static partial void LogEntityGraph6(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Persisting entity graph to graph store: {EntityCount} entities, {RelationCount} relations")]
+    private static partial void LogEntityGraph5(ILogger logger, int entityCount, int relationCount);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Entity graph persisted to graph store successfully")]
+    private static partial void LogEntityGraph4(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Searching by entities for query: {Query}")]
+    private static partial void LogEntityGraph3(ILogger logger, string query);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "No entities found in query, returning empty results")]
+    private static partial void LogEntityGraph2(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Entity extraction service not available, returning empty results")]
+    private static partial void LogEntityGraph1(ILogger logger);
 
     #endregion
 }

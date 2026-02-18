@@ -11,7 +11,7 @@ namespace FluxIndex.Core.Application.Services;
 /// <summary>
 /// 토큰 예산 기반 검색 서비스
 /// </summary>
-public class TokenAwareSearchService : ITokenAwareSearchService
+public partial class TokenAwareSearchService : ITokenAwareSearchService
 {
     private readonly IVectorStore _vectorStore;
     private readonly IEmbeddingService _embeddingService;
@@ -54,9 +54,8 @@ public class TokenAwareSearchService : ITokenAwareSearchService
         // 1. 질의 분석
         var analysis = await _queryAnalysis.AnalyzeAsync(request.Query, cancellationToken);
 
-        _logger.LogInformation(
-            "Query analysis complete: {Query} -> {Intent}, {Complexity}",
-            request.Query, analysis.Intent, analysis.Complexity);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogTokenAwareSearch2(_logger, request.Query, analysis.Intent, analysis.Complexity);
 
         // 2. 검색 전략 결정
         var strategy = request.ForceStrategy ?? analysis.RecommendedStrategy;
@@ -85,10 +84,8 @@ public class TokenAwareSearchService : ITokenAwareSearchService
             ElapsedMilliseconds = stopwatch.ElapsedMilliseconds
         };
 
-        _logger.LogInformation(
-            "Search complete: {Selected}/{Total} chunks, {UsedTokens}/{RequestedTokens} tokens, {Elapsed}ms",
-            selectedChunks.Count, searchResults.Count, result.UsedTokens, request.MaxTokens,
-            stopwatch.ElapsedMilliseconds);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogTokenAwareSearch1(_logger, selectedChunks.Count, searchResults.Count, result.UsedTokens, request.MaxTokens, stopwatch.ElapsedMilliseconds);
 
         return result;
     }
@@ -122,7 +119,7 @@ public class TokenAwareSearchService : ITokenAwareSearchService
         }).ToList();
     }
 
-    private List<SelectedChunk> SelectChunksWithinBudget(
+    private static List<SelectedChunk> SelectChunksWithinBudget(
         List<SearchResultItem> candidates,
         int tokenBudget,
         double minScore,
@@ -200,7 +197,7 @@ public class TokenAwareSearchService : ITokenAwareSearchService
     /// <summary>
     /// 검색 결과 아이템 (내부용)
     /// </summary>
-    private class SearchResultItem
+    private sealed class SearchResultItem
     {
         public string ChunkId { get; set; } = string.Empty;
         public string DocumentId { get; set; } = string.Empty;
@@ -210,4 +207,13 @@ public class TokenAwareSearchService : ITokenAwareSearchService
         public int ChunkIndex { get; set; }
         public Dictionary<string, object> Metadata { get; set; } = new();
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Query analysis complete: {Query} -> {Intent}, {Complexity}")]
+    private static partial void LogTokenAwareSearch2(ILogger logger, string query, Models.QueryIntent intent, Models.QueryComplexityLevel complexity);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Search complete: {Selected}/{Total} chunks, {UsedTokens}/{RequestedTokens} tokens, {Elapsed}ms")]
+    private static partial void LogTokenAwareSearch1(ILogger logger, int selected, int total, int usedTokens, int requestedTokens, long elapsed);
+
+    #endregion
 }

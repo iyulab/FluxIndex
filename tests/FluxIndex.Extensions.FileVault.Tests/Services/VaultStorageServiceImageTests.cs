@@ -4,7 +4,7 @@ using FluxIndex.Extensions.FileVault.Interfaces;
 using FluxIndex.Extensions.FileVault.Options;
 using FluxIndex.Extensions.FileVault.Services;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
+using NSubstitute;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Xunit;
@@ -21,7 +21,7 @@ public class VaultStorageServiceImageTests : IDisposable
     private readonly string _testDir;
     private readonly string _vaultDir;
     private readonly VaultStorageService _storage;
-    private readonly Mock<IGitService> _gitMock;
+    private readonly IGitService _gitMock;
 
     public VaultStorageServiceImageTests()
     {
@@ -30,13 +30,12 @@ public class VaultStorageServiceImageTests : IDisposable
         Directory.CreateDirectory(_testDir);
         Directory.CreateDirectory(_vaultDir);
 
-        _gitMock = new Mock<IGitService>();
-        _gitMock.Setup(g => g.CommitAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync("abc123");
+        _gitMock = Substitute.For<IGitService>();
+        _gitMock.CommitAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns("abc123");
 
         _storage = new VaultStorageService(
             NullLogger<VaultStorageService>.Instance,
-            _gitMock.Object,
+            _gitMock,
             MsOptions.Create(new FileVaultOptions { VaultBasePath = _vaultDir }));
     }
 

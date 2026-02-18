@@ -1,4 +1,4 @@
-﻿using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.Models;
 using DocumentChunkEntity = FluxIndex.Core.Domain.Entities.DocumentChunk;
 using DocumentChunk = FluxIndex.Core.Domain.Models.CacheDocumentChunk;
@@ -18,7 +18,7 @@ namespace FluxIndex.Core.Services;
 /// <summary>
 /// Small-to-Big 검색 구현체 - 정밀 검색과 컨텍스트 확장
 /// </summary>
-public class SmallToBigRetriever : ISmallToBigRetriever
+public partial class SmallToBigRetriever : ISmallToBigRetriever
 {
     private readonly IHybridSearchService _hybridSearchService;
     private readonly IChunkHierarchyRepository _hierarchyRepository;
@@ -53,7 +53,8 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         options ??= new SmallToBigOptions();
         var stopwatch = Stopwatch.StartNew();
 
-        _logger.LogInformation("Small-to-Big 검색 시작: {Query}", query);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogSmallToBig19(_logger, query);
 
         try
         {
@@ -63,19 +64,20 @@ public class SmallToBigRetriever : ISmallToBigRetriever
                 ? complexityAnalysis.RecommendedWindowSize
                 : options.DefaultWindowSize;
 
-            _logger.LogDebug("쿼리 복잡도: {Complexity:F2}, 권장 윈도우: {WindowSize}",
-                complexityAnalysis.OverallComplexity, optimalWindowSize);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogSmallToBig18(_logger, complexityAnalysis.OverallComplexity, optimalWindowSize);
 
             // 2. Small 검색: 정밀한 매칭 (하이브리드 검색 활용)
             var preciseResults = await ExecutePreciseSearchAsync(query, options, cancellationToken);
 
-            if (!preciseResults.Any())
+            if (preciseResults.Count == 0)
             {
-                _logger.LogWarning("정밀 검색에서 결과를 찾지 못함: {Query}", query);
+                if (_logger.IsEnabled(LogLevel.Information))
+                    LogSmallToBig17(_logger, query);
                 return Array.Empty<SmallToBigResult>();
             }
 
-            _logger.LogDebug("정밀 검색 결과: {Count}개", preciseResults.Count);
+            LogSmallToBig16(_logger, preciseResults.Count);
 
             // 3. Big 확장: 컨텍스트 확장
             var expandedResults = new List<SmallToBigResult>();
@@ -112,14 +114,14 @@ public class SmallToBigRetriever : ISmallToBigRetriever
                 .ToList();
 
             stopwatch.Stop();
-            _logger.LogInformation("Small-to-Big 검색 완료: {ResultCount}개 결과, {ElapsedMs}ms",
-                finalResults.Count, stopwatch.ElapsedMilliseconds);
+            LogSmallToBig15(_logger, finalResults.Count, stopwatch.ElapsedMilliseconds);
 
             return finalResults.AsReadOnly();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Small-to-Big 검색 중 오류 발생: {Query}", query);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogSmallToBig14(_logger, ex, query);
             throw;
         }
     }
@@ -156,7 +158,8 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         var cacheKey = GenerateCacheKey(query);
         if (_complexityCache.TryGetValue(cacheKey, out var cached))
         {
-            _logger.LogDebug("복잡도 분석 캐시 히트: {Query}", query);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogSmallToBig13(_logger, query);
             return cached;
         }
 
@@ -196,8 +199,8 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         // 캐시에 저장
         _complexityCache.TryAdd(cacheKey, analysis);
 
-        _logger.LogDebug("쿼리 복잡도 분석 완료: {Query} → 복잡도 {Complexity:F2}, 윈도우 {WindowSize}",
-            query, overallComplexity, windowSize);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogSmallToBig12(_logger, query, overallComplexity, windowSize);
 
         return analysis;
     }
@@ -215,7 +218,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         var relationshipCount = 0;
         var errors = new List<string>();
 
-        _logger.LogInformation("청크 계층 구조 구축 시작: {ChunkCount}개 청크", chunkList.Count);
+        LogSmallToBig11(_logger, chunkList.Count);
 
         try
         {
@@ -254,14 +257,14 @@ public class SmallToBigRetriever : ISmallToBigRetriever
                 Errors = errors
             };
 
-            _logger.LogInformation("청크 계층 구조 구축 완료: {HierarchyCount}개 계층, {RelationshipCount}개 관계, {ElapsedMs}ms",
-                hierarchyCount, relationshipCount, stopwatch.ElapsedMilliseconds);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogSmallToBig10(_logger, hierarchyCount, relationshipCount, stopwatch.ElapsedMilliseconds);
 
             return result;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "청크 계층 구조 구축 중 오류 발생");
+            LogSmallToBig9(_logger, ex);
             errors.Add(ex.Message);
 
             return new HierarchyBuildResult
@@ -305,7 +308,8 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         var expandedChunks = new List<DocumentChunkEntity>();
         var expansionBreakdown = new Dictionary<ExpansionMethod, int>();
 
-        _logger.LogDebug("컨텍스트 확장 시작: {ChunkId}, 윈도우 크기: {WindowSize}", primaryChunk.Id, windowSize);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogSmallToBig8(_logger, primaryChunk.Id, windowSize);
 
         try
         {
@@ -374,7 +378,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
                     Embedding = chunk.Embedding,
                     Score = chunk.Score ?? 0f,
                     TokenCount = chunk.TokenCount,
-                    Metadata = chunk.Metadata,
+                    Metadata = chunk.Metadata ?? new(),
                     CreatedAt = chunk.CreatedAt
                 }).ToList(),
                 ExpansionBreakdown = expansionBreakdown,
@@ -382,14 +386,13 @@ public class SmallToBigRetriever : ISmallToBigRetriever
                 ExpansionTimeMs = stopwatch.Elapsed.TotalMilliseconds
             };
 
-            _logger.LogDebug("컨텍스트 확장 완료: {OriginalCount} → {ExpandedCount}개 청크, {ElapsedMs}ms",
-                1, qualityFiltered.Count, stopwatch.ElapsedMilliseconds);
+            LogSmallToBig7(_logger, 1, qualityFiltered.Count, stopwatch.ElapsedMilliseconds);
 
             return result;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "컨텍스트 확장 중 오류 발생: {ChunkId}", primaryChunk.Id);
+            LogSmallToBig6(_logger, ex, primaryChunk.Id);
             throw;
         }
     }
@@ -454,7 +457,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         if (testQueries.Count != groundTruth.Count)
             throw new ArgumentException("테스트 쿼리와 정답 데이터의 개수가 일치하지 않습니다.");
 
-        _logger.LogInformation("Small-to-Big 성능 평가 시작: {QueryCount}개 쿼리", testQueries.Count);
+        LogSmallToBig5(_logger, testQueries.Count);
 
         var responseTimes = new List<double>();
         var precisionScores = new List<double>();
@@ -487,7 +490,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
             recallScores.Add(recall);
 
             // 컨텍스트 품질 평가
-            var avgContextQuality = results.Any() ? results.Average(r => r.ContextQuality) : 0.0;
+            var avgContextQuality = results.Count != 0 ? results.Average(r => r.ContextQuality) : 0.0;
             contextQualityScores.Add(avgContextQuality);
 
             if (cancellationToken.IsCancellationRequested)
@@ -504,8 +507,8 @@ public class SmallToBigRetriever : ISmallToBigRetriever
             ExpansionEfficiency = CalculateExpansionEfficiency(contextQualityScores, responseTimes)
         };
 
-        _logger.LogInformation("Small-to-Big 성능 평가 완료 - P: {Precision:F3}, R: {Recall:F3}, F1: {F1:F3}",
-            metrics.Precision, metrics.Recall, metrics.F1Score);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogSmallToBig4(_logger, metrics.Precision, metrics.Recall, metrics.F1Score);
 
         return metrics;
     }
@@ -550,7 +553,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
             Embedding = primaryChunk.Embedding,
             Score = primaryChunk.Score ?? 0f,
             TokenCount = primaryChunk.TokenCount,
-            Metadata = primaryChunk.Metadata,
+            Metadata = primaryChunk.Metadata ?? new(),
             CreatedAt = primaryChunk.CreatedAt
         };
         var strategy = await RecommendExpansionStrategyAsync(query, modelChunkForStrategy, cancellationToken);
@@ -576,7 +579,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
             Embedding = primaryChunk.Embedding,
             Score = primaryChunk.Score ?? 0f,
             TokenCount = primaryChunk.TokenCount,
-            Metadata = primaryChunk.Metadata,
+            Metadata = primaryChunk.Metadata ?? new(),
             CreatedAt = primaryChunk.CreatedAt
         };
 
@@ -622,7 +625,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         return result;
     }
 
-    private ComplexityComponents AnalyzeComplexityComponents(string query)
+    private static ComplexityComponents AnalyzeComplexityComponents(string query)
     {
         var tokens = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var uniqueWords = tokens.Select(t => t.ToLowerInvariant()).Distinct().ToList();
@@ -631,7 +634,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         {
             TokenCount = tokens.Length,
             UniqueWordCount = uniqueWords.Count,
-            AverageWordLength = tokens.Any() ? tokens.Average(t => t.Length) : 0,
+            AverageWordLength = tokens.Length != 0 ? tokens.Average(t => t.Length) : 0,
             PunctuationDensity = (double)query.Count(char.IsPunctuation) / Math.Max(1, query.Length),
             TechnicalTermCount = CountTechnicalTerms(tokens),
             NamedEntityCount = CountNamedEntities(tokens),
@@ -640,7 +643,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         };
     }
 
-    private double CalculateLexicalComplexity(ComplexityComponents components)
+    private static double CalculateLexicalComplexity(ComplexityComponents components)
     {
         var complexity = 0.0;
 
@@ -658,7 +661,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         return Math.Min(1.0, complexity / 3.0);
     }
 
-    private double CalculateSyntacticComplexity(ComplexityComponents components)
+    private static double CalculateSyntacticComplexity(ComplexityComponents components)
     {
         var complexity = 0.0;
 
@@ -675,7 +678,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         return Math.Min(1.0, complexity / 3.0);
     }
 
-    private double CalculateSemanticComplexity(ComplexityComponents components)
+    private static double CalculateSemanticComplexity(ComplexityComponents components)
     {
         var complexity = 0.0;
 
@@ -694,7 +697,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         return Math.Min(1.0, complexity / 3.0);
     }
 
-    private double CalculateReasoningComplexity(ComplexityComponents components)
+    private static double CalculateReasoningComplexity(ComplexityComponents components)
     {
         var complexity = 0.0;
 
@@ -712,7 +715,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         return Math.Min(1.0, complexity / 3.0);
     }
 
-    private int DetermineWindowSizeFromComplexity(double complexity, ComplexityComponents components)
+    private static int DetermineWindowSizeFromComplexity(double complexity, ComplexityComponents components)
     {
         var baseSize = complexity switch
         {
@@ -732,7 +735,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         return Math.Min(10, Math.Max(1, baseSize));
     }
 
-    private int CountTechnicalTerms(string[] tokens)
+    private static int CountTechnicalTerms(string[] tokens)
     {
         var technicalPatterns = new[]
         {
@@ -744,25 +747,25 @@ public class SmallToBigRetriever : ISmallToBigRetriever
             Regex.IsMatch(token, pattern, RegexOptions.IgnoreCase)));
     }
 
-    private int CountNamedEntities(string[] tokens)
+    private static int CountNamedEntities(string[] tokens)
     {
         // 간단한 개체명 감지 (대문자로 시작하는 단어)
         return tokens.Count(token => char.IsUpper(token.FirstOrDefault()) && token.Length > 1);
     }
 
-    private int CountQuestionWords(string[] tokens)
+    private static int CountQuestionWords(string[] tokens)
     {
         var questionWords = new[] { "what", "who", "when", "where", "why", "how", "무엇", "누구", "언제", "어디", "왜", "어떻게" };
         return tokens.Count(token => questionWords.Contains(token.ToLowerInvariant()));
     }
 
-    private int CountLogicalOperators(string[] tokens)
+    private static int CountLogicalOperators(string[] tokens)
     {
         var operators = new[] { "and", "or", "not", "그리고", "또는", "아니", "AND", "OR", "NOT" };
         return tokens.Count(token => operators.Contains(token));
     }
 
-    private double CalculateAnalysisConfidence(ComplexityComponents components)
+    private static double CalculateAnalysisConfidence(ComplexityComponents components)
     {
         var confidence = 0.8; // 기본 신뢰도
 
@@ -772,7 +775,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         return Math.Min(1.0, confidence);
     }
 
-    private string GenerateCacheKey(string query)
+    private static string GenerateCacheKey(string query)
     {
         return $"complexity_{query.GetHashCode():X}";
     }
@@ -799,7 +802,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         }
     }
 
-    private async Task<List<ChunkRelationshipExtended>> AnalyzeSemanticRelationshipsAsync(
+    private static async Task<List<ChunkRelationshipExtended>> AnalyzeSemanticRelationshipsAsync(
         List<DocumentChunk> chunks,
         CancellationToken cancellationToken)
     {
@@ -840,7 +843,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         for (int i = 0; i < chunks.Count; i += 4)
         {
             var paragraphChunks_subset = chunks.Skip(i).Take(4).ToList();
-            if (paragraphChunks_subset.Any())
+            if (paragraphChunks_subset.Count != 0)
             {
                 // 문단 레벨 계층 생성
                 foreach (var chunk in paragraphChunks_subset)
@@ -857,7 +860,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         }
     }
 
-    private double CalculateSemanticSimilarity(string content1, string content2)
+    private static double CalculateSemanticSimilarity(string content1, string content2)
     {
         // 간단한 단어 기반 유사도 계산
         var words1 = content1.ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
@@ -869,7 +872,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         return union > 0 ? (double)intersection / union : 0.0;
     }
 
-    private double CalculateHierarchyQuality(int hierarchyCount, int relationshipCount)
+    private static double CalculateHierarchyQuality(int hierarchyCount, int relationshipCount)
     {
         if (hierarchyCount == 0) return 0.0;
 
@@ -908,7 +911,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "계층적 확장 중 오류: {ChunkId}", primaryChunk.Id);
+            LogSmallToBig3(_logger, ex, primaryChunk.Id);
         }
 
         return expandedChunks;
@@ -945,7 +948,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "순차적 확장 중 오류: {ChunkId}", primaryChunk.Id);
+            LogSmallToBig2(_logger, ex, primaryChunk.Id);
         }
 
         return expandedChunks;
@@ -981,13 +984,13 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "의미적 확장 중 오류: {ChunkId}", primaryChunk.Id);
+            LogSmallToBig1(_logger, ex, primaryChunk.Id);
         }
 
         return expandedChunks;
     }
 
-    private List<DocumentChunkEntity> DeduplicateChunks(List<DocumentChunkEntity> chunks, double threshold)
+    private static List<DocumentChunkEntity> DeduplicateChunks(List<DocumentChunkEntity> chunks, double threshold)
     {
         var deduplicated = new List<DocumentChunkEntity>();
 
@@ -1003,7 +1006,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         return deduplicated;
     }
 
-    private double EvaluateChunkQuality(DocumentChunkEntity chunk, DocumentChunkEntity primaryChunk)
+    private static double EvaluateChunkQuality(DocumentChunkEntity chunk, DocumentChunkEntity primaryChunk)
     {
         var similarity = CalculateSemanticSimilarity(chunk.Content, primaryChunk.Content);
         var lengthScore = Math.Min(1.0, chunk.Content.Length / 500.0); // 적절한 길이 선호
@@ -1012,9 +1015,9 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         return (similarity * 0.5) + (lengthScore * 0.3) + (freshnessScore * 0.2);
     }
 
-    private double CalculateExpansionQuality(List<DocumentChunkEntity> expandedChunks, DocumentChunkEntity primaryChunk)
+    private static double CalculateExpansionQuality(List<DocumentChunkEntity> expandedChunks, DocumentChunkEntity primaryChunk)
     {
-        if (!expandedChunks.Any()) return 0.0;
+        if (expandedChunks.Count == 0) return 0.0;
 
         var avgQuality = expandedChunks.Average(c => EvaluateChunkQuality(c, primaryChunk));
         var diversityScore = CalculateContextDiversity(expandedChunks);
@@ -1022,17 +1025,17 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         return (avgQuality * 0.7) + (diversityScore * 0.3);
     }
 
-    private double CalculateOverallRelevance(DocumentChunk primaryChunk, List<DocumentChunk> contextChunks, string query)
+    private static double CalculateOverallRelevance(DocumentChunk primaryChunk, List<DocumentChunk> contextChunks, string query)
     {
         var primaryRelevance = CalculateQueryRelevance(primaryChunk.Content, query);
-        var contextRelevance = contextChunks.Any()
+        var contextRelevance = contextChunks.Count != 0
             ? contextChunks.Average(c => CalculateQueryRelevance(c.Content, query))
             : 0.0;
 
         return (primaryRelevance * 0.7) + (contextRelevance * 0.3);
     }
 
-    private double CalculateQueryRelevance(string content, string query)
+    private static double CalculateQueryRelevance(string content, string query)
     {
         var contentWords = content.ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var queryWords = query.ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -1041,17 +1044,17 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         return (double)matchCount / Math.Max(1, queryWords.Length);
     }
 
-    private double CalculateExpansionEfficiency(ContextExpansionResult result)
+    private static double CalculateExpansionEfficiency(ContextExpansionResult result)
     {
-        if (result.ExpansionTimeMs <= 0 || !result.ExpandedChunks.Any())
+        if (result.ExpansionTimeMs <= 0 || result.ExpandedChunks.Count == 0)
             return 0.0;
 
         return result.ExpansionQuality / (result.ExpansionTimeMs / 1000.0); // 품질/초
     }
 
-    private double CalculateExpansionEfficiency(List<double> qualityScores, List<double> responseTimes)
+    private static double CalculateExpansionEfficiency(List<double> qualityScores, List<double> responseTimes)
     {
-        if (!qualityScores.Any() || !responseTimes.Any())
+        if (qualityScores.Count == 0 || responseTimes.Count == 0)
             return 0.0;
 
         var avgQuality = qualityScores.Average();
@@ -1060,7 +1063,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         return avgQuality / Math.Max(0.1, avgTime);
     }
 
-    private double CalculateContextDiversity(List<DocumentChunk> chunks)
+    private static double CalculateContextDiversity(List<DocumentChunk> chunks)
     {
         if (chunks.Count <= 1) return 0.0;
 
@@ -1081,7 +1084,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         return 1.0 - avgSimilarity; // 유사도가 낮을수록 다양성이 높음
     }
 
-    private double CalculateContextDiversity(List<DocumentChunkEntity> chunks)
+    private static double CalculateContextDiversity(List<DocumentChunkEntity> chunks)
     {
         if (chunks.Count <= 1) return 0.0;
 
@@ -1101,7 +1104,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         return 1.0 - avgSimilarity; // 유사도가 낮을수록 다양성이 높음
     }
 
-    private double CalculateInformationRedundancy(List<DocumentChunk> chunks)
+    private static double CalculateInformationRedundancy(List<DocumentChunk> chunks)
     {
         if (chunks.Count <= 1) return 0.0;
 
@@ -1114,7 +1117,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         return totalWords > 0 ? 1.0 - ((double)uniqueWords / totalWords) : 0.0;
     }
 
-    private double EstimatePrecisionGain(ExpansionStrategyType strategyType)
+    private static double EstimatePrecisionGain(ExpansionStrategyType strategyType)
     {
         return strategyType switch
         {
@@ -1126,7 +1129,7 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         };
     }
 
-    private double EstimateContextRichness(ExpansionStrategyType strategyType)
+    private static double EstimateContextRichness(ExpansionStrategyType strategyType)
     {
         return strategyType switch
         {
@@ -1138,12 +1141,12 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         };
     }
 
-    private double EstimateLatencyIncrease(int methodCount)
+    private static double EstimateLatencyIncrease(int methodCount)
     {
         return methodCount * 0.1; // 방법당 10% 지연 증가 예상
     }
 
-    private double EstimateUserSatisfaction(ExpansionStrategyType strategyType, double complexity)
+    private static double EstimateUserSatisfaction(ExpansionStrategyType strategyType, double complexity)
     {
         var baseScore = strategyType switch
         {
@@ -1158,10 +1161,53 @@ public class SmallToBigRetriever : ISmallToBigRetriever
         return Math.Min(1.0, baseScore + (complexity * 0.1));
     }
 
-    private double CalculateF1Score(double precision, double recall)
+    private static double CalculateF1Score(double precision, double recall)
     {
         return precision + recall > 0 ? 2 * precision * recall / (precision + recall) : 0.0;
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Small-to-Big 검색 시작: {Query}")]
+    private static partial void LogSmallToBig19(ILogger logger, string query);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "쿼리 복잡도: {Complexity:F2}, 권장 윈도우: {WindowSize}")]
+    private static partial void LogSmallToBig18(ILogger logger, double complexity, double windowSize);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "정밀 검색에서 결과를 찾지 못함: {Query}")]
+    private static partial void LogSmallToBig17(ILogger logger, string query);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "정밀 검색 결과: {Count}개")]
+    private static partial void LogSmallToBig16(ILogger logger, int count);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Small-to-Big 검색 완료: {ResultCount}개 결과, {ElapsedMs}ms")]
+    private static partial void LogSmallToBig15(ILogger logger, int resultCount, long elapsedMs);
+    [LoggerMessage(Level = LogLevel.Error, Message = "Small-to-Big 검색 중 오류 발생: {Query}")]
+    private static partial void LogSmallToBig14(ILogger logger, Exception exception, string query);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "복잡도 분석 캐시 히트: {Query}")]
+    private static partial void LogSmallToBig13(ILogger logger, string query);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "쿼리 복잡도 분석 완료: {Query} → 복잡도 {Complexity:F2}, 윈도우 {WindowSize}")]
+    private static partial void LogSmallToBig12(ILogger logger, string query, double complexity, double windowSize);
+    [LoggerMessage(Level = LogLevel.Information, Message = "청크 계층 구조 구축 시작: {ChunkCount}개 청크")]
+    private static partial void LogSmallToBig11(ILogger logger, int chunkCount);
+    [LoggerMessage(Level = LogLevel.Information, Message = "청크 계층 구조 구축 완료: {HierarchyCount}개 계층, {RelationshipCount}개 관계, {ElapsedMs}ms")]
+    private static partial void LogSmallToBig10(ILogger logger, int hierarchyCount, int relationshipCount, long elapsedMs);
+    [LoggerMessage(Level = LogLevel.Error, Message = "청크 계층 구조 구축 중 오류 발생")]
+    private static partial void LogSmallToBig9(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "컨텍스트 확장 시작: {ChunkId}, 윈도우 크기: {WindowSize}")]
+    private static partial void LogSmallToBig8(ILogger logger, string chunkId, int windowSize);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "컨텍스트 확장 완료: {OriginalCount} → {ExpandedCount}개 청크, {ElapsedMs}ms")]
+    private static partial void LogSmallToBig7(ILogger logger, int originalCount, int expandedCount, long elapsedMs);
+    [LoggerMessage(Level = LogLevel.Error, Message = "컨텍스트 확장 중 오류 발생: {ChunkId}")]
+    private static partial void LogSmallToBig6(ILogger logger, Exception exception, string chunkId);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Small-to-Big 성능 평가 시작: {QueryCount}개 쿼리")]
+    private static partial void LogSmallToBig5(ILogger logger, int queryCount);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Small-to-Big 성능 평가 완료 - P: {Precision:F3}, R: {Recall:F3}, F1: {F1:F3}")]
+    private static partial void LogSmallToBig4(ILogger logger, double precision, double recall, double f1);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "계층적 확장 중 오류: {ChunkId}")]
+    private static partial void LogSmallToBig3(ILogger logger, Exception exception, string chunkId);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "순차적 확장 중 오류: {ChunkId}")]
+    private static partial void LogSmallToBig2(ILogger logger, Exception exception, string chunkId);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "의미적 확장 중 오류: {ChunkId}")]
+    private static partial void LogSmallToBig1(ILogger logger, Exception exception, string chunkId);
 
     #endregion
 }

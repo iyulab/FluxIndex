@@ -7,22 +7,22 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services.Reranking;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
+using NSubstitute;
 using Xunit;
 
 namespace FluxIndex.Core.Tests.Services.Reranking;
 
 public class ListwiseRerankerTests
 {
-    private readonly Mock<ITextCompletionService> _mockLlmService;
-    private readonly Mock<IEmbeddingService> _mockEmbeddingService;
-    private readonly Mock<ILogger<ListwiseReranker>> _mockLogger;
+    private readonly ITextCompletionService _mockLlmService;
+    private readonly IEmbeddingService _mockEmbeddingService;
+    private readonly ILogger<ListwiseReranker> _mockLogger;
 
     public ListwiseRerankerTests()
     {
-        _mockLlmService = new Mock<ITextCompletionService>();
-        _mockEmbeddingService = new Mock<IEmbeddingService>();
-        _mockLogger = new Mock<ILogger<ListwiseReranker>>();
+        _mockLlmService = Substitute.For<ITextCompletionService>();
+        _mockEmbeddingService = Substitute.For<IEmbeddingService>();
+        _mockLogger = Substitute.For<ILogger<ListwiseReranker>>();
     }
 
     #region Constructor Tests
@@ -38,23 +38,23 @@ public class ListwiseRerankerTests
     public void Constructor_WithAllParameters_Succeeds()
     {
         var reranker = new ListwiseReranker(
-            _mockLlmService.Object,
-            _mockEmbeddingService.Object,
-            _mockLogger.Object);
+            _mockLlmService,
+            _mockEmbeddingService,
+            _mockLogger);
         Assert.NotNull(reranker);
     }
 
     [Fact]
     public void Constructor_WithOnlyLlmService_Succeeds()
     {
-        var reranker = new ListwiseReranker(llmService: _mockLlmService.Object);
+        var reranker = new ListwiseReranker(llmService: _mockLlmService);
         Assert.NotNull(reranker);
     }
 
     [Fact]
     public void Constructor_WithOnlyEmbeddingService_Succeeds()
     {
-        var reranker = new ListwiseReranker(embeddingService: _mockEmbeddingService.Object);
+        var reranker = new ListwiseReranker(embeddingService: _mockEmbeddingService);
         Assert.NotNull(reranker);
     }
 
@@ -164,7 +164,7 @@ public class ListwiseRerankerTests
     {
         // Arrange
         SetupMockEmbeddingService();
-        var reranker = new ListwiseReranker(embeddingService: _mockEmbeddingService.Object);
+        var reranker = new ListwiseReranker(embeddingService: _mockEmbeddingService);
         var candidates = new[]
         {
             CreateCandidate("1", "Content A", 0.5f),
@@ -215,7 +215,7 @@ public class ListwiseRerankerTests
     {
         // Arrange
         SetupMockLlmService();
-        var reranker = new ListwiseReranker(llmService: _mockLlmService.Object);
+        var reranker = new ListwiseReranker(llmService: _mockLlmService);
         var candidates = CreateMultipleCandidates(4);
         var options = new ListwiseRerankOptions
         {
@@ -240,7 +240,7 @@ public class ListwiseRerankerTests
     {
         // Arrange
         SetupMockEmbeddingService();
-        var reranker = new ListwiseReranker(embeddingService: _mockEmbeddingService.Object);
+        var reranker = new ListwiseReranker(embeddingService: _mockEmbeddingService);
         var candidates = CreateMultipleCandidates(5);
         var options = new ListwiseRerankOptions { Method = ListwiseMethod.Hybrid };
 
@@ -340,7 +340,7 @@ public class ListwiseRerankerTests
     {
         // Arrange
         SetupMockLlmService();
-        var reranker = new ListwiseReranker(llmService: _mockLlmService.Object);
+        var reranker = new ListwiseReranker(llmService: _mockLlmService);
         var candidates = CreateMultipleCandidates(10);
         var options = new ListwiseRerankOptions
         {
@@ -364,15 +364,13 @@ public class ListwiseRerankerTests
     public async Task ComputePairwisePreferenceAsync_WithLlm_UsesLlmComparison()
     {
         // Arrange
-        _mockLlmService
-            .Setup(x => x.GenerateCompletionAsync(
-                It.IsAny<string>(),
-                It.IsAny<int>(),
-                It.IsAny<float>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync("A");
+        _mockLlmService.GenerateCompletionAsync(
+                Arg.Any<string>(),
+                Arg.Any<int>(),
+                Arg.Any<float>(),
+                Arg.Any<CancellationToken>()).Returns("A");
 
-        var reranker = new ListwiseReranker(llmService: _mockLlmService.Object);
+        var reranker = new ListwiseReranker(llmService: _mockLlmService);
 
         // Act
         var result = await reranker.ComputePairwisePreferenceAsync(
@@ -388,7 +386,7 @@ public class ListwiseRerankerTests
     {
         // Arrange
         SetupMockEmbeddingService();
-        var reranker = new ListwiseReranker(embeddingService: _mockEmbeddingService.Object);
+        var reranker = new ListwiseReranker(embeddingService: _mockEmbeddingService);
 
         // Act
         var result = await reranker.ComputePairwisePreferenceAsync(
@@ -442,7 +440,7 @@ public class ListwiseRerankerTests
     public void GetModelInfo_WithLlm_IncludesLlmMethods()
     {
         // Arrange
-        var reranker = new ListwiseReranker(llmService: _mockLlmService.Object);
+        var reranker = new ListwiseReranker(llmService: _mockLlmService);
 
         // Act
         var info = reranker.GetModelInfo();
@@ -458,7 +456,7 @@ public class ListwiseRerankerTests
     public void GetModelInfo_WithEmbedding_IncludesHybridMethod()
     {
         // Arrange
-        var reranker = new ListwiseReranker(embeddingService: _mockEmbeddingService.Object);
+        var reranker = new ListwiseReranker(embeddingService: _mockEmbeddingService);
 
         // Act
         var info = reranker.GetModelInfo();
@@ -577,7 +575,7 @@ public class ListwiseRerankerTests
     {
         // Arrange
         SetupMockLlmService();
-        var reranker = new ListwiseReranker(llmService: _mockLlmService.Object);
+        var reranker = new ListwiseReranker(llmService: _mockLlmService);
         var longContent = new string('x', 10000);
         var candidates = new[] { CreateCandidate("1", longContent, 0.5f) };
         var options = new ListwiseRerankOptions
@@ -622,14 +620,11 @@ public class ListwiseRerankerTests
     {
         // Return "A" for pairwise comparisons (Tournament mode expects "A", "B", or "TIE")
         // Return "1, 2, 3" for ranking requests (DirectLlm mode expects ranked indices)
-        _mockLlmService
-            .Setup(x => x.GenerateCompletionAsync(
-                It.IsAny<string>(),
-                It.IsAny<int>(),
-                It.IsAny<float>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string prompt, int _, float __, CancellationToken ___) =>
-            {
+        _mockLlmService.GenerateCompletionAsync(
+                Arg.Any<string>(),
+                Arg.Any<int>(),
+                Arg.Any<float>(),
+                Arg.Any<CancellationToken>()).Returns(callInfo => { var prompt = callInfo.ArgAt<string>(0); 
                 // Tournament mode asks "Which document is more relevant?"
                 if (prompt.Contains("Which document is more relevant"))
                 {
@@ -642,12 +637,9 @@ public class ListwiseRerankerTests
 
     private void SetupMockEmbeddingService()
     {
-        _mockEmbeddingService
-            .Setup(x => x.GenerateEmbeddingAsync(
-                It.IsAny<string>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync((string text, CancellationToken _) =>
-            {
+        _mockEmbeddingService.GenerateEmbeddingAsync(
+                Arg.Any<string>(),
+                Arg.Any<CancellationToken>()).Returns(callInfo => { var text = callInfo.ArgAt<string>(0); 
                 // Generate a simple embedding based on text hash
                 var embedding = new float[384];
                 var hash = text.GetHashCode();

@@ -18,13 +18,13 @@ namespace FluxIndex.SDK;
 /// <summary>
 /// Retriever - 벡터 검색 및 문서 조회 담당 (Phase 3: DX 개선으로 이벤트 및 진행률 모니터링 지원)
 /// </summary>
-public class Retriever
+public partial class Retriever
 {
     private readonly IVectorStore _vectorStore;
     private readonly IDocumentRepository _documentRepository;
     private readonly IEmbeddingService _embeddingService;
     private readonly ICacheService? _cacheService;
-    private readonly IRankFusionService _rankFusionService;
+    private readonly IRankFusionService? _rankFusionService;
     private readonly IVectorQuantizer? _vectorQuantizer;
     private readonly ILogger<Retriever> _logger;
     private readonly RetrieverOptions _options;
@@ -142,7 +142,7 @@ public class Retriever
                 StartedAt = startTime
             });
 
-            _logger.LogInformation("Searching for: {Query}", query);
+            LogSearching(_logger, query);
 
             // Phase 3: 진행률 보고 - 시작 (0%)
             progress?.Report(new SearchProgress
@@ -163,7 +163,7 @@ public class Retriever
                 var cachedResults = await _cacheService.GetAsync<List<VectorSearchResult>>(cacheKey, cancellationToken);
                 if (cachedResults != null)
                 {
-                    _logger.LogDebug("Cache hit for query: {Query}", query);
+                    LogCacheHit(_logger, query);
 
                     // Phase 3: 진행률 보고 - 캐시 히트 (100%)
                     progress?.Report(new SearchProgress
@@ -212,7 +212,7 @@ public class Retriever
                 if (_embeddingCache.TryGetValue(query, out var cachedEmbedding))
                 {
                     queryEmbedding = cachedEmbedding;
-                    _logger.LogDebug("Embedding cache hit for query: {Query}", query);
+                    LogEmbeddingCacheHit(_logger, query);
                 }
                 else
                 {
@@ -231,7 +231,7 @@ public class Retriever
                     if (!_embeddingCache.ContainsKey(query))
                     {
                         _embeddingCache[query] = queryEmbedding;
-                        _logger.LogDebug("Cached embedding for query: {Query}", query);
+                        LogCachedEmbedding(_logger, query);
 
                         // Limit cache size to prevent memory issues (keep last 1000 queries)
                         if (_embeddingCache.Count > 1000)
@@ -269,7 +269,7 @@ public class Retriever
                 Score = 1.0f, // Default score since IVectorStore doesn't provide it
                 Rank = 0,
                 Distance = 0,
-                Metadata = chunk.Metadata
+                Metadata = chunk.Metadata ?? new()
             }).ToList();
 
             // Phase 3: 진행률 보고 - 필터링 (75%)
@@ -286,13 +286,13 @@ public class Retriever
             });
 
             // Apply metadata filter if provided
-            if (filter != null && filter.Any())
+            if (filter != null && filter.Count != 0)
             {
                 results = ApplyFilter(results, filter);
             }
 
             // Cache results
-            if (_cacheService != null && results.Any())
+            if (_cacheService != null && results.Count != 0)
             {
                 var cacheKey = GenerateCacheKey(query, maxResults, minScore, filter);
                 await _cacheService.SetAsync(cacheKey, results, _options.CacheDuration, cancellationToken);
@@ -311,7 +311,7 @@ public class Retriever
                 ResultsFound = results.Count
             });
 
-            _logger.LogInformation("Found {Count} results for query: {Query}", results.Count, query);
+            LogFoundResults(_logger, results.Count, query);
 
             // Phase 3: 이벤트 발생 - 검색 완료
             SearchCompleted?.Invoke(this, new SearchCompletedEventArgs
@@ -382,7 +382,7 @@ public class Retriever
         // Hybrid search when enabled
         if (useHybridSearch && _hybridSearchService != null)
         {
-            _logger.LogInformation("Hybrid search activated for query: {Query}", query);
+            LogHybridSearchActivated(_logger, query);
 
             var hybridResults = await _hybridSearchService.SearchAsync(
                 query,
@@ -404,7 +404,7 @@ public class Retriever
                 VectorScore = (float)r.VectorScore,
                 KeywordScore = (float)r.SparseScore,
                 ChunkIndex = r.Chunk.ChunkIndex,
-                Metadata = r.Chunk.Metadata
+                Metadata = r.Chunk.Metadata ?? new()
             }).ToList();
         }
         // Default: Vector-only search
@@ -491,7 +491,7 @@ public class Retriever
                 }
             });
 
-            _logger.LogInformation("Hybrid search - keyword: {Keyword}, query: {Query}", keyword, query);
+            LogHybridSearch(_logger, keyword, query);
 
             // Phase 3: 진행률 보고 - 시작 (0%)
             progress?.Report(new SearchProgress
@@ -548,6 +548,9 @@ public class Retriever
             });
 
             // Use RRF fusion if weights are equal, otherwise use weighted fusion
+            if (_rankFusionService is null)
+                throw new InvalidOperationException("RankFusionService is required for hybrid search.");
+
             IEnumerable<VectorSearchResult> combinedResults;
 
             if (Math.Abs(vectorWeight - 0.5) < 0.01) // Equal weights, use RRF
@@ -658,7 +661,7 @@ public class Retriever
                 StartedAt = startTime
             });
 
-            _logger.LogInformation("Keyword search: {Keyword}", keyword);
+            LogKeywordSearch(_logger, keyword);
 
             // Phase 3: 진행률 보고 - 시작 (0%)
             progress?.Report(new SearchProgress
@@ -733,7 +736,7 @@ public class Retriever
             });
 
             // Apply filter if provided
-            if (filter != null && filter.Any())
+            if (filter != null && filter.Count != 0)
             {
                 results = ApplyFilter(results, filter);
             }
@@ -787,7 +790,7 @@ public class Retriever
         string documentId,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogDebug("Getting document: {DocumentId}", documentId);
+        LogGettingDocument(_logger, documentId);
         
         // Check cache
         if (_cacheService != null)
@@ -825,7 +828,7 @@ public class Retriever
         string chunkId,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogDebug("Getting chunk: {ChunkId}", chunkId);
+        LogGettingChunk(_logger, chunkId);
         return await _vectorStore.GetByIdAsync(chunkId, cancellationToken);
     }
 
@@ -838,7 +841,7 @@ public class Retriever
         float minScore = 0.5f,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Finding similar documents to: {DocumentId}", documentId);
+        LogFindingSimilarDocuments(_logger, documentId);
 
         // Get document chunks
         var chunks = await _vectorStore.GetByDocumentIdAsync(documentId, cancellationToken);
@@ -867,7 +870,7 @@ public class Retriever
                 Score = 1.0f, // Default score
                 Rank = 0,
                 Distance = 0,
-                Metadata = chunk.Metadata
+                Metadata = chunk.Metadata ?? new()
             });
 
         return results;
@@ -891,7 +894,7 @@ public class Retriever
         };
     }
 
-    private List<VectorSearchResult> ApplyFilter(List<VectorSearchResult> results, Dictionary<string, object> filter)
+    private static List<VectorSearchResult> ApplyFilter(List<VectorSearchResult> results, Dictionary<string, object> filter)
     {
         return results.Where(r =>
         {
@@ -899,8 +902,8 @@ public class Retriever
 
             foreach (var kvp in filter)
             {
-                if (!r.Metadata.ContainsKey(kvp.Key) ||
-                    !r.Metadata[kvp.Key].Equals(kvp.Value))
+                if (!r.Metadata.TryGetValue(kvp.Key, out var metaValue) ||
+                    !metaValue.Equals(kvp.Value))
                 {
                     return false;
                 }
@@ -909,7 +912,7 @@ public class Retriever
         }).ToList();
     }
 
-    private float CalculateKeywordScore(string content, string keyword)
+    private static float CalculateKeywordScore(string content, string keyword)
     {
         var count = 0;
         var index = 0;
@@ -923,7 +926,7 @@ public class Retriever
         return (float)count / content.Split(' ').Length;
     }
 
-    private IEnumerable<VectorSearchResult> CombineResults(
+    private static IEnumerable<VectorSearchResult> CombineResults(
         IEnumerable<VectorSearchResult> vectorResults,
         IEnumerable<VectorSearchResult> keywordResults,
         double vectorWeight)
@@ -942,16 +945,16 @@ public class Retriever
         foreach (var result in keywordResults)
         {
             var key = $"{result.DocumentChunk.DocumentId}:{result.DocumentChunk.Id}";
-            if (combined.ContainsKey(key))
+            if (combined.TryGetValue(key, out var existing))
             {
                 // Create new result with combined score
                 combined[key] = new VectorSearchResult
                 {
-                    DocumentChunk = combined[key].DocumentChunk,
-                    Score = combined[key].Score * vectorWeight + result.Score * keywordWeight,
-                    Rank = combined[key].Rank,
-                    Distance = combined[key].Distance,
-                    Metadata = combined[key].Metadata
+                    DocumentChunk = existing.DocumentChunk,
+                    Score = existing.Score * vectorWeight + result.Score * keywordWeight,
+                    Rank = existing.Rank,
+                    Distance = existing.Distance,
+                    Metadata = existing.Metadata
                 };
             }
             else
@@ -970,13 +973,13 @@ public class Retriever
         return combined.Values.OrderByDescending(r => r.Score);
     }
 
-    private string GenerateCacheKey(string query, int maxResults, float minScore, Dictionary<string, object>? filter)
+    private static string GenerateCacheKey(string query, int maxResults, float minScore, Dictionary<string, object>? filter)
     {
         var filterStr = filter != null ? string.Join(",", filter.Select(kvp => $"{kvp.Key}:{kvp.Value}")) : "";
         return $"search:{query}:{maxResults}:{minScore}:{filterStr}";
     }
 
-    private DocumentChunkModel ConvertToModelChunk(DocumentChunkEntity entityChunk)
+    private static DocumentChunkModel ConvertToModelChunk(DocumentChunkEntity entityChunk)
     {
         var modelChunk = DocumentChunkModel.Create(
             entityChunk.DocumentId,
@@ -1005,7 +1008,7 @@ public class Retriever
         };
     }
 
-    private IEnumerable<RankedResultCore> ConvertToRankedResults(IEnumerable<VectorSearchResult> searchResults, string source)
+    private static IEnumerable<RankedResultCore> ConvertToRankedResults(IEnumerable<VectorSearchResult> searchResults, string source)
     {
         return searchResults.Select((r, index) => new RankedResultCore
         {
@@ -1020,7 +1023,7 @@ public class Retriever
         });
     }
 
-    private IEnumerable<VectorSearchResult> ConvertFromRankedResults(IEnumerable<RankedResultCore> rankedResults)
+    private static IEnumerable<VectorSearchResult> ConvertFromRankedResults(IEnumerable<RankedResultCore> rankedResults)
     {
         return rankedResults.Select(r => new VectorSearchResult
         {
@@ -1093,7 +1096,7 @@ public class Retriever
                 StartedAt = startTime
             });
 
-            _logger.LogInformation("Quantized search for: {Query}", query);
+            LogQuantizedSearch(_logger, query);
 
             progress?.Report(new SearchProgress
             {
@@ -1144,7 +1147,7 @@ public class Retriever
                 Score = r.Score,
                 Rank = index + 1,
                 Distance = 1 - r.Score,
-                Metadata = r.Chunk.Metadata
+                Metadata = r.Chunk.Metadata ?? new()
             }).ToList();
 
             progress?.Report(new SearchProgress
@@ -1242,7 +1245,7 @@ public class Retriever
                 }
             });
 
-            _logger.LogInformation("Quantized search with rerank for: {Query}", query);
+            LogQuantizedSearchWithRerank(_logger, query);
 
             progress?.Report(new SearchProgress
             {
@@ -1304,7 +1307,7 @@ public class Retriever
                 Score = r.Score,
                 Rank = index + 1,
                 Distance = 1 - r.Score,
-                Metadata = r.Chunk.Metadata
+                Metadata = r.Chunk.Metadata ?? new()
             }).ToList();
 
             progress?.Report(new SearchProgress
@@ -1371,7 +1374,7 @@ public class Retriever
         {
             if (_embeddingCache.TryGetValue(query, out var cachedEmbedding))
             {
-                _logger.LogDebug("Embedding cache hit for query: {Query}", query);
+                LogEmbeddingCacheHit(_logger, query);
                 return cachedEmbedding;
             }
         }
@@ -1383,7 +1386,7 @@ public class Retriever
             if (!_embeddingCache.ContainsKey(query))
             {
                 _embeddingCache[query] = embedding;
-                _logger.LogDebug("Cached embedding for query: {Query}", query);
+                LogCachedEmbedding(_logger, query);
 
                 if (_embeddingCache.Count > 1000)
                 {
@@ -1395,6 +1398,49 @@ public class Retriever
 
         return embedding;
     }
+
+    #endregion
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Searching for: {Query}")]
+    private static partial void LogSearching(ILogger logger, string query);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Cache hit for query: {Query}")]
+    private static partial void LogCacheHit(ILogger logger, string query);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Embedding cache hit for query: {Query}")]
+    private static partial void LogEmbeddingCacheHit(ILogger logger, string query);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Cached embedding for query: {Query}")]
+    private static partial void LogCachedEmbedding(ILogger logger, string query);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Found {Count} results for query: {Query}")]
+    private static partial void LogFoundResults(ILogger logger, int count, string query);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Hybrid search activated for query: {Query}")]
+    private static partial void LogHybridSearchActivated(ILogger logger, string query);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Hybrid search - keyword: {Keyword}, query: {Query}")]
+    private static partial void LogHybridSearch(ILogger logger, string keyword, string query);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Keyword search: {Keyword}")]
+    private static partial void LogKeywordSearch(ILogger logger, string keyword);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Getting document: {DocumentId}")]
+    private static partial void LogGettingDocument(ILogger logger, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Getting chunk: {ChunkId}")]
+    private static partial void LogGettingChunk(ILogger logger, string chunkId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Finding similar documents to: {DocumentId}")]
+    private static partial void LogFindingSimilarDocuments(ILogger logger, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Quantized search for: {Query}")]
+    private static partial void LogQuantizedSearch(ILogger logger, string query);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Quantized search with rerank for: {Query}")]
+    private static partial void LogQuantizedSearchWithRerank(ILogger logger, string query);
 
     #endregion
 }

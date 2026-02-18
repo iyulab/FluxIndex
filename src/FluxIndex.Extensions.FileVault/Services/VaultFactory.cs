@@ -16,11 +16,12 @@ namespace FluxIndex.Extensions.FileVault.Services;
 /// - Shared integration services: IExtractor, IChunker, IVectorStore, IEmbeddingService
 /// - Tenant-scoped services: IVaultStorageService, IVaultQueueService, IVaultPipeline, IVault
 /// </summary>
-public sealed class VaultFactory : IVaultFactory
+public sealed partial class VaultFactory : IVaultFactory
 {
     private readonly ConcurrentDictionary<string, VaultContext> _vaults = new();
     private readonly IServiceProvider _serviceProvider;
     private readonly ILoggerFactory _loggerFactory;
+    private readonly ILogger _logger;
     private readonly FileVaultOptions _defaultOptions;
     private readonly object _createLock = new();
     private bool _disposed;
@@ -50,6 +51,7 @@ public sealed class VaultFactory : IVaultFactory
     {
         _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
         _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
+        _logger = _loggerFactory.CreateLogger<VaultFactory>();
         _defaultOptions = options?.Value ?? new FileVaultOptions();
 
         // Store shared services
@@ -88,8 +90,7 @@ public sealed class VaultFactory : IVaultFactory
             var context = CreateVaultContext(tenantId, configureOptions);
             _vaults[tenantId] = context;
 
-            _loggerFactory.CreateLogger<VaultFactory>()
-                .LogInformation("Created vault for tenant {TenantId} at {Path}", tenantId, context.VaultBasePath);
+            LogCreatedVault(_logger, tenantId, context.VaultBasePath);
 
             return context.Vault;
         }
@@ -145,8 +146,7 @@ public sealed class VaultFactory : IVaultFactory
         {
             await DisposeContextAsync(context);
 
-            _loggerFactory.CreateLogger<VaultFactory>()
-                .LogInformation("Disposed vault for tenant {TenantId}", tenantId);
+            LogDisposedVault(_logger, tenantId);
         }
     }
 
@@ -295,4 +295,14 @@ public sealed class VaultFactory : IVaultFactory
         _disposed = true;
         await DisposeAllAsync();
     }
+
+    #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Created vault for tenant {TenantId} at {Path}")]
+    private static partial void LogCreatedVault(ILogger logger, string tenantId, string path);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Disposed vault for tenant {TenantId}")]
+    private static partial void LogDisposedVault(ILogger logger, string tenantId);
+
+    #endregion
 }

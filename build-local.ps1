@@ -21,7 +21,7 @@ Set-Location "D:\data\FluxIndex"
 # Clean if requested
 if ($CleanFirst) {
     Write-Host "Cleaning previous build artifacts..." -ForegroundColor Yellow
-    dotnet clean FluxIndex.sln -c $Configuration
+    dotnet clean FluxIndex.slnx -c $Configuration
     if (Test-Path $OutputPath) {
         Remove-Item "$OutputPath\FluxIndex*.nupkg" -Force -ErrorAction SilentlyContinue
     }
@@ -34,15 +34,15 @@ if (-not (Test-Path $OutputPath)) {
 
 # Restore dependencies
 Write-Host "Restoring dependencies..." -ForegroundColor Yellow
-dotnet restore FluxIndex.sln
+dotnet restore FluxIndex.slnx
 
 # Build
 Write-Host "Building FluxIndex..." -ForegroundColor Yellow
-dotnet build FluxIndex.sln -c $Configuration --no-restore
+dotnet build FluxIndex.slnx -c $Configuration --no-restore
 
 # Run tests (skip Redis tests as they may not be available locally)
 Write-Host "Running tests..." -ForegroundColor Yellow
-dotnet test FluxIndex.sln -c $Configuration --no-build --verbosity minimal --filter "FullyQualifiedName!~Redis"
+dotnet test FluxIndex.slnx -c $Configuration --no-build --verbosity minimal --filter "FullyQualifiedName!~Redis"
 
 # Pack all FluxIndex packages
 Write-Host "Creating NuGet packages..." -ForegroundColor Yellow

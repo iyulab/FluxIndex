@@ -83,7 +83,7 @@ public class FileFluxOptions
     /// <summary>
     /// Enable metadata enrichment by default (requires ITextCompletionService)
     /// </summary>
-    public bool EnableMetadataEnrichment { get; set; } = false;
+    public bool EnableMetadataEnrichment { get; set; }
 
     /// <summary>
     /// Default metadata schema (General, Academic, Technical, Legal, Medical)
@@ -99,7 +99,7 @@ public class FileFluxOptions
     /// Enable immediate indexing for ultra-large files (chunks indexed in batches during processing)
     /// Only applies when UseStreamingApi is true
     /// </summary>
-    public bool EnableImmediateIndexing { get; set; } = false;
+    public bool EnableImmediateIndexing { get; set; }
 
     /// <summary>
     /// Batch size for immediate indexing (default: 100 chunks)
@@ -118,7 +118,7 @@ public class FileFluxOptions
     /// When enabled, content is refined using ITextCompletionService before chunking.
     /// Requires ITextCompletionService to be registered in DI.
     /// </summary>
-    public bool EnableLlmRefine { get; set; } = false;
+    public bool EnableLlmRefine { get; set; }
 
     /// <summary>
     /// LLM refinement options when EnableLlmRefine is true.
@@ -172,7 +172,7 @@ public class LlmRefineOptionsConfig
     /// Maximum tokens to use for LLM (0 = no limit).
     /// Default: 0
     /// </summary>
-    public int MaxTokens { get; set; } = 0;
+    public int MaxTokens { get; set; }
 
     /// <summary>
     /// LLM temperature (0.0 - 1.0). Lower = more deterministic.
