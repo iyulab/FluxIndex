@@ -123,14 +123,22 @@ public sealed partial class VaultBackgroundService : BackgroundService
             using var scope = _scopeFactory.CreateScope();
             var pipeline = scope.ServiceProvider.GetRequiredService<IVaultPipeline>();
 
+            var memorizeOptions = new MemorizeOptions
+            {
+                MaxChunkSize = _options.Chunking.MaxChunkSize,
+                OverlapSize = _options.Chunking.OverlapSize,
+                Strategy = _options.Chunking.Strategy,
+                Language = _options.Chunking.Language,
+            };
+
             switch (job.JobType)
             {
                 case VaultJobType.Memorize:
-                    await pipeline.MemorizeAsync(entry, null, ct);
+                    await pipeline.MemorizeAsync(entry, memorizeOptions, ct);
                     break;
 
                 case VaultJobType.Refresh:
-                    await pipeline.RefreshAsync(entry, null, ct);
+                    await pipeline.RefreshAsync(entry, memorizeOptions, ct);
                     break;
 
                 case VaultJobType.Remove:
