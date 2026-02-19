@@ -4,17 +4,17 @@ using FileFlux.Domain;
 using FluxIndex.Core.Application.Interfaces;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
-using IFileFluxTextCompletionService = FileFlux.ITextCompletionService;
+using IFileFluxDocumentAnalysisService = FileFlux.IDocumentAnalysisService;
 using IFluxIndexTextCompletionService = FluxIndex.Core.Application.Interfaces.ITextCompletionService;
 using FileFluxQualityAssessment = FileFlux.QualityAssessment;
 
 namespace FluxIndex.SDK.Extensions.FileFlux;
 
 /// <summary>
-/// Adapter that bridges FluxIndex's ITextCompletionService to FileFlux's ITextCompletionService interface
+/// Adapter that bridges FluxIndex's ITextCompletionService to FileFlux's IDocumentAnalysisService interface
 /// Enables FileFlux to use FluxIndex's OpenAI text completion implementation
 /// </summary>
-public partial class FluxIndexTextCompletionAdapter : IFileFluxTextCompletionService
+public partial class FluxIndexTextCompletionAdapter : IFileFluxDocumentAnalysisService
 {
     private readonly IFluxIndexTextCompletionService _fluxIndexService;
     private readonly ILogger<FluxIndexTextCompletionAdapter> _logger;
@@ -31,10 +31,10 @@ public partial class FluxIndexTextCompletionAdapter : IFileFluxTextCompletionSer
     /// Provider information for FileFlux integration
     /// Updated January 2025 with GPT-5 series (released August 2025)
     /// </summary>
-    public TextCompletionServiceInfo ProviderInfo => new()
+    public DocumentAnalysisServiceInfo ProviderInfo => new()
     {
         Name = "FluxIndex OpenAI Adapter",
-        Type = TextCompletionProviderType.OpenAI,
+        Type = DocumentAnalysisProviderType.OpenAI,
         SupportedModels = new[]
         {
             // GPT-5 Series (Released August 2025) - Advanced reasoning capabilities
@@ -542,20 +542,19 @@ Respond with a JSON object in this exact format:
     {
         return typeString?.ToUpperInvariant() switch
         {
-            "CHUNK_SIZE_OPTIMIZATION" => RecommendationType.CHUNK_SIZE_OPTIMIZATION,
-            "METADATA_ENHANCEMENT" => RecommendationType.METADATA_ENHANCEMENT,
-            "TITLE_IMPROVEMENT" => RecommendationType.TITLE_IMPROVEMENT,
-            "DESCRIPTION_ENHANCEMENT" => RecommendationType.DESCRIPTION_ENHANCEMENT,
-            "CONTEXT_ADDITION" => RecommendationType.CONTEXT_ADDITION,
-            "STRUCTURE_IMPROVEMENT" => RecommendationType.STRUCTURE_IMPROVEMENT,
+            "CHUNK_SIZE_OPTIMIZATION" or "CHUNKSIZEOPTIMIZATION" => RecommendationType.ChunkSizeOptimization,
+            "METADATA_ENHANCEMENT" or "METADATAENHANCEMENT" => RecommendationType.MetadataEnhancement,
+            "TITLE_IMPROVEMENT" or "TITLEIMPROVEMENT" => RecommendationType.TitleImprovement,
+            "DESCRIPTION_ENHANCEMENT" or "DESCRIPTIONENHANCEMENT" => RecommendationType.DescriptionEnhancement,
+            "CONTEXT_ADDITION" or "CONTEXTADDITION" => RecommendationType.ContextAddition,
+            "STRUCTURE_IMPROVEMENT" or "STRUCTUREIMPROVEMENT" => RecommendationType.StructureImprovement,
             "CHUNKINGSTRATEGY" => RecommendationType.ChunkingStrategy,
             "CHUNKSIZE" => RecommendationType.ChunkSize,
             "OVERLAPCONFIGURATION" => RecommendationType.OverlapConfiguration,
             "STRUCTUREPRESERVATION" => RecommendationType.StructurePreservation,
             "CONTENTFILTERING" => RecommendationType.ContentFiltering,
             "BOUNDARYDETECTION" => RecommendationType.BoundaryDetection,
-            "METADATAENHANCEMENT" => RecommendationType.MetadataEnhancement,
-            _ => RecommendationType.CHUNK_SIZE_OPTIMIZATION
+            _ => RecommendationType.ChunkSizeOptimization
         };
     }
 

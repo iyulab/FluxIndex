@@ -3,7 +3,7 @@ using FileFlux.Core;
 using FileFlux.Domain;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using IFileFluxTextCompletionService = FileFlux.ITextCompletionService;
+using IFileFluxDocumentAnalysisService = FileFlux.IDocumentAnalysisService;
 
 namespace FluxIndex.SDK.Extensions.FileFlux;
 
@@ -24,9 +24,9 @@ public static class FileFluxServiceCollectionExtensions
         services.AddFileFlux();
 
         // Register FluxIndex's text completion adapter for FileFlux
-        // This adapter bridges FluxIndex's ITextCompletionService to FileFlux's ITextCompletionService interface
+        // This adapter bridges FluxIndex's ITextCompletionService to FileFlux's IDocumentAnalysisService interface
         // FileFlux will use FluxIndex's OpenAI implementation for all LLM-based operations
-        services.AddScoped<IFileFluxTextCompletionService, FluxIndexTextCompletionAdapter>();
+        services.AddScoped<IFileFluxDocumentAnalysisService, FluxIndexTextCompletionAdapter>();
 
         // Register FluxIndex's LLM refiner adapter for FileFlux
         // This adapter bridges FluxIndex's ITextCompletionService to FileFlux's ILlmRefiner interface
