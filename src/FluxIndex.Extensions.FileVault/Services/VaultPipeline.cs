@@ -392,11 +392,23 @@ public sealed partial class VaultPipeline : IVaultPipeline
 
         if (_chunker != null)
         {
+            // Resolve per-format strategy override from FormatStrategies
+            var effectiveStrategy = options.Strategy;
+            if (_options.Chunking.FormatStrategies.Count > 0)
+            {
+                var ext = Path.GetExtension(entry.SourcePath)?.ToLowerInvariant();
+                if (!string.IsNullOrEmpty(ext) &&
+                    _options.Chunking.FormatStrategies.TryGetValue(ext, out var formatStrategy))
+                {
+                    effectiveStrategy = formatStrategy;
+                }
+            }
+
             var chunkingOptions = new ChunkingOptions
             {
                 MaxChunkSize = options.MaxChunkSize,
                 OverlapSize = options.OverlapSize,
-                Strategy = options.Strategy,
+                Strategy = effectiveStrategy,
                 Language = options.Language
             };
             chunks = await _chunker.ChunkAsync(combinedContent, chunkingOptions, ct);

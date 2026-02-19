@@ -157,4 +157,11 @@ public sealed class ChunkingDefaults
     /// Default language for chunking (null = auto-detect).
     /// </summary>
     public string? Language { get; set; }
+
+    /// <summary>
+    /// Per-format strategy overrides keyed by file extension (e.g., ".pdf", ".md").
+    /// When set, the specified strategy is used for files matching the extension,
+    /// overriding the global Strategy setting.
+    /// </summary>
+    public Dictionary<string, string> FormatStrategies { get; set; } = [];
 }
