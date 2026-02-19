@@ -347,6 +347,7 @@ public class TokenAwareSearchServiceTests
                 Arg.Any<float[]>(),
                 Arg.Any<int>(),
                 Arg.Any<float>(),
+                Arg.Any<Dictionary<string, object>?>(),
                 Arg.Any<CancellationToken>()).Returns(results.Select(r => new DocumentChunk
             {
                 Id = r.ChunkId,

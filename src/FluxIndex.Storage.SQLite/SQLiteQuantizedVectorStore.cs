@@ -176,6 +176,7 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
         float[] queryEmbedding,
         int topK = 10,
         float minScore = 0.0f,
+        Dictionary<string, object>? filters = null,
         CancellationToken cancellationToken = default)
     {
         await EnsureInitializedAsync(cancellationToken);
@@ -388,7 +389,7 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
         if (candidateList.Count == 0)
         {
             // Fallback to original search
-            var fallbackResults = await SearchAsync(queryEmbedding, topK, minScore, cancellationToken);
+            var fallbackResults = await SearchAsync(queryEmbedding, topK, minScore, null, cancellationToken);
             return fallbackResults.Select(c => (c, ComputeCosineSimilarity(queryEmbedding, c.Embedding ?? Array.Empty<float>())));
         }
 

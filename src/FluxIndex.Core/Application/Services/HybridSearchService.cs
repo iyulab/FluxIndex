@@ -297,10 +297,14 @@ public partial class HybridSearchService : IHybridSearchService
             // 양자화 검색 미사용 또는 지원하지 않는 경우 일반 검색
             if (searchResults == null)
             {
+                var filters = options.VectorOptions.Filters?.Count > 0
+                    ? options.VectorOptions.Filters
+                    : null;
                 var vectorResults = await _vectorStore.SearchAsync(
                     embedding,
                     options.VectorOptions.MaxResults,
                     (float)options.VectorOptions.MinScore,
+                    filters,
                     cancellationToken);
 
                 searchResults = vectorResults.Select(chunk => (chunk, chunk.Score ?? 0f));

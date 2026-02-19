@@ -255,11 +255,12 @@ public partial class Retriever
                 Message = "Searching vector store"
             });
 
-            // Search in vector store
+            // Search in vector store (pass filter for database-level filtering)
             var searchResults = await _vectorStore.SearchAsync(
                 queryEmbedding,
                 maxResults,
                 minScore,
+                filter,
                 cancellationToken);
 
             // Convert DocumentChunks to VectorSearchResults
@@ -858,6 +859,7 @@ public partial class Retriever
             firstChunk.Embedding,
             maxResults + chunks.Count(), // Get extra to filter out same document
             minScore,
+            filters: null,
             cancellationToken);
 
         // Convert to VectorSearchResult and filter out chunks from the same document

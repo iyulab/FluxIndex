@@ -44,7 +44,7 @@ public partial class QdrantHybridSearchService : IHybridSearchService
         // Execute vector and BM25 searches in parallel
         var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
 
-        var vectorTask = _vectorStore.SearchAsync(queryEmbedding, candidateCount, 0.0f, cancellationToken);
+        var vectorTask = _vectorStore.SearchAsync(queryEmbedding, candidateCount, 0.0f, filters: null, cancellationToken);
         var bm25Task = _bm25Retriever.SearchAsync(query, new SparseSearchOptions
         {
             MaxResults = candidateCount,

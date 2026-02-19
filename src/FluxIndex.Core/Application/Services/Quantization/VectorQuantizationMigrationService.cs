@@ -274,6 +274,7 @@ public partial class VectorQuantizationMigrationService
                 dummyVector,
                 limit,
                 minScore: 0.0f,
+                filters: null,
                 cancellationToken);
         }
         catch
@@ -294,6 +295,7 @@ public partial class VectorQuantizationMigrationService
             dummyVector,
             1000,
             minScore: 0.0f,
+            filters: null,
             cancellationToken);
 
         return allChunks.Where(c => c.DocumentId == documentId);

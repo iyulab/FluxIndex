@@ -217,7 +217,7 @@ public class HybridSearchQuantizationTests
 
         _mockEmbeddingService.GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
 
-        ((IVectorStore)mockQuantizedStore).SearchAsync(embedding, Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>())
+        ((IVectorStore)mockQuantizedStore).SearchAsync(embedding, Arg.Any<int>(), Arg.Any<float>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
             .Returns(vectorResults);
 
         _mockSparseRetriever.SearchAsync(query, Arg.Any<SparseSearchOptions>(), Arg.Any<CancellationToken>()).Returns(new List<SparseSearchResult>());
@@ -251,6 +251,7 @@ public class HybridSearchQuantizationTests
             embedding,
             Arg.Any<int>(),
             Arg.Any<float>(),
+            Arg.Any<Dictionary<string, object>?>(),
             Arg.Any<CancellationToken>());
     }
 
@@ -278,7 +279,7 @@ public class HybridSearchQuantizationTests
 
         _mockQuantizer.QuantizeAsync(embedding, Arg.Any<CancellationToken>()).Throws(new InvalidOperationException("Quantization failed"));
 
-        ((IVectorStore)mockQuantizedStore).SearchAsync(embedding, Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>())
+        ((IVectorStore)mockQuantizedStore).SearchAsync(embedding, Arg.Any<int>(), Arg.Any<float>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
             .Returns(regularResults);
 
         _mockSparseRetriever.SearchAsync(query, Arg.Any<SparseSearchOptions>(), Arg.Any<CancellationToken>()).Returns(new List<SparseSearchResult>());
@@ -307,6 +308,7 @@ public class HybridSearchQuantizationTests
             embedding,
             Arg.Any<int>(),
             Arg.Any<float>(),
+            Arg.Any<Dictionary<string, object>?>(),
             Arg.Any<CancellationToken>());
     }
 

@@ -188,6 +188,7 @@ public class VectorQuantizationMigrationServiceTests
                 Arg.Any<float[]>(),
                 Arg.Any<int>(),
                 Arg.Any<float>(),
+                Arg.Any<Dictionary<string, object>?>(),
                 Arg.Any<CancellationToken>()).Returns(Enumerable.Empty<DocumentChunk>());
 
         // Act
@@ -212,6 +213,7 @@ public class VectorQuantizationMigrationServiceTests
                 Arg.Any<float[]>(),
                 Arg.Any<int>(),
                 Arg.Any<float>(),
+                Arg.Any<Dictionary<string, object>?>(),
                 Arg.Any<CancellationToken>()).Returns(callInfo => {
                 callCount++;
                 // 첫 번째 호출에만 청크 반환
@@ -246,6 +248,7 @@ public class VectorQuantizationMigrationServiceTests
                 Arg.Any<float[]>(),
                 Arg.Any<int>(),
                 Arg.Any<float>(),
+                Arg.Any<Dictionary<string, object>?>(),
                 Arg.Any<CancellationToken>()).Returns(callInfo => {
                 callCount++;
                 return callCount == 1 ? chunks : Enumerable.Empty<DocumentChunk>();
@@ -276,6 +279,7 @@ public class VectorQuantizationMigrationServiceTests
                 Arg.Any<float[]>(),
                 Arg.Any<int>(),
                 Arg.Any<float>(),
+                Arg.Any<Dictionary<string, object>?>(),
                 Arg.Any<CancellationToken>()).Returns(callInfo => {
                 callCount++;
                 return callCount == 1 ? chunks : Enumerable.Empty<DocumentChunk>();
@@ -307,6 +311,7 @@ public class VectorQuantizationMigrationServiceTests
                 Arg.Any<float[]>(),
                 Arg.Any<int>(),
                 Arg.Any<float>(),
+                Arg.Any<Dictionary<string, object>?>(),
                 Arg.Any<CancellationToken>()).Returns(callInfo => {
                 callCount++;
                 return callCount == 1 ? chunks : Enumerable.Empty<DocumentChunk>();
@@ -352,6 +357,7 @@ public class VectorQuantizationMigrationServiceTests
                 Arg.Any<float[]>(),
                 Arg.Any<int>(),
                 Arg.Any<float>(),
+                Arg.Any<Dictionary<string, object>?>(),
                 Arg.Any<CancellationToken>()).Returns(callInfo => {
                 callCount++;
                 return callCount == 1 ? chunks : Enumerable.Empty<DocumentChunk>();
@@ -410,6 +416,7 @@ public class VectorQuantizationMigrationServiceTests
                 Arg.Any<float[]>(),
                 Arg.Any<int>(),
                 Arg.Any<float>(),
+                Arg.Any<Dictionary<string, object>?>(),
                 Arg.Any<CancellationToken>()).Returns(allChunks);
 
         _quantizerMock.QuantizeAsync(Arg.Any<float[]>(), Arg.Any<CancellationToken>()).Returns(quantizedVector);
@@ -441,6 +448,7 @@ public class VectorQuantizationMigrationServiceTests
                 Arg.Any<float[]>(),
                 Arg.Any<int>(),
                 Arg.Any<float>(),
+                Arg.Any<Dictionary<string, object>?>(),
                 Arg.Any<CancellationToken>()).Returns(callInfo => {
                 callCount++;
                 return callCount == 1 ? chunks : Enumerable.Empty<DocumentChunk>();

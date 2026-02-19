@@ -342,6 +342,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IDisposable
         float[] queryEmbedding,
         int topK = 10,
         float minScore = 0.0f,
+        Dictionary<string, object>? filters = null,
         CancellationToken cancellationToken = default)
     {
         try
@@ -352,7 +353,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IDisposable
             {
                 if (_options.FallbackToInMemoryOnError)
                 {
-                    return await _fallbackStore.Value.SearchAsync(queryEmbedding, topK, minScore, cancellationToken);
+                    return await _fallbackStore.Value.SearchAsync(queryEmbedding, topK, minScore, filters, cancellationToken);
                 }
                 else
                 {
@@ -373,7 +374,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IDisposable
             {
                 LogFallbackRetry(_logger);
                 _sqliteVecAvailable = false;
-                return await _fallbackStore.Value.SearchAsync(queryEmbedding, topK, minScore, cancellationToken);
+                return await _fallbackStore.Value.SearchAsync(queryEmbedding, topK, minScore, filters, cancellationToken);
             }
 
             throw;

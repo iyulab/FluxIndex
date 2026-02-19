@@ -16,9 +16,10 @@ public interface IVectorStore
     Task<IEnumerable<DocumentChunk>> GetByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default);
     Task<IEnumerable<DocumentChunk>> GetChunksByIdsAsync(IEnumerable<string> ids, CancellationToken cancellationToken = default);
     Task<IEnumerable<DocumentChunk>> SearchAsync(
-        float[] queryEmbedding, 
-        int topK = 10, 
+        float[] queryEmbedding,
+        int topK = 10,
         float minScore = 0.0f,
+        Dictionary<string, object>? filters = null,
         CancellationToken cancellationToken = default);
     Task<bool> DeleteAsync(string id, CancellationToken cancellationToken = default);
     Task<bool> DeleteByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default);

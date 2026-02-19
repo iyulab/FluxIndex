@@ -180,6 +180,7 @@ public abstract partial class VectorStoreBase : IVectorStore
         float[] queryEmbedding,
         int topK = 10,
         float minScore = 0.0f,
+        Dictionary<string, object>? filters = null,
         CancellationToken cancellationToken = default)
     {
         if (queryEmbedding == null || queryEmbedding.Length == 0)
@@ -189,7 +190,26 @@ public abstract partial class VectorStoreBase : IVectorStore
             return [];
 
         var results = await SearchCoreAsync(queryEmbedding, topK, cancellationToken);
-        return SearchResultProcessor.FilterAndSort(results, minScore, topK);
+        var chunks = SearchResultProcessor.FilterAndSort(results, minScore, topK);
+
+        // Post-filter by metadata for implementations without native filtering
+        if (filters != null && filters.Count > 0)
+        {
+            chunks = chunks.Where(chunk =>
+            {
+                if (chunk.Metadata == null) return false;
+                foreach (var (key, value) in filters)
+                {
+                    if (!chunk.Metadata.TryGetValue(key, out var metaValue))
+                        return false;
+                    if (!string.Equals(metaValue?.ToString(), value?.ToString(), StringComparison.Ordinal))
+                        return false;
+                }
+                return true;
+            }).ToList();
+        }
+
+        return chunks;
     }
 
     /// <inheritdoc />

@@ -620,7 +620,7 @@ public class FileVaultPipelineSimulationTests : IDisposable
             }
         }
 
-        public Task<IEnumerable<DocumentChunk>> SearchAsync(float[] queryVector, int topK = 10, float minScore = 0, CancellationToken ct = default)
+        public Task<IEnumerable<DocumentChunk>> SearchAsync(float[] queryVector, int topK = 10, float minScore = 0, Dictionary<string, object>? filters = null, CancellationToken ct = default)
         {
             lock (_lock)
             {

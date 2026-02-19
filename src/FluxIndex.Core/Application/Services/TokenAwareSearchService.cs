@@ -105,7 +105,7 @@ public partial class TokenAwareSearchService : ITokenAwareSearchService
 
         // 벡터 검색 수행
         var results = await _vectorStore.SearchAsync(
-            embedding, topK, 0.0f, cancellationToken);
+            embedding, topK, 0.0f, filters: null, cancellationToken);
 
         return results.Select(r => new SearchResultItem
         {

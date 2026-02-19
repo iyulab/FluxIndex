@@ -89,7 +89,7 @@ public class HybridSearchServiceTests
 
         _mockEmbeddingService.GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
 
-        _mockVectorStore.SearchAsync(embedding, 10, 0.0f, Arg.Any<CancellationToken>()).Returns(vectorChunks.AsEnumerable());
+        _mockVectorStore.SearchAsync(embedding, 10, 0.0f, Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>()).Returns(vectorChunks.AsEnumerable());
 
         _mockSparseRetriever.SearchAsync(query, Arg.Any<SparseSearchOptions>(), Arg.Any<CancellationToken>()).Returns(sparseResults);
 
@@ -104,7 +104,7 @@ public class HybridSearchServiceTests
         await _mockEmbeddingService.Received(1).GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>());
 
         // Verify that both vector and sparse searches were called
-        await _mockVectorStore.Received(1).SearchAsync(embedding, 10, 0.0f, Arg.Any<CancellationToken>());
+        await _mockVectorStore.Received(1).SearchAsync(embedding, 10, 0.0f, Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>());
         await _mockSparseRetriever.Received(1).SearchAsync(query, Arg.Any<SparseSearchOptions>(), Arg.Any<CancellationToken>());
     }
 
@@ -132,7 +132,7 @@ public class HybridSearchServiceTests
 
         _mockEmbeddingService.GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
 
-        _mockVectorStore.SearchAsync(embedding, Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns(Enumerable.Empty<DocumentChunk>());
+        _mockVectorStore.SearchAsync(embedding, Arg.Any<int>(), Arg.Any<float>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>()).Returns(Enumerable.Empty<DocumentChunk>());
 
         _mockSparseRetriever.SearchAsync(query, Arg.Any<SparseSearchOptions>(), Arg.Any<CancellationToken>()).Returns(new List<SparseSearchResult>());
 
@@ -141,7 +141,7 @@ public class HybridSearchServiceTests
 
         // Assert
         Assert.NotNull(results);
-        await _mockVectorStore.Received(1).SearchAsync(embedding, 10, 0.0f, Arg.Any<CancellationToken>());
+        await _mockVectorStore.Received(1).SearchAsync(embedding, 10, 0.0f, Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>());
     }
 
     [Theory]
@@ -161,7 +161,7 @@ public class HybridSearchServiceTests
 
         _mockEmbeddingService.GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
 
-        _mockVectorStore.SearchAsync(embedding, Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns(Enumerable.Empty<DocumentChunk>());
+        _mockVectorStore.SearchAsync(embedding, Arg.Any<int>(), Arg.Any<float>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>()).Returns(Enumerable.Empty<DocumentChunk>());
 
         _mockSparseRetriever.SearchAsync(query, Arg.Any<SparseSearchOptions>(), Arg.Any<CancellationToken>()).Returns(new List<SparseSearchResult>());
 
@@ -170,7 +170,7 @@ public class HybridSearchServiceTests
 
         // Assert
         await _mockEmbeddingService.Received(1).GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>());
-        await _mockVectorStore.Received(1).SearchAsync(embedding, Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>());
+        await _mockVectorStore.Received(1).SearchAsync(embedding, Arg.Any<int>(), Arg.Any<float>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>());
         await _mockSparseRetriever.Received(1).SearchAsync(query, Arg.Any<SparseSearchOptions>(), Arg.Any<CancellationToken>());
     }
 }

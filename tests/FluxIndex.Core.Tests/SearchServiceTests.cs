@@ -62,7 +62,7 @@ public class SearchServiceTests
 
         _mockEmbeddingService.GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
 
-        _mockVectorStore.SearchAsync(embedding, topK, 0.0f, Arg.Any<CancellationToken>()).Returns(chunks);
+        _mockVectorStore.SearchAsync(embedding, topK, 0.0f, Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>()).Returns(chunks);
 
         _mockDocumentRepository.GetByIdAsync("doc1", Arg.Any<CancellationToken>()).Returns(document);
 
@@ -79,7 +79,7 @@ public class SearchServiceTests
         Assert.Equal("test.txt", result.FileName);
 
         await _mockEmbeddingService.Received(1).GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>());
-        await _mockVectorStore.Received(1).SearchAsync(embedding, topK, 0.0f, Arg.Any<CancellationToken>());
+        await _mockVectorStore.Received(1).SearchAsync(embedding, topK, 0.0f, Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -91,7 +91,7 @@ public class SearchServiceTests
 
         _mockEmbeddingService.GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
 
-        _mockVectorStore.SearchAsync(embedding, Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns(Enumerable.Empty<DocumentChunk>());
+        _mockVectorStore.SearchAsync(embedding, Arg.Any<int>(), Arg.Any<float>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>()).Returns(Enumerable.Empty<DocumentChunk>());
 
         // Act
         var results = await _service.SearchAsync(query);
@@ -113,13 +113,13 @@ public class SearchServiceTests
 
         _mockEmbeddingService.GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
 
-        _mockVectorStore.SearchAsync(embedding, topK, minScore, Arg.Any<CancellationToken>()).Returns(Enumerable.Empty<DocumentChunk>());
+        _mockVectorStore.SearchAsync(embedding, topK, minScore, Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>()).Returns(Enumerable.Empty<DocumentChunk>());
 
         // Act
         await _service.SearchAsync(query, topK, minScore);
 
         // Assert
-        await _mockVectorStore.Received(1).SearchAsync(embedding, topK, minScore, Arg.Any<CancellationToken>());
+        await _mockVectorStore.Received(1).SearchAsync(embedding, topK, minScore, Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -155,7 +155,7 @@ public class SearchServiceTests
 
         _mockVectorStore.GetByDocumentIdAsync(documentId, Arg.Any<CancellationToken>()).Returns(new[] { sourceChunk });
 
-        _mockVectorStore.SearchAsync(embedding, topK + 1, Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns(similarChunks);
+        _mockVectorStore.SearchAsync(embedding, topK + 1, Arg.Any<float>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>()).Returns(similarChunks);
 
         _mockDocumentRepository.GetByIdAsync("doc2", Arg.Any<CancellationToken>()).Returns(document2);
 
@@ -224,7 +224,7 @@ public class SearchServiceTests
 
         _mockEmbeddingService.GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
 
-        _mockVectorStore.SearchAsync(embedding, Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns(chunks);
+        _mockVectorStore.SearchAsync(embedding, Arg.Any<int>(), Arg.Any<float>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>()).Returns(chunks);
 
         _mockDocumentRepository.GetByIdAsync("doc1", Arg.Any<CancellationToken>()).Returns(document);
 
@@ -278,7 +278,7 @@ public class SearchServiceTests
 
         _mockEmbeddingService.GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
 
-        _mockVectorStore.SearchAsync(embedding, Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns(chunks);
+        _mockVectorStore.SearchAsync(embedding, Arg.Any<int>(), Arg.Any<float>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>()).Returns(chunks);
 
         _mockDocumentRepository.GetByIdAsync("doc1", Arg.Any<CancellationToken>()).Returns(document);
 

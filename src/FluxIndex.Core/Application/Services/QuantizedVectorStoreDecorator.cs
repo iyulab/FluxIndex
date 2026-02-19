@@ -113,8 +113,9 @@ public partial class QuantizedVectorStoreDecorator : IQuantizedVectorStore
         float[] queryEmbedding,
         int topK = 10,
         float minScore = 0.0f,
+        Dictionary<string, object>? filters = null,
         CancellationToken cancellationToken = default)
-        => _innerStore.SearchAsync(queryEmbedding, topK, minScore, cancellationToken);
+        => _innerStore.SearchAsync(queryEmbedding, topK, minScore, filters, cancellationToken);
 
     public async Task<bool> DeleteAsync(string id, CancellationToken cancellationToken = default)
     {
@@ -257,7 +258,7 @@ public partial class QuantizedVectorStoreDecorator : IQuantizedVectorStore
         if (candidateList.Count == 0)
         {
             // Fallback to original search
-            var fallbackResults = await _innerStore.SearchAsync(queryEmbedding, topK, minScore, cancellationToken);
+            var fallbackResults = await _innerStore.SearchAsync(queryEmbedding, topK, minScore, filters: null, cancellationToken);
             return fallbackResults.Select(c => (c, ComputeCosineSimilarity(queryEmbedding, c.Embedding ?? Array.Empty<float>())));
         }
 

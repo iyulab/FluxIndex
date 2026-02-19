@@ -168,6 +168,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
         float[] queryEmbedding,
         int topK = 10,
         float minScore = 0.0f,
+        Dictionary<string, object>? filters = null,
         CancellationToken cancellationToken = default)
     {
         var queryVector = new Vector(queryEmbedding);
@@ -384,7 +385,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
         if (candidateList.Count == 0)
         {
             // Fallback to pgvector search
-            var fallbackResults = await SearchAsync(queryEmbedding, topK, minScore, cancellationToken);
+            var fallbackResults = await SearchAsync(queryEmbedding, topK, minScore, null, cancellationToken);
             return fallbackResults.Select(c => (c, ComputeCosineSimilarity(queryEmbedding, c.Embedding ?? Array.Empty<float>())));
         }
 

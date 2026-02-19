@@ -51,7 +51,7 @@ public partial class SearchService
         var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
 
         // Search in vector store
-        var searchResults = await _vectorStore.SearchAsync(queryEmbedding, topK, minScore, cancellationToken);
+        var searchResults = await _vectorStore.SearchAsync(queryEmbedding, topK, minScore, filters: null, cancellationToken);
 
         // Convert to search results
         var results = new List<FluxIndex.Core.Application.Interfaces.SearchResult>();
@@ -96,9 +96,10 @@ public partial class SearchService
 
         // Search for similar documents
         var searchResults = await _vectorStore.SearchAsync(
-            firstChunk.Embedding, 
+            firstChunk.Embedding,
             topK + 1, // +1 to exclude self
-            minScore, 
+            minScore,
+            filters: null,
             cancellationToken
         );
 

@@ -282,7 +282,7 @@ public class ProgressAndEventsTests
 
         // Mock successful search
         mocks.EmbeddingService.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new float[] { 0.1f, 0.2f, 0.3f });
-        mocks.VectorStore.SearchAsync(Arg.Any<float[]>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns(new List<DocumentChunkEntity>());
+        mocks.VectorStore.SearchAsync(Arg.Any<float[]>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>()).Returns(new List<DocumentChunkEntity>());
 
         // Act
         await retriever.SearchAsync(query, progress);
@@ -305,7 +305,7 @@ public class ProgressAndEventsTests
 
         // Mock successful search
         mocks.EmbeddingService.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new float[] { 0.1f, 0.2f, 0.3f });
-        mocks.VectorStore.SearchAsync(Arg.Any<float[]>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns(new List<DocumentChunkEntity>());
+        mocks.VectorStore.SearchAsync(Arg.Any<float[]>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>()).Returns(new List<DocumentChunkEntity>());
 
         // Act
         await retriever.SearchAsync(query);
@@ -327,7 +327,7 @@ public class ProgressAndEventsTests
 
         // Mock successful search
         mocks.EmbeddingService.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new float[] { 0.1f, 0.2f, 0.3f });
-        mocks.VectorStore.SearchAsync(Arg.Any<float[]>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns(new List<DocumentChunkEntity>());
+        mocks.VectorStore.SearchAsync(Arg.Any<float[]>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>()).Returns(new List<DocumentChunkEntity>());
 
         // Act
         await retriever.SearchAsync(query);

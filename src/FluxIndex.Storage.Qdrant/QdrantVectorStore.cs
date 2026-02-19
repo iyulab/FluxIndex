@@ -449,6 +449,7 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
         float[] queryEmbedding,
         int topK = 10,
         float minScore = 0.0f,
+        Dictionary<string, object>? filters = null,
         CancellationToken cancellationToken = default)
     {
         // Validate dimension consistency if collection is already initialized
@@ -463,9 +464,12 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
         // Ensure collection exists for this dimension
         await EnsureCollectionForDimensionAsync(queryEmbedding.Length, cancellationToken);
 
+        var qdrantFilter = BuildQdrantFilter(filters);
+
         var results = await _client.SearchAsync(
             collectionName: _resolvedCollectionName!,
             vector: queryEmbedding,
+            filter: qdrantFilter,
             limit: (ulong)topK,
             scoreThreshold: minScore,
             cancellationToken: cancellationToken);
@@ -476,6 +480,43 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
             chunk.Score = r.Score;
             return chunk;
         });
+    }
+
+    /// <summary>
+    /// Converts a filter dictionary to a Qdrant Filter with Must conditions.
+    /// Keys are mapped to Qdrant payload field names:
+    /// - Standard fields (document_id, chunk_index, etc.) → used directly
+    /// - Keys with prop_/meta_ prefix → used as-is
+    /// - Other keys → prefixed with meta_ (consistent with metadata storage convention)
+    /// </summary>
+    private static Filter? BuildQdrantFilter(Dictionary<string, object>? filters)
+    {
+        if (filters == null || filters.Count == 0)
+            return null;
+
+        var filter = new Filter();
+        foreach (var (key, value) in filters)
+        {
+            var payloadKey = key switch
+            {
+                "document_id" or "content" or "chunk_index" or "total_chunks"
+                    or "token_count" or "created_at" => key,
+                _ when key.StartsWith("prop_", StringComparison.Ordinal) => key,
+                _ when key.StartsWith("meta_", StringComparison.Ordinal) => key,
+                _ => $"meta_{key}"
+            };
+
+            filter.Must.Add(new Condition
+            {
+                Field = new FieldCondition
+                {
+                    Key = payloadKey,
+                    Match = new Match { Keyword = value?.ToString() ?? string.Empty }
+                }
+            });
+        }
+
+        return filter;
     }
 
     private static DocumentChunk MapScoredPointToChunk(ScoredPoint point)

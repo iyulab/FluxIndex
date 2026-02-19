@@ -344,7 +344,7 @@ public sealed partial class VaultPipeline : IVaultPipeline
         var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, ct);
 
         // Search vector store
-        var searchResults = await _vectorStore.SearchAsync(queryEmbedding, topK * 2, minScore, ct);
+        var searchResults = await _vectorStore.SearchAsync(queryEmbedding, topK * 2, minScore, filters: null, ct);
 
         // Filter by document IDs if specified
         var filteredResults = searchResults;
