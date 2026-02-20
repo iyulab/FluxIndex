@@ -3,6 +3,8 @@
   <PropertyGroup>
     <OutputType>Library</OutputType>
     <Description>MCP (Model Context Protocol) server implementation for FluxIndex RAG services</Description>
+    <!-- ModelContextProtocol is still in preview -->
+    <NoWarn>$(NoWarn);NU5104</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

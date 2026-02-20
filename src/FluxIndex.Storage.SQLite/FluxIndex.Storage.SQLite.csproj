@@ -8,6 +8,8 @@
     <PackageId>FluxIndex.Storage.SQLite</PackageId>
     <IsPackable>true</IsPackable>
     <Description>SQLite storage provider for FluxIndex</Description>
+    <!-- sqlite-vec is still in alpha -->
+    <NoWarn>$(NoWarn);NU5104</NoWarn>
     <PackageTags>FluxIndex;SQLite;Storage;Embedded;Database</PackageTags>
   </PropertyGroup>
 
