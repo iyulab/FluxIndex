@@ -92,8 +92,8 @@
   </ItemGroup>
   <!-- MCP/CLI Packages -->
   <ItemGroup>
-    <PackageVersion Include="ModelContextProtocol" Version="0.9.0-preview.1" />
-    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="0.4.1-preview.1" />
+    <PackageVersion Include="ModelContextProtocol" Version="0.9.0-preview.2" />
+    <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="0.9.0-preview.2" />
     <PackageVersion Include="System.CommandLine" Version="2.0.3" />
   </ItemGroup>
   <!-- OpenTelemetry Observability Packages -->
