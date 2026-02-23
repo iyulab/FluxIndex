@@ -299,7 +299,6 @@ public partial class Indexer
             });
 
             // Convert to Entity chunks first with automatic oversized chunk splitting
-            Console.WriteLine($"=== INDEXER: Converting {chunks.Count} DocumentChunks to entities ===");
             LogConvertingChunksToEntities(_logger, chunks.Count);
 
             var entityChunks = new List<DocumentChunkEntity>();
@@ -308,13 +307,11 @@ public partial class Indexer
             foreach (var chunk in chunks)
             {
                 var estimatedTokens = chunk.Content.Length / 4;
-                Console.WriteLine($"=== INDEXER CHUNK {chunk.ChunkIndex}/{chunks.Count}: {chunk.Content.Length} chars (~{estimatedTokens} tokens) ===");
                 LogChunkDetails(_logger, chunk.ChunkIndex, chunks.Count, chunk.Content.Length, estimatedTokens);
 
                 // SAFETY: Split oversized chunks automatically (WebFlux chunking bug workaround)
                 if (estimatedTokens > 8000)
                 {
-                    Console.WriteLine($"=== INDEXER: Chunk {chunk.ChunkIndex} EXCEEDS TOKEN LIMIT (~{estimatedTokens} tokens) - Auto-splitting ===");
                     LogChunkExceedsTokenLimit(_logger, chunk.ChunkIndex, estimatedTokens);
 
                     // Split into chunks of ~2000 tokens (8000 chars) to be safe
@@ -341,7 +338,7 @@ public partial class Indexer
                         }
 
                         entityChunks.Add(subChunk);
-                        Console.WriteLine($"=== INDEXER: Created sub-chunk {i + 1}/{subChunkCount}: {subContent.Length} chars (~{subContent.Length / 4} tokens) ===");
+                        LogSubChunkCreated(_logger, i + 1, subChunkCount, subContent.Length, subContent.Length / 4);
                     }
 
                     LogSplitOversizedChunk(_logger, chunk.ChunkIndex, subChunkCount);
@@ -354,7 +351,7 @@ public partial class Indexer
                 }
             }
 
-            Console.WriteLine($"=== INDEXER: Total entity chunks after splitting: {entityChunks.Count} (original: {chunks.Count}) ===");
+            LogTotalEntityChunksAfterSplitting(_logger, entityChunks.Count, chunks.Count);
 
             // Phase 3: 진행률 보고 - 임베딩 생성
             progress?.Report(new IndexingProgress
@@ -1262,8 +1259,14 @@ public partial class Indexer
     [LoggerMessage(Level = LogLevel.Warning, Message = "Chunk {Index} exceeds token limit (~{Tokens} tokens) - splitting into smaller chunks")]
     private static partial void LogChunkExceedsTokenLimit(ILogger logger, int index, int tokens);
 
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Created sub-chunk {SubIndex}/{SubTotal}: {Length} chars (~{Tokens} tokens)")]
+    private static partial void LogSubChunkCreated(ILogger logger, int subIndex, int subTotal, int length, int tokens);
+
     [LoggerMessage(Level = LogLevel.Information, Message = "Split oversized chunk {Index} into {SubChunks} smaller chunks")]
     private static partial void LogSplitOversizedChunk(ILogger logger, int index, int subChunks);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Total entity chunks after splitting: {EntityCount} (original: {OriginalCount})")]
+    private static partial void LogTotalEntityChunksAfterSplitting(ILogger logger, int entityCount, int originalCount);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Converted {Count} entities, calling GenerateEmbeddingsAsync")]
     private static partial void LogCallingGenerateEmbeddings(ILogger logger, int count);
