@@ -75,7 +75,7 @@ public partial class Retriever
         _cacheService = cacheService;
         _rankFusionService = rankFusionService; // ?? new RankFusionService();
         _vectorQuantizer = vectorQuantizer;
-        _logger = logger ?? new NullLogger<Retriever>();
+        _logger = logger ?? NullLogger<Retriever>.Instance;
         _hybridSearchService = hybridSearchService;
         _graphRAGService = graphRAGService;
 

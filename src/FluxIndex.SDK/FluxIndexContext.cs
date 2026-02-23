@@ -54,7 +54,7 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable
         _smallToBigRetriever = smallToBigRetriever;
         _qualityMonitor = qualityMonitor;
         _adaptiveSearchService = adaptiveSearchService;
-        _logger = logger ?? new NullLogger<FluxIndexContext>();
+        _logger = logger ?? NullLogger<FluxIndexContext>.Instance;
 
         if (_cacheService != null)
         {

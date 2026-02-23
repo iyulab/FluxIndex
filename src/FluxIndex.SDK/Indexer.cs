@@ -85,7 +85,7 @@ public partial class Indexer
         _graphRAGService = graphRAGService;
         _hybridSearchService = hybridSearchService;
         _options = options;
-        _logger = logger ?? new NullLogger<Indexer>();
+        _logger = logger ?? NullLogger<Indexer>.Instance;
     }
 
     /// <summary>

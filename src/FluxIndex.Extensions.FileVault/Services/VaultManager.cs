@@ -64,10 +64,22 @@ public sealed partial class VaultManager : IVault
         // Get or create entry
         var entry = await GetOrCreateEntryAsync(fullPath, ct);
 
-        // Queue memorize job (full pipeline: extract → chunk → embed → commit)
-        await _queue.EnqueueMemorizeAsync(entry.FilepathHash, fullPath, ct);
+        if (_options.EnableBackgroundProcessing)
+        {
+            // Queue memorize job (full pipeline: extract → chunk → embed → commit)
+            await _queue.EnqueueMemorizeAsync(entry.FilepathHash, fullPath, ct);
+            LogQueuedMemorize(_logger, fullPath);
+        }
+        else
+        {
+            // Execute pipeline directly (synchronous for tests/CLI)
+            var result = await _pipeline.MemorizeAsync(entry, ct: ct);
+            if (!result.Success)
+            {
+                LogMemorizeFailed(_logger, entry.SourcePath, result.ErrorMessage ?? "Unknown error");
+            }
+        }
 
-        LogQueuedMemorize(_logger, fullPath);
         return entry;
     }
 
@@ -82,10 +94,22 @@ public sealed partial class VaultManager : IVault
         if (entry.Stage < ProcessingStage.Extracted)
             throw new InvalidOperationException($"Entry must be at least Extracted to refresh. Current stage: {entry.Stage}");
 
-        // Queue refresh job (chunk → embed → commit, skip extraction)
-        await _queue.EnqueueRefreshAsync(entry.FilepathHash, fullPath, ct);
+        if (_options.EnableBackgroundProcessing)
+        {
+            // Queue refresh job (chunk → embed → commit, skip extraction)
+            await _queue.EnqueueRefreshAsync(entry.FilepathHash, fullPath, ct);
+            LogQueuedRefresh(_logger, fullPath);
+        }
+        else
+        {
+            // Execute pipeline directly (synchronous for tests/CLI)
+            var result = await _pipeline.RefreshAsync(entry, ct: ct);
+            if (!result.Success)
+            {
+                LogRefreshFailed(_logger, entry.SourcePath, result.ErrorMessage ?? "Unknown error");
+            }
+        }
 
-        LogQueuedRefresh(_logger, fullPath);
         return entry;
     }
 
@@ -403,9 +427,18 @@ public sealed partial class VaultManager : IVault
             return;
         }
 
-        // Queue remove job
-        await _queue.EnqueueRemoveAsync(entry.FilepathHash, fullPath, ct);
-        LogQueuedRemove(_logger, fullPath);
+        if (_options.EnableBackgroundProcessing)
+        {
+            // Queue remove job
+            await _queue.EnqueueRemoveAsync(entry.FilepathHash, fullPath, ct);
+            LogQueuedRemove(_logger, fullPath);
+        }
+        else
+        {
+            // Execute pipeline removal directly (synchronous for tests/CLI)
+            await _pipeline.RemoveAsync(entry, ct);
+            await _storage.DeleteEntryStorageAsync(entry, ct);
+        }
     }
 
     private async Task<VaultEntry> GetOrCreateEntryAsync(string fullPath, CancellationToken ct)
@@ -1018,6 +1051,12 @@ public sealed partial class VaultManager : IVault
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Queued remove job for {FilePath}")]
     private static partial void LogQueuedRemove(ILogger logger, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Memorize failed for {FilePath}: {Error}")]
+    private static partial void LogMemorizeFailed(ILogger logger, string filePath, string error);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Refresh failed for {FilePath}: {Error}")]
+    private static partial void LogRefreshFailed(ILogger logger, string filePath, string error);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Created vault entry for {FilePath} -> {EntryPath}")]
     private static partial void LogCreatedEntry(ILogger logger, string filePath, string entryPath);

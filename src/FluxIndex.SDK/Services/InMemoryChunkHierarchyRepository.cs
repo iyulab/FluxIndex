@@ -1,6 +1,7 @@
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.Models;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -60,7 +61,7 @@ public partial class InMemoryChunkHierarchyRepository : IChunkHierarchyRepositor
     /// </summary>
     public InMemoryChunkHierarchyRepository(ILogger<InMemoryChunkHierarchyRepository>? logger = null)
     {
-        _logger = logger ?? new NullLogger<InMemoryChunkHierarchyRepository>();
+        _logger = logger ?? NullLogger<InMemoryChunkHierarchyRepository>.Instance;
         _persistencePath = null;
         _autoSave = false;
     }
@@ -78,7 +79,7 @@ public partial class InMemoryChunkHierarchyRepository : IChunkHierarchyRepositor
         bool autoSave = false,
         bool loadExisting = true)
     {
-        _logger = logger ?? new NullLogger<InMemoryChunkHierarchyRepository>();
+        _logger = logger ?? NullLogger<InMemoryChunkHierarchyRepository>.Instance;
         _persistencePath = persistencePath;
         _autoSave = autoSave;
 

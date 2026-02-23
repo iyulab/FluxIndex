@@ -147,6 +147,27 @@ public sealed partial class VaultPipeline : IVaultPipeline
             // Step 3: Extract content from source file → extracted.md
             await ExtractAsync(entry, ct);
 
+            // Step 3.5: Check for empty content — skip pipeline for empty/whitespace files
+            var extractedContent = await _storage.GetExtractedContentAsync(entry, ct);
+            if (string.IsNullOrWhiteSpace(extractedContent))
+            {
+                LogNoContentToIndex(_logger, entry.SourcePath);
+
+                string? emptyCommitHash = null;
+                if (!options.SkipCommit)
+                {
+                    emptyCommitHash = await _git.CommitAsync(entry.VaultPath, "memorize: empty content (0 chunks)", ct);
+                }
+
+                entry.MarkMemorized(0);
+                entry.MarkInSync();
+                entry.SaveMetadata();
+
+                sw.Stop();
+                LogMemorizeCompleted(_logger, entry.SourcePath, 0, sw.Elapsed.TotalSeconds);
+                return MemorizeResult.Succeeded(0, 0, sw.Elapsed, emptyCommitHash);
+            }
+
             // Step 4: Refine content → vault/refined.md
             await RefineAsync(entry, ct);
 
