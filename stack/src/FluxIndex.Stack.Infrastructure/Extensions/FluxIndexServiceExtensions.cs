@@ -183,7 +183,7 @@ public static class FluxIndexServiceExtensions
         var provider = options.Embedding.Provider?.ToLowerInvariant();
         if (!string.IsNullOrEmpty(provider) && provider != "inmemory")
         {
-            Console.WriteLine(
+            System.Diagnostics.Trace.TraceInformation(
                 $"[FluxIndex] Provider '{provider}' configured. " +
                 "Embedding is handled by DynamicEmbeddingProvider. " +
                 "Configure AI providers in Settings UI for external API access.");
