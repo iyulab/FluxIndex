@@ -967,7 +967,10 @@ public partial class IterativeRetrievalService : IIterativeRetrievalService
                 {
                     input = JsonSerializer.Deserialize<Dictionary<string, object>>(inputStr) ?? input;
                 }
-                catch { }
+                catch (JsonException ex)
+                {
+                    Trace.TraceInformation($"[IterativeRetrieval] Failed to parse tool input JSON: {ex.Message}");
+                }
             }
         }
 
