@@ -8,7 +8,7 @@ namespace FluxIndex.SDK.Extensions.FluxImprover.Adapters;
 /// Adapter that bridges FluxIndex.Core.ITextCompletionService to FluxImprover.Abstractions.ITextCompletionService.
 /// This allows FluxImprover services to use FluxIndex's text completion implementations.
 /// </summary>
-public sealed class TextCompletionServiceAdapter : ITextCompletionService
+public sealed class TextCompletionServiceAdapter : ITextGenerationService
 {
     private readonly FluxIndexCompletion _fluxIndexService;
 
