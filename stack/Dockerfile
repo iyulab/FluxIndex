@@ -3,7 +3,7 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 # Copy solution files
-COPY FluxIndex.sln .
+COPY FluxIndex.slnx .
 COPY Directory.Build.props .
 COPY Directory.Packages.props .
 
