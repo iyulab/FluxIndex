@@ -4,6 +4,7 @@ using FluxIndex.Core.Application.Services;
 using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
+using TokenMeter.Abstractions;
 using Xunit;
 
 // Use types from Models namespace for token-aware search
@@ -316,10 +317,10 @@ public class TokenAwareSearchServiceTests
     [InlineData("hello world", 3)] // ~12 chars / 4 = 3
     [InlineData("한글 테스트", 4)] // 5 korean chars / 2 + 1 space / 4 = ~3
     [InlineData("", 0)]
-    public void CountTokens_ReturnsExpectedCount(string text, int expectedApprox)
+    public void Count_ReturnsExpectedCount(string text, int expectedApprox)
     {
         // Act
-        var count = _tokenCounter.CountTokens(text);
+        var count = _tokenCounter.Count(text);
 
         // Assert - Allow some variance for approximation
         Assert.InRange(count, expectedApprox - 2, expectedApprox + 2);

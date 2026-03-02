@@ -6,6 +6,7 @@ using FluxIndex.Core.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using TokenMeter.Abstractions;
 
 namespace FluxIndex.Core.Application.Services;
 

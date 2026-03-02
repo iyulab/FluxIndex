@@ -2,6 +2,7 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Models;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
+using TokenMeter.Abstractions;
 
 // Use types from Models namespace for token-aware search
 using SearchStrategy = FluxIndex.Core.Application.Models.SearchStrategy;
@@ -113,7 +114,7 @@ public partial class TokenAwareSearchService : ITokenAwareSearchService
             DocumentId = r.DocumentId,
             Content = r.Content,
             Score = r.Score ?? 0.9,
-            TokenCount = r.TokenCount > 0 ? r.TokenCount : _tokenCounter.CountTokens(r.Content),
+            TokenCount = r.TokenCount > 0 ? r.TokenCount : _tokenCounter.Count(r.Content),
             ChunkIndex = r.ChunkIndex,
             Metadata = r.Metadata ?? new Dictionary<string, object>()
         }).ToList();

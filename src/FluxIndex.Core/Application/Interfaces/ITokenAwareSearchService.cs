@@ -39,18 +39,3 @@ public interface IQueryAnalysisService
         CancellationToken cancellationToken = default);
 }
 
-/// <summary>
-/// 토큰 카운터 인터페이스
-/// </summary>
-public interface ITokenCounter
-{
-    /// <summary>
-    /// 텍스트의 토큰 수 계산
-    /// </summary>
-    int CountTokens(string text);
-
-    /// <summary>
-    /// 여러 텍스트의 총 토큰 수 계산
-    /// </summary>
-    int CountTokens(IEnumerable<string> texts);
-}

@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <PackageReference Include="FileFlux" />
+    <PackageReference Include="TokenMeter.Abstractions" />
   </ItemGroup>
 
 </Project>
