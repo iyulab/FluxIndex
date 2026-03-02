@@ -11,6 +11,13 @@
     <PackageTags>RAG;Flux;Abstractions;Interfaces;Chunks;Metadata</PackageTags>
   </PropertyGroup>
 
+  <!-- CLS compliance for consumers like FileFlux -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.CLSCompliantAttribute">
+      <_Parameter1>true</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
   <!-- No dependencies - pure interfaces only -->
 
 </Project>
