@@ -12,6 +12,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Flux.Abstractions\Flux.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="FileFlux" />
     <PackageReference Include="TokenMeter.Abstractions" />
   </ItemGroup>

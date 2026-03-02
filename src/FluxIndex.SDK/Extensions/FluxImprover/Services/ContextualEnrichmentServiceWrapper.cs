@@ -2,7 +2,7 @@ using FluxImprover.ContextualRetrieval;
 using FluxImprover.Models;
 using FluxImprover.Options;
 using FluxIndex.SDK.Extensions.FluxImprover.Adapters;
-using FluxIndexChunk = FluxIndex.Core.Application.Interfaces.IEnrichedChunk;
+using FluxIndexChunk = Flux.Abstractions.IEnrichedChunk;
 
 namespace FluxIndex.SDK.Extensions.FluxImprover.Services;
 

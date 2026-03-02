@@ -4,7 +4,7 @@ using FluxImprover.Options;
 using FluxImprover.Evaluation;
 using FluxImprover.QAGeneration;
 using Microsoft.Extensions.DependencyInjection;
-using FluxIndexChunk = FluxIndex.Core.Application.Interfaces.IEnrichedChunk;
+using FluxIndexChunk = Flux.Abstractions.IEnrichedChunk;
 using FluxImproverEnrichedChunk = FluxImprover.Models.IEnrichedChunk;
 using FilteringOptions = FluxImprover.Options.ChunkFilteringOptions;
 

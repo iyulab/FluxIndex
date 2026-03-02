@@ -1,8 +1,8 @@
 using FluxIndex.Core.Application.Services;
 using FluxIndex.Core.Services;
 using IContextualEmbeddingService = FluxIndex.Core.Application.Services.IContextualEmbeddingService;
-using IEnrichedChunk = FluxIndex.Core.Application.Interfaces.IEnrichedChunk;
-using ISourceMetadata = FluxIndex.Core.Application.Interfaces.ISourceMetadata;
+using IEnrichedChunk = Flux.Abstractions.IEnrichedChunk;
+using ISourceMetadata = Flux.Abstractions.ISourceMetadata;
 using IAdvancedEntityExtractionService = FluxIndex.Core.Application.Interfaces.IAdvancedEntityExtractionService;
 using EntityExtractionOptions = FluxIndex.Core.Application.Interfaces.EntityExtractionOptions;
 using NamedEntityType = FluxIndex.Core.Application.Interfaces.NamedEntityType;

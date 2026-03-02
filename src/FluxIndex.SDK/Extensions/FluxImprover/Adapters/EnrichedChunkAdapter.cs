@@ -1,5 +1,5 @@
 using FluxImproverChunk = FluxImprover.Models.IEnrichedChunk;
-using FluxIndexChunk = FluxIndex.Core.Application.Interfaces.IEnrichedChunk;
+using FluxIndexChunk = Flux.Abstractions.IEnrichedChunk;
 
 namespace FluxIndex.SDK.Extensions.FluxImprover.Adapters;
 

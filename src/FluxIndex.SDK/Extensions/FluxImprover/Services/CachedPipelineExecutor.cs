@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using FluxImprover.Options;
 using FluxImprover.QAGeneration;
-using FluxIndexChunk = FluxIndex.Core.Application.Interfaces.IEnrichedChunk;
+using FluxIndexChunk = Flux.Abstractions.IEnrichedChunk;
 using FluxImproverEnrichedChunk = FluxImprover.Models.IEnrichedChunk;
 
 namespace FluxIndex.SDK.Extensions.FluxImprover.Services;

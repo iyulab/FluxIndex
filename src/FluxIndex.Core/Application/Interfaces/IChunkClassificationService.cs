@@ -1,3 +1,4 @@
+using Flux.Abstractions;
 using FluxIndex.Core.Application.Models;
 
 namespace FluxIndex.Core.Application.Interfaces;

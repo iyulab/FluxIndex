@@ -5,6 +5,7 @@
     <Platform Name="x86" />
   </Configurations>
   <Folder Name="/10. base/">
+    <Project Path="src/Flux.Abstractions/Flux.Abstractions.csproj" />
     <Project Path="src/FluxIndex.Core/FluxIndex.Core.csproj" />
     <Project Path="src/FluxIndex.MCP/FluxIndex.MCP.csproj" />
     <Project Path="src/FluxIndex.SDK/FluxIndex.SDK.csproj" />

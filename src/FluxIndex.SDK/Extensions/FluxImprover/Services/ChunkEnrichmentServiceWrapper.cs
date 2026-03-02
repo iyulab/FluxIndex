@@ -2,7 +2,7 @@ using FluxImprover.Models;
 using FluxImprover.Options;
 using FluxImprover.Enrichment;
 using FluxIndex.SDK.Extensions.FluxImprover.Adapters;
-using FluxIndexChunk = FluxIndex.Core.Application.Interfaces.IEnrichedChunk;
+using FluxIndexChunk = Flux.Abstractions.IEnrichedChunk;
 using FluxImproverChunk = FluxImprover.Models.IEnrichedChunk;
 
 namespace FluxIndex.SDK.Extensions.FluxImprover.Services;
