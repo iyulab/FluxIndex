@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>FluxIndex.Providers.LMSupply</PackageId>
+    <Description>LMSupply local AI embedding, reranking, and text completion provider for FluxIndex</Description>
+    <PackageTags>FluxIndex;LMSupply;Embedding;Reranker;TextCompletion;RAG;ONNX;Local</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="LMSupply.Embedder" />
+    <PackageReference Include="LMSupply.Generator" />
+    <PackageReference Include="LMSupply.Reranker" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FluxIndex.Core\FluxIndex.Core.csproj" />
+  </ItemGroup>
+
+</Project>
