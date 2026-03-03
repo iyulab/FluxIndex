@@ -311,10 +311,16 @@ public class SQLiteVecOptions : SQLiteOptions
     }
 
     /// <summary>
+    /// 벡터 차원에 따른 vec0 테이블 이름 반환
+    /// </summary>
+    public string GetVecTableName() => $"chunk_embeddings_{VectorDimension}";
+
+    /// <summary>
     /// 벡터 차원에 따른 vec0 테이블 스키마 반환
     /// </summary>
-    public string GetVecTableSchema(string tableName = "chunk_embeddings")
+    public string GetVecTableSchema()
     {
+        var tableName = GetVecTableName();
         return $"CREATE VIRTUAL TABLE {tableName} USING vec0(chunk_id TEXT PRIMARY KEY, embedding float[{VectorDimension}], {VecTableOptions})";
     }
 

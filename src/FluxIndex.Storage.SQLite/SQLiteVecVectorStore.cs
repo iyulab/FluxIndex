@@ -287,7 +287,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IDisposable
                 }
 
                 // 배치 삽입은 새 청크에 대해서만 호출되므로 순수 INSERT 사용
-                var sql = $"INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES {string.Join(", ", valuesClauses)}";
+                var sql = $"INSERT INTO {_options.GetVecTableName()} (chunk_id, embedding) VALUES {string.Join(", ", valuesClauses)}";
                 await _context.Database.ExecuteSqlRawAsync(sql, parameters.ToArray(), cancellationToken);
 
                 LogBatchVectorInserted(_logger, batch.Count);
@@ -390,7 +390,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IDisposable
         // sqlite-vec 네이티브 검색 사용
         var vectorString = "[" + string.Join(",", queryEmbedding.Select(f => f.ToString("F6", CultureInfo.InvariantCulture))) + "]";
 
-        var sql = @"
+        var sql = $@"
             SELECT
                 vc.Id,
                 vc.DocumentId,
@@ -399,7 +399,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IDisposable
                 vc.TokenCount,
                 vc.Metadata,
                 ce.distance
-            FROM chunk_embeddings ce
+            FROM {_options.GetVecTableName()} ce
             JOIN vector_chunks vc ON vc.Id = ce.chunk_id
             WHERE ce.embedding MATCH @vector AND k = @k
             AND ce.distance >= @minScore
@@ -946,7 +946,8 @@ public partial class SQLiteVecVectorStore : IVectorStore, IDisposable
                     // vec0 테이블 클리어
                     if (_sqliteVecAvailable)
                     {
-                        await _context.Database.ExecuteSqlRawAsync("DELETE FROM chunk_embeddings", cancellationToken);
+                        var clearSql = $"DELETE FROM {_options.GetVecTableName()}";
+                        await _context.Database.ExecuteSqlRawAsync(clearSql, cancellationToken);
                     }
 
                     // 메타데이터 테이블 클리어
@@ -1001,7 +1002,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IDisposable
                     // vec0 테이블 생성 (이미 존재하면 무시)
                     await _extensionLoader.CreateVecTableAsync(
                         (Microsoft.Data.Sqlite.SqliteConnection)connection,
-                        "chunk_embeddings",
+                        _options.GetVecTableName(),
                         _options.VectorDimension,
                         _options.VecTableOptions,
                         cancellationToken);

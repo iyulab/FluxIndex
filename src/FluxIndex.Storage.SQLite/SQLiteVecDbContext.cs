@@ -275,7 +275,7 @@ public partial class SQLiteVecDbContext : DbContext
                 // vec0 가상 테이블 생성
                 await _extensionLoader.CreateVecTableAsync(
                     (Microsoft.Data.Sqlite.SqliteConnection)connection,
-                    "chunk_embeddings",
+                    _options.GetVecTableName(),
                     _options.VectorDimension,
                     _options.VecTableOptions,
                     cancellationToken);
@@ -396,15 +396,19 @@ public partial class SQLiteVecDbContext : DbContext
             var vectorString = "[" + string.Join(",", embedding.Select(f => f.ToString("F6", CultureInfo.InvariantCulture))) + "]";
 
             // vec0 가상 테이블은 INSERT OR REPLACE를 지원하지 않으므로 DELETE + INSERT 사용
+            var vecTable = _options.GetVecTableName();
+
             // 먼저 기존 벡터 삭제 (존재하지 않아도 오류 없음)
+            var deleteSql = $"DELETE FROM {vecTable} WHERE chunk_id = {{0}}";
             await Database.ExecuteSqlRawAsync(
-                "DELETE FROM chunk_embeddings WHERE chunk_id = {0}",
+                deleteSql,
                 new object[] { chunkId },
                 cancellationToken);
 
             // 새 벡터 삽입
+            var insertSql = $"INSERT INTO {vecTable} (chunk_id, embedding) VALUES ({{0}}, {{1}})";
             await Database.ExecuteSqlRawAsync(
-                "INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES ({0}, {1})",
+                insertSql,
                 new object[] { chunkId, vectorString },
                 cancellationToken);
         }
@@ -425,8 +429,9 @@ public partial class SQLiteVecDbContext : DbContext
 
         try
         {
+            var deleteSql = $"DELETE FROM {_options.GetVecTableName()} WHERE chunk_id = {{0}}";
             await Database.ExecuteSqlRawAsync(
-                "DELETE FROM chunk_embeddings WHERE chunk_id = {0}",
+                deleteSql,
                 chunkId,
                 cancellationToken);
         }
