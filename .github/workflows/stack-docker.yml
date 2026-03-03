@@ -1,11 +1,14 @@
 name: Stack Docker Release
 
 on:
-  # Tests 워크플로우 완료 후 실행 (순차 실행)
-  workflow_run:
-    workflows: ["Tests"]
-    types: [completed]
-    branches: [main]
+  # Stack Docker builds are temporarily disabled.
+  # The stack/ code has CA1000 build errors that need to be fixed before re-enabling.
+  # To re-enable: uncomment the workflow_run trigger below.
+  #
+  # workflow_run:
+  #   workflows: ["Tests"]
+  #   types: [completed]
+  #   branches: [main]
 
   workflow_dispatch:
     inputs:
