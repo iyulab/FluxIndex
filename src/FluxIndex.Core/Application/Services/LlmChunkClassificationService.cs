@@ -1,5 +1,6 @@
 using Flux.Abstractions;
 using FluxIndex.Core.Application.Interfaces;
+using ITextCompletionService = FluxIndex.Core.Application.Interfaces.ITextCompletionService;
 using FluxIndex.Core.Application.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -136,11 +137,8 @@ public partial class LlmChunkClassificationService : IChunkClassificationService
         {
             try
             {
-                var response = await _textCompletion!.GenerateCompletionAsync(
-                    prompt,
-                    _options.MaxTokens,
-                    _options.Temperature,
-                    cancellationToken);
+                var response = await _textCompletion!.CompleteAsync(
+                    prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = _options.MaxTokens, Temperature = _options.Temperature }, cancellationToken);
 
                 var classification = ParseLlmResponse(response);
                 classification.Source = ClassificationSource.Llm;

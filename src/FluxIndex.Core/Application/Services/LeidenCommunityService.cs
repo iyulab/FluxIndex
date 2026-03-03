@@ -748,11 +748,8 @@ public partial class LeidenCommunityService : ILeidenCommunityService
         try
         {
             var prompt = BuildSummaryPrompt(community);
-            var response = await _llmService.GenerateCompletionAsync(
-                prompt,
-                maxTokens: 500,
-                temperature: 0.3f,
-                cancellationToken: cancellationToken);
+            var response = await _llmService.CompleteAsync(
+                prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 500, Temperature = 0.3f }, cancellationToken);
 
             return new LeidenCommunitySummary
             {

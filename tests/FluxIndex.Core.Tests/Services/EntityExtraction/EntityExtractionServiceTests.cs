@@ -303,11 +303,8 @@ public class EntityExtractionServiceTests
     public async Task ExtractEntitiesAsync_WithLlm_IncludesLlmExtractedEntities()
     {
         // Arrange
-        _llmServiceMock.GenerateCompletionAsync(
-                Arg.Any<string>(),
-                Arg.Any<int>(),
-                Arg.Any<float>(),
-                Arg.Any<CancellationToken>()).Returns("[{\"text\": \"Apple\", \"type\": \"Organization\", \"confidence\": 0.95}]");
+        _llmServiceMock.CompleteAsync(
+                Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns("[{\"text\": \"Apple\", \"type\": \"Organization\", \"confidence\": 0.95}]");
 
         var service = new EntityExtractionService(_loggerMock, _llmServiceMock);
         var content = "Apple announced new products today.";
@@ -317,11 +314,8 @@ public class EntityExtractionServiceTests
         var result = await service.ExtractEntitiesAsync(content, options);
 
         // Assert
-        await _llmServiceMock.Received(1).GenerateCompletionAsync(
-            Arg.Any<string>(),
-            Arg.Any<int>(),
-            Arg.Any<float>(),
-            Arg.Any<CancellationToken>());
+        await _llmServiceMock.Received(1).CompleteAsync(
+            Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -870,11 +864,8 @@ public class EntityExtractionServiceTests
     public async Task ExtractEntitiesAsync_LlmFailure_FallsBackToPatterns()
     {
         // Arrange
-        _llmServiceMock.GenerateCompletionAsync(
-                Arg.Any<string>(),
-                Arg.Any<int>(),
-                Arg.Any<float>(),
-                Arg.Any<CancellationToken>()).Throws(new Exception("LLM service unavailable"));
+        _llmServiceMock.CompleteAsync(
+                Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Throws(new Exception("LLM service unavailable"));
 
         var service = new EntityExtractionService(_loggerMock, _llmServiceMock);
         var content = "Python is a great programming language.";
@@ -892,11 +883,8 @@ public class EntityExtractionServiceTests
     public async Task ExtractEntitiesAsync_InvalidLlmResponse_HandlesGracefully()
     {
         // Arrange
-        _llmServiceMock.GenerateCompletionAsync(
-                Arg.Any<string>(),
-                Arg.Any<int>(),
-                Arg.Any<float>(),
-                Arg.Any<CancellationToken>()).Returns("This is not valid JSON");
+        _llmServiceMock.CompleteAsync(
+                Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns("This is not valid JSON");
 
         var service = new EntityExtractionService(_loggerMock, _llmServiceMock);
         var content = "Python is great.";

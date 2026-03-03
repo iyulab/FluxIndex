@@ -348,8 +348,8 @@ public partial class DocumentEnrichmentPipeline : IDocumentEnrichmentPipeline
 
         try
         {
-            var response = await _textCompletionService.GenerateCompletionAsync(
-                prompt, maxTokens: 300, temperature: 0.3f, ct);
+            var response = await _textCompletionService.CompleteAsync(
+                prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 300, Temperature = 0.3f }, ct);
 
             var summary = response.Trim();
             var combined = BuildCombinedText(chunkContent, summary);
@@ -454,7 +454,7 @@ public partial class DocumentEnrichmentPipeline : IDocumentEnrichmentPipeline
             return content.Length > 200 ? content[..200] : content;
 
         var prompt = $"Summarize the following text in 2-3 sentences:\n\n{content}";
-        return await _textCompletionService.GenerateCompletionAsync(prompt, maxTokens: 150, temperature: 0.3f, ct);
+        return await _textCompletionService.CompleteAsync(prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 150, Temperature = 0.3f }, ct);
     }
 
     private async Task<string> GenerateHypotheticalDocumentAsync(string content, CancellationToken ct)
@@ -467,7 +467,7 @@ Content: {content}
 
 Generate a comprehensive document:";
 
-        return await _textCompletionService.GenerateCompletionAsync(prompt, maxTokens: 300, temperature: 0.7f, ct);
+        return await _textCompletionService.CompleteAsync(prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 300, Temperature = 0.7f }, ct);
     }
 
     private async Task<string> GenerateDocumentSummaryAsync(string content, CancellationToken ct)
@@ -478,7 +478,7 @@ Generate a comprehensive document:";
         var truncated = content.Length > 8000 ? content[..8000] : content;
         var prompt = $"Provide a comprehensive summary of this document in 3-5 sentences:\n\n{truncated}";
 
-        return await _textCompletionService.GenerateCompletionAsync(prompt, maxTokens: 300, temperature: 0.3f, ct);
+        return await _textCompletionService.CompleteAsync(prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 300, Temperature = 0.3f }, ct);
     }
 
     #endregion
@@ -551,8 +551,8 @@ Keywords:";
 
         try
         {
-            var response = await _textCompletionService.GenerateCompletionAsync(
-                prompt, maxTokens: 100, temperature: 0.2f, ct);
+            var response = await _textCompletionService.CompleteAsync(
+                prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 100, Temperature = 0.2f }, ct);
 
             return response.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Take(10)

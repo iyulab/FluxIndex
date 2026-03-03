@@ -177,19 +177,18 @@ internal sealed class LMSupplyTextCompletionWrapper : TextCompletionServiceBase,
         _logger = logger;
     }
 
-    protected override async Task<string> GenerateCoreAsync(
+    protected override async Task<string> CompleteCoreAsync(
         string prompt,
-        int maxTokens,
-        float temperature,
+        Flux.Abstractions.TextCompletionOptions options,
         CancellationToken cancellationToken)
     {
-        var options = new GenerationOptions
+        var genOptions = new GenerationOptions
         {
-            MaxTokens = maxTokens,
-            Temperature = temperature,
+            MaxTokens = options.MaxTokens,
+            Temperature = options.Temperature,
         };
 
-        return await _generator.GenerateCompleteAsync(prompt, options, cancellationToken);
+        return await _generator.GenerateCompleteAsync(prompt, genOptions, cancellationToken);
     }
 
     public async ValueTask DisposeAsync()

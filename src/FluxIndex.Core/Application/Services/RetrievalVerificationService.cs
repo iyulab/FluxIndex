@@ -833,8 +833,8 @@ public partial class RetrievalVerificationService : Interfaces.IRetrievalVerific
                 Provide a brief explanation (1-2 sentences) of why this document is or isn't relevant.
                 """;
 
-            return await _completionService.GenerateCompletionAsync(
-                prompt, 100, 0.3f, cancellationToken);
+            return await _completionService.CompleteAsync(
+                prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 100, Temperature = 0.3f }, cancellationToken);
         }
         catch
         {

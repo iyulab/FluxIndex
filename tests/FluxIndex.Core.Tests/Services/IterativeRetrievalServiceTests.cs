@@ -97,7 +97,7 @@ public class IterativeRetrievalServiceTests
 
         // LLM returns thought indicating more retrieval needed, then a final answer
         var callCount = 0;
-        _mockLlmService.GenerateCompletionAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns(callInfo => {
+        _mockLlmService.CompleteAsync(Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns(callInfo => {
                 callCount++;
                 if (callCount == 1)
                     return "[Retrieval] healthcare applications of ML";
@@ -127,7 +127,7 @@ public class IterativeRetrievalServiceTests
         _mockSearchService.SearchAsync(Arg.Any<string>(), Arg.Any<HybridSearchOptions>(), Arg.Any<CancellationToken>()).Returns(mockResults);
 
         // Always return retrieval action to test max iterations
-        _mockLlmService.GenerateCompletionAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns("[Retrieval] more data needed");
+        _mockLlmService.CompleteAsync(Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns("[Retrieval] more data needed");
 
         // Act
         var result = await service.RetrieveWithReasoningAsync(query, options);
@@ -178,7 +178,7 @@ public class IterativeRetrievalServiceTests
         _mockSearchService.SearchAsync(Arg.Any<string>(), Arg.Any<HybridSearchOptions>(), Arg.Any<CancellationToken>()).Returns(mockResults);
 
         // LLM decomposes and generates sub-questions
-        _mockLlmService.GenerateJsonCompletionAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns("""
+        _mockLlmService.CompleteJsonAsync(Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns("""
                 {
                     "sub_questions": [
                         "What are Python's strengths for web development?",
@@ -189,7 +189,7 @@ public class IterativeRetrievalServiceTests
                 }
             """);
 
-        _mockLlmService.GenerateCompletionAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns("Based on the retrieved documents, Python excels in ML while Java is preferred for enterprise web apps...");
+        _mockLlmService.CompleteAsync(Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns("Based on the retrieved documents, Python excels in ML while Java is preferred for enterprise web apps...");
 
         // Act
         var result = await service.DecomposeAndRetrieveAsync(query);
@@ -330,7 +330,7 @@ public class IterativeRetrievalServiceTests
 
         // LLM returns actions
         var actionCallCount = 0;
-        _mockLlmService.GenerateCompletionAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns(callInfo => {
+        _mockLlmService.CompleteAsync(Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns(callInfo => {
                 actionCallCount++;
                 if (actionCallCount == 1)
                     return "Action: Search\nInput: serverless computing trends 2024";
@@ -360,7 +360,7 @@ public class IterativeRetrievalServiceTests
         _mockSearchService.SearchAsync(Arg.Any<string>(), Arg.Any<HybridSearchOptions>(), Arg.Any<CancellationToken>()).Returns(mockResults);
 
         // Always return search action to test max iterations limit
-        _mockLlmService.GenerateCompletionAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns("Action: Search\nInput: keep searching");
+        _mockLlmService.CompleteAsync(Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns("Action: Search\nInput: keep searching");
 
         // Act
         var result = await service.AgenticRetrieveAsync(query, options);

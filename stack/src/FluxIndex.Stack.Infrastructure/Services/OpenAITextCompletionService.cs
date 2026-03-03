@@ -1,4 +1,5 @@
 using System.ClientModel;
+using Flux.Abstractions;
 using FluxIndex.Core.Application.Services.Base;
 using Microsoft.Extensions.Logging;
 using OpenAI;
@@ -43,22 +44,21 @@ internal sealed partial class OpenAITextCompletionService : TextCompletionServic
         }
     }
 
-    protected override async Task<string> GenerateCoreAsync(
+    protected override async Task<string> CompleteCoreAsync(
         string prompt,
-        int maxTokens,
-        float temperature,
+        TextCompletionOptions options,
         CancellationToken cancellationToken)
     {
-        LogGenerating(_logger, _modelName, prompt.Length, maxTokens, temperature);
+        LogGenerating(_logger, _modelName, prompt.Length, options.MaxTokens, options.Temperature);
 
         var messages = new List<ChatMessage> { new UserChatMessage(prompt) };
-        var options = new ChatCompletionOptions
+        var chatOptions = new ChatCompletionOptions
         {
-            Temperature = temperature,
-            MaxOutputTokenCount = maxTokens,
+            Temperature = options.Temperature,
+            MaxOutputTokenCount = options.MaxTokens,
         };
 
-        var response = await _chatClient.CompleteChatAsync(messages, options, cancellationToken);
+        var response = await _chatClient.CompleteChatAsync(messages, chatOptions, cancellationToken);
         return response.Value.Content[0].Text ?? string.Empty;
     }
 

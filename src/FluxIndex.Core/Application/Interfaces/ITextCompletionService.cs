@@ -1,76 +1,59 @@
-using System.Threading;
-using System.Threading.Tasks;
+using Flux.Abstractions;
 
 namespace FluxIndex.Core.Application.Interfaces;
 
 /// <summary>
-/// Abstraction for text completion services - to be implemented by consuming applications
-/// FluxIndex does not provide text completion implementation, only the interface
-/// This can be implemented using OpenAI, Azure OpenAI, Claude, local models, etc.
+/// FluxIndex-specific text completion service extending the canonical Flux.Abstractions contract.
+/// Adds <see cref="CountTokens"/> for backward compatibility with services
+/// that need rough token estimation (e.g., adapters tracking token usage).
 /// </summary>
-public interface ITextCompletionService
+/// <remarks>
+/// New code should prefer <see cref="Flux.Abstractions.ITextCompletionService"/> directly.
+/// <see cref="CountTokens"/> will be removed in a future version once all callers
+/// migrate to <see cref="TokenMeter.Abstractions.ITokenCounter"/>.
+/// </remarks>
+public interface ITextCompletionService : Flux.Abstractions.ITextCompletionService
 {
     /// <summary>
-    /// Generates a completion for the given prompt
+    /// Counts tokens in the given text.
     /// </summary>
-    /// <param name="prompt">The prompt to complete</param>
-    /// <param name="maxTokens">Maximum tokens to generate</param>
-    /// <param name="temperature">Sampling temperature (0.0 - 1.0)</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Generated text completion</returns>
-    Task<string> GenerateCompletionAsync(
-        string prompt,
-        int maxTokens = 500,
-        float temperature = 0.7f,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Generates a JSON completion with structured output
-    /// </summary>
-    /// <param name="prompt">The prompt requesting JSON output</param>
-    /// <param name="maxTokens">Maximum tokens to generate</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Generated JSON string</returns>
-    Task<string> GenerateJsonCompletionAsync(
-        string prompt,
-        int maxTokens = 500,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Counts tokens in the given text
-    /// </summary>
-    /// <param name="text">Text to count tokens for</param>
-    /// <returns>Number of tokens</returns>
+    /// <param name="text">Text to count tokens for.</param>
+    /// <returns>Number of tokens.</returns>
+    [System.Obsolete("Use TokenMeter.Abstractions.ITokenCounter instead. Will be removed in a future version.")]
     int CountTokens(string text);
 }
 
 /// <summary>
-/// Optional: Mock implementation for testing without text completion service
+/// Mock implementation for testing without text completion service.
 /// </summary>
 public class MockTextCompletionService : ITextCompletionService
 {
-    public Task<string> GenerateCompletionAsync(
+    /// <inheritdoc />
+    public Task<string> CompleteAsync(
         string prompt,
-        int maxTokens = 500,
-        float temperature = 0.7f,
+        TextCompletionOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         // Simple mock response for testing
-        return Task.FromResult($"Mock response for: {prompt.Substring(0, System.Math.Min(50, prompt.Length))}...");
+        return Task.FromResult($"Mock response for: {prompt[..System.Math.Min(50, prompt.Length)]}...");
     }
 
-    public Task<string> GenerateJsonCompletionAsync(
+    /// <inheritdoc />
+    public Task<string> CompleteJsonAsync(
         string prompt,
-        int maxTokens = 500,
+        TextCompletionOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         // Return minimal valid JSON
         return Task.FromResult("{}");
     }
 
+    /// <inheritdoc />
+#pragma warning disable CS0618 // Obsolete member
     public int CountTokens(string text)
+#pragma warning restore CS0618
     {
-        // Rough approximation: 1 token ≈ 4 characters
+        // Rough approximation: 1 token ~ 4 characters
         return text.Length / 4;
     }
 }

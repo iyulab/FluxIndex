@@ -227,11 +227,8 @@ public partial class StackEvaluationSearchProvider : IEvaluationSearchProvider
 
             // Generate answer using RAG prompt
             var prompt = BuildRAGPrompt(query, context);
-            var answer = await _textCompletionService.GenerateCompletionAsync(
-                prompt,
-                maxTokens: 1000,
-                temperature: 0.3f,
-                cancellationToken);
+            var answer = await _textCompletionService.CompleteAsync(
+                prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 1000, Temperature = 0.3f }, cancellationToken);
 
             var answerLength = answer?.Length ?? 0;
             LogGeneratedAnswer(_logger, answerLength);

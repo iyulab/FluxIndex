@@ -8,6 +8,8 @@ using IFileFluxDocumentAnalysisService = FileFlux.IDocumentAnalysisService;
 using IFluxIndexTextCompletionService = FluxIndex.Core.Application.Interfaces.ITextCompletionService;
 using FileFluxQualityAssessment = FileFlux.QualityAssessment;
 
+#pragma warning disable CS0618 // Obsolete CountTokens - transitional, will migrate to ITokenCounter
+
 namespace FluxIndex.SDK.Extensions.FileFlux;
 
 /// <summary>
@@ -69,11 +71,8 @@ public partial class FluxIndexTextCompletionAdapter : IFileFluxDocumentAnalysisS
     {
         try
         {
-            return await _fluxIndexService.GenerateCompletionAsync(
-                prompt,
-                maxTokens: 2000,
-                temperature: 0.7f,
-                cancellationToken: cancellationToken);
+            return await _fluxIndexService.CompleteAsync(
+                prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 2000, Temperature = 0.7f }, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -114,10 +113,8 @@ Respond with a JSON object in this exact format:
   ""confidence"": 0.85
 }}";
 
-            var jsonResponse = await _fluxIndexService.GenerateJsonCompletionAsync(
-                structuredPrompt,
-                maxTokens: 4000,
-                cancellationToken: cancellationToken);
+            var jsonResponse = await _fluxIndexService.CompleteJsonAsync(
+                structuredPrompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 4000 }, cancellationToken);
 
             LogStructureAnalysisResponse(_logger, jsonResponse);
 
@@ -167,10 +164,8 @@ Respond with a JSON object in this exact format:
 
 Keep the summary under {maxLength} characters.";
 
-            var jsonResponse = await _fluxIndexService.GenerateJsonCompletionAsync(
-                structuredPrompt,
-                maxTokens: maxLength * 2,
-                cancellationToken: cancellationToken);
+            var jsonResponse = await _fluxIndexService.CompleteJsonAsync(
+                structuredPrompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = maxLength * 2 }, cancellationToken);
 
             LogSummaryResponse(_logger, jsonResponse);
 
@@ -225,10 +220,8 @@ Respond with a JSON object in this exact format:
   ""confidence"": 0.85
 }}";
 
-            var jsonResponse = await _fluxIndexService.GenerateJsonCompletionAsync(
-                structuredPrompt,
-                maxTokens: 3000,
-                cancellationToken: cancellationToken);
+            var jsonResponse = await _fluxIndexService.CompleteJsonAsync(
+                structuredPrompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 3000 }, cancellationToken);
 
             LogMetadataExtractionResponse(_logger, jsonResponse);
 
@@ -285,10 +278,8 @@ Respond with a JSON object in this exact format:
   ]
 }}";
 
-            var jsonResponse = await _fluxIndexService.GenerateJsonCompletionAsync(
-                structuredPrompt,
-                maxTokens: 3000,
-                cancellationToken: cancellationToken);
+            var jsonResponse = await _fluxIndexService.CompleteJsonAsync(
+                structuredPrompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 3000 }, cancellationToken);
 
             LogQualityAssessmentResponse(_logger, jsonResponse);
 

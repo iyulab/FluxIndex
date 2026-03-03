@@ -756,7 +756,7 @@ public class RetrievalVerificationServiceTests
         var query = "test query";
         var documents = CreateTestChunks(2);
 
-        _mockCompletionService.GenerateJsonCompletionAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns("{\"risk_level\": \"low\", \"factors\": []}");
+        _mockCompletionService.CompleteJsonAsync(Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns("{\"risk_level\": \"low\", \"factors\": []}");
 
         // Act
         var result = await service.VerifyAsync(query, documents);

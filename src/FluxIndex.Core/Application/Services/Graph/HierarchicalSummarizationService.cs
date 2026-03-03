@@ -359,11 +359,8 @@ public partial class HierarchicalSummarizationService : IHierarchicalSummarizati
 
         try
         {
-            var response = await _llmService.GenerateCompletionAsync(
-                prompt,
-                options.MaxTokens,
-                options.Temperature,
-                cancellationToken);
+            var response = await _llmService.CompleteAsync(
+                prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = options.MaxTokens, Temperature = options.Temperature }, cancellationToken);
 
             return ParseSynthesizedAnswer(response, summaryList, options);
         }
@@ -647,11 +644,8 @@ public partial class HierarchicalSummarizationService : IHierarchicalSummarizati
 
         try
         {
-            return await _llmService.GenerateCompletionAsync(
-                prompt,
-                options.MaxSummaryTokens,
-                options.Temperature,
-                cancellationToken);
+            return await _llmService.CompleteAsync(
+                prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = options.MaxSummaryTokens, Temperature = options.Temperature }, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -680,11 +674,8 @@ public partial class HierarchicalSummarizationService : IHierarchicalSummarizati
 
         try
         {
-            return await _llmService.GenerateCompletionAsync(
-                prompt,
-                options.MaxSummaryTokens,
-                options.Temperature,
-                cancellationToken);
+            return await _llmService.CompleteAsync(
+                prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = options.MaxSummaryTokens, Temperature = options.Temperature }, cancellationToken);
         }
         catch (Exception ex)
         {

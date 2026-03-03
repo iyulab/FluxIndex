@@ -40,17 +40,12 @@ public sealed class TextCompletionServiceAdapter : ITextGenerationService
         // Use JSON completion if JsonMode is enabled
         if (options?.JsonMode == true)
         {
-            return await _fluxIndexService.GenerateJsonCompletionAsync(
-                effectivePrompt,
-                maxTokens,
-                cancellationToken);
+            return await _fluxIndexService.CompleteJsonAsync(
+                effectivePrompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = maxTokens }, cancellationToken);
         }
 
-        return await _fluxIndexService.GenerateCompletionAsync(
-            effectivePrompt,
-            maxTokens,
-            temperature,
-            cancellationToken);
+        return await _fluxIndexService.CompleteAsync(
+            effectivePrompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = maxTokens, Temperature = temperature }, cancellationToken);
     }
 
     /// <inheritdoc />

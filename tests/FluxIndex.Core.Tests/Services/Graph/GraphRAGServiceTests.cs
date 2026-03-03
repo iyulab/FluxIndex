@@ -709,11 +709,8 @@ public class GraphRAGServiceTests
                 }
             });
 
-        _mockTextCompletionService.GenerateCompletionAsync(
-                Arg.Any<string>(),
-                Arg.Any<int>(),
-                Arg.Any<float>(),
-                Arg.Any<CancellationToken>()).Returns("Generated answer");
+        _mockTextCompletionService.CompleteAsync(
+                Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns("Generated answer");
     }
 
     private void SetupMocksForUpdate()

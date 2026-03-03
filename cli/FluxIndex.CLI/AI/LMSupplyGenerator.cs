@@ -1,4 +1,5 @@
 using System.Text;
+using Flux.Abstractions;
 using FluxIndex.Core.Application.Services.Base;
 using LMSupply.Generator;
 using LMSupply.Generator.Abstractions;
@@ -24,17 +25,17 @@ public sealed class LMSupplyGenerator : TextCompletionServiceBase, IAsyncDisposa
         return new LMSupplyGenerator(model);
     }
 
-    protected override async Task<string> GenerateCoreAsync(
-        string prompt, int maxTokens, float temperature, CancellationToken cancellationToken)
+    protected override async Task<string> CompleteCoreAsync(
+        string prompt, TextCompletionOptions options, CancellationToken cancellationToken)
     {
-        var options = new GenerationOptions
+        var genOptions = new GenerationOptions
         {
-            MaxTokens = maxTokens,
-            Temperature = temperature
+            MaxTokens = options.MaxTokens,
+            Temperature = options.Temperature
         };
 
         var sb = new StringBuilder();
-        await foreach (var token in _model.GenerateAsync(prompt, options, cancellationToken))
+        await foreach (var token in _model.GenerateAsync(prompt, genOptions, cancellationToken))
         {
             sb.Append(token);
         }

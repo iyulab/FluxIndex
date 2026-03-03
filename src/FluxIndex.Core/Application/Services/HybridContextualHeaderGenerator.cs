@@ -1,5 +1,6 @@
 using Flux.Abstractions;
 using FluxIndex.Core.Application.Interfaces;
+using ITextCompletionService = FluxIndex.Core.Application.Interfaces.ITextCompletionService;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -146,11 +147,8 @@ public partial class HybridContextualHeaderGenerator : IContextualHeaderGenerato
 
         try
         {
-            var response = await _textCompletion!.GenerateCompletionAsync(
-                prompt,
-                maxTokens: 150,
-                temperature: 0.3f,
-                cancellationToken);
+            var response = await _textCompletion!.CompleteAsync(
+                prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 150, Temperature = 0.3f }, cancellationToken);
 
             // 응답 정제
             var header = response.Trim();

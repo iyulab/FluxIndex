@@ -61,17 +61,16 @@ public partial class LlmRefinerAdapter : ILlmRefiner
 
             // Build the refinement prompt
             var prompt = BuildRefinementPrompt(refined.Text, options);
+#pragma warning disable CS0618 // Obsolete CountTokens - transitional
             var inputTokens = _completionService.CountTokens(prompt);
 
             // Generate refined content
             var maxTokens = options.MaxTokens > 0 ? options.MaxTokens : 4000;
-            var refinedText = await _completionService.GenerateCompletionAsync(
-                prompt,
-                maxTokens: maxTokens,
-                temperature: (float)options.Temperature,
-                cancellationToken: cancellationToken);
+            var refinedText = await _completionService.CompleteAsync(
+                prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = maxTokens, Temperature = (float)options.Temperature }, cancellationToken);
 
             var outputTokens = _completionService.CountTokens(refinedText);
+#pragma warning restore CS0618
 
             // Track improvements made
             if (options.RemoveNoise)

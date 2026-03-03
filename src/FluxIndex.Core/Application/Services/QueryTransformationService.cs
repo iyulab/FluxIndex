@@ -107,11 +107,8 @@ public partial class QueryTransformationService : IQueryTransformationService
         CancellationToken cancellationToken)
     {
         var prompt = BuildHyDEPrompt(query, options, perspective: null);
-        var hypotheticalDoc = await _completionService!.GenerateCompletionAsync(
-            prompt,
-            options.MaxLength,
-            _options.HyDETemperature,
-            cancellationToken);
+        var hypotheticalDoc = await _completionService!.CompleteAsync(
+            prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = options.MaxLength, Temperature = _options.HyDETemperature }, cancellationToken);
 
         var elapsedMs = (long)(DateTime.UtcNow - startTime).TotalMilliseconds;
         var qualityScore = EvaluateHyDEQuality(query, hypotheticalDoc);
@@ -126,7 +123,9 @@ public partial class QueryTransformationService : IQueryTransformationService
             HypotheticalDocuments = new[] { hypotheticalDoc },
             QualityScores = new[] { qualityScore },
             QualityScore = qualityScore,
+#pragma warning disable CS0618 // Obsolete CountTokens - transitional
             TokensUsed = _completionService.CountTokens(hypotheticalDoc),
+#pragma warning restore CS0618
             GenerationTimeMs = elapsedMs
         };
     }
@@ -159,11 +158,8 @@ public partial class QueryTransformationService : IQueryTransformationService
                     temperature = Math.Clamp(temperature, 0.0f, 2.0f);
 
                     var prompt = BuildHyDEPrompt(query, options, perspective);
-                    return await _completionService!.GenerateCompletionAsync(
-                        prompt,
-                        options.MaxLength,
-                        temperature,
-                        cancellationToken);
+                    return await _completionService!.CompleteAsync(
+                        prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = options.MaxLength, Temperature = temperature }, cancellationToken);
                 }
                 finally
                 {
@@ -185,11 +181,8 @@ public partial class QueryTransformationService : IQueryTransformationService
                 temperature = Math.Clamp(temperature, 0.0f, 2.0f);
 
                 var prompt = BuildHyDEPrompt(query, options, perspectives[i]);
-                var doc = await _completionService!.GenerateCompletionAsync(
-                    prompt,
-                    options.MaxLength,
-                    temperature,
-                    cancellationToken);
+                var doc = await _completionService!.CompleteAsync(
+                    prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = options.MaxLength, Temperature = temperature }, cancellationToken);
                 documents.Add(doc);
             }
         }
@@ -199,7 +192,9 @@ public partial class QueryTransformationService : IQueryTransformationService
 
         var elapsedMs = (long)(DateTime.UtcNow - startTime).TotalMilliseconds;
         var avgQualityScore = qualityScores.Count > 0 ? qualityScores.Average() : 0f;
+#pragma warning disable CS0618 // Obsolete CountTokens - transitional
         var totalTokens = documents.Sum(doc => _completionService!.CountTokens(doc));
+#pragma warning restore CS0618
 
         if (_logger.IsEnabled(LogLevel.Debug))
             LogQueryTransformation12(_logger, documents.Count, avgQualityScore, elapsedMs);
@@ -260,10 +255,8 @@ public partial class QueryTransformationService : IQueryTransformationService
         try
         {
             var prompt = BuildQuOTEPrompt(query, options);
-            var jsonResponse = await _completionService.GenerateJsonCompletionAsync(
-                prompt,
-                _options.MaxQuOTETokens,
-                cancellationToken);
+            var jsonResponse = await _completionService.CompleteJsonAsync(
+                prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = _options.MaxQuOTETokens }, cancellationToken);
 
             return ParseQuOTEResponse(query, jsonResponse, options);
         }
@@ -294,11 +287,8 @@ public partial class QueryTransformationService : IQueryTransformationService
         try
         {
             var prompt = BuildMultiQueryPrompt(query, count);
-            var response = await _completionService.GenerateCompletionAsync(
-                prompt,
-                _options.MaxMultiQueryTokens,
-                _options.MultiQueryTemperature,
-                cancellationToken);
+            var response = await _completionService.CompleteAsync(
+                prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = _options.MaxMultiQueryTokens, Temperature = _options.MultiQueryTemperature }, cancellationToken);
 
             var queries = ParseMultiQueryResponse(response, count);
 
@@ -345,10 +335,8 @@ public partial class QueryTransformationService : IQueryTransformationService
         try
         {
             var prompt = BuildDecompositionPrompt(query);
-            var jsonResponse = await _completionService.GenerateJsonCompletionAsync(
-                prompt,
-                _options.MaxDecompositionTokens,
-                cancellationToken);
+            var jsonResponse = await _completionService.CompleteJsonAsync(
+                prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = _options.MaxDecompositionTokens }, cancellationToken);
 
             var llmResult = ParseDecompositionResponse(query, jsonResponse);
 
@@ -389,10 +377,8 @@ public partial class QueryTransformationService : IQueryTransformationService
         try
         {
             var prompt = BuildIntentAnalysisPrompt(query);
-            var jsonResponse = await _completionService.GenerateJsonCompletionAsync(
-                prompt,
-                _options.MaxIntentAnalysisTokens,
-                cancellationToken);
+            var jsonResponse = await _completionService.CompleteJsonAsync(
+                prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = _options.MaxIntentAnalysisTokens }, cancellationToken);
 
             return ParseIntentAnalysisResponse(query, jsonResponse, ruleBasedResult);
         }

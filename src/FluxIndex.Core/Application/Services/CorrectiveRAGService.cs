@@ -761,7 +761,7 @@ public partial class CorrectiveRAGService : ICorrectiveRAGService
             var combinedContent = string.Join("\n\n", refinedDocuments.Select(d => d.RefinedContent));
             var prompt = $"Based on the following content, provide a brief summary relevant to the query '{query}':\n\n{combinedContent}";
 
-            return await _completionService.GenerateCompletionAsync(prompt, cancellationToken: cancellationToken);
+            return await _completionService.CompleteAsync(prompt, cancellationToken: cancellationToken);
         }
         catch (Exception ex)
         {

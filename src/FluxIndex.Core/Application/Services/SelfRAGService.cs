@@ -732,7 +732,7 @@ public partial class SelfRAGService : ISelfRAGService
                 Return as JSON array: [{"query": "...", "rationale": "..."}]
                 """;
 
-            var response = await _completionService.GenerateJsonCompletionAsync(prompt, 500, cancellationToken);
+            var response = await _completionService.CompleteJsonAsync(prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 500 }, cancellationToken);
 
             // Parse response and create refined queries
             // This is simplified - actual implementation would properly parse JSON

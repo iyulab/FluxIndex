@@ -588,7 +588,7 @@ public partial class SelfRAGService : ISelfRAGService
                 Each version should be on a separate line.
                 """;
 
-            var completion = await _textCompletion!.GenerateCompletionAsync(prompt, 500, 0.7f, cancellationToken);
+            var completion = await _textCompletion!.CompleteAsync(prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 500, Temperature = 0.7f }, cancellationToken);
             var refinedQueries = completion.Split('\n', StringSplitOptions.RemoveEmptyEntries)
                 .Where(q => !string.IsNullOrWhiteSpace(q))
                 .Take(3)

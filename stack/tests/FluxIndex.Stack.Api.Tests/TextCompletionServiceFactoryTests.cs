@@ -1,3 +1,4 @@
+using Flux.Abstractions;
 using FluentAssertions;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Stack.Infrastructure.Services;
@@ -10,6 +11,8 @@ using Xunit;
 
 namespace FluxIndex.Stack.Api.Tests;
 
+#pragma warning disable CS0618 // Obsolete CountTokens - transitional tests
+
 /// <summary>
 /// Unit tests for LMSupplyTextCompletionWrapper and TextCompletionServiceFactory.
 /// </summary>
@@ -18,7 +21,7 @@ public class TextCompletionServiceFactoryTests
     #region LMSupplyTextCompletionWrapper Tests
 
     [Fact]
-    public async Task Wrapper_GenerateCompletionAsync_DelegatesToGenerator()
+    public async Task Wrapper_CompleteAsync_DelegatesToGenerator()
     {
         // Arrange
         var generator = Substitute.For<ITextGenerator>();
@@ -32,7 +35,7 @@ public class TextCompletionServiceFactoryTests
         var wrapper = new LMSupplyTextCompletionWrapper(generator, logger);
 
         // Act
-        var result = await wrapper.GenerateCompletionAsync("test prompt", 200, 0.5f);
+        var result = await wrapper.CompleteAsync("test prompt", new TextCompletionOptions { MaxTokens = 200, Temperature = 0.5f });
 
         // Assert
         result.Should().Be("Generated text response");
@@ -43,15 +46,15 @@ public class TextCompletionServiceFactoryTests
     }
 
     [Fact]
-    public async Task Wrapper_GenerateCompletionAsync_WithEmptyPrompt_ReturnsEmpty()
+    public async Task Wrapper_CompleteAsync_WithEmptyPrompt_ReturnsEmpty()
     {
-        // Arrange — TextCompletionServiceBase returns empty for whitespace prompts
+        // Arrange -- TextCompletionServiceBase returns empty for whitespace prompts
         var generator = Substitute.For<ITextGenerator>();
         var logger = Substitute.For<ILogger>();
         var wrapper = new LMSupplyTextCompletionWrapper(generator, logger);
 
         // Act
-        var result = await wrapper.GenerateCompletionAsync("", 100, 0.7f);
+        var result = await wrapper.CompleteAsync("", new TextCompletionOptions { MaxTokens = 100, Temperature = 0.7f });
 
         // Assert
         result.Should().BeEmpty();
@@ -62,7 +65,7 @@ public class TextCompletionServiceFactoryTests
     }
 
     [Fact]
-    public async Task Wrapper_GenerateJsonCompletionAsync_DelegatesToGeneratorWithJsonInstruction()
+    public async Task Wrapper_CompleteJsonAsync_DelegatesToGeneratorWithJsonInstruction()
     {
         // Arrange
         var generator = Substitute.For<ITextGenerator>();
@@ -76,7 +79,7 @@ public class TextCompletionServiceFactoryTests
         var wrapper = new LMSupplyTextCompletionWrapper(generator, logger);
 
         // Act
-        var result = await wrapper.GenerateJsonCompletionAsync("extract entities", 300);
+        var result = await wrapper.CompleteJsonAsync("extract entities", new TextCompletionOptions { MaxTokens = 300 });
 
         // Assert
         result.Should().Contain("key");
@@ -94,7 +97,7 @@ public class TextCompletionServiceFactoryTests
         var logger = Substitute.For<ILogger>();
         var wrapper = new LMSupplyTextCompletionWrapper(generator, logger);
 
-        // Act — TextCompletionServiceBase uses ~length/4 heuristic
+        // Act -- TextCompletionServiceBase uses ~length/4 heuristic
         var count = wrapper.CountTokens("Hello, this is a test string for token counting.");
 
         // Assert
@@ -191,7 +194,7 @@ public class TextCompletionServiceFactoryTests
     [Fact]
     public async Task Factory_CreateProviderAsync_CustomEndpoint_ReturnsOpenAIService()
     {
-        // Arrange — unknown provider with endpoint URL → OpenAI-compatible
+        // Arrange -- unknown provider with endpoint URL -> OpenAI-compatible
         var factory = CreateFactory();
 
         // Act
@@ -207,7 +210,7 @@ public class TextCompletionServiceFactoryTests
         // Arrange
         var factory = CreateFactory();
 
-        // Act — no model name
+        // Act -- no model name
         var service = await factory.CreateProviderAsync("OpenAI", "sk-test-key", null);
 
         // Assert

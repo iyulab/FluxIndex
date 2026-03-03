@@ -385,7 +385,7 @@ public partial class DocumentService : IDocumentService
 
         try
         {
-            var response = await _textCompletionService.GenerateJsonCompletionAsync(prompt, maxTokens: 2000, cancellationToken);
+            var response = await _textCompletionService.CompleteJsonAsync(prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 2000 }, cancellationToken);
 
             // Parse JSON response
             var qaPairs = ParseQAPairs(response, maxPairs);

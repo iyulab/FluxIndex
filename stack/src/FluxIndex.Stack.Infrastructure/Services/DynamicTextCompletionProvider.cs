@@ -1,3 +1,4 @@
+using Flux.Abstractions;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Stack.Application.Interfaces.Repositories;
 using FluxIndex.Stack.Application.Interfaces.Services;
@@ -93,28 +94,29 @@ public partial class DynamicTextCompletionProvider : ITextCompletionService, ITe
         return provider;
     }
 
-    public async Task<string> GenerateCompletionAsync(
+    public async Task<string> CompleteAsync(
         string prompt,
-        int maxTokens = 500,
-        float temperature = 0.7f,
+        TextCompletionOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         var provider = await GetActiveProviderAsync(cancellationToken);
-        return await provider.GenerateCompletionAsync(prompt, maxTokens, temperature, cancellationToken);
+        return await provider.CompleteAsync(prompt, options, cancellationToken);
     }
 
-    public async Task<string> GenerateJsonCompletionAsync(
+    public async Task<string> CompleteJsonAsync(
         string prompt,
-        int maxTokens = 500,
+        TextCompletionOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         var provider = await GetActiveProviderAsync(cancellationToken);
-        return await provider.GenerateJsonCompletionAsync(prompt, maxTokens, cancellationToken);
+        return await provider.CompleteJsonAsync(prompt, options, cancellationToken);
     }
 
+#pragma warning disable CS0618 // Obsolete member
     public int CountTokens(string text)
+#pragma warning restore CS0618
     {
-        // Rough approximation: 1 token ≈ 4 characters
+        // Rough approximation: 1 token ~ 4 characters
         return text.Length / 4;
     }
 

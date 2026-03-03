@@ -364,11 +364,8 @@ public class ListwiseRerankerTests
     public async Task ComputePairwisePreferenceAsync_WithLlm_UsesLlmComparison()
     {
         // Arrange
-        _mockLlmService.GenerateCompletionAsync(
-                Arg.Any<string>(),
-                Arg.Any<int>(),
-                Arg.Any<float>(),
-                Arg.Any<CancellationToken>()).Returns("A");
+        _mockLlmService.CompleteAsync(
+                Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns("A");
 
         var reranker = new ListwiseReranker(llmService: _mockLlmService);
 
@@ -620,11 +617,8 @@ public class ListwiseRerankerTests
     {
         // Return "A" for pairwise comparisons (Tournament mode expects "A", "B", or "TIE")
         // Return "1, 2, 3" for ranking requests (DirectLlm mode expects ranked indices)
-        _mockLlmService.GenerateCompletionAsync(
-                Arg.Any<string>(),
-                Arg.Any<int>(),
-                Arg.Any<float>(),
-                Arg.Any<CancellationToken>()).Returns(callInfo => { var prompt = callInfo.ArgAt<string>(0); 
+        _mockLlmService.CompleteAsync(
+                Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns(callInfo => { var prompt = callInfo.ArgAt<string>(0); 
                 // Tournament mode asks "Which document is more relevant?"
                 if (prompt.Contains("Which document is more relevant"))
                 {

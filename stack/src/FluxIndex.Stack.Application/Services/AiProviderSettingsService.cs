@@ -310,7 +310,7 @@ public partial class AiProviderSettingsService : IAiProviderSettingsService
                 var service = await _textCompletionFactory.CreateProviderAsync(
                     providerName, settings.ApiKey, settings.LlmModel,
                     settings.EndpointUrl, cancellationToken);
-                await service.GenerateCompletionAsync("Say ok", maxTokens: 5, temperature: 0f, cancellationToken);
+                await service.CompleteAsync("Say ok", new Flux.Abstractions.TextCompletionOptions { MaxTokens = 5, Temperature = 0f }, cancellationToken);
             }
 
             LogConnectionTestSucceeded(_logger, providerName);

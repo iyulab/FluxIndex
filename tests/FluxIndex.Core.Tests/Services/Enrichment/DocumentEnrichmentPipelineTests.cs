@@ -31,11 +31,8 @@ public class DocumentEnrichmentPipelineTests
         _mockEmbeddingService.GetModelName().Returns("test-embedding-model");
 
         // Setup default text completion behavior
-        _mockTextCompletionService.GenerateCompletionAsync(
-                Arg.Any<string>(),
-                Arg.Any<int>(),
-                Arg.Any<float>(),
-                Arg.Any<CancellationToken>()).Returns("Generated text response");
+        _mockTextCompletionService.CompleteAsync(
+                Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns("Generated text response");
 
         // Setup default entity extraction behavior
         _mockEntityExtractionService.ExtractEntityGraphAsync(
@@ -152,10 +149,9 @@ public class DocumentEnrichmentPipelineTests
             ExtractEntities = false
         };
 
-        _mockTextCompletionService.GenerateCompletionAsync(
+        _mockTextCompletionService.CompleteAsync(
                 Arg.Is<string>(s => s.Contains("hypothetical") || s.Contains("HyDE")),
-                Arg.Any<int>(),
-                Arg.Any<float>(),
+                Arg.Any<Flux.Abstractions.TextCompletionOptions?>(),
                 Arg.Any<CancellationToken>()).Returns("Machine learning is a field of artificial intelligence that enables computers to learn from data.");
 
         // Act
@@ -613,11 +609,8 @@ public class DocumentEnrichmentPipelineTests
         var pipeline = CreatePipeline();
         var chunkContent = "Machine learning algorithms can learn from data.";
 
-        _mockTextCompletionService.GenerateCompletionAsync(
-                Arg.Any<string>(),
-                Arg.Any<int>(),
-                Arg.Any<float>(),
-                Arg.Any<CancellationToken>()).Returns("This chunk discusses how ML algorithms work with data.");
+        _mockTextCompletionService.CompleteAsync(
+                Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns("This chunk discusses how ML algorithms work with data.");
 
         // Act
         var result = await pipeline.GenerateContextualSummaryAsync(chunkContent);
@@ -644,10 +637,9 @@ public class DocumentEnrichmentPipelineTests
 
         // Assert
         Assert.NotNull(result);
-        await _mockTextCompletionService.Received().GenerateCompletionAsync(
+        await _mockTextCompletionService.Received().CompleteAsync(
                 Arg.Is<string>(s => s.Contains(documentContext) || s.Contains("deep learning")),
-                Arg.Any<int>(),
-                Arg.Any<float>(),
+                Arg.Any<Flux.Abstractions.TextCompletionOptions?>(),
                 Arg.Any<CancellationToken>());
     }
 

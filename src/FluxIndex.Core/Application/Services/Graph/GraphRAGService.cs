@@ -1123,11 +1123,8 @@ Question: {query}
 
 Answer:";
 
-        var response = await _textCompletionService.GenerateCompletionAsync(
-            prompt,
-            options.MaxAnswerTokens,
-            options.Temperature,
-            cancellationToken);
+        var response = await _textCompletionService.CompleteAsync(
+            prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = options.MaxAnswerTokens, Temperature = options.Temperature }, cancellationToken);
 
         // Extract citations from the response
         var citations = ExtractCitations(response, documents, communities);
@@ -1152,11 +1149,8 @@ Question: {query}
 
 Answer:";
 
-        return await _textCompletionService.GenerateCompletionAsync(
-            prompt,
-            500,
-            0.3f,
-            cancellationToken);
+        return await _textCompletionService.CompleteAsync(
+            prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 500, Temperature = 0.3f }, cancellationToken);
     }
 
     private async Task<string> GenerateHybridAnswerAsync(
@@ -1185,11 +1179,8 @@ Question: {query}
 
 Provide a comprehensive answer that integrates both perspectives:";
 
-        return await _textCompletionService.GenerateCompletionAsync(
-            prompt,
-            1000,
-            0.3f,
-            cancellationToken);
+        return await _textCompletionService.CompleteAsync(
+            prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 1000, Temperature = 0.3f }, cancellationToken);
     }
 
     private static string BuildAnswerContext(List<GraphRAGDocument> documents, List<GraphRAGCommunity> communities)

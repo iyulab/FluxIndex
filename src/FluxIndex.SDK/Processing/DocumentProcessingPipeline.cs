@@ -929,7 +929,7 @@ Text to clean:
 
 Cleaned text:";
 
-            var cleaned = await _textCompletionService.GenerateCompletionAsync(prompt, 4000, 0.1f, cancellationToken);
+            var cleaned = await _textCompletionService.CompleteAsync(prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 4000, Temperature = 0.1f }, cancellationToken);
             return string.IsNullOrWhiteSpace(cleaned) ? text : cleaned;
         }
         catch (Exception ex)
@@ -963,7 +963,7 @@ Document excerpt:
 
 JSON response:";
 
-            var response = await _textCompletionService.GenerateCompletionAsync(prompt, 500, 0.3f, cancellationToken);
+            var response = await _textCompletionService.CompleteAsync(prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 500, Temperature = 0.3f }, cancellationToken);
 
             if (!string.IsNullOrWhiteSpace(response))
             {

@@ -57,7 +57,7 @@ public class QueryTransformationServiceTests
         var query = "What is machine learning?";
         var hypotheticalDoc = "Machine learning is a subset of artificial intelligence...";
 
-        _mockCompletionService.GenerateCompletionAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns(hypotheticalDoc);
+        _mockCompletionService.CompleteAsync(Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns(hypotheticalDoc);
 
         // Act
         var result = await service.GenerateHypotheticalDocumentAsync(query);
@@ -95,7 +95,7 @@ public class QueryTransformationServiceTests
         var query = "How does photosynthesis work?";
         var llmResponse = "[\"What is photosynthesis?\", \"Explain photosynthesis\"]";
 
-        _mockCompletionService.GenerateCompletionAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns(llmResponse);
+        _mockCompletionService.CompleteAsync(Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns(llmResponse);
 
         // Act
         var result = await service.GenerateMultipleQueriesAsync(query, count: 3);

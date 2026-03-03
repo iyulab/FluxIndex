@@ -1,3 +1,4 @@
+using Flux.Abstractions;
 using FluentAssertions;
 using FluxIndex.Providers.LMSupply.Services;
 using LMSupply.Generator;
@@ -8,6 +9,8 @@ using NSubstitute;
 using Xunit;
 
 namespace FluxIndex.Providers.LMSupply.Tests;
+
+#pragma warning disable CS0618 // Obsolete CountTokens - transitional tests
 
 public class LMSupplyTextCompletionServiceTests
 {
@@ -46,10 +49,10 @@ public class LMSupplyTextCompletionServiceTests
 
     #endregion
 
-    #region GenerateCompletionAsync
+    #region CompleteAsync
 
     [Fact]
-    public async Task GenerateCompletionAsync_ValidPrompt_DelegatesToGenerator()
+    public async Task CompleteAsync_ValidPrompt_DelegatesToGenerator()
     {
         _mockGenerator.GenerateCompleteAsync(
                 "test prompt",
@@ -57,7 +60,7 @@ public class LMSupplyTextCompletionServiceTests
                 Arg.Any<CancellationToken>())
             .Returns("generated text");
 
-        var result = await _service.GenerateCompletionAsync("test prompt", maxTokens: 100, temperature: 0.5f);
+        var result = await _service.CompleteAsync("test prompt", new TextCompletionOptions { MaxTokens = 100, Temperature = 0.5f });
 
         result.Should().Be("generated text");
         await _mockGenerator.Received(1).GenerateCompleteAsync(
@@ -67,9 +70,9 @@ public class LMSupplyTextCompletionServiceTests
     }
 
     [Fact]
-    public async Task GenerateCompletionAsync_EmptyPrompt_ReturnsEmpty()
+    public async Task CompleteAsync_EmptyPrompt_ReturnsEmpty()
     {
-        var result = await _service.GenerateCompletionAsync("");
+        var result = await _service.CompleteAsync("");
 
         result.Should().BeEmpty();
         await _mockGenerator.DidNotReceive().GenerateCompleteAsync(
@@ -79,23 +82,23 @@ public class LMSupplyTextCompletionServiceTests
     }
 
     [Fact]
-    public async Task GenerateCompletionAsync_WhitespacePrompt_ReturnsEmpty()
+    public async Task CompleteAsync_WhitespacePrompt_ReturnsEmpty()
     {
-        var result = await _service.GenerateCompletionAsync("   ");
+        var result = await _service.CompleteAsync("   ");
 
         result.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task GenerateCompletionAsync_NullPrompt_ReturnsEmpty()
+    public async Task CompleteAsync_NullPrompt_ReturnsEmpty()
     {
-        var result = await _service.GenerateCompletionAsync(null!);
+        var result = await _service.CompleteAsync(null!);
 
         result.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task GenerateCompletionAsync_UsesDefaultParameters()
+    public async Task CompleteAsync_UsesDefaultParameters()
     {
         _mockGenerator.GenerateCompleteAsync(
                 Arg.Any<string>(),
@@ -103,7 +106,7 @@ public class LMSupplyTextCompletionServiceTests
                 Arg.Any<CancellationToken>())
             .Returns("result");
 
-        await _service.GenerateCompletionAsync("prompt");
+        await _service.CompleteAsync("prompt");
 
         await _mockGenerator.Received(1).GenerateCompleteAsync(
             "prompt",
@@ -113,10 +116,10 @@ public class LMSupplyTextCompletionServiceTests
 
     #endregion
 
-    #region GenerateJsonCompletionAsync
+    #region CompleteJsonAsync
 
     [Fact]
-    public async Task GenerateJsonCompletionAsync_ValidPrompt_AppendsJsonInstruction()
+    public async Task CompleteJsonAsync_ValidPrompt_AppendsJsonInstruction()
     {
         _mockGenerator.GenerateCompleteAsync(
                 Arg.Any<string>(),
@@ -124,7 +127,7 @@ public class LMSupplyTextCompletionServiceTests
                 Arg.Any<CancellationToken>())
             .Returns("{\"key\": \"value\"}");
 
-        var result = await _service.GenerateJsonCompletionAsync("generate JSON");
+        var result = await _service.CompleteJsonAsync("generate JSON");
 
         result.Should().Be("{\"key\": \"value\"}");
         await _mockGenerator.Received(1).GenerateCompleteAsync(
@@ -134,15 +137,15 @@ public class LMSupplyTextCompletionServiceTests
     }
 
     [Fact]
-    public async Task GenerateJsonCompletionAsync_EmptyPrompt_ReturnsEmptyJson()
+    public async Task CompleteJsonAsync_EmptyPrompt_ReturnsEmptyJson()
     {
-        var result = await _service.GenerateJsonCompletionAsync("");
+        var result = await _service.CompleteJsonAsync("");
 
         result.Should().Be("{}");
     }
 
     [Fact]
-    public async Task GenerateJsonCompletionAsync_ResponseWithExtraText_ExtractsJson()
+    public async Task CompleteJsonAsync_ResponseWithExtraText_ExtractsJson()
     {
         _mockGenerator.GenerateCompleteAsync(
                 Arg.Any<string>(),
@@ -150,7 +153,7 @@ public class LMSupplyTextCompletionServiceTests
                 Arg.Any<CancellationToken>())
             .Returns("Here is the JSON: {\"result\": 42} Hope that helps!");
 
-        var result = await _service.GenerateJsonCompletionAsync("get data");
+        var result = await _service.CompleteJsonAsync("get data");
 
         result.Should().Be("{\"result\": 42}");
     }

@@ -927,11 +927,8 @@ public partial class CommunityDetectionService : ICommunityDetectionService
                     Summary:
                     """;
 
-                var summary = await _completionService.GenerateCompletionAsync(
-                    prompt,
-                    100,
-                    0.3f,
-                    cancellationToken);
+                var summary = await _completionService.CompleteAsync(
+                    prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 100, Temperature = 0.3f }, cancellationToken);
 
                 updatedCommunities.Add(community with { Summary = summary.Trim() });
             }

@@ -99,8 +99,8 @@ public class AiProviderSettingsServiceTests
             .Returns(settings);
 
         var completionService = Substitute.For<ITextCompletionService>();
-        completionService.GenerateCompletionAsync(
-                Arg.Any<string>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>())
+        completionService.CompleteAsync(
+                Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>())
             .Returns("ok");
 
         _textCompletionFactory.CreateProviderAsync(
@@ -112,8 +112,8 @@ public class AiProviderSettingsServiceTests
 
         // Assert
         result.Should().BeTrue();
-        await completionService.Received(1).GenerateCompletionAsync(
-            "Say ok", 5, 0f, Arg.Any<CancellationToken>());
+        await completionService.Received(1).CompleteAsync(
+            "Say ok", Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -131,8 +131,8 @@ public class AiProviderSettingsServiceTests
             .Returns(SingleEmbedding);
 
         var completionService = Substitute.For<ITextCompletionService>();
-        completionService.GenerateCompletionAsync(
-                Arg.Any<string>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>())
+        completionService.CompleteAsync(
+                Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>())
             .Returns("ok");
 
         _embeddingFactory.CreateProviderAsync(
@@ -148,8 +148,8 @@ public class AiProviderSettingsServiceTests
         // Assert
         result.Should().BeTrue();
         await embeddingProvider.Received(1).GetEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
-        await completionService.Received(1).GenerateCompletionAsync(
-            Arg.Any<string>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>());
+        await completionService.Received(1).CompleteAsync(
+            Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

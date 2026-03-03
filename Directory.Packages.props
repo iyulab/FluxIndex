@@ -55,7 +55,7 @@
     <!-- LMSupply: Full AI stack (Embedder + Generator + Reranker) -->
     <PackageVersion Include="LMSupply.Embedder" Version="0.13.9" />
     <PackageVersion Include="LMSupply.Generator" Version="0.13.9" />
-    <PackageVersion Include="LMSupply.Reranker" Version="0.13.2" />
+    <PackageVersion Include="LMSupply.Reranker" Version="0.13.9" />
   </ItemGroup>
   <!-- Storage/Cache Packages -->
   <ItemGroup>
@@ -71,7 +71,7 @@
   <ItemGroup>
     <PackageVersion Include="FileFlux" Version="0.10.5" />
     <PackageVersion Include="FluxCurator" Version="0.7.2" />
-    <PackageVersion Include="FluxImprover" Version="0.7.1" />
+    <PackageVersion Include="FluxImprover" Version="0.8.0" />
     <PackageVersion Include="HtmlAgilityPack" Version="1.12.4" />
     <PackageVersion Include="TokenMeter.Abstractions" Version="0.3.1" />
     <PackageVersion Include="WebFlux" Version="0.4.2" />

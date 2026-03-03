@@ -216,11 +216,8 @@ public partial class IterativeRetrievalService : IIterativeRetrievalService
 
         try
         {
-            var response = await _llmService.GenerateCompletionAsync(
-                prompt,
-                maxTokens: 500,
-                temperature: options.ReasoningTemperature,
-                cancellationToken: cancellationToken);
+            var response = await _llmService.CompleteAsync(
+                prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 500, Temperature = options.ReasoningTemperature }, cancellationToken);
 
             return ParseReasoningResponse(response);
         }
@@ -335,11 +332,8 @@ public partial class IterativeRetrievalService : IIterativeRetrievalService
 
         try
         {
-            var answer = await _llmService.GenerateCompletionAsync(
-                prompt,
-                maxTokens: 500,
-                temperature: 0.3f,
-                cancellationToken: cancellationToken);
+            var answer = await _llmService.CompleteAsync(
+                prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 500, Temperature = 0.3f }, cancellationToken);
 
             return answer;
         }
@@ -471,11 +465,8 @@ public partial class IterativeRetrievalService : IIterativeRetrievalService
 
         try
         {
-            var response = await _llmService.GenerateCompletionAsync(
-                prompt,
-                maxTokens: 500,
-                temperature: 0.3f,
-                cancellationToken: cancellationToken);
+            var response = await _llmService.CompleteAsync(
+                prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 500, Temperature = 0.3f }, cancellationToken);
 
             return ParseSubQuestions(response);
         }
@@ -550,11 +541,8 @@ public partial class IterativeRetrievalService : IIterativeRetrievalService
 
         try
         {
-            var answer = await _llmService!.GenerateCompletionAsync(
-                prompt,
-                maxTokens: 200,
-                temperature: 0.2f,
-                cancellationToken: cancellationToken);
+            var answer = await _llmService!.CompleteAsync(
+                prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 200, Temperature = 0.2f }, cancellationToken);
 
             var confidence = answer.Contains("Not found", StringComparison.OrdinalIgnoreCase) ? 0.2f : 0.8f;
             return (answer, confidence);
@@ -587,11 +575,8 @@ public partial class IterativeRetrievalService : IIterativeRetrievalService
 
         try
         {
-            var answer = await _llmService!.GenerateCompletionAsync(
-                prompt,
-                maxTokens: 500,
-                temperature: 0.3f,
-                cancellationToken: cancellationToken);
+            var answer = await _llmService!.CompleteAsync(
+                prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 500, Temperature = 0.3f }, cancellationToken);
 
             var answeredQuestions = subQuestions.Where(q => q.Confidence > 0).ToList();
             var avgConfidence = answeredQuestions.Count != 0 ? answeredQuestions.Average(q => q.Confidence) : 0f;
@@ -782,11 +767,8 @@ public partial class IterativeRetrievalService : IIterativeRetrievalService
 
         try
         {
-            var response = await _llmService.GenerateCompletionAsync(
-                prompt,
-                maxTokens: 10,
-                temperature: 0.0f,
-                cancellationToken: cancellationToken);
+            var response = await _llmService.CompleteAsync(
+                prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 10, Temperature = 0.0f }, cancellationToken);
 
             return response.Trim().Contains("YES", StringComparison.OrdinalIgnoreCase);
         }
@@ -926,11 +908,8 @@ public partial class IterativeRetrievalService : IIterativeRetrievalService
 
         try
         {
-            var response = await _llmService.GenerateCompletionAsync(
-                prompt,
-                maxTokens: 300,
-                temperature: 0.3f,
-                cancellationToken: cancellationToken);
+            var response = await _llmService.CompleteAsync(
+                prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 300, Temperature = 0.3f }, cancellationToken);
 
             return ParseAgentPlan(response, availableTools, query);
         }
@@ -1031,11 +1010,8 @@ public partial class IterativeRetrievalService : IIterativeRetrievalService
 
         try
         {
-            var response = await _llmService.GenerateCompletionAsync(
-                prompt,
-                maxTokens: 100,
-                temperature: 0.3f,
-                cancellationToken: cancellationToken);
+            var response = await _llmService.CompleteAsync(
+                prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 100, Temperature = 0.3f }, cancellationToken);
             return response.Trim();
         }
         catch
@@ -1075,11 +1051,8 @@ public partial class IterativeRetrievalService : IIterativeRetrievalService
 
         try
         {
-            var response = await _llmService.GenerateCompletionAsync(
-                prompt,
-                maxTokens: 150,
-                temperature: 0.2f,
-                cancellationToken: cancellationToken);
+            var response = await _llmService.CompleteAsync(
+                prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 150, Temperature = 0.2f }, cancellationToken);
 
             var achieved = response.Contains("ACHIEVED: YES", StringComparison.OrdinalIgnoreCase);
             var reflectionMatch = response.IndexOf("REFLECTION:", StringComparison.OrdinalIgnoreCase);

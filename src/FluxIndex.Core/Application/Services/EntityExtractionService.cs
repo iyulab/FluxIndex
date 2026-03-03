@@ -449,11 +449,8 @@ public partial class EntityExtractionService : IAdvancedEntityExtractionService
         try
         {
             var prompt = BuildEntityExtractionPrompt(content, options);
-            var response = await _llmService.GenerateCompletionAsync(
-                prompt,
-                maxTokens: 2000,
-                temperature: 0.1f,
-                cancellationToken: cancellationToken);
+            var response = await _llmService.CompleteAsync(
+                prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 2000, Temperature = 0.1f }, cancellationToken);
             return ParseLlmEntityResponse(response, content, options);
         }
         catch (Exception ex)
@@ -519,11 +516,8 @@ public partial class EntityExtractionService : IAdvancedEntityExtractionService
         try
         {
             var prompt = BuildRelationExtractionPrompt(content, entities);
-            var response = await _llmService.GenerateCompletionAsync(
-                prompt,
-                maxTokens: 1500,
-                temperature: 0.1f,
-                cancellationToken: cancellationToken);
+            var response = await _llmService.CompleteAsync(
+                prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 1500, Temperature = 0.1f }, cancellationToken);
             return ParseLlmRelationResponse(response, entities);
         }
         catch (Exception ex)

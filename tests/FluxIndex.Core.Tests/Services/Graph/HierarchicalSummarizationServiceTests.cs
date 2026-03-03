@@ -130,7 +130,7 @@ public class HierarchicalSummarizationServiceTests
         var hierarchy = CreateMockHierarchy(levelCount: 1, communitiesPerLevel: 2);
         var chunks = CreateMockChunks(hierarchy);
 
-        _mockLlmService.GenerateCompletionAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns("This is a generated summary about the community topic.");
+        _mockLlmService.CompleteAsync(Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns("This is a generated summary about the community topic.");
 
         // Act
         var result = await service.GenerateHierarchicalSummariesAsync(hierarchy, chunks);
@@ -237,7 +237,7 @@ public class HierarchicalSummarizationServiceTests
 
         _mockEmbeddingService.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new float[] { 0.1f, 0.2f, 0.3f });
 
-        _mockLlmService.GenerateCompletionAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns("Based on the community information, here is the synthesized answer about the topic.");
+        _mockLlmService.CompleteAsync(Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns("Based on the community information, here is the synthesized answer about the topic.");
 
         var summaryResult = await service.GenerateHierarchicalSummariesAsync(hierarchy, chunks);
 
@@ -342,7 +342,7 @@ public class HierarchicalSummarizationServiceTests
             }
         };
 
-        _mockLlmService.GenerateCompletionAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<CancellationToken>()).Returns("Synthesized answer about topic A based on the community.");
+        _mockLlmService.CompleteAsync(Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns("Synthesized answer about topic A based on the community.");
 
         // Act
         var answer = await service.SynthesizeAnswerAsync("query", summaries);

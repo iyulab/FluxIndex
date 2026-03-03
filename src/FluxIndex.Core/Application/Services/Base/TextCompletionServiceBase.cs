@@ -1,3 +1,4 @@
+using Flux.Abstractions;
 using FluxIndex.Core.Application.Interfaces;
 
 namespace FluxIndex.Core.Application.Services.Base;
@@ -11,13 +12,13 @@ namespace FluxIndex.Core.Application.Services.Base;
 /// // LMSupply implementation (~15 lines):
 /// public class LMSupplyGenerator : TextCompletionServiceBase
 /// {
-///     private readonly IGeneratorModel _model;
-///     public LMSupplyGenerator(IGeneratorModel model) => _model = model;
+///     private readonly ITextGenerator _model;
+///     public LMSupplyGenerator(ITextGenerator model) => _model = model;
 ///
-///     protected override async Task&lt;string&gt; GenerateCoreAsync(string prompt, int maxTokens, float temperature, CancellationToken ct)
+///     protected override async Task&lt;string&gt; CompleteCoreAsync(string prompt, TextCompletionOptions options, CancellationToken ct)
 ///     {
 ///         var sb = new StringBuilder();
-///         await foreach (var token in _model.GenerateAsync(prompt, new() { MaxTokens = maxTokens, Temperature = temperature }, ct))
+///         await foreach (var token in _model.GenerateAsync(prompt, new() { MaxTokens = options.MaxTokens, Temperature = options.Temperature }, ct))
 ///             sb.Append(token);
 ///         return sb.ToString();
 ///     }
@@ -29,35 +30,35 @@ namespace FluxIndex.Core.Application.Services.Base;
 ///     private readonly OpenAIClient _client;
 ///     public OpenAIGenerator(OpenAIClient client) => _client = client;
 ///
-///     protected override async Task&lt;string&gt; GenerateCoreAsync(string prompt, int maxTokens, float temperature, CancellationToken ct)
+///     protected override async Task&lt;string&gt; CompleteCoreAsync(string prompt, TextCompletionOptions options, CancellationToken ct)
 ///     {
 ///         var response = await _client.GetChatCompletionsAsync(prompt, ct);
 ///         return response.Value.Choices[0].Message.Content;
 ///     }
 /// }
 /// </example>
-public abstract class TextCompletionServiceBase : ITextCompletionService
+public abstract class TextCompletionServiceBase : Interfaces.ITextCompletionService
 {
+    private static readonly TextCompletionOptions DefaultOptions = new();
+
     /// <summary>
-    /// Core generation method to implement. Called by GenerateCompletionAsync after validation.
+    /// Core generation method to implement. Called by <see cref="CompleteAsync"/> after validation.
     /// </summary>
-    protected abstract Task<string> GenerateCoreAsync(
+    protected abstract Task<string> CompleteCoreAsync(
         string prompt,
-        int maxTokens,
-        float temperature,
+        TextCompletionOptions options,
         CancellationToken cancellationToken);
 
     /// <inheritdoc />
-    public async Task<string> GenerateCompletionAsync(
+    public async Task<string> CompleteAsync(
         string prompt,
-        int maxTokens = 500,
-        float temperature = 0.7f,
+        TextCompletionOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(prompt))
             return string.Empty;
 
-        return await GenerateCoreAsync(prompt, maxTokens, temperature, cancellationToken);
+        return await CompleteCoreAsync(prompt, options ?? DefaultOptions, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -65,16 +66,27 @@ public abstract class TextCompletionServiceBase : ITextCompletionService
     /// Default implementation appends JSON instruction to prompt and extracts JSON from response.
     /// Override for structured output support if your provider has native JSON mode.
     /// </remarks>
-    public virtual async Task<string> GenerateJsonCompletionAsync(
+    public virtual async Task<string> CompleteJsonAsync(
         string prompt,
-        int maxTokens = 500,
+        TextCompletionOptions? options = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(prompt))
             return "{}";
 
         var jsonPrompt = $"{prompt}\n\nRespond with valid JSON only. No markdown, no explanation, just JSON:";
-        var result = await GenerateCoreAsync(jsonPrompt, maxTokens, 0.1f, cancellationToken);
+        var jsonOptions = new TextCompletionOptions
+        {
+            MaxTokens = options?.MaxTokens ?? DefaultOptions.MaxTokens,
+            Temperature = 0.1f,
+            TopP = options?.TopP,
+            FrequencyPenalty = options?.FrequencyPenalty,
+            PresencePenalty = options?.PresencePenalty,
+            StopSequences = options?.StopSequences,
+            SystemPrompt = options?.SystemPrompt,
+            ResponseFormat = "json",
+        };
+        var result = await CompleteCoreAsync(jsonPrompt, jsonOptions, cancellationToken);
 
         return ExtractJson(result);
     }
@@ -84,7 +96,9 @@ public abstract class TextCompletionServiceBase : ITextCompletionService
     /// Default: rough approximation (length / 4 for English, 1:1 for CJK).
     /// Override for accurate tokenization if your provider has a tokenizer.
     /// </remarks>
+#pragma warning disable CS0618 // Obsolete member
     public virtual int CountTokens(string text)
+#pragma warning restore CS0618
     {
         if (string.IsNullOrEmpty(text))
             return 0;

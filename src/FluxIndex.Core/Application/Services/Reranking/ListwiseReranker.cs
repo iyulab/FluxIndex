@@ -240,11 +240,8 @@ public partial class ListwiseReranker : IListwiseReranker
 
         try
         {
-            var response = await _llmService!.GenerateCompletionAsync(
-                prompt,
-                maxTokens: 500,
-                temperature: options.LlmTemperature,
-                cancellationToken: cancellationToken);
+            var response = await _llmService!.CompleteAsync(
+                prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 500, Temperature = options.LlmTemperature }, cancellationToken);
 
             return ParseRankingResponse(response, window);
         }
@@ -807,11 +804,8 @@ public partial class ListwiseReranker : IListwiseReranker
 
         try
         {
-            var response = await _llmService!.GenerateCompletionAsync(
-                prompt,
-                maxTokens: 10,
-                temperature: 0.0f,
-                cancellationToken: cancellationToken);
+            var response = await _llmService!.CompleteAsync(
+                prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 10, Temperature = 0.0f }, cancellationToken);
 
             var choice = response.Trim().ToUpperInvariant();
 

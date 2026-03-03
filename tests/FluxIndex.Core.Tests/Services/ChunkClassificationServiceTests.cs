@@ -260,11 +260,8 @@ public class ChunkClassificationServiceTests
     {
         // Arrange
         var textCompletionMock = Substitute.For<ITextCompletionService>();
-        textCompletionMock.GenerateCompletionAsync(
-                Arg.Any<string>(),
-                Arg.Any<int>(),
-                Arg.Any<float>(),
-                Arg.Any<CancellationToken>()).Returns(@"{
+        textCompletionMock.CompleteAsync(
+                Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns(@"{
                 ""topics"": [""RAG"", ""Vector Search""],
                 ""categories"": [""Technical""],
                 ""tags"": [""search"", ""ai""],
@@ -296,11 +293,8 @@ public class ChunkClassificationServiceTests
     {
         // Arrange
         var textCompletionMock = Substitute.For<ITextCompletionService>();
-        textCompletionMock.GenerateCompletionAsync(
-                Arg.Any<string>(),
-                Arg.Any<int>(),
-                Arg.Any<float>(),
-                Arg.Any<CancellationToken>()).Returns(@"{
+        textCompletionMock.CompleteAsync(
+                Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns(@"{
                 ""topics"": [""Topic1""],
                 ""confidence"": 0.8
             }");
@@ -329,11 +323,8 @@ public class ChunkClassificationServiceTests
         Assert.Equal(ClassificationSource.Llm, results["chunk3"].Source);
 
         // LLM should be called only twice
-        await textCompletionMock.Received(2).GenerateCompletionAsync(
-            Arg.Any<string>(),
-            Arg.Any<int>(),
-            Arg.Any<float>(),
-            Arg.Any<CancellationToken>());
+        await textCompletionMock.Received(2).CompleteAsync(
+            Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -341,11 +332,8 @@ public class ChunkClassificationServiceTests
     {
         // Arrange
         var textCompletionMock = Substitute.For<ITextCompletionService>();
-        textCompletionMock.GenerateCompletionAsync(
-                Arg.Any<string>(),
-                Arg.Any<int>(),
-                Arg.Any<float>(),
-                Arg.Any<CancellationToken>()).Returns("Invalid JSON response");
+        textCompletionMock.CompleteAsync(
+                Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns("Invalid JSON response");
 
         var validationService = CreateValidationService();
         var classificationService = new LlmChunkClassificationService(

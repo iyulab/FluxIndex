@@ -295,11 +295,8 @@ public class LeidenCommunityServiceTests
     public async Task DetectHierarchicalCommunitiesAsync_WithSummaryGeneration_GeneratesSummaries()
     {
         // Arrange
-        _llmServiceMock.GenerateCompletionAsync(
-                Arg.Any<string>(),
-                Arg.Any<int>(),
-                Arg.Any<float>(),
-                Arg.Any<CancellationToken>()).Returns("This community focuses on machine learning topics.");
+        _llmServiceMock.CompleteAsync(
+                Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns("This community focuses on machine learning topics.");
 
         var service = new LeidenCommunityService(_loggerMock, _llmServiceMock);
         var baseEmbedding = CreateRandomEmbedding();
@@ -406,11 +403,8 @@ public class LeidenCommunityServiceTests
     public async Task GenerateSummariesAsync_WithLlmService_GeneratesLlmSummaries()
     {
         // Arrange
-        _llmServiceMock.GenerateCompletionAsync(
-                Arg.Any<string>(),
-                Arg.Any<int>(),
-                Arg.Any<float>(),
-                Arg.Any<CancellationToken>()).Returns("A community about machine learning and AI.");
+        _llmServiceMock.CompleteAsync(
+                Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns("A community about machine learning and AI.");
 
         var service = new LeidenCommunityService(_loggerMock, _llmServiceMock);
         var community = new LeidenCommunity
@@ -446,11 +440,8 @@ public class LeidenCommunityServiceTests
     public async Task GenerateSummariesAsync_LlmFailure_ReturnsNull()
     {
         // Arrange
-        _llmServiceMock.GenerateCompletionAsync(
-                Arg.Any<string>(),
-                Arg.Any<int>(),
-                Arg.Any<float>(),
-                Arg.Any<CancellationToken>()).Throws(new Exception("LLM service unavailable"));
+        _llmServiceMock.CompleteAsync(
+                Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Throws(new Exception("LLM service unavailable"));
 
         var service = new LeidenCommunityService(_loggerMock, _llmServiceMock);
         var community = new LeidenCommunity
