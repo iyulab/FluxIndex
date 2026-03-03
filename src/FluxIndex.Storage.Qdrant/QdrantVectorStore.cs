@@ -447,17 +447,37 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
         Dictionary<string, object>? filters = null,
         CancellationToken cancellationToken = default)
     {
-        // Validate dimension consistency if collection is already initialized
+        // Dynamic dimension adaptation: switch collection if dimension changed
+        // (e.g., user changed embedding model in settings without restart)
         if (_detectedDimension.HasValue && queryEmbedding.Length != _detectedDimension.Value)
         {
-            throw new InvalidOperationException(
-                $"Query embedding dimension ({queryEmbedding.Length}) does not match " +
-                $"collection dimension ({_detectedDimension.Value}). " +
-                $"Collection '{_resolvedCollectionName}' was initialized with {_detectedDimension.Value}-dimensional vectors.");
+            LogDimensionSwitch(_logger, _detectedDimension.Value, queryEmbedding.Length);
         }
 
-        // Ensure collection exists for this dimension
+        // Ensure collection exists for this dimension (creates if needed, switches if dimension changed)
         await EnsureCollectionForDimensionAsync(queryEmbedding.Length, cancellationToken);
+
+        // If collection doesn't exist and auto-creation is disabled, return empty results
+        if (_resolvedCollectionName == null)
+        {
+            return [];
+        }
+
+        // Verify the collection actually exists (may not if just switching to a new dimension)
+        try
+        {
+            var collections = await _client.ListCollectionsAsync(cancellationToken);
+            if (!collections.Any(c => c == _resolvedCollectionName))
+            {
+                LogCollectionNotFound(_logger, _resolvedCollectionName);
+                return [];
+            }
+        }
+        catch (Exception ex)
+        {
+            LogCollectionCheckFailed(_logger, ex, _resolvedCollectionName);
+            return [];
+        }
 
         var qdrantFilter = BuildQdrantFilter(filters);
 
@@ -813,6 +833,15 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to delete Qdrant collection '{CollectionName}'")]
     private static partial void LogDeleteCollectionFailed(ILogger logger, Exception exception, string collectionName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Search dimension changed from {OldDimension} to {NewDimension}, switching collection")]
+    private static partial void LogDimensionSwitch(ILogger logger, int oldDimension, int newDimension);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Collection '{CollectionName}' not found, returning empty results")]
+    private static partial void LogCollectionNotFound(ILogger logger, string collectionName);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to check collection '{CollectionName}' existence")]
+    private static partial void LogCollectionCheckFailed(ILogger logger, Exception exception, string collectionName);
 
     #endregion
 }
