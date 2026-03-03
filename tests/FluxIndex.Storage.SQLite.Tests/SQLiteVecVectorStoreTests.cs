@@ -624,13 +624,22 @@ public class SQLiteVecOptionsTests
         var options = new SQLiteVecOptions { VectorDimension = 1536 };
 
         // Act
-        var schema = options.GetVecTableSchema("test_embeddings");
+        var schema = options.GetVecTableSchema();
 
         // Assert
-        schema.Should().Contain("CREATE VIRTUAL TABLE test_embeddings");
+        schema.Should().Contain("CREATE VIRTUAL TABLE chunk_embeddings_1536");
         schema.Should().Contain("vec0");
         schema.Should().Contain("float[1536]");
         schema.Should().Contain("metric=cosine");
+    }
+
+    [SkippableFact]
+    public void GetVecTableName_ShouldIncludeDimension()
+    {
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
+        var options = new SQLiteVecOptions { VectorDimension = 384 };
+        options.GetVecTableName().Should().Be("chunk_embeddings_384");
     }
 
     [SkippableFact]
