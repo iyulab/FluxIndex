@@ -317,6 +317,7 @@ public partial class SQLiteVecDbContext : DbContext
         Microsoft.Data.Sqlite.SqliteConnection connection,
         CancellationToken cancellationToken)
     {
+        // Safe: GetVecTableName() returns "chunk_embeddings_{int}" — no injection risk
         var newTableName = _options.GetVecTableName();
 
         // Check if legacy "chunk_embeddings" table exists
@@ -329,7 +330,8 @@ public partial class SQLiteVecDbContext : DbContext
 
         // Check if the new dimension-based table already exists
         using var checkNewCmd = connection.CreateCommand();
-        checkNewCmd.CommandText = $"SELECT name FROM sqlite_master WHERE type='table' AND name='{newTableName}'";
+        checkNewCmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name=@tableName";
+        checkNewCmd.Parameters.AddWithValue("@tableName", newTableName);
         var newExists = await checkNewCmd.ExecuteScalarAsync(cancellationToken) != null;
 
         if (newExists)
@@ -352,9 +354,9 @@ public partial class SQLiteVecDbContext : DbContext
             await renameCmd.ExecuteNonQueryAsync(cancellationToken);
             LogLegacyVecTableRenamed(_logger, newTableName);
         }
-        catch
+        catch (Microsoft.Data.Sqlite.SqliteException)
         {
-            // Rename failed (vec0 virtual tables may not support it)
+            // Rename failed (vec0 virtual tables may not support ALTER TABLE RENAME)
             // Fall back to copy strategy
             LogLegacyVecTableRenameFailed(_logger);
 
