@@ -399,6 +399,67 @@ public class VaultEntryTests : IDisposable
 
     #endregion
 
+    #region EmbeddedDimension Tests
+
+    [Fact]
+    public void MarkMemorized_WithDimension_StoresDimension()
+    {
+        var entry = CreateTestEntry();
+        var hash = ContentHash.FromHex("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+        entry.MarkExtracted(hash);
+
+        entry.MarkMemorized(5, embeddedDimension: 384);
+
+        entry.Stage.Should().Be(ProcessingStage.Memorized);
+        entry.ChunkCount.Should().Be(5);
+        entry.EmbeddedDimension.Should().Be(384);
+    }
+
+    [Fact]
+    public void MarkMemorized_WithoutDimension_LeavesNull()
+    {
+        var entry = CreateTestEntry();
+        var hash = ContentHash.FromHex("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+        entry.MarkExtracted(hash);
+
+        entry.MarkMemorized(5);
+
+        entry.EmbeddedDimension.Should().BeNull();
+    }
+
+    [Fact]
+    public void SaveAndLoad_WithEmbeddedDimension_Roundtrips()
+    {
+        var entry = CreateTestEntry();
+        var hash = ContentHash.FromHex("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+        entry.MarkExtracted(hash);
+        entry.MarkMemorized(10, embeddedDimension: 1024);
+        entry.SaveMetadata();
+
+        var loaded = VaultEntry.Load(entry.EntryPath, entry.VaultBasePath);
+
+        loaded.Should().NotBeNull();
+        loaded!.EmbeddedDimension.Should().Be(1024);
+        loaded.ChunkCount.Should().Be(10);
+    }
+
+    [Fact]
+    public void Load_LegacyMetaWithoutDimension_ReturnsNullDimension()
+    {
+        var entry = CreateTestEntry();
+        var hash = ContentHash.FromHex("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+        entry.MarkExtracted(hash);
+        entry.MarkMemorized(5);
+        entry.SaveMetadata();
+
+        var loaded = VaultEntry.Load(entry.EntryPath, entry.VaultBasePath);
+
+        loaded.Should().NotBeNull();
+        loaded!.EmbeddedDimension.Should().BeNull();
+    }
+
+    #endregion
+
     private VaultEntry CreateTestEntry()
     {
         var sourcePath = Path.Combine(_testDir, $"test_{Guid.NewGuid():N}.txt");

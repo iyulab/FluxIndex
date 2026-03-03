@@ -94,6 +94,11 @@ public sealed class VaultEntry
     public int ChunkCount { get; private set; }
 
     /// <summary>
+    /// Embedding dimension used when this entry was memorized.
+    /// </summary>
+    public int? EmbeddedDimension { get; private set; }
+
+    /// <summary>
     /// Current synchronization status with source file and vector store.
     /// </summary>
     public SyncStatus SyncStatus { get; private set; }
@@ -165,6 +170,7 @@ public sealed class VaultEntry
                 LastError = meta.LastError,
                 RetryCount = meta.RetryCount,
                 ChunkCount = meta.ChunkCount,
+                EmbeddedDimension = meta.EmbeddedDimension,
                 SyncStatus = meta.SyncStatus,
                 LastSyncCheckAt = meta.LastSyncCheckAt,
                 RemovalPhase = meta.RemovalPhase
@@ -214,10 +220,11 @@ public sealed class VaultEntry
     /// <summary>
     /// Marks the entry as memorized (indexed to DB).
     /// </summary>
-    public void MarkMemorized(int chunkCount)
+    public void MarkMemorized(int chunkCount, int? embeddedDimension = null)
     {
         Stage = ProcessingStage.Memorized;
         ChunkCount = chunkCount;
+        EmbeddedDimension = embeddedDimension;
         LastProcessedAt = DateTimeOffset.UtcNow;
         LastError = null;
         RetryCount = 0;
@@ -356,6 +363,7 @@ public sealed class VaultEntry
             LastError = LastError,
             RetryCount = RetryCount,
             ChunkCount = ChunkCount,
+            EmbeddedDimension = EmbeddedDimension,
             SyncStatus = SyncStatus,
             LastSyncCheckAt = LastSyncCheckAt,
             RemovalPhase = RemovalPhase
@@ -453,6 +461,7 @@ public sealed class VaultEntry
         public string? LastError { get; set; }
         public int RetryCount { get; set; }
         public int ChunkCount { get; set; }
+        public int? EmbeddedDimension { get; set; }
 
         // SyncStatus fields
         public SyncStatus SyncStatus { get; set; }
