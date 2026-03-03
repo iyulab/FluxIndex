@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Microsoft.Extensions.Options;
 using System.Text.Json;
 
@@ -46,15 +48,29 @@ public class SQLiteQuantizedDbContext : DbContext
             // Store embedding as JSON
             entity.Property(e => e.Embedding)
                 .HasConversion(
-                    v => v != null ? JsonSerializer.Serialize(v, (JsonSerializerOptions?)null) : null,
-                    v => !string.IsNullOrEmpty(v) ? JsonSerializer.Deserialize<float[]>(v, (JsonSerializerOptions?)null) : null
+                    new ValueConverter<float[]?, string?>(
+                        v => v != null ? JsonSerializer.Serialize(v, (JsonSerializerOptions?)null) : null,
+                        v => !string.IsNullOrEmpty(v) ? JsonSerializer.Deserialize<float[]>(v, (JsonSerializerOptions?)null) : null
+                    ),
+                    new ValueComparer<float[]?>(
+                        (l, r) => (l == null && r == null) || (l != null && r != null && l.SequenceEqual(r)),
+                        v => v == null ? 0 : v.Aggregate(0, (acc, x) => HashCode.Combine(acc, x.GetHashCode())),
+                        v => v == null ? null : v.ToArray()
+                    )
                 );
 
             // Store metadata as JSON
             entity.Property(e => e.Metadata)
                 .HasConversion(
-                    v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
-                    v => JsonSerializer.Deserialize<Dictionary<string, object>>(v, (JsonSerializerOptions?)null) ?? new Dictionary<string, object>()
+                    new ValueConverter<Dictionary<string, object>, string>(
+                        v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+                        v => JsonSerializer.Deserialize<Dictionary<string, object>>(v, (JsonSerializerOptions?)null) ?? new Dictionary<string, object>()
+                    ),
+                    new ValueComparer<Dictionary<string, object>>(
+                        (l, r) => JsonSerializer.Serialize(l) == JsonSerializer.Serialize(r),
+                        v => v == null ? 0 : JsonSerializer.Serialize(v).GetHashCode(),
+                        v => new Dictionary<string, object>(v ?? new())
+                    )
                 );
 
             entity.HasIndex(e => e.DocumentId);
