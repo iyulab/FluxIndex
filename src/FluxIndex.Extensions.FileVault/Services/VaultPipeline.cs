@@ -159,7 +159,7 @@ public sealed partial class VaultPipeline : IVaultPipeline
                     emptyCommitHash = await _git.CommitAsync(entry.VaultPath, "memorize: empty content (0 chunks)", ct);
                 }
 
-                entry.MarkMemorized(0);
+                entry.MarkMemorized(0, _embeddingService?.GetEmbeddingDimension());
                 entry.MarkInSync();
                 entry.SaveMetadata();
 
@@ -196,7 +196,7 @@ public sealed partial class VaultPipeline : IVaultPipeline
             }
 
             // Step 8: Update entry state
-            entry.MarkMemorized(result.ChunkCount);
+            entry.MarkMemorized(result.ChunkCount, _embeddingService?.GetEmbeddingDimension());
             entry.MarkInSync(); // Set sync status to InSync after successful memorize
             entry.SaveMetadata();
 
@@ -245,7 +245,7 @@ public sealed partial class VaultPipeline : IVaultPipeline
             }
 
             // Update entry state
-            entry.MarkMemorized(result.ChunkCount);
+            entry.MarkMemorized(result.ChunkCount, _embeddingService?.GetEmbeddingDimension());
             entry.MarkInSync(); // Set sync status to InSync after successful refresh
             entry.SaveMetadata();
 
