@@ -272,6 +272,10 @@ public partial class SQLiteVecDbContext : DbContext
 
             if (extensionLoaded)
             {
+                // Migrate legacy table if exists
+                await MigrateLegacyVecTableAsync(
+                    (Microsoft.Data.Sqlite.SqliteConnection)connection, cancellationToken);
+
                 // vec0 가상 테이블 생성
                 await _extensionLoader.CreateVecTableAsync(
                     (Microsoft.Data.Sqlite.SqliteConnection)connection,
@@ -303,6 +307,74 @@ public partial class SQLiteVecDbContext : DbContext
             }
 
             LogContinueWithFallback(_logger);
+        }
+    }
+
+    /// <summary>
+    /// Legacy "chunk_embeddings" 테이블을 차원 기반 이름으로 자동 마이그레이션
+    /// </summary>
+    private async Task MigrateLegacyVecTableAsync(
+        Microsoft.Data.Sqlite.SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        var newTableName = _options.GetVecTableName();
+
+        // Check if legacy "chunk_embeddings" table exists
+        using var checkCmd = connection.CreateCommand();
+        checkCmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='chunk_embeddings'";
+        var legacyExists = await checkCmd.ExecuteScalarAsync(cancellationToken) != null;
+
+        if (!legacyExists)
+            return;
+
+        // Check if the new dimension-based table already exists
+        using var checkNewCmd = connection.CreateCommand();
+        checkNewCmd.CommandText = $"SELECT name FROM sqlite_master WHERE type='table' AND name='{newTableName}'";
+        var newExists = await checkNewCmd.ExecuteScalarAsync(cancellationToken) != null;
+
+        if (newExists)
+        {
+            // Both exist — drop legacy to avoid confusion
+            using var dropCmd = connection.CreateCommand();
+            dropCmd.CommandText = "DROP TABLE IF EXISTS chunk_embeddings";
+            await dropCmd.ExecuteNonQueryAsync(cancellationToken);
+            LogLegacyVecTableDropped(_logger, newTableName);
+            return;
+        }
+
+        // vec0 virtual tables may not support ALTER TABLE RENAME
+        // Use copy strategy: create new table, copy data, drop old
+        try
+        {
+            // Try rename first (fastest)
+            using var renameCmd = connection.CreateCommand();
+            renameCmd.CommandText = $"ALTER TABLE chunk_embeddings RENAME TO {newTableName}";
+            await renameCmd.ExecuteNonQueryAsync(cancellationToken);
+            LogLegacyVecTableRenamed(_logger, newTableName);
+        }
+        catch
+        {
+            // Rename failed (vec0 virtual tables may not support it)
+            // Fall back to copy strategy
+            LogLegacyVecTableRenameFailed(_logger);
+
+            // Create new table
+            var createSql = _options.GetVecTableSchema();
+            using var createCmd = connection.CreateCommand();
+            createCmd.CommandText = createSql.Replace("CREATE VIRTUAL TABLE", "CREATE VIRTUAL TABLE IF NOT EXISTS");
+            await createCmd.ExecuteNonQueryAsync(cancellationToken);
+
+            // Copy data
+            using var copyCmd = connection.CreateCommand();
+            copyCmd.CommandText = $"INSERT INTO {newTableName} (chunk_id, embedding) SELECT chunk_id, embedding FROM chunk_embeddings";
+            await copyCmd.ExecuteNonQueryAsync(cancellationToken);
+
+            // Drop legacy
+            using var dropCmd = connection.CreateCommand();
+            dropCmd.CommandText = "DROP TABLE chunk_embeddings";
+            await dropCmd.ExecuteNonQueryAsync(cancellationToken);
+
+            LogLegacyVecTableCopied(_logger, newTableName);
         }
     }
 
@@ -525,6 +597,18 @@ public partial class SQLiteVecDbContext : DbContext
 
     [LoggerMessage(Level = LogLevel.Error, Message = "vec0 테이블에서 벡터 삭제 실패: {ChunkId}")]
     private static partial void LogVecDeleteError(ILogger logger, Exception exception, string chunkId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Dropped legacy chunk_embeddings table (dimension-based table {NewTable} already exists)")]
+    private static partial void LogLegacyVecTableDropped(ILogger logger, string newTable);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Migrated legacy chunk_embeddings table to {NewTable} via rename")]
+    private static partial void LogLegacyVecTableRenamed(ILogger logger, string newTable);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "ALTER TABLE RENAME failed for vec0 table, using copy strategy")]
+    private static partial void LogLegacyVecTableRenameFailed(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Migrated legacy chunk_embeddings table to {NewTable} via copy")]
+    private static partial void LogLegacyVecTableCopied(ILogger logger, string newTable);
 
     #endregion
 }
