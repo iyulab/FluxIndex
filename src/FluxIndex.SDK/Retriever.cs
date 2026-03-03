@@ -892,7 +892,9 @@ public partial class Retriever
             TotalChunks = chunkCount,
             AverageChunksPerDocument = docCount > 0 ? (double)chunkCount / docCount : 0,
             CacheEnabled = _cacheService != null,
-            VectorStoreProvider = _vectorStore.GetType().Name
+            VectorStoreProvider = _vectorStore.GetType().Name,
+            ResolvedStoreName = _vectorStore.ResolvedStoreName,
+            DetectedDimension = _vectorStore.DetectedDimension
         };
     }
 
@@ -1468,4 +1470,6 @@ public class RetrievalStatistics
     public double AverageChunksPerDocument { get; set; }
     public bool CacheEnabled { get; set; }
     public string VectorStoreProvider { get; set; } = string.Empty;
+    public string? ResolvedStoreName { get; set; }
+    public int? DetectedDimension { get; set; }
 }

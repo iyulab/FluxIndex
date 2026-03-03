@@ -118,10 +118,10 @@ public class DimensionAdaptationTests : IAsyncLifetime
         await vectorStore.StoreAsync(chunk);
 
         // Assert
-        var resolvedName = vectorStore.GetResolvedCollectionName();
+        var resolvedName = vectorStore.ResolvedStoreName;
         resolvedName.Should().Be($"{baseName}_384");
 
-        var detectedDim = vectorStore.GetDetectedDimension();
+        var detectedDim = vectorStore.DetectedDimension;
         detectedDim.Should().Be(384);
 
         // Verify collection exists in Qdrant
@@ -201,8 +201,8 @@ public class DimensionAdaptationTests : IAsyncLifetime
 
         // Assert
         ids.Should().HaveCount(5);
-        vectorStore.GetResolvedCollectionName().Should().Be($"{baseName}_512");
-        vectorStore.GetDetectedDimension().Should().Be(512);
+        vectorStore.ResolvedStoreName.Should().Be($"{baseName}_512");
+        vectorStore.DetectedDimension.Should().Be(512);
     }
 
     #endregion
@@ -223,7 +223,7 @@ public class DimensionAdaptationTests : IAsyncLifetime
         await vectorStore.StoreAsync(chunk);
 
         // Assert
-        var resolvedName = vectorStore.GetResolvedCollectionName();
+        var resolvedName = vectorStore.ResolvedStoreName;
         resolvedName.Should().Be(collectionName); // No dimension suffix
 
         // Verify collection exists with exact name
@@ -259,7 +259,7 @@ public class DimensionAdaptationTests : IAsyncLifetime
     #region Collection Name Accessors Tests
 
     [SkippableFact]
-    public async Task GetResolvedCollectionName_BeforeStore_ReturnsNull()
+    public async Task ResolvedStoreName_BeforeStore_ReturnsNull()
     {
         Skip.IfNot(IsDockerAvailable, "Docker is not available");
 
@@ -268,12 +268,12 @@ public class DimensionAdaptationTests : IAsyncLifetime
         await using var vectorStore = CreateVectorStore(baseName);
 
         // Assert
-        vectorStore.GetResolvedCollectionName().Should().BeNull();
-        vectorStore.GetDetectedDimension().Should().BeNull();
+        vectorStore.ResolvedStoreName.Should().BeNull();
+        vectorStore.DetectedDimension.Should().BeNull();
     }
 
     [SkippableFact]
-    public async Task GetDetectedDimension_AfterStore_ReturnsCorrectValue()
+    public async Task DetectedDimension_AfterStore_ReturnsCorrectValue()
     {
         Skip.IfNot(IsDockerAvailable, "Docker is not available");
 
@@ -286,7 +286,7 @@ public class DimensionAdaptationTests : IAsyncLifetime
         await vectorStore.StoreAsync(chunk);
 
         // Assert
-        vectorStore.GetDetectedDimension().Should().Be(1536);
+        vectorStore.DetectedDimension.Should().Be(1536);
     }
 
     #endregion
@@ -320,7 +320,7 @@ public class DimensionAdaptationTests : IAsyncLifetime
         var count = await vectorStore.CountAsync();
         count.Should().Be(10);
 
-        vectorStore.GetResolvedCollectionName().Should().Be($"{baseName}_384");
+        vectorStore.ResolvedStoreName.Should().Be($"{baseName}_384");
     }
 
     #endregion
@@ -339,7 +339,7 @@ public class DimensionAdaptationTests : IAsyncLifetime
         await vectorStore.StoreAsync(chunk);
 
         // Verify initial state
-        vectorStore.GetResolvedCollectionName().Should().Be($"{baseName}_384");
+        vectorStore.ResolvedStoreName.Should().Be($"{baseName}_384");
         (await vectorStore.CountAsync()).Should().Be(1);
 
         // Act

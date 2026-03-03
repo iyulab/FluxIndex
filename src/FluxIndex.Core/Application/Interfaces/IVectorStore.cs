@@ -29,4 +29,14 @@ public interface IVectorStore
     Task<int> CountAsync(CancellationToken cancellationToken = default);
     Task<int> GetCountAsync(CancellationToken cancellationToken = default);
     Task ClearAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The runtime-resolved store/collection name. Null if not yet initialized.
+    /// </summary>
+    string? ResolvedStoreName => null;
+
+    /// <summary>
+    /// The runtime-detected embedding dimension. Null if not yet detected.
+    /// </summary>
+    int? DetectedDimension => null;
 }

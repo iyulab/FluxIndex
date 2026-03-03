@@ -566,6 +566,8 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable
             AverageChunksPerDocument = retrieverStats.AverageChunksPerDocument,
             CacheEnabled = retrieverStats.CacheEnabled || _cacheService != null,
             VectorStoreProvider = retrieverStats.VectorStoreProvider,
+            ResolvedStoreName = retrieverStats.ResolvedStoreName,
+            DetectedDimension = retrieverStats.DetectedDimension,
             DefaultChunkSize = indexerStats.DefaultChunkSize,
             DefaultChunkOverlap = indexerStats.DefaultChunkOverlap,
             EmbeddingModel = indexerStats.EmbeddingModel,
@@ -1143,6 +1145,8 @@ public class ClientStatistics
     public double AverageChunksPerDocument { get; set; }
     public bool CacheEnabled { get; set; }
     public string VectorStoreProvider { get; set; } = string.Empty;
+    public string? ResolvedStoreName { get; set; }
+    public int? DetectedDimension { get; set; }
     public int DefaultChunkSize { get; set; }
     public int DefaultChunkOverlap { get; set; }
     public string EmbeddingModel { get; set; } = string.Empty;

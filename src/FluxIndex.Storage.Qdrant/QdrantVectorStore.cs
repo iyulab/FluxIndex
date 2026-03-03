@@ -173,16 +173,11 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
         await EnsureCollectionForDimensionAsync(dimension, ct);
     }
 
-    /// <summary>
-    /// Gets the resolved collection name (with dimension suffix if applicable).
-    /// Returns null if collection hasn't been initialized yet.
-    /// </summary>
-    public string? GetResolvedCollectionName() => _resolvedCollectionName;
+    /// <inheritdoc />
+    public string? ResolvedStoreName => _resolvedCollectionName;
 
-    /// <summary>
-    /// Gets the detected embedding dimension. Returns null if not yet detected.
-    /// </summary>
-    public int? GetDetectedDimension() => _detectedDimension;
+    /// <inheritdoc />
+    public int? DetectedDimension => _detectedDimension;
 
     #region Store Operations
 
