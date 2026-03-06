@@ -4,6 +4,7 @@ using FluxIndex.Extensions.FileVault.Options;
 using FluxIndex.Extensions.FileVault.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 
 namespace FluxIndex.Extensions.FileVault.Extensions;
@@ -48,27 +49,10 @@ public static class ServiceCollectionExtensions
         services.TryAddScoped<IVaultPipeline, VaultPipeline>();
         services.TryAddScoped<IVault, VaultManager>();
 
-        return services;
-    }
-
-    /// <summary>
-    /// Adds FileVault with background queue processing.
-    /// </summary>
-    /// <param name="services">The service collection.</param>
-    /// <param name="configureOptions">Optional configuration action for FileVaultOptions.</param>
-    /// <returns>The service collection for chaining.</returns>
-    public static IServiceCollection AddFileVaultWithBackgroundProcessing(
-        this IServiceCollection services,
-        Action<FileVaultOptions>? configureOptions = null)
-    {
-        services.AddFileVault(options =>
-        {
-            options.EnableBackgroundProcessing = true;
-            configureOptions?.Invoke(options);
-        });
-
-        // Register the background service
-        services.AddHostedService<VaultBackgroundService>();
+        // Background service is always registered.
+        // EnableBackgroundProcessing option controls runtime behavior (idle no-op when false).
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IHostedService, VaultBackgroundService>());
 
         return services;
     }

@@ -78,8 +78,8 @@ builder.Services.AddFileVault(options =>
     options.VaultBasePath = @"C:\MyApp\.vault";
 });
 
-// With background processing (recommended for production)
-builder.Services.AddFileVaultWithBackgroundProcessing(options =>
+// Background processing is enabled by default (EnableBackgroundProcessing = true)
+builder.Services.AddFileVault(options =>
 {
     options.VaultBasePath = @"C:\MyApp\.vault";
     options.MaxConcurrentProcessing = 4;
@@ -470,11 +470,11 @@ Console.WriteLine($"Watchers: {status.ActiveWatcherCount} active, {status.Paused
 
 ## Background Processing
 
-### Enable Background Service
+### Configure Background Service
 
 ```csharp
-// Registers VaultBackgroundService as IHostedService
-services.AddFileVaultWithBackgroundProcessing(options =>
+// VaultBackgroundService is always registered (controlled by EnableBackgroundProcessing option)
+services.AddFileVault(options =>
 {
     options.MaxConcurrentProcessing = 4;
     options.QueuePollingIntervalMs = 1000;
@@ -771,8 +771,8 @@ services.UseFileVaultGitService<NoOpGitService>();
 ### 1. Use Background Processing for Production
 
 ```csharp
-// Always use background processing for production workloads
-services.AddFileVaultWithBackgroundProcessing(options =>
+// Background processing is enabled by default
+services.AddFileVault(options =>
 {
     options.MaxConcurrentProcessing = Environment.ProcessorCount;
 });

@@ -635,9 +635,6 @@ public static class ServiceCollectionExtensions
             options.VersionRetentionCount = section.GetValue<int>("VersionRetentionCount", 5);
         });
 
-        // Register the background queue processing service from Extensions.FileVault
-        services.AddHostedService<FluxIndex.Extensions.FileVault.Services.VaultBackgroundService>();
-
         return services;
     }
 }
