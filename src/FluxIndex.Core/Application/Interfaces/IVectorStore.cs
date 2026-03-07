@@ -31,6 +31,17 @@ public interface IVectorStore
     Task ClearAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Checks if any vectors exist for a given document.
+    /// Used by integrity checks to detect missing embeddings.
+    /// </summary>
+    Task<bool> HasVectorsForDocumentAsync(string documentId, CancellationToken cancellationToken = default)
+    {
+        // Default implementation using GetByDocumentIdAsync
+        return GetByDocumentIdAsync(documentId, cancellationToken)
+            .ContinueWith(t => t.Result.Any(), cancellationToken);
+    }
+
+    /// <summary>
     /// The runtime-resolved store/collection name. Null if not yet initialized.
     /// </summary>
     string? ResolvedStoreName => null;

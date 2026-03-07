@@ -24,5 +24,11 @@ public enum ProcessingStage
     /// <summary>
     /// Chunks embedded and indexed to FluxIndex (stored in DB).
     /// </summary>
-    Memorized = 3
+    Memorized = 3,
+
+    /// <summary>
+    /// VaultEntry exists but vectors are missing or invalid (detected by integrity check).
+    /// Requires re-memorization to restore search capability.
+    /// </summary>
+    Stale = 4
 }

@@ -657,6 +657,22 @@ public partial class SQLiteVecVectorStore : IVectorStore, IDisposable
         return results.Select(r => r.Chunk);
     }
 
+    public async Task<bool> HasVectorsForDocumentAsync(string documentId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await EnsureInitializedAsync(cancellationToken);
+
+            return await _context.VectorChunks
+                .AnyAsync(c => c.DocumentId == documentId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            LogGetByDocumentFailed(_logger, ex, documentId);
+            return false;
+        }
+    }
+
     public async Task<IEnumerable<DocumentChunk>> GetByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default)
     {
         try

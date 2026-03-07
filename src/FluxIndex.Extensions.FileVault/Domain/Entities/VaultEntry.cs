@@ -231,6 +231,16 @@ public sealed class VaultEntry
     }
 
     /// <summary>
+    /// Marks the entry as stale (vectors missing or invalid).
+    /// Called by integrity check when VaultEntry exists but vectors are unavailable.
+    /// </summary>
+    public void MarkStale()
+    {
+        Stage = ProcessingStage.Stale;
+        LastProcessedAt = DateTimeOffset.UtcNow;
+    }
+
+    /// <summary>
     /// Marks the entry with an error and increments retry count.
     /// </summary>
     public void MarkError(string errorMessage)
