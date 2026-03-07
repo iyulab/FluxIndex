@@ -52,6 +52,16 @@ public interface ISQLiteVecExtensionLoader
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Drop and recreate the vec0 virtual table to recover from corruption.
+    /// </summary>
+    Task<bool> RecreateVecTableAsync(
+        SqliteConnection connection,
+        string tableName,
+        int vectorDimension,
+        string options = "metric=cosine",
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// 확장 버전 정보 반환
     /// </summary>
     /// <param name="connection">SQLite 연결</param>

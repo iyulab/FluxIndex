@@ -143,6 +143,30 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
         }
     }
 
+    public async Task<bool> RecreateVecTableAsync(
+        SqliteConnection connection,
+        string tableName,
+        int vectorDimension,
+        string options = "metric=cosine",
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var dropCmd = connection.CreateCommand();
+            dropCmd.CommandText = $"DROP TABLE IF EXISTS {tableName}";
+            await dropCmd.ExecuteNonQueryAsync(cancellationToken);
+
+            LogVecTableDropped(_logger, tableName);
+
+            return await CreateVecTableAsync(connection, tableName, vectorDimension, options, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            LogVecTableRecreateFailed(_logger, ex, tableName);
+            return false;
+        }
+    }
+
     public async Task<string?> GetExtensionVersionAsync(SqliteConnection connection, CancellationToken cancellationToken = default)
     {
         try
@@ -182,6 +206,12 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
 
     [LoggerMessage(Level = LogLevel.Error, Message = "vec0 테이블 생성 실패: {TableName}")]
     private static partial void LogVecTableCreateFailed(ILogger logger, Exception exception, string tableName);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "vec0 테이블 삭제됨 (복구용): {TableName}")]
+    private static partial void LogVecTableDropped(ILogger logger, string tableName);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "vec0 테이블 재생성 실패: {TableName}")]
+    private static partial void LogVecTableRecreateFailed(ILogger logger, Exception exception, string tableName);
 
     #endregion
 }
@@ -227,6 +257,16 @@ public partial class NoOpSQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
         CancellationToken cancellationToken = default)
     {
         LogNoOpVecTableSkipped(_logger);
+        return Task.FromResult(false);
+    }
+
+    public Task<bool> RecreateVecTableAsync(
+        SqliteConnection connection,
+        string tableName,
+        int vectorDimension,
+        string options = "metric=cosine",
+        CancellationToken cancellationToken = default)
+    {
         return Task.FromResult(false);
     }
 
