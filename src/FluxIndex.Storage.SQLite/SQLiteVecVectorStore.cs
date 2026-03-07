@@ -1089,6 +1089,53 @@ public partial class SQLiteVecVectorStore : IVectorStore, IDisposable
         }
     }
 
+    public async Task<bool> VerifyHealthAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await EnsureInitializedAsync(cancellationToken);
+
+            if (!_sqliteVecAvailable)
+                return true; // Not using sqlite-vec — nothing to verify
+
+            var testId = $"__health_check_{Guid.NewGuid():N}";
+            var dimension = _options.VectorDimension;
+            var testVector = new float[dimension];
+            var vectorString = "[" + string.Join(",", testVector.Select(f => f.ToString("F6", CultureInfo.InvariantCulture))) + "]";
+            var tableName = _options.GetVecTableName();
+
+            // Test INSERT
+            var insertSql = $"INSERT INTO {tableName} (chunk_id, embedding) VALUES ({{0}}, {{1}})";
+            await _context.Database.ExecuteSqlRawAsync(insertSql, [testId, vectorString], cancellationToken);
+
+            // Cleanup
+            var deleteSql = $"DELETE FROM {tableName} WHERE chunk_id = {{0}}";
+            await _context.Database.ExecuteSqlRawAsync(deleteSql, [testId], cancellationToken);
+
+            LogHealthCheckPassed(_logger);
+            return true;
+        }
+        catch (Exception ex) when (IsSqliteVecError(ex))
+        {
+            LogHealthCheckFailed(_logger, ex);
+
+            // Attempt recovery
+            if (await TryRecreateVecTableAsync(cancellationToken))
+            {
+                LogVecTableRecovered(_logger);
+                return false; // Recovered but data lost — caller should re-index
+            }
+
+            _sqliteVecAvailable = false;
+            return false;
+        }
+        catch (Exception ex)
+        {
+            LogHealthCheckFailed(_logger, ex);
+            return false;
+        }
+    }
+
     /// <summary>
     /// Disposes the initialization and write lock semaphores.
     /// </summary>
@@ -1162,6 +1209,12 @@ public partial class SQLiteVecVectorStore : IVectorStore, IDisposable
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "vec0 테이블 복구 성공 — 재시도 완료")]
     private static partial void LogVecTableRecovered(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "벡터 저장소 건강성 검사 통과")]
+    private static partial void LogHealthCheckPassed(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "벡터 저장소 건강성 검사 실패")]
+    private static partial void LogHealthCheckFailed(ILogger logger, Exception exception);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "vec0 테이블 복구 실패")]
     private static partial void LogVecTableRecoveryFailed(ILogger logger, Exception exception);

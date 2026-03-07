@@ -50,4 +50,11 @@ public interface IVectorStore
     /// The runtime-detected embedding dimension. Null if not yet detected.
     /// </summary>
     int? DetectedDimension => null;
+
+    /// <summary>
+    /// Verifies that the vector store is operational by testing a write+delete cycle.
+    /// Returns false if the store is corrupted and attempts self-healing.
+    /// </summary>
+    Task<bool> VerifyHealthAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(true);
 }
