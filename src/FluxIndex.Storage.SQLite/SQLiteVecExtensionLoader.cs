@@ -152,9 +152,20 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
     {
         try
         {
-            using var dropCmd = connection.CreateCommand();
-            dropCmd.CommandText = $"DROP TABLE IF EXISTS {tableName}";
-            await dropCmd.ExecuteNonQueryAsync(cancellationToken);
+            // Try normal DROP first
+            try
+            {
+                using var dropCmd = connection.CreateCommand();
+                dropCmd.CommandText = $"DROP TABLE IF EXISTS {tableName}";
+                await dropCmd.ExecuteNonQueryAsync(cancellationToken);
+            }
+            catch
+            {
+                // DROP TABLE on corrupted vec0 fails because xDestroy cannot access
+                // broken shadow tables. Force-remove by dropping shadow tables first,
+                // then removing the virtual table entry from sqlite_master directly.
+                await ForceDropVecTableAsync(connection, tableName, cancellationToken);
+            }
 
             LogVecTableDropped(_logger, tableName);
 
@@ -165,6 +176,53 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
             LogVecTableRecreateFailed(_logger, ex, tableName);
             return false;
         }
+    }
+
+    /// <summary>
+    /// Force-drops a corrupted vec0 virtual table by removing its shadow tables
+    /// and sqlite_master entry directly. Used when normal DROP TABLE fails.
+    /// </summary>
+    private static async Task ForceDropVecTableAsync(
+        SqliteConnection connection, string tableName, CancellationToken cancellationToken)
+    {
+        // Find all shadow tables (vec0 uses patterns like {name}_rowids, {name}_chunks, etc.)
+        var shadowTables = new List<string>();
+        using (var listCmd = connection.CreateCommand())
+        {
+            listCmd.CommandText = $"SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '{tableName}_%'";
+            using var reader = await listCmd.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                shadowTables.Add(reader.GetString(0));
+            }
+        }
+
+        // Drop each shadow table
+        foreach (var shadow in shadowTables)
+        {
+            using var dropShadow = connection.CreateCommand();
+            dropShadow.CommandText = $"DROP TABLE IF EXISTS \"{shadow}\"";
+            await dropShadow.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        // Remove the virtual table entry itself
+        // writable_schema allows modifying sqlite_master directly
+        using var enableWritable = connection.CreateCommand();
+        enableWritable.CommandText = "PRAGMA writable_schema = ON";
+        await enableWritable.ExecuteNonQueryAsync(cancellationToken);
+
+        using var deleteEntry = connection.CreateCommand();
+        deleteEntry.CommandText = $"DELETE FROM sqlite_master WHERE type='table' AND name='{tableName}'";
+        await deleteEntry.ExecuteNonQueryAsync(cancellationToken);
+
+        using var disableWritable = connection.CreateCommand();
+        disableWritable.CommandText = "PRAGMA writable_schema = OFF";
+        await disableWritable.ExecuteNonQueryAsync(cancellationToken);
+
+        // Rebuild internal schema cache
+        using var integrityCmd = connection.CreateCommand();
+        integrityCmd.CommandText = "PRAGMA integrity_check";
+        await integrityCmd.ExecuteScalarAsync(cancellationToken);
     }
 
     public async Task<string?> GetExtensionVersionAsync(SqliteConnection connection, CancellationToken cancellationToken = default)
