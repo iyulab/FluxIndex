@@ -429,6 +429,10 @@ public sealed partial class VaultManager : IVault
 
         if (_options.EnableBackgroundProcessing)
         {
+            // Mark entry as pending removal so list queries reflect the state immediately
+            entry.MarkRemovalPending();
+            entry.SaveMetadata();
+
             // Queue remove job
             await _queue.EnqueueRemoveAsync(entry.FilepathHash, fullPath, ct);
             LogQueuedRemove(_logger, fullPath);

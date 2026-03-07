@@ -439,6 +439,10 @@ public partial class SQLiteVecVectorStore : IVectorStore, IDisposable
         // sqlite-vec 네이티브 검색 사용
         var vectorString = "[" + string.Join(",", queryEmbedding.Select(f => f.ToString("F6", CultureInfo.InvariantCulture))) + "]";
 
+        // sqlite-vec cosine distance: 0 = identical, 1 = orthogonal, 2 = opposite
+        // Convert minScore (similarity 0-1) to maxDistance threshold
+        var maxDistance = 1.0f - minScore;
+
         var sql = $@"
             SELECT
                 vc.Id,
@@ -451,7 +455,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IDisposable
             FROM {_options.GetVecTableName()} ce
             JOIN vector_chunks vc ON vc.Id = ce.chunk_id
             WHERE ce.embedding MATCH @vector AND k = @k
-            AND ce.distance >= @minScore
+            AND ce.distance <= @maxDistance
             ORDER BY ce.distance";
 
         try
@@ -466,7 +470,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IDisposable
             command.CommandText = sql;
             command.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("@vector", vectorString));
             command.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("@k", topK));
-            command.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("@minScore", minScore));
+            command.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("@maxDistance", maxDistance));
 
             var results = new List<DocumentChunk>();
 
@@ -476,15 +480,17 @@ public partial class SQLiteVecVectorStore : IVectorStore, IDisposable
                 var metadataJson = reader.GetString(5); // metadata column index
                 var metadata = JsonSerializer.Deserialize<Dictionary<string, object>>(metadataJson) ?? new Dictionary<string, object>();
 
+                var distance = reader.GetFloat(6);
                 var chunk = new DocumentChunk
                 {
-                    Id = reader.GetString(0), // id column index
-                    DocumentId = reader.GetString(1), // document_id column index
-                    ChunkIndex = reader.GetInt32(2), // chunk_index column index
-                    Content = reader.GetString(3), // content column index
-                    TokenCount = reader.GetInt32(4), // token_count column index
+                    Id = reader.GetString(0),
+                    DocumentId = reader.GetString(1),
+                    ChunkIndex = reader.GetInt32(2),
+                    Content = reader.GetString(3),
+                    TokenCount = reader.GetInt32(4),
                     Metadata = metadata,
-                    Embedding = null // 검색 결과에서는 임베딩을 제외하여 성능 향상
+                    Embedding = null,
+                    Score = 1.0f - distance // cosine distance → similarity
                 };
 
                 results.Add(chunk);
