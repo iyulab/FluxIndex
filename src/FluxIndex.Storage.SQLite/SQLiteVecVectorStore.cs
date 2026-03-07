@@ -190,6 +190,14 @@ public partial class SQLiteVecVectorStore : IVectorStore, IDisposable
         catch (Exception ex)
         {
             LogBatchStoreFailed(_logger, ex, chunkList.Count);
+
+            // If sqlite-vec is now disabled and fallback is available, retry via fallback
+            if (!_sqliteVecAvailable && _options.FallbackToInMemoryOnError)
+            {
+                LogFallbackRetry(_logger);
+                return await _fallbackStore.Value.StoreBatchAsync(chunkList, cancellationToken);
+            }
+
             throw;
         }
     }
@@ -292,6 +300,47 @@ public partial class SQLiteVecVectorStore : IVectorStore, IDisposable
 
                 LogBatchVectorInserted(_logger, batch.Count);
             }
+        }
+        catch (Exception ex) when (IsSqliteVecError(ex))
+        {
+            LogBatchVectorInsertFailed(_logger, ex);
+
+            // Attempt self-healing: drop + recreate vec0 table
+            if (await TryRecreateVecTableAsync(cancellationToken))
+            {
+                // Retry once with fresh table
+                try
+                {
+                    const int retryMaxBatch = 999;
+                    for (int ri = 0; ri < vectorBatch.Count; ri += retryMaxBatch)
+                    {
+                        var retryBatch = vectorBatch.Skip(ri).Take(retryMaxBatch).ToList();
+                        var retryValues = new List<string>();
+                        var retryParams = new List<object>();
+                        int rpi = 0;
+                        foreach (var (rid, rembedding) in retryBatch)
+                        {
+                            var rvs = "[" + string.Join(",", rembedding.Select(f => f.ToString("F6", CultureInfo.InvariantCulture))) + "]";
+                            retryValues.Add($"({{{rpi}}}, {{{rpi + 1}}})");
+                            retryParams.Add(rid);
+                            retryParams.Add(rvs);
+                            rpi += 2;
+                        }
+                        var retrySql = $"INSERT INTO {_options.GetVecTableName()} (chunk_id, embedding) VALUES {string.Join(", ", retryValues)}";
+                        await _context.Database.ExecuteSqlRawAsync(retrySql, retryParams.ToArray(), cancellationToken);
+                    }
+                    LogVecTableRecovered(_logger);
+                    return; // Recovery succeeded
+                }
+                catch (Exception retryEx)
+                {
+                    LogVecTableRecoveryFailed(_logger, retryEx);
+                }
+            }
+
+            // Recovery failed — disable sqlite-vec for this session
+            _sqliteVecAvailable = false;
+            throw;
         }
         catch (Exception ex)
         {
@@ -1050,6 +1099,41 @@ public partial class SQLiteVecVectorStore : IVectorStore, IDisposable
         GC.SuppressFinalize(this);
     }
 
+    /// <summary>
+    /// Checks if an exception is a sqlite-vec internal error.
+    /// </summary>
+    private static bool IsSqliteVecError(Exception ex)
+    {
+        return ex is Microsoft.Data.Sqlite.SqliteException sqliteEx
+            && sqliteEx.SqliteErrorCode == 1
+            && ex.Message.Contains("sqlite-vec error", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Attempts to drop and recreate the vec0 virtual table.
+    /// </summary>
+    private async Task<bool> TryRecreateVecTableAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var connection = (Microsoft.Data.Sqlite.SqliteConnection)_context.Database.GetDbConnection();
+            if (connection.State != System.Data.ConnectionState.Open)
+                await connection.OpenAsync(cancellationToken);
+
+            return await _extensionLoader.RecreateVecTableAsync(
+                connection,
+                _options.GetVecTableName(),
+                _options.VectorDimension,
+                _options.VecTableOptions,
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            LogVecTableRecoveryFailed(_logger, ex);
+            return false;
+        }
+    }
+
     #region LoggerMessage Definitions
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "벡터 저장 완료: {Id}, Document: {DocumentId}")]
@@ -1075,6 +1159,12 @@ public partial class SQLiteVecVectorStore : IVectorStore, IDisposable
 
     [LoggerMessage(Level = LogLevel.Error, Message = "배치 벡터 삽입 실패")]
     private static partial void LogBatchVectorInsertFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "vec0 테이블 복구 성공 — 재시도 완료")]
+    private static partial void LogVecTableRecovered(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "vec0 테이블 복구 실패")]
+    private static partial void LogVecTableRecoveryFailed(ILogger logger, Exception exception);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "벡터 조회 실패: {Id}")]
     private static partial void LogVectorGetFailed(ILogger logger, Exception exception, string id);
