@@ -41,7 +41,7 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
             options.DatabasePath = _testDatabasePath;
             options.VectorDimension = 384; // 테스트용 작은 차원
             options.UseSQLiteVec = true; // 실제 환경에서 테스트
-            options.FallbackToInMemoryOnError = true; // 확장 없으면 폴백
+            options.FallbackToInMemoryOnError = false; // 오류 노출 (CITestHelper가 확장 검증)
             options.AutoMigrate = true;
             options.MaxBatchSize = 500;
         });

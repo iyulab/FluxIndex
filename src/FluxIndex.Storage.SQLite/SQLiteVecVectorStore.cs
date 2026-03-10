@@ -443,7 +443,14 @@ public partial class SQLiteVecVectorStore : IVectorStore, IDisposable
         // Convert minScore (similarity 0-1) to maxDistance threshold
         var maxDistance = 1.0f - minScore;
 
+        // sqlite-vec vec0 KNN 쿼리는 MATCH + k 만 지원 (distance constraint 미지원)
+        // CTE로 KNN 결과를 격리한 뒤 JOIN 및 distance 필터링 적용
         var sql = $@"
+            WITH knn_matches AS (
+                SELECT chunk_id, distance
+                FROM {_options.GetVecTableName()}
+                WHERE embedding MATCH @vector AND k = @k
+            )
             SELECT
                 vc.Id,
                 vc.DocumentId,
@@ -451,12 +458,11 @@ public partial class SQLiteVecVectorStore : IVectorStore, IDisposable
                 vc.Content,
                 vc.TokenCount,
                 vc.Metadata,
-                ce.distance
-            FROM {_options.GetVecTableName()} ce
-            JOIN vector_chunks vc ON vc.Id = ce.chunk_id
-            WHERE ce.embedding MATCH @vector AND k = @k
-            AND ce.distance <= @maxDistance
-            ORDER BY ce.distance";
+                km.distance
+            FROM knn_matches km
+            JOIN vector_chunks vc ON vc.Id = km.chunk_id
+            WHERE km.distance <= @maxDistance
+            ORDER BY km.distance";
 
         try
         {
