@@ -39,10 +39,10 @@ public class SQLiteVecOptions : SQLiteOptions
     public string? CustomExtensionPath { get; set; }
 
     /// <summary>
-    /// vec0 테이블 생성 시 추가 옵션
-    /// 예: "metric=cosine,index=flat"
+    /// vec0 embedding 컬럼의 distance_metric 옵션.
+    /// sqlite-vec 공식 문법: "cosine", "l2", "l1"
     /// </summary>
-    public string VecTableOptions { get; set; } = "metric=cosine";
+    public string VecTableOptions { get; set; } = "distance_metric=cosine";
 
     /// <summary>
     /// 벡터 검색 시 기본 최소 유사도 점수
@@ -321,7 +321,7 @@ public class SQLiteVecOptions : SQLiteOptions
     public string GetVecTableSchema()
     {
         var tableName = GetVecTableName();
-        return $"CREATE VIRTUAL TABLE {tableName} USING vec0(chunk_id TEXT PRIMARY KEY, embedding float[{VectorDimension}], {VecTableOptions})";
+        return $"CREATE VIRTUAL TABLE {tableName} USING vec0(chunk_id TEXT PRIMARY KEY, embedding float[{VectorDimension}] {VecTableOptions})";
     }
 
     /// <summary>

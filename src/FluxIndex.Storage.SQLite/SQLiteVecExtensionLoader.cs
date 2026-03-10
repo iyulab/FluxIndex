@@ -121,12 +121,12 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
         SqliteConnection connection,
         string tableName,
         int vectorDimension,
-        string options = "metric=cosine",
+        string options = "distance_metric=cosine",
         CancellationToken cancellationToken = default)
     {
         try
         {
-            var sql = $"CREATE VIRTUAL TABLE IF NOT EXISTS {tableName} USING vec0(chunk_id TEXT PRIMARY KEY, embedding float[{vectorDimension}])";
+            var sql = $"CREATE VIRTUAL TABLE IF NOT EXISTS {tableName} USING vec0(chunk_id TEXT PRIMARY KEY, embedding float[{vectorDimension}] {options})";
 
             using var command = connection.CreateCommand();
             command.CommandText = sql;
@@ -147,7 +147,7 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
         SqliteConnection connection,
         string tableName,
         int vectorDimension,
-        string options = "metric=cosine",
+        string options = "distance_metric=cosine",
         CancellationToken cancellationToken = default)
     {
         try
@@ -311,7 +311,7 @@ public partial class NoOpSQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
         SqliteConnection connection,
         string tableName,
         int vectorDimension,
-        string options = "metric=cosine",
+        string options = "distance_metric=cosine",
         CancellationToken cancellationToken = default)
     {
         LogNoOpVecTableSkipped(_logger);
@@ -322,7 +322,7 @@ public partial class NoOpSQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
         SqliteConnection connection,
         string tableName,
         int vectorDimension,
-        string options = "metric=cosine",
+        string options = "distance_metric=cosine",
         CancellationToken cancellationToken = default)
     {
         return Task.FromResult(false);

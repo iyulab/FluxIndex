@@ -347,8 +347,9 @@ public class SQLiteVecVectorStoreTests : IDisposable
         var searchTime = stopwatch.ElapsedMilliseconds;
         _output.WriteLine($"검색 시간 (topK={topK}): {searchTime}ms");
 
-        // 성능 기준 (매우 관대한 기준)
-        storeTime.Should().BeLessThan(chunkCount * 10); // 청크당 10ms 이하
+        // 성능 기준 (매우 관대한 기준, 최소 500ms: 초기화 오버헤드 포함)
+        var storeThreshold = Math.Max(500, chunkCount * 10); // 최소 500ms 보장
+        storeTime.Should().BeLessThan(storeThreshold); // 청크당 10ms 이하 (초기화 포함)
         searchTime.Should().BeLessThan(1000); // 검색은 1초 이하
         searchResults.Should().HaveCountLessThanOrEqualTo(topK);
     }

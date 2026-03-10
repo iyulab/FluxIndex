@@ -48,7 +48,7 @@ public interface ISQLiteVecExtensionLoader
         SqliteConnection connection,
         string tableName,
         int vectorDimension,
-        string options = "metric=cosine",
+        string options = "distance_metric=cosine",
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -58,7 +58,7 @@ public interface ISQLiteVecExtensionLoader
         SqliteConnection connection,
         string tableName,
         int vectorDimension,
-        string options = "metric=cosine",
+        string options = "distance_metric=cosine",
         CancellationToken cancellationToken = default);
 
     /// <summary>
