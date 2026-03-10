@@ -439,30 +439,14 @@ public partial class SQLiteVecVectorStore : IVectorStore, IDisposable
         // sqlite-vec 네이티브 검색 사용
         var vectorString = "[" + string.Join(",", queryEmbedding.Select(f => f.ToString("F6", CultureInfo.InvariantCulture))) + "]";
 
-        // sqlite-vec cosine distance: 0 = identical, 1 = orthogonal, 2 = opposite
-        // Convert minScore (similarity 0-1) to maxDistance threshold
-        var maxDistance = 1.0f - minScore;
-
-        // sqlite-vec vec0 KNN 쿼리는 MATCH + k 만 지원 (distance constraint 미지원)
-        // CTE로 KNN 결과를 격리한 뒤 JOIN 및 distance 필터링 적용
-        var sql = $@"
-            WITH knn_matches AS (
-                SELECT chunk_id, distance
-                FROM {_options.GetVecTableName()}
-                WHERE embedding MATCH @vector AND k = @k
-            )
-            SELECT
-                vc.Id,
-                vc.DocumentId,
-                vc.ChunkIndex,
-                vc.Content,
-                vc.TokenCount,
-                vc.Metadata,
-                km.distance
-            FROM knn_matches km
-            JOIN vector_chunks vc ON vc.Id = km.chunk_id
-            WHERE km.distance <= @maxDistance
-            ORDER BY km.distance";
+        // sqlite-vec vec0: CTEs and JOINs with vec0 virtual tables are unreliable
+        // (silently return 0 rows). Use two-step approach:
+        // Step 1: KNN search on vec0 (direct query, no CTE)
+        // Step 2: Fetch metadata from vector_chunks for matched IDs
+        var knnSql = $@"
+            SELECT chunk_id, distance
+            FROM {_options.GetVecTableName()}
+            WHERE embedding MATCH @vector AND k = {topK}";
 
         try
         {
@@ -472,31 +456,88 @@ public partial class SQLiteVecVectorStore : IVectorStore, IDisposable
                 await connection.OpenAsync(cancellationToken);
             }
 
-            using var command = connection.CreateCommand();
-            command.CommandText = sql;
-            command.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("@vector", vectorString));
-            command.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("@k", topK));
-            command.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("@maxDistance", maxDistance));
+            // sqlite-vec extension is per-connection; EF Core may return a different
+            // connection than the one used during initialization, so ensure it's loaded.
+            await _extensionLoader.LoadExtensionAsync(
+                (Microsoft.Data.Sqlite.SqliteConnection)connection, cancellationToken);
 
-            var results = new List<DocumentChunk>();
-
-            using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
+            // Step 1: KNN search — retrieve all k results, filter by score later.
+            // Distance filtering is deferred because the vec0 table may use L2 or cosine
+            // distance depending on how it was created, and the threshold semantics differ.
+            var knnResults = new List<(string ChunkId, float Distance)>();
+            using (var knnCmd = connection.CreateCommand())
             {
-                var metadataJson = reader.GetString(5); // metadata column index
-                var metadata = JsonSerializer.Deserialize<Dictionary<string, object>>(metadataJson) ?? new Dictionary<string, object>();
+                knnCmd.CommandText = knnSql;
+                knnCmd.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("@vector", vectorString));
 
-                var distance = reader.GetFloat(6);
+                using var knnReader = await knnCmd.ExecuteReaderAsync(cancellationToken);
+                while (await knnReader.ReadAsync(cancellationToken))
+                {
+                    knnResults.Add((knnReader.GetString(0), knnReader.GetFloat(1)));
+                }
+            }
+
+            if (knnResults.Count == 0)
+            {
+                LogVecSearchCompleted(_logger, 0);
+                return [];
+            }
+
+            // Step 2: Fetch metadata for matched chunk IDs
+            var placeholders = string.Join(",", knnResults.Select((_, i) => $"@id{i}"));
+            var metaSql = $@"
+                SELECT Id, DocumentId, ChunkIndex, Content, TokenCount, Metadata
+                FROM vector_chunks
+                WHERE Id IN ({placeholders})";
+
+            var metaMap = new Dictionary<string, (string DocId, int ChunkIdx, string Content, int Tokens, string Meta)>();
+            using (var metaCmd = connection.CreateCommand())
+            {
+                metaCmd.CommandText = metaSql;
+                for (int i = 0; i < knnResults.Count; i++)
+                {
+                    metaCmd.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter($"@id{i}", knnResults[i].ChunkId));
+                }
+
+                using var metaReader = await metaCmd.ExecuteReaderAsync(cancellationToken);
+                while (await metaReader.ReadAsync(cancellationToken))
+                {
+                    metaMap[metaReader.GetString(0)] = (
+                        metaReader.GetString(1),
+                        metaReader.GetInt32(2),
+                        metaReader.GetString(3),
+                        metaReader.GetInt32(4),
+                        metaReader.GetString(5));
+                }
+            }
+
+            // Combine KNN results with metadata
+            var results = new List<DocumentChunk>();
+            foreach (var (chunkId, distance) in knnResults.OrderBy(r => r.Distance))
+            {
+                if (!metaMap.TryGetValue(chunkId, out var meta))
+                    continue;
+
+                var metadata = JsonSerializer.Deserialize<Dictionary<string, object>>(meta.Meta) ?? new Dictionary<string, object>();
+                // Convert distance → similarity score (0–1 range, 1 = best).
+                // Uses general-purpose formula that works for both L2 and cosine distance:
+                //   L2:     d ∈ [0, ∞)  → score ∈ (0, 1]
+                //   cosine: d ∈ [0, 2]  → score ∈ [0.33, 1]
+                var score = 1.0f / (1.0f + distance);
+
+                if (score < minScore)
+                    continue;
+
                 var chunk = new DocumentChunk
                 {
-                    Id = reader.GetString(0),
-                    DocumentId = reader.GetString(1),
-                    ChunkIndex = reader.GetInt32(2),
-                    Content = reader.GetString(3),
-                    TokenCount = reader.GetInt32(4),
+                    Id = chunkId,
+                    DocumentId = meta.DocId,
+                    ChunkIndex = meta.ChunkIdx,
+                    Content = meta.Content,
+                    TokenCount = meta.Tokens,
                     Metadata = metadata,
                     Embedding = null,
-                    Score = 1.0f - distance // cosine distance → similarity
+                    Score = score
                 };
 
                 results.Add(chunk);
