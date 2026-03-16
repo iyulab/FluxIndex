@@ -126,6 +126,14 @@ public class SQLiteVecOptions : SQLiteOptions
             }
         }
 
+        // Try .NET native DLL search directories
+        // (handles single-file publish extraction, DOTNET_BUNDLE_EXTRACT_BASE_DIR, etc.)
+        var nativeSearchPath = FindInNativeSearchDirectories();
+        if (nativeSearchPath is not null)
+        {
+            return nativeSearchPath;
+        }
+
         // Try NuGet global packages cache (native files aren't auto-copied during build)
         var nugetCachePath = GetNuGetCacheExtensionPath();
         if (!string.IsNullOrEmpty(nugetCachePath) && File.Exists(nugetCachePath))
@@ -136,6 +144,56 @@ public class SQLiteVecOptions : SQLiteOptions
         // Return the first expected path even if it doesn't exist (for error reporting)
         return nugetCachePath ?? possiblePaths.FirstOrDefault() ??
             throw new PlatformNotSupportedException($"지원되지 않는 플랫폼: {RuntimeInformation.OSDescription}");
+    }
+
+    /// <summary>
+    /// .NET 런타임의 네이티브 DLL 검색 디렉토리에서 sqlite-vec 확장 파일 탐색.
+    /// single-file publish 시 추출 디렉토리, DOTNET_BUNDLE_EXTRACT_BASE_DIR 등을 커버한다.
+    /// </summary>
+    private static string? FindInNativeSearchDirectories()
+    {
+        try
+        {
+            var searchPaths = AppContext.GetData("NATIVE_DLL_SEARCH_DIRECTORIES") as string;
+            if (string.IsNullOrEmpty(searchPaths))
+            {
+                return null;
+            }
+
+            var fileName = GetPlatformFileName();
+            foreach (var dir in searchPaths.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+            {
+                var trimmed = dir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                var filePath = Path.Combine(trimmed, fileName);
+                if (File.Exists(filePath))
+                {
+                    return filePath;
+                }
+            }
+
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 현재 플랫폼에 해당하는 sqlite-vec 네이티브 파일명 반환
+    /// </summary>
+    internal static string GetPlatformFileName()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return "vec0.dll";
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) return "vec0.so";
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) return "vec0.dylib";
+
+        var rid = RuntimeInformation.RuntimeIdentifier;
+        if (rid.StartsWith("win", StringComparison.OrdinalIgnoreCase)) return "vec0.dll";
+        if (rid.StartsWith("linux", StringComparison.OrdinalIgnoreCase)) return "vec0.so";
+        if (rid.StartsWith("osx", StringComparison.OrdinalIgnoreCase)) return "vec0.dylib";
+
+        return "vec0.dll";
     }
 
     /// <summary>

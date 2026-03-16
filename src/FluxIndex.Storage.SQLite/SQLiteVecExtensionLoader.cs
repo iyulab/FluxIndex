@@ -26,9 +26,27 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
     {
         try
         {
-            var extensionPath = GetExtensionPath();
+            // SQLite 확장 로딩 활성화
+            if (connection.State != System.Data.ConnectionState.Open)
+            {
+                await connection.OpenAsync(cancellationToken);
+            }
+            connection.EnableExtensions(true);
 
-            if (!ExtensionFileExists())
+            // Strategy 1: 파일시스템 경로 탐색 (baseDir, native search dirs, NuGet cache)
+            var extensionPath = GetExtensionPath();
+            if (ExtensionFileExists())
+            {
+                connection.LoadExtension(extensionPath);
+                LogExtensionLoaded(_logger, extensionPath);
+            }
+            // Strategy 2: .NET NativeLibrary 런타임 로더에 위임
+            // (파일시스템 탐색으로 해결 안 되는 엣지 케이스 대응)
+            else if (TryLoadViaRuntimeResolver(connection))
+            {
+                LogExtensionLoadedViaRuntime(_logger);
+            }
+            else
             {
                 LogExtensionNotFound(_logger, extensionPath);
 
@@ -40,20 +58,6 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
 
                 throw new FileNotFoundException($"sqlite-vec 확장 파일을 찾을 수 없습니다: {extensionPath}");
             }
-
-            // SQLite 확장 로딩 활성화
-            if (connection.State != System.Data.ConnectionState.Open)
-            {
-                await connection.OpenAsync(cancellationToken);
-            }
-
-            // Enable extension loading (Microsoft.Data.Sqlite specific method)
-            connection.EnableExtensions(true);
-
-            // Load the extension using connection method
-            connection.LoadExtension(extensionPath);
-
-            LogExtensionLoaded(_logger, extensionPath);
 
             // 로드 확인
             var isLoaded = await IsExtensionLoadedAsync(connection, cancellationToken);
@@ -76,6 +80,33 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
             }
 
             throw;
+        }
+    }
+
+    /// <summary>
+    /// .NET NativeLibrary API를 사용하여 런타임 로더에 확장 로딩을 위임.
+    /// NativeLibrary가 라이브러리를 프로세스에 로드한 후,
+    /// SQLite의 OS 로더가 이미 로드된 모듈을 찾아 확장을 활성화한다.
+    /// </summary>
+    private static bool TryLoadViaRuntimeResolver(SqliteConnection connection)
+    {
+        try
+        {
+            var libraryName = SQLiteVecOptions.GetPlatformFileName();
+            if (!NativeLibrary.TryLoad(libraryName, typeof(SQLiteVecExtensionLoader).Assembly, null, out _))
+            {
+                return false;
+            }
+
+            // 라이브러리가 프로세스에 로드됨 — SQLite의 LoadExtension에 확장자 없는 이름 전달.
+            // sqlite3_load_extension은 OS 로더(LoadLibrary/dlopen)를 사용하며,
+            // 이미 로드된 모듈을 발견하여 확장을 초기화한다.
+            connection.LoadExtension(Path.GetFileNameWithoutExtension(libraryName));
+            return true;
+        }
+        catch
+        {
+            return false;
         }
     }
 
@@ -252,6 +283,9 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
 
     [LoggerMessage(Level = LogLevel.Information, Message = "sqlite-vec 확장이 성공적으로 로드되었습니다: {ExtensionPath}")]
     private static partial void LogExtensionLoaded(ILogger logger, string extensionPath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "sqlite-vec 확장이 .NET NativeLibrary 런타임 로더를 통해 로드되었습니다")]
+    private static partial void LogExtensionLoadedViaRuntime(ILogger logger);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "sqlite-vec 확장 버전: {Version}")]
     private static partial void LogExtensionVersion(ILogger logger, string version);
