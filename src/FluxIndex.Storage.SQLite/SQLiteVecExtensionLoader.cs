@@ -14,6 +14,11 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
     private readonly ILogger<SQLiteVecExtensionLoader> _logger;
     private readonly SQLiteVecOptions _options;
 
+    // 프로세스 수준 캐싱: filesystem probe 및 NativeLibrary.TryLoad는 프로세스 단위
+    private static volatile string? _cachedExtensionPath;
+    private static volatile bool _versionLogged;
+    private static readonly object _pathResolveLock = new();
+
     public SQLiteVecExtensionLoader(
         ILogger<SQLiteVecExtensionLoader> logger,
         IOptions<SQLiteVecOptions> options)
@@ -26,29 +31,38 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
     {
         try
         {
-            // SQLite 확장 로딩 활성화
+            // SQLite 확장 로딩 활성화 (per-connection: SQLite는 연결마다 확장 로드 필요)
             if (connection.State != System.Data.ConnectionState.Open)
             {
                 await connection.OpenAsync(cancellationToken);
             }
             connection.EnableExtensions(true);
 
-            // Strategy 1: 파일시스템 경로 탐색 (baseDir, native search dirs, NuGet cache)
-            var extensionPath = GetExtensionPath();
-            if (ExtensionFileExists())
+            // 확장 경로 해석 (프로세스 수준 캐싱: filesystem probe는 1회만 수행)
+            var extensionPath = GetResolvedExtensionPath();
+
+            if (extensionPath is not null)
             {
+                // per-connection LoadExtension 호출 (SQLite 요구사항)
                 connection.LoadExtension(extensionPath);
-                LogExtensionLoaded(_logger, extensionPath);
+                if (!_versionLogged)
+                {
+                    LogExtensionLoaded(_logger, extensionPath);
+                }
             }
             // Strategy 2: .NET NativeLibrary 런타임 로더에 위임
             // (파일시스템 탐색으로 해결 안 되는 엣지 케이스 대응)
             else if (TryLoadViaRuntimeResolver(connection))
             {
-                LogExtensionLoadedViaRuntime(_logger);
+                if (!_versionLogged)
+                {
+                    LogExtensionLoadedViaRuntime(_logger);
+                }
             }
             else
             {
-                LogExtensionNotFound(_logger, extensionPath);
+                var expectedPath = GetExtensionPath();
+                LogExtensionNotFound(_logger, expectedPath);
 
                 if (_options.FallbackToInMemoryOnError)
                 {
@@ -56,15 +70,16 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
                     return false;
                 }
 
-                throw new FileNotFoundException($"sqlite-vec 확장 파일을 찾을 수 없습니다: {extensionPath}");
+                throw new FileNotFoundException($"sqlite-vec 확장 파일을 찾을 수 없습니다: {expectedPath}");
             }
 
-            // 로드 확인
+            // 로드 확인 및 버전 로그 (프로세스당 1회만)
             var isLoaded = await IsExtensionLoadedAsync(connection, cancellationToken);
-            if (isLoaded)
+            if (isLoaded && !_versionLogged)
             {
                 var version = await GetExtensionVersionAsync(connection, cancellationToken);
                 LogExtensionVersion(_logger, version ?? "unknown");
+                _versionLogged = true;
             }
 
             return isLoaded;
@@ -133,19 +148,34 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
 
     public bool ExtensionFileExists()
     {
-        // GetExtensionPath() now auto-detects available extension file
         var path = GetExtensionPath();
         return File.Exists(path);
     }
 
     /// <summary>
-    /// 모든 가능한 확장 파일 경로에서 사용 가능한 파일이 있는지 확인
+    /// 확장 경로를 해석하고 프로세스 수준에서 캐싱.
+    /// filesystem probe는 최초 1회만 수행되며, 이후 캐싱된 경로를 반환한다.
     /// </summary>
-    public bool AnyExtensionFileExists()
+    /// <returns>확장 파일 경로 (존재하지 않으면 null)</returns>
+    private string? GetResolvedExtensionPath()
     {
-        // GetExtensionPath() will return the first found path, or default expected path
-        var path = GetExtensionPath();
-        return File.Exists(path);
+        var cached = _cachedExtensionPath;
+        if (cached is not null) return cached;
+
+        lock (_pathResolveLock)
+        {
+            cached = _cachedExtensionPath;
+            if (cached is not null) return cached;
+
+            var path = GetExtensionPath();
+            if (File.Exists(path))
+            {
+                _cachedExtensionPath = path;
+                return path;
+            }
+
+            return null;
+        }
     }
 
     public async Task<bool> CreateVecTableAsync(

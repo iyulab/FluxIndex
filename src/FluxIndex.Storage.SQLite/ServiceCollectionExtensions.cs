@@ -26,11 +26,11 @@ public static class ServiceCollectionExtensions
         // SQLiteVecOptions 등록
         services.Configure(configureOptions);
 
-        // sqlite-vec 확장 로더 등록
-        services.AddScoped<ISQLiteVecExtensionLoader, SQLiteVecExtensionLoader>();
+        // sqlite-vec 확장 로더 등록 (Singleton: 연결 상태를 보유하지 않으며 path 캐싱 활용)
+        services.AddSingleton<ISQLiteVecExtensionLoader, SQLiteVecExtensionLoader>();
 
         // 폴백용 로더도 등록
-        services.AddScoped<NoOpSQLiteVecExtensionLoader>();
+        services.AddSingleton<NoOpSQLiteVecExtensionLoader>();
 
         // SQLiteVecDbContext 등록 (연결 풀링 및 성능 최적화)
         services.AddDbContext<SQLiteVecDbContext>((serviceProvider, dbOptions) =>

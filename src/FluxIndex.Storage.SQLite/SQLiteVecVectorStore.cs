@@ -1111,7 +1111,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IDisposable
                     await connection.OpenAsync(cancellationToken);
                 }
 
-                // 확장 로드 시도 (이미 로드되어 있으면 빠르게 반환)
+                // 확장 로드 시도 (per-connection: SQLite 확장은 연결마다 로드 필요)
                 _sqliteVecAvailable = await _extensionLoader.LoadExtensionAsync(
                     (Microsoft.Data.Sqlite.SqliteConnection)connection, cancellationToken);
 
