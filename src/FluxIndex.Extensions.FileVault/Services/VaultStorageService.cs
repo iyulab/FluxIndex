@@ -61,10 +61,17 @@ public sealed partial class VaultStorageService : IVaultStorageService
         // Create .gitignore to exclude meta.json and images/
         await CreateGitignoreAsync(entry, ct);
 
-        // Initialize git in vault/ subdirectory
-        await _gitService.InitAsync(entry.VaultPath, ct);
+        // Initialize git in vault/ subdirectory (non-fatal — vault works without git)
+        try
+        {
+            await _gitService.InitAsync(entry.VaultPath, ct);
+        }
+        catch (Exception ex)
+        {
+            LogGitInitFailed(_logger, entry.EntryPath, ex.Message);
+        }
 
-        // Save entry metadata
+        // Save entry metadata — must always execute to prevent zombie entries
         entry.SaveMetadata();
 
         LogInitializedEntry(_logger, entry.EntryPath);
@@ -309,6 +316,9 @@ public sealed partial class VaultStorageService : IVaultStorageService
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Deleted storage for entry {EntryId}")]
     private static partial void LogDeletedStorage(ILogger logger, Guid entryId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Git initialization failed for {EntryPath}: {Error}. Vault will operate without version tracking.")]
+    private static partial void LogGitInitFailed(ILogger logger, string entryPath, string error);
 
     #endregion
 

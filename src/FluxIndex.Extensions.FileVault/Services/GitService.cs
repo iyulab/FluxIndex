@@ -7,18 +7,25 @@ namespace FluxIndex.Extensions.FileVault.Services;
 
 /// <summary>
 /// Git operations service using CLI commands.
+/// Degrades gracefully when git is not installed — all operations become no-ops.
 /// </summary>
 public sealed partial class GitService : IGitService
 {
     private readonly ILogger<GitService> _logger;
+    private bool? _isAvailable;
 
     public GitService(ILogger<GitService> logger)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
+    /// <inheritdoc />
+    public bool IsAvailable => CheckGitAvailable();
+
     public async Task InitAsync(string vaultPath, CancellationToken ct = default)
     {
+        if (!CheckGitAvailable()) return;
+
         if (IsGitRepository(vaultPath))
         {
             LogRepoAlreadyExists(_logger, vaultPath);
@@ -37,11 +44,15 @@ public sealed partial class GitService : IGitService
 
     public async Task StageAllAsync(string vaultPath, CancellationToken ct = default)
     {
+        if (!CheckGitAvailable()) return;
+
         await RunGitAsync(vaultPath, "add -A", ct);
     }
 
     public async Task<string?> CommitAsync(string vaultPath, string message, CancellationToken ct = default)
     {
+        if (!CheckGitAvailable()) return null;
+
         // Check if there are changes to commit
         var status = await StatusAsync(vaultPath, ct);
         if (!status.HasChanges)
@@ -65,13 +76,15 @@ public sealed partial class GitService : IGitService
 
     public async Task<string> DiffAsync(string vaultPath, string? filePath = null, CancellationToken ct = default)
     {
+        if (!CheckGitAvailable()) return string.Empty;
+
         var args = string.IsNullOrEmpty(filePath) ? "diff" : $"diff -- \"{filePath}\"";
         return await RunGitAsync(vaultPath, args, ct);
     }
 
     public async Task<GitStatus> StatusAsync(string vaultPath, CancellationToken ct = default)
     {
-        if (!IsGitRepository(vaultPath))
+        if (!CheckGitAvailable() || !IsGitRepository(vaultPath))
         {
             return new GitStatus { HasChanges = false };
         }
@@ -108,7 +121,7 @@ public sealed partial class GitService : IGitService
 
     public async Task<IReadOnlyList<GitCommit>> LogAsync(string vaultPath, int maxCount = 10, CancellationToken ct = default)
     {
-        if (!IsGitRepository(vaultPath))
+        if (!CheckGitAvailable() || !IsGitRepository(vaultPath))
         {
             return [];
         }
@@ -135,6 +148,8 @@ public sealed partial class GitService : IGitService
 
     public async Task CheckoutFileAsync(string vaultPath, string filePath, string commitish, CancellationToken ct = default)
     {
+        if (!CheckGitAvailable()) return;
+
         await RunGitAsync(vaultPath, $"checkout {commitish} -- \"{filePath}\"", ct);
         LogCheckedOut(_logger, filePath, commitish);
     }
@@ -142,6 +157,36 @@ public sealed partial class GitService : IGitService
     public bool IsGitRepository(string vaultPath)
     {
         return Directory.Exists(Path.Combine(vaultPath, ".git"));
+    }
+
+    private bool CheckGitAvailable()
+    {
+        if (_isAvailable.HasValue) return _isAvailable.Value;
+
+        try
+        {
+            var psi = new ProcessStartInfo("git", "--version")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using var process = Process.Start(psi);
+            process?.WaitForExit(5000);
+            _isAvailable = process?.ExitCode == 0;
+        }
+        catch
+        {
+            _isAvailable = false;
+        }
+
+        if (!_isAvailable.Value)
+        {
+            LogGitNotAvailable(_logger);
+        }
+
+        return _isAvailable.Value;
     }
 
     private async Task<string> RunGitAsync(string workingDirectory, string arguments, CancellationToken ct)
@@ -212,6 +257,9 @@ public sealed partial class GitService : IGitService
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Git command failed: git {Args} -> {Error}")]
     private static partial void LogGitCommandFailed(ILogger logger, string args, string error);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Git is not available on this system. Vault versioning (diff, log, commit) will be disabled. Install git to enable version tracking.")]
+    private static partial void LogGitNotAvailable(ILogger logger);
 
     #endregion
 }

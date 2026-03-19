@@ -7,6 +7,12 @@ namespace FluxIndex.Extensions.FileVault.Interfaces;
 public interface IGitService
 {
     /// <summary>
+    /// Indicates whether the git CLI is available on this system.
+    /// When false, all git operations degrade gracefully to no-ops.
+    /// </summary>
+    bool IsAvailable { get; }
+
+    /// <summary>
     /// Initializes a new Git repository in the vault entry directory.
     /// </summary>
     Task InitAsync(string vaultPath, CancellationToken ct = default);
