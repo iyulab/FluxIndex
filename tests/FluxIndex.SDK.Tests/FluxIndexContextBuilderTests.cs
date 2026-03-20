@@ -1,6 +1,7 @@
 using Xunit;
 using FluxIndex.SDK;
 using FluxIndex.SDK.Tests.AI;
+using FluxIndex.Storage.SQLite;
 
 namespace FluxIndex.SDK.Tests;
 
@@ -32,7 +33,8 @@ public class FluxIndexContextBuilderTests : IDisposable
     {
         // Act
         var builder = FluxIndexContext.CreateBuilder()
-            .UseSQLite(_testDbPath);
+            .UseSQLite(_testDbPath)
+            .AddSQLiteStorage();
 
         // Access internal options through building
         var context = builder.Build();
@@ -55,6 +57,7 @@ public class FluxIndexContextBuilderTests : IDisposable
         // Act
         var builder = FluxIndexContext.CreateBuilder()
             .UseSQLite(_testDbPath)
+            .AddSQLiteStorage()
             .ConfigureServices(s => s.AddLMSupplyEmbedding());
 
         var context = builder.Build();
@@ -75,6 +78,7 @@ public class FluxIndexContextBuilderTests : IDisposable
         // Act
         var builder = FluxIndexContext.CreateBuilder()
             .UseSQLite(_testDbPath)
+            .AddSQLiteStorage()
             .ConfigureServices(s => s.AddLMSupplyEmbedding("bge-small-en-v1.5"));
 
         var context = builder.Build();
@@ -95,6 +99,7 @@ public class FluxIndexContextBuilderTests : IDisposable
         // Act
         var builder = FluxIndexContext.CreateBuilder()
             .UseSQLite(_testDbPath)
+            .AddSQLiteStorage()
             .ConfigureServices(s => s.AddLMSupplyEmbedding("multilingual"));
 
         var context = builder.Build();
@@ -115,6 +120,7 @@ public class FluxIndexContextBuilderTests : IDisposable
         // Act
         var builder = FluxIndexContext.CreateBuilder()
             .UseSQLite(_testDbPath)
+            .AddSQLiteStorage()
             .UseInMemoryEmbedding();
 
         var context = builder.Build();
@@ -134,7 +140,8 @@ public class FluxIndexContextBuilderTests : IDisposable
     {
         // Act
         var builder = FluxIndexContext.CreateBuilder()
-            .UseSQLiteInMemory();
+            .UseSQLiteInMemory()
+            .AddSQLiteStorage();
 
         var context = builder.Build();
         try
@@ -157,6 +164,7 @@ public class FluxIndexContextBuilderTests : IDisposable
         // Arrange
         var context = FluxIndexContext.CreateBuilder()
             .UseSQLite(_testDbPath)
+            .AddSQLiteStorage()
             .ConfigureServices(s => s.AddLMSupplyEmbedding())
             .Build();
 

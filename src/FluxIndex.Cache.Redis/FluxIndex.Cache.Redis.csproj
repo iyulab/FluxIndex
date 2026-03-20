@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\FluxIndex.Core\FluxIndex.Core.csproj" />
+    <ProjectReference Include="..\FluxIndex.SDK\FluxIndex.SDK.csproj" />
   </ItemGroup>
 
 </Project>

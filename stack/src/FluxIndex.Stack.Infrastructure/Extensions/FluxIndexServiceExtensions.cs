@@ -3,7 +3,9 @@ using FluxIndex.Core.Application.Services;
 using FluxIndex.SDK;
 using FluxIndex.SDK.Configuration;
 using FluxIndex.SDK.Extensions;
+using FluxIndex.Storage.SQLite;
 using FluxIndex.Storage.PostgreSQL;
+using FluxIndex.Cache.Redis;
 using FluxIndex.Cache.Redis.Extensions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -135,25 +137,25 @@ public static class FluxIndexServiceExtensions
                         "PostgreSQL connection string is required. " +
                         "Configure it in FluxIndex:VectorStore:ConnectionString or ConnectionStrings:PostgreSQL");
                 }
-                builder.UsePostgreSQL(connectionString);
+                builder.UsePostgreSQL(connectionString).AddPostgreSQLStorage();
                 break;
 
             case "sqlite":
                 var dbPath = string.IsNullOrEmpty(connectionString)
                     ? "fluxindex.db"
                     : connectionString;
-                builder.UseLocalStorage(dbPath);
+                builder.UseLocalStorage(dbPath).AddSQLiteStorage();
                 break;
 
             case "inmemory":
-                builder.UseLocalStorage(":memory:");
+                builder.UseLocalStorage(":memory:").AddSQLiteStorage();
                 break;
 
             default:
                 // Default to PostgreSQL if provider not specified
                 if (!string.IsNullOrEmpty(connectionString))
                 {
-                    builder.UsePostgreSQL(connectionString);
+                    builder.UsePostgreSQL(connectionString).AddPostgreSQLStorage();
                 }
                 else
                 {
@@ -216,7 +218,7 @@ public static class FluxIndexServiceExtensions
                         "Redis connection string is required. " +
                         "Configure FluxIndex:Cache:RedisConnectionString or ConnectionStrings:Redis");
                 }
-                builder.UseRedisCache(redisConnectionString);
+                builder.UseRedisCache(redisConnectionString).AddRedisStorage();
                 break;
 
             case "memory":
@@ -463,11 +465,11 @@ public static class FluxIndexServiceExtensions
             // Use local storage (SQLite) for development - Vector + Graph + Cache all included
             if (string.IsNullOrEmpty(connectionString))
             {
-                builder.UseLocalStorage("fluxindex-dev.db");
+                builder.UseLocalStorage("fluxindex-dev.db").AddSQLiteStorage();
             }
             else
             {
-                builder.UsePostgreSQL(connectionString);
+                builder.UsePostgreSQL(connectionString).AddPostgreSQLStorage();
             }
 
             // Use InMemory embedding as fallback (actual embedding via DynamicEmbeddingProvider)

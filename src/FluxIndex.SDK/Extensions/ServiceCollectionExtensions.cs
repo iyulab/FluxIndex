@@ -126,34 +126,12 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
-    /// <summary>
-    /// PostgreSQL 벡터 저장소 추가
-    /// </summary>
-    public static IServiceCollection AddPostgreSQLVectorStore(this IServiceCollection services, string connectionString)
-    {
-        // NOTE: PostgreSQL implementation available in FluxIndex.Storage.PostgreSQL package
-        // For now, using in-memory store as fallback
-        services.AddSingleton<IVectorStore, InMemoryVectorStore>();
-        return services;
-    }
-
-    /// <summary>
-    /// Redis 캐시 서비스 추가
-    /// </summary>
-    public static IServiceCollection AddRedisCache(this IServiceCollection services, Action<RedisCacheOptions> configure)
-    {
-        var options = new RedisCacheOptions();
-        configure(options);
-        // NOTE: Redis implementation available in FluxIndex.Cache.Redis package
-        // For now, using in-memory cache as fallback
-        services.AddSingleton<ICacheService, InMemoryCacheService>();
-        return services;
-    }
-}
-
-public class RedisCacheOptions
-{
-    public string ConnectionString { get; set; } = string.Empty;
+    // NOTE: Storage-specific extension methods (AddPostgreSQLVectorStore, AddRedisCache, etc.)
+    // have been moved to their respective storage packages:
+    // - FluxIndex.Storage.PostgreSQL: AddPostgreSQLVectorStore()
+    // - FluxIndex.Cache.Redis: AddRedisCacheStore()
+    // - FluxIndex.Storage.SQLite: AddSQLiteVectorStore()
+    // - FluxIndex.Storage.Qdrant: AddQdrantVectorStore()
 }
 
 /// <summary>

@@ -10,6 +10,7 @@
  */
 
 using FluxIndex.SDK;
+using FluxIndex.Storage.SQLite;
 using FluxIndex.Core.Domain.Models;
 
 Console.WriteLine("=== FluxIndex Local Simulation (SQLite) ===\n");
@@ -20,6 +21,7 @@ Console.WriteLine($"[Setup] Database: {dbPath}");
 
 var context = FluxIndexContext.CreateBuilder()
     .UseLocalStorage(dbPath)
+    .AddSQLiteStorage()
     .UseInMemoryEmbedding()
     .Build();
 

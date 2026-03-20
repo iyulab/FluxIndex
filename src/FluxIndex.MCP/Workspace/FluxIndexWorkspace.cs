@@ -1,4 +1,5 @@
 using FluxIndex.SDK;
+using FluxIndex.Storage.SQLite;
 using FluxIndex.MCP.AI;
 using Microsoft.Extensions.Logging;
 
@@ -93,7 +94,8 @@ public partial class FluxIndexWorkspace : IDisposable
         var builder = FluxIndexContext.CreateBuilder();
 
         // Configure SQLite storage
-        builder.UseSQLite(DatabasePath);
+        builder.UseSQLite(DatabasePath)
+            .AddSQLiteStorage();
 
         // Configure embedding service based on config
         ConfigureEmbeddingService(builder);

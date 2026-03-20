@@ -1,4 +1,5 @@
 using FluxIndex.SDK;
+using FluxIndex.Storage.SQLite;
 using FluxIndex.SDK.Extensions.WebFlux;
 using Microsoft.Extensions.Logging;
 
@@ -16,6 +17,7 @@ class Program
             // Create FluxIndex context with WebFlux integration
             var context = new FluxIndexContextBuilder()
                 .UseSQLite("webflux_sample.db")
+                .AddSQLiteStorage()
                 .UseInMemoryEmbedding()
                 .UseWebFlux(options =>
                 {

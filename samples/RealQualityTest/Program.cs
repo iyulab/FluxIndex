@@ -1,4 +1,5 @@
 ﻿using FluxIndex.SDK;
+using FluxIndex.Storage.SQLite;
 using Microsoft.Extensions.Logging;
 
 namespace RealQualityTest;
@@ -15,6 +16,7 @@ class Program
             // Create FluxIndex context
             var context = new FluxIndexContextBuilder()
                 .UseSQLite("quality_test.db")
+                .AddSQLiteStorage()
                 .UseInMemoryEmbedding()
                 .WithLogging(builder => builder.AddConsole())
                 .Build();

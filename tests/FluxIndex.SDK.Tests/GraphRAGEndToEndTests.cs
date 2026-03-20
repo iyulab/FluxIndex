@@ -263,7 +263,7 @@ public class GraphRAGEndToEndTests : IAsyncLifetime
 
         // Arrange & Act - Build context with both Neo4j and Qdrant (Fixed strategy)
         var builder = FluxIndexContext.CreateBuilder()
-            .UseQdrant(options =>
+            .AddQdrantStorage(options =>
             {
                 options.Host = _qdrantContainer.Hostname;
                 options.GrpcPort = _qdrantContainer.GetMappedPublicPort(6334);
@@ -276,7 +276,8 @@ public class GraphRAGEndToEndTests : IAsyncLifetime
                 uri: _neo4jContainer.GetConnectionString(),
                 username: "neo4j",
                 password: "neo4j",
-                database: "neo4j");
+                database: "neo4j")
+            .AddNeo4jStorage();
 
         var context = builder.Build();
 

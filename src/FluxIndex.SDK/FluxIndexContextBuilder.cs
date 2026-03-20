@@ -6,20 +6,11 @@ using FluxIndex.Core.Services;
 using CoreServiceExtensions = FluxIndex.Core.Application.Services.MetadataAugmentationServiceExtensions;
 using FluxIndex.SDK.Configuration;
 using FluxIndex.SDK.Services;
-using FluxIndex.Storage.SQLite;
-using FluxIndex.Storage.SQLite.Graph;
-using FluxIndex.Storage.SQLite.Cache;
-using FluxIndex.Storage.PostgreSQL;
-using FluxIndex.Storage.PostgreSQL.Graph;
-using FluxIndex.Storage.PostgreSQL.Cache;
-using FluxIndex.Storage.Neo4j;
-using FluxIndex.Storage.Qdrant;
-using FluxIndex.Cache.Redis.Extensions;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace FluxIndex.SDK;
@@ -28,6 +19,9 @@ namespace FluxIndex.SDK;
 /// FluxIndexContext 빌더 - Fluent API로 Retriever와 Indexer 구성
 /// AI Provider-agnostic 설계: IEmbeddingService, ITextCompletionService, IReranker는 외부 주입 필요
 /// 소비 앱에서 Core의 추상 클래스(EmbeddingServiceBase 등)를 확장하여 AI Provider 구현
+///
+/// Storage providers are NOT bundled. Consumers must reference FluxIndex.Storage.* packages
+/// directly and call storage-specific extension methods (e.g., builder.AddSQLiteStorage()).
 /// </summary>
 public class FluxIndexContextBuilder
 {
@@ -35,7 +29,19 @@ public class FluxIndexContextBuilder
     private readonly FluxIndexOptions _options;
     private readonly RetrieverOptions _retrieverOptions;
     private readonly IndexerOptions _indexerOptions;
+    private readonly List<Action<IServiceCollection>> _storageRegistrations = new();
     private bool _suppressStartupMessages;
+
+    /// <summary>
+    /// The DI service collection. Storage packages use this to register their services
+    /// via extension methods on FluxIndexContextBuilder.
+    /// </summary>
+    public IServiceCollection Services => _services;
+
+    /// <summary>
+    /// The FluxIndex options. Storage packages read these to configure their services.
+    /// </summary>
+    public FluxIndexOptions Options => _options;
 
     public FluxIndexContextBuilder()
     {
@@ -56,7 +62,8 @@ public class FluxIndexContextBuilder
 
     /// <summary>
     /// PostgreSQL 사용 - Fullstack RAG (Vector + Graph + SemanticCache 모두 활성화)
-    /// 개별 구성요소는 이후 오버라이드 가능: UsePostgreSQLGraph(), UsePostgreSQLSemanticCache() 등
+    /// 개별 구성요소는 이후 오버라이드 가능.
+    /// NOTE: Requires FluxIndex.Storage.PostgreSQL package reference.
     /// </summary>
     public FluxIndexContextBuilder UsePostgreSQL(string connectionString)
     {
@@ -77,7 +84,8 @@ public class FluxIndexContextBuilder
 
     /// <summary>
     /// SQLite 사용 - Fullstack RAG (Vector + Graph + SemanticCache 모두 활성화)
-    /// 개별 구성요소는 이후 오버라이드 가능: UseSQLiteGraph(), UseSQLiteSemanticCache() 등
+    /// 개별 구성요소는 이후 오버라이드 가능.
+    /// NOTE: Requires FluxIndex.Storage.SQLite package reference.
     /// </summary>
     public FluxIndexContextBuilder UseSQLite(string databasePath = "fluxindex.db")
     {
@@ -98,6 +106,7 @@ public class FluxIndexContextBuilder
 
     /// <summary>
     /// SQLite 인메모리 사용 - Fullstack RAG (테스트용, 모든 기능 활성화)
+    /// NOTE: Requires FluxIndex.Storage.SQLite package reference.
     /// </summary>
     public FluxIndexContextBuilder UseSQLiteInMemory()
     {
@@ -164,7 +173,8 @@ public class FluxIndexContextBuilder
     }
 
     /// <summary>
-    /// Redis 캐시 사용
+    /// Redis 캐시 사용.
+    /// NOTE: Requires FluxIndex.Cache.Redis package reference.
     /// </summary>
     public FluxIndexContextBuilder UseRedisCache(string connectionString)
     {
@@ -191,6 +201,7 @@ public class FluxIndexContextBuilder
     /// Local 모드: SQLite가 모든 역할 수행 (기본값).
     /// Vector + Graph + RDB + SemanticCache 모두 SQLite에서 처리.
     /// 개발/테스트 환경에 적합.
+    /// NOTE: Requires FluxIndex.Storage.SQLite package reference.
     /// </summary>
     public FluxIndexContextBuilder UseLocalStorage(string databasePath = "fluxindex.db")
     {
@@ -212,11 +223,14 @@ public class FluxIndexContextBuilder
     /// <summary>
     /// Best-in-class 프리셋: PostgreSQL(RDB/Cache) + Qdrant(Vector) + Neo4j(Graph).
     /// 대규모 프로덕션 환경에 적합한 최고 성능 조합.
+    /// NOTE: Requires FluxIndex.Storage.PostgreSQL, FluxIndex.Storage.Qdrant,
+    /// and FluxIndex.Storage.Neo4j package references.
+    /// Use ConfigureServices() to register the actual storage implementations.
     /// </summary>
     public FluxIndexContextBuilder UseBestInClass(
         string postgresConnectionString,
-        Action<QdrantOptions> qdrantConfigure,
-        Action<Neo4jOptions> neo4jConfigure)
+        string qdrantHost, int qdrantPort, string qdrantCollection, int vectorSize,
+        string neo4jUri, string neo4jUsername, string neo4jPassword)
     {
         // PostgreSQL for RDB and Cache
         _options.VectorStore.Provider = "PostgreSQL";
@@ -226,38 +240,19 @@ public class FluxIndexContextBuilder
 
         // Qdrant for Vector (takes priority over PostgreSQL)
         _options.VectorStore.Provider = "Qdrant";
-        _options.VectorStore.QdrantOptionsAction = qdrantConfigure;
+        _options.VectorStore.QdrantHost = qdrantHost;
+        _options.VectorStore.QdrantGrpcPort = qdrantPort;
+        _options.VectorStore.QdrantCollectionName = qdrantCollection;
+        _options.VectorStore.QdrantVectorSize = vectorSize;
+        _options.VectorStore.QdrantNamingStrategy = "Fixed";
 
         // Neo4j for Graph (specialized graph DB)
         _options.GraphStore.Provider = "Neo4j";
-        _options.GraphStore.Neo4jOptionsAction = neo4jConfigure;
+        _options.GraphStore.Neo4jUri = neo4jUri;
+        _options.GraphStore.Neo4jUsername = neo4jUsername;
+        _options.GraphStore.Neo4jPassword = neo4jPassword;
 
         return this;
-    }
-
-    /// <summary>
-    /// Best-in-class 프리셋 (간단한 설정): PostgreSQL + Qdrant + Neo4j.
-    /// </summary>
-    public FluxIndexContextBuilder UseBestInClass(
-        string postgresConnectionString,
-        string qdrantHost, int qdrantPort, string qdrantCollection, int vectorSize,
-        string neo4jUri, string neo4jUsername, string neo4jPassword)
-    {
-        return UseBestInClass(
-            postgresConnectionString,
-            qdrant =>
-            {
-                qdrant.Host = qdrantHost;
-                qdrant.GrpcPort = qdrantPort;
-                qdrant.CollectionName = qdrantCollection;
-                qdrant.VectorSize = vectorSize;
-            },
-            neo4j =>
-            {
-                neo4j.Uri = neo4jUri;
-                neo4j.Username = neo4jUsername;
-                neo4j.Password = neo4jPassword;
-            });
     }
 
     #endregion
@@ -267,6 +262,7 @@ public class FluxIndexContextBuilder
     /// <summary>
     /// Neo4j 그래프 저장소 추가.
     /// 기본 저장소(SQLite/PostgreSQL)의 Graph를 Neo4j로 대체.
+    /// NOTE: Requires FluxIndex.Storage.Neo4j package reference.
     /// </summary>
     public FluxIndexContextBuilder UseNeo4j(string uri, string username, string password, string? database = null)
     {
@@ -278,16 +274,6 @@ public class FluxIndexContextBuilder
         return this;
     }
 
-    /// <summary>
-    /// Neo4j 그래프 저장소 추가 (옵션 설정).
-    /// </summary>
-    public FluxIndexContextBuilder UseNeo4j(Action<Neo4jOptions> configure)
-    {
-        _options.GraphStore.Provider = "Neo4j";
-        _options.GraphStore.Neo4jOptionsAction = configure;
-        return this;
-    }
-
     #endregion
 
     #region Vector Store (Qdrant)
@@ -296,6 +282,7 @@ public class FluxIndexContextBuilder
     /// Qdrant 벡터 저장소 사용 (동적 차원 적응, 권장)
     /// 고성능 벡터 DB로 대규모 임베딩 저장 및 검색
     /// 컬렉션 이름에 차원이 자동 추가됨 (예: "my_chunks" → "my_chunks_384")
+    /// NOTE: Requires FluxIndex.Storage.Qdrant package reference.
     /// </summary>
     /// <param name="host">Qdrant 서버 호스트</param>
     /// <param name="grpcPort">gRPC 포트</param>
@@ -306,13 +293,14 @@ public class FluxIndexContextBuilder
         _options.VectorStore.QdrantHost = host;
         _options.VectorStore.QdrantGrpcPort = grpcPort;
         _options.VectorStore.QdrantCollectionName = baseCollectionName;
-        _options.VectorStore.QdrantNamingStrategy = CollectionNamingStrategy.DimensionSuffix;
+        _options.VectorStore.QdrantNamingStrategy = "DimensionSuffix";
         return this;
     }
 
     /// <summary>
     /// Qdrant 벡터 저장소 사용 (고정 차원, 레거시 호환)
     /// 명시적 벡터 차원 설정이 필요한 경우 사용
+    /// NOTE: Requires FluxIndex.Storage.Qdrant package reference.
     /// </summary>
     /// <param name="host">Qdrant 서버 호스트</param>
     /// <param name="grpcPort">gRPC 포트</param>
@@ -325,22 +313,13 @@ public class FluxIndexContextBuilder
         _options.VectorStore.QdrantGrpcPort = grpcPort;
         _options.VectorStore.QdrantCollectionName = collectionName;
         _options.VectorStore.QdrantVectorSize = vectorSize;
-        _options.VectorStore.QdrantNamingStrategy = CollectionNamingStrategy.Fixed;
-        return this;
-    }
-
-    /// <summary>
-    /// Qdrant 벡터 저장소 사용 (옵션 설정)
-    /// </summary>
-    public FluxIndexContextBuilder UseQdrant(Action<QdrantOptions> configure)
-    {
-        _options.VectorStore.Provider = "Qdrant";
-        _options.VectorStore.QdrantOptionsAction = configure;
+        _options.VectorStore.QdrantNamingStrategy = "Fixed";
         return this;
     }
 
     /// <summary>
     /// Qdrant Cloud 벡터 저장소 사용 (동적 차원 적응, 권장)
+    /// NOTE: Requires FluxIndex.Storage.Qdrant package reference.
     /// </summary>
     public FluxIndexContextBuilder UseQdrantCloud(string cloudHost, string apiKey, string baseCollectionName = "fluxindex_chunks")
     {
@@ -349,12 +328,13 @@ public class FluxIndexContextBuilder
         _options.VectorStore.QdrantApiKey = apiKey;
         _options.VectorStore.QdrantUseHttps = true;
         _options.VectorStore.QdrantCollectionName = baseCollectionName;
-        _options.VectorStore.QdrantNamingStrategy = CollectionNamingStrategy.DimensionSuffix;
+        _options.VectorStore.QdrantNamingStrategy = "DimensionSuffix";
         return this;
     }
 
     /// <summary>
     /// Qdrant Cloud 벡터 저장소 사용 (고정 차원, 레거시 호환)
+    /// NOTE: Requires FluxIndex.Storage.Qdrant package reference.
     /// </summary>
     public FluxIndexContextBuilder UseQdrantCloudFixed(string cloudHost, string apiKey, string collectionName = "fluxindex_chunks", int vectorSize = EmbeddingDefaults.DefaultVectorDimension)
     {
@@ -364,7 +344,7 @@ public class FluxIndexContextBuilder
         _options.VectorStore.QdrantUseHttps = true;
         _options.VectorStore.QdrantCollectionName = collectionName;
         _options.VectorStore.QdrantVectorSize = vectorSize;
-        _options.VectorStore.QdrantNamingStrategy = CollectionNamingStrategy.Fixed;
+        _options.VectorStore.QdrantNamingStrategy = "Fixed";
         return this;
     }
 
@@ -554,6 +534,20 @@ public class FluxIndexContextBuilder
     }
 
     /// <summary>
+    /// Register storage services. Storage packages should call this to register their
+    /// IVectorStore, IGraphStore, ISemanticCacheService, and ICacheService implementations.
+    /// Multiple registrations are invoked in order during Build().
+    /// </summary>
+    /// <param name="registration">Action that registers storage services into the DI container.</param>
+    /// <returns>Builder instance for chaining</returns>
+    public FluxIndexContextBuilder RegisterStorageServices(Action<IServiceCollection> registration)
+    {
+        ArgumentNullException.ThrowIfNull(registration);
+        _storageRegistrations.Add(registration);
+        return this;
+    }
+
+    /// <summary>
     /// Suppress startup messages (AI service guidance).
     /// Use this in production environments or when console output is not desired.
     /// </summary>
@@ -568,22 +562,41 @@ public class FluxIndexContextBuilder
     /// </summary>
     public IFluxIndexContext Build()
     {
-        // Configure services based on options
-        ConfigureVectorStore();
+        // Invoke storage registrations from storage packages
+        foreach (var registration in _storageRegistrations)
+        {
+            registration(_services);
+        }
+
+        // Configure embedding service
         ConfigureEmbeddingService();
-        // AI 서비스 (TextCompletion, Reranker)는 외부에서 ConfigureServices로 주입 필요
-        ConfigureCacheService();
+
+        // Configure chunking service
         ConfigureChunkingService();
-        ConfigureGraphStore();
-        ConfigureSemanticCache();
+
+        // Fallback: if no IVectorStore was registered by storage packages, use InMemory
+        if (!_services.Any(d => d.ServiceType == typeof(IVectorStore)))
+        {
+            _services.AddSingleton<IVectorStore, InMemoryVectorStore>();
+        }
+
+        // Fallback: if no ICacheService was registered and Memory cache requested
+        if (_options.Cache.CacheProvider?.Equals("Memory", StringComparison.OrdinalIgnoreCase) == true
+            && !_services.Any(d => d.ServiceType == typeof(ICacheService)))
+        {
+            _services.AddSingleton<ICacheService, InMemoryCacheService>();
+        }
 
         // Register core services
         _services.AddSingleton<IDocumentRepository, InMemoryDocumentRepository>();
         _services.AddSingleton(_retrieverOptions);
         _services.AddSingleton(_indexerOptions);
 
-        // Register in-memory chunk hierarchy repository for SDK
-        _services.AddScoped<IChunkHierarchyRepository, InMemoryChunkHierarchyRepository>();
+        // Register in-memory chunk hierarchy repository for SDK (fallback if storage didn't register one)
+        if (!_services.Any(d => d.ServiceType == typeof(IChunkHierarchyRepository)))
+        {
+            _services.AddScoped<IChunkHierarchyRepository, InMemoryChunkHierarchyRepository>();
+        }
 
         // Register hybrid search services
         _services.AddScoped<ISparseRetriever, BM25SparseRetriever>();
@@ -661,10 +674,11 @@ public class FluxIndexContextBuilder
         // Build service provider
         var serviceProvider = _services.BuildServiceProvider();
 
-        // Initialize database if using SQLite (console app support)
-        if (_options.VectorStore.Provider?.ToLowerInvariant() == "sqlite")
+        // Initialize database if storage package registered an initializer
+        var initializers = serviceProvider.GetServices<IStorageInitializer>();
+        foreach (var initializer in initializers)
         {
-            InitializeDatabaseSync(serviceProvider);
+            initializer.InitializeSync(serviceProvider);
         }
 
         // Display AI service guidance (shows LMSupply options for missing services)
@@ -702,132 +716,6 @@ public class FluxIndexContextBuilder
         );
     }
 
-    /// <summary>
-    /// SQLite 데이터베이스 초기화 (콘솔 앱 지원을 위해 동기 초기화)
-    /// IHostedService는 IHost를 사용하는 앱에서만 자동 실행되므로,
-    /// 콘솔 앱에서는 명시적으로 데이터베이스를 초기화해야 함
-    /// </summary>
-    private static void InitializeDatabaseSync(IServiceProvider serviceProvider)
-    {
-        using var scope = serviceProvider.CreateScope();
-
-        var context = scope.ServiceProvider.GetRequiredService<SQLiteDbContext>();
-
-        // 데이터베이스 생성 및 마이그레이션
-        context.Database.EnsureCreated();
-
-        // 추가 초기화 (필요시)
-        var options = scope.ServiceProvider.GetService<Microsoft.Extensions.Options.IOptions<FluxIndex.Storage.SQLite.SQLiteOptions>>();
-
-        if (options?.Value != null && !options.Value.UseInMemory)
-        {
-            // WAL 모드 활성화 (성능 향상)
-            RelationalDatabaseFacadeExtensions.ExecuteSqlRaw(context.Database, "PRAGMA journal_mode=WAL");
-
-            // 동기화 모드 설정 (성능과 안정성 균형)
-            RelationalDatabaseFacadeExtensions.ExecuteSqlRaw(context.Database, "PRAGMA synchronous=NORMAL");
-        }
-    }
-
-    private void ConfigureVectorStore()
-    {
-        switch (_options.VectorStore.Provider?.ToLowerInvariant())
-        {
-            case "postgresql":
-                _services.AddPostgreSQLVectorStore(_options.VectorStore.ConnectionString);
-                break;
-            case "sqlite":
-                _services.AddSQLiteVectorStore(options =>
-                {
-                    // Parse connection string to extract database path
-                    // Format: "Data Source=path/to/db.db" or "Data Source=:memory:" or "Data Source=:memory:;Mode=Memory;Cache=Shared"
-                    var connStr = _options.VectorStore.ConnectionString;
-                    var isInMemory = connStr.Contains(":memory:");
-
-                    if (isInMemory)
-                    {
-                        options.UseInMemory = true;
-                        // Store full connection string in DatabasePath for shared cache support
-                        options.DatabasePath = connStr;
-                    }
-                    else
-                    {
-                        // Extract path from "Data Source=..." format
-                        var dataSourcePrefix = "Data Source=";
-                        var startIndex = connStr.IndexOf(dataSourcePrefix, StringComparison.OrdinalIgnoreCase);
-                        if (startIndex >= 0)
-                        {
-                            var path = connStr.Substring(startIndex + dataSourcePrefix.Length).Trim();
-                            // Remove any trailing semicolons or parameters
-                            var semicolonIndex = path.IndexOf(';');
-                            if (semicolonIndex >= 0)
-                            {
-                                path = path.Substring(0, semicolonIndex).Trim();
-                            }
-                            options.DatabasePath = path;
-                        }
-                        else
-                        {
-                            // Fallback: use connection string as-is (shouldn't happen)
-                            options.DatabasePath = connStr;
-                        }
-                        options.UseInMemory = false;
-                    }
-
-                    options.AutoMigrate = true;
-                });
-                break;
-            case "qdrant":
-                if (_options.VectorStore.QdrantOptionsAction != null)
-                {
-                    _services.AddQdrantVectorStore(_options.VectorStore.QdrantOptionsAction);
-                }
-                else if (!string.IsNullOrEmpty(_options.VectorStore.QdrantApiKey))
-                {
-                    // Qdrant Cloud
-                    if (_options.VectorStore.QdrantNamingStrategy == CollectionNamingStrategy.DimensionSuffix)
-                    {
-                        _services.AddQdrantCloudVectorStore(
-                            _options.VectorStore.QdrantHost,
-                            _options.VectorStore.QdrantApiKey,
-                            _options.VectorStore.QdrantCollectionName);
-                    }
-                    else
-                    {
-                        _services.AddQdrantCloudVectorStore(
-                            _options.VectorStore.QdrantHost,
-                            _options.VectorStore.QdrantApiKey,
-                            _options.VectorStore.QdrantCollectionName,
-                            _options.VectorStore.QdrantVectorSize);
-                    }
-                }
-                else
-                {
-                    // Local Qdrant
-                    if (_options.VectorStore.QdrantNamingStrategy == CollectionNamingStrategy.DimensionSuffix)
-                    {
-                        _services.AddQdrantVectorStore(
-                            _options.VectorStore.QdrantHost,
-                            _options.VectorStore.QdrantGrpcPort,
-                            _options.VectorStore.QdrantCollectionName);
-                    }
-                    else
-                    {
-                        _services.AddQdrantVectorStore(
-                            _options.VectorStore.QdrantHost,
-                            _options.VectorStore.QdrantGrpcPort,
-                            _options.VectorStore.QdrantCollectionName,
-                            _options.VectorStore.QdrantVectorSize);
-                    }
-                }
-                break;
-            default:
-                // Default to in-memory for testing
-                _services.AddSingleton<IVectorStore, InMemoryVectorStore>();
-                break;
-        }
-    }
-
     private void ConfigureEmbeddingService()
     {
         switch (_options.Embedding.Provider?.ToLowerInvariant())
@@ -850,22 +738,6 @@ public class FluxIndexContextBuilder
         }
     }
 
-    private void ConfigureCacheService()
-    {
-        switch (_options.Cache.CacheProvider?.ToLowerInvariant())
-        {
-            case "redis":
-                _services.AddRedisCacheStore(_options.Cache.RedisConnectionString!);
-                break;
-            case "memory":
-                _services.AddSingleton<ICacheService, InMemoryCacheService>();
-                break;
-            default:
-                // No cache
-                break;
-        }
-    }
-
     private void ConfigureChunkingService()
     {
         _services.AddSingleton<IChunkingService>(sp =>
@@ -874,182 +746,5 @@ public class FluxIndexContextBuilder
                 _indexerOptions.ChunkOverlap
             )
         );
-    }
-
-    private void ConfigureGraphStore()
-    {
-        var provider = _options.GraphStore.Provider?.ToLowerInvariant();
-        if (string.IsNullOrEmpty(provider) || provider == "none")
-        {
-            // 기본: InMemory 사용 (이미 Build()에서 등록)
-            return;
-        }
-
-        var connectionString = _options.GraphStore.UseVectorStoreConnection
-            ? _options.VectorStore.ConnectionString
-            : _options.GraphStore.ConnectionString;
-
-        switch (provider)
-        {
-            case "sqlite":
-                // Parse connection string once for both stores
-                var connStr = connectionString;
-                var isInMemory = connStr.Contains(":memory:");
-                string dbPath;
-
-                if (isInMemory)
-                {
-                    dbPath = connStr;
-                }
-                else
-                {
-                    var dataSourcePrefix = "Data Source=";
-                    var startIndex = connStr.IndexOf(dataSourcePrefix, StringComparison.OrdinalIgnoreCase);
-                    if (startIndex >= 0)
-                    {
-                        dbPath = connStr.Substring(startIndex + dataSourcePrefix.Length).Trim();
-                        var semicolonIndex = dbPath.IndexOf(';');
-                        if (semicolonIndex >= 0)
-                            dbPath = dbPath.Substring(0, semicolonIndex).Trim();
-                    }
-                    else
-                    {
-                        dbPath = connStr;
-                    }
-                }
-
-                // IChunkHierarchyRepository for Small-to-Big retrieval
-                _services.AddSQLiteGraphStore(options =>
-                {
-                    if (isInMemory)
-                    {
-                        options.UseInMemory = true;
-                    }
-                    else
-                    {
-                        options.GraphDatabasePath = dbPath;
-                        options.UseInMemory = false;
-                    }
-                    options.AutoMigrate = _options.GraphStore.AutoMigrate;
-                });
-
-                // IGraphStore for GraphRAG entity graph
-                _services.AddSQLiteEntityGraphStore(options =>
-                {
-                    if (isInMemory)
-                    {
-                        options.UseInMemory = true;
-                    }
-                    else
-                    {
-                        // Use separate database for entity graph to avoid conflicts
-                        var entityGraphDbPath = System.IO.Path.ChangeExtension(dbPath, null) + "-entitygraph.db";
-                        options.DatabasePath = entityGraphDbPath;
-                        options.UseInMemory = false;
-                    }
-                    options.AutoMigrate = _options.GraphStore.AutoMigrate;
-                });
-                break;
-
-            case "postgresql":
-                _services.AddPostgreSQLGraphStore(options =>
-                {
-                    options.ConnectionString = connectionString;
-                    options.AutoMigrate = _options.GraphStore.AutoMigrate;
-                    options.MaxRecursionDepth = _options.GraphStore.MaxRecursionDepth;
-                });
-                break;
-
-            case "neo4j":
-                if (_options.GraphStore.Neo4jOptionsAction != null)
-                {
-                    _services.AddNeo4jGraphStore(_options.GraphStore.Neo4jOptionsAction);
-                }
-                else if (!string.IsNullOrEmpty(_options.GraphStore.Neo4jUri))
-                {
-                    _services.AddNeo4jGraphStore(
-                        _options.GraphStore.Neo4jUri,
-                        _options.GraphStore.Neo4jUsername ?? "neo4j",
-                        _options.GraphStore.Neo4jPassword ?? string.Empty,
-                        _options.GraphStore.Neo4jDatabase);
-                }
-                break;
-        }
-    }
-
-    private void ConfigureSemanticCache()
-    {
-        var provider = _options.SemanticCache.Provider?.ToLowerInvariant();
-        if (string.IsNullOrEmpty(provider) || provider == "none")
-        {
-            // 시맨틱 캐시 미사용
-            return;
-        }
-
-        var connectionString = _options.SemanticCache.UseVectorStoreConnection
-            ? _options.VectorStore.ConnectionString
-            : _options.SemanticCache.ConnectionString;
-
-        switch (provider)
-        {
-            case "sqlite":
-                _services.AddSQLiteSemanticCache(options =>
-                {
-                    // Parse connection string
-                    var connStr = connectionString;
-                    var isInMemory = connStr.Contains(":memory:");
-
-                    if (isInMemory)
-                    {
-                        options.UseInMemory = true;
-                        options.DatabasePath = connStr;
-                    }
-                    else
-                    {
-                        var dataSourcePrefix = "Data Source=";
-                        var startIndex = connStr.IndexOf(dataSourcePrefix, StringComparison.OrdinalIgnoreCase);
-                        if (startIndex >= 0)
-                        {
-                            var path = connStr.Substring(startIndex + dataSourcePrefix.Length).Trim();
-                            var semicolonIndex = path.IndexOf(';');
-                            if (semicolonIndex >= 0)
-                                path = path.Substring(0, semicolonIndex).Trim();
-                            options.DatabasePath = path;
-                        }
-                        else
-                        {
-                            options.DatabasePath = connStr;
-                        }
-                        options.UseInMemory = false;
-                    }
-
-                    options.AutoMigrate = _options.SemanticCache.AutoMigrate;
-                    options.DefaultExpiry = _options.SemanticCache.DefaultExpiry;
-                    options.MaxEntries = _options.SemanticCache.MaxEntries;
-                    options.EnableAutoCleanup = _options.SemanticCache.EnableAutoCleanup;
-                    options.CleanupInterval = _options.SemanticCache.CleanupInterval;
-                });
-                break;
-
-            case "postgresql":
-                _services.AddPostgreSQLSemanticCache(options =>
-                {
-                    options.ConnectionString = connectionString;
-                    options.AutoMigrate = _options.SemanticCache.AutoMigrate;
-                    options.DefaultExpiry = _options.SemanticCache.DefaultExpiry;
-                    options.MaxEntries = _options.SemanticCache.MaxEntries;
-                    options.EmbeddingDimensions = _options.SemanticCache.EmbeddingDimensions;
-                    options.EnableAutoCleanup = _options.SemanticCache.EnableAutoCleanup;
-                    options.CleanupInterval = _options.SemanticCache.CleanupInterval;
-                    options.UseUnloggedTable = _options.SemanticCache.UseUnloggedTable;
-                });
-                break;
-
-            case "redis":
-                // Redis는 기존 ICacheService 인프라 활용
-                // 여기서는 ISemanticCache가 아닌 Redis 캐시이므로 별도 처리 필요
-                // 향후 Redis 시맨틱 캐시 구현 시 추가
-                break;
-        }
     }
 }

@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
 using FluxIndex.Core.Constants;
-using FluxIndex.Storage.Neo4j;
-using FluxIndex.Storage.Qdrant;
 
 namespace FluxIndex.SDK.Configuration;
 
@@ -78,14 +76,13 @@ public class VectorStoreOptions
     public int QdrantVectorSize { get; set; } = EmbeddingDefaults.DefaultVectorDimension;
     public string? QdrantApiKey { get; set; }
     public bool QdrantUseHttps { get; set; }
-    public Action<QdrantOptions>? QdrantOptionsAction { get; set; }
 
     /// <summary>
-    /// Qdrant collection naming strategy. Default: DimensionSuffix (recommended).
-    /// - DimensionSuffix: {baseName}_{dimension} - auto-adapts to embedding dimension
-    /// - Fixed: exact name specified - requires explicit VectorSize
+    /// Qdrant collection naming strategy name. Default: "DimensionSuffix" (recommended).
+    /// - "DimensionSuffix": {baseName}_{dimension} - auto-adapts to embedding dimension
+    /// - "Fixed": exact name specified - requires explicit VectorSize
     /// </summary>
-    public CollectionNamingStrategy QdrantNamingStrategy { get; set; } = CollectionNamingStrategy.DimensionSuffix;
+    public string QdrantNamingStrategy { get; set; } = "DimensionSuffix";
 }
 
 /// <summary>
@@ -190,7 +187,6 @@ public class GraphStoreOptions
     public string? Neo4jUsername { get; set; }
     public string? Neo4jPassword { get; set; }
     public string? Neo4jDatabase { get; set; }
-    public Action<Neo4jOptions>? Neo4jOptionsAction { get; set; }
 }
 
 /// <summary>

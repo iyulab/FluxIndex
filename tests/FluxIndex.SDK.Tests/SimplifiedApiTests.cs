@@ -1,5 +1,6 @@
 using Xunit;
 using FluxIndex.SDK;
+using FluxIndex.Storage.SQLite;
 using System.IO;
 
 namespace FluxIndex.SDK.Tests;
@@ -20,6 +21,7 @@ public class SimplifiedApiTests : IDisposable
         // Note: CI 환경에서 LMSupply 모델이 없으므로 InMemory 사용
         _context = FluxIndexContext.CreateBuilder()
             .UseSQLite(_testDbPath)
+            .AddSQLiteStorage()
             .UseInMemoryEmbedding()
             .Build();
     }

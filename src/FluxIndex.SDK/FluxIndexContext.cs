@@ -9,7 +9,7 @@ using DocumentChunkEntity = FluxIndex.Core.Domain.Entities.DocumentChunk;
 using DocumentChunkModel = FluxIndex.Core.Domain.Models.CacheDocumentChunk;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.EntityFrameworkCore;
+using System.Reflection;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -969,16 +969,24 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable
                     vectorStore.Dispose();
                 }
 
-                // 3. Dispose SQLite DbContext explicitly
+                // 3. Dispose SQLite DbContext explicitly (via reflection to avoid storage dependency)
                 var dbContextType = Type.GetType("FluxIndex.Storage.SQLite.SQLiteDbContext, FluxIndex.Storage.SQLite");
                 if (dbContextType != null)
                 {
-                    var dbContext = ServiceProvider.GetService(dbContextType) as DbContext;
-                    if (dbContext != null)
+                    var dbContextObj = ServiceProvider.GetService(dbContextType);
+                    if (dbContextObj != null)
                     {
                         // Close connection explicitly before disposing
-                        dbContext.Database.CloseConnection();
-                        dbContext.Dispose();
+                        // DbContext.Database.CloseConnection() via reflection
+                        var databaseProp = dbContextObj.GetType().GetProperty("Database");
+                        var database = databaseProp?.GetValue(dbContextObj);
+                        if (database != null)
+                        {
+                            var closeMethod = database.GetType().GetMethod("CloseConnection", BindingFlags.Public | BindingFlags.Instance);
+                            closeMethod?.Invoke(database, null);
+                        }
+
+                        (dbContextObj as IDisposable)?.Dispose();
                     }
                 }
 
