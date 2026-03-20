@@ -1,5 +1,6 @@
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services;
+using FluxIndex.Core.Constants;
 using FluxIndex.Core.Models;
 using FluxIndex.Core.Services;
 using CoreServiceExtensions = FluxIndex.Core.Application.Services.MetadataAugmentationServiceExtensions;
@@ -317,7 +318,7 @@ public class FluxIndexContextBuilder
     /// <param name="grpcPort">gRPC 포트</param>
     /// <param name="collectionName">컬렉션 이름 (고정)</param>
     /// <param name="vectorSize">벡터 차원 (고정)</param>
-    public FluxIndexContextBuilder UseQdrantFixed(string host = "localhost", int grpcPort = 6334, string collectionName = "fluxindex_chunks", int vectorSize = 1536)
+    public FluxIndexContextBuilder UseQdrantFixed(string host = "localhost", int grpcPort = 6334, string collectionName = "fluxindex_chunks", int vectorSize = EmbeddingDefaults.DefaultVectorDimension)
     {
         _options.VectorStore.Provider = "Qdrant";
         _options.VectorStore.QdrantHost = host;
@@ -355,7 +356,7 @@ public class FluxIndexContextBuilder
     /// <summary>
     /// Qdrant Cloud 벡터 저장소 사용 (고정 차원, 레거시 호환)
     /// </summary>
-    public FluxIndexContextBuilder UseQdrantCloudFixed(string cloudHost, string apiKey, string collectionName = "fluxindex_chunks", int vectorSize = 1536)
+    public FluxIndexContextBuilder UseQdrantCloudFixed(string cloudHost, string apiKey, string collectionName = "fluxindex_chunks", int vectorSize = EmbeddingDefaults.DefaultVectorDimension)
     {
         _options.VectorStore.Provider = "Qdrant";
         _options.VectorStore.QdrantHost = cloudHost;

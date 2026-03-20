@@ -1,4 +1,5 @@
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Constants;
 using FluxIndex.Core.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -65,7 +66,7 @@ public static class ServiceCollectionExtensions
         string host = "localhost",
         int port = 6334,
         string collectionName = "fluxindex_chunks",
-        int vectorSize = 1536)
+        int vectorSize = EmbeddingDefaults.DefaultVectorDimension)
     {
         return services.AddQdrantVectorStore(options =>
         {
@@ -117,7 +118,7 @@ public static class ServiceCollectionExtensions
         string cloudHost,
         string apiKey,
         string collectionName = "fluxindex_chunks",
-        int vectorSize = 1536)
+        int vectorSize = EmbeddingDefaults.DefaultVectorDimension)
     {
         return services.AddQdrantVectorStore(options =>
         {
@@ -188,7 +189,7 @@ public static class ServiceCollectionExtensions
         string host = "localhost",
         int port = 6334,
         string collectionName = "fluxindex_chunks",
-        int vectorSize = 1536,
+        int vectorSize = EmbeddingDefaults.DefaultVectorDimension,
         string? bm25PersistencePath = null)
     {
         return services.AddQdrantWithHybridSearch(options =>

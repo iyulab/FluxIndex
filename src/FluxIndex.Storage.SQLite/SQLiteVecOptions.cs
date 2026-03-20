@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using FluxIndex.Core.Constants;
 
 namespace FluxIndex.Storage.SQLite;
 
@@ -16,7 +17,7 @@ public class SQLiteVecOptions : SQLiteOptions
     /// 벡터 차원 수 (임베딩 모델에 따라 설정)
     /// OpenAI ada-002: 1536, text-embedding-3-small: 1536, text-embedding-3-large: 3072
     /// </summary>
-    public int VectorDimension { get; set; } = 1536;
+    public int VectorDimension { get; set; } = EmbeddingDefaults.DefaultVectorDimension;
 
     /// <summary>
     /// 벡터 인덱스 타입 (현재는 'flat'만 지원)
@@ -433,7 +434,7 @@ public class SQLiteVecOptions : SQLiteOptions
     /// <summary>
     /// 프로덕션용 파일 기반 설정
     /// </summary>
-    public static SQLiteVecOptions CreateForProduction(string databasePath, int vectorDimension = 1536)
+    public static SQLiteVecOptions CreateForProduction(string databasePath, int vectorDimension = EmbeddingDefaults.DefaultVectorDimension)
     {
         return new SQLiteVecOptions
         {

@@ -1,4 +1,5 @@
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Constants;
 using Microsoft.Extensions.Options;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -104,7 +105,7 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddSQLiteVecVectorStore(
         this IServiceCollection services,
         string databasePath = "fluxindex-vec.db",
-        int vectorDimension = 1536)
+        int vectorDimension = EmbeddingDefaults.DefaultVectorDimension)
     {
         return services.AddSQLiteVecVectorStore(options =>
         {

@@ -1,3 +1,5 @@
+using FluxIndex.Core.Constants;
+
 namespace FluxIndex.Storage.PostgreSQL.Cache;
 
 /// <summary>
@@ -59,5 +61,5 @@ public class PostgresCacheOptions
     /// <summary>
     /// 임베딩 차원 (기본: 1536)
     /// </summary>
-    public int EmbeddingDimensions { get; set; } = 1536;
+    public int EmbeddingDimensions { get; set; } = EmbeddingDefaults.DefaultVectorDimension;
 }

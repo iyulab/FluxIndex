@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using FluxIndex.Core.Constants;
 
 namespace FluxIndex.Core.Application.Interfaces;
 
@@ -216,7 +217,7 @@ public class QuantizationOptions
     /// <summary>
     /// 벡터 차원
     /// </summary>
-    public int Dimension { get; set; } = 1536;
+    public int Dimension { get; set; } = EmbeddingDefaults.DefaultVectorDimension;
 
     /// <summary>
     /// Product Quantization 서브벡터 수 (PQ 사용 시)

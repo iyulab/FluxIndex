@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using FluxIndex.Core.Constants;
 using FluxIndex.Storage.Neo4j;
 using FluxIndex.Storage.Qdrant;
 
@@ -74,7 +75,7 @@ public class VectorStoreOptions
     public int QdrantGrpcPort { get; set; } = 6334;
     public int QdrantHttpPort { get; set; } = 6333;
     public string QdrantCollectionName { get; set; } = "fluxindex_chunks";
-    public int QdrantVectorSize { get; set; } = 1536;
+    public int QdrantVectorSize { get; set; } = EmbeddingDefaults.DefaultVectorDimension;
     public string? QdrantApiKey { get; set; }
     public bool QdrantUseHttps { get; set; }
     public Action<QdrantOptions>? QdrantOptionsAction { get; set; }
@@ -230,7 +231,7 @@ public class SemanticCacheOptions
     /// <summary>
     /// 임베딩 차원 수 (pgvector 인덱스용)
     /// </summary>
-    public int EmbeddingDimensions { get; set; } = 1536;
+    public int EmbeddingDimensions { get; set; } = EmbeddingDefaults.DefaultVectorDimension;
 
     /// <summary>
     /// 자동 정리 활성화

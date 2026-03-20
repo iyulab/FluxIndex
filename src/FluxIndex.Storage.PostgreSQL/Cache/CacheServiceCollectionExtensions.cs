@@ -1,4 +1,5 @@
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Constants;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -56,7 +57,7 @@ public static class CacheServiceCollectionExtensions
     public static IServiceCollection AddPostgreSQLSemanticCache(
         this IServiceCollection services,
         string connectionString,
-        int embeddingDimensions = 1536)
+        int embeddingDimensions = EmbeddingDefaults.DefaultVectorDimension)
     {
         return services.AddPostgreSQLSemanticCache(options =>
         {

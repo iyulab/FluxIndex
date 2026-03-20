@@ -1,4 +1,5 @@
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Constants;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -57,7 +58,7 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddPostgreSQLVectorStore(
         this IServiceCollection services,
         string connectionString,
-        int embeddingDimensions = 1536)
+        int embeddingDimensions = EmbeddingDefaults.DefaultVectorDimension)
     {
         return services.AddPostgreSQLVectorStore(options =>
         {
@@ -110,7 +111,7 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddPostgreSQLQuantizedVectorStore(
         this IServiceCollection services,
         string connectionString,
-        int embeddingDimensions = 1536,
+        int embeddingDimensions = EmbeddingDefaults.DefaultVectorDimension,
         bool autoQuantize = true)
     {
         return services.AddPostgreSQLQuantizedVectorStore(options =>

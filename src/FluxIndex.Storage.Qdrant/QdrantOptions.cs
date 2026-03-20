@@ -1,3 +1,5 @@
+using FluxIndex.Core.Constants;
+
 namespace FluxIndex.Storage.Qdrant;
 
 /// <summary>
@@ -75,7 +77,7 @@ public class QdrantOptions
     /// Vector dimension size. Only used when NamingStrategy is Fixed.
     /// With DimensionSuffix strategy, dimension is auto-detected from embeddings.
     /// </summary>
-    public int VectorSize { get; set; } = 1536;
+    public int VectorSize { get; set; } = EmbeddingDefaults.DefaultVectorDimension;
 
     /// <summary>
     /// Distance metric for similarity search.

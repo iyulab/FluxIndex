@@ -2,6 +2,7 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Models;
 using FluxIndex.Core.Application.Services.Enrichment;
 using FluxIndex.Core.Application.Services.Quantization;
+using FluxIndex.Core.Constants;
 using FluxIndex.Core.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -205,7 +206,7 @@ public static class MetadataAugmentationServiceExtensions
     /// </summary>
     public static IServiceCollection AddScalarQuantization(
         this IServiceCollection services,
-        int dimension = 1536,
+        int dimension = EmbeddingDefaults.DefaultVectorDimension,
         QuantizationType type = QuantizationType.ScalarInt8)
     {
         return services.AddVectorQuantization(options =>
@@ -220,7 +221,7 @@ public static class MetadataAugmentationServiceExtensions
     /// </summary>
     public static IServiceCollection AddProductQuantization(
         this IServiceCollection services,
-        int dimension = 1536,
+        int dimension = EmbeddingDefaults.DefaultVectorDimension,
         int numSubvectors = 8,
         int codebookSize = 256)
     {
@@ -238,7 +239,7 @@ public static class MetadataAugmentationServiceExtensions
     /// </summary>
     public static IServiceCollection AddBinaryQuantization(
         this IServiceCollection services,
-        int dimension = 1536)
+        int dimension = EmbeddingDefaults.DefaultVectorDimension)
     {
         return services.AddVectorQuantization(options =>
         {

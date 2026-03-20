@@ -1,3 +1,5 @@
+using FluxIndex.Core.Constants;
+
 namespace FluxIndex.Storage.PostgreSQL;
 
 /// <summary>
@@ -13,7 +15,7 @@ public class PostgreSQLOptions
     /// <summary>
     /// Embedding vector dimensions (default: 1536 for OpenAI text-embedding-3-small)
     /// </summary>
-    public int EmbeddingDimensions { get; set; } = 1536;
+    public int EmbeddingDimensions { get; set; } = EmbeddingDefaults.DefaultVectorDimension;
 
     /// <summary>
     /// Auto migrate database on startup
