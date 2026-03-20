@@ -8,16 +8,25 @@ namespace FluxIndex.Storage.Qdrant;
 public enum CollectionNamingStrategy
 {
     /// <summary>
-    /// Dynamic naming: {baseName}_{dimension} (recommended default).
-    /// Automatically creates separate collections per embedding dimension.
+    /// Dynamic naming: {baseName}_{dimension}.
+    /// Separates collections by embedding dimension only.
+    /// Does NOT distinguish different models with the same dimension.
     /// </summary>
+    [Obsolete("Use ModelFingerprint instead. DimensionSuffix cannot distinguish different models with the same dimension.")]
     DimensionSuffix,
 
     /// <summary>
     /// Fixed naming: uses the exact name specified (legacy compatibility).
     /// Requires explicit VectorSize configuration.
     /// </summary>
-    Fixed
+    Fixed,
+
+    /// <summary>
+    /// Dynamic naming: {baseName}_{fingerprint} (recommended default).
+    /// Uses the embedding model's fingerprint (SHA256 hash of Provider:Model) to identify collections.
+    /// Automatically creates separate collections per embedding model, regardless of dimension.
+    /// </summary>
+    ModelFingerprint
 }
 
 /// <summary>
@@ -67,11 +76,12 @@ public class QdrantOptions
     }
 
     /// <summary>
-    /// Collection naming strategy. Default: DimensionSuffix (recommended).
-    /// - DimensionSuffix: {baseName}_{dimension} - auto-adapts to embedding dimension
+    /// Collection naming strategy. Default: ModelFingerprint (recommended).
+    /// - ModelFingerprint: {baseName}_{fingerprint} - auto-adapts to embedding model identity
+    /// - DimensionSuffix: {baseName}_{dimension} - legacy, cannot distinguish same-dimension models
     /// - Fixed: exact name specified - requires explicit VectorSize
     /// </summary>
-    public CollectionNamingStrategy NamingStrategy { get; set; } = CollectionNamingStrategy.DimensionSuffix;
+    public CollectionNamingStrategy NamingStrategy { get; set; } = CollectionNamingStrategy.ModelFingerprint;
 
     /// <summary>
     /// Vector dimension size. Only used when NamingStrategy is Fixed.

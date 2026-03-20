@@ -78,11 +78,12 @@ public class VectorStoreOptions
     public bool QdrantUseHttps { get; set; }
 
     /// <summary>
-    /// Qdrant collection naming strategy name. Default: "DimensionSuffix" (recommended).
-    /// - "DimensionSuffix": {baseName}_{dimension} - auto-adapts to embedding dimension
+    /// Qdrant collection naming strategy name. Default: "ModelFingerprint" (recommended).
+    /// - "ModelFingerprint": {baseName}_{fingerprint} - auto-adapts to embedding model identity
+    /// - "DimensionSuffix": {baseName}_{dimension} - legacy, cannot distinguish same-dimension models
     /// - "Fixed": exact name specified - requires explicit VectorSize
     /// </summary>
-    public string QdrantNamingStrategy { get; set; } = "DimensionSuffix";
+    public string QdrantNamingStrategy { get; set; } = "ModelFingerprint";
 }
 
 /// <summary>

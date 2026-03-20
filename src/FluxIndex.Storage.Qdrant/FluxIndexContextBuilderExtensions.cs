@@ -27,7 +27,7 @@ public static class FluxIndexContextBuilderExtensions
             if (!string.IsNullOrEmpty(options.VectorStore.QdrantApiKey))
             {
                 // Qdrant Cloud
-                if (options.VectorStore.QdrantNamingStrategy == "DimensionSuffix")
+                if (options.VectorStore.QdrantNamingStrategy != "Fixed")
                 {
                     services.AddQdrantCloudVectorStore(
                         options.VectorStore.QdrantHost,
@@ -46,7 +46,7 @@ public static class FluxIndexContextBuilderExtensions
             else
             {
                 // Local Qdrant
-                if (options.VectorStore.QdrantNamingStrategy == "DimensionSuffix")
+                if (options.VectorStore.QdrantNamingStrategy != "Fixed")
                 {
                     services.AddQdrantVectorStore(
                         options.VectorStore.QdrantHost,

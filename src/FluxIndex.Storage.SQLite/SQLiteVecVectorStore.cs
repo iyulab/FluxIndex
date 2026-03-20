@@ -1,6 +1,8 @@
 ﻿using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Utilities;
 using FluxIndex.Core.Domain.Entities;
+using FluxIndex.Core.Domain.Exceptions;
+using FluxIndex.Core.Domain.ValueObjects;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -25,9 +27,33 @@ public partial class SQLiteVecVectorStore : IVectorStore, IDisposable
     private readonly Lazy<SQLiteVectorStore> _fallbackStore;
     private bool _sqliteVecAvailable;
     private bool _initialized;
+    private EmbeddingIdentity? _boundIdentity;
     private readonly SemaphoreSlim _initLock = new(1, 1);
     // SQLite는 동시 쓰기를 지원하지 않으므로 쓰기 작업을 직렬화
     private readonly SemaphoreSlim _writeLock = new(1, 1);
+
+    /// <inheritdoc />
+    public EmbeddingIdentity? BoundIdentity => _boundIdentity;
+
+    /// <summary>
+    /// Binds an embedding identity to this store and configures fingerprint-based table naming.
+    /// </summary>
+    public void BindIdentity(EmbeddingIdentity identity)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+
+        if (_boundIdentity is not null && _boundIdentity != identity)
+        {
+            throw new EmbeddingModelMismatchException(_boundIdentity, identity);
+        }
+
+        if (_boundIdentity is null)
+        {
+            _boundIdentity = identity;
+            _options.EmbeddingFingerprint = identity.Fingerprint;
+            _options.VectorDimension = identity.Dimension;
+        }
+    }
 
     public SQLiteVecVectorStore(
         SQLiteVecDbContext context,

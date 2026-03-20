@@ -29,6 +29,7 @@ public sealed class LMSupplyEmbedder : EmbeddingServiceBase, IAsyncDisposable
 
     public override int GetEmbeddingDimension() => _model.Dimensions;
     public override string GetModelName() => _model.ModelId;
+    protected override string GetProviderName() => "LMSupply";
 
     public ValueTask DisposeAsync() => _model.DisposeAsync();
 }

@@ -47,7 +47,7 @@ public static class ServiceCollectionExtensions
             options.Host = host;
             options.GrpcPort = port;
             options.BaseCollectionName = baseCollectionName;
-            options.NamingStrategy = CollectionNamingStrategy.DimensionSuffix;
+            options.NamingStrategy = CollectionNamingStrategy.ModelFingerprint;
         });
     }
 
@@ -99,7 +99,7 @@ public static class ServiceCollectionExtensions
             options.ApiKey = apiKey;
             options.UseHttps = true;
             options.BaseCollectionName = baseCollectionName;
-            options.NamingStrategy = CollectionNamingStrategy.DimensionSuffix;
+            options.NamingStrategy = CollectionNamingStrategy.ModelFingerprint;
         });
     }
 
@@ -176,7 +176,7 @@ public static class ServiceCollectionExtensions
             options.Host = host;
             options.GrpcPort = port;
             options.BaseCollectionName = baseCollectionName;
-            options.NamingStrategy = CollectionNamingStrategy.DimensionSuffix;
+            options.NamingStrategy = CollectionNamingStrategy.ModelFingerprint;
         }, bm25PersistencePath);
     }
 

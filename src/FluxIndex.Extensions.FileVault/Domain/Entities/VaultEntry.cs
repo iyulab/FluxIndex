@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using FluxIndex.Core.Domain.ValueObjects;
 using FluxIndex.Extensions.FileVault.Domain.Enums;
 using FluxIndex.Extensions.FileVault.Domain.ValueObjects;
 using FluxIndex.Extensions.FileVault.Services;
@@ -99,6 +100,13 @@ public sealed class VaultEntry
     public int? EmbeddedDimension { get; private set; }
 
     /// <summary>
+    /// Embedding identity used when this entry was memorized.
+    /// Contains provider, model, dimension, and fingerprint information.
+    /// Null for legacy entries that were memorized before identity tracking was introduced.
+    /// </summary>
+    public EmbeddingIdentity? EmbeddedIdentity { get; private set; }
+
+    /// <summary>
     /// Current synchronization status with source file and vector store.
     /// </summary>
     public SyncStatus SyncStatus { get; private set; }
@@ -171,6 +179,7 @@ public sealed class VaultEntry
                 RetryCount = meta.RetryCount,
                 ChunkCount = meta.ChunkCount,
                 EmbeddedDimension = meta.EmbeddedDimension,
+                EmbeddedIdentity = meta.EmbeddedIdentity,
                 SyncStatus = meta.SyncStatus,
                 LastSyncCheckAt = meta.LastSyncCheckAt,
                 RemovalPhase = meta.RemovalPhase
@@ -225,6 +234,20 @@ public sealed class VaultEntry
         Stage = ProcessingStage.Memorized;
         ChunkCount = chunkCount;
         EmbeddedDimension = embeddedDimension;
+        LastProcessedAt = DateTimeOffset.UtcNow;
+        LastError = null;
+        RetryCount = 0;
+    }
+
+    /// <summary>
+    /// Marks the entry as memorized with full embedding identity tracking.
+    /// </summary>
+    public void MarkMemorized(int chunkCount, EmbeddingIdentity identity)
+    {
+        Stage = ProcessingStage.Memorized;
+        ChunkCount = chunkCount;
+        EmbeddedDimension = identity.Dimension;
+        EmbeddedIdentity = identity;
         LastProcessedAt = DateTimeOffset.UtcNow;
         LastError = null;
         RetryCount = 0;
@@ -374,6 +397,7 @@ public sealed class VaultEntry
             RetryCount = RetryCount,
             ChunkCount = ChunkCount,
             EmbeddedDimension = EmbeddedDimension,
+            EmbeddedIdentity = EmbeddedIdentity,
             SyncStatus = SyncStatus,
             LastSyncCheckAt = LastSyncCheckAt,
             RemovalPhase = RemovalPhase
@@ -472,6 +496,7 @@ public sealed class VaultEntry
         public int RetryCount { get; set; }
         public int ChunkCount { get; set; }
         public int? EmbeddedDimension { get; set; }
+        public EmbeddingIdentity? EmbeddedIdentity { get; set; }
 
         // SyncStatus fields
         public SyncStatus SyncStatus { get; set; }

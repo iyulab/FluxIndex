@@ -1,6 +1,9 @@
+using System.Text.Json;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Utilities;
 using FluxIndex.Core.Domain.Entities;
+using FluxIndex.Core.Domain.Exceptions;
+using FluxIndex.Core.Domain.ValueObjects;
 using Google.Protobuf.Collections;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -23,6 +26,7 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
     // Dynamic dimension adaptation fields
     private string? _resolvedCollectionName;
     private int? _detectedDimension;
+    private EmbeddingIdentity? _boundIdentity;
     private readonly SemaphoreSlim _initLock = new(1, 1);
 
     public QdrantVectorStore(
@@ -56,6 +60,7 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
 
     /// <summary>
     /// Ensures the collection exists for the given embedding dimension.
+    /// With ModelFingerprint strategy, uses <see cref="BoundIdentity"/> fingerprint.
     /// With DimensionSuffix strategy, creates dimension-specific collections automatically.
     /// </summary>
     /// <exception cref="InvalidOperationException">Thrown when collection initialization fails.</exception>
@@ -73,11 +78,18 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
                 return;
 
             // Resolve collection name based on naming strategy
+#pragma warning disable CS0618 // DimensionSuffix is obsolete
             var collectionName = _options.NamingStrategy switch
             {
-                CollectionNamingStrategy.DimensionSuffix => $"{_options.BaseCollectionName}_{dimension}",
+                CollectionNamingStrategy.ModelFingerprint when _boundIdentity is not null
+                    => $"{_options.BaseCollectionName}_{_boundIdentity.Fingerprint}",
+                CollectionNamingStrategy.ModelFingerprint
+                    => $"{_options.BaseCollectionName}_{dimension}",  // fallback if no identity bound yet
+                CollectionNamingStrategy.DimensionSuffix
+                    => $"{_options.BaseCollectionName}_{dimension}",
                 _ => _options.BaseCollectionName
             };
+#pragma warning restore CS0618
 
             try
             {
@@ -178,6 +190,32 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
 
     /// <inheritdoc />
     public int? DetectedDimension => _detectedDimension;
+
+    /// <inheritdoc />
+    public EmbeddingIdentity? BoundIdentity => _boundIdentity;
+
+    /// <summary>
+    /// Binds an embedding identity to this store.
+    /// Once bound, the collection name is determined by the identity's fingerprint (when using ModelFingerprint strategy).
+    /// If the store was previously bound to a different identity, throws <see cref="EmbeddingModelMismatchException"/>.
+    /// </summary>
+    public void BindIdentity(EmbeddingIdentity identity)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+
+        if (_boundIdentity is not null && _boundIdentity != identity)
+        {
+            throw new EmbeddingModelMismatchException(_boundIdentity, identity);
+        }
+
+        if (_boundIdentity is null)
+        {
+            _boundIdentity = identity;
+            // Reset initialization state to force re-resolution with the new identity
+            _collectionInitialized = false;
+            LogIdentityBound(_logger, identity.Provider, identity.Model, identity.Dimension);
+        }
+    }
 
     #region Store Operations
 
@@ -842,6 +880,9 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to check collection '{CollectionName}' existence")]
     private static partial void LogCollectionCheckFailed(ILogger logger, Exception exception, string collectionName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Embedding identity bound: {Provider}:{Model} ({Dimension}d)")]
+    private static partial void LogIdentityBound(ILogger logger, string provider, string model, int dimension);
 
     #endregion
 }

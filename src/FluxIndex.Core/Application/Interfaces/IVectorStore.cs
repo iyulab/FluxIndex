@@ -2,6 +2,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 using FluxIndex.Core.Domain.Entities;
+using FluxIndex.Core.Domain.ValueObjects;
 
 namespace FluxIndex.Core.Application.Interfaces;
 
@@ -50,6 +51,23 @@ public interface IVectorStore
     /// The runtime-detected embedding dimension. Null if not yet detected.
     /// </summary>
     int? DetectedDimension => null;
+
+    /// <summary>
+    /// The embedding identity bound to this store. Null if not yet initialized.
+    /// Once bound, any attempt to store vectors from a different model will throw
+    /// <see cref="FluxIndex.Core.Domain.Exceptions.EmbeddingModelMismatchException"/>.
+    /// </summary>
+    EmbeddingIdentity? BoundIdentity => null;
+
+    /// <summary>
+    /// Binds an embedding identity to this store.
+    /// Once bound, the store uses the identity's fingerprint for collection/table naming
+    /// and validates that subsequent operations use the same model.
+    /// </summary>
+    /// <remarks>
+    /// Default implementation is a no-op for stores that don't support identity binding.
+    /// </remarks>
+    void BindIdentity(EmbeddingIdentity identity) { }
 
     /// <summary>
     /// Verifies that the vector store is operational by testing a write+delete cycle.

@@ -286,14 +286,14 @@ public class FluxIndexContextBuilder
     /// </summary>
     /// <param name="host">Qdrant 서버 호스트</param>
     /// <param name="grpcPort">gRPC 포트</param>
-    /// <param name="baseCollectionName">기본 컬렉션 이름 (차원 suffix 자동 추가)</param>
+    /// <param name="baseCollectionName">기본 컬렉션 이름 (모델 fingerprint 자동 추가)</param>
     public FluxIndexContextBuilder UseQdrant(string host = "localhost", int grpcPort = 6334, string baseCollectionName = "fluxindex_chunks")
     {
         _options.VectorStore.Provider = "Qdrant";
         _options.VectorStore.QdrantHost = host;
         _options.VectorStore.QdrantGrpcPort = grpcPort;
         _options.VectorStore.QdrantCollectionName = baseCollectionName;
-        _options.VectorStore.QdrantNamingStrategy = "DimensionSuffix";
+        _options.VectorStore.QdrantNamingStrategy = "ModelFingerprint";
         return this;
     }
 
@@ -328,7 +328,7 @@ public class FluxIndexContextBuilder
         _options.VectorStore.QdrantApiKey = apiKey;
         _options.VectorStore.QdrantUseHttps = true;
         _options.VectorStore.QdrantCollectionName = baseCollectionName;
-        _options.VectorStore.QdrantNamingStrategy = "DimensionSuffix";
+        _options.VectorStore.QdrantNamingStrategy = "ModelFingerprint";
         return this;
     }
 

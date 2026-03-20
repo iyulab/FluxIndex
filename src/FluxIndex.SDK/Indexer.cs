@@ -1,4 +1,5 @@
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Domain.ValueObjects;
 using FluxIndex.Core.Interfaces;
 using FluxIndex.Core.Models;
 using FluxIndex.Core.Domain.Entities;
@@ -86,6 +87,9 @@ public partial class Indexer
         _hybridSearchService = hybridSearchService;
         _options = options;
         _logger = logger ?? NullLogger<Indexer>.Instance;
+
+        // Bind embedding identity to vector store for correct collection resolution
+        _vectorStore.BindIdentity(_embeddingService.GetIdentity());
     }
 
     /// <summary>

@@ -60,5 +60,8 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
     public override string GetModelName() => _model.ModelId;
 
     /// <inheritdoc />
+    protected override string GetProviderName() => "LMSupply";
+
+    /// <inheritdoc />
     public ValueTask DisposeAsync() => _model.DisposeAsync();
 }

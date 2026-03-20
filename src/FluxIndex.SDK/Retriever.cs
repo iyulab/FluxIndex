@@ -79,6 +79,9 @@ public partial class Retriever
         _hybridSearchService = hybridSearchService;
         _graphRAGService = graphRAGService;
 
+        // Bind embedding identity to vector store for correct collection resolution
+        _vectorStore.BindIdentity(_embeddingService.GetIdentity());
+
         // Check if vector store supports quantization
         _quantizedVectorStore = vectorStore as IQuantizedVectorStore;
     }

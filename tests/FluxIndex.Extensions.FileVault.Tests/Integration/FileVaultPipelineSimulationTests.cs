@@ -756,6 +756,13 @@ public class FileVaultPipelineSimulationTests : IDisposable
         public string GetModelName() => "InMemoryTestEmbedding";
         public int GetMaxTokens() => MaxTokens;
 
+        public FluxIndex.Core.Domain.ValueObjects.EmbeddingIdentity GetIdentity() => new()
+        {
+            Provider = "InMemory",
+            Model = GetModelName(),
+            Dimension = Dimension
+        };
+
         public Task<int> CountTokensAsync(string text, CancellationToken ct = default)
         {
             // Simple approximation: ~4 characters per token

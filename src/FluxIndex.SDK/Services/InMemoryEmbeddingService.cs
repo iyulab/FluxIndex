@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Domain.ValueObjects;
 
 namespace FluxIndex.SDK.Services;
 
@@ -59,6 +60,13 @@ public class InMemoryEmbeddingService : IEmbeddingService
     public int GetEmbeddingDimension() => _dimensions;
 
     public string GetModelName() => "InMemory-Test-Model";
+
+    public EmbeddingIdentity GetIdentity() => new()
+    {
+        Provider = "InMemory",
+        Model = GetModelName(),
+        Dimension = _dimensions
+    };
 
     public int GetMaxTokens() => 8192; // Arbitrary high value for testing
 

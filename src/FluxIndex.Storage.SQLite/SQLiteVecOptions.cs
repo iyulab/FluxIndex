@@ -20,6 +20,13 @@ public class SQLiteVecOptions : SQLiteOptions
     public int VectorDimension { get; set; } = EmbeddingDefaults.DefaultVectorDimension;
 
     /// <summary>
+    /// 임베딩 모델의 fingerprint (EmbeddingIdentity.Fingerprint).
+    /// 설정되면 vec0 테이블 이름이 chunk_embeddings_{fingerprint}로 생성된다.
+    /// null이면 기존 방식(chunk_embeddings_{dimension})으로 폴백.
+    /// </summary>
+    public string? EmbeddingFingerprint { get; set; }
+
+    /// <summary>
     /// 벡터 인덱스 타입 (현재는 'flat'만 지원)
     /// </summary>
     public string IndexType { get; set; } = "flat";
@@ -370,9 +377,12 @@ public class SQLiteVecOptions : SQLiteOptions
     }
 
     /// <summary>
-    /// 벡터 차원에 따른 vec0 테이블 이름 반환
+    /// vec0 테이블 이름 반환.
+    /// EmbeddingFingerprint가 설정되면 fingerprint 기반, 아니면 차원 기반.
     /// </summary>
-    public string GetVecTableName() => $"chunk_embeddings_{VectorDimension}";
+    public string GetVecTableName() => EmbeddingFingerprint is not null
+        ? $"chunk_embeddings_{EmbeddingFingerprint}"
+        : $"chunk_embeddings_{VectorDimension}";
 
     /// <summary>
     /// 벡터 차원에 따른 vec0 테이블 스키마 반환

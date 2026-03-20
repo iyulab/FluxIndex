@@ -607,6 +607,13 @@ public class VaultSubfolderScenariosTests : IDisposable
         public string GetModelName() => "InMemoryTestEmbedding";
         public int GetMaxTokens() => MaxTokens;
 
+        public FluxIndex.Core.Domain.ValueObjects.EmbeddingIdentity GetIdentity() => new()
+        {
+            Provider = "InMemory",
+            Model = GetModelName(),
+            Dimension = Dimension
+        };
+
         public Task<int> CountTokensAsync(string text, CancellationToken ct = default)
         {
             return Task.FromResult(text.Length / 4);

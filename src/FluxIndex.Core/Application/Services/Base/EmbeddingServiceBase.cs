@@ -1,4 +1,5 @@
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Domain.ValueObjects;
 
 namespace FluxIndex.Core.Application.Services.Base;
 
@@ -73,6 +74,19 @@ public abstract class EmbeddingServiceBase : IEmbeddingService
 
     /// <inheritdoc />
     public abstract string GetModelName();
+
+    /// <summary>
+    /// 제공자 이름을 반환한다. 하위 클래스에서 override하여 자신의 provider를 선언한다.
+    /// </summary>
+    protected abstract string GetProviderName();
+
+    /// <inheritdoc />
+    public virtual EmbeddingIdentity GetIdentity() => new()
+    {
+        Provider = GetProviderName(),
+        Model = GetModelName(),
+        Dimension = GetEmbeddingDimension()
+    };
 
     /// <inheritdoc />
     /// <remarks>Default: 512 tokens. Override if your model has different limits.</remarks>

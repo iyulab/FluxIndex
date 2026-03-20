@@ -291,6 +291,13 @@ public class ServiceCollectionExtensionsTests : RedisTestBase
 
         public int GetMaxTokens() => 8192;
 
+        public FluxIndex.Core.Domain.ValueObjects.EmbeddingIdentity GetIdentity() => new()
+        {
+            Provider = "Mock",
+            Model = GetModelName(),
+            Dimension = GetEmbeddingDimension()
+        };
+
         public Task<int> CountTokensAsync(string text, CancellationToken cancellationToken = default)
         {
             return Task.FromResult(text.Length / 4); // Simple approximation

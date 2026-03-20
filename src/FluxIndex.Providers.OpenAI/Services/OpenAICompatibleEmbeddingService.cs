@@ -113,6 +113,9 @@ public sealed partial class OpenAICompatibleEmbeddingService : EmbeddingServiceB
     public override string GetModelName() => _model;
 
     /// <inheritdoc />
+    protected override string GetProviderName() => "OpenAI";
+
+    /// <inheritdoc />
     public void Dispose()
     {
         if (_ownsHttpClient)
