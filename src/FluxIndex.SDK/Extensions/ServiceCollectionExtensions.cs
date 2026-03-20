@@ -138,43 +138,6 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    /// SQLite 벡터 저장소 추가
-    /// </summary>
-    public static IServiceCollection AddSQLiteVectorStore(this IServiceCollection services, Action<SQLiteOptions> configure)
-    {
-        var options = new SQLiteOptions();
-        configure(options);
-        // NOTE: SQLite implementation available in FluxIndex.Storage.SQLite package
-        // For now, using in-memory store as fallback
-        services.AddSingleton<IVectorStore, InMemoryVectorStore>();
-        return services;
-    }
-
-    /// <summary>
-    /// OpenAI 임베딩 서비스 추가 (소비자가 IEmbeddingService 구현 필요)
-    /// </summary>
-    public static IServiceCollection AddOpenAIEmbedding(this IServiceCollection services, Action<OpenAIOptions> configure)
-    {
-        var options = new OpenAIOptions();
-        configure(options);
-        // Consumer must implement IEmbeddingService for OpenAI
-        // See UseEmbeddingService<T>() in FluxIndexContextBuilder for custom implementations
-        return services;
-    }
-
-    /// <summary>
-    /// Azure OpenAI 임베딩 서비스 추가 (소비자가 IEmbeddingService 구현 필요)
-    /// </summary>
-    public static IServiceCollection AddAzureOpenAIEmbedding(this IServiceCollection services, Action<AzureOpenAIOptions> configure)
-    {
-        var options = new AzureOpenAIOptions();
-        configure(options);
-        // Consumer must implement IEmbeddingService for Azure OpenAI
-        // See UseEmbeddingService<T>() in FluxIndexContextBuilder for custom implementations
-        return services;
-    }
-
-    /// <summary>
     /// Redis 캐시 서비스 추가
     /// </summary>
     public static IServiceCollection AddRedisCache(this IServiceCollection services, Action<RedisCacheOptions> configure)
@@ -186,27 +149,6 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ICacheService, InMemoryCacheService>();
         return services;
     }
-}
-
-public class SQLiteOptions
-{
-    public string ConnectionString { get; set; } = "Data Source=fluxindex.db";
-    public bool UseInMemory { get; set; }
-    public bool AutoMigrate { get; set; }
-}
-
-public class OpenAIOptions
-{
-    public string ApiKey { get; set; } = string.Empty;
-    public string ModelName { get; set; } = "text-embedding-3-small";
-    public bool IsAzure { get; set; }
-}
-
-public class AzureOpenAIOptions
-{
-    public string ApiKey { get; set; } = string.Empty;
-    public string Endpoint { get; set; } = string.Empty;
-    public string DeploymentName { get; set; } = string.Empty;
 }
 
 public class RedisCacheOptions
