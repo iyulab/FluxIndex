@@ -1,3 +1,4 @@
+using FileFlux;
 using FluxIndex.Extensions.FileVault.Adapters;
 using FluxIndex.Extensions.FileVault.Interfaces;
 using FluxIndex.Extensions.FileVault.Options;
@@ -121,20 +122,19 @@ public static class ServiceCollectionExtensions
 
     /// <summary>
     /// Adds FileVault with FileFlux integration for document extraction and chunking.
-    /// Requires FileFlux's IDocumentProcessorFactory to be registered.
+    /// Registers FileFlux core services automatically.
     /// </summary>
     /// <param name="services">The service collection.</param>
     /// <param name="configureOptions">Optional configuration action for FileVaultOptions.</param>
     /// <returns>The service collection for chaining.</returns>
     /// <remarks>
-    /// Prerequisites:
-    /// - FileFlux services must be registered (IDocumentProcessorFactory)
-    /// - For memorization, FluxIndex services must be registered (IVectorStore, IEmbeddingService)
+    /// For memorization, FluxIndex services must be registered (IVectorStore, IEmbeddingService).
     /// </remarks>
     public static IServiceCollection AddFileVaultWithFileFlux(
         this IServiceCollection services,
         Action<FileVaultOptions>? configureOptions = null)
     {
+        services.AddFileFlux();
         services.AddFileVault(configureOptions);
 
         // Register FileFlux adapters as Scoped (they depend on scoped IDocumentProcessorFactory)
@@ -146,15 +146,13 @@ public static class ServiceCollectionExtensions
 
     /// <summary>
     /// Adds FileVault with full FluxIndex integration for extraction, chunking, and memorization.
-    /// Requires both FileFlux and FluxIndex services to be registered.
+    /// Registers FileFlux core services automatically.
     /// </summary>
     /// <param name="services">The service collection.</param>
     /// <param name="configureOptions">Optional configuration action for FileVaultOptions.</param>
     /// <returns>The service collection for chaining.</returns>
     /// <remarks>
-    /// Prerequisites:
-    /// - FileFlux services: IDocumentProcessorFactory
-    /// - FluxIndex services: IVectorStore, IEmbeddingService
+    /// FluxIndex services (IVectorStore, IEmbeddingService) must be registered separately.
     /// </remarks>
     public static IServiceCollection AddFileVaultWithFluxIndex(
         this IServiceCollection services,
@@ -244,6 +242,7 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         Action<FileVaultOptions>? configureOptions = null)
     {
+        services.AddFileFlux();
         services.AddFileVaultFactory(configureOptions);
 
         // Register FileFlux adapters as Scoped (they depend on scoped IDocumentProcessorFactory)
