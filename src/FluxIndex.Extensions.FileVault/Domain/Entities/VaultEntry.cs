@@ -268,6 +268,7 @@ public sealed class VaultEntry
     /// </summary>
     public void MarkError(string errorMessage)
     {
+        Stage = ProcessingStage.Error;
         LastError = errorMessage;
         RetryCount++;
         LastProcessedAt = DateTimeOffset.UtcNow;

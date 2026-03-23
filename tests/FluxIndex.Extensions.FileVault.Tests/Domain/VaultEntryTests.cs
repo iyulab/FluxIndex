@@ -90,15 +90,58 @@ public class VaultEntryTests : IDisposable
     [Fact]
     public void MarkError_SetsErrorState()
     {
-        // Arrange
         var entry = CreateTestEntry();
         var errorMessage = "Processing failed";
-
-        // Act
         entry.MarkError(errorMessage);
-
-        // Assert
+        entry.Stage.Should().Be(ProcessingStage.Error);
         entry.LastError.Should().Be(errorMessage);
+        entry.RetryCount.Should().Be(1);
+    }
+
+    [Fact]
+    public void MarkError_TransitionsStageToError()
+    {
+        var entry = CreateTestEntry();
+        var hash = ContentHash.FromHex("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+        entry.MarkExtracted(hash);
+        entry.MarkRefined();
+        entry.MarkError("Embedding API timeout");
+        entry.Stage.Should().Be(ProcessingStage.Error);
+        entry.LastError.Should().Be("Embedding API timeout");
+        entry.RetryCount.Should().Be(1);
+        entry.LastProcessedAt.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
+    public void MarkError_FromSourceStage_TransitionsToError()
+    {
+        var entry = CreateTestEntry();
+        entry.MarkError("Unsupported file format");
+        entry.Stage.Should().Be(ProcessingStage.Error);
+        entry.LastError.Should().Be("Unsupported file format");
+    }
+
+    [Fact]
+    public void MarkError_AccumulatesRetryCount()
+    {
+        var entry = CreateTestEntry();
+        entry.MarkError("First failure");
+        entry.MarkError("Second failure");
+        entry.MarkError("Third failure");
+        entry.Stage.Should().Be(ProcessingStage.Error);
+        entry.RetryCount.Should().Be(3);
+        entry.LastError.Should().Be("Third failure");
+    }
+
+    [Fact]
+    public void ResetToSource_FromError_ClearsErrorState()
+    {
+        var entry = CreateTestEntry();
+        entry.MarkError("Some error");
+        entry.ResetToSource();
+        entry.Stage.Should().Be(ProcessingStage.Source);
+        entry.LastError.Should().BeNull();
+        entry.RetryCount.Should().Be(0);
     }
 
     [Fact]

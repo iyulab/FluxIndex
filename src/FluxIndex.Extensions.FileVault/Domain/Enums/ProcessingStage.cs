@@ -2,7 +2,7 @@ namespace FluxIndex.Extensions.FileVault.Domain.Enums;
 
 /// <summary>
 /// Processing pipeline stages for a vault entry.
-/// Stages: Source → Extracted → Refined → Memorized
+/// Stages: Source → Extracted → Refined → Memorized (or Error on failure)
 /// </summary>
 public enum ProcessingStage
 {
@@ -30,5 +30,10 @@ public enum ProcessingStage
     /// VaultEntry exists but vectors are missing or invalid (detected by integrity check).
     /// Requires re-memorization to restore search capability.
     /// </summary>
-    Stale = 4
+    Stale = 4,
+
+    /// <summary>
+    /// Processing failed. Check LastError for details. Can be retried via ResetToSource + re-queue.
+    /// </summary>
+    Error = 5
 }
