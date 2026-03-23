@@ -449,6 +449,34 @@ public class VaultManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task GetErrorEntriesAsync_IncludesPipelineErrors()
+    {
+        // Arrange — pipeline error (Stage=Error via MarkError)
+        var file1 = CreateTestFile("pipeline-fail.txt", "Content");
+        var entry1 = CreateEntryWithMetadata(file1);
+        entry1.MarkError("Embedding timeout");
+        entry1.SaveMetadata();
+
+        // Arrange — sync error (SyncStatus=Error via MarkSyncError)
+        var file2 = CreateTestFile("sync-fail.txt", "Content");
+        var entry2 = CreateEntryWithMetadata(file2);
+        entry2.MarkSyncError("Removal failed");
+        entry2.SaveMetadata();
+
+        // Arrange — healthy entry
+        var file3 = CreateTestFile("healthy.txt", "Content");
+        CreateEntryWithMetadata(file3);
+
+        // Act
+        var errors = await _vault.GetErrorEntriesAsync();
+
+        // Assert — both pipeline and sync errors detected
+        errors.Should().HaveCount(2);
+        errors.Should().Contain(e => e.Stage == ProcessingStage.Error);
+        errors.Should().Contain(e => e.SyncStatus == SyncStatus.Error);
+    }
+
+    [Fact]
     public async Task GetEntriesNeedingSyncAsync_ReturnsModifiedEntries()
     {
         // Arrange

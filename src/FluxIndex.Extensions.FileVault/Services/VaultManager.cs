@@ -909,7 +909,9 @@ public sealed partial class VaultManager : IVault
     public async Task<IReadOnlyList<VaultEntry>> GetErrorEntriesAsync(CancellationToken ct = default)
     {
         var entries = await ListAsync(ct: ct);
-        return entries.Where(e => e.SyncStatus == SyncStatus.Error).ToList();
+        return entries.Where(e =>
+            e.SyncStatus == SyncStatus.Error ||
+            e.Stage == ProcessingStage.Error).ToList();
     }
 
     public async Task<IReadOnlyList<VaultEntry>> GetEntriesNeedingSyncAsync(CancellationToken ct = default)
