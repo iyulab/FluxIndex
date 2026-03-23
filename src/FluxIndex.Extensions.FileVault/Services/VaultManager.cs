@@ -490,7 +490,10 @@ public sealed partial class VaultManager : IVault
 
         var sourceCount = 0;
         var extractedCount = 0;
+        var refinedCount = 0;
         var memorizedCount = 0;
+        var staleCount = 0;
+        var errorStageCount = 0;
         var changedSourceCount = 0;
         var changedVaultCount = 0;
         var orphanedCount = 0;
@@ -511,7 +514,10 @@ public sealed partial class VaultManager : IVault
             {
                 case ProcessingStage.Source: sourceCount++; break;
                 case ProcessingStage.Extracted: extractedCount++; break;
+                case ProcessingStage.Refined: refinedCount++; break;
                 case ProcessingStage.Memorized: memorizedCount++; break;
+                case ProcessingStage.Stale: staleCount++; break;
+                case ProcessingStage.Error: errorStageCount++; break;
             }
 
             // Count SyncStatus
@@ -564,7 +570,10 @@ public sealed partial class VaultManager : IVault
             TotalEntries = entries.Count,
             SourceCount = sourceCount,
             ExtractedCount = extractedCount,
+            RefinedCount = refinedCount,
             MemorizedCount = memorizedCount,
+            StaleCount = staleCount,
+            ErrorStageCount = errorStageCount,
             ChangedSourceCount = changedSourceCount,
             ChangedVaultCount = changedVaultCount,
             ChangedEntries = changedEntries,

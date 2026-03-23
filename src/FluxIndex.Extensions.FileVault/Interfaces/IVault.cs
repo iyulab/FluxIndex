@@ -322,7 +322,10 @@ public sealed class VaultStatus
     public int TotalEntries { get; init; }
     public int SourceCount { get; init; }
     public int ExtractedCount { get; init; }
+    public int RefinedCount { get; init; }
     public int MemorizedCount { get; init; }
+    public int StaleCount { get; init; }
+    public int ErrorStageCount { get; init; }
 
     // Change tracking
     public int ChangedSourceCount { get; init; }
