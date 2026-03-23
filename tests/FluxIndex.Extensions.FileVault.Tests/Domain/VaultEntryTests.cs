@@ -503,6 +503,27 @@ public class VaultEntryTests : IDisposable
 
     #endregion
 
+    [Fact]
+    public void SaveAndLoad_ErrorStage_Roundtrips()
+    {
+        // Arrange
+        var sourcePath = Path.Combine(_testDir, "error-test.txt");
+        File.WriteAllText(sourcePath, "test content");
+
+        var entry = VaultEntry.Create(sourcePath, _testDir);
+        entry.MarkError("Chunking failed: too many tokens");
+        entry.SaveMetadata();
+
+        // Act
+        var loaded = VaultEntry.Load(entry.EntryPath, _testDir);
+
+        // Assert
+        loaded.Should().NotBeNull();
+        loaded!.Stage.Should().Be(ProcessingStage.Error);
+        loaded.LastError.Should().Be("Chunking failed: too many tokens");
+        loaded.RetryCount.Should().Be(1);
+    }
+
     private VaultEntry CreateTestEntry()
     {
         var sourcePath = Path.Combine(_testDir, $"test_{Guid.NewGuid():N}.txt");
