@@ -185,6 +185,29 @@ public class VectorStoreManagerTests : IDisposable
         result.Should().BeFalse();
     }
 
+    [SkippableFact]
+    public async Task ListCollectionsAsync_LegacyDimensionTable_IncludedAsOrphan()
+    {
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
+        // Arrange: create a legacy dimension-only table directly (no fingerprint)
+        if (_connection.State != System.Data.ConnectionState.Open)
+            await _connection.OpenAsync();
+
+        await _extensionLoader.LoadExtensionAsync(_connection, CancellationToken.None);
+        await _extensionLoader.CreateVecTableAsync(
+            _connection, "chunk_embeddings_1536", 1536, "distance_metric=cosine", CancellationToken.None);
+
+        // Act
+        IVectorStoreManager manager = _store;
+        var collections = await manager.ListCollectionsAsync();
+
+        // Assert: legacy table appears in listing
+        collections.Should().HaveCount(1);
+        collections[0].Name.Should().Be("chunk_embeddings_1536");
+        collections[0].Dimension.Should().Be(1536);
+    }
+
     [Fact]
     public async Task DeleteCollectionAsync_InvalidName_ThrowsArgumentException()
     {

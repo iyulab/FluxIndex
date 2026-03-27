@@ -1,3 +1,4 @@
+using FluentAssertions;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Storage.SQLite;
 using Microsoft.Extensions.Configuration;
@@ -241,5 +242,46 @@ public class ServiceCollectionExtensionsTests
         using var scope = serviceProvider.CreateScope();
         var vectorStore3 = scope.ServiceProvider.GetService<IVectorStore>();
         Assert.NotSame(vectorStore1, vectorStore3);
+    }
+
+    [Fact]
+    public void AddSQLiteVecVectorStore_RegistersIVectorStoreManager()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+
+        services.AddSQLiteVecVectorStore(options =>
+        {
+            options.DatabasePath = ":memory:";
+            options.VectorDimension = 384;
+        });
+
+        var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var manager = scope.ServiceProvider.GetService<IVectorStoreManager>();
+
+        manager.Should().NotBeNull();
+        manager.Should().BeOfType<SQLiteVecVectorStore>();
+    }
+
+    [Fact]
+    public void AddSQLiteVecVectorStore_SameInstance_ForBothInterfaces()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+
+        services.AddSQLiteVecVectorStore(options =>
+        {
+            options.DatabasePath = ":memory:";
+            options.VectorDimension = 384;
+        });
+
+        var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+
+        var store = scope.ServiceProvider.GetRequiredService<IVectorStore>();
+        var manager = scope.ServiceProvider.GetRequiredService<IVectorStoreManager>();
+
+        manager.Should().BeSameAs(store);
     }
 }
