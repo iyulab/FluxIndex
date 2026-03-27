@@ -76,8 +76,10 @@ public static class ServiceCollectionExtensions
                 return new SQLiteVectorStore(context, logger, options);
             }));
 
-        // 주 벡터 저장소로 SQLiteVecVectorStore 등록
-        services.AddScoped<IVectorStore, SQLiteVecVectorStore>();
+        // 주 벡터 저장소로 SQLiteVecVectorStore 등록 (IVectorStore + IVectorStoreManager 동일 인스턴스)
+        services.AddScoped<SQLiteVecVectorStore>();
+        services.AddScoped<IVectorStore>(sp => sp.GetRequiredService<SQLiteVecVectorStore>());
+        services.AddScoped<IVectorStoreManager>(sp => sp.GetRequiredService<SQLiteVecVectorStore>());
 
         // 초기화 서비스 등록
         services.AddHostedService<SQLiteVecMigrationService>();
