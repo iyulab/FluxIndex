@@ -24,7 +24,7 @@ public class QueryTransformationServiceTests
 
     private QueryTransformationService CreateService(bool withLlm = true)
     {
-        var options = new Application.Services.QueryTransformationOptions();
+        var options = new QueryTransformationOptions();
         return new QueryTransformationService(
             withLlm ? _mockCompletionService : null,
             Microsoft.Extensions.Options.Options.Create(options),
