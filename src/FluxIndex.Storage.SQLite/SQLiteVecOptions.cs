@@ -378,11 +378,17 @@ public class SQLiteVecOptions : SQLiteOptions
 
     /// <summary>
     /// vec0 테이블 이름 반환.
-    /// EmbeddingFingerprint가 설정되면 fingerprint 기반, 아니면 차원 기반.
+    /// EmbeddingFingerprint가 반드시 설정되어야 한다.
+    /// BindIdentity() 호출 후 사용할 것.
     /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// EmbeddingFingerprint가 null인 경우. BindIdentity()를 먼저 호출해야 한다.
+    /// </exception>
     public string GetVecTableName() => EmbeddingFingerprint is not null
         ? $"chunk_embeddings_{EmbeddingFingerprint}"
-        : $"chunk_embeddings_{VectorDimension}";
+        : throw new InvalidOperationException(
+            "EmbeddingFingerprint is required for vec table naming. " +
+            "Call BindIdentity() before accessing the vector store.");
 
     /// <summary>
     /// 벡터 차원에 따른 vec0 테이블 스키마 반환

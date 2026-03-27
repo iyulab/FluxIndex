@@ -340,7 +340,7 @@ public partial class SQLiteVecDbContext : DbContext
         Microsoft.Data.Sqlite.SqliteConnection connection,
         CancellationToken cancellationToken)
     {
-        // Safe: GetVecTableName() returns "chunk_embeddings_{int}" — no injection risk
+        // Safe: GetVecTableName() returns "chunk_embeddings_{fingerprint}" — no injection risk
         var newTableName = _options.GetVecTableName();
 
         // Check if legacy "chunk_embeddings" table exists

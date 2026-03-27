@@ -6,6 +6,41 @@ using Xunit;
 namespace FluxIndex.Storage.SQLite.Tests;
 
 /// <summary>
+/// SQLiteVecOptions.GetVecTableName() 테이블 이름 결정 로직 테스트.
+/// EmbeddingFingerprint 필수 여부를 검증한다.
+/// </summary>
+[Collection("SQLite Tests")]
+public class SQLiteVecOptionsTableNameTests
+{
+    [Fact]
+    public void GetVecTableName_WithoutFingerprint_ThrowsInvalidOperation()
+    {
+        var options = new SQLiteVecOptions
+        {
+            VectorDimension = 1536,
+            EmbeddingFingerprint = null
+        };
+
+        var act = () => options.GetVecTableName();
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*fingerprint*");
+    }
+
+    [Fact]
+    public void GetVecTableName_WithFingerprint_ReturnsFingerPrintBasedName()
+    {
+        var options = new SQLiteVecOptions
+        {
+            VectorDimension = 1536,
+            EmbeddingFingerprint = "a1b2c3d4"
+        };
+
+        options.GetVecTableName().Should().Be("chunk_embeddings_a1b2c3d4");
+    }
+}
+
+/// <summary>
 /// SQLiteVecOptions 확장 경로 탐색 로직 테스트.
 /// single-file publish, NativeLibrary 런타임 해석 등을 검증한다.
 /// </summary>

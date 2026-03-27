@@ -39,6 +39,7 @@ public class SQLiteVecRealWorldTests : IAsyncLifetime
         {
             options.DatabasePath = _testDatabasePath;
             options.VectorDimension = 384; // 테스트용 작은 차원
+            options.EmbeddingFingerprint = "testmodel384"; // fingerprint 필수 (BindIdentity 미사용 시 직접 설정)
             options.UseSQLiteVec = true; // 실제 확장 사용
             options.FallbackToInMemoryOnError = false; // 확장 실패시 오류로 처리
             options.AutoMigrate = true;

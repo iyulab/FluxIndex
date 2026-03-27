@@ -621,26 +621,34 @@ public class SQLiteVecOptionsTests
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
 
-        // Arrange
-        var options = new SQLiteVecOptions { VectorDimension = 1536 };
+        // Arrange — fingerprint is required; use a representative test fingerprint
+        var options = new SQLiteVecOptions
+        {
+            VectorDimension = 1536,
+            EmbeddingFingerprint = "openaiada0021536"
+        };
 
         // Act
         var schema = options.GetVecTableSchema();
 
         // Assert
-        schema.Should().Contain("CREATE VIRTUAL TABLE chunk_embeddings_1536");
+        schema.Should().Contain("CREATE VIRTUAL TABLE chunk_embeddings_openaiada0021536");
         schema.Should().Contain("vec0");
         schema.Should().Contain("float[1536]");
         schema.Should().Contain("metric=cosine");
     }
 
     [SkippableFact]
-    public void GetVecTableName_ShouldIncludeDimension()
+    public void GetVecTableName_ShouldIncludeFingerprint()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
 
-        var options = new SQLiteVecOptions { VectorDimension = 384 };
-        options.GetVecTableName().Should().Be("chunk_embeddings_384");
+        var options = new SQLiteVecOptions
+        {
+            VectorDimension = 384,
+            EmbeddingFingerprint = "bgesmallenV15384"
+        };
+        options.GetVecTableName().Should().Be("chunk_embeddings_bgesmallenV15384");
     }
 
     [SkippableFact]
