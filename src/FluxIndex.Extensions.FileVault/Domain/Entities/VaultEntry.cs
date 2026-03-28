@@ -158,7 +158,12 @@ public sealed class VaultEntry
 
         try
         {
-            var json = File.ReadAllText(metaPath);
+            string json;
+            using (var fs = new FileStream(metaPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (var reader = new StreamReader(fs))
+            {
+                json = reader.ReadToEnd();
+            }
             var meta = JsonSerializer.Deserialize<EntryMetadata>(json, s_readJsonOptions);
             if (meta == null)
                 return null;
@@ -406,7 +411,9 @@ public sealed class VaultEntry
 
         var json = JsonSerializer.Serialize(meta, s_writeJsonOptions);
 
-        File.WriteAllText(MetaPath, json);
+        using var fs = new FileStream(MetaPath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite);
+        using var writer = new StreamWriter(fs);
+        writer.Write(json);
     }
 
     // === Path Properties ===
