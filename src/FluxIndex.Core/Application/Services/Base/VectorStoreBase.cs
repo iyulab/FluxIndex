@@ -266,6 +266,12 @@ public abstract partial class VectorStoreBase : IVectorStore
     }
 
     /// <inheritdoc />
+    public virtual Task<int> GetDistinctDocumentCountAsync(CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(0);
+    }
+
+    /// <inheritdoc />
     public Task ClearAsync(CancellationToken cancellationToken = default)
     {
         return ClearCoreAsync(cancellationToken);

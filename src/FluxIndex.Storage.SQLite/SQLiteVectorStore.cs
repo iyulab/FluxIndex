@@ -273,6 +273,12 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
             Metadata = entity.Metadata
         };
 
+        // Include standard fields in metadata for consumer apps (RAG source citation)
+        chunk.Metadata = MetadataHelper.EnsureInitialized(chunk.Metadata);
+        chunk.Metadata["chunkIndex"] = chunk.ChunkIndex;
+        chunk.Metadata["totalChunks"] = chunk.TotalChunks;
+        chunk.Metadata["tokenCount"] = chunk.TokenCount;
+
         RestoreRichMetadata(chunk);
         return chunk;
     }

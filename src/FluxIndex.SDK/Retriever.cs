@@ -399,16 +399,21 @@ public partial class Retriever
                 },
                 cancellationToken);
 
-            results = hybridResults.Select(r => new SearchResult
+            results = hybridResults.Select(r =>
             {
-                Id = r.Chunk.Id,
-                DocumentId = r.Chunk.DocumentId,
-                Content = r.Chunk.Content,
-                Score = (float)r.FusedScore,
-                VectorScore = (float)r.VectorScore,
-                KeywordScore = (float)r.SparseScore,
-                ChunkIndex = r.Chunk.ChunkIndex,
-                Metadata = r.Chunk.Metadata ?? new()
+                var metadata = r.Chunk.Metadata ?? new();
+                EnsureStandardMetadata(metadata, r.Chunk.ChunkIndex, r.Chunk.TotalChunks, r.Chunk.TokenCount);
+                return new SearchResult
+                {
+                    Id = r.Chunk.Id,
+                    DocumentId = r.Chunk.DocumentId,
+                    Content = r.Chunk.Content,
+                    Score = (float)r.FusedScore,
+                    VectorScore = (float)r.VectorScore,
+                    KeywordScore = (float)r.SparseScore,
+                    ChunkIndex = r.Chunk.ChunkIndex,
+                    Metadata = metadata
+                };
             }).ToList();
         }
         // Default: Vector-only search
@@ -421,15 +426,20 @@ public partial class Retriever
                 filter,
                 cancellationToken);
 
-            results = vectorResults.Select(r => new SearchResult
+            results = vectorResults.Select(r =>
             {
-                Id = r.DocumentChunk.Id,
-                DocumentId = r.DocumentChunk.DocumentId,
-                Content = r.DocumentChunk.Content,
-                Score = (float)r.Score,
-                VectorScore = (float)r.Score,
-                ChunkIndex = r.DocumentChunk.ChunkIndex,
-                Metadata = r.Metadata ?? new Dictionary<string, object>()
+                var metadata = r.Metadata ?? new Dictionary<string, object>();
+                EnsureStandardMetadata(metadata, r.DocumentChunk.ChunkIndex, r.DocumentChunk.TotalChunks, r.DocumentChunk.TokenCount);
+                return new SearchResult
+                {
+                    Id = r.DocumentChunk.Id,
+                    DocumentId = r.DocumentChunk.DocumentId,
+                    Content = r.DocumentChunk.Content,
+                    Score = (float)r.Score,
+                    VectorScore = (float)r.Score,
+                    ChunkIndex = r.DocumentChunk.ChunkIndex,
+                    Metadata = metadata
+                };
             }).ToList();
         }
 
@@ -886,8 +896,16 @@ public partial class Retriever
     /// </summary>
     public async Task<RetrievalStatistics> GetStatisticsAsync(CancellationToken cancellationToken = default)
     {
-        var docCount = await _documentRepository.GetCountAsync(cancellationToken);
         var chunkCount = await _vectorStore.CountAsync(cancellationToken);
+
+        // Prefer vector store's distinct document count over in-memory repository
+        // (InMemoryDocumentRepository resets on restart, but vector store is persistent)
+        var docCount = await _vectorStore.GetDistinctDocumentCountAsync(cancellationToken);
+        if (docCount == 0)
+        {
+            // Fallback to document repository for stores that haven't implemented GetDistinctDocumentCountAsync
+            docCount = await _documentRepository.GetCountAsync(cancellationToken);
+        }
 
         return new RetrievalStatistics
         {
@@ -899,6 +917,13 @@ public partial class Retriever
             ResolvedStoreName = _vectorStore.ResolvedStoreName,
             DetectedDimension = _vectorStore.DetectedDimension
         };
+    }
+
+    private static void EnsureStandardMetadata(Dictionary<string, object> metadata, int chunkIndex, int totalChunks, int tokenCount)
+    {
+        metadata["chunkIndex"] = chunkIndex;
+        metadata["totalChunks"] = totalChunks;
+        metadata["tokenCount"] = tokenCount;
     }
 
     private static List<VectorSearchResult> ApplyFilter(List<VectorSearchResult> results, Dictionary<string, object> filter)

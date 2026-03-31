@@ -144,6 +144,14 @@ public class PostgreSQLVectorStore : VectorStoreBase
         return await _context.Vectors.CountAsync(cancellationToken);
     }
 
+    public override async Task<int> GetDistinctDocumentCountAsync(CancellationToken cancellationToken = default)
+    {
+        return await _context.Vectors
+            .Select(v => v.DocumentId)
+            .Distinct()
+            .CountAsync(cancellationToken);
+    }
+
     protected override async Task ClearCoreAsync(CancellationToken cancellationToken)
     {
         await _context.Database.ExecuteSqlRawAsync("TRUNCATE TABLE vectors", cancellationToken);
@@ -187,6 +195,12 @@ public class PostgreSQLVectorStore : VectorStoreBase
             TokenCount = entity.TokenCount,
             Metadata = entity.Metadata
         };
+
+        // Include standard fields in metadata for consumer apps (RAG source citation)
+        chunk.Metadata = MetadataHelper.EnsureInitialized(chunk.Metadata);
+        chunk.Metadata["chunkIndex"] = chunk.ChunkIndex;
+        chunk.Metadata["totalChunks"] = chunk.TotalChunks;
+        chunk.Metadata["tokenCount"] = chunk.TokenCount;
 
         RestoreRichMetadata(chunk);
         return chunk;

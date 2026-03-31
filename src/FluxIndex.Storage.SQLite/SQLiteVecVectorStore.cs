@@ -1068,6 +1068,21 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         return await CountAsync(cancellationToken);
     }
 
+    public async Task<int> GetDistinctDocumentCountAsync(CancellationToken cancellationToken = default)
+    {
+        await EnsureInitializedAsync(cancellationToken);
+
+        if (!_sqliteVecAvailable && _options.FallbackToInMemoryOnError)
+        {
+            return await _fallbackStore.Value.GetDistinctDocumentCountAsync(cancellationToken);
+        }
+
+        return await _context.VectorChunks
+            .Select(c => c.DocumentId)
+            .Distinct()
+            .CountAsync(cancellationToken);
+    }
+
     public async Task ClearAsync(CancellationToken cancellationToken = default)
     {
         try

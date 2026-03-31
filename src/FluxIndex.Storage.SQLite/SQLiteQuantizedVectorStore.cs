@@ -275,6 +275,15 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
     public Task<int> GetCountAsync(CancellationToken cancellationToken = default)
         => CountAsync(cancellationToken);
 
+    public async Task<int> GetDistinctDocumentCountAsync(CancellationToken cancellationToken = default)
+    {
+        await EnsureInitializedAsync(cancellationToken);
+        return await _context.Vectors
+            .Select(v => v.DocumentId)
+            .Distinct()
+            .CountAsync(cancellationToken);
+    }
+
     public async Task ClearAsync(CancellationToken cancellationToken = default)
     {
         await EnsureInitializedAsync(cancellationToken);
@@ -566,6 +575,12 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
             TokenCount = entity.TokenCount,
             Metadata = entity.Metadata
         };
+
+        // Include standard fields in metadata for consumer apps (RAG source citation)
+        chunk.Metadata = MetadataHelper.EnsureInitialized(chunk.Metadata);
+        chunk.Metadata["chunkIndex"] = chunk.ChunkIndex;
+        chunk.Metadata["totalChunks"] = chunk.TotalChunks;
+        chunk.Metadata["tokenCount"] = chunk.TokenCount;
 
         RestoreRichMetadataStatic(chunk);
         return chunk;

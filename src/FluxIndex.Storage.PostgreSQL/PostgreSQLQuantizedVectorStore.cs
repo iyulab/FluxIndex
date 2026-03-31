@@ -263,6 +263,14 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
     public Task<int> GetCountAsync(CancellationToken cancellationToken = default)
         => CountAsync(cancellationToken);
 
+    public async Task<int> GetDistinctDocumentCountAsync(CancellationToken cancellationToken = default)
+    {
+        return await _context.Vectors
+            .Select(v => v.DocumentId)
+            .Distinct()
+            .CountAsync(cancellationToken);
+    }
+
     public async Task ClearAsync(CancellationToken cancellationToken = default)
     {
         await _context.Database.ExecuteSqlRawAsync("TRUNCATE TABLE quantized_vectors", cancellationToken);
@@ -521,6 +529,12 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
             TokenCount = entity.TokenCount,
             Metadata = entity.Metadata
         };
+
+        // Include standard fields in metadata for consumer apps (RAG source citation)
+        chunk.Metadata = MetadataHelper.EnsureInitialized(chunk.Metadata);
+        chunk.Metadata["chunkIndex"] = chunk.ChunkIndex;
+        chunk.Metadata["totalChunks"] = chunk.TotalChunks;
+        chunk.Metadata["tokenCount"] = chunk.TokenCount;
 
         RestoreRichMetadataStatic(chunk);
         return chunk;

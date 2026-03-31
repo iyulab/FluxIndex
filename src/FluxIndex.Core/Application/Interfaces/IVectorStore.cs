@@ -32,6 +32,13 @@ public interface IVectorStore
     Task ClearAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Returns the number of distinct documents stored in this vector store.
+    /// Used for statistics reporting without relying on the document repository.
+    /// </summary>
+    Task<int> GetDistinctDocumentCountAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(0);
+
+    /// <summary>
     /// Checks if any vectors exist for a given document.
     /// Used by integrity checks to detect missing embeddings.
     /// </summary>

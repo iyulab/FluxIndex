@@ -744,6 +744,41 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
         return (int)info.PointsCount;
     }
 
+    public async Task<int> GetDistinctDocumentCountAsync(CancellationToken cancellationToken = default)
+    {
+        await EnsureCollectionAsync(cancellationToken);
+
+        var documentIds = new HashSet<string>();
+        PointId? nextOffset = null;
+
+        do
+        {
+            var scrollResponse = await _client.ScrollAsync(
+                collectionName: _resolvedCollectionName!,
+                filter: null,
+                limit: 1000,
+                payloadSelector: new WithPayloadSelector
+                {
+                    Include = new PayloadIncludeSelector { Fields = { "document_id" } }
+                },
+                vectorsSelector: new WithVectorsSelector { Enable = false },
+                offset: nextOffset,
+                cancellationToken: cancellationToken);
+
+            foreach (var point in scrollResponse.Result)
+            {
+                var docId = GetPayloadString(point.Payload, "document_id");
+                if (!string.IsNullOrEmpty(docId))
+                    documentIds.Add(docId);
+            }
+
+            nextOffset = scrollResponse.NextPageOffset;
+        }
+        while (nextOffset != null);
+
+        return documentIds.Count;
+    }
+
     public async Task ClearAsync(CancellationToken cancellationToken = default)
     {
         await _initLock.WaitAsync(cancellationToken);
