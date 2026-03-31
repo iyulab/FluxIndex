@@ -10,6 +10,7 @@ using FluxIndex.Extensions.FileVault.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using Xunit;
 using Xunit.Abstractions;
 using MsOptions = Microsoft.Extensions.Options.Options;
@@ -509,6 +510,113 @@ public class FileVaultPipelineSimulationTests : IDisposable
 
         _output.WriteLine("\nRecovery simulation complete!");
     }
+
+    #region Error Path Tests — Stage Transition Verification
+
+    [Fact]
+    public async Task EmbeddingFailure_SetsStageToError()
+    {
+        // Arrange — pipeline with failing embedding service
+        var failingEmbedding = Substitute.For<IEmbeddingService>();
+        failingEmbedding
+            .GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("Embedding service unavailable"));
+        failingEmbedding
+            .GenerateEmbeddingsBatchAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("Embedding service unavailable"));
+
+        var failPipeline = new VaultPipeline(
+            _gitMock, _hasher, _storage,
+            NullLogger<VaultPipeline>.Instance,
+            extractor: null, chunker: null,
+            vectorStore: _vectorStore,
+            embeddingService: failingEmbedding);
+
+        var filePath = CreateDocument("embed_fail.txt", "Content that will fail during embedding.");
+        var entry = VaultEntry.Create(filePath, _vaultDir);
+        await _storage.InitializeEntryAsync(entry, default);
+
+        // Act
+        var result = await failPipeline.MemorizeAsync(entry);
+
+        // Assert
+        _output.WriteLine($"Success={result.Success}, Stage={entry.Stage}, LastError={entry.LastError}");
+        result.Success.Should().BeFalse();
+        entry.Stage.Should().Be(ProcessingStage.Error, "Stage must transition to Error on embedding failure");
+        entry.LastError.Should().NotBeNullOrEmpty();
+        entry.RetryCount.Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task VectorStoreFailure_SetsStageToError()
+    {
+        // Arrange — pipeline with failing vector store
+        var failingVectorStore = Substitute.For<IVectorStore>();
+        failingVectorStore
+            .StoreAsync(Arg.Any<DocumentChunk>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new IOException("Vector store disk full"));
+        failingVectorStore
+            .StoreBatchAsync(Arg.Any<IEnumerable<DocumentChunk>>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new IOException("Vector store disk full"));
+
+        var failPipeline = new VaultPipeline(
+            _gitMock, _hasher, _storage,
+            NullLogger<VaultPipeline>.Instance,
+            extractor: null, chunker: null,
+            vectorStore: failingVectorStore,
+            embeddingService: _embeddingService);
+
+        var filePath = CreateDocument("store_fail.txt", "Content that will fail during vector storage.");
+        var entry = VaultEntry.Create(filePath, _vaultDir);
+        await _storage.InitializeEntryAsync(entry, default);
+
+        // Act
+        var result = await failPipeline.MemorizeAsync(entry);
+
+        // Assert
+        _output.WriteLine($"Success={result.Success}, Stage={entry.Stage}, LastError={entry.LastError}");
+        result.Success.Should().BeFalse();
+        entry.Stage.Should().Be(ProcessingStage.Error, "Stage must transition to Error on vector store failure");
+        entry.LastError.Should().NotBeNullOrEmpty();
+        entry.RetryCount.Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task ErrorStage_PersistedToMetadata_SurvivesReload()
+    {
+        // Arrange — cause a failure
+        var failingEmbedding = Substitute.For<IEmbeddingService>();
+        failingEmbedding
+            .GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("Dimension mismatch"));
+        failingEmbedding
+            .GenerateEmbeddingsBatchAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("Dimension mismatch"));
+
+        var failPipeline = new VaultPipeline(
+            _gitMock, _hasher, _storage,
+            NullLogger<VaultPipeline>.Instance,
+            extractor: null, chunker: null,
+            vectorStore: _vectorStore,
+            embeddingService: failingEmbedding);
+
+        var filePath = CreateDocument("persist_error.txt", "Content to test error persistence.");
+        var entry = VaultEntry.Create(filePath, _vaultDir);
+        await _storage.InitializeEntryAsync(entry, default);
+        await failPipeline.MemorizeAsync(entry);
+
+        // Act — reload from disk
+        var reloaded = VaultEntry.LoadByHash(entry.FilepathHash, _vaultDir);
+
+        // Assert
+        _output.WriteLine($"Reloaded: Stage={reloaded?.Stage}, LastError={reloaded?.LastError}, RetryCount={reloaded?.RetryCount}");
+        reloaded.Should().NotBeNull();
+        reloaded!.Stage.Should().Be(ProcessingStage.Error, "Error stage must survive disk roundtrip");
+        reloaded.LastError.Should().Contain("Dimension mismatch");
+        reloaded.RetryCount.Should().BeGreaterThan(0);
+    }
+
+    #endregion
 
     #region Helper Methods
 
