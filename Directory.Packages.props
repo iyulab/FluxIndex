@@ -53,13 +53,13 @@
     <PackageVersion Include="Google.Cloud.AIPlatform.V1" Version="3.54.0" />
     <PackageVersion Include="Mscc.GenerativeAI" Version="2.5.2" />
     <!-- LMSupply: Full AI stack (Embedder + Generator + Reranker) -->
-    <PackageVersion Include="LMSupply.Embedder" Version="0.25.0" />
-    <PackageVersion Include="LMSupply.Generator" Version="0.25.0" />
-    <PackageVersion Include="LMSupply.Reranker" Version="0.25.0" />
+    <PackageVersion Include="LMSupply.Embedder" Version="0.26.0" />
+    <PackageVersion Include="LMSupply.Generator" Version="0.26.0" />
+    <PackageVersion Include="LMSupply.Reranker" Version="0.26.0" />
   </ItemGroup>
   <!-- Storage/Cache Packages -->
   <ItemGroup>
-    <PackageVersion Include="StackExchange.Redis" Version="2.12.4" />
+    <PackageVersion Include="StackExchange.Redis" Version="2.12.8" />
     <PackageVersion Include="sqlite-vec" Version="0.1.7-alpha.2.1" />
     <!-- Graph Database -->
     <PackageVersion Include="Neo4j.Driver" Version="6.0.0" />
@@ -93,7 +93,7 @@
   </ItemGroup>
   <!-- MCP/CLI Packages -->
   <ItemGroup>
-    <PackageVersion Include="ModelContextProtocol" Version="1.1.0" />
+    <PackageVersion Include="ModelContextProtocol" Version="1.2.0" />
     <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="0.9.0-preview.2" />
     <PackageVersion Include="System.CommandLine" Version="2.0.5" />
   </ItemGroup>
