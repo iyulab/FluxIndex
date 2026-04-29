@@ -305,34 +305,34 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
 
     #region LoggerMessage Definitions
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "sqlite-vec 확장 파일을 찾을 수 없습니다: {ExtensionPath}")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "sqlite-vec extension file not found: {ExtensionPath}")]
     private static partial void LogExtensionNotFound(ILogger logger, string extensionPath);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "폴백 모드 활성화: in-memory 벡터 검색 사용")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Fallback mode enabled: using in-memory vector search")]
     private static partial void LogFallbackActivated(ILogger logger);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "sqlite-vec 확장이 성공적으로 로드되었습니다: {ExtensionPath}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "sqlite-vec extension loaded: {ExtensionPath}")]
     private static partial void LogExtensionLoaded(ILogger logger, string extensionPath);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "sqlite-vec 확장이 .NET NativeLibrary 런타임 로더를 통해 로드되었습니다")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "sqlite-vec extension loaded via .NET NativeLibrary runtime resolver")]
     private static partial void LogExtensionLoadedViaRuntime(ILogger logger);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "sqlite-vec 확장 버전: {Version}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "sqlite-vec extension version: {Version}")]
     private static partial void LogExtensionVersion(ILogger logger, string version);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "sqlite-vec 확장 로드 실패: {ExtensionPath}")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "sqlite-vec extension load failed: {ExtensionPath}")]
     private static partial void LogExtensionLoadFailed(ILogger logger, Exception exception, string extensionPath);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "vec0 가상 테이블 생성됨: {TableName}, 차원: {Dimension}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "vec0 virtual table created: {TableName}, dimension: {Dimension}")]
     private static partial void LogVecTableCreated(ILogger logger, string tableName, int dimension);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "vec0 테이블 생성 실패: {TableName}")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "vec0 table creation failed: {TableName}")]
     private static partial void LogVecTableCreateFailed(ILogger logger, Exception exception, string tableName);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "vec0 테이블 삭제됨 (복구용): {TableName}")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "vec0 table dropped (for recovery): {TableName}")]
     private static partial void LogVecTableDropped(ILogger logger, string tableName);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "vec0 테이블 재생성 실패: {TableName}")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "vec0 table recreate failed: {TableName}")]
     private static partial void LogVecTableRecreateFailed(ILogger logger, Exception exception, string tableName);
 
     #endregion
@@ -399,10 +399,10 @@ public partial class NoOpSQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
 
     #region LoggerMessage Definitions
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "sqlite-vec 확장을 사용하지 않음 (in-memory 벡터 검색 사용)")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "sqlite-vec extension not used (using in-memory vector search)")]
     private static partial void LogNoOpExtensionSkipped(ILogger logger);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "vec0 테이블 생성 요청이 있었지만 sqlite-vec 확장을 사용하지 않음")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "vec0 table creation requested but sqlite-vec extension is not in use")]
     private static partial void LogNoOpVecTableSkipped(ILogger logger);
 
     #endregion

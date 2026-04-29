@@ -563,64 +563,64 @@ public partial class SQLiteVecDbContext : DbContext
     [LoggerMessage(Level = LogLevel.Debug, Message = "EF Core SQL: {Message}")]
     private static partial void LogEfCoreSql(ILogger logger, string message);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "데이터베이스 초기화 완료")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Database initialization completed")]
     private static partial void LogDbInitialized(ILogger logger);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "데이터베이스 초기화 실패")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "Database initialization failed")]
     private static partial void LogDbInitFailed(ILogger logger, Exception exception);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "FTS5 테이블 생성 완료: tokenizer={Tokenizer}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "FTS5 table created: tokenizer={Tokenizer}")]
     private static partial void LogFts5Created(ILogger logger, string tokenizer);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "FTS5 테이블이 이미 존재합니다")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "FTS5 table already exists")]
     private static partial void LogFts5AlreadyExists(ILogger logger);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "FTS5 초기화 실패")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "FTS5 initialization failed")]
     private static partial void LogFts5InitFailed(ILogger logger, Exception exception);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "FTS5 인덱스 재구성 시작")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "FTS5 index rebuild started")]
     private static partial void LogFts5RebuildStarted(ILogger logger);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "FTS5 인덱스 재구성 완료")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "FTS5 index rebuild completed")]
     private static partial void LogFts5RebuildCompleted(ILogger logger);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "FTS5 인덱스 재구성 실패")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "FTS5 index rebuild failed")]
     private static partial void LogFts5RebuildFailed(ILogger logger, Exception exception);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "sqlite-vec 확장 초기화 완료")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "sqlite-vec extension initialization completed")]
     private static partial void LogVecExtensionInitialized(ILogger logger);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "sqlite-vec 확장 로드 실패, 폴백 모드 사용")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "sqlite-vec extension load failed, using fallback mode")]
     private static partial void LogVecExtensionFallback(ILogger logger);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "sqlite-vec 확장 초기화 오류")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "sqlite-vec extension initialization error")]
     private static partial void LogVecExtensionInitError(ILogger logger, Exception exception);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "폴백 모드로 계속 진행")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Continuing in fallback mode")]
     private static partial void LogContinueWithFallback(ILogger logger);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "레거시 데이터 없음")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "No legacy data found")]
     private static partial void LogNoLegacyData(ILogger logger);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "레거시 테이블이 비어있습니다")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Legacy table is empty")]
     private static partial void LogLegacyTableEmpty(ILogger logger);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "레거시 데이터 마이그레이션 시작: {Count}건")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Legacy data migration started: {Count} records")]
     private static partial void LogMigrationStarted(ILogger logger, int count);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "마이그레이션 진행: {Processed}/{Total}")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Migration progress: {Processed}/{Total}")]
     private static partial void LogMigrationProgress(ILogger logger, int processed, int total);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "레거시 데이터 마이그레이션 완료")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Legacy data migration completed")]
     private static partial void LogMigrationCompleted(ILogger logger);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "레거시 데이터 마이그레이션 실패")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "Legacy data migration failed")]
     private static partial void LogMigrationFailed(ILogger logger, Exception exception);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "vec0 테이블에 벡터 저장 실패: {ChunkId}")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to store vector in vec0 table: {ChunkId}")]
     private static partial void LogVecStoreError(ILogger logger, Exception exception, string chunkId);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "vec0 테이블에서 벡터 삭제 실패: {ChunkId}")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to delete vector from vec0 table: {ChunkId}")]
     private static partial void LogVecDeleteError(ILogger logger, Exception exception, string chunkId);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Dropped legacy chunk_embeddings table (dimension-based table {NewTable} already exists)")]

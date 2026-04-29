@@ -458,7 +458,7 @@ internal static partial class SQLitePragmaHelper
 
     #region LoggerMessage Definitions
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "SQLite 성능 최적화 설정 완료: WAL 모드, {CacheSize}KB 캐시, {MmapSize}B mmap, Temp={TempStore}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "SQLite performance optimizations applied: WAL mode, {CacheSize}KB cache, {MmapSize}B mmap, Temp={TempStore}")]
     private static partial void LogPragmaOptimizationsApplied(ILogger logger, int cacheSize, long mmapSize, TempStoreMode tempStore);
 
     #endregion
@@ -592,16 +592,16 @@ internal sealed partial class SQLiteVecMigrationService : IHostedService
 
     #region LoggerMessage Definitions
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "SQLite-vec 데이터베이스 초기화 시작")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "SQLite-vec database initialization started")]
     private static partial void LogVecInitStarting(ILogger logger);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "SQLite-vec 데이터베이스 초기화 완료")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "SQLite-vec database initialization completed")]
     private static partial void LogVecInitCompleted(ILogger logger);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "SQLite-vec 데이터베이스 초기화 실패")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "SQLite-vec database initialization failed")]
     private static partial void LogVecInitFailed(ILogger logger, Exception exception);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "폴백 모드로 계속 진행")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Continuing in fallback mode")]
     private static partial void LogVecFallbackContinue(ILogger logger);
 
     #endregion
