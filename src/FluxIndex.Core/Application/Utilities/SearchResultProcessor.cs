@@ -10,6 +10,8 @@ public static class SearchResultProcessor
 {
     /// <summary>
     /// Filters and sorts search results by score, returning top-K chunks.
+    /// Stamps the similarity score onto each chunk's <see cref="DocumentChunk.Score"/>
+    /// so downstream consumers can read it after the wrapper is discarded.
     /// </summary>
     public static IEnumerable<DocumentChunk> FilterAndSort(
         IEnumerable<VectorSearchResult> results,
@@ -22,7 +24,11 @@ public static class SearchResultProcessor
             .Where(r => r.Score >= minScore)
             .OrderByDescending(r => r.Score)
             .Take(topK)
-            .Select(r => r.Chunk);
+            .Select(r =>
+            {
+                r.Chunk.Score = r.Score;
+                return r.Chunk;
+            });
     }
 
     /// <summary>

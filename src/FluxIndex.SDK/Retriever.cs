@@ -266,13 +266,19 @@ public partial class Retriever
                 filter,
                 cancellationToken);
 
-            // Convert DocumentChunks to VectorSearchResults
-            var results = searchResults.Select(chunk => new VectorSearchResult
+            // Convert DocumentChunks to VectorSearchResults.
+            // Storage providers populate chunk.Score with actual cosine similarity
+            // (or distance-derived similarity); SearchResultProcessor.FilterAndSort
+            // stamps it onto the chunk before discarding the wrapper. We read it back
+            // here. If a custom IVectorStore returns chunks without a score, fall back
+            // to 0.0f rather than misleading 1.0f.
+            var rankedChunks = searchResults.ToList();
+            var results = rankedChunks.Select((chunk, index) => new VectorSearchResult
             {
-                DocumentChunk = chunk, // Use entity directly
-                Score = 1.0f, // Default score since IVectorStore doesn't provide it
-                Rank = 0,
-                Distance = 0,
+                DocumentChunk = chunk,
+                Score = chunk.Score ?? 0.0f,
+                Rank = index,
+                Distance = chunk.Score is float s ? Math.Max(0f, 1f - s) : 0f,
                 Metadata = chunk.Metadata ?? new()
             }).ToList();
 

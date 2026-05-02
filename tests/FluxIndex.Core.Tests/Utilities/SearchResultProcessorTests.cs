@@ -55,6 +55,51 @@ public class SearchResultProcessorTests
         Assert.Empty(filtered);
     }
 
+    [Fact]
+    public void FilterAndSort_StampsScoreOntoChunk()
+    {
+        // Regression lock for ISSUE-fluxindex-sdk-retriever-fake-score-20260428-220000:
+        // FilterAndSort previously discarded VectorSearchResult.Score when projecting
+        // to DocumentChunk, forcing Retriever to stamp a misleading default. The fix
+        // assigns Score onto the chunk before the wrapper is dropped, so downstream
+        // consumers reading chunk.Score get the real similarity value.
+        var results = new List<VectorSearchResult>
+        {
+            CreateResult("chunk-1", 0.91f),
+            CreateResult("chunk-2", 0.42f),
+            CreateResult("chunk-3", 0.77f),
+        };
+
+        var filtered = SearchResultProcessor.FilterAndSort(results, minScore: 0f, topK: 10).ToList();
+
+        Assert.Equal(3, filtered.Count);
+        Assert.Equal(0.91f, filtered[0].Score);
+        Assert.Equal(0.77f, filtered[1].Score);
+        Assert.Equal(0.42f, filtered[2].Score);
+    }
+
+    [Fact]
+    public void FilterAndSort_DistinctScores_PreservedAfterProjection()
+    {
+        // Acceptance #1: top hit's score must be measurably higher than the bottom hit's.
+        // This exercises the regression at the unit-test level; an integration-level
+        // counterpart with a real embedder lives in FluxIndex.SDK.Tests.
+        var results = new List<VectorSearchResult>
+        {
+            CreateResult("low", 0.30f),
+            CreateResult("high", 0.95f),
+        };
+
+        var filtered = SearchResultProcessor.FilterAndSort(results, minScore: 0f, topK: 10).ToList();
+
+        Assert.Equal("high", filtered[0].Id);
+        Assert.Equal("low", filtered[1].Id);
+        Assert.True(
+            filtered[0].Score - filtered[1].Score >= 0.05f,
+            "top hit must score ≥0.05 higher than bottom hit");
+        Assert.NotEqual(filtered[0].Score, filtered[1].Score);
+    }
+
     #endregion
 
     #region FilterAndSortWithScores Tests
