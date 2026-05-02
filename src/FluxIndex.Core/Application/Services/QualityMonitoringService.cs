@@ -514,29 +514,29 @@ public partial class QualityMonitoringService : IQualityMonitoringService, IDisp
 
     #region LoggerMessage Definitions
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "품질 모니터링 서비스 초기화 완료")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Quality monitoring service initialized")]
     private static partial void LogQualityMonitoring12(ILogger logger);
-    [LoggerMessage(Level = LogLevel.Debug, Message = "품질 메트릭 평가 완료: Query={Query}, Quality={QualityScore:F1}")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Quality metrics evaluated: Query={Query}, Quality={QualityScore:F1}")]
     private static partial void LogQualityMonitoring11(ILogger logger, string query, double qualityScore);
-    [LoggerMessage(Level = LogLevel.Debug, Message = "실시간 대시보드 생성 완료: {TotalQueries}개 쿼리, {SuccessRate:P1} 성공률")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Real-time dashboard generated: {TotalQueries} queries, {SuccessRate:P1} success rate")]
     private static partial void LogQualityMonitoring10(ILogger logger, long totalQueries, double successRate);
-    [LoggerMessage(Level = LogLevel.Information, Message = "품질 임계값 업데이트: 응답시간={MaxResponseTime}ms, 최소결과={MinResults}개, 품질점수={MinQuality}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Quality thresholds updated: MaxResponseTime={MaxResponseTime}ms, MinResults={MinResults}, MinQuality={MinQuality}")]
     private static partial void LogQualityMonitoring9(ILogger logger, double maxResponseTime, double minResults, double minQuality);
-    [LoggerMessage(Level = LogLevel.Debug, Message = "품질 경고 조회 완료: {Count}개 ({Severity})")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Quality alerts retrieved: {Count} ({Severity})")]
     private static partial void LogQualityMonitoring8(ILogger logger, int count, AlertSeverity? severity);
-    [LoggerMessage(Level = LogLevel.Warning, Message = "품질 모니터링이 이미 실행 중입니다")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Quality monitoring is already running")]
     private static partial void LogQualityMonitoring7(ILogger logger);
-    [LoggerMessage(Level = LogLevel.Information, Message = "품질 모니터링 시작")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Quality monitoring started")]
     private static partial void LogQualityMonitoring6(ILogger logger);
-    [LoggerMessage(Level = LogLevel.Information, Message = "품질 모니터링 중지")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Quality monitoring stopped")]
     private static partial void LogQualityMonitoring5(ILogger logger);
-    [LoggerMessage(Level = LogLevel.Error, Message = "메트릭 처리 중 오류 발생")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error processing metrics")]
     private static partial void LogQualityMonitoring4(ILogger logger, Exception exception);
-    [LoggerMessage(Level = LogLevel.Debug, Message = "메트릭 {Count}개 처리 완료")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "{Count} metrics processed")]
     private static partial void LogQualityMonitoring3(ILogger logger, int count);
-    [LoggerMessage(Level = LogLevel.Warning, Message = "품질 경고 생성: {Title} - {Message}")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Quality alert raised: {Title} - {Message}")]
     private static partial void LogQualityMonitoring2(ILogger logger, string title, string message);
-    [LoggerMessage(Level = LogLevel.Information, Message = "품질 모니터링 서비스 리소스 정리 완료")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Quality monitoring service resources disposed")]
     private static partial void LogQualityMonitoring1(ILogger logger);
 
     #endregion

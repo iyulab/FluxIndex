@@ -910,70 +910,70 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
 
     #region LoggerMessage Definitions
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "시맨틱 캐시 활성화됨")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Semantic cache enabled")]
     private static partial void LogSemanticCacheEnabled(ILogger logger);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "적응형 검색 시작: {Query}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Adaptive search started: {Query}")]
     private static partial void LogAdaptiveSearchStarted(ILogger logger, string query);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "시맨틱 캐시 히트: {Query} (유사도: {Similarity}, 히트율: {HitRate})")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Semantic cache hit: {Query} (similarity: {Similarity}, hit rate: {HitRate})")]
     private static partial void LogSemanticCacheHit(ILogger logger, string query, float similarity, double hitRate);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "시맨틱 캐시 미스: {Query} (현재 히트율: {HitRate})")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Semantic cache miss: {Query} (current hit rate: {HitRate})")]
     private static partial void LogSemanticCacheMiss(ILogger logger, string query, double hitRate);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "시맨틱 캐시 조회 실패, 일반 검색 진행: {Query}")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Semantic cache lookup failed, falling back to regular search: {Query}")]
     private static partial void LogSemanticCacheLookupFailed(ILogger logger, Exception ex, string query);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "시맨틱 캐시가 구성되지 않음, in-memory 캐시 사용")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Semantic cache not configured, using in-memory cache")]
     private static partial void LogSemanticCacheNotConfigured(ILogger logger);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "In-memory 캐시 히트: {Query}")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "In-memory cache hit: {Query}")]
     private static partial void LogInMemoryCacheHit(ILogger logger, string query);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "쿼리 분석 완료: {Type}, {Complexity}, {ConfidenceScore}")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Query analysis completed: {Type}, {Complexity}, {ConfidenceScore}")]
     private static partial void LogQueryAnalysisCompleted(ILogger logger, QueryType type, ComplexityLevel complexity, double confidenceScore);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "선택된 전략: {Strategy}, 이유: {Reasons}")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Selected strategy: {Strategy}, reasons: {Reasons}")]
     private static partial void LogSelectedStrategy(ILogger logger, SearchStrategy strategy, string reasons);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "시맨틱 캐시 저장 완료: {Query}, {Count}개 결과")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Semantic cache saved: {Query}, {Count} results")]
     private static partial void LogSemanticCacheSaved(ILogger logger, string query, int count);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "시맨틱 캐시 저장 실패: {Query}")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Semantic cache save failed: {Query}")]
     private static partial void LogSemanticCacheSaveFailed(ILogger logger, Exception ex, string query);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "적응형 검색 완료: {Strategy}, {ResultCount}개 결과, {ElapsedMs}ms")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Adaptive search completed: {Strategy}, {ResultCount} results, {ElapsedMs}ms")]
     private static partial void LogAdaptiveSearchCompleted(ILogger logger, SearchStrategy strategy, int resultCount, long elapsedMs);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "적응형 검색 중 오류 발생: {Query}")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error during adaptive search: {Query}")]
     private static partial void LogAdaptiveSearchError(ILogger logger, Exception ex, string query);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Redis 캐시 통계 조회 실패")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Redis cache stats retrieval failed")]
     private static partial void LogRedisCacheStatsFailed(ILogger logger, Exception ex);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "주 전략 성공: {Strategy}, {Count}개 결과")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Primary strategy succeeded: {Strategy}, {Count} results")]
     private static partial void LogPrimaryStrategySuccess(ILogger logger, SearchStrategy strategy, int count);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "주 전략 결과 부족: {Strategy}, {Count}/{MinCount}개")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Primary strategy results insufficient: {Strategy}, {Count}/{MinCount}")]
     private static partial void LogPrimaryStrategyInsufficient(ILogger logger, SearchStrategy strategy, int count, int minCount);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Fallback 시도: {Strategy}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Fallback attempt: {Strategy}")]
     private static partial void LogFallbackAttempt(ILogger logger, SearchStrategy strategy);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Fallback 성공: {Strategy}, {Count}개 결과")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Fallback succeeded: {Strategy}, {Count} results")]
     private static partial void LogFallbackSuccess(ILogger logger, SearchStrategy strategy, int count);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Fallback 전략 실패: {Strategy}")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Fallback strategy failed: {Strategy}")]
     private static partial void LogFallbackStrategyFailed(ILogger logger, Exception ex, SearchStrategy strategy);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Zero-Result 감지, minScore 완화 재시도")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Zero-result detected, retrying with relaxed minScore")]
     private static partial void LogZeroResultDetected(ILogger logger);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Zero-Result 방지 성공: {Count}개 결과")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Zero-result prevention succeeded: {Count} results")]
     private static partial void LogZeroResultPrevented(ILogger logger, int count);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "모든 Fallback 전략 실패, 원본 결과 반환: {Count}개")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "All fallback strategies failed, returning original results: {Count}")]
     private static partial void LogAllFallbacksFailed(ILogger logger, int count);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "DAT applied: Vector={VectorWeight}, Sparse={SparseWeight}, Fusion={Fusion}")]
@@ -982,10 +982,10 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
     [LoggerMessage(Level = LogLevel.Warning, Message = "DAT calculation failed, using default weights")]
     private static partial void LogDatCalculationFailed(ILogger logger, Exception ex);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "A/B 테스트 중 오류: {TestId}")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Error during A/B test: {TestId}")]
     private static partial void LogABTestError(ILogger logger, Exception ex, string testId);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "사용자 피드백 업데이트: {Query}, 만족도: {Satisfaction}")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "User feedback updated: {Query}, satisfaction: {Satisfaction}")]
     private static partial void LogFeedbackUpdate(ILogger logger, string query, double satisfaction);
 
     #endregion

@@ -606,9 +606,9 @@ public partial class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
 
     #region LoggerMessage Definitions
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "쿼리 분석 완료: {Query} → {Type}, {Complexity}")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Query analysis completed: {Query} -> {Type}, {Complexity}")]
     private static partial void LogQueryComplexity2(ILogger logger, string query, QueryType type, ComplexityLevel complexity);
-    [LoggerMessage(Level = LogLevel.Debug, Message = "성능 통계 업데이트: {QueryType}, 결과 수: {ResultCount}")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Performance statistics updated: {QueryType}, result count: {ResultCount}")]
     private static partial void LogQueryComplexity1(ILogger logger, QueryType queryType, int resultCount);
 
     #endregion

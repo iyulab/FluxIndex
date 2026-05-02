@@ -1170,43 +1170,43 @@ public partial class SmallToBigRetriever : ISmallToBigRetriever
 
     #region LoggerMessage Definitions
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Small-to-Big 검색 시작: {Query}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Small-to-Big search started: {Query}")]
     private static partial void LogSmallToBig19(ILogger logger, string query);
-    [LoggerMessage(Level = LogLevel.Debug, Message = "쿼리 복잡도: {Complexity:F2}, 권장 윈도우: {WindowSize}")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Query complexity: {Complexity:F2}, recommended window: {WindowSize}")]
     private static partial void LogSmallToBig18(ILogger logger, double complexity, double windowSize);
-    [LoggerMessage(Level = LogLevel.Warning, Message = "정밀 검색에서 결과를 찾지 못함: {Query}")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Precise search returned no results: {Query}")]
     private static partial void LogSmallToBig17(ILogger logger, string query);
-    [LoggerMessage(Level = LogLevel.Debug, Message = "정밀 검색 결과: {Count}개")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Precise search results: {Count}")]
     private static partial void LogSmallToBig16(ILogger logger, int count);
-    [LoggerMessage(Level = LogLevel.Information, Message = "Small-to-Big 검색 완료: {ResultCount}개 결과, {ElapsedMs}ms")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Small-to-Big search completed: {ResultCount} results, {ElapsedMs}ms")]
     private static partial void LogSmallToBig15(ILogger logger, int resultCount, long elapsedMs);
-    [LoggerMessage(Level = LogLevel.Error, Message = "Small-to-Big 검색 중 오류 발생: {Query}")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error during Small-to-Big search: {Query}")]
     private static partial void LogSmallToBig14(ILogger logger, Exception exception, string query);
-    [LoggerMessage(Level = LogLevel.Debug, Message = "복잡도 분석 캐시 히트: {Query}")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Complexity analysis cache hit: {Query}")]
     private static partial void LogSmallToBig13(ILogger logger, string query);
-    [LoggerMessage(Level = LogLevel.Debug, Message = "쿼리 복잡도 분석 완료: {Query} → 복잡도 {Complexity:F2}, 윈도우 {WindowSize}")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Query complexity analysis completed: {Query} -> complexity {Complexity:F2}, window {WindowSize}")]
     private static partial void LogSmallToBig12(ILogger logger, string query, double complexity, double windowSize);
-    [LoggerMessage(Level = LogLevel.Information, Message = "청크 계층 구조 구축 시작: {ChunkCount}개 청크")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Chunk hierarchy build started: {ChunkCount} chunks")]
     private static partial void LogSmallToBig11(ILogger logger, int chunkCount);
-    [LoggerMessage(Level = LogLevel.Information, Message = "청크 계층 구조 구축 완료: {HierarchyCount}개 계층, {RelationshipCount}개 관계, {ElapsedMs}ms")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Chunk hierarchy built: {HierarchyCount} levels, {RelationshipCount} relationships, {ElapsedMs}ms")]
     private static partial void LogSmallToBig10(ILogger logger, int hierarchyCount, int relationshipCount, long elapsedMs);
-    [LoggerMessage(Level = LogLevel.Error, Message = "청크 계층 구조 구축 중 오류 발생")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error building chunk hierarchy")]
     private static partial void LogSmallToBig9(ILogger logger, Exception exception);
-    [LoggerMessage(Level = LogLevel.Debug, Message = "컨텍스트 확장 시작: {ChunkId}, 윈도우 크기: {WindowSize}")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Context expansion started: {ChunkId}, window size: {WindowSize}")]
     private static partial void LogSmallToBig8(ILogger logger, string chunkId, int windowSize);
-    [LoggerMessage(Level = LogLevel.Debug, Message = "컨텍스트 확장 완료: {OriginalCount} → {ExpandedCount}개 청크, {ElapsedMs}ms")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Context expansion completed: {OriginalCount} -> {ExpandedCount} chunks, {ElapsedMs}ms")]
     private static partial void LogSmallToBig7(ILogger logger, int originalCount, int expandedCount, long elapsedMs);
-    [LoggerMessage(Level = LogLevel.Error, Message = "컨텍스트 확장 중 오류 발생: {ChunkId}")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error during context expansion: {ChunkId}")]
     private static partial void LogSmallToBig6(ILogger logger, Exception exception, string chunkId);
-    [LoggerMessage(Level = LogLevel.Information, Message = "Small-to-Big 성능 평가 시작: {QueryCount}개 쿼리")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Small-to-Big performance evaluation started: {QueryCount} queries")]
     private static partial void LogSmallToBig5(ILogger logger, int queryCount);
-    [LoggerMessage(Level = LogLevel.Information, Message = "Small-to-Big 성능 평가 완료 - P: {Precision:F3}, R: {Recall:F3}, F1: {F1:F3}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Small-to-Big performance evaluation completed - P: {Precision:F3}, R: {Recall:F3}, F1: {F1:F3}")]
     private static partial void LogSmallToBig4(ILogger logger, double precision, double recall, double f1);
-    [LoggerMessage(Level = LogLevel.Warning, Message = "계층적 확장 중 오류: {ChunkId}")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Error during hierarchical expansion: {ChunkId}")]
     private static partial void LogSmallToBig3(ILogger logger, Exception exception, string chunkId);
-    [LoggerMessage(Level = LogLevel.Warning, Message = "순차적 확장 중 오류: {ChunkId}")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Error during sequential expansion: {ChunkId}")]
     private static partial void LogSmallToBig2(ILogger logger, Exception exception, string chunkId);
-    [LoggerMessage(Level = LogLevel.Warning, Message = "의미적 확장 중 오류: {ChunkId}")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Error during semantic expansion: {ChunkId}")]
     private static partial void LogSmallToBig1(ILogger logger, Exception exception, string chunkId);
 
     #endregion

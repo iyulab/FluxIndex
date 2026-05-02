@@ -500,21 +500,21 @@ public partial class VectorIndexPerformanceMonitor
 
     #region LoggerMessage Definitions
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "성능 기준선 설정 시작: {IndexName}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Performance baseline establishment started: {IndexName}")]
     private static partial void LogVectorIndexPerformance8(ILogger logger, string indexName);
-    [LoggerMessage(Level = LogLevel.Information, Message = "성능 기준선 설정 완료: {IndexName} - 평균 쿼리 시간: {Time:F2}ms, Recall: {Recall:P2}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Performance baseline established: {IndexName} - avg query time: {Time:F2}ms, Recall: {Recall:P2}")]
     private static partial void LogVectorIndexPerformance7(ILogger logger, string indexName, double time, double recall);
-    [LoggerMessage(Level = LogLevel.Information, Message = "성능 회귀 감지 시작: {IndexName}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Performance regression detection started: {IndexName}")]
     private static partial void LogVectorIndexPerformance6(ILogger logger, string indexName);
-    [LoggerMessage(Level = LogLevel.Information, Message = "성능 회귀 감지 완료: {IndexName} - {Count}개 회귀 발견, 심각도: {Severity}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Performance regression detection completed: {IndexName} - {Count} regressions found, severity: {Severity}")]
     private static partial void LogVectorIndexPerformance5(ILogger logger, string indexName, int count, RegressionSeverity severity);
-    [LoggerMessage(Level = LogLevel.Information, Message = "연속 성능 모니터링 시작: {IndexName} - 기간: {Duration}, 간격: {Interval}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Continuous performance monitoring started: {IndexName} - duration: {Duration}, interval: {Interval}")]
     private static partial void LogVectorIndexPerformance4(ILogger logger, string indexName, TimeSpan duration, TimeSpan interval);
-    [LoggerMessage(Level = LogLevel.Warning, Message = "성능 이상 감지: {IndexName} - {Count}개 이상 징후")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Performance anomaly detected: {IndexName} - {Count} anomaly indicators")]
     private static partial void LogVectorIndexPerformance3(ILogger logger, string indexName, int count);
-    [LoggerMessage(Level = LogLevel.Error, Message = "연속 모니터링 중 오류 발생: {IndexName}")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error during continuous monitoring: {IndexName}")]
     private static partial void LogVectorIndexPerformance2(ILogger logger, Exception exception, string indexName);
-    [LoggerMessage(Level = LogLevel.Information, Message = "연속 성능 모니터링 완료: {IndexName} - {Samples}개 샘플, {Anomalies}개 이상 징후")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Continuous performance monitoring completed: {IndexName} - {Samples} samples, {Anomalies} anomaly indicators")]
     private static partial void LogVectorIndexPerformance1(ILogger logger, string indexName, int samples, int anomalies);
 
     #endregion

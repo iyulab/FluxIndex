@@ -993,37 +993,37 @@ public partial class HybridSearchService : IHybridSearchService
 
     #region LoggerMessage Definitions
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "하이브리드 검색 시작: {Query}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Hybrid search started: {Query}")]
     private static partial void LogHybridSearch16(ILogger logger, string query);
-    [LoggerMessage(Level = LogLevel.Information, Message = "DAT 적용: Vector={VectorWeight:F2}, Sparse={SparseWeight:F2}, Fusion={Fusion}, Type={QueryType}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "DAT applied: Vector={VectorWeight:F2}, Sparse={SparseWeight:F2}, Fusion={Fusion}, Type={QueryType}")]
     private static partial void LogHybridSearch15(ILogger logger, double vectorWeight, double sparseWeight, FusionMethod fusion, FluxIndex.Core.Application.Interfaces.QueryType queryType);
-    [LoggerMessage(Level = LogLevel.Information, Message = "자동 전략 선택: {Strategy}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Auto strategy selected: {Strategy}")]
     private static partial void LogHybridSearch14(ILogger logger, SearchStrategyType strategy);
-    [LoggerMessage(Level = LogLevel.Information, Message = "개별 검색 완료 - 벡터: {VectorCount}, 키워드: {SparseCount}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Individual searches completed - vector: {VectorCount}, keyword: {SparseCount}")]
     private static partial void LogHybridSearch13(ILogger logger, int vectorCount, int sparseCount);
-    [LoggerMessage(Level = LogLevel.Information, Message = "하이브리드 검색 완료: {ResultCount}개 결과, {ElapsedMs}ms")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Hybrid search completed: {ResultCount} results, {ElapsedMs}ms")]
     private static partial void LogHybridSearch12(ILogger logger, int resultCount, long elapsedMs);
-    [LoggerMessage(Level = LogLevel.Error, Message = "하이브리드 검색 중 오류 발생: {Query}")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error during hybrid search: {Query}")]
     private static partial void LogHybridSearch11(ILogger logger, Exception exception, string query);
-    [LoggerMessage(Level = LogLevel.Information, Message = "배치 하이브리드 검색 시작: {QueryCount}개 쿼리")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Batch hybrid search started: {QueryCount} queries")]
     private static partial void LogHybridSearch10(ILogger logger, int queryCount);
-    [LoggerMessage(Level = LogLevel.Information, Message = "배치 하이브리드 검색 완료: {QueryCount}개 쿼리 처리")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Batch hybrid search completed: {QueryCount} queries processed")]
     private static partial void LogHybridSearch9(ILogger logger, int queryCount);
-    [LoggerMessage(Level = LogLevel.Debug, Message = "검색 전략 추천: {Query} → {Strategy}")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Search strategy recommended: {Query} -> {Strategy}")]
     private static partial void LogHybridSearch8(ILogger logger, string query, SearchStrategyType strategy);
-    [LoggerMessage(Level = LogLevel.Information, Message = "융합 성능 평가 시작: {QueryCount}개 쿼리")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Fusion performance evaluation started: {QueryCount} queries")]
     private static partial void LogHybridSearch7(ILogger logger, int queryCount);
-    [LoggerMessage(Level = LogLevel.Information, Message = "융합 성능 평가 완료 - P: {Precision:F3}, R: {Recall:F3}, F1: {F1:F3}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Fusion performance evaluation completed - P: {Precision:F3}, R: {Recall:F3}, F1: {F1:F3}")]
     private static partial void LogHybridSearch6(ILogger logger, double precision, double recall, double f1);
-    [LoggerMessage(Level = LogLevel.Warning, Message = "벡터 검색 실패, 빈 결과 반환")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Vector search failed, returning empty results")]
     private static partial void LogHybridSearch5(ILogger logger, Exception exception);
-    [LoggerMessage(Level = LogLevel.Debug, Message = "양자화 Two-Stage 검색 실행: TopK={TopK}, CandidateMultiplier={Multiplier}")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Quantized two-stage search running: TopK={TopK}, CandidateMultiplier={Multiplier}")]
     private static partial void LogHybridSearch4(ILogger logger, int topK, int multiplier);
-    [LoggerMessage(Level = LogLevel.Warning, Message = "양자화 검색 실패, 일반 검색으로 폴백")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Quantized search failed, falling back to regular search")]
     private static partial void LogHybridSearch3(ILogger logger, Exception exception);
-    [LoggerMessage(Level = LogLevel.Warning, Message = "키워드 검색 실패, 빈 결과 반환")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Keyword search failed, returning empty results")]
     private static partial void LogHybridSearch2(ILogger logger, Exception exception);
-    [LoggerMessage(Level = LogLevel.Warning, Message = "청크 조회 실패: {ChunkId}")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Chunk retrieval failed: {ChunkId}")]
     private static partial void LogHybridSearch1(ILogger logger, Exception exception, string chunkId);
 
     #endregion

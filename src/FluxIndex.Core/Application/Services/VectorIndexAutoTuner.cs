@@ -538,35 +538,35 @@ public partial class VectorIndexAutoTuner
 
     #region LoggerMessage Definitions
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "다단계 자동 튜닝 시작 - 전략: {Strategy}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Multi-stage auto-tuning started - strategy: {Strategy}")]
     private static partial void LogVectorIndexAutoTuner15(ILogger logger, TuningStrategy strategy);
-    [LoggerMessage(Level = LogLevel.Information, Message = "다단계 자동 튜닝 완료 - 최적 매개변수: {Identifier}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Multi-stage auto-tuning completed - best parameters: {Identifier}")]
     private static partial void LogVectorIndexAutoTuner14(ILogger logger, string identifier);
-    [LoggerMessage(Level = LogLevel.Information, Message = "적응형 튜닝 시작 - 전략: {Strategy}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Adaptive tuning started - strategy: {Strategy}")]
     private static partial void LogVectorIndexAutoTuner13(ILogger logger, TuningStrategy strategy);
-    [LoggerMessage(Level = LogLevel.Information, Message = "적응형 튜닝 반복 {Iteration} - 탐색 반경: {Radius}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Adaptive tuning iteration {Iteration} - search radius: {Radius}")]
     private static partial void LogVectorIndexAutoTuner12(ILogger logger, int iteration, int radius);
-    [LoggerMessage(Level = LogLevel.Information, Message = "개선된 매개변수 발견: {Identifier}, 점수: {Score:F3}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Improved parameters found: {Identifier}, score: {Score:F3}")]
     private static partial void LogVectorIndexAutoTuner11(ILogger logger, string identifier, double score);
-    [LoggerMessage(Level = LogLevel.Information, Message = "개선 없음 - 탐색 반경 확대: {Radius}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "No improvement found - expanding search radius: {Radius}")]
     private static partial void LogVectorIndexAutoTuner10(ILogger logger, int radius);
-    [LoggerMessage(Level = LogLevel.Information, Message = "스마트 튜닝 시작 - 전략: {Strategy}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Smart tuning started - strategy: {Strategy}")]
     private static partial void LogVectorIndexAutoTuner9(ILogger logger, TuningStrategy strategy);
-    [LoggerMessage(Level = LogLevel.Information, Message = "스마트 튜닝 반복 {Iteration}: {Identifier}, 점수: {Score:F3}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Smart tuning iteration {Iteration}: {Identifier}, score: {Score:F3}")]
     private static partial void LogVectorIndexAutoTuner8(ILogger logger, int iteration, string identifier, double score);
-    [LoggerMessage(Level = LogLevel.Information, Message = "스마트 튜닝 완료 - 최적 매개변수: {Identifier}, 최종 점수: {Score:F3}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Smart tuning completed - best parameters: {Identifier}, final score: {Score:F3}")]
     private static partial void LogVectorIndexAutoTuner7(ILogger logger, string identifier, double score);
-    [LoggerMessage(Level = LogLevel.Information, Message = "1단계: 초기 탐색 시작")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Phase 1: initial exploration started")]
     private static partial void LogVectorIndexAutoTuner6(ILogger logger);
-    [LoggerMessage(Level = LogLevel.Information, Message = "초기 탐색 완료 - {Count}개 후보 선정")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Initial exploration completed - {Count} candidates selected")]
     private static partial void LogVectorIndexAutoTuner5(ILogger logger, int count);
-    [LoggerMessage(Level = LogLevel.Information, Message = "2단계: 세밀 조정 시작 - {Count}개 후보")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Phase 2: fine-tuning started - {Count} candidates")]
     private static partial void LogVectorIndexAutoTuner4(ILogger logger, int count);
-    [LoggerMessage(Level = LogLevel.Information, Message = "세밀 조정 완료 - {Count}개 후보 선정")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Fine-tuning completed - {Count} candidates selected")]
     private static partial void LogVectorIndexAutoTuner3(ILogger logger, int count);
-    [LoggerMessage(Level = LogLevel.Information, Message = "3단계: 최종 검증 시작 - {Count}개 후보")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Phase 3: final validation started - {Count} candidates")]
     private static partial void LogVectorIndexAutoTuner2(ILogger logger, int count);
-    [LoggerMessage(Level = LogLevel.Information, Message = "최종 검증 완료 - 최적 매개변수: {Identifier}, 점수: {Score:F3}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Final validation completed - best parameters: {Identifier}, score: {Score:F3}")]
     private static partial void LogVectorIndexAutoTuner1(ILogger logger, string identifier, double score);
 
     #endregion

@@ -379,35 +379,35 @@ public partial class GoldenDatasetManager : IGoldenDatasetManager
 
     #region LoggerMessage Definitions
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "데이터셋 파일이 존재하지 않습니다: {FilePath}")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Dataset file not found: {FilePath}")]
     private static partial void LogGoldenDataset15(ILogger logger, string filePath);
-    [LoggerMessage(Level = LogLevel.Information, Message = "데이터셋 로드 시작: {DatasetId}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Dataset load started: {DatasetId}")]
     private static partial void LogGoldenDataset14(ILogger logger, string datasetId);
-    [LoggerMessage(Level = LogLevel.Information, Message = "데이터셋 로드 완료: {DatasetId}, Items={ItemCount}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Dataset loaded: {DatasetId}, Items={ItemCount}")]
     private static partial void LogGoldenDataset13(ILogger logger, string datasetId, int itemCount);
-    [LoggerMessage(Level = LogLevel.Error, Message = "데이터셋 로드 중 오류 발생: {DatasetId}")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error loading dataset: {DatasetId}")]
     private static partial void LogGoldenDataset12(ILogger logger, Exception exception, string datasetId);
-    [LoggerMessage(Level = LogLevel.Information, Message = "데이터셋 저장 시작: {DatasetId}, Items={ItemCount}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Dataset save started: {DatasetId}, Items={ItemCount}")]
     private static partial void LogGoldenDataset11(ILogger logger, string datasetId, int itemCount);
-    [LoggerMessage(Level = LogLevel.Information, Message = "데이터셋 저장 완료: {DatasetId}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Dataset saved: {DatasetId}")]
     private static partial void LogGoldenDataset10(ILogger logger, string datasetId);
-    [LoggerMessage(Level = LogLevel.Error, Message = "데이터셋 저장 중 오류 발생: {DatasetId}")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error saving dataset: {DatasetId}")]
     private static partial void LogGoldenDataset9(ILogger logger, Exception exception, string datasetId);
-    [LoggerMessage(Level = LogLevel.Information, Message = "로그에서 데이터셋 생성 시작: LogCount={LogCount}, MinRelevanceScore={MinRelevanceScore}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Dataset generation from logs started: LogCount={LogCount}, MinRelevanceScore={MinRelevanceScore}")]
     private static partial void LogGoldenDataset8(ILogger logger, int logCount, double minRelevanceScore);
-    [LoggerMessage(Level = LogLevel.Information, Message = "로그에서 데이터셋 생성 완료: CreatedItems={CreatedItems}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Dataset generation from logs completed: CreatedItems={CreatedItems}")]
     private static partial void LogGoldenDataset7(ILogger logger, int createdItems);
-    [LoggerMessage(Level = LogLevel.Error, Message = "로그에서 데이터셋 생성 중 오류 발생")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error generating dataset from logs")]
     private static partial void LogGoldenDataset6(ILogger logger, Exception exception);
-    [LoggerMessage(Level = LogLevel.Information, Message = "데이터셋 검증 시작: TotalItems={TotalItems}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Dataset validation started: TotalItems={TotalItems}")]
     private static partial void LogGoldenDataset5(ILogger logger, int totalItems);
-    [LoggerMessage(Level = LogLevel.Information, Message = "데이터셋 검증 완료: ValidItems={ValidItems}, Errors={ErrorCount}, Warnings={WarningCount}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Dataset validation completed: ValidItems={ValidItems}, Errors={ErrorCount}, Warnings={WarningCount}")]
     private static partial void LogGoldenDataset4(ILogger logger, int validItems, int errorCount, int warningCount);
-    [LoggerMessage(Level = LogLevel.Error, Message = "데이터셋 검증 중 오류 발생")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error validating dataset")]
     private static partial void LogGoldenDataset3(ILogger logger, Exception exception);
-    [LoggerMessage(Level = LogLevel.Information, Message = "데이터셋 통계 정보 조회 완료: {DatasetId}, TotalQueries={TotalQueries}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Dataset statistics retrieved: {DatasetId}, TotalQueries={TotalQueries}")]
     private static partial void LogGoldenDataset2(ILogger logger, string datasetId, int totalQueries);
-    [LoggerMessage(Level = LogLevel.Error, Message = "데이터셋 통계 정보 조회 중 오류 발생: {DatasetId}")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error retrieving dataset statistics: {DatasetId}")]
     private static partial void LogGoldenDataset1(ILogger logger, Exception exception, string datasetId);
 
     #endregion

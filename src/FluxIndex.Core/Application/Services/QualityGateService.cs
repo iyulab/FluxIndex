@@ -367,25 +367,25 @@ public partial class QualityGateService : IQualityGateService
 
     #region LoggerMessage Definitions
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "품질 게이트 실행 시작: Version={Version}, Dataset={Dataset}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Quality gate run started: Version={Version}, Dataset={Dataset}")]
     private static partial void LogQualityGate12(ILogger logger, string version, string dataset);
-    [LoggerMessage(Level = LogLevel.Information, Message = "품질 게이트 실행 완료: Version={Version}, Passed={Passed}, FailedCriteria={FailedCount}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Quality gate run completed: Version={Version}, Passed={Passed}, FailedCriteria={FailedCount}")]
     private static partial void LogQualityGate11(ILogger logger, string version, bool passed, int failedCount);
-    [LoggerMessage(Level = LogLevel.Error, Message = "품질 게이트 실행 중 오류 발생: Version={Version}")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error running quality gate: Version={Version}")]
     private static partial void LogQualityGate10(ILogger logger, Exception exception, string version);
-    [LoggerMessage(Level = LogLevel.Information, Message = "성능 비교 시작: Current={Current}, Baseline={Baseline}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Performance comparison started: Current={Current}, Baseline={Baseline}")]
     private static partial void LogQualityGate9(ILogger logger, string current, string baseline);
-    [LoggerMessage(Level = LogLevel.Information, Message = "성능 비교 완료: OverallImprovement={Improvement:F3}, Regressions={RegressionCount}")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Performance comparison completed: OverallImprovement={Improvement:F3}, Regressions={RegressionCount}")]
     private static partial void LogQualityGate8(ILogger logger, double improvement, double regressionCount);
-    [LoggerMessage(Level = LogLevel.Error, Message = "성능 비교 중 오류 발생: Current={Current}, Baseline={Baseline}")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error during performance comparison: Current={Current}, Baseline={Baseline}")]
     private static partial void LogQualityGate7(ILogger logger, Exception exception, string current, string baseline);
-    [LoggerMessage(Level = LogLevel.Warning, Message = "품질 회귀 감지: {Metric} = {Regression:F3} (임계값: {Threshold:F3})")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Quality regression detected: {Metric} = {Regression:F3} (threshold: {Threshold:F3})")]
     private static partial void LogQualityGate6(ILogger logger, string metric, double regression, double threshold);
-    [LoggerMessage(Level = LogLevel.Warning, Message = "품질 회귀 감지됨: RegressionCount={Count}")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Quality regressions detected: RegressionCount={Count}")]
     private static partial void LogQualityGate5(ILogger logger, int count);
-    [LoggerMessage(Level = LogLevel.Information, Message = "품질 회귀 없음: 모든 지표가 임계값 내에 있습니다.")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "No quality regressions: all metrics within thresholds.")]
     private static partial void LogQualityGate4(ILogger logger);
-    [LoggerMessage(Level = LogLevel.Error, Message = "품질 회귀 감지 중 오류 발생")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error detecting quality regressions")]
     private static partial void LogQualityGate3(ILogger logger, Exception exception);
     [LoggerMessage(Level = LogLevel.Debug, Message = "Using cached evaluation result for version={Version}, dataset={DatasetId}")]
     private static partial void LogQualityGate2(ILogger logger, string version, string datasetId);
