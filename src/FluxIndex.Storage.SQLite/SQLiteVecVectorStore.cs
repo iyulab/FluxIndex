@@ -239,17 +239,19 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
 
             try
             {
-                var ids = new List<string>();
+                // Materialize once so we can iterate twice (id assignment + INSERT building)
+                var chunkList = chunks as IList<DocumentChunk> ?? chunks.ToList();
+                var ids = new List<string>(chunkList.Count);
+                var entities = new List<VectorChunkEntity>(chunkList.Count);
                 var vectorBatch = new List<(string Id, float[] Embedding)>();
 
-                // 1단계: 메타데이터 엔티티 준비 (메모리 작업)
-                foreach (var chunk in chunks)
+                // 1단계: 메타데이터 엔티티 준비 (메모리 작업) + ID 할당
+                foreach (var chunk in chunkList)
                 {
                     var id = Guid.NewGuid().ToString();
                     ids.Add(id);
 
-                    // 메타데이터 저장
-                    var chunkEntity = new VectorChunkEntity
+                    var entity = new VectorChunkEntity
                     {
                         Id = id,
                         DocumentId = chunk.DocumentId,
@@ -259,18 +261,60 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                         Metadata = chunk.Metadata ?? new Dictionary<string, object>(),
                         CreatedAt = DateTime.UtcNow
                     };
+                    entities.Add(entity);
 
-                    _context.VectorChunks.Add(chunkEntity);
-
-                    // 벡터 배치에 추가 (아직 DB 삽입 안 함)
                     if (chunk.Embedding != null && _sqliteVecAvailable)
                     {
                         vectorBatch.Add((id, chunk.Embedding));
                     }
                 }
 
-                // 2단계: 메타데이터 일괄 저장 (EF Core 최적화된 배치 INSERT)
-                await _context.SaveChangesAsync(cancellationToken);
+                // 2단계: vector_chunks 일괄 삽입 (단일 raw SQL multi-row INSERT)
+                // EF Core의 Add() × N + SaveChangesAsync()는 N개의 개별 INSERT를 발생시킨다.
+                // sqlite-vec의 chunk_embeddings 테이블이 이미 사용하는 multi-row VALUES 패턴을 적용.
+                if (entities.Count > 0)
+                {
+                    // 7 columns × N rows: SQLite parameter limit is 32766. 7×4000 = 28000 < limit.
+                    // 보수적으로 500 rows/batch로 제한하여 SQL 길이/파서 부담을 줄인다.
+                    const int rowsPerStatement = 500;
+                    for (int offset = 0; offset < entities.Count; offset += rowsPerStatement)
+                    {
+                        var batchSize = Math.Min(rowsPerStatement, entities.Count - offset);
+                        var valueClauses = new List<string>(batchSize);
+                        var parameters = new List<object>(batchSize * 7);
+                        int p = 0;
+
+                        for (int j = 0; j < batchSize; j++)
+                        {
+                            var e = entities[offset + j];
+                            // Metadata JSON: match EF Core's value converter (default JsonSerializerOptions)
+                            var metaJson = System.Text.Json.JsonSerializer.Serialize(
+                                e.Metadata,
+                                (System.Text.Json.JsonSerializerOptions?)null);
+
+                            valueClauses.Add($"({{{p}}},{{{p + 1}}},{{{p + 2}}},{{{p + 3}}},{{{p + 4}}},{{{p + 5}}},{{{p + 6}}})");
+                            parameters.Add(e.Id);
+                            parameters.Add(e.DocumentId);
+                            parameters.Add(e.ChunkIndex);
+                            parameters.Add(e.Content);
+                            parameters.Add(e.TokenCount);
+                            parameters.Add(metaJson);
+                            // Pass DateTime as parameter so Microsoft.Data.Sqlite serializes it
+                            // in the same TEXT format EF Core uses (ISO 8601 with fractional seconds).
+                            parameters.Add(e.CreatedAt);
+                            p += 7;
+                        }
+
+                        // Table name set via entity.ToTable("vector_chunks").
+                        // Column names: PascalCase per EF Core convention (no explicit HasColumnName).
+                        var sql = "INSERT INTO \"vector_chunks\" " +
+                                  "(\"Id\", \"DocumentId\", \"ChunkIndex\", \"Content\", \"TokenCount\", \"Metadata\", \"CreatedAt\") " +
+                                  $"VALUES {string.Join(",", valueClauses)}";
+
+                        await _context.Database.ExecuteSqlRawAsync(sql, parameters.ToArray(), cancellationToken);
+                        LogVectorChunksBatchInserted(_logger, batchSize);
+                    }
+                }
 
                 // 3단계: 벡터 배치 삽입 (단일 SQL 문으로 최적화)
                 if (vectorBatch.Count != 0)
@@ -1169,6 +1213,24 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
 
                     // EF Core 테이블 생성
                     await _context.Database.EnsureCreatedAsync(cancellationToken);
+
+                    // Warm up vec0 query plan JIT so the first user batch is not cold-started.
+                    // CreateVecTableAsync ensures the virtual table exists; this LIMIT 0 SELECT
+                    // forces sqlite-vec to compile its query plan against the table's vec0 schema.
+                    // Without this, the first user-triggered INSERT pays a 1-3 second JIT cost.
+                    try
+                    {
+                        // GetVecTableName() returns a sanitized identifier (chunk_embeddings_{hex}) —
+                        // no SQL injection risk. Build the string outside the call to satisfy EF1002.
+                        var warmupSql = "SELECT count(*) FROM " + _options.GetVecTableName() + " LIMIT 0";
+                        await _context.Database.ExecuteSqlRawAsync(warmupSql, cancellationToken);
+                        LogVecJitWarmupCompleted(_logger);
+                    }
+                    catch (Exception warmupEx)
+                    {
+                        // Warmup failure is non-fatal; first batch will pay the cold-start cost as before.
+                        LogVecJitWarmupFailed(_logger, warmupEx);
+                    }
                 }
             }
             else
@@ -1499,6 +1561,15 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Collection deleted: {CollectionName}")]
     private static partial void LogCollectionDeleted(ILogger logger, string collectionName);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "vec0 query plan JIT warmup completed during initialization")]
+    private static partial void LogVecJitWarmupCompleted(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "vec0 JIT warmup query failed (non-fatal); first batch will pay cold-start cost")]
+    private static partial void LogVecJitWarmupFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "vector_chunks batch INSERT: {RowCount} rows in single SQL statement")]
+    private static partial void LogVectorChunksBatchInserted(ILogger logger, int rowCount);
 
     #endregion
 

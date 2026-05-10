@@ -566,6 +566,20 @@ internal sealed partial class SQLiteVecMigrationService : IHostedService
                 await SQLitePragmaHelper.ApplyPragmaOptimizationsAsync(context, options, _logger, cancellationToken);
             }
 
+            // Trigger IVectorStore.EnsureInitializedAsync at startup so the vec0 JIT warmup
+            // (inside SQLiteVecVectorStore.EnsureInitializedAsync) runs here, not on the first
+            // user-triggered batch. VerifyHealthAsync calls EnsureInitializedAsync internally.
+            try
+            {
+                var vectorStore = scope.ServiceProvider.GetRequiredService<IVectorStore>();
+                await vectorStore.VerifyHealthAsync(cancellationToken);
+            }
+            catch (Exception warmupEx)
+            {
+                // Warmup is best-effort; failure is non-fatal — first user batch will pay cold-start cost.
+                LogVecWarmupFailed(_logger, warmupEx);
+            }
+
             LogVecInitCompleted(_logger);
         }
         catch (Exception ex)
@@ -603,6 +617,9 @@ internal sealed partial class SQLiteVecMigrationService : IHostedService
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Continuing in fallback mode")]
     private static partial void LogVecFallbackContinue(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Vector store warmup failed at startup (non-fatal); first batch will pay cold-start cost")]
+    private static partial void LogVecWarmupFailed(ILogger logger, Exception exception);
 
     #endregion
 }
