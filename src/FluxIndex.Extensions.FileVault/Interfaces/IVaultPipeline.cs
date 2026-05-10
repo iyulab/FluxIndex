@@ -99,6 +99,23 @@ public sealed class MemorizeOptions
     /// When true, existing user-added text is backed up and restored after extraction/refinement.
     /// </summary>
     public bool PreserveAppendText { get; set; } = true;
+
+    /// <summary>
+    /// When >= 0, the pipeline skips chunks at index 0..StartFromChunkIndex on the assumption
+    /// they are already committed in the vector store (from a previous run that was interrupted).
+    /// Combined with CheckpointCallback, this enables resumable indexing after host restarts.
+    /// Default: -1 (process all chunks, no skip).
+    /// </summary>
+    public int StartFromChunkIndex { get; set; } = -1;
+
+    /// <summary>
+    /// Optional callback invoked after each chunk is fully embedded AND stored.
+    /// Receives the 0-based chunk index. When set, the pipeline switches to per-chunk
+    /// processing (1 embedding call + 1 store transaction per chunk) instead of batch,
+    /// trading ~5-10% normal-path throughput for crash-resilient checkpointing.
+    /// Default: null (use batch path, no checkpoint).
+    /// </summary>
+    public Func<int, CancellationToken, Task>? CheckpointCallback { get; set; }
 }
 
 /// <summary>

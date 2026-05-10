@@ -72,7 +72,8 @@ public sealed partial class VaultQueueService : IVaultQueueService, IDisposable
                     completed_at TEXT,
                     retry_count INTEGER NOT NULL DEFAULT 0,
                     max_retries INTEGER NOT NULL DEFAULT 3,
-                    error_message TEXT
+                    error_message TEXT,
+                    last_completed_chunk_index INTEGER NOT NULL DEFAULT -1
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_jobs_status ON vault_jobs(status);
@@ -80,6 +81,24 @@ public sealed partial class VaultQueueService : IVaultQueueService, IDisposable
                 CREATE INDEX IF NOT EXISTS idx_jobs_filepath_hash ON vault_jobs(filepath_hash);
                 """;
             cmd.ExecuteNonQuery();
+        }
+
+        // Migration: add last_completed_chunk_index column to pre-existing databases (idempotent).
+        // CREATE TABLE IF NOT EXISTS above only includes the column for fresh databases;
+        // existing tables from older versions need ALTER TABLE.
+        using (var migrateCmd = connection.CreateCommand())
+        {
+            migrateCmd.CommandText =
+                "ALTER TABLE vault_jobs ADD COLUMN last_completed_chunk_index INTEGER NOT NULL DEFAULT -1";
+            try
+            {
+                migrateCmd.ExecuteNonQuery();
+            }
+            catch (SqliteException ex)
+                when (ex.Message.Contains("duplicate column name", StringComparison.OrdinalIgnoreCase))
+            {
+                // Column already exists — expected on every run after the first migration.
+            }
         }
 
         LogDatabaseInitialized(_logger);
@@ -221,7 +240,8 @@ public sealed partial class VaultQueueService : IVaultQueueService, IDisposable
             await using var selectCmd = connection.CreateCommand();
             selectCmd.CommandText = """
                 SELECT id, file_path, filepath_hash, job_type, status, priority, queued_at,
-                       started_at, completed_at, retry_count, max_retries, error_message
+                       started_at, completed_at, retry_count, max_retries, error_message,
+                       last_completed_chunk_index
                 FROM vault_jobs
                 WHERE status = @status
                 ORDER BY priority DESC, queued_at ASC
@@ -433,7 +453,8 @@ public sealed partial class VaultQueueService : IVaultQueueService, IDisposable
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
             SELECT id, file_path, filepath_hash, job_type, status, priority, queued_at,
-                   started_at, completed_at, retry_count, max_retries, error_message
+                   started_at, completed_at, retry_count, max_retries, error_message,
+                   last_completed_chunk_index
             FROM vault_jobs
             WHERE id = @id
             """;
@@ -460,7 +481,8 @@ public sealed partial class VaultQueueService : IVaultQueueService, IDisposable
 
             var sql = """
                 SELECT id, file_path, filepath_hash, job_type, status, priority, queued_at,
-                       started_at, completed_at, retry_count, max_retries, error_message
+                       started_at, completed_at, retry_count, max_retries, error_message,
+                       last_completed_chunk_index
                 FROM vault_jobs
                 WHERE 1=1
                 """;
@@ -582,6 +604,32 @@ public sealed partial class VaultQueueService : IVaultQueueService, IDisposable
         }
     }
 
+    public async Task UpdateCheckpointAsync(Guid jobId, int lastCompletedChunkIndex, CancellationToken ct = default)
+    {
+        await _dbLock.WaitAsync(ct);
+        try
+        {
+            await using var connection = CreateConnection();
+            await connection.OpenAsync(ct);
+
+            await using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                UPDATE vault_jobs
+                SET last_completed_chunk_index = @checkpoint
+                WHERE id = @id AND status = @processing
+                """;
+            cmd.Parameters.AddWithValue("@checkpoint", lastCompletedChunkIndex);
+            cmd.Parameters.AddWithValue("@id", jobId.ToString());
+            cmd.Parameters.AddWithValue("@processing", (int)VaultJobStatus.Processing);
+
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        finally
+        {
+            _dbLock.Release();
+        }
+    }
+
     public async Task<int> ClearCompletedAsync(CancellationToken ct = default)
     {
         await _dbLock.WaitAsync(ct);
@@ -689,7 +737,8 @@ public sealed partial class VaultQueueService : IVaultQueueService, IDisposable
             completedAt: reader.IsDBNull(8) ? null : DateTimeOffset.Parse(reader.GetString(8), CultureInfo.InvariantCulture),
             retryCount: reader.GetInt32(9),
             maxRetries: reader.GetInt32(10),
-            errorMessage: reader.IsDBNull(11) ? null : reader.GetString(11)
+            errorMessage: reader.IsDBNull(11) ? null : reader.GetString(11),
+            lastCompletedChunkIndex: reader.IsDBNull(12) ? -1 : reader.GetInt32(12)
         );
     }
 

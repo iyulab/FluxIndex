@@ -129,6 +129,12 @@ public sealed partial class VaultBackgroundService : BackgroundService
                 OverlapSize = _options.Chunking.OverlapSize,
                 Strategy = _options.Chunking.Strategy,
                 Language = _options.Chunking.Language,
+                // Wire checkpoint hooks so the pipeline uses per-chunk processing for crash-resilient
+                // resume. After each chunk is fully embedded+stored, persist progress so a host
+                // restart can resume from chunk N+1 rather than restarting from 0.
+                StartFromChunkIndex = job.LastCompletedChunkIndex,
+                CheckpointCallback = async (chunkIndex, callbackCt) =>
+                    await _queueService.UpdateCheckpointAsync(job.Id, chunkIndex, callbackCt),
             };
 
             switch (job.JobType)

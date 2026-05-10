@@ -66,6 +66,12 @@ public sealed class VaultJob
     /// </summary>
     public string? ErrorMessage { get; private set; }
 
+    /// <summary>
+    /// Index of the last chunk that was fully embedded AND stored. -1 = not started.
+    /// Persists across host restarts to enable per-chunk checkpoint recovery for stuck jobs.
+    /// </summary>
+    public int LastCompletedChunkIndex { get; private set; } = -1;
+
     private VaultJob() { }
 
     /// <summary>
@@ -106,7 +112,8 @@ public sealed class VaultJob
         DateTimeOffset? completedAt,
         int retryCount,
         int maxRetries,
-        string? errorMessage)
+        string? errorMessage,
+        int lastCompletedChunkIndex = -1)
     {
         return new VaultJob
         {
@@ -121,7 +128,8 @@ public sealed class VaultJob
             CompletedAt = completedAt,
             RetryCount = retryCount,
             MaxRetries = maxRetries,
-            ErrorMessage = errorMessage
+            ErrorMessage = errorMessage,
+            LastCompletedChunkIndex = lastCompletedChunkIndex
         };
     }
 

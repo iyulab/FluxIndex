@@ -115,9 +115,21 @@ public interface IVaultQueueService
 
     /// <summary>
     /// Recovers stuck jobs (Processing → Queued) after crash.
-    /// Should be called on startup.
+    /// Should be called on startup. Preserves last_completed_chunk_index so that
+    /// the embedding pipeline can resume from the checkpoint instead of restarting from chunk 0.
     /// </summary>
     Task<int> RecoverStuckJobsAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Persists the index of the last fully committed chunk for a job in Processing state.
+    /// Called by the embedding pipeline after each chunk is successfully embedded AND stored.
+    /// On host restart + RecoverStuckJobsAsync, the pipeline reads this checkpoint via
+    /// VaultJob.LastCompletedChunkIndex and skips already-committed chunks.
+    /// </summary>
+    /// <param name="jobId">Job to update.</param>
+    /// <param name="lastCompletedChunkIndex">0-based chunk index that was just successfully stored.</param>
+    /// <param name="ct">Cancellation token.</param>
+    Task UpdateCheckpointAsync(Guid jobId, int lastCompletedChunkIndex, CancellationToken ct = default);
 
     /// <summary>
     /// Clears completed and cancelled jobs.

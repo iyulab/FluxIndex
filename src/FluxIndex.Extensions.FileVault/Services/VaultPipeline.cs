@@ -459,7 +459,7 @@ public sealed partial class VaultPipeline : IVaultPipeline
         // Index to vector store
         if (_vectorStore != null && _embeddingService != null)
         {
-            await IndexChunksAsync(entry, chunks, ct);
+            await IndexChunksAsync(entry, chunks, options, ct);
         }
         else
         {
@@ -469,7 +469,26 @@ public sealed partial class VaultPipeline : IVaultPipeline
         return (chunks.Count, combinedContent.Length);
     }
 
-    private async Task IndexChunksAsync(VaultEntry entry, IReadOnlyList<string> chunks, CancellationToken ct)
+    private async Task IndexChunksAsync(VaultEntry entry, IReadOnlyList<string> chunks, MemorizeOptions options, CancellationToken ct)
+    {
+        // Branch: when CheckpointCallback is set (job-queue path), use per-chunk processing
+        // for crash-resilient resume. Otherwise, use the existing batch path (faster for the
+        // common case of one-shot direct API calls).
+        if (options.CheckpointCallback != null)
+        {
+            await IndexChunksResumableAsync(entry, chunks, options.StartFromChunkIndex, options.CheckpointCallback, ct);
+        }
+        else
+        {
+            await IndexChunksBatchAsync(entry, chunks, ct);
+        }
+    }
+
+    /// <summary>
+    /// Batch indexing path: one embedding call + one store call for all chunks.
+    /// Used by direct callers of MemorizeAsync (no checkpoint hooks).
+    /// </summary>
+    private async Task IndexChunksBatchAsync(VaultEntry entry, IReadOnlyList<string> chunks, CancellationToken ct)
     {
         var documentId = entry.FilepathHash;
 
@@ -508,6 +527,67 @@ public sealed partial class VaultPipeline : IVaultPipeline
         var storedIds = await _vectorStore!.StoreBatchAsync(documentChunks, ct);
         var storedCount = storedIds.Count();
         LogIndexedChunks(_logger, storedCount, documentId);
+    }
+
+    /// <summary>
+    /// Resumable indexing path: per-chunk embed + store + checkpoint.
+    /// Used by VaultBackgroundService so that host restarts can recover stuck jobs
+    /// from the last committed chunk instead of restarting from chunk 0.
+    /// Trade-off: ~5-10% slower than batch for the common no-crash case, but recovery
+    /// becomes O(remaining_chunks) instead of O(total_chunks).
+    /// </summary>
+    private async Task IndexChunksResumableAsync(
+        VaultEntry entry,
+        IReadOnlyList<string> chunks,
+        int startFromChunk,
+        Func<int, CancellationToken, Task> checkpointCallback,
+        CancellationToken ct)
+    {
+        var documentId = entry.FilepathHash;
+        var processedCount = 0;
+        var skippedCount = 0;
+
+        for (int i = 0; i < chunks.Count; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            if (i <= startFromChunk)
+            {
+                // Already committed in a previous run; the corresponding row exists in vector_chunks.
+                skippedCount++;
+                continue;
+            }
+
+            // Embed single chunk
+            var embedding = await _embeddingService!.GenerateEmbeddingAsync(chunks[i], ct);
+
+            // Build DocumentChunk
+            var chunk = DocumentChunk.Create(
+                documentId: documentId,
+                content: chunks[i],
+                chunkIndex: i,
+                totalChunks: chunks.Count);
+
+            chunk.SetEmbedding(embedding);
+
+            chunk.Metadata ??= new Dictionary<string, object>();
+            chunk.Metadata["source_path"] = entry.SourcePath;
+            chunk.Metadata["filepath_hash"] = entry.FilepathHash;
+            chunk.Metadata["file_name"] = entry.FileName;
+
+            // Store single chunk (1-element batch — uses the same transactional path).
+            // On commit success, the chunk row is durably in vector_chunks before we update the checkpoint.
+            await _vectorStore!.StoreBatchAsync([chunk], ct);
+
+            // Persist checkpoint AFTER the store transaction commits.
+            // If the host crashes between StoreBatchAsync returning and UpdateCheckpointAsync
+            // succeeding, recovery sees stale checkpoint (chunk i in DB but checkpoint = i-1)
+            // and will redo chunk i — at most 1 chunk wasted, acceptable.
+            await checkpointCallback(i, ct);
+            processedCount++;
+        }
+
+        LogIndexedChunksResumable(_logger, processedCount, skippedCount, documentId);
     }
 
     private async Task<string> ExtractFallbackAsync(string sourcePath, CancellationToken ct)
@@ -677,6 +757,9 @@ public sealed partial class VaultPipeline : IVaultPipeline
     private static partial void LogNoVectorStoreSkipIndexing(ILogger logger);
     [LoggerMessage(Level = LogLevel.Information, Message = "Indexed {Count} chunks for {DocumentId}")]
     private static partial void LogIndexedChunks(ILogger logger, int count, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Indexed {Processed} chunks (resumed; skipped {Skipped} already-committed) for {DocumentId}")]
+    private static partial void LogIndexedChunksResumable(ILogger logger, int processed, int skipped, string documentId);
 
     #endregion
 }
