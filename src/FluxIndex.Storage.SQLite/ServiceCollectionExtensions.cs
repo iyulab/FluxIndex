@@ -580,6 +580,21 @@ internal sealed partial class SQLiteVecMigrationService : IHostedService
                 LogVecWarmupFailed(_logger, warmupEx);
             }
 
+            // One-time orphan sweep (idempotent via __fluxindex_migrations marker).
+            // Cleans up vec0 rows whose vector_chunks parent was deleted under the
+            // pre-0.13.7 single-table delete behavior.
+            if (options.EnableStartupOrphanSweep)
+            {
+                try
+                {
+                    await context.SweepOrphanVectorsAsync(cancellationToken);
+                }
+                catch (Exception sweepEx)
+                {
+                    LogOrphanSweepFailed(_logger, sweepEx);
+                }
+            }
+
             LogVecInitCompleted(_logger);
         }
         catch (Exception ex)
@@ -620,6 +635,9 @@ internal sealed partial class SQLiteVecMigrationService : IHostedService
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Vector store warmup failed at startup (non-fatal); first batch will pay cold-start cost")]
     private static partial void LogVecWarmupFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Startup orphan sweep failed (non-fatal); orphans will accumulate until the next successful run")]
+    private static partial void LogOrphanSweepFailed(ILogger logger, Exception exception);
 
     #endregion
 }

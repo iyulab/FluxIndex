@@ -517,8 +517,18 @@ public partial class SQLiteVecDbContext : DbContext
     }
 
     /// <summary>
-    /// vec0 테이블에서 벡터 삭제
+    /// Delete a chunk's embedding from every known fingerprint vec0 table.
     /// </summary>
+    /// <remarks>
+    /// Historically this method only deleted from the current fingerprint's table
+    /// (<see cref="SQLiteVecOptions.GetVecTableName"/>), which silently leaked rows
+    /// in vec0 tables belonging to superseded fingerprints (issue:
+    /// upstream-fluxindex-legacy-fingerprint-vec0-orphan). It now iterates over all
+    /// <c>chunk_embeddings_&lt;fingerprint&gt;</c> tables discovered via
+    /// <see cref="EnumerateVecTableNamesAsync"/> within a single transaction.
+    /// chunk_id is unique across the FluxIndex schema so at most one table contains
+    /// the row; non-matching tables produce a 0-row DELETE which is safe.
+    /// </remarks>
     public async Task DeleteVectorFromVecTableAsync(string chunkId, CancellationToken cancellationToken = default)
     {
         if (!_options.UseSQLiteVec)
@@ -526,17 +536,263 @@ public partial class SQLiteVecDbContext : DbContext
 
         try
         {
-            var deleteSql = $"DELETE FROM {_options.GetVecTableName()} WHERE chunk_id = {{0}}";
-            await Database.ExecuteSqlRawAsync(
-                deleteSql,
-                new object[] { chunkId },
-                cancellationToken);
+            var tables = await EnumerateVecTableNamesAsync(cancellationToken);
+            if (tables.Count == 0)
+                return;
+
+            // No inner transaction: SQLiteVecVectorStore.DeleteAsync / DeleteByDocumentIdAsync
+            // call this method from inside an already-open transaction. SQLite does not allow
+            // nested transactions, so starting one here would throw "connection is already
+            // in a transaction". The outer caller provides atomicity; direct callers accept
+            // partial-success semantics (matching the pre-0.13.7 behavior of this method).
+            foreach (var tableName in tables)
+            {
+                // tableName already passed IsValidFingerprintVecTableName inside the
+                // enumerator; safe to interpolate.
+                var deleteSql = $"DELETE FROM {tableName} WHERE chunk_id = {{0}}";
+                var affected = await Database.ExecuteSqlRawAsync(
+                    deleteSql,
+                    new object[] { chunkId },
+                    cancellationToken);
+
+                if (affected > 0)
+                    LogVecChunkDeleted(_logger, tableName, chunkId, affected);
+            }
         }
         catch (Exception ex)
         {
             LogVecDeleteError(_logger, ex, chunkId);
             // 벡터 삭제 실패는 치명적이지 않으므로 로그만 남김
         }
+    }
+
+    /// <summary>
+    /// Enumerate all vec0 virtual tables in the current database whose name follows the
+    /// FluxIndex fingerprint convention ("chunk_embeddings_&lt;fingerprint&gt;").
+    /// Used by cross-fingerprint cleanup paths (DELETE across legacy fingerprints,
+    /// startup orphan sweep). Result is fresh per call — sqlite_master scan is cheap
+    /// (in-memory schema, microseconds).
+    /// </summary>
+    /// <remarks>
+    /// The filter mirrors <c>SQLiteVecVectorStore.ListCollectionsAsync</c>: <c>type='table' AND sql LIKE '%vec0%'</c>.
+    /// Shadow tables (<c>*_rowids</c>, <c>*_chunks</c>) are excluded because their CREATE SQL
+    /// does not reference vec0. The additional name-prefix filter guards against unrelated
+    /// vec0 tables a host might have created outside the FluxIndex naming convention.
+    /// </remarks>
+    internal async Task<IReadOnlyList<string>> EnumerateVecTableNamesAsync(CancellationToken cancellationToken = default)
+    {
+        if (!_options.UseSQLiteVec)
+            return Array.Empty<string>();
+
+        var connection = (Microsoft.Data.Sqlite.SqliteConnection)Database.GetDbConnection();
+        if (connection.State != System.Data.ConnectionState.Open)
+            await connection.OpenAsync(cancellationToken);
+
+        await _extensionLoader.LoadExtensionAsync(connection, cancellationToken);
+
+        var results = new List<string>();
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText =
+            "SELECT name FROM sqlite_master " +
+            "WHERE type = 'table' " +
+            "AND sql LIKE '%vec0%' " +
+            "AND name LIKE 'chunk_embeddings_%'";
+
+        using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var name = reader.GetString(0);
+            if (IsValidFingerprintVecTableName(name))
+                results.Add(name);
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// Validates that a table name matches the chunk_embeddings_&lt;identifier&gt; convention with
+    /// a non-empty alphanumeric/underscore identifier suffix. Defends DELETE statements against
+    /// any sqlite_master row whose name passed the LIKE filter but contains unexpected characters.
+    /// </summary>
+    private static bool IsValidFingerprintVecTableName(string name)
+    {
+        const string prefix = "chunk_embeddings_";
+        if (!name.StartsWith(prefix, StringComparison.Ordinal) || name.Length <= prefix.Length)
+            return false;
+
+        for (int i = prefix.Length; i < name.Length; i++)
+        {
+            var c = name[i];
+            if (!char.IsLetterOrDigit(c) && c != '_')
+                return false;
+        }
+        return true;
+    }
+
+    private const string OrphanSweepMigrationId = "orphan-sweep-v1";
+
+    /// <summary>
+    /// Idempotent one-time cleanup that removes orphan rows
+    /// (chunk_id present in a fingerprint vec0 table but absent from vector_chunks)
+    /// from every fingerprint vec0 table found in the database. Returns the total
+    /// number of orphan rows removed across all tables, or -1 if the sweep was
+    /// skipped (already executed previously or no fingerprint tables present).
+    /// </summary>
+    /// <remarks>
+    /// Cleans up orphans accumulated by the pre-0.13.7 single-table delete behavior
+    /// (issue: upstream-fluxindex-legacy-fingerprint-vec0-orphan). After a successful
+    /// run, a marker is written to <c>__fluxindex_migrations</c> so subsequent
+    /// startups skip the sweep. If a single table fails, the marker is NOT written —
+    /// the next startup retries; tables already cleaned will report 0 orphans on retry.
+    /// </remarks>
+    internal async Task<int> SweepOrphanVectorsAsync(CancellationToken cancellationToken = default)
+    {
+        if (!_options.UseSQLiteVec)
+            return -1;
+
+        var connection = (Microsoft.Data.Sqlite.SqliteConnection)Database.GetDbConnection();
+        if (connection.State != System.Data.ConnectionState.Open)
+            await connection.OpenAsync(cancellationToken);
+
+        await EnsureMigrationMarkerTableAsync(connection, cancellationToken);
+        if (await MigrationMarkerExistsAsync(connection, OrphanSweepMigrationId, cancellationToken))
+            return -1;
+
+        var tables = await EnumerateVecTableNamesAsync(cancellationToken);
+        if (tables.Count == 0)
+        {
+            // No vec0 tables — record the marker so we don't keep re-checking on every startup.
+            await WriteMigrationMarkerAsync(connection, OrphanSweepMigrationId, cancellationToken);
+            return 0;
+        }
+
+        // Collect the live chunk_id set once (vector_chunks rows are the source of truth).
+        var liveChunkIds = await LoadLiveChunkIdsAsync(connection, cancellationToken);
+
+        int totalRemoved = 0;
+        bool anyTableFailed = false;
+        foreach (var tableName in tables)
+        {
+            try
+            {
+                var removed = await SweepOrphanRowsFromTableAsync(connection, tableName, liveChunkIds, cancellationToken);
+                totalRemoved += removed;
+                if (removed > 0)
+                    LogOrphanSweepTableSummary(_logger, tableName, removed);
+                else
+                    LogOrphanSweepTableEmpty(_logger, tableName);
+            }
+            catch (Exception ex)
+            {
+                anyTableFailed = true;
+                LogOrphanSweepTableFailed(_logger, ex, tableName);
+            }
+        }
+
+        if (!anyTableFailed)
+            await WriteMigrationMarkerAsync(connection, OrphanSweepMigrationId, cancellationToken);
+
+        LogOrphanSweepCompleted(_logger, totalRemoved, tables.Count);
+        return totalRemoved;
+    }
+
+    private static async Task EnsureMigrationMarkerTableAsync(
+        Microsoft.Data.Sqlite.SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText =
+            "CREATE TABLE IF NOT EXISTS __fluxindex_migrations (" +
+            "id TEXT PRIMARY KEY, " +
+            "applied_at TEXT NOT NULL)";
+        await cmd.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task<bool> MigrationMarkerExistsAsync(
+        Microsoft.Data.Sqlite.SqliteConnection connection,
+        string migrationId,
+        CancellationToken cancellationToken)
+    {
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM __fluxindex_migrations WHERE id = $id";
+        cmd.Parameters.AddWithValue("$id", migrationId);
+        var result = await cmd.ExecuteScalarAsync(cancellationToken);
+        return Convert.ToInt32(result, CultureInfo.InvariantCulture) > 0;
+    }
+
+    private static async Task WriteMigrationMarkerAsync(
+        Microsoft.Data.Sqlite.SqliteConnection connection,
+        string migrationId,
+        CancellationToken cancellationToken)
+    {
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText =
+            "INSERT OR IGNORE INTO __fluxindex_migrations (id, applied_at) " +
+            "VALUES ($id, $at)";
+        cmd.Parameters.AddWithValue("$id", migrationId);
+        cmd.Parameters.AddWithValue("$at", DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture));
+        await cmd.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task<HashSet<string>> LoadLiveChunkIdsAsync(
+        Microsoft.Data.Sqlite.SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+
+        // vector_chunks may not exist on a brand-new database; treat as empty set.
+        using var checkCmd = connection.CreateCommand();
+        checkCmd.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='vector_chunks'";
+        var exists = Convert.ToInt32(await checkCmd.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture) > 0;
+        if (!exists)
+            return ids;
+
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT Id FROM vector_chunks";
+        using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            ids.Add(reader.GetString(0));
+
+        return ids;
+    }
+
+    private static async Task<int> SweepOrphanRowsFromTableAsync(
+        Microsoft.Data.Sqlite.SqliteConnection connection,
+        string tableName,
+        HashSet<string> liveChunkIds,
+        CancellationToken cancellationToken)
+    {
+        // tableName was validated by IsValidFingerprintVecTableName in the enumerator.
+        var orphanIds = new List<string>();
+        using (var selectCmd = connection.CreateCommand())
+        {
+            selectCmd.CommandText = $"SELECT chunk_id FROM {tableName}";
+            using var reader = await selectCmd.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var id = reader.GetString(0);
+                if (!liveChunkIds.Contains(id))
+                    orphanIds.Add(id);
+            }
+        }
+
+        if (orphanIds.Count == 0)
+            return 0;
+
+        int removed = 0;
+        using var deleteCmd = connection.CreateCommand();
+        deleteCmd.CommandText = $"DELETE FROM {tableName} WHERE chunk_id = $id";
+        var idParam = deleteCmd.CreateParameter();
+        idParam.ParameterName = "$id";
+        deleteCmd.Parameters.Add(idParam);
+        await deleteCmd.PrepareAsync(cancellationToken);
+
+        foreach (var orphanId in orphanIds)
+        {
+            idParam.Value = orphanId;
+            removed += await deleteCmd.ExecuteNonQueryAsync(cancellationToken);
+        }
+        return removed;
     }
 
     /// <summary>
@@ -622,6 +878,21 @@ public partial class SQLiteVecDbContext : DbContext
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Failed to delete vector from vec0 table: {ChunkId}")]
     private static partial void LogVecDeleteError(ILogger logger, Exception exception, string chunkId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Deleted vector from {VecTable} for chunk {ChunkId} ({Affected} row(s))")]
+    private static partial void LogVecChunkDeleted(ILogger logger, string vecTable, string chunkId, int affected);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Orphan sweep: removed {Removed} orphan vec0 row(s) from {VecTable}")]
+    private static partial void LogOrphanSweepTableSummary(ILogger logger, string vecTable, int removed);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Orphan sweep: {VecTable} clean (no orphans)")]
+    private static partial void LogOrphanSweepTableEmpty(ILogger logger, string vecTable);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Orphan sweep failed on {VecTable}; marker will not be written and the sweep will retry on next startup")]
+    private static partial void LogOrphanSweepTableFailed(ILogger logger, Exception exception, string vecTable);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Orphan sweep completed: {TotalRemoved} total orphan row(s) removed across {TableCount} vec0 table(s)")]
+    private static partial void LogOrphanSweepCompleted(ILogger logger, int totalRemoved, int tableCount);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Dropped legacy chunk_embeddings table (dimension-based table {NewTable} already exists)")]
     private static partial void LogLegacyVecTableDropped(ILogger logger, string newTable);

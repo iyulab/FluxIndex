@@ -58,6 +58,20 @@ public class SQLiteVecOptions : SQLiteOptions
     public float DefaultMinScore { get; set; }
 
     /// <summary>
+    /// At host startup, run a one-time sweep that removes orphan vec0 rows
+    /// (rows whose chunk_id has no matching row in vector_chunks) across every
+    /// fingerprint vec0 table. Default: true.
+    /// </summary>
+    /// <remarks>
+    /// The sweep is idempotent — a marker row in <c>__fluxindex_migrations</c> guards
+    /// against re-execution. Set this to <c>false</c> to skip the sweep entirely (e.g.
+    /// to defer cleanup, or for tests that need to observe orphans).
+    /// Introduced in 0.13.7 to clean up orphans accumulated by past fingerprint
+    /// migrations under the pre-0.13.7 single-table delete behavior.
+    /// </remarks>
+    public bool EnableStartupOrphanSweep { get; set; } = true;
+
+    /// <summary>
     /// 배치 삽입 시 최대 배치 크기.
     /// 1K-10K 범위 권장. 너무 크면 메모리 사용 증가, 너무 작으면 성능 저하.
     /// </summary>
