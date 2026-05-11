@@ -208,6 +208,50 @@ public class VectorStoreManagerTests : IDisposable
         collections[0].Dimension.Should().Be(1536);
     }
 
+    /// <summary>
+    /// Regression: DeleteVectorFromVecTableAsync used the
+    /// ExecuteSqlRawAsync(string, params object[]) overload, so the trailing
+    /// CancellationToken was passed as a SQL parameter and EF threw
+    /// InvalidOperationException ("no store type mapping for CancellationToken").
+    /// The catch block swallowed the error, so every unmemorize leaked a vec0 row.
+    /// </summary>
+    [SkippableFact]
+    public async Task DeleteVectorFromVecTableAsync_WithNonDefaultCancellationToken_DeletesRow()
+    {
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
+        var identity = new EmbeddingIdentity { Provider = "Test", Model = "regression-ct", Dimension = 4 };
+        _options.EmbeddingFingerprint = identity.Fingerprint;
+        _options.VectorDimension = identity.Dimension;
+        await CreateCollectionForIdentity(identity);
+
+        const string chunkId = "regression-delete-ct";
+        var embedding = new[] { 0.1f, 0.2f, 0.3f, 0.4f };
+        await _context.StoreVectorInVecTableAsync(chunkId, embedding, CancellationToken.None);
+
+        var tableName = $"chunk_embeddings_{identity.Fingerprint}";
+        (await CountVecRowsAsync(tableName, chunkId)).Should().Be(1,
+            "the seeded row must exist before delete");
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await _context.DeleteVectorFromVecTableAsync(chunkId, cts.Token);
+
+        (await CountVecRowsAsync(tableName, chunkId)).Should().Be(0,
+            "the vec0 row must be deleted even when a non-default CancellationToken is passed");
+    }
+
+    private async Task<int> CountVecRowsAsync(string tableName, string chunkId)
+    {
+        if (_connection.State != System.Data.ConnectionState.Open)
+            await _connection.OpenAsync();
+
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = $"SELECT count(*) FROM {tableName} WHERE chunk_id = $cid";
+        cmd.Parameters.AddWithValue("$cid", chunkId);
+        var result = await cmd.ExecuteScalarAsync();
+        return Convert.ToInt32(result, System.Globalization.CultureInfo.InvariantCulture);
+    }
+
     [Fact]
     public async Task DeleteCollectionAsync_InvalidName_ThrowsArgumentException()
     {

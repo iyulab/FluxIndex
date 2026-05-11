@@ -529,7 +529,7 @@ public partial class SQLiteVecDbContext : DbContext
             var deleteSql = $"DELETE FROM {_options.GetVecTableName()} WHERE chunk_id = {{0}}";
             await Database.ExecuteSqlRawAsync(
                 deleteSql,
-                chunkId,
+                new object[] { chunkId },
                 cancellationToken);
         }
         catch (Exception ex)
