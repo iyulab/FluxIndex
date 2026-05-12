@@ -19,6 +19,9 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
     private static volatile bool _versionLogged;
     private static readonly object _pathResolveLock = new();
 
+    // 프로세스 내 첫 CREATE 호출만 Information으로 로깅; 이후 호출은 Debug로 내림
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _createdTables = new();
+
     public SQLiteVecExtensionLoader(
         ILogger<SQLiteVecExtensionLoader> logger,
         IOptions<SQLiteVecOptions> options)
@@ -194,7 +197,12 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
 
             await command.ExecuteNonQueryAsync(cancellationToken);
 
-            LogVecTableCreated(_logger, tableName, vectorDimension);
+            var key = $"{tableName}:{vectorDimension}";
+            if (_createdTables.TryAdd(key, 0))
+                LogVecTableCreated(_logger, tableName, vectorDimension);
+            else
+                LogVecTableEnsured(_logger, tableName);
+
             return true;
         }
         catch (Exception ex)
@@ -325,6 +333,9 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
 
     [LoggerMessage(Level = LogLevel.Information, Message = "vec0 virtual table created: {TableName}, dimension: {Dimension}")]
     private static partial void LogVecTableCreated(ILogger logger, string tableName, int dimension);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "vec0 virtual table ensured (already exists): {TableName}")]
+    private static partial void LogVecTableEnsured(ILogger logger, string tableName);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "vec0 table creation failed: {TableName}")]
     private static partial void LogVecTableCreateFailed(ILogger logger, Exception exception, string tableName);

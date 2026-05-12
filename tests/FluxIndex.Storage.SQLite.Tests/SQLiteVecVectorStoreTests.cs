@@ -320,12 +320,14 @@ public class SQLiteVecVectorStoreTests : IDisposable
     }
 
     [SkippableTheory]
+    [Trait("Category", "Performance")]
     [InlineData(10, 5)]
     [InlineData(100, 20)]
     [InlineData(1000, 50)]
     public async Task Performance_BatchOperations_ShouldCompleteInReasonableTime(int chunkCount, int topK)
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
+        CITestHelper.SkipIfPerformanceTestsDisabled();
 
         // Arrange
         var vectorStore = _serviceProvider.GetRequiredService<IVectorStore>();

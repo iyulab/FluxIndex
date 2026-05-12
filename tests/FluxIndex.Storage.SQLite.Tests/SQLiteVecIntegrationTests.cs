@@ -183,10 +183,12 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
     }
 
     [SkippableFact]
+    [Trait("Category", "Performance")]
     public async Task PerformanceTest_LargeScaleOperations_ShouldMeetPerformanceTargets()
     {
         // Skip if sqlite-vec is not available (CI environment)
         CITestHelper.SkipIfSqliteVecNotAvailable();
+        CITestHelper.SkipIfPerformanceTestsDisabled();
 
         // Arrange
         var vectorStore = _serviceProvider.GetRequiredService<IVectorStore>();

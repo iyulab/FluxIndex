@@ -317,7 +317,7 @@ public sealed partial class VaultBackgroundService : BackgroundService
 
     #region LoggerMessage Definitions
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Vault background service starting...")]
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Vault background service starting...")]
     private static partial void LogServiceStarting(ILogger logger);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Recovered {Count} stuck jobs from previous run")]

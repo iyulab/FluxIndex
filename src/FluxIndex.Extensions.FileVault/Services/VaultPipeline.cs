@@ -587,7 +587,10 @@ public sealed partial class VaultPipeline : IVaultPipeline
             processedCount++;
         }
 
-        LogIndexedChunksResumable(_logger, processedCount, skippedCount, documentId);
+        if (skippedCount > 0)
+            LogIndexedChunksResumable(_logger, processedCount, skippedCount, documentId);
+        else
+            LogIndexedChunks(_logger, processedCount, documentId);
     }
 
     private async Task<string> ExtractFallbackAsync(string sourcePath, CancellationToken ct)
