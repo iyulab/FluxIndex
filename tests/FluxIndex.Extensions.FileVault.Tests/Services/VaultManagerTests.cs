@@ -378,6 +378,62 @@ public class VaultManagerTests : IDisposable
         return VaultJob.Create(filepathHash, filePath, jobType);
     }
 
+    [Fact]
+    public async Task RemoveAsync_BatchWithMultipleExistingEntries_QueuesEach()
+    {
+        // Arrange
+        var path1 = CreateTestFile("batch1.txt", "content1");
+        var path2 = CreateTestFile("batch2.txt", "content2");
+        CreateEntryWithMetadata(path1);
+        CreateEntryWithMetadata(path2);
+
+        _queueServiceMock.EnqueueRemoveAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo => CreateTestJob(
+                callInfo.ArgAt<string>(0), callInfo.ArgAt<string>(1), VaultJobType.Remove));
+
+        // Act
+        await _vault.RemoveAsync(new[] { path1, path2 });
+
+        // Assert
+        await _queueServiceMock.Received(1).EnqueueRemoveAsync(
+            Arg.Any<string>(), Path.GetFullPath(path1), Arg.Any<CancellationToken>());
+        await _queueServiceMock.Received(1).EnqueueRemoveAsync(
+            Arg.Any<string>(), Path.GetFullPath(path2), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RemoveAsync_BatchWithMissingEntry_SkipsMissingAndRemovesFound()
+    {
+        // Arrange
+        var existingPath = CreateTestFile("exists.txt", "content");
+        var missingPath = Path.Combine(_testDir, "does-not-exist.txt");
+        CreateEntryWithMetadata(existingPath);
+
+        _queueServiceMock.EnqueueRemoveAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo => CreateTestJob(
+                callInfo.ArgAt<string>(0), callInfo.ArgAt<string>(1), VaultJobType.Remove));
+
+        // Act
+        await _vault.RemoveAsync(new[] { existingPath, missingPath });
+
+        // Assert — only the existing path is queued
+        await _queueServiceMock.Received(1).EnqueueRemoveAsync(
+            Arg.Any<string>(), Path.GetFullPath(existingPath), Arg.Any<CancellationToken>());
+        await _queueServiceMock.DidNotReceive().EnqueueRemoveAsync(
+            Arg.Any<string>(), Path.GetFullPath(missingPath), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RemoveAsync_BatchWithEmptyList_DoesNothing()
+    {
+        // Act
+        await _vault.RemoveAsync(Array.Empty<string>());
+
+        // Assert
+        await _queueServiceMock.DidNotReceive().EnqueueRemoveAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
     #region SyncStatus Query Tests
 
     [Fact]

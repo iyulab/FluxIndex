@@ -68,6 +68,12 @@ public interface IVault
     /// </summary>
     Task RemoveAsync(string filePath, CancellationToken ct = default);
 
+    /// <summary>
+    /// Removes multiple vault entries and their associated data.
+    /// Processes each path sequentially; skips paths with no matching entry.
+    /// </summary>
+    Task RemoveAsync(IEnumerable<string> filePaths, CancellationToken ct = default);
+
     // === Status & History ===
 
     /// <summary>

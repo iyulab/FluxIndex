@@ -445,6 +445,15 @@ public sealed partial class VaultManager : IVault
         }
     }
 
+    public async Task RemoveAsync(IEnumerable<string> filePaths, CancellationToken ct = default)
+    {
+        foreach (var filePath in filePaths)
+        {
+            ct.ThrowIfCancellationRequested();
+            await RemoveAsync(filePath, ct);
+        }
+    }
+
     private async Task<VaultEntry> GetOrCreateEntryAsync(string fullPath, CancellationToken ct)
     {
         var filepathHash = FilepathHasher.ComputeHash(fullPath);
