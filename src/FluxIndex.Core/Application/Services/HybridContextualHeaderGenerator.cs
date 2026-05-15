@@ -1,6 +1,6 @@
 using Flux.Abstractions;
 using FluxIndex.Core.Application.Interfaces;
-using ITextCompletionService = FluxIndex.Core.Application.Interfaces.ITextCompletionService;
+using ITextCompletionService = Flux.Abstractions.ITextCompletionService;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 

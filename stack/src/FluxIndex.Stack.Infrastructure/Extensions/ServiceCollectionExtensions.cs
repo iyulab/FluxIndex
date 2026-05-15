@@ -1,6 +1,7 @@
-﻿using FileFlux;
+using FileFlux;
 using FluxIndex.Cache.Redis.Extensions;
 using FluxIndex.Cache.Redis.Configuration;
+using Flux.Abstractions;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services;
 using FluxIndex.Core.Application.Services.Reranking;

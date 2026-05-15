@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Flux.Abstractions;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Stack.Application.Interfaces.Repositories;
 using FluxIndex.Stack.Application.Interfaces.Services;

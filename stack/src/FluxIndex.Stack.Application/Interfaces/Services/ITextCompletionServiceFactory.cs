@@ -1,4 +1,4 @@
-using FluxIndex.Core.Application.Interfaces;
+using Flux.Abstractions;
 
 namespace FluxIndex.Stack.Application.Interfaces.Services;
 

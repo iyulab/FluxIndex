@@ -5,7 +5,7 @@ using FileFlux.Core.Infrastructure.Readers;
 using FileFlux.Infrastructure.Conversion;
 using Microsoft.Extensions.Logging;
 using IFluxIndexEmbeddingService = FluxIndex.Core.Application.Interfaces.IEmbeddingService;
-using IFluxIndexTextCompletionService = FluxIndex.Core.Application.Interfaces.ITextCompletionService;
+using IFluxIndexTextCompletionService = Flux.Abstractions.ITextCompletionService;
 using IFluxIndexContextualEnrichmentService = FluxIndex.Core.Application.Interfaces.IContextualEnrichmentService;
 using IFluxIndexQAGenerationService = FluxIndex.Core.Application.Interfaces.IQAGenerationService;
 using System.Globalization;

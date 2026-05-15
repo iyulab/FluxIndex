@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Flux.Abstractions;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Providers.LMSupply.Extensions;
 using Microsoft.Extensions.DependencyInjection;

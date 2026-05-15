@@ -1,14 +1,13 @@
 using FileFlux;
 using FileFlux.Core;
 using FileFlux.Domain;
-using FluxIndex.Core.Application.Interfaces;
+using Flux.Abstractions;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
+using TokenMeter.Abstractions;
 using IFileFluxDocumentAnalysisService = FileFlux.IDocumentAnalysisService;
-using IFluxIndexTextCompletionService = FluxIndex.Core.Application.Interfaces.ITextCompletionService;
-using FileFluxQualityAssessment = FileFlux.QualityAssessment;
 
-#pragma warning disable CS0618 // Obsolete CountTokens - transitional, will migrate to ITokenCounter
+using FileFluxQualityAssessment = FileFlux.QualityAssessment;
 
 namespace FluxIndex.SDK.Extensions.FileFlux;
 
@@ -18,16 +17,22 @@ namespace FluxIndex.SDK.Extensions.FileFlux;
 /// </summary>
 public partial class FluxIndexTextCompletionAdapter : IFileFluxDocumentAnalysisService
 {
-    private readonly IFluxIndexTextCompletionService _fluxIndexService;
+    private readonly ITextCompletionService _fluxIndexService;
+    private readonly ITokenCounter? _tokenCounter;
     private readonly ILogger<FluxIndexTextCompletionAdapter> _logger;
 
     public FluxIndexTextCompletionAdapter(
-        IFluxIndexTextCompletionService fluxIndexService,
-        ILogger<FluxIndexTextCompletionAdapter> logger)
+        ITextCompletionService fluxIndexService,
+        ILogger<FluxIndexTextCompletionAdapter> logger,
+        ITokenCounter? tokenCounter = null)
     {
         _fluxIndexService = fluxIndexService ?? throw new ArgumentNullException(nameof(fluxIndexService));
+        _tokenCounter = tokenCounter;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
+
+    private int CountTokens(string text) =>
+        _tokenCounter?.Count(text) ?? Math.Max(1, text.Length / 4);
 
     /// <summary>
     /// Provider information for FileFlux integration
@@ -121,7 +126,7 @@ Respond with a JSON object in this exact format:
             // Parse JSON response
             var result = ParseStructureAnalysis(jsonResponse, documentType);
             result.RawResponse = jsonResponse;
-            result.TokensUsed = _fluxIndexService.CountTokens(prompt) + _fluxIndexService.CountTokens(jsonResponse);
+            result.TokensUsed = CountTokens(prompt) + CountTokens(jsonResponse);
 
             return result;
         }
@@ -170,7 +175,7 @@ Keep the summary under {maxLength} characters.";
             LogSummaryResponse(_logger, jsonResponse);
 
             var result = ParseContentSummary(jsonResponse, prompt.Length);
-            result.TokensUsed = _fluxIndexService.CountTokens(prompt) + _fluxIndexService.CountTokens(jsonResponse);
+            result.TokensUsed = CountTokens(prompt) + CountTokens(jsonResponse);
 
             return result;
         }
@@ -226,7 +231,7 @@ Respond with a JSON object in this exact format:
             LogMetadataExtractionResponse(_logger, jsonResponse);
 
             var result = ParseMetadataExtraction(jsonResponse);
-            result.TokensUsed = _fluxIndexService.CountTokens(prompt) + _fluxIndexService.CountTokens(jsonResponse);
+            result.TokensUsed = CountTokens(prompt) + CountTokens(jsonResponse);
 
             return result;
         }
@@ -284,7 +289,7 @@ Respond with a JSON object in this exact format:
             LogQualityAssessmentResponse(_logger, jsonResponse);
 
             var result = ParseQualityAssessment(jsonResponse);
-            result.TokensUsed = _fluxIndexService.CountTokens(prompt) + _fluxIndexService.CountTokens(jsonResponse);
+            result.TokensUsed = CountTokens(prompt) + CountTokens(jsonResponse);
 
             return result;
         }

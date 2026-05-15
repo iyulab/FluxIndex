@@ -160,33 +160,6 @@ public class LMSupplyTextCompletionServiceTests
 
     #endregion
 
-    #region CountTokens
-
-    [Fact]
-    public void CountTokens_EmptyText_ReturnsZero()
-    {
-        _service.CountTokens("").Should().Be(0);
-    }
-
-    [Fact]
-    public void CountTokens_EnglishText_ReturnsApproximation()
-    {
-        var count = _service.CountTokens("hello world");
-
-        count.Should().BeGreaterThan(0);
-    }
-
-    [Fact]
-    public void CountTokens_CjkText_CountsPerCharacter()
-    {
-        // Korean: 5 Hangul chars -> 5 CJK + 1 special = 6
-        var count = _service.CountTokens("안녕하세요");
-
-        count.Should().Be(6);
-    }
-
-    #endregion
-
     #region DisposeAsync
 
     [Fact]

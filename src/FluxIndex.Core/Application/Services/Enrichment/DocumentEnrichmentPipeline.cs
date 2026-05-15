@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Flux.Abstractions;
 using FluxIndex.Core.Application.Interfaces;
 using Microsoft.Extensions.Logging;
 

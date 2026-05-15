@@ -9,7 +9,7 @@ namespace FluxIndex.Providers.LMSupply.Services;
 
 /// <summary>
 /// Adapts LMSupply's <see cref="ITextGenerator"/> to FluxIndex's
-/// <see cref="FluxIndex.Core.Application.Interfaces.ITextCompletionService"/>
+/// <see cref="Flux.Abstractions.ITextCompletionService"/>
 /// using the <see cref="TextCompletionServiceBase"/> template.
 /// </summary>
 /// <remarks>

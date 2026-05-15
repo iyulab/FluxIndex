@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
 using FluxImprover.Services;
-using FluxIndexCompletion = FluxIndex.Core.Application.Interfaces.ITextCompletionService;
+using FluxIndexCompletion = Flux.Abstractions.ITextCompletionService;
 
 namespace FluxIndex.SDK.Extensions.FluxImprover.Adapters;
 

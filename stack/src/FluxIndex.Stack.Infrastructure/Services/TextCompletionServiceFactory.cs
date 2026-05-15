@@ -1,4 +1,5 @@
 using System.Text;
+using Flux.Abstractions;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services.Base;
 using FluxIndex.Stack.Application.Interfaces.Services;

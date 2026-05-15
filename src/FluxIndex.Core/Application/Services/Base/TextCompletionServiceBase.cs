@@ -1,5 +1,4 @@
 using Flux.Abstractions;
-using FluxIndex.Core.Application.Interfaces;
 
 namespace FluxIndex.Core.Application.Services.Base;
 
@@ -37,7 +36,7 @@ namespace FluxIndex.Core.Application.Services.Base;
 ///     }
 /// }
 /// </example>
-public abstract class TextCompletionServiceBase : Interfaces.ITextCompletionService
+public abstract class TextCompletionServiceBase : ITextCompletionService
 {
     private static readonly TextCompletionOptions DefaultOptions = new();
 
@@ -91,24 +90,6 @@ public abstract class TextCompletionServiceBase : Interfaces.ITextCompletionServ
         return ExtractJson(result);
     }
 
-    /// <inheritdoc />
-    /// <remarks>
-    /// Default: rough approximation (length / 4 for English, 1:1 for CJK).
-    /// Override for accurate tokenization if your provider has a tokenizer.
-    /// </remarks>
-#pragma warning disable CS0618 // Obsolete member
-    public virtual int CountTokens(string text)
-#pragma warning restore CS0618
-    {
-        if (string.IsNullOrEmpty(text))
-            return 0;
-
-        var cjkCount = text.Count(IsCjkCharacter);
-        var otherCount = text.Length - cjkCount;
-
-        return cjkCount + (otherCount / 4) + 1;
-    }
-
     /// <summary>
     /// Extracts JSON object or array from a response string.
     /// </summary>
@@ -134,10 +115,4 @@ public abstract class TextCompletionServiceBase : Interfaces.ITextCompletionServ
         return response[start..(end + 1)];
     }
 
-    private static bool IsCjkCharacter(char c) =>
-        (c >= '\u4E00' && c <= '\u9FFF') ||
-        (c >= '\u3400' && c <= '\u4DBF') ||
-        (c >= '\uAC00' && c <= '\uD7AF') ||
-        (c >= '\u3040' && c <= '\u309F') ||
-        (c >= '\u30A0' && c <= '\u30FF');
 }

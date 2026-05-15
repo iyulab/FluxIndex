@@ -8,7 +8,7 @@ using FluxImprover.Evaluation;
 using FluxImprover.QAGeneration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using FluxIndexCompletion = FluxIndex.Core.Application.Interfaces.ITextCompletionService;
+using FluxIndexCompletion = Flux.Abstractions.ITextCompletionService;
 using FluxImproverCompletion = FluxImprover.Services.ITextGenerationService;
 
 namespace FluxIndex.SDK.Extensions.FluxImprover;

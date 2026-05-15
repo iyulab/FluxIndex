@@ -10,7 +10,7 @@ using FluxIndex.Stack.Domain.Entities;
 using FluxIndex.Stack.Shared.Common;
 using FluxIndex.Stack.Shared.DTOs.Documents;
 using Microsoft.Extensions.Logging;
-using ITextCompletionService = FluxIndex.Core.Application.Interfaces.ITextCompletionService;
+using ITextCompletionService = Flux.Abstractions.ITextCompletionService;
 
 namespace FluxIndex.Stack.Application.Services;
 

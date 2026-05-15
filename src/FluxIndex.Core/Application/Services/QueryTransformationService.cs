@@ -1,9 +1,11 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Flux.Abstractions;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using TokenMeter.Abstractions;
 
 namespace FluxIndex.Core.Application.Services;
 
@@ -14,6 +16,7 @@ namespace FluxIndex.Core.Application.Services;
 public partial class QueryTransformationService : IQueryTransformationService
 {
     private readonly ITextCompletionService? _completionService;
+    private readonly ITokenCounter? _tokenCounter;
     private readonly QueryTransformationOptions _options;
     private readonly ILogger<QueryTransformationService> _logger;
 
@@ -37,9 +40,11 @@ public partial class QueryTransformationService : IQueryTransformationService
     public QueryTransformationService(
         ITextCompletionService? completionService,
         IOptions<QueryTransformationOptions> options,
-        ILogger<QueryTransformationService> logger)
+        ILogger<QueryTransformationService> logger,
+        ITokenCounter? tokenCounter = null)
     {
         _completionService = completionService;
+        _tokenCounter = tokenCounter;
         _options = options.Value;
         _logger = logger;
     }
@@ -123,9 +128,7 @@ public partial class QueryTransformationService : IQueryTransformationService
             HypotheticalDocuments = new[] { hypotheticalDoc },
             QualityScores = new[] { qualityScore },
             QualityScore = qualityScore,
-#pragma warning disable CS0618 // Obsolete CountTokens - transitional
-            TokensUsed = _completionService.CountTokens(hypotheticalDoc),
-#pragma warning restore CS0618
+            TokensUsed = _tokenCounter?.Count(hypotheticalDoc) ?? ApproximateTokens(hypotheticalDoc),
             GenerationTimeMs = elapsedMs
         };
     }
@@ -192,9 +195,7 @@ public partial class QueryTransformationService : IQueryTransformationService
 
         var elapsedMs = (long)(DateTime.UtcNow - startTime).TotalMilliseconds;
         var avgQualityScore = qualityScores.Count > 0 ? qualityScores.Average() : 0f;
-#pragma warning disable CS0618 // Obsolete CountTokens - transitional
-        var totalTokens = documents.Sum(doc => _completionService!.CountTokens(doc));
-#pragma warning restore CS0618
+        var totalTokens = documents.Sum(doc => _tokenCounter?.Count(doc) ?? ApproximateTokens(doc));
 
         if (_logger.IsEnabled(LogLevel.Debug))
             LogQueryTransformation12(_logger, documents.Count, avgQualityScore, elapsedMs);
@@ -695,6 +696,16 @@ public partial class QueryTransformationService : IQueryTransformationService
     }
 
     #endregion
+
+    private static int ApproximateTokens(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return 0;
+        var cjkCount = text.Count(c =>
+            (c >= '一' && c <= '鿿') || (c >= '㐀' && c <= '䶿') ||
+            (c >= '가' && c <= '힯') || (c >= '぀' && c <= 'ゟ') ||
+            (c >= '゠' && c <= 'ヿ'));
+        return cjkCount + ((text.Length - cjkCount) / 4) + 1;
+    }
 
     #region Rule-Based Fallbacks
 

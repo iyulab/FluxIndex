@@ -6,6 +6,7 @@ using Microsoft.Extensions.Caching.Memory;
 using FluxIndex.SDK.Configuration;
 using FluxIndex.SDK.Interfaces;
 using FluxIndex.SDK.Services;
+using Flux.Abstractions;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Services;
 
