@@ -960,7 +960,8 @@ Console.WriteLine($"Storage Size: {status.TotalStorageSizeBytes / 1024 / 1024:F1
 | `GetAsync` | Get entry by file path |
 | `GetByHashAsync` | Get entry by hash |
 | `ListAsync` | List entries with optional filter |
-| `RemoveAsync` | Remove entry and vector data |
+| `RemoveAsync(string)` | Remove single entry and its vector data |
+| `RemoveAsync(IEnumerable<string>)` | Batch remove entries and their vector data |
 | `StatusAsync` | Get vault status summary |
 | `DiffAsync` | Get git diff for entry |
 | `LogAsync` | Get commit history |
@@ -1003,3 +1004,4 @@ Console.WriteLine($"Storage Size: {status.TotalStorageSizeBytes / 1024 / 1024:F1
 | 0.5.7 | Added RetryCount tracking, Vector Store integration docs, Multi-tenant usage examples |
 | 0.5.8 | Added Refined stage (4-stage pipeline), separated extracted.md/refined.md, QA/AppendText preservation on re-memorize |
 | 0.8.0 | Added `SearchAsync` with path-scoped filtering (folder, file, multiple paths) |
+| 0.13.9 | Added `IVault.RemoveAsync(IEnumerable<string>)` batch overload |
