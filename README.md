@@ -107,6 +107,29 @@ Full benchmarks: [BENCHMARK_RESULTS.md](./benchmarks/FluxIndex.Benchmarks/BENCHM
 | **FluxIndex.Cache.Redis** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Cache.Redis.svg)](https://www.nuget.org/packages/FluxIndex.Cache.Redis/) | Redis semantic cache |
 | **FluxIndex.Extensions.FileVault** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Extensions.FileVault.svg)](https://www.nuget.org/packages/FluxIndex.Extensions.FileVault/) | Git-like file tracking for RAG indexing with folder monitoring |
 
+### Which package do I need?
+
+| Scenario | Packages |
+|----------|---------|
+| Embeddings + vector search only (no native deps, no document parsing) | `FluxIndex.Core` + storage |
+| Full RAG pipeline (PDF, DOCX, HWP, web crawling) | `FluxIndex.SDK` + storage |
+| File system monitoring + auto-indexing | `FluxIndex.Extensions.FileVault` + storage |
+| Local AI embedding (ONNX, no API key required) | `FluxIndex.Providers.LMSupply` |
+
+**Minimal setup** — bring your own embedding service, no native binaries:
+
+```bash
+dotnet add package FluxIndex.Core
+dotnet add package FluxIndex.Storage.SQLite
+```
+
+**Full SDK** — includes document processing (PDF, DOCX, HWP, web crawling):
+
+```bash
+dotnet add package FluxIndex.SDK
+dotnet add package FluxIndex.Storage.SQLite
+```
+
 ## Documentation
 
 - [Guide](./docs/GUIDE.md) - Quick start and configuration
