@@ -4,7 +4,6 @@ using FluxIndex.Core.Application.Services;
 using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
-using TokenMeter.Abstractions;
 using Xunit;
 
 // Use types from Models namespace for token-aware search

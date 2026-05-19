@@ -2,7 +2,6 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Models;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
-using TokenMeter.Abstractions;
 
 // Use types from Models namespace for token-aware search
 using SearchStrategy = FluxIndex.Core.Application.Models.SearchStrategy;

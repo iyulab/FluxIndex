@@ -5,7 +5,6 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using TokenMeter.Abstractions;
 
 namespace FluxIndex.Core.Application.Services;
 

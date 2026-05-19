@@ -2,9 +2,9 @@ using FileFlux;
 using FileFlux.Core;
 using FileFlux.Domain;
 using Flux.Abstractions;
+using FluxIndex.Core.Application.Interfaces;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
-using TokenMeter.Abstractions;
 using IFileFluxDocumentAnalysisService = FileFlux.IDocumentAnalysisService;
 
 using FileFluxQualityAssessment = FileFlux.QualityAssessment;

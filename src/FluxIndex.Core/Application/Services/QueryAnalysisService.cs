@@ -2,7 +2,6 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Models;
 using Microsoft.Extensions.Logging;
 using System.Text.RegularExpressions;
-using TokenMeter.Abstractions;
 
 // Use types from Models namespace for token-aware search
 using QueryAnalysis = FluxIndex.Core.Application.Models.QueryAnalysis;
@@ -241,31 +240,3 @@ public partial class QueryAnalysisService : IQueryAnalysisService
     #endregion
 }
 
-/// <summary>
-/// 간단한 토큰 카운터 (근사치).
-/// Implements <see cref="TokenMeter.Abstractions.ITokenCounter"/> for FluxIndex usage.
-/// </summary>
-public class SimpleTokenCounter : ITokenCounter
-{
-    /// <inheritdoc />
-    public int Count(string text)
-    {
-        if (string.IsNullOrEmpty(text))
-            return 0;
-
-        // 영어: ~4글자 = 1토큰, 한글: ~2글자 = 1토큰 (근사치)
-        var koreanChars = text.Count(c => c >= 0xAC00 && c <= 0xD7A3);
-        var otherChars = text.Length - koreanChars;
-
-        return (koreanChars / 2) + (otherChars / 4) + 1;
-    }
-
-    /// <inheritdoc />
-    public int Count(IEnumerable<string> texts)
-    {
-        return texts.Sum(Count);
-    }
-
-    /// <inheritdoc />
-    public bool SupportsModel(string modelId) => false;
-}
