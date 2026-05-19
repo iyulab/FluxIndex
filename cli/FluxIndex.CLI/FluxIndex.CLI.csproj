@@ -13,6 +13,9 @@
     <ToolCommandName>fluxindex</ToolCommandName>
     <PackageOutputPath>./nupkg</PackageOutputPath>
 
+    <!-- NU5111: Playwright runtime scripts in tools/ are expected, not NuGet install hooks -->
+    <NoWarn>$(NoWarn);NU5111</NoWarn>
+
     <!-- Package metadata for local tool installation -->
     <IsPackable>true</IsPackable>
     <PackageId>FluxIndex.CLI</PackageId>
