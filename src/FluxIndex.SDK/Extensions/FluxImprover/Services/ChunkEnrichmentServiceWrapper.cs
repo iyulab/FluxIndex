@@ -3,7 +3,7 @@ using FluxImprover.Options;
 using FluxImprover.Enrichment;
 using FluxIndex.SDK.Extensions.FluxImprover.Adapters;
 using FluxIndexChunk = Flux.Abstractions.IEnrichedChunk;
-using FluxImproverChunk = FluxImprover.Models.IEnrichedChunk;
+using FluxImproverChunk = FluxImprover.Models.ILlmEnrichedChunk;
 
 namespace FluxIndex.SDK.Extensions.FluxImprover.Services;
 
@@ -120,10 +120,17 @@ public sealed class ChunkEnrichmentServiceWrapper
 
         return new EnrichedChunk
         {
-            Id = adapter.Id,
-            Text = adapter.Text,
+            ChunkId = adapter.ChunkId,
+            Content = adapter.Content,
             SourceId = adapter.SourceId,
+            ChunkIndex = adapter.ChunkIndex,
             HeadingPath = adapter.HeadingPath,
+            SectionTitle = adapter.SectionTitle,
+            StartPage = adapter.StartPage,
+            EndPage = adapter.EndPage,
+            Quality = adapter.Quality,
+            ContextDependency = adapter.ContextDependency,
+            TokenCount = adapter.TokenCount,
             Summary = enrichedResult.Summary,
             Keywords = enrichedResult.Keywords,
             Metadata = mergedMetadata

@@ -134,9 +134,9 @@ public sealed class ContextualEnrichmentServiceWrapper
         metadata["position"] = underlying.ChunkIndex;
         metadata["sourceId"] = adapter.SourceId;
 
-        if (!string.IsNullOrEmpty(adapter.HeadingPath))
+        if (!string.IsNullOrEmpty(adapter.HeadingPathString))
         {
-            metadata["headingPath"] = adapter.HeadingPath;
+            metadata["headingPath"] = adapter.HeadingPathString;
         }
 
         return new Chunk
@@ -184,7 +184,7 @@ public sealed class ContextualEnrichmentServiceWrapper
             Text = adapter.Text,
             SourceId = adapter.SourceId,
             ContextSummary = enrichedResult.ContextSummary,
-            HeadingPath = adapter.HeadingPath,
+            HeadingPath = adapter.HeadingPathString,
             Position = enrichedResult.Position,
             TotalChunks = enrichedResult.TotalChunks,
             Metadata = mergedMetadata

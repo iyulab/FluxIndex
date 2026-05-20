@@ -2,7 +2,7 @@ using FluxImprover.Options;
 using FluxImprover.Evaluation;
 using FluxImprover.QAGeneration;
 using FluxIndexChunk = Flux.Abstractions.IEnrichedChunk;
-using FluxImproverEnrichedChunk = FluxImprover.Models.IEnrichedChunk;
+using FluxImproverEnrichedChunk = FluxImprover.Models.ILlmEnrichedChunk;
 
 namespace FluxIndex.SDK.Extensions.FluxImprover.Services;
 

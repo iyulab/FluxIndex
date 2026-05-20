@@ -6,7 +6,7 @@ using FluxImprover.QAGeneration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using FluxIndexChunk = Flux.Abstractions.IEnrichedChunk;
-using FluxImproverEnrichedChunk = FluxImprover.Models.IEnrichedChunk;
+using FluxImproverEnrichedChunk = FluxImprover.Models.ILlmEnrichedChunk;
 
 namespace FluxIndex.SDK.Extensions.FluxImprover.Services;
 
