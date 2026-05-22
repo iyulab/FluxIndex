@@ -102,6 +102,43 @@ public class OpenAICompatibleEmbeddingServiceTests : IDisposable
 
     #endregion
 
+    [Fact]
+    public void Constructor_WellKnownModel_NoDimensionRequired()
+    {
+        var act = () => new OpenAICompatibleEmbeddingService(
+            "http://localhost", null, "text-embedding-3-small", _logger);
+
+        act.Should().NotThrow();
+    }
+
+    [Fact]
+    public void Constructor_WellKnownModel_ResolvesCorrectDimension()
+    {
+        _sut = new OpenAICompatibleEmbeddingService(
+            "http://localhost", null, "text-embedding-3-small", _logger);
+
+        _sut.GetEmbeddingDimension().Should().Be(1536);
+    }
+
+    [Fact]
+    public void Constructor_WellKnownModelLarge_ResolvesCorrectDimension()
+    {
+        _sut = new OpenAICompatibleEmbeddingService(
+            "http://localhost", null, "text-embedding-3-large", _logger);
+
+        _sut.GetEmbeddingDimension().Should().Be(3072);
+    }
+
+    [Fact]
+    public void Constructor_UnknownModel_ThrowsArgumentException()
+    {
+        var act = () => new OpenAICompatibleEmbeddingService(
+            "http://localhost", null, "my-custom-unknown-model-v99", _logger);
+
+        act.Should().Throw<ArgumentException>()
+            .WithMessage("*dimension*");
+    }
+
     #region Property Methods
 
     [Fact]

@@ -32,6 +32,31 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
+    /// Registers an <see cref="IEmbeddingService"/> backed by an OpenAI-compatible embedding endpoint.
+    /// Embedding dimension is resolved automatically from <see cref="WellKnownOpenAIModels"/>.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="endpoint">Base API URL (e.g., "https://api.openai.com/v1").</param>
+    /// <param name="apiKey">API key for authentication. Null for unauthenticated endpoints.</param>
+    /// <param name="model">Embedding model name. Must be a well-known model (see <see cref="WellKnownOpenAIModels"/>).</param>
+    /// <returns>The service collection for chaining.</returns>
+    /// <exception cref="ArgumentException">
+    /// Thrown at service resolution time if <paramref name="model"/> is not in the well-known list.
+    /// Use <see cref="AddOpenAICompatibleEmbedding(IServiceCollection,string,string,string,int)"/> to specify dimension explicitly.
+    /// </exception>
+    public static IServiceCollection AddOpenAICompatibleEmbedding(
+        this IServiceCollection services,
+        string endpoint, string? apiKey, string model)
+    {
+        services.AddSingleton<IEmbeddingService>(sp =>
+            new OpenAICompatibleEmbeddingService(
+                endpoint, apiKey, model,
+                sp.GetRequiredService<ILoggerFactory>()
+                    .CreateLogger<OpenAICompatibleEmbeddingService>()));
+        return services;
+    }
+
+    /// <summary>
     /// Registers an <see cref="IReranker"/> backed by an OpenAI-compatible rerank endpoint.
     /// </summary>
     /// <param name="services">The service collection.</param>

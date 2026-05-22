@@ -121,7 +121,69 @@ public class MyEmbeddingService : EmbeddingServiceBase
 }
 ```
 
-### OpenAI 구현 예제
+### OpenAI / Azure OpenAI — FluxIndex.Providers.OpenAI 패키지 사용 (권장)
+
+FluxIndex는 OpenAI 및 OpenAI-compatible 엔드포인트를 위한 공식 provider 패키지를 제공합니다.
+
+```bash
+dotnet add package FluxIndex.Providers.OpenAI
+```
+
+```csharp
+using FluxIndex.Providers.OpenAI.Extensions;  // DI 확장
+
+// ASP.NET Core / Generic Host
+services.AddOpenAICompatibleEmbedding(
+    endpoint: "https://api.openai.com/v1",
+    apiKey: apiKey,
+    model: "text-embedding-3-small",
+    dimension: 1536);
+
+services.AddOpenAICompatibleReranker(
+    endpoint: "https://api.openai.com/v1",
+    apiKey: apiKey,
+    model: "text-embedding-ada-002");
+```
+
+직접 생성이 필요한 경우:
+
+```csharp
+using FluxIndex.Providers.OpenAI.Services;
+
+var embeddingService = new OpenAICompatibleEmbeddingService(
+    endpoint: "https://api.openai.com/v1",
+    apiKey: apiKey,
+    model: "text-embedding-3-small",
+    dimension: 1536,
+    logger: loggerFactory.CreateLogger<OpenAICompatibleEmbeddingService>());
+
+var ctx = FluxIndexContext.CreateBuilder()
+    .UseLocalStorage("index.db")
+    .UseEmbeddingService(embeddingService)
+    .Build();
+```
+
+**지원 엔드포인트:** OpenAI, Azure OpenAI, GPUStack, Ollama, Fireworks, Groq 등 OpenAI-compatible API.
+
+**Azure OpenAI 엔드포인트 형식:**
+```
+https://{resource}.openai.azure.com/openai/deployments/{deployment}/v1
+```
+
+**공통 모델 dimension:**
+| 모델 | Dimension |
+|------|-----------|
+| `text-embedding-3-small` | 1536 |
+| `text-embedding-3-large` | 3072 |
+| `text-embedding-ada-002` | 1536 |
+| `qwen3-embedding-0.6b` | 1024 |
+
+---
+
+### OpenAI 직접 구현 예제 (커스텀 SDK 필요 시)
+
+Azure.AI.OpenAI SDK를 사용하는 경우의 커스텀 구현 예제입니다.
+일반적인 경우 위의 `FluxIndex.Providers.OpenAI` 패키지 사용을 권장합니다.
 
 ```csharp
 using Azure.AI.OpenAI;

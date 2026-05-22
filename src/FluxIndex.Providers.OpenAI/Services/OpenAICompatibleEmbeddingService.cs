@@ -64,6 +64,25 @@ public sealed partial class OpenAICompatibleEmbeddingService : EmbeddingServiceB
     }
 
     /// <summary>
+    /// Creates an OpenAI-compatible embedding service for a well-known model without specifying dimension.
+    /// The dimension is resolved automatically from <see cref="WellKnownOpenAIModels"/>.
+    /// </summary>
+    /// <param name="endpoint">Base API URL (e.g., "https://api.openai.com/v1").</param>
+    /// <param name="apiKey">API key for authentication. Null for unauthenticated endpoints.</param>
+    /// <param name="model">Embedding model name. Must be listed in <see cref="WellKnownOpenAIModels"/>.</param>
+    /// <param name="logger">Logger instance.</param>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="model"/> is not in the well-known list.
+    /// Specify the dimension explicitly via the overload that accepts <c>int dimension</c>.</exception>
+    public OpenAICompatibleEmbeddingService(
+        string endpoint,
+        string? apiKey,
+        string model,
+        ILogger<OpenAICompatibleEmbeddingService> logger)
+        : this(endpoint, apiKey, model, ResolveWellKnownDimension(model), logger)
+    {
+    }
+
+    /// <summary>
     /// Creates an OpenAI-compatible embedding service with a pre-configured HttpClient.
     /// Use this overload for testing or when custom handlers are required.
     /// </summary>
@@ -120,6 +139,18 @@ public sealed partial class OpenAICompatibleEmbeddingService : EmbeddingServiceB
     {
         if (_ownsHttpClient)
             _httpClient.Dispose();
+    }
+
+    private static int ResolveWellKnownDimension(string model)
+    {
+        if (WellKnownOpenAIModels.TryGetEmbeddingDimension(model, out int dimension))
+            return dimension;
+
+        throw new ArgumentException(
+            $"Embedding dimension for model '{model}' is not in the well-known list. " +
+            $"Use the overload that accepts an explicit 'int dimension' parameter, " +
+            $"or call WellKnownOpenAIModels.TryGetEmbeddingDimension() to check available models.",
+            nameof(model));
     }
 
     #region LoggerMessage
