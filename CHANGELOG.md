@@ -9,6 +9,16 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.13.15] - 2026-05-28
+
+### Fixed
+- `FluxIndex.Extensions.FileVault`: `VaultBackgroundService` — replaced polling `Task.Delay` loop with event-driven wake signal via `IVaultQueueService.JobEnqueued`. Job scheduling latency drops from 5–10s (idle poll interval) to < 1ms after enqueue.
+
+### Changed
+- `FluxIndex.Extensions.FileVault.Tests`: Added `[Trait("Category", "Integration")]` to `FileVaultPipelineSimulationTests` and `VaultSubfolderScenariosTests` — these were missing the trait despite living in the `Integration/` folder, causing them to run with unit tests.
+
+---
+
 ## [0.13.14] - 2026-05-22
 
 ### Added

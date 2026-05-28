@@ -22,16 +22,17 @@ public sealed partial class VaultBackgroundService : BackgroundService
     private readonly IVaultStorageService _storage;
     private readonly FileVaultOptions _options;
     private readonly SemaphoreSlim _concurrencyLimiter;
+    private readonly SemaphoreSlim _jobSignal = new(0, int.MaxValue);
 
     /// <summary>
-    /// Active polling interval (when queue has items).
+    /// Idle timeout for the job signal wait — acts as health-check / stuck-job recovery cadence.
     /// </summary>
-    private const int ActivePollingMs = 2000;
+    private static readonly TimeSpan JobSignalTimeout = TimeSpan.FromSeconds(30);
 
     /// <summary>
-    /// Idle polling interval (when queue is empty).
+    /// Polling interval used only when background processing is disabled or queue is paused.
     /// </summary>
-    private const int IdlePollingMs = 10000;
+    private const int PausedPollingMs = 10000;
 
     public VaultBackgroundService(
         ILogger<VaultBackgroundService> logger,
@@ -46,7 +47,10 @@ public sealed partial class VaultBackgroundService : BackgroundService
         _storage = storage ?? throw new ArgumentNullException(nameof(storage));
         _options = options?.Value ?? new FileVaultOptions();
         _concurrencyLimiter = new SemaphoreSlim(_options.MaxConcurrentProcessing);
+        _queueService.JobEnqueued += OnJobEnqueued;
     }
+
+    private void OnJobEnqueued(object? sender, VaultJob job) => _jobSignal.Release();
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -64,15 +68,13 @@ public sealed partial class VaultBackgroundService : BackgroundService
 
         LogServiceStarted(_logger);
 
-        var consecutiveEmptyCount = 0;
-
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
                 if (!_options.EnableBackgroundProcessing || _queueService.IsPaused)
                 {
-                    await Task.Delay(IdlePollingMs, stoppingToken);
+                    await Task.Delay(PausedPollingMs, stoppingToken);
                     continue;
                 }
 
@@ -80,14 +82,10 @@ public sealed partial class VaultBackgroundService : BackgroundService
 
                 if (job == null)
                 {
-                    consecutiveEmptyCount++;
-                    // Use longer interval when queue has been empty for a while
-                    var delay = consecutiveEmptyCount > 5 ? IdlePollingMs : ActivePollingMs;
-                    await Task.Delay(delay, stoppingToken);
+                    // Wait for a job signal or health-check timeout — no busy polling
+                    await _jobSignal.WaitAsync(JobSignalTimeout, stoppingToken);
                     continue;
                 }
-
-                consecutiveEmptyCount = 0;
 
                 // Process job with concurrency limit
                 await _concurrencyLimiter.WaitAsync(stoppingToken);
@@ -311,7 +309,9 @@ public sealed partial class VaultBackgroundService : BackgroundService
 
     public override void Dispose()
     {
+        _queueService.JobEnqueued -= OnJobEnqueued;
         _concurrencyLimiter.Dispose();
+        _jobSignal.Dispose();
         base.Dispose();
     }
 

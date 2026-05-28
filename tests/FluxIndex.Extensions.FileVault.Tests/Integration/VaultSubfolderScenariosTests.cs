@@ -23,6 +23,7 @@ namespace FluxIndex.Extensions.FileVault.Tests.Integration;
 /// - Unmemorize from subfolders
 /// - Path-based search scoping
 /// </summary>
+[Trait("Category", "Integration")]
 public class VaultSubfolderScenariosTests : IDisposable
 {
     private readonly ITestOutputHelper _output;
