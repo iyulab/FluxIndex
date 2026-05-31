@@ -100,6 +100,13 @@ public class SQLiteOptions
     public int BusyTimeout { get; set; } = 5000;
 
     /// <summary>
+    /// WAL 자동 체크포인트 임계값 (페이지 수). 0이면 자동 체크포인트 비활성화.
+    /// 기본값: 1000 (SQLite 기본값). 0으로 설정하면 쓰기 레이턴시 스파이크를 제거할 수 있으나
+    /// WAL 파일이 무제한으로 커질 수 있으므로 애플리케이션이 명시적 체크포인트를 관리해야 한다.
+    /// </summary>
+    public int WalAutocheckpoint { get; set; } = 1000;
+
+    /// <summary>
     /// Auto vacuum 모드 (NONE, FULL, INCREMENTAL).
     /// INCREMENTAL: 점진적 파일 크기 관리 (권장)
     /// </summary>

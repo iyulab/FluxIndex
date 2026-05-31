@@ -445,6 +445,13 @@ internal static partial class SQLitePragmaHelper
             cancellationToken);
 #pragma warning restore EF1002
 
+        // WAL auto-checkpoint threshold
+#pragma warning disable EF1002
+        await context.Database.ExecuteSqlRawAsync(
+            $"PRAGMA wal_autocheckpoint={options.WalAutocheckpoint}",
+            cancellationToken);
+#pragma warning restore EF1002
+
         // Auto vacuum 설정
 #pragma warning disable EF1002
         await context.Database.ExecuteSqlRawAsync(
