@@ -15,7 +15,7 @@ namespace FluxIndex.Storage.SQLite;
 /// <summary>
 /// sqlite-vec 확장을 사용하는 고성능 SQLite 벡터 저장소
 /// </summary>
-public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, IDisposable
+public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, INativeHybridSearch, IDisposable
 {
     private static readonly char[] FtsQuerySeparators = [' ', '\t', '\n'];
 
@@ -718,6 +718,33 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             LogHybridSearchFailed(_logger, ex);
             throw;
         }
+    }
+
+    /// <summary>
+    /// <see cref="INativeHybridSearch"/> — exposes this store's native vec + <c>chunk_fts</c> fusion under
+    /// the Core <see cref="FluxIndex.Core.Domain.Models.HybridSearchResult"/> type, so a FileVault hybrid
+    /// route can prefer it over a separately-registered <c>IHybridSearchService</c> whose sparse index is
+    /// not populated by FileVault ingestion. Maps the store-local result (RrfScore/Bm25Score) onto the
+    /// Core model (FusedScore/SparseScore).
+    /// </summary>
+    async Task<IEnumerable<FluxIndex.Core.Domain.Models.HybridSearchResult>> INativeHybridSearch.HybridSearchAsync(
+        float[] queryEmbedding,
+        string textQuery,
+        int topK,
+        float minScore,
+        float? vectorWeight,
+        CancellationToken cancellationToken)
+    {
+        var local = await HybridSearchAsync(queryEmbedding, textQuery, topK, minScore, vectorWeight, cancellationToken);
+        return local.Select(r => new FluxIndex.Core.Domain.Models.HybridSearchResult
+        {
+            Chunk = r.Chunk,
+            FusedScore = r.RrfScore,
+            VectorScore = r.VectorScore ?? 0,
+            SparseScore = r.Bm25Score ?? 0,
+            VectorRank = r.VectorRank ?? 0,
+            SparseRank = r.FtsRank ?? 0,
+        }).ToList();
     }
 
     /// <summary>

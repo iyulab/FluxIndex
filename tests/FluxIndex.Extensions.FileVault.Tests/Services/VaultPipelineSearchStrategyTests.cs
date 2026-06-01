@@ -103,4 +103,56 @@ public class VaultPipelineSearchStrategyTests
         response.ExecutedStrategy.Should().Be(VaultSearchStrategy.Hybrid);
         response.Results.Should().ContainSingle().Which.DocumentId.Should().Be("keep");
     }
+
+    // ISSUE-161 follow-up (hybrid-route-bypasses-populated-fts): store-native hybrid preference.
+
+    private VaultPipeline CreatePipelineWithStore(IVectorStore store, IHybridSearchService? hybrid)
+    {
+        _embedding.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(new float[] { 0.1f, 0.2f, 0.3f, 0.4f });
+        return new VaultPipeline(
+            _git, _hasher, _storage, NullLogger<VaultPipeline>.Instance,
+            options: null, extractor: null, chunker: null,
+            vectorStore: store, embeddingService: _embedding, hybridSearch: hybrid);
+    }
+
+    [Fact]
+    public async Task SearchAsync_HybridRequest_PrefersStoreNativeHybrid_OverHybridService()
+    {
+        // Store exposes native hybrid (vec + its own populated keyword index, e.g. chunk_fts).
+        var nativeStore = Substitute.For<IVectorStore, INativeHybridSearch>();
+        ((INativeHybridSearch)nativeStore).HybridSearchAsync(
+                Arg.Any<float[]>(), Arg.Any<string>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<float?>(), Arg.Any<CancellationToken>())
+            .Returns(new List<HybridSearchResult>
+            {
+                new() { Chunk = new DocumentChunk { Id = "n", DocumentId = "doc-native", Content = "native fused", ChunkIndex = 0 }, FusedScore = 0.99 }
+            });
+        var hybridService = Substitute.For<IHybridSearchService>();
+        var pipeline = CreatePipelineWithStore(nativeStore, hybridService);
+
+        var response = await pipeline.SearchAsync("q", documentIds: null, topK: 5, minScore: 0f, strategy: VaultSearchStrategy.Hybrid);
+
+        response.ExecutedStrategy.Should().Be(VaultSearchStrategy.Hybrid);
+        response.Results.Should().ContainSingle().Which.DocumentId.Should().Be("doc-native");
+        // The empty Core retriever path (IHybridSearchService) must be bypassed when native is available.
+        await hybridService.DidNotReceive().SearchAsync(Arg.Any<string>(), Arg.Any<HybridSearchOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SearchAsync_HybridRequest_StoreNativeHybrid_NoServiceRegistered_UsesNative()
+    {
+        var nativeStore = Substitute.For<IVectorStore, INativeHybridSearch>();
+        ((INativeHybridSearch)nativeStore).HybridSearchAsync(
+                Arg.Any<float[]>(), Arg.Any<string>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<float?>(), Arg.Any<CancellationToken>())
+            .Returns(new List<HybridSearchResult>
+            {
+                new() { Chunk = new DocumentChunk { Id = "n2", DocumentId = "doc-native-2", Content = "fts hit", ChunkIndex = 0 }, FusedScore = 0.88 }
+            });
+        var pipeline = CreatePipelineWithStore(nativeStore, hybrid: null);
+
+        var response = await pipeline.SearchAsync("q", documentIds: null, topK: 5, minScore: 0f, strategy: VaultSearchStrategy.Hybrid);
+
+        response.ExecutedStrategy.Should().Be(VaultSearchStrategy.Hybrid);
+        response.Results.Should().ContainSingle().Which.Content.Should().Be("fts hit");
+    }
 }

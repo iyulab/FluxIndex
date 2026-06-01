@@ -369,6 +369,17 @@ public sealed partial class VaultPipeline : IVaultPipeline
 
         if (strategy == VaultSearchStrategy.Hybrid)
         {
+            // Prefer the vector store's native hybrid (vec + its own already-populated keyword index,
+            // e.g. chunk_fts written by ingestion) over a separately-registered IHybridSearchService —
+            // the latter's sparse index is NOT filled by FileVault ingestion, so it would return
+            // vector-only results under a Hybrid label.
+            if (_vectorStore is INativeHybridSearch nativeHybrid)
+            {
+                var nativeResults = await NativeHybridSearchAsync(nativeHybrid, query, docIdSet, topK, minScore, ct);
+                LogSearchResults(_logger, query, nativeResults.Count);
+                return new VaultPipelineSearchResponse(nativeResults, VaultSearchStrategy.Hybrid);
+            }
+
             if (_hybridSearch != null)
             {
                 var hybridResults = await HybridSearchAsync(query, docIdSet, topK, minScore, ct);
@@ -376,7 +387,8 @@ public sealed partial class VaultPipeline : IVaultPipeline
                 return new VaultPipelineSearchResponse(hybridResults, VaultSearchStrategy.Hybrid);
             }
 
-            // No hybrid service registered — degrade to vector and report it truthfully (no silent mismatch).
+            // Neither a native-hybrid store nor a hybrid service — degrade to vector and report it
+            // truthfully (no silent mismatch).
             LogHybridUnavailableFallback(_logger);
         }
 
@@ -431,10 +443,32 @@ public sealed partial class VaultPipeline : IVaultPipeline
         };
 
         var hybridResults = await _hybridSearch!.SearchAsync(query, options, ct);
+        return ProjectHybrid(hybridResults, docIdSet, topK);
+    }
 
-        IEnumerable<Core.Domain.Models.HybridSearchResult> filtered = hybridResults;
+    private async Task<IReadOnlyList<PipelineSearchResult>> NativeHybridSearchAsync(
+        INativeHybridSearch nativeHybrid,
+        string query,
+        HashSet<string>? docIdSet,
+        int topK,
+        float minScore,
+        CancellationToken ct)
+    {
+        // Native hybrid fuses dense vectors with the store's own keyword index (e.g. chunk_fts);
+        // it takes the embedding plus the raw text query. Over-fetch to survive doc-id filtering.
+        var queryEmbedding = await _embeddingService!.GenerateEmbeddingAsync(query, ct);
+        var nativeResults = await nativeHybrid.HybridSearchAsync(queryEmbedding, query, topK * 2, minScore, vectorWeight: null, ct);
+        return ProjectHybrid(nativeResults, docIdSet, topK);
+    }
+
+    private static List<PipelineSearchResult> ProjectHybrid(
+        IEnumerable<Core.Domain.Models.HybridSearchResult> results,
+        HashSet<string>? docIdSet,
+        int topK)
+    {
+        IEnumerable<Core.Domain.Models.HybridSearchResult> filtered = results;
         if (docIdSet != null)
-            filtered = hybridResults.Where(r => docIdSet.Contains(r.Chunk.DocumentId));
+            filtered = results.Where(r => docIdSet.Contains(r.Chunk.DocumentId));
 
         return filtered
             .Take(topK)

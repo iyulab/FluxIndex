@@ -183,9 +183,16 @@ var result = await vault.SearchAsync("query", new VaultSearchOptions
 });
 ```
 
-**Hybrid는 carrier이며 정직하게 보고된다.** `Hybrid` 요청은 소비자가 `IHybridSearchService`를
-**같은 DI 컨테이너에 등록한 경우에만** 실제 융합 검색으로 실행된다 (예: FluxIndex SDK 등록). 미등록 시
-요청은 벡터 검색으로 degrade되며, 그 사실이 결과에 실린다 — 로그가 아니라 다음 필드로:
+**Hybrid 라우팅 (store-native 우선).** `Hybrid` 요청은 다음 순서로 해소된다:
+1. 등록된 `IVectorStore`가 **native hybrid**(`INativeHybridSearch`)를 노출하면 그것을 우선 사용한다 — 예:
+   `SQLiteVecVectorStore`는 ingestion이 이미 채운 `chunk_fts`(BM25)와 벡터를 native 융합한다. **추가 인덱스나
+   `IHybridSearchService` 등록 없이** 실제 hybrid가 동작한다.
+2. native hybrid가 없고 `IHybridSearchService`가 등록돼 있으면 그것을 사용한다. (주의: `IHybridSearchService`의
+   sparse 인덱스는 FileVault ingestion이 채우지 않으므로, 별도로 색인하지 않았다면 keyword side가 비어 vector와
+   동일한 결과가 나올 수 있다.)
+3. 둘 다 없으면 벡터 검색으로 degrade한다.
+
+어느 경우든 **실제 실행된 전략이 결과에 정직하게 실린다** — 로그가 아니라 다음 필드로:
 
 ```csharp
 result.RequestedStrategy;  // 호출자가 요청한 전략 (예: Hybrid)
