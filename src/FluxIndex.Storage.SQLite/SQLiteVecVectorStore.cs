@@ -1231,6 +1231,23 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                         // Warmup failure is non-fatal; first batch will pay the cold-start cost as before.
                         LogVecJitWarmupFailed(_logger, warmupEx);
                     }
+
+                    // Non-destructive cross-fingerprint orphan scan at the one point the effective
+                    // fingerprint is guaranteed bound (GetVecTableName above would have thrown otherwise).
+                    // Running it here — rather than from a startup hook whose ordering vs the identity
+                    // binder is not guaranteed — ensures the WARN actually fires for live orphan tables.
+                    if (_options.EnableStartupCrossFingerprintOrphanReport)
+                    {
+                        try
+                        {
+                            await _context.DetectCrossFingerprintOrphanTablesAsync(cancellationToken);
+                        }
+                        catch (Exception scanEx)
+                        {
+                            // Diagnostic is best-effort; failure must not block initialization.
+                            LogCrossFingerprintScanFailed(_logger, scanEx);
+                        }
+                    }
                 }
             }
             else
@@ -1501,6 +1518,9 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "vec0 table recovered — retry completed")]
     private static partial void LogVecTableRecovered(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Cross-fingerprint orphan scan failed during init (non-fatal); unreachable vec tables will not be reported this run")]
+    private static partial void LogCrossFingerprintScanFailed(ILogger logger, Exception exception);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Vector store health check passed")]
     private static partial void LogHealthCheckPassed(ILogger logger);

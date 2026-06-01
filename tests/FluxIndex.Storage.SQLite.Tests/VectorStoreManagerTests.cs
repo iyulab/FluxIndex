@@ -6,6 +6,7 @@ using FluxIndex.Storage.SQLite;
 using FluxIndex.Storage.SQLite.Tests.Infrastructure;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -666,6 +667,52 @@ public class VectorStoreManagerTests : IDisposable
         var orphans = await _context.DetectCrossFingerprintOrphanTablesAsync(CancellationToken.None);
 
         orphans.Should().BeEmpty("detection cannot determine the effective table without a bound fingerprint");
+    }
+
+    [SkippableFact]
+    public async Task EnsureInitialized_FiresCrossFingerprintWarn_ViaInitPath_WhenFingerprintBound()
+    {
+        // Proves the scan fires from the store init path (where the fingerprint is guaranteed bound),
+        // not only when DetectCrossFingerprintOrphanTablesAsync is called directly.
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
+        // Capturing logger on the DbContext — detection logs via the context's logger.
+        var captured = new List<string>();
+        var dbOptions = new DbContextOptionsBuilder<SQLiteVecDbContext>().UseSqlite(_connection).Options;
+        var optionsWrapper = Options.Create(_options);
+        using var ctx = new SQLiteVecDbContext(dbOptions, optionsWrapper, _extensionLoader, new CapturingLogger<SQLiteVecDbContext>(captured));
+        var fallback = new Lazy<SQLiteVectorStore>(() => throw new InvalidOperationException("Fallback should not be used"));
+        var store = new SQLiteVecVectorStore(ctx, NullLogger<SQLiteVecVectorStore>.Instance, optionsWrapper, _extensionLoader, fallback);
+
+        await ctx.Database.EnsureCreatedAsync();
+        var effective = new EmbeddingIdentity { Provider = "Test", Model = "init-effective", Dimension = 4 };
+        var orphan = new EmbeddingIdentity { Provider = "Test", Model = "init-orphan", Dimension = 4 };
+        await CreateCollectionForIdentity(effective);
+        await CreateCollectionForIdentity(orphan);
+
+        // Bind effective; seed a live vector into the orphan (non-effective) table.
+        _options.EmbeddingFingerprint = effective.Fingerprint;
+        _options.VectorDimension = effective.Dimension;
+        _options.EmbeddingFingerprint = orphan.Fingerprint;
+        await ctx.StoreVectorInVecTableAsync("init-orphan-vec", new[] { 0.1f, 0.2f, 0.3f, 0.4f }, CancellationToken.None);
+        _options.EmbeddingFingerprint = effective.Fingerprint;
+
+        // VerifyHealthAsync -> EnsureInitializedAsync -> cross-fingerprint scan.
+        await store.VerifyHealthAsync(CancellationToken.None);
+
+        captured.Should().Contain(m =>
+            m.Contains("Cross-fingerprint orphan") && m.Contains(orphan.Fingerprint),
+            "the init path must surface the orphan table WARN");
+    }
+
+    private sealed class CapturingLogger<T> : ILogger<T>
+    {
+        private readonly List<string> _sink;
+        public CapturingLogger(List<string> sink) => _sink = sink;
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => _sink.Add(formatter(state, exception));
     }
 
     [Fact]
