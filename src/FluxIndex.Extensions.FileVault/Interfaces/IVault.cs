@@ -470,6 +470,30 @@ public sealed class WatchOptions
 }
 
 /// <summary>
+/// Search strategy for vault content search. The facade owns this enum (rather than reusing one of
+/// FluxIndex.Core's overlapping <c>SearchStrategy</c> types) so the public surface stays self-contained.
+/// </summary>
+public enum VaultSearchStrategy
+{
+    /// <summary>
+    /// Dense vector (semantic) search only. Default — preserves pre-strategy behavior.
+    /// </summary>
+    Vector = 0,
+
+    /// <summary>
+    /// Hybrid vector + keyword (BM25) fused search via <c>IHybridSearchService</c>. Requires the
+    /// consumer to register <c>IHybridSearchService</c> in the same container; when it is absent the
+    /// request executes as <see cref="Vector"/> and the result reports that via
+    /// <see cref="VaultSearchResult.ExecutedStrategy"/> (no silent mismatch).
+    /// </summary>
+    Hybrid = 1,
+
+    // Keyword-only (pure BM25) is intentionally not exposed yet: HybridSearchOptions has no dedicated
+    // keyword path (only VectorWeight/SparseWeight), so a "Keyword" value would secretly run degenerate
+    // weighted hybrid — the same silent-mismatch class this carrier fixes. Tracked in ISSUE-161.
+}
+
+/// <summary>
 /// Search options for vault content search.
 /// </summary>
 public sealed class VaultSearchOptions
@@ -502,6 +526,14 @@ public sealed class VaultSearchOptions
     /// Whether to include metadata in results.
     /// </summary>
     public bool IncludeMetadata { get; init; } = true;
+
+    /// <summary>
+    /// Search strategy to use. Defaults to <see cref="VaultSearchStrategy.Vector"/>. A
+    /// <see cref="VaultSearchStrategy.Hybrid"/> request is honored only when the consumer registered
+    /// <c>IHybridSearchService</c>; otherwise it degrades to vector and the degradation is reported on
+    /// <see cref="VaultSearchResult.ExecutedStrategy"/>.
+    /// </summary>
+    public VaultSearchStrategy SearchStrategy { get; init; } = VaultSearchStrategy.Vector;
 
     /// <summary>
     /// Creates options for searching all files.
@@ -609,6 +641,19 @@ public sealed class VaultSearchResult
     /// Error message if search failed.
     /// </summary>
     public string? ErrorMessage { get; init; }
+
+    /// <summary>
+    /// The strategy the caller requested (echo of <see cref="VaultSearchOptions.SearchStrategy"/>).
+    /// </summary>
+    public VaultSearchStrategy RequestedStrategy { get; init; } = VaultSearchStrategy.Vector;
+
+    /// <summary>
+    /// The strategy actually executed. May differ from <see cref="RequestedStrategy"/> when a
+    /// <see cref="VaultSearchStrategy.Hybrid"/> request degrades to vector because no
+    /// <c>IHybridSearchService</c> is registered. Consumers should report this value (not the request)
+    /// as the effective strategy.
+    /// </summary>
+    public VaultSearchStrategy ExecutedStrategy { get; init; } = VaultSearchStrategy.Vector;
 
     /// <summary>
     /// Creates an empty result.

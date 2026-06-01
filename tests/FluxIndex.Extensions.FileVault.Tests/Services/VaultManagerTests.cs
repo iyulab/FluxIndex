@@ -7,6 +7,7 @@ using FluxIndex.Extensions.FileVault.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using Xunit;
 using MsOptions = Microsoft.Extensions.Options.Options;
 
@@ -612,6 +613,113 @@ public class VaultManagerTests : IDisposable
         // Verify entry was updated
         var reloaded = await _vault.GetAsync(filePath);
         reloaded!.SyncStatus.Should().Be(SyncStatus.SourceModified);
+    }
+
+    #endregion
+
+    #region SearchAsync strategy carrier (ISSUE-161)
+
+    [Fact]
+    public async Task SearchAsync_HybridRequest_WhenPipelineExecutesHybrid_SurfacesHybrid()
+    {
+        var file = CreateTestFile("strategy-hybrid.txt", "content");
+        CreateEntryWithMetadataAtStage(file, ProcessingStage.Memorized);
+
+        _pipelineMock
+            .SearchAsync(Arg.Any<string>(), Arg.Any<IEnumerable<string>?>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<VaultSearchStrategy>(), Arg.Any<CancellationToken>())
+            .Returns(new VaultPipelineSearchResponse([], VaultSearchStrategy.Hybrid));
+
+        var result = await _vault.SearchAsync("query", new VaultSearchOptions { SearchStrategy = VaultSearchStrategy.Hybrid }, CancellationToken.None);
+
+        result.RequestedStrategy.Should().Be(VaultSearchStrategy.Hybrid);
+        result.ExecutedStrategy.Should().Be(VaultSearchStrategy.Hybrid);
+
+        // The requested strategy must be forwarded to the pipeline (carrier wired through).
+        await _pipelineMock.Received().SearchAsync(
+            Arg.Any<string>(), Arg.Any<IEnumerable<string>?>(), Arg.Any<int>(), Arg.Any<float>(),
+            VaultSearchStrategy.Hybrid, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task SearchAsync_HybridRequest_WhenPipelineDegradesToVector_SurfacesVectorTruthfully()
+    {
+        var file = CreateTestFile("strategy-degrade.txt", "content");
+        CreateEntryWithMetadataAtStage(file, ProcessingStage.Memorized);
+
+        // Pipeline reports it actually ran vector (no IHybridSearchService registered downstream).
+        _pipelineMock
+            .SearchAsync(Arg.Any<string>(), Arg.Any<IEnumerable<string>?>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<VaultSearchStrategy>(), Arg.Any<CancellationToken>())
+            .Returns(new VaultPipelineSearchResponse([], VaultSearchStrategy.Vector));
+
+        var result = await _vault.SearchAsync("query", new VaultSearchOptions { SearchStrategy = VaultSearchStrategy.Hybrid }, CancellationToken.None);
+
+        // No silent mismatch: requested=Hybrid but executed=Vector is reported honestly.
+        result.RequestedStrategy.Should().Be(VaultSearchStrategy.Hybrid);
+        result.ExecutedStrategy.Should().Be(VaultSearchStrategy.Vector);
+    }
+
+    #endregion
+
+    #region SearchAsync cancellation propagation (ISSUE-163)
+
+    [Fact]
+    public async Task SearchAsync_WhenPipelineThrowsOCE_AndCallerTokenCancelled_PropagatesCancellation()
+    {
+        // Arrange - one memorized entry so SearchAsync reaches the pipeline
+        var file = CreateTestFile("search-cancel.txt", "content");
+        CreateEntryWithMetadataAtStage(file, ProcessingStage.Memorized);
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        _pipelineMock
+            .SearchAsync(Arg.Any<string>(), Arg.Any<IEnumerable<string>?>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<VaultSearchStrategy>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new OperationCanceledException(cts.Token));
+
+        // Act
+        var act = async () => await _vault.SearchAsync("query", VaultSearchOptions.All(), cts.Token);
+
+        // Assert - cancellation surfaces, NOT laundered into a silent error result
+        await act.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    [Fact]
+    public async Task SearchAsync_WhenOCE_ButCallerTokenNotCancelled_ReturnsErrorResult()
+    {
+        // Arrange - OCE not tied to the caller's token (e.g. an internal timeout)
+        var file = CreateTestFile("search-internal-oce.txt", "content");
+        CreateEntryWithMetadataAtStage(file, ProcessingStage.Memorized);
+
+        _pipelineMock
+            .SearchAsync(Arg.Any<string>(), Arg.Any<IEnumerable<string>?>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<VaultSearchStrategy>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new OperationCanceledException());
+
+        // Act - caller token is live; the when-filter must NOT rethrow
+        var result = await _vault.SearchAsync("query", VaultSearchOptions.All(), CancellationToken.None);
+
+        // Assert - genuine failure path still produces an error result, no throw
+        result.Should().NotBeNull();
+        result.IsSuccess.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task SearchAsync_WhenPipelineThrowsGenericException_ReturnsErrorResult()
+    {
+        // Arrange
+        var file = CreateTestFile("search-generic-error.txt", "content");
+        CreateEntryWithMetadataAtStage(file, ProcessingStage.Memorized);
+
+        _pipelineMock
+            .SearchAsync(Arg.Any<string>(), Arg.Any<IEnumerable<string>?>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<VaultSearchStrategy>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("boom"));
+
+        // Act
+        var result = await _vault.SearchAsync("query", VaultSearchOptions.All(), CancellationToken.None);
+
+        // Assert - broad catch still converts real failures into an error result
+        result.Should().NotBeNull();
+        result.IsSuccess.Should().BeFalse();
+        result.ErrorMessage.Should().Contain("boom");
     }
 
     #endregion

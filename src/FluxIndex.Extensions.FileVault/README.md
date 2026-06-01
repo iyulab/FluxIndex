@@ -158,6 +158,48 @@ Task<string> DiffAsync(string filePath);
 Task<IReadOnlyList<GitCommit>> LogAsync(string filePath, int maxCount = 10);
 ```
 
+### Search
+
+```csharp
+Task<VaultSearchResult> SearchAsync(
+    string query,
+    VaultSearchOptions? options = null,
+    CancellationToken ct = default);
+```
+
+`VaultSearchOptions.SearchStrategy`로 검색 전략을 선택한다:
+
+```csharp
+public enum VaultSearchStrategy
+{
+    Vector,  // 밀집 벡터(의미) 검색 — 기본값
+    Hybrid,  // 벡터 + 키워드(BM25) 융합 검색
+}
+
+var result = await vault.SearchAsync("query", new VaultSearchOptions
+{
+    SearchStrategy = VaultSearchStrategy.Hybrid,
+    TopK = 10,
+});
+```
+
+**Hybrid는 carrier이며 정직하게 보고된다.** `Hybrid` 요청은 소비자가 `IHybridSearchService`를
+**같은 DI 컨테이너에 등록한 경우에만** 실제 융합 검색으로 실행된다 (예: FluxIndex SDK 등록). 미등록 시
+요청은 벡터 검색으로 degrade되며, 그 사실이 결과에 실린다 — 로그가 아니라 다음 필드로:
+
+```csharp
+result.RequestedStrategy;  // 호출자가 요청한 전략 (예: Hybrid)
+result.ExecutedStrategy;   // 실제 실행된 전략 (서비스 미등록 시 Vector)
+// 소비자는 ExecutedStrategy를 "유효 전략"으로 보고해야 한다 (RequestedStrategy 아님).
+```
+
+> Keyword-only(순수 BM25) 전략은 아직 노출하지 않는다. 현재 융합 엔진에 dedicated 키워드 경로가 없어
+> "Keyword" 값이 degenerate weighted-hybrid로 동작할 위험이 있다 (추적: ISSUE-161).
+
+**취소 전파:** `SearchAsync`/`SyncAsync`/`ScanFolderAsync`/`CleanupOrphanedEntriesAsync`는 호출자의
+`CancellationToken`이 취소되면 `OperationCanceledException`을 전파한다 (취소를 빈 결과/부분 결과로
+세탁하지 않음). 호출자 토큰과 무관한 내부 예외는 기존대로 처리된다.
+
 ## Integration with Consumer Apps
 
 ### 권장 패턴: Vault 상태 + 파일 시스템 조합

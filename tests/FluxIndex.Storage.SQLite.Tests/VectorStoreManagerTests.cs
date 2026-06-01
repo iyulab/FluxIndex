@@ -585,6 +585,89 @@ public class VectorStoreManagerTests : IDisposable
         return Convert.ToInt32(result, System.Globalization.CultureInfo.InvariantCulture);
     }
 
+    // Issue: ISSUE-158 / cross-fingerprint-orphan-vec-table — whole-table fingerprint divergence
+    // with live vectors (distinct from the row-level orphan-sweep-v1).
+
+    [SkippableFact]
+    public async Task DetectCrossFingerprintOrphanTables_DivergentTableWithVectors_IsReportedAndNotDeleted()
+    {
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
+        await _context.Database.EnsureCreatedAsync();
+        var effective = new EmbeddingIdentity { Provider = "Test", Model = "effective", Dimension = 4 };
+        var orphan = new EmbeddingIdentity { Provider = "Test", Model = "orphan", Dimension = 4 };
+        await CreateCollectionForIdentity(effective);
+        await CreateCollectionForIdentity(orphan);
+
+        // Bind the store to the effective fingerprint.
+        _options.EmbeddingFingerprint = effective.Fingerprint;
+        _options.VectorDimension = effective.Dimension;
+
+        // Seed live vectors into the orphan (non-effective) table by temporarily switching fingerprint.
+        _options.EmbeddingFingerprint = orphan.Fingerprint;
+        await _context.StoreVectorInVecTableAsync("orphan-vec-1", new[] { 0.1f, 0.2f, 0.3f, 0.4f }, CancellationToken.None);
+        await _context.StoreVectorInVecTableAsync("orphan-vec-2", new[] { 0.5f, 0.5f, 0.5f, 0.5f }, CancellationToken.None);
+        _options.EmbeddingFingerprint = effective.Fingerprint;
+
+        var orphans = await _context.DetectCrossFingerprintOrphanTablesAsync(CancellationToken.None);
+
+        orphans.Should().ContainSingle();
+        orphans[0].TableName.Should().Be($"chunk_embeddings_{orphan.Fingerprint}");
+        orphans[0].Fingerprint.Should().Be(orphan.Fingerprint);
+        orphans[0].VectorCount.Should().Be(2);
+
+        // Non-destructive: the orphan vectors must survive the scan (sole copy under a different identity).
+        (await CountVecRowsAsync($"chunk_embeddings_{orphan.Fingerprint}", "orphan-vec-1")).Should().Be(1);
+        (await CountVecRowsAsync($"chunk_embeddings_{orphan.Fingerprint}", "orphan-vec-2")).Should().Be(1);
+    }
+
+    [SkippableFact]
+    public async Task DetectCrossFingerprintOrphanTables_OnlyEffectiveTable_ReturnsEmpty()
+    {
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
+        await _context.Database.EnsureCreatedAsync();
+        var effective = new EmbeddingIdentity { Provider = "Test", Model = "only-effective", Dimension = 4 };
+        await CreateCollectionForIdentity(effective);
+        _options.EmbeddingFingerprint = effective.Fingerprint;
+        _options.VectorDimension = effective.Dimension;
+        await _context.StoreVectorInVecTableAsync("eff-1", new[] { 0.1f, 0.2f, 0.3f, 0.4f }, CancellationToken.None);
+
+        var orphans = await _context.DetectCrossFingerprintOrphanTablesAsync(CancellationToken.None);
+
+        orphans.Should().BeEmpty("the effective table is never its own orphan");
+    }
+
+    [SkippableFact]
+    public async Task DetectCrossFingerprintOrphanTables_DivergentTableEmpty_NotReported()
+    {
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
+        await _context.Database.EnsureCreatedAsync();
+        var effective = new EmbeddingIdentity { Provider = "Test", Model = "eff-2", Dimension = 4 };
+        var emptyOrphan = new EmbeddingIdentity { Provider = "Test", Model = "empty-orphan", Dimension = 4 };
+        await CreateCollectionForIdentity(effective);
+        await CreateCollectionForIdentity(emptyOrphan);
+        _options.EmbeddingFingerprint = effective.Fingerprint;
+        _options.VectorDimension = effective.Dimension;
+
+        // emptyOrphan table exists but holds no vectors — a divergent-but-empty table is not a data-loss risk.
+        var orphans = await _context.DetectCrossFingerprintOrphanTablesAsync(CancellationToken.None);
+
+        orphans.Should().BeEmpty("a divergent table with zero vectors carries no unreachable data");
+    }
+
+    [Fact]
+    public async Task DetectCrossFingerprintOrphanTables_NoEffectiveFingerprintBound_ReturnsEmpty()
+    {
+        // No sqlite-vec needed: the guard short-circuits before touching the database.
+        _options.EmbeddingFingerprint = null;
+
+        var orphans = await _context.DetectCrossFingerprintOrphanTablesAsync(CancellationToken.None);
+
+        orphans.Should().BeEmpty("detection cannot determine the effective table without a bound fingerprint");
+    }
+
     [Fact]
     public async Task DeleteCollectionAsync_InvalidName_ThrowsArgumentException()
     {

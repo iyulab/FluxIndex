@@ -85,6 +85,7 @@ public sealed partial class VaultPipeline : IVaultPipeline
     private readonly IChunker? _chunker;
     private readonly IVectorStore? _vectorStore;
     private readonly IEmbeddingService? _embeddingService;
+    private readonly IHybridSearchService? _hybridSearch;
 
     public VaultPipeline(
         IGitService git,
@@ -95,7 +96,8 @@ public sealed partial class VaultPipeline : IVaultPipeline
         IExtractor? extractor = null,
         IChunker? chunker = null,
         IVectorStore? vectorStore = null,
-        IEmbeddingService? embeddingService = null)
+        IEmbeddingService? embeddingService = null,
+        IHybridSearchService? hybridSearch = null)
     {
         _git = git ?? throw new ArgumentNullException(nameof(git));
         _hasher = hasher ?? throw new ArgumentNullException(nameof(hasher));
@@ -106,6 +108,7 @@ public sealed partial class VaultPipeline : IVaultPipeline
         _chunker = chunker;
         _vectorStore = vectorStore;
         _embeddingService = embeddingService;
+        _hybridSearch = hybridSearch;
     }
 
     public async Task<MemorizeResult> MemorizeAsync(VaultEntry entry, MemorizeOptions? options = null, CancellationToken ct = default)
@@ -348,35 +351,58 @@ public sealed partial class VaultPipeline : IVaultPipeline
         LogRemovedChunks(_logger, documentId);
     }
 
-    public async Task<IReadOnlyList<PipelineSearchResult>> SearchAsync(
+    public async Task<VaultPipelineSearchResponse> SearchAsync(
         string query,
         IEnumerable<string>? documentIds = null,
         int topK = 10,
         float minScore = 0.0f,
+        VaultSearchStrategy strategy = VaultSearchStrategy.Vector,
         CancellationToken ct = default)
     {
         if (_vectorStore == null || _embeddingService == null)
         {
             LogNoVectorStoreCannotSearch(_logger);
-            return [];
+            return new VaultPipelineSearchResponse([], VaultSearchStrategy.Vector);
         }
 
-        // Generate query embedding
-        var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, ct);
+        var docIdSet = documentIds?.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        // Search vector store
-        var searchResults = await _vectorStore.SearchAsync(queryEmbedding, topK * 2, minScore, filters: null, ct);
-
-        // Filter by document IDs if specified
-        var filteredResults = searchResults;
-        if (documentIds != null)
+        if (strategy == VaultSearchStrategy.Hybrid)
         {
-            var docIdSet = documentIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
-            filteredResults = searchResults.Where(r => docIdSet.Contains(r.DocumentId)).ToList();
+            if (_hybridSearch != null)
+            {
+                var hybridResults = await HybridSearchAsync(query, docIdSet, topK, minScore, ct);
+                LogSearchResults(_logger, query, hybridResults.Count);
+                return new VaultPipelineSearchResponse(hybridResults, VaultSearchStrategy.Hybrid);
+            }
+
+            // No hybrid service registered — degrade to vector and report it truthfully (no silent mismatch).
+            LogHybridUnavailableFallback(_logger);
         }
 
-        // Map to PipelineSearchResult
-        var results = filteredResults
+        var vectorResults = await VectorSearchAsync(query, docIdSet, topK, minScore, ct);
+        LogSearchResults(_logger, query, vectorResults.Count);
+        return new VaultPipelineSearchResponse(vectorResults, VaultSearchStrategy.Vector);
+    }
+
+    private async Task<IReadOnlyList<PipelineSearchResult>> VectorSearchAsync(
+        string query,
+        HashSet<string>? docIdSet,
+        int topK,
+        float minScore,
+        CancellationToken ct)
+    {
+        // Generate query embedding
+        var queryEmbedding = await _embeddingService!.GenerateEmbeddingAsync(query, ct);
+
+        // Search vector store (over-fetch to survive document-id filtering)
+        var searchResults = await _vectorStore!.SearchAsync(queryEmbedding, topK * 2, minScore, filters: null, ct);
+
+        IEnumerable<Core.Domain.Entities.DocumentChunk> filtered = searchResults;
+        if (docIdSet != null)
+            filtered = searchResults.Where(r => docIdSet.Contains(r.DocumentId));
+
+        return filtered
             .Take(topK)
             .Select(r => new PipelineSearchResult
             {
@@ -388,9 +414,40 @@ public sealed partial class VaultPipeline : IVaultPipeline
                 Metadata = r.Metadata
             })
             .ToList();
+    }
 
-        LogSearchResults(_logger, query, results.Count);
-        return results;
+    private async Task<IReadOnlyList<PipelineSearchResult>> HybridSearchAsync(
+        string query,
+        HashSet<string>? docIdSet,
+        int topK,
+        float minScore,
+        CancellationToken ct)
+    {
+        var options = new Core.Domain.Models.HybridSearchOptions
+        {
+            // Over-fetch so document-id filtering does not starve the result set.
+            MaxResults = topK * 2,
+            MinFusedScore = minScore
+        };
+
+        var hybridResults = await _hybridSearch!.SearchAsync(query, options, ct);
+
+        IEnumerable<Core.Domain.Models.HybridSearchResult> filtered = hybridResults;
+        if (docIdSet != null)
+            filtered = hybridResults.Where(r => docIdSet.Contains(r.Chunk.DocumentId));
+
+        return filtered
+            .Take(topK)
+            .Select(r => new PipelineSearchResult
+            {
+                DocumentId = r.Chunk.DocumentId,
+                ChunkId = r.Chunk.Id,
+                ChunkIndex = r.Chunk.ChunkIndex,
+                Content = r.Chunk.Content,
+                Score = (float)r.FusedScore,
+                Metadata = r.Chunk.Metadata
+            })
+            .ToList();
     }
 
     /// <summary>
@@ -752,6 +809,8 @@ public sealed partial class VaultPipeline : IVaultPipeline
     private static partial void LogNoVectorStoreCannotSearch(ILogger logger);
     [LoggerMessage(Level = LogLevel.Information, Message = "Search for '{Query}' returned {Count} results")]
     private static partial void LogSearchResults(ILogger logger, string query, int count);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Hybrid search requested but IHybridSearchService is not registered; executing vector search (reported as ExecutedStrategy=Vector)")]
+    private static partial void LogHybridUnavailableFallback(ILogger logger);
     [LoggerMessage(Level = LogLevel.Warning, Message = "No content to index for {SourcePath}")]
     private static partial void LogNoContentToIndex(ILogger logger, string sourcePath);
     [LoggerMessage(Level = LogLevel.Debug, Message = "Created {ChunkCount} chunks from {ContentLength} chars")]

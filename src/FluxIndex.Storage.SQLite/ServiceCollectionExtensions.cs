@@ -602,6 +602,22 @@ internal sealed partial class SQLiteVecMigrationService : IHostedService
                 }
             }
 
+            // Non-destructive diagnostic (runs every startup, no marker): warn about
+            // chunk_embeddings_<fingerprint> tables that diverge from the effective fingerprint
+            // yet still hold live vectors vector search never queries. Surfacing-only; recovery
+            // (reindex) is left to the consumer — the orphan is the sole copy of its vectors.
+            if (options.EnableStartupCrossFingerprintOrphanReport)
+            {
+                try
+                {
+                    await context.DetectCrossFingerprintOrphanTablesAsync(cancellationToken);
+                }
+                catch (Exception reportEx)
+                {
+                    LogCrossFingerprintOrphanScanFailed(_logger, reportEx);
+                }
+            }
+
             LogVecInitCompleted(_logger);
         }
         catch (Exception ex)
@@ -645,6 +661,9 @@ internal sealed partial class SQLiteVecMigrationService : IHostedService
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Startup orphan sweep failed (non-fatal); orphans will accumulate until the next successful run")]
     private static partial void LogOrphanSweepFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Startup cross-fingerprint orphan scan failed (non-fatal); unreachable vec tables will not be reported until the next successful run")]
+    private static partial void LogCrossFingerprintOrphanScanFailed(ILogger logger, Exception exception);
 
     #endregion
 }

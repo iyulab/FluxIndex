@@ -37,21 +37,35 @@ public interface IVaultPipeline
     Task RemoveAsync(VaultEntry entry, CancellationToken ct = default);
 
     /// <summary>
-    /// Searches indexed content in vector store.
+    /// Searches indexed content using the requested strategy.
     /// </summary>
     /// <param name="query">Search query text.</param>
     /// <param name="documentIds">Optional filter by document IDs (filepath hashes).</param>
     /// <param name="topK">Maximum results to return.</param>
     /// <param name="minScore">Minimum score threshold.</param>
+    /// <param name="strategy">Requested search strategy. A <see cref="VaultSearchStrategy.Hybrid"/>
+    /// request degrades to vector when no <c>IHybridSearchService</c> is available; the response
+    /// reports the strategy actually executed.</param>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>Search results with chunk content and scores.</returns>
-    Task<IReadOnlyList<PipelineSearchResult>> SearchAsync(
+    /// <returns>Search results plus the strategy that was actually executed.</returns>
+    Task<VaultPipelineSearchResponse> SearchAsync(
         string query,
         IEnumerable<string>? documentIds = null,
         int topK = 10,
         float minScore = 0.0f,
+        VaultSearchStrategy strategy = VaultSearchStrategy.Vector,
         CancellationToken ct = default);
 }
+
+/// <summary>
+/// Result of a pipeline search: the matched chunks plus the strategy that was actually executed
+/// (which may differ from the requested strategy when hybrid degrades to vector).
+/// </summary>
+/// <param name="Results">Matched chunks ordered by score.</param>
+/// <param name="ExecutedStrategy">The strategy the pipeline actually ran.</param>
+public sealed record VaultPipelineSearchResponse(
+    IReadOnlyList<PipelineSearchResult> Results,
+    VaultSearchStrategy ExecutedStrategy);
 
 /// <summary>
 /// Options for memorize/refresh operations.

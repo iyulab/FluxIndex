@@ -181,6 +181,10 @@ public sealed partial class VaultManager : IVault
                                 break;
                         }
                     }
+                    catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                    {
+                        throw;
+                    }
                     catch (Exception ex)
                     {
                         errors.Add(new SyncError
@@ -191,6 +195,10 @@ public sealed partial class VaultManager : IVault
                         });
                     }
                 }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -215,6 +223,10 @@ public sealed partial class VaultManager : IVault
                 await _queue.EnqueueRemoveAsync(entry.FilepathHash, entry.SourcePath, ct);
                 removeCount++;
                 orphansQueued++;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -795,6 +807,10 @@ public sealed partial class VaultManager : IVault
                         break;
                 }
             }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
                 errors.Add(new ScanError { FilePath = file, ErrorMessage = ex.Message });
@@ -875,6 +891,10 @@ public sealed partial class VaultManager : IVault
                 // Queue removal job
                 await _queue.EnqueueRemoveAsync(entry.FilepathHash, entry.SourcePath, ct);
                 cleanedCount++;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -1006,18 +1026,21 @@ public sealed partial class VaultManager : IVault
                     TotalCount = 0,
                     SearchedPaths = searchedPaths,
                     DocumentsSearched = 0,
-                    Duration = sw.Elapsed
+                    Duration = sw.Elapsed,
+                    RequestedStrategy = options.SearchStrategy,
+                    ExecutedStrategy = options.SearchStrategy
                 };
             }
 
             // Get document IDs to filter search
             var documentIds = targetEntries.Select(e => e.FilepathHash).ToList();
 
-            // Execute pipeline search
-            var pipelineResults = await _pipeline.SearchAsync(query, documentIds, options.TopK, options.MinScore, ct);
+            // Execute pipeline search with the requested strategy
+            var pipelineResponse = await _pipeline.SearchAsync(
+                query, documentIds, options.TopK, options.MinScore, options.SearchStrategy, ct);
 
             // Map to VaultSearchResultItem
-            var items = pipelineResults.Select(r =>
+            var items = pipelineResponse.Results.Select(r =>
             {
                 entriesDict.TryGetValue(r.DocumentId, out var entry);
                 return new VaultSearchResultItem
@@ -1043,8 +1066,15 @@ public sealed partial class VaultManager : IVault
                 TotalCount = items.Count,
                 SearchedPaths = searchedPaths,
                 DocumentsSearched = targetEntries.Count,
-                Duration = sw.Elapsed
+                Duration = sw.Elapsed,
+                RequestedStrategy = options.SearchStrategy,
+                ExecutedStrategy = pipelineResponse.ExecutedStrategy
             };
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            sw.Stop();
+            throw;
         }
         catch (Exception ex)
         {

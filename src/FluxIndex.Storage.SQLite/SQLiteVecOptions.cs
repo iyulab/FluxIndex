@@ -72,6 +72,20 @@ public class SQLiteVecOptions : SQLiteOptions
     public bool EnableStartupOrphanSweep { get; set; } = true;
 
     /// <summary>
+    /// At host startup, scan for cross-fingerprint orphan vec0 tables — tables whose fingerprint
+    /// diverges from the bound effective fingerprint yet still hold committed vectors that vector
+    /// search never queries. Each is surfaced as a WARN (non-destructive; no rows are deleted).
+    /// Default: true.
+    /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="EnableStartupOrphanSweep"/>, this scan carries no migration marker and runs
+    /// on every startup so the warning persists until the orphan is reconciled (via reindex). Set to
+    /// <c>false</c> to suppress the scan (e.g. for tests that observe orphans, or to silence the
+    /// warning once a reconciliation plan is in place).
+    /// </remarks>
+    public bool EnableStartupCrossFingerprintOrphanReport { get; set; } = true;
+
+    /// <summary>
     /// 배치 삽입 시 최대 배치 크기.
     /// 1K-10K 범위 권장. 너무 크면 메모리 사용 증가, 너무 작으면 성능 저하.
     /// </summary>

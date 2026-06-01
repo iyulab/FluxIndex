@@ -796,6 +796,70 @@ public partial class SQLiteVecDbContext : DbContext
     }
 
     /// <summary>
+    /// Non-destructive diagnostic that detects <c>chunk_embeddings_&lt;fingerprint&gt;</c> tables whose
+    /// fingerprint diverges from the currently-bound effective fingerprint yet still hold committed
+    /// vectors. Vector search binds to a single effective fingerprint, so such tables are never
+    /// queried — their vectors are silently unreachable, leaving vector recall below keyword (FTS)
+    /// coverage. Emits a WARN per orphan table and returns the detected tables.
+    /// </summary>
+    /// <remarks>
+    /// Distinct from <see cref="SweepOrphanVectorsAsync"/>, which removes orphan <em>rows</em>
+    /// (chunk_id absent from vector_chunks) but never reconciles a whole table whose fingerprint
+    /// diverges while still holding live vectors. This method NEVER deletes: cross-fingerprint
+    /// vectors are the sole copy under a different embedding identity, so recovery requires reindex,
+    /// not a bare drop. It carries no migration marker and runs on every startup so the warning
+    /// persists until the orphan is reconciled. Returns an empty list when sqlite-vec is disabled,
+    /// no effective fingerprint is bound (call BindIdentity first), or no orphan table holds vectors.
+    /// </remarks>
+    internal async Task<IReadOnlyList<CrossFingerprintOrphanTable>> DetectCrossFingerprintOrphanTablesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (!_options.UseSQLiteVec || _options.EmbeddingFingerprint is null)
+            return Array.Empty<CrossFingerprintOrphanTable>();
+
+        var connection = (Microsoft.Data.Sqlite.SqliteConnection)Database.GetDbConnection();
+        if (connection.State != System.Data.ConnectionState.Open)
+            await connection.OpenAsync(cancellationToken);
+
+        var effectiveTable = _options.GetVecTableName();
+        var tables = await EnumerateVecTableNamesAsync(cancellationToken);
+
+        var orphans = new List<CrossFingerprintOrphanTable>();
+        foreach (var tableName in tables)
+        {
+            if (string.Equals(tableName, effectiveTable, StringComparison.Ordinal))
+                continue;
+
+            var count = await CountVecTableRowsAsync(connection, tableName, cancellationToken);
+            if (count <= 0)
+                continue;
+
+            var fingerprint = tableName.Substring(VecTableNamePrefix.Length);
+            orphans.Add(new CrossFingerprintOrphanTable(tableName, fingerprint, count));
+            LogCrossFingerprintOrphanTable(_logger, tableName, fingerprint, count, effectiveTable);
+        }
+
+        if (orphans.Count > 0)
+            LogCrossFingerprintOrphanSummary(_logger, orphans.Count, effectiveTable);
+
+        return orphans;
+    }
+
+    private const string VecTableNamePrefix = "chunk_embeddings_";
+
+    private static async Task<long> CountVecTableRowsAsync(
+        Microsoft.Data.Sqlite.SqliteConnection connection,
+        string tableName,
+        CancellationToken cancellationToken)
+    {
+        // tableName was validated by IsValidFingerprintVecTableName in the enumerator.
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = $"SELECT COUNT(*) FROM {tableName}";
+        var result = await cmd.ExecuteScalarAsync(cancellationToken);
+        return Convert.ToInt64(result, CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
     /// sqlite-vec 확장 사용 여부 확인
     /// </summary>
     public async Task<bool> IsSQLiteVecAvailableAsync(CancellationToken cancellationToken = default)
@@ -894,6 +958,12 @@ public partial class SQLiteVecDbContext : DbContext
     [LoggerMessage(Level = LogLevel.Information, Message = "Orphan sweep completed: {TotalRemoved} total orphan row(s) removed across {TableCount} vec0 table(s)")]
     private static partial void LogOrphanSweepCompleted(ILogger logger, int totalRemoved, int tableCount);
 
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Cross-fingerprint orphan vec table {VecTable} (fingerprint {Fingerprint}) holds {VectorCount} vector(s) not queried under effective table {EffectiveTable}; reindex required (sweep does not delete cross-fingerprint tables)")]
+    private static partial void LogCrossFingerprintOrphanTable(ILogger logger, string vecTable, string fingerprint, long vectorCount, string effectiveTable);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Cross-fingerprint orphan scan: {OrphanCount} vec table(s) hold unreachable vectors under effective table {EffectiveTable}; vector recall is below keyword coverage until reindex")]
+    private static partial void LogCrossFingerprintOrphanSummary(ILogger logger, int orphanCount, string effectiveTable);
+
     [LoggerMessage(Level = LogLevel.Information, Message = "Dropped legacy chunk_embeddings table (dimension-based table {NewTable} already exists)")]
     private static partial void LogLegacyVecTableDropped(ILogger logger, string newTable);
 
@@ -908,6 +978,18 @@ public partial class SQLiteVecDbContext : DbContext
 
     #endregion
 }
+
+/// <summary>
+/// A <c>chunk_embeddings_&lt;fingerprint&gt;</c> table whose fingerprint diverges from the effective
+/// fingerprint while still holding committed vectors that vector search never queries. Reported by
+/// <see cref="SQLiteVecDbContext.DetectCrossFingerprintOrphanTablesAsync"/>. Such a table is the sole
+/// copy of its vectors under a different embedding identity, so it is never auto-deleted — reconciling
+/// it requires re-embedding the source content under the effective model (reindex).
+/// </summary>
+/// <param name="TableName">Full vec0 table name, e.g. <c>chunk_embeddings_d660d102</c>.</param>
+/// <param name="Fingerprint">Fingerprint suffix of the table (the part after <c>chunk_embeddings_</c>).</param>
+/// <param name="VectorCount">Number of committed vectors in the orphan table.</param>
+public readonly record struct CrossFingerprintOrphanTable(string TableName, string Fingerprint, long VectorCount);
 
 /// <summary>
 /// 벡터 청크 메타데이터 엔티티 (sqlite-vec 사용 시)
