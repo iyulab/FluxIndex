@@ -9,6 +9,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.13.19] - 2026-06-10
+
+### Fixed
+- `FluxIndex.Extensions.FileVault`: a removed entry could persist in `ListAsync(null)` indefinitely after a preceding hybrid `SearchAsync`. Root cause: `VaultEntry.Load`/`SaveMetadata` opened `meta.json` without `FileShare.Delete`, so a concurrent `ListAsync` enumeration read blocked the background remove job's `Directory.Delete` (Windows `ERROR_SHARING_VIOLATION`), leaving the entry directory on disk (and growing it unboundedly). Now opened with `FileShare.ReadWrite | FileShare.Delete`, and `VaultStorageService.DeleteEntryStorageAsync` retries the directory delete (5×, 100 ms backoff) to absorb the residual `RemoveDirectory` race and transient foreign locks. Entries stuck in `RemovalPartial` from before the fix self-heal via `RecoverPartialRemovalsAsync` on next host start. Reported by Filer (golden gate `SC-RAG-1`).
+
+---
+
 ## [0.13.15] - 2026-05-28
 
 ### Fixed

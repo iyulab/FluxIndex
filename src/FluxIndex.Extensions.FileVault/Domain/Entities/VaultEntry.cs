@@ -159,7 +159,10 @@ public sealed class VaultEntry
         try
         {
             string json;
-            using (var fs = new FileStream(metaPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            // FileShare.Delete is required so a concurrent ListAsync enumeration read of meta.json
+            // does not block the background remove job's Directory.Delete (Windows raises
+            // ERROR_SHARING_VIOLATION otherwise). See VaultStorageService.DeleteEntryStorageAsync.
+            using (var fs = new FileStream(metaPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
             using (var reader = new StreamReader(fs))
             {
                 json = reader.ReadToEnd();
@@ -411,7 +414,9 @@ public sealed class VaultEntry
 
         var json = JsonSerializer.Serialize(meta, s_writeJsonOptions);
 
-        using var fs = new FileStream(MetaPath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite);
+        // FileShare.Delete mirrors the read path so a concurrent removal does not hard-fail
+        // against an in-flight metadata write.
+        using var fs = new FileStream(MetaPath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
         using var writer = new StreamWriter(fs);
         writer.Write(json);
     }

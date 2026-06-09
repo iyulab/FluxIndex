@@ -219,22 +219,42 @@ public sealed partial class VaultStorageService : IVaultStorageService
         LogStoredQa(_logger, entry.Id);
     }
 
-    public Task DeleteEntryStorageAsync(VaultEntry entry, CancellationToken ct = default)
-    {
-        if (Directory.Exists(entry.EntryPath))
-        {
-            // Delete .git directory first (may have read-only files)
-            var gitDir = Path.Combine(entry.VaultPath, ".git");
-            if (Directory.Exists(gitDir))
-            {
-                SetAttributesNormal(new DirectoryInfo(gitDir));
-            }
+    /// <summary>
+    /// Max attempts for the entry-directory deletion. A concurrent ListAsync enumeration can hold
+    /// a transient meta.json handle (now opened with FileShare.Delete), and other transient holders
+    /// (antivirus, indexers, git) may briefly lock files. Readers opened with FileShare.Delete let
+    /// the per-file DeleteFile succeed, but RemoveDirectory can still race a not-yet-closed handle,
+    /// so we retry with a short backoff before surfacing the failure.
+    /// </summary>
+    private const int DeleteMaxAttempts = 5;
+    private const int DeleteRetryDelayMs = 100;
 
-            Directory.Delete(entry.EntryPath, recursive: true);
-            LogDeletedStorage(_logger, entry.Id);
+    public async Task DeleteEntryStorageAsync(VaultEntry entry, CancellationToken ct = default)
+    {
+        if (!Directory.Exists(entry.EntryPath))
+            return;
+
+        // Delete .git directory first (may have read-only files)
+        var gitDir = Path.Combine(entry.VaultPath, ".git");
+        if (Directory.Exists(gitDir))
+        {
+            SetAttributesNormal(new DirectoryInfo(gitDir));
         }
 
-        return Task.CompletedTask;
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                Directory.Delete(entry.EntryPath, recursive: true);
+                LogDeletedStorage(_logger, entry.Id);
+                return;
+            }
+            catch (Exception ex) when ((ex is IOException or UnauthorizedAccessException) && attempt < DeleteMaxAttempts)
+            {
+                LogStorageDeleteRetry(_logger, entry.Id, attempt, ex.Message);
+                await Task.Delay(DeleteRetryDelayMs, ct);
+            }
+        }
     }
 
     public Task<long> GetStorageSizeAsync(VaultEntry entry, CancellationToken ct = default)
@@ -316,6 +336,9 @@ public sealed partial class VaultStorageService : IVaultStorageService
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Deleted storage for entry {EntryId}")]
     private static partial void LogDeletedStorage(ILogger logger, Guid entryId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Storage delete for entry {EntryId} hit a transient lock (attempt {Attempt}), retrying: {Error}")]
+    private static partial void LogStorageDeleteRetry(ILogger logger, Guid entryId, int attempt, string error);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Git initialization failed for {EntryPath}: {Error}. Vault will operate without version tracking.")]
     private static partial void LogGitInitFailed(ILogger logger, string entryPath, string error);
