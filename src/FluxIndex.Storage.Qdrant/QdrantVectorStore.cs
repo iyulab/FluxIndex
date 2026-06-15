@@ -101,6 +101,24 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
                     // Set _resolvedCollectionName before creating (used in CreateCollectionWithDimensionAsync)
                     _resolvedCollectionName = collectionName;
                     await CreateCollectionWithDimensionAsync(dimension, ct);
+
+                    // Verify the collection actually exists after creation. Client/server version
+                    // skew (e.g. Qdrant.Client 1.18.x against a Qdrant 1.18.0 server) can make
+                    // CreateCollectionAsync silently no-op; without this check the store would log
+                    // "ready" and then fail every upsert with an opaque NotFound.
+                    var afterCreate = await _client.ListCollectionsAsync(ct);
+                    if (!afterCreate.Any(c => c == collectionName))
+                    {
+                        throw new InvalidOperationException(
+                            $"Qdrant reported success creating collection '{collectionName}', but it is absent afterwards. Check Qdrant client/server version compatibility.");
+                    }
+                }
+                else if (!exists)
+                {
+                    // Collection missing and auto-create disabled: subsequent upserts will fail with
+                    // NotFound. Surface this instead of logging "ready" over a non-existent collection.
+                    throw new InvalidOperationException(
+                        $"Qdrant collection '{collectionName}' does not exist and CreateCollectionOnStartup is disabled. Create the collection or enable auto-create.");
                 }
 
                 // Only update state after successful initialization
@@ -112,13 +130,13 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
             }
             catch (Exception ex)
             {
-                // Log warning but still set collection name (assume exists)
+                // Surface initialization failures instead of masking them. The previous behaviour
+                // set _collectionInitialized = true here, which made the store report "ready" while
+                // every subsequent upsert failed with an opaque NotFound, and blocked any retry on
+                // the next call (e.g. when Qdrant was merely still starting up). Leave state unset so
+                // the next operation retries, and propagate so the caller and operator see the cause.
                 LogCollectionInitFailed(_logger, ex, collectionName);
-
-                // Set state even on failure to prevent repeated initialization attempts
-                _resolvedCollectionName = collectionName;
-                _detectedDimension = dimension;
-                _collectionInitialized = true;
+                throw;
             }
         }
         finally
