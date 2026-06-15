@@ -277,6 +277,18 @@ When multiple providers support the same capability:
 | `UseNeo4j(...)` | Neo4j | Graph only |
 | `UseBestInClass(...)` | PG + Qdrant + Neo4j | Optimal distribution |
 
+> **Advanced Qdrant options.** `UseQdrant(...)` only exposes host/port/collection. To configure
+> the full `QdrantOptions` surface (`CreateCollectionOnStartup`, `DistanceMetric`, `HnswM`,
+> `OnDiskPayload`, `TimeoutSeconds`, ...), use the `AddQdrantStorage` lambda overload instead:
+>
+> ```csharp
+> builder.AddQdrantStorage(o =>
+> {
+>     o.Host = "localhost"; o.GrpcPort = 6334; o.BaseCollectionName = "chunks";
+>     o.CreateCollectionOnStartup = true; // default is already true → auto-creates collections
+> });
+> ```
+
 ### AI Services
 
 ```csharp

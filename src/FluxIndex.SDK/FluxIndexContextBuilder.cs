@@ -285,6 +285,22 @@ public class FluxIndexContextBuilder
     /// 컬렉션 이름에 차원이 자동 추가됨 (예: "my_chunks" → "my_chunks_384")
     /// NOTE: Requires FluxIndex.Storage.Qdrant package reference.
     /// </summary>
+    /// <remarks>
+    /// This convenience overload only exposes host/port/collection. The full
+    /// <c>QdrantOptions</c> surface (CreateCollectionOnStartup, DistanceMetric,
+    /// HnswM, OnDiskPayload, TimeoutSeconds, ...) is configured via the
+    /// <c>AddQdrantStorage(Action&lt;QdrantOptions&gt;)</c> extension instead:
+    /// <code>
+    /// builder.AddQdrantStorage(o =>
+    /// {
+    ///     o.Host = host; o.GrpcPort = grpcPort; o.BaseCollectionName = name;
+    ///     o.CreateCollectionOnStartup = true; // default is already true
+    /// });
+    /// </code>
+    /// Note: <c>QdrantOptions.CreateCollectionOnStartup</c> defaults to <c>true</c>,
+    /// so this overload already auto-creates collections unless a separate registration
+    /// overrides the option to false.
+    /// </remarks>
     /// <param name="host">Qdrant 서버 호스트</param>
     /// <param name="grpcPort">gRPC 포트</param>
     /// <param name="baseCollectionName">기본 컬렉션 이름 (모델 fingerprint 자동 추가)</param>
