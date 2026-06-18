@@ -33,9 +33,14 @@ env:
   # SQLite-vec and performance tests are now skipped by default
   # Use ENABLE_SQLITEVEC_TESTS=true or ENABLE_PERFORMANCE_TESTS=true to enable them
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build-test-release:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
     - name: Checkout

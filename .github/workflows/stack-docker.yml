@@ -28,9 +28,14 @@ env:
   API_IMAGE_NAME: iyulab/fluxindex-stack-api
   FRONTEND_IMAGE_NAME: iyulab/fluxindex-stack-frontend
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-api:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     # Tests 성공 시에만 실행 (workflow_dispatch는 항상 실행)
     if: |
       github.event_name == 'workflow_dispatch' && github.event.inputs.build_api == 'true' ||
@@ -125,6 +130,7 @@ jobs:
 
   build-frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     # Tests 성공 시에만 실행 (workflow_dispatch는 항상 실행)
     if: |
       github.event_name == 'workflow_dispatch' && github.event.inputs.build_frontend == 'true' ||
