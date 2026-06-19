@@ -207,6 +207,37 @@ result.ExecutedStrategy;   // 실제 실행된 전략 (서비스 미등록 시 V
 `CancellationToken`이 취소되면 `OperationCanceledException`을 전파한다 (취소를 빈 결과/부분 결과로
 세탁하지 않음). 호출자 토큰과 무관한 내부 예외는 기존대로 처리된다.
 
+### GraphRAG Indexing
+
+FileVault memorize 경로는 SDK 직접 인덱싱 경로(`Indexer.IndexAsync`)와 **동등한 GraphRAG 의미**를 갖는다.
+`IGraphRAGService`(예: `AddFullGraphRAG()`)가 DI에 등록돼 있으면, vault 경로도 vector-store ingestion 직후
+엔티티 그래프를 빌드한다. per-call 제어는 `MemorizeOptions`로 한다:
+
+```csharp
+public sealed class MemorizeOptions
+{
+    // ... chunking/commit 옵션 ...
+
+    // null(기본): IGraphRAGService 등록 시 자동 활성
+    // true:       강제 활성 (서비스 미등록 시 memorize 실패)
+    // false:      강제 비활성
+    public bool? EnableGraphRAG { get; set; }
+
+    // GraphRAG 활성 시 IGraphRAGService.BuildIndexAsync로 전달되는 빌드 옵션
+    public GraphRAGBuildOptions? GraphRAGOptions { get; set; }
+}
+
+await pipeline.MemorizeAsync(entry, new MemorizeOptions
+{
+    EnableGraphRAG = true,                                   // 강제 활성
+    GraphRAGOptions = new GraphRAGBuildOptions { /* ... */ },
+}, ct);
+```
+
+> `EnableGraphRAG = true`인데 `IGraphRAGService`가 미등록이면 memorize는 `MemorizeResult.Failed`로 끝나며
+> 오류 메시지에 등록 안내가 실린다 (예외를 던지지 않고 결과 객체로 전달). 자동 활성(`null`)에서 서비스가
+> 없으면 GraphRAG 단계는 조용히 건너뛴다.
+
 ## Integration with Consumer Apps
 
 ### 권장 패턴: Vault 상태 + 파일 시스템 조합

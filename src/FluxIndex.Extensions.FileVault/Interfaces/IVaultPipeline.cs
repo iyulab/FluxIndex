@@ -1,3 +1,4 @@
+using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Extensions.FileVault.Domain.Entities;
 
 namespace FluxIndex.Extensions.FileVault.Interfaces;
@@ -130,6 +131,25 @@ public sealed class MemorizeOptions
     /// Default: null (use batch path, no checkpoint).
     /// </summary>
     public Func<int, CancellationToken, Task>? CheckpointCallback { get; set; }
+
+    /// <summary>
+    /// GraphRAG indexing toggle for this memorize/refresh call. Mirrors
+    /// <c>IndexingOptions.EnableGraphRAG</c> on the SDK direct-index path so that the FileVault
+    /// memorize entry point has indexing semantics equivalent to <c>Indexer.IndexAsync</c>.
+    /// <list type="bullet">
+    /// <item><description><c>null</c> (default): auto-enable when an <see cref="IGraphRAGService"/> is registered.</description></item>
+    /// <item><description><c>true</c>: force enable (throws if no <see cref="IGraphRAGService"/> is wired).</description></item>
+    /// <item><description><c>false</c>: force disable even when the service is registered.</description></item>
+    /// </list>
+    /// </summary>
+    public bool? EnableGraphRAG { get; set; }
+
+    /// <summary>
+    /// GraphRAG build options applied when GraphRAG is enabled for this call.
+    /// Ignored when GraphRAG is disabled. Passed through to
+    /// <see cref="IGraphRAGService.BuildIndexAsync"/>.
+    /// </summary>
+    public GraphRAGBuildOptions? GraphRAGOptions { get; set; }
 }
 
 /// <summary>

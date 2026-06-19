@@ -86,6 +86,13 @@ public sealed partial class VaultPipeline : IVaultPipeline
     private readonly IVectorStore? _vectorStore;
     private readonly IEmbeddingService? _embeddingService;
     private readonly IHybridSearchService? _hybridSearch;
+    private readonly IGraphRAGService? _graphRAGService;
+
+    /// <summary>
+    /// Whether a GraphRAG service is wired into this pipeline. When false, a memorize call with
+    /// <see cref="MemorizeOptions.EnableGraphRAG"/> == true will throw.
+    /// </summary>
+    public bool SupportsGraphRAG => _graphRAGService != null;
 
     public VaultPipeline(
         IGitService git,
@@ -97,7 +104,8 @@ public sealed partial class VaultPipeline : IVaultPipeline
         IChunker? chunker = null,
         IVectorStore? vectorStore = null,
         IEmbeddingService? embeddingService = null,
-        IHybridSearchService? hybridSearch = null)
+        IHybridSearchService? hybridSearch = null,
+        IGraphRAGService? graphRAGService = null)
     {
         _git = git ?? throw new ArgumentNullException(nameof(git));
         _hasher = hasher ?? throw new ArgumentNullException(nameof(hasher));
@@ -109,6 +117,7 @@ public sealed partial class VaultPipeline : IVaultPipeline
         _vectorStore = vectorStore;
         _embeddingService = embeddingService;
         _hybridSearch = hybridSearch;
+        _graphRAGService = graphRAGService;
     }
 
     public async Task<MemorizeResult> MemorizeAsync(VaultEntry entry, MemorizeOptions? options = null, CancellationToken ct = default)
@@ -565,21 +574,62 @@ public sealed partial class VaultPipeline : IVaultPipeline
         // Branch: when CheckpointCallback is set (job-queue path), use per-chunk processing
         // for crash-resilient resume. Otherwise, use the existing batch path (faster for the
         // common case of one-shot direct API calls).
+        IReadOnlyList<DocumentChunk> indexedChunks;
         if (options.CheckpointCallback != null)
         {
-            await IndexChunksResumableAsync(entry, chunks, options.StartFromChunkIndex, options.CheckpointCallback, ct);
+            indexedChunks = await IndexChunksResumableAsync(entry, chunks, options.StartFromChunkIndex, options.CheckpointCallback, ct);
         }
         else
         {
-            await IndexChunksBatchAsync(entry, chunks, ct);
+            indexedChunks = await IndexChunksBatchAsync(entry, chunks, ct);
         }
+
+        // GraphRAG indexing — keeps the FileVault memorize path at parity with the SDK direct-index
+        // path (Indexer.IndexAsync), which builds the entity graph after vector-store ingestion.
+        await BuildGraphRagIfEnabledAsync(entry, indexedChunks, options, ct);
+    }
+
+    /// <summary>
+    /// Builds the GraphRAG entity index for the just-indexed chunks when GraphRAG is enabled.
+    /// Mirrors the enable semantics of <c>IndexingOptions.EnableGraphRAG</c> on the SDK path:
+    /// null = auto when a service is registered, true = force (throw if absent), false = off.
+    /// </summary>
+    private async Task BuildGraphRagIfEnabledAsync(
+        VaultEntry entry,
+        IReadOnlyList<DocumentChunk> indexedChunks,
+        MemorizeOptions options,
+        CancellationToken ct)
+    {
+        var enableGraphRAG = options.EnableGraphRAG ?? (_graphRAGService != null);
+        if (!enableGraphRAG)
+        {
+            return;
+        }
+
+        if (_graphRAGService == null)
+        {
+            throw new InvalidOperationException(
+                "GraphRAG is enabled but IGraphRAGService is not registered. " +
+                "Register it via AddFullGraphRAG()/AddGraphRAGService(), or set MemorizeOptions.EnableGraphRAG = false.");
+        }
+
+        // Nothing newly indexed this run (e.g. resumable path resumed past the last chunk) — skip.
+        if (indexedChunks.Count == 0)
+        {
+            return;
+        }
+
+        LogBuildingGraphRagIndex(_logger, entry.FilepathHash, indexedChunks.Count);
+        await _graphRAGService.BuildIndexAsync(indexedChunks, options.GraphRAGOptions, ct);
+        LogGraphRagIndexBuilt(_logger, entry.FilepathHash);
     }
 
     /// <summary>
     /// Batch indexing path: one embedding call + one store call for all chunks.
     /// Used by direct callers of MemorizeAsync (no checkpoint hooks).
     /// </summary>
-    private async Task IndexChunksBatchAsync(VaultEntry entry, IReadOnlyList<string> chunks, CancellationToken ct)
+    /// <returns>The embedded chunks that were stored, for downstream GraphRAG indexing.</returns>
+    private async Task<IReadOnlyList<DocumentChunk>> IndexChunksBatchAsync(VaultEntry entry, IReadOnlyList<string> chunks, CancellationToken ct)
     {
         var documentId = entry.FilepathHash;
 
@@ -618,6 +668,8 @@ public sealed partial class VaultPipeline : IVaultPipeline
         var storedIds = await _vectorStore!.StoreBatchAsync(documentChunks, ct);
         var storedCount = storedIds.Count();
         LogIndexedChunks(_logger, storedCount, documentId);
+
+        return documentChunks;
     }
 
     /// <summary>
@@ -627,7 +679,12 @@ public sealed partial class VaultPipeline : IVaultPipeline
     /// Trade-off: ~5-10% slower than batch for the common no-crash case, but recovery
     /// becomes O(remaining_chunks) instead of O(total_chunks).
     /// </summary>
-    private async Task IndexChunksResumableAsync(
+    /// <returns>
+    /// The chunks newly embedded and stored in this run, for downstream GraphRAG indexing.
+    /// On a resumed run this excludes already-committed chunks (skipped), so GraphRAG sees only
+    /// the remaining tail; a full re-index (RefreshAsync) rebuilds the complete graph.
+    /// </returns>
+    private async Task<IReadOnlyList<DocumentChunk>> IndexChunksResumableAsync(
         VaultEntry entry,
         IReadOnlyList<string> chunks,
         int startFromChunk,
@@ -635,7 +692,7 @@ public sealed partial class VaultPipeline : IVaultPipeline
         CancellationToken ct)
     {
         var documentId = entry.FilepathHash;
-        var processedCount = 0;
+        var processedChunks = new List<DocumentChunk>();
         var skippedCount = 0;
 
         for (int i = 0; i < chunks.Count; i++)
@@ -675,13 +732,15 @@ public sealed partial class VaultPipeline : IVaultPipeline
             // succeeding, recovery sees stale checkpoint (chunk i in DB but checkpoint = i-1)
             // and will redo chunk i — at most 1 chunk wasted, acceptable.
             await checkpointCallback(i, ct);
-            processedCount++;
+            processedChunks.Add(chunk);
         }
 
         if (skippedCount > 0)
-            LogIndexedChunksResumable(_logger, processedCount, skippedCount, documentId);
+            LogIndexedChunksResumable(_logger, processedChunks.Count, skippedCount, documentId);
         else
-            LogIndexedChunks(_logger, processedCount, documentId);
+            LogIndexedChunks(_logger, processedChunks.Count, documentId);
+
+        return processedChunks;
     }
 
     private async Task<string> ExtractFallbackAsync(string sourcePath, CancellationToken ct)
@@ -856,6 +915,11 @@ public sealed partial class VaultPipeline : IVaultPipeline
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Indexed {Processed} chunks (resumed; skipped {Skipped} already-committed) for {DocumentId}")]
     private static partial void LogIndexedChunksResumable(ILogger logger, int processed, int skipped, string documentId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Building GraphRAG index for {DocumentId} from {ChunkCount} chunks")]
+    private static partial void LogBuildingGraphRagIndex(ILogger logger, string documentId, int chunkCount);
+    [LoggerMessage(Level = LogLevel.Information, Message = "GraphRAG index built for {DocumentId}")]
+    private static partial void LogGraphRagIndexBuilt(ILogger logger, string documentId);
 
     #endregion
 }
