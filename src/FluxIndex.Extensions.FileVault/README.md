@@ -55,8 +55,12 @@ await vault.AddWatchedFolderAsync("/documents",
     autoMemorize: true,
     includePatterns: ["*.pdf", "*.docx", "*.md"]);
 
-// 파일 메모라이즈 (인덱싱)
+// 파일 메모라이즈 (인덱싱) — background 모드에서는 큐에 적재 후 즉시 반환
 await vault.MemorizeAsync("/documents/report.pdf");
+
+// 완료까지 대기 (background 모드에서도 terminal-await; polling 불필요)
+// 실패/취소는 예외로 표면화 — 미완료 entry를 "완료"로 오인하지 않음
+var memorized = await vault.MemorizeAsync("/documents/report.pdf", waitForCompletion: true);
 
 // 변경사항 동기화
 var syncResult = await vault.SyncAsync();
@@ -109,6 +113,11 @@ Console.WriteLine($"Total: {status.TotalEntries}, Memorized: {status.MemorizedCo
 ```csharp
 // 전체 파이프라인 실행 (extract → chunk → embed → commit)
 Task<VaultEntry> MemorizeAsync(string filePath);
+
+// 위와 동일하되, waitForCompletion: true면 background 모드에서도 terminal(Memorized)까지
+// signal 기반으로 대기(no polling)한 뒤 Memorized-stage entry 반환. 실패→InvalidOperationException,
+// 취소→OperationCanceledException. 큐 레벨 빌딩블록: IVaultQueueService.WaitForJobAsync(jobId).
+Task<VaultEntry> MemorizeAsync(string filePath, bool waitForCompletion);
 
 // 부분 파이프라인 (chunk → embed → commit, 추출 스킵)
 Task<VaultEntry> RefreshAsync(string filePath);

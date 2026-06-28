@@ -119,6 +119,63 @@ public class VaultManagerTests : IDisposable
             () => _vault.MemorizeAsync(nonExistentPath));
     }
 
+    // === MU-2: terminal-await overload ===
+
+    private static VaultJob MakeTerminalJob(VaultJobStatus status, string? error = null) =>
+        VaultJob.Restore(
+            id: Guid.NewGuid(),
+            filePath: "/tmp/x.txt",
+            filepathHash: "hash",
+            jobType: VaultJobType.Memorize,
+            status: status,
+            priority: VaultJobPriority.Normal,
+            queuedAt: DateTimeOffset.UtcNow,
+            startedAt: DateTimeOffset.UtcNow,
+            completedAt: DateTimeOffset.UtcNow,
+            retryCount: 0,
+            maxRetries: 3,
+            errorMessage: error,
+            lastCompletedChunkIndex: -1);
+
+    [Fact]
+    public async Task MemorizeAsync_WaitForCompletion_AwaitsTerminalJob()
+    {
+        var filePath = CreateTestFile("wait.txt", "content");
+        _queueServiceMock.WaitForJobAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(MakeTerminalJob(VaultJobStatus.Completed));
+
+        var result = await _vault.MemorizeAsync(filePath, waitForCompletion: true);
+
+        result.Should().NotBeNull();
+        await _queueServiceMock.Received(1).EnqueueMemorizeAsync(
+            Arg.Any<string>(), Path.GetFullPath(filePath), Arg.Any<CancellationToken>());
+        await _queueServiceMock.Received(1).WaitForJobAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task MemorizeAsync_WaitForCompletionFalse_DoesNotAwait()
+    {
+        var filePath = CreateTestFile("nowait.txt", "content");
+
+        await _vault.MemorizeAsync(filePath, waitForCompletion: false);
+
+        await _queueServiceMock.Received(1).EnqueueMemorizeAsync(
+            Arg.Any<string>(), Path.GetFullPath(filePath), Arg.Any<CancellationToken>());
+        await _queueServiceMock.DidNotReceive().WaitForJobAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task MemorizeAsync_WaitForCompletion_ThrowsOnFailedJob()
+    {
+        var filePath = CreateTestFile("fail.txt", "content");
+        _queueServiceMock.WaitForJobAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(MakeTerminalJob(VaultJobStatus.Failed, "pipeline error"));
+
+        var act = async () => await _vault.MemorizeAsync(filePath, waitForCompletion: true);
+
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*pipeline error*");
+    }
+
     [Fact]
     public async Task MemorizeAsync_InitializesEntryStorage()
     {

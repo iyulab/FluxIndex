@@ -100,6 +100,19 @@ public interface IVaultQueueService
     Task<VaultJob?> GetJobAsync(Guid jobId, CancellationToken ct = default);
 
     /// <summary>
+    /// Asynchronously waits for a job to reach a terminal state (Completed, Failed, or Cancelled)
+    /// and returns the terminal job. This is the completion primitive consumers should use instead of
+    /// polling <see cref="GetJobAsync"/> or vault-entry stage. The wait is signal-driven (no polling):
+    /// it resolves the instant the queue transitions the job, and resolves immediately for a job that
+    /// is already terminal at call time (race-free).
+    /// </summary>
+    /// <param name="jobId">The job to await.</param>
+    /// <param name="ct">Cancellation token; cancelling abandons the wait (the job itself is unaffected).</param>
+    /// <returns>The job in its terminal state.</returns>
+    /// <exception cref="InvalidOperationException">No job exists with the given id.</exception>
+    Task<VaultJob> WaitForJobAsync(Guid jobId, CancellationToken ct = default);
+
+    /// <summary>
     /// Gets jobs with optional filters.
     /// </summary>
     Task<IReadOnlyList<VaultJob>> GetJobsAsync(

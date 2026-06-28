@@ -9,6 +9,19 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.15.0] - 2026-06-29
+
+### Added
+- `FluxIndex.Extensions.FileVault` (MU-2): **terminal-await for background memorize**. The facade previously
+  discarded the queued job id and returned an early-stage `VaultEntry`, so consumers in background mode polled
+  entry stage / queue status to know when memorize actually finished ("success lie"). Two additive members:
+  - `IVaultQueueService.WaitForJobAsync(jobId, ct)` — signal-driven (no polling) wait that resolves on the
+    Completed/Failed/Cancelled transition and immediately for an already-terminal job (race-free).
+  - `IVault.MemorizeAsync(filePath, bool waitForCompletion, ct)` — when `true`, awaits terminal completion and
+    returns the entry at its Memorized stage; a failed/cancelled job surfaces as an exception rather than a
+    silently-incomplete entry. `false` is identical to the existing single-arg overload (zero regression).
+  Reported via umbrella MU-2 (rule-of-three: AIMS, Filer, textree all hand-rolled completion polling).
+
 ## [0.13.19] - 2026-06-10
 
 ### Fixed

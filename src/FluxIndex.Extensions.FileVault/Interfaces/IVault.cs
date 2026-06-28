@@ -26,6 +26,23 @@ public interface IVault
     Task<VaultEntry> MemorizeAsync(string filePath, CancellationToken ct = default);
 
     /// <summary>
+    /// Memorizes a file through the full pipeline, optionally awaiting terminal completion.
+    /// When <paramref name="waitForCompletion"/> is <c>false</c> this is identical to
+    /// <see cref="MemorizeAsync(string, CancellationToken)"/>. When <c>true</c> and background
+    /// processing is enabled, it enqueues the job and awaits its terminal state (no polling),
+    /// then returns the entry at its terminal (Memorized) stage — so callers need not poll or
+    /// treat an early-stage entry as "done". A failed or cancelled job surfaces as an exception
+    /// rather than a silently-incomplete entry.
+    /// </summary>
+    /// <param name="filePath">Source file to memorize.</param>
+    /// <param name="waitForCompletion">Await terminal completion before returning.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The vault entry; at its terminal stage when <paramref name="waitForCompletion"/> is true.</returns>
+    /// <exception cref="InvalidOperationException">The memorize job failed.</exception>
+    /// <exception cref="OperationCanceledException">The memorize job was cancelled.</exception>
+    Task<VaultEntry> MemorizeAsync(string filePath, bool waitForCompletion, CancellationToken ct = default);
+
+    /// <summary>
     /// Refreshes a file's vault content without re-extraction.
     /// Flow: chunk → embed → commit (skip extraction)
     /// Use when vault/ files (append-text.md, qa.md) were manually edited.

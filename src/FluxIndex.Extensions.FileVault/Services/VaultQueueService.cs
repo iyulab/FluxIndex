@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Data;
 using FluxIndex.Extensions.FileVault.Domain.Entities;
 using FluxIndex.Extensions.FileVault.Interfaces;
@@ -19,6 +20,11 @@ public sealed partial class VaultQueueService : IVaultQueueService, IDisposable
     private readonly string _connectionString;
     private readonly SemaphoreSlim _dbLock = new(1, 1);
     private readonly List<double> _processingTimes = [];
+
+    // Bridges the queue's terminal transitions to WaitForJobAsync without polling. Each awaiting
+    // caller registers a TCS keyed by jobId; Complete/Fail/Cancel resolve and remove it.
+    private readonly ConcurrentDictionary<Guid, TaskCompletionSource<VaultJob>> _waiters = new();
+
     private DateTimeOffset? _lastProcessedAt;
     private bool _isPaused;
     private bool _disposed;
@@ -308,6 +314,7 @@ public sealed partial class VaultQueueService : IVaultQueueService, IDisposable
             if (job != null)
             {
                 JobCompleted?.Invoke(this, job);
+                SignalWaiter(job);
 
                 // Track processing time
                 if (job.Duration.HasValue)
@@ -348,6 +355,11 @@ public sealed partial class VaultQueueService : IVaultQueueService, IDisposable
 
             await cmd.ExecuteNonQueryAsync(ct);
             LogFailed(_logger, jobId, errorMessage);
+
+            // Release any caller awaiting terminal state (Failed is terminal).
+            var job = await GetJobInternalAsync(connection, jobId, ct);
+            if (job != null)
+                SignalWaiter(job);
         }
         finally
         {
@@ -418,6 +430,12 @@ public sealed partial class VaultQueueService : IVaultQueueService, IDisposable
             if (rows > 0)
             {
                 LogCancelled(_logger, jobId);
+
+                // Release any caller awaiting terminal state (Cancelled is terminal).
+                var job = await GetJobInternalAsync(connection, jobId, ct);
+                if (job != null)
+                    SignalWaiter(job);
+
                 return true;
             }
 
@@ -446,6 +464,53 @@ public sealed partial class VaultQueueService : IVaultQueueService, IDisposable
         {
             _dbLock.Release();
         }
+    }
+
+    public async Task<VaultJob> WaitForJobAsync(Guid jobId, CancellationToken ct = default)
+    {
+        // Fast path: resolve immediately for a job that is already terminal (race-free for the
+        // common "completed before the caller started waiting" case).
+        var current = await GetJobAsync(jobId, ct).ConfigureAwait(false);
+        if (current is null)
+            throw new InvalidOperationException($"No vault job found with id {jobId}.");
+        if (IsTerminal(current.Status))
+            return current;
+
+        // Register a waiter, then re-read to close the window between the fast-path read and
+        // registration (a terminal transition could have fired in between).
+        var tcs = _waiters.GetOrAdd(jobId,
+            _ => new TaskCompletionSource<VaultJob>(TaskCreationOptions.RunContinuationsAsynchronously));
+
+        var afterRegister = await GetJobAsync(jobId, ct).ConfigureAwait(false);
+        if (afterRegister is not null && IsTerminal(afterRegister.Status))
+        {
+            _waiters.TryRemove(jobId, out _);
+            return afterRegister;
+        }
+
+        try
+        {
+            return await tcs.Task.WaitAsync(ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Abandon the wait; the job is unaffected.
+            _waiters.TryRemove(jobId, out _);
+            throw;
+        }
+    }
+
+    private static bool IsTerminal(VaultJobStatus status) =>
+        status is VaultJobStatus.Completed or VaultJobStatus.Failed or VaultJobStatus.Cancelled;
+
+    /// <summary>
+    /// Resolves any caller awaiting this job via <see cref="WaitForJobAsync"/>. Safe to call when
+    /// there is no waiter.
+    /// </summary>
+    private void SignalWaiter(VaultJob job)
+    {
+        if (_waiters.TryRemove(job.Id, out var tcs))
+            tcs.TrySetResult(job);
     }
 
     private static async Task<VaultJob?> GetJobInternalAsync(SqliteConnection connection, Guid jobId, CancellationToken ct)
@@ -746,6 +811,13 @@ public sealed partial class VaultQueueService : IVaultQueueService, IDisposable
     {
         if (_disposed)
             return;
+
+        // Fault any outstanding waiters so callers don't hang past disposal.
+        foreach (var jobId in _waiters.Keys)
+        {
+            if (_waiters.TryRemove(jobId, out var tcs))
+                tcs.TrySetException(new ObjectDisposedException(nameof(VaultQueueService)));
+        }
 
         _dbLock.Dispose();
         _disposed = true;

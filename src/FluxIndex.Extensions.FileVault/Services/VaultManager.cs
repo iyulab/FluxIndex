@@ -83,6 +83,48 @@ public sealed partial class VaultManager : IVault
         return entry;
     }
 
+    public async Task<VaultEntry> MemorizeAsync(string filePath, bool waitForCompletion, CancellationToken ct = default)
+    {
+        // Without terminal-await, behavior is identical to the single-arg overload (pure additive).
+        if (!waitForCompletion)
+            return await MemorizeAsync(filePath, ct);
+
+        var fullPath = Path.GetFullPath(filePath);
+
+        if (!File.Exists(fullPath))
+            throw new FileNotFoundException("Source file not found", fullPath);
+
+        var entry = await GetOrCreateEntryAsync(fullPath, ct);
+
+        if (_options.EnableBackgroundProcessing)
+        {
+            // Enqueue, then await the queue's terminal transition (signal-driven, no polling).
+            var job = await _queue.EnqueueMemorizeAsync(entry.FilepathHash, fullPath, ct);
+            LogQueuedMemorize(_logger, fullPath);
+
+            var terminal = await _queue.WaitForJobAsync(job.Id, ct);
+            if (terminal.Status == VaultJobStatus.Failed)
+                throw new InvalidOperationException(
+                    $"Memorize job failed for {fullPath}: {terminal.ErrorMessage ?? "unknown error"}");
+            if (terminal.Status == VaultJobStatus.Cancelled)
+                throw new OperationCanceledException($"Memorize job was cancelled for {fullPath}.");
+        }
+        else
+        {
+            // Inline mode is already terminal; surface failures instead of returning a stale entry.
+            var result = await _pipeline.MemorizeAsync(entry, ct: ct);
+            if (!result.Success)
+            {
+                LogMemorizeFailed(_logger, entry.SourcePath, result.ErrorMessage ?? "Unknown error");
+                throw new InvalidOperationException(
+                    $"Memorize failed for {fullPath}: {result.ErrorMessage ?? "unknown error"}");
+            }
+        }
+
+        // Re-read the entry so callers see its terminal (Memorized) stage, not the early enqueue stage.
+        return await GetByHashAsync(entry.FilepathHash, ct) ?? entry;
+    }
+
     public async Task<VaultEntry> RefreshAsync(string filePath, CancellationToken ct = default)
     {
         var fullPath = Path.GetFullPath(filePath);
