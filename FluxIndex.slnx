@@ -37,12 +37,10 @@
     <File Path="Directory.Packages.props" />
   </Folder>
   <Folder Name="/src/">
-    <Project Path="src/FluxIndex.Extensions.FileVault/FluxIndex.Extensions.FileVault.csproj" />
     <Project Path="src/FluxIndex.Providers.LMSupply/FluxIndex.Providers.LMSupply.csproj" />
     <Project Path="src/FluxIndex.Providers.OpenAI/FluxIndex.Providers.OpenAI.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/FluxIndex.Extensions.FileVault.Tests/FluxIndex.Extensions.FileVault.Tests.csproj" />
     <Project Path="tests/FluxIndex.Providers.LMSupply.Tests/FluxIndex.Providers.LMSupply.Tests.csproj" />
     <Project Path="tests/FluxIndex.Providers.OpenAI.Tests/FluxIndex.Providers.OpenAI.Tests.csproj" />
     <Project Path="tests/FluxIndex.Storage.Neo4j.Tests/FluxIndex.Storage.Neo4j.Tests.csproj" />

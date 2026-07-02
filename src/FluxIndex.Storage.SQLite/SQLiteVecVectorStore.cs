@@ -722,9 +722,9 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
 
     /// <summary>
     /// <see cref="INativeHybridSearch"/> — exposes this store's native vec + <c>chunk_fts</c> fusion under
-    /// the Core <see cref="FluxIndex.Core.Domain.Models.HybridSearchResult"/> type, so a FileVault hybrid
+    /// the Core <see cref="FluxIndex.Core.Domain.Models.HybridSearchResult"/> type, so a hybrid
     /// route can prefer it over a separately-registered <c>IHybridSearchService</c> whose sparse index is
-    /// not populated by FileVault ingestion. Maps the store-local result (RrfScore/Bm25Score) onto the
+    /// not populated by ingestion-only pipelines. Maps the store-local result (RrfScore/Bm25Score) onto the
     /// Core model (FusedScore/SparseScore).
     /// </summary>
     async Task<IEnumerable<FluxIndex.Core.Domain.Models.HybridSearchResult>> INativeHybridSearch.HybridSearchAsync(

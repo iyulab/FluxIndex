@@ -10,7 +10,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\FluxIndex.SDK\FluxIndex.SDK.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.Storage.SQLite\FluxIndex.Storage.SQLite.csproj" />
-    <ProjectReference Include="..\..\src\FluxIndex.Extensions.FileVault\FluxIndex.Extensions.FileVault.csproj" />
   </ItemGroup>
 
 </Project>
