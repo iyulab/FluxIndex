@@ -24,6 +24,22 @@ public interface IVectorStore
         CancellationToken cancellationToken = default);
     Task<bool> DeleteAsync(string id, CancellationToken cancellationToken = default);
     Task<bool> DeleteByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Deletes every chunk whose metadata matches ALL of the given key/value filters.
+    /// Returns the number of chunks deleted. Enables a bulk tenant/source purge in one call
+    /// instead of a per-document delete loop. An empty filter is rejected — use
+    /// <see cref="ClearAsync"/> to drop the whole store.
+    /// </summary>
+    /// <remarks>
+    /// Default implementation throws <see cref="System.NotSupportedException"/>; stores that
+    /// support metadata-scoped deletion override this.
+    /// </remarks>
+    Task<int> DeleteByFilterAsync(
+        Dictionary<string, object> filters,
+        CancellationToken cancellationToken = default)
+        => throw new System.NotSupportedException(
+            $"{GetType().Name} does not support DeleteByFilterAsync.");
     Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default);
     Task<DocumentChunk?> GetByIdAsync(string id, CancellationToken cancellationToken = default);
     Task<bool> UpdateAsync(DocumentChunk chunk, CancellationToken cancellationToken = default);

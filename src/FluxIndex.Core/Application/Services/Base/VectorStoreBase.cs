@@ -195,22 +195,44 @@ public abstract partial class VectorStoreBase : IVectorStore
         // Post-filter by metadata for implementations without native filtering
         if (filters != null && filters.Count > 0)
         {
-            chunks = chunks.Where(chunk =>
-            {
-                if (chunk.Metadata == null) return false;
-                foreach (var (key, value) in filters)
-                {
-                    if (!chunk.Metadata.TryGetValue(key, out var metaValue))
-                        return false;
-                    if (!string.Equals(metaValue?.ToString(), value?.ToString(), StringComparison.Ordinal))
-                        return false;
-                }
-                return true;
-            }).ToList();
+            chunks = chunks.Where(chunk => MatchesMetadataFilter(chunk.Metadata, filters)).ToList();
         }
 
         return chunks;
     }
+
+    /// <summary>
+    /// Returns true if <paramref name="metadata"/> contains every key in <paramref name="filters"/>
+    /// with an equal (ordinal string) value. Shared by search post-filtering and
+    /// <see cref="DeleteByFilterAsync"/> so both agree on match semantics.
+    /// </summary>
+    public static bool MatchesMetadataFilter(
+        IReadOnlyDictionary<string, object>? metadata,
+        IReadOnlyDictionary<string, object> filters)
+    {
+        if (metadata is null)
+            return false;
+
+        foreach (var (key, value) in filters)
+        {
+            if (!metadata.TryGetValue(key, out var metaValue))
+                return false;
+            if (!string.Equals(metaValue?.ToString(), value?.ToString(), StringComparison.Ordinal))
+                return false;
+        }
+
+        return true;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Default implementation throws; stores capable of metadata-scoped deletion override this.
+    /// </remarks>
+    public virtual Task<int> DeleteByFilterAsync(
+        Dictionary<string, object> filters,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException(
+            $"{GetType().Name} does not support DeleteByFilterAsync.");
 
     /// <inheritdoc />
     public Task<bool> DeleteAsync(string id, CancellationToken cancellationToken = default)

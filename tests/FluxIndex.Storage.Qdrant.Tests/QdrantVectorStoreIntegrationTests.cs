@@ -98,6 +98,43 @@ public class QdrantVectorStoreIntegrationTests : IAsyncLifetime
         return chunk;
     }
 
+    [SkippableFact]
+    public async Task DeleteByFilterAsync_RemovesOnlyChunksMatchingAllMetadataFilters()
+    {
+        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+
+        // Arrange - two chunks tagged desk=A, one tagged desk=B
+        var a1 = CreateTestChunk();
+        a1.Metadata!["desk"] = "A";
+        var a2 = CreateTestChunk();
+        a2.Metadata!["desk"] = "A";
+        var b1 = CreateTestChunk();
+        b1.Metadata!["desk"] = "B";
+
+        a1.Id = await _vectorStore.StoreAsync(a1);
+        a2.Id = await _vectorStore.StoreAsync(a2);
+        b1.Id = await _vectorStore.StoreAsync(b1);
+
+        // Act - purge everything tagged desk=A in one call
+        var deleted = await _vectorStore.DeleteByFilterAsync(
+            new Dictionary<string, object> { ["desk"] = "A" });
+
+        // Assert - only the two desk=A chunks removed, desk=B survives
+        deleted.Should().Be(2);
+        (await _vectorStore.GetByIdAsync(a1.Id)).Should().BeNull();
+        (await _vectorStore.GetByIdAsync(a2.Id)).Should().BeNull();
+        (await _vectorStore.GetByIdAsync(b1.Id)).Should().NotBeNull();
+    }
+
+    [SkippableFact]
+    public async Task DeleteByFilterAsync_EmptyFilter_ThrowsRatherThanPurgingEverything()
+    {
+        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+
+        var act = async () => await _vectorStore.DeleteByFilterAsync(new Dictionary<string, object>());
+        await act.Should().ThrowAsync<ArgumentException>();
+    }
+
     #region Store Operations
 
     [SkippableFact]

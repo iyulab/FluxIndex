@@ -739,6 +739,37 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
         return true;
     }
 
+    /// <inheritdoc />
+    public async Task<int> DeleteByFilterAsync(
+        Dictionary<string, object> filters,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(filters);
+        if (filters.Count == 0)
+            throw new ArgumentException(
+                "Filter must contain at least one key/value; use ClearAsync to remove all vectors.",
+                nameof(filters));
+
+        await EnsureCollectionAsync(cancellationToken);
+
+        var qdrantFilter = BuildQdrantFilter(filters);
+        if (qdrantFilter is null)
+            return 0;
+
+        // Count first — Qdrant's DeleteAsync(filter) returns an operation result, not a count.
+        var count = (int)await _client.CountAsync(
+            _resolvedCollectionName!, qdrantFilter, cancellationToken: cancellationToken);
+        if (count == 0)
+            return 0;
+
+        await _client.DeleteAsync(
+            collectionName: _resolvedCollectionName!,
+            filter: qdrantFilter,
+            cancellationToken: cancellationToken);
+
+        return count;
+    }
+
     public async Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default)
     {
         var chunk = await GetByIdAsync(id, cancellationToken);

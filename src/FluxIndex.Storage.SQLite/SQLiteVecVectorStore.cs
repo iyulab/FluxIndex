@@ -1,5 +1,6 @@
 ﻿using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Models;
+using FluxIndex.Core.Application.Services.Base;
 using FluxIndex.Core.Application.Utilities;
 using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Core.Domain.Exceptions;
@@ -1032,6 +1033,69 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         }
 
         return await _context.VectorChunks.AnyAsync(c => c.Id == id, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<int> DeleteByFilterAsync(
+        Dictionary<string, object> filters,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(filters);
+        if (filters.Count == 0)
+            throw new ArgumentException(
+                "Filter must contain at least one key/value; use ClearAsync to remove all vectors.",
+                nameof(filters));
+
+        await EnsureInitializedAsync(cancellationToken);
+
+        if (!_sqliteVecAvailable && _options.FallbackToInMemoryOnError)
+        {
+            return await _fallbackStore.Value.DeleteByFilterAsync(filters, cancellationToken);
+        }
+
+        // SQLite는 동시 쓰기를 지원하지 않으므로 직렬화
+        await _writeLock.WaitAsync(cancellationToken);
+        try
+        {
+            using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+            try
+            {
+                var all = await _context.VectorChunks.ToListAsync(cancellationToken);
+                var matched = all
+                    .Where(e => VectorStoreBase.MatchesMetadataFilter(e.Metadata, filters))
+                    .ToList();
+
+                if (matched.Count == 0)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return 0;
+                }
+
+                // vec0 테이블에서 매칭된 벡터들 삭제
+                if (_sqliteVecAvailable)
+                {
+                    foreach (var entity in matched)
+                    {
+                        await _context.DeleteVectorFromVecTableAsync(entity.Id, cancellationToken);
+                    }
+                }
+
+                _context.VectorChunks.RemoveRange(matched);
+                await _context.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+
+                return matched.Count;
+            }
+            catch
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                throw;
+            }
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
     }
 
     public async Task<DocumentChunk?> GetByIdAsync(string id, CancellationToken cancellationToken = default)

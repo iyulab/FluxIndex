@@ -356,6 +356,48 @@ public class SQLiteVecVectorStoreTests : IDisposable
         searchResults.Should().HaveCountLessThanOrEqualTo(topK);
     }
 
+    [Fact]
+    public async Task DeleteByFilterAsync_RemovesOnlyChunksMatchingAllMetadataFilters()
+    {
+        // Arrange - three chunks: two tagged desk=A, one tagged desk=B
+        var vectorStore = _serviceProvider.GetRequiredService<IVectorStore>();
+
+        var a1 = CreateTestChunk(documentId: "doc-a1");
+        a1.Metadata!["desk"] = "A";
+        var a2 = CreateTestChunk(documentId: "doc-a2");
+        a2.Metadata!["desk"] = "A";
+        var b1 = CreateTestChunk(documentId: "doc-b1");
+        b1.Metadata!["desk"] = "B";
+
+        a1.Id = await vectorStore.StoreAsync(a1);
+        a2.Id = await vectorStore.StoreAsync(a2);
+        b1.Id = await vectorStore.StoreAsync(b1);
+
+        // Act - purge everything tagged desk=A in one call
+        var deleted = await vectorStore.DeleteByFilterAsync(
+            new Dictionary<string, object> { ["desk"] = "A" });
+
+        // Assert - only the two desk=A chunks removed, desk=B survives
+        deleted.Should().Be(2);
+        (await vectorStore.GetAsync(a1.Id)).Should().BeNull();
+        (await vectorStore.GetAsync(a2.Id)).Should().BeNull();
+        (await vectorStore.GetAsync(b1.Id)).Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task DeleteByFilterAsync_EmptyFilter_ThrowsRatherThanPurgingEverything()
+    {
+        // Arrange
+        var vectorStore = _serviceProvider.GetRequiredService<IVectorStore>();
+        var chunk = CreateTestChunk();
+        chunk.Id = await vectorStore.StoreAsync(chunk);
+
+        // Act + Assert - an empty filter must not silently delete all vectors
+        var act = async () => await vectorStore.DeleteByFilterAsync(new Dictionary<string, object>());
+        await act.Should().ThrowAsync<ArgumentException>();
+        (await vectorStore.GetAsync(chunk.Id)).Should().NotBeNull();
+    }
+
     private DocumentChunk CreateTestChunk(string? documentId = null, int chunkIndex = 0, float[]? embedding = null)
     {
         return new DocumentChunk

@@ -221,6 +221,32 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
         await _context.SaveChangesAsync(cancellationToken);
     }
 
+    /// <inheritdoc />
+    public override async Task<int> DeleteByFilterAsync(
+        Dictionary<string, object> filters,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(filters);
+        if (filters.Count == 0)
+            throw new ArgumentException(
+                "Filter must contain at least one key/value; use ClearAsync to remove all vectors.",
+                nameof(filters));
+
+        await EnsureInitializedAsync(cancellationToken);
+
+        var entities = await _context.Vectors.ToListAsync(cancellationToken);
+        var matched = entities
+            .Where(v => MatchesMetadataFilter(MapToChunk(v).Metadata, filters))
+            .ToList();
+
+        if (matched.Count == 0)
+            return 0;
+
+        _context.Vectors.RemoveRange(matched);
+        await _context.SaveChangesAsync(cancellationToken);
+        return matched.Count;
+    }
+
     #endregion
 
     #region Overrides for Batch Optimization
