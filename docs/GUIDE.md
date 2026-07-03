@@ -6,7 +6,7 @@ RAG infrastructure library for .NET - Complete setup and usage guide.
 - [AI Provider Integration](./AI_PROVIDER_INTEGRATION.md) - OpenAI, Azure, LMSupply, custom embedding/LLM/reranker
 - [Advanced RAG Services](./ADVANCED_RAG.md) - GraphRAG, Self-RAG, Corrective RAG
 - [API Reference](./REFERENCE.md) - Architecture and API documentation
-- [FileVault Guide](./FILEVAULT_GUIDE.md) - Git-like file tracking for RAG
+- [FluxFeed](https://github.com/iyulab/FluxFeed) - Git-like file tracking / document ingestion pipeline (extracted from FluxIndex in 0.16.0; see [FILEVAULT_GUIDE.md](./FILEVAULT_GUIDE.md) for the migration note)
 
 ---
 
@@ -24,7 +24,9 @@ dotnet add package FluxIndex.Storage.Neo4j       # Production graph DB
 
 # Optional
 dotnet add package FluxIndex.Cache.Redis         # Distributed semantic cache
-dotnet add package FluxIndex.Extensions.FileVault # Git-like file tracking
+
+# File tracking / document ingestion moved to FluxFeed in 0.16.0:
+#   dotnet add package FluxFeed                   # https://github.com/iyulab/FluxFeed
 ```
 
 ---

@@ -9,6 +9,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.16.0] - 2026-07-02
+
+### Changed (BREAKING)
+
+- **`FluxIndex.Extensions.FileVault` extracted to the [FluxFeed](https://github.com/iyulab/FluxFeed) repository.** File-to-vector synchronization (git-like file tracking, folder monitoring, background ingestion) is now the FluxFeed document-pipeline surface (④b), which feeds into FluxIndex (④a). The `FluxIndex.Extensions.FileVault` package is no longer published from the FluxIndex family (family: 12 → 11 packages). The public API surface (`IVault`, `AddFileVaultWithFluxIndex`, etc.) is preserved, so consumer migration is a package-id + namespace swap (`FluxIndex.Extensions.FileVault` → `FluxFeed`), not an API rewrite. See [docs/FILEVAULT_GUIDE.md](./docs/FILEVAULT_GUIDE.md) for the migration note.
+
+---
+
 ## [0.15.0] - 2026-06-29
 
 ### Added

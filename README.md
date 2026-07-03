@@ -105,7 +105,8 @@ Full benchmarks: [BENCHMARK_RESULTS.md](./benchmarks/FluxIndex.Benchmarks/BENCHM
 | **FluxIndex.Storage.Neo4j** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Storage.Neo4j.svg)](https://www.nuget.org/packages/FluxIndex.Storage.Neo4j/) | Neo4j graph database |
 | **FluxIndex.Storage.Qdrant** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Storage.Qdrant.svg)](https://www.nuget.org/packages/FluxIndex.Storage.Qdrant/) | Qdrant vector database |
 | **FluxIndex.Cache.Redis** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Cache.Redis.svg)](https://www.nuget.org/packages/FluxIndex.Cache.Redis/) | Redis semantic cache |
-| **FluxIndex.Extensions.FileVault** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Extensions.FileVault.svg)](https://www.nuget.org/packages/FluxIndex.Extensions.FileVault/) | Git-like file tracking for RAG indexing with folder monitoring |
+
+> **Moved:** File-to-vector synchronization (formerly `FluxIndex.Extensions.FileVault`) was extracted to the **[FluxFeed](https://github.com/iyulab/FluxFeed)** repository in 0.16.0. Install `FluxFeed` for git-like file tracking / folder-monitoring document ingestion; it feeds into FluxIndex.
 
 ### Which package do I need?
 
@@ -113,7 +114,7 @@ Full benchmarks: [BENCHMARK_RESULTS.md](./benchmarks/FluxIndex.Benchmarks/BENCHM
 |----------|---------|
 | Embeddings + vector search only (no native deps, no document parsing) | `FluxIndex.Core` + storage |
 | Full RAG pipeline (PDF, DOCX, HWP, web crawling) | `FluxIndex.SDK` + storage |
-| File system monitoring + auto-indexing | `FluxIndex.Extensions.FileVault` + storage |
+| File system monitoring + auto-indexing (document ingestion) | [`FluxFeed`](https://github.com/iyulab/FluxFeed) (feeds into FluxIndex) |
 | Local AI embedding (ONNX, no API key required) | `FluxIndex.Providers.LMSupply` |
 
 **Minimal setup** — bring your own embedding service, no native binaries:
