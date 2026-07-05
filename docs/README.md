@@ -123,5 +123,4 @@ dotnet add package FluxIndex.Storage.Neo4j       # Graph database
 ## Resources
 
 - [Examples](../samples/) - Working code samples
-- [Stack](../stack/) - Full RAG service with API and UI
 - [GitHub](https://github.com/iyulab/FluxIndex) - Issues & contributions

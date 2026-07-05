@@ -587,4 +587,3 @@ public class RAGService
 - [AI Provider Integration](./AI_PROVIDER_INTEGRATION.md) - Implement custom embedding/LLM services
 - [Technical Reference](./REFERENCE.md) - Architecture details
 - [Samples](../samples/) - Working code examples
-- [Stack](../stack/) - Full RAG service with API and UI
