@@ -35,7 +35,7 @@ var ctx = FluxIndexContext.CreateBuilder()
 
 // Full mode (production)
 var ctx = FluxIndexContext.CreateBuilder()
-    .UseBestInClass(pgConn, qdrantConfig, neo4jConfig)
+    .UseBestInClass(pgConn, qdrantHost, 6334, "chunks", 1536, neo4jUri, neo4jUser, neo4jPassword)
     .AddQdrantStorage()
     .AddPostgreSQLStorage()
     .AddNeo4jStorage()

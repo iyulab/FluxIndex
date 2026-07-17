@@ -148,33 +148,6 @@ var context = FluxIndexContext.CreateBuilder()
     .Build();
 ```
 
-### With Options Configuration
-
-```csharp
-var context = FluxIndexContext.CreateBuilder()
-    .UseBestInClass(
-        postgresConnectionString: connStr,
-        qdrantConfigure: qdrant =>
-        {
-            qdrant.Host = "localhost";
-            qdrant.GrpcPort = 6334;
-            qdrant.CollectionName = "fluxindex_chunks";
-            qdrant.VectorSize = 1536;
-            qdrant.OnDiskPayload = true;  // Large payloads on disk
-        },
-        neo4jConfigure: neo4j =>
-        {
-            neo4j.Uri = "bolt://localhost:7687";
-            neo4j.Username = "neo4j";
-            neo4j.Password = "password";
-            neo4j.Database = "fluxindex";
-        })
-    .AddQdrantStorage()      // Vector
-    .AddPostgreSQLStorage()  // RDB + Cache
-    .AddNeo4jStorage()       // Graph
-    .Build();
-```
-
 ### Storage Role Distribution
 
 | Role | Provider | Purpose |
@@ -224,7 +197,7 @@ Mix and match providers or implement your own.
 ```csharp
 var context = FluxIndexContext.CreateBuilder()
     .UsePostgreSQL(connStr)       // RDB + Cache
-    .UseQdrant("localhost", 6334, "chunks", 1536)  // Vector (overrides PostgreSQL)
+    .UseQdrantFixed("localhost", 6334, "chunks", 1536)  // Vector (overrides PostgreSQL)
     .AddPostgreSQLStorage()
     .AddQdrantStorage()
     // No UseNeo4j() → PostgreSQL handles graph (basic support)
@@ -477,7 +450,7 @@ var context = FluxIndexContext.CreateBuilder()
 
 // Full mode - Neo4j for optimal graph performance
 var context = FluxIndexContext.CreateBuilder()
-    .UseBestInClass(pgConn, qdrantConfig, neo4jConfig)
+    .UseBestInClass(pgConn, qdrantHost, 6334, "chunks", 1536, neo4jUri, neo4jUser, neo4jPassword)
     .AddQdrantStorage()
     .AddPostgreSQLStorage()
     .AddNeo4jStorage()
