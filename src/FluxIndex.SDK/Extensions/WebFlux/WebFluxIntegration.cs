@@ -23,13 +23,26 @@ public partial class WebFluxIntegration
         IWebContentProcessor webContentProcessor,
         Indexer indexer,
         ILogger<WebFluxIntegration> logger,
-        Microsoft.Extensions.Options.IOptions<WebFluxOptions>? options = null)
+        Microsoft.Extensions.Options.IOptions<WebFluxOptions>? options = null,
+        IEventPublisher? eventPublisher = null)
     {
         _webContentProcessor = webContentProcessor;
         _indexer = indexer;
         _logger = logger;
         _options = options?.Value ?? new WebFluxOptions();
+        Events = eventPublisher;
     }
+
+    /// <summary>
+    /// The underlying WebFlux event stream (e.g. <c>PageCrawledEvent</c>, <c>ChunkGeneratedEvent</c>).
+    /// Subscribe via <see cref="IEventPublisher.Subscribe{T}(Func{T, Task})"/> to observe crawl and
+    /// processing progress while <see cref="IndexWebContentAsync"/> runs. The integration wrapper
+    /// intentionally exposes the publisher instead of swallowing it — consumers must not have to
+    /// double-register WebFlux in a separate container just to observe progress.
+    /// Non-null when resolved from DI (UseWebFlux/AddWebFluxIntegration register it); null only
+    /// when this class is constructed manually without an event publisher.
+    /// </summary>
+    public IEventPublisher? Events { get; }
 
     /// <summary>
     /// Process and index web content from a URL using WebFlux 0.1.2 API

@@ -19,9 +19,9 @@ namespace FluxIndex.Core.Application.Services.Base;
 ///         // SQLite-specific storage logic
 ///     }
 ///     protected override Task&lt;IEnumerable&lt;VectorSearchResult&gt;&gt; SearchCoreAsync(
-///         float[] queryEmbedding, int topK, CancellationToken ct)
+///         float[] queryEmbedding, int topK, Dictionary&lt;string, object&gt;? filters, CancellationToken ct)
 ///     {
-///         // In-memory cosine similarity search
+///         // In-memory cosine similarity search; apply filters before any candidate trimming
 ///     }
 /// }
 /// </example>
@@ -55,15 +55,22 @@ public abstract partial class VectorStoreBase : IVectorStore
 
     /// <summary>
     /// Core vector search implementation.
-    /// Returns results with scores; filtering and sorting handled by base class.
+    /// Returns results with scores; minScore filtering and sorting handled by base class.
     /// </summary>
     /// <param name="queryEmbedding">Query vector.</param>
     /// <param name="topK">Maximum results to return.</param>
+    /// <param name="filters">Optional metadata equality filters. Implementations SHOULD apply these
+    /// natively (or at least before any internal candidate trimming) so that matching chunks are not
+    /// crowded out of the candidate window by higher-scoring non-matching chunks. The base class
+    /// re-applies <see cref="MatchesMetadataFilter"/> as an idempotent correctness backstop, so an
+    /// implementation that cannot push filters down may ignore this parameter at the cost of recall,
+    /// never correctness.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Search results with scores (no minScore filtering needed).</returns>
     protected abstract Task<IEnumerable<VectorSearchResult>> SearchCoreAsync(
         float[] queryEmbedding,
         int topK,
+        Dictionary<string, object>? filters,
         CancellationToken cancellationToken);
 
     /// <summary>
@@ -189,21 +196,22 @@ public abstract partial class VectorStoreBase : IVectorStore
         if (topK <= 0)
             return [];
 
-        var results = await SearchCoreAsync(queryEmbedding, topK, cancellationToken);
-        var chunks = SearchResultProcessor.FilterAndSort(results, minScore, topK);
+        var results = await SearchCoreAsync(queryEmbedding, topK, filters, cancellationToken);
 
-        // Post-filter by metadata for implementations without native filtering
+        // Metadata backstop MUST run before the topK trim: trimming first lets higher-scoring
+        // non-matching chunks crowd matching ones out of the window (multi-tenant recall loss).
+        // Idempotent w.r.t. native filtering done inside SearchCoreAsync.
         if (filters != null && filters.Count > 0)
         {
-            chunks = chunks.Where(chunk => MatchesMetadataFilter(chunk.Metadata, filters)).ToList();
+            results = results.Where(r => MatchesMetadataFilter(r.Chunk.Metadata, filters));
         }
 
-        return chunks;
+        return SearchResultProcessor.FilterAndSort(results, minScore, topK);
     }
 
     /// <summary>
     /// Returns true if <paramref name="metadata"/> contains every key in <paramref name="filters"/>
-    /// with an equal (ordinal string) value. Shared by search post-filtering and
+    /// with an equal (ordinal string, JSON-normalized) value. Shared by search post-filtering and
     /// <see cref="DeleteByFilterAsync"/> so both agree on match semantics.
     /// </summary>
     public static bool MatchesMetadataFilter(
@@ -217,12 +225,35 @@ public abstract partial class VectorStoreBase : IVectorStore
         {
             if (!metadata.TryGetValue(key, out var metaValue))
                 return false;
-            if (!string.Equals(metaValue?.ToString(), value?.ToString(), StringComparison.Ordinal))
+            if (!string.Equals(
+                    NormalizeFilterValue(metaValue),
+                    NormalizeFilterValue(value),
+                    StringComparison.Ordinal))
                 return false;
         }
 
         return true;
     }
+
+    /// <summary>
+    /// Normalizes a metadata/filter value to its JSON text representation so that values compare
+    /// equal across a JSON round-trip (e.g. .NET <c>true</c> vs a deserialized
+    /// <see cref="System.Text.Json.JsonElement"/> reading "true") and across native store
+    /// pushdown (jsonb text extraction) vs in-memory comparison.
+    /// </summary>
+    public static string? NormalizeFilterValue(object? value) => value switch
+    {
+        null => null,
+        bool b => b ? "true" : "false",
+        System.Text.Json.JsonElement je => je.ValueKind switch
+        {
+            System.Text.Json.JsonValueKind.True => "true",
+            System.Text.Json.JsonValueKind.False => "false",
+            _ => je.ToString(),
+        },
+        IFormattable f => f.ToString(null, System.Globalization.CultureInfo.InvariantCulture),
+        _ => value.ToString(),
+    };
 
     /// <inheritdoc />
     /// <remarks>

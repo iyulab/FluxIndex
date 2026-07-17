@@ -114,6 +114,7 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
     protected override async Task<IEnumerable<VectorSearchResult>> SearchCoreAsync(
         float[] queryEmbedding,
         int topK,
+        Dictionary<string, object>? filters,
         CancellationToken cancellationToken)
     {
         await EnsureInitializedAsync(cancellationToken);
@@ -129,19 +130,24 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
         var queryMagnitude = ComputeMagnitude(queryEmbedding);
         if (queryMagnitude == 0) return [];
 
-        // Compute similarities using centralized utilities
+        // Compute similarities using centralized utilities.
+        // Metadata filters MUST be applied before the topK*2 trim below — otherwise
+        // higher-scoring non-matching chunks crowd matching ones out of the window.
         var results = new List<VectorSearchResult>();
 
         foreach (var entity in entities)
         {
             if (entity.Embedding == null) continue;
 
-            var score = ComputeFastCosineSimilarity(queryEmbedding, entity.Embedding, queryMagnitude);
             var chunk = MapToChunk(entity);
+            if (filters is { Count: > 0 } && !MatchesMetadataFilter(chunk.Metadata, filters))
+                continue;
+
+            var score = ComputeFastCosineSimilarity(queryEmbedding, entity.Embedding, queryMagnitude);
             results.Add(new VectorSearchResult(chunk, score));
         }
 
-        // Return all results - filtering and sorting handled by base class
+        // Return all results - minScore filtering and sorting handled by base class
         return results.OrderByDescending(r => r.Score).Take(topK * 2);
     }
 

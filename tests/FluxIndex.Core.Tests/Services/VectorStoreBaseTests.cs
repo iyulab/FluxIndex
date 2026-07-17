@@ -178,6 +178,104 @@ public class VectorStoreBaseTests
         }
     }
 
+    [Fact]
+    public async Task SearchAsync_ForwardsFiltersToSearchCore()
+    {
+        // Arrange
+        await _store.StoreAsync(CreateChunkWithEmbedding("chunk-1", new[] { 0.9f, 0.1f }));
+        var filters = new Dictionary<string, object> { ["workspace_id"] = "ws-1" };
+
+        // Act
+        await _store.SearchAsync(new[] { 0.9f, 0.1f }, topK: 5, minScore: 0f, filters: filters);
+
+        // Assert — stores need the filters to push them down before internal candidate trimming
+        Assert.NotNull(_store.LastSearchFilters);
+        Assert.Equal("ws-1", _store.LastSearchFilters!["workspace_id"]);
+    }
+
+    [Fact]
+    public async Task SearchAsync_MetadataFilter_AppliedBeforeTopKTrim()
+    {
+        // Arrange — the 2 highest-scoring chunks belong to ANOTHER tenant. With topK=2, the old
+        // trim-then-filter order returned 0 results for the target tenant (recall collapse).
+        var query = new[] { 1.0f, 0.0f };
+
+        var otherA = CreateChunkWithEmbedding("other-a", new[] { 1.0f, 0.0f });   // score 1.0
+        otherA.Metadata = new Dictionary<string, object> { ["workspace_id"] = "ws-other" };
+        var otherB = CreateChunkWithEmbedding("other-b", new[] { 0.99f, 0.14f }); // ~0.99
+        otherB.Metadata = new Dictionary<string, object> { ["workspace_id"] = "ws-other" };
+        var target = CreateChunkWithEmbedding("target", new[] { 0.9f, 0.44f });   // ~0.9
+        target.Metadata = new Dictionary<string, object> { ["workspace_id"] = "ws-target" };
+
+        await _store.StoreAsync(otherA);
+        await _store.StoreAsync(otherB);
+        await _store.StoreAsync(target);
+
+        var filters = new Dictionary<string, object> { ["workspace_id"] = "ws-target" };
+
+        // Act
+        var results = (await _store.SearchAsync(query, topK: 2, minScore: 0f, filters: filters)).ToList();
+
+        // Assert — the target-tenant chunk must survive even though it is not in the global top-2
+        var match = Assert.Single(results);
+        Assert.Equal("target", match.Id);
+    }
+
+    [Fact]
+    public async Task SearchAsync_MetadataFilter_NoMatch_ReturnsEmpty()
+    {
+        // Arrange
+        var chunk = CreateChunkWithEmbedding("chunk-1", new[] { 0.9f, 0.1f });
+        chunk.Metadata = new Dictionary<string, object> { ["workspace_id"] = "ws-1" };
+        await _store.StoreAsync(chunk);
+
+        // Act
+        var results = await _store.SearchAsync(
+            new[] { 0.9f, 0.1f }, topK: 5, minScore: 0f,
+            filters: new Dictionary<string, object> { ["workspace_id"] = "ws-absent" });
+
+        // Assert
+        Assert.Empty(results);
+    }
+
+    #endregion
+
+    #region MatchesMetadataFilter / NormalizeFilterValue Tests
+
+    [Fact]
+    public void MatchesMetadataFilter_BoolSurvivesJsonRoundTrip()
+    {
+        // Arrange — stored side deserialized from JSON (JsonElement true), filter side .NET bool.
+        // Without normalization "True" (bool.ToString) != "true" (JSON text) and the match fails.
+        using var doc = System.Text.Json.JsonDocument.Parse("""{"flag": true}""");
+        var metadata = new Dictionary<string, object> { ["flag"] = doc.RootElement.GetProperty("flag").Clone() };
+        var filters = new Dictionary<string, object> { ["flag"] = true };
+
+        // Act & Assert
+        Assert.True(VectorStoreBase.MatchesMetadataFilter(metadata, filters));
+    }
+
+    [Fact]
+    public void MatchesMetadataFilter_StringEquality_IsOrdinal()
+    {
+        var metadata = new Dictionary<string, object> { ["workspace_id"] = "WS-1" };
+
+        Assert.True(VectorStoreBase.MatchesMetadataFilter(
+            metadata, new Dictionary<string, object> { ["workspace_id"] = "WS-1" }));
+        Assert.False(VectorStoreBase.MatchesMetadataFilter(
+            metadata, new Dictionary<string, object> { ["workspace_id"] = "ws-1" }));
+    }
+
+    [Fact]
+    public void NormalizeFilterValue_UsesInvariantCultureAndJsonBoolText()
+    {
+        Assert.Equal("true", VectorStoreBase.NormalizeFilterValue(true));
+        Assert.Equal("false", VectorStoreBase.NormalizeFilterValue(false));
+        Assert.Equal("3.5", VectorStoreBase.NormalizeFilterValue(3.5));
+        Assert.Equal("42", VectorStoreBase.NormalizeFilterValue(42));
+        Assert.Null(VectorStoreBase.NormalizeFilterValue(null));
+    }
+
     #endregion
 
     #region DeleteAsync Tests
@@ -410,9 +508,20 @@ public class VectorStoreBaseTests
             return Task.FromResult(chunk);
         }
 
+        /// <summary>
+        /// Filters received by the last SearchCoreAsync call (null when none were passed).
+        /// </summary>
+        public Dictionary<string, object>? LastSearchFilters { get; private set; }
+
+        /// <summary>
+        /// Simulates a store WITHOUT native filter pushdown: records the filters but does not
+        /// apply them, so tests can verify the base-class backstop ordering.
+        /// </summary>
         protected override Task<IEnumerable<VectorSearchResult>> SearchCoreAsync(
-            float[] queryEmbedding, int topK, CancellationToken cancellationToken)
+            float[] queryEmbedding, int topK, Dictionary<string, object>? filters, CancellationToken cancellationToken)
         {
+            LastSearchFilters = filters;
+
             var results = _storage.Values
                 .Where(c => c.Embedding != null)
                 .Select(c => new VectorSearchResult(c, ComputeCosineSimilarity(queryEmbedding, c.Embedding)))

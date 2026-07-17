@@ -60,12 +60,23 @@ public class PostgreSQLVectorStore : VectorStoreBase
     protected override async Task<IEnumerable<VectorSearchResult>> SearchCoreAsync(
         float[] queryEmbedding,
         int topK,
+        Dictionary<string, object>? filters,
         CancellationToken cancellationToken)
     {
         var queryVector = new Vector(queryEmbedding);
 
+        // Push metadata filters down to SQL (jsonb @> containment, GIN-indexable) BEFORE the
+        // candidate trim — otherwise higher-scoring non-matching rows crowd matching rows out of
+        // the topK*3 window (multi-tenant recall loss).
+        var query = _context.Vectors.AsQueryable();
+        if (filters is { Count: > 0 })
+        {
+            var filterJson = System.Text.Json.JsonSerializer.Serialize(filters);
+            query = query.Where(v => EF.Functions.JsonContains(v.Metadata, filterJson));
+        }
+
         // Use pgvector's native cosine distance for efficient search
-        var candidates = await _context.Vectors
+        var candidates = await query
             .OrderBy(v => v.Embedding.CosineDistance(queryVector))
             .Take(topK * 3) // Get 3x results to filter by similarity
             .Select(v => new
@@ -79,6 +90,27 @@ public class PostgreSQLVectorStore : VectorStoreBase
         return candidates.Select(c => new VectorSearchResult(
             MapToChunk(c.Entity),
             VectorMathUtilities.DistanceToSimilarity((float)c.Distance, DistanceType.Cosine)));
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Executes a single SQL DELETE using jsonb containment (<c>Metadata @&gt; filters</c>),
+    /// matching the same semantics as the search-path filter pushdown.
+    /// </remarks>
+    public override async Task<int> DeleteByFilterAsync(
+        Dictionary<string, object> filters,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(filters);
+        if (filters.Count == 0)
+            throw new ArgumentException(
+                "Filter must contain at least one key/value; use ClearAsync to remove all vectors.",
+                nameof(filters));
+
+        var filterJson = System.Text.Json.JsonSerializer.Serialize(filters);
+        return await _context.Vectors
+            .Where(v => EF.Functions.JsonContains(v.Metadata, filterJson))
+            .ExecuteDeleteAsync(cancellationToken);
     }
 
     protected override async Task<bool> DeleteCoreAsync(string id, CancellationToken cancellationToken)

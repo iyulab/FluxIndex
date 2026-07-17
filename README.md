@@ -114,6 +114,23 @@ Full benchmarks: [BENCHMARK_RESULTS.md](./benchmarks/FluxIndex.Benchmarks/BENCHM
 
 > **Moved:** File-to-vector synchronization (formerly `FluxIndex.Extensions.FileVault`) was extracted to the **[FluxFeed](https://github.com/iyulab/FluxFeed)** repository in 0.16.0. Install `FluxFeed` for git-like file tracking / folder-monitoring document ingestion; it feeds into FluxIndex.
 
+### Storage capability matrix
+
+Metadata filtering (`SearchAsync(..., filters:)`) is honored by **every** store — stores without
+native pushdown fall back to a correctness backstop applied before the topK trim. Native pushdown
+matters for recall/performance at scale:
+
+| Store | Search metadata filter | `DeleteByFilterAsync` | Notes |
+|-------|------------------------|------------------------|-------|
+| PostgreSQL | ✅ native (jsonb `@>`) | ✅ single SQL DELETE | Add a GIN index on `Metadata` for large collections: `CREATE INDEX ON vectors USING gin (metadata jsonb_path_ops);` |
+| Qdrant | ✅ native (payload filter) | ✅ | Payload indexes created on startup |
+| SQLite (sqlite-vec) | ✅ post-KNN with over-fetch | ✅ | vec0 cannot index metadata; KNN window is widened ×3 when filters are present |
+| SQLite (in-memory scan) | ✅ pre-trim | ✅ | Full scan store |
+| InMemory (SDK) | ✅ pre-trim | ✅ | |
+
+Filter semantics: equality on every key/value pair (AND). Values compare by their JSON text
+representation (`"true"`, invariant-culture numbers, ordinal strings).
+
 ### Which package do I need?
 
 | Scenario | Packages |

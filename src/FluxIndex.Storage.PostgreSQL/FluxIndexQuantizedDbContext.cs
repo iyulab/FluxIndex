@@ -52,9 +52,10 @@ public class FluxIndexQuantizedDbContext : DbContext
             entity.HasIndex(e => e.DocumentId);
             entity.HasIndex(e => e.ChunkIndex);
 
-            // Vector similarity index (IVFFlat for fast approximate search)
+            // Vector similarity index. HNSW (not ivfflat): ivfflat trained on an empty table
+            // (EnsureCreated) silently loses recall for later inserts; HNSW builds incrementally.
             entity.HasIndex(e => e.Embedding)
-                .HasMethod("ivfflat")
+                .HasMethod("hnsw")
                 .HasOperators("vector_cosine_ops");
         });
 

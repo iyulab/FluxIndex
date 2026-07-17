@@ -115,6 +115,61 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
     }
 
     [SkippableFact]
+    public async Task SearchAsync_MetadataFilter_ScopesResultsToMatchingTenant()
+    {
+        // Skip if sqlite-vec is not available (CI environment)
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
+        // Arrange — regression guard: the native vec0 path used to ignore metadata filters
+        // entirely (cross-tenant leakage). 5 other-tenant chunks dominate vector similarity;
+        // the target chunk only survives if the filter is honored with an over-fetched window.
+        var vectorStore = _serviceProvider.GetRequiredService<IVectorStore>();
+
+        var chunks = new List<DocumentChunk>();
+        for (var i = 0; i < 5; i++)
+        {
+            var embedding = new float[384];
+            embedding[0] = 1f;
+            embedding[1] = 0.01f * i;
+            chunks.Add(new DocumentChunk
+            {
+                Id = Guid.NewGuid().ToString(),
+                DocumentId = $"other-{i}",
+                ChunkIndex = i,
+                Content = $"other tenant content {i}",
+                Embedding = embedding,
+                Metadata = new Dictionary<string, object> { ["workspace_id"] = "ws-other" }
+            });
+        }
+
+        var targetEmbedding = new float[384];
+        targetEmbedding[2] = 1f;
+        chunks.Add(new DocumentChunk
+        {
+            Id = Guid.NewGuid().ToString(),
+            DocumentId = "target-doc",
+            ChunkIndex = 0,
+            Content = "target tenant content",
+            Embedding = targetEmbedding,
+            Metadata = new Dictionary<string, object> { ["workspace_id"] = "ws-target" }
+        });
+
+        await vectorStore.StoreBatchAsync(chunks);
+
+        var query = new float[384];
+        query[0] = 1f;
+
+        // Act
+        var filtered = (await vectorStore.SearchAsync(
+            query, topK: 2, minScore: -1f,
+            filters: new Dictionary<string, object> { ["workspace_id"] = "ws-target" })).ToList();
+
+        // Assert — no cross-tenant leakage, and the matching chunk is found
+        filtered.Should().ContainSingle();
+        filtered[0].DocumentId.Should().Be("target-doc");
+    }
+
+    [SkippableFact]
     public async Task EndToEndWorkflow_DocumentIndexingAndSearch_ShouldWorkCorrectly()
     {
         // Skip if sqlite-vec is not available (CI environment)

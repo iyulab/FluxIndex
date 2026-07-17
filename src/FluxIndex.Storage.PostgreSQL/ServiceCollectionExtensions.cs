@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Npgsql;
+using Pgvector.Npgsql;
 
 namespace FluxIndex.Storage.PostgreSQL;
 
@@ -30,9 +31,13 @@ public static class ServiceCollectionExtensions
         {
             var postgresOptions = serviceProvider.GetRequiredService<IOptions<PostgreSQLOptions>>().Value;
 
-            // Build NpgsqlDataSource with dynamic JSON support for Dictionary<string, object>
+            // Build NpgsqlDataSource with dynamic JSON support for Dictionary<string, object>.
+            // UseVector() MUST also be registered at the data-source level: the EF-level
+            // npgsqlOptions.UseVector() below only adds EF type mappings, and writing
+            // Pgvector.Vector parameters fails with InvalidCastException without the plugin.
             var dataSourceBuilder = new NpgsqlDataSourceBuilder(postgresOptions.ConnectionString);
             dataSourceBuilder.EnableDynamicJson();
+            dataSourceBuilder.UseVector();
             var dataSource = dataSourceBuilder.Build();
 
             options.UseNpgsql(dataSource, npgsqlOptions =>
@@ -84,7 +89,15 @@ public static class ServiceCollectionExtensions
         services.AddDbContext<FluxIndexQuantizedDbContext>((serviceProvider, options) =>
         {
             var postgresOptions = serviceProvider.GetRequiredService<IOptions<PostgreSQLQuantizedOptions>>().Value;
-            options.UseNpgsql(postgresOptions.ConnectionString, npgsqlOptions =>
+
+            // Same data-source requirements as the non-quantized path: vector plugin for
+            // Pgvector.Vector parameter writes + dynamic JSON for Dictionary<string, object>.
+            var dataSourceBuilder = new NpgsqlDataSourceBuilder(postgresOptions.ConnectionString);
+            dataSourceBuilder.EnableDynamicJson();
+            dataSourceBuilder.UseVector();
+            var dataSource = dataSourceBuilder.Build();
+
+            options.UseNpgsql(dataSource, npgsqlOptions =>
             {
                 npgsqlOptions.UseVector();
                 npgsqlOptions.CommandTimeout(postgresOptions.CommandTimeout);

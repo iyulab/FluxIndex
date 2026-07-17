@@ -422,7 +422,7 @@ public partial class FileFluxIntegration
         // FileFlux internal metadata (ff_ prefix) - for debugging/analysis
         // ============================================================
         fluxChunk.Metadata["ff_chunk_id"] = fileFluxChunk.Id;
-        fluxChunk.Metadata["ff_chunk_index"] = fileFluxChunk.Index;
+        fluxChunk.Metadata["ff_chunk_index"] = fileFluxChunk.ChunkIndex;
         fluxChunk.Metadata["ff_quality_score"] = fileFluxChunk.Quality;
         fluxChunk.Metadata["ff_importance_score"] = fileFluxChunk.Importance;
         fluxChunk.Metadata["ff_density_score"] = fileFluxChunk.Density;

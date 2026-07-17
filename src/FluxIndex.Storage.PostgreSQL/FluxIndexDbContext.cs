@@ -50,9 +50,12 @@ public class FluxIndexDbContext : DbContext
             entity.HasIndex(e => e.DocumentId);
             entity.HasIndex(e => e.ChunkIndex);
 
-            // Vector similarity index
+            // Vector similarity index. HNSW (not ivfflat): ivfflat trains centroids at CREATE
+            // INDEX time, so an index created on an empty table (EnsureCreated) silently loses
+            // recall for data inserted afterwards. HNSW builds incrementally and has no such
+            // training requirement (requires pgvector >= 0.5).
             entity.HasIndex(e => e.Embedding)
-                .HasMethod("ivfflat")
+                .HasMethod("hnsw")
                 .HasOperators("vector_cosine_ops");
         });
     }

@@ -484,7 +484,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 }
             }
 
-            return await SearchWithSQLiteVecAsync(queryEmbedding, topK, minScore, cancellationToken);
+            return await SearchWithSQLiteVecAsync(queryEmbedding, topK, minScore, filters, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -506,10 +506,16 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         float[] queryEmbedding,
         int topK,
         float minScore,
+        Dictionary<string, object>? filters,
         CancellationToken cancellationToken)
     {
         // sqlite-vec 네이티브 검색 사용
         var vectorString = "[" + string.Join(",", queryEmbedding.Select(f => f.ToString("F6", CultureInfo.InvariantCulture))) + "]";
+
+        // vec0 cannot filter on metadata (it lives in vector_chunks), so metadata filters are
+        // applied after the KNN step. Over-fetch the KNN window when filters are present so
+        // matching chunks are not crowded out of it by higher-scoring non-matching chunks.
+        var knnK = filters is { Count: > 0 } ? topK * 3 : topK;
 
         // sqlite-vec vec0: CTEs and JOINs with vec0 virtual tables are unreliable
         // (silently return 0 rows). Use two-step approach:
@@ -518,7 +524,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         var knnSql = $@"
             SELECT chunk_id, distance
             FROM {_options.GetVecTableName()}
-            WHERE embedding MATCH @vector AND k = {topK}";
+            WHERE embedding MATCH @vector AND k = {knnK}";
 
         try
         {
@@ -591,6 +597,12 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                     continue;
 
                 var metadata = JsonSerializer.Deserialize<Dictionary<string, object>>(meta.Meta) ?? new Dictionary<string, object>();
+
+                // Metadata filter — without this the native path leaks chunks across filter
+                // scope (e.g. other tenants). Same match semantics as VectorStoreBase.
+                if (filters is { Count: > 0 } && !VectorStoreBase.MatchesMetadataFilter(metadata, filters))
+                    continue;
+
                 // Convert distance → similarity score (0–1 range, 1 = best).
                 // Uses general-purpose formula that works for both L2 and cosine distance:
                 //   L2:     d ∈ [0, ∞)  → score ∈ (0, 1]
@@ -613,6 +625,10 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 };
 
                 results.Add(chunk);
+
+                // knnResults may hold an over-fetched window (filters present) — cap at topK.
+                if (results.Count >= topK)
+                    break;
             }
 
             LogVecSearchCompleted(_logger, results.Count);
@@ -655,7 +671,8 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             var vectorResults = new Dictionary<string, (int Rank, DocumentChunk Chunk, float VectorScore)>();
             if (_sqliteVecAvailable && queryEmbedding != null && queryEmbedding.Length > 0)
             {
-                var vectorChunks = await SearchWithSQLiteVecAsync(queryEmbedding, topK * 2, minScore, cancellationToken);
+                // HybridSearchAsync has no filters parameter on its public surface (yet).
+                var vectorChunks = await SearchWithSQLiteVecAsync(queryEmbedding, topK * 2, minScore, filters: null, cancellationToken);
                 int rank = 1;
                 foreach (var chunk in vectorChunks)
                 {

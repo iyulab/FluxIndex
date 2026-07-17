@@ -123,10 +123,14 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore, IDisposab
     protected override Task<IEnumerable<VectorSearchResult>> SearchCoreAsync(
         float[] queryEmbedding,
         int topK,
+        Dictionary<string, object>? filters,
         CancellationToken cancellationToken)
     {
+        // Metadata filters are applied before the topK*2 trim — otherwise higher-scoring
+        // non-matching chunks crowd matching ones out of the window.
         var results = _chunks.Values
             .Where(item => item.embedding != null && item.embedding.Length > 0)
+            .Where(item => filters is not { Count: > 0 } || MatchesMetadataFilter(item.chunk.Metadata, filters))
             .Select(item => new VectorSearchResult(
                 item.chunk,
                 ComputeCosineSimilarity(queryEmbedding, item.embedding)))
@@ -198,6 +202,44 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore, IDisposab
             return true;
         }
         return false;
+    }
+
+    /// <inheritdoc />
+    public override async Task<int> DeleteByFilterAsync(
+        Dictionary<string, object> filters,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(filters);
+        if (filters.Count == 0)
+            throw new ArgumentException(
+                "Filter must contain at least one key/value; use ClearAsync to remove all vectors.",
+                nameof(filters));
+
+        var matchedIds = _chunks
+            .Where(kvp => MatchesMetadataFilter(kvp.Value.chunk.Metadata, filters))
+            .Select(kvp => kvp.Key)
+            .ToList();
+
+        var deleted = 0;
+        foreach (var id in matchedIds)
+        {
+            if (!_chunks.TryRemove(id, out var item))
+                continue;
+
+            deleted++;
+            if (!string.IsNullOrEmpty(item.chunk.DocumentId) &&
+                _documentChunks.TryGetValue(item.chunk.DocumentId, out var chunkIds))
+            {
+                chunkIds.Remove(id);
+                if (chunkIds.Count == 0)
+                    _documentChunks.TryRemove(item.chunk.DocumentId, out _);
+            }
+        }
+
+        if (deleted > 0)
+            await AutoSaveIfEnabledAsync(cancellationToken);
+
+        return deleted;
     }
 
     protected override Task<int> CountCoreAsync(CancellationToken cancellationToken)
