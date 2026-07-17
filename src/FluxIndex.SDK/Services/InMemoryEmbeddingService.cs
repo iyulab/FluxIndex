@@ -32,9 +32,12 @@ public class InMemoryEmbeddingService : IEmbeddingService
             throw new ArgumentException("Text cannot be null or empty", nameof(text));
         }
 
-        // Generate deterministic embedding based on text hash
-        var hashCode = text.GetHashCode();
-        var seededRandom = new Random(hashCode);
+        // Generate deterministic embedding from a STABLE text hash. string.GetHashCode()
+        // is randomized per process in .NET, which silently broke this class's
+        // determinism contract: vectors persisted by one process (e.g. into a SQLite
+        // store) could never match queries embedded by a later process. FNV-1a over
+        // UTF-8 bytes is stable across processes and runtimes.
+        var seededRandom = new Random(StableHash(text));
 
         var embedding = GenerateRandomEmbedding(_dimensions, seededRandom);
         return Task.FromResult(embedding);
@@ -76,6 +79,26 @@ public class InMemoryEmbeddingService : IEmbeddingService
         var wordCount = text.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
         var tokenCount = (int)(wordCount / 0.75);
         return Task.FromResult(tokenCount);
+    }
+
+    /// <summary>
+    /// Process-stable 32-bit FNV-1a hash over the text's UTF-8 bytes.
+    /// Used as the embedding seed so "same text → same vector" holds across
+    /// processes (unlike string.GetHashCode(), which is per-process randomized).
+    /// </summary>
+    private static int StableHash(string text)
+    {
+        const uint fnvOffset = 2166136261;
+        const uint fnvPrime = 16777619;
+
+        var hash = fnvOffset;
+        foreach (var b in System.Text.Encoding.UTF8.GetBytes(text))
+        {
+            hash ^= b;
+            hash *= fnvPrime;
+        }
+
+        return unchecked((int)hash);
     }
 
     /// <summary>

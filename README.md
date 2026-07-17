@@ -42,6 +42,12 @@ await context.Indexer.IndexDocumentAsync(
 var results = await context.Retriever.SearchAsync("RAG library", maxResults: 5);
 ```
 
+> **Note (testing embedder)**: without a registered `IEmbeddingService` the builder falls
+> back to `InMemoryEmbeddingService`, whose vectors are deterministic but **not semantically
+> meaningful** — similarity scores cluster near 0, so with the default `minScore` a search
+> typically returns **no results**. Pass `minScore: 0` while smoke-testing, and register a
+> real embedding service (below) for meaningful retrieval.
+
 ### Using Custom Embedding Service
 
 FluxIndex is AI provider-agnostic. Extend `EmbeddingServiceBase` for your preferred provider:
