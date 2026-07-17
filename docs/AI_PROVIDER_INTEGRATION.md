@@ -149,6 +149,7 @@ services.AddOpenAICompatibleReranker(
 
 ```csharp
 using FluxIndex.Providers.OpenAI.Services;
+using FluxIndex.Storage.SQLite;
 
 var embeddingService = new OpenAICompatibleEmbeddingService(
     endpoint: "https://api.openai.com/v1",
@@ -159,6 +160,7 @@ var embeddingService = new OpenAICompatibleEmbeddingService(
 
 var ctx = FluxIndexContext.CreateBuilder()
     .UseLocalStorage("index.db")
+    .AddSQLiteStorage()
     .UseEmbeddingService(embeddingService)
     .Build();
 ```
@@ -537,11 +539,13 @@ public static class ServiceCollectionExtensions
 // 테스트 환경: InMemory embedding (기본값)
 var testContext = FluxIndexContext.CreateBuilder()
     .UseSQLite("test.db")
+    .AddSQLiteStorage()
     .Build();
 
 // 프로덕션 환경: OpenAI
 var prodContext = FluxIndexContext.CreateBuilder()
     .UsePostgreSQL(connectionString)
+    .AddPostgreSQLStorage()
     .ConfigureServices(services =>
     {
         services.AddOpenAIEmbedding(apiKey);
@@ -553,6 +557,7 @@ var prodContext = FluxIndexContext.CreateBuilder()
 // 로컬 환경: LMSupply
 var localContext = FluxIndexContext.CreateBuilder()
     .UseSQLite("local.db")
+    .AddSQLiteStorage()
     .ConfigureServices(services =>
     {
         services.AddLMSupplyEmbedding("bge-small-en-v1.5");
@@ -605,8 +610,10 @@ public static class OpenAIExtensions
 // 4. 사용
 var context = FluxIndexContext.CreateBuilder()
     .UsePostgreSQL(connectionString)
+    .AddPostgreSQLStorage()
     .ConfigureServices(s => s.AddOpenAIServices(Environment.GetEnvironmentVariable("OPENAI_API_KEY")!))
     .UseRedisCache("localhost:6379")
+    .AddRedisStorage()
     .Build();
 
 // 인덱싱

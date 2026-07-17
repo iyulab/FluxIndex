@@ -1,5 +1,6 @@
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Models;
+using FluxIndex.Core.Application.Services.Base;
 using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Core.Domain.Models;
 using DocumentChunkEntity = FluxIndex.Core.Domain.Entities.DocumentChunk;
@@ -467,6 +468,11 @@ public partial class Retriever
     /// <summary>
     /// 하이브리드 검색 (키워드 + 벡터) with RRF fusion
     /// </summary>
+    /// <remarks>
+    /// LIMITATION: 키워드 레그는 <c>IDocumentRepository</c> 를 통해 해석되는데 현재 인메모리 구현뿐이라,
+    /// 영속 스토어를 구성하더라도 <b>이 프로세스가 인덱싱한 문서만</b> 본다. 재시작 후 하이브리드 검색은
+    /// 사실상 vector-only 로 동작한다. 벡터 검색과 메타데이터 filter 는 영향받지 않는다.
+    /// </remarks>
     public async Task<IEnumerable<VectorSearchResult>> HybridSearchAsync(
         string keyword,
         string query,
@@ -647,6 +653,10 @@ public partial class Retriever
     /// <summary>
     /// 키워드 기반 검색
     /// </summary>
+    /// <remarks>
+    /// LIMITATION: <c>IDocumentRepository</c> 를 조회하는데 현재 인메모리 구현뿐이라, 영속 스토어를
+    /// 구성하더라도 <b>이 프로세스가 인덱싱한 문서만</b> 본다 — 재시작하면 결과가 비어 있다.
+    /// </remarks>
     public async Task<IEnumerable<VectorSearchResult>> KeywordSearchAsync(
         string keyword,
         int maxResults = 10,
@@ -932,23 +942,14 @@ public partial class Retriever
         metadata["tokenCount"] = tokenCount;
     }
 
+    /// <summary>
+    /// Filters results to those whose metadata matches every filter entry, under the same semantics
+    /// the stores use (<see cref="VectorStoreBase.MatchesMetadataFilter"/>). Reusing it is what keeps
+    /// a value that round-tripped through a JSON column (materialized as <c>JsonElement</c>) matching
+    /// the raw CLR value the caller filtered on; raw object equality does not.
+    /// </summary>
     private static List<VectorSearchResult> ApplyFilter(List<VectorSearchResult> results, Dictionary<string, object> filter)
-    {
-        return results.Where(r =>
-        {
-            if (r.Metadata == null) return false;
-
-            foreach (var kvp in filter)
-            {
-                if (!r.Metadata.TryGetValue(kvp.Key, out var metaValue) ||
-                    !metaValue.Equals(kvp.Value))
-                {
-                    return false;
-                }
-            }
-            return true;
-        }).ToList();
-    }
+        => results.Where(r => VectorStoreBase.MatchesMetadataFilter(r.Metadata, filter)).ToList();
 
     private static float CalculateKeywordScore(string content, string keyword)
     {

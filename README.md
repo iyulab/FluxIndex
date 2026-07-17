@@ -28,10 +28,14 @@ dotnet add package FluxIndex.Storage.SQLite
 
 ```csharp
 using FluxIndex.SDK;
+using FluxIndex.Storage.SQLite;
 
 // 1. Setup (InMemory embedding for testing)
+// UseSQLite() selects the provider; AddSQLiteStorage() registers it. Both are required —
+// Build() throws if you name a store without registering it.
 var context = FluxIndexContext.CreateBuilder()
     .UseSQLite("fluxindex.db")
+    .AddSQLiteStorage()
     .Build();
 
 // 2. Index
@@ -76,6 +80,7 @@ public class LMSupplyEmbedder : EmbeddingServiceBase, IAsyncDisposable
 // Register and use
 var context = FluxIndexContext.CreateBuilder()
     .UseSQLite("fluxindex.db")
+    .AddSQLiteStorage()
     .ConfigureServices(s => s.AddSingleton<IEmbeddingService>(
         LMSupplyEmbedder.CreateAsync().GetAwaiter().GetResult()))
     .Build();
@@ -129,7 +134,29 @@ matters for recall/performance at scale:
 | InMemory (SDK) | ✅ pre-trim | ✅ | |
 
 Filter semantics: equality on every key/value pair (AND). Values compare by their JSON text
-representation (`"true"`, invariant-culture numbers, ordinal strings).
+representation (`"true"`, invariant-culture numbers, ordinal strings). The same semantics apply in
+the SDK's `Retriever`, so a value that round-trips through a JSON column still matches the raw value
+you filter on.
+
+Filters match **chunk** metadata. The `metadata` argument of `Indexer.IndexDocumentAsync(content,
+documentId, metadata)` and `IndexChunksAsync(chunks, documentId, metadata)` is copied onto that
+document's chunks for exactly this reason — a chunk's own metadata wins on key collision:
+
+```csharp
+await context.Indexer.IndexDocumentAsync(
+    "tenant content", "doc-001", new() { ["workspace_id"] = "ws-a" });
+
+var scoped = await context.Retriever.SearchAsync(
+    "content", filter: new() { ["workspace_id"] = "ws-a" });
+
+await vectorStore.DeleteByFilterAsync(new() { ["workspace_id"] = "ws-a" });
+```
+
+> **Limitation (keyword leg)**: `HybridSearchAsync`/`KeywordSearchAsync` resolve their BM25 leg
+> through `IDocumentRepository`, which currently has an in-memory implementation only. With a
+> persistent store the keyword leg therefore sees **only documents this process indexed**, and
+> after a restart hybrid search effectively degrades to vector-only. Vector search and metadata
+> filtering are unaffected.
 
 ### Which package do I need?
 

@@ -17,6 +17,7 @@ This covers the most common upgrade path. See [CHANGELOG.md](../CHANGELOG.md) fo
 | 0.4.0 | `UseOpenAI()` / `UseAzureOpenAI()` builder methods removed |
 | 0.9.0 | `FluxIndex.Providers.OpenAI` introduced (new pattern) |
 | 0.11.0 | `AddOpenAIEmbedding()` / `AddAzureOpenAIEmbedding()` removed from SDK |
+| 0.19.0 | `Build()` throws when a provider is selected with `Use*` but never registered with `Add*Storage()` |
 
 ---
 
@@ -63,12 +64,14 @@ var ctx = FluxIndexContext.CreateBuilder()
 
 // After (0.9.0+)
 using FluxIndex.Providers.OpenAI.Services;
+using FluxIndex.Storage.SQLite;
 
 var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
 var logger = loggerFactory.CreateLogger<OpenAICompatibleEmbeddingService>();
 
 var ctx = FluxIndexContext.CreateBuilder()
     .UseLocalStorage("index.db")
+    .AddSQLiteStorage()
     .UseEmbeddingService(new OpenAICompatibleEmbeddingService(
         endpoint: "https://api.openai.com/v1",
         apiKey: apiKey,
@@ -130,6 +133,34 @@ If you were calling these SDK methods directly, they were removed in 0.11.0 (the
 ### Step 6: Verify EmbeddingIdentity (0.12.0+)
 
 If you use a custom `IEmbeddingService`, ensure `GetModelName()` returns a stable, unique string. Starting from 0.12.0, model name is used for vector collection naming (`EmbeddingFingerprint`). Returning an empty or null string will cause `ArgumentException` at indexing time.
+
+---
+
+### Step 7: Register the storage provider you select (0.19.0+)
+
+`Use*` only sets options — the matching `Add*Storage()` extension from the storage package is what
+registers the store. Earlier versions silently fell back to an in-memory store when the registration
+was missing, so the application ran normally and lost its whole index on restart. From 0.19.0
+`Build()` throws an `InvalidOperationException` naming the missing call instead.
+
+```diff
+  var ctx = FluxIndexContext.CreateBuilder()
+      .UseLocalStorage("index.db")
++     .AddSQLiteStorage()
+      .Build();
+```
+
+Add the extension matching each provider you select:
+
+| Selection | Registration | Package |
+|-----------|--------------|---------|
+| `UsePostgreSQL(conn)` | `AddPostgreSQLStorage()` | `FluxIndex.Storage.PostgreSQL` |
+| `UseSQLite(path)` / `UseSQLiteInMemory()` / `UseLocalStorage(path)` | `AddSQLiteStorage()` | `FluxIndex.Storage.SQLite` |
+| `UseQdrant(...)` / `UseQdrantFixed(...)` / `UseQdrantCloud(...)` / `UseQdrantCloudFixed(...)` | `AddQdrantStorage()` | `FluxIndex.Storage.Qdrant` |
+| `UseRedisCache(conn)` | `AddRedisStorage()` | `FluxIndex.Cache.Redis` |
+
+`UseMemoryCache()` and builders that select no provider at all need nothing extra — the in-memory
+fallback is the intended behaviour there.
 
 ---
 

@@ -1,4 +1,4 @@
-using Flux.Abstractions;
+﻿using Flux.Abstractions;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services;
 using FluxIndex.Core.Constants;
@@ -34,6 +34,16 @@ public class FluxIndexContextBuilder
     private bool _suppressStartupMessages;
 
     /// <summary>
+    /// The store/cache provider the caller explicitly selected through a <c>Use*</c> call, if any.
+    /// <see cref="VectorStoreOptions.Provider"/> and <see cref="CacheOptions.CacheProvider"/> carry
+    /// non-null defaults, so they cannot tell an explicit choice from an unconfigured builder — and
+    /// that distinction is what lets <see cref="Build"/> reject a configured-but-unregistered store
+    /// instead of silently substituting an in-memory one.
+    /// </summary>
+    private string? _explicitStoreProvider;
+    private string? _explicitCacheProvider;
+
+    /// <summary>
     /// The DI service collection. Storage packages use this to register their services
     /// via extension methods on FluxIndexContextBuilder.
     /// </summary>
@@ -43,6 +53,54 @@ public class FluxIndexContextBuilder
     /// The FluxIndex options. Storage packages read these to configure their services.
     /// </summary>
     public FluxIndexOptions Options => _options;
+
+    private void SelectStoreProvider(string provider)
+    {
+        _options.VectorStore.Provider = provider;
+        _explicitStoreProvider = provider;
+    }
+
+    private void SelectCacheProvider(string provider)
+    {
+        _options.Cache.CacheProvider = provider;
+        _explicitCacheProvider = provider;
+    }
+
+    /// <summary>
+    /// Throws when the caller named a provider but its storage package never registered
+    /// <paramref name="serviceType"/> — i.e. the <c>Use*</c> call set options and the matching
+    /// <c>Add*Storage()</c> call is missing. Silence here is what makes the failure expensive: the
+    /// app runs, and the loss only surfaces on the next restart.
+    /// </summary>
+    private void EnsureExplicitProviderIsRegistered(
+        string? explicitProvider,
+        Type serviceType,
+        Func<string, string> hint)
+    {
+        if (explicitProvider is null)
+            return;
+        if (_services.Any(d => d.ServiceType == serviceType))
+            return;
+
+        throw new InvalidOperationException(
+            $"{explicitProvider} was configured but its services are not registered, " +
+            $"so {serviceType.Name} would silently fall back to an in-memory implementation. " +
+            $"{hint(explicitProvider)}");
+    }
+
+    private static string StoreRegistrationHint(string provider) => provider switch
+    {
+        "PostgreSQL" => "Reference the FluxIndex.Storage.PostgreSQL package and call AddPostgreSQLStorage() on the builder.",
+        "SQLite" => "Reference the FluxIndex.Storage.SQLite package and call AddSQLiteStorage() on the builder.",
+        "Qdrant" => "Reference the FluxIndex.Storage.Qdrant package and call AddQdrantStorage() on the builder.",
+        _ => $"Reference the FluxIndex.Storage.{provider} package and call Add{provider}Storage() on the builder."
+    };
+
+    private static string CacheRegistrationHint(string provider) => provider switch
+    {
+        "Redis" => "Reference the FluxIndex.Cache.Redis package and call AddRedisStorage() on the builder.",
+        _ => $"Reference the FluxIndex.Cache.{provider} package and call Add{provider}Storage() on the builder."
+    };
 
     public FluxIndexContextBuilder()
     {
@@ -69,7 +127,7 @@ public class FluxIndexContextBuilder
     public FluxIndexContextBuilder UsePostgreSQL(string connectionString)
     {
         // Vector Store
-        _options.VectorStore.Provider = "PostgreSQL";
+        SelectStoreProvider("PostgreSQL");
         _options.VectorStore.ConnectionString = connectionString;
 
         // Graph Store (동일 연결 사용)
@@ -91,7 +149,7 @@ public class FluxIndexContextBuilder
     public FluxIndexContextBuilder UseSQLite(string databasePath = "fluxindex.db")
     {
         // Vector Store
-        _options.VectorStore.Provider = "SQLite";
+        SelectStoreProvider("SQLite");
         _options.VectorStore.ConnectionString = $"Data Source={databasePath}";
 
         // Graph Store (동일 연결 사용)
@@ -107,14 +165,20 @@ public class FluxIndexContextBuilder
 
     /// <summary>
     /// SQLite 인메모리 사용 - Fullstack RAG (테스트용, 모든 기능 활성화)
+    /// 이 빌더가 만드는 컨텍스트는 자신만의 인메모리 DB 를 갖는다 — 한 프로세스 안에서 여러 컨텍스트를
+    /// 세워도 서로의 데이터를 보지 않는다.
     /// NOTE: Requires FluxIndex.Storage.SQLite package reference.
     /// </summary>
     public FluxIndexContextBuilder UseSQLiteInMemory()
     {
         // Vector Store
-        _options.VectorStore.Provider = "SQLite";
-        // Shared cache mode for in-memory database to allow multiple connections
-        _options.VectorStore.ConnectionString = "Data Source=:memory:;Mode=Memory;Cache=Shared";
+        SelectStoreProvider("SQLite");
+        // Cache=Shared lets this context's own connections reach one in-memory database; the unique
+        // name is what keeps it *this* context's database. A bare ":memory:" with Cache=Shared names
+        // one process-global database, so parallel contexts raced on EnsureCreated and, worse, read
+        // each other's rows.
+        _options.VectorStore.ConnectionString =
+            $"Data Source=fluxindex-{Guid.NewGuid():N};Mode=Memory;Cache=Shared";
 
         // Graph Store (동일 연결 사용)
         _options.GraphStore.Provider = "SQLite";
@@ -179,7 +243,7 @@ public class FluxIndexContextBuilder
     /// </summary>
     public FluxIndexContextBuilder UseRedisCache(string connectionString)
     {
-        _options.Cache.CacheProvider = "Redis";
+        SelectCacheProvider("Redis");
         _options.Cache.RedisConnectionString = connectionString;
         _options.Cache.EnableSearchCache = true;
         return this;
@@ -190,7 +254,7 @@ public class FluxIndexContextBuilder
     /// </summary>
     public FluxIndexContextBuilder UseMemoryCache(int maxCacheSize = 1000)
     {
-        _options.Cache.CacheProvider = "Memory";
+        SelectCacheProvider("Memory");
         _options.Cache.MaxCacheSize = maxCacheSize;
         _options.Cache.EnableSearchCache = true;
         return this;
@@ -207,7 +271,7 @@ public class FluxIndexContextBuilder
     public FluxIndexContextBuilder UseLocalStorage(string databasePath = "fluxindex.db")
     {
         // Vector Store
-        _options.VectorStore.Provider = "SQLite";
+        SelectStoreProvider("SQLite");
         _options.VectorStore.ConnectionString = $"Data Source={databasePath}";
 
         // Graph Store (동일 연결 사용)
@@ -234,13 +298,13 @@ public class FluxIndexContextBuilder
         string neo4jUri, string neo4jUsername, string neo4jPassword)
     {
         // PostgreSQL for RDB and Cache
-        _options.VectorStore.Provider = "PostgreSQL";
+        SelectStoreProvider("PostgreSQL");
         _options.VectorStore.ConnectionString = postgresConnectionString;
         _options.SemanticCache.Provider = "PostgreSQL";
         _options.SemanticCache.UseVectorStoreConnection = true;
 
         // Qdrant for Vector (takes priority over PostgreSQL)
-        _options.VectorStore.Provider = "Qdrant";
+        SelectStoreProvider("Qdrant");
         _options.VectorStore.QdrantHost = qdrantHost;
         _options.VectorStore.QdrantGrpcPort = qdrantPort;
         _options.VectorStore.QdrantCollectionName = qdrantCollection;
@@ -306,7 +370,7 @@ public class FluxIndexContextBuilder
     /// <param name="baseCollectionName">기본 컬렉션 이름 (모델 fingerprint 자동 추가)</param>
     public FluxIndexContextBuilder UseQdrant(string host = "localhost", int grpcPort = 6334, string baseCollectionName = "fluxindex_chunks")
     {
-        _options.VectorStore.Provider = "Qdrant";
+        SelectStoreProvider("Qdrant");
         _options.VectorStore.QdrantHost = host;
         _options.VectorStore.QdrantGrpcPort = grpcPort;
         _options.VectorStore.QdrantCollectionName = baseCollectionName;
@@ -325,7 +389,7 @@ public class FluxIndexContextBuilder
     /// <param name="vectorSize">벡터 차원 (고정)</param>
     public FluxIndexContextBuilder UseQdrantFixed(string host = "localhost", int grpcPort = 6334, string collectionName = "fluxindex_chunks", int vectorSize = EmbeddingDefaults.DefaultVectorDimension)
     {
-        _options.VectorStore.Provider = "Qdrant";
+        SelectStoreProvider("Qdrant");
         _options.VectorStore.QdrantHost = host;
         _options.VectorStore.QdrantGrpcPort = grpcPort;
         _options.VectorStore.QdrantCollectionName = collectionName;
@@ -340,7 +404,7 @@ public class FluxIndexContextBuilder
     /// </summary>
     public FluxIndexContextBuilder UseQdrantCloud(string cloudHost, string apiKey, string baseCollectionName = "fluxindex_chunks")
     {
-        _options.VectorStore.Provider = "Qdrant";
+        SelectStoreProvider("Qdrant");
         _options.VectorStore.QdrantHost = cloudHost;
         _options.VectorStore.QdrantApiKey = apiKey;
         _options.VectorStore.QdrantUseHttps = true;
@@ -355,7 +419,7 @@ public class FluxIndexContextBuilder
     /// </summary>
     public FluxIndexContextBuilder UseQdrantCloudFixed(string cloudHost, string apiKey, string collectionName = "fluxindex_chunks", int vectorSize = EmbeddingDefaults.DefaultVectorDimension)
     {
-        _options.VectorStore.Provider = "Qdrant";
+        SelectStoreProvider("Qdrant");
         _options.VectorStore.QdrantHost = cloudHost;
         _options.VectorStore.QdrantApiKey = apiKey;
         _options.VectorStore.QdrantUseHttps = true;
@@ -591,10 +655,24 @@ public class FluxIndexContextBuilder
         // Configure chunking service
         ConfigureChunkingService();
 
+        // A store the caller explicitly selected must actually be registered. Substituting InMemory
+        // here would discard every write on restart without a word — the fallback is only for a
+        // builder that never named a store.
+        EnsureExplicitProviderIsRegistered(
+            _explicitStoreProvider, typeof(IVectorStore), StoreRegistrationHint);
+
         // Fallback: if no IVectorStore was registered by storage packages, use InMemory
         if (!_services.Any(d => d.ServiceType == typeof(IVectorStore)))
         {
             _services.AddSingleton<IVectorStore, InMemoryVectorStore>();
+        }
+
+        // Same rule for an explicitly selected cache — a silently disabled cache is a performance
+        // cliff the caller never asked for. "Memory" is served by the fallback below, not a package.
+        if (!string.Equals(_explicitCacheProvider, "Memory", StringComparison.OrdinalIgnoreCase))
+        {
+            EnsureExplicitProviderIsRegistered(
+                _explicitCacheProvider, typeof(ICacheService), CacheRegistrationHint);
         }
 
         // Fallback: if no ICacheService was registered and Memory cache requested

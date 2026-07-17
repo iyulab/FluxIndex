@@ -98,7 +98,14 @@ public partial class Indexer
     /// </summary>
     /// <param name="content">인덱싱할 문서 내용</param>
     /// <param name="documentId">문서 ID</param>
-    /// <param name="metadata">메타데이터 (선택)</param>
+    /// <param name="metadata">
+    /// 메타데이터 (선택). 문서에 저장되는 동시에 이 문서의 청크에도 복사되어
+    /// <see cref="Retriever.SearchAsync(string, int, float, Dictionary{string, object}?, CancellationToken)"/> 의
+    /// <c>filter</c> 및 <see cref="Core.Application.Interfaces.IVectorStore.DeleteByFilterAsync"/> 에서 매치된다
+    /// (두 계약 모두 청크 메타데이터를 읽는다).
+    /// NOTE: 문서 레벨 메타데이터 자체는 영속되지 않는다 — <c>IDocumentRepository</c> 는 현재 인메모리 구현뿐이라
+    /// 프로세스 재시작 후에는 청크에 복사된 값만 남는다.
+    /// </param>
     /// <param name="cancellationToken">취소 토큰</param>
     /// <returns>인덱싱된 문서 ID</returns>
     public async Task<string> IndexDocumentAsync(
@@ -125,8 +132,9 @@ public partial class Indexer
             }
         }
 
-        // Create single chunk from content
+        // Create single chunk from content, carrying the caller's metadata so filters can see it
         var chunk = DocumentChunkEntity.Create(documentId, content, 0, 1);
+        MergeDocumentMetadataIntoChunk(chunk, metadata);
         document.AddChunk(chunk);
 
         // Use existing indexing logic
@@ -466,6 +474,14 @@ public partial class Indexer
     /// <summary>
     /// 청크 리스트에서 문서 생성 및 인덱싱
     /// </summary>
+    /// <param name="chunks">인덱싱할 청크. 각 청크의 <c>Metadata</c> 는 그대로 보존된다.</param>
+    /// <param name="documentId">문서 ID (생략 시 자동 생성)</param>
+    /// <param name="metadata">
+    /// 문서 레벨 메타데이터 (선택). 각 청크에 base 레이어로 복사되어 filter 계약에서 매치된다 —
+    /// 키가 겹치면 청크 자신의 값이 승리한다. <see cref="IndexDocumentAsync(string, string, Dictionary{string, object}?, CancellationToken)"/> 의
+    /// <c>metadata</c> 설명 참조.
+    /// </param>
+    /// <param name="cancellationToken">취소 토큰</param>
     public async Task<string> IndexChunksAsync(
         IEnumerable<DocumentChunkModel> chunks,
         string? documentId = null,
@@ -491,10 +507,12 @@ public partial class Indexer
             }
         }
 
-        // Add chunks to document
+        // Add chunks to document, layering document metadata under each chunk's own
         foreach (var chunk in chunkList)
         {
-            document.AddChunk(ConvertToEntityChunk(chunk));
+            var entityChunk = ConvertToEntityChunk(chunk);
+            MergeDocumentMetadataIntoChunk(entityChunk, metadata);
+            document.AddChunk(entityChunk);
         }
 
         // Index the document
@@ -919,12 +937,39 @@ public partial class Indexer
 
     private static DocumentChunkEntity ConvertToEntityChunk(DocumentChunkModel modelChunk)
     {
-        return DocumentChunkEntity.Create(
+        var chunk = DocumentChunkEntity.Create(
             modelChunk.DocumentId,
             modelChunk.Content,
             modelChunk.ChunkIndex,
             modelChunk.TotalChunks
         );
+
+        if (modelChunk.Metadata.Count != 0)
+            chunk.Metadata = new Dictionary<string, object>(modelChunk.Metadata);
+
+        return chunk;
+    }
+
+    /// <summary>
+    /// Copies caller-supplied document-level metadata onto a chunk as a base layer.
+    /// The search and delete filter contracts match against chunk metadata, so metadata that only
+    /// reaches the <see cref="Document"/> entity is invisible to every filter. The chunk's own
+    /// metadata is the more specific scope and wins on key collision.
+    /// </summary>
+    private static void MergeDocumentMetadataIntoChunk(
+        DocumentChunkEntity chunk,
+        Dictionary<string, object>? documentMetadata)
+    {
+        if (documentMetadata is null || documentMetadata.Count == 0)
+            return;
+
+        chunk.Metadata ??= new Dictionary<string, object>();
+
+        foreach (var (key, value) in documentMetadata)
+        {
+            if (!chunk.Metadata.ContainsKey(key))
+                chunk.Metadata[key] = value;
+        }
     }
 
     private static DocumentChunkModel ConvertToModelChunk(DocumentChunkEntity entityChunk)

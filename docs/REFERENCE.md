@@ -555,6 +555,7 @@ public async Task SearchAsync_ValidQuery_ReturnsResults()
 {
     var context = FluxIndexContext.CreateBuilder()
         .UseSQLiteInMemory()
+        .AddSQLiteStorage()
         .Build();
 
     await context.Indexer.IndexDocumentAsync("test content", "doc-1");

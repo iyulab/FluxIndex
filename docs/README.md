@@ -30,11 +30,15 @@ FluxIndex automatically maximizes available capabilities - no feature toggles ne
 // Local mode (development, edge AI)
 var ctx = FluxIndexContext.CreateBuilder()
     .UseLocalStorage("fluxindex.db")
+    .AddSQLiteStorage()
     .Build();
 
 // Full mode (production)
 var ctx = FluxIndexContext.CreateBuilder()
     .UseBestInClass(pgConn, qdrantConfig, neo4jConfig)
+    .AddQdrantStorage()
+    .AddPostgreSQLStorage()
+    .AddNeo4jStorage()
     .Build();
 ```
 
@@ -46,10 +50,12 @@ See [GUIDE.md](GUIDE.md) for detailed setup instructions.
 
 ```csharp
 using FluxIndex.SDK;
+using FluxIndex.Storage.SQLite;
 
 // 1. Setup (InMemory embedding for testing)
 var context = FluxIndexContext.CreateBuilder()
     .UseLocalStorage("fluxindex.db")
+    .AddSQLiteStorage()
     .Build();
 
 // 2. Index

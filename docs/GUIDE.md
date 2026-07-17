@@ -64,10 +64,12 @@ Best for:
 
 ```csharp
 using FluxIndex.SDK;
+using FluxIndex.Storage.SQLite;
 
 // Minimal setup - all features enabled automatically
 var context = FluxIndexContext.CreateBuilder()
     .UseLocalStorage("fluxindex.db")  // or .UseSQLite("fluxindex.db")
+    .AddSQLiteStorage()
     .Build();
 
 // Index documents
@@ -79,6 +81,10 @@ await context.Indexer.IndexDocumentAsync(
 // Search (hybrid search enabled automatically)
 var results = await context.Retriever.SearchAsync("RAG library", maxResults: 5);
 ```
+
+> **Select the provider, then register it.** `Use*` only sets options — the matching `Add*Storage()`
+> comes from the storage package (here `FluxIndex.Storage.SQLite`) and is what actually registers the
+> store. `Build()` throws if you select a provider without registering it.
 
 ### Local Mode Storage Structure
 
@@ -95,6 +101,7 @@ fluxindex-cache.db        # Semantic cache
 // Perfect for unit tests - all data in memory
 var context = FluxIndexContext.CreateBuilder()
     .UseSQLiteInMemory()
+    .AddSQLiteStorage()
     .Build();
 ```
 
@@ -104,6 +111,7 @@ var context = FluxIndexContext.CreateBuilder()
 // Local storage + LMSupply (consumer app implements wrapper)
 var context = FluxIndexContext.CreateBuilder()
     .UseLocalStorage("fluxindex.db")
+    .AddSQLiteStorage()
     .ConfigureServices(s => s.AddLMSupplyEmbedding())  // Your extension method
     .Build();
 ```
@@ -133,6 +141,9 @@ var context = FluxIndexContext.CreateBuilder()
         neo4jUri: "bolt://localhost:7687",
         neo4jUsername: "neo4j",
         neo4jPassword: "password")
+    .AddQdrantStorage()      // Vector
+    .AddPostgreSQLStorage()  // RDB + Cache
+    .AddNeo4jStorage()       // Graph
     .ConfigureServices(s => s.AddOpenAIEmbedding(apiKey))  // Your extension
     .Build();
 ```
@@ -158,6 +169,9 @@ var context = FluxIndexContext.CreateBuilder()
             neo4j.Password = "password";
             neo4j.Database = "fluxindex";
         })
+    .AddQdrantStorage()      // Vector
+    .AddPostgreSQLStorage()  // RDB + Cache
+    .AddNeo4jStorage()       // Graph
     .Build();
 ```
 
@@ -211,6 +225,8 @@ Mix and match providers or implement your own.
 var context = FluxIndexContext.CreateBuilder()
     .UsePostgreSQL(connStr)       // RDB + Cache
     .UseQdrant("localhost", 6334, "chunks", 1536)  // Vector (overrides PostgreSQL)
+    .AddPostgreSQLStorage()
+    .AddQdrantStorage()
     // No UseNeo4j() → PostgreSQL handles graph (basic support)
     .Build();
 ```
@@ -221,6 +237,8 @@ var context = FluxIndexContext.CreateBuilder()
 var context = FluxIndexContext.CreateBuilder()
     .UsePostgreSQL(connStr)       // RDB + Cache + Vector (pgvector)
     .UseNeo4j(uri, user, pass)    // Graph (overrides PostgreSQL)
+    .AddPostgreSQLStorage()
+    .AddNeo4jStorage()
     .Build();
 ```
 
@@ -260,6 +278,8 @@ When multiple providers support the same capability:
 // Example: Qdrant handles Vector, PostgreSQL handles everything else
 .UsePostgreSQL(connStr)   // RDB + Cache + Vector + Graph
 .UseQdrant(...)           // Takes over Vector
+.AddPostgreSQLStorage()
+.AddQdrantStorage()
 // Result: Qdrant(Vector), PostgreSQL(RDB, Cache, Graph)
 ```
 
@@ -452,11 +472,15 @@ GraphRAG enables entity-aware retrieval for relational queries.
 // Local mode - SQLite handles entity graph
 var context = FluxIndexContext.CreateBuilder()
     .UseLocalStorage("fluxindex.db")  // Includes SQLiteEntityGraphStore
+    .AddSQLiteStorage()
     .Build();
 
 // Full mode - Neo4j for optimal graph performance
 var context = FluxIndexContext.CreateBuilder()
     .UseBestInClass(pgConn, qdrantConfig, neo4jConfig)
+    .AddQdrantStorage()
+    .AddPostgreSQLStorage()
+    .AddNeo4jStorage()
     .Build();
 ```
 
@@ -509,8 +533,10 @@ var results = await entityGraph.SearchByEntityAsync(entityId, new EntitySearchOp
 ```csharp
 var context = FluxIndexContext.CreateBuilder()
     .UseLocalStorage("fluxindex.db")
+    .AddSQLiteStorage()
     .ConfigureServices(s => s.AddLMSupplyEmbedding())
     .UseRedisCache("localhost:6379")  // Distributed semantic cache
+    .AddRedisStorage()
     .Build();
 
 // First query: ~50ms (embedding + search)

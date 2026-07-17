@@ -1,5 +1,6 @@
 using FluxIndex.SDK;
 using FluxIndex.SDK.Extensions.WebFlux;
+using FluxIndex.Storage.SQLite;
 using WebFlux.Core.Models.Events;
 using Xunit;
 
@@ -16,6 +17,7 @@ public class WebFluxIntegrationTests : IDisposable
     {
         _context = FluxIndexContext.CreateBuilder()
             .UseSQLiteInMemory()
+            .AddSQLiteStorage()
             .UseInMemoryEmbedding()
             .UseWebFlux()
             .Build();
