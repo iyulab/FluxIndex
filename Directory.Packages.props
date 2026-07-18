@@ -76,7 +76,7 @@
     <PackageVersion Include="FluxCurator" Version="0.7.5" />
     <PackageVersion Include="FluxImprover" Version="0.9.1" />
     <PackageVersion Include="HtmlAgilityPack" Version="1.12.4" />
-    <PackageVersion Include="WebFlux" Version="0.5.2" />
+    <PackageVersion Include="WebFlux" Version="0.5.3" />
   </ItemGroup>
   <!-- Testing Packages -->
   <ItemGroup>
