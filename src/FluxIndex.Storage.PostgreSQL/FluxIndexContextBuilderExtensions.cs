@@ -20,52 +20,61 @@ public static class FluxIndexContextBuilderExtensions
     /// </summary>
     public static FluxIndexContextBuilder AddPostgreSQLStorage(this FluxIndexContextBuilder builder)
     {
-        builder.RegisterStorageServices(services =>
-        {
-            var options = builder.Options;
-            var vectorProvider = options.VectorStore.Provider?.ToLowerInvariant();
-
-            if (vectorProvider == "postgresql")
-            {
-                services.AddPostgreSQLVectorStore(options.VectorStore.ConnectionString);
-            }
-
-            var graphProvider = options.GraphStore.Provider?.ToLowerInvariant();
-            if (graphProvider == "postgresql")
-            {
-                var connectionString = options.GraphStore.UseVectorStoreConnection
-                    ? options.VectorStore.ConnectionString
-                    : options.GraphStore.ConnectionString;
-
-                services.AddPostgreSQLGraphStore(graphOptions =>
-                {
-                    graphOptions.ConnectionString = connectionString;
-                    graphOptions.AutoMigrate = options.GraphStore.AutoMigrate;
-                    graphOptions.MaxRecursionDepth = options.GraphStore.MaxRecursionDepth;
-                });
-            }
-
-            var cacheProvider = options.SemanticCache.Provider?.ToLowerInvariant();
-            if (cacheProvider == "postgresql")
-            {
-                var connectionString = options.SemanticCache.UseVectorStoreConnection
-                    ? options.VectorStore.ConnectionString
-                    : options.SemanticCache.ConnectionString;
-
-                services.AddPostgreSQLSemanticCache(cacheOptions =>
-                {
-                    cacheOptions.ConnectionString = connectionString;
-                    cacheOptions.AutoMigrate = options.SemanticCache.AutoMigrate;
-                    cacheOptions.DefaultExpiry = options.SemanticCache.DefaultExpiry;
-                    cacheOptions.MaxEntries = options.SemanticCache.MaxEntries;
-                    cacheOptions.EmbeddingDimensions = options.SemanticCache.EmbeddingDimensions;
-                    cacheOptions.EnableAutoCleanup = options.SemanticCache.EnableAutoCleanup;
-                    cacheOptions.CleanupInterval = options.SemanticCache.CleanupInterval;
-                    cacheOptions.UseUnloggedTable = options.SemanticCache.UseUnloggedTable;
-                });
-            }
-        });
-
+        builder.RegisterStorageServices(services => RegisterPostgreSQLServices(services, builder.Options));
         return builder;
+    }
+
+    internal static void RegisterPostgreSQLServices(IServiceCollection services, FluxIndexOptions options)
+    {
+        var vectorProvider = options.VectorStore.Provider?.ToLowerInvariant();
+
+        if (vectorProvider == "postgresql")
+        {
+            services.AddPostgreSQLVectorStore(options.VectorStore.ConnectionString);
+
+            // Symmetric with SQLite (which always auto-initializes on Build): register a schema
+            // initializer so Build() creates the pgvector extension + tables. Gated by
+            // EnableAutoMigration (default true) so callers that manage schema externally — or run
+            // on managed PostgreSQL without CREATE EXTENSION privilege — can opt out.
+            if (options.VectorStore.EnableAutoMigration)
+            {
+                services.AddSingleton<IStorageInitializer, PostgreSQLStorageInitializer>();
+            }
+        }
+
+        var graphProvider = options.GraphStore.Provider?.ToLowerInvariant();
+        if (graphProvider == "postgresql")
+        {
+            var connectionString = options.GraphStore.UseVectorStoreConnection
+                ? options.VectorStore.ConnectionString
+                : options.GraphStore.ConnectionString;
+
+            services.AddPostgreSQLGraphStore(graphOptions =>
+            {
+                graphOptions.ConnectionString = connectionString;
+                graphOptions.AutoMigrate = options.GraphStore.AutoMigrate;
+                graphOptions.MaxRecursionDepth = options.GraphStore.MaxRecursionDepth;
+            });
+        }
+
+        var cacheProvider = options.SemanticCache.Provider?.ToLowerInvariant();
+        if (cacheProvider == "postgresql")
+        {
+            var connectionString = options.SemanticCache.UseVectorStoreConnection
+                ? options.VectorStore.ConnectionString
+                : options.SemanticCache.ConnectionString;
+
+            services.AddPostgreSQLSemanticCache(cacheOptions =>
+            {
+                cacheOptions.ConnectionString = connectionString;
+                cacheOptions.AutoMigrate = options.SemanticCache.AutoMigrate;
+                cacheOptions.DefaultExpiry = options.SemanticCache.DefaultExpiry;
+                cacheOptions.MaxEntries = options.SemanticCache.MaxEntries;
+                cacheOptions.EmbeddingDimensions = options.SemanticCache.EmbeddingDimensions;
+                cacheOptions.EnableAutoCleanup = options.SemanticCache.EnableAutoCleanup;
+                cacheOptions.CleanupInterval = options.SemanticCache.CleanupInterval;
+                cacheOptions.UseUnloggedTable = options.SemanticCache.UseUnloggedTable;
+            });
+        }
     }
 }

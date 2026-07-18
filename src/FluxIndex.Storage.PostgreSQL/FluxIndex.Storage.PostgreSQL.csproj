@@ -22,4 +22,8 @@
     <ProjectReference Include="..\FluxIndex.SDK\FluxIndex.SDK.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="FluxIndex.Storage.PostgreSQL.Tests" />
+  </ItemGroup>
+
 </Project>

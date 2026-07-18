@@ -164,6 +164,29 @@ fallback is the intended behaviour there.
 
 ---
 
+### Step 8: PostgreSQL auto-initializes its schema on Build() (0.19.0+)
+
+`AddPostgreSQLStorage()` now creates the pgvector extension and vector tables on `Build()` — symmetric
+with SQLite, which has always self-initialized. Earlier versions left PostgreSQL uninitialized, so
+consumers had to run `CREATE EXTENSION vector` + `EnsureCreated` by hand. That manual step can now be
+removed.
+
+Opt out when you manage the schema externally (EF migrations, an ops-owned schema) or run on managed
+PostgreSQL where the connecting role lacks `CREATE EXTENSION` privilege **and** the extension is not
+pre-installed — the one case auto-init throws (`CREATE EXTENSION IF NOT EXISTS` is a privilege-free
+no-op when the extension already exists):
+
+```csharp
+var builder = FluxIndexContext.CreateBuilder()
+    .UsePostgreSQL(conn);
+builder.Options.VectorStore.EnableAutoMigration = false;  // opt out of auto-init
+var ctx = builder
+    .AddPostgreSQLStorage()
+    .Build();
+```
+
+---
+
 ## Migrating from 0.11.x to 0.13.x
 
 Only Step 6 above may apply. No breaking package changes.

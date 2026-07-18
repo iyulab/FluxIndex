@@ -635,17 +635,22 @@ var builder = WebApplication.CreateBuilder(args);
 var aiConfig = builder.Configuration.GetSection("AI");
 var apiKey = aiConfig["OpenAI:ApiKey"]!;
 
-// FluxIndex 설정
-builder.Services.AddFluxIndex(options =>
-{
-    options.UsePostgreSQL(builder.Configuration.GetConnectionString("Default")!);
-});
-
-// AI Provider 등록
-builder.Services.AddOpenAIEmbedding(apiKey, "text-embedding-3-small");
-builder.Services.AddOpenAICompletion(apiKey, "gpt-4o-mini");
+// FluxIndex 설정 — 벡터 스토어/AI Provider 배선은 빌더에 있으므로(옵션 객체가 아니라)
+// 컨텍스트를 빌드해 싱글턴으로 등록한다. AI Provider 도 빌더의 ConfigureServices 로 넣어야
+// 컨텍스트 자체 컨테이너에 도달한다(앱 서비스에 등록하면 컨텍스트가 보지 못함).
+builder.Services.AddSingleton(_ =>
+    FluxIndexContext.CreateBuilder()
+        .UsePostgreSQL(builder.Configuration.GetConnectionString("Default")!)
+        .AddPostgreSQLStorage()
+        .ConfigureServices(services =>
+        {
+            services.AddOpenAIEmbedding(apiKey, "text-embedding-3-small");
+            services.AddOpenAICompletion(apiKey, "gpt-4o-mini");
+        })
+        .Build());
 
 var app = builder.Build();
+// 주입: 컨트롤러/서비스에서 IFluxIndexContext 를 받아 context.Indexer / context.Retriever 사용
 ```
 
 ```json

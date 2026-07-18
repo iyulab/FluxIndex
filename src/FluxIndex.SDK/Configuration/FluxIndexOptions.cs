@@ -65,7 +65,16 @@ public class VectorStoreOptions
     public string ConnectionString { get; set; } = string.Empty;
     public int MaxConnections { get; set; } = 10;
     public TimeSpan ConnectionTimeout { get; set; } = TimeSpan.FromSeconds(30);
-    public bool EnableAutoMigration { get; set; }
+
+    /// <summary>
+    /// Whether the storage package auto-initializes the vector store schema on Build()
+    /// (creates required extensions/tables). Default: true — symmetric with SQLite, which always
+    /// initializes on Build(). Set to false to manage the schema externally (EF migrations, an
+    /// ops-owned schema) or on managed PostgreSQL where the connecting role lacks CREATE EXTENSION
+    /// privilege and the vector extension is not already installed — the one case auto-init throws.
+    /// Currently honored by the PostgreSQL storage provider.
+    /// </summary>
+    public bool EnableAutoMigration { get; set; } = true;
     public Dictionary<string, object> ProviderSpecificOptions { get; set; } = new();
 
     // Qdrant-specific options

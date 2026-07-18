@@ -26,8 +26,7 @@ public class PostgreSQLVectorStoreIntegrationTests : IAsyncLifetime
 
     public PostgreSQLVectorStoreIntegrationTests()
     {
-        _container = new PostgreSqlBuilder()
-            .WithImage("pgvector/pgvector:pg16")
+        _container = new PostgreSqlBuilder("pgvector/pgvector:pg16")
             .Build();
     }
 
