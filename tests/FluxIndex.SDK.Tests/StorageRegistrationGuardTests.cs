@@ -110,4 +110,55 @@ public class StorageRegistrationGuardTests : IDisposable
 
         context.Should().NotBeNull();
     }
+
+    /// <summary>
+    /// Characterizes the documented 0.19.0 limitation (see <c>Retriever.KeywordSearchAsync</c>/
+    /// <c>HybridSearchAsync</c> remarks): the keyword leg resolves through the process-local
+    /// <c>InMemoryDocumentRepository</c>, so after a restart (a fresh <c>Build()</c> over the same
+    /// persistent store) it returns nothing while the vector store itself persists — hybrid silently
+    /// degrades to vector-only. This test is the regression bound for that contract: when the deferred
+    /// <c>INativeHybridSearch</c> store delegation lands
+    /// (<c>upstream-issues/ISSUE-FluxIndex-20260718-hybrid-keyword-leg-...</c>), the second assertion
+    /// flips to non-empty and this test must be updated to assert the new persistent-keyword contract.
+    /// </summary>
+    [Fact]
+    public async Task KeywordLeg_AfterSimulatedRestart_IsEmpty_WhileVectorStorePersists()
+    {
+        const string keyword = "zylophonequux"; // distinctive token, won't collide with other content
+        const string docId = "doc-restart";
+
+        // Process A: index into the persistent SQLite store; the keyword leg sees it in-process.
+        var contextA = FluxIndexContext.CreateBuilder()
+            .UseSQLite(_testDbPath).AddSQLiteStorage().UseInMemoryEmbedding().Build();
+        try
+        {
+            await contextA.Indexer.IndexDocumentAsync($"the {keyword} is a rare instrument", docId);
+
+            var inProcess = await contextA.Retriever.KeywordSearchAsync(keyword, maxResults: 10);
+            inProcess.Should().NotBeEmpty("the keyword leg sees documents indexed by its own process");
+        }
+        finally
+        {
+            (contextA as IDisposable)?.Dispose();
+        }
+
+        // Process B: a fresh Build over the SAME db file == restart / new process context.
+        var contextB = FluxIndexContext.CreateBuilder()
+            .UseSQLite(_testDbPath).AddSQLiteStorage().UseInMemoryEmbedding().Build();
+        try
+        {
+            // The SQLite-backed vector store survives the restart...
+            var stats = await contextB.Retriever.GetStatisticsAsync();
+            stats.TotalChunks.Should().BeGreaterThan(0, "the persistent vector store survives a restart");
+
+            // ...but the keyword leg is process-local and starts empty — the documented degradation.
+            var afterRestart = await contextB.Retriever.KeywordSearchAsync(keyword, maxResults: 10);
+            afterRestart.Should().BeEmpty(
+                "documented 0.19.0 limitation: the keyword leg resolves via the process-local InMemoryDocumentRepository");
+        }
+        finally
+        {
+            (contextB as IDisposable)?.Dispose();
+        }
+    }
 }
