@@ -127,16 +127,23 @@ matters for recall/performance at scale:
 
 | Store | Search metadata filter | `DeleteByFilterAsync` | Notes |
 |-------|------------------------|------------------------|-------|
-| PostgreSQL | ✅ native (jsonb `@>`) | ✅ single SQL DELETE | Add a GIN index on `Metadata` for large collections: `CREATE INDEX ON vectors USING gin (metadata jsonb_path_ops);` |
-| Qdrant | ✅ native (payload filter) | ✅ | Payload indexes created on startup |
+| PostgreSQL | ✅ native (jsonb `@>`, multi-value = per-element OR) | ✅ single SQL DELETE | Add a GIN index on `Metadata` for large collections: `CREATE INDEX ON vectors USING gin (metadata jsonb_path_ops);` |
+| Qdrant | ✅ native (payload filter, multi-value = MatchAny) | ✅ | Payload indexes created on startup |
 | SQLite (sqlite-vec) | ✅ post-KNN with over-fetch | ✅ | vec0 cannot index metadata; KNN window is widened ×3 when filters are present |
 | SQLite (in-memory scan) | ✅ pre-trim | ✅ | Full scan store |
 | InMemory (SDK) | ✅ pre-trim | ✅ | |
 
-Filter semantics: equality on every key/value pair (AND). Values compare by their JSON text
-representation (`"true"`, invariant-culture numbers, ordinal strings). The same semantics apply in
-the SDK's `Retriever`, so a value that round-trips through a JSON column still matches the raw value
-you filter on.
+Filter semantics (identical across every store):
+
+- **Keys combine with AND** — a chunk must satisfy every filter entry.
+- **Scalar value** → equality. Values compare by their JSON text representation (`"true"`,
+  invariant-culture numbers, ordinal strings), so a value that round-trips through a JSON column
+  still matches the raw value you filter on. The same semantics apply in the SDK's `Retriever`.
+- **Collection value** (`List<string>`, arrays, JSON arrays …) → **match ANY element** (OR within
+  the key — Qdrant MatchAny, PostgreSQL per-element jsonb containment). One query replaces an
+  N-way fan-out: `filters: new() { ["document_id"] = fileHashes }`.
+- **Unsupported values** (arbitrary objects, nested/empty collections) **throw
+  `ArgumentException`** — never a silent zero-result.
 
 Filters match **chunk** metadata. The `metadata` argument of `Indexer.IndexDocumentAsync(content,
 documentId, metadata)` and `IndexChunksAsync(chunks, documentId, metadata)` is copied onto that

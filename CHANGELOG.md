@@ -9,6 +9,34 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.20.0] - 2026-07-21
+
+### Added
+- **Multi-value (MatchAny) metadata filters** across every `IVectorStore` implementation: a
+  collection-valued filter entry (`List<string>`, arrays, JSON arrays) now matches when the chunk's
+  metadata value equals ANY element — Qdrant `Match.Keywords`, PostgreSQL per-element jsonb `@>`
+  OR-combined (each branch GIN-indexable), in-memory stores via the shared backstop. One query
+  replaces the N-way per-value fan-out consumers previously had to run
+  (`filters: new() { ["document_id"] = fileHashes }`).
+- `VectorStoreBase.ExpandFilterValue` / `VectorStoreBase.ValidateFilters` — public helpers that
+  define and enforce the filter-value contract for store implementations.
+- Shared filter-contract regression suite (`VectorStoreFilterContractSuite`) run against InMemory,
+  SQLite, and SQLite-quantized stores; PostgreSQL/Qdrant cover the same cases in their own suites.
+
+### Changed (behavioral)
+- **Unsupported filter values now throw `ArgumentException`** at call time instead of silently
+  matching nothing. Previously e.g. a `List<string>` filter value degraded to its `ToString()`
+  type name and returned zero results with no signal; empty collections, nested collections, and
+  arbitrary objects are rejected loudly. Validation is eager (at `SearchAsync` call), not deferred
+  to result enumeration.
+
+### Fixed
+- `PostgreSQLQuantizedVectorStore.SearchAsync` and `SQLiteQuantizedVectorStore.SearchAsync`
+  silently **ignored the `filters` parameter entirely**, leaking chunks across filter scope
+  (e.g. other tenants). Both now apply the shared match semantics before the topK trim.
+
+---
+
 ## [0.16.0] - 2026-07-02
 
 ### Changed (BREAKING)

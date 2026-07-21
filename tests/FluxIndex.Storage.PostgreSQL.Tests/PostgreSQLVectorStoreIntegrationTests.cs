@@ -102,6 +102,62 @@ public class PostgreSQLVectorStoreIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SearchAsync_CollectionFilter_MatchAnyIsPushedDownBeforeCandidateTrim()
+    {
+        // Arrange — same crowding setup as the scalar pushdown test, but the filter is a
+        // multi-value collection (workspace_id ∈ {ws-a, ws-b}). Serialized whole-dictionary
+        // containment would look for a jsonb ARRAY and match nothing; per-element OR containment
+        // must match both target chunks at SQL level.
+        var query = new float[] { 1f, 0f, 0f, 0f };
+
+        for (var i = 0; i < 10; i++)
+            await _store.StoreAsync(CreateChunk($"other-{i}", [1f, 0.01f * i, 0f, 0f], "ws-other", i));
+
+        await _store.StoreAsync(CreateChunk("target-a", [0f, 1f, 0f, 0f], "ws-a"));
+        await _store.StoreAsync(CreateChunk("target-b", [0f, 0.9f, 0.1f, 0f], "ws-b"));
+
+        var filters = new Dictionary<string, object>
+        {
+            ["workspace_id"] = new List<string> { "ws-a", "ws-b" }
+        };
+
+        // Act
+        var results = (await _store.SearchAsync(query, topK: 2, minScore: -1f, filters: filters)).ToList();
+
+        // Assert
+        results.Should().HaveCount(2);
+        results.Select(r => r.DocumentId).Should().BeEquivalentTo("target-a", "target-b");
+    }
+
+    [Fact]
+    public async Task DeleteByFilterAsync_CollectionFilter_RemovesAnyMatchingValue()
+    {
+        await _store.StoreAsync(CreateChunk("doc-a", [1f, 0f, 0f, 0f], "ws-a"));
+        await _store.StoreAsync(CreateChunk("doc-b", [0f, 1f, 0f, 0f], "ws-b"));
+        await _store.StoreAsync(CreateChunk("doc-c", [0f, 0f, 1f, 0f], "ws-c"));
+
+        var deleted = await _store.DeleteByFilterAsync(new Dictionary<string, object>
+        {
+            ["workspace_id"] = new[] { "ws-a", "ws-c" }
+        });
+
+        deleted.Should().Be(2);
+        (await _store.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task SearchAsync_UnsupportedFilterValue_ThrowsInsteadOfSilentZeroResults()
+    {
+        await _store.StoreAsync(CreateChunk("doc-1", [1f, 0f, 0f, 0f], "ws-1"));
+
+        var act = () => _store.SearchAsync(
+            [1f, 0f, 0f, 0f], topK: 5, minScore: -1f,
+            filters: new Dictionary<string, object> { ["workspace_id"] = new object() });
+
+        await act.Should().ThrowAsync<ArgumentException>();
+    }
+
+    [Fact]
     public async Task SearchAsync_MetadataFilter_NoMatch_ReturnsEmpty()
     {
         await _store.StoreAsync(CreateChunk("doc-1", [1f, 0f, 0f, 0f], "ws-1"));

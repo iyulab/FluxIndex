@@ -1,5 +1,6 @@
 using System.Text.Json;
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Services.Base;
 using FluxIndex.Core.Application.Utilities;
 using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Core.Domain.Exceptions;
@@ -559,8 +560,11 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
     /// - Standard fields (document_id, chunk_index, etc.) → used directly
     /// - Keys with prop_/meta_ prefix → used as-is
     /// - Other keys → prefixed with meta_ (consistent with metadata storage convention)
+    /// Values follow the IVectorStore filter contract (see VectorStoreBase.ExpandFilterValue):
+    /// a scalar becomes a keyword Match, a collection of scalars becomes MatchAny (Keywords),
+    /// and unsupported value types throw instead of silently matching nothing.
     /// </summary>
-    private static Filter? BuildQdrantFilter(Dictionary<string, object>? filters)
+    internal static Filter? BuildQdrantFilter(Dictionary<string, object>? filters)
     {
         if (filters == null || filters.Count == 0)
             return null;
@@ -577,12 +581,26 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
                 _ => $"meta_{key}"
             };
 
+            var alternatives = VectorStoreBase.ExpandFilterValue(key, value);
+            Match match;
+            if (alternatives.Count == 1)
+            {
+                match = new Match { Keyword = alternatives[0] ?? string.Empty };
+            }
+            else
+            {
+                var keywords = new RepeatedStrings();
+                foreach (var alternative in alternatives)
+                    keywords.Strings.Add(alternative ?? string.Empty);
+                match = new Match { Keywords = keywords };
+            }
+
             filter.Must.Add(new Condition
             {
                 Field = new FieldCondition
                 {
                     Key = payloadKey,
-                    Match = new Match { Keyword = value?.ToString() ?? string.Empty }
+                    Match = match
                 }
             });
         }

@@ -16,6 +16,29 @@ public interface IVectorStore
     Task<DocumentChunk?> GetAsync(string id, CancellationToken cancellationToken = default);
     Task<IEnumerable<DocumentChunk>> GetByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default);
     Task<IEnumerable<DocumentChunk>> GetChunksByIdsAsync(IEnumerable<string> ids, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Searches for the <paramref name="topK"/> most similar chunks, optionally restricted by
+    /// metadata <paramref name="filters"/>.
+    /// </summary>
+    /// <param name="queryEmbedding">Query vector.</param>
+    /// <param name="topK">Maximum results to return.</param>
+    /// <param name="minScore">Minimum similarity score; lower-scoring results are dropped.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <param name="filters">
+    /// Metadata filter conditions. Semantics are identical across every store implementation:
+    /// <list type="bullet">
+    /// <item><description><b>Keys combine with AND</b> — a chunk must satisfy every entry.</description></item>
+    /// <item><description><b>Scalar value</b> (string / number / bool / scalar JsonElement) — the
+    /// chunk's metadata value must equal it (ordinal, JSON-normalized comparison).</description></item>
+    /// <item><description><b>Collection value</b> (any non-string <c>IEnumerable</c> of scalars, or a
+    /// JsonElement array) — the chunk's metadata value must equal <b>ANY</b> element (OR within the
+    /// key; e.g. Qdrant MatchAny, SQL <c>IN</c>).</description></item>
+    /// <item><description><b>Anything else</b> (arbitrary objects, nested collections, empty
+    /// collections) is unsupported and throws <see cref="System.ArgumentException"/> — never a
+    /// silent zero-result.</description></item>
+    /// </list>
+    /// </param>
     Task<IEnumerable<DocumentChunk>> SearchAsync(
         float[] queryEmbedding,
         int topK = 10,
@@ -29,7 +52,9 @@ public interface IVectorStore
     /// Deletes every chunk whose metadata matches ALL of the given key/value filters.
     /// Returns the number of chunks deleted. Enables a bulk tenant/source purge in one call
     /// instead of a per-document delete loop. An empty filter is rejected — use
-    /// <see cref="ClearAsync"/> to drop the whole store.
+    /// <see cref="ClearAsync"/> to drop the whole store. Filter value semantics are the same as
+    /// <see cref="SearchAsync"/>: keys AND-combine; a collection value matches ANY of its elements;
+    /// unsupported value types throw <see cref="System.ArgumentException"/>.
     /// </summary>
     /// <remarks>
     /// Default implementation throws <see cref="System.NotSupportedException"/>; stores that

@@ -179,6 +179,9 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
         Dictionary<string, object>? filters = null,
         CancellationToken cancellationToken = default)
     {
+        // Fail-loud at call time (IVectorStore filter contract).
+        Core.Application.Services.Base.VectorStoreBase.ValidateFilters(filters);
+
         await EnsureInitializedAsync(cancellationToken);
 
         var entities = await _context.Vectors
@@ -190,12 +193,18 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
         var queryMagnitude = ComputeMagnitude(queryEmbedding);
         if (queryMagnitude == 0) return Enumerable.Empty<DocumentChunk>();
 
+        // Apply metadata filters BEFORE the topK trim (IVectorStore filter contract, incl.
+        // collection values = MatchAny) — previously filters were silently ignored, leaking
+        // chunks across filter scope (e.g. other tenants).
         var results = entities
-            .Select(e => new { Entity = e, Score = FastCosineSimilarity(queryEmbedding, e.Embedding!, queryMagnitude) })
+            .Select(e => new { Chunk = MapToChunk(e), Score = FastCosineSimilarity(queryEmbedding, e.Embedding!, queryMagnitude) })
+            .Where(x => filters is not { Count: > 0 }
+                || Core.Application.Services.Base.VectorStoreBase.MatchesMetadataFilter(x.Chunk.Metadata, filters))
             .Where(x => x.Score >= minScore)
             .OrderByDescending(x => x.Score)
             .Take(topK)
-            .Select(x => MapToChunk(x.Entity));
+            .Select(x => x.Chunk)
+            .ToList();
 
         return results;
     }

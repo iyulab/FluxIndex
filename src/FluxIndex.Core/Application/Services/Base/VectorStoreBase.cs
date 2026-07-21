@@ -196,6 +196,10 @@ public abstract partial class VectorStoreBase : IVectorStore
         if (topK <= 0)
             return [];
 
+        // Fail-loud at call time: unsupported filter values must throw here, not on (possibly
+        // deferred) result enumeration, and regardless of whether any row reaches the backstop.
+        ValidateFilters(filters);
+
         var results = await SearchCoreAsync(queryEmbedding, topK, filters, cancellationToken);
 
         // Metadata backstop MUST run before the topK trim: trimming first lets higher-scoring
@@ -211,7 +215,9 @@ public abstract partial class VectorStoreBase : IVectorStore
 
     /// <summary>
     /// Returns true if <paramref name="metadata"/> contains every key in <paramref name="filters"/>
-    /// with an equal (ordinal string, JSON-normalized) value. Shared by search post-filtering and
+    /// with an equal (ordinal string, JSON-normalized) value. A collection-valued filter entry
+    /// matches when the metadata value equals ANY of its elements (see
+    /// <see cref="ExpandFilterValue"/>). Shared by search post-filtering and
     /// <see cref="DeleteByFilterAsync"/> so both agree on match semantics.
     /// </summary>
     public static bool MatchesMetadataFilter(
@@ -225,15 +231,114 @@ public abstract partial class VectorStoreBase : IVectorStore
         {
             if (!metadata.TryGetValue(key, out var metaValue))
                 return false;
-            if (!string.Equals(
-                    NormalizeFilterValue(metaValue),
-                    NormalizeFilterValue(value),
-                    StringComparison.Ordinal))
+
+            var metaNormalized = NormalizeFilterValue(metaValue);
+            var matched = false;
+            foreach (var alternative in ExpandFilterValue(key, value))
+            {
+                if (string.Equals(metaNormalized, alternative, StringComparison.Ordinal))
+                {
+                    matched = true;
+                    break;
+                }
+            }
+
+            if (!matched)
                 return false;
         }
 
         return true;
     }
+
+    /// <summary>
+    /// Expands a filter value into its normalized match alternatives, enforcing the
+    /// <see cref="IVectorStore.SearchAsync"/> filter contract:
+    /// a scalar (string / number / bool / scalar <see cref="System.Text.Json.JsonElement"/>)
+    /// yields one alternative; a collection of scalars (any non-string <see cref="System.Collections.IEnumerable"/>
+    /// or a JsonElement array) yields one alternative per element (OR / MatchAny semantics).
+    /// Anything else — arbitrary objects, nested collections, empty collections — throws
+    /// <see cref="ArgumentException"/> so a filter is never silently un-matchable
+    /// (previously e.g. a <c>List&lt;string&gt;</c> degraded to its <c>ToString()</c> type name
+    /// and returned zero results without any signal).
+    /// </summary>
+    /// <param name="key">Filter key, used in exception messages only.</param>
+    /// <param name="value">Filter value to expand.</param>
+    public static IReadOnlyList<string?> ExpandFilterValue(string key, object? value)
+    {
+        switch (value)
+        {
+            case null:
+            case string:
+            case bool:
+                return [NormalizeFilterValue(value)];
+
+            case System.Text.Json.JsonElement je:
+                switch (je.ValueKind)
+                {
+                    case System.Text.Json.JsonValueKind.Array:
+                        var elements = new List<string?>();
+                        foreach (var item in je.EnumerateArray())
+                        {
+                            if (item.ValueKind is System.Text.Json.JsonValueKind.Array
+                                or System.Text.Json.JsonValueKind.Object)
+                                throw UnsupportedFilterValue(key, $"a JSON array containing a nested {item.ValueKind}");
+                            elements.Add(NormalizeFilterValue(item));
+                        }
+                        return elements.Count > 0
+                            ? elements
+                            : throw EmptyFilterCollection(key);
+
+                    case System.Text.Json.JsonValueKind.Object:
+                        throw UnsupportedFilterValue(key, "a JSON object");
+
+                    default:
+                        return [NormalizeFilterValue(je)];
+                }
+
+            case System.Collections.IEnumerable enumerable:
+                var alternatives = new List<string?>();
+                foreach (var item in enumerable)
+                {
+                    if (item is System.Collections.IEnumerable and not string
+                        || item is System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.Array or System.Text.Json.JsonValueKind.Object })
+                        throw UnsupportedFilterValue(key, "a collection containing nested collections or objects");
+                    if (item is not (null or string or bool or IFormattable or System.Text.Json.JsonElement))
+                        throw UnsupportedFilterValue(key, $"a collection containing a {item.GetType().Name}");
+                    alternatives.Add(NormalizeFilterValue(item));
+                }
+                return alternatives.Count > 0
+                    ? alternatives
+                    : throw EmptyFilterCollection(key);
+
+            case IFormattable:
+                return [NormalizeFilterValue(value)];
+
+            default:
+                throw UnsupportedFilterValue(key, $"a {value.GetType().Name}");
+        }
+    }
+
+    /// <summary>
+    /// Eagerly validates every filter value against the IVectorStore filter contract
+    /// (via <see cref="ExpandFilterValue"/>), throwing <see cref="ArgumentException"/> for
+    /// unsupported values. Call at API entry points so violations surface at call time.
+    /// </summary>
+    public static void ValidateFilters(IReadOnlyDictionary<string, object>? filters)
+    {
+        if (filters is not { Count: > 0 })
+            return;
+        foreach (var (key, value) in filters)
+            ExpandFilterValue(key, value);
+    }
+
+    private static ArgumentException UnsupportedFilterValue(string key, string what) => new(
+        $"Filter '{key}' has an unsupported value: {what}. Supported: a scalar " +
+        "(string/number/bool/scalar JsonElement) for equality, or a collection of scalars " +
+        "for multi-value OR (MatchAny) matching.");
+
+    private static ArgumentException EmptyFilterCollection(string key) => new(
+        $"Filter '{key}' is an empty collection — its match semantics are ambiguous. " +
+        "Pass at least one value, or omit the key to not filter on it.");
 
     /// <summary>
     /// Normalizes a metadata/filter value to its JSON text representation so that values compare

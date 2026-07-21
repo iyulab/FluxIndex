@@ -466,6 +466,10 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         Dictionary<string, object>? filters = null,
         CancellationToken cancellationToken = default)
     {
+        // Fail-loud contract validation BEFORE the try — an unsupported filter value must throw,
+        // not trigger the in-memory fallback path.
+        VectorStoreBase.ValidateFilters(filters);
+
         try
         {
             await EnsureInitializedAsync(cancellationToken);

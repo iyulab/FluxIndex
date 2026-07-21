@@ -23,6 +23,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\FluxIndex.Storage.SQLite\FluxIndex.Storage.SQLite.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.Core\FluxIndex.Core.csproj" />
+    <!-- Shared IVectorStore filter-contract suite (VectorStoreFilterContractSuite) -->
+    <ProjectReference Include="..\FluxIndex.Core.Tests\FluxIndex.Core.Tests.csproj" />
   </ItemGroup>
 
 </Project>

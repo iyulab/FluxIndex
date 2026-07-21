@@ -25,6 +25,8 @@
     <ProjectReference Include="..\..\src\FluxIndex.Storage.SQLite\FluxIndex.Storage.SQLite.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.Storage.Neo4j\FluxIndex.Storage.Neo4j.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.Storage.Qdrant\FluxIndex.Storage.Qdrant.csproj" />
+    <!-- Shared IVectorStore filter-contract suite (VectorStoreFilterContractSuite) -->
+    <ProjectReference Include="..\FluxIndex.Core.Tests\FluxIndex.Core.Tests.csproj" />
   </ItemGroup>
 
   <ItemGroup>

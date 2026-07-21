@@ -18,4 +18,8 @@
     <PackageReference Include="Microsoft.Extensions.Options" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="FluxIndex.Storage.Qdrant.Tests" />
+  </ItemGroup>
+
 </Project>

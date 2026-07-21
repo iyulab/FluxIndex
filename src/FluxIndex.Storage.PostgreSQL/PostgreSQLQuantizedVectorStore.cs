@@ -171,9 +171,13 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
         Dictionary<string, object>? filters = null,
         CancellationToken cancellationToken = default)
     {
+        // Fail-loud at call time (IVectorStore filter contract).
+        FluxIndex.Core.Application.Services.Base.VectorStoreBase.ValidateFilters(filters);
+
         var queryVector = new Vector(queryEmbedding);
 
-        // Use pgvector's cosine distance for efficient search
+        // Use pgvector's cosine distance for efficient search. Over-fetch when filters are
+        // present so matching chunks are not crowded out of the candidate window.
         var candidates = await _context.Vectors
             .OrderBy(v => v.Embedding.CosineDistance(queryVector))
             .Take(topK * 3)
@@ -184,8 +188,13 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
             })
             .ToListAsync(cancellationToken);
 
+        // Apply metadata filters BEFORE the topK trim (IVectorStore filter contract, incl.
+        // collection values = MatchAny) — previously filters were silently ignored, leaking
+        // chunks across filter scope (e.g. other tenants).
         return candidates
             .Select(c => new { Chunk = MapToChunk(c.Entity), Similarity = 1.0 - c.Distance })
+            .Where(r => filters is not { Count: > 0 }
+                || FluxIndex.Core.Application.Services.Base.VectorStoreBase.MatchesMetadataFilter(r.Chunk.Metadata, filters))
             .Where(r => r.Similarity >= minScore)
             .OrderByDescending(r => r.Similarity)
             .Take(topK)

@@ -71,8 +71,7 @@ public class PostgreSQLVectorStore : VectorStoreBase
         var query = _context.Vectors.AsQueryable();
         if (filters is { Count: > 0 })
         {
-            var filterJson = System.Text.Json.JsonSerializer.Serialize(filters);
-            query = query.Where(v => EF.Functions.JsonContains(v.Metadata, filterJson));
+            query = query.Where(BuildMetadataPredicate(filters));
         }
 
         // Use pgvector's native cosine distance for efficient search
@@ -107,10 +106,118 @@ public class PostgreSQLVectorStore : VectorStoreBase
                 "Filter must contain at least one key/value; use ClearAsync to remove all vectors.",
                 nameof(filters));
 
-        var filterJson = System.Text.Json.JsonSerializer.Serialize(filters);
         return await _context.Vectors
-            .Where(v => EF.Functions.JsonContains(v.Metadata, filterJson))
+            .Where(BuildMetadataPredicate(filters))
             .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Builds the jsonb pushdown predicate for a filter dictionary, following the IVectorStore
+    /// filter contract: keys AND-combine; a scalar value is a single containment check; a
+    /// collection value OR-combines one containment check per element (MatchAny); unsupported
+    /// value types throw (validated via <see cref="VectorStoreBase.ExpandFilterValue"/>).
+    /// Raw (un-normalized) values are serialized so containment matches native jsonb types
+    /// (numbers stay numbers); each branch is the same GIN-indexable <c>@&gt;</c> as before.
+    /// </summary>
+    internal static System.Linq.Expressions.Expression<Func<VectorEntity, bool>> BuildMetadataPredicate(
+        Dictionary<string, object> filters)
+    {
+        // Contract validation (throws on unsupported / empty-collection values — fail-loud).
+        foreach (var (key, value) in filters)
+            ExpandFilterValue(key, value);
+
+        System.Linq.Expressions.Expression<Func<VectorEntity, bool>>? predicate = null;
+        var scalars = new Dictionary<string, object?>();
+
+        foreach (var (key, value) in filters)
+        {
+            var rawAlternatives = EnumerateRawAlternatives(value);
+            if (rawAlternatives is null)
+            {
+                scalars[key] = value;
+                continue;
+            }
+
+            System.Linq.Expressions.Expression<Func<VectorEntity, bool>>? keyPredicate = null;
+            foreach (var raw in rawAlternatives)
+            {
+                var json = System.Text.Json.JsonSerializer.Serialize(
+                    new Dictionary<string, object?> { [key] = raw });
+                System.Linq.Expressions.Expression<Func<VectorEntity, bool>> branch =
+                    v => EF.Functions.JsonContains(v.Metadata, json);
+                keyPredicate = keyPredicate is null ? branch : CombineOr(keyPredicate, branch);
+            }
+
+            predicate = predicate is null ? keyPredicate : CombineAnd(predicate, keyPredicate!);
+        }
+
+        if (scalars.Count > 0)
+        {
+            var scalarJson = System.Text.Json.JsonSerializer.Serialize(scalars);
+            System.Linq.Expressions.Expression<Func<VectorEntity, bool>> scalarPredicate =
+                v => EF.Functions.JsonContains(v.Metadata, scalarJson);
+            predicate = predicate is null ? scalarPredicate : CombineAnd(predicate, scalarPredicate);
+        }
+
+        return predicate!;
+    }
+
+    /// <summary>
+    /// Returns the raw elements of a collection-typed filter value, or null when the value is a
+    /// scalar. Values are NOT normalized to strings here — jsonb containment must compare against
+    /// the natively-typed JSON stored in the metadata column.
+    /// </summary>
+    private static List<object?>? EnumerateRawAlternatives(object? value)
+    {
+        switch (value)
+        {
+            case string or bool or null:
+                return null;
+            case System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.Array } je:
+                var fromJson = new List<object?>();
+                foreach (var item in je.EnumerateArray())
+                    fromJson.Add(item);
+                return fromJson;
+            case System.Text.Json.JsonElement:
+                return null;
+            case System.Collections.IEnumerable enumerable:
+                var raw = new List<object?>();
+                foreach (var item in enumerable)
+                    raw.Add(item);
+                return raw;
+            default:
+                return null;
+        }
+    }
+
+    private static System.Linq.Expressions.Expression<Func<VectorEntity, bool>> CombineAnd(
+        System.Linq.Expressions.Expression<Func<VectorEntity, bool>> left,
+        System.Linq.Expressions.Expression<Func<VectorEntity, bool>> right)
+        => Combine(left, right, System.Linq.Expressions.Expression.AndAlso);
+
+    private static System.Linq.Expressions.Expression<Func<VectorEntity, bool>> CombineOr(
+        System.Linq.Expressions.Expression<Func<VectorEntity, bool>> left,
+        System.Linq.Expressions.Expression<Func<VectorEntity, bool>> right)
+        => Combine(left, right, System.Linq.Expressions.Expression.OrElse);
+
+    private static System.Linq.Expressions.Expression<Func<VectorEntity, bool>> Combine(
+        System.Linq.Expressions.Expression<Func<VectorEntity, bool>> left,
+        System.Linq.Expressions.Expression<Func<VectorEntity, bool>> right,
+        Func<System.Linq.Expressions.Expression, System.Linq.Expressions.Expression, System.Linq.Expressions.BinaryExpression> merge)
+    {
+        var parameter = left.Parameters[0];
+        var rewrittenRight = new ParameterReplaceVisitor(right.Parameters[0], parameter).Visit(right.Body);
+        return System.Linq.Expressions.Expression.Lambda<Func<VectorEntity, bool>>(
+            merge(left.Body, rewrittenRight), parameter);
+    }
+
+    private sealed class ParameterReplaceVisitor(
+        System.Linq.Expressions.ParameterExpression from,
+        System.Linq.Expressions.ParameterExpression to) : System.Linq.Expressions.ExpressionVisitor
+    {
+        protected override System.Linq.Expressions.Expression VisitParameter(
+            System.Linq.Expressions.ParameterExpression node)
+            => node == from ? to : base.VisitParameter(node);
     }
 
     protected override async Task<bool> DeleteCoreAsync(string id, CancellationToken cancellationToken)

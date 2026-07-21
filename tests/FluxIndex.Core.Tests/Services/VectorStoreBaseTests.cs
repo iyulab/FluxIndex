@@ -276,6 +276,130 @@ public class VectorStoreBaseTests
         Assert.Null(VectorStoreBase.NormalizeFilterValue(null));
     }
 
+    [Fact]
+    public void MatchesMetadataFilter_CollectionValue_MatchesAnyElement()
+    {
+        // MatchAny: filter value document_id ∈ {hash1, hash2}
+        var metadata = new Dictionary<string, object> { ["document_id"] = "hash2" };
+        var filters = new Dictionary<string, object>
+        {
+            ["document_id"] = new List<string> { "hash1", "hash2", "hash3" }
+        };
+
+        Assert.True(VectorStoreBase.MatchesMetadataFilter(metadata, filters));
+
+        var nonMatching = new Dictionary<string, object> { ["document_id"] = "hash9" };
+        Assert.False(VectorStoreBase.MatchesMetadataFilter(nonMatching, filters));
+    }
+
+    [Fact]
+    public void MatchesMetadataFilter_JsonElementArray_MatchesAnyElement()
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse("""["a", "b"]""");
+        var metadata = new Dictionary<string, object> { ["tag"] = "b" };
+        var filters = new Dictionary<string, object> { ["tag"] = doc.RootElement.Clone() };
+
+        Assert.True(VectorStoreBase.MatchesMetadataFilter(metadata, filters));
+    }
+
+    [Fact]
+    public void MatchesMetadataFilter_CollectionOfNumbers_NormalizesLikeScalars()
+    {
+        // Stored side deserialized from JSON (JsonElement number) vs .NET int list on the filter side.
+        using var doc = System.Text.Json.JsonDocument.Parse("""{"chunk_index": 2}""");
+        var metadata = new Dictionary<string, object>
+        {
+            ["chunk_index"] = doc.RootElement.GetProperty("chunk_index").Clone()
+        };
+        var filters = new Dictionary<string, object> { ["chunk_index"] = new[] { 1, 2 } };
+
+        Assert.True(VectorStoreBase.MatchesMetadataFilter(metadata, filters));
+    }
+
+    [Fact]
+    public void ExpandFilterValue_Scalar_YieldsSingleAlternative()
+    {
+        Assert.Equal(["v1"], VectorStoreBase.ExpandFilterValue("k", "v1"));
+        Assert.Equal(["42"], VectorStoreBase.ExpandFilterValue("k", 42));
+        Assert.Equal(["true"], VectorStoreBase.ExpandFilterValue("k", true));
+        Assert.Equal(new string?[] { null }, VectorStoreBase.ExpandFilterValue("k", null));
+    }
+
+    [Fact]
+    public void ExpandFilterValue_Collection_YieldsAllAlternatives()
+    {
+        Assert.Equal(
+            ["a", "b"],
+            VectorStoreBase.ExpandFilterValue("k", new List<string> { "a", "b" }));
+        Assert.Equal(
+            ["1", "2"],
+            VectorStoreBase.ExpandFilterValue("k", new[] { 1, 2 }));
+    }
+
+    [Fact]
+    public void ExpandFilterValue_EmptyCollection_Throws()
+    {
+        // Previously silently un-matchable (zero results, no signal) — now fail-loud.
+        var ex = Assert.Throws<ArgumentException>(
+            () => VectorStoreBase.ExpandFilterValue("k", new List<string>()));
+        Assert.Contains("empty collection", ex.Message);
+    }
+
+    [Fact]
+    public void ExpandFilterValue_ArbitraryObject_Throws()
+    {
+        // Previously degraded to ToString() type name and matched nothing.
+        Assert.Throws<ArgumentException>(
+            () => VectorStoreBase.ExpandFilterValue("k", new object()));
+        Assert.Throws<ArgumentException>(
+            () => VectorStoreBase.ExpandFilterValue("k", new Dictionary<string, string>()));
+    }
+
+    [Fact]
+    public void ExpandFilterValue_NestedCollection_Throws()
+    {
+        Assert.Throws<ArgumentException>(
+            () => VectorStoreBase.ExpandFilterValue("k", new List<object> { new List<string> { "a" } }));
+
+        using var doc = System.Text.Json.JsonDocument.Parse("""[["nested"]]""");
+        Assert.Throws<ArgumentException>(
+            () => VectorStoreBase.ExpandFilterValue("k", doc.RootElement.Clone()));
+    }
+
+    [Fact]
+    public void ExpandFilterValue_JsonObject_Throws()
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse("""{"nested": 1}""");
+        Assert.Throws<ArgumentException>(
+            () => VectorStoreBase.ExpandFilterValue("k", doc.RootElement.Clone()));
+    }
+
+    [Fact]
+    public async Task SearchAsync_CollectionFilter_RestrictsToAnyOfValues()
+    {
+        // End-to-end through the base backstop: documentId ∈ {doc-1, doc-3}.
+        // StoreAsync prepares metadata (fills documentId from DocumentId); the test store has no
+        // native pushdown, so this exercises the backstop's MatchAny path.
+        foreach (var docId in new[] { "doc-1", "doc-2", "doc-3" })
+        {
+            var chunk = CreateChunk(docId, $"content of {docId}");
+            chunk.Embedding = [0.1f, 0.2f, 0.3f];
+            await _store.StoreAsync(chunk);
+        }
+
+        var results = await _store.SearchAsync(
+            [0.1f, 0.2f, 0.3f],
+            topK: 10,
+            minScore: 0.0f,
+            filters: new Dictionary<string, object>
+            {
+                [MetadataHelper.StandardKeys.DocumentId] = new List<string> { "doc-1", "doc-3" }
+            });
+
+        var ids = results.Select(r => r.DocumentId).OrderBy(x => x).ToList();
+        Assert.Equal(["doc-1", "doc-3"], ids);
+    }
+
     #endregion
 
     #region DeleteAsync Tests
