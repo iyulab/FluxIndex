@@ -35,11 +35,6 @@
     
     <!-- Suppress NuGet warnings for package management -->
     <NoWarn>$(NoWarn);NU1506;NU1605;NU1107</NoWarn>
-    <!-- NU1903 (CVE-2025-6965 in SQLitePCLRaw.lib.e_sqlite3 <=2.1.11, transitive via Microsoft.Data.Sqlite):
-         no patched native package published upstream yet. Keep the warning VISIBLE (not NoWarn) so the
-         vulnerability stays on the radar, but stop it from failing the build until a fixed e_sqlite3 ships.
-         Remove this once SQLitePCLRaw releases a build bundling SQLite >= 3.50.2. -->
-    <WarningsNotAsErrors>$(WarningsNotAsErrors);NU1903</WarningsNotAsErrors>
     <!-- Suppress XML documentation warnings -->
     <NoWarn>$(NoWarn);CS1591;CS1587</NoWarn>
     <!-- CS nullable suppressions removed in cycle-104 -->
