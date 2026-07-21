@@ -51,13 +51,22 @@ public class EntityGraphDbContext : DbContext
         // Index for importance ranking
         entity.HasIndex(e => e.ImportanceScore);
 
-        // Vector index for similarity search (if embedding dimension is configured)
+        // Vector index for similarity search (if embedding dimension is configured).
+        // HNSW (not ivfflat): ivfflat trains centroids at CREATE INDEX time, so an index
+        // created on an empty table (EnsureCreated) silently loses recall for data inserted
+        // afterwards. HNSW builds incrementally (pgvector >= 0.5). Same rationale as the
+        // main vector store (FluxIndexDbContext).
+        // The column MUST declare its dimension — pgvector rejects vector indexes on a
+        // dimensionless "vector" column ("column does not have dimensions"), which made
+        // EnsureCreated fail whenever EmbeddingDimension > 0 (latent since the ivfflat era).
         if (_options.EmbeddingDimension > 0)
         {
+            entity.Property(e => e.Embedding)
+                .HasColumnType($"vector({_options.EmbeddingDimension})");
+
             entity.HasIndex(e => e.Embedding)
-                .HasMethod("ivfflat")
-                .HasOperators("vector_cosine_ops")
-                .HasStorageParameter("lists", _options.IvfflatLists);
+                .HasMethod("hnsw")
+                .HasOperators("vector_cosine_ops");
         }
 
         // Relationships
@@ -109,13 +118,16 @@ public class EntityGraphDbContext : DbContext
         // Index for importance ranking
         entity.HasIndex(e => e.ImportanceScore);
 
-        // Vector index for community similarity
+        // Vector index for community similarity. HNSW + declared column dimension for the
+        // same rationale as the entity index above.
         if (_options.EmbeddingDimension > 0)
         {
+            entity.Property(e => e.Embedding)
+                .HasColumnType($"vector({_options.EmbeddingDimension})");
+
             entity.HasIndex(e => e.Embedding)
-                .HasMethod("ivfflat")
-                .HasOperators("vector_cosine_ops")
-                .HasStorageParameter("lists", _options.IvfflatLists / 4); // Fewer communities
+                .HasMethod("hnsw")
+                .HasOperators("vector_cosine_ops");
         }
 
         // Self-referencing hierarchy
@@ -170,6 +182,9 @@ public class EntityGraphOptions
     /// <summary>
     /// Number of lists for IVFFlat index.
     /// </summary>
+    [Obsolete("Unused: EntityGraph vector indexes use HNSW (no training-time parameter) since 0.20.1 — " +
+        "ivfflat trained on an empty table silently lost recall for later inserts. " +
+        "Setting this has no effect; the property will be removed in a future minor.")]
     public int IvfflatLists { get; set; } = 100;
 
     /// <summary>

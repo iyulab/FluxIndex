@@ -9,6 +9,25 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.20.1] - 2026-07-22
+
+### Fixed
+- **EntityGraph (PostgreSQL): `EnsureCreated` failed whenever `EmbeddingDimension > 0`** —
+  the entity/community `Embedding` columns were mapped as dimensionless `vector`, which pgvector
+  rejects for any vector index ("column does not have dimensions"). Columns now declare
+  `vector(EmbeddingDimension)`. Latent since the ivfflat era; exposed by the new schema
+  integration tests.
+- EntityGraph vector indexes converted **ivfflat → HNSW** (entity + community), matching the main
+  vector store: ivfflat trains centroids at CREATE INDEX time, so an index created on an empty
+  table silently loses recall for data inserted afterwards. `EntityGraphOptions.IvfflatLists` is
+  now `[Obsolete]` and has no effect (removal in a future minor).
+
+### Removed
+- Expired `NU1903` (CVE-2025-6965) build suppression — SQLitePCLRaw 2.1.12 has shipped and src
+  projects pin it directly; restore is warning-clean without it.
+
+---
+
 ## [0.20.0] - 2026-07-21
 
 ### Added

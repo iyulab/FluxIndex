@@ -32,7 +32,9 @@ public static class EntityGraphServiceCollectionExtensions
         {
             opt.ConnectionString = options.ConnectionString;
             opt.EmbeddingDimension = options.EmbeddingDimension;
+#pragma warning disable CS0618 // carry the obsolete value until the property is removed
             opt.IvfflatLists = options.IvfflatLists;
+#pragma warning restore CS0618
             opt.MaxTraversalDepth = options.MaxTraversalDepth;
             opt.DefaultPageSize = options.DefaultPageSize;
             opt.AutoMigrate = options.AutoMigrate;
@@ -61,7 +63,9 @@ public static class EntityGraphServiceCollectionExtensions
         return services.AddPostgresEntityGraph(options.ConnectionString, opt =>
         {
             opt.EmbeddingDimension = options.EmbeddingDimension;
+#pragma warning disable CS0618 // carry the obsolete value until the property is removed
             opt.IvfflatLists = options.IvfflatLists;
+#pragma warning restore CS0618
             opt.MaxTraversalDepth = options.MaxTraversalDepth;
             opt.DefaultPageSize = options.DefaultPageSize;
             opt.AutoMigrate = options.AutoMigrate;
