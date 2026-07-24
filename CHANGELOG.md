@@ -9,6 +9,25 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.20.2] - 2026-07-24
+
+### Fixed
+- **SQLite-vec: writes silently broke after the effective embedding fingerprint drifted on a
+  latched store instance** — once `SQLiteVecVectorStore.EnsureInitializedAsync` succeeded it
+  short-circuited on `_initialized` alone, so a later fingerprint change (e.g. a `BindIdentity`
+  in another scope mutating the shared `SQLiteVecOptions`) left subsequent writes targeting a
+  `chunk_embeddings_{fingerprint}` table that was never created (`no such table`). The store now
+  tracks the table name captured at init and re-initializes when the current effective name
+  diverges, creating the new vec0 table (`CREATE VIRTUAL TABLE IF NOT EXISTS`) before writing.
+  Regression guard: `SQLiteVecBindIdentityDriftTests`.
+
+### Docs
+- `SQLiteVecOptions.EmbeddingFingerprint` doc corrected: a null fingerprint throws
+  `InvalidOperationException` from `GetVecTableName()` — there is no automatic
+  `chunk_embeddings_{dimension}` fallback (the comment contradicted the throw contract).
+
+---
+
 ## [0.20.1] - 2026-07-22
 
 ### Fixed

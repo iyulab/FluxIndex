@@ -29,6 +29,10 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
     private readonly Lazy<SQLiteVectorStore> _fallbackStore;
     private bool _sqliteVecAvailable;
     private bool _initialized;
+    // The effective vec0 table name captured at the last successful init. When the bound
+    // fingerprint drifts on the shared options, the current name diverges from this and
+    // EnsureInitializedAsync re-runs so the new table is created before any write.
+    private string? _initializedTableName;
     private EmbeddingIdentity? _boundIdentity;
     private readonly SemaphoreSlim _initLock = new(1, 1);
     // SQLite는 동시 쓰기를 지원하지 않으므로 쓰기 작업을 직렬화
@@ -1293,12 +1297,18 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
 
     private async Task EnsureInitializedAsync(CancellationToken cancellationToken)
     {
-        if (_initialized) return;
+        // Fast path: already initialized against the CURRENT effective vec table. When the bound
+        // fingerprint drifts on the shared options (a later BindIdentity in another scope), the
+        // effective table name changes and we must re-initialize so the new vec0 table exists —
+        // otherwise writes target a table that was never created ("no such table").
+        if (_initialized && (!_options.UseSQLiteVec || _options.GetVecTableName() == _initializedTableName))
+            return;
 
         await _initLock.WaitAsync(cancellationToken);
         try
         {
-            if (_initialized) return;
+            if (_initialized && (!_options.UseSQLiteVec || _options.GetVecTableName() == _initializedTableName))
+                return;
 
             if (_options.UseSQLiteVec)
             {
@@ -1367,6 +1377,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 _sqliteVecAvailable = false;
             }
 
+            _initializedTableName = _options.UseSQLiteVec ? _options.GetVecTableName() : null;
             _initialized = true;
         }
         finally

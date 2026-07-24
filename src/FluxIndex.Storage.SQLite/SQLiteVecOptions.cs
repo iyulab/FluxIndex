@@ -21,8 +21,9 @@ public class SQLiteVecOptions : SQLiteOptions
 
     /// <summary>
     /// 임베딩 모델의 fingerprint (EmbeddingIdentity.Fingerprint).
-    /// 설정되면 vec0 테이블 이름이 chunk_embeddings_{fingerprint}로 생성된다.
-    /// null이면 기존 방식(chunk_embeddings_{dimension})으로 폴백.
+    /// vec0 테이블 이름이 chunk_embeddings_{fingerprint}로 생성된다.
+    /// BindIdentity() 또는 명시적 설정으로 바인딩되어야 하며, null 상태로 GetVecTableName()을
+    /// 호출하면 InvalidOperationException을 던진다 (자동 dimension 폴백 없음).
     /// </summary>
     public string? EmbeddingFingerprint { get; set; }
 
