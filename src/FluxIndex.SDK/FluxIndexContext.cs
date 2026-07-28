@@ -889,23 +889,11 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable
     }
 
     /// <summary>
-    /// SDK HybridSearchOptions를 Core HybridSearchOptions로 변환
+    /// SDK HybridSearchOptions를 Core HybridSearchOptions로 변환.
+    /// 매핑 정본은 <see cref="HybridSearchOptionsMapper"/> — Retriever 경로와 갈라지지 않게 공유한다.
     /// </summary>
     private static FluxIndex.Core.Domain.Models.HybridSearchOptions ConvertToCore(HybridSearchOptions sdkOptions)
-    {
-        return new FluxIndex.Core.Domain.Models.HybridSearchOptions
-        {
-            MaxResults = sdkOptions.TopK,
-            VectorWeight = (double)sdkOptions.VectorWeight,
-            SparseWeight = (double)sdkOptions.KeywordWeight,
-            FusionMethod = sdkOptions.RerankingStrategy switch
-            {
-                RerankingStrategy.WeightedAverage => FluxIndex.Core.Domain.Models.FusionMethod.WeightedSum,
-                RerankingStrategy.ReciprocalRankFusion => FluxIndex.Core.Domain.Models.FusionMethod.RRF,
-                _ => FluxIndex.Core.Domain.Models.FusionMethod.RRF
-            }
-        };
-    }
+        => HybridSearchOptionsMapper.ToCore(sdkOptions);
     /// <summary>
     /// SDK SearchResult를 Core SearchResult로 변환
     /// </summary>

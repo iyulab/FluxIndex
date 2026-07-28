@@ -397,14 +397,10 @@ public partial class Retriever
 
             var hybridResults = await _hybridSearchService.SearchAsync(
                 query,
-                new Core.Domain.Models.HybridSearchOptions
-                {
-                    MaxResults = options.TopK,
-                    VectorWeight = 0.7,
-                    SparseWeight = 0.3,
-                    MinFusedScore = options.MinSimilarity
-                },
+                HybridSearchOptionsMapper.FromSearchOptions(options),
                 cancellationToken);
+
+            WarnIfSparseLegContributedNothing(hybridResults, query);
 
             results = hybridResults.Select(r =>
             {
@@ -560,6 +556,8 @@ public partial class Retriever
 
             // Perform keyword search
             var keywordResults = await KeywordSearchAsync(keyword, maxResults * 2, filter, cancellationToken);
+
+            WarnIfKeywordLegContributedNothing(keywordResults, vectorResults, keyword);
 
             // Phase 3: 진행률 보고 - 결과 통합 (75%)
             progress?.Report(new SearchProgress
@@ -1456,6 +1454,44 @@ public partial class Retriever
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Found {Count} results for query: {Query}")]
     private static partial void LogFoundResults(ILogger logger, int count, string query);
+
+    /// <summary>
+    /// Surface the documented silent degradation: hybrid search returns results, but every one of
+    /// them came from the vector leg because the sparse (BM25) index holds nothing. The index is
+    /// process-local and no indexing API populates it, so this is the normal state after a restart
+    /// or in a process that did not itself index.
+    /// </summary>
+    private void WarnIfSparseLegContributedNothing(
+        IReadOnlyList<Core.Domain.Models.HybridSearchResult> results,
+        string query)
+    {
+        if (results.Count == 0 || results.Any(result => result.SparseScore > 0))
+        {
+            return;
+        }
+
+        LogHybridDegradedToVectorOnly(_logger, query);
+    }
+
+    /// <summary>
+    /// Same degradation on the v1 path, where the keyword leg reads the in-memory document
+    /// repository: the vector leg matched but the keyword leg saw nothing to match against.
+    /// </summary>
+    private void WarnIfKeywordLegContributedNothing(
+        IEnumerable<VectorSearchResult> keywordResults,
+        IEnumerable<VectorSearchResult> vectorResults,
+        string keyword)
+    {
+        if (keywordResults.Any() || !vectorResults.Any())
+        {
+            return;
+        }
+
+        LogHybridDegradedToVectorOnly(_logger, keyword);
+    }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Hybrid search degraded to vector-only for query '{Query}': the keyword leg returned no candidates. The keyword index is process-local and is not populated by the indexing API, so it is empty after a restart or in a process that did not index. Results are ranked by vector similarity alone.")]
+    private static partial void LogHybridDegradedToVectorOnly(ILogger logger, string query);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Hybrid search activated for query: {Query}")]
     private static partial void LogHybridSearchActivated(ILogger logger, string query);

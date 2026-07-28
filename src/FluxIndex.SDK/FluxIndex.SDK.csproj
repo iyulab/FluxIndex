@@ -25,4 +25,10 @@
     <PackageReference Include="Microsoft.Extensions.Options" />
   </ItemGroup>
 
+
+  <ItemGroup>
+    <!-- The options mapper and other internals are covered by the SDK test project. -->
+    <InternalsVisibleTo Include="FluxIndex.SDK.Tests" />
+  </ItemGroup>
+
 </Project>

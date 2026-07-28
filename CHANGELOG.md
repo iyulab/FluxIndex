@@ -9,6 +9,30 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.21.5] - 2026-07-28
+
+### Fixed — `Retriever.SearchAsync` discarded the caller's hybrid weights
+
+`SearchOptions` has a `HybridSearchOptions` subclass carrying `VectorWeight` / `KeywordWeight` /
+`RerankingStrategy`, and `FluxIndexContext.HybridSearchV2Async` honoured them — but
+`Retriever.SearchAsync` built its Core options inline with hardcoded `0.7` / `0.3`, so passing
+`HybridSearchOptions` to the main search entry point changed nothing. Both paths now map through one
+place (`HybridSearchOptionsMapper`); plain `SearchOptions` still gets 0.7/0.3, so default behaviour
+is unchanged.
+
+### Added — hybrid search warns when it degrades to vector-only
+
+The keyword leg is process-local and no indexing API populates it, so after a restart — or in any
+process that did not itself index — hybrid search silently ranks by vector similarity alone. That
+limitation was documented in 0.19.0 but invisible at runtime: results came back and looked fine.
+Both hybrid paths now emit one warning when the keyword/sparse leg contributes nothing while the
+vector leg matched, naming the reason.
+
+This is diagnostics only. Making the keyword leg survive a restart is the 0.22.0 work
+(the indexing API will populate the sparse index and persistent backends land with it).
+
+---
+
 ## [0.21.4] - 2026-07-28
 
 ### Fixed — the PostgreSQL quantized vector store provisioned no schema at all
