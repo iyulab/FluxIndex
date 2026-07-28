@@ -45,7 +45,7 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
         try
         {
             if (_initialized) return;
-            await _context.Database.EnsureCreatedAsync(cancellationToken);
+            SQLiteSchemaProvisioner.Provision(_context);
             _initialized = true;
         }
         finally

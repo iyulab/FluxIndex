@@ -88,6 +88,9 @@ internal static class SQLiteSchemaProvisioner
         {
             using var command = connection.CreateCommand();
             command.CommandText = "SELECT name FROM sqlite_master WHERE type = 'table'";
+            // Enlist in an ambient EF transaction if one is open — ADO.NET refuses a command on a
+            // connection with a pending local transaction unless the transaction is set.
+            command.Transaction = context.Database.CurrentTransaction?.GetDbTransaction();
 
             using var reader = command.ExecuteReader();
             while (reader.Read())

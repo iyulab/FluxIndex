@@ -88,7 +88,9 @@ public static class EntityGraphServiceCollectionExtensions
             "CREATE EXTENSION IF NOT EXISTS vector",
             ct);
 
-        // Create or migrate schema
-        await context.Database.EnsureCreatedAsync(ct);
+        // Create or migrate schema. Provisioning per owned relation rather than EnsureCreated, which
+        // creates nothing once the database holds any relation at all — including relations another
+        // FluxIndex component put there.
+        RelationalSchemaProvisioner.ProvisionTables(context);
     }
 }

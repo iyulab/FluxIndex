@@ -9,6 +9,37 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.21.4] - 2026-07-28
+
+### Fixed — the PostgreSQL quantized vector store provisioned no schema at all
+
+`AddPostgreSQLQuantizedVectorStore(...)` registered the DbContext and the store but no provisioning
+whatsoever — no initializer, no migration — so `vectors` and `quantized_vectors` were never created
+and the first write failed even against an empty database. It now provisions through the same shared
+routine as the other components, exposed both as an `IStorageInitializer` and as a hosted service.
+The store is reachable only by direct registration, never from the SDK builder, which is why nothing
+had surfaced it.
+
+### Fixed — remaining `EnsureCreated` provisioning on shared databases
+
+The PostgreSQL entity graph (`EnsureEntityGraphSchemaAsync`) and the SQLite vector, quantized and
+main migration paths still created their schema with `EnsureCreated`, which does nothing once the
+database holds any table — including tables another FluxIndex component put there. They now
+provision per owned table like everything else.
+
+### Fixed — schema provisioning inside an open transaction
+
+The provisioner's existence probe issued a raw ADO command without enlisting the ambient EF
+transaction, so provisioning from a context with a transaction in flight failed with *"Execute
+requires the command to have a transaction object"*. Caught by the SQLite native-extension
+concurrency test. The probe now enlists `CurrentTransaction` when one is open.
+
+**Known remaining gap.** `SQLiteVecDbContext` keeps its own bespoke initialization (vec0 virtual
+tables plus a fingerprint-based re-init added in 0.20.2) and is deliberately left alone — its schema
+is not fully EF-modelled, so the shared provisioner does not apply.
+
+---
+
 ## [0.21.3] - 2026-07-28
 
 ### Fixed — the SQLite graph store, entity graph and semantic cache were never provisioned by the SDK builder
@@ -86,11 +117,12 @@ live as soon as the context owns more than one relation.
 Reported by All.Manual. No API change — upgrading is enough.
 
 **Known adjacent gap (not fixed here).** PostgreSQL graph, entity-graph, and semantic-cache still
-initialize with `EnsureCreatedAsync` and, by default, on the vector store's connection. Because
-their migrations run at host start — after `Build()` created `vectors` — those components skip
-their own schema creation even on a dedicated FluxIndex database whenever they are configured
-alongside the vector store. Tracked separately; use `AutoMigrate`-off plus an externally managed
-schema until it lands.
+initialize with `EnsureCreatedAsync` and, by default, on the vector store's connection. Tracked
+separately; use `AutoMigrate`-off plus an externally managed schema until it lands.
+
+> Correction (0.21.2): that gap was worse than described here. Those components migrate from hosted
+> services, and the SDK builder never starts a host — so on the builder path they were not merely
+> skipped after `vectors` existed, they never ran at all. Fixed in 0.21.2.
 
 ---
 

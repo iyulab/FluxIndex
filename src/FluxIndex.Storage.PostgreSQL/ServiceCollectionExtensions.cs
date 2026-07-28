@@ -1,6 +1,7 @@
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Constants;
 using Microsoft.EntityFrameworkCore;
+using FluxIndex.SDK;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Npgsql;
@@ -109,6 +110,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<PostgreSQLQuantizedVectorStore>();
         services.AddScoped<IQuantizedVectorStore>(sp => sp.GetRequiredService<PostgreSQLQuantizedVectorStore>());
         services.AddScoped<IVectorStore>(sp => sp.GetRequiredService<PostgreSQLQuantizedVectorStore>());
+
+        // Schema provisioning — shared by both paths, as with the graph store and semantic cache.
+        services.AddSingleton<PostgreSQLQuantizedStorageInitializer>();
+        services.AddSingleton<IStorageInitializer>(sp =>
+            sp.GetRequiredService<PostgreSQLQuantizedStorageInitializer>());
+        services.AddHostedService<PostgreSQLQuantizedMigrationService>();
 
         return services;
     }

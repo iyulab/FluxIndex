@@ -160,6 +160,10 @@ internal static class RelationalSchemaProvisioner
                 // ::text is required — Npgsql has no reader mapping for the raw regclass OID type.
                 command.CommandText = "SELECT to_regclass(@relation)::text";
 
+                // Enlist in an ambient EF transaction if one is open — ADO.NET refuses a command on
+                // a connection with a pending local transaction unless the transaction is set.
+                command.Transaction = context.Database.CurrentTransaction?.GetDbTransaction();
+
                 var parameter = command.CreateParameter();
                 parameter.ParameterName = "relation";
                 parameter.Value = relation;
