@@ -9,6 +9,34 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.21.2] - 2026-07-28
+
+### Fixed — the PostgreSQL graph store and semantic cache were never provisioned by the SDK builder
+
+`UsePostgreSQL(conn)` enables the vector store, the graph store **and** the semantic cache on one
+connection. The graph and cache schemas, however, were created by `IHostedService` migrations, and
+`FluxIndexContextBuilder.Build()` never starts a host — it builds its own service provider and runs
+the registered `IStorageInitializer` instances. So on the builder path those two components were
+never provisioned on **any** database, fresh or shared, and the first graph or cache write failed
+with `42P01`. Only consumers who registered the stores directly into an application's service
+collection (where the host runs the migration at start-up) were unaffected.
+
+Each component's migration now lives in one routine that both paths share: an `IStorageInitializer`
+the builder runs at `Build()`, wrapped by the existing hosted service for the direct-registration
+path. Schema creation goes through the same owned-relation provisioner introduced in 0.21.1, so the
+components no longer skip each other's tables when they share a database — which `EnsureCreated`
+did as soon as any one of them had been provisioned first.
+
+Also fixed: the vector store's provisioning is now reused rather than duplicated
+(`RelationalSchemaProvisioner`).
+
+**Known remaining gap.** The SQLite graph store, entity graph and semantic cache have the same
+shape and are still hosted-service-only; `UseSQLite(path)` enables graph and cache the same way.
+Tracked separately. PostgreSQL entity graph (`AddPostgreSQLEntityGraph`, not reachable from the
+builder) and `AddPostgreSQLQuantizedVectorStore` (no provisioning at all) are also still open.
+
+---
+
 ## [0.21.1] - 2026-07-28
 
 ### Fixed — PostgreSQL auto-init no longer skips schema creation on a non-empty database

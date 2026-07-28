@@ -19,7 +19,7 @@ public class PostgreSQLSchemaInitializationPlanTests
     {
         // The shared-database case: the database is full of the consumer's own tables, but none of
         // ours. EnsureCreated() used to read "database has tables" and skip; we must still create.
-        var plan = PostgreSQLStorageInitializer.Plan(
+        var plan = RelationalSchemaProvisioner.Plan(
             new[] { "public.vectors" },
             Existing("public.any_app_table", "public.users"));
 
@@ -29,7 +29,7 @@ public class PostgreSQLSchemaInitializationPlanTests
     [Fact]
     public void Plan_OnEmptyDatabase_CreatesAll()
     {
-        var plan = PostgreSQLStorageInitializer.Plan(new[] { "public.vectors" }, Existing());
+        var plan = RelationalSchemaProvisioner.Plan(new[] { "public.vectors" }, Existing());
 
         plan.Should().Be(SchemaInitializationPlan.CreateAll);
     }
@@ -37,7 +37,7 @@ public class PostgreSQLSchemaInitializationPlanTests
     [Fact]
     public void Plan_WhenEveryOwnedRelationExists_IsUpToDate()
     {
-        var plan = PostgreSQLStorageInitializer.Plan(
+        var plan = RelationalSchemaProvisioner.Plan(
             new[] { "public.vectors" },
             Existing("public.vectors", "public.any_app_table"));
 
@@ -49,7 +49,7 @@ public class PostgreSQLSchemaInitializationPlanTests
     {
         // Fail-loud rather than half-repair: auto-migration cannot know whether the surviving
         // relation matches the current model.
-        var plan = PostgreSQLStorageInitializer.Plan(
+        var plan = RelationalSchemaProvisioner.Plan(
             new[] { "public.vectors", "public.quantized_vectors" },
             Existing("public.vectors"));
 
@@ -59,7 +59,7 @@ public class PostgreSQLSchemaInitializationPlanTests
     [Fact]
     public void Plan_WithNoOwnedRelations_IsUpToDate()
     {
-        var plan = PostgreSQLStorageInitializer.Plan(new string[0], Existing("public.any_app_table"));
+        var plan = RelationalSchemaProvisioner.Plan(new string[0], Existing("public.any_app_table"));
 
         plan.Should().Be(SchemaInitializationPlan.UpToDate);
     }

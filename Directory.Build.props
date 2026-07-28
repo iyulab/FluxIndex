@@ -1,7 +1,7 @@
 <Project>
   <!-- Common Version Management -->
   <PropertyGroup>
-    <Version>0.21.1</Version>
+    <Version>0.21.2</Version>
     <AssemblyVersion>$(Version).0</AssemblyVersion>
     <FileVersion>$(Version).0</FileVersion>
     

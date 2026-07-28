@@ -1,4 +1,5 @@
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.SDK;
 using FluxIndex.Core.Constants;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -45,7 +46,8 @@ public static class CacheServiceCollectionExtensions
         services.AddScoped<ISemanticCache, PostgresSemanticCache>();
         services.AddScoped<PostgresSemanticCache>();
 
-        // 마이그레이션 서비스
+        // 마이그레이션 — 두 경로(SDK 빌더 Build(), 앱 호스트 시작)가 같은 루틴을 공유한다.
+        services.AddSingleton<PostgresCacheSchemaInitializer>();
         services.AddHostedService<PostgresCacheMigrationService>();
 
         return services;
@@ -69,24 +71,27 @@ public static class CacheServiceCollectionExtensions
 }
 
 /// <summary>
-/// PostgreSQL Cache 마이그레이션 서비스
+/// Provisions the PostgreSQL semantic cache schema. Implemented as an <see cref="IStorageInitializer"/>
+/// so the SDK builder runs it during Build(), and hosted by <see cref="PostgresCacheMigrationService"/>
+/// for consumers that register the cache directly into an application's service collection.
 /// </summary>
-internal sealed partial class PostgresCacheMigrationService : IHostedService
+/// <remarks>
+/// The migration used to live only in the hosted service, which the SDK builder never starts — it
+/// builds its own service provider and runs storage initializers, so a builder-configured semantic
+/// cache was never provisioned at all and the first cache write failed with 42P01.
+/// </remarks>
+internal sealed partial class PostgresCacheSchemaInitializer : IStorageInitializer
 {
-    private readonly IServiceProvider _serviceProvider;
-    private readonly ILogger<PostgresCacheMigrationService> _logger;
+    private readonly ILogger<PostgresCacheSchemaInitializer> _logger;
 
-    public PostgresCacheMigrationService(
-        IServiceProvider serviceProvider,
-        ILogger<PostgresCacheMigrationService> logger)
+    public PostgresCacheSchemaInitializer(ILogger<PostgresCacheSchemaInitializer> logger)
     {
-        _serviceProvider = serviceProvider;
         _logger = logger;
     }
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    public void InitializeSync(IServiceProvider serviceProvider)
     {
-        using var scope = _serviceProvider.CreateScope();
+        using var scope = serviceProvider.CreateScope();
         var options = scope.ServiceProvider.GetRequiredService<IOptions<PostgresCacheOptions>>().Value;
 
         if (!options.AutoMigrate)
@@ -101,24 +106,26 @@ internal sealed partial class PostgresCacheMigrationService : IHostedService
 
         try
         {
+            RelationalSchemaProvisioner.EnsureDatabase(context);
+
             // pgvector 확장 활성화
             if (options.UsePgVector)
             {
-                await EnablePgVectorExtensionAsync(context, cancellationToken);
+                EnablePgVectorExtension(context);
             }
 
             // 테이블 생성 (UNLOGGED 옵션 적용)
             if (options.UseUnloggedTable)
             {
-                await CreateUnloggedTablesAsync(context, options, cancellationToken);
+                CreateUnloggedTables(context, options);
             }
             else
             {
-                await context.Database.EnsureCreatedAsync(cancellationToken);
+                RelationalSchemaProvisioner.ProvisionTables(context);
             }
 
             // 인덱스 생성
-            await CreateIndexesAsync(context, options, cancellationToken);
+            CreateIndexes(context, options);
 
             LogMigrationCompleted(_logger);
         }
@@ -129,16 +136,11 @@ internal sealed partial class PostgresCacheMigrationService : IHostedService
         }
     }
 
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-
-    private async Task EnablePgVectorExtensionAsync(
-        PostgresCacheDbContext context,
-        CancellationToken cancellationToken)
+    private void EnablePgVectorExtension(PostgresCacheDbContext context)
     {
         try
         {
-            await context.Database.ExecuteSqlRawAsync(
-                "CREATE EXTENSION IF NOT EXISTS vector", cancellationToken);
+            context.Database.ExecuteSqlRaw("CREATE EXTENSION IF NOT EXISTS vector");
             LogPgVectorEnabled(_logger);
         }
         catch (Exception ex)
@@ -147,10 +149,9 @@ internal sealed partial class PostgresCacheMigrationService : IHostedService
         }
     }
 
-    private async Task CreateUnloggedTablesAsync(
+    private void CreateUnloggedTables(
         PostgresCacheDbContext context,
-        PostgresCacheOptions options,
-        CancellationToken cancellationToken)
+        PostgresCacheOptions options)
     {
         // UNLOGGED 테이블은 WAL 로깅을 하지 않아 쓰기 성능이 좋지만 크래시 시 데이터 손실 가능
         // 캐시에 적합한 트레이드오프
@@ -180,14 +181,13 @@ internal sealed partial class PostgresCacheMigrationService : IHostedService
             INSERT INTO cache_stats (""Id"") VALUES (1) ON CONFLICT DO NOTHING;
         ";
 
-        await context.Database.ExecuteSqlRawAsync(createTableSql, cancellationToken);
+        context.Database.ExecuteSqlRaw(createTableSql);
         LogUnloggedTablesCreated(_logger);
     }
 
-    private async Task CreateIndexesAsync(
+    private void CreateIndexes(
         PostgresCacheDbContext context,
-        PostgresCacheOptions options,
-        CancellationToken cancellationToken)
+        PostgresCacheOptions options)
     {
         try
         {
@@ -205,18 +205,18 @@ internal sealed partial class PostgresCacheMigrationService : IHostedService
                 ON semantic_cache (""HitCount"" DESC);
             ";
 
-            await context.Database.ExecuteSqlRawAsync(indexSql, cancellationToken);
+            context.Database.ExecuteSqlRaw(indexSql);
 
             // pgvector HNSW 인덱스 (근사 최근접 이웃 검색)
             if (options.UsePgVector)
             {
                 try
                 {
-                    await context.Database.ExecuteSqlRawAsync(@"
+                    context.Database.ExecuteSqlRaw(@"
                         CREATE INDEX IF NOT EXISTS idx_semantic_cache_embedding_hnsw
                         ON semantic_cache USING hnsw (""Embedding"" vector_cosine_ops)
                         WITH (m = 16, ef_construction = 64);
-                    ", cancellationToken);
+                    ");
                     LogHnswIndexCreated(_logger);
                 }
                 catch (Exception ex)
@@ -269,4 +269,30 @@ internal sealed partial class PostgresCacheMigrationService : IHostedService
     private static partial void LogIndexCreationFailed(ILogger logger, Exception exception);
 
     #endregion
+}
+
+/// <summary>
+/// Runs <see cref="PostgresCacheSchemaInitializer"/> at host start for consumers that register the
+/// semantic cache directly (the SDK builder path runs the initializer itself during Build()).
+/// </summary>
+internal sealed class PostgresCacheMigrationService : IHostedService
+{
+    private readonly IServiceProvider _serviceProvider;
+    private readonly PostgresCacheSchemaInitializer _initializer;
+
+    public PostgresCacheMigrationService(
+        IServiceProvider serviceProvider,
+        PostgresCacheSchemaInitializer initializer)
+    {
+        _serviceProvider = serviceProvider;
+        _initializer = initializer;
+    }
+
+    public Task StartAsync(CancellationToken cancellationToken)
+    {
+        _initializer.InitializeSync(_serviceProvider);
+        return Task.CompletedTask;
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }

@@ -62,6 +62,12 @@ public static class FluxIndexContextBuilderExtensions
                 graphOptions.AutoMigrate = options.GraphStore.AutoMigrate;
                 graphOptions.MaxRecursionDepth = options.GraphStore.MaxRecursionDepth;
             });
+
+            // AddPostgreSQLGraphStore migrates from a hosted service, which Build() never starts —
+            // it builds its own provider and runs IStorageInitializer only. Register the same
+            // routine as an initializer so the builder path provisions the graph schema too.
+            services.AddSingleton<IStorageInitializer>(sp =>
+                sp.GetRequiredService<Graph.PostgresGraphSchemaInitializer>());
         }
 
         var cacheProvider = options.SemanticCache.Provider?.ToLowerInvariant();
@@ -82,6 +88,11 @@ public static class FluxIndexContextBuilderExtensions
                 cacheOptions.CleanupInterval = options.SemanticCache.CleanupInterval;
                 cacheOptions.UseUnloggedTable = options.SemanticCache.UseUnloggedTable;
             });
+
+            // Same reason as the graph store above: the cache migrates from a hosted service that
+            // the builder path never starts.
+            services.AddSingleton<IStorageInitializer>(sp =>
+                sp.GetRequiredService<Cache.PostgresCacheSchemaInitializer>());
         }
     }
 }

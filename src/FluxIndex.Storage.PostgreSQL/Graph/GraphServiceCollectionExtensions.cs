@@ -1,4 +1,5 @@
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.SDK;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -43,7 +44,8 @@ public static class GraphServiceCollectionExtensions
         services.AddScoped<IChunkHierarchyRepository, PostgresGraphStore>();
         services.AddScoped<PostgresGraphStore>();
 
-        // 마이그레이션 서비스
+        // 마이그레이션 — 두 경로(SDK 빌더 Build(), 앱 호스트 시작)가 같은 루틴을 공유한다.
+        services.AddSingleton<PostgresGraphSchemaInitializer>();
         services.AddHostedService<PostgresGraphMigrationService>();
 
         return services;
@@ -65,24 +67,27 @@ public static class GraphServiceCollectionExtensions
 }
 
 /// <summary>
-/// PostgreSQL Graph 마이그레이션 서비스
+/// Provisions the PostgreSQL graph schema. Implemented as an <see cref="IStorageInitializer"/> so the
+/// SDK builder runs it during Build(), and hosted by <see cref="PostgresGraphMigrationService"/> for
+/// consumers that register the graph store directly into an application's service collection.
 /// </summary>
-internal sealed partial class PostgresGraphMigrationService : IHostedService
+/// <remarks>
+/// The migration used to live only in the hosted service, which the SDK builder never starts — it
+/// builds its own service provider and runs storage initializers, so a builder-configured graph store
+/// was never provisioned at all and the first graph write failed with 42P01.
+/// </remarks>
+internal sealed partial class PostgresGraphSchemaInitializer : IStorageInitializer
 {
-    private readonly IServiceProvider _serviceProvider;
-    private readonly ILogger<PostgresGraphMigrationService> _logger;
+    private readonly ILogger<PostgresGraphSchemaInitializer> _logger;
 
-    public PostgresGraphMigrationService(
-        IServiceProvider serviceProvider,
-        ILogger<PostgresGraphMigrationService> logger)
+    public PostgresGraphSchemaInitializer(ILogger<PostgresGraphSchemaInitializer> logger)
     {
-        _serviceProvider = serviceProvider;
         _logger = logger;
     }
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    public void InitializeSync(IServiceProvider serviceProvider)
     {
-        using var scope = _serviceProvider.CreateScope();
+        using var scope = serviceProvider.CreateScope();
         var options = scope.ServiceProvider.GetRequiredService<IOptions<PostgresGraphOptions>>().Value;
 
         if (!options.AutoMigrate)
@@ -97,12 +102,11 @@ internal sealed partial class PostgresGraphMigrationService : IHostedService
 
         try
         {
-            await context.Database.EnsureCreatedAsync(cancellationToken);
+            RelationalSchemaProvisioner.Provision(context);
 
-            // GIN 인덱스가 지원되는지 확인하고 생성
             if (options.UseJsonbIndex)
             {
-                await CreateGinIndexesAsync(context, cancellationToken);
+                CreateGinIndexes(context);
             }
 
             LogGraphMigrationCompleted(_logger);
@@ -114,22 +118,17 @@ internal sealed partial class PostgresGraphMigrationService : IHostedService
         }
     }
 
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-
-    private async Task CreateGinIndexesAsync(
-        PostgresGraphDbContext context,
-        CancellationToken cancellationToken)
+    private void CreateGinIndexes(PostgresGraphDbContext context)
     {
         try
         {
-            // GIN 인덱스 for JSONB 필드 (이미 존재하면 무시)
-            await context.Database.ExecuteSqlRawAsync(@"
+            context.Database.ExecuteSqlRaw(@"
                 CREATE INDEX IF NOT EXISTS idx_chunk_hierarchies_child_ids_gin
                 ON chunk_hierarchies USING gin (""ChildChunkIds"");
 
                 CREATE INDEX IF NOT EXISTS idx_chunk_relationships_metadata_gin
                 ON chunk_relationships USING gin (""Metadata"");
-            ", cancellationToken);
+            ");
 
             LogGinIndexesCreated(_logger);
         }
@@ -160,4 +159,30 @@ internal sealed partial class PostgresGraphMigrationService : IHostedService
     private static partial void LogGinIndexesFailed(ILogger logger, Exception exception);
 
     #endregion
+}
+
+/// <summary>
+/// Runs <see cref="PostgresGraphSchemaInitializer"/> at host start for consumers that register the
+/// graph store directly (the SDK builder path runs the initializer itself during Build()).
+/// </summary>
+internal sealed class PostgresGraphMigrationService : IHostedService
+{
+    private readonly IServiceProvider _serviceProvider;
+    private readonly PostgresGraphSchemaInitializer _initializer;
+
+    public PostgresGraphMigrationService(
+        IServiceProvider serviceProvider,
+        PostgresGraphSchemaInitializer initializer)
+    {
+        _serviceProvider = serviceProvider;
+        _initializer = initializer;
+    }
+
+    public Task StartAsync(CancellationToken cancellationToken)
+    {
+        _initializer.InitializeSync(_serviceProvider);
+        return Task.CompletedTask;
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }
