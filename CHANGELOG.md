@@ -9,6 +9,34 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.21.1] - 2026-07-28
+
+### Fixed — PostgreSQL auto-init no longer skips schema creation on a non-empty database
+
+`AddPostgreSQLStorage()` provisioned the vector schema through EF's `EnsureCreated()`, which skips
+schema creation entirely once the database contains **any** relation. Pointing FluxIndex at a
+database that already held the consumer's application tables therefore created nothing: `Build()`
+reported success and the first index write failed with `42P01: relation "vectors" does not exist`.
+Fresh databases were unaffected, so the failure appeared only in production.
+
+The initializer now enumerates the relations its EF model owns, probes each with `to_regclass`, and
+provisions through `IRelationalDatabaseCreator` when none are present — leaving unrelated relations
+in the database untouched. The database itself is created when absent. A partial schema (some owned
+relations present, some missing) is refused with an actionable exception instead of being silently
+half-repaired; with the current single-relation model this guard cannot yet trigger, and it becomes
+live as soon as the context owns more than one relation.
+
+Reported by All.Manual. No API change — upgrading is enough.
+
+**Known adjacent gap (not fixed here).** PostgreSQL graph, entity-graph, and semantic-cache still
+initialize with `EnsureCreatedAsync` and, by default, on the vector store's connection. Because
+their migrations run at host start — after `Build()` created `vectors` — those components skip
+their own schema creation even on a dedicated FluxIndex database whenever they are configured
+alongside the vector store. Tracked separately; use `AutoMigrate`-off plus an externally managed
+schema until it lands.
+
+---
+
 ## [0.21.0] - 2026-07-28
 
 ### Changed — BREAKING: pipeline integrations split out of `FluxIndex.SDK`

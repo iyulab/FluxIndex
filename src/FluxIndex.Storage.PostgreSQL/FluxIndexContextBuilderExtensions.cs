@@ -18,6 +18,13 @@ public static class FluxIndexContextBuilderExtensions
     /// Call this after UsePostgreSQL() or UseBestInClass().
     /// This method reads the options already set on the builder.
     /// </summary>
+    /// <remarks>
+    /// Unless <see cref="FluxIndex.SDK.Configuration.VectorStoreOptions.EnableAutoMigration"/> is set to
+    /// false, Build() provisions the pgvector extension and the relations this store owns. Only the
+    /// owned relations are inspected and created, so the target database may be shared with the
+    /// consumer's own application tables. If some — but not all — FluxIndex relations already exist,
+    /// Build() throws rather than half-repairing the schema.
+    /// </remarks>
     public static FluxIndexContextBuilder AddPostgreSQLStorage(this FluxIndexContextBuilder builder)
     {
         builder.RegisterStorageServices(services => RegisterPostgreSQLServices(services, builder.Options));

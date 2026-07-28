@@ -185,6 +185,21 @@ var ctx = builder
     .Build();
 ```
 
+**Sharing a database with your application (fixed in 0.21.1).** Auto-init provisions only the
+relations FluxIndex owns, so pointing it at a database that already contains your own application
+tables works. Through 0.21.0 it used EF's `EnsureCreated()`, which skips schema creation entirely once
+the database holds *any* relation — `Build()` succeeded, nothing was created, and the first index
+write failed with `42P01: relation "vectors" does not exist`. Fresh databases were unaffected, so the
+failure only appeared in production. If you hit that, upgrade to 0.21.1; no code change is needed.
+
+A half-built schema (some FluxIndex relations present, some missing) is refused at `Build()` with an
+actionable exception instead of being silently half-repaired. The vector context currently owns a
+single relation, so this guard cannot trigger yet — it becomes live when the context owns more than
+one.
+
+A dedicated database for the index remains a perfectly good choice — derived data has its own
+lifecycle (retention, rebuild, dump/restore cadence). Sharing is supported, not recommended.
+
 ---
 
 ## Migrating from 0.11.x to 0.13.x
