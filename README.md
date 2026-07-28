@@ -15,7 +15,7 @@
 - **Vector Quantization** - Scalar (Int8/Int4), Product Quantization, Binary (32x compression)
 - **Multiple Storage** - SQLite, PostgreSQL with pgvector
 - **AI Provider Agnostic** - Core provides abstract base classes, bring your own embedding service
-- **Document Processing** - PDF/DOCX/TXT via FileFlux, web crawling via WebFlux
+- **Document Processing** - PDF/DOCX/TXT via FileFlux, web crawling via WebFlux (opt-in `FluxIndex.Integrations.*` packages)
 - **MCP Server** - Model Context Protocol for AI assistant integration
 - **Production Ready** - Redis caching, clean architecture, .NET 10.0
 
@@ -110,12 +110,16 @@ Full benchmarks: [BENCHMARK_RESULTS.md](./benchmarks/FluxIndex.Benchmarks/BENCHM
 | Package | NuGet | Description |
 |---------|-------|-------------|
 | **FluxIndex.Core** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Core.svg)](https://www.nuget.org/packages/FluxIndex.Core/) | Interfaces, abstract base classes, and core logic |
-| **FluxIndex.SDK** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.SDK.svg)](https://www.nuget.org/packages/FluxIndex.SDK/) | All-in-one SDK with FileFlux, WebFlux, FluxCurator, FluxImprover |
+| **FluxIndex.SDK** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.SDK.svg)](https://www.nuget.org/packages/FluxIndex.SDK/) | RAG orchestration core — context, indexer, retriever, DI helpers. No pipeline dependencies |
 | **FluxIndex.Storage.SQLite** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Storage.SQLite.svg)](https://www.nuget.org/packages/FluxIndex.Storage.SQLite/) | SQLite vector store |
 | **FluxIndex.Storage.PostgreSQL** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Storage.PostgreSQL.svg)](https://www.nuget.org/packages/FluxIndex.Storage.PostgreSQL/) | PostgreSQL with pgvector |
 | **FluxIndex.Storage.Neo4j** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Storage.Neo4j.svg)](https://www.nuget.org/packages/FluxIndex.Storage.Neo4j/) | Neo4j graph database |
 | **FluxIndex.Storage.Qdrant** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Storage.Qdrant.svg)](https://www.nuget.org/packages/FluxIndex.Storage.Qdrant/) | Qdrant vector database |
 | **FluxIndex.Cache.Redis** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Cache.Redis.svg)](https://www.nuget.org/packages/FluxIndex.Cache.Redis/) | Redis semantic cache |
+| **FluxIndex.Integrations.FileFlux** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Integrations.FileFlux.svg)](https://www.nuget.org/packages/FluxIndex.Integrations.FileFlux/) | Document parsing/chunking + the document processing pipeline |
+| **FluxIndex.Integrations.WebFlux** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Integrations.WebFlux.svg)](https://www.nuget.org/packages/FluxIndex.Integrations.WebFlux/) | Web content ingestion |
+| **FluxIndex.Integrations.FluxCurator** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Integrations.FluxCurator.svg)](https://www.nuget.org/packages/FluxIndex.Integrations.FluxCurator/) | Text preprocessing (PII detection, intelligent splitting) |
+| **FluxIndex.Integrations.FluxImprover** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Integrations.FluxImprover.svg)](https://www.nuget.org/packages/FluxIndex.Integrations.FluxImprover/) | LLM-based chunk quality enhancement |
 
 > **Moved:** File-to-vector synchronization (formerly `FluxIndex.Extensions.FileVault`) was extracted to the **[FluxFeed](https://github.com/iyulab/FluxFeed)** repository in 0.16.0. Install `FluxFeed` for git-like file tracking / folder-monitoring document ingestion; it feeds into FluxIndex.
 
@@ -199,8 +203,6 @@ dotnet add package FluxIndex.Storage.SQLite
 
 - [RealQualityTest](./samples/RealQualityTest/) - LMSupply + SQLite integration
 - [WebFluxSample](./samples/WebFluxSample/) - Web crawling with WebFlux
-- [ChunkingQualityTest](./samples/ChunkingQualityTest/) - FileFlux chunking analysis
-- [FileFluxIndexSample](./samples/FileFluxIndexSample/) - Document indexing workflow
 
 ## Requirements
 

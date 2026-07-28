@@ -9,6 +9,55 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.21.0] - 2026-07-28
+
+### Changed — BREAKING: pipeline integrations split out of `FluxIndex.SDK`
+
+`FluxIndex.SDK` no longer depends on FileFlux, WebFlux, FluxCurator, or FluxImprover.
+Each integration now ships as its own opt-in package:
+
+| New package | Contains |
+|---|---|
+| `FluxIndex.Integrations.FileFlux` | FileFlux DI wiring + `DocumentProcessingPipeline` |
+| `FluxIndex.Integrations.WebFlux` | WebFlux DI wiring + context builder extensions |
+| `FluxIndex.Integrations.FluxCurator` | FluxCurator DI wiring + embedding adapters |
+| `FluxIndex.Integrations.FluxImprover` | FluxImprover DI wiring + enrichment pipeline |
+
+**Why.** The bundled graph made unrelated transitive vulnerabilities block FluxIndex CI:
+0.19.0 failed `restore` on `NU1902` (AngleSharp mXSS) reached through `FluxIndex.SDK` → WebFlux →
+AngleSharp, in a library that does not use AngleSharp at all. Fixing WebFlux removed that symptom
+but not the shape, so the next transitive advisory would have repeated it. Consumers now pay only
+for the pipelines they use.
+
+**Migration.** Add the packages you actually use and update namespaces:
+
+```diff
+  <PackageReference Include="FluxIndex.SDK" Version="0.21.0" />
++ <PackageReference Include="FluxIndex.Integrations.FileFlux" Version="0.21.0" />
+```
+
+```diff
+- using FluxIndex.SDK.Extensions.FileFlux;
+- using FluxIndex.SDK.Processing;
++ using FluxIndex.Integrations.FileFlux;
++ using FluxIndex.Integrations.FileFlux.Processing;
+```
+
+Namespace mapping is mechanical — `FluxIndex.SDK.Extensions.<X>` → `FluxIndex.Integrations.<X>`
+(same for `.Adapters` / `.Services` sub-namespaces), and `FluxIndex.SDK.Processing` →
+`FluxIndex.Integrations.FileFlux.Processing`. No type names, signatures, or behavior changed.
+Extension methods (`AddFileFluxIntegration`, `AddDocumentProcessingPipeline*`, `AddWebFlux*`, …)
+keep their names.
+
+### Removed
+
+- `samples/ChunkingQualityTest` and `samples/FileFluxIndexSample` — both referenced projects and
+  packages that no longer exist (`src/FluxIndex.Extensions.FileFlux`, a bare `FluxIndex` package),
+  were outside the solution so nothing built them, and had been untouched since 2025-11-29.
+  README linked to both. Available in git history.
+
+---
+
 ## [0.20.2] - 2026-07-24
 
 ### Fixed

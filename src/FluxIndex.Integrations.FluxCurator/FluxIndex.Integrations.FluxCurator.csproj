@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <PackageId>FluxIndex.Integrations.FluxCurator</PackageId>
+    <IsPackable>true</IsPackable>
+    <Description>FluxCurator text preprocessing integration for FluxIndex — DI wiring and embedding adapters.</Description>
+    <PackageTags>RAG;VectorStore;FluxIndex;FluxCurator;Integration</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FluxIndex.SDK\FluxIndex.SDK.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FluxCurator" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+  </ItemGroup>
+
+</Project>

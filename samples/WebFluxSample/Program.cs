@@ -1,6 +1,6 @@
 using FluxIndex.SDK;
 using FluxIndex.Storage.SQLite;
-using FluxIndex.SDK.Extensions.WebFlux;
+using FluxIndex.Integrations.WebFlux;
 using Microsoft.Extensions.Logging;
 
 namespace WebFluxSample;

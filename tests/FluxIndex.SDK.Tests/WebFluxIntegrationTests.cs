@@ -1,5 +1,5 @@
 using FluxIndex.SDK;
-using FluxIndex.SDK.Extensions.WebFlux;
+using FluxIndex.Integrations.WebFlux;
 using FluxIndex.Storage.SQLite;
 using WebFlux.Core.Models.Events;
 using Xunit;

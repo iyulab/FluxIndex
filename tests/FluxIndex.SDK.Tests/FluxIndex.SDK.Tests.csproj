@@ -21,6 +21,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\FluxIndex.SDK\FluxIndex.SDK.csproj" />
+    <ProjectReference Include="..\..\src\FluxIndex.Integrations.FileFlux\FluxIndex.Integrations.FileFlux.csproj" />
+    <ProjectReference Include="..\..\src\FluxIndex.Integrations.WebFlux\FluxIndex.Integrations.WebFlux.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.Core\FluxIndex.Core.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.Storage.SQLite\FluxIndex.Storage.SQLite.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.Storage.Neo4j\FluxIndex.Storage.Neo4j.csproj" />

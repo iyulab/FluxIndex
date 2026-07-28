@@ -9,6 +9,10 @@
     <Project Path="src/FluxIndex.Core/FluxIndex.Core.csproj" />
     <Project Path="src/FluxIndex.MCP/FluxIndex.MCP.csproj" />
     <Project Path="src/FluxIndex.SDK/FluxIndex.SDK.csproj" />
+    <Project Path="src/FluxIndex.Integrations.FileFlux/FluxIndex.Integrations.FileFlux.csproj" />
+    <Project Path="src/FluxIndex.Integrations.WebFlux/FluxIndex.Integrations.WebFlux.csproj" />
+    <Project Path="src/FluxIndex.Integrations.FluxCurator/FluxIndex.Integrations.FluxCurator.csproj" />
+    <Project Path="src/FluxIndex.Integrations.FluxImprover/FluxIndex.Integrations.FluxImprover.csproj" />
     <Project Path="src/FluxIndex.Storage.Neo4j/FluxIndex.Storage.Neo4j.csproj" />
     <Project Path="src/FluxIndex.Storage.Qdrant/FluxIndex.Storage.Qdrant.csproj" />
   </Folder>

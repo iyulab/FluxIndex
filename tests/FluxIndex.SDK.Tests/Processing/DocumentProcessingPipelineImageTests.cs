@@ -1,5 +1,5 @@
 using FileFlux.Core;
-using FluxIndex.SDK.Processing;
+using FluxIndex.Integrations.FileFlux.Processing;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;

@@ -7,8 +7,8 @@
     <LangVersion>latest</LangVersion>
     <PackageId>FluxIndex.SDK</PackageId>
     <IsPackable>true</IsPackable>
-    <Description>FluxIndex SDK - Complete RAG infrastructure with FileFlux integration, FluxCurator preprocessing, and FluxImprover quality enhancement. AI providers are externally injectable.</Description>
-    <PackageTags>RAG;VectorStore;Search;AI;Embeddings;Retrieval;SDK;FileFlux;FluxCurator;FluxImprover</PackageTags>
+    <Description>FluxIndex SDK - RAG orchestration core (context, indexer, retriever, DI helpers). Storage and pipeline integrations ship as separate FluxIndex.Storage.* / FluxIndex.Integrations.* packages.</Description>
+    <PackageTags>RAG;VectorStore;Search;AI;Embeddings;Retrieval;SDK</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
@@ -23,12 +23,6 @@
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Options" />
-
-    <!-- Document processing dependencies (from Extensions) -->
-    <PackageReference Include="FileFlux" />
-    <PackageReference Include="FluxCurator" />
-    <PackageReference Include="FluxImprover" />
-    <PackageReference Include="WebFlux" />
   </ItemGroup>
 
 </Project>

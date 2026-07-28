@@ -27,6 +27,7 @@
   <ItemGroup>
     <!-- FluxIndex SDK (FileFlux, WebFlux, FluxCurator, FluxImprover) -->
     <ProjectReference Include="..\..\src\FluxIndex.SDK\FluxIndex.SDK.csproj" />
+    <ProjectReference Include="..\..\src\FluxIndex.Integrations.FileFlux\FluxIndex.Integrations.FileFlux.csproj" />
   </ItemGroup>
 
   <ItemGroup>

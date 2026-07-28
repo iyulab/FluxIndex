@@ -1,13 +1,13 @@
 using FileFlux.Core;
-using FluxIndex.SDK.Processing;
+using FluxIndex.Integrations.FileFlux.Processing;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using Xunit;
 
-// Resolve ambiguity between FileFlux.Core and FluxIndex.SDK.Processing
-using ProcessingProgress = FluxIndex.SDK.Processing.ProcessingProgress;
-using ProcessingStage = FluxIndex.SDK.Processing.ProcessingStage;
+// Resolve ambiguity between FileFlux.Core and FluxIndex.Integrations.FileFlux.Processing
+using ProcessingProgress = FluxIndex.Integrations.FileFlux.Processing.ProcessingProgress;
+using ProcessingStage = FluxIndex.Integrations.FileFlux.Processing.ProcessingStage;
 
 namespace FluxIndex.SDK.Tests.Processing;
 
