@@ -33,6 +33,9 @@ using FluxIndex.Storage.SQLite;
 // 1. Setup (InMemory embedding for testing)
 // UseSQLite() selects the provider; AddSQLiteStorage() registers it. Both are required —
 // Build() throws if you name a store without registering it.
+// Build() also creates the schema for every component it enables (vector store, graph store,
+// entity graph, semantic cache), touching only the tables those components own — see
+// docs/GUIDE.md "What Build() provisions" to opt out and manage the schema yourself.
 var context = FluxIndexContext.CreateBuilder()
     .UseSQLite("fluxindex.db")
     .AddSQLiteStorage()

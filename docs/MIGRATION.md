@@ -200,6 +200,14 @@ one.
 A dedicated database for the index remains a perfectly good choice — derived data has its own
 lifecycle (retention, rebuild, dump/restore cadence). Sharing is supported, not recommended.
 
+**Every enabled component is provisioned (0.21.2 PostgreSQL / 0.21.3 SQLite).** `UsePostgreSQL(conn)`
+and `UseSQLite(path)` enable the graph store and the semantic cache alongside the vector store, and
+`UseSQLite` additionally enables the entity graph. Before these versions `Build()` provisioned only
+the vector store — the other components' migrations ran from hosted services that the builder never
+starts, so their tables were never created and the first graph, GraphRAG or semantic-cache operation
+failed on a missing table. If you use any of those features, upgrade; no code change is needed.
+See `docs/GUIDE.md` → "What Build() provisions" for the contract and the per-component opt-outs.
+
 ---
 
 ## Migrating from 0.11.x to 0.13.x

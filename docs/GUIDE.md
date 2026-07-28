@@ -88,12 +88,46 @@ var results = await context.Retriever.SearchAsync("RAG library", maxResults: 5);
 
 ### Local Mode Storage Structure
 
+`UseSQLite("fluxindex.db")` points the vector store, the chunk hierarchy and the semantic cache at
+the **same** database file; only the entity graph gets a file of its own, derived from the path you
+passed:
+
 ```
 fluxindex.db              # Vector store + keyword index + metadata
-fluxindex-graph.db        # Chunk hierarchy (Small-to-Big)
+                          #   + chunk_hierarchies / chunk_relationships (Small-to-Big)
+                          #   + semantic_cache (semantic cache)
 fluxindex-entitygraph.db  # Entity graph (GraphRAG)
-fluxindex-cache.db        # Semantic cache
 ```
+
+(Registering `AddSQLiteGraphStore` / `AddSQLiteSemanticCache` yourself lets you point them at
+separate files — `fluxindex-graph.db`, `fluxindex-cache.db` — which is what their defaults do outside
+the builder.)
+
+### What Build() provisions
+
+`Build()` creates the schema for **every component the builder enabled** — vector store, graph store,
+entity graph and semantic cache — before it returns. You do not call `EnsureCreated` or run
+migrations yourself.
+
+Provisioning creates only the tables each component owns and leaves everything else in the database
+alone, so pointing FluxIndex at a database that already holds your application's tables is supported
+(a dedicated database is still the tidier choice for derived data). If some — but not all — of a
+component's tables already exist, `Build()` fails with an actionable error rather than half-repairing
+the schema.
+
+Opt out per component when you manage the schema externally:
+
+```csharp
+var builder = FluxIndexContext.CreateBuilder().UsePostgreSQL(conn);
+builder.Options.VectorStore.EnableAutoMigration = false;  // vector store
+builder.Options.GraphStore.AutoMigrate = false;           // graph store
+builder.Options.SemanticCache.AutoMigrate = false;        // semantic cache
+var context = builder.AddPostgreSQLStorage().Build();
+```
+
+> Before 0.21.2 (PostgreSQL) and 0.21.3 (SQLite) only the vector store was provisioned on this path;
+> the other components' schemas were never created and their first operation failed on a missing
+> table. Upgrade if you use graph, GraphRAG or the semantic cache.
 
 ### In-Memory Testing
 
