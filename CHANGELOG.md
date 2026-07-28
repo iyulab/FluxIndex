@@ -38,6 +38,17 @@ concurrency test. The probe now enlists `CurrentTransaction` when one is open.
 tables plus a fingerprint-based re-init added in 0.20.2) and is deliberately left alone — its schema
 is not fully EF-modelled, so the shared provisioner does not apply.
 
+**Upgrade note — when the partial-schema guard can fire.** The components swept in 0.21.2–0.21.4 own
+two or more tables each, so the "partially present" error is now reachable where it was not in
+0.21.1. Upgrading alone cannot trigger it: no release has ever shipped one of these components with
+fewer tables than it has today, so an older database is either complete or empty for a given
+component. The realistic trigger is a **name collision** in a database shared with your own schema —
+an existing `cache_stats`, `chunk_relationships` or similarly named table makes that component see a
+partial schema and refuse to start. The message names the tables it found and the ones it wants; the
+remedies are to give the index its own database or schema, rename the colliding table, or turn that
+component's auto-migration off (`EnableAutoMigration` for the vector store, `AutoMigrate` for graph
+and cache) and manage its schema yourself.
+
 ---
 
 ## [0.21.3] - 2026-07-28

@@ -192,10 +192,18 @@ the database holds *any* relation — `Build()` succeeded, nothing was created, 
 write failed with `42P01: relation "vectors" does not exist`. Fresh databases were unaffected, so the
 failure only appeared in production. If you hit that, upgrade to 0.21.1; no code change is needed.
 
-A half-built schema (some FluxIndex relations present, some missing) is refused at `Build()` with an
-actionable exception instead of being silently half-repaired. The vector context currently owns a
-single relation, so this guard cannot trigger yet — it becomes live when the context owns more than
-one.
+A half-built schema (some of a component's relations present, some missing) is refused at `Build()`
+with an actionable exception instead of being silently half-repaired. The vector store owns a single
+relation, so the guard cannot trigger there, but the components added to the sweep in 0.21.2–0.21.4
+own two or more each (graph: `chunk_hierarchies` + `chunk_relationships`; semantic cache:
+`semantic_cache` + `cache_stats`; quantized store: `vectors` + `quantized_vectors`; entity graph:
+four), and the guard is live for them.
+
+No FluxIndex release has ever shipped one of those components with fewer tables than it has today, so
+upgrading cannot by itself produce a partial schema. The realistic trigger is a **name collision** in
+a shared database — if your own schema already contains, say, a `cache_stats` table, the semantic
+cache sees one of its two relations present and refuses to start rather than creating the other
+alongside a table it does not own. Give the index its own database or schema in that case.
 
 A dedicated database for the index remains a perfectly good choice — derived data has its own
 lifecycle (retention, rebuild, dump/restore cadence). Sharing is supported, not recommended.
