@@ -38,12 +38,24 @@ public static class FluxIndexContextBuilderExtensions
             if (graphProvider == "sqlite")
             {
                 RegisterSQLiteGraphStore(services, options);
+
+                // The graph stores migrate from hosted services, which Build() never starts — it
+                // builds its own provider and runs IStorageInitializer only. Register the same
+                // routines as initializers so the builder path provisions them too.
+                services.AddSingleton<IStorageInitializer>(sp =>
+                    sp.GetRequiredService<SQLiteGraphSchemaInitializer>());
+                services.AddSingleton<IStorageInitializer>(sp =>
+                    sp.GetRequiredService<SQLiteEntityGraphSchemaInitializer>());
             }
 
             var cacheProvider = options.SemanticCache.Provider?.ToLowerInvariant();
             if (cacheProvider == "sqlite")
             {
                 RegisterSQLiteSemanticCache(services, options);
+
+                // Same reason as the graph stores above.
+                services.AddSingleton<IStorageInitializer>(sp =>
+                    sp.GetRequiredService<SQLiteCacheSchemaInitializer>());
             }
         });
 

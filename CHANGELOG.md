@@ -9,6 +9,35 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.21.3] - 2026-07-28
+
+### Fixed — the SQLite graph store, entity graph and semantic cache were never provisioned by the SDK builder
+
+The SQLite side had the same defect 0.21.2 fixed for PostgreSQL, and it reaches further because SQLite
+is the default local stack: `UseSQLite(path)` / `UseLocalStorage(path)` enable the vector store, the
+graph store, the entity graph and the semantic cache, but only the vector store was provisioned by
+`Build()`. The other three migrated from `IHostedService` implementations, which the builder never
+starts. A freshly built database contained exactly one table — `vectors` — and the first graph,
+GraphRAG or semantic-cache operation failed on a missing table.
+
+Each component's migration now lives in one routine shared by both paths: an `IStorageInitializer`
+the builder runs at `Build()`, wrapped by the existing hosted service for consumers registering the
+stores directly. Provisioning creates only the tables each component owns (`SQLiteSchemaProvisioner`),
+so components sharing one database file no longer suppress each other — `EnsureCreated` skipped
+schema creation as soon as whichever component ran first had created anything, which is also why a
+database shared with the consumer's own tables got nothing.
+
+Regression coverage runs a real `UseSQLite(...).AddSQLiteStorage().Build()` and asserts each enabled
+component's tables exist, including the derived entity-graph database file. It needs no container, so
+unlike the PostgreSQL equivalent it runs in CI.
+
+**Known remaining gap.** `AddSQLiteVecVectorStore`, `AddSQLiteQuantizedVectorStore`,
+`AddPostgreSQLEntityGraph` and `AddPostgreSQLQuantizedVectorStore` are reachable only by direct
+registration, not from the builder, and are still hosted-service-only (the PostgreSQL quantized store
+has no provisioning at all). Tracked separately.
+
+---
+
 ## [0.21.2] - 2026-07-28
 
 ### Fixed — the PostgreSQL graph store and semantic cache were never provisioned by the SDK builder

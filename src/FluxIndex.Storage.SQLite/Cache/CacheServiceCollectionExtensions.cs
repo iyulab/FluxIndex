@@ -1,4 +1,5 @@
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.SDK;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -36,7 +37,8 @@ public static class CacheServiceCollectionExtensions
         services.AddScoped<ISemanticCache, SQLiteSemanticCache>();
         services.AddScoped<SQLiteSemanticCache>();
 
-        // 마이그레이션 서비스
+        // 마이그레이션 — 두 경로(SDK 빌더 Build(), 앱 호스트 시작)가 같은 루틴을 공유한다.
+        services.AddSingleton<SQLiteCacheSchemaInitializer>();
         services.AddHostedService<SQLiteCacheMigrationService>();
 
         return services;
@@ -71,36 +73,34 @@ public static class CacheServiceCollectionExtensions
 }
 
 /// <summary>
-/// SQLite Cache 마이그레이션 서비스
+/// Provisions the SQLite semantic cache schema. An <see cref="IStorageInitializer"/> so the SDK
+/// builder runs it during Build(), hosted by <see cref="SQLiteCacheMigrationService"/> for consumers
+/// that register the cache directly into an application's service collection.
 /// </summary>
-internal sealed partial class SQLiteCacheMigrationService : IHostedService
+internal sealed partial class SQLiteCacheSchemaInitializer : IStorageInitializer
 {
-    private readonly IServiceProvider _serviceProvider;
-    private readonly ILogger<SQLiteCacheMigrationService> _logger;
+    private readonly ILogger<SQLiteCacheSchemaInitializer> _logger;
 
-    public SQLiteCacheMigrationService(
-        IServiceProvider serviceProvider,
-        ILogger<SQLiteCacheMigrationService> logger)
+    public SQLiteCacheSchemaInitializer(ILogger<SQLiteCacheSchemaInitializer> logger)
     {
-        _serviceProvider = serviceProvider;
         _logger = logger;
     }
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    public void InitializeSync(IServiceProvider serviceProvider)
     {
         LogMigrationStarting(_logger);
 
-        using var scope = _serviceProvider.CreateScope();
+        using var scope = serviceProvider.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<SQLiteCacheDbContext>();
 
         try
         {
-            await context.Database.EnsureCreatedAsync(cancellationToken);
+            SQLiteSchemaProvisioner.Provision(context);
 
             var options = scope.ServiceProvider.GetRequiredService<IOptions<SQLiteCacheOptions>>().Value;
             if (!options.UseInMemory)
             {
-                await ApplyCachePragmasAsync(context, options, cancellationToken);
+                ApplyCachePragmas(context, options);
             }
 
             LogMigrationCompleted(_logger);
@@ -112,20 +112,17 @@ internal sealed partial class SQLiteCacheMigrationService : IHostedService
         }
     }
 
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-
-    private async Task ApplyCachePragmasAsync(
+    private void ApplyCachePragmas(
         SQLiteCacheDbContext context,
-        SQLiteCacheOptions options,
-        CancellationToken cancellationToken)
+        SQLiteCacheOptions options)
     {
-        await context.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL", cancellationToken);
+        context.Database.ExecuteSqlRaw("PRAGMA journal_mode=WAL");
 
 #pragma warning disable EF1002
-        await context.Database.ExecuteSqlRawAsync(
-            $"PRAGMA synchronous={options.Synchronous.ToString().ToUpperInvariant()}", cancellationToken);
-        await context.Database.ExecuteSqlRawAsync(
-            $"PRAGMA cache_size={options.CacheSize}", cancellationToken);
+        context.Database.ExecuteSqlRaw(
+            $"PRAGMA synchronous={options.Synchronous.ToString().ToUpperInvariant()}");
+        context.Database.ExecuteSqlRaw(
+            $"PRAGMA cache_size={options.CacheSize}");
 #pragma warning restore EF1002
 
         LogPragmaApplied(_logger);
@@ -146,4 +143,30 @@ internal sealed partial class SQLiteCacheMigrationService : IHostedService
     private static partial void LogPragmaApplied(ILogger logger);
 
     #endregion
+}
+
+/// <summary>
+/// Runs <see cref="SQLiteCacheSchemaInitializer"/> at host start for consumers that register the
+/// semantic cache directly (the SDK builder path runs the initializer itself during Build()).
+/// </summary>
+internal sealed class SQLiteCacheMigrationService : IHostedService
+{
+    private readonly IServiceProvider _serviceProvider;
+    private readonly SQLiteCacheSchemaInitializer _initializer;
+
+    public SQLiteCacheMigrationService(
+        IServiceProvider serviceProvider,
+        SQLiteCacheSchemaInitializer initializer)
+    {
+        _serviceProvider = serviceProvider;
+        _initializer = initializer;
+    }
+
+    public Task StartAsync(CancellationToken cancellationToken)
+    {
+        _initializer.InitializeSync(_serviceProvider);
+        return Task.CompletedTask;
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }

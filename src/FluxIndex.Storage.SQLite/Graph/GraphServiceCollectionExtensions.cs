@@ -1,4 +1,5 @@
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.SDK;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -36,7 +37,8 @@ public static class GraphServiceCollectionExtensions
         services.AddScoped<IChunkHierarchyRepository, SQLiteGraphStore>();
         services.AddScoped<SQLiteGraphStore>();
 
-        // 마이그레이션 서비스
+        // 마이그레이션 — 두 경로(SDK 빌더 Build(), 앱 호스트 시작)가 같은 루틴을 공유한다.
+        services.AddSingleton<SQLiteGraphSchemaInitializer>();
         services.AddHostedService<SQLiteGraphMigrationService>();
 
         return services;
@@ -94,7 +96,8 @@ public static class GraphServiceCollectionExtensions
         services.AddScoped<IGraphStore, SQLiteEntityGraphStore>();
         services.AddScoped<SQLiteEntityGraphStore>();
 
-        // 마이그레이션 서비스
+        // 마이그레이션 — 두 경로(SDK 빌더 Build(), 앱 호스트 시작)가 같은 루틴을 공유한다.
+        services.AddSingleton<SQLiteEntityGraphSchemaInitializer>();
         services.AddHostedService<SQLiteEntityGraphMigrationService>();
 
         return services;
@@ -129,36 +132,34 @@ public static class GraphServiceCollectionExtensions
 }
 
 /// <summary>
-/// SQLite Entity Graph 마이그레이션 서비스
+/// Provisions the SQLite entity graph schema. An <see cref="IStorageInitializer"/> so the SDK builder
+/// runs it during Build(), hosted by <see cref="SQLiteEntityGraphMigrationService"/> for consumers
+/// that register the store directly into an application's service collection.
 /// </summary>
-internal sealed partial class SQLiteEntityGraphMigrationService : IHostedService
+internal sealed partial class SQLiteEntityGraphSchemaInitializer : IStorageInitializer
 {
-    private readonly IServiceProvider _serviceProvider;
-    private readonly ILogger<SQLiteEntityGraphMigrationService> _logger;
+    private readonly ILogger<SQLiteEntityGraphSchemaInitializer> _logger;
 
-    public SQLiteEntityGraphMigrationService(
-        IServiceProvider serviceProvider,
-        ILogger<SQLiteEntityGraphMigrationService> logger)
+    public SQLiteEntityGraphSchemaInitializer(ILogger<SQLiteEntityGraphSchemaInitializer> logger)
     {
-        _serviceProvider = serviceProvider;
         _logger = logger;
     }
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    public void InitializeSync(IServiceProvider serviceProvider)
     {
         LogMigrationStarting(_logger);
 
-        using var scope = _serviceProvider.CreateScope();
+        using var scope = serviceProvider.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<SQLiteEntityGraphDbContext>();
 
         try
         {
-            await context.Database.EnsureCreatedAsync(cancellationToken);
+            SQLiteSchemaProvisioner.Provision(context);
 
             var options = scope.ServiceProvider.GetRequiredService<IOptions<SQLiteEntityGraphOptions>>().Value;
             if (!options.UseInMemory)
             {
-                await context.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL", cancellationToken);
+                context.Database.ExecuteSqlRaw("PRAGMA journal_mode=WAL");
             }
 
             LogMigrationCompleted(_logger);
@@ -169,8 +170,6 @@ internal sealed partial class SQLiteEntityGraphMigrationService : IHostedService
             throw;
         }
     }
-
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
     #region LoggerMessage Definitions
 
@@ -187,36 +186,60 @@ internal sealed partial class SQLiteEntityGraphMigrationService : IHostedService
 }
 
 /// <summary>
-/// SQLite Graph 마이그레이션 서비스
+/// Runs <see cref="SQLiteEntityGraphSchemaInitializer"/> at host start for consumers that register
+/// the entity graph directly (the SDK builder path runs the initializer itself during Build()).
 /// </summary>
-internal sealed partial class SQLiteGraphMigrationService : IHostedService
+internal sealed class SQLiteEntityGraphMigrationService : IHostedService
 {
     private readonly IServiceProvider _serviceProvider;
-    private readonly ILogger<SQLiteGraphMigrationService> _logger;
+    private readonly SQLiteEntityGraphSchemaInitializer _initializer;
 
-    public SQLiteGraphMigrationService(
+    public SQLiteEntityGraphMigrationService(
         IServiceProvider serviceProvider,
-        ILogger<SQLiteGraphMigrationService> logger)
+        SQLiteEntityGraphSchemaInitializer initializer)
     {
         _serviceProvider = serviceProvider;
+        _initializer = initializer;
+    }
+
+    public Task StartAsync(CancellationToken cancellationToken)
+    {
+        _initializer.InitializeSync(_serviceProvider);
+        return Task.CompletedTask;
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+}
+
+/// <summary>
+/// Provisions the SQLite graph schema. An <see cref="IStorageInitializer"/> so the SDK builder runs it
+/// during Build(), hosted by <see cref="SQLiteGraphMigrationService"/> for consumers that register the
+/// store directly into an application's service collection.
+/// </summary>
+internal sealed partial class SQLiteGraphSchemaInitializer : IStorageInitializer
+{
+    private readonly ILogger<SQLiteGraphSchemaInitializer> _logger;
+
+    public SQLiteGraphSchemaInitializer(ILogger<SQLiteGraphSchemaInitializer> logger)
+    {
         _logger = logger;
     }
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    public void InitializeSync(IServiceProvider serviceProvider)
     {
         LogMigrationStarting(_logger);
 
-        using var scope = _serviceProvider.CreateScope();
+        using var scope = serviceProvider.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<SQLiteGraphDbContext>();
 
         try
         {
-            await context.Database.EnsureCreatedAsync(cancellationToken);
+            SQLiteSchemaProvisioner.Provision(context);
 
             var options = scope.ServiceProvider.GetRequiredService<IOptions<SQLiteGraphOptions>>().Value;
             if (!options.UseInMemory)
             {
-                await ApplyGraphPragmasAsync(context, options, cancellationToken);
+                ApplyGraphPragmas(context, options);
             }
 
             LogMigrationCompleted(_logger);
@@ -228,20 +251,17 @@ internal sealed partial class SQLiteGraphMigrationService : IHostedService
         }
     }
 
-    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-
-    private async Task ApplyGraphPragmasAsync(
+    private void ApplyGraphPragmas(
         SQLiteGraphDbContext context,
-        SQLiteGraphOptions options,
-        CancellationToken cancellationToken)
+        SQLiteGraphOptions options)
     {
-        await context.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL", cancellationToken);
+        context.Database.ExecuteSqlRaw("PRAGMA journal_mode=WAL");
 
 #pragma warning disable EF1002
-        await context.Database.ExecuteSqlRawAsync(
-            $"PRAGMA synchronous={options.Synchronous.ToString().ToUpperInvariant()}", cancellationToken);
-        await context.Database.ExecuteSqlRawAsync(
-            $"PRAGMA cache_size={options.CacheSize}", cancellationToken);
+        context.Database.ExecuteSqlRaw(
+            $"PRAGMA synchronous={options.Synchronous.ToString().ToUpperInvariant()}");
+        context.Database.ExecuteSqlRaw(
+            $"PRAGMA cache_size={options.CacheSize}");
 #pragma warning restore EF1002
 
         LogPragmaApplied(_logger);
@@ -262,4 +282,30 @@ internal sealed partial class SQLiteGraphMigrationService : IHostedService
     private static partial void LogPragmaApplied(ILogger logger);
 
     #endregion
+}
+
+/// <summary>
+/// Runs <see cref="SQLiteGraphSchemaInitializer"/> at host start for consumers that register the
+/// graph store directly (the SDK builder path runs the initializer itself during Build()).
+/// </summary>
+internal sealed class SQLiteGraphMigrationService : IHostedService
+{
+    private readonly IServiceProvider _serviceProvider;
+    private readonly SQLiteGraphSchemaInitializer _initializer;
+
+    public SQLiteGraphMigrationService(
+        IServiceProvider serviceProvider,
+        SQLiteGraphSchemaInitializer initializer)
+    {
+        _serviceProvider = serviceProvider;
+        _initializer = initializer;
+    }
+
+    public Task StartAsync(CancellationToken cancellationToken)
+    {
+        _initializer.InitializeSync(_serviceProvider);
+        return Task.CompletedTask;
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }
