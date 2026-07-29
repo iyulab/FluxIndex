@@ -557,7 +557,7 @@ public class QdrantVectorStoreIntegrationTests : IAsyncLifetime
         // Search using BM25 only
         var bm25Results = await bm25Retriever.SearchAsync(
             "machine learning",
-            new SparseSearchOptions { MaxResults = 3 });
+            new KeywordSearchOptions { MaxResults = 3 });
 
         // Assert
         bm25Results.Should().NotBeEmpty();

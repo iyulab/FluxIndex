@@ -9,23 +9,24 @@ namespace FluxIndex.Storage.Qdrant;
 
 /// <summary>
 /// Qdrant-backed hybrid search service combining vector similarity search with BM25 keyword search.
-/// Uses Qdrant for vector operations and in-memory BM25 index for sparse retrieval.
+/// Uses Qdrant for vector operations and the registered IKeywordSearchService for sparse retrieval
+/// (in-memory BM25 by default, a persistent backend when one is registered).
 /// </summary>
 public partial class QdrantHybridSearchService : IHybridSearchService
 {
     private readonly QdrantVectorStore _vectorStore;
-    private readonly BM25SparseRetriever _bm25Retriever;
+    private readonly IKeywordSearchService _keywordSearchService;
     private readonly IEmbeddingService _embeddingService;
     private readonly ILogger<QdrantHybridSearchService> _logger;
 
     public QdrantHybridSearchService(
         QdrantVectorStore vectorStore,
-        BM25SparseRetriever bm25Retriever,
+        IKeywordSearchService keywordSearchService,
         IEmbeddingService embeddingService,
         ILogger<QdrantHybridSearchService> logger)
     {
         _vectorStore = vectorStore ?? throw new ArgumentNullException(nameof(vectorStore));
-        _bm25Retriever = bm25Retriever ?? throw new ArgumentNullException(nameof(bm25Retriever));
+        _keywordSearchService = keywordSearchService ?? throw new ArgumentNullException(nameof(keywordSearchService));
         _embeddingService = embeddingService ?? throw new ArgumentNullException(nameof(embeddingService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -45,7 +46,7 @@ public partial class QdrantHybridSearchService : IHybridSearchService
         var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
 
         var vectorTask = _vectorStore.SearchAsync(queryEmbedding, candidateCount, 0.0f, filters: null, cancellationToken);
-        var bm25Task = _bm25Retriever.SearchAsync(query, new SparseSearchOptions
+        var bm25Task = _keywordSearchService.SearchAsync(query, new KeywordSearchOptions
         {
             MaxResults = candidateCount,
             MinScore = 0.0
@@ -194,7 +195,7 @@ public partial class QdrantHybridSearchService : IHybridSearchService
     /// </summary>
     private static List<HybridSearchResult> FuseResultsRRF(
         List<DocumentChunk> vectorResults,
-        List<SparseSearchResult> bm25Results,
+        List<KeywordSearchResult> bm25Results,
         HybridSearchOptions options)
     {
         var k = options.RrfK;

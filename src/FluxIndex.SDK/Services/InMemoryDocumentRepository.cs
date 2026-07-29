@@ -71,14 +71,4 @@ public class InMemoryDocumentRepository : IDocumentRepository
     {
         return Task.FromResult(_documents.Count);
     }
-
-    public Task<IEnumerable<Document>> SearchByKeywordAsync(string keyword, int maxResults, CancellationToken cancellationToken = default)
-    {
-        var results = _documents.Values
-            .Where(d => d.Content?.Contains(keyword, StringComparison.OrdinalIgnoreCase) == true ||
-                       d.FileName?.Contains(keyword, StringComparison.OrdinalIgnoreCase) == true)
-            .Take(maxResults);
-        
-        return Task.FromResult<IEnumerable<Document>>(results.ToList());
-    }
 }

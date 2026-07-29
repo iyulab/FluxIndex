@@ -17,7 +17,7 @@ namespace FluxIndex.Core.Tests.Services;
 public class HybridSearchQuantizationTests
 {
     private readonly IVectorStore _mockVectorStore;
-    private readonly ISparseRetriever _mockSparseRetriever;
+    private readonly IKeywordSearchService _mockKeywordSearchService;
     private readonly IEmbeddingService _mockEmbeddingService;
     private readonly IVectorQuantizer _mockQuantizer;
     private readonly ILogger<HybridSearchService> _logger;
@@ -25,7 +25,7 @@ public class HybridSearchQuantizationTests
     public HybridSearchQuantizationTests()
     {
         _mockVectorStore = Substitute.For<IVectorStore>();
-        _mockSparseRetriever = Substitute.For<ISparseRetriever>();
+        _mockKeywordSearchService = Substitute.For<IKeywordSearchService>();
         _mockEmbeddingService = Substitute.For<IEmbeddingService>();
         _mockQuantizer = Substitute.For<IVectorQuantizer>();
         _logger = NullLogger<HybridSearchService>.Instance;
@@ -39,7 +39,7 @@ public class HybridSearchQuantizationTests
         // Arrange & Act
         var service = new HybridSearchService(
             _mockVectorStore,
-            _mockSparseRetriever,
+            _mockKeywordSearchService,
             _mockEmbeddingService,
             _mockQuantizer,
             _logger);
@@ -54,7 +54,7 @@ public class HybridSearchQuantizationTests
         // Arrange & Act
         var service = new HybridSearchService(
             _mockVectorStore,
-            _mockSparseRetriever,
+            _mockKeywordSearchService,
             _mockEmbeddingService,
             null,
             _logger);
@@ -69,7 +69,7 @@ public class HybridSearchQuantizationTests
         // Arrange & Act
         var service = new HybridSearchService(
             _mockVectorStore,
-            _mockSparseRetriever,
+            _mockKeywordSearchService,
             _mockEmbeddingService,
             _logger);
 
@@ -89,7 +89,7 @@ public class HybridSearchQuantizationTests
 
         var service = new HybridSearchService(
             (IVectorStore)mockQuantizedStore,
-            _mockSparseRetriever,
+            _mockKeywordSearchService,
             _mockEmbeddingService,
             _mockQuantizer,
             _logger);
@@ -104,7 +104,7 @@ public class HybridSearchQuantizationTests
         // Arrange
         var service = new HybridSearchService(
             _mockVectorStore, // regular IVectorStore, not IQuantizedVectorStore
-            _mockSparseRetriever,
+            _mockKeywordSearchService,
             _mockEmbeddingService,
             _mockQuantizer,
             _logger);
@@ -121,7 +121,7 @@ public class HybridSearchQuantizationTests
 
         var service = new HybridSearchService(
             (IVectorStore)mockQuantizedStore,
-            _mockSparseRetriever,
+            _mockKeywordSearchService,
             _mockEmbeddingService,
             null, // no quantizer
             _logger);
@@ -167,11 +167,11 @@ public class HybridSearchQuantizationTests
                 0.0f,
                 Arg.Any<CancellationToken>()).Returns(searchResults);
 
-        _mockSparseRetriever.SearchAsync(query, Arg.Any<SparseSearchOptions>(), Arg.Any<CancellationToken>()).Returns(new List<SparseSearchResult>());
+        _mockKeywordSearchService.SearchAsync(query, Arg.Any<KeywordSearchOptions>(), Arg.Any<CancellationToken>()).Returns(new List<KeywordSearchResult>());
 
         var service = new HybridSearchService(
             (IVectorStore)mockQuantizedStore,
-            _mockSparseRetriever,
+            _mockKeywordSearchService,
             _mockEmbeddingService,
             _mockQuantizer,
             _logger);
@@ -220,11 +220,11 @@ public class HybridSearchQuantizationTests
         ((IVectorStore)mockQuantizedStore).SearchAsync(embedding, Arg.Any<int>(), Arg.Any<float>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
             .Returns(vectorResults);
 
-        _mockSparseRetriever.SearchAsync(query, Arg.Any<SparseSearchOptions>(), Arg.Any<CancellationToken>()).Returns(new List<SparseSearchResult>());
+        _mockKeywordSearchService.SearchAsync(query, Arg.Any<KeywordSearchOptions>(), Arg.Any<CancellationToken>()).Returns(new List<KeywordSearchResult>());
 
         var service = new HybridSearchService(
             (IVectorStore)mockQuantizedStore,
-            _mockSparseRetriever,
+            _mockKeywordSearchService,
             _mockEmbeddingService,
             _mockQuantizer,
             _logger);
@@ -282,11 +282,11 @@ public class HybridSearchQuantizationTests
         ((IVectorStore)mockQuantizedStore).SearchAsync(embedding, Arg.Any<int>(), Arg.Any<float>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
             .Returns(regularResults);
 
-        _mockSparseRetriever.SearchAsync(query, Arg.Any<SparseSearchOptions>(), Arg.Any<CancellationToken>()).Returns(new List<SparseSearchResult>());
+        _mockKeywordSearchService.SearchAsync(query, Arg.Any<KeywordSearchOptions>(), Arg.Any<CancellationToken>()).Returns(new List<KeywordSearchResult>());
 
         var service = new HybridSearchService(
             (IVectorStore)mockQuantizedStore,
-            _mockSparseRetriever,
+            _mockKeywordSearchService,
             _mockEmbeddingService,
             _mockQuantizer,
             _logger);
@@ -339,11 +339,11 @@ public class HybridSearchQuantizationTests
                 Arg.Any<float>(),
                 Arg.Any<CancellationToken>()).Returns(new List<(DocumentChunk, float)>());
 
-        _mockSparseRetriever.SearchAsync(query, Arg.Any<SparseSearchOptions>(), Arg.Any<CancellationToken>()).Returns(new List<SparseSearchResult>());
+        _mockKeywordSearchService.SearchAsync(query, Arg.Any<KeywordSearchOptions>(), Arg.Any<CancellationToken>()).Returns(new List<KeywordSearchResult>());
 
         var service = new HybridSearchService(
             (IVectorStore)mockQuantizedStore,
-            _mockSparseRetriever,
+            _mockKeywordSearchService,
             _mockEmbeddingService,
             _mockQuantizer,
             _logger);
@@ -395,11 +395,11 @@ public class HybridSearchQuantizationTests
                 0.5f, // Custom min score
                 Arg.Any<CancellationToken>()).Returns(new List<(DocumentChunk, float)>());
 
-        _mockSparseRetriever.SearchAsync(query, Arg.Any<SparseSearchOptions>(), Arg.Any<CancellationToken>()).Returns(new List<SparseSearchResult>());
+        _mockKeywordSearchService.SearchAsync(query, Arg.Any<KeywordSearchOptions>(), Arg.Any<CancellationToken>()).Returns(new List<KeywordSearchResult>());
 
         var service = new HybridSearchService(
             (IVectorStore)mockQuantizedStore,
-            _mockSparseRetriever,
+            _mockKeywordSearchService,
             _mockEmbeddingService,
             _mockQuantizer,
             _logger);

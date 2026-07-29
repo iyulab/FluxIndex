@@ -2,6 +2,7 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Constants;
 using FluxIndex.Core.Services;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 
 namespace FluxIndex.Storage.Qdrant;
@@ -148,12 +149,15 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<QdrantVectorStore>();
         services.AddSingleton<IVectorStore>(sp => sp.GetRequiredService<QdrantVectorStore>());
 
-        // Register BM25 sparse retriever
+        // Register BM25 keyword search. The interface resolves to the same instance so the index the
+        // ingestion side fills is the index the search side reads — two instances would silently
+        // search an empty index. TryAdd leaves a persistent backend in place if one is registered.
         services.AddSingleton(sp =>
         {
             var logger = sp.GetRequiredService<ILogger<BM25SparseRetriever>>();
             return new BM25SparseRetriever(logger, bm25PersistencePath);
         });
+        services.TryAddSingleton<IKeywordSearchService>(sp => sp.GetRequiredService<BM25SparseRetriever>());
 
         // Register hybrid search service
         services.AddSingleton<IHybridSearchService, QdrantHybridSearchService>();

@@ -87,6 +87,36 @@ public class SQLiteBuilderPathProvisioningTests : IDisposable
         TablesIn(_dbPath).Should().Contain("chunk_hierarchies");
     }
 
+    /// <summary>
+    /// 0.21.1 이 PostgreSQL 에서 닫은 결함의 SQLite 판. 소비앱이 자기 테이블을 이미 가진 데이터베이스를
+    /// 넘기면 EF <c>EnsureCreated()</c> 는 <c>HasTables()</c> 에서 스키마 생성을 <b>전부</b> 건너뛴다 —
+    /// Build() 는 성공하고 첫 쓰기가 실패한다. 빈 픽스처로는 절대 드러나지 않는 구간이다.
+    /// </summary>
+    [Fact]
+    public void Build_OnADatabaseThatAlreadyHasConsumerTables_StillProvisionsOurSchema()
+    {
+        using (var connection = new SqliteConnection($"Data Source={_dbPath}"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT)";
+            command.ExecuteNonQuery();
+        }
+
+        FluxIndexContext.CreateBuilder()
+            .UseSQLite(_dbPath)
+            .UseInMemoryEmbedding()
+            .AddSQLiteStorage()
+            .Build();
+
+        var tables = TablesIn(_dbPath);
+
+        tables.Should().Contain("app_settings", "the consumer's own table must be left alone");
+        tables.Should().Contain("vectors", "a pre-existing unrelated table must not suppress our schema");
+        tables.Should().Contain("chunk_hierarchies");
+        tables.Should().Contain("semantic_cache");
+    }
+
     private static List<string> TablesIn(string databasePath)
     {
         var tables = new List<string>();

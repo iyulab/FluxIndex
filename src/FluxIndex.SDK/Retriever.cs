@@ -34,6 +34,10 @@ public partial class Retriever
     private readonly IHybridSearchService? _hybridSearchService;
     private readonly IGraphRAGService? _graphRAGService;
 
+    // The keyword leg's single backend. Both KeywordSearchAsync (v1) and the hybrid path read this
+    // one index — two implementations of "the keyword index" is how they drift apart.
+    private readonly IKeywordSearchService? _keywordSearchService;
+
     // Phase 7.3: In-memory embedding cache for same-query optimization
     private readonly Dictionary<string, float[]> _embeddingCache = new();
     private readonly object _embeddingCacheLock = new();
@@ -67,7 +71,8 @@ public partial class Retriever
         IVectorQuantizer? vectorQuantizer = null,
         ILogger<Retriever>? logger = null,
         IHybridSearchService? hybridSearchService = null,
-        IGraphRAGService? graphRAGService = null)
+        IGraphRAGService? graphRAGService = null,
+        IKeywordSearchService? keywordSearchService = null)
     {
         _vectorStore = vectorStore;
         _documentRepository = documentRepository;
@@ -79,6 +84,7 @@ public partial class Retriever
         _logger = logger ?? NullLogger<Retriever>.Instance;
         _hybridSearchService = hybridSearchService;
         _graphRAGService = graphRAGService;
+        _keywordSearchService = keywordSearchService;
 
         // Bind embedding identity to vector store for correct collection resolution
         _vectorStore.BindIdentity(_embeddingService.GetIdentity());
@@ -715,8 +721,17 @@ public partial class Retriever
                 Message = "Searching document repository"
             });
 
-            // Search in document repository
-            var documents = await _documentRepository.SearchByKeywordAsync(keyword, maxResults, cancellationToken);
+            // The keyword index is the authority here. This used to run through
+            // IDocumentRepository.SearchByKeywordAsync plus a substring scan over each document's
+            // chunks, which meant the v1 entry point had its own notion of "the keyword index" —
+            // process-local, unranked, and empty after a restart even when a persistent keyword
+            // backend was registered. One backend, two entry points.
+            var keywordMatches = _keywordSearchService is null
+                ? []
+                : await _keywordSearchService.SearchAsync(
+                    keyword,
+                    new Core.Application.Interfaces.KeywordSearchOptions { MaxResults = maxResults },
+                    cancellationToken);
 
             // Phase 3: 진행률 보고 - 청크 처리 (50%)
             progress?.Report(new SearchProgress
@@ -727,28 +742,19 @@ public partial class Retriever
                 TotalSteps = 5,
                 ProgressPercentage = 50,
                 Status = "Processing",
-                Message = $"Processing {documents.Count()} documents for matching chunks"
+                Message = $"Processing {keywordMatches.Count} keyword matches"
             });
 
-            var results = new List<VectorSearchResult>();
-            foreach (var doc in documents)
+            var results = keywordMatches.Select(match => new VectorSearchResult
             {
-                // Get chunks for each document
-                var chunks = await _vectorStore.GetByDocumentIdAsync(doc.Id, cancellationToken);
-
-                // Filter chunks containing keyword
-                var matchingChunks = chunks.Where(c =>
-                    c.Content.Contains(keyword, StringComparison.OrdinalIgnoreCase));
-
-                results.AddRange(matchingChunks.Select(chunk => new VectorSearchResult
-                {
-                    DocumentChunk = chunk, // Use entity directly
-                    Score = CalculateKeywordScore(chunk.Content, keyword),
-                    Rank = 0,
-                    Distance = 0,
-                    Metadata = doc.Metadata.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)
-                }));
-            }
+                DocumentChunk = match.Chunk,
+                Score = (float)match.Score,
+                Rank = 0,
+                Distance = 0,
+                Metadata = match.Chunk.Metadata is null
+                    ? new Dictionary<string, object>()
+                    : new Dictionary<string, object>(match.Chunk.Metadata)
+            }).ToList();
 
             // Phase 3: 진행률 보고 - 필터링 (75%)
             progress?.Report(new SearchProgress
@@ -948,20 +954,6 @@ public partial class Retriever
     /// </summary>
     private static List<VectorSearchResult> ApplyFilter(List<VectorSearchResult> results, Dictionary<string, object> filter)
         => results.Where(r => VectorStoreBase.MatchesMetadataFilter(r.Metadata, filter)).ToList();
-
-    private static float CalculateKeywordScore(string content, string keyword)
-    {
-        var count = 0;
-        var index = 0;
-        while ((index = content.IndexOf(keyword, index, StringComparison.OrdinalIgnoreCase)) != -1)
-        {
-            count++;
-            index += keyword.Length;
-        }
-        
-        // Simple TF score
-        return (float)count / content.Split(' ').Length;
-    }
 
     private static IEnumerable<VectorSearchResult> CombineResults(
         IEnumerable<VectorSearchResult> vectorResults,

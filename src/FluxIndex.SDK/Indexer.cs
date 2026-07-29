@@ -28,6 +28,7 @@ public partial class Indexer
     private readonly IMetadataExtractor? _metadataExtractor;
     private readonly IGraphRAGService? _graphRAGService;
     private readonly IHybridSearchService? _hybridSearchService;
+    private readonly IKeywordSearchService? _keywordSearchService;
     private readonly ILogger<Indexer> _logger;
     private readonly IndexerOptions _options;
 
@@ -40,6 +41,12 @@ public partial class Indexer
     /// 하이브리드 검색 서비스 사용 가능 여부
     /// </summary>
     public bool SupportsHybridSearch => _hybridSearchService != null;
+
+    /// <summary>
+    /// Whether this indexer also maintains the keyword (sparse) index. When false, hybrid search
+    /// degrades to vector-only because nothing populates the keyword leg.
+    /// </summary>
+    public bool MaintainsKeywordIndex => _keywordSearchService != null && _options.IndexKeyword;
 
     // Phase 3: 이벤트 기반 모니터링
     /// <summary>
@@ -76,7 +83,8 @@ public partial class Indexer
         ILogger<Indexer>? logger = null,
         IMetadataExtractor? metadataExtractor = null,
         IGraphRAGService? graphRAGService = null,
-        IHybridSearchService? hybridSearchService = null)
+        IHybridSearchService? hybridSearchService = null,
+        IKeywordSearchService? keywordSearchService = null)
     {
         _vectorStore = vectorStore;
         _documentRepository = documentRepository;
@@ -85,6 +93,7 @@ public partial class Indexer
         _metadataExtractor = metadataExtractor;
         _graphRAGService = graphRAGService;
         _hybridSearchService = hybridSearchService;
+        _keywordSearchService = keywordSearchService;
         _options = options;
         _logger = logger ?? NullLogger<Indexer>.Instance;
 
@@ -397,6 +406,11 @@ public partial class Indexer
             // Store in vector store
             await _vectorStore.StoreBatchAsync(embeddedEntityChunks, cancellationToken);
 
+            // Keep the keyword index in step with the vector store. Without this the hybrid keyword
+            // leg is only ever populated by whatever searched in this process, so it is empty after a
+            // restart and hybrid silently degrades to vector-only.
+            await IndexKeywordAsync(embeddedEntityChunks, cancellationToken);
+
             // GraphRAG 인덱싱 (자동 감지)
             // - options?.EnableGraphRAG == null: 서비스가 등록되어 있으면 자동 활성화
             // - options?.EnableGraphRAG == true: 강제 활성화
@@ -680,6 +694,7 @@ public partial class Indexer
 
         // Delete existing chunks
         await _vectorStore.DeleteByDocumentIdAsync(documentId, cancellationToken);
+        await DeleteKeywordByDocumentIdAsync(documentId, cancellationToken);
 
         // Update document (Id should already match documentId)
         await _documentRepository.UpdateAsync(updatedDocument, cancellationToken);
@@ -690,6 +705,7 @@ public partial class Indexer
         {
             chunks = await GenerateEmbeddingsAsync(chunks, cancellationToken);
             await _vectorStore.StoreBatchAsync(chunks, cancellationToken);
+            await IndexKeywordAsync(chunks, cancellationToken);
         }
 
         LogSuccessfullyUpdatedDocument(_logger, documentId);
@@ -730,6 +746,7 @@ public partial class Indexer
         // Generate embeddings and store
         newChunks = await GenerateEmbeddingsAsync(newChunks, cancellationToken);
         await _vectorStore.StoreBatchAsync(newChunks, cancellationToken);
+        await IndexKeywordAsync(newChunks, cancellationToken);
 
         LogSuccessfullyAddedChunks(_logger, newChunks.Count, documentId);
     }
@@ -745,7 +762,9 @@ public partial class Indexer
 
         try
         {
-            // Delete chunks from vector store
+            // Delete chunks from vector store. The keyword index is dropped first because its own
+            // record of which chunks belong to the document is what makes the removal possible.
+            await DeleteKeywordByDocumentIdAsync(documentId, cancellationToken);
             await _vectorStore.DeleteByDocumentIdAsync(documentId, cancellationToken);
 
             // Delete document from repository
@@ -777,6 +796,10 @@ public partial class Indexer
         CancellationToken cancellationToken = default)
     {
         LogDeletingChunk(_logger, chunkId);
+
+        if (MaintainsKeywordIndex)
+            await _keywordSearchService!.DeleteChunkAsync(chunkId, cancellationToken);
+
         return await _vectorStore.DeleteAsync(chunkId, cancellationToken);
     }
 
@@ -802,8 +825,10 @@ public partial class Indexer
         chunksList = await GenerateEmbeddingsAsync(chunksList, cancellationToken);
 
         // Update chunks in vector store by re-storing them
+        await DeleteKeywordByDocumentIdAsync(documentId, cancellationToken);
         await _vectorStore.DeleteByDocumentIdAsync(documentId, cancellationToken);
         await _vectorStore.StoreBatchAsync(chunksList, cancellationToken);
+        await IndexKeywordAsync(chunksList, cancellationToken);
 
         LogSuccessfullyReindexedDocument(_logger, documentId, chunksList.Count);
     }
@@ -932,6 +957,51 @@ public partial class Indexer
             }
             return result;
         }
+        }
+    }
+
+    /// <summary>
+    /// Adds chunks to the keyword index when one is registered and <see cref="IndexerOptions.IndexKeyword"/>
+    /// is on. A keyword-index failure does not fail the indexing call — the vector store write has
+    /// already succeeded and rolling it back would lose the document — but it is logged as an error
+    /// because the document is now searchable by vector only.
+    /// </summary>
+    private async Task IndexKeywordAsync(
+        List<DocumentChunkEntity> chunks,
+        CancellationToken cancellationToken)
+    {
+        if (!MaintainsKeywordIndex || chunks.Count == 0)
+            return;
+
+        try
+        {
+            await _keywordSearchService!.IndexChunksAsync(chunks, cancellationToken);
+            LogKeywordIndexUpdated(_logger, chunks.Count);
+        }
+        catch (Exception ex)
+        {
+            LogKeywordIndexUpdateFailed(_logger, ex, chunks.Count);
+        }
+    }
+
+    /// <summary>
+    /// Removes a document's chunks from the keyword index. Skipping this leaves postings behind that
+    /// still match queries — a deleted document reappearing through the keyword leg alone.
+    /// </summary>
+    private async Task DeleteKeywordByDocumentIdAsync(
+        string documentId,
+        CancellationToken cancellationToken)
+    {
+        if (!MaintainsKeywordIndex)
+            return;
+
+        try
+        {
+            await _keywordSearchService!.DeleteByDocumentIdAsync(documentId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            LogKeywordIndexDeleteFailed(_logger, ex, documentId);
         }
     }
 
@@ -1422,6 +1492,15 @@ public partial class Indexer
     [LoggerMessage(Level = LogLevel.Information, Message = "Batch document indexing completed: {Successful}/{Total} documents succeeded, Time={Time}ms")]
     private static partial void LogBatchDocumentIndexingCompleted(ILogger logger, int successful, int total, double time);
 
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Keyword index updated with {ChunkCount} chunks")]
+    private static partial void LogKeywordIndexUpdated(ILogger logger, int chunkCount);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to add {ChunkCount} chunks to the keyword index; these chunks are searchable by vector similarity only and hybrid search will under-report keyword matches for them")]
+    private static partial void LogKeywordIndexUpdateFailed(ILogger logger, Exception exception, int chunkCount);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to remove document {DocumentId} from the keyword index; stale postings may still match queries")]
+    private static partial void LogKeywordIndexDeleteFailed(ILogger logger, Exception exception, string documentId);
+
     #endregion
 }
 
@@ -1435,6 +1514,15 @@ public class IndexerOptions
     public bool ParallelEmbedding { get; set; } = true;
     public int MaxParallelEmbedding { get; set; } = 4;
     public ChunkingStrategy ChunkingStrategy { get; set; } = ChunkingStrategy.Auto;
+
+    /// <summary>
+    /// Whether indexing also populates the keyword (sparse) index used by the hybrid keyword leg.
+    /// Default <c>true</c>. Set to <c>false</c> to restore the pre-0.22.0 behaviour where only the
+    /// vector store is written and hybrid search is effectively vector-only.
+    /// Has no effect when no <c>IKeywordSearchService</c> is registered.
+    /// </summary>
+    public bool IndexKeyword { get; set; } = true;
+
     public Dictionary<string, object>? CustomOptions { get; set; }
 }
 

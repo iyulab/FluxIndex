@@ -9,10 +9,10 @@ namespace FluxIndex.Core.Application.Interfaces;
 /// <remarks>
 /// When the registered vector store implements this, a hybrid search prefers it over
 /// a separately-registered <see cref="IHybridSearchService"/>. The reason is a population gap:
-/// <see cref="IHybridSearchService"/> requires an <c>ISparseRetriever</c> whose index is filled via
-/// <c>IndexDocumentAsync</c>/<c>IKeywordSearchService</c> — which ingestion-only pipelines do not call —
-/// whereas this native hybrid fuses over the keyword rows ingestion already wrote. Routing to the
-/// native capability yields real hybrid results over indexed data with no second index and no reindex.
+/// <see cref="IHybridSearchService"/> requires an <see cref="IKeywordSearchService"/> whose index is
+/// filled via <c>IndexChunkAsync</c> — which ingestion-only pipelines do not call — whereas this
+/// native hybrid fuses over the keyword rows ingestion already wrote. Routing to the native
+/// capability yields real hybrid results over indexed data with no second index and no reindex.
 /// </remarks>
 public interface INativeHybridSearch
 {

@@ -8,6 +8,7 @@ using CoreServiceExtensions = FluxIndex.Core.Application.Services.MetadataAugmen
 using FluxIndex.SDK.Configuration;
 using FluxIndex.SDK.Services;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using System;
@@ -188,6 +189,18 @@ public class FluxIndexContextBuilder
         _options.SemanticCache.Provider = "SQLite";
         _options.SemanticCache.UseVectorStoreConnection = true;
 
+        return this;
+    }
+
+    /// <summary>
+    /// Configures the indexer. Use this to reach options such as
+    /// <see cref="IndexerOptions.IndexKeyword"/>, chunk size and embedding parallelism.
+    /// </summary>
+    /// <param name="configure">Mutates the indexer options this builder will hand to the indexer.</param>
+    public FluxIndexContextBuilder WithIndexerOptions(Action<IndexerOptions> configure)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        configure(_indexerOptions);
         return this;
     }
 
@@ -694,7 +707,12 @@ public class FluxIndexContextBuilder
         }
 
         // Register hybrid search services
-        _services.AddScoped<ISparseRetriever, BM25SparseRetriever>();
+        // TryAdd, because storage registrations already ran above: a storage package that registered a
+        // persistent keyword backend must win over this in-memory fallback. AddSingleton here would be
+        // the later registration and would silently discard it, leaving the leg process-local again.
+        // Singleton, not scoped: this index lives in process memory, so a scoped lifetime would hand
+        // each scope its own empty index — the indexer would fill one and the retriever read another.
+        _services.TryAddSingleton<IKeywordSearchService, BM25SparseRetriever>();
         _services.AddScoped<IHybridSearchService, HybridSearchService>();
         _services.AddScoped<IRankFusionService, RankFusionService>();
 
@@ -724,6 +742,9 @@ public class FluxIndexContextBuilder
             var hybridSearchService = serviceProvider.GetService<IHybridSearchService>();
             var graphRAGService = serviceProvider.GetService<IGraphRAGService>();
 
+            // Same registration the indexer writes to — the keyword leg has one backend.
+            var keywordSearchService = serviceProvider.GetService<IKeywordSearchService>();
+
             return new Retriever(
                 vectorStore,
                 documentRepository,
@@ -734,7 +755,8 @@ public class FluxIndexContextBuilder
                 vectorQuantizer,
                 loggerFactory.CreateLogger<Retriever>(),
                 hybridSearchService,
-                graphRAGService
+                graphRAGService,
+                keywordSearchService
             );
         });
 
@@ -753,6 +775,10 @@ public class FluxIndexContextBuilder
             var graphRAGService = serviceProvider.GetService<IGraphRAGService>();
             var hybridSearchService = serviceProvider.GetService<IHybridSearchService>();
 
+            // The keyword index the indexer writes must be the one the retriever reads, so this
+            // resolves the registered service rather than constructing its own.
+            var keywordSearchService = serviceProvider.GetService<IKeywordSearchService>();
+
             return new Indexer(
                 vectorStore,
                 documentRepository,
@@ -762,7 +788,8 @@ public class FluxIndexContextBuilder
                 loggerFactory.CreateLogger<Indexer>(),
                 metadataExtractor,
                 graphRAGService,
-                hybridSearchService
+                hybridSearchService,
+                keywordSearchService
             );
         });
 

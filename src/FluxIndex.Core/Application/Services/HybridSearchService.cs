@@ -21,7 +21,7 @@ namespace FluxIndex.Core.Services;
 public partial class HybridSearchService : IHybridSearchService
 {
     private readonly IVectorStore _vectorStore;
-    private readonly ISparseRetriever _sparseRetriever;
+    private readonly IKeywordSearchService _keywordSearchService;
     private readonly IEmbeddingService _embeddingService;
     private readonly IVectorQuantizer? _quantizer;
     private readonly IDynamicFusionService? _dynamicFusion;
@@ -32,10 +32,10 @@ public partial class HybridSearchService : IHybridSearchService
     /// </summary>
     public HybridSearchService(
         IVectorStore vectorStore,
-        ISparseRetriever sparseRetriever,
+        IKeywordSearchService keywordSearchService,
         IEmbeddingService embeddingService,
         ILogger<HybridSearchService> logger)
-        : this(vectorStore, sparseRetriever, embeddingService, null, null, logger)
+        : this(vectorStore, keywordSearchService, embeddingService, null, null, logger)
     {
     }
 
@@ -44,11 +44,11 @@ public partial class HybridSearchService : IHybridSearchService
     /// </summary>
     public HybridSearchService(
         IVectorStore vectorStore,
-        ISparseRetriever sparseRetriever,
+        IKeywordSearchService keywordSearchService,
         IEmbeddingService embeddingService,
         IVectorQuantizer? quantizer,
         ILogger<HybridSearchService> logger)
-        : this(vectorStore, sparseRetriever, embeddingService, quantizer, null, logger)
+        : this(vectorStore, keywordSearchService, embeddingService, quantizer, null, logger)
     {
     }
 
@@ -57,14 +57,14 @@ public partial class HybridSearchService : IHybridSearchService
     /// </summary>
     public HybridSearchService(
         IVectorStore vectorStore,
-        ISparseRetriever sparseRetriever,
+        IKeywordSearchService keywordSearchService,
         IEmbeddingService embeddingService,
         IVectorQuantizer? quantizer,
         IDynamicFusionService? dynamicFusion,
         ILogger<HybridSearchService> logger)
     {
         _vectorStore = vectorStore ?? throw new ArgumentNullException(nameof(vectorStore));
-        _sparseRetriever = sparseRetriever ?? throw new ArgumentNullException(nameof(sparseRetriever));
+        _keywordSearchService = keywordSearchService ?? throw new ArgumentNullException(nameof(keywordSearchService));
         _embeddingService = embeddingService ?? throw new ArgumentNullException(nameof(embeddingService));
         _quantizer = quantizer;
         _dynamicFusion = dynamicFusion;
@@ -374,13 +374,41 @@ public partial class HybridSearchService : IHybridSearchService
     {
         try
         {
-            return await _sparseRetriever.SearchAsync(query, options.SparseOptions, cancellationToken);
+            var keywordResults = await _keywordSearchService.SearchAsync(
+                query, ToKeywordSearchOptions(options.SparseOptions), cancellationToken);
+
+            return keywordResults.Select(result => new SparseSearchResult
+            {
+                Chunk = result.Chunk,
+                Score = result.Score,
+                MatchedTerms = result.MatchedTerms,
+                TermFrequencies = result.TermFrequencies
+            }).ToArray();
         }
         catch (Exception ex)
         {
             LogHybridSearch2(_logger, ex);
             return Array.Empty<SparseSearchResult>();
         }
+    }
+
+    /// <summary>
+    /// Adapts the fusion-facing sparse options onto the keyword service contract.
+    /// The two records exist because <c>HybridSearchOptions.SparseOptions</c> is public shape while
+    /// <see cref="IKeywordSearchService"/> is the backend contract; only the interface was unified.
+    /// </summary>
+    private static KeywordSearchOptions ToKeywordSearchOptions(SparseSearchOptions? sparseOptions)
+    {
+        sparseOptions ??= new SparseSearchOptions();
+
+        return new KeywordSearchOptions
+        {
+            MaxResults = sparseOptions.MaxResults,
+            MinScore = sparseOptions.MinScore,
+            K1 = sparseOptions.K1,
+            B = sparseOptions.B,
+            EnableTermExpansion = sparseOptions.EnableTermExpansion
+        };
     }
 
     private static async Task<IReadOnlyList<HybridSearchResult>> FuseSearchResultsAsync(

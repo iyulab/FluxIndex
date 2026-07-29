@@ -112,17 +112,15 @@ public class StorageRegistrationGuardTests : IDisposable
     }
 
     /// <summary>
-    /// Characterizes the documented 0.19.0 limitation (see <c>Retriever.KeywordSearchAsync</c>/
-    /// <c>HybridSearchAsync</c> remarks): the keyword leg resolves through the process-local
-    /// <c>InMemoryDocumentRepository</c>, so after a restart (a fresh <c>Build()</c> over the same
-    /// persistent store) it returns nothing while the vector store itself persists — hybrid silently
-    /// degrades to vector-only. This test is the regression bound for that contract: when the deferred
-    /// <c>INativeHybridSearch</c> store delegation lands
-    /// (<c>upstream-issues/ISSUE-FluxIndex-20260718-hybrid-keyword-leg-...</c>), the second assertion
-    /// flips to non-empty and this test must be updated to assert the new persistent-keyword contract.
+    /// 0.22.0 계약: 키워드 레그는 벡터 스토어와 함께 재시작을 살아남는다.
+    ///
+    /// 0.21.5 까지 이 테스트는 <b>깨진 계약을 고정한 characterization</b> 이었다 — 레그가 프로세스-로컬
+    /// <c>InMemoryDocumentRepository</c> 를 타서 재시작 후 빈 결과를 냈고(hybrid 는 조용히 vector-only),
+    /// 그 상태를 "정상"으로 단정하고 있었다. 인덱싱 경로가 sparse 인덱스를 채우고
+    /// <c>UseSQLite</c> 가 영속 백엔드를 등록하게 되면서 <b>뒤집혔다</b>. 뒤집히는 것이 설계된 동작이다.
     /// </summary>
     [Fact]
-    public async Task KeywordLeg_AfterSimulatedRestart_IsEmpty_WhileVectorStorePersists()
+    public async Task KeywordLeg_SurvivesARestart_AlongsideTheVectorStore()
     {
         const string keyword = "zylophonequux"; // distinctive token, won't collide with other content
         const string docId = "doc-restart";
@@ -151,10 +149,11 @@ public class StorageRegistrationGuardTests : IDisposable
             var stats = await contextB.Retriever.GetStatisticsAsync();
             stats.TotalChunks.Should().BeGreaterThan(0, "the persistent vector store survives a restart");
 
-            // ...but the keyword leg is process-local and starts empty — the documented degradation.
+            // ...and so does the keyword leg, which is the whole point of 0.22.0.
             var afterRestart = await contextB.Retriever.KeywordSearchAsync(keyword, maxResults: 10);
-            afterRestart.Should().BeEmpty(
-                "documented 0.19.0 limitation: the keyword leg resolves via the process-local InMemoryDocumentRepository");
+            afterRestart.Should().NotBeEmpty(
+                "the keyword index is persisted alongside the vectors, so a restarted process still " +
+                "finds documents by keyword instead of degrading to vector-only");
         }
         finally
         {

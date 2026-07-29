@@ -36,7 +36,9 @@ public static class ServiceCollectionExtensions
         // 추후 구현체 완성 시 주석 해제
         
         // 핵심 검색 서비스 등록
-        services.AddScoped<ISparseRetriever, BM25SparseRetriever>();
+        // Singleton, not scoped: the default keyword index lives in process memory, so a scoped
+        // lifetime would hand each scope its own empty index.
+        services.AddSingleton<IKeywordSearchService, BM25SparseRetriever>();
         services.AddScoped<IHybridSearchService, HybridSearchService>();
 
         // services.AddScoped<IVectorStore, PostgresVectorStore>();

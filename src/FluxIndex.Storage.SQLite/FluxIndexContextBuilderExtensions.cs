@@ -4,7 +4,9 @@ using FluxIndex.SDK.Configuration;
 using FluxIndex.Storage.SQLite.Cache;
 using FluxIndex.Storage.SQLite.Graph;
 using Microsoft.EntityFrameworkCore;
+using FluxIndex.Storage.SQLite.KeywordSearch;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using System;
 
 namespace FluxIndex.Storage.SQLite;
@@ -32,6 +34,10 @@ public static class FluxIndexContextBuilderExtensions
             {
                 RegisterSQLiteVectorStore(services, options);
                 RegisterSQLiteInitializer(services);
+
+                // The keyword (sparse) leg. Without a persistent backend the leg only ever holds what
+                // this process indexed, so hybrid search degrades to vector-only after a restart.
+                RegisterSQLiteKeywordSearch(services, options);
             }
 
             var graphProvider = options.GraphStore.Provider?.ToLowerInvariant();
@@ -167,6 +173,29 @@ public static class FluxIndexContextBuilderExtensions
         });
     }
 
+    /// <summary>
+    /// Registers the SQLite-backed keyword search service on the same database as the vector store.
+    /// Replaces the in-memory BM25 default that the SDK registers, so the index survives the process.
+    /// </summary>
+    private static void RegisterSQLiteKeywordSearch(IServiceCollection services, FluxIndexOptions options)
+    {
+        var connectionString = options.VectorStore.ConnectionString;
+
+        // The SDK registers its in-memory BM25 fallback with TryAdd precisely so this concrete
+        // registration wins. Singleton so the indexer and the retriever share one instance.
+        services.AddSingleton<SQLiteKeywordSearchService>(sp => new SQLiteKeywordSearchService(
+            connectionString,
+            sp.GetRequiredService<ILogger<SQLiteKeywordSearchService>>()));
+        services.AddSingleton<IKeywordSearchService>(sp =>
+            sp.GetRequiredService<SQLiteKeywordSearchService>());
+
+        // Build() runs IStorageInitializer only; the service also creates its tables lazily, but
+        // provisioning here keeps the contract uniform with every other component: after Build(),
+        // the schema exists.
+        services.AddSingleton<IStorageInitializer>(sp =>
+            new SQLiteKeywordSearchInitializer(sp.GetRequiredService<SQLiteKeywordSearchService>()));
+    }
+
     private static void RegisterSQLiteInitializer(IServiceCollection services)
     {
         services.AddSingleton<IStorageInitializer, SQLiteStorageInitializer>();
@@ -201,8 +230,12 @@ internal class SQLiteStorageInitializer : IStorageInitializer
 
         var context = scope.ServiceProvider.GetRequiredService<SQLiteDbContext>();
 
-        // 데이터베이스 생성 및 마이그레이션
-        context.Database.EnsureCreated();
+        // Per owned table, not EnsureCreated: the vector store, graph store and semantic cache share
+        // one database file, and consumers may point us at a database that already holds their own
+        // tables — EnsureCreated stops as soon as any relation exists and would create nothing.
+        // The counterpart hosted service (SQLiteMigrationService) never runs on the builder path,
+        // so this is the only thing provisioning the vector schema here.
+        SQLiteSchemaProvisioner.Provision(context);
 
         // 추가 초기화 (필요시)
         var options = scope.ServiceProvider.GetService<Microsoft.Extensions.Options.IOptions<SQLiteOptions>>();
@@ -215,5 +248,18 @@ internal class SQLiteStorageInitializer : IStorageInitializer
             // 동기화 모드 설정 (성능과 안정성 균형)
             RelationalDatabaseFacadeExtensions.ExecuteSqlRaw(context.Database, "PRAGMA synchronous=NORMAL");
         }
+    }
+}
+
+/// <summary>
+/// Creates the keyword index schema during Build() so the contract matches every other component:
+/// once Build() returns, the tables exist.
+/// </summary>
+internal sealed class SQLiteKeywordSearchInitializer(SQLiteKeywordSearchService keywordSearchService)
+    : IStorageInitializer
+{
+    public void InitializeSync(IServiceProvider serviceProvider)
+    {
+        keywordSearchService.EnsureSchemaAsync().GetAwaiter().GetResult();
     }
 }

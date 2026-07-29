@@ -42,9 +42,9 @@ public interface IPersistableSparseRetriever
 
 /// <summary>
 /// BM25 based sparse retrieval implementation with optional file persistence.
-/// Implements both legacy ISparseRetriever and new unified IKeywordSearchService interfaces.
+/// Implements the unified IKeywordSearchService contract.
 /// </summary>
-public partial class BM25SparseRetriever : ISparseRetriever, IKeywordSearchService, IPersistableSparseRetriever, IDisposable
+public partial class BM25SparseRetriever : IKeywordSearchService, IPersistableSparseRetriever, IDisposable
 {
     private readonly ILogger<BM25SparseRetriever> _logger;
     private readonly ConcurrentDictionary<string, BM25Index> _indexes;
@@ -104,12 +104,12 @@ public partial class BM25SparseRetriever : ISparseRetriever, IKeywordSearchServi
     public bool AutoSaveEnabled => _autoSave;
 
     /// <summary>
-    /// Execute BM25 keyword search
+    /// Executes BM25 keyword search over the in-memory inverted index.
     /// </summary>
-    public async Task<IReadOnlyList<SparseSearchResult>> SearchAsync(
+    private async Task<IReadOnlyList<SparseSearchResult>> SearchCoreAsync(
         string query,
-        SparseSearchOptions? options = null,
-        CancellationToken cancellationToken = default)
+        SparseSearchOptions? options,
+        CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(query))
             return Array.Empty<SparseSearchResult>();
@@ -145,9 +145,9 @@ public partial class BM25SparseRetriever : ISparseRetriever, IKeywordSearchServi
     }
 
     /// <summary>
-    /// Index a document chunk
+    /// Indexes a document chunk into the in-memory inverted index.
     /// </summary>
-    public async Task IndexDocumentAsync(DocumentChunk chunk, CancellationToken cancellationToken = default)
+    private async Task IndexChunkCoreAsync(DocumentChunk chunk, CancellationToken cancellationToken)
     {
         if (chunk == null)
             return;
@@ -167,9 +167,9 @@ public partial class BM25SparseRetriever : ISparseRetriever, IKeywordSearchServi
     }
 
     /// <summary>
-    /// Get index statistics
+    /// Gets index statistics in the internal sparse shape.
     /// </summary>
-    public async Task<SparseIndexStatistics> GetIndexStatisticsAsync(CancellationToken cancellationToken = default)
+    private async Task<SparseIndexStatistics> GetIndexStatisticsCoreAsync(CancellationToken cancellationToken)
     {
         await Task.CompletedTask;
 
@@ -392,7 +392,7 @@ public partial class BM25SparseRetriever : ISparseRetriever, IKeywordSearchServi
                 continue;
 
             var df = postings.Count;
-            var idf = Math.Log((index.DocumentCount - df + 0.5) / (df + 0.5));
+            var idf = Math.Log(1 + (index.DocumentCount - df + 0.5) / (df + 0.5));
 
             foreach (var posting in postings)
             {
@@ -445,7 +445,7 @@ public partial class BM25SparseRetriever : ISparseRetriever, IKeywordSearchServi
         var b = options.B;
 
         // IDF calculation
-        var idf = Math.Log((totalDocs - df + 0.5) / (df + 0.5));
+        var idf = Math.Log(1 + (totalDocs - df + 0.5) / (df + 0.5));
 
         // TF normalization
         var normalizedTf = (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * (docLength / avgDocLength)));
@@ -571,10 +571,10 @@ public partial class BM25SparseRetriever : ISparseRetriever, IKeywordSearchServi
     #region IKeywordSearchService Implementation
 
     /// <inheritdoc />
-    async Task<IReadOnlyList<KeywordSearchResult>> IKeywordSearchService.SearchAsync(
+    public async Task<IReadOnlyList<KeywordSearchResult>> SearchAsync(
         string query,
-        KeywordSearchOptions? options,
-        CancellationToken cancellationToken)
+        KeywordSearchOptions? options = null,
+        CancellationToken cancellationToken = default)
     {
         var sparseOptions = options != null
             ? new SparseSearchOptions
@@ -588,7 +588,7 @@ public partial class BM25SparseRetriever : ISparseRetriever, IKeywordSearchServi
             }
             : null;
 
-        var results = await SearchAsync(query, sparseOptions, cancellationToken);
+        var results = await SearchCoreAsync(query, sparseOptions, cancellationToken);
 
         return results.Select(r => new KeywordSearchResult
         {
@@ -603,7 +603,7 @@ public partial class BM25SparseRetriever : ISparseRetriever, IKeywordSearchServi
     /// <inheritdoc />
     public Task IndexChunkAsync(DocumentChunk chunk, CancellationToken cancellationToken = default)
     {
-        return IndexDocumentAsync(chunk, cancellationToken);
+        return IndexChunkCoreAsync(chunk, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -611,7 +611,7 @@ public partial class BM25SparseRetriever : ISparseRetriever, IKeywordSearchServi
     {
         foreach (var chunk in chunks)
         {
-            await IndexDocumentAsync(chunk, cancellationToken);
+            await IndexChunkCoreAsync(chunk, cancellationToken);
         }
     }
 
@@ -685,9 +685,9 @@ public partial class BM25SparseRetriever : ISparseRetriever, IKeywordSearchServi
     }
 
     /// <inheritdoc />
-    async Task<KeywordIndexStatistics> IKeywordSearchService.GetStatisticsAsync(CancellationToken cancellationToken)
+    public async Task<KeywordIndexStatistics> GetStatisticsAsync(CancellationToken cancellationToken = default)
     {
-        var stats = await GetIndexStatisticsAsync(cancellationToken);
+        var stats = await GetIndexStatisticsCoreAsync(cancellationToken);
 
         return new KeywordIndexStatistics
         {
@@ -722,7 +722,7 @@ public partial class BM25SparseRetriever : ISparseRetriever, IKeywordSearchServi
         if (totalDocs == 0 || df == 0)
             return 0;
 
-        return Math.Log((totalDocs - df + 0.5) / (df + 0.5));
+        return Math.Log(1 + (totalDocs - df + 0.5) / (df + 0.5));
     }
 
     /// <inheritdoc />

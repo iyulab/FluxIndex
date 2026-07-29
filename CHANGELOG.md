@@ -9,6 +9,91 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.22.0] - 2026-07-30
+
+The hybrid keyword leg is now populated by indexing and persisted alongside the vectors — on the
+**SQLite** path. See "Not covered yet" below for PostgreSQL and Qdrant.
+
+### Fixed — indexing never populated the keyword index
+
+`Indexer` wrote to the vector store and nothing else. No indexing API touched the keyword (sparse)
+index, so the hybrid keyword leg only ever held what the running process happened to search: empty
+after a restart, and empty in any process that did not itself index. Hybrid search returned results
+and looked fine while ranking by vector similarity alone (0.21.5 added the warning that made this
+visible). Every mutation path now keeps the keyword index in step — `IndexDocumentAsync`,
+`AddChunksAsync`, `UpdateDocumentAsync`, `ReindexDocumentAsync`, `DeleteByDocumentIdAsync`,
+`DeleteChunkAsync`. Opt out with `IndexerOptions.IndexKeyword = false`.
+
+**Consumers may need one reindex** to build the keyword index for documents indexed before 0.22.0.
+
+### Fixed — common terms were silently dropped from keyword results
+
+BM25 used the unsmoothed Robertson IDF `log((N-df+0.5)/(df+0.5))`, which is **negative** once a term
+appears in more than half the documents. Combined with the default `MinScore` of 0, every such result
+was discarded: the more common a term was in the corpus, the more certainly the keyword leg
+contributed nothing. Now uses the smoothed form Lucene uses, `log(1 + (N-df+0.5)/(df+0.5))`, which is
+always positive. **Scores change**; consumers who tuned fusion weights against the old values may
+want to re-check them.
+
+### Fixed — the SQLite keyword search service could not run on its own
+
+`SQLiteKeywordSearchService` read chunk content back from the vector store's private `vectors` table
+instead of storing it, which made it unusable without a co-located SQLite vector store and, worse,
+made `DeleteByDocumentIdAsync` a silent no-op whenever the vector rows had already been dropped —
+the natural order when deleting a document, leaving keyword postings that still matched. It now owns
+its payload (`bm25_chunks`). Re-indexing a chunk also replaces its postings instead of layering new
+ones on top, so document frequency can no longer drift. Batch indexing commits once instead of once
+per chunk.
+
+### Fixed — SQLite schema provisioning on the builder path used `EnsureCreated()`
+
+Same defect class as 0.21.1 (PostgreSQL), still present for the SQLite vector store: the initializer
+`AddSQLiteStorage()` registers called `EnsureCreated()`, which skips schema creation entirely if the
+database holds any relation. Pointing FluxIndex at a database that already has your own tables meant
+`Build()` succeeded and the first write failed with "no such table: vectors". Now provisions per
+owned table, like every other component since 0.21.3.
+
+### Changed — one keyword backend, two entry points *(breaking)*
+
+- `ISparseRetriever` **removed**. `IKeywordSearchService` is the single keyword contract; it is a
+  superset (it also has the index-management and delete operations). `BM25SparseRetriever` still
+  implements it, and its previously-explicit `SearchAsync`/`GetStatisticsAsync` are now public.
+- `IHybridSearchService` implementations take `IKeywordSearchService` instead of `ISparseRetriever`.
+  This is what lets a persistent backend serve the sparse leg at all.
+- `IDocumentRepository.SearchByKeywordAsync` **removed**. `Retriever.KeywordSearchAsync` (unchanged
+  as a public method) now reads the keyword index instead of scanning each document's chunks for a
+  substring, so its results are **BM25-ranked** rather than substring-matched.
+- `QdrantHybridSearchService` takes `IKeywordSearchService` instead of the concrete
+  `BM25SparseRetriever`, so a registered persistent backend reaches that path too.
+- `Indexer` and `Retriever` take an optional trailing `IKeywordSearchService`. Builder users are
+  unaffected; callers constructing them by hand are not broken (the parameter is optional).
+
+### Added
+
+- `IndexerOptions.IndexKeyword` (default `true`) and `FluxIndexContextBuilder.WithIndexerOptions(...)`
+  — the builder previously had no way to configure the indexer at all, which would have left the new
+  option unreachable.
+- `SQLiteKeywordSearchService` is registered by `AddSQLiteStorage()` on the same database as the
+  vector store, and its schema is provisioned during `Build()` like every other component.
+- `SQLiteKeywordSearchService.EnsureSchemaAsync()`.
+
+### Fixed — the in-memory keyword index was registered per scope
+
+The default in-memory BM25 index was registered `Scoped`, so each scope got its own empty index —
+harmless while nothing wrote to it, a silent "no results" now that indexing does. Registered
+`Singleton`, and with `TryAdd` so a storage package's persistent backend wins (storage registrations
+run before the SDK's defaults, so a plain `Add` would have discarded them).
+
+### Not covered yet
+
+- **PostgreSQL and Qdrant have no persistent keyword backend.** On those paths the keyword leg is now
+  correctly *populated by indexing* and benefits from the IDF fix, but it still lives in process
+  memory and is empty after a restart. The PostgreSQL backend is the next piece of this work.
+- CJK tokenisation is unchanged: the tokenizer splits on `\W+` and Hangul is `\w`, so a Hangul run is
+  never split — `착수계` does not match `착수계약서`. Whole-token queries work and are covered by tests.
+
+---
+
 ## [0.21.5] - 2026-07-28
 
 ### Fixed — `Retriever.SearchAsync` discarded the caller's hybrid weights

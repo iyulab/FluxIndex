@@ -20,6 +20,18 @@ public partial class SQLiteKeywordSearchService : IKeywordSearchService, IDispos
     private readonly SemaphoreSlim _initLock = new(1, 1);
     private bool _initialized;
 
+    /// <summary>
+    /// An in-memory SQLite database exists only while a connection to it is open — the moment the
+    /// last one closes, the schema and every row go with it. Every operation here opens and closes
+    /// its own connection, so an in-memory database needs one connection held for the lifetime of
+    /// this service. File-backed databases need nothing and this stays null.
+    /// </summary>
+    private SqliteConnection? _keepAliveConnection;
+
+    private bool IsInMemory =>
+        _connectionString.Contains("Mode=Memory", StringComparison.OrdinalIgnoreCase) ||
+        _connectionString.Contains(":memory:", StringComparison.OrdinalIgnoreCase);
+
     // BM25 default parameters
     private const double DefaultK1 = 1.2;
     private const double DefaultB = 0.75;
@@ -53,6 +65,14 @@ public partial class SQLiteKeywordSearchService : IKeywordSearchService, IDispos
 
     #region Initialization
 
+    /// <summary>
+    /// Creates the keyword index schema if it is not there yet. Every operation does this lazily;
+    /// calling it up front is what lets Build() offer the same contract as every other component —
+    /// once it returns, the tables exist.
+    /// </summary>
+    public Task EnsureSchemaAsync(CancellationToken cancellationToken = default)
+        => EnsureInitializedAsync(cancellationToken);
+
     private async Task EnsureInitializedAsync(CancellationToken cancellationToken)
     {
         if (_initialized) return;
@@ -62,10 +82,20 @@ public partial class SQLiteKeywordSearchService : IKeywordSearchService, IDispos
         {
             if (_initialized) return;
 
+            if (IsInMemory)
+            {
+                _keepAliveConnection = new SqliteConnection(_connectionString);
+                await _keepAliveConnection.OpenAsync(cancellationToken);
+            }
+
             await using var connection = new SqliteConnection(_connectionString);
             await connection.OpenAsync(cancellationToken);
 
-            // Create BM25 tables
+            // Create BM25 tables.
+            // NOTE: bm25_chunks holds the indexed chunk payload. An earlier revision read it back from
+            // the vector store's private "vectors" table instead, which made this service unusable on
+            // its own and — worse — silently skipped deletion whenever the vector rows had already gone
+            // (the natural order in Indexer.DeleteByDocumentIdAsync), leaving ghost matches behind.
             var createTablesSql = """
                 CREATE TABLE IF NOT EXISTS bm25_terms (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -82,6 +112,15 @@ public partial class SQLiteKeywordSearchService : IKeywordSearchService, IDispos
                     FOREIGN KEY (term_id) REFERENCES bm25_terms(id) ON DELETE CASCADE
                 );
 
+                CREATE TABLE IF NOT EXISTS bm25_chunks (
+                    chunk_id TEXT PRIMARY KEY,
+                    document_id TEXT NOT NULL,
+                    chunk_index INTEGER NOT NULL DEFAULT 0,
+                    content TEXT NOT NULL,
+                    token_count INTEGER NOT NULL DEFAULT 0,
+                    metadata TEXT
+                );
+
                 CREATE TABLE IF NOT EXISTS bm25_statistics (
                     key TEXT PRIMARY KEY,
                     value REAL NOT NULL
@@ -89,6 +128,7 @@ public partial class SQLiteKeywordSearchService : IKeywordSearchService, IDispos
 
                 CREATE INDEX IF NOT EXISTS idx_bm25_terms_term ON bm25_terms(term);
                 CREATE INDEX IF NOT EXISTS idx_bm25_postings_chunk ON bm25_postings(chunk_id);
+                CREATE INDEX IF NOT EXISTS idx_bm25_chunks_document ON bm25_chunks(document_id);
                 """;
 
             await using var command = connection.CreateCommand();
@@ -155,7 +195,7 @@ public partial class SQLiteKeywordSearchService : IKeywordSearchService, IDispos
             await termReader.CloseAsync();
 
             // Calculate IDF
-            var idf = Math.Log((totalDocs - df + 0.5) / (df + 0.5));
+            var idf = Math.Log(1 + (totalDocs - df + 0.5) / (df + 0.5));
 
             // Get postings for this term
             var postingSql = "SELECT chunk_id, term_frequency, document_length FROM bm25_postings WHERE term_id = @termId";
@@ -201,8 +241,8 @@ public partial class SQLiteKeywordSearchService : IKeywordSearchService, IDispos
         if (chunkIds.Count == 0)
             return [];
 
-        // Load chunk data from vectors table
-        var chunkSql = $"SELECT Id, DocumentId, ChunkIndex, Content, TokenCount, Metadata FROM vectors WHERE Id IN ({string.Join(",", chunkIds.Select((_, i) => $"@id{i}"))})";
+        // Load chunk data from this index's own chunk table
+        var chunkSql = $"SELECT chunk_id, document_id, chunk_index, content, token_count, metadata FROM bm25_chunks WHERE chunk_id IN ({string.Join(",", chunkIds.Select((_, i) => $"@id{i}"))})";
         await using var chunkCmd = connection.CreateCommand();
         chunkCmd.CommandText = chunkSql;
         for (int i = 0; i < chunkIds.Count; i++)
@@ -259,15 +299,21 @@ public partial class SQLiteKeywordSearchService : IKeywordSearchService, IDispos
     public async Task IndexChunkAsync(DocumentChunk chunk, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(chunk);
-        await EnsureInitializedAsync(cancellationToken);
+        await IndexChunksAsync([chunk], cancellationToken);
+    }
 
-        var terms = Tokenize(chunk.Content).ToList();
-        if (terms.Count == 0)
+    /// <summary>
+    /// Indexes every chunk under a single transaction. Committing per chunk costs an fsync each,
+    /// which is the difference between seconds and minutes on a document set of a few thousand chunks.
+    /// </summary>
+    public async Task IndexChunksAsync(IEnumerable<DocumentChunk> chunks, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(chunks);
+        var chunkList = chunks.Where(c => c is not null).ToList();
+        if (chunkList.Count == 0)
             return;
 
-        var termFrequencies = terms
-            .GroupBy(t => t)
-            .ToDictionary(g => g.Key, g => g.Count());
+        await EnsureInitializedAsync(cancellationToken);
 
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
@@ -275,40 +321,20 @@ public partial class SQLiteKeywordSearchService : IKeywordSearchService, IDispos
 
         try
         {
-            foreach (var (term, frequency) in termFrequencies)
+            var affectedTermIds = new HashSet<long>();
+            var indexedChunks = 0;
+
+            foreach (var chunk in chunkList)
             {
-                // Insert or get term ID
-                var upsertTermSql = """
-                    INSERT INTO bm25_terms (term, document_frequency) VALUES (@term, 1)
-                    ON CONFLICT(term) DO UPDATE SET document_frequency = document_frequency + 1
-                    RETURNING id;
-                    """;
-
-                await using var termCmd = connection.CreateCommand();
-                termCmd.CommandText = upsertTermSql;
-                termCmd.Parameters.AddWithValue("@term", term);
-                var termId = Convert.ToInt32(await termCmd.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture);
-
-                // Insert posting
-                var insertPostingSql = """
-                    INSERT OR REPLACE INTO bm25_postings (term_id, chunk_id, term_frequency, document_length)
-                    VALUES (@termId, @chunkId, @tf, @docLen);
-                    """;
-
-                await using var postingCmd = connection.CreateCommand();
-                postingCmd.CommandText = insertPostingSql;
-                postingCmd.Parameters.AddWithValue("@termId", termId);
-                postingCmd.Parameters.AddWithValue("@chunkId", chunk.Id);
-                postingCmd.Parameters.AddWithValue("@tf", frequency);
-                postingCmd.Parameters.AddWithValue("@docLen", terms.Count);
-                await postingCmd.ExecuteNonQueryAsync(cancellationToken);
+                if (await IndexChunkCoreAsync(connection, chunk, affectedTermIds, cancellationToken))
+                    indexedChunks++;
             }
 
-            // Update statistics
+            await RecomputeDocumentFrequenciesAsync(connection, affectedTermIds, cancellationToken);
             await UpdateStatisticsAsync(connection, cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);
-            LogChunkIndexed(_logger, chunk.Id, termFrequencies.Count);
+            LogChunksIndexed(_logger, indexedChunks);
         }
         catch
         {
@@ -317,12 +343,87 @@ public partial class SQLiteKeywordSearchService : IKeywordSearchService, IDispos
         }
     }
 
-    public async Task IndexChunksAsync(IEnumerable<DocumentChunk> chunks, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Writes one chunk's payload and postings. Re-indexing an existing chunk replaces its postings
+    /// wholesale rather than layering new ones on top, so document frequency cannot drift.
+    /// </summary>
+    private async Task<bool> IndexChunkCoreAsync(
+        SqliteConnection connection,
+        DocumentChunk chunk,
+        HashSet<long> affectedTermIds,
+        CancellationToken cancellationToken)
     {
-        foreach (var chunk in chunks)
+        var terms = Tokenize(chunk.Content).ToList();
+        if (terms.Count == 0)
+            return false;
+
+        // Terms that lose a posting when this chunk is replaced still need their df recomputed.
+        await CollectTermIdsForChunkAsync(connection, chunk.Id, affectedTermIds, cancellationToken);
+
+        await using (var deleteCmd = connection.CreateCommand())
         {
-            await IndexChunkAsync(chunk, cancellationToken);
+            deleteCmd.CommandText = "DELETE FROM bm25_postings WHERE chunk_id = @chunkId";
+            deleteCmd.Parameters.AddWithValue("@chunkId", chunk.Id);
+            await deleteCmd.ExecuteNonQueryAsync(cancellationToken);
         }
+
+        await using (var chunkCmd = connection.CreateCommand())
+        {
+            chunkCmd.CommandText = """
+                INSERT INTO bm25_chunks (chunk_id, document_id, chunk_index, content, token_count, metadata)
+                VALUES (@chunkId, @documentId, @chunkIndex, @content, @tokenCount, @metadata)
+                ON CONFLICT(chunk_id) DO UPDATE SET
+                    document_id = excluded.document_id,
+                    chunk_index = excluded.chunk_index,
+                    content = excluded.content,
+                    token_count = excluded.token_count,
+                    metadata = excluded.metadata;
+                """;
+            chunkCmd.Parameters.AddWithValue("@chunkId", chunk.Id);
+            chunkCmd.Parameters.AddWithValue("@documentId", chunk.DocumentId);
+            chunkCmd.Parameters.AddWithValue("@chunkIndex", chunk.ChunkIndex);
+            chunkCmd.Parameters.AddWithValue("@content", chunk.Content);
+            chunkCmd.Parameters.AddWithValue("@tokenCount", chunk.TokenCount);
+            chunkCmd.Parameters.AddWithValue(
+                "@metadata",
+                chunk.Metadata is { Count: > 0 } ? JsonSerializer.Serialize(chunk.Metadata) : (object)DBNull.Value);
+            await chunkCmd.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        var termFrequencies = terms
+            .GroupBy(t => t)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        foreach (var (term, frequency) in termFrequencies)
+        {
+            long termId;
+            await using (var termCmd = connection.CreateCommand())
+            {
+                termCmd.CommandText = """
+                    INSERT INTO bm25_terms (term, document_frequency) VALUES (@term, 0)
+                    ON CONFLICT(term) DO UPDATE SET term = excluded.term
+                    RETURNING id;
+                    """;
+                termCmd.Parameters.AddWithValue("@term", term);
+                termId = Convert.ToInt64(await termCmd.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture);
+            }
+
+            affectedTermIds.Add(termId);
+
+            await using var postingCmd = connection.CreateCommand();
+            postingCmd.CommandText = """
+                INSERT OR REPLACE INTO bm25_postings (term_id, chunk_id, term_frequency, document_length)
+                VALUES (@termId, @chunkId, @tf, @docLen);
+                """;
+            postingCmd.Parameters.AddWithValue("@termId", termId);
+            postingCmd.Parameters.AddWithValue("@chunkId", chunk.Id);
+            postingCmd.Parameters.AddWithValue("@tf", frequency);
+            postingCmd.Parameters.AddWithValue("@docLen", terms.Count);
+            await postingCmd.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        LogChunkIndexed(_logger, chunk.Id, termFrequencies.Count);
+        return true;
     }
 
     public async Task DeleteChunkAsync(string chunkId, CancellationToken cancellationToken = default)
@@ -330,47 +431,7 @@ public partial class SQLiteKeywordSearchService : IKeywordSearchService, IDispos
         if (string.IsNullOrWhiteSpace(chunkId))
             return;
 
-        await EnsureInitializedAsync(cancellationToken);
-
-        await using var connection = new SqliteConnection(_connectionString);
-        await connection.OpenAsync(cancellationToken);
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-
-        try
-        {
-            // Get affected terms and decrement their document frequency
-            var updateDfSql = """
-                UPDATE bm25_terms SET document_frequency = document_frequency - 1
-                WHERE id IN (SELECT term_id FROM bm25_postings WHERE chunk_id = @chunkId);
-                """;
-            await using var updateCmd = connection.CreateCommand();
-            updateCmd.CommandText = updateDfSql;
-            updateCmd.Parameters.AddWithValue("@chunkId", chunkId);
-            await updateCmd.ExecuteNonQueryAsync(cancellationToken);
-
-            // Delete postings
-            var deletePostingsSql = "DELETE FROM bm25_postings WHERE chunk_id = @chunkId";
-            await using var deleteCmd = connection.CreateCommand();
-            deleteCmd.CommandText = deletePostingsSql;
-            deleteCmd.Parameters.AddWithValue("@chunkId", chunkId);
-            await deleteCmd.ExecuteNonQueryAsync(cancellationToken);
-
-            // Clean up terms with zero document frequency
-            var cleanupSql = "DELETE FROM bm25_terms WHERE document_frequency <= 0";
-            await using var cleanupCmd = connection.CreateCommand();
-            cleanupCmd.CommandText = cleanupSql;
-            await cleanupCmd.ExecuteNonQueryAsync(cancellationToken);
-
-            await UpdateStatisticsAsync(connection, cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
-
-            LogChunkDeleted(_logger, chunkId);
-        }
-        catch
-        {
-            await transaction.RollbackAsync(cancellationToken);
-            throw;
-        }
+        await DeleteChunksAsync([chunkId], cancellationToken);
     }
 
     public async Task DeleteByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default)
@@ -383,23 +444,115 @@ public partial class SQLiteKeywordSearchService : IKeywordSearchService, IDispos
         await using var connection = new SqliteConnection(_connectionString);
         await connection.OpenAsync(cancellationToken);
 
-        // Get chunk IDs for this document from the vectors table
-        var chunkIdsSql = "SELECT Id FROM vectors WHERE DocumentId = @documentId";
-        await using var chunkIdsCmd = connection.CreateCommand();
-        chunkIdsCmd.CommandText = chunkIdsSql;
-        chunkIdsCmd.Parameters.AddWithValue("@documentId", documentId);
-
+        // The chunk ids come from this index's own table. Reading them from the vector store instead
+        // made deletion depend on the vector rows still being there, which they are not once the
+        // caller has already dropped them.
         var chunkIds = new List<string>();
-        await using var reader = await chunkIdsCmd.ExecuteReaderAsync(cancellationToken);
+        await using (var chunkIdsCmd = connection.CreateCommand())
+        {
+            chunkIdsCmd.CommandText = "SELECT chunk_id FROM bm25_chunks WHERE document_id = @documentId";
+            chunkIdsCmd.Parameters.AddWithValue("@documentId", documentId);
+
+            await using var reader = await chunkIdsCmd.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                chunkIds.Add(reader.GetString(0));
+            }
+        }
+
+        if (chunkIds.Count == 0)
+            return;
+
+        await DeleteChunksAsync(chunkIds, cancellationToken);
+    }
+
+    private async Task DeleteChunksAsync(IReadOnlyList<string> chunkIds, CancellationToken cancellationToken)
+    {
+        await EnsureInitializedAsync(cancellationToken);
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        try
+        {
+            var affectedTermIds = new HashSet<long>();
+
+            foreach (var chunkId in chunkIds)
+            {
+                await CollectTermIdsForChunkAsync(connection, chunkId, affectedTermIds, cancellationToken);
+
+                await using var deleteCmd = connection.CreateCommand();
+                deleteCmd.CommandText = """
+                    DELETE FROM bm25_postings WHERE chunk_id = @chunkId;
+                    DELETE FROM bm25_chunks WHERE chunk_id = @chunkId;
+                    """;
+                deleteCmd.Parameters.AddWithValue("@chunkId", chunkId);
+                await deleteCmd.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await RecomputeDocumentFrequenciesAsync(connection, affectedTermIds, cancellationToken);
+            await UpdateStatisticsAsync(connection, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+
+            foreach (var chunkId in chunkIds)
+            {
+                LogChunkDeleted(_logger, chunkId);
+            }
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            throw;
+        }
+    }
+
+    private static async Task CollectTermIdsForChunkAsync(
+        SqliteConnection connection,
+        string chunkId,
+        HashSet<long> affectedTermIds,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT term_id FROM bm25_postings WHERE chunk_id = @chunkId";
+        command.Parameters.AddWithValue("@chunkId", chunkId);
+
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            chunkIds.Add(reader.GetString(0));
+            affectedTermIds.Add(reader.GetInt64(0));
+        }
+    }
+
+    /// <summary>
+    /// Derives document frequency from the postings rather than incrementing and decrementing it.
+    /// Counter arithmetic drifts the moment a chunk is indexed twice — the value here is always a
+    /// function of the postings that actually exist.
+    /// </summary>
+    private static async Task RecomputeDocumentFrequenciesAsync(
+        SqliteConnection connection,
+        HashSet<long> termIds,
+        CancellationToken cancellationToken)
+    {
+        if (termIds.Count == 0)
+            return;
+
+        var idList = string.Join(",", termIds);
+
+        await using (var updateCmd = connection.CreateCommand())
+        {
+            updateCmd.CommandText = $"""
+                UPDATE bm25_terms
+                SET document_frequency =
+                    (SELECT COUNT(*) FROM bm25_postings p WHERE p.term_id = bm25_terms.id)
+                WHERE id IN ({idList});
+                """;
+            await updateCmd.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        foreach (var chunkId in chunkIds)
-        {
-            await DeleteChunkAsync(chunkId, cancellationToken);
-        }
+        await using var cleanupCmd = connection.CreateCommand();
+        cleanupCmd.CommandText = "DELETE FROM bm25_terms WHERE document_frequency <= 0";
+        await cleanupCmd.ExecuteNonQueryAsync(cancellationToken);
     }
 
     public async Task ClearIndexAsync(CancellationToken cancellationToken = default)
@@ -412,6 +565,7 @@ public partial class SQLiteKeywordSearchService : IKeywordSearchService, IDispos
         var clearSql = """
             DELETE FROM bm25_postings;
             DELETE FROM bm25_terms;
+            DELETE FROM bm25_chunks;
             DELETE FROM bm25_statistics;
             """;
 
@@ -531,7 +685,7 @@ public partial class SQLiteKeywordSearchService : IKeywordSearchService, IDispos
             return 0;
 
         var df = Convert.ToInt32(result, CultureInfo.InvariantCulture);
-        return Math.Log((totalDocs - df + 0.5) / (df + 0.5));
+        return Math.Log(1 + (totalDocs - df + 0.5) / (df + 0.5));
     }
 
     public IEnumerable<string> Tokenize(string text)
@@ -609,6 +763,8 @@ public partial class SQLiteKeywordSearchService : IKeywordSearchService, IDispos
     /// </summary>
     public void Dispose()
     {
+        _keepAliveConnection?.Dispose();
+        _keepAliveConnection = null;
         _initLock.Dispose();
         GC.SuppressFinalize(this);
     }
@@ -626,6 +782,9 @@ public partial class SQLiteKeywordSearchService : IKeywordSearchService, IDispos
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Indexed chunk {ChunkId} with {TermCount} terms")]
     private static partial void LogChunkIndexed(ILogger logger, string chunkId, int termCount);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Indexed {ChunkCount} chunks into the keyword index")]
+    private static partial void LogChunksIndexed(ILogger logger, int chunkCount);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Deleted chunk {ChunkId} from keyword index")]
     private static partial void LogChunkDeleted(ILogger logger, string chunkId);

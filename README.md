@@ -166,11 +166,13 @@ var scoped = await context.Retriever.SearchAsync(
 await vectorStore.DeleteByFilterAsync(new() { ["workspace_id"] = "ws-a" });
 ```
 
-> **Limitation (keyword leg)**: `HybridSearchAsync`/`KeywordSearchAsync` resolve their BM25 leg
-> through `IDocumentRepository`, which currently has an in-memory implementation only. With a
-> persistent store the keyword leg therefore sees **only documents this process indexed**, and
-> after a restart hybrid search effectively degrades to vector-only. Vector search and metadata
-> filtering are unaffected.
+> **Keyword leg (since 0.22.0)**: indexing populates the BM25 keyword index, and `AddSQLiteStorage()`
+> persists it in the same database as the vectors — so `KeywordSearchAsync`/`HybridSearchAsync` keep
+> working after a restart. Turn it off with `WithIndexerOptions(o => o.IndexKeyword = false)`.
+> **PostgreSQL and Qdrant have no persistent keyword backend yet**: there the index is populated by
+> indexing but lives in process memory, so it is empty after a restart and hybrid degrades to
+> vector-only (a warning is logged when that happens). Vector search and metadata filtering are
+> unaffected. Documents indexed before 0.22.0 need one reindex to appear in the keyword index.
 
 ### Which package do I need?
 

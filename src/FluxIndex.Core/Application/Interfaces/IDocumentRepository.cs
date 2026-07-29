@@ -20,5 +20,4 @@ public interface IDocumentRepository
     Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default);
     Task<int> CountAsync(CancellationToken cancellationToken = default);
     Task<int> GetCountAsync(CancellationToken cancellationToken = default);
-    Task<IEnumerable<Document>> SearchByKeywordAsync(string keyword, int maxResults, CancellationToken cancellationToken = default);
 }

@@ -93,7 +93,8 @@ the **same** database file; only the entity graph gets a file of its own, derive
 passed:
 
 ```
-fluxindex.db              # Vector store + keyword index + metadata
+fluxindex.db              # Vector store (vectors) + metadata
+                          #   + bm25_terms / bm25_postings / bm25_chunks (keyword index)
                           #   + chunk_hierarchies / chunk_relationships (Small-to-Big)
                           #   + semantic_cache (semantic cache)
 fluxindex-entitygraph.db  # Entity graph (GraphRAG)
@@ -105,9 +106,9 @@ the builder.)
 
 ### What Build() provisions
 
-`Build()` creates the schema for **every component the builder enabled** — vector store, graph store,
-entity graph and semantic cache — before it returns. You do not call `EnsureCreated` or run
-migrations yourself.
+`Build()` creates the schema for **every component the builder enabled** — vector store, keyword
+index, graph store, entity graph and semantic cache — before it returns. You do not call
+`EnsureCreated` or run migrations yourself.
 
 Provisioning creates only the tables each component owns and leaves everything else in the database
 alone, so pointing FluxIndex at a database that already holds your application's tables is supported
@@ -127,7 +128,9 @@ var context = builder.AddPostgreSQLStorage().Build();
 
 > Before 0.21.2 (PostgreSQL) and 0.21.3 (SQLite) only the vector store was provisioned on this path;
 > the other components' schemas were never created and their first operation failed on a missing
-> table. Upgrade if you use graph, GraphRAG or the semantic cache.
+> table. Upgrade if you use graph, GraphRAG or the semantic cache. The SQLite **vector store** itself
+> kept using `EnsureCreated()` here until 0.22.0, so before that version pointing it at a database
+> that already held any table left `vectors` uncreated and the first write failed.
 
 ### In-Memory Testing
 
@@ -187,7 +190,7 @@ var context = FluxIndexContext.CreateBuilder()
 | Role | Provider | Purpose |
 |------|----------|---------|
 | **Vector Search** | Qdrant | High-performance similarity search |
-| **Keyword Search** | PostgreSQL | BM25 full-text search |
+| **Keyword Search** | in-process BM25 | Populated by indexing; **not persisted** on this path — see [The keyword (BM25) index](#the-keyword-bm25-index) |
 | **Graph Relations** | Neo4j | Entity graph, community detection |
 | **Metadata** | PostgreSQL | Document and chunk metadata |
 | **Semantic Cache** | PostgreSQL | Query result caching |
@@ -435,7 +438,8 @@ foreach (var result in results)
 // Vector only
 var vectorResults = await context.Retriever.SearchAsync(query, maxResults: 10);
 
-// Keyword only (BM25)
+// Keyword only (BM25). Reads the keyword index that indexing populates — on the SQLite path that
+// index is persisted next to the vectors, so this keeps working after a restart.
 var keywordResults = await context.Retriever.KeywordSearchAsync(keyword, maxResults: 10);
 
 // Hybrid (Vector + BM25 with RRF)
