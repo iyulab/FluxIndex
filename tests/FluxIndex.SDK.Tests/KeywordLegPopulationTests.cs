@@ -107,22 +107,56 @@ public class KeywordLegPopulationTests
         freshResults.Should().ContainSingle(r => r.Chunk.DocumentId == "doc-1");
     }
 
-    [Fact]
-    public async Task IndexKeywordDisabled_LeavesTheKeywordIndexEmpty()
-    {
-        IFluxIndexContext context = FluxIndexContext.CreateBuilder()
+    private static IFluxIndexContext BuildContextWithoutKeywordIndexing()
+        => FluxIndexContext.CreateBuilder()
             .UseSQLiteInMemory()
             .UseInMemoryEmbedding()
             .AddSQLiteStorage()
             .WithIndexerOptions(options => options.IndexKeyword = false)
             .Build();
+
+    [Fact]
+    public async Task IndexKeywordDisabled_AddsNothingToTheKeywordIndex()
+    {
+        var context = BuildContextWithoutKeywordIndexing();
         var keywordSearch = context.ServiceProvider.GetRequiredService<IKeywordSearchService>();
 
         await context.Indexer.IndexDocumentAsync("transaction boundaries", "doc-1");
 
         var results = await keywordSearch.SearchAsync("transaction");
 
-        results.Should().BeEmpty("opting out must restore the pre-0.22.0 behaviour");
+        results.Should().BeEmpty(
+            "opting out stops the indexer writing to the keyword index — which also means keyword " +
+            "and hybrid search have nothing to match against; it is not a compatibility switch");
+    }
+
+    /// <summary>
+    /// 옵트아웃은 "추가를 멈춘다"이고 "제거를 멈춘다"가 아니다. 삭제까지 게이트하면 영속 인덱스에
+    /// 삭제된 문서의 postings 가 <b>영구히</b> 남아 계속 매치된다 — 옵션 하나로 만들어지는 유령 매치다.
+    /// </summary>
+    [Fact]
+    public async Task IndexKeywordDisabled_StillPropagatesDeletions()
+    {
+        // 인덱스에 항목이 있는 상태를 먼저 만든다(옵션 on).
+        var writer = BuildContext();
+        await writer.Indexer.IndexDocumentAsync("retention policy for archived records", "doc-1");
+
+        var keywordSearch = writer.ServiceProvider.GetRequiredService<IKeywordSearchService>();
+        (await keywordSearch.SearchAsync("retention")).Should().NotBeEmpty();
+
+        // 같은 인덱스를 공유하는 인덱서를 옵션 off 로 만들어 삭제시킨다.
+        var indexerWithoutKeywordWrites = new Indexer(
+            writer.ServiceProvider.GetRequiredService<IVectorStore>(),
+            writer.ServiceProvider.GetRequiredService<IDocumentRepository>(),
+            writer.ServiceProvider.GetRequiredService<IEmbeddingService>(),
+            writer.ServiceProvider.GetRequiredService<IChunkingService>(),
+            new IndexerOptions { IndexKeyword = false },
+            keywordSearchService: keywordSearch);
+
+        await indexerWithoutKeywordWrites.DeleteByDocumentIdAsync("doc-1");
+
+        (await keywordSearch.SearchAsync("retention")).Should().BeEmpty(
+            "a deleted document must not keep matching just because keyword indexing was turned off");
     }
 
     /// <summary>

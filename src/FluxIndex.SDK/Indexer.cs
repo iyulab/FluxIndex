@@ -43,10 +43,19 @@ public partial class Indexer
     public bool SupportsHybridSearch => _hybridSearchService != null;
 
     /// <summary>
-    /// Whether this indexer also maintains the keyword (sparse) index. When false, hybrid search
-    /// degrades to vector-only because nothing populates the keyword leg.
+    /// Whether this indexer adds new documents to the keyword (sparse) index. When false, nothing
+    /// populates the keyword leg and hybrid search degrades to vector-only.
+    /// Removal is deliberately not gated on this — see <see cref="HasKeywordIndex"/>.
     /// </summary>
-    public bool MaintainsKeywordIndex => _keywordSearchService != null && _options.IndexKeyword;
+    public bool MaintainsKeywordIndex => HasKeywordIndex && _options.IndexKeyword;
+
+    /// <summary>
+    /// Whether a keyword index is registered at all. Deletions follow this rather than
+    /// <see cref="MaintainsKeywordIndex"/>: turning off keyword indexing means "stop adding", not
+    /// "stop removing". Gating removal too would leave postings for deleted documents in a
+    /// persistent index forever, and they would keep matching queries.
+    /// </summary>
+    private bool HasKeywordIndex => _keywordSearchService != null;
 
     // Phase 3: 이벤트 기반 모니터링
     /// <summary>
@@ -797,7 +806,7 @@ public partial class Indexer
     {
         LogDeletingChunk(_logger, chunkId);
 
-        if (MaintainsKeywordIndex)
+        if (HasKeywordIndex)
             await _keywordSearchService!.DeleteChunkAsync(chunkId, cancellationToken);
 
         return await _vectorStore.DeleteAsync(chunkId, cancellationToken);
@@ -986,13 +995,15 @@ public partial class Indexer
 
     /// <summary>
     /// Removes a document's chunks from the keyword index. Skipping this leaves postings behind that
-    /// still match queries — a deleted document reappearing through the keyword leg alone.
+    /// still match queries — a deleted document reappearing through the keyword leg alone. This runs
+    /// whenever a keyword index exists, including when <see cref="IndexerOptions.IndexKeyword"/> is
+    /// off, because a persistent index outlives the option.
     /// </summary>
     private async Task DeleteKeywordByDocumentIdAsync(
         string documentId,
         CancellationToken cancellationToken)
     {
-        if (!MaintainsKeywordIndex)
+        if (!HasKeywordIndex)
             return;
 
         try
@@ -1516,9 +1527,18 @@ public class IndexerOptions
     public ChunkingStrategy ChunkingStrategy { get; set; } = ChunkingStrategy.Auto;
 
     /// <summary>
-    /// Whether indexing also populates the keyword (sparse) index used by the hybrid keyword leg.
-    /// Default <c>true</c>. Set to <c>false</c> to restore the pre-0.22.0 behaviour where only the
-    /// vector store is written and hybrid search is effectively vector-only.
+    /// Whether indexing adds documents to the keyword (sparse) index used by the hybrid keyword leg.
+    /// Default <c>true</c>.
+    /// <para>
+    /// Setting this to <c>false</c> means keyword and hybrid search have nothing to match against:
+    /// keyword search returns no results and hybrid search ranks by vector similarity alone. It is
+    /// not a compatibility switch — before 0.22.0 the keyword leg scanned chunk content instead, so
+    /// it did return results. Turn this off only when you do not use keyword or hybrid search.
+    /// </para>
+    /// <para>
+    /// Deletions are still propagated to the keyword index while it exists, so turning this off
+    /// cannot leave postings for deleted documents behind.
+    /// </para>
     /// Has no effect when no <c>IKeywordSearchService</c> is registered.
     /// </summary>
     public bool IndexKeyword { get; set; } = true;

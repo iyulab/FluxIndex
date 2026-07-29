@@ -22,7 +22,14 @@ after a restart, and empty in any process that did not itself index. Hybrid sear
 and looked fine while ranking by vector similarity alone (0.21.5 added the warning that made this
 visible). Every mutation path now keeps the keyword index in step — `IndexDocumentAsync`,
 `AddChunksAsync`, `UpdateDocumentAsync`, `ReindexDocumentAsync`, `DeleteByDocumentIdAsync`,
-`DeleteChunkAsync`. Opt out with `IndexerOptions.IndexKeyword = false`.
+`DeleteChunkAsync`.
+
+`IndexerOptions.IndexKeyword = false` stops the indexer *adding* to the keyword index. It is **not** a
+compatibility switch: with nothing in the index, keyword search returns no results and hybrid search
+ranks by vector similarity alone — whereas before 0.22.0 the keyword leg scanned chunk content and did
+return something. Turn it off only if you do not use keyword or hybrid search. Deletions are still
+propagated while a keyword index exists, so the option cannot leave postings for deleted documents
+behind.
 
 **Consumers may need one reindex** to build the keyword index for documents indexed before 0.22.0.
 
@@ -32,8 +39,11 @@ BM25 used the unsmoothed Robertson IDF `log((N-df+0.5)/(df+0.5))`, which is **ne
 appears in more than half the documents. Combined with the default `MinScore` of 0, every such result
 was discarded: the more common a term was in the corpus, the more certainly the keyword leg
 contributed nothing. Now uses the smoothed form Lucene uses, `log(1 + (N-df+0.5)/(df+0.5))`, which is
-always positive. **Scores change**; consumers who tuned fusion weights against the old values may
-want to re-check them.
+always positive. Keyword **recall improves** (results that were being thrown away now appear) and
+scores change. The default fusion method (`RelativeScoreFusion`) min-max normalises each leg before
+applying the weights, and RRF is rank-based, so `VectorWeight`/`SparseWeight` keep their meaning on
+those paths; the raw-score methods (`Product`, `Maximum`, `HarmonicMean`) do see an absolute-scale
+shift in the sparse leg.
 
 ### Fixed — the SQLite keyword search service could not run on its own
 
