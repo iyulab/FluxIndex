@@ -1,8 +1,11 @@
+using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.SDK;
 using FluxIndex.SDK.Configuration;
 using FluxIndex.Storage.PostgreSQL.Cache;
 using FluxIndex.Storage.PostgreSQL.Graph;
+using FluxIndex.Storage.PostgreSQL.KeywordSearch;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace FluxIndex.Storage.PostgreSQL;
 
@@ -47,6 +50,11 @@ public static class FluxIndexContextBuilderExtensions
             {
                 services.AddSingleton<IStorageInitializer, PostgreSQLStorageInitializer>();
             }
+
+            RegisterPostgresKeywordSearch(
+                services,
+                options.VectorStore.ConnectionString,
+                options.VectorStore.EnableAutoMigration);
         }
 
         var graphProvider = options.GraphStore.Provider?.ToLowerInvariant();
@@ -94,5 +102,50 @@ public static class FluxIndexContextBuilderExtensions
             services.AddSingleton<IStorageInitializer>(sp =>
                 sp.GetRequiredService<Cache.PostgresCacheSchemaInitializer>());
         }
+    }
+
+    /// <summary>
+    /// Registers the PostgreSQL-backed keyword search service on the same database as the vector
+    /// store. Replaces the in-memory BM25 default that the SDK registers, so the keyword leg of a
+    /// hybrid search survives the process instead of silently degrading to vector-only.
+    /// </summary>
+    private static void RegisterPostgresKeywordSearch(
+        IServiceCollection services,
+        string connectionString,
+        bool enableAutoMigration)
+    {
+        // The SDK registers its in-memory BM25 fallback with TryAdd precisely so this concrete
+        // registration wins. Singleton so the indexer and the retriever share one instance.
+        services.AddSingleton<PostgresKeywordSearchService>(sp => new PostgresKeywordSearchService(
+            connectionString,
+            sp.GetRequiredService<ILogger<PostgresKeywordSearchService>>()));
+        services.AddSingleton<IKeywordSearchService>(sp =>
+            sp.GetRequiredService<PostgresKeywordSearchService>());
+
+        // Build() runs IStorageInitializer only; provisioning here keeps the contract uniform with
+        // every other component: after Build(), the schema exists. Gated by the same flag as the
+        // vector store so a caller managing schema externally is not provisioned against.
+        //
+        // NOTE: the service still creates its tables lazily on first use, so opting out delays the
+        // DDL rather than preventing it. Same behavior as the SQLite backend; making the opt-out
+        // total is a contract change for both, tracked as a proposal.
+        if (enableAutoMigration)
+        {
+            services.AddSingleton<IStorageInitializer>(sp =>
+                new PostgresKeywordSearchInitializer(sp.GetRequiredService<PostgresKeywordSearchService>()));
+        }
+    }
+}
+
+/// <summary>
+/// Creates the keyword index schema during Build() so the contract matches every other component:
+/// once Build() returns, the tables exist.
+/// </summary>
+internal sealed class PostgresKeywordSearchInitializer(PostgresKeywordSearchService keywordSearchService)
+    : IStorageInitializer
+{
+    public void InitializeSync(IServiceProvider serviceProvider)
+    {
+        keywordSearchService.EnsureSchemaAsync().GetAwaiter().GetResult();
     }
 }

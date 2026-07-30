@@ -19,6 +19,10 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\FluxIndex.Storage.PostgreSQL\FluxIndex.Storage.PostgreSQL.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.Core\FluxIndex.Core.csproj" />
+    <!-- The keyword index schema must stay identical across SQL backends — the shared BM25
+         implementation queries those relations by name. KeywordBackendDdlParityTests compares the
+         two dialects' DDL, which is why this test project sees the SQLite backend. -->
+    <ProjectReference Include="..\..\src\FluxIndex.Storage.SQLite\FluxIndex.Storage.SQLite.csproj" />
   </ItemGroup>
 
 </Project>

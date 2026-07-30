@@ -9,6 +9,74 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.23.0] - 2026-07-30
+
+The keyword leg is now persistent on **PostgreSQL** as well, and the BM25 implementation is shared by
+every SQL backend so ranking cannot drift between them.
+
+### Added — persistent keyword index on PostgreSQL
+
+`AddPostgreSQLStorage()` registers `PostgresKeywordSearchService`, which keeps the BM25 inverted index
+in the same database as the vectors. `KeywordSearchAsync`/`HybridSearchAsync` therefore keep working
+after a restart and across processes, instead of degrading to vector-only (the degradation 0.21.5
+started warning about). Schema provisioning follows `VectorStore.EnableAutoMigration`, like the vector
+store's.
+
+**One reindex is needed** to populate the keyword index for documents indexed earlier.
+
+Verified against a live PostgreSQL (Testcontainers): **35 integration tests pass**, covering the
+restart roundtrip, ranking, deletion propagation, re-indexing without document-frequency drift,
+document-scoped search, Korean whole-token matching, a 6,000-term batch through the array predicate,
+and provisioning into a database that already holds other applications' tables. Six of them index one
+corpus into **both** SQL backends and compare the results — order, scores, matched terms, term
+frequencies and document lengths — so "ranking does not depend on the store" is asserted by execution
+rather than inferred from the shared code. A nightly `Integration Tests (PostgreSQL)` workflow keeps
+them running.
+
+### Changed — one shared BM25 implementation behind the SQL backends
+
+Scoring, tokenization, index maintenance and the index schema now live in
+`FluxIndex.Core.Application.Services.KeywordSearch.RelationalKeywordSearchService`; each storage
+package supplies only its SQL dialect (DDL, upsert syntax, id-list predicate). Consequences:
+
+- Keyword scores are comparable between SQLite and PostgreSQL, and a fix in the shared code applies to
+  both. A second hand-written copy of BM25 was the alternative, and it would have drifted silently.
+- `SQLiteKeywordSearchService` is unchanged in behavior and public shape; its SQLite schema DDL is
+  byte-identical, so existing databases are untouched.
+- Removed `FluxIndex.Storage.SQLite.KeywordSearch.BM25TermEntity` / `BM25PostingEntity` /
+  `BM25StatisticsEntity` — unused EF entity types with no `DbContext` mapping (the service uses raw
+  SQL). Breaking only for code that referenced the types themselves.
+
+### Fixed — `KeywordSearchOptions.DocumentIdFilter` was ignored
+
+The option existed on the contract but no implementation read it: a caller scoping a keyword search to
+one document received global results. It is now applied to the postings themselves, not to the result
+set — filtering after the top-N cut would have returned nothing when the scoped document's matches sat
+below the global top N.
+
+### Fixed — keyword `document_frequency` update could exceed SQLite's statement limit
+
+Recomputing document frequency inlined every affected term id into one statement. A batch touching
+enough distinct terms would exceed `SQLITE_MAX_SQL_LENGTH`; the ids are now sent in bounded batches.
+PostgreSQL passes them as one array parameter instead, so its statement size is independent of the
+batch.
+
+### Fixed — null parameters were sent without a type
+
+A null bound as a bare `DBNull` carries no type information and fails on providers that require one.
+The only nullable column in the keyword schema is text (`bm25_chunks.metadata`), which is the common
+case — most chunks have no metadata.
+
+### Fixed — intermittent failures in the SQLite concurrency tests
+
+Two concurrency tests resolved one `IVectorStore` and used it from several tasks at once. The store is
+`DbContext`-backed and EF Core forbids that; the corrupted connection state surfaced later as a
+`NullReferenceException` while the service provider was disposed, failing roughly half of full-solution
+runs. Each worker now resolves from its own scope. Test-only change — no product behavior is affected.
+Fixture teardown also no longer calls the process-global `SqliteConnection.ClearAllPools()`.
+
+---
+
 ## [0.22.0] - 2026-07-30
 
 The hybrid keyword leg is now populated by indexing and persisted alongside the vectors — on the

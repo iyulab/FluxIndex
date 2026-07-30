@@ -25,47 +25,52 @@ public static class FluxIndexContextBuilderExtensions
     /// </summary>
     public static FluxIndexContextBuilder AddSQLiteStorage(this FluxIndexContextBuilder builder)
     {
-        builder.RegisterStorageServices(services =>
-        {
-            var options = builder.Options;
-            var vectorProvider = options.VectorStore.Provider?.ToLowerInvariant();
-
-            if (vectorProvider == "sqlite")
-            {
-                RegisterSQLiteVectorStore(services, options);
-                RegisterSQLiteInitializer(services);
-
-                // The keyword (sparse) leg. Without a persistent backend the leg only ever holds what
-                // this process indexed, so hybrid search degrades to vector-only after a restart.
-                RegisterSQLiteKeywordSearch(services, options);
-            }
-
-            var graphProvider = options.GraphStore.Provider?.ToLowerInvariant();
-            if (graphProvider == "sqlite")
-            {
-                RegisterSQLiteGraphStore(services, options);
-
-                // The graph stores migrate from hosted services, which Build() never starts — it
-                // builds its own provider and runs IStorageInitializer only. Register the same
-                // routines as initializers so the builder path provisions them too.
-                services.AddSingleton<IStorageInitializer>(sp =>
-                    sp.GetRequiredService<SQLiteGraphSchemaInitializer>());
-                services.AddSingleton<IStorageInitializer>(sp =>
-                    sp.GetRequiredService<SQLiteEntityGraphSchemaInitializer>());
-            }
-
-            var cacheProvider = options.SemanticCache.Provider?.ToLowerInvariant();
-            if (cacheProvider == "sqlite")
-            {
-                RegisterSQLiteSemanticCache(services, options);
-
-                // Same reason as the graph stores above.
-                services.AddSingleton<IStorageInitializer>(sp =>
-                    sp.GetRequiredService<SQLiteCacheSchemaInitializer>());
-            }
-        });
-
+        builder.RegisterStorageServices(services => RegisterSQLiteServices(services, builder.Options));
         return builder;
+    }
+
+    /// <summary>
+    /// Registers the SQLite services for whichever components the options enable. Extracted from
+    /// <see cref="AddSQLiteStorage"/> — symmetric with the PostgreSQL package — so the provisioning
+    /// convention can be asserted against what this path actually registers.
+    /// </summary>
+    internal static void RegisterSQLiteServices(IServiceCollection services, FluxIndexOptions options)
+    {
+        var vectorProvider = options.VectorStore.Provider?.ToLowerInvariant();
+
+        if (vectorProvider == "sqlite")
+        {
+            RegisterSQLiteVectorStore(services, options);
+            RegisterSQLiteInitializer(services);
+
+            // The keyword (sparse) leg. Without a persistent backend the leg only ever holds what
+            // this process indexed, so hybrid search degrades to vector-only after a restart.
+            RegisterSQLiteKeywordSearch(services, options);
+        }
+
+        var graphProvider = options.GraphStore.Provider?.ToLowerInvariant();
+        if (graphProvider == "sqlite")
+        {
+            RegisterSQLiteGraphStore(services, options);
+
+            // The graph stores migrate from hosted services, which Build() never starts — it
+            // builds its own provider and runs IStorageInitializer only. Register the same
+            // routines as initializers so the builder path provisions them too.
+            services.AddSingleton<IStorageInitializer>(sp =>
+                sp.GetRequiredService<SQLiteGraphSchemaInitializer>());
+            services.AddSingleton<IStorageInitializer>(sp =>
+                sp.GetRequiredService<SQLiteEntityGraphSchemaInitializer>());
+        }
+
+        var cacheProvider = options.SemanticCache.Provider?.ToLowerInvariant();
+        if (cacheProvider == "sqlite")
+        {
+            RegisterSQLiteSemanticCache(services, options);
+
+            // Same reason as the graph stores above.
+            services.AddSingleton<IStorageInitializer>(sp =>
+                sp.GetRequiredService<SQLiteCacheSchemaInitializer>());
+        }
     }
 
     private static void RegisterSQLiteVectorStore(IServiceCollection services, FluxIndexOptions options)

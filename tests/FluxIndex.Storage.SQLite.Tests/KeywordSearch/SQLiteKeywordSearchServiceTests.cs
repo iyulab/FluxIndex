@@ -132,6 +132,78 @@ public class SQLiteKeywordSearchServiceTests : IDisposable
             "the tokenizer never splits a Hangul run, so a prefix query cannot match");
     }
 
+    /// <summary>
+    /// <see cref="KeywordSearchOptions.DocumentIdFilter"/> 는 계약에 있으나 0.22.0 까지
+    /// 구현에서 **읽히지 않았다** — 소비자가 스코프를 지정해도 전역 결과가 돌아왔다.
+    /// </summary>
+    [Fact]
+    public async Task Search_WithDocumentIdFilter_ReturnsOnlyThatDocument()
+    {
+        var service = CreateService();
+        await service.IndexChunksAsync(
+        [
+            Chunk("doc-1", "provisioning schema tables relations"),
+            Chunk("doc-2", "provisioning is also discussed in this other document")
+        ]);
+
+        var results = await service.SearchAsync(
+            "provisioning",
+            new KeywordSearchOptions { DocumentIdFilter = "doc-2" });
+        service.Dispose();
+
+        results.Should().NotBeEmpty("the filtered document does contain the term");
+        results.Should().OnlyContain(r => r.Chunk.DocumentId == "doc-2");
+    }
+
+    /// <summary>
+    /// 스코프는 결과가 아니라 **포스팅**에 걸린다. 전역 상위 N 을 뽑아 사후 필터링하면
+    /// 스코프 안에 매치가 있어도 0건이 나올 수 있다.
+    /// </summary>
+    [Fact]
+    public async Task Search_WithDocumentIdFilter_AppliesTheLimitAfterScoping()
+    {
+        var service = CreateService();
+        await service.IndexChunksAsync(
+        [
+            Chunk("doc-loud", "provisioning provisioning provisioning provisioning", 0, 3),
+            Chunk("doc-loud", "provisioning provisioning provisioning", 1, 3),
+            Chunk("doc-loud", "provisioning provisioning", 2, 3),
+            Chunk("doc-quiet", "provisioning mentioned once here")
+        ]);
+
+        var results = await service.SearchAsync(
+            "provisioning",
+            new KeywordSearchOptions { MaxResults = 2, DocumentIdFilter = "doc-quiet" });
+        service.Dispose();
+
+        results.Should().ContainSingle("the scoped document has exactly one matching chunk")
+            .Which.Chunk.DocumentId.Should().Be("doc-quiet");
+    }
+
+    /// <summary>
+    /// 영향받은 term id 는 SQL 에 인라인되므로(SQLite 에 배열 파라미터가 없다) 배치로 쪼갠다.
+    /// 배치 하나만 반영되면 나머지 term 의 df 가 0 으로 남고, 정리 단계가 그것을 삭제해
+    /// **검색에서 조용히 사라진다** — 그래서 여러 배치를 실제로 넘겨 확인한다.
+    /// </summary>
+    [Fact]
+    public async Task Indexing_MoreDistinctTermsThanOneBatch_KeepsEveryTermSearchable()
+    {
+        const int termCount = 6_000;   // TermIdBatchSize(5,000) 를 넘겨 2배치를 강제한다
+        var content = string.Join(' ', Enumerable.Range(1, termCount).Select(i => $"t{i:D5}"));
+
+        var service = CreateService();
+        await service.IndexChunksAsync([Chunk("doc-wide", content)]);
+
+        foreach (var term in new[] { "t00001", "t03000", "t05999" })
+        {
+            var results = await service.SearchAsync(term);
+            results.Should().ContainSingle($"'{term}' was indexed and its document frequency must be set")
+                .Which.Chunk.DocumentId.Should().Be("doc-wide");
+        }
+
+        service.Dispose();
+    }
+
     public void Dispose()
     {
         GC.SuppressFinalize(this);

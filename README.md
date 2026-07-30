@@ -166,15 +166,21 @@ var scoped = await context.Retriever.SearchAsync(
 await vectorStore.DeleteByFilterAsync(new() { ["workspace_id"] = "ws-a" });
 ```
 
-> **Keyword leg (since 0.22.0)**: indexing populates the BM25 keyword index, and `AddSQLiteStorage()`
-> persists it in the same database as the vectors — so `KeywordSearchAsync`/`HybridSearchAsync` keep
-> working after a restart. `WithIndexerOptions(o => o.IndexKeyword = false)` stops the indexer adding
-> to it — which means keyword and hybrid search have nothing to match against, so use it only if you
-> do not use them.
-> **PostgreSQL and Qdrant have no persistent keyword backend yet**: there the index is populated by
-> indexing but lives in process memory, so it is empty after a restart and hybrid degrades to
-> vector-only (a warning is logged when that happens). Vector search and metadata filtering are
-> unaffected. Documents indexed before 0.22.0 need one reindex to appear in the keyword index.
+> **Keyword leg (since 0.22.0)**: indexing populates the BM25 keyword index, and both
+> `AddSQLiteStorage()` and `AddPostgreSQLStorage()` persist it in the same database as the vectors — so
+> `KeywordSearchAsync`/`HybridSearchAsync` keep working after a restart.
+> `WithIndexerOptions(o => o.IndexKeyword = false)` stops the indexer adding to it — which means
+> keyword and hybrid search have nothing to match against, so use it only if you do not use them.
+>
+> | Storage | Keyword index | Survives restart |
+> |---------|---------------|------------------|
+> | SQLite (`AddSQLiteStorage`) | same database as the vectors | ✅ |
+> | PostgreSQL (`AddPostgreSQLStorage`) | same database as the vectors (**new in 0.23.0**) | ✅ |
+> | Qdrant, other stores | process memory | ❌ — hybrid degrades to vector-only, and a warning is logged |
+>
+> Ranking is identical on every SQL backend: the BM25 scoring and the index schema are shared, and only
+> SQL dialect differs per store. Vector search and metadata filtering are unaffected by the keyword leg.
+> Documents indexed before the keyword index existed need one reindex to appear in it.
 
 ### Which package do I need?
 

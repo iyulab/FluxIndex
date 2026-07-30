@@ -77,8 +77,9 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
 
         _serviceProvider?.Dispose();
 
-        // SQLite 연결 풀 완전 정리 (동시성 테스트 후 파일 잠금 해제)
-        SqliteConnection.ClearAllPools();
+        // 이 픽스처가 소유한 연결 풀만 정리한다. ClearAllPools 는 프로세스 전역이라 다른 픽스처의
+        // 풀까지 비우므로, 정리 범위를 자기 DB 로 한정하는 것이 맞다.
+        SqliteConnection.ClearPool(new SqliteConnection($"Data Source={_testDatabasePath}"));
 
         // 테스트 파일 정리 (재시도 로직)
         await DeleteDatabaseFileWithRetryAsync(_testDatabasePath);
@@ -100,7 +101,7 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
             {
                 // 파일 잠금 해제 대기 후 재시도
                 await Task.Delay(100 * (i + 1));
-                SqliteConnection.ClearAllPools();
+                SqliteConnection.ClearPool(new SqliteConnection($"Data Source={_testDatabasePath}"));
             }
             catch (Exception ex)
             {
@@ -414,7 +415,6 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
         // NOTE: SQLite has fundamental concurrency limitations (file-level locking)
         // This test validates basic concurrent access handling, not high-throughput scenarios
         // For high-concurrency workloads, use PostgreSQL or other databases
-        var vectorStore = _serviceProvider.GetRequiredService<IVectorStore>();
         const int concurrentUsers = 3;  // Reduced from 10 - SQLite limitation
         const int operationsPerUser = 5; // Reduced from 20 - SQLite limitation
 
@@ -425,6 +425,15 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
         var tasks = Enumerable.Range(0, concurrentUsers).Select(userId =>
             Task.Run(async () =>
             {
+                // Each worker resolves from its own scope. The store is DbContext-backed, and EF Core
+                // forbids concurrent use of one context — sharing a single instance corrupts its
+                // connection state, which surfaces much later as a NullReferenceException while the
+                // provider is disposed (intermittent, and more likely when the machine is loaded).
+                // A consumer doing concurrent work resolves per scope too; the concurrency under test
+                // is against the database, not against one context instance.
+                using var scope = _serviceProvider.CreateScope();
+                var vectorStore = scope.ServiceProvider.GetRequiredService<IVectorStore>();
+
                 var results = new List<string>();
                 var errors = new List<Exception>();
 
@@ -490,12 +499,15 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
         }
 
         // 일부 오류는 허용하지만, 대부분은 성공해야 함
-        // EF Core DbContext는 스레드 안전하지 않으므로 동시성 테스트에서 일부 오류 허용
+        // 허용 사유는 이제 SQLite 파일 잠금(SQLITE_BUSY)뿐이다 — 워커가 스코프별 컨텍스트를 갖게 되어
+        // EF Core 스레드 안전성 위반은 더 이상 오류원이 아니다.
         var errorRate = (double)totalErrors.Count / expectedCount;
         errorRate.Should().BeLessThan(0.10); // 10% 이하 오류율 (DbContext 스레드 안전성 제약)
 
-        // 최종 데이터 일관성 확인
-        var finalCount = await vectorStore.CountAsync();
+        // 최종 데이터 일관성 확인 — 검증도 자기 스코프에서 (위 워커들과 컨텍스트를 공유하지 않는다)
+        using var assertionScope = _serviceProvider.CreateScope();
+        var finalCount = await assertionScope.ServiceProvider
+            .GetRequiredService<IVectorStore>().CountAsync();
         finalCount.Should().BeGreaterThanOrEqualTo((int)(totalResults.Count * 0.9)); // 90% 이상 저장됨
 
         _output.WriteLine($"동시성 테스트 결과: {totalResults.Count}/{expectedCount}개 성공, {totalErrors.Count}개 오류, 최종 개수: {finalCount}");
@@ -631,4 +643,5 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
 
         return embedding;
     }
+
 }

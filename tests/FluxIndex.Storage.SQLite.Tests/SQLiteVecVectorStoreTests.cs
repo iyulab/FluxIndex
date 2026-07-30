@@ -489,8 +489,9 @@ public class SQLiteVecVectorStoreTests : IDisposable
     {
         _serviceProvider?.Dispose();
 
-        // SQLite 연결 풀 완전 정리
-        SqliteConnection.ClearAllPools();
+        // 이 픽스처가 소유한 연결 풀만 정리한다. ClearAllPools 는 프로세스 전역이라 다른 픽스처의
+        // 풀까지 비우므로, 정리 범위를 자기 DB 로 한정하는 것이 맞다.
+        SqliteConnection.ClearPool(new SqliteConnection($"Data Source={_testDatabasePath}"));
 
         // 재시도 로직으로 파일 정리
         DeleteDatabaseFileWithRetry(_testDatabasePath);
@@ -511,7 +512,7 @@ public class SQLiteVecVectorStoreTests : IDisposable
             catch (IOException) when (i < maxRetries - 1)
             {
                 Thread.Sleep(100 * (i + 1));
-                SqliteConnection.ClearAllPools();
+                SqliteConnection.ClearPool(new SqliteConnection($"Data Source={_testDatabasePath}"));
             }
             catch (Exception ex)
             {
@@ -726,4 +727,5 @@ public class SQLiteVecOptionsTests
         options.FallbackToInMemoryOnError.Should().BeFalse();
         options.CommandTimeout.Should().Be(60);
     }
+
 }

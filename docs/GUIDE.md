@@ -120,11 +120,52 @@ Opt out per component when you manage the schema externally:
 
 ```csharp
 var builder = FluxIndexContext.CreateBuilder().UsePostgreSQL(conn);
-builder.Options.VectorStore.EnableAutoMigration = false;  // vector store
+builder.Options.VectorStore.EnableAutoMigration = false;  // vector store + keyword index
 builder.Options.GraphStore.AutoMigrate = false;           // graph store
 builder.Options.SemanticCache.AutoMigrate = false;        // semantic cache
 var context = builder.AddPostgreSQLStorage().Build();
 ```
+
+`EnableAutoMigration` covers the keyword index as well, since it lives in the vector store's database.
+Note that opting out stops `Build()` from provisioning it but the keyword service still creates its
+tables lazily on first use — the flag delays that DDL rather than preventing it.
+
+## The keyword (BM25) index
+
+Hybrid search has two legs. The vector leg is the store you configured; the keyword leg is a BM25
+inverted index that FluxIndex maintains itself in four relations — `bm25_terms`, `bm25_postings`,
+`bm25_chunks`, `bm25_statistics`.
+
+**Indexing populates it.** Every mutating path on `Indexer` keeps it in step with the vector store,
+deletions included. Opt out with `WithIndexerOptions(o => o.IndexKeyword = false)` — but that only
+makes sense if you never call `KeywordSearchAsync`/`HybridSearchAsync`, because an index nothing adds
+to has nothing to match.
+
+**Where it lives depends on the store:**
+
+| Storage | Backend | Survives restart |
+|---------|---------|------------------|
+| SQLite (`AddSQLiteStorage`) | same database file as the vectors | ✅ |
+| PostgreSQL (`AddPostgreSQLStorage`) | same database as the vectors (since 0.23.0) | ✅ |
+| Qdrant / other vector stores | process memory | ❌ |
+
+On the in-memory path the index holds only what the current process indexed, so after a restart the
+keyword leg contributes nothing and hybrid search silently becomes vector-only. Since 0.21.5 that
+degradation is logged once rather than passing unnoticed.
+
+**Ranking is identical across the SQL backends.** The scoring, the tokenizer and the schema are one
+shared implementation; each backend supplies only its SQL dialect. Scores are therefore comparable
+between SQLite and PostgreSQL, and a defect fixed in one is fixed in both.
+
+**Tokenization** splits on non-word characters, drops single characters and English stop words, and
+lower-cases. A Hangul run is never split (`\w` covers Hangul in .NET), so Korean matches on whole
+tokens: `착수계약서` matches `착수계약서`, not `착수계`.
+
+**Replacing the backend** is a `TryAdd`-friendly registration — register your own
+`IKeywordSearchService` before `Build()` and it wins over the built-in one.
+
+> Documents indexed before the keyword index existed are not in it. One reindex per document adds them;
+> vector search is unaffected in the meantime.
 
 > Before 0.21.2 (PostgreSQL) and 0.21.3 (SQLite) only the vector store was provisioned on this path;
 > the other components' schemas were never created and their first operation failed on a missing
@@ -190,7 +231,7 @@ var context = FluxIndexContext.CreateBuilder()
 | Role | Provider | Purpose |
 |------|----------|---------|
 | **Vector Search** | Qdrant | High-performance similarity search |
-| **Keyword Search** | in-process BM25 | Populated by indexing; **not persisted** on this path — see [The keyword (BM25) index](#the-keyword-bm25-index) |
+| **Keyword Search** | in-process BM25 | Populated by indexing; **not persisted** here because the vectors live in Qdrant — the persistent backends follow the vector store's database. See [The keyword (BM25) index](#the-keyword-bm25-index) |
 | **Graph Relations** | Neo4j | Entity graph, community detection |
 | **Metadata** | PostgreSQL | Document and chunk metadata |
 | **Semantic Cache** | PostgreSQL | Query result caching |

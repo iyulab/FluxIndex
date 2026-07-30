@@ -1,0 +1,52 @@
+name: Integration Tests (PostgreSQL)
+
+# The PostgreSQL-backed tests need a live server, which Testcontainers starts from the Docker daemon
+# that GitHub-hosted runners provide. They are excluded from the main test workflow by
+# `Category!=Integration`, so nothing in CI has ever executed them — the schema, upserts and array
+# predicate of the PostgreSQL keyword backend are covered in CI only structurally today.
+#
+# They do pass locally against a real PostgreSQL (29 tests, 2026-07-30). Trigger is still manual +
+# nightly rather than push/PR: passing on a developer machine is not evidence about a runner that pulls
+# images under a time limit, and gating every pull request on that first contact would block main on
+# environment unknowns rather than on regressions. Promote to `push`/`pull_request` once this has been
+# green here a few times — that promotion is the point of running it nightly, not something to skip.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 03:00 UTC daily — one run per day; the job pulls container images, so keep the cadence low.
+    - cron: '0 3 * * *'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  postgres:
+    name: PostgreSQL integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: '10.0.x'
+
+    - name: Restore dependencies
+      run: dotnet restore tests/FluxIndex.Storage.PostgreSQL.Tests/FluxIndex.Storage.PostgreSQL.Tests.csproj --ignore-failed-sources
+
+    - name: Build
+      run: dotnet build tests/FluxIndex.Storage.PostgreSQL.Tests/FluxIndex.Storage.PostgreSQL.Tests.csproj --configuration Release --no-restore
+
+    # Testcontainers manages the containers itself (pgvector/pgvector:pg16 and postgres); the runner's
+    # Docker daemon is all it needs. No artifacts are uploaded — this job only reports pass/fail.
+    - name: Run PostgreSQL integration tests
+      run: >
+        dotnet test tests/FluxIndex.Storage.PostgreSQL.Tests/FluxIndex.Storage.PostgreSQL.Tests.csproj
+        --configuration Release --no-build
+        --filter "Category=Integration"
+        --logger "console;verbosity=normal"
