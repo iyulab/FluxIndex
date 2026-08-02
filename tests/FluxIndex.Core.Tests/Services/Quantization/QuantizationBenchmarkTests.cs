@@ -16,6 +16,13 @@ namespace FluxIndex.Core.Tests.Services.Quantization;
 /// 양자화 성능 벤치마크 테스트
 /// 원본 vs 양자화 검색 성능 비교
 /// </summary>
+/// <remarks>
+/// Categorised as <c>Performance</c>: these measure wall-clock time and therefore depend on the
+/// machine they run on. CI excludes this category — a shared runner cannot give timings a
+/// correctness assertion could rest on. They run locally; no scheduled job currently executes
+/// <c>Category=Performance</c>, so treat these as developer-invoked until one exists.
+/// </remarks>
+[Trait("Category", "Performance")]
 public class QuantizationBenchmarkTests
 {
     private readonly ITestOutputHelper _output;
@@ -110,10 +117,6 @@ public class QuantizationBenchmarkTests
     [Fact]
     public async Task Benchmark_ScalarInt8_DistanceComputation()
     {
-        // Skip in CI environment where performance is variable
-        var isCI = Environment.GetEnvironmentVariable("CI") == "true" ||
-                   Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true";
-
         // Arrange
         const int comparisons = 10000;
         const int dimension = 1536;
@@ -240,8 +243,10 @@ public class QuantizationBenchmarkTests
         const int dimension = 1536;
         var quantizer = CreateBinaryQuantizer(dimension);
 
-        var queryVector = GenerateRandomVector(dimension);
-        var targetVector = GenerateRandomVector(dimension);
+        // Distinct seeds — the helper is deterministic, so reusing the default would make query
+        // and target the same vector and the measured distance a constant zero.
+        var queryVector = GenerateRandomVector(dimension, seed: 42);
+        var targetVector = GenerateRandomVector(dimension, seed: 7);
 
         var quantizedQuery = await quantizer.QuantizeAsync(queryVector);
         var quantizedTarget = await quantizer.QuantizeAsync(targetVector);
@@ -277,7 +282,18 @@ public class QuantizationBenchmarkTests
         _output.WriteLine($"  Cosine total: {swCosine.Elapsed.TotalMilliseconds:F2} ms");
         _output.WriteLine($"  Speedup: {speedup:F2}x");
 
-        Assert.True(speedup >= 1.0, "Hamming distance should be at least as fast as cosine similarity");
+        // Assert on metric invariants, not on the timings above.
+        // This test used to assert `speedup >= 1.0`. That compares two wall-clock windows measured
+        // back to back on whatever machine happens to run them: a local margin of ~6x still
+        // inverted on a shared CI runner, where a scheduling or GC pause landing inside one window
+        // is enough to flip the comparison. Its sibling Benchmark_ScalarInt8_DistanceComputation
+        // had already been relaxed for exactly this reason. The speed claim now lives in the
+        // report above, where it informs without gating.
+        var distance = quantizer.ComputeDistance(quantizedQuery, quantizedTarget);
+        Assert.Equal(0f, quantizer.ComputeDistance(quantizedQuery, quantizedQuery));
+        Assert.Equal(distance, quantizer.ComputeDistance(quantizedTarget, quantizedQuery));
+        Assert.InRange(distance, 0f, dimension);
+        Assert.True(distance > 0f, "Distinct random vectors should differ in at least one bit");
     }
 
     [Fact]
@@ -571,16 +587,21 @@ public class QuantizationBenchmarkTests
         _output.WriteLine("  - Binary: Maximum compression (32x), fast for reranking candidates");
         _output.WriteLine("  - Product Quantization: Best compression for large-scale systems");
 
-        Assert.True(true); // Summary report always passes
+        // The report itself is the output; assert the compression ordering it claims, so the
+        // summary cannot drift into describing sizes the quantizers no longer produce.
+        Assert.True(binaryQuantized.Data.Length < scalarQuantized.Data.Length,
+            "Binary quantization should be more compact than scalar Int8");
+        Assert.True(scalarQuantized.Data.Length < originalBytes,
+            "Scalar Int8 should be more compact than the original float32 vector");
     }
 
     #endregion
 
     #region Helper Methods
 
-    private static float[] GenerateRandomVector(int dimension)
+    private static float[] GenerateRandomVector(int dimension, int seed = 42)
     {
-        var random = new Random(42);
+        var random = new Random(seed);
         var vector = new float[dimension];
         for (int i = 0; i < dimension; i++)
         {

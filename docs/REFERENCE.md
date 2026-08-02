@@ -547,6 +547,28 @@ pwsh scripts/full-test.ps1
 pwsh scripts/mock-test.ps1 -Coverage
 ```
 
+Both scripts run the same thing — `full-test.ps1` reports whether `.env.local` is present and then
+delegates — so the runner's behaviour is defined in one place.
+
+The runner **discovers** every `tests/**/*.Tests.csproj` rather than reading a fixed list, and
+requires all of them to pass. Two categories are excluded because their exclusion holds on any
+machine:
+
+| Category | Why it is excluded |
+|---|---|
+| `Integration` | Needs an external service (Testcontainers/Docker, a live database) |
+| `Performance` | Asserts on wall-clock time, which a shared runner cannot make meaningful |
+
+Mark a test with `[Trait("Category", "...")]` to place it in either. Excluding by category rather
+than by project matters for the case a project list cannot express: a service-dependent test living
+inside an otherwise self-contained project.
+
+To run an excluded category deliberately:
+
+```powershell
+dotnet test --filter "Category=Performance"
+```
+
 ### Test Fixture Pattern
 
 ```csharp

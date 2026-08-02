@@ -1,5 +1,6 @@
 ﻿using FluxIndex.SDK;
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Tests.Contract;
 using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Core.Domain.Models;
 using DocumentChunkEntity = FluxIndex.Core.Domain.Entities.DocumentChunk;
@@ -119,7 +120,7 @@ public class ProgressAndEventsTests
         var (indexer, mocks) = CreateIndexer();
         var document = CreateTestDocument();
         var progressReports = new List<IndexingProgress>();
-        var progress = new Progress<IndexingProgress>(p => progressReports.Add(p));
+        var progress = new SynchronousProgress<IndexingProgress>(p => progressReports.Add(p));
 
         // Mock successful indexing
         mocks.VectorStore.StoreBatchAsync(Arg.Any<IEnumerable<DocumentChunkEntity>>(), Arg.Any<CancellationToken>()).Returns(new List<string> { "chunk1", "chunk2" });
@@ -278,7 +279,7 @@ public class ProgressAndEventsTests
         var (retriever, mocks) = CreateRetriever();
         var query = "test query";
         var progressReports = new List<SearchProgress>();
-        var progress = new Progress<SearchProgress>(p => progressReports.Add(p));
+        var progress = new SynchronousProgress<SearchProgress>(p => progressReports.Add(p));
 
         // Mock successful search
         mocks.EmbeddingService.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new float[] { 0.1f, 0.2f, 0.3f });

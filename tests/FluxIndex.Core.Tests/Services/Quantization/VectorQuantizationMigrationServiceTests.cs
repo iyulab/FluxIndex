@@ -2,6 +2,7 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Models;
 using FluxIndex.Core.Application.Services.Quantization;
 using FluxIndex.Core.Domain.Entities;
+using FluxIndex.Core.Tests.Contract;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -272,7 +273,7 @@ public class VectorQuantizationMigrationServiceTests
         var chunks = CreateTestChunks(3, 128);
         var quantizedVector = CreateQuantizedVector(128);
         var progressReports = new List<MigrationProgress>();
-        var progress = new Progress<MigrationProgress>(p => progressReports.Add(p));
+        var progress = new SynchronousProgress<MigrationProgress>(p => progressReports.Add(p));
         var callCount = 0;
 
         _vectorStoreMock.SearchAsync(
@@ -290,8 +291,7 @@ public class VectorQuantizationMigrationServiceTests
         // Act
         var result = await service.MigrateAllAsync(progress: progress);
 
-        // Assert
-        await Task.Delay(100); // Progress 콜백 대기
+        // Assert — SynchronousProgress delivers inline, so no wait is needed.
         Assert.True(result.IsSuccess);
         Assert.NotEmpty(progressReports);
         Assert.Equal(3, progressReports.Last().SuccessCount);

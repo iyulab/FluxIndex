@@ -10,27 +10,7 @@ namespace FluxIndex.Storage.SQLite.Tests.Infrastructure;
 /// </summary>
 public static class CITestHelper
 {
-    private static bool? _isCIEnvironment;
     private static bool? _isSqliteVecAvailable;
-
-    /// <summary>
-    /// Check if running in CI environment
-    /// </summary>
-    public static bool IsCIEnvironment()
-    {
-        if (_isCIEnvironment.HasValue)
-            return _isCIEnvironment.Value;
-
-        // Check for common CI environment variables
-        _isCIEnvironment = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("CI")) ||
-                          !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("GITHUB_ACTIONS")) ||
-                          !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("AZURE_PIPELINES")) ||
-                          !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("JENKINS_URL")) ||
-                          !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("TRAVIS")) ||
-                          !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("CIRCLECI"));
-
-        return _isCIEnvironment.Value;
-    }
 
     /// <summary>
     /// Check if sqlite-vec should be skipped
@@ -40,17 +20,19 @@ public static class CITestHelper
         if (_isSqliteVecAvailable.HasValue)
             return !_isSqliteVecAvailable.Value;
 
-        // Force skip in CI environments unless explicitly enabled
-        if (IsCIEnvironment())
-        {
-            var enableSqliteVec = Environment.GetEnvironmentVariable("ENABLE_SQLITEVEC_TESTS");
-            if (string.IsNullOrEmpty(enableSqliteVec) ||
-                (!enableSqliteVec.Equals("true", StringComparison.OrdinalIgnoreCase) && enableSqliteVec != "1"))
-            {
-                _isSqliteVecAvailable = false;
-                return true;
-            }
-        }
+        // No CI-specific branch: availability is decided by whether the native extension is
+        // actually present, on CI exactly as anywhere else.
+        //
+        // This method used to force-skip whenever a CI environment variable was set, which meant
+        // the auto-detection below never executed there. 62 call sites — the whole sqlite-vec
+        // surface — were therefore skipped on every CI run, and skips do not fail a build, so the
+        // logs stayed green while the vector-search tests never ran once. The premise behind that
+        // branch ("the native extension is unavailable on a runner") was never verified and is
+        // false: the sqlite-vec package ships runtimes/linux-x64/native/vec0.so, a RID-agnostic
+        // build copies every runtime asset into the output directory, and that is precisely the
+        // path IsSqliteVecExtensionAvailable() probes.
+        //
+        // ENABLE_SQLITEVEC_TESTS=false below remains as an explicit opt-out.
 
         // Check for explicit environment variable override
         var enableSqliteVecLocal = Environment.GetEnvironmentVariable("ENABLE_SQLITEVEC_TESTS");
@@ -228,11 +210,6 @@ public static class CITestHelper
     public const string SqliteVecNotAvailableSkipMessage = "SQLite-vec native extension not found. Ensure sqlite-vec NuGet package is restored, or set ENABLE_SQLITEVEC_TESTS=true to force enable.";
 
     /// <summary>
-    /// Skip message for CI environment tests
-    /// </summary>
-    public const string CIEnvironmentSkipMessage = "This test is skipped in CI environment due to native dependency requirements.";
-
-    /// <summary>
     /// Skip message for performance tests
     /// </summary>
     public const string PerformanceTestSkipMessage = "Performance tests are disabled by default. Set ENABLE_PERFORMANCE_TESTS=true to run these tests.";
@@ -248,14 +225,6 @@ public static class CITestHelper
             System.Console.WriteLine($"Skipping SQLite-vec test - Enable Flag: {Environment.GetEnvironmentVariable("ENABLE_SQLITEVEC_TESTS")}");
         }
         Skip.If(shouldSkip, SqliteVecNotAvailableSkipMessage);
-    }
-
-    /// <summary>
-    /// Helper method to skip test if running in CI environment
-    /// </summary>
-    public static void SkipIfCIEnvironment(string? reason = null)
-    {
-        Skip.If(IsCIEnvironment(), reason ?? CIEnvironmentSkipMessage);
     }
 
     /// <summary>
