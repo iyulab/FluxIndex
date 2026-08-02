@@ -37,6 +37,8 @@ jobs:
     - name: Build
       run: dotnet build --configuration Release --no-restore
 
+    # -NoBuild: the step above already built this configuration. Without it the runner compiles the
+    # whole solution twice per run.
     - name: Run Mock Tests (CI/CD Mode)
-      run: pwsh ./scripts/mock-test.ps1 -Verbosity minimal -Configuration Release
+      run: pwsh ./scripts/mock-test.ps1 -Verbosity minimal -Configuration Release -NoBuild
 

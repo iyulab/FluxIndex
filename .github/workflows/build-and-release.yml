@@ -137,13 +137,26 @@ jobs:
         # No `|| true`. A failing test must fail this step: FluxIndex 0.24.0 (12 packages) was
         # published on top of two failing tests because the swallow made the step green, and
         # nuget.org packages cannot be withdrawn once pushed.
+        #
+        # Failures are collected rather than aborting on the first one, so a single run reports
+        # every broken project instead of only the earliest. `if ! cmd` keeps this compatible with
+        # `set -e` without reintroducing a swallow — the exit status is inspected, not discarded.
+        FAILED=()
         for project in "${TEST_PROJECTS[@]}"; do
           echo "🧪 Testing: $project"
-          dotnet test "$project" --no-build --configuration ${{ env.CONFIGURATION }} \
-            --filter "Category!=Integration&Category!=Performance" \
-            --verbosity minimal \
-            --collect:"XPlat Code Coverage"
+          if ! dotnet test "$project" --no-build --configuration ${{ env.CONFIGURATION }} \
+                 --filter "Category!=Integration&Category!=Performance" \
+                 --verbosity minimal \
+                 --collect:"XPlat Code Coverage"; then
+            FAILED+=("$project")
+          fi
         done
+
+        if [[ ${#FAILED[@]} -gt 0 ]]; then
+          echo "::error::Tests failed in ${#FAILED[@]} of ${#TEST_PROJECTS[@]} project(s):"
+          printf '::error::  %s\n' "${FAILED[@]}"
+          exit 1
+        fi
 
         echo "✅ All discovered test projects passed"
 
