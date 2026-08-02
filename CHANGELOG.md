@@ -9,6 +9,29 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.24.0] - 2026-08-02
+
+### Changed
+
+- **`Flux.Abstractions` is no longer built here.** It now ships from its own repository and
+  versions independently, starting at `0.24.0`. This repository consumes it as a package like
+  any other consumer.
+
+  The contract was previously produced here while also being consumed by FileFlux, FluxCurator,
+  FluxImprover and WebFlux — all four of which this repository consumes in turn. That is a cycle
+  in the dependency graph, and its practical effect was that those four could only ever reference
+  a contract release older than the one they were being built against: raising the pin required a
+  new release here, which immediately made the pin stale again. Freezing those pins was what kept
+  the graph buildable.
+
+  Nothing about the contract's API changes — same types, same namespace, same package id, and the
+  version line continues forward.
+
+- **For consumers of this repository, nothing changes.** `Flux.Abstractions` still arrives
+  transitively through `FluxIndex.Core`. Only its origin and version line moved.
+
+---
+
 ## [0.23.0] - 2026-07-30
 
 The keyword leg is now persistent on **PostgreSQL** as well, and the BM25 implementation is shared by

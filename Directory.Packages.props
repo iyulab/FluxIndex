@@ -70,6 +70,12 @@
     <PackageVersion Include="Qdrant.Client" Version="1.18.1" />
     <PackageVersion Include="Testcontainers.Qdrant" Version="4.12.0" />
   </ItemGroup>
+  <!-- Shared ecosystem contract. Produced by its own repository so it can sit below every
+       package that consumes it; consuming it here as a package rather than a project is what
+       keeps the dependency graph acyclic. -->
+  <ItemGroup>
+    <PackageVersion Include="Flux.Abstractions" Version="0.24.0" />
+  </ItemGroup>
   <!-- Document Processing & Quality -->
   <ItemGroup>
     <PackageVersion Include="FileFlux" Version="0.11.0" />
