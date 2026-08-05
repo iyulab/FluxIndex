@@ -83,6 +83,16 @@ public sealed class PostgresKeywordSearchService : RelationalKeywordSearchServic
             metadata text
         );
 
+        CREATE TABLE IF NOT EXISTS bm25_chunk_metadata (
+            chunk_id text NOT NULL,
+            meta_key text NOT NULL,
+            meta_value text NOT NULL,
+            PRIMARY KEY (chunk_id, meta_key, meta_value)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_bm25_chunk_metadata_lookup
+            ON bm25_chunk_metadata (meta_key, meta_value);
+
         CREATE TABLE IF NOT EXISTS bm25_statistics (
             key text PRIMARY KEY,
             value double precision NOT NULL

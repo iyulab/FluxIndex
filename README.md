@@ -182,6 +182,61 @@ await vectorStore.DeleteByFilterAsync(new() { ["workspace_id"] = "ws-a" });
 > SQL dialect differs per store. Vector search and metadata filtering are unaffected by the keyword leg.
 > Documents indexed before the keyword index existed need one reindex to appear in it.
 
+#### Scoping the keyword leg (since 0.25.0)
+
+The keyword index takes the same filter vocabulary as the vector store, so one filter object scopes
+both legs of a hybrid index:
+
+```csharp
+var scoped = await keywordSearch.SearchAsync("quarterly report", new KeywordSearchOptions
+{
+    MaxResults = 10,
+    MetadataFilter = new Dictionary<string, object> { ["workspace_id"] = "ws-a" }
+});
+
+// Symmetric with IVectorStore.DeleteByFilterAsync - one call clears a scope from both legs.
+int removed = await keywordSearch.DeleteByFilterAsync(
+    new Dictionary<string, object> { ["workspace_id"] = "ws-a" });
+```
+
+- **The filter is pushed into the query, not applied to the results.** `MaxResults` selects the top N
+  *within* the scope. Filtering after truncation would return nothing whenever another scope's
+  documents fill the global top N — a false negative that grows with the size of the shared index.
+- **Semantics match the vector store's**: keys AND together, a collection value matches any element,
+  and an unfilterable value throws `ArgumentException` rather than silently widening the filter.
+- **Only scalar metadata is filterable** (strings, numbers, booleans, dates, GUIDs, and collections of
+  those). Object-valued metadata stays readable on the returned chunk but cannot be filtered on.
+- Values are compared by the same text form on every backend, so a number indexed as `7` matches a
+  filter supplied as `7` without the caller knowing the index stores text. Chunks indexed before
+  0.25.0 need one reindex to gain the filter dimension.
+
+#### Scoping a hybrid query
+
+A scope belongs to the query, so declare it once and both legs take it:
+
+```csharp
+var results = await context.Retriever.SearchAsync("quarterly report", new SearchOptions
+{
+    TopK = 10,
+    UseHybridSearch = true,
+    MetadataFilters = { ["workspace_id"] = "ws-a" }   // applies to the vector AND keyword legs
+});
+```
+
+> ⚠️ **Changed in 0.25.0.** Before this, `MetadataFilters` was honoured by vector-only search and
+> **dropped on the hybrid path** — turning hybrid search on silently widened results to the whole
+> index. If you worked around it, the workaround is no longer needed. The same applies to Qdrant's
+> hybrid service, which passed no filter on either leg.
+
+At the Core layer the equivalent is `HybridSearchOptions.Filters`. A leg that carries its own
+non-empty filter (`VectorOptions.Filters` / `SparseOptions.Filters`) keeps it, so you can still
+differ per leg deliberately; `EffectiveVectorFilters` / `EffectiveSparseFilters` report what will
+actually be applied.
+
+A filter value the keyword index cannot match throws `ArgumentException` — the sparse leg degrades
+to empty on a *backend* failure, but a malformed filter is a caller error and reaches you rather
+than quietly returning unscoped results.
+
 ### Which package do I need?
 
 | Scenario | Packages |

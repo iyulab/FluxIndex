@@ -45,11 +45,20 @@ public partial class QdrantHybridSearchService : IHybridSearchService
         // Execute vector and BM25 searches in parallel
         var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
 
-        var vectorTask = _vectorStore.SearchAsync(queryEmbedding, candidateCount, 0.0f, filters: null, cancellationToken);
+        // Both legs take the query's scope. Passing filters: null here meant that configuring Qdrant
+        // for hybrid search silently dropped every metadata condition the caller set — the same
+        // request answered differently depending on which IHybridSearchService was registered.
+        var vectorFilters = options.EffectiveVectorFilters is { Count: > 0 } vf
+            ? new Dictionary<string, object>(vf)
+            : null;
+        var sparseFilters = options.EffectiveSparseFilters;
+
+        var vectorTask = _vectorStore.SearchAsync(queryEmbedding, candidateCount, 0.0f, vectorFilters, cancellationToken);
         var bm25Task = _keywordSearchService.SearchAsync(query, new KeywordSearchOptions
         {
             MaxResults = candidateCount,
-            MinScore = 0.0
+            MinScore = 0.0,
+            MetadataFilter = sparseFilters is { Count: > 0 } ? sparseFilters : null
         }, cancellationToken);
 
         await Task.WhenAll(vectorTask, bm25Task);

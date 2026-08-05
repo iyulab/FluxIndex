@@ -1,3 +1,4 @@
+using FluxIndex.Core.Application.Services.KeywordSearch;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.Models;
 using FluxIndex.Core.Domain.Entities;
@@ -576,10 +577,28 @@ public partial class BM25SparseRetriever : IKeywordSearchService, IPersistableSp
         KeywordSearchOptions? options = null,
         CancellationToken cancellationToken = default)
     {
+        var metadataFilter = options?.MetadataFilter is { Count: > 0 }
+            ? KeywordMetadataFilter.Expand(options.MetadataFilter, nameof(options))
+            : null;
+
+        // SparseSearchOptions has no document scope, so this option used to be accepted and dropped
+        // on this backend while the relational ones honoured it - the same silent-ignore class that
+        // was closed on the SQL side. An option the contract declares must either work or not exist.
+        var documentScope = string.IsNullOrWhiteSpace(options?.DocumentIdFilter)
+            ? null
+            : options!.DocumentIdFilter;
+
+        var restricted = metadataFilter is not null || documentScope is not null;
+
         var sparseOptions = options != null
             ? new SparseSearchOptions
             {
-                MaxResults = options.MaxResults,
+                // A restricted search ranks the whole candidate set and truncates afterwards. Taking
+                // MaxResults first and filtering the survivors is the false-negative structure this
+                // filter exists to avoid: a scope whose documents lose the global ranking race would
+                // come back empty for a query its documents match. Ranking every candidate is
+                // affordable here because this backend holds the index in memory anyway.
+                MaxResults = restricted ? int.MaxValue : options.MaxResults,
                 MinScore = options.MinScore,
                 K1 = options.K1,
                 B = options.B,
@@ -590,7 +609,19 @@ public partial class BM25SparseRetriever : IKeywordSearchService, IPersistableSp
 
         var results = await SearchCoreAsync(query, sparseOptions, cancellationToken);
 
-        return results.Select(r => new KeywordSearchResult
+        IEnumerable<SparseSearchResult> projected = results;
+        if (restricted)
+        {
+            if (documentScope is not null)
+                projected = projected.Where(r => r.Chunk?.DocumentId == documentScope);
+
+            if (metadataFilter is not null)
+                projected = projected.Where(r => KeywordMetadataFilter.Matches(r.Chunk?.Metadata, metadataFilter));
+
+            projected = projected.Take(options!.MaxResults);
+        }
+
+        return projected.Select(r => new KeywordSearchResult
         {
             Chunk = r.Chunk,
             Score = r.Score,
@@ -598,6 +629,36 @@ public partial class BM25SparseRetriever : IKeywordSearchService, IPersistableSp
             TermFrequencies = r.TermFrequencies,
             DocumentLength = r.DocumentLength
         }).ToList();
+    }
+
+    /// <inheritdoc />
+    public Task<int> DeleteByFilterAsync(
+        IReadOnlyDictionary<string, object> filter,
+        CancellationToken cancellationToken = default)
+    {
+        var expanded = KeywordMetadataFilter.Expand(filter, nameof(filter));
+        var defaultIndex = _indexes.GetOrAdd("default", _ => new BM25Index());
+
+        lock (_lockObject)
+        {
+            var chunkIds = defaultIndex.DocumentIndex
+                .Where(kvp => KeywordMetadataFilter.Matches(kvp.Value?.Metadata, expanded))
+                .Select(kvp => kvp.Key)
+                .ToList();
+
+            foreach (var chunkId in chunkIds)
+            {
+                defaultIndex.DocumentIndex.TryRemove(chunkId, out _);
+
+                foreach (var kvp in defaultIndex.InvertedIndex)
+                {
+                    kvp.Value.RemoveAll(p => p.ChunkId == chunkId);
+                }
+            }
+
+            defaultIndex.DocumentCount = defaultIndex.DocumentIndex.Count;
+            return Task.FromResult(chunkIds.Count);
+        }
     }
 
     /// <inheritdoc />

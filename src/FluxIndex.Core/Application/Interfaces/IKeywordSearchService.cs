@@ -63,6 +63,25 @@ public interface IKeywordSearchService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Removes every chunk whose metadata matches <paramref name="filter"/>, and returns how many
+    /// were removed. The filter uses the same vocabulary and match-any semantics as
+    /// <c>IVectorStore.DeleteByFilterAsync</c>, so one filter object cleans both legs of a hybrid
+    /// index symmetrically — without it, a caller purging a tenant can drop its vectors but has no
+    /// primitive for its keyword rows except a delete-per-document loop.
+    /// </summary>
+    /// <param name="filter">
+    /// Metadata key/value conditions, ANDed together. A collection value matches any of its elements.
+    /// Only scalar metadata participates — see <see cref="KeywordSearchOptions.MetadataFilter"/>.
+    /// </param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The number of chunks removed.</returns>
+    /// <exception cref="ArgumentException">The filter is empty — that would mean "delete everything",
+    /// which is <see cref="ClearIndexAsync"/>'s job and too destructive to reach by accident.</exception>
+    Task<int> DeleteByFilterAsync(
+        IReadOnlyDictionary<string, object> filter,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Clears all data from the keyword index.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>
@@ -185,6 +204,26 @@ public class KeywordSearchOptions
     /// Filter results by document ID. Default: null (no filter).
     /// </summary>
     public string? DocumentIdFilter { get; set; }
+
+    /// <summary>
+    /// Restricts the search to chunks whose metadata matches every entry here. A collection value
+    /// matches any of its elements, mirroring the vector store's payload filter, so a caller can hand
+    /// the same filter object to both legs of a hybrid search. Default: null (no filter).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The condition is pushed into the query, not applied to the results: without that, a scoped
+    /// search over a shared index returns whatever survives filtering the global top N, so a tenant
+    /// whose documents lose the global ranking race gets zero results for a query that matches its
+    /// documents perfectly well. Filtering after truncation is a false-negative machine.
+    /// </para>
+    /// <para>
+    /// Only scalar metadata is filterable — strings, numbers, booleans, and dates, plus collections
+    /// of those. Values that are objects stay readable on the returned chunk but cannot be filtered
+    /// on; there is no agreed way to compare them that holds across storage backends.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyDictionary<string, object>? MetadataFilter { get; set; }
 }
 
 /// <summary>

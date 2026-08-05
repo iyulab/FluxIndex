@@ -68,4 +68,68 @@ public class HybridSearchOptionsMapperTests
         core.VectorWeight.Should().BeApproximately(0.4, 0.0001);
         core.SparseWeight.Should().BeApproximately(0.6, 0.0001);
     }
+
+    // === Metadata filters ===
+    //
+    // Vector-only search applied SearchOptions.MetadataFilters and the hybrid path dropped them, so
+    // enabling hybrid search widened the result set to the whole index without saying so. A scoping
+    // bug that still returns results is the hardest kind to notice.
+
+    [Fact]
+    public void FromSearchOptions_CarriesMetadataFiltersToBothLegs()
+    {
+        var options = new SearchOptions
+        {
+            TopK = 10,
+            MetadataFilters = new Dictionary<string, string> { ["workspace_id"] = "ws-a" }
+        };
+
+        var core = HybridSearchOptionsMapper.FromSearchOptions(options);
+
+        core.Filters.Should().ContainKey("workspace_id");
+        core.EffectiveVectorFilters.Should().ContainKey("workspace_id");
+        core.EffectiveSparseFilters.Should().ContainKey("workspace_id",
+            "the keyword leg had no filter at all, so a scoped hybrid query mixed in other scopes");
+    }
+
+    [Fact]
+    public void ToCore_WithHybridOptions_CarriesMetadataFilters()
+    {
+        var sdk = new HybridSearchOptions
+        {
+            TopK = 7,
+            MetadataFilters = new Dictionary<string, string> { ["tenant"] = "alpha" }
+        };
+
+        var core = HybridSearchOptionsMapper.ToCore(sdk);
+
+        core.EffectiveVectorFilters.Should().ContainKey("tenant");
+        core.EffectiveSparseFilters.Should().ContainKey("tenant");
+    }
+
+    [Fact]
+    public void FromSearchOptions_WithoutFilters_LeavesBothLegsUnscoped()
+    {
+        var core = HybridSearchOptionsMapper.FromSearchOptions(new SearchOptions { TopK = 10 });
+
+        core.Filters.Should().BeEmpty();
+        core.EffectiveVectorFilters.Should().BeEmpty();
+        core.EffectiveSparseFilters.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// A leg carrying its own filter keeps it, so a caller can still differ per leg on purpose.
+    /// </summary>
+    [Fact]
+    public void EffectiveFilters_PreferTheLegsOwnFilterOverTheQueryLevelOne()
+    {
+        var core = new Core.Domain.Models.HybridSearchOptions
+        {
+            Filters = new Dictionary<string, object> { ["scope"] = "query" }
+        };
+        core.SparseOptions.Filters["scope"] = "sparse";
+
+        core.EffectiveSparseFilters["scope"].Should().Be("sparse");
+        core.EffectiveVectorFilters["scope"].Should().Be("query");
+    }
 }

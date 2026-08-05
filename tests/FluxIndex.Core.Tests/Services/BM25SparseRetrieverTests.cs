@@ -90,4 +90,105 @@ public class BM25SparseRetrieverTests
 
         statistics.TotalDocuments.Should().Be(2);
     }
+
+    // === Scope options ===
+    //
+    // This backend is the default sparse leg, so an option it accepts and ignores is worse here than
+    // anywhere else: every consumer who has not configured a SQL backend is on this path. The two
+    // implementations must answer the same options the same way or IKeywordSearchService is not a
+    // contract, only a shape.
+
+    private static DocumentChunk Tagged(string documentId, string content, string tenant)
+    {
+        var chunk = DocumentChunk.Create(documentId, content, 0, 1);
+        chunk.Metadata = new Dictionary<string, object> { ["tenant"] = tenant };
+        return chunk;
+    }
+
+    [Fact]
+    public async Task Search_MetadataFilter_RestrictsToMatchingChunks()
+    {
+        using var retriever = await IndexedWith(
+            Tagged("doc-a", "provisioning schema", "alpha"),
+            Tagged("doc-b", "provisioning schema", "beta"));
+
+        var results = await retriever.SearchAsync("provisioning", new KeywordSearchOptions
+        {
+            MetadataFilter = new Dictionary<string, object> { ["tenant"] = "alpha" }
+        });
+
+        results.Should().ContainSingle().Which.Chunk.DocumentId.Should().Be("doc-a");
+    }
+
+    /// <summary>
+    /// The same claim the SQL backends make: the restriction is applied before truncation. Here the
+    /// wanted document is deliberately the weakest match and MaxResults excludes it globally.
+    /// </summary>
+    [Fact]
+    public async Task Search_MetadataFilter_IsAppliedBeforeTruncation()
+    {
+        var chunks = new List<DocumentChunk>();
+        for (var i = 0; i < 5; i++)
+            chunks.Add(Tagged($"other-{i}", "provisioning provisioning provisioning", "beta"));
+        chunks.Add(Tagged("ours", "provisioning among several unrelated trailing words here", "alpha"));
+
+        using var retriever = await IndexedWith([.. chunks]);
+
+        var unfiltered = await retriever.SearchAsync("provisioning", new KeywordSearchOptions { MaxResults = 2 });
+        unfiltered.Should().NotContain(r => r.Chunk.DocumentId == "ours",
+            "otherwise a post-filter would pass this test too");
+
+        var filtered = await retriever.SearchAsync("provisioning", new KeywordSearchOptions
+        {
+            MaxResults = 2,
+            MetadataFilter = new Dictionary<string, object> { ["tenant"] = "alpha" }
+        });
+
+        filtered.Should().ContainSingle().Which.Chunk.DocumentId.Should().Be("ours");
+    }
+
+    /// <summary>
+    /// <c>DocumentIdFilter</c> was declared on the contract and honoured only by the SQL backends;
+    /// this one accepted it and searched the whole index.
+    /// </summary>
+    [Fact]
+    public async Task Search_DocumentIdFilter_IsHonoured()
+    {
+        using var retriever = await IndexedWith(
+            Chunk("doc-a", "provisioning schema"),
+            Chunk("doc-b", "provisioning schema"));
+
+        var results = await retriever.SearchAsync("provisioning", new KeywordSearchOptions
+        {
+            DocumentIdFilter = "doc-a"
+        });
+
+        results.Should().ContainSingle().Which.Chunk.DocumentId.Should().Be("doc-a");
+    }
+
+    [Fact]
+    public async Task DeleteByFilter_RemovesMatchingChunksOnly()
+    {
+        using var retriever = await IndexedWith(
+            Tagged("doc-a1", "provisioning", "alpha"),
+            Tagged("doc-a2", "provisioning", "alpha"),
+            Tagged("doc-b1", "provisioning", "beta"));
+
+        var removed = await retriever.DeleteByFilterAsync(
+            new Dictionary<string, object> { ["tenant"] = "alpha" });
+
+        removed.Should().Be(2);
+        (await retriever.SearchAsync("provisioning"))
+            .Select(r => r.Chunk.DocumentId).Should().BeEquivalentTo(["doc-b1"]);
+    }
+
+    [Fact]
+    public async Task DeleteByFilter_EmptyFilter_Throws()
+    {
+        using var retriever = await IndexedWith(Chunk("doc-a", "provisioning"));
+
+        var act = () => retriever.DeleteByFilterAsync(new Dictionary<string, object>());
+
+        await act.Should().ThrowAsync<ArgumentException>();
+    }
 }

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using System.Data;
 using System.Data.Common;
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -165,6 +166,12 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         if (terms.Count == 0)
             return [];
 
+        // Expanded once, outside the per-term loop: an unfilterable entry is a caller error and must
+        // surface before any work is done, not once per term.
+        var metadataFilter = options.MetadataFilter is { Count: > 0 }
+            ? KeywordMetadataFilter.Expand(options.MetadataFilter, nameof(options))
+            : null;
+
         LogSearchStarted(Logger, query, terms.Count);
 
         await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
@@ -197,9 +204,16 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
                 AddParameter(postingCmd, "@documentIdFilter", options.DocumentIdFilter);
             }
 
+            // Same reason as the document scope above, and the reason this is not a post-filter: the
+            // condition restricts the postings, so MaxResults selects the top N *within* the scope
+            // instead of filtering whatever won the global ranking race.
+            var metadataPredicate = metadataFilter is null
+                ? string.Empty
+                : BuildMetadataPredicate(postingCmd, "p.chunk_id", metadataFilter);
+
             postingCmd.CommandText =
                 "SELECT p.chunk_id, p.term_frequency, p.document_length " +
-                $"FROM bm25_postings p{scopeJoin} WHERE p.term_id = @termId";
+                $"FROM bm25_postings p{scopeJoin} WHERE p.term_id = @termId{metadataPredicate}";
             AddParameter(postingCmd, "@termId", termId.Value);
 
             await using var postingReader = await postingCmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
@@ -427,6 +441,8 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             await chunkCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
+        await WriteFilterableMetadataAsync(connection, chunk, cancellationToken).ConfigureAwait(false);
+
         var termFrequencies = terms
             .GroupBy(t => t, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
@@ -464,6 +480,125 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             return;
 
         await DeleteChunksAsync([chunkId], cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Replaces the chunk's filterable metadata rows. Delete-then-insert rather than upsert: a key
+    /// dropped from the metadata has to disappear from the filter dimension too, and an upsert keyed
+    /// on the rows present would leave the removed one behind — the chunk would keep matching a
+    /// filter it no longer satisfies.
+    /// </summary>
+    private static async Task WriteFilterableMetadataAsync(
+        DbConnection connection,
+        DocumentChunk chunk,
+        CancellationToken cancellationToken)
+    {
+        await using (var deleteCmd = connection.CreateCommand())
+        {
+            deleteCmd.CommandText = "DELETE FROM bm25_chunk_metadata WHERE chunk_id = @chunkId";
+            AddParameter(deleteCmd, "@chunkId", chunk.Id);
+            await deleteCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        // Distinct because a collection may repeat a value, and the row set is a membership fact -
+        // "this chunk has this value for this key" is true once however many times it was written.
+        var rows = KeywordMetadataFilter.Project(chunk.Metadata).Distinct().ToList();
+        if (rows.Count == 0)
+            return;
+
+        foreach (var (key, value) in rows)
+        {
+            await using var insertCmd = connection.CreateCommand();
+            insertCmd.CommandText =
+                "INSERT INTO bm25_chunk_metadata (chunk_id, meta_key, meta_value) " +
+                "VALUES (@chunkId, @key, @value)";
+            AddParameter(insertCmd, "@chunkId", chunk.Id);
+            AddParameter(insertCmd, "@key", key);
+            AddParameter(insertCmd, "@value", value);
+            await insertCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Builds an EXISTS predicate per filter entry against <c>bm25_chunk_metadata</c>, adding the
+    /// parameters to <paramref name="command"/>. Entries are ANDed; the values within one entry are
+    /// ORed, which is the match-any semantics the vector store's payload filter uses.
+    /// </summary>
+    /// <remarks>
+    /// EXISTS rather than a join: a chunk can hold several values for one key, and a join would
+    /// return it once per matching value, multiplying postings rows and with them the BM25 score.
+    /// Scoring must not depend on how many metadata values a chunk happens to carry.
+    /// </remarks>
+    private static string BuildMetadataPredicate(
+        DbCommand command,
+        string chunkIdColumnRef,
+        IReadOnlyList<(string Key, IReadOnlyList<string> Accepted)> expanded)
+    {
+        var builder = new StringBuilder();
+
+        for (var i = 0; i < expanded.Count; i++)
+        {
+            var (key, accepted) = expanded[i];
+            var keyParam = $"@mfKey{i}";
+            AddParameter(command, keyParam, key);
+
+            var valueParams = new string[accepted.Count];
+            for (var v = 0; v < accepted.Count; v++)
+            {
+                valueParams[v] = $"@mfVal{i}_{v}";
+                AddParameter(command, valueParams[v], accepted[v]);
+            }
+
+            builder.Append(" AND EXISTS (SELECT 1 FROM bm25_chunk_metadata mf")
+                   .Append(i)
+                   .Append(" WHERE mf")
+                   .Append(i)
+                   .Append(".chunk_id = ")
+                   .Append(chunkIdColumnRef)
+                   .Append(" AND mf")
+                   .Append(i)
+                   .Append(".meta_key = ")
+                   .Append(keyParam)
+                   .Append(" AND mf")
+                   .Append(i)
+                   .Append(".meta_value IN (")
+                   .Append(string.Join(", ", valueParams))
+                   .Append("))");
+        }
+
+        return builder.ToString();
+    }
+
+    /// <inheritdoc />
+    public async Task<int> DeleteByFilterAsync(
+        IReadOnlyDictionary<string, object> filter,
+        CancellationToken cancellationToken = default)
+    {
+        var expanded = KeywordMetadataFilter.Expand(filter, nameof(filter));
+
+        await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+
+        var chunkIds = new List<string>();
+        await using (var selectCmd = connection.CreateCommand())
+        {
+            var predicate = BuildMetadataPredicate(selectCmd, "c.chunk_id", expanded);
+            selectCmd.CommandText = $"SELECT c.chunk_id FROM bm25_chunks c WHERE 1 = 1{predicate}";
+
+            await using var reader = await selectCmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                chunkIds.Add(reader.GetString(0));
+            }
+        }
+
+        if (chunkIds.Count == 0)
+            return 0;
+
+        await DeleteChunksAsync(chunkIds, cancellationToken).ConfigureAwait(false);
+        LogChunksDeletedByFilter(Logger, chunkIds.Count, expanded.Count);
+        return chunkIds.Count;
     }
 
     /// <inheritdoc />
@@ -516,6 +651,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
                 await using var deleteCmd = connection.CreateCommand();
                 deleteCmd.CommandText = """
                     DELETE FROM bm25_postings WHERE chunk_id = @chunkId;
+                    DELETE FROM bm25_chunk_metadata WHERE chunk_id = @chunkId;
                     DELETE FROM bm25_chunks WHERE chunk_id = @chunkId;
                     """;
                 AddParameter(deleteCmd, "@chunkId", chunkId);
@@ -619,6 +755,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         command.CommandText = """
             DELETE FROM bm25_postings;
             DELETE FROM bm25_terms;
+            DELETE FROM bm25_chunk_metadata;
             DELETE FROM bm25_chunks;
             DELETE FROM bm25_statistics;
             """;
@@ -902,6 +1039,9 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Deleted chunk {ChunkId} from keyword index")]
     private static partial void LogChunkDeleted(ILogger logger, string chunkId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Deleted {ChunkCount} chunks from keyword index matching {ConditionCount} metadata conditions")]
+    private static partial void LogChunksDeletedByFilter(ILogger logger, int chunkCount, int conditionCount);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Keyword index cleared")]
     private static partial void LogIndexCleared(ILogger logger);

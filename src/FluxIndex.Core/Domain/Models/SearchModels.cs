@@ -134,6 +134,18 @@ public class SparseSearchOptions
     /// 구문 검색 활성화
     /// </summary>
     public bool EnablePhraseSearch { get; set; }
+
+    /// <summary>
+    /// Metadata conditions pushed into the keyword query, with the same vocabulary and match-any
+    /// semantics as <see cref="VectorSearchOptions.Filters"/>.
+    /// </summary>
+    /// <remarks>
+    /// The two legs take the same filter shape on purpose: a scope is a property of the query, not of
+    /// a retrieval strategy, and a hybrid result that mixes one leg's scope with the other's is not a
+    /// scoped result at all. Prefer setting <c>HybridSearchOptions.Filters</c>, which seeds both legs
+    /// at once; this is the per-leg override.
+    /// </remarks>
+    public Dictionary<string, object> Filters { get; set; } = new();
 }
 
 /// <summary>

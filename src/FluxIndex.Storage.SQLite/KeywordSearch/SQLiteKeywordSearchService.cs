@@ -107,6 +107,13 @@ public sealed class SQLiteKeywordSearchService : RelationalKeywordSearchService
             metadata TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS bm25_chunk_metadata (
+            chunk_id TEXT NOT NULL,
+            meta_key TEXT NOT NULL,
+            meta_value TEXT NOT NULL,
+            PRIMARY KEY (chunk_id, meta_key, meta_value)
+        );
+
         CREATE TABLE IF NOT EXISTS bm25_statistics (
             key TEXT PRIMARY KEY,
             value REAL NOT NULL
@@ -115,6 +122,8 @@ public sealed class SQLiteKeywordSearchService : RelationalKeywordSearchService
         CREATE INDEX IF NOT EXISTS idx_bm25_terms_term ON bm25_terms(term);
         CREATE INDEX IF NOT EXISTS idx_bm25_postings_chunk ON bm25_postings(chunk_id);
         CREATE INDEX IF NOT EXISTS idx_bm25_chunks_document ON bm25_chunks(document_id);
+        CREATE INDEX IF NOT EXISTS idx_bm25_chunk_metadata_lookup
+            ON bm25_chunk_metadata(meta_key, meta_value);
         """;
 
     /// <inheritdoc />

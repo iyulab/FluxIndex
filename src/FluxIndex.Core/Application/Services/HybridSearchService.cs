@@ -297,8 +297,8 @@ public partial class HybridSearchService : IHybridSearchService
             // 양자화 검색 미사용 또는 지원하지 않는 경우 일반 검색
             if (searchResults == null)
             {
-                var filters = options.VectorOptions.Filters?.Count > 0
-                    ? options.VectorOptions.Filters
+                var filters = options.EffectiveVectorFilters is { Count: > 0 } effective
+                    ? new Dictionary<string, object>(effective)
                     : null;
                 var vectorResults = await _vectorStore.SearchAsync(
                     embedding,
@@ -372,10 +372,12 @@ public partial class HybridSearchService : IHybridSearchService
         HybridSearchOptions options,
         CancellationToken cancellationToken)
     {
+        var keywordOptions = ToKeywordSearchOptions(options);
+
         try
         {
             var keywordResults = await _keywordSearchService.SearchAsync(
-                query, ToKeywordSearchOptions(options.SparseOptions), cancellationToken);
+                query, keywordOptions, cancellationToken);
 
             return keywordResults.Select(result => new SparseSearchResult
             {
@@ -384,6 +386,14 @@ public partial class HybridSearchService : IHybridSearchService
                 MatchedTerms = result.MatchedTerms,
                 TermFrequencies = result.TermFrequencies
             }).ToArray();
+        }
+        catch (ArgumentException)
+        {
+            // A malformed filter is a caller error, not a backend outage. Degrading to vector-only
+            // here would answer a scoped query with unscoped results and report success — the caller
+            // would never learn their scope was discarded. Backend failures still degrade below;
+            // this one has to reach the caller.
+            throw;
         }
         catch (Exception ex)
         {
@@ -397,9 +407,10 @@ public partial class HybridSearchService : IHybridSearchService
     /// The two records exist because <c>HybridSearchOptions.SparseOptions</c> is public shape while
     /// <see cref="IKeywordSearchService"/> is the backend contract; only the interface was unified.
     /// </summary>
-    private static KeywordSearchOptions ToKeywordSearchOptions(SparseSearchOptions? sparseOptions)
+    private static KeywordSearchOptions ToKeywordSearchOptions(HybridSearchOptions options)
     {
-        sparseOptions ??= new SparseSearchOptions();
+        var sparseOptions = options.SparseOptions ?? new SparseSearchOptions();
+        var filters = options.EffectiveSparseFilters;
 
         return new KeywordSearchOptions
         {
@@ -407,7 +418,12 @@ public partial class HybridSearchService : IHybridSearchService
             MinScore = sparseOptions.MinScore,
             K1 = sparseOptions.K1,
             B = sparseOptions.B,
-            EnableTermExpansion = sparseOptions.EnableTermExpansion
+            EnableTermExpansion = sparseOptions.EnableTermExpansion,
+            // Was dropped here while the vector leg honoured its own equivalent — an option the
+            // contract declares and the adapter discards is the same silent-ignore class as the
+            // missing filter below.
+            EnablePhraseSearch = sparseOptions.EnablePhraseSearch,
+            MetadataFilter = filters is { Count: > 0 } ? filters : null
         };
     }
 

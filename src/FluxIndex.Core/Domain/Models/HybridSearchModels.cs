@@ -132,6 +132,24 @@ public record HybridSearchOptions
     public double SparseWeight { get; set; } = 0.3;
 
     /// <summary>
+    /// Metadata conditions applied to <b>both</b> legs of the search.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A scope belongs to the query, not to a retrieval strategy, so it is declared once here rather
+    /// than per leg. Filtering only one leg does not narrow a hybrid result — it fuses a scoped list
+    /// with an unscoped one, and the unscoped leg's rows survive into the output. Requiring the
+    /// caller to remember two places is a defect waiting to happen; this is the place.
+    /// </para>
+    /// <para>
+    /// A leg that carries its own non-empty filter keeps it, so an advanced caller can still differ
+    /// per leg deliberately. Empty (the default) means "no query-level scope", which leaves the
+    /// per-leg options exactly as they behaved before.
+    /// </para>
+    /// </remarks>
+    public Dictionary<string, object> Filters { get; set; } = new();
+
+    /// <summary>
     /// 벡터 검색 옵션
     /// </summary>
     public VectorSearchOptions VectorOptions { get; set; } = new();
@@ -140,6 +158,20 @@ public record HybridSearchOptions
     /// 키워드 검색 옵션
     /// </summary>
     public SparseSearchOptions SparseOptions { get; set; } = new();
+
+    /// <summary>
+    /// The metadata conditions that actually apply to the vector leg: its own filter when set,
+    /// otherwise the query-level one.
+    /// </summary>
+    public IReadOnlyDictionary<string, object> EffectiveVectorFilters =>
+        VectorOptions.Filters is { Count: > 0 } ? VectorOptions.Filters : Filters;
+
+    /// <summary>
+    /// The metadata conditions that actually apply to the keyword leg: its own filter when set,
+    /// otherwise the query-level one.
+    /// </summary>
+    public IReadOnlyDictionary<string, object> EffectiveSparseFilters =>
+        SparseOptions.Filters is { Count: > 0 } ? SparseOptions.Filters : Filters;
 
     /// <summary>
     /// 자동 전략 선택 사용 여부

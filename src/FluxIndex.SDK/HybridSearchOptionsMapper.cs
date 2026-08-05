@@ -19,6 +19,7 @@ internal static class HybridSearchOptionsMapper
             MaxResults = sdkOptions.TopK,
             VectorWeight = sdkOptions.VectorWeight,
             SparseWeight = sdkOptions.KeywordWeight,
+            Filters = ToCoreFilters(sdkOptions),
             FusionMethod = sdkOptions.RerankingStrategy switch
             {
                 RerankingStrategy.WeightedAverage => Core.Domain.Models.FusionMethod.WeightedSum,
@@ -27,6 +28,19 @@ internal static class HybridSearchOptionsMapper
             }
         };
     }
+
+    /// <summary>
+    /// Carries <see cref="SearchOptions.MetadataFilters"/> across to the Core options.
+    /// </summary>
+    /// <remarks>
+    /// Vector-only search applied these filters and the hybrid path discarded them, so turning
+    /// hybrid search on silently widened the result set to the whole index. That is the worst shape
+    /// a scoping bug can take: the caller sees results, they are simply the wrong ones.
+    /// </remarks>
+    private static Dictionary<string, object> ToCoreFilters(SearchOptions options)
+        => options.MetadataFilters?.Count > 0
+            ? options.MetadataFilters.ToDictionary(kvp => kvp.Key, kvp => (object)kvp.Value)
+            : [];
 
     /// <summary>
     /// Core options for a search driven by <see cref="SearchOptions"/>. When the caller actually
@@ -41,7 +55,8 @@ internal static class HybridSearchOptionsMapper
             {
                 MaxResults = options.TopK,
                 VectorWeight = DefaultVectorWeight,
-                SparseWeight = DefaultSparseWeight
+                SparseWeight = DefaultSparseWeight,
+                Filters = ToCoreFilters(options)
             };
 
         coreOptions.MinFusedScore = options.MinSimilarity;
