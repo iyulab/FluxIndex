@@ -1,12 +1,12 @@
 # FluxIndex local test runner (.env.local aware)
 #
-# A thin wrapper over mock-test.ps1. The two scripts used to be near-duplicates that differed only
+# A thin wrapper over test.ps1. The two scripts used to be near-duplicates that differed only
 # in the banner they printed — neither loaded .env.local; they just reported whether it existed,
 # and the tests read their own configuration. Keeping two copies of the runner meant fixes landed
 # in one of them: this one still listed `FluxIndex.Tests.Core` and two siblings that were renamed
 # long ago, so every project was "not found", nothing ran, and it always exited PASSED.
 #
-# Behaviour now lives in mock-test.ps1 alone. This script reports the mode and delegates.
+# Behaviour now lives in test.ps1 alone. This script reports the mode and delegates.
 
 param(
     [ValidateSet("quiet", "minimal", "normal", "detailed", "diagnostic")]
@@ -38,5 +38,5 @@ $forwarded = @{
 if ($NoBuild)  { $forwarded.NoBuild  = $true }
 if ($Coverage) { $forwarded.Coverage = $true }
 
-& (Join-Path $PSScriptRoot "mock-test.ps1") @forwarded
+& (Join-Path $PSScriptRoot "test.ps1") @forwarded
 exit $LASTEXITCODE

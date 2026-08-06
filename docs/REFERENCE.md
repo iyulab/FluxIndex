@@ -535,8 +535,8 @@ public class CustomRerankerService : IReranker
 ### Running Tests
 
 ```powershell
-# Mock mode (CI/CD)
-pwsh scripts/mock-test.ps1
+# Mock mode (also what CI runs)
+pwsh scripts/test.ps1
 
 # Real API mode (local)
 cp .env.local.example .env.local
@@ -544,11 +544,13 @@ cp .env.local.example .env.local
 pwsh scripts/full-test.ps1
 
 # With coverage
-pwsh scripts/mock-test.ps1 -Coverage
+pwsh scripts/test.ps1 -Coverage
 ```
 
 Both scripts run the same thing — `full-test.ps1` reports whether `.env.local` is present and then
-delegates — so the runner's behaviour is defined in one place.
+delegates — so the runner's behaviour is defined in one place. **Both CI workflows invoke
+`test.ps1` too**: the pull-request run and the release gate share this one definition of "the tests
+pass", which is also why a local run is a faithful preview of CI rather than an approximation.
 
 The runner **discovers** every `tests/**/*.Tests.csproj` rather than reading a fixed list, and
 requires all of them to pass. Two categories are excluded because their exclusion holds on any

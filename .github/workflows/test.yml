@@ -1,8 +1,12 @@
 name: Tests
 
+# No `push` to main. `build-and-release.yml` already runs the same script as its release gate on
+# every main push that touches src/ or tests/, so listing main here ran the whole suite twice per
+# push for no additional signal. Pull requests and develop are not covered by that workflow, which
+# is what this one is for.
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ develop ]
   pull_request:
     branches: [ main, develop ]
   workflow_dispatch:
@@ -39,6 +43,9 @@ jobs:
 
     # -NoBuild: the step above already built this configuration. Without it the runner compiles the
     # whole solution twice per run.
-    - name: Run Mock Tests (CI/CD Mode)
-      run: pwsh ./scripts/mock-test.ps1 -Verbosity minimal -Configuration Release -NoBuild
+    #
+    # Same script as the release gate in `build-and-release.yml`, deliberately: one definition of
+    # what "the tests pass" means, used by both workflows and by a local run.
+    - name: Run tests
+      run: pwsh ./scripts/test.ps1 -Verbosity minimal -Configuration Release -NoBuild
 

@@ -97,63 +97,21 @@ jobs:
         dotnet build --no-restore --configuration ${{ env.CONFIGURATION }} --verbosity minimal
         echo "✅ Build completed successfully"
 
+    # The release gate and the pull-request workflow run the SAME runner script. They used to carry
+    # two implementations of one convention -- this step in bash, `test.yml` in pwsh -- and two
+    # implementations of a rule drift apart in opposite directions without either side noticing.
+    # `scripts/test.ps1` is the single definition, so a local run is also the run that gates.
+    #
+    # What that script guarantees, and why (the reasoning lives with the code, not here):
+    #   - enumerates test projects by discovery, never by an allowlist
+    #   - excludes Integration/Performance by CATEGORY, so an excluded test is excluded wherever
+    #     it lives rather than wherever someone remembered to list it
+    #   - fails on any failure. No `|| true`, no pass-rate threshold: 0.24.0 published 12 packages
+    #     on top of two failing tests because a swallow made this step green, and nuget.org
+    #     packages cannot be withdrawn once pushed.
     - name: Run tests
       if: steps.changes.outputs.should_run == 'true'
-      run: |
-        echo "🧪 Running tests across every discovered test project"
-        echo "   Excluded by category, not by project:"
-        echo "     - Integration  (needs an external service: Docker/Testcontainers, a live DB)"
-        echo "     - Performance  (asserts on wall-clock time; a shared runner cannot support that)"
-        echo ""
-
-        # Enumerate by DISCOVERY, never by allowlist.
-        #
-        # This step used to carry a hand-maintained CI_SAFE_TESTS list guarded by `if [[ -f ]]`,
-        # and it failed silently in both directions: a project deleted from the tree stayed on the
-        # list and was skipped with no signal, while projects never added to the list were never
-        # run at all. Neither is observable in a green log. Discovery cannot drift from the tree,
-        # because the tree is the source.
-        #
-        # Category filtering replaces project filtering: a test that needs Docker declares
-        # [Trait("Category","Integration")] and is excluded wherever it lives — including inside
-        # a project that is otherwise CI-safe, which an allowlist can never express.
-        mapfile -t TEST_PROJECTS < <(find tests -name '*.Tests.csproj' | sort)
-
-        if [[ ${#TEST_PROJECTS[@]} -eq 0 ]]; then
-          echo "::error::No test projects discovered under tests/. Discovery returning nothing is a"
-          echo "::error::broken glob or a moved tree — it is never a reason to proceed to publish."
-          exit 1
-        fi
-
-        echo "Discovered ${#TEST_PROJECTS[@]} test project(s):"
-        printf '     %s\n' "${TEST_PROJECTS[@]}"
-        echo ""
-
-        # No `|| true`. A failing test must fail this step: FluxIndex 0.24.0 (12 packages) was
-        # published on top of two failing tests because the swallow made the step green, and
-        # nuget.org packages cannot be withdrawn once pushed.
-        #
-        # Failures are collected rather than aborting on the first one, so a single run reports
-        # every broken project instead of only the earliest. `if ! cmd` keeps this compatible with
-        # `set -e` without reintroducing a swallow — the exit status is inspected, not discarded.
-        FAILED=()
-        for project in "${TEST_PROJECTS[@]}"; do
-          echo "🧪 Testing: $project"
-          if ! dotnet test "$project" --no-build --configuration ${{ env.CONFIGURATION }} \
-                 --filter "Category!=Integration&Category!=Performance" \
-                 --verbosity minimal \
-                 --collect:"XPlat Code Coverage"; then
-            FAILED+=("$project")
-          fi
-        done
-
-        if [[ ${#FAILED[@]} -gt 0 ]]; then
-          echo "::error::Tests failed in ${#FAILED[@]} of ${#TEST_PROJECTS[@]} project(s):"
-          printf '::error::  %s\n' "${FAILED[@]}"
-          exit 1
-        fi
-
-        echo "✅ All discovered test projects passed"
+      run: pwsh ./scripts/test.ps1 -Verbosity minimal -Configuration ${{ env.CONFIGURATION }} -NoBuild -Coverage
 
     # Create NuGet packages — solution-wide pack ensures all family members are consistent
     - name: Create packages
