@@ -9,6 +9,27 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.27.0] - 2026-08-06
+
+### Changed — `FluxIndex.Integrations.WebFlux` 의 웹 청크 경계가 바뀐다
+
+WebFlux 핀을 `0.5.3` → `0.6.0` 으로 올렸다. WebFlux 가 범용 청킹을 FluxCurator 에 위임하면서
+계약 위반 몇 건이 해소됐고, 그 결과 **웹 콘텐츠의 청크 경계가 달라진다.**
+
+**웹 인덱싱을 쓰는 소비자는 재인덱싱이 필요하다.** 특히:
+
+- `MaxChunkSize` 가 문서대로 **토큰 수**로 동작한다. 이전에는 문자 수로 강제됐으므로, 같은
+  설정에서 청크가 더 커진다(영어 문서는 대략 4배). 오차 크기가 언어마다 달랐으므로 변화 폭도
+  콘텐츠에 따라 다르다.
+- `ChunkOverlap` 이 실제로 적용된다. 이전에는 어떤 전략도 이 값을 읽지 않아 겹침이 0 이었다.
+- `Semantic` 전략은 임베더를 요구한다. 이전에는 조용히 문단 분할로 폴백했다.
+
+**파일 인덱싱 경로(FileFlux)는 영향 없다.** 이 변경은 `Integrations.WebFlux` 에 한정된다.
+전략 이름은 그대로이므로 `ChunkingStrategyType` 로 고르는 코드는 수정이 필요 없다.
+상세는 WebFlux `CHANGELOG.md` 의 `0.6.0` 항목.
+
+---
+
 ## [0.26.0] - 2026-08-06
 
 ### Added
