@@ -50,11 +50,22 @@ public static class FluxIndexContextBuilderExtensions
             {
                 services.AddSingleton<IStorageInitializer, PostgreSQLStorageInitializer>();
             }
+        }
 
+        // The keyword leg is resolved independently of the vector provider. Gating it on
+        // "vectors live in PostgreSQL" made the recommended split deployment — Qdrant vectors,
+        // PostgreSQL metadata — unable to register a keyword leg at all, so consumers copied this
+        // registration into their own code. Provider unset means "follow the vector store", which
+        // is exactly what the old gate did.
+        if (options.KeywordSearch.ResolveProviderName(options.VectorStore) == "postgresql")
+        {
             RegisterPostgresKeywordSearch(
                 services,
-                options.VectorStore.ConnectionString,
-                options.VectorStore.EnableAutoMigration);
+                options.KeywordSearch.UseVectorStoreConnection
+                    ? options.VectorStore.ConnectionString
+                    : options.KeywordSearch.ConnectionString,
+                // Unset falls back to the vector store's flag, which is what gated this before.
+                options.KeywordSearch.EnableAutoMigration ?? options.VectorStore.EnableAutoMigration);
         }
 
         var graphProvider = options.GraphStore.Provider?.ToLowerInvariant();
@@ -109,32 +120,22 @@ public static class FluxIndexContextBuilderExtensions
     /// store. Replaces the in-memory BM25 default that the SDK registers, so the keyword leg of a
     /// hybrid search survives the process instead of silently degrading to vector-only.
     /// </summary>
+    /// <remarks>
+    /// Delegates to the public <see cref="ServiceCollectionExtensions.AddPostgreSQLKeywordSearch"/>
+    /// so the builder path and the direct-DI path cannot drift into two different registrations of
+    /// the same service (LAYERING section 4). The SDK registers its in-memory BM25 fallback with
+    /// TryAdd precisely so this concrete registration wins, and the singleton lifetime is what lets
+    /// the indexer and the retriever share one instance.
+    ///
+    /// NOTE: the service still creates its tables lazily on first use, so opting out of migration
+    /// delays the DDL rather than preventing it. Same behavior as the SQLite backend; making the
+    /// opt-out total is a contract change for both, tracked as a proposal.
+    /// </remarks>
     private static void RegisterPostgresKeywordSearch(
         IServiceCollection services,
         string connectionString,
         bool enableAutoMigration)
-    {
-        // The SDK registers its in-memory BM25 fallback with TryAdd precisely so this concrete
-        // registration wins. Singleton so the indexer and the retriever share one instance.
-        services.AddSingleton<PostgresKeywordSearchService>(sp => new PostgresKeywordSearchService(
-            connectionString,
-            sp.GetRequiredService<ILogger<PostgresKeywordSearchService>>()));
-        services.AddSingleton<IKeywordSearchService>(sp =>
-            sp.GetRequiredService<PostgresKeywordSearchService>());
-
-        // Build() runs IStorageInitializer only; provisioning here keeps the contract uniform with
-        // every other component: after Build(), the schema exists. Gated by the same flag as the
-        // vector store so a caller managing schema externally is not provisioned against.
-        //
-        // NOTE: the service still creates its tables lazily on first use, so opting out delays the
-        // DDL rather than preventing it. Same behavior as the SQLite backend; making the opt-out
-        // total is a contract change for both, tracked as a proposal.
-        if (enableAutoMigration)
-        {
-            services.AddSingleton<IStorageInitializer>(sp =>
-                new PostgresKeywordSearchInitializer(sp.GetRequiredService<PostgresKeywordSearchService>()));
-        }
-    }
+        => services.AddPostgreSQLKeywordSearch(connectionString, enableAutoMigration);
 }
 
 /// <summary>

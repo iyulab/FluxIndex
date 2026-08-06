@@ -176,11 +176,43 @@ await vectorStore.DeleteByFilterAsync(new() { ["workspace_id"] = "ws-a" });
 > |---------|---------------|------------------|
 > | SQLite (`AddSQLiteStorage`) | same database as the vectors | ✅ |
 > | PostgreSQL (`AddPostgreSQLStorage`) | same database as the vectors (**new in 0.23.0**) | ✅ |
-> | Qdrant, other stores | process memory | ❌ — hybrid degrades to vector-only, and a warning is logged |
+> | Qdrant, other stores | process memory — unless the leg is placed explicitly (**new in 0.26.0**, below) | ❌ by default; hybrid degrades to vector-only and a warning is logged |
 >
 > Ranking is identical on every SQL backend: the BM25 scoring and the index schema are shared, and only
 > SQL dialect differs per store. Vector search and metadata filtering are unaffected by the keyword leg.
 > Documents indexed before the keyword index existed need one reindex to appear in it.
+
+#### Placing the keyword leg (since 0.26.0)
+
+The keyword leg has options of its own, so it no longer has to live wherever the vectors live. This
+matters for the split deployment — vectors in Qdrant, metadata in PostgreSQL — which previously had
+no way to express a persistent keyword index at all:
+
+```csharp
+var context = FluxIndexContext.CreateBuilder()
+    .UseQdrant("localhost")
+    .AddQdrantStorage()
+    .AddPostgreSQLStorage()          // contributes the keyword leg only
+    .UseOpenAIEmbedding(apiKey)
+    .Build();
+
+// builder.Options.KeywordSearch:
+//   Provider                  unset = follow the vector store (previous behavior)
+//   ConnectionString          used when UseVectorStoreConnection is false
+//   UseVectorStoreConnection  default true
+//   EnableAutoMigration       unset = each backend keeps its previous provisioning rule
+```
+
+Naming a provider whose package is not registered throws at `Build()` with the call you are missing
+— an unregistered leg would otherwise fall back to the in-memory index, and hybrid search would go
+on returning vector-only results with nothing to signal the loss.
+
+Consumers that resolve `IKeywordSearchService` from their own container — pipelines built on top of
+FluxIndex rather than inside `FluxIndexContext` — can register the leg directly:
+
+```csharp
+services.AddPostgreSQLKeywordSearch(connectionString);   // autoMigrate: true by default
+```
 
 #### Scoping the keyword leg (since 0.25.0)
 

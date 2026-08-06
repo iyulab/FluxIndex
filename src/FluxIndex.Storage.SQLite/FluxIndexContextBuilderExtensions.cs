@@ -42,9 +42,15 @@ public static class FluxIndexContextBuilderExtensions
         {
             RegisterSQLiteVectorStore(services, options);
             RegisterSQLiteInitializer(services);
+        }
 
-            // The keyword (sparse) leg. Without a persistent backend the leg only ever holds what
-            // this process indexed, so hybrid search degrades to vector-only after a restart.
+        // The keyword (sparse) leg. Without a persistent backend the leg only ever holds what this
+        // process indexed, so hybrid search degrades to vector-only after a restart. Resolved
+        // independently of the vector provider so a split deployment can place it here explicitly;
+        // an unset KeywordSearch.Provider still means "follow the vector store", which is the gate
+        // this replaced.
+        if (options.KeywordSearch.ResolveProviderName(options.VectorStore) == "sqlite")
+        {
             RegisterSQLiteKeywordSearch(services, options);
         }
 
@@ -184,7 +190,9 @@ public static class FluxIndexContextBuilderExtensions
     /// </summary>
     private static void RegisterSQLiteKeywordSearch(IServiceCollection services, FluxIndexOptions options)
     {
-        var connectionString = options.VectorStore.ConnectionString;
+        var connectionString = options.KeywordSearch.UseVectorStoreConnection
+            ? options.VectorStore.ConnectionString
+            : options.KeywordSearch.ConnectionString;
 
         // The SDK registers its in-memory BM25 fallback with TryAdd precisely so this concrete
         // registration wins. Singleton so the indexer and the retriever share one instance.
@@ -196,9 +204,14 @@ public static class FluxIndexContextBuilderExtensions
 
         // Build() runs IStorageInitializer only; the service also creates its tables lazily, but
         // provisioning here keeps the contract uniform with every other component: after Build(),
-        // the schema exists.
-        services.AddSingleton<IStorageInitializer>(sp =>
-            new SQLiteKeywordSearchInitializer(sp.GetRequiredService<SQLiteKeywordSearchService>()));
+        // the schema exists. Unset falls back to true rather than to the vector store's flag —
+        // this backend always provisioned, and VectorStoreOptions.EnableAutoMigration documents
+        // itself as honored by PostgreSQL, so inheriting it here would be a new behavior.
+        if (options.KeywordSearch.EnableAutoMigration ?? true)
+        {
+            services.AddSingleton<IStorageInitializer>(sp =>
+                new SQLiteKeywordSearchInitializer(sp.GetRequiredService<SQLiteKeywordSearchService>()));
+        }
     }
 
     private static void RegisterSQLiteInitializer(IServiceCollection services)

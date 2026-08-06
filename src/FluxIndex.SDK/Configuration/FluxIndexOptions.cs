@@ -45,6 +45,11 @@ public class FluxIndexOptions
     public SemanticCacheOptions SemanticCache { get; set; } = new();
 
     /// <summary>
+    /// 키워드(sparse) 검색 인덱스 저장소 설정 — 하이브리드 검색의 키워드 레그.
+    /// </summary>
+    public KeywordSearchStoreOptions KeywordSearch { get; set; } = new();
+
+    /// <summary>
     /// 품질 모니터링 설정
     /// </summary>
     public QualityMonitoringOptions QualityMonitoring { get; set; } = new();
@@ -197,6 +202,79 @@ public class GraphStoreOptions
     public string? Neo4jUsername { get; set; }
     public string? Neo4jPassword { get; set; }
     public string? Neo4jDatabase { get; set; }
+}
+
+/// <summary>
+/// 키워드(sparse) 검색 인덱스 저장소 옵션.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The keyword leg is the only storage component that used to have no options of its own: it was
+/// registered from inside the vector store's provider block, so it could only ever live wherever
+/// the vectors lived. That makes the recommended split deployment — vectors in Qdrant, metadata in
+/// PostgreSQL — unable to express a keyword leg at all, and a consumer that wants one has to
+/// duplicate the library's own registration code.
+/// </para>
+/// <para>
+/// Defaults preserve the previous behavior exactly: with <see cref="Provider"/> unset the keyword
+/// leg follows <see cref="VectorStoreOptions.Provider"/> on the vector store's connection, which is
+/// what the vector-gated registration did.
+/// </para>
+/// </remarks>
+public class KeywordSearchStoreOptions
+{
+    /// <summary>
+    /// 키워드 인덱스 프로바이더 ("PostgreSQL", "SQLite"). 비워 두면 벡터 저장소의
+    /// <see cref="VectorStoreOptions.Provider"/> 를 따른다 (기존 동작).
+    /// </summary>
+    public string Provider { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 연결 문자열. <see cref="UseVectorStoreConnection"/> 가 true 이면 무시된다.
+    /// </summary>
+    public string ConnectionString { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 벡터 저장소와 동일한 연결 문자열 사용 여부. 기본 true — 벡터와 키워드가 같은 데이터베이스에
+    /// 있는 통상 구성에서 연결 문자열을 한 번만 적게 한다.
+    /// </summary>
+    public bool UseVectorStoreConnection { get; set; } = true;
+
+    /// <summary>
+    /// Build() 시 키워드 인덱스 스키마를 자동 생성할지 여부. 비워 두면(null) 각 백엔드가 종전에
+    /// 쓰던 기준을 그대로 따른다.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Nullable on purpose. The backends did not agree before this option existed — PostgreSQL
+    /// gated keyword provisioning on <see cref="VectorStoreOptions.EnableAutoMigration"/> while
+    /// SQLite always provisioned — so a non-nullable <c>true</c> default would have turned DDL back
+    /// on for a caller who had switched it off on the vector store, which is the one case the flag
+    /// exists to prevent (managed PostgreSQL where the connecting role cannot create extensions).
+    /// Leaving it null keeps each backend on its previous rule; setting it decides for both.
+    /// </para>
+    /// <para>
+    /// Opting out delays the DDL rather than preventing it — the backends still create their tables
+    /// lazily on first use. Same caveat as the vector store's flag.
+    /// </para>
+    /// </remarks>
+    public bool? EnableAutoMigration { get; set; }
+
+    /// <summary>
+    /// 이 키워드 레그가 실제로 어느 프로바이더에 등록되는지 해석한다 — <see cref="Provider"/> 가
+    /// 비어 있으면 벡터 저장소를 따른다. 반환값은 소문자로 정규화된 이름이다.
+    /// </summary>
+    /// <remarks>
+    /// Lives here rather than in each storage package so the two backends cannot drift apart on
+    /// what "unset" means (LAYERING section 4 — one implementation, not a copy per consumer).
+    /// </remarks>
+    public string ResolveProviderName(VectorStoreOptions vectorStore)
+    {
+        ArgumentNullException.ThrowIfNull(vectorStore);
+
+        var name = string.IsNullOrWhiteSpace(Provider) ? vectorStore.Provider : Provider;
+        return name?.ToLowerInvariant() ?? string.Empty;
+    }
 }
 
 /// <summary>

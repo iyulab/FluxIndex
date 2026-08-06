@@ -100,6 +100,42 @@ public class StorageRegistrationGuardTests : IDisposable
         seenByB.Should().BeEmpty("each in-memory context owns a private database");
     }
 
+    /// <summary>
+    /// A keyword provider named on its own — the split deployment the leg's own options exist for —
+    /// must be registered too. Otherwise Build() falls through to the in-memory BM25 fallback and
+    /// hybrid search keeps returning results from the vector leg, so the loss never surfaces as a
+    /// failure: the sparse half is just empty after every restart.
+    /// </summary>
+    [Fact]
+    public void Build_WithAKeywordProviderConfiguredButStorageNotRegistered_ThrowsActionableError()
+    {
+        var builder = FluxIndexContext.CreateBuilder()
+            .UseSQLite(_testDbPath)
+            .AddSQLiteStorage()
+            .UseInMemoryEmbedding();
+        builder.Options.KeywordSearch.Provider = "PostgreSQL";
+        builder.Options.KeywordSearch.UseVectorStoreConnection = false;
+        builder.Options.KeywordSearch.ConnectionString = "Host=localhost;Database=meta;Username=u;Password=p";
+
+        var act = () => builder.Build();
+
+        act.Should().Throw<InvalidOperationException>()
+            .Which.Message.Should().ContainAll("PostgreSQL", "AddPostgreSQLKeywordSearch");
+    }
+
+    /// <summary>The guard must stay silent when the leg follows the vector store — the default.</summary>
+    [Fact]
+    public void Build_WithAnUnsetKeywordProvider_DoesNotFire()
+    {
+        var context = FluxIndexContext.CreateBuilder()
+            .UseSQLite(_testDbPath)
+            .AddSQLiteStorage()
+            .UseInMemoryEmbedding()
+            .Build();
+
+        context.Should().NotBeNull();
+    }
+
     /// <summary>No provider configured at all is the one case the in-memory fallback is for.</summary>
     [Fact]
     public void Build_WithNoStoreProviderConfigured_FallsBackToInMemoryWithoutThrowing()

@@ -98,4 +98,103 @@ public class PostgresKeywordSearchRegistrationTests
 
         services.Should().NotContain(d => d.ServiceType == typeof(IKeywordSearchService));
     }
+
+    /// <summary>
+    /// The configuration the library itself recommends — vectors in Qdrant, metadata in PostgreSQL —
+    /// could not express a keyword leg at all while the registration was gated on the vector
+    /// provider. Consumers responded by copying the registration out of the library.
+    /// </summary>
+    [Fact]
+    public void RegisterPostgreSQLServices_WithItsOwnProvider_RegistersTheKeywordLegBesideANonPostgresVectorStore()
+    {
+        var options = PostgresOptions();
+        options.VectorStore.Provider = "Qdrant";
+        options.KeywordSearch.Provider = "PostgreSQL";
+        options.KeywordSearch.UseVectorStoreConnection = false;
+        options.KeywordSearch.ConnectionString = "Host=localhost;Database=meta;Username=u;Password=p";
+
+        using var provider = BuildProvider(options);
+
+        provider.GetRequiredService<IKeywordSearchService>()
+            .Should().BeOfType<PostgresKeywordSearchService>();
+    }
+
+    /// <summary>
+    /// Asking for a connection of its own and then not supplying one is a configuration error, and
+    /// the failure mode it would otherwise take is the worst kind: indexing quietly into whatever
+    /// database the vector store happens to use.
+    /// </summary>
+    [Fact]
+    public void RegisterPostgreSQLServices_WithItsOwnConnectionRequestedButMissing_FailsLoudly()
+    {
+        var options = PostgresOptions();
+        options.KeywordSearch.UseVectorStoreConnection = false;
+
+        var act = () => BuildProvider(options);
+
+        act.Should().Throw<ArgumentException>();
+    }
+
+    /// <summary>
+    /// Unset must keep the previous rule — the keyword leg followed the vector store's migration
+    /// flag — so a caller who disabled provisioning does not silently get DDL back.
+    /// </summary>
+    [Fact]
+    public void RegisterPostgreSQLServices_WithMigrationUnset_FollowsTheVectorStoreFlag()
+    {
+        using var disabled = BuildProvider(PostgresOptions(enableAutoMigration: false));
+        using var enabled = BuildProvider(PostgresOptions(enableAutoMigration: true));
+
+        disabled.GetServices<IStorageInitializer>()
+            .Should().NotContain(i => i.GetType().Name == "PostgresKeywordSearchInitializer");
+        enabled.GetServices<IStorageInitializer>()
+            .Should().Contain(i => i.GetType().Name == "PostgresKeywordSearchInitializer");
+    }
+
+    [Fact]
+    public void RegisterPostgreSQLServices_WithMigrationSetExplicitly_OverridesTheVectorStoreFlag()
+    {
+        var options = PostgresOptions(enableAutoMigration: false);
+        options.KeywordSearch.EnableAutoMigration = true;
+
+        using var provider = BuildProvider(options);
+
+        provider.GetServices<IStorageInitializer>()
+            .Should().Contain(i => i.GetType().Name == "PostgresKeywordSearchInitializer");
+    }
+
+    /// <summary>
+    /// The direct-DI entry point exists because IKeywordSearchService is resolved from consumers'
+    /// own root containers, not only from inside FluxIndexContext.
+    /// </summary>
+    [Fact]
+    public void AddPostgreSQLKeywordSearch_RegistersTheBackendAsASharedSingleton()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddPostgreSQLKeywordSearch("Host=localhost;Database=flux;Username=u;Password=p");
+
+        using var provider = services.BuildServiceProvider();
+
+        var service = provider.GetRequiredService<IKeywordSearchService>();
+        service.Should().BeOfType<PostgresKeywordSearchService>();
+        service.Should().BeSameAs(provider.GetRequiredService<IKeywordSearchService>());
+        provider.GetServices<IStorageInitializer>()
+            .Should().Contain(i => i.GetType().Name == "PostgresKeywordSearchInitializer");
+    }
+
+    [Fact]
+    public void AddPostgreSQLKeywordSearch_WithoutAutoMigration_RegistersNoInitializer()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddPostgreSQLKeywordSearch(
+            "Host=localhost;Database=flux;Username=u;Password=p", autoMigrate: false);
+
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<IKeywordSearchService>().Should().NotBeNull();
+        provider.GetServices<IStorageInitializer>()
+            .Should().NotContain(i => i.GetType().Name == "PostgresKeywordSearchInitializer");
+    }
 }

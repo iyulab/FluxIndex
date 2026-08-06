@@ -160,4 +160,52 @@ public static class ServiceCollectionExtensions
 
         return services;
     }
+
+    /// <summary>
+    /// Registers the PostgreSQL-backed keyword (sparse) search index directly on a service
+    /// collection, without going through <c>FluxIndexContextBuilder</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>IKeywordSearchService</c> is not only a FluxIndexContext-internal dependency: pipelines
+    /// built on top of FluxIndex resolve it from the consumer's own root container. Without a
+    /// public entry point those consumers had to copy this registration — including the singleton
+    /// lifetime the indexer and the retriever depend on sharing — out of the library.
+    /// </para>
+    /// <para>
+    /// Registered as a concrete singleton plus the interface, so a caller that needs the schema
+    /// helper can resolve <see cref="KeywordSearch.PostgresKeywordSearchService"/> itself.
+    /// </para>
+    /// </remarks>
+    /// <param name="services">The service collection.</param>
+    /// <param name="connectionString">PostgreSQL connection string for the keyword index.</param>
+    /// <param name="autoMigrate">
+    /// When true (default) the keyword schema is provisioned during startup initialization. The
+    /// service still creates its tables lazily on first use, so opting out delays the DDL rather
+    /// than preventing it.
+    /// </param>
+    /// <returns>The service collection.</returns>
+    public static IServiceCollection AddPostgreSQLKeywordSearch(
+        this IServiceCollection services,
+        string connectionString,
+        bool autoMigrate = true)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
+
+        services.AddSingleton(sp => new KeywordSearch.PostgresKeywordSearchService(
+            connectionString,
+            sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<KeywordSearch.PostgresKeywordSearchService>>()));
+        services.AddSingleton<IKeywordSearchService>(sp =>
+            sp.GetRequiredService<KeywordSearch.PostgresKeywordSearchService>());
+
+        if (autoMigrate)
+        {
+            services.AddSingleton<IStorageInitializer>(sp =>
+                new PostgresKeywordSearchInitializer(
+                    sp.GetRequiredService<KeywordSearch.PostgresKeywordSearchService>()));
+        }
+
+        return services;
+    }
 }

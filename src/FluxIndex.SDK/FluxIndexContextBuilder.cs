@@ -97,6 +97,14 @@ public class FluxIndexContextBuilder
         _ => $"Reference the FluxIndex.Storage.{provider} package and call Add{provider}Storage() on the builder."
     };
 
+    private static string KeywordRegistrationHint(string provider) => provider switch
+    {
+        "PostgreSQL" => "Reference the FluxIndex.Storage.PostgreSQL package and call AddPostgreSQLStorage() on the builder, " +
+            "or register the leg directly with services.AddPostgreSQLKeywordSearch(connectionString).",
+        "SQLite" => "Reference the FluxIndex.Storage.SQLite package and call AddSQLiteStorage() on the builder.",
+        _ => $"Reference the FluxIndex.Storage.{provider} package and call Add{provider}Storage() on the builder."
+    };
+
     private static string CacheRegistrationHint(string provider) => provider switch
     {
         "Redis" => "Reference the FluxIndex.Cache.Redis package and call AddRedisStorage() on the builder.",
@@ -704,6 +712,17 @@ public class FluxIndexContextBuilder
         if (!_services.Any(d => d.ServiceType == typeof(IChunkHierarchyRepository)))
         {
             _services.AddScoped<IChunkHierarchyRepository, InMemoryChunkHierarchyRepository>();
+        }
+
+        // Same rule for an explicitly named keyword provider. Unset means "follow the vector store",
+        // which the storage packages resolve themselves; a named provider whose package never
+        // registered would fall through to the in-memory fallback below and leave the sparse leg
+        // process-local — hybrid search keeps returning results, so nothing fails and the leg is
+        // simply empty after every restart.
+        if (!string.IsNullOrWhiteSpace(_options.KeywordSearch.Provider))
+        {
+            EnsureExplicitProviderIsRegistered(
+                _options.KeywordSearch.Provider, typeof(IKeywordSearchService), KeywordRegistrationHint);
         }
 
         // Register hybrid search services

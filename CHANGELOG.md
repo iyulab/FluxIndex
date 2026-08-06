@@ -9,6 +9,77 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.26.0] - 2026-08-06
+
+### Added
+
+- **The keyword (sparse) leg has storage options of its own** — `FluxIndexOptions.KeywordSearch`
+  (`Provider`, `ConnectionString`, `UseVectorStoreConnection`, `EnableAutoMigration`).
+
+  It was the only storage component without them: registration lived inside the vector store's
+  provider block, so the leg could only ever be placed wherever the vectors were. The split
+  deployment this library itself recommends — vectors in Qdrant, metadata in PostgreSQL — therefore
+  had no way to express a persistent keyword index at all, and consumers responded by copying the
+  registration out of the library.
+
+  ```csharp
+  FluxIndexContext.CreateBuilder()
+      .UseQdrant("localhost").AddQdrantStorage()
+      .AddPostgreSQLStorage()          // contributes the keyword leg only
+      .UseOpenAIEmbedding(apiKey)
+      .Build();
+  ```
+
+- **`services.AddPostgreSQLKeywordSearch(connectionString, autoMigrate)`** — registers the leg
+  directly on a service collection. `IKeywordSearchService` is resolved from consumers' own root
+  containers by pipelines built on top of FluxIndex, not only from inside `FluxIndexContext`, and
+  without a public entry point those consumers had to reproduce the singleton lifetime the indexer
+  and the retriever depend on sharing.
+
+- **Naming a keyword provider whose package is not registered now throws at `Build()`**, with the
+  call that is missing. Falling through to the in-memory index is the silent failure this option
+  could otherwise introduce: hybrid search goes on returning vector-only results, so nothing
+  reports the loss and the sparse leg is simply empty after every restart. Same guard the vector
+  store and the cache already had.
+
+### Compatibility
+
+Defaults reproduce the previous behavior exactly. An unset `Provider` means "follow the vector
+store", which is what the vector-gated registration did. `EnableAutoMigration` is nullable on
+purpose: the two backends did not agree before — PostgreSQL gated keyword provisioning on
+`VectorStore.EnableAutoMigration` while SQLite always provisioned — so a non-nullable `true` would
+have turned DDL back on for a caller who had switched it off, which is the one case that flag
+exists to prevent.
+
+---
+
+## [0.25.0] - 2026-08-05
+
+*Backfilled — this release shipped without a changelog entry.*
+
+### Added
+
+- **The keyword leg takes metadata filters**, in the same vocabulary as the vector store, so one
+  filter object scopes both legs of a hybrid index: `KeywordSearchOptions.MetadataFilter` and
+  `IKeywordSearchService.DeleteByFilterAsync`, symmetric with `IVectorStore.DeleteByFilterAsync`.
+
+  Filter dimensions are stored in a normalized side table rather than through JSON functions, so
+  the predicate is an ordinary `EXISTS (…)` on both backends — no per-dialect hook, and the
+  backend-equivalence guarantee introduced in 0.23.0 stays intact. Existing rows can be backfilled
+  without reindexing; the original `metadata` column is retained for return values.
+
+### Fixed
+
+- **A scope declared on a hybrid query reached the keyword leg.** `HybridSearchService` did not
+  forward the filter to the keyword leg, and the SDK's `Retriever` dropped `MetadataFilters`
+  entirely on the hybrid path while applying them on the vector-only path — so *enabling hybrid
+  search silently widened the scope*. Qdrant's hybrid path filtered neither leg. Scope is now
+  declared once per query and reaches both legs.
+- **`DocumentIdFilter` was ignored by the in-memory store.**
+- **`EnablePhraseSearch` was ignored on the hybrid path.**
+
+---
+
 ## [0.24.0] - 2026-08-02
 
 ### Changed
