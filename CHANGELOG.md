@@ -23,12 +23,20 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   registration out of the library.
 
   ```csharp
-  FluxIndexContext.CreateBuilder()
+  var builder = FluxIndexContext.CreateBuilder()
       .UseQdrant("localhost").AddQdrantStorage()
-      .AddPostgreSQLStorage()          // contributes the keyword leg only
-      .UseOpenAIEmbedding(apiKey)
-      .Build();
+      .UseOpenAIEmbedding(apiKey);
+
+  builder.Options.KeywordSearch.Provider = "PostgreSQL";
+  builder.Options.KeywordSearch.UseVectorStoreConnection = false;
+  builder.Options.KeywordSearch.ConnectionString = metadataConnectionString;
+
+  var context = builder.AddPostgreSQLStorage().Build();   // contributes the keyword leg only
   ```
+
+  The provider must be named. Left unset the leg follows the vector store, which is what the old
+  gate did — and in this configuration that means Qdrant, so `AddPostgreSQLStorage()` would
+  contribute nothing.
 
 - **`services.AddPostgreSQLKeywordSearch(connectionString, autoMigrate)`** — registers the leg
   directly on a service collection. `IKeywordSearchService` is resolved from consumers' own root
@@ -44,8 +52,11 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ### Compatibility
 
-Defaults reproduce the previous behavior exactly. An unset `Provider` means "follow the vector
-store", which is what the vector-gated registration did. `EnableAutoMigration` is nullable on
+Defaults reproduce the previous behavior, with one deliberate exception: asking for a connection of
+the leg's own (`UseVectorStoreConnection = false`) and not supplying one now throws at registration.
+It previously registered and failed later — or worse, indexed into whatever database the vector
+store happened to use. An unset `Provider` means "follow the vector store", which is what the
+vector-gated registration did. `EnableAutoMigration` is nullable on
 purpose: the two backends did not agree before — PostgreSQL gated keyword provisioning on
 `VectorStore.EnableAutoMigration` while SQLite always provisioned — so a non-nullable `true` would
 have turned DDL back on for a caller who had switched it off, which is the one case that flag

@@ -103,6 +103,13 @@ public class PostgresKeywordSearchRegistrationTests
     /// The configuration the library itself recommends — vectors in Qdrant, metadata in PostgreSQL —
     /// could not express a keyword leg at all while the registration was gated on the vector
     /// provider. Consumers responded by copying the registration out of the library.
+    ///
+    /// <para>
+    /// This is the exact option set the README documents under "Placing the keyword leg". All three
+    /// are required together: with <c>Provider</c> left unset the leg follows the vector store, and
+    /// a vector store with no keyword backend means the leg silently falls back to the in-memory
+    /// index — the degradation this option exists to remove. Keep the two in step.
+    /// </para>
     /// </summary>
     [Fact]
     public void RegisterPostgreSQLServices_WithItsOwnProvider_RegistersTheKeywordLegBesideANonPostgresVectorStore()

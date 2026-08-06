@@ -189,19 +189,30 @@ matters for the split deployment — vectors in Qdrant, metadata in PostgreSQL �
 no way to express a persistent keyword index at all:
 
 ```csharp
-var context = FluxIndexContext.CreateBuilder()
+var builder = FluxIndexContext.CreateBuilder()
     .UseQdrant("localhost")
     .AddQdrantStorage()
-    .AddPostgreSQLStorage()          // contributes the keyword leg only
-    .UseOpenAIEmbedding(apiKey)
-    .Build();
+    .UseOpenAIEmbedding(apiKey);
 
-// builder.Options.KeywordSearch:
-//   Provider                  unset = follow the vector store (previous behavior)
-//   ConnectionString          used when UseVectorStoreConnection is false
-//   UseVectorStoreConnection  default true
-//   EnableAutoMigration       unset = each backend keeps its previous provisioning rule
+// Name the provider explicitly. Left unset, the leg follows the vector store — here that means
+// Qdrant, which has no keyword backend, so AddPostgreSQLStorage() below would contribute nothing.
+builder.Options.KeywordSearch.Provider = "PostgreSQL";
+builder.Options.KeywordSearch.UseVectorStoreConnection = false;   // the vectors are not in PostgreSQL
+builder.Options.KeywordSearch.ConnectionString = metadataConnectionString;
+
+var context = builder
+    .AddPostgreSQLStorage()          // contributes the keyword leg only
+    .Build();
 ```
+
+`Options.KeywordSearch`:
+
+| | |
+|---|---|
+| `Provider` | unset = follow the vector store (the behavior before this option existed) |
+| `ConnectionString` | used when `UseVectorStoreConnection` is false; required in that case |
+| `UseVectorStoreConnection` | default true — for the common case where both live in one database |
+| `EnableAutoMigration` | unset = each backend keeps its previous provisioning rule |
 
 Naming a provider whose package is not registered throws at `Build()` with the call you are missing
 — an unregistered leg would otherwise fall back to the in-memory index, and hybrid search would go
