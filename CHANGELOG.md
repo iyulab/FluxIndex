@@ -9,6 +9,19 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.27.1] - 2026-08-17
+
+### Fixed
+
+- Test-only dependency: lifted the `Testcontainers` family (`Testcontainers`,
+  `.Neo4j`, `.PostgreSql`, `.Qdrant`, `.Redis`) from 4.10.0-4.12.0 to 4.14.0.
+  Earlier versions pull a transitive `SSH.NET` release with a High-severity
+  advisory (GHSA-q939-rpr3-3284); 4.14.0 is the first to move past it.
+  Does not affect any published package — `Testcontainers.*` is referenced
+  only by test projects.
+
+---
+
 ## [0.27.0] - 2026-08-06
 
 ### Changed — `FluxIndex.Integrations.WebFlux` 의 웹 청크 경계가 바뀐다
