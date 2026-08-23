@@ -9,6 +9,20 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.27.2] - 2026-08-23
+
+### Fixed
+- `tests/Directory.Build.props` and `samples/Directory.Build.props` did not chain-import the root
+  `Directory.Build.props`, so MSBuild's nearest-file lookup silently shadowed every root-level
+  setting (local package feed, analyzer configuration, package metadata) for all test and sample
+  projects. Added the explicit import.
+
+### Changed
+- `LMSupply.Embedder`/`.Generator`/`.Reranker` dependencies raised `0.34.17` → `0.42.1`.
+- `FileFlux` dependency raised `0.11.0` → `0.19.1`.
+
+---
+
 ## [0.27.1] - 2026-08-17
 
 ### Fixed

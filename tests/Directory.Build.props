@@ -1,4 +1,10 @@
 <Project>
+  <!-- MSBuild imports only the NEAREST Directory.Build.props by default; without this explicit
+       chain-import, everything the root Directory.Build.props sets (RestoreAdditionalProjectSources
+       for local-packages, Version, analyzer settings, etc.) is silently shadowed for every project
+       under tests/. -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)..'))" />
+
   <!-- Tests-specific build configuration -->
   <PropertyGroup>
     <!-- Tests are never packable -->

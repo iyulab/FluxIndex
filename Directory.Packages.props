@@ -53,9 +53,9 @@
     <PackageVersion Include="Google.Cloud.AIPlatform.V1" Version="3.54.0" />
     <PackageVersion Include="Mscc.GenerativeAI" Version="2.5.2" />
     <!-- LMSupply: Full AI stack (Embedder + Generator + Reranker) -->
-    <PackageVersion Include="LMSupply.Embedder" Version="0.34.17" />
-    <PackageVersion Include="LMSupply.Generator" Version="0.34.17" />
-    <PackageVersion Include="LMSupply.Reranker" Version="0.34.17" />
+    <PackageVersion Include="LMSupply.Embedder" Version="0.42.1" />
+    <PackageVersion Include="LMSupply.Generator" Version="0.42.1" />
+    <PackageVersion Include="LMSupply.Reranker" Version="0.42.1" />
   </ItemGroup>
   <!-- Storage/Cache Packages -->
   <ItemGroup>
@@ -78,7 +78,7 @@
   </ItemGroup>
   <!-- Document Processing & Quality -->
   <ItemGroup>
-    <PackageVersion Include="FileFlux" Version="0.11.0" />
+    <PackageVersion Include="FileFlux" Version="0.19.1" />
     <PackageVersion Include="FluxCurator" Version="0.7.5" />
     <PackageVersion Include="FluxImprover" Version="0.9.1" />
     <PackageVersion Include="HtmlAgilityPack" Version="1.12.4" />
