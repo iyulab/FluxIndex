@@ -17,6 +17,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\FluxIndex.Providers.LMSupply\FluxIndex.Providers.LMSupply.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.Core\FluxIndex.Core.csproj" />
+    <ProjectReference Include="..\..\src\FluxIndex.Integrations.FluxImprover\FluxIndex.Integrations.FluxImprover.csproj" />
   </ItemGroup>
 
 </Project>

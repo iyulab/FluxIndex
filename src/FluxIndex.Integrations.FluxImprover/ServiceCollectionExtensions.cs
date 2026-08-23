@@ -305,6 +305,14 @@ public static class ServiceCollectionExtensions
     /// public class MyService(QAGenerationService qa, RAGEvaluationService eval) { }
     /// </code>
     /// </example>
+    /// <example>
+    /// Fully local alternative — no API key, using <c>FluxIndex.Providers.LMSupply</c>'s ONNX-backed
+    /// completion service in place of a cloud provider:
+    /// <code>
+    /// services.AddLMSupplyTextCompletion();
+    /// services.AddFluxIndexFluxImprover();
+    /// </code>
+    /// </example>
     public static IServiceCollection AddFluxIndexFluxImprover(this IServiceCollection services)
     {
         // Register all FluxImprover core services using v0.4.1+ simplified DI
