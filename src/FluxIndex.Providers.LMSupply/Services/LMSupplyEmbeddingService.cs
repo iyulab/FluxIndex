@@ -29,7 +29,7 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
     /// <summary>
     /// Creates an embedding service by loading a local ONNX model.
     /// </summary>
-    /// <param name="modelId">Model ID (e.g., "all-MiniLM-L6-v2") or "default".</param>
+    /// <param name="modelId">LMSupply catalog alias (e.g., "default", "fast", "large") or model ID.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A ready-to-use embedding service.</returns>
     public static async Task<LMSupplyEmbeddingService> CreateAsync(

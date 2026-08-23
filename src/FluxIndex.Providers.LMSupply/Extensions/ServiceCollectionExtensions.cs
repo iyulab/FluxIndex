@@ -20,7 +20,7 @@ public static class ServiceCollectionExtensions
     /// Registers an <see cref="IEmbeddingService"/> backed by a local LMSupply ONNX embedding model.
     /// </summary>
     /// <param name="services">The service collection.</param>
-    /// <param name="modelId">Embedding model ID (e.g., "all-MiniLM-L6-v2") or "default".</param>
+    /// <param name="modelId">LMSupply catalog alias (e.g., "default", "fast", "large") or model ID.</param>
     /// <returns>The service collection for chaining.</returns>
     public static IServiceCollection AddLMSupplyEmbedding(
         this IServiceCollection services,
