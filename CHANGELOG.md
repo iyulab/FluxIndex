@@ -9,6 +9,15 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.27.3]
+
+### Changed
+- Bumped `FileFlux` 0.19.1 → 0.20.1, `FluxCurator` 0.7.5 → 0.8.1, `FluxImprover` 0.9.1 → 0.11.1,
+  `LMSupply.*` 0.42.1 → 0.42.2, `WebFlux` 0.6.0 → 0.7.0 (dependency freshness, no known breaking
+  changes consumed).
+
+---
+
 ## [0.27.2] - 2026-08-23
 
 ### Fixed
