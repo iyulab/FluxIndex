@@ -17,6 +17,7 @@
 - **AI Provider Agnostic** - Core provides abstract base classes, bring your own embedding service
 - **Document Processing** - PDF/DOCX/TXT via FileFlux, web crawling via WebFlux (opt-in `FluxIndex.Integrations.*` packages)
 - **MCP Server** - Model Context Protocol for AI assistant integration
+- **RAG Security (opt-in)** - `Retriever` accepts a `FluxGuard.Remote` `IRAGSecurityPipeline` to detect and block RAG poisoning / indirect prompt injection in retrieved documents
 - **Production Ready** - Redis caching, clean architecture, .NET 10.0
 
 ## Quick Start

@@ -23,6 +23,8 @@
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Options" />
+    <!-- FluxGuard (opt-in RAG security pipeline) -->
+    <PackageReference Include="FluxGuard.Remote" />
   </ItemGroup>
 
 

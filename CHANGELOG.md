@@ -9,6 +9,19 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.28.0]
+
+### Added
+- `Retriever` accepts an optional `FluxGuard.Remote.RAG.IRAGSecurityPipeline` (opt-in RAG
+  poisoning / indirect prompt injection detection). When supplied, `SearchAsync(query,
+  SearchOptions?, ...)` validates retrieved documents before returning them — a document the
+  pipeline suggests blocking is dropped from the result set, one it suggests sanitizing has its
+  content replaced with the pipeline's sanitized version. Off by default (constructor parameter
+  defaults to `null`); no behavior change for existing consumers. Applied to the unified
+  `SearchAsync(SearchOptions)` entry point only, not every legacy overload.
+
+---
+
 ## [0.27.3]
 
 ### Changed

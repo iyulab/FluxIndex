@@ -1,3 +1,4 @@
+using FluxGuard.Remote.RAG;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Models;
 using FluxIndex.Core.Application.Services.Base;
@@ -45,6 +46,12 @@ public partial class Retriever
     // Quantization support
     private readonly IQuantizedVectorStore? _quantizedVectorStore;
 
+    // Opt-in RAG poisoning/indirect-injection guard (FluxGuard.Remote). Null by default — nothing
+    // changes for consumers who don't supply one. Applied in SearchAsync(query, SearchOptions?, ...)
+    // only (the unified, auto-detecting entry point) — not threaded through every legacy overload,
+    // since those are lower-level primitives advanced callers already use knowingly.
+    private readonly IRAGSecurityPipeline? _ragSecurityPipeline;
+
     // Phase 3: 이벤트 기반 모니터링
     /// <summary>
     /// 검색 시작 시 발생하는 이벤트
@@ -72,7 +79,8 @@ public partial class Retriever
         ILogger<Retriever>? logger = null,
         IHybridSearchService? hybridSearchService = null,
         IGraphRAGService? graphRAGService = null,
-        IKeywordSearchService? keywordSearchService = null)
+        IKeywordSearchService? keywordSearchService = null,
+        IRAGSecurityPipeline? ragSecurityPipeline = null)
     {
         _vectorStore = vectorStore;
         _documentRepository = documentRepository;
@@ -85,6 +93,7 @@ public partial class Retriever
         _hybridSearchService = hybridSearchService;
         _graphRAGService = graphRAGService;
         _keywordSearchService = keywordSearchService;
+        _ragSecurityPipeline = ragSecurityPipeline;
 
         // Bind embedding identity to vector store for correct collection resolution
         _vectorStore.BindIdentity(_embeddingService.GetIdentity());
@@ -452,6 +461,11 @@ public partial class Retriever
             }).ToList();
         }
 
+        if (_ragSecurityPipeline != null)
+        {
+            results = await ApplyRagSecurityAsync(results, cancellationToken);
+        }
+
         return new SearchResponse
         {
             Query = query,
@@ -465,6 +479,61 @@ public partial class Retriever
                 ["graphRAGAvailable"] = graphRAGAvailable
             }
         };
+    }
+
+    /// <summary>
+    /// Runs retrieved documents through the opt-in <see cref="IRAGSecurityPipeline"/> (indirect
+    /// prompt injection / RAG poisoning detection) before they reach the caller. A document the
+    /// pipeline suggests blocking is dropped from the result set entirely; one it suggests
+    /// sanitizing has its content replaced with <see cref="RAGDocumentValidation.SanitizedContent"/>
+    /// when the pipeline provided one. <see cref="RAGAction.Review"/> and <see cref="RAGAction.Include"/>
+    /// pass through unchanged — the pipeline judged them safe enough to include, review is a
+    /// logging concern for the consumer's own guard result inspection, not this SDK's to enforce.
+    /// </summary>
+    private async Task<List<SearchResult>> ApplyRagSecurityAsync(
+        List<SearchResult> results,
+        CancellationToken cancellationToken)
+    {
+        if (results.Count == 0)
+        {
+            return results;
+        }
+
+        var documents = results.Select(r => new RAGDocument
+        {
+            Id = r.Id,
+            Content = r.Content,
+            Source = r.DocumentId,
+            RelevanceScore = r.Score
+        }).ToList();
+
+        var validations = await _ragSecurityPipeline!.ValidateDocumentsAsync(documents, cancellationToken);
+        var validationsById = validations.ToDictionary(v => v.Document.Id ?? string.Empty);
+
+        var filtered = new List<SearchResult>(results.Count);
+        foreach (var result in results)
+        {
+            if (!validationsById.TryGetValue(result.Id ?? string.Empty, out var validation))
+            {
+                filtered.Add(result);
+                continue;
+            }
+
+            if (validation.SuggestedAction == RAGAction.Block)
+            {
+                LogRagSecurityBlocked(_logger, result.DocumentId ?? string.Empty, result.Id ?? string.Empty, validation.RiskScore);
+                continue;
+            }
+
+            if (validation.SuggestedAction == RAGAction.Sanitize && validation.SanitizedContent != null)
+            {
+                result.Content = validation.SanitizedContent;
+            }
+
+            filtered.Add(result);
+        }
+
+        return filtered;
     }
 
     /// <summary>
@@ -1508,6 +1577,9 @@ public partial class Retriever
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Quantized search with rerank for: {Query}")]
     private static partial void LogQuantizedSearchWithRerank(ILogger logger, string query);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "RAG security pipeline blocked document '{DocumentId}' (chunk '{ChunkId}', risk score {RiskScore:F2}) from search results")]
+    private static partial void LogRagSecurityBlocked(ILogger logger, string documentId, string chunkId, double riskScore);
 
     #endregion
 }
