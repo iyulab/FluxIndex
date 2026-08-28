@@ -9,6 +9,16 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.28.1]
+
+### Changed
+- Updated `ModelContextProtocol`/`ModelContextProtocol.AspNetCore` to 2.2.0 (previously 1.3.0 /
+  0.9.0-preview.2). No public API changes — this package's MCP server only registers tools over
+  stdio and does not use any of the capabilities the 2.0 protocol revision deprecated (roots,
+  sampling, logging) or `DiscoverResult.ServerInfo`.
+
+---
+
 ## [0.28.0]
 
 ### Added
