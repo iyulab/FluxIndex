@@ -1,6 +1,6 @@
 using System.Net;
 using System.Text.Json;
-using FluentAssertions;
+using AwesomeAssertions;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Providers.OpenAI.Services;
 using Microsoft.Extensions.Logging;

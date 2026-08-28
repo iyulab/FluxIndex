@@ -1,5 +1,5 @@
 using FluxIndex.Core.Evaluation;
-using FluentAssertions;
+using AwesomeAssertions;
 using Xunit;
 
 namespace FluxIndex.Core.Tests.Evaluation;

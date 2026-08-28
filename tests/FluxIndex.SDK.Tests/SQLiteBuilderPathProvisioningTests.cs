@@ -1,5 +1,5 @@
 using System.Collections.Generic;
-using FluentAssertions;
+using AwesomeAssertions;
 using FluxIndex.Storage.SQLite;
 using Microsoft.Data.Sqlite;
 using Xunit;

@@ -1,5 +1,5 @@
 using System.Collections.Generic;
-using FluentAssertions;
+using AwesomeAssertions;
 using Xunit;
 
 namespace FluxIndex.Storage.PostgreSQL.Tests;

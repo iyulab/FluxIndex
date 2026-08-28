@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using FluxIndex.Storage.PostgreSQL.EntityGraph;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;

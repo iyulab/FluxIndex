@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using FluxIndex.Providers.OpenAI.Services;
 using Xunit;
 

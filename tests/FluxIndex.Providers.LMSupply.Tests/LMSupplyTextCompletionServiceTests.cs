@@ -1,5 +1,5 @@
 using Flux.Abstractions;
-using FluentAssertions;
+using AwesomeAssertions;
 using FluxIndex.Providers.LMSupply.Services;
 using LMSupply.Generator;
 using LMSupply.Generator.Abstractions;

@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using FluxIndex.SDK;
 using FluxIndex.SDK.Configuration;
 using Microsoft.Extensions.DependencyInjection;

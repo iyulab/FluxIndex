@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using FluxIndex.Core.Application.Services.KeywordSearch;
 using FluxIndex.Storage.PostgreSQL.KeywordSearch;
 using FluxIndex.Storage.SQLite.KeywordSearch;

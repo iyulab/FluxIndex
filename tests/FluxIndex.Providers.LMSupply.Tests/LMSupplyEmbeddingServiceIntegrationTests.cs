@@ -1,4 +1,4 @@
-using FluentAssertions;
+using AwesomeAssertions;
 using FluxIndex.Providers.LMSupply.Services;
 using Xunit;
 
