@@ -59,7 +59,7 @@ Write-Output ""
 # project.
 $categoryFilter = "Category!=Integration&Category!=Performance"
 
-$testArgs = @("test", "--verbosity", $Verbosity, "--configuration", $Configuration, "--filter", $categoryFilter)
+$testArgs = @("test", "--verbosity", $Verbosity, "--configuration", $Configuration, "--filter", $categoryFilter, "--blame-hang", "--blame-hang-timeout", "5m")
 if ($NoBuild)  { $testArgs += "--no-build" }
 if ($Coverage) { $testArgs += "--collect:XPlat Code Coverage" }
 

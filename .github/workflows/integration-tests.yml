@@ -50,3 +50,4 @@ jobs:
         --configuration Release --no-build
         --filter "Category=Integration"
         --logger "console;verbosity=normal"
+        --blame-hang --blame-hang-timeout 5m
