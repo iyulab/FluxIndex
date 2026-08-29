@@ -67,7 +67,7 @@ public class SearchServiceTests
         _mockDocumentRepository.GetByIdAsync("doc1", Arg.Any<CancellationToken>()).Returns(document);
 
         // Act
-        var results = await _service.SearchAsync(query, topK);
+        var results = await _service.SearchAsync(query, topK, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(results);
@@ -94,7 +94,7 @@ public class SearchServiceTests
         _mockVectorStore.SearchAsync(embedding, Arg.Any<int>(), Arg.Any<float>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>()).Returns(Enumerable.Empty<DocumentChunk>());
 
         // Act
-        var results = await _service.SearchAsync(query);
+        var results = await _service.SearchAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(results);
@@ -116,7 +116,7 @@ public class SearchServiceTests
         _mockVectorStore.SearchAsync(embedding, topK, minScore, Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>()).Returns(Enumerable.Empty<DocumentChunk>());
 
         // Act
-        await _service.SearchAsync(query, topK, minScore);
+        await _service.SearchAsync(query, topK, minScore, TestContext.Current.CancellationToken);
 
         // Assert
         await _mockVectorStore.Received(1).SearchAsync(embedding, topK, minScore, Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>());
@@ -160,7 +160,7 @@ public class SearchServiceTests
         _mockDocumentRepository.GetByIdAsync("doc2", Arg.Any<CancellationToken>()).Returns(document2);
 
         // Act
-        var results = await _service.FindSimilarAsync(documentId, topK);
+        var results = await _service.FindSimilarAsync(documentId, topK, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(results);
@@ -180,7 +180,7 @@ public class SearchServiceTests
         _mockVectorStore.GetByDocumentIdAsync(documentId, Arg.Any<CancellationToken>()).Returns(Enumerable.Empty<DocumentChunk>());
 
         // Act
-        var results = await _service.FindSimilarAsync(documentId);
+        var results = await _service.FindSimilarAsync(documentId, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(results);
@@ -235,7 +235,7 @@ public class SearchServiceTests
                 Arg.Any<CancellationToken>()).Returns(new List<EnhancedSearchResult>(enhancedResults));
 
         // Act
-        var results = await _service.AdvancedSearchAsync(query, topK);
+        var results = await _service.AdvancedSearchAsync(query, topK, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(results);
@@ -289,7 +289,7 @@ public class SearchServiceTests
                 Arg.Any<CancellationToken>()).Returns(new List<EnhancedSearchResult>());
 
         // Act
-        await _service.AdvancedSearchAsync(query, rerankingStrategy: strategy);
+        await _service.AdvancedSearchAsync(query, rerankingStrategy: strategy, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         await _mockRerankingService.Received(1).RerankAsync(

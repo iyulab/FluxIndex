@@ -145,7 +145,7 @@ public class AgenticRetrievalRouterTests
         var query = "What is machine learning?";
 
         // Act
-        var result = await _router.RouteAndRetrieveAsync(query);
+        var result = await _router.RouteAndRetrieveAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -161,7 +161,7 @@ public class AgenticRetrievalRouterTests
         var query = "";
 
         // Act
-        var result = await _router.RouteAndRetrieveAsync(query);
+        var result = await _router.RouteAndRetrieveAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert - Service handles empty query gracefully
         Assert.NotNull(result);
@@ -175,7 +175,7 @@ public class AgenticRetrievalRouterTests
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>(
-            () => _router.RouteAndRetrieveAsync(query!));
+            () => _router.RouteAndRetrieveAsync(query!, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -186,7 +186,7 @@ public class AgenticRetrievalRouterTests
         var context = new RoutingContext { MaxResults = 3, Domain = "technical" };
 
         // Act
-        var result = await _router.RouteAndRetrieveAsync(query, context);
+        var result = await _router.RouteAndRetrieveAsync(query, context, TestContext.Current.CancellationToken);
 
         // Assert - Context is used in routing (results may vary based on strategy)
         Assert.NotNull(result);
@@ -200,7 +200,7 @@ public class AgenticRetrievalRouterTests
         var query = "What is machine learning?";
 
         // Act
-        var result = await _router.RouteAndRetrieveAsync(query);
+        var result = await _router.RouteAndRetrieveAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.TotalTime >= TimeSpan.Zero);
@@ -230,7 +230,7 @@ public class AgenticRetrievalRouterTests
         var query = "What is the capital of France?";
 
         // Act
-        var result = await _router.AnalyzeQueryAsync(query);
+        var result = await _router.AnalyzeQueryAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -246,7 +246,7 @@ public class AgenticRetrievalRouterTests
         var query = "Compare Python and Java programming languages";
 
         // Act
-        var result = await _router.AnalyzeQueryAsync(query);
+        var result = await _router.AnalyzeQueryAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -260,7 +260,7 @@ public class AgenticRetrievalRouterTests
         var query = "How do I install Docker on Windows?";
 
         // Act
-        var result = await _router.AnalyzeQueryAsync(query);
+        var result = await _router.AnalyzeQueryAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -274,7 +274,7 @@ public class AgenticRetrievalRouterTests
         var query = "Define machine learning";
 
         // Act
-        var result = await _router.AnalyzeQueryAsync(query);
+        var result = await _router.AnalyzeQueryAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -288,7 +288,7 @@ public class AgenticRetrievalRouterTests
         var query = "What are the benefits of cloud computing?";
 
         // Act
-        var result = await _router.AnalyzeQueryAsync(query);
+        var result = await _router.AnalyzeQueryAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -302,7 +302,7 @@ public class AgenticRetrievalRouterTests
         var query = "What is the difference between supervised and unsupervised learning in machine learning?";
 
         // Act
-        var result = await _router.AnalyzeQueryAsync(query);
+        var result = await _router.AnalyzeQueryAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -320,7 +320,7 @@ public class AgenticRetrievalRouterTests
         var query = "What is machine learning?";
 
         // Act
-        var plan = await _router.GenerateRetrievalPlanAsync(query);
+        var plan = await _router.GenerateRetrievalPlanAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(plan);
@@ -335,7 +335,7 @@ public class AgenticRetrievalRouterTests
         var query = "What is machine learning?";
 
         // Act
-        var plan = await _router.GenerateRetrievalPlanAsync(query);
+        var plan = await _router.GenerateRetrievalPlanAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(plan);
@@ -349,7 +349,7 @@ public class AgenticRetrievalRouterTests
         var query = "What is machine learning?";
 
         // Act
-        var plan = await _router.GenerateRetrievalPlanAsync(query);
+        var plan = await _router.GenerateRetrievalPlanAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(plan);
@@ -365,10 +365,10 @@ public class AgenticRetrievalRouterTests
     {
         // Arrange
         var query = "What is machine learning?";
-        var plan = await _router.GenerateRetrievalPlanAsync(query);
+        var plan = await _router.GenerateRetrievalPlanAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Act
-        var result = await _router.ExecuteRetrievalPlanAsync(query, plan);
+        var result = await _router.ExecuteRetrievalPlanAsync(query, plan, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -380,10 +380,10 @@ public class AgenticRetrievalRouterTests
     {
         // Arrange
         var query = "What is machine learning?";
-        var plan = await _router.GenerateRetrievalPlanAsync(query);
+        var plan = await _router.GenerateRetrievalPlanAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Act
-        var result = await _router.ExecuteRetrievalPlanAsync(query, plan);
+        var result = await _router.ExecuteRetrievalPlanAsync(query, plan, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotEmpty(result.MergedDocuments);
@@ -394,10 +394,10 @@ public class AgenticRetrievalRouterTests
     {
         // Arrange
         var query = "What is machine learning?";
-        var plan = await _router.GenerateRetrievalPlanAsync(query);
+        var plan = await _router.GenerateRetrievalPlanAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Act
-        var result = await _router.ExecuteRetrievalPlanAsync(query, plan);
+        var result = await _router.ExecuteRetrievalPlanAsync(query, plan, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.CompletedSteps > 0);
@@ -420,7 +420,7 @@ public class AgenticRetrievalRouterTests
         };
 
         // Act
-        await _router.RecordRoutingFeedbackAsync(routingId, feedback);
+        await _router.RecordRoutingFeedbackAsync(routingId, feedback, TestContext.Current.CancellationToken);
 
         // Assert - No exception means success
         Assert.True(true);
@@ -440,7 +440,7 @@ public class AgenticRetrievalRouterTests
         };
 
         // Act
-        await _router.RecordRoutingFeedbackAsync(routingId, feedback);
+        await _router.RecordRoutingFeedbackAsync(routingId, feedback, TestContext.Current.CancellationToken);
 
         // Assert - No exception means success
         Assert.True(true);
@@ -459,10 +459,10 @@ public class AgenticRetrievalRouterTests
                 QualityRating = 5,
                 FeedbackText = "Excellent results"
             };
-            await _router.RecordRoutingFeedbackAsync(routingId, feedback);
+            await _router.RecordRoutingFeedbackAsync(routingId, feedback, TestContext.Current.CancellationToken);
         }
 
-        var result = await _router.RouteAndRetrieveAsync("simple factual question");
+        var result = await _router.RouteAndRetrieveAsync("simple factual question", cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -479,7 +479,7 @@ public class AgenticRetrievalRouterTests
         var query = "Compare and contrast the differences between supervised learning, unsupervised learning, and reinforcement learning, then explain how each is applied in real-world scenarios";
 
         // Act
-        var result = await _router.RouteAndRetrieveAsync(query);
+        var result = await _router.RouteAndRetrieveAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -493,7 +493,7 @@ public class AgenticRetrievalRouterTests
         var query = "Define artificial intelligence";
 
         // Act
-        var result = await _router.RouteAndRetrieveAsync(query);
+        var result = await _router.RouteAndRetrieveAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -507,7 +507,7 @@ public class AgenticRetrievalRouterTests
         var query = "How to configure a Kubernetes cluster step by step?";
 
         // Act
-        var result = await _router.RouteAndRetrieveAsync(query);
+        var result = await _router.RouteAndRetrieveAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -529,7 +529,7 @@ public class AgenticRetrievalRouterTests
                 Arg.Any<CancellationToken>()).Throws(new InvalidOperationException("Service unavailable"));
 
         // Act
-        var result = await _router.RouteAndRetrieveAsync(query);
+        var result = await _router.RouteAndRetrieveAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert - Should still succeed using fallback
         Assert.NotNull(result);
@@ -547,7 +547,7 @@ public class AgenticRetrievalRouterTests
         var query = "What is machine learning?";
 
         // Act
-        var result = await _router.RouteAndRetrieveAsync(query);
+        var result = await _router.RouteAndRetrieveAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.TotalTime > TimeSpan.Zero);
@@ -560,7 +560,7 @@ public class AgenticRetrievalRouterTests
         var query = "What is machine learning?";
 
         // Act
-        var result = await _router.RouteAndRetrieveAsync(query);
+        var result = await _router.RouteAndRetrieveAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.All(result.Documents, doc =>
@@ -576,7 +576,7 @@ public class AgenticRetrievalRouterTests
         var query = "What is machine learning?";
 
         // Act
-        var result = await _router.RouteAndRetrieveAsync(query);
+        var result = await _router.RouteAndRetrieveAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.RoutingTime >= TimeSpan.Zero);
@@ -589,7 +589,7 @@ public class AgenticRetrievalRouterTests
         var query = "What is machine learning?";
 
         // Act
-        var result = await _router.RouteAndRetrieveAsync(query);
+        var result = await _router.RouteAndRetrieveAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.RetrievalTime >= TimeSpan.Zero);

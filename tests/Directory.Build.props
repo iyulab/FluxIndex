@@ -19,14 +19,32 @@
 
     <!-- Disable unnecessary warnings for tests -->
     <NoWarn>$(NoWarn);CS1591;CS1587;CS8618</NoWarn>
+
   </PropertyGroup>
 
-  <!-- Common test dependencies -->
-  <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="xunit" />
-    <PackageReference Include="xunit.runner.visualstudio" />
-    <PackageReference Include="coverlet.collector" />
+  <!-- xUnit v3 test projects are stand-alone executables (BD-20260829-xunit-v3-pilot).
+       FluxIndex.LocalSimulation is a console app under tests/ (its own Program.cs entry
+       point), not an xUnit project — OutputType=Exe here would risk the same silent
+       Main-conflict class that killed WebFlux's entire test discovery (cycle-370), so it's
+       excluded from this and the package ItemGroup below. -->
+  <PropertyGroup Condition="'$(MSBuildProjectName)' != 'FluxIndex.LocalSimulation'">
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <!-- Common test dependencies. xUnit v3 pilot rollout: xunit replaced with xunit.v3, no
+       Microsoft.NET.Test.Sdk (not required under Microsoft.Testing.Platform),
+       coverlet.collector replaced with its MTP-native successor coverlet.MTP
+       (build-and-release.yml's scripts/test.ps1 -Coverage is real usage, not a dead
+       reference). xunit.runner.visualstudio kept for IDE Test Explorer discovery. -->
+  <ItemGroup Condition="'$(MSBuildProjectName)' != 'FluxIndex.LocalSimulation'">
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <!-- MTP equivalent of the ecosystem's VSTest blame-hang convention (BD-20260828-07) -->
+    <PackageReference Include="Microsoft.Testing.Extensions.HangDump" />
+    <PackageReference Include="coverlet.MTP" />
     <PackageReference Include="AwesomeAssertions" />
   </ItemGroup>
 

@@ -39,7 +39,7 @@ public class BinaryQuantizerTests
             .ToArray();
 
         // Act
-        var result = await quantizer.QuantizeAsync(vector);
+        var result = await quantizer.QuantizeAsync(vector, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(QuantizationType.Binary, result.Type);
@@ -55,7 +55,7 @@ public class BinaryQuantizerTests
         var vector = new float[] { 1f, 1f, 1f, 1f, 1f, 1f, 1f, 1f }; // 모두 양수
 
         // Act
-        var result = await quantizer.QuantizeAsync(vector);
+        var result = await quantizer.QuantizeAsync(vector, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(0xFF, result.Data[0]); // 모든 비트가 1
@@ -69,7 +69,7 @@ public class BinaryQuantizerTests
         var vector = new float[] { -1f, -1f, -1f, -1f, -1f, -1f, -1f, -1f }; // 모두 음수
 
         // Act
-        var result = await quantizer.QuantizeAsync(vector);
+        var result = await quantizer.QuantizeAsync(vector, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(0x00, result.Data[0]); // 모든 비트가 0
@@ -83,7 +83,7 @@ public class BinaryQuantizerTests
         var vector = new float[] { 1f, -1f, 1f, -1f, 1f, -1f, 1f, -1f }; // 교대
 
         // Act
-        var result = await quantizer.QuantizeAsync(vector);
+        var result = await quantizer.QuantizeAsync(vector, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(0x55, result.Data[0]); // 01010101 in binary
@@ -101,8 +101,8 @@ public class BinaryQuantizerTests
         var original = new float[] { 1f, -1f, 1f, -1f, 1f, -1f, 1f, -1f };
 
         // Act
-        var quantized = await quantizer.QuantizeAsync(original);
-        var reconstructed = await quantizer.DequantizeAsync(quantized);
+        var quantized = await quantizer.QuantizeAsync(original, TestContext.Current.CancellationToken);
+        var reconstructed = await quantizer.DequantizeAsync(quantized, TestContext.Current.CancellationToken);
 
         // Assert
         for (int i = 0; i < original.Length; i++)
@@ -120,8 +120,8 @@ public class BinaryQuantizerTests
         var original = new float[] { 0.1f, -0.5f, 0.9f, -0.3f }; // 다양한 크기
 
         // Act
-        var quantized = await quantizer.QuantizeAsync(original);
-        var reconstructed = await quantizer.DequantizeAsync(quantized);
+        var quantized = await quantizer.QuantizeAsync(original, TestContext.Current.CancellationToken);
+        var reconstructed = await quantizer.DequantizeAsync(quantized, TestContext.Current.CancellationToken);
 
         // Assert (크기는 보존 안됨, 부호만 보존)
         Assert.Equal(1.0f, reconstructed[0]);  // 0.1 > 0 → +1
@@ -141,8 +141,8 @@ public class BinaryQuantizerTests
         var quantizer = CreateQuantizer(32);
         var vector = Enumerable.Range(0, 32).Select(i => (float)i).ToArray();
 
-        var q1 = await quantizer.QuantizeAsync(vector);
-        var q2 = await quantizer.QuantizeAsync(vector);
+        var q1 = await quantizer.QuantizeAsync(vector, TestContext.Current.CancellationToken);
+        var q2 = await quantizer.QuantizeAsync(vector, TestContext.Current.CancellationToken);
 
         // Act
         var distance = quantizer.ComputeDistance(q1, q2);
@@ -159,8 +159,8 @@ public class BinaryQuantizerTests
         var vector1 = Enumerable.Repeat(1.0f, 32).ToArray();
         var vector2 = Enumerable.Repeat(-1.0f, 32).ToArray();
 
-        var q1 = await quantizer.QuantizeAsync(vector1);
-        var q2 = await quantizer.QuantizeAsync(vector2);
+        var q1 = await quantizer.QuantizeAsync(vector1, TestContext.Current.CancellationToken);
+        var q2 = await quantizer.QuantizeAsync(vector2, TestContext.Current.CancellationToken);
 
         // Act
         var distance = quantizer.ComputeDistance(q1, q2);
@@ -177,8 +177,8 @@ public class BinaryQuantizerTests
         var vector1 = Enumerable.Range(0, 32).Select(i => i < 16 ? 1.0f : -1.0f).ToArray();
         var vector2 = Enumerable.Range(0, 32).Select(i => i < 16 ? -1.0f : -1.0f).ToArray();
 
-        var q1 = await quantizer.QuantizeAsync(vector1);
-        var q2 = await quantizer.QuantizeAsync(vector2);
+        var q1 = await quantizer.QuantizeAsync(vector1, TestContext.Current.CancellationToken);
+        var q2 = await quantizer.QuantizeAsync(vector2, TestContext.Current.CancellationToken);
 
         // Act
         var distance = quantizer.ComputeDistance(q1, q2);
@@ -195,8 +195,8 @@ public class BinaryQuantizerTests
         var vector1 = Enumerable.Range(0, 32).Select(i => i < 8 ? 1.0f : -1.0f).ToArray();
         var vector2 = Enumerable.Range(0, 32).Select(i => i < 8 ? -1.0f : -1.0f).ToArray();
 
-        var q1 = await quantizer.QuantizeAsync(vector1);
-        var q2 = await quantizer.QuantizeAsync(vector2);
+        var q1 = await quantizer.QuantizeAsync(vector1, TestContext.Current.CancellationToken);
+        var q2 = await quantizer.QuantizeAsync(vector2, TestContext.Current.CancellationToken);
 
         // Act
         var similarity = BinaryQuantizer.ComputeHammingSimilarity(q1, q2);
@@ -223,7 +223,7 @@ public class BinaryQuantizerTests
         };
 
         // Act
-        await quantizer.TrainAsync(trainingVectors);
+        await quantizer.TrainAsync(trainingVectors, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(quantizer.IsTrained);
@@ -236,7 +236,7 @@ public class BinaryQuantizerTests
         var quantizer = CreateQuantizer(4);
 
         // Act
-        await quantizer.TrainAsync(new List<float[]>());
+        await quantizer.TrainAsync(new List<float[]>(), TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(quantizer.IsTrained);
@@ -257,11 +257,11 @@ public class BinaryQuantizerTests
         };
 
         // Act
-        await quantizer.TrainAsync(trainingVectors);
+        await quantizer.TrainAsync(trainingVectors, TestContext.Current.CancellationToken);
 
         // 중간값(20)보다 작은 값들은 0비트
         var testVector = new float[] { 15f, 15f, 15f, 15f };
-        var result = await quantizer.QuantizeAsync(testVector);
+        var result = await quantizer.QuantizeAsync(testVector, TestContext.Current.CancellationToken);
 
         // Assert
         // 모든 값이 임계값(20)보다 작으므로 모든 비트가 0
@@ -313,7 +313,7 @@ public class BinaryQuantizerTests
         };
 
         // Act
-        var results = (await quantizer.QuantizeBatchAsync(vectors)).ToList();
+        var results = (await quantizer.QuantizeBatchAsync(vectors, TestContext.Current.CancellationToken)).ToList();
 
         // Assert
         Assert.Equal(3, results.Count);
@@ -333,8 +333,8 @@ public class BinaryQuantizerTests
             Enumerable.Range(0, 16).Select(i => i < 8 ? 1.0f : -1.0f).ToArray()
         };
 
-        var qQuery = await quantizer.QuantizeAsync(query);
-        var qCandidates = await quantizer.QuantizeBatchAsync(candidates);
+        var qQuery = await quantizer.QuantizeAsync(query, TestContext.Current.CancellationToken);
+        var qCandidates = await quantizer.QuantizeBatchAsync(candidates, TestContext.Current.CancellationToken);
 
         // Act
         var distances = BinaryQuantizer.ComputeHammingDistancesBatch(
@@ -360,7 +360,7 @@ public class BinaryQuantizerTests
         var vector = new float[] { 1f, -1f, 1f, -1f, 1f, -1f, 1f, -1f };
 
         // Act
-        var quantized = await quantizer.QuantizeAsync(vector);
+        var quantized = await quantizer.QuantizeAsync(vector, TestContext.Current.CancellationToken);
         var binaryString = BinaryQuantizer.ToBinaryString(quantized.Data, 8);
 
         // Assert
@@ -414,7 +414,7 @@ public class BinaryQuantizerTests
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentException>(
-            () => quantizer.QuantizeAsync(wrongVector));
+            () => quantizer.QuantizeAsync(wrongVector, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -425,7 +425,7 @@ public class BinaryQuantizerTests
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>(
-            () => quantizer.DequantizeAsync(null!));
+            () => quantizer.DequantizeAsync(null!, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -433,7 +433,7 @@ public class BinaryQuantizerTests
     {
         // Arrange
         var quantizer = CreateQuantizer(16);
-        var q1 = await quantizer.QuantizeAsync(Enumerable.Repeat(1.0f, 16).ToArray());
+        var q1 = await quantizer.QuantizeAsync(Enumerable.Repeat(1.0f, 16).ToArray(), TestContext.Current.CancellationToken);
 
         var fakeQ2 = new QuantizedVector
         {

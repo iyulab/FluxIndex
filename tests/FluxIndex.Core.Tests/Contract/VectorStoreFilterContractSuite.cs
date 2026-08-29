@@ -46,12 +46,10 @@ public abstract class VectorStoreFilterContractSuite
     public async Task ScalarFilter_RestrictsToEqualValue()
     {
         var store = await CreateStoreAsync();
-        await store.StoreAsync(CreateChunk("doc-1", "ws-a"));
-        await store.StoreAsync(CreateChunk("doc-2", "ws-b"));
+        await store.StoreAsync(CreateChunk("doc-1", "ws-a"), TestContext.Current.CancellationToken);
+        await store.StoreAsync(CreateChunk("doc-2", "ws-b"), TestContext.Current.CancellationToken);
 
-        var results = await store.SearchAsync(
-            QueryVector(), topK: 10, minScore: -1f,
-            filters: new Dictionary<string, object> { ["workspace_id"] = "ws-a" });
+        var results = await store.SearchAsync(QueryVector(), topK: 10, minScore: -1f, filters: new Dictionary<string, object> { ["workspace_id"] = "ws-a" }, cancellationToken: TestContext.Current.CancellationToken);
 
         var chunk = Assert.Single(results);
         Assert.Equal("doc-1", chunk.DocumentId);
@@ -61,16 +59,14 @@ public abstract class VectorStoreFilterContractSuite
     public async Task CollectionFilter_MatchesAnyElement()
     {
         var store = await CreateStoreAsync();
-        await store.StoreAsync(CreateChunk("doc-1", "ws-a"));
-        await store.StoreAsync(CreateChunk("doc-2", "ws-b"));
-        await store.StoreAsync(CreateChunk("doc-3", "ws-c"));
+        await store.StoreAsync(CreateChunk("doc-1", "ws-a"), TestContext.Current.CancellationToken);
+        await store.StoreAsync(CreateChunk("doc-2", "ws-b"), TestContext.Current.CancellationToken);
+        await store.StoreAsync(CreateChunk("doc-3", "ws-c"), TestContext.Current.CancellationToken);
 
-        var results = await store.SearchAsync(
-            QueryVector(), topK: 10, minScore: -1f,
-            filters: new Dictionary<string, object>
+        var results = await store.SearchAsync(QueryVector(), topK: 10, minScore: -1f, filters: new Dictionary<string, object>
             {
                 ["workspace_id"] = new List<string> { "ws-a", "ws-c" }
-            });
+            }, cancellationToken: TestContext.Current.CancellationToken);
 
         var ids = results.Select(r => r.DocumentId).OrderBy(x => x).ToList();
         Assert.Equal(["doc-1", "doc-3"], ids);
@@ -80,14 +76,12 @@ public abstract class VectorStoreFilterContractSuite
     public async Task CollectionFilter_NoElementMatches_ReturnsEmpty()
     {
         var store = await CreateStoreAsync();
-        await store.StoreAsync(CreateChunk("doc-1", "ws-a"));
+        await store.StoreAsync(CreateChunk("doc-1", "ws-a"), TestContext.Current.CancellationToken);
 
-        var results = await store.SearchAsync(
-            QueryVector(), topK: 10, minScore: -1f,
-            filters: new Dictionary<string, object>
+        var results = await store.SearchAsync(QueryVector(), topK: 10, minScore: -1f, filters: new Dictionary<string, object>
             {
                 ["workspace_id"] = new List<string> { "ws-x", "ws-y" }
-            });
+            }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Empty(results);
     }
@@ -96,32 +90,28 @@ public abstract class VectorStoreFilterContractSuite
     public async Task UnsupportedFilterValue_Throws_InsteadOfSilentZeroResults()
     {
         var store = await CreateStoreAsync();
-        await store.StoreAsync(CreateChunk("doc-1", "ws-a"));
+        await store.StoreAsync(CreateChunk("doc-1", "ws-a"), TestContext.Current.CancellationToken);
 
-        await Assert.ThrowsAsync<ArgumentException>(() => store.SearchAsync(
-            QueryVector(), topK: 10, minScore: -1f,
-            filters: new Dictionary<string, object> { ["workspace_id"] = new object() }));
+        await Assert.ThrowsAsync<ArgumentException>(() => store.SearchAsync(QueryVector(), topK: 10, minScore: -1f, filters: new Dictionary<string, object> { ["workspace_id"] = new object() }, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
     public async Task EmptyCollectionFilter_Throws()
     {
         var store = await CreateStoreAsync();
-        await store.StoreAsync(CreateChunk("doc-1", "ws-a"));
+        await store.StoreAsync(CreateChunk("doc-1", "ws-a"), TestContext.Current.CancellationToken);
 
-        await Assert.ThrowsAsync<ArgumentException>(() => store.SearchAsync(
-            QueryVector(), topK: 10, minScore: -1f,
-            filters: new Dictionary<string, object> { ["workspace_id"] = new List<string>() }));
+        await Assert.ThrowsAsync<ArgumentException>(() => store.SearchAsync(QueryVector(), topK: 10, minScore: -1f, filters: new Dictionary<string, object> { ["workspace_id"] = new List<string>() }, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
     public async Task NoFilter_ReturnsAllStoredChunks()
     {
         var store = await CreateStoreAsync();
-        await store.StoreAsync(CreateChunk("doc-1", "ws-a"));
-        await store.StoreAsync(CreateChunk("doc-2", "ws-b"));
+        await store.StoreAsync(CreateChunk("doc-1", "ws-a"), TestContext.Current.CancellationToken);
+        await store.StoreAsync(CreateChunk("doc-2", "ws-b"), TestContext.Current.CancellationToken);
 
-        var results = await store.SearchAsync(QueryVector(), topK: 10, minScore: -1f);
+        var results = await store.SearchAsync(QueryVector(), topK: 10, minScore: -1f, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(2, results.Count());
     }
@@ -130,9 +120,9 @@ public abstract class VectorStoreFilterContractSuite
     public async Task DeleteByFilter_CollectionValue_RemovesAnyMatch_WhenSupported()
     {
         var store = await CreateStoreAsync();
-        await store.StoreAsync(CreateChunk("doc-1", "ws-a"));
-        await store.StoreAsync(CreateChunk("doc-2", "ws-b"));
-        await store.StoreAsync(CreateChunk("doc-3", "ws-c"));
+        await store.StoreAsync(CreateChunk("doc-1", "ws-a"), TestContext.Current.CancellationToken);
+        await store.StoreAsync(CreateChunk("doc-2", "ws-b"), TestContext.Current.CancellationToken);
+        await store.StoreAsync(CreateChunk("doc-3", "ws-c"), TestContext.Current.CancellationToken);
 
         int deleted;
         try
@@ -140,7 +130,7 @@ public abstract class VectorStoreFilterContractSuite
             deleted = await store.DeleteByFilterAsync(new Dictionary<string, object>
             {
                 ["workspace_id"] = new[] { "ws-a", "ws-c" }
-            });
+            }, TestContext.Current.CancellationToken);
         }
         catch (NotSupportedException)
         {
@@ -149,6 +139,6 @@ public abstract class VectorStoreFilterContractSuite
         }
 
         Assert.Equal(2, deleted);
-        Assert.Equal(1, await store.CountAsync());
+        Assert.Equal(1, await store.CountAsync(TestContext.Current.CancellationToken));
     }
 }

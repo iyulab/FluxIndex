@@ -185,7 +185,7 @@ public class HybridSearchQuantizationTests
         };
 
         // Act
-        var results = await service.SearchAsync(query, options);
+        var results = await service.SearchAsync(query, options, TestContext.Current.CancellationToken);
 
         // Assert
         await mockQuantizedStore.Received(1).SearchWithRerankAsync(
@@ -236,7 +236,7 @@ public class HybridSearchQuantizationTests
         };
 
         // Act
-        var results = await service.SearchAsync(query, options);
+        var results = await service.SearchAsync(query, options, TestContext.Current.CancellationToken);
 
         // Assert
         await mockQuantizedStore.DidNotReceive().SearchWithRerankAsync(
@@ -298,7 +298,7 @@ public class HybridSearchQuantizationTests
         };
 
         // Act
-        var results = await service.SearchAsync(query, options);
+        var results = await service.SearchAsync(query, options, TestContext.Current.CancellationToken);
 
         // Assert - Should fallback to regular search
         Assert.Single(results);
@@ -356,7 +356,7 @@ public class HybridSearchQuantizationTests
         };
 
         // Act
-        await service.SearchAsync(query, options);
+        await service.SearchAsync(query, options, TestContext.Current.CancellationToken);
 
         // Assert
         await mockQuantizedStore.Received(1).SearchWithRerankAsync(
@@ -412,7 +412,7 @@ public class HybridSearchQuantizationTests
         };
 
         // Act
-        await service.SearchAsync(query, options);
+        await service.SearchAsync(query, options, TestContext.Current.CancellationToken);
 
         // Assert
         await mockQuantizedStore.Received(1).SearchWithRerankAsync(

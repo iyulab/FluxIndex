@@ -72,7 +72,7 @@ public class AdaptiveSearchServiceTests
         _mockHybridSearch.SearchAsync(query, Arg.Any<FluxIndex.Core.Domain.Models.HybridSearchOptions>(), Arg.Any<CancellationToken>()).Returns(hybridResults);
 
         // Act
-        var result = await _service.SearchAsync(query, options);
+        var result = await _service.SearchAsync(query, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -90,7 +90,7 @@ public class AdaptiveSearchServiceTests
         var options = new AdaptiveSearchOptions();
 
         // Act & Assert
-        await Assert.ThrowsAsync<ArgumentException>(() => _service.SearchAsync(query, options));
+        await Assert.ThrowsAsync<ArgumentException>(() => _service.SearchAsync(query, options, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -116,7 +116,7 @@ public class AdaptiveSearchServiceTests
         _mockHybridSearch.SearchAsync(query, Arg.Any<FluxIndex.Core.Domain.Models.HybridSearchOptions>(), Arg.Any<CancellationToken>()).Returns(new List<FluxIndex.Core.Domain.Models.HybridSearchResult>());
 
         // Act
-        var result = await _service.SearchAsync(query, options);
+        var result = await _service.SearchAsync(query, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(SearchStrategy.KeywordOnly, result.UsedStrategy);
@@ -198,10 +198,10 @@ public class AdaptiveSearchServiceTests
             Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
 
         // Act - First call
-        var result1 = await _service.SearchAsync(query, options);
+        var result1 = await _service.SearchAsync(query, options, TestContext.Current.CancellationToken);
 
         // Act - Second call (should use cache)
-        var result2 = await _service.SearchAsync(query, options);
+        var result2 = await _service.SearchAsync(query, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.False(result1.Performance.CacheHit);
@@ -226,7 +226,7 @@ public class AdaptiveSearchServiceTests
         };
 
         // Act
-        await _service.UpdateFeedbackAsync(query, result, feedback);
+        await _service.UpdateFeedbackAsync(query, result, feedback, TestContext.Current.CancellationToken);
 
         // Assert - Should not throw and complete successfully
         Assert.True(true);
@@ -236,7 +236,7 @@ public class AdaptiveSearchServiceTests
     public async Task GetPerformanceReportAsync_ReturnsReport()
     {
         // Act
-        var report = await _service.GetPerformanceReportAsync();
+        var report = await _service.GetPerformanceReportAsync(TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(report);
@@ -269,7 +269,7 @@ public class AdaptiveSearchServiceTests
         _mockHybridSearch.SearchAsync(query, Arg.Any<FluxIndex.Core.Domain.Models.HybridSearchOptions>(), Arg.Any<CancellationToken>()).Returns(new List<FluxIndex.Core.Domain.Models.HybridSearchResult>());
 
         // Act
-        var result = await _service.SearchAsync(query, options);
+        var result = await _service.SearchAsync(query, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);

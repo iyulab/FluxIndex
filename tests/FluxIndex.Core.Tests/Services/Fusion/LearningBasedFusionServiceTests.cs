@@ -54,7 +54,7 @@ public class LearningBasedFusionServiceTests
         var examples = new List<FusionTrainingExample>();
 
         // Act
-        await _sut.TrainAsync(examples);
+        await _sut.TrainAsync(examples, TestContext.Current.CancellationToken);
 
         // Assert
         var stats = _sut.GetModelStatistics();
@@ -69,7 +69,7 @@ public class LearningBasedFusionServiceTests
         var examples = CreateTrainingExamples(15);
 
         // Act
-        await _sut.TrainAsync(examples);
+        await _sut.TrainAsync(examples, TestContext.Current.CancellationToken);
 
         // Assert
         var stats = _sut.GetModelStatistics();
@@ -95,7 +95,7 @@ public class LearningBasedFusionServiceTests
     public async Task TrainAsync_WithNullExamples_ThrowsArgumentNullException()
     {
         await Assert.ThrowsAsync<ArgumentNullException>(
-            () => _sut.TrainAsync(null!));
+            () => _sut.TrainAsync(null!, TestContext.Current.CancellationToken));
     }
 
     #endregion
@@ -111,7 +111,7 @@ public class LearningBasedFusionServiceTests
         var sparseResults = CreateRankedResults(5);
 
         // Act
-        var prediction = await _sut.PredictWeightsAsync(query, vectorResults, sparseResults);
+        var prediction = await _sut.PredictWeightsAsync(query, vectorResults, sparseResults, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(prediction);
@@ -130,7 +130,7 @@ public class LearningBasedFusionServiceTests
         var sparseResults = CreateRankedResults(5);
 
         // Act
-        var prediction = await _sut.PredictWeightsAsync(query, vectorResults, sparseResults);
+        var prediction = await _sut.PredictWeightsAsync(query, vectorResults, sparseResults, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(prediction);
@@ -147,7 +147,7 @@ public class LearningBasedFusionServiceTests
         var sparseResults = CreateRankedResults(5);
 
         // Act
-        var prediction = await _sut.PredictWeightsAsync(query, vectorResults, sparseResults);
+        var prediction = await _sut.PredictWeightsAsync(query, vectorResults, sparseResults, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(prediction);
@@ -163,14 +163,14 @@ public class LearningBasedFusionServiceTests
     {
         // Arrange
         var examples = CreateTrainingExamples(20);
-        await _sut.TrainAsync(examples);
+        await _sut.TrainAsync(examples, TestContext.Current.CancellationToken);
 
         var query = "What is authentication?";
         var vectorResults = CreateRankedResults(5);
         var sparseResults = CreateRankedResults(5);
 
         // Act
-        var prediction = await _sut.PredictWeightsAsync(query, vectorResults, sparseResults);
+        var prediction = await _sut.PredictWeightsAsync(query, vectorResults, sparseResults, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(prediction);
@@ -182,7 +182,7 @@ public class LearningBasedFusionServiceTests
     public async Task PredictWeightsAsync_WithNullQuery_ThrowsArgumentNullException()
     {
         await Assert.ThrowsAsync<ArgumentNullException>(
-            () => _sut.PredictWeightsAsync(null!, CreateRankedResults(5), CreateRankedResults(5)));
+            () => _sut.PredictWeightsAsync(null!, CreateRankedResults(5), CreateRankedResults(5), TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -194,7 +194,7 @@ public class LearningBasedFusionServiceTests
         var sparseResults = CreateRankedResults(5);
 
         // Act
-        var prediction = await _sut.PredictWeightsAsync(query, vectorResults, sparseResults);
+        var prediction = await _sut.PredictWeightsAsync(query, vectorResults, sparseResults, TestContext.Current.CancellationToken);
 
         // Assert
         var totalWeight = prediction.Weights.VectorWeight + prediction.Weights.SparseWeight;
@@ -213,7 +213,7 @@ public class LearningBasedFusionServiceTests
         var feedback = CreateFusionFeedback("How do I configure SSL?", true);
 
         // Act
-        await _sut.UpdateOnlineAsync(feedback);
+        await _sut.UpdateOnlineAsync(feedback, TestContext.Current.CancellationToken);
 
         // Assert
         var stats = _sut.GetModelStatistics();
@@ -230,9 +230,9 @@ public class LearningBasedFusionServiceTests
         var feedback3 = CreateFusionFeedback("Query three", true);
 
         // Act
-        await _sut.UpdateOnlineAsync(feedback1);
-        await _sut.UpdateOnlineAsync(feedback2);
-        await _sut.UpdateOnlineAsync(feedback3);
+        await _sut.UpdateOnlineAsync(feedback1, TestContext.Current.CancellationToken);
+        await _sut.UpdateOnlineAsync(feedback2, TestContext.Current.CancellationToken);
+        await _sut.UpdateOnlineAsync(feedback3, TestContext.Current.CancellationToken);
 
         // Assert
         var stats = _sut.GetModelStatistics();
@@ -243,7 +243,7 @@ public class LearningBasedFusionServiceTests
     public async Task UpdateOnlineAsync_WithNullFeedback_ThrowsArgumentNullException()
     {
         await Assert.ThrowsAsync<ArgumentNullException>(
-            () => _sut.UpdateOnlineAsync(null!));
+            () => _sut.UpdateOnlineAsync(null!, TestContext.Current.CancellationToken));
     }
 
     #endregion
@@ -259,7 +259,7 @@ public class LearningBasedFusionServiceTests
         var relevanceScore = 0.85;
 
         // Act
-        await _sut.RecordFeedbackAsync(queryId, resultId, relevanceScore);
+        await _sut.RecordFeedbackAsync(queryId, resultId, relevanceScore, TestContext.Current.CancellationToken);
 
         // Assert - no exception thrown, feedback recorded internally
         Assert.True(true);
@@ -273,15 +273,15 @@ public class LearningBasedFusionServiceTests
         var resultId = "result-456";
 
         // Act & Assert - should not throw for out-of-range values
-        await _sut.RecordFeedbackAsync(queryId, resultId, 1.5);  // Clamped to 1.0
-        await _sut.RecordFeedbackAsync(queryId, resultId, -0.5);  // Clamped to 0.0
+        await _sut.RecordFeedbackAsync(queryId, resultId, 1.5, TestContext.Current.CancellationToken);  // Clamped to 1.0
+        await _sut.RecordFeedbackAsync(queryId, resultId, -0.5, TestContext.Current.CancellationToken);  // Clamped to 0.0
     }
 
     [Fact]
     public async Task RecordFeedbackAsync_WithNullQueryId_ThrowsArgumentNullException()
     {
         await Assert.ThrowsAsync<ArgumentNullException>(
-            () => _sut.RecordFeedbackAsync(null!, "result-id", 0.5));
+            () => _sut.RecordFeedbackAsync(null!, "result-id", 0.5, TestContext.Current.CancellationToken));
     }
 
     #endregion
@@ -306,7 +306,7 @@ public class LearningBasedFusionServiceTests
     public async Task GetModelStatistics_AfterTraining_ReflectsTrainingState()
     {
         // Arrange
-        await _sut.TrainAsync(CreateTrainingExamples(20));
+        await _sut.TrainAsync(CreateTrainingExamples(20), TestContext.Current.CancellationToken);
 
         // Act
         var stats = _sut.GetModelStatistics();
@@ -326,10 +326,10 @@ public class LearningBasedFusionServiceTests
     public async Task ExportModelAsync_ReturnsValidModelState()
     {
         // Arrange
-        await _sut.TrainAsync(CreateTrainingExamples(15));
+        await _sut.TrainAsync(CreateTrainingExamples(15), TestContext.Current.CancellationToken);
 
         // Act
-        var state = await _sut.ExportModelAsync();
+        var state = await _sut.ExportModelAsync(TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(state);
@@ -345,15 +345,15 @@ public class LearningBasedFusionServiceTests
     public async Task ImportModelAsync_RestoresModelState()
     {
         // Arrange
-        await _sut.TrainAsync(CreateTrainingExamples(15));
-        var exportedState = await _sut.ExportModelAsync();
+        await _sut.TrainAsync(CreateTrainingExamples(15), TestContext.Current.CancellationToken);
+        var exportedState = await _sut.ExportModelAsync(TestContext.Current.CancellationToken);
 
         // Reset the model
         _sut.ResetModel();
         Assert.False(_sut.GetModelStatistics().IsModelTrained);
 
         // Act
-        await _sut.ImportModelAsync(exportedState);
+        await _sut.ImportModelAsync(exportedState, TestContext.Current.CancellationToken);
 
         // Assert
         var stats = _sut.GetModelStatistics();
@@ -365,22 +365,22 @@ public class LearningBasedFusionServiceTests
     public async Task ImportModelAsync_WithNullState_ThrowsArgumentNullException()
     {
         await Assert.ThrowsAsync<ArgumentNullException>(
-            () => _sut.ImportModelAsync(null!));
+            () => _sut.ImportModelAsync(null!, TestContext.Current.CancellationToken));
     }
 
     [Fact]
     public async Task ImportModelAsync_WithInvalidChecksum_ThrowsInvalidOperationException()
     {
         // Arrange
-        await _sut.TrainAsync(CreateTrainingExamples(15));
-        var state = await _sut.ExportModelAsync();
+        await _sut.TrainAsync(CreateTrainingExamples(15), TestContext.Current.CancellationToken);
+        var state = await _sut.ExportModelAsync(TestContext.Current.CancellationToken);
 
         // Tamper with checksum
         var tamperedState = state with { Checksum = "invalid-checksum" };
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => _sut.ImportModelAsync(tamperedState));
+            () => _sut.ImportModelAsync(tamperedState, TestContext.Current.CancellationToken));
     }
 
     #endregion
@@ -391,9 +391,9 @@ public class LearningBasedFusionServiceTests
     public async Task ResetModel_ClearsAllTrainingData()
     {
         // Arrange
-        await _sut.TrainAsync(CreateTrainingExamples(20));
+        await _sut.TrainAsync(CreateTrainingExamples(20), TestContext.Current.CancellationToken);
         var feedback = CreateFusionFeedback("test query", true);
-        await _sut.UpdateOnlineAsync(feedback);
+        await _sut.UpdateOnlineAsync(feedback, TestContext.Current.CancellationToken);
 
         // Pre-assert
         var statsBefore = _sut.GetModelStatistics();
@@ -429,7 +429,7 @@ public class LearningBasedFusionServiceTests
         var sparseResults = CreateRankedResults(5);
 
         // Act
-        var prediction = await _sut.PredictWeightsAsync(query, vectorResults, sparseResults);
+        var prediction = await _sut.PredictWeightsAsync(query, vectorResults, sparseResults, TestContext.Current.CancellationToken);
 
         // Assert
         if (expectsVectorFavoring)

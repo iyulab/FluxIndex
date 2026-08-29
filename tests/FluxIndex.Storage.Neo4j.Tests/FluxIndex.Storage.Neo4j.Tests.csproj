@@ -16,7 +16,6 @@
   <ItemGroup>
     <!-- Testcontainers for Neo4j integration tests -->
     <PackageReference Include="Testcontainers.Neo4j" />
-    <PackageReference Include="Xunit.SkippableFact" />
   </ItemGroup>
 
 </Project>

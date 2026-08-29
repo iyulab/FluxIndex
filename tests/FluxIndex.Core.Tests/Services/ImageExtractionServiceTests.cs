@@ -78,7 +78,7 @@ public class ImageExtractionServiceTests
         var content = $"Before ![{altText}](data:image/png;base64,{pngBase64}) After";
 
         // Act
-        var result = await _service.ExtractImagesAsync(content);
+        var result = await _service.ExtractImagesAsync(content, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.HasImages);
@@ -97,7 +97,7 @@ public class ImageExtractionServiceTests
         var content = $"Before ![](data:image/png;base64,{pngBase64}) After";
 
         // Act
-        var result = await _service.ExtractImagesAsync(content);
+        var result = await _service.ExtractImagesAsync(content, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.HasImages);
@@ -111,7 +111,7 @@ public class ImageExtractionServiceTests
         var content = "Just plain text with no images";
 
         // Act
-        var result = await _service.ExtractImagesAsync(content);
+        var result = await _service.ExtractImagesAsync(content, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.False(result.HasImages);
@@ -127,7 +127,7 @@ public class ImageExtractionServiceTests
         var content = $"Start ![first](data:image/png;base64,{pngBase64}) middle ![second](data:image/png;base64,{pngBase64}) end";
 
         // Act
-        var result = await _service.ExtractImagesAsync(content);
+        var result = await _service.ExtractImagesAsync(content, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(2, result.ExtractedImages.Count);
@@ -156,7 +156,7 @@ public class ImageExtractionServiceTests
         mockStore.GetPublicUrl(Arg.Any<string>()).Returns(callInfo => { var path = callInfo.ArgAt<string>(0); return $"http://localhost/images/{path}"; });
 
         // Act
-        var result = await _service.ExtractAndStoreAsync(documentId, content, mockStore);
+        var result = await _service.ExtractAndStoreAsync(documentId, content, mockStore, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.IsSuccess);
@@ -197,7 +197,7 @@ public class ImageExtractionServiceTests
         var content = "![img](data:image/png;base64,notvalidbase64!!!) some text";
 
         // Act
-        var result = await _service.ExtractImagesAsync(content);
+        var result = await _service.ExtractImagesAsync(content, TestContext.Current.CancellationToken);
 
         // Assert - should not extract invalid image but not throw
         Assert.False(result.HasImages);
@@ -212,7 +212,7 @@ public class ImageExtractionServiceTests
         var content = $"Text ![img](data:image/png;base64,{pngBase64}) end";
 
         // Act
-        var result = await _service.ExtractImagesAsync(content);
+        var result = await _service.ExtractImagesAsync(content, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.CleanedContent.Length < content.Length,
@@ -246,7 +246,7 @@ public class ImageExtractionServiceTests
         var content = $"Here is an image: data:image/png;base64,{pngBase64} and some text after";
 
         // Act
-        var result = await _service.ExtractImagesAsync(content);
+        var result = await _service.ExtractImagesAsync(content, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.HasImages);
@@ -265,7 +265,7 @@ public class ImageExtractionServiceTests
         var content = $"First: data:image/png;base64,{pngBase64} Second: data:image/png;base64,{pngBase64} End";
 
         // Act
-        var result = await _service.ExtractImagesAsync(content);
+        var result = await _service.ExtractImagesAsync(content, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(2, result.ExtractedImages.Count);
@@ -313,7 +313,7 @@ public class ImageExtractionServiceTests
         var content = $"![markdown](data:image/png;base64,{pngBase64}) and bare: data:image/png;base64,{pngBase64}";
 
         // Act
-        var result = await _service.ExtractImagesAsync(content);
+        var result = await _service.ExtractImagesAsync(content, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(2, result.ExtractedImages.Count);
@@ -329,7 +329,7 @@ public class ImageExtractionServiceTests
         var content = $"![test](data:image/png;base64,{pngBase64})";
 
         // Act
-        var result = await _service.ExtractImagesAsync(content);
+        var result = await _service.ExtractImagesAsync(content, TestContext.Current.CancellationToken);
 
         // Assert - should only have 1 image, not 2
         Assert.Single(result.ExtractedImages);

@@ -56,7 +56,7 @@ public class SimplifiedApiTests : IDisposable
         var documentId = "doc-001";
 
         // Act: 간편 API 사용 (문자열 직접 전달)
-        var resultId = await _context.Indexer.IndexDocumentAsync(content, documentId);
+        var resultId = await _context.Indexer.IndexDocumentAsync(content, documentId, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(resultId);
@@ -77,7 +77,7 @@ public class SimplifiedApiTests : IDisposable
         };
 
         // Act: 메타데이터 포함 인덱싱
-        var resultId = await _context.Indexer.IndexDocumentAsync(content, documentId, metadata);
+        var resultId = await _context.Indexer.IndexDocumentAsync(content, documentId, metadata, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(resultId);
@@ -90,7 +90,7 @@ public class SimplifiedApiTests : IDisposable
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentException>(async () =>
         {
-            await _context.Indexer.IndexDocumentAsync("", "doc-003");
+            await _context.Indexer.IndexDocumentAsync("", "doc-003", cancellationToken: TestContext.Current.CancellationToken);
         });
     }
 
@@ -100,7 +100,7 @@ public class SimplifiedApiTests : IDisposable
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentException>(async () =>
         {
-            await _context.Indexer.IndexDocumentAsync("Some content", "");
+            await _context.Indexer.IndexDocumentAsync("Some content", "", cancellationToken: TestContext.Current.CancellationToken);
         });
     }
 
@@ -112,7 +112,7 @@ public class SimplifiedApiTests : IDisposable
         var documentId = "doc-004";
 
         // Act: 임베딩 설정 없이 인덱싱 (Issue #1 수정으로 가능해짐)
-        var resultId = await _context.Indexer.IndexDocumentAsync(content, documentId);
+        var resultId = await _context.Indexer.IndexDocumentAsync(content, documentId, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert: 오류 없이 성공해야 함
         Assert.NotNull(resultId);

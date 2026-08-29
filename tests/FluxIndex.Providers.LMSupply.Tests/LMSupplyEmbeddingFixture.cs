@@ -20,9 +20,9 @@ public sealed class LMSupplyEmbeddingFixture : IAsyncLifetime
         return _service;
     }
 
-    public Task InitializeAsync() => Task.CompletedTask;
+    public ValueTask InitializeAsync() => ValueTask.CompletedTask;
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         if (_service is not null)
         {

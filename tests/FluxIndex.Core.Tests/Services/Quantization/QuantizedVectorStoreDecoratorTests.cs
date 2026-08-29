@@ -103,7 +103,7 @@ public class QuantizedVectorStoreDecoratorTests
         var decorator = CreateDecorator();
 
         // Act
-        var result = await decorator.StoreAsync(chunk);
+        var result = await decorator.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal("chunk-1", result);
@@ -129,7 +129,7 @@ public class QuantizedVectorStoreDecoratorTests
         var decorator = CreateDecorator(options);
 
         // Act
-        var result = await decorator.StoreAsync(chunk);
+        var result = await decorator.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal("chunk-1", result);
@@ -154,7 +154,7 @@ public class QuantizedVectorStoreDecoratorTests
         var decorator = CreateDecorator();
 
         // Act
-        var result = await decorator.StoreAsync(chunk);
+        var result = await decorator.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal("chunk-1", result);
@@ -189,7 +189,7 @@ public class QuantizedVectorStoreDecoratorTests
         var decorator = CreateDecorator();
 
         // Act
-        var result = await decorator.StoreWithQuantizedAsync(chunk, quantizedVector);
+        var result = await decorator.StoreWithQuantizedAsync(chunk, quantizedVector, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal("chunk-1", result);
@@ -216,7 +216,7 @@ public class QuantizedVectorStoreDecoratorTests
         var decorator = CreateDecorator();
 
         // Act
-        var results = await decorator.SearchAsync(queryEmbedding);
+        var results = await decorator.SearchAsync(queryEmbedding, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(2, results.Count());
@@ -267,11 +267,11 @@ public class QuantizedVectorStoreDecoratorTests
         // Store chunks first to populate quantized cache
         chunk1.Embedding = new float[] { 0.1f, 0.2f, 0.3f, 0.4f };
         chunk2.Embedding = new float[] { 0.2f, 0.3f, 0.4f, 0.5f };
-        await decorator.StoreAsync(chunk1);
-        await decorator.StoreAsync(chunk2);
+        await decorator.StoreAsync(chunk1, TestContext.Current.CancellationToken);
+        await decorator.StoreAsync(chunk2, TestContext.Current.CancellationToken);
 
         // Act
-        var results = await decorator.SearchQuantizedAsync(quantizedQuery, topK: 10);
+        var results = await decorator.SearchQuantizedAsync(quantizedQuery, topK: 10, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(results);
@@ -307,10 +307,10 @@ public class QuantizedVectorStoreDecoratorTests
         var decorator = CreateDecorator();
 
         // Store one chunk
-        await decorator.StoreAsync(chunk);
+        await decorator.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Act
-        var stats = await decorator.GetQuantizedStatsAsync();
+        var stats = await decorator.GetQuantizedStatsAsync(TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(1, stats.QuantizedChunkCount);
@@ -350,10 +350,10 @@ public class QuantizedVectorStoreDecoratorTests
         var decorator = CreateDecorator();
 
         // Store first
-        await decorator.StoreAsync(chunk);
+        await decorator.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Act
-        var result = await decorator.DeleteAsync("chunk-1");
+        var result = await decorator.DeleteAsync("chunk-1", TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result);
@@ -388,7 +388,7 @@ public class QuantizedVectorStoreDecoratorTests
         var decorator = CreateDecorator();
 
         // Act
-        var results = await decorator.SearchWithRerankAsync(queryEmbedding, quantizedQuery, topK: 5);
+        var results = await decorator.SearchWithRerankAsync(queryEmbedding, quantizedQuery, topK: 5, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(results);

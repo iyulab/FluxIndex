@@ -8,7 +8,6 @@ using Microsoft.Extensions.Options;
 using NSubstitute;
 using System.Diagnostics;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace FluxIndex.Core.Tests.Services.Quantization;
 
@@ -92,13 +91,13 @@ public class QuantizationBenchmarkTests
         var vectors = GenerateRandomVectors(vectorCount, dimension);
 
         // Warmup
-        await quantizer.QuantizeAsync(vectors[0]);
+        await quantizer.QuantizeAsync(vectors[0], TestContext.Current.CancellationToken);
 
         // Act
         var sw = Stopwatch.StartNew();
         foreach (var vector in vectors)
         {
-            await quantizer.QuantizeAsync(vector);
+            await quantizer.QuantizeAsync(vector, TestContext.Current.CancellationToken);
         }
         sw.Stop();
 
@@ -125,8 +124,8 @@ public class QuantizationBenchmarkTests
         var queryVector = GenerateRandomVector(dimension);
         var targetVector = GenerateRandomVector(dimension);
 
-        var quantizedQuery = await quantizer.QuantizeAsync(queryVector);
-        var quantizedTarget = await quantizer.QuantizeAsync(targetVector);
+        var quantizedQuery = await quantizer.QuantizeAsync(queryVector, TestContext.Current.CancellationToken);
+        var quantizedTarget = await quantizer.QuantizeAsync(targetVector, TestContext.Current.CancellationToken);
 
         // Warmup
         for (int i = 0; i < 100; i++)
@@ -181,7 +180,7 @@ public class QuantizationBenchmarkTests
         var vector = GenerateRandomVector(dimension);
 
         // Act
-        var quantized = await quantizer.QuantizeAsync(vector);
+        var quantized = await quantizer.QuantizeAsync(vector, TestContext.Current.CancellationToken);
 
         // Calculate memory
         var originalBytes = dimension * sizeof(float); // float = 4 bytes
@@ -213,13 +212,13 @@ public class QuantizationBenchmarkTests
         var vectors = GenerateRandomVectors(vectorCount, dimension);
 
         // Warmup
-        await quantizer.QuantizeAsync(vectors[0]);
+        await quantizer.QuantizeAsync(vectors[0], TestContext.Current.CancellationToken);
 
         // Act
         var sw = Stopwatch.StartNew();
         foreach (var vector in vectors)
         {
-            await quantizer.QuantizeAsync(vector);
+            await quantizer.QuantizeAsync(vector, TestContext.Current.CancellationToken);
         }
         sw.Stop();
 
@@ -248,8 +247,8 @@ public class QuantizationBenchmarkTests
         var queryVector = GenerateRandomVector(dimension, seed: 42);
         var targetVector = GenerateRandomVector(dimension, seed: 7);
 
-        var quantizedQuery = await quantizer.QuantizeAsync(queryVector);
-        var quantizedTarget = await quantizer.QuantizeAsync(targetVector);
+        var quantizedQuery = await quantizer.QuantizeAsync(queryVector, TestContext.Current.CancellationToken);
+        var quantizedTarget = await quantizer.QuantizeAsync(targetVector, TestContext.Current.CancellationToken);
 
         // Warmup
         for (int i = 0; i < 1000; i++)
@@ -305,7 +304,7 @@ public class QuantizationBenchmarkTests
         var vector = GenerateRandomVector(dimension);
 
         // Act
-        var quantized = await quantizer.QuantizeAsync(vector);
+        var quantized = await quantizer.QuantizeAsync(vector, TestContext.Current.CancellationToken);
 
         // Calculate memory
         var originalBytes = dimension * sizeof(float);
@@ -346,7 +345,7 @@ public class QuantizationBenchmarkTests
 
         // Act
         var sw = Stopwatch.StartNew();
-        await quantizer.TrainAsync(trainingData);
+        await quantizer.TrainAsync(trainingData, TestContext.Current.CancellationToken);
         sw.Stop();
 
         // Report
@@ -373,18 +372,18 @@ public class QuantizationBenchmarkTests
 
         var quantizer = CreateProductQuantizer(dimension, numSubvectors, codebookSize);
         var trainingData = GenerateRandomVectors(200, dimension);
-        await quantizer.TrainAsync(trainingData);
+        await quantizer.TrainAsync(trainingData, TestContext.Current.CancellationToken);
 
         var vectors = GenerateRandomVectors(vectorCount, dimension);
 
         // Warmup
-        await quantizer.QuantizeAsync(vectors[0]);
+        await quantizer.QuantizeAsync(vectors[0], TestContext.Current.CancellationToken);
 
         // Act
         var sw = Stopwatch.StartNew();
         foreach (var vector in vectors)
         {
-            await quantizer.QuantizeAsync(vector);
+            await quantizer.QuantizeAsync(vector, TestContext.Current.CancellationToken);
         }
         sw.Stop();
 
@@ -410,10 +409,10 @@ public class QuantizationBenchmarkTests
 
         var quantizer = CreateProductQuantizer(dimension, numSubvectors, codebookSize);
         var trainingData = GenerateRandomVectors(100, dimension);
-        await quantizer.TrainAsync(trainingData);
+        await quantizer.TrainAsync(trainingData, TestContext.Current.CancellationToken);
 
         var vector = GenerateRandomVector(dimension);
-        var quantized = await quantizer.QuantizeAsync(vector);
+        var quantized = await quantizer.QuantizeAsync(vector, TestContext.Current.CancellationToken);
 
         // Calculate memory
         var originalBytes = dimension * sizeof(float);
@@ -455,14 +454,14 @@ public class QuantizationBenchmarkTests
         var quantizedDataset = new List<QuantizedVector>();
         foreach (var vec in dataset)
         {
-            quantizedDataset.Add(await quantizer.QuantizeAsync(vec));
+            quantizedDataset.Add(await quantizer.QuantizeAsync(vec, TestContext.Current.CancellationToken));
         }
 
         // Measure recall
         var totalRecall = 0.0;
         foreach (var query in queries)
         {
-            var quantizedQuery = await quantizer.QuantizeAsync(query);
+            var quantizedQuery = await quantizer.QuantizeAsync(query, TestContext.Current.CancellationToken);
 
             // Get ground truth (exact search)
             var groundTruth = GetTopKExact(query, dataset, topK);
@@ -505,14 +504,14 @@ public class QuantizationBenchmarkTests
         var quantizedDataset = new List<QuantizedVector>();
         foreach (var vec in dataset)
         {
-            quantizedDataset.Add(await quantizer.QuantizeAsync(vec));
+            quantizedDataset.Add(await quantizer.QuantizeAsync(vec, TestContext.Current.CancellationToken));
         }
 
         // Measure recall
         var totalRecall = 0.0;
         foreach (var query in queries)
         {
-            var quantizedQuery = await quantizer.QuantizeAsync(query);
+            var quantizedQuery = await quantizer.QuantizeAsync(query, TestContext.Current.CancellationToken);
 
             // Get ground truth (exact search)
             var groundTruth = GetTopKExact(query, dataset, topK);
@@ -556,8 +555,8 @@ public class QuantizationBenchmarkTests
         var binaryQuantizer = CreateBinaryQuantizer(dimension);
 
         var testVector = GenerateRandomVector(dimension);
-        var scalarQuantized = await scalarQuantizer.QuantizeAsync(testVector);
-        var binaryQuantized = await binaryQuantizer.QuantizeAsync(testVector);
+        var scalarQuantized = await scalarQuantizer.QuantizeAsync(testVector, TestContext.Current.CancellationToken);
+        var binaryQuantized = await binaryQuantizer.QuantizeAsync(testVector, TestContext.Current.CancellationToken);
 
         _output.WriteLine("Memory Usage Comparison:");
         _output.WriteLine($"  Original (float32):    {originalBytes,6} bytes  (100%)");
@@ -570,11 +569,11 @@ public class QuantizationBenchmarkTests
         var vectors = GenerateRandomVectors(iterations, dimension);
 
         var swScalar = Stopwatch.StartNew();
-        foreach (var v in vectors) await scalarQuantizer.QuantizeAsync(v);
+        foreach (var v in vectors) await scalarQuantizer.QuantizeAsync(v, TestContext.Current.CancellationToken);
         swScalar.Stop();
 
         var swBinary = Stopwatch.StartNew();
-        foreach (var v in vectors) await binaryQuantizer.QuantizeAsync(v);
+        foreach (var v in vectors) await binaryQuantizer.QuantizeAsync(v, TestContext.Current.CancellationToken);
         swBinary.Stop();
 
         _output.WriteLine("Quantization Speed:");

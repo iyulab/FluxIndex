@@ -28,7 +28,7 @@ public class DimensionAdaptationTests : IAsyncLifetime
         _logger = NullLogger<QdrantVectorStore>.Instance;
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         try
         {
@@ -43,10 +43,11 @@ public class DimensionAdaptationTests : IAsyncLifetime
         }
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         _qdrantClient?.Dispose();
         await _container.DisposeAsync();
+        GC.SuppressFinalize(this);
     }
 
     private bool IsDockerAvailable => _qdrantClient != null;
@@ -104,10 +105,10 @@ public class DimensionAdaptationTests : IAsyncLifetime
 
     #region DimensionSuffix Strategy Tests
 
-    [SkippableFact]
+    [Fact]
     public async Task Store_WithDimensionSuffix_CreatesCorrectCollection()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var baseName = $"test_{Guid.NewGuid():N}";
@@ -115,7 +116,7 @@ public class DimensionAdaptationTests : IAsyncLifetime
         var chunk = CreateTestChunk(384);
 
         // Act
-        await vectorStore.StoreAsync(chunk);
+        await vectorStore.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Assert
         var resolvedName = vectorStore.ResolvedStoreName;
@@ -125,14 +126,14 @@ public class DimensionAdaptationTests : IAsyncLifetime
         detectedDim.Should().Be(384);
 
         // Verify collection exists in Qdrant
-        var collections = await _qdrantClient!.ListCollectionsAsync();
+        var collections = await _qdrantClient!.ListCollectionsAsync(TestContext.Current.CancellationToken);
         collections.Should().Contain($"{baseName}_384");
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task Store_DifferentDimensions_CreatesSeparateCollections()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var baseName = $"test_{Guid.NewGuid():N}";
@@ -140,30 +141,30 @@ public class DimensionAdaptationTests : IAsyncLifetime
         // Store 384-dim chunk
         await using var vectorStore384 = CreateVectorStore(baseName, CollectionNamingStrategy.DimensionSuffix);
         var chunk384 = CreateTestChunk(384);
-        await vectorStore384.StoreAsync(chunk384);
+        await vectorStore384.StoreAsync(chunk384, TestContext.Current.CancellationToken);
 
         // Store 1024-dim chunk (new vector store instance)
         await using var vectorStore1024 = CreateVectorStore(baseName, CollectionNamingStrategy.DimensionSuffix);
         var chunk1024 = CreateTestChunk(1024, seed: 100);
-        await vectorStore1024.StoreAsync(chunk1024);
+        await vectorStore1024.StoreAsync(chunk1024, TestContext.Current.CancellationToken);
 
         // Assert
-        var collections = await _qdrantClient!.ListCollectionsAsync();
+        var collections = await _qdrantClient!.ListCollectionsAsync(TestContext.Current.CancellationToken);
         collections.Should().Contain($"{baseName}_384");
         collections.Should().Contain($"{baseName}_1024");
 
         // Verify each collection has correct count
-        var info384 = await _qdrantClient.GetCollectionInfoAsync($"{baseName}_384");
+        var info384 = await _qdrantClient.GetCollectionInfoAsync($"{baseName}_384", TestContext.Current.CancellationToken);
         info384.PointsCount.Should().Be(1);
 
-        var info1024 = await _qdrantClient.GetCollectionInfoAsync($"{baseName}_1024");
+        var info1024 = await _qdrantClient.GetCollectionInfoAsync($"{baseName}_1024", TestContext.Current.CancellationToken);
         info1024.PointsCount.Should().Be(1);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task Search_MatchesDimensionCollection()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var baseName = $"test_{Guid.NewGuid():N}";
@@ -172,10 +173,10 @@ public class DimensionAdaptationTests : IAsyncLifetime
         var embedding = CreateTestEmbedding(384);
         var chunk = CreateTestChunk(384);
         chunk.SetEmbedding(embedding);
-        await vectorStore.StoreAsync(chunk);
+        await vectorStore.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Act - search with same dimension
-        var results = (await vectorStore.SearchAsync(embedding, topK: 5)).ToList();
+        var results = (await vectorStore.SearchAsync(embedding, topK: 5, cancellationToken: TestContext.Current.CancellationToken)).ToList();
 
         // Assert
         results.Should().HaveCount(1);
@@ -183,10 +184,10 @@ public class DimensionAdaptationTests : IAsyncLifetime
         results.First().Score.Should().BeGreaterThan(0.99f); // Nearly identical vector
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task StoreBatch_UsesFirstChunkDimension()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var baseName = $"test_{Guid.NewGuid():N}";
@@ -197,7 +198,7 @@ public class DimensionAdaptationTests : IAsyncLifetime
             .ToList();
 
         // Act
-        var ids = (await vectorStore.StoreBatchAsync(chunks)).ToList();
+        var ids = (await vectorStore.StoreBatchAsync(chunks, TestContext.Current.CancellationToken)).ToList();
 
         // Assert
         ids.Should().HaveCount(5);
@@ -209,10 +210,10 @@ public class DimensionAdaptationTests : IAsyncLifetime
 
     #region Fixed Strategy Tests (Legacy Compatibility)
 
-    [SkippableFact]
+    [Fact]
     public async Task Store_WithFixedStrategy_UsesExactName()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var collectionName = $"fixed_test_{Guid.NewGuid():N}";
@@ -220,22 +221,22 @@ public class DimensionAdaptationTests : IAsyncLifetime
         var chunk = CreateTestChunk(256);
 
         // Act
-        await vectorStore.StoreAsync(chunk);
+        await vectorStore.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Assert
         var resolvedName = vectorStore.ResolvedStoreName;
         resolvedName.Should().Be(collectionName); // No dimension suffix
 
         // Verify collection exists with exact name
-        var collections = await _qdrantClient!.ListCollectionsAsync();
+        var collections = await _qdrantClient!.ListCollectionsAsync(TestContext.Current.CancellationToken);
         collections.Should().Contain(collectionName);
         collections.Should().NotContain($"{collectionName}_256");
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task Store_WithFixedStrategy_UsesConfiguredVectorSize()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var collectionName = $"fixed_vectorsize_{Guid.NewGuid():N}";
@@ -243,14 +244,14 @@ public class DimensionAdaptationTests : IAsyncLifetime
         var chunk = CreateTestChunk(768);
 
         // Act
-        await vectorStore.StoreAsync(chunk);
+        await vectorStore.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Assert - verify the collection exists and chunk was stored
-        var collections = await _qdrantClient!.ListCollectionsAsync();
+        var collections = await _qdrantClient!.ListCollectionsAsync(TestContext.Current.CancellationToken);
         collections.Should().Contain(collectionName);
 
         // Verify chunk count
-        var info = await _qdrantClient.GetCollectionInfoAsync(collectionName);
+        var info = await _qdrantClient.GetCollectionInfoAsync(collectionName, TestContext.Current.CancellationToken);
         info.PointsCount.Should().Be(1);
     }
 
@@ -258,10 +259,10 @@ public class DimensionAdaptationTests : IAsyncLifetime
 
     #region Collection Name Accessors Tests
 
-    [SkippableFact]
+    [Fact]
     public async Task ResolvedStoreName_BeforeStore_ReturnsNull()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var baseName = $"test_{Guid.NewGuid():N}";
@@ -272,10 +273,10 @@ public class DimensionAdaptationTests : IAsyncLifetime
         vectorStore.DetectedDimension.Should().BeNull();
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task DetectedDimension_AfterStore_ReturnsCorrectValue()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var baseName = $"test_{Guid.NewGuid():N}";
@@ -283,7 +284,7 @@ public class DimensionAdaptationTests : IAsyncLifetime
         var chunk = CreateTestChunk(1536);
 
         // Act
-        await vectorStore.StoreAsync(chunk);
+        await vectorStore.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Assert
         vectorStore.DetectedDimension.Should().Be(1536);
@@ -293,10 +294,10 @@ public class DimensionAdaptationTests : IAsyncLifetime
 
     #region Thread Safety Tests
 
-    [SkippableFact]
+    [Fact]
     public async Task ConcurrentStores_SameDimension_ThreadSafe()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var baseName = $"concurrent_{Guid.NewGuid():N}";
@@ -317,7 +318,7 @@ public class DimensionAdaptationTests : IAsyncLifetime
         ids.Should().HaveCount(10);
         ids.Distinct().Should().HaveCount(10); // All unique IDs
 
-        var count = await vectorStore.CountAsync();
+        var count = await vectorStore.CountAsync(TestContext.Current.CancellationToken);
         count.Should().Be(10);
 
         vectorStore.ResolvedStoreName.Should().Be($"{baseName}_384");
@@ -327,27 +328,27 @@ public class DimensionAdaptationTests : IAsyncLifetime
 
     #region Clear/Reset Tests
 
-    [SkippableFact]
+    [Fact]
     public async Task Clear_ResetsCollectionState()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var baseName = $"clear_{Guid.NewGuid():N}";
         await using var vectorStore = CreateVectorStore(baseName);
         var chunk = CreateTestChunk(384);
-        await vectorStore.StoreAsync(chunk);
+        await vectorStore.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Verify initial state
         vectorStore.ResolvedStoreName.Should().Be($"{baseName}_384");
-        (await vectorStore.CountAsync()).Should().Be(1);
+        (await vectorStore.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
 
         // Act
-        await vectorStore.ClearAsync();
+        await vectorStore.ClearAsync(TestContext.Current.CancellationToken);
 
         // Assert
         // After clear, the collection should be recreated
-        (await vectorStore.CountAsync()).Should().Be(0);
+        (await vectorStore.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
     }
 
     #endregion

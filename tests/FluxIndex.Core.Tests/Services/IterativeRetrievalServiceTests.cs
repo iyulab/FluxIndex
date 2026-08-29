@@ -74,7 +74,7 @@ public class IterativeRetrievalServiceTests
         _mockSearchService.SearchAsync(query, Arg.Any<HybridSearchOptions>(), Arg.Any<CancellationToken>()).Returns(mockResults);
 
         // Act
-        var result = await service.RetrieveWithReasoningAsync(query);
+        var result = await service.RetrieveWithReasoningAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -106,7 +106,7 @@ public class IterativeRetrievalServiceTests
             });
 
         // Act
-        var result = await service.RetrieveWithReasoningAsync(query);
+        var result = await service.RetrieveWithReasoningAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -131,7 +131,7 @@ public class IterativeRetrievalServiceTests
         _mockLlmService.CompleteAsync(Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns("[Retrieval] more data needed");
 
         // Act
-        var result = await service.RetrieveWithReasoningAsync(query, options);
+        var result = await service.RetrieveWithReasoningAsync(query, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -156,7 +156,7 @@ public class IterativeRetrievalServiceTests
         _mockSearchService.SearchAsync(query, Arg.Any<HybridSearchOptions>(), Arg.Any<CancellationToken>()).Returns(mockResults);
 
         // Act
-        var result = await service.DecomposeAndRetrieveAsync(query);
+        var result = await service.DecomposeAndRetrieveAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -193,7 +193,7 @@ public class IterativeRetrievalServiceTests
         _mockLlmService.CompleteAsync(Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns("Based on the retrieved documents, Python excels in ML while Java is preferred for enterprise web apps...");
 
         // Act
-        var result = await service.DecomposeAndRetrieveAsync(query);
+        var result = await service.DecomposeAndRetrieveAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -218,7 +218,7 @@ public class IterativeRetrievalServiceTests
         _mockSearchService.SearchAsync(Arg.Any<string>(), Arg.Any<HybridSearchOptions>(), Arg.Any<CancellationToken>()).Returns(mockResults);
 
         // Act
-        var result = await service.MultiHopRetrieveAsync(query);
+        var result = await service.MultiHopRetrieveAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -255,7 +255,7 @@ public class IterativeRetrievalServiceTests
         _mockEntityService.ExtractEntitiesAsync(Arg.Any<string>(), Arg.Any<EntityExtractionOptions>(), Arg.Any<CancellationToken>()).Returns(extractedEntities);
 
         // Act
-        var result = await service.MultiHopRetrieveAsync(query);
+        var result = await service.MultiHopRetrieveAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -283,7 +283,7 @@ public class IterativeRetrievalServiceTests
         _mockEntityService.ExtractEntitiesAsync(Arg.Any<string>(), Arg.Any<EntityExtractionOptions>(), Arg.Any<CancellationToken>()).Returns(extractedEntities);
 
         // Act
-        var result = await service.MultiHopRetrieveAsync(query, options);
+        var result = await service.MultiHopRetrieveAsync(query, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -308,7 +308,7 @@ public class IterativeRetrievalServiceTests
         _mockSearchService.SearchAsync(query, Arg.Any<HybridSearchOptions>(), Arg.Any<CancellationToken>()).Returns(mockResults);
 
         // Act
-        var result = await service.AgenticRetrieveAsync(query);
+        var result = await service.AgenticRetrieveAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -339,7 +339,7 @@ public class IterativeRetrievalServiceTests
             });
 
         // Act
-        var result = await service.AgenticRetrieveAsync(query);
+        var result = await service.AgenticRetrieveAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -364,7 +364,7 @@ public class IterativeRetrievalServiceTests
         _mockLlmService.CompleteAsync(Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns("Action: Search\nInput: keep searching");
 
         // Act
-        var result = await service.AgenticRetrieveAsync(query, options);
+        var result = await service.AgenticRetrieveAsync(query, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);

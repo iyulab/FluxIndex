@@ -71,7 +71,7 @@ public class ListwiseRerankerTests
         var candidates = Array.Empty<RetrievalCandidate>();
 
         // Act
-        var result = await reranker.RerankAsync("test query", candidates);
+        var result = await reranker.RerankAsync("test query", candidates, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Empty(result);
@@ -85,7 +85,7 @@ public class ListwiseRerankerTests
         var candidates = new[] { CreateCandidate("1", "Test content", 0.8f) };
 
         // Act
-        var result = await reranker.RerankAsync("test query", candidates);
+        var result = await reranker.RerankAsync("test query", candidates, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Single(result);
@@ -104,7 +104,7 @@ public class ListwiseRerankerTests
         };
 
         // Act
-        var result = await reranker.RerankAsync("query", candidates);
+        var result = await reranker.RerankAsync("query", candidates, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Single(result);
@@ -125,7 +125,7 @@ public class ListwiseRerankerTests
         };
 
         // Act
-        var result = await reranker.RerankAsync("query", candidates);
+        var result = await reranker.RerankAsync("query", candidates, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(3, result.Count);
@@ -151,7 +151,7 @@ public class ListwiseRerankerTests
         var options = new ListwiseRerankOptions { Method = ListwiseMethod.AttentionBased };
 
         // Act
-        var result = await reranker.RerankAsync("machine learning", candidates, options);
+        var result = await reranker.RerankAsync("machine learning", candidates, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(2, result.Count);
@@ -174,7 +174,7 @@ public class ListwiseRerankerTests
         var options = new ListwiseRerankOptions { Method = ListwiseMethod.AttentionBased };
 
         // Act
-        var result = await reranker.RerankAsync("query", candidates, options);
+        var result = await reranker.RerankAsync("query", candidates, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(2, result.Count);
@@ -190,7 +190,7 @@ public class ListwiseRerankerTests
         var options = new ListwiseRerankOptions { Method = ListwiseMethod.SlidingWindow };
 
         // Act
-        var result = await reranker.RerankAsync("query", candidates, options);
+        var result = await reranker.RerankAsync("query", candidates, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(5, result.Count);
@@ -205,7 +205,7 @@ public class ListwiseRerankerTests
         var options = new ListwiseRerankOptions { Method = ListwiseMethod.DirectLlm };
 
         // Act
-        var result = await reranker.RerankAsync("query", candidates, options);
+        var result = await reranker.RerankAsync("query", candidates, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(3, result.Count);
@@ -225,7 +225,7 @@ public class ListwiseRerankerTests
         };
 
         // Act
-        var result = await reranker.RerankAsync("query", candidates, options);
+        var result = await reranker.RerankAsync("query", candidates, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(4, result.Count);
@@ -246,7 +246,7 @@ public class ListwiseRerankerTests
         var options = new ListwiseRerankOptions { Method = ListwiseMethod.Hybrid };
 
         // Act
-        var result = await reranker.RerankAsync("query", candidates, options);
+        var result = await reranker.RerankAsync("query", candidates, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(5, result.Count);
@@ -274,7 +274,7 @@ public class ListwiseRerankerTests
         };
 
         // Act
-        var result = await reranker.RerankAsync("query topic", candidates, options);
+        var result = await reranker.RerankAsync("query topic", candidates, options, TestContext.Current.CancellationToken);
 
         // Assert
         // Low scoring items may be filtered out
@@ -294,7 +294,7 @@ public class ListwiseRerankerTests
         };
 
         // Act
-        var result = await reranker.RerankAsync("query", candidates, options);
+        var result = await reranker.RerankAsync("query", candidates, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.Count <= 5);
@@ -317,7 +317,7 @@ public class ListwiseRerankerTests
             Method = ListwiseMethod.AttentionBased,
             InitialScoreWeight = 0.9f
         };
-        var resultHigh = await reranker.RerankAsync("query", candidates, optionsHighInitial);
+        var resultHigh = await reranker.RerankAsync("query", candidates, optionsHighInitial, TestContext.Current.CancellationToken);
 
         // Test with low initial score weight
         var optionsLowInitial = new ListwiseRerankOptions
@@ -325,7 +325,7 @@ public class ListwiseRerankerTests
             Method = ListwiseMethod.AttentionBased,
             InitialScoreWeight = 0.1f
         };
-        var resultLow = await reranker.RerankAsync("query", candidates, optionsLowInitial);
+        var resultLow = await reranker.RerankAsync("query", candidates, optionsLowInitial, TestContext.Current.CancellationToken);
 
         // Assert
         // With high initial weight, candidate 1 (high initial score) should rank higher
@@ -351,7 +351,7 @@ public class ListwiseRerankerTests
         };
 
         // Act
-        var result = await reranker.RerankAsync("query", candidates, options);
+        var result = await reranker.RerankAsync("query", candidates, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(10, result.Count);
@@ -371,8 +371,7 @@ public class ListwiseRerankerTests
         var reranker = new ListwiseReranker(llmService: _mockLlmService);
 
         // Act
-        var result = await reranker.ComputePairwisePreferenceAsync(
-            "query", "Document A content", "Document B content");
+        var result = await reranker.ComputePairwisePreferenceAsync("query", "Document A content", "Document B content", TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(1, result.Preference); // A preferred
@@ -387,8 +386,7 @@ public class ListwiseRerankerTests
         var reranker = new ListwiseReranker(embeddingService: _mockEmbeddingService);
 
         // Act
-        var result = await reranker.ComputePairwisePreferenceAsync(
-            "query", "Doc A", "Doc B");
+        var result = await reranker.ComputePairwisePreferenceAsync("query", "Doc A", "Doc B", TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.Preference >= -1 && result.Preference <= 1);
@@ -402,10 +400,7 @@ public class ListwiseRerankerTests
         var reranker = new ListwiseReranker();
 
         // Act
-        var result = await reranker.ComputePairwisePreferenceAsync(
-            "machine learning",
-            "This is about machine learning algorithms",
-            "This is about cooking recipes");
+        var result = await reranker.ComputePairwisePreferenceAsync("machine learning", "This is about machine learning algorithms", "This is about cooking recipes", TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(1, result.Preference); // First doc should be preferred
@@ -510,7 +505,7 @@ public class ListwiseRerankerTests
         var options = new ListwiseRerankOptions { Method = ListwiseMethod.AttentionBased };
 
         // Act
-        var result = await reranker.RerankAsync("query", candidates, options);
+        var result = await reranker.RerankAsync("query", candidates, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.All(result, r =>
@@ -534,7 +529,7 @@ public class ListwiseRerankerTests
         };
 
         // Act
-        var result = await reranker.RerankAsync("query", candidates);
+        var result = await reranker.RerankAsync("query", candidates, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         var result1 = result.First(r => r.Id == "1");
@@ -561,7 +556,7 @@ public class ListwiseRerankerTests
         };
 
         // Act
-        var result = await reranker.RerankAsync("query", candidates);
+        var result = await reranker.RerankAsync("query", candidates, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(2, result.Count);
@@ -583,7 +578,7 @@ public class ListwiseRerankerTests
         };
 
         // Act
-        var result = await reranker.RerankAsync("query", candidates, options);
+        var result = await reranker.RerankAsync("query", candidates, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Single(result);
@@ -604,7 +599,7 @@ public class ListwiseRerankerTests
         };
 
         // Act
-        var result = await reranker.RerankAsync("query", new[] { candidate });
+        var result = await reranker.RerankAsync("query", new[] { candidate }, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Single(result);

@@ -38,7 +38,7 @@ public class BM25SparseRetrieverTests
             Chunk("doc-1", "transaction boundaries in distributed storage"),
             Chunk("doc-2", "unrelated content about photography"));
 
-        var results = await retriever.SearchAsync("transaction");
+        var results = await retriever.SearchAsync("transaction", cancellationToken: TestContext.Current.CancellationToken);
 
         results.Should().ContainSingle();
         results[0].Chunk.DocumentId.Should().Be("doc-1");
@@ -58,7 +58,7 @@ public class BM25SparseRetrieverTests
             Chunk("doc-2", "provisioning cache tables"),
             Chunk("doc-3", "provisioning graph edges"));
 
-        var results = await retriever.SearchAsync("provisioning");
+        var results = await retriever.SearchAsync("provisioning", cancellationToken: TestContext.Current.CancellationToken);
 
         results.Should().HaveCount(3,
             "a term common to the whole corpus must not be silently dropped by a negative IDF");
@@ -73,7 +73,7 @@ public class BM25SparseRetrieverTests
             Chunk("doc-2", "keyword leg mentioned once"),
             Chunk("doc-3", "entirely different subject matter"));
 
-        var results = await retriever.SearchAsync("keyword");
+        var results = await retriever.SearchAsync("keyword", cancellationToken: TestContext.Current.CancellationToken);
 
         results.Should().HaveCount(2);
         results[0].Chunk.DocumentId.Should().Be("doc-1", "term frequency must still order the results");
@@ -86,7 +86,7 @@ public class BM25SparseRetrieverTests
             Chunk("doc-1", "alpha beta gamma"),
             Chunk("doc-2", "beta gamma delta"));
 
-        var statistics = await retriever.GetStatisticsAsync();
+        var statistics = await retriever.GetStatisticsAsync(TestContext.Current.CancellationToken);
 
         statistics.TotalDocuments.Should().Be(2);
     }
@@ -115,7 +115,7 @@ public class BM25SparseRetrieverTests
         var results = await retriever.SearchAsync("provisioning", new KeywordSearchOptions
         {
             MetadataFilter = new Dictionary<string, object> { ["tenant"] = "alpha" }
-        });
+        }, TestContext.Current.CancellationToken);
 
         results.Should().ContainSingle().Which.Chunk.DocumentId.Should().Be("doc-a");
     }
@@ -134,7 +134,7 @@ public class BM25SparseRetrieverTests
 
         using var retriever = await IndexedWith([.. chunks]);
 
-        var unfiltered = await retriever.SearchAsync("provisioning", new KeywordSearchOptions { MaxResults = 2 });
+        var unfiltered = await retriever.SearchAsync("provisioning", new KeywordSearchOptions { MaxResults = 2 }, TestContext.Current.CancellationToken);
         unfiltered.Should().NotContain(r => r.Chunk.DocumentId == "ours",
             "otherwise a post-filter would pass this test too");
 
@@ -142,7 +142,7 @@ public class BM25SparseRetrieverTests
         {
             MaxResults = 2,
             MetadataFilter = new Dictionary<string, object> { ["tenant"] = "alpha" }
-        });
+        }, TestContext.Current.CancellationToken);
 
         filtered.Should().ContainSingle().Which.Chunk.DocumentId.Should().Be("ours");
     }
@@ -161,7 +161,7 @@ public class BM25SparseRetrieverTests
         var results = await retriever.SearchAsync("provisioning", new KeywordSearchOptions
         {
             DocumentIdFilter = "doc-a"
-        });
+        }, TestContext.Current.CancellationToken);
 
         results.Should().ContainSingle().Which.Chunk.DocumentId.Should().Be("doc-a");
     }
@@ -174,11 +174,10 @@ public class BM25SparseRetrieverTests
             Tagged("doc-a2", "provisioning", "alpha"),
             Tagged("doc-b1", "provisioning", "beta"));
 
-        var removed = await retriever.DeleteByFilterAsync(
-            new Dictionary<string, object> { ["tenant"] = "alpha" });
+        var removed = await retriever.DeleteByFilterAsync(new Dictionary<string, object> { ["tenant"] = "alpha" }, TestContext.Current.CancellationToken);
 
         removed.Should().Be(2);
-        (await retriever.SearchAsync("provisioning"))
+        (await retriever.SearchAsync("provisioning", cancellationToken: TestContext.Current.CancellationToken))
             .Select(r => r.Chunk.DocumentId).Should().BeEquivalentTo(["doc-b1"]);
     }
 

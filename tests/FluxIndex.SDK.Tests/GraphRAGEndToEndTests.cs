@@ -34,7 +34,7 @@ public class GraphRAGEndToEndTests : IAsyncLifetime
             .Build();
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         try
         {
@@ -72,7 +72,7 @@ public class GraphRAGEndToEndTests : IAsyncLifetime
         }
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         if (_graphStore != null)
         {
@@ -86,6 +86,7 @@ public class GraphRAGEndToEndTests : IAsyncLifetime
             _neo4jContainer.DisposeAsync().AsTask(),
             _qdrantContainer.DisposeAsync().AsTask()
         );
+        GC.SuppressFinalize(this);
     }
 
     private bool IsDockerAvailable => _graphStore != null && _vectorStore != null;
@@ -107,10 +108,10 @@ public class GraphRAGEndToEndTests : IAsyncLifetime
         return embedding;
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task FullPipeline_WithNeo4jAndQdrant_StoresAndRetrievesData()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange - Create test document chunks (using GUIDs for Qdrant compatibility)
         var chunkId1 = Guid.NewGuid().ToString();
@@ -153,7 +154,7 @@ public class GraphRAGEndToEndTests : IAsyncLifetime
         }
 
         // Act - Store chunks in Qdrant
-        await _vectorStore!.StoreBatchAsync(chunks);
+        await _vectorStore!.StoreBatchAsync(chunks, TestContext.Current.CancellationToken);
 
         // Store entities in Neo4j
         var entities = new[]
@@ -200,7 +201,7 @@ public class GraphRAGEndToEndTests : IAsyncLifetime
             }
         };
 
-        await _graphStore!.StoreEntitiesBatchAsync(entities);
+        await _graphStore!.StoreEntitiesBatchAsync(entities, TestContext.Current.CancellationToken);
 
         // Store relationships
         var relationships = new[]
@@ -229,21 +230,21 @@ public class GraphRAGEndToEndTests : IAsyncLifetime
             }
         };
 
-        await _graphStore!.StoreRelationshipsBatchAsync(relationships);
+        await _graphStore!.StoreRelationshipsBatchAsync(relationships, TestContext.Current.CancellationToken);
 
         // Assert - Verify Qdrant storage
-        var vectorCount = await _vectorStore!.CountAsync();
+        var vectorCount = await _vectorStore!.CountAsync(TestContext.Current.CancellationToken);
         vectorCount.Should().Be(3);
 
         // Verify Neo4j storage
-        var graphStats = await _graphStore!.GetStatisticsAsync();
+        var graphStats = await _graphStore!.GetStatisticsAsync(TestContext.Current.CancellationToken);
         graphStats.EntityCount.Should().Be(4);
         graphStats.RelationshipCount.Should().Be(2);
 
         // Verify vector search
         // Note: Each chunk has different embedding (seed: 42, 43, 44), so only similar ones are returned
         var searchEmbedding = CreateTestEmbedding(seed: 42); // Same as first chunk
-        var searchResults = (await _vectorStore!.SearchAsync(searchEmbedding, topK: 3, minScore: 0.0f)).ToList();
+        var searchResults = (await _vectorStore!.SearchAsync(searchEmbedding, topK: 3, minScore: 0.0f, cancellationToken: TestContext.Current.CancellationToken)).ToList();
         searchResults.Should().HaveCountGreaterThanOrEqualTo(1, "At least one result should be returned");
         searchResults.First().Id.Should().Be(chunkId1, "First chunk should be most similar (same seed)");
 
@@ -252,14 +253,14 @@ public class GraphRAGEndToEndTests : IAsyncLifetime
         {
             MaxDepth = 2,
             Direction = TraversalDirection.Incoming
-        });
+        }, TestContext.Current.CancellationToken);
         traversalResult.Entities.Should().HaveCountGreaterThanOrEqualTo(1);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task FluxIndexContext_WithNeo4jAndQdrant_BuildsSuccessfully()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange & Act - Build context with both Neo4j and Qdrant (Fixed strategy)
         var builder = FluxIndexContext.CreateBuilder()
@@ -306,6 +307,10 @@ public class GraphRAGCollection : ICollectionFixture<GraphRAGFixture>
 
 public class GraphRAGFixture : IAsyncLifetime
 {
-    public Task InitializeAsync() => Task.CompletedTask;
-    public Task DisposeAsync() => Task.CompletedTask;
+    public ValueTask InitializeAsync() => ValueTask.CompletedTask;
+    public ValueTask DisposeAsync()
+    {
+        GC.SuppressFinalize(this);
+        return default;
+    }
 }

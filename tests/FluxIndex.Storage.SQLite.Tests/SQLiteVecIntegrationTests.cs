@@ -9,7 +9,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace FluxIndex.Storage.SQLite.Tests;
 
@@ -50,7 +49,7 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
         _serviceProvider = services.BuildServiceProvider();
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         // Skip if sqlite-vec is not available (CI environment)
         if (CITestHelper.ShouldSkipSqliteVec())
@@ -66,7 +65,7 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
         }
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         // 호스팅 서비스 정지
         var hostedServices = _serviceProvider.GetServices<IHostedService>();
@@ -83,6 +82,7 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
 
         // 테스트 파일 정리 (재시도 로직)
         await DeleteDatabaseFileWithRetryAsync(_testDatabasePath);
+        GC.SuppressFinalize(this);
     }
 
     private async Task DeleteDatabaseFileWithRetryAsync(string path, int maxRetries = 3)
@@ -115,7 +115,7 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task SearchAsync_MetadataFilter_ScopesResultsToMatchingTenant()
     {
         // Skip if sqlite-vec is not available (CI environment)
@@ -155,22 +155,20 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
             Metadata = new Dictionary<string, object> { ["workspace_id"] = "ws-target" }
         });
 
-        await vectorStore.StoreBatchAsync(chunks);
+        await vectorStore.StoreBatchAsync(chunks, TestContext.Current.CancellationToken);
 
         var query = new float[384];
         query[0] = 1f;
 
         // Act
-        var filtered = (await vectorStore.SearchAsync(
-            query, topK: 2, minScore: -1f,
-            filters: new Dictionary<string, object> { ["workspace_id"] = "ws-target" })).ToList();
+        var filtered = (await vectorStore.SearchAsync(query, topK: 2, minScore: -1f, filters: new Dictionary<string, object> { ["workspace_id"] = "ws-target" }, cancellationToken: TestContext.Current.CancellationToken)).ToList();
 
         // Assert — no cross-tenant leakage, and the matching chunk is found
         filtered.Should().ContainSingle();
         filtered[0].DocumentId.Should().Be("target-doc");
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task EndToEndWorkflow_DocumentIndexingAndSearch_ShouldWorkCorrectly()
     {
         // Skip if sqlite-vec is not available (CI environment)
@@ -200,7 +198,7 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
         var stopwatch = Stopwatch.StartNew();
 
         // Act 1: 대량 인덱싱
-        var ids = await vectorStore.StoreBatchAsync(allChunks);
+        var ids = await vectorStore.StoreBatchAsync(allChunks, TestContext.Current.CancellationToken);
         var indexingTime = stopwatch.ElapsedMilliseconds;
 
         _output.WriteLine($"인덱싱 완료: {allChunks.Count}개 청크, {indexingTime}ms");
@@ -208,12 +206,12 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
         // Act 2: 의미적 검색
         stopwatch.Restart();
         var neuralNetworkQuery = CreateQueryEmbedding("neural networks deep learning");
-        var neuralResults = await vectorStore.SearchAsync(neuralNetworkQuery, topK: 3, minScore: -1.0f);
+        var neuralResults = await vectorStore.SearchAsync(neuralNetworkQuery, topK: 3, minScore: -1.0f, cancellationToken: TestContext.Current.CancellationToken);
         var searchTime1 = stopwatch.ElapsedMilliseconds;
 
         stopwatch.Restart();
         var textProcessingQuery = CreateQueryEmbedding("text processing language understanding");
-        var nlpResults = await vectorStore.SearchAsync(textProcessingQuery, topK: 3, minScore: -1.0f);
+        var nlpResults = await vectorStore.SearchAsync(textProcessingQuery, topK: 3, minScore: -1.0f, cancellationToken: TestContext.Current.CancellationToken);
         var searchTime2 = stopwatch.ElapsedMilliseconds;
 
         // Assert
@@ -238,7 +236,7 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
         _output.WriteLine($"검색 성능: Neural={searchTime1}ms, NLP={searchTime2}ms");
     }
 
-    [SkippableFact]
+    [Fact]
     [Trait("Category", "Performance")]
     public async Task PerformanceTest_LargeScaleOperations_ShouldMeetPerformanceTargets()
     {
@@ -268,7 +266,7 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
         for (int i = 0; i < chunks.Count; i += batchSize)
         {
             var batch = chunks.Skip(i).Take(batchSize);
-            var batchIds = await vectorStore.StoreBatchAsync(batch);
+            var batchIds = await vectorStore.StoreBatchAsync(batch, TestContext.Current.CancellationToken);
             allIds.AddRange(batchIds);
         }
 
@@ -284,7 +282,7 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
         for (int i = 0; i < searchIterations; i++)
         {
             stopwatch.Restart();
-            var results = await vectorStore.SearchAsync(queryVectors[i], topK: 10, minScore: 0.0f);
+            var results = await vectorStore.SearchAsync(queryVectors[i], topK: 10, minScore: 0.0f, cancellationToken: TestContext.Current.CancellationToken);
             var searchTime = stopwatch.ElapsedMilliseconds;
 
             searchTimes.Add(searchTime);
@@ -335,7 +333,7 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
         avgConcurrentTime.Should().BeLessThan(200.0); // 동시성 환경에서도 200ms 이하
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task AccuracyTest_VectorSimilarity_ShouldReturnRelevantResults()
     {
         // Skip if sqlite-vec is not available (CI environment)
@@ -367,7 +365,7 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
         };
 
         var allChunks = techDocs.Concat(foodDocs).Concat(sportsDocs).ToList();
-        await vectorStore.StoreBatchAsync(allChunks);
+        await vectorStore.StoreBatchAsync(allChunks, TestContext.Current.CancellationToken);
 
         // Act & Assert
         // 참고: CreateQueryEmbedding은 텍스트 해시 기반 의사 임베딩을 생성하므로
@@ -376,7 +374,7 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
 
         // 기술 관련 쿼리
         var programmingQuery = CreateQueryEmbedding("software development programming");
-        var programmingResults = await vectorStore.SearchAsync(programmingQuery, topK: 5, minScore: -1.0f);
+        var programmingResults = await vectorStore.SearchAsync(programmingQuery, topK: 5, minScore: -1.0f, cancellationToken: TestContext.Current.CancellationToken);
 
         programmingResults.Should().NotBeEmpty("벡터 검색이 결과를 반환해야 함");
         var programmingDocs = programmingResults.Select(r => r.DocumentId).ToList();
@@ -386,7 +384,7 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
 
         // 음식 관련 쿼리
         var cookingQuery = CreateQueryEmbedding("cooking recipes food preparation");
-        var cookingResults = await vectorStore.SearchAsync(cookingQuery, topK: 5, minScore: -1.0f);
+        var cookingResults = await vectorStore.SearchAsync(cookingQuery, topK: 5, minScore: -1.0f, cancellationToken: TestContext.Current.CancellationToken);
 
         cookingResults.Should().NotBeEmpty("벡터 검색이 결과를 반환해야 함");
         var cookingDocs = cookingResults.Select(r => r.DocumentId).ToList();
@@ -396,7 +394,7 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
 
         // 스포츠 관련 쿼리
         var sportsQuery = CreateQueryEmbedding("sports training athletic performance");
-        var sportsResults = await vectorStore.SearchAsync(sportsQuery, topK: 5, minScore: -1.0f);
+        var sportsResults = await vectorStore.SearchAsync(sportsQuery, topK: 5, minScore: -1.0f, cancellationToken: TestContext.Current.CancellationToken);
 
         sportsResults.Should().NotBeEmpty("벡터 검색이 결과를 반환해야 함");
         var sportsDocsFound = sportsResults.Select(r => r.DocumentId).ToList();
@@ -405,7 +403,7 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
         _output.WriteLine($"스포츠 쿼리 결과: {string.Join(", ", sportsDocsFound.Cast<object>())}");
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ConcurrencyTest_MultipleOperations_ShouldNotCauseDataCorruption()
     {
         // Skip if sqlite-vec is not available (CI environment)
@@ -507,7 +505,7 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
         // 최종 데이터 일관성 확인 — 검증도 자기 스코프에서 (위 워커들과 컨텍스트를 공유하지 않는다)
         using var assertionScope = _serviceProvider.CreateScope();
         var finalCount = await assertionScope.ServiceProvider
-            .GetRequiredService<IVectorStore>().CountAsync();
+            .GetRequiredService<IVectorStore>().CountAsync(TestContext.Current.CancellationToken);
         finalCount.Should().BeGreaterThanOrEqualTo((int)(totalResults.Count * 0.9)); // 90% 이상 저장됨
 
         _output.WriteLine($"동시성 테스트 결과: {totalResults.Count}/{expectedCount}개 성공, {totalErrors.Count}개 오류, 최종 개수: {finalCount}");

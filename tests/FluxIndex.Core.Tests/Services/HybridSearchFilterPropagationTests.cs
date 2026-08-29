@@ -61,7 +61,7 @@ public class HybridSearchFilterPropagationTests
         await service.SearchAsync("report", new HybridSearchOptions
         {
             Filters = new Dictionary<string, object> { ["tenant"] = "alpha" }
-        });
+        }, TestContext.Current.CancellationToken);
 
         await keyword.Received(1).SearchAsync(
             "report",
@@ -93,7 +93,7 @@ public class HybridSearchFilterPropagationTests
         await service.SearchAsync("report", new HybridSearchOptions
         {
             Filters = new Dictionary<string, object> { ["tenant"] = "alpha" }
-        });
+        }, TestContext.Current.CancellationToken);
 
         await vectorStore.Received(1).SearchAsync(
             Arg.Any<float[]>(), Arg.Any<int>(), Arg.Any<float>(),
@@ -106,7 +106,7 @@ public class HybridSearchFilterPropagationTests
     {
         var (service, keyword) = CreateService();
 
-        await service.SearchAsync("report", new HybridSearchOptions());
+        await service.SearchAsync("report", new HybridSearchOptions(), TestContext.Current.CancellationToken);
 
         await keyword.Received(1).SearchAsync(
             "report",
@@ -171,7 +171,7 @@ public class HybridSearchFilterPropagationTests
         var service = new HybridSearchService(
             vectorStore, keyword, embeddingService, NullLogger<HybridSearchService>.Instance);
 
-        var results = await service.SearchAsync("report", new HybridSearchOptions());
+        var results = await service.SearchAsync("report", new HybridSearchOptions(), TestContext.Current.CancellationToken);
 
         results.Should().NotBeEmpty("the vector leg still answered");
     }
@@ -187,7 +187,7 @@ public class HybridSearchFilterPropagationTests
         };
         options.SparseOptions.Filters["tenant"] = "beta";
 
-        await service.SearchAsync("report", options);
+        await service.SearchAsync("report", options, TestContext.Current.CancellationToken);
 
         await keyword.Received(1).SearchAsync(
             "report",

@@ -94,9 +94,9 @@ public class StorageRegistrationGuardTests : IDisposable
         var contextB = FluxIndexContext.CreateBuilder()
             .UseSQLiteInMemory().AddSQLiteStorage().UseInMemoryEmbedding().Build();
 
-        await contextA.Indexer.IndexDocumentAsync("content only A indexed", "doc-a");
+        await contextA.Indexer.IndexDocumentAsync("content only A indexed", "doc-a", cancellationToken: TestContext.Current.CancellationToken);
 
-        var seenByB = await contextB.Retriever.SearchAsync("content", maxResults: 10, minScore: 0f);
+        var seenByB = await contextB.Retriever.SearchAsync("content", maxResults: 10, minScore: 0f, cancellationToken: TestContext.Current.CancellationToken);
         seenByB.Should().BeEmpty("each in-memory context owns a private database");
     }
 
@@ -166,9 +166,9 @@ public class StorageRegistrationGuardTests : IDisposable
             .UseSQLite(_testDbPath).AddSQLiteStorage().UseInMemoryEmbedding().Build();
         try
         {
-            await contextA.Indexer.IndexDocumentAsync($"the {keyword} is a rare instrument", docId);
+            await contextA.Indexer.IndexDocumentAsync($"the {keyword} is a rare instrument", docId, cancellationToken: TestContext.Current.CancellationToken);
 
-            var inProcess = await contextA.Retriever.KeywordSearchAsync(keyword, maxResults: 10);
+            var inProcess = await contextA.Retriever.KeywordSearchAsync(keyword, maxResults: 10, cancellationToken: TestContext.Current.CancellationToken);
             inProcess.Should().NotBeEmpty("the keyword leg sees documents indexed by its own process");
         }
         finally
@@ -182,11 +182,11 @@ public class StorageRegistrationGuardTests : IDisposable
         try
         {
             // The SQLite-backed vector store survives the restart...
-            var stats = await contextB.Retriever.GetStatisticsAsync();
+            var stats = await contextB.Retriever.GetStatisticsAsync(TestContext.Current.CancellationToken);
             stats.TotalChunks.Should().BeGreaterThan(0, "the persistent vector store survives a restart");
 
             // ...and so does the keyword leg, which is the whole point of 0.22.0.
-            var afterRestart = await contextB.Retriever.KeywordSearchAsync(keyword, maxResults: 10);
+            var afterRestart = await contextB.Retriever.KeywordSearchAsync(keyword, maxResults: 10, cancellationToken: TestContext.Current.CancellationToken);
             afterRestart.Should().NotBeEmpty(
                 "the keyword index is persisted alongside the vectors, so a restarted process still " +
                 "finds documents by keyword instead of degrading to vector-only");

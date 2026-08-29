@@ -59,7 +59,7 @@ public sealed class LMSupplyFluxImproverWiringTests
             }
         };
 
-        var enriched = await wrapper.EnrichAsync(chunk, new EnrichmentOptions());
+        var enriched = await wrapper.EnrichAsync(chunk, new EnrichmentOptions(), TestContext.Current.CancellationToken);
 
         enriched.Should().NotBeNull();
         enriched.Summary.Should().NotBeNullOrWhiteSpace();

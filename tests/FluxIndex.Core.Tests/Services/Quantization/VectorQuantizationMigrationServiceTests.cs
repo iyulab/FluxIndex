@@ -95,7 +95,7 @@ public class VectorQuantizationMigrationServiceTests
         var vectors = new List<float[]>();
 
         // Act
-        var result = await service.AnalyzeQuantizationAsync(vectors);
+        var result = await service.AnalyzeQuantizationAsync(vectors, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(0, result.VectorCount);
@@ -128,7 +128,7 @@ public class VectorQuantizationMigrationServiceTests
         _quantizerMock.DequantizeAsync(Arg.Any<QuantizedVector>(), Arg.Any<CancellationToken>()).Returns(callInfo => { var qv = callInfo.ArgAt<QuantizedVector>(0); return new float[qv.OriginalDimension]; });
 
         // Act
-        var result = await service.AnalyzeQuantizationAsync(vectors);
+        var result = await service.AnalyzeQuantizationAsync(vectors, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(vectorCount, result.VectorCount);
@@ -163,7 +163,7 @@ public class VectorQuantizationMigrationServiceTests
         _quantizerMock.DequantizeAsync(Arg.Any<QuantizedVector>(), Arg.Any<CancellationToken>()).Returns(callInfo => { var qv = callInfo.ArgAt<QuantizedVector>(0); return new float[qv.OriginalDimension]; });
 
         // Act
-        var result = await service.AnalyzeQuantizationAsync(vectors);
+        var result = await service.AnalyzeQuantizationAsync(vectors, TestContext.Current.CancellationToken);
 
         // Assert
         var expectedOriginalSize = dimension * sizeof(float); // 512 bytes
@@ -193,7 +193,7 @@ public class VectorQuantizationMigrationServiceTests
                 Arg.Any<CancellationToken>()).Returns(Enumerable.Empty<DocumentChunk>());
 
         // Act
-        var result = await service.MigrateAllAsync();
+        var result = await service.MigrateAllAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.IsSuccess);
@@ -224,7 +224,7 @@ public class VectorQuantizationMigrationServiceTests
         _quantizerMock.QuantizeAsync(Arg.Any<float[]>(), Arg.Any<CancellationToken>()).Returns(quantizedVector);
 
         // Act
-        var result = await service.MigrateAllAsync();
+        var result = await service.MigrateAllAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.IsSuccess);
@@ -256,7 +256,7 @@ public class VectorQuantizationMigrationServiceTests
             });
 
         // Act
-        var result = await service.MigrateAllAsync();
+        var result = await service.MigrateAllAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.IsSuccess);
@@ -289,7 +289,7 @@ public class VectorQuantizationMigrationServiceTests
         _quantizerMock.QuantizeAsync(Arg.Any<float[]>(), Arg.Any<CancellationToken>()).Returns(quantizedVector);
 
         // Act
-        var result = await service.MigrateAllAsync(progress: progress);
+        var result = await service.MigrateAllAsync(progress: progress, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert — SynchronousProgress delivers inline, so no wait is needed.
         Assert.True(result.IsSuccess);
@@ -329,7 +329,7 @@ public class VectorQuantizationMigrationServiceTests
         var options = new MigrationOptions { ContinueOnError = true };
 
         // Act
-        var result = await service.MigrateAllAsync(options);
+        var result = await service.MigrateAllAsync(options, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.False(result.IsSuccess); // HasFailures
@@ -366,7 +366,7 @@ public class VectorQuantizationMigrationServiceTests
         _quantizerMock.QuantizeAsync(Arg.Any<float[]>(), Arg.Any<CancellationToken>()).Returns(quantizedVector);
 
         // Act
-        var result = await service.MigrateAllAsync();
+        var result = await service.MigrateAllAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         var expectedOriginal = dimension * sizeof(float); // 512 bytes
@@ -388,7 +388,7 @@ public class VectorQuantizationMigrationServiceTests
         var service = CreateService();
 
         // Act
-        var result = await service.MigrateByDocumentIdsAsync(Enumerable.Empty<string>());
+        var result = await service.MigrateByDocumentIdsAsync(Enumerable.Empty<string>(), cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.IsSuccess);
@@ -422,7 +422,7 @@ public class VectorQuantizationMigrationServiceTests
         _quantizerMock.QuantizeAsync(Arg.Any<float[]>(), Arg.Any<CancellationToken>()).Returns(quantizedVector);
 
         // Act - doc1만 마이그레이션
-        var result = await service.MigrateByDocumentIdsAsync(new[] { "doc1" });
+        var result = await service.MigrateByDocumentIdsAsync(new[] { "doc1" }, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert - doc1의 청크 2개만 처리
         Assert.True(result.IsSuccess);

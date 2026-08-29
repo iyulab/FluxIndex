@@ -141,7 +141,7 @@ public class ColBERTServiceTests
         var documents = Array.Empty<ColBERTDocument>();
 
         // Act
-        var results = await _service.ComputeBatchScoresAsync(queryEmbeddings, documents);
+        var results = await _service.ComputeBatchScoresAsync(queryEmbeddings, documents, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         results.Should().BeEmpty();
@@ -160,7 +160,7 @@ public class ColBERTServiceTests
         };
 
         // Act
-        var results = await _service.ComputeBatchScoresAsync(queryEmbeddings, documents);
+        var results = await _service.ComputeBatchScoresAsync(queryEmbeddings, documents, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         results.Should().HaveCount(3);
@@ -189,7 +189,7 @@ public class ColBERTServiceTests
         var options = new ColBERTOptions { NormalizeByQueryLength = true };
 
         // Act
-        var results = await _service.ComputeBatchScoresAsync(queryEmbeddings, documents, options);
+        var results = await _service.ComputeBatchScoresAsync(queryEmbeddings, documents, options, TestContext.Current.CancellationToken);
 
         // Assert
         results[0].Score.Should().BeApproximately(2f, 0.001f);
@@ -216,7 +216,7 @@ public class ColBERTServiceTests
         var options = new ColBERTOptions { MaxDocumentTokens = 100 };
 
         // Act
-        var results = await _service.ComputeBatchScoresAsync(queryEmbeddings, documents, options);
+        var results = await _service.ComputeBatchScoresAsync(queryEmbeddings, documents, options, TestContext.Current.CancellationToken);
 
         // Assert
         results[0].DocumentTokenCount.Should().Be(100);
@@ -239,7 +239,7 @@ public class ColBERTServiceTests
         };
 
         // Act
-        var results = await _service.RankAsync(queryEmbeddings, candidates);
+        var results = await _service.RankAsync(queryEmbeddings, candidates, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         results.Should().HaveCount(3);
@@ -262,7 +262,7 @@ public class ColBERTServiceTests
         var options = new ColBERTOptions { ColBERTWeight = 0.5f };
 
         // Act
-        var results = await _service.RankAsync(queryEmbeddings, candidates, options);
+        var results = await _service.RankAsync(queryEmbeddings, candidates, options, TestContext.Current.CancellationToken);
 
         // Assert
         results.Should().HaveCount(2);
@@ -284,7 +284,7 @@ public class ColBERTServiceTests
         };
 
         // Act
-        var results = await _service.RankAsync(queryEmbeddings, candidates);
+        var results = await _service.RankAsync(queryEmbeddings, candidates, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         var c2Result = results.First(r => r.Id == "c2");
@@ -309,8 +309,8 @@ public class ColBERTServiceTests
         var options = new ColBERTCompressionOptions { CompressionType = ColBERTCompressionType.None };
 
         // Act
-        var compressed = await _service.CompressEmbeddingsAsync(embeddings, options);
-        var decompressed = await _service.DecompressEmbeddingsAsync(compressed);
+        var compressed = await _service.CompressEmbeddingsAsync(embeddings, options, TestContext.Current.CancellationToken);
+        var decompressed = await _service.DecompressEmbeddingsAsync(compressed, TestContext.Current.CancellationToken);
 
         // Assert
         decompressed.Should().HaveCount(2);
@@ -331,8 +331,8 @@ public class ColBERTServiceTests
         var options = new ColBERTCompressionOptions { CompressionType = ColBERTCompressionType.Float16 };
 
         // Act
-        var compressed = await _service.CompressEmbeddingsAsync(embeddings, options);
-        var decompressed = await _service.DecompressEmbeddingsAsync(compressed);
+        var compressed = await _service.CompressEmbeddingsAsync(embeddings, options, TestContext.Current.CancellationToken);
+        var decompressed = await _service.DecompressEmbeddingsAsync(compressed, TestContext.Current.CancellationToken);
 
         // Assert
         compressed.Data.Length.Should().Be(embeddings.Length * embeddings[0].Length * 2);
@@ -359,8 +359,8 @@ public class ColBERTServiceTests
         var options = new ColBERTCompressionOptions { CompressionType = ColBERTCompressionType.Scalar8Bit };
 
         // Act
-        var compressed = await _service.CompressEmbeddingsAsync(embeddings, options);
-        var decompressed = await _service.DecompressEmbeddingsAsync(compressed);
+        var compressed = await _service.CompressEmbeddingsAsync(embeddings, options, TestContext.Current.CancellationToken);
+        var decompressed = await _service.DecompressEmbeddingsAsync(compressed, TestContext.Current.CancellationToken);
 
         // Assert
         compressed.Data.Length.Should().Be(embeddings.Length * embeddings[0].Length);
@@ -389,8 +389,8 @@ public class ColBERTServiceTests
         var options = new ColBERTCompressionOptions { CompressionType = ColBERTCompressionType.Binary };
 
         // Act
-        var compressed = await _service.CompressEmbeddingsAsync(embeddings, options);
-        var decompressed = await _service.DecompressEmbeddingsAsync(compressed);
+        var compressed = await _service.CompressEmbeddingsAsync(embeddings, options, TestContext.Current.CancellationToken);
+        var decompressed = await _service.DecompressEmbeddingsAsync(compressed, TestContext.Current.CancellationToken);
 
         // Assert
         compressed.Data.Length.Should().Be(1); // 8 bits = 1 byte
@@ -412,14 +412,10 @@ public class ColBERTServiceTests
         };
 
         // Act & Assert
-        var none = await _service.CompressEmbeddingsAsync(embeddings,
-            new ColBERTCompressionOptions { CompressionType = ColBERTCompressionType.None });
-        var float16 = await _service.CompressEmbeddingsAsync(embeddings,
-            new ColBERTCompressionOptions { CompressionType = ColBERTCompressionType.Float16 });
-        var int8 = await _service.CompressEmbeddingsAsync(embeddings,
-            new ColBERTCompressionOptions { CompressionType = ColBERTCompressionType.Scalar8Bit });
-        var binary = await _service.CompressEmbeddingsAsync(embeddings,
-            new ColBERTCompressionOptions { CompressionType = ColBERTCompressionType.Binary });
+        var none = await _service.CompressEmbeddingsAsync(embeddings, new ColBERTCompressionOptions { CompressionType = ColBERTCompressionType.None }, TestContext.Current.CancellationToken);
+        var float16 = await _service.CompressEmbeddingsAsync(embeddings, new ColBERTCompressionOptions { CompressionType = ColBERTCompressionType.Float16 }, TestContext.Current.CancellationToken);
+        var int8 = await _service.CompressEmbeddingsAsync(embeddings, new ColBERTCompressionOptions { CompressionType = ColBERTCompressionType.Scalar8Bit }, TestContext.Current.CancellationToken);
+        var binary = await _service.CompressEmbeddingsAsync(embeddings, new ColBERTCompressionOptions { CompressionType = ColBERTCompressionType.Binary }, TestContext.Current.CancellationToken);
 
         // None: 4 bytes per float
         none.Data.Length.Should().Be(2 * 768 * 4);
@@ -446,7 +442,7 @@ public class ColBERTServiceTests
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => serviceWithoutEmbedding.GenerateTokenEmbeddingsAsync("test", isQuery: true));
+            () => serviceWithoutEmbedding.GenerateTokenEmbeddingsAsync("test", isQuery: true, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -456,8 +452,7 @@ public class ColBERTServiceTests
         _embeddingServiceMock.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(callInfo => { var text = callInfo.ArgAt<string>(0); return new float[] { text.Length, 0, 0 }; });
 
         // Act
-        var embeddings = await _service.GenerateTokenEmbeddingsAsync(
-            "hello world test", isQuery: true);
+        var embeddings = await _service.GenerateTokenEmbeddingsAsync("hello world test", isQuery: true, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         embeddings.Length.Should().BeGreaterThanOrEqualTo(3);
@@ -498,7 +493,7 @@ public class ColBERTServiceTests
             .ToList();
 
         // Act
-        var results = await _service.ComputeBatchScoresAsync(queryEmbeddings, documents);
+        var results = await _service.ComputeBatchScoresAsync(queryEmbeddings, documents, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         results.Should().HaveCount(1000);
@@ -512,7 +507,7 @@ public class ColBERTServiceTests
         var candidates = Array.Empty<ColBERTCandidate>();
 
         // Act
-        var results = await _service.RankAsync(queryEmbeddings, candidates);
+        var results = await _service.RankAsync(queryEmbeddings, candidates, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         results.Should().BeEmpty();
@@ -533,7 +528,7 @@ public class ColBERTServiceTests
         _embeddingServiceMock.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Throws(new NotImplementedException());
 
         // Act
-        var results = await _service.RankAsync(queryEmbeddings, candidates);
+        var results = await _service.RankAsync(queryEmbeddings, candidates, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         results.Should().HaveCount(1);

@@ -54,10 +54,10 @@ public class SqliteVecAvailabilityTests
         Assert.DoesNotContain("SkipIfCIEnvironment", source);
     }
 
-    [SkippableFact]
+    [Fact]
     public void WindowsNative_IsPresentInOutput_WhenRunningOnWindows()
     {
-        Skip.IfNot(RuntimeInformation.IsOSPlatform(OSPlatform.Windows),
+        Assert.SkipUnless(RuntimeInformation.IsOSPlatform(OSPlatform.Windows),
             "Windows-specific asset check");
 
         var windowsNative = Path.Combine(

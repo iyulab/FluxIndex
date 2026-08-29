@@ -44,10 +44,15 @@ jobs:
 
     # Testcontainers manages the containers itself (pgvector/pgvector:pg16 and postgres); the runner's
     # Docker daemon is all it needs. No artifacts are uploaded — this job only reports pass/fail.
+    # --filter-trait/--hangdump/--hangdump-timeout are MTP's equivalents of VSTest's
+    # --filter "Category=X" and --blame-hang (native MTP mode via global.json needs no --
+    # separator before these flags); --verbosity replaces the VSTest-only --logger console
+    # option (MTP has no --logger, verbosity is a top-level dotnet CLI switch already used
+    # here) — BD-20260829-xunit-v3-pilot.
     - name: Run PostgreSQL integration tests
       run: >
         dotnet test tests/FluxIndex.Storage.PostgreSQL.Tests/FluxIndex.Storage.PostgreSQL.Tests.csproj
         --configuration Release --no-build
-        --filter "Category=Integration"
-        --logger "console;verbosity=normal"
-        --blame-hang --blame-hang-timeout 5m
+        --verbosity normal
+        --filter-trait "Category=Integration"
+        --hangdump --hangdump-timeout 5m

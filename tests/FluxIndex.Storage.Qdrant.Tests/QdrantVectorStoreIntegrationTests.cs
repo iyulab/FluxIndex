@@ -30,7 +30,7 @@ public class QdrantVectorStoreIntegrationTests : IAsyncLifetime
         _logger = NullLogger<QdrantVectorStore>.Instance;
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         try
         {
@@ -54,13 +54,14 @@ public class QdrantVectorStoreIntegrationTests : IAsyncLifetime
         }
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         if (_vectorStore != null)
         {
             await _vectorStore.DisposeAsync();
         }
         await _container.DisposeAsync();
+        GC.SuppressFinalize(this);
     }
 
     private bool IsDockerAvailable => _vectorStore != null;
@@ -98,10 +99,10 @@ public class QdrantVectorStoreIntegrationTests : IAsyncLifetime
         return chunk;
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task DeleteByFilterAsync_RemovesOnlyChunksMatchingAllMetadataFilters()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange - two chunks tagged desk=A, one tagged desk=B
         var a1 = CreateTestChunk();
@@ -111,25 +112,24 @@ public class QdrantVectorStoreIntegrationTests : IAsyncLifetime
         var b1 = CreateTestChunk();
         b1.Metadata!["desk"] = "B";
 
-        a1.Id = await _vectorStore.StoreAsync(a1);
-        a2.Id = await _vectorStore.StoreAsync(a2);
-        b1.Id = await _vectorStore.StoreAsync(b1);
+        a1.Id = await _vectorStore.StoreAsync(a1, TestContext.Current.CancellationToken);
+        a2.Id = await _vectorStore.StoreAsync(a2, TestContext.Current.CancellationToken);
+        b1.Id = await _vectorStore.StoreAsync(b1, TestContext.Current.CancellationToken);
 
         // Act - purge everything tagged desk=A in one call
-        var deleted = await _vectorStore.DeleteByFilterAsync(
-            new Dictionary<string, object> { ["desk"] = "A" });
+        var deleted = await _vectorStore.DeleteByFilterAsync(new Dictionary<string, object> { ["desk"] = "A" }, TestContext.Current.CancellationToken);
 
         // Assert - only the two desk=A chunks removed, desk=B survives
         deleted.Should().Be(2);
-        (await _vectorStore.GetByIdAsync(a1.Id)).Should().BeNull();
-        (await _vectorStore.GetByIdAsync(a2.Id)).Should().BeNull();
-        (await _vectorStore.GetByIdAsync(b1.Id)).Should().NotBeNull();
+        (await _vectorStore.GetByIdAsync(a1.Id, TestContext.Current.CancellationToken)).Should().BeNull();
+        (await _vectorStore.GetByIdAsync(a2.Id, TestContext.Current.CancellationToken)).Should().BeNull();
+        (await _vectorStore.GetByIdAsync(b1.Id, TestContext.Current.CancellationToken)).Should().NotBeNull();
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task DeleteByFilterAsync_EmptyFilter_ThrowsRatherThanPurgingEverything()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         var act = async () => await _vectorStore.DeleteByFilterAsync(new Dictionary<string, object>());
         await act.Should().ThrowAsync<ArgumentException>();
@@ -137,25 +137,25 @@ public class QdrantVectorStoreIntegrationTests : IAsyncLifetime
 
     #region Store Operations
 
-    [SkippableFact]
+    [Fact]
     public async Task StoreAsync_SingleChunk_ReturnsChunkId()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var chunk = CreateTestChunk();
 
         // Act
-        var result = await _vectorStore.StoreAsync(chunk);
+        var result = await _vectorStore.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().Be(chunk.Id);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task StoreBatchAsync_MultipleChunks_ReturnsAllIds()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var chunks = Enumerable.Range(0, 5)
@@ -163,17 +163,17 @@ public class QdrantVectorStoreIntegrationTests : IAsyncLifetime
             .ToList();
 
         // Act
-        var results = (await _vectorStore.StoreBatchAsync(chunks)).ToList();
+        var results = (await _vectorStore.StoreBatchAsync(chunks, TestContext.Current.CancellationToken)).ToList();
 
         // Assert
         results.Should().HaveCount(5);
         results.Should().BeEquivalentTo(chunks.Select(c => c.Id));
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task StoreAsync_ChunkWithoutEmbedding_ThrowsArgumentException()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var chunk = new DocumentChunk
@@ -184,24 +184,24 @@ public class QdrantVectorStoreIntegrationTests : IAsyncLifetime
         };
 
         // Act & Assert
-        await Assert.ThrowsAsync<ArgumentException>(() => _vectorStore.StoreAsync(chunk));
+        await Assert.ThrowsAsync<ArgumentException>(() => _vectorStore.StoreAsync(chunk, TestContext.Current.CancellationToken));
     }
 
     #endregion
 
     #region Retrieve Operations
 
-    [SkippableFact]
+    [Fact]
     public async Task GetByIdAsync_ExistingChunk_ReturnsChunk()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var chunk = CreateTestChunk();
-        await _vectorStore.StoreAsync(chunk);
+        await _vectorStore.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Act
-        var result = await _vectorStore.GetByIdAsync(chunk.Id);
+        var result = await _vectorStore.GetByIdAsync(chunk.Id, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().NotBeNull();
@@ -210,22 +210,22 @@ public class QdrantVectorStoreIntegrationTests : IAsyncLifetime
         result.Content.Should().Be(chunk.Content);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task GetByIdAsync_NonExistingChunk_ReturnsNull()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Act
-        var result = await _vectorStore.GetByIdAsync(Guid.NewGuid().ToString());
+        var result = await _vectorStore.GetByIdAsync(Guid.NewGuid().ToString(), TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().BeNull();
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task GetByDocumentIdAsync_MultipleChunks_ReturnsAllChunks()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var documentId = Guid.NewGuid().ToString();
@@ -240,10 +240,10 @@ public class QdrantVectorStoreIntegrationTests : IAsyncLifetime
             })
             .ToList();
 
-        await _vectorStore.StoreBatchAsync(chunks);
+        await _vectorStore.StoreBatchAsync(chunks, TestContext.Current.CancellationToken);
 
         // Act
-        var results = (await _vectorStore.GetByDocumentIdAsync(documentId)).ToList();
+        var results = (await _vectorStore.GetByDocumentIdAsync(documentId, TestContext.Current.CancellationToken)).ToList();
 
         // Assert
         results.Should().HaveCount(3);
@@ -254,25 +254,25 @@ public class QdrantVectorStoreIntegrationTests : IAsyncLifetime
 
     #region Search Operations
 
-    [SkippableFact]
+    [Fact]
     public async Task SearchAsync_SimilarVector_ReturnsMatchingChunks()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var embedding = CreateTestEmbedding();
         var chunk = CreateTestChunk(embedding: embedding);
-        await _vectorStore.StoreAsync(chunk);
+        await _vectorStore.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Store some other chunks with different embeddings (using different seeds)
         for (int i = 0; i < 5; i++)
         {
             var differentEmbedding = CreateTestEmbedding(seed: 100 + i);
-            await _vectorStore.StoreAsync(CreateTestChunk(embedding: differentEmbedding));
+            await _vectorStore.StoreAsync(CreateTestChunk(embedding: differentEmbedding), TestContext.Current.CancellationToken);
         }
 
         // Act - search with similar embedding
-        var results = (await _vectorStore.SearchAsync(embedding, topK: 3)).ToList();
+        var results = (await _vectorStore.SearchAsync(embedding, topK: 3, cancellationToken: TestContext.Current.CancellationToken)).ToList();
 
         // Assert
         results.Should().NotBeEmpty();
@@ -280,18 +280,18 @@ public class QdrantVectorStoreIntegrationTests : IAsyncLifetime
         results.First().Score.Should().BeGreaterThan(0.9f); // High similarity for same vector
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task SearchAsync_WithMinScore_FiltersLowScoreResults()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var embedding = CreateTestEmbedding();
         var chunk = CreateTestChunk(embedding: embedding);
-        await _vectorStore.StoreAsync(chunk);
+        await _vectorStore.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Act - search with high minimum score
-        var results = (await _vectorStore.SearchAsync(embedding, topK: 10, minScore: 0.95f)).ToList();
+        var results = (await _vectorStore.SearchAsync(embedding, topK: 10, minScore: 0.95f, cancellationToken: TestContext.Current.CancellationToken)).ToList();
 
         // Assert
         results.Should().AllSatisfy(r => r.Score.Should().BeGreaterThanOrEqualTo(0.95f));
@@ -301,50 +301,50 @@ public class QdrantVectorStoreIntegrationTests : IAsyncLifetime
 
     #region Update/Delete Operations
 
-    [SkippableFact]
+    [Fact]
     public async Task UpdateAsync_ExistingChunk_UpdatesContent()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var chunk = CreateTestChunk();
-        await _vectorStore.StoreAsync(chunk);
+        await _vectorStore.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         chunk.Content = "Updated content";
 
         // Act
-        var result = await _vectorStore.UpdateAsync(chunk);
+        var result = await _vectorStore.UpdateAsync(chunk, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().BeTrue();
 
-        var retrieved = await _vectorStore.GetByIdAsync(chunk.Id);
+        var retrieved = await _vectorStore.GetByIdAsync(chunk.Id, TestContext.Current.CancellationToken);
         retrieved!.Content.Should().Be("Updated content");
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task DeleteAsync_ExistingChunk_RemovesChunk()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var chunk = CreateTestChunk();
-        await _vectorStore.StoreAsync(chunk);
+        await _vectorStore.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Act
-        var result = await _vectorStore.DeleteAsync(chunk.Id);
+        var result = await _vectorStore.DeleteAsync(chunk.Id, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().BeTrue();
 
-        var retrieved = await _vectorStore.GetByIdAsync(chunk.Id);
+        var retrieved = await _vectorStore.GetByIdAsync(chunk.Id, TestContext.Current.CancellationToken);
         retrieved.Should().BeNull();
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task DeleteByDocumentIdAsync_MultipleChunks_RemovesAllChunks()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var documentId = Guid.NewGuid().ToString();
@@ -357,15 +357,15 @@ public class QdrantVectorStoreIntegrationTests : IAsyncLifetime
             })
             .ToList();
 
-        await _vectorStore.StoreBatchAsync(chunks);
+        await _vectorStore.StoreBatchAsync(chunks, TestContext.Current.CancellationToken);
 
         // Act
-        var result = await _vectorStore.DeleteByDocumentIdAsync(documentId);
+        var result = await _vectorStore.DeleteByDocumentIdAsync(documentId, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().BeTrue();
 
-        var remaining = (await _vectorStore.GetByDocumentIdAsync(documentId)).ToList();
+        var remaining = (await _vectorStore.GetByDocumentIdAsync(documentId, TestContext.Current.CancellationToken)).ToList();
         remaining.Should().BeEmpty();
     }
 
@@ -373,47 +373,47 @@ public class QdrantVectorStoreIntegrationTests : IAsyncLifetime
 
     #region Count/Clear Operations
 
-    [SkippableFact]
+    [Fact]
     public async Task CountAsync_AfterStoring_ReturnsCorrectCount()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var chunks = Enumerable.Range(0, 5)
             .Select(_ => CreateTestChunk())
             .ToList();
-        await _vectorStore.StoreBatchAsync(chunks);
+        await _vectorStore.StoreBatchAsync(chunks, TestContext.Current.CancellationToken);
 
         // Act
-        var count = await _vectorStore.CountAsync();
+        var count = await _vectorStore.CountAsync(TestContext.Current.CancellationToken);
 
         // Assert
         count.Should().Be(5);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ExistsAsync_ExistingChunk_ReturnsTrue()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var chunk = CreateTestChunk();
-        await _vectorStore.StoreAsync(chunk);
+        await _vectorStore.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Act
-        var exists = await _vectorStore.ExistsAsync(chunk.Id);
+        var exists = await _vectorStore.ExistsAsync(chunk.Id, TestContext.Current.CancellationToken);
 
         // Assert
         exists.Should().BeTrue();
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ExistsAsync_NonExistingChunk_ReturnsFalse()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Act
-        var exists = await _vectorStore.ExistsAsync(Guid.NewGuid().ToString());
+        var exists = await _vectorStore.ExistsAsync(Guid.NewGuid().ToString(), TestContext.Current.CancellationToken);
 
         // Assert
         exists.Should().BeFalse();
@@ -423,20 +423,20 @@ public class QdrantVectorStoreIntegrationTests : IAsyncLifetime
 
     #region Properties/Metadata Tests
 
-    [SkippableFact]
+    [Fact]
     public async Task StoreAsync_WithProperties_PreservesProperties()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var chunk = CreateTestChunk();
         chunk.AddProperty("source", "test-file.pdf");
         chunk.AddProperty("page", "42");
 
-        await _vectorStore.StoreAsync(chunk);
+        await _vectorStore.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Act
-        var result = await _vectorStore.GetByIdAsync(chunk.Id);
+        var result = await _vectorStore.GetByIdAsync(chunk.Id, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().NotBeNull();
@@ -444,10 +444,10 @@ public class QdrantVectorStoreIntegrationTests : IAsyncLifetime
         result.Properties["source"].Should().Be("test-file.pdf");
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task StoreAsync_WithMetadata_PreservesMetadata()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var chunk = CreateTestChunk();
@@ -457,30 +457,30 @@ public class QdrantVectorStoreIntegrationTests : IAsyncLifetime
             ["version"] = "1.0"
         };
 
-        await _vectorStore.StoreAsync(chunk);
+        await _vectorStore.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Act
-        var result = await _vectorStore.GetByIdAsync(chunk.Id);
+        var result = await _vectorStore.GetByIdAsync(chunk.Id, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().NotBeNull();
         result!.Metadata.Should().ContainKey("author");
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task GetByIdAsync_ReturnsChunkIndex_InMetadata()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var chunk = CreateTestChunk();
         chunk.ChunkIndex = 5;
         chunk.TotalChunks = 10;
         chunk.TokenCount = 150;
-        await _vectorStore.StoreAsync(chunk);
+        await _vectorStore.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Act
-        var result = await _vectorStore.GetByIdAsync(chunk.Id);
+        var result = await _vectorStore.GetByIdAsync(chunk.Id, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().NotBeNull();
@@ -493,10 +493,10 @@ public class QdrantVectorStoreIntegrationTests : IAsyncLifetime
         result.Metadata["tokenCount"].Should().Be(150);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task SearchAsync_ReturnsChunkIndex_InMetadata()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var embedding = CreateTestEmbedding();
@@ -504,10 +504,10 @@ public class QdrantVectorStoreIntegrationTests : IAsyncLifetime
         chunk.ChunkIndex = 8;
         chunk.TotalChunks = 15;
         chunk.TokenCount = 200;
-        await _vectorStore.StoreAsync(chunk);
+        await _vectorStore.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Act
-        var results = (await _vectorStore.SearchAsync(embedding, topK: 1)).ToList();
+        var results = (await _vectorStore.SearchAsync(embedding, topK: 1, cancellationToken: TestContext.Current.CancellationToken)).ToList();
 
         // Assert
         results.Should().HaveCount(1);
@@ -525,10 +525,10 @@ public class QdrantVectorStoreIntegrationTests : IAsyncLifetime
 
     #region Hybrid Search Tests
 
-    [SkippableFact]
+    [Fact]
     public async Task HybridSearch_VectorAndBM25_ReturnsFusedResults()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var bm25Logger = NullLogger<BM25SparseRetriever>.Instance;
@@ -548,16 +548,14 @@ public class QdrantVectorStoreIntegrationTests : IAsyncLifetime
         chunks[2].Content = "Natural language processing enables computers to understand human language.";
 
         // Store chunks in vector store and BM25 index
-        await _vectorStore.StoreBatchAsync(chunks);
+        await _vectorStore.StoreBatchAsync(chunks, TestContext.Current.CancellationToken);
         foreach (var chunk in chunks)
         {
-            await bm25Retriever.IndexChunkAsync(chunk);
+            await bm25Retriever.IndexChunkAsync(chunk, TestContext.Current.CancellationToken);
         }
 
         // Search using BM25 only
-        var bm25Results = await bm25Retriever.SearchAsync(
-            "machine learning",
-            new KeywordSearchOptions { MaxResults = 3 });
+        var bm25Results = await bm25Retriever.SearchAsync("machine learning", new KeywordSearchOptions { MaxResults = 3 }, TestContext.Current.CancellationToken);
 
         // Assert
         bm25Results.Should().NotBeEmpty();
@@ -579,6 +577,10 @@ public class QdrantCollection : ICollectionFixture<QdrantFixture>
 
 public class QdrantFixture : IAsyncLifetime
 {
-    public Task InitializeAsync() => Task.CompletedTask;
-    public Task DisposeAsync() => Task.CompletedTask;
+    public ValueTask InitializeAsync() => ValueTask.CompletedTask;
+    public ValueTask DisposeAsync()
+    {
+        GC.SuppressFinalize(this);
+        return default;
+    }
 }

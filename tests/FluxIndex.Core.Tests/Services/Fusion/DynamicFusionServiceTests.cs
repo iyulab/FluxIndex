@@ -63,7 +63,7 @@ public class DynamicFusionServiceTests
         var query = "";
 
         // Act
-        var result = await _service.CalculateDynamicWeightsAsync(query);
+        var result = await _service.CalculateDynamicWeightsAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -80,7 +80,7 @@ public class DynamicFusionServiceTests
         string? query = null;
 
         // Act
-        var result = await _service.CalculateDynamicWeightsAsync(query!);
+        var result = await _service.CalculateDynamicWeightsAsync(query!, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -95,7 +95,7 @@ public class DynamicFusionServiceTests
         var query = "   ";
 
         // Act
-        var result = await _service.CalculateDynamicWeightsAsync(query);
+        var result = await _service.CalculateDynamicWeightsAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -110,7 +110,7 @@ public class DynamicFusionServiceTests
         SetupMockAnalysis(AppQueryType.NaturalQuestion, ComplexityLevel.Moderate);
 
         // Act
-        var result = await _service.CalculateDynamicWeightsAsync(query);
+        var result = await _service.CalculateDynamicWeightsAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.VectorWeight > result.SparseWeight,
@@ -125,7 +125,7 @@ public class DynamicFusionServiceTests
         SetupMockAnalysis(AppQueryType.SimpleKeyword, ComplexityLevel.Simple);
 
         // Act
-        var result = await _service.CalculateDynamicWeightsAsync(query);
+        var result = await _service.CalculateDynamicWeightsAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.SparseWeight >= result.VectorWeight,
@@ -140,7 +140,7 @@ public class DynamicFusionServiceTests
         SetupMockAnalysis(AppQueryType.ReasoningQuery, ComplexityLevel.Complex, requiresReasoning: true);
 
         // Act
-        var result = await _service.CalculateDynamicWeightsAsync(query);
+        var result = await _service.CalculateDynamicWeightsAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.VectorWeight >= 0.70,
@@ -155,7 +155,7 @@ public class DynamicFusionServiceTests
         SetupMockAnalysis(AppQueryType.MultiHopQuery, ComplexityLevel.VeryComplex, isMultiHop: true);
 
         // Act
-        var result = await _service.CalculateDynamicWeightsAsync(query);
+        var result = await _service.CalculateDynamicWeightsAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.VectorWeight >= 0.65,
@@ -175,7 +175,7 @@ public class DynamicFusionServiceTests
             technicalDomains: new List<string> { "programming" });
 
         // Act
-        var result = await _service.CalculateDynamicWeightsAsync(query);
+        var result = await _service.CalculateDynamicWeightsAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Contains("programming", result.TechnicalDomains);
@@ -193,7 +193,7 @@ public class DynamicFusionServiceTests
             technicalDomains: new List<string> { "ai_ml" });
 
         // Act
-        var result = await _service.CalculateDynamicWeightsAsync(query);
+        var result = await _service.CalculateDynamicWeightsAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Contains("ai_ml", result.TechnicalDomains);
@@ -211,7 +211,7 @@ public class DynamicFusionServiceTests
         SetupMockAnalysis(AppQueryType.SimpleKeyword, ComplexityLevel.Moderate, specificity: 0.8);
 
         // Act
-        var result = await _service.CalculateDynamicWeightsAsync(query);
+        var result = await _service.CalculateDynamicWeightsAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         // High specificity should boost sparse weight
@@ -227,7 +227,7 @@ public class DynamicFusionServiceTests
             entities: new List<string> { "Microsoft Azure", "Amazon AWS" });
 
         // Act
-        var result = await _service.CalculateDynamicWeightsAsync(query);
+        var result = await _service.CalculateDynamicWeightsAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(AppQueryType.ComparisonQuery, result.QueryType);
@@ -242,7 +242,7 @@ public class DynamicFusionServiceTests
             keywords: new List<string> { "optimize", "performance", "machine", "learning", "model", "training", "pipeline", "Python", "distributed", "computing" });
 
         // Act
-        var result = await _service.CalculateDynamicWeightsAsync(query);
+        var result = await _service.CalculateDynamicWeightsAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.VectorWeight > 0.5,
@@ -258,7 +258,7 @@ public class DynamicFusionServiceTests
             keywords: new List<string> { "C#", "async" });
 
         // Act
-        var result = await _service.CalculateDynamicWeightsAsync(query);
+        var result = await _service.CalculateDynamicWeightsAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.SparseWeight >= 0.40,
@@ -277,7 +277,7 @@ public class DynamicFusionServiceTests
         SetupMockAnalysis(AppQueryType.ReasoningQuery, ComplexityLevel.Complex);
 
         // Act
-        var result = await _service.CalculateDynamicWeightsAsync(query);
+        var result = await _service.CalculateDynamicWeightsAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(FusionMethod.RelativeScoreFusion, result.RecommendedFusion);
@@ -292,7 +292,7 @@ public class DynamicFusionServiceTests
             technicalDomains: new List<string> { "programming" }, specificity: 0.7);
 
         // Act
-        var result = await _service.CalculateDynamicWeightsAsync(query);
+        var result = await _service.CalculateDynamicWeightsAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(FusionMethod.WeightedSum, result.RecommendedFusion);
@@ -306,7 +306,7 @@ public class DynamicFusionServiceTests
         SetupMockAnalysis(AppQueryType.MultiHopQuery, ComplexityLevel.Moderate, isMultiHop: true);
 
         // Act
-        var result = await _service.CalculateDynamicWeightsAsync(query);
+        var result = await _service.CalculateDynamicWeightsAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(FusionMethod.Product, result.RecommendedFusion);
@@ -333,7 +333,7 @@ public class DynamicFusionServiceTests
             SetupMockAnalysis(type, complexity);
 
             // Act
-            var result = await _service.CalculateDynamicWeightsAsync(query);
+            var result = await _service.CalculateDynamicWeightsAsync(query, TestContext.Current.CancellationToken);
 
             // Assert
             var sum = result.VectorWeight + result.SparseWeight;
@@ -350,7 +350,7 @@ public class DynamicFusionServiceTests
         SetupMockAnalysis(AppQueryType.NaturalQuestion, ComplexityLevel.Moderate);
 
         // Act
-        var result = await _service.CalculateDynamicWeightsAsync(query);
+        var result = await _service.CalculateDynamicWeightsAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.VectorWeight >= 0.15 && result.VectorWeight <= 0.90,
@@ -372,7 +372,7 @@ public class DynamicFusionServiceTests
             technicalDomains: new List<string> { "programming" }, requiresReasoning: true, confidenceScore: 0.8);
 
         // Act
-        var result = await _service.CalculateDynamicWeightsAsync(query);
+        var result = await _service.CalculateDynamicWeightsAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.Confidence >= 0.8,
@@ -387,7 +387,7 @@ public class DynamicFusionServiceTests
         SetupMockAnalysis(AppQueryType.SimpleKeyword, ComplexityLevel.Simple, confidenceScore: 0.5);
 
         // Act
-        var result = await _service.CalculateDynamicWeightsAsync(query);
+        var result = await _service.CalculateDynamicWeightsAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.Confidence >= 0.3 && result.Confidence <= 0.95,
@@ -406,7 +406,7 @@ public class DynamicFusionServiceTests
         SetupMockAnalysis(AppQueryType.NaturalQuestion, ComplexityLevel.Moderate);
 
         // Act
-        var result = await _service.CalculateDynamicWeightsAsync(query);
+        var result = await _service.CalculateDynamicWeightsAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result.Reasoning);
@@ -425,7 +425,7 @@ public class DynamicFusionServiceTests
             technicalDomains: new List<string> { "programming" });
 
         // Act
-        var result = await _service.CalculateDynamicWeightsAsync(query);
+        var result = await _service.CalculateDynamicWeightsAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Contains("Domains:", result.Reasoning);
@@ -439,7 +439,7 @@ public class DynamicFusionServiceTests
         SetupMockAnalysis(AppQueryType.ReasoningQuery, ComplexityLevel.Moderate, requiresReasoning: true);
 
         // Act
-        var result = await _service.CalculateDynamicWeightsAsync(query);
+        var result = await _service.CalculateDynamicWeightsAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Contains("Reasoning:", result.Reasoning);
@@ -457,7 +457,7 @@ public class DynamicFusionServiceTests
         SetupMockAnalysis(AppQueryType.MultiHopQuery, ComplexityLevel.Complex);
 
         // Act
-        var result = await _service.CalculateDynamicWeightsAsync(query);
+        var result = await _service.CalculateDynamicWeightsAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.UseQuantizedSearch,
@@ -472,7 +472,7 @@ public class DynamicFusionServiceTests
         SetupMockAnalysis(AppQueryType.SimpleKeyword, ComplexityLevel.Simple);
 
         // Act
-        var result = await _service.CalculateDynamicWeightsAsync(query);
+        var result = await _service.CalculateDynamicWeightsAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.False(result.UseQuantizedSearch,
@@ -503,7 +503,7 @@ public class DynamicFusionServiceTests
         };
 
         // Act
-        await _service.UpdatePerformanceFeedbackAsync(config, feedback);
+        await _service.UpdatePerformanceFeedbackAsync(config, feedback, TestContext.Current.CancellationToken);
 
         // Assert - Verify logging occurred (source-generated LoggerMessage uses internal TState types)
         var logCalls = _mockLogger.ReceivedCalls()
@@ -519,7 +519,7 @@ public class DynamicFusionServiceTests
         var feedback = new FusionPerformanceFeedback();
 
         // Act & Assert - Should not throw
-        await _service.UpdatePerformanceFeedbackAsync(config, feedback);
+        await _service.UpdatePerformanceFeedbackAsync(config, feedback, TestContext.Current.CancellationToken);
     }
 
     #endregion

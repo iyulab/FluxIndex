@@ -24,7 +24,7 @@ public class VectorStoreBaseTests
         var chunk = CreateChunk("doc-1", "Test content");
 
         // Act
-        var id = await _store.StoreAsync(chunk);
+        var id = await _store.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotEmpty(id);
@@ -39,7 +39,7 @@ public class VectorStoreBaseTests
         chunk.Metadata = null;
 
         // Act
-        await _store.StoreAsync(chunk);
+        await _store.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(chunk.Metadata);
@@ -51,7 +51,7 @@ public class VectorStoreBaseTests
     public async Task StoreAsync_NullChunk_ThrowsArgumentNullException()
     {
         // Act & Assert
-        await Assert.ThrowsAsync<ArgumentNullException>(() => _store.StoreAsync(null!));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _store.StoreAsync(null!, TestContext.Current.CancellationToken));
     }
 
     #endregion
@@ -70,7 +70,7 @@ public class VectorStoreBaseTests
         };
 
         // Act
-        var ids = (await _store.StoreBatchAsync(chunks)).ToList();
+        var ids = (await _store.StoreBatchAsync(chunks, TestContext.Current.CancellationToken)).ToList();
 
         // Assert
         Assert.Equal(3, ids.Count);
@@ -86,10 +86,10 @@ public class VectorStoreBaseTests
     {
         // Arrange
         var chunk = CreateChunk("doc-1", "Test content");
-        var id = await _store.StoreAsync(chunk);
+        var id = await _store.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Act
-        var retrieved = await _store.GetAsync(id);
+        var retrieved = await _store.GetAsync(id, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(retrieved);
@@ -100,7 +100,7 @@ public class VectorStoreBaseTests
     public async Task GetAsync_EmptyId_ReturnsNull()
     {
         // Act
-        var result = await _store.GetAsync("");
+        var result = await _store.GetAsync("", TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Null(result);
@@ -111,10 +111,10 @@ public class VectorStoreBaseTests
     {
         // Arrange
         var chunk = CreateChunk("doc-1", "Test content");
-        var id = await _store.StoreAsync(chunk);
+        var id = await _store.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Act
-        var retrieved = await _store.GetByIdAsync(id);
+        var retrieved = await _store.GetByIdAsync(id, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(retrieved);
@@ -128,7 +128,7 @@ public class VectorStoreBaseTests
     public async Task SearchAsync_NullEmbedding_ReturnsEmpty()
     {
         // Act
-        var results = await _store.SearchAsync(null!, topK: 10);
+        var results = await _store.SearchAsync(null!, topK: 10, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Empty(results);
@@ -138,7 +138,7 @@ public class VectorStoreBaseTests
     public async Task SearchAsync_EmptyEmbedding_ReturnsEmpty()
     {
         // Act
-        var results = await _store.SearchAsync([], topK: 10);
+        var results = await _store.SearchAsync([], topK: 10, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Empty(results);
@@ -151,7 +151,7 @@ public class VectorStoreBaseTests
         var embedding = new float[] { 1, 2, 3 };
 
         // Act
-        var results = await _store.SearchAsync(embedding, topK: 0);
+        var results = await _store.SearchAsync(embedding, topK: 0, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Empty(results);
@@ -161,12 +161,12 @@ public class VectorStoreBaseTests
     public async Task SearchAsync_ValidQuery_FiltersAndSortsResults()
     {
         // Arrange
-        await _store.StoreAsync(CreateChunkWithEmbedding("chunk-1", new[] { 0.9f, 0.1f }));
-        await _store.StoreAsync(CreateChunkWithEmbedding("chunk-2", new[] { 0.5f, 0.5f }));
-        await _store.StoreAsync(CreateChunkWithEmbedding("chunk-3", new[] { 0.1f, 0.9f }));
+        await _store.StoreAsync(CreateChunkWithEmbedding("chunk-1", new[] { 0.9f, 0.1f }), TestContext.Current.CancellationToken);
+        await _store.StoreAsync(CreateChunkWithEmbedding("chunk-2", new[] { 0.5f, 0.5f }), TestContext.Current.CancellationToken);
+        await _store.StoreAsync(CreateChunkWithEmbedding("chunk-3", new[] { 0.1f, 0.9f }), TestContext.Current.CancellationToken);
 
         // Act
-        var results = (await _store.SearchAsync(new[] { 0.9f, 0.1f }, topK: 10, minScore: 0.5f)).ToList();
+        var results = (await _store.SearchAsync(new[] { 0.9f, 0.1f }, topK: 10, minScore: 0.5f, cancellationToken: TestContext.Current.CancellationToken)).ToList();
 
         // Assert
         Assert.NotEmpty(results);
@@ -182,11 +182,11 @@ public class VectorStoreBaseTests
     public async Task SearchAsync_ForwardsFiltersToSearchCore()
     {
         // Arrange
-        await _store.StoreAsync(CreateChunkWithEmbedding("chunk-1", new[] { 0.9f, 0.1f }));
+        await _store.StoreAsync(CreateChunkWithEmbedding("chunk-1", new[] { 0.9f, 0.1f }), TestContext.Current.CancellationToken);
         var filters = new Dictionary<string, object> { ["workspace_id"] = "ws-1" };
 
         // Act
-        await _store.SearchAsync(new[] { 0.9f, 0.1f }, topK: 5, minScore: 0f, filters: filters);
+        await _store.SearchAsync(new[] { 0.9f, 0.1f }, topK: 5, minScore: 0f, filters: filters, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert — stores need the filters to push them down before internal candidate trimming
         Assert.NotNull(_store.LastSearchFilters);
@@ -207,14 +207,14 @@ public class VectorStoreBaseTests
         var target = CreateChunkWithEmbedding("target", new[] { 0.9f, 0.44f });   // ~0.9
         target.Metadata = new Dictionary<string, object> { ["workspace_id"] = "ws-target" };
 
-        await _store.StoreAsync(otherA);
-        await _store.StoreAsync(otherB);
-        await _store.StoreAsync(target);
+        await _store.StoreAsync(otherA, TestContext.Current.CancellationToken);
+        await _store.StoreAsync(otherB, TestContext.Current.CancellationToken);
+        await _store.StoreAsync(target, TestContext.Current.CancellationToken);
 
         var filters = new Dictionary<string, object> { ["workspace_id"] = "ws-target" };
 
         // Act
-        var results = (await _store.SearchAsync(query, topK: 2, minScore: 0f, filters: filters)).ToList();
+        var results = (await _store.SearchAsync(query, topK: 2, minScore: 0f, filters: filters, cancellationToken: TestContext.Current.CancellationToken)).ToList();
 
         // Assert — the target-tenant chunk must survive even though it is not in the global top-2
         var match = Assert.Single(results);
@@ -227,12 +227,10 @@ public class VectorStoreBaseTests
         // Arrange
         var chunk = CreateChunkWithEmbedding("chunk-1", new[] { 0.9f, 0.1f });
         chunk.Metadata = new Dictionary<string, object> { ["workspace_id"] = "ws-1" };
-        await _store.StoreAsync(chunk);
+        await _store.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Act
-        var results = await _store.SearchAsync(
-            new[] { 0.9f, 0.1f }, topK: 5, minScore: 0f,
-            filters: new Dictionary<string, object> { ["workspace_id"] = "ws-absent" });
+        var results = await _store.SearchAsync(new[] { 0.9f, 0.1f }, topK: 5, minScore: 0f, filters: new Dictionary<string, object> { ["workspace_id"] = "ws-absent" }, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Empty(results);
@@ -384,17 +382,13 @@ public class VectorStoreBaseTests
         {
             var chunk = CreateChunk(docId, $"content of {docId}");
             chunk.Embedding = [0.1f, 0.2f, 0.3f];
-            await _store.StoreAsync(chunk);
+            await _store.StoreAsync(chunk, TestContext.Current.CancellationToken);
         }
 
-        var results = await _store.SearchAsync(
-            [0.1f, 0.2f, 0.3f],
-            topK: 10,
-            minScore: 0.0f,
-            filters: new Dictionary<string, object>
+        var results = await _store.SearchAsync([0.1f, 0.2f, 0.3f], topK: 10, minScore: 0.0f, filters: new Dictionary<string, object>
             {
                 [MetadataHelper.StandardKeys.DocumentId] = new List<string> { "doc-1", "doc-3" }
-            });
+            }, cancellationToken: TestContext.Current.CancellationToken);
 
         var ids = results.Select(r => r.DocumentId).OrderBy(x => x).ToList();
         Assert.Equal(["doc-1", "doc-3"], ids);
@@ -409,10 +403,10 @@ public class VectorStoreBaseTests
     {
         // Arrange
         var chunk = CreateChunk("doc-1", "Test content");
-        var id = await _store.StoreAsync(chunk);
+        var id = await _store.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Act
-        var deleted = await _store.DeleteAsync(id);
+        var deleted = await _store.DeleteAsync(id, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(deleted);
@@ -422,7 +416,7 @@ public class VectorStoreBaseTests
     public async Task DeleteAsync_EmptyId_ReturnsFalse()
     {
         // Act
-        var deleted = await _store.DeleteAsync("");
+        var deleted = await _store.DeleteAsync("", TestContext.Current.CancellationToken);
 
         // Assert
         Assert.False(deleted);
@@ -437,12 +431,12 @@ public class VectorStoreBaseTests
     {
         // Arrange
         var chunk = CreateChunk("doc-1", "Test content");
-        var id = await _store.StoreAsync(chunk);
+        var id = await _store.StoreAsync(chunk, TestContext.Current.CancellationToken);
         chunk.Id = id;
         chunk.Content = "Updated content";
 
         // Act
-        var updated = await _store.UpdateAsync(chunk);
+        var updated = await _store.UpdateAsync(chunk, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(updated);
@@ -453,7 +447,7 @@ public class VectorStoreBaseTests
     public async Task UpdateAsync_NullChunk_ReturnsFalse()
     {
         // Act
-        var updated = await _store.UpdateAsync(null!);
+        var updated = await _store.UpdateAsync(null!, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.False(updated);
@@ -467,7 +461,7 @@ public class VectorStoreBaseTests
         chunk.Id = "";
 
         // Act
-        var updated = await _store.UpdateAsync(chunk);
+        var updated = await _store.UpdateAsync(chunk, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.False(updated);
@@ -482,10 +476,10 @@ public class VectorStoreBaseTests
     {
         // Arrange
         var chunk = CreateChunk("doc-1", "Test content");
-        var id = await _store.StoreAsync(chunk);
+        var id = await _store.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Act
-        var exists = await _store.ExistsAsync(id);
+        var exists = await _store.ExistsAsync(id, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(exists);
@@ -495,7 +489,7 @@ public class VectorStoreBaseTests
     public async Task ExistsAsync_EmptyId_ReturnsFalse()
     {
         // Act
-        var exists = await _store.ExistsAsync("");
+        var exists = await _store.ExistsAsync("", TestContext.Current.CancellationToken);
 
         // Assert
         Assert.False(exists);
@@ -509,11 +503,11 @@ public class VectorStoreBaseTests
     public async Task CountAsync_ReturnsCorrectCount()
     {
         // Arrange
-        await _store.StoreAsync(CreateChunk("doc-1", "Content 1"));
-        await _store.StoreAsync(CreateChunk("doc-1", "Content 2"));
+        await _store.StoreAsync(CreateChunk("doc-1", "Content 1"), TestContext.Current.CancellationToken);
+        await _store.StoreAsync(CreateChunk("doc-1", "Content 2"), TestContext.Current.CancellationToken);
 
         // Act
-        var count = await _store.CountAsync();
+        var count = await _store.CountAsync(TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(2, count);
@@ -523,10 +517,10 @@ public class VectorStoreBaseTests
     public async Task GetCountAsync_DelegatesToCountAsync()
     {
         // Arrange
-        await _store.StoreAsync(CreateChunk("doc-1", "Content 1"));
+        await _store.StoreAsync(CreateChunk("doc-1", "Content 1"), TestContext.Current.CancellationToken);
 
         // Act
-        var count = await _store.GetCountAsync();
+        var count = await _store.GetCountAsync(TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(1, count);
@@ -536,12 +530,12 @@ public class VectorStoreBaseTests
     public async Task ClearAsync_RemovesAllChunks()
     {
         // Arrange
-        await _store.StoreAsync(CreateChunk("doc-1", "Content 1"));
-        await _store.StoreAsync(CreateChunk("doc-2", "Content 2"));
+        await _store.StoreAsync(CreateChunk("doc-1", "Content 1"), TestContext.Current.CancellationToken);
+        await _store.StoreAsync(CreateChunk("doc-2", "Content 2"), TestContext.Current.CancellationToken);
 
         // Act
-        await _store.ClearAsync();
-        var count = await _store.CountAsync();
+        await _store.ClearAsync(TestContext.Current.CancellationToken);
+        var count = await _store.CountAsync(TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(0, count);
@@ -555,12 +549,12 @@ public class VectorStoreBaseTests
     public async Task GetByDocumentIdAsync_ReturnsChunksForDocument()
     {
         // Arrange
-        await _store.StoreAsync(CreateChunk("doc-1", "Content 1"));
-        await _store.StoreAsync(CreateChunk("doc-1", "Content 2"));
-        await _store.StoreAsync(CreateChunk("doc-2", "Content 3"));
+        await _store.StoreAsync(CreateChunk("doc-1", "Content 1"), TestContext.Current.CancellationToken);
+        await _store.StoreAsync(CreateChunk("doc-1", "Content 2"), TestContext.Current.CancellationToken);
+        await _store.StoreAsync(CreateChunk("doc-2", "Content 3"), TestContext.Current.CancellationToken);
 
         // Act
-        var chunks = (await _store.GetByDocumentIdAsync("doc-1")).ToList();
+        var chunks = (await _store.GetByDocumentIdAsync("doc-1", TestContext.Current.CancellationToken)).ToList();
 
         // Assert
         Assert.Equal(2, chunks.Count);
@@ -571,7 +565,7 @@ public class VectorStoreBaseTests
     public async Task GetByDocumentIdAsync_EmptyId_ReturnsEmpty()
     {
         // Act
-        var chunks = await _store.GetByDocumentIdAsync("");
+        var chunks = await _store.GetByDocumentIdAsync("", TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Empty(chunks);

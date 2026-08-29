@@ -45,7 +45,7 @@ public class TokenAwareSearchServiceTests
     public async Task AnalyzeAsync_DetectsIntent(string query, QueryIntent expectedIntent)
     {
         // Act
-        var result = await _queryAnalysisService.AnalyzeAsync(query);
+        var result = await _queryAnalysisService.AnalyzeAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(expectedIntent, result.Intent);
@@ -58,7 +58,7 @@ public class TokenAwareSearchServiceTests
     public async Task AnalyzeAsync_DetectsComplexity(string query, QueryComplexityLevel expectedComplexity)
     {
         // Act
-        var result = await _queryAnalysisService.AnalyzeAsync(query);
+        var result = await _queryAnalysisService.AnalyzeAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(expectedComplexity, result.Complexity);
@@ -71,7 +71,7 @@ public class TokenAwareSearchServiceTests
     public async Task AnalyzeAsync_DetectsLanguage(string query, string expectedLanguage)
     {
         // Act
-        var result = await _queryAnalysisService.AnalyzeAsync(query);
+        var result = await _queryAnalysisService.AnalyzeAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(expectedLanguage, result.Language);
@@ -84,7 +84,7 @@ public class TokenAwareSearchServiceTests
         var query = "implement vector search with PostgreSQL";
 
         // Act
-        var result = await _queryAnalysisService.AnalyzeAsync(query);
+        var result = await _queryAnalysisService.AnalyzeAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Contains("implement", result.Keywords);
@@ -100,7 +100,7 @@ public class TokenAwareSearchServiceTests
         var query = "How to use RAG with GPT and PostgreSQL";
 
         // Act
-        var result = await _queryAnalysisService.AnalyzeAsync(query);
+        var result = await _queryAnalysisService.AnalyzeAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Contains(result.Entities, e => e.Text == "RAG");
@@ -116,7 +116,7 @@ public class TokenAwareSearchServiceTests
         var query = "RAG implementation with vector database";
 
         // Act
-        var result = await _queryAnalysisService.AnalyzeAsync(query);
+        var result = await _queryAnalysisService.AnalyzeAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.RecommendedStrategy == SearchStrategy.Hybrid ||
@@ -135,7 +135,7 @@ public class TokenAwareSearchServiceTests
         SetupMocks(GenerateTestChunks(10, 500)); // 10 chunks, 500 tokens each
 
         // Act
-        var result = await service.SearchAsync("test query", 2000);
+        var result = await service.SearchAsync("test query", 2000, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.UsedTokens <= 2000);
@@ -164,7 +164,7 @@ public class TokenAwareSearchServiceTests
         };
 
         // Act
-        var result = await service.SearchAsync(request);
+        var result = await service.SearchAsync(request, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.All(result.Chunks, c => Assert.True(c.Score >= 0.5));
@@ -178,7 +178,7 @@ public class TokenAwareSearchServiceTests
         SetupMocks(GenerateTestChunks(5, 100));
 
         // Act
-        var result = await service.SearchAsync("how to implement RAG", 1000);
+        var result = await service.SearchAsync("how to implement RAG", 1000, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result.Analysis);
@@ -194,7 +194,7 @@ public class TokenAwareSearchServiceTests
         SetupMocks(GenerateTestChunks(5, 200));
 
         // Act
-        var result = await service.SearchAsync("test query", 1000);
+        var result = await service.SearchAsync("test query", 1000, TestContext.Current.CancellationToken);
 
         // Assert
         int cumulative = 0;
@@ -213,7 +213,7 @@ public class TokenAwareSearchServiceTests
         SetupMocks(GenerateTestChunks(5, 100));
 
         // Act
-        var result = await service.SearchAsync("test query", 1000);
+        var result = await service.SearchAsync("test query", 1000, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.ElapsedMilliseconds >= 0);
@@ -234,7 +234,7 @@ public class TokenAwareSearchServiceTests
         };
 
         // Act
-        var result = await service.SearchAsync(request);
+        var result = await service.SearchAsync(request, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(SearchStrategy.Keyword, result.Strategy);
@@ -269,7 +269,7 @@ public class TokenAwareSearchServiceTests
         };
 
         // Act
-        var result = await service.SearchAsync(request);
+        var result = await service.SearchAsync(request, TestContext.Current.CancellationToken);
 
         // Assert
         var sameDocChunks = result.Chunks.Count(c => c.DocumentId == "same-doc");
@@ -284,7 +284,7 @@ public class TokenAwareSearchServiceTests
         SetupMocks(new List<TestSearchResult>());
 
         // Act
-        var result = await service.SearchAsync("test query", 1000);
+        var result = await service.SearchAsync("test query", 1000, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Empty(result.Chunks);
@@ -300,7 +300,7 @@ public class TokenAwareSearchServiceTests
         SetupMocks(GenerateTestChunks(20, 500)); // 20 chunks, 500 tokens each = 10000 tokens
 
         // Act
-        var result = await service.SearchAsync("test query", 2000);
+        var result = await service.SearchAsync("test query", 2000, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(20, result.TotalRetrieved);

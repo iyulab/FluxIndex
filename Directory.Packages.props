@@ -86,13 +86,14 @@
     <PackageVersion Include="HtmlAgilityPack" Version="1.12.4" />
     <PackageVersion Include="WebFlux" Version="0.7.0" />
   </ItemGroup>
-  <!-- Testing Packages -->
+  <!-- Testing Packages (xUnit v3 / Microsoft.Testing.Platform — BD-20260829-xunit-v3-pilot rollout) -->
   <ItemGroup>
-    <PackageVersion Include="coverlet.collector" Version="10.0.1" />
+    <!-- coverlet.MTP is coverlet.collector's MTP-native successor (D357-1) -->
+    <PackageVersion Include="coverlet.MTP" Version="10.0.1" />
     <PackageVersion Include="AwesomeAssertions" Version="9.6.0" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.5.1" />
     <PackageVersion Include="NSubstitute" Version="6.2.0" />
+    <PackageVersion Include="Microsoft.Testing.Extensions.HangDump" Version="2.3.3" />
     <!-- 4.14.0 (2026-08-17): SSH.NET transitive floor lift. Testcontainers 4.13.0 and below
          pull SSH.NET 2025.1.0 (GHSA-q939-rpr3-3284, High: ScpClient recursive download allows
          arbitrary file write via server-controlled SCP filenames); 4.14.0 is the first release
@@ -102,9 +103,8 @@
     <PackageVersion Include="Testcontainers.Neo4j" Version="4.14.0" />
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.14.0" />
     <PackageVersion Include="Testcontainers.Redis" Version="4.14.0" />
-    <PackageVersion Include="xunit" Version="2.9.3" />
-    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
-    <PackageVersion Include="Xunit.SkippableFact" Version="1.5.61" />
+    <PackageVersion Include="xunit.v3" Version="4.0.0" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
   </ItemGroup>
   <!-- MCP/CLI Packages -->
   <ItemGroup>

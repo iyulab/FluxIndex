@@ -39,16 +39,15 @@ public class SQLiteKeywordSearchServiceTests : IDisposable
     public async Task IndexedChunks_AreRetrievable_FromASeparateInstance()
     {
         var writer = CreateService();
-        await writer.IndexChunksAsync(
-        [
+        await writer.IndexChunksAsync([
             Chunk("doc-1", "The quick brown fox jumps over the lazy dog"),
             Chunk("doc-2", "Distributed systems require careful transaction boundaries")
-        ]);
+        ], TestContext.Current.CancellationToken);
         writer.Dispose();
 
         // 재시작 시뮬레이션 — 인스턴스 상태를 전부 버린다.
         var reader = CreateService();
-        var results = await reader.SearchAsync("transaction");
+        var results = await reader.SearchAsync("transaction", cancellationToken: TestContext.Current.CancellationToken);
         reader.Dispose();
 
         results.Should().NotBeEmpty("the keyword index must survive the process that wrote it");
@@ -59,14 +58,13 @@ public class SQLiteKeywordSearchServiceTests : IDisposable
     public async Task Search_RanksTheChunkContainingTheTerm_Highest()
     {
         var service = CreateService();
-        await service.IndexChunksAsync(
-        [
+        await service.IndexChunksAsync([
             Chunk("doc-1", "provisioning schema tables relations"),
             Chunk("doc-2", "unrelated content about embeddings and vectors"),
             Chunk("doc-3", "schema provisioning is the topic of provisioning here")
-        ]);
+        ], TestContext.Current.CancellationToken);
 
-        var results = await service.SearchAsync("provisioning");
+        var results = await service.SearchAsync("provisioning", cancellationToken: TestContext.Current.CancellationToken);
         service.Dispose();
 
         results.Should().NotBeEmpty();
@@ -78,15 +76,14 @@ public class SQLiteKeywordSearchServiceTests : IDisposable
     public async Task DeleteByDocumentId_RemovesTheDocumentFromSubsequentSearches()
     {
         var service = CreateService();
-        await service.IndexChunksAsync(
-        [
+        await service.IndexChunksAsync([
             Chunk("doc-1", "orphaned keyword index backend candidate"),
             Chunk("doc-2", "candidate backend for the keyword leg")
-        ]);
+        ], TestContext.Current.CancellationToken);
 
-        await service.DeleteByDocumentIdAsync("doc-1");
+        await service.DeleteByDocumentIdAsync("doc-1", TestContext.Current.CancellationToken);
 
-        var results = await service.SearchAsync("candidate");
+        var results = await service.SearchAsync("candidate", cancellationToken: TestContext.Current.CancellationToken);
         service.Dispose();
 
         results.Should().NotContain(r => r.Chunk.DocumentId == "doc-1",
@@ -102,13 +99,12 @@ public class SQLiteKeywordSearchServiceTests : IDisposable
     public async Task KoreanContent_IsRetrievable_ByAWholeToken()
     {
         var service = CreateService();
-        await service.IndexChunksAsync(
-        [
+        await service.IndexChunksAsync([
             Chunk("doc-ko", "착수계약서 검토 결과를 정리한 문서"),
             Chunk("doc-en", "review of the engagement contract")
-        ]);
+        ], TestContext.Current.CancellationToken);
 
-        var results = await service.SearchAsync("착수계약서");
+        var results = await service.SearchAsync("착수계약서", cancellationToken: TestContext.Current.CancellationToken);
         service.Dispose();
 
         results.Should().ContainSingle(r => r.Chunk.DocumentId == "doc-ko");
@@ -123,9 +119,9 @@ public class SQLiteKeywordSearchServiceTests : IDisposable
     public async Task KoreanContent_IsNotRetrievable_ByAPartialToken_Characterization()
     {
         var service = CreateService();
-        await service.IndexChunksAsync([Chunk("doc-ko", "착수계약서 검토 결과를 정리한 문서")]);
+        await service.IndexChunksAsync([Chunk("doc-ko", "착수계약서 검토 결과를 정리한 문서")], TestContext.Current.CancellationToken);
 
-        var results = await service.SearchAsync("착수계");
+        var results = await service.SearchAsync("착수계", cancellationToken: TestContext.Current.CancellationToken);
         service.Dispose();
 
         results.Should().BeEmpty(
@@ -140,15 +136,12 @@ public class SQLiteKeywordSearchServiceTests : IDisposable
     public async Task Search_WithDocumentIdFilter_ReturnsOnlyThatDocument()
     {
         var service = CreateService();
-        await service.IndexChunksAsync(
-        [
+        await service.IndexChunksAsync([
             Chunk("doc-1", "provisioning schema tables relations"),
             Chunk("doc-2", "provisioning is also discussed in this other document")
-        ]);
+        ], TestContext.Current.CancellationToken);
 
-        var results = await service.SearchAsync(
-            "provisioning",
-            new KeywordSearchOptions { DocumentIdFilter = "doc-2" });
+        var results = await service.SearchAsync("provisioning", new KeywordSearchOptions { DocumentIdFilter = "doc-2" }, TestContext.Current.CancellationToken);
         service.Dispose();
 
         results.Should().NotBeEmpty("the filtered document does contain the term");
@@ -163,17 +156,14 @@ public class SQLiteKeywordSearchServiceTests : IDisposable
     public async Task Search_WithDocumentIdFilter_AppliesTheLimitAfterScoping()
     {
         var service = CreateService();
-        await service.IndexChunksAsync(
-        [
+        await service.IndexChunksAsync([
             Chunk("doc-loud", "provisioning provisioning provisioning provisioning", 0, 3),
             Chunk("doc-loud", "provisioning provisioning provisioning", 1, 3),
             Chunk("doc-loud", "provisioning provisioning", 2, 3),
             Chunk("doc-quiet", "provisioning mentioned once here")
-        ]);
+        ], TestContext.Current.CancellationToken);
 
-        var results = await service.SearchAsync(
-            "provisioning",
-            new KeywordSearchOptions { MaxResults = 2, DocumentIdFilter = "doc-quiet" });
+        var results = await service.SearchAsync("provisioning", new KeywordSearchOptions { MaxResults = 2, DocumentIdFilter = "doc-quiet" }, TestContext.Current.CancellationToken);
         service.Dispose();
 
         results.Should().ContainSingle("the scoped document has exactly one matching chunk")
@@ -192,11 +182,11 @@ public class SQLiteKeywordSearchServiceTests : IDisposable
         var content = string.Join(' ', Enumerable.Range(1, termCount).Select(i => $"t{i:D5}"));
 
         var service = CreateService();
-        await service.IndexChunksAsync([Chunk("doc-wide", content)]);
+        await service.IndexChunksAsync([Chunk("doc-wide", content)], TestContext.Current.CancellationToken);
 
         foreach (var term in new[] { "t00001", "t03000", "t05999" })
         {
-            var results = await service.SearchAsync(term);
+            var results = await service.SearchAsync(term, cancellationToken: TestContext.Current.CancellationToken);
             results.Should().ContainSingle($"'{term}' was indexed and its document frequency must be set")
                 .Which.Chunk.DocumentId.Should().Be("doc-wide");
         }

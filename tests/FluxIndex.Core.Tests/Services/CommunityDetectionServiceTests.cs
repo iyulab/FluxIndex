@@ -81,7 +81,7 @@ public class CommunityDetectionServiceTests
         };
 
         // Act
-        var result = await service.DetectCommunitiesAsync(chunks, options);
+        var result = await service.DetectCommunitiesAsync(chunks, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -103,7 +103,7 @@ public class CommunityDetectionServiceTests
         };
 
         // Act
-        var result = await service.DetectCommunitiesAsync(chunks, options);
+        var result = await service.DetectCommunitiesAsync(chunks, options, TestContext.Current.CancellationToken);
 
         // Assert
         var totalAssigned = result.Communities.Sum(c => c.ChunkIds.Count);
@@ -128,7 +128,7 @@ public class CommunityDetectionServiceTests
         };
 
         // Act
-        var result = await service.DetectCommunitiesAsync(chunks, options);
+        var result = await service.DetectCommunitiesAsync(chunks, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -152,7 +152,7 @@ public class CommunityDetectionServiceTests
         };
 
         // Act
-        var result = await service.DetectCommunitiesAsync(chunks, options);
+        var result = await service.DetectCommunitiesAsync(chunks, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -176,7 +176,7 @@ public class CommunityDetectionServiceTests
         };
 
         // Act
-        var result = await service.DetectCommunitiesAsync(chunks, options);
+        var result = await service.DetectCommunitiesAsync(chunks, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -200,12 +200,10 @@ public class CommunityDetectionServiceTests
             NumClusters = 4
         };
 
-        var detection = await service.DetectCommunitiesAsync(chunks, options);
+        var detection = await service.DetectCommunitiesAsync(chunks, options, TestContext.Current.CancellationToken);
 
         // Act
-        var merged = await service.MergeCommunitiesAsync(
-            detection.Communities,
-            similarityThreshold: 0.3);
+        var merged = await service.MergeCommunitiesAsync(detection.Communities, similarityThreshold: 0.3, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(merged);
@@ -232,12 +230,10 @@ public class CommunityDetectionServiceTests
             NumClusters = 3
         };
 
-        var detection = await service.DetectCommunitiesAsync(chunks, options);
+        var detection = await service.DetectCommunitiesAsync(chunks, options, TestContext.Current.CancellationToken);
 
         // Act
-        var bestCommunity = await service.FindBestCommunityAsync(
-            queryEmbedding,
-            detection.Communities);
+        var bestCommunity = await service.FindBestCommunityAsync(queryEmbedding, detection.Communities, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(bestCommunity);
@@ -255,7 +251,7 @@ public class CommunityDetectionServiceTests
         var chunks = new List<ChunkWithEmbedding>();
 
         // Act
-        var result = await service.DetectCommunitiesAsync(chunks);
+        var result = await service.DetectCommunitiesAsync(chunks, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -275,7 +271,7 @@ public class CommunityDetectionServiceTests
         };
 
         // Act
-        var result = await service.DetectCommunitiesAsync(chunks, options);
+        var result = await service.DetectCommunitiesAsync(chunks, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);

@@ -24,7 +24,7 @@ public class QueryComplexityAnalyzerTests
         var query = "machine learning";
 
         // Act
-        var result = await _analyzer.AnalyzeAsync(query);
+        var result = await _analyzer.AnalyzeAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(QueryType.SimpleKeyword, result.Type);
@@ -41,7 +41,7 @@ public class QueryComplexityAnalyzerTests
         var query = "What is machine learning?";
 
         // Act
-        var result = await _analyzer.AnalyzeAsync(query);
+        var result = await _analyzer.AnalyzeAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(QueryType.NaturalQuestion, result.Type);
@@ -56,7 +56,7 @@ public class QueryComplexityAnalyzerTests
         var query = "Compare TensorFlow vs PyTorch";
 
         // Act
-        var result = await _analyzer.AnalyzeAsync(query);
+        var result = await _analyzer.AnalyzeAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(QueryType.ComparisonQuery, result.Type);
@@ -71,7 +71,7 @@ public class QueryComplexityAnalyzerTests
         var query = "Why are neural networks effective for pattern recognition?";
 
         // Act
-        var result = await _analyzer.AnalyzeAsync(query);
+        var result = await _analyzer.AnalyzeAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(QueryType.ReasoningQuery, result.Type);
@@ -86,7 +86,7 @@ public class QueryComplexityAnalyzerTests
         var query = "머신러닝이 무엇인가요?";
 
         // Act
-        var result = await _analyzer.AnalyzeAsync(query);
+        var result = await _analyzer.AnalyzeAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(Language.Korean, result.Language);
@@ -100,7 +100,7 @@ public class QueryComplexityAnalyzerTests
         var query = "What is 머신러닝?";
 
         // Act
-        var result = await _analyzer.AnalyzeAsync(query);
+        var result = await _analyzer.AnalyzeAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(Language.Mixed, result.Language);
@@ -113,7 +113,7 @@ public class QueryComplexityAnalyzerTests
         var query = "";
 
         // Act
-        var result = await _analyzer.AnalyzeAsync(query);
+        var result = await _analyzer.AnalyzeAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(QueryType.SimpleKeyword, result.Type);
@@ -129,7 +129,7 @@ public class QueryComplexityAnalyzerTests
     public async Task RecommendStrategy_VariousQueries_ReturnsExpectedStrategy(string query, SearchStrategy expectedStrategy)
     {
         // Arrange
-        var analysis = await _analyzer.AnalyzeAsync(query);
+        var analysis = await _analyzer.AnalyzeAsync(query, TestContext.Current.CancellationToken);
 
         // Act
         var strategy = _analyzer.RecommendStrategy(analysis);
@@ -145,7 +145,7 @@ public class QueryComplexityAnalyzerTests
         var query = "CNN architecture for computer vision applications";
 
         // Act
-        var result = await _analyzer.AnalyzeAsync(query);
+        var result = await _analyzer.AnalyzeAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.Specificity > 0.3);
@@ -159,7 +159,7 @@ public class QueryComplexityAnalyzerTests
         var query = "Explain the mathematical foundations behind transformer attention mechanisms and their advantages over traditional RNN architectures in natural language processing tasks";
 
         // Act
-        var result = await _analyzer.AnalyzeAsync(query);
+        var result = await _analyzer.AnalyzeAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.Complexity >= ComplexityLevel.Complex);

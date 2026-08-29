@@ -73,16 +73,16 @@ public class KeywordMetadataFilterTests : IDisposable
             "provisioning is mentioned once here among many other unrelated trailing words",
             new Dictionary<string, object> { ["tenant"] = "ours" }));
 
-        await service.IndexChunksAsync(chunks);
+        await service.IndexChunksAsync(chunks, TestContext.Current.CancellationToken);
 
         var results = await service.SearchAsync("provisioning", new KeywordSearchOptions
         {
             MaxResults = 3,
             MetadataFilter = new Dictionary<string, object> { ["tenant"] = "ours" }
-        });
+        }, TestContext.Current.CancellationToken);
 
         // Guard against a vacuous pass: the setup must really put our document outside the global top 3.
-        var unfiltered = await service.SearchAsync("provisioning", new KeywordSearchOptions { MaxResults = 3 });
+        var unfiltered = await service.SearchAsync("provisioning", new KeywordSearchOptions { MaxResults = 3 }, TestContext.Current.CancellationToken);
         unfiltered.Should().NotContain(r => r.Chunk.DocumentId == "ours-1",
             "otherwise this test would pass under a post-filter too and prove nothing");
 
@@ -93,13 +93,12 @@ public class KeywordMetadataFilterTests : IDisposable
     public async Task Search_WithoutFilter_IsUnchanged()
     {
         var service = CreateService();
-        await service.IndexChunksAsync(
-        [
+        await service.IndexChunksAsync([
             Chunk("doc-a", "provisioning schema", new Dictionary<string, object> { ["tenant"] = "a" }),
             Chunk("doc-b", "provisioning schema", new Dictionary<string, object> { ["tenant"] = "b" })
-        ]);
+        ], TestContext.Current.CancellationToken);
 
-        var results = await service.SearchAsync("provisioning");
+        var results = await service.SearchAsync("provisioning", cancellationToken: TestContext.Current.CancellationToken);
 
         results.Select(r => r.Chunk.DocumentId).Should().BeEquivalentTo(["doc-a", "doc-b"]);
     }
@@ -110,17 +109,16 @@ public class KeywordMetadataFilterTests : IDisposable
     public async Task Search_CollectionFilterValue_MatchesAnyElement()
     {
         var service = CreateService();
-        await service.IndexChunksAsync(
-        [
+        await service.IndexChunksAsync([
             Chunk("doc-a", "provisioning", new Dictionary<string, object> { ["tenant"] = "a" }),
             Chunk("doc-b", "provisioning", new Dictionary<string, object> { ["tenant"] = "b" }),
             Chunk("doc-c", "provisioning", new Dictionary<string, object> { ["tenant"] = "c" })
-        ]);
+        ], TestContext.Current.CancellationToken);
 
         var results = await service.SearchAsync("provisioning", new KeywordSearchOptions
         {
             MetadataFilter = new Dictionary<string, object> { ["tenant"] = new[] { "a", "c" } }
-        });
+        }, TestContext.Current.CancellationToken);
 
         results.Select(r => r.Chunk.DocumentId).Should().BeEquivalentTo(["doc-a", "doc-c"]);
     }
@@ -129,20 +127,19 @@ public class KeywordMetadataFilterTests : IDisposable
     public async Task Search_ChunkWithSeveralValuesForOneKey_MatchesAnyOfThem()
     {
         var service = CreateService();
-        await service.IndexChunksAsync(
-        [
+        await service.IndexChunksAsync([
             Chunk("doc-multi", "provisioning",
                 new Dictionary<string, object> { ["label"] = new[] { "red", "blue" } })
-        ]);
+        ], TestContext.Current.CancellationToken);
 
         var byRed = await service.SearchAsync("provisioning", new KeywordSearchOptions
         {
             MetadataFilter = new Dictionary<string, object> { ["label"] = "red" }
-        });
+        }, TestContext.Current.CancellationToken);
         var byBlue = await service.SearchAsync("provisioning", new KeywordSearchOptions
         {
             MetadataFilter = new Dictionary<string, object> { ["label"] = "blue" }
-        });
+        }, TestContext.Current.CancellationToken);
 
         byRed.Should().ContainSingle();
         byBlue.Should().ContainSingle();
@@ -157,17 +154,16 @@ public class KeywordMetadataFilterTests : IDisposable
     public async Task Search_MultiValuedMetadata_DoesNotDuplicateOrInflateScore()
     {
         var service = CreateService();
-        await service.IndexChunksAsync(
-        [
+        await service.IndexChunksAsync([
             Chunk("doc-multi", "provisioning schema",
                 new Dictionary<string, object> { ["label"] = new[] { "red", "blue", "green" } })
-        ]);
+        ], TestContext.Current.CancellationToken);
 
         var filtered = await service.SearchAsync("provisioning schema", new KeywordSearchOptions
         {
             MetadataFilter = new Dictionary<string, object> { ["label"] = "red" }
-        });
-        var unfiltered = await service.SearchAsync("provisioning schema");
+        }, TestContext.Current.CancellationToken);
+        var unfiltered = await service.SearchAsync("provisioning schema", cancellationToken: TestContext.Current.CancellationToken);
 
         filtered.Should().ContainSingle();
         filtered[0].Score.Should().BeApproximately(unfiltered[0].Score, 1e-9,
@@ -178,18 +174,17 @@ public class KeywordMetadataFilterTests : IDisposable
     public async Task Search_MultipleFilterEntries_AreAnded()
     {
         var service = CreateService();
-        await service.IndexChunksAsync(
-        [
+        await service.IndexChunksAsync([
             Chunk("doc-hit", "provisioning",
                 new Dictionary<string, object> { ["tenant"] = "a", ["stage"] = "final" }),
             Chunk("doc-miss", "provisioning",
                 new Dictionary<string, object> { ["tenant"] = "a", ["stage"] = "draft" })
-        ]);
+        ], TestContext.Current.CancellationToken);
 
         var results = await service.SearchAsync("provisioning", new KeywordSearchOptions
         {
             MetadataFilter = new Dictionary<string, object> { ["tenant"] = "a", ["stage"] = "final" }
-        });
+        }, TestContext.Current.CancellationToken);
 
         results.Should().ContainSingle().Which.Chunk.DocumentId.Should().Be("doc-hit");
     }
@@ -206,15 +201,14 @@ public class KeywordMetadataFilterTests : IDisposable
     public async Task Search_NonStringScalarValues_RoundTrip(object indexed, object queried)
     {
         var service = CreateService();
-        await service.IndexChunksAsync(
-        [
+        await service.IndexChunksAsync([
             Chunk("doc-typed", "provisioning", new Dictionary<string, object> { ["v"] = indexed })
-        ]);
+        ], TestContext.Current.CancellationToken);
 
         var results = await service.SearchAsync("provisioning", new KeywordSearchOptions
         {
             MetadataFilter = new Dictionary<string, object> { ["v"] = queried }
-        });
+        }, TestContext.Current.CancellationToken);
 
         results.Should().ContainSingle();
     }
@@ -223,12 +217,12 @@ public class KeywordMetadataFilterTests : IDisposable
     public async Task Search_ChunkWithoutMetadata_IsExcludedByAnyFilter()
     {
         var service = CreateService();
-        await service.IndexChunksAsync([Chunk("doc-bare", "provisioning")]);
+        await service.IndexChunksAsync([Chunk("doc-bare", "provisioning")], TestContext.Current.CancellationToken);
 
         var results = await service.SearchAsync("provisioning", new KeywordSearchOptions
         {
             MetadataFilter = new Dictionary<string, object> { ["tenant"] = "a" }
-        });
+        }, TestContext.Current.CancellationToken);
 
         results.Should().BeEmpty();
     }
@@ -249,19 +243,19 @@ public class KeywordMetadataFilterTests : IDisposable
         // chunk with DocumentChunk.Create would mint a new id and index a sibling instead - which is
         // a different (known) behaviour and would not exercise replacement at all.
         var chunk = Chunk("doc-move", "provisioning", new Dictionary<string, object> { ["tenant"] = "old" });
-        await service.IndexChunksAsync([chunk]);
+        await service.IndexChunksAsync([chunk], TestContext.Current.CancellationToken);
 
         chunk.Metadata = new Dictionary<string, object> { ["tenant"] = "new" };
-        await service.IndexChunksAsync([chunk]);
+        await service.IndexChunksAsync([chunk], TestContext.Current.CancellationToken);
 
         var byOld = await service.SearchAsync("provisioning", new KeywordSearchOptions
         {
             MetadataFilter = new Dictionary<string, object> { ["tenant"] = "old" }
-        });
+        }, TestContext.Current.CancellationToken);
         var byNew = await service.SearchAsync("provisioning", new KeywordSearchOptions
         {
             MetadataFilter = new Dictionary<string, object> { ["tenant"] = "new" }
-        });
+        }, TestContext.Current.CancellationToken);
 
         byOld.Should().BeEmpty("the chunk no longer carries the old value");
         byNew.Should().ContainSingle();
@@ -273,19 +267,17 @@ public class KeywordMetadataFilterTests : IDisposable
     public async Task DeleteByFilter_RemovesOnlyMatchingChunks_AndReportsTheCount()
     {
         var service = CreateService();
-        await service.IndexChunksAsync(
-        [
+        await service.IndexChunksAsync([
             Chunk("doc-a1", "provisioning", new Dictionary<string, object> { ["tenant"] = "a" }),
             Chunk("doc-a2", "provisioning", new Dictionary<string, object> { ["tenant"] = "a" }),
             Chunk("doc-b1", "provisioning", new Dictionary<string, object> { ["tenant"] = "b" })
-        ]);
+        ], TestContext.Current.CancellationToken);
 
-        var removed = await service.DeleteByFilterAsync(
-            new Dictionary<string, object> { ["tenant"] = "a" });
+        var removed = await service.DeleteByFilterAsync(new Dictionary<string, object> { ["tenant"] = "a" }, TestContext.Current.CancellationToken);
 
         removed.Should().Be(2);
 
-        var survivors = await service.SearchAsync("provisioning");
+        var survivors = await service.SearchAsync("provisioning", cancellationToken: TestContext.Current.CancellationToken);
         survivors.Select(r => r.Chunk.DocumentId).Should().BeEquivalentTo(["doc-b1"]);
     }
 
@@ -298,19 +290,19 @@ public class KeywordMetadataFilterTests : IDisposable
     {
         var service = CreateService();
         var chunk = Chunk("doc-a1", "provisioning", new Dictionary<string, object> { ["tenant"] = "a" });
-        await service.IndexChunksAsync([chunk]);
+        await service.IndexChunksAsync([chunk], TestContext.Current.CancellationToken);
 
-        await service.DeleteByFilterAsync(new Dictionary<string, object> { ["tenant"] = "a" });
+        await service.DeleteByFilterAsync(new Dictionary<string, object> { ["tenant"] = "a" }, TestContext.Current.CancellationToken);
 
         // Re-index under the same chunk id with no metadata. A leftover metadata row would let it
         // inherit the deleted chunk's scope; a new id would sidestep the question entirely.
         chunk.Metadata = null;
-        await service.IndexChunksAsync([chunk]);
+        await service.IndexChunksAsync([chunk], TestContext.Current.CancellationToken);
 
         var byOldTenant = await service.SearchAsync("provisioning", new KeywordSearchOptions
         {
             MetadataFilter = new Dictionary<string, object> { ["tenant"] = "a" }
-        });
+        }, TestContext.Current.CancellationToken);
 
         byOldTenant.Should().BeEmpty();
     }
@@ -319,16 +311,14 @@ public class KeywordMetadataFilterTests : IDisposable
     public async Task DeleteByFilter_MatchingNothing_ReturnsZeroAndKeepsTheIndex()
     {
         var service = CreateService();
-        await service.IndexChunksAsync(
-        [
+        await service.IndexChunksAsync([
             Chunk("doc-b1", "provisioning", new Dictionary<string, object> { ["tenant"] = "b" })
-        ]);
+        ], TestContext.Current.CancellationToken);
 
-        var removed = await service.DeleteByFilterAsync(
-            new Dictionary<string, object> { ["tenant"] = "absent" });
+        var removed = await service.DeleteByFilterAsync(new Dictionary<string, object> { ["tenant"] = "absent" }, TestContext.Current.CancellationToken);
 
         removed.Should().Be(0);
-        (await service.SearchAsync("provisioning")).Should().ContainSingle();
+        (await service.SearchAsync("provisioning", cancellationToken: TestContext.Current.CancellationToken)).Should().ContainSingle();
     }
 
     // === Fail loud rather than widen ===
@@ -355,7 +345,7 @@ public class KeywordMetadataFilterTests : IDisposable
     public async Task Filter_WithUnfilterableValue_ThrowsRatherThanWidening()
     {
         var service = CreateService();
-        await service.IndexChunksAsync([Chunk("doc-a", "provisioning")]);
+        await service.IndexChunksAsync([Chunk("doc-a", "provisioning")], TestContext.Current.CancellationToken);
 
         var search = () => service.SearchAsync("provisioning", new KeywordSearchOptions
         {

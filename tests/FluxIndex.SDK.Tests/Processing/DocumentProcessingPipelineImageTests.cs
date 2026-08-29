@@ -93,7 +93,7 @@ public class DocumentProcessingPipelineImageTests : IDisposable
         };
 
         // Act
-        var result = await _pipeline.ProcessAsync(testFile, options);
+        var result = await _pipeline.ProcessAsync(testFile, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.Success);
@@ -126,7 +126,7 @@ public class DocumentProcessingPipelineImageTests : IDisposable
         };
 
         // Act
-        var result = await _pipeline.ProcessAsync(testFile, options);
+        var result = await _pipeline.ProcessAsync(testFile, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.Success);
@@ -161,7 +161,7 @@ public class DocumentProcessingPipelineImageTests : IDisposable
         };
 
         // Act
-        var result = await _pipeline.ProcessAsync(testFile, options);
+        var result = await _pipeline.ProcessAsync(testFile, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.Success);
@@ -200,7 +200,7 @@ public class DocumentProcessingPipelineImageTests : IDisposable
         };
 
         // Act
-        var result = await _pipeline.ProcessAsync(testFile, options);
+        var result = await _pipeline.ProcessAsync(testFile, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.Success);
@@ -233,7 +233,7 @@ public class DocumentProcessingPipelineImageTests : IDisposable
         };
 
         // Act
-        var result = await _pipeline.ProcessAsync(testFile, options);
+        var result = await _pipeline.ProcessAsync(testFile, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.Success);
@@ -265,7 +265,7 @@ public class DocumentProcessingPipelineImageTests : IDisposable
         };
 
         // Act
-        var result = await _pipeline.ProcessAsync(testFile, options);
+        var result = await _pipeline.ProcessAsync(testFile, options, TestContext.Current.CancellationToken);
 
         // Assert - Pipeline should still succeed, just with empty images
         Assert.True(result.Success);

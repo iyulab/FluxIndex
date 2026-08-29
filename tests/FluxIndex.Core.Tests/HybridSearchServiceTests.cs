@@ -94,7 +94,7 @@ public class HybridSearchServiceTests
         _mockKeywordSearchService.SearchAsync(query, Arg.Any<KeywordSearchOptions>(), Arg.Any<CancellationToken>()).Returns(sparseResults);
 
         // Act
-        var results = await _service.SearchAsync(query, options);
+        var results = await _service.SearchAsync(query, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(results);
@@ -116,7 +116,7 @@ public class HybridSearchServiceTests
         var options = new HybridSearchOptions();
 
         // Act
-        var results = await _service.SearchAsync(query, options);
+        var results = await _service.SearchAsync(query, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(results);
@@ -137,7 +137,7 @@ public class HybridSearchServiceTests
         _mockKeywordSearchService.SearchAsync(query, Arg.Any<KeywordSearchOptions>(), Arg.Any<CancellationToken>()).Returns(new List<KeywordSearchResult>());
 
         // Act
-        var results = await _service.SearchAsync(query, null);
+        var results = await _service.SearchAsync(query, null, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(results);
@@ -166,7 +166,7 @@ public class HybridSearchServiceTests
         _mockKeywordSearchService.SearchAsync(query, Arg.Any<KeywordSearchOptions>(), Arg.Any<CancellationToken>()).Returns(new List<KeywordSearchResult>());
 
         // Act
-        await _service.SearchAsync(query, options);
+        await _service.SearchAsync(query, options, TestContext.Current.CancellationToken);
 
         // Assert
         await _mockEmbeddingService.Received(1).GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>());

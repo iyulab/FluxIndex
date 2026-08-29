@@ -28,7 +28,7 @@ public class EntityGraphSchemaIntegrationTests : IAsyncLifetime
         _container = new PostgreSqlBuilder("pgvector/pgvector:pg16").Build();
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await _container.StartAsync();
 
@@ -58,13 +58,14 @@ public class EntityGraphSchemaIntegrationTests : IAsyncLifetime
         await _context.Database.EnsureCreatedAsync();
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         if (_context is not null)
             await _context.DisposeAsync();
         if (_dataSource is not null)
             await _dataSource.DisposeAsync();
         await _container.DisposeAsync();
+        GC.SuppressFinalize(this);
     }
 
     [Fact]
@@ -73,8 +74,8 @@ public class EntityGraphSchemaIntegrationTests : IAsyncLifetime
         var indexDefs = new List<string>();
         await using var cmd = _dataSource.CreateCommand(
             "SELECT indexdef FROM pg_indexes WHERE indexdef ILIKE '%embedding%'");
-        await using var reader = await cmd.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
+        await using var reader = await cmd.ExecuteReaderAsync(TestContext.Current.CancellationToken);
+        while (await reader.ReadAsync(TestContext.Current.CancellationToken))
             indexDefs.Add(reader.GetString(0));
 
         indexDefs.Should().NotBeEmpty("EnsureCreated must create the entity/community vector indexes");
@@ -88,7 +89,7 @@ public class EntityGraphSchemaIntegrationTests : IAsyncLifetime
     {
         await using var cmd = _dataSource.CreateCommand(
             "SELECT count(*) FROM pg_indexes WHERE indexdef LIKE '%USING hnsw%'");
-        var count = (long)(await cmd.ExecuteScalarAsync())!;
+        var count = (long)(await cmd.ExecuteScalarAsync(TestContext.Current.CancellationToken))!;
 
         count.Should().Be(2, "entity embeddings and community embeddings each get an HNSW index");
     }

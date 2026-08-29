@@ -169,7 +169,7 @@ public class OpenAICompatibleEmbeddingServiceTests : IDisposable
         _sut = new OpenAICompatibleEmbeddingService(
             "http://localhost", null, "model", 3, _logger);
 
-        var result = await _sut.GenerateEmbeddingAsync("");
+        var result = await _sut.GenerateEmbeddingAsync("", TestContext.Current.CancellationToken);
 
         result.Should().BeEmpty();
     }
@@ -180,7 +180,7 @@ public class OpenAICompatibleEmbeddingServiceTests : IDisposable
         _sut = new OpenAICompatibleEmbeddingService(
             "http://localhost", null, "model", 3, _logger);
 
-        var result = await _sut.GenerateEmbeddingAsync("   ");
+        var result = await _sut.GenerateEmbeddingAsync("   ", TestContext.Current.CancellationToken);
 
         result.Should().BeEmpty();
     }
@@ -205,7 +205,7 @@ public class OpenAICompatibleEmbeddingServiceTests : IDisposable
 
         _sut = new OpenAICompatibleEmbeddingService(httpClient, "model", 3, _logger);
 
-        var result = await _sut.GenerateEmbeddingAsync("Hello world");
+        var result = await _sut.GenerateEmbeddingAsync("Hello world", TestContext.Current.CancellationToken);
 
         result.Should().BeEquivalentTo(expectedEmbedding);
     }
@@ -227,7 +227,7 @@ public class OpenAICompatibleEmbeddingServiceTests : IDisposable
 
         _sut = new OpenAICompatibleEmbeddingService(httpClient, "my-model", 1, _logger);
 
-        await _sut.GenerateEmbeddingAsync("test input");
+        await _sut.GenerateEmbeddingAsync("test input", TestContext.Current.CancellationToken);
 
         handler.LastRequest.Should().NotBeNull();
         handler.LastRequestUri!.ToString().Should().Contain("embeddings");
@@ -313,7 +313,7 @@ public class OpenAICompatibleEmbeddingServiceTests : IDisposable
 
         _sut = new OpenAICompatibleEmbeddingService(httpClient, "model", 2, _logger);
 
-        var results = (await _sut.GenerateEmbeddingsBatchAsync(["text1", "text2", "text3"])).ToList();
+        var results = (await _sut.GenerateEmbeddingsBatchAsync(["text1", "text2", "text3"], TestContext.Current.CancellationToken)).ToList();
 
         results.Should().HaveCount(3);
         results[0].Should().BeEquivalentTo(new[] { 1f, 2f });
@@ -378,7 +378,7 @@ public class OpenAICompatibleEmbeddingServiceTests : IDisposable
 
         _sut = new OpenAICompatibleEmbeddingService(httpClient, "model", 1, _logger);
 
-        await _sut.GenerateEmbeddingAsync("test");
+        await _sut.GenerateEmbeddingAsync("test", TestContext.Current.CancellationToken);
 
         handler.LastRequest!.Headers.Authorization.Should().NotBeNull();
         handler.LastRequest.Headers.Authorization!.Scheme.Should().Be("Bearer");

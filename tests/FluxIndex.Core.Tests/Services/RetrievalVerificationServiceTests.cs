@@ -163,7 +163,7 @@ public class RetrievalVerificationServiceTests
         var chunks = CreateTestChunks(5, "machine learning");
 
         // Act
-        var result = await service.VerifyAsync(query, chunks);
+        var result = await service.VerifyAsync(query, chunks, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -181,7 +181,7 @@ public class RetrievalVerificationServiceTests
         var chunks = new List<DocumentChunk>();
 
         // Act
-        var result = await service.VerifyAsync(query, chunks);
+        var result = await service.VerifyAsync(query, chunks, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -200,7 +200,7 @@ public class RetrievalVerificationServiceTests
         var options = new VerificationOptions { MaxDocumentsToVerify = 3 };
 
         // Act
-        var result = await service.VerifyAsync(query, chunks, options);
+        var result = await service.VerifyAsync(query, chunks, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -231,7 +231,7 @@ public class RetrievalVerificationServiceTests
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>(() =>
-            service.VerifyAsync(null!, chunks));
+            service.VerifyAsync(null!, chunks, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -242,7 +242,7 @@ public class RetrievalVerificationServiceTests
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>(() =>
-            service.VerifyAsync("query", null!));
+            service.VerifyAsync("query", null!, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -254,7 +254,7 @@ public class RetrievalVerificationServiceTests
         var chunks = CreateTestChunks(3);
 
         // Act
-        var result = await service.VerifyAsync(query, chunks);
+        var result = await service.VerifyAsync(query, chunks, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.ProcessingTime.TotalMilliseconds > 0);
@@ -269,7 +269,7 @@ public class RetrievalVerificationServiceTests
         var chunks = CreateTestChunks(5, "machine learning");
 
         // Act
-        var result = await service.VerifyAsync(query, chunks);
+        var result = await service.VerifyAsync(query, chunks, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result.Statistics);
@@ -289,7 +289,7 @@ public class RetrievalVerificationServiceTests
         var document = CreateTestChunks(1, "machine learning").First();
 
         // Act
-        var grade = await service.GradeDocumentAsync(query, document);
+        var grade = await service.GradeDocumentAsync(query, document, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(grade);
@@ -317,7 +317,7 @@ public class RetrievalVerificationServiceTests
         _mockEmbeddingService.GenerateEmbeddingAsync(Arg.Is<string>(s => s.Contains("Machine learning algorithms")), Arg.Any<CancellationToken>()).Returns(new float[] { 0.9f, 0.1f, 0.1f, 0.1f, 0.1f });
 
         // Act
-        var grade = await service.GradeDocumentAsync(query, document);
+        var grade = await service.GradeDocumentAsync(query, document, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(grade);
@@ -333,7 +333,7 @@ public class RetrievalVerificationServiceTests
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>(() =>
-            service.GradeDocumentAsync(null!, document));
+            service.GradeDocumentAsync(null!, document, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -344,7 +344,7 @@ public class RetrievalVerificationServiceTests
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>(() =>
-            service.GradeDocumentAsync("query", null!));
+            service.GradeDocumentAsync("query", null!, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -363,7 +363,7 @@ public class RetrievalVerificationServiceTests
         };
 
         // Act
-        var grade = await service.GradeDocumentAsync(query, document);
+        var grade = await service.GradeDocumentAsync(query, document, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(grade);
@@ -384,7 +384,7 @@ public class RetrievalVerificationServiceTests
         var documents = CreateTestChunks(5, "machine learning");
 
         // Act
-        var assessment = await service.DetectHallucinationRisksAsync(query, documents);
+        var assessment = await service.DetectHallucinationRisksAsync(query, documents, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(assessment);
@@ -400,7 +400,7 @@ public class RetrievalVerificationServiceTests
         var documents = new List<DocumentChunk>();
 
         // Act
-        var assessment = await service.DetectHallucinationRisksAsync(query, documents);
+        var assessment = await service.DetectHallucinationRisksAsync(query, documents, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(assessment);
@@ -418,7 +418,7 @@ public class RetrievalVerificationServiceTests
         var documents = CreateTestChunks(2, "completely unrelated topic");
 
         // Act
-        var assessment = await service.DetectHallucinationRisksAsync(query, documents);
+        var assessment = await service.DetectHallucinationRisksAsync(query, documents, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(assessment);
@@ -438,7 +438,7 @@ public class RetrievalVerificationServiceTests
         var documents = CreateTestChunks(3, "machine learning");
 
         // Act
-        var result = await service.CheckFactualGroundingAsync(query, documents);
+        var result = await service.CheckFactualGroundingAsync(query, documents, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -459,7 +459,7 @@ public class RetrievalVerificationServiceTests
         };
 
         // Act
-        var result = await service.CheckFactualGroundingAsync(query, documents, claims);
+        var result = await service.CheckFactualGroundingAsync(query, documents, claims, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -475,7 +475,7 @@ public class RetrievalVerificationServiceTests
         var documents = new List<DocumentChunk>();
 
         // Act
-        var result = await service.CheckFactualGroundingAsync(query, documents);
+        var result = await service.CheckFactualGroundingAsync(query, documents, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -557,7 +557,7 @@ public class RetrievalVerificationServiceTests
         var documents = CreateTestChunks(3, "machine learning");
 
         // Act
-        var result = await service.CalculateClaimSupportAsync(claims, documents);
+        var result = await service.CalculateClaimSupportAsync(claims, documents, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -577,7 +577,7 @@ public class RetrievalVerificationServiceTests
         var documents = CreateTestChunks(5, "machine learning algorithms data");
 
         // Act
-        var result = await service.CalculateClaimSupportAsync(claims, documents);
+        var result = await service.CalculateClaimSupportAsync(claims, documents, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -593,7 +593,7 @@ public class RetrievalVerificationServiceTests
         var documents = CreateTestChunks(3);
 
         // Act
-        var result = await service.CalculateClaimSupportAsync(claims, documents);
+        var result = await service.CalculateClaimSupportAsync(claims, documents, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -609,7 +609,7 @@ public class RetrievalVerificationServiceTests
         var documents = new List<DocumentChunk>();
 
         // Act
-        var result = await service.CalculateClaimSupportAsync(claims, documents);
+        var result = await service.CalculateClaimSupportAsync(claims, documents, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -734,7 +734,7 @@ public class RetrievalVerificationServiceTests
         var documents = CreateTestChunks(5, "machine learning");
 
         // Act - Full workflow
-        var verifyResult = await service.VerifyAsync(query, documents);
+        var verifyResult = await service.VerifyAsync(query, documents, cancellationToken: TestContext.Current.CancellationToken);
         var filtered = service.FilterByConfidence(verifyResult.GradedDocuments, 0.3).ToList();
         var recommendation = service.GetRecommendation(verifyResult);
 
@@ -760,7 +760,7 @@ public class RetrievalVerificationServiceTests
         _mockCompletionService.CompleteJsonAsync(Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns("{\"risk_level\": \"low\", \"factors\": []}");
 
         // Act
-        var result = await service.VerifyAsync(query, documents);
+        var result = await service.VerifyAsync(query, documents, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -779,7 +779,7 @@ public class RetrievalVerificationServiceTests
         var documents = CreateTestChunks(3);
 
         // Act
-        var result = await service.VerifyAsync(query, documents);
+        var result = await service.VerifyAsync(query, documents, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -794,7 +794,7 @@ public class RetrievalVerificationServiceTests
         var documents = CreateTestChunks(3);
 
         // Act
-        var result = await service.VerifyAsync(query, documents);
+        var result = await service.VerifyAsync(query, documents, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -814,7 +814,7 @@ public class RetrievalVerificationServiceTests
         };
 
         // Act
-        var grade = await service.GradeDocumentAsync(query, document);
+        var grade = await service.GradeDocumentAsync(query, document, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(grade);
@@ -830,7 +830,7 @@ public class RetrievalVerificationServiceTests
         var documents = CreateTestChunks(1);
 
         // Act
-        var assessment = await service.DetectHallucinationRisksAsync(query, documents);
+        var assessment = await service.DetectHallucinationRisksAsync(query, documents, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(assessment);
@@ -869,7 +869,7 @@ public class RetrievalVerificationServiceTests
         var documents = CreateTestChunks(2);
 
         // Act
-        var result = await service.VerifyAsync(query, documents);
+        var result = await service.VerifyAsync(query, documents, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);

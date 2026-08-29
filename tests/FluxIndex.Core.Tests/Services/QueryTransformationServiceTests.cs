@@ -42,7 +42,7 @@ public class QueryTransformationServiceTests
         var query = "What is machine learning?";
 
         // Act
-        var result = await service.GenerateHypotheticalDocumentAsync(query);
+        var result = await service.GenerateHypotheticalDocumentAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -61,7 +61,7 @@ public class QueryTransformationServiceTests
         _mockCompletionService.CompleteAsync(Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns(hypotheticalDoc);
 
         // Act
-        var result = await service.GenerateHypotheticalDocumentAsync(query);
+        var result = await service.GenerateHypotheticalDocumentAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -81,7 +81,7 @@ public class QueryTransformationServiceTests
         var query = "machine learning algorithms";
 
         // Act
-        var result = await service.GenerateMultipleQueriesAsync(query, count: 3);
+        var result = await service.GenerateMultipleQueriesAsync(query, count: 3, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -99,7 +99,7 @@ public class QueryTransformationServiceTests
         _mockCompletionService.CompleteAsync(Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns(llmResponse);
 
         // Act
-        var result = await service.GenerateMultipleQueriesAsync(query, count: 3);
+        var result = await service.GenerateMultipleQueriesAsync(query, count: 3, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -118,7 +118,7 @@ public class QueryTransformationServiceTests
         var query = "What is AI?";
 
         // Act
-        var result = await service.DecomposeQueryAsync(query);
+        var result = await service.DecomposeQueryAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -133,7 +133,7 @@ public class QueryTransformationServiceTests
         var query = "Compare machine learning and deep learning approaches";
 
         // Act
-        var result = await service.DecomposeQueryAsync(query);
+        var result = await service.DecomposeQueryAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -152,7 +152,7 @@ public class QueryTransformationServiceTests
         var query = "What is the population of Japan?";
 
         // Act
-        var result = await service.AnalyzeQueryIntentAsync(query);
+        var result = await service.AnalyzeQueryIntentAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);

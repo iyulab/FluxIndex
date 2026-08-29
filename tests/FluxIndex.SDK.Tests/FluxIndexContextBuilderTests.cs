@@ -171,9 +171,7 @@ public class FluxIndexContextBuilderTests : IDisposable
         try
         {
             // Act
-            var docId = await context.Indexer.IndexDocumentAsync(
-                "Test document for LMSupply embedding integration",
-                "test-doc-001");
+            var docId = await context.Indexer.IndexDocumentAsync("Test document for LMSupply embedding integration", "test-doc-001", cancellationToken: TestContext.Current.CancellationToken);
 
             // Assert
             Assert.NotNull(docId);

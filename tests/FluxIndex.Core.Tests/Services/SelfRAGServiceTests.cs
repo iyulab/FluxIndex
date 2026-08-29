@@ -195,7 +195,7 @@ public class SelfRAGServiceTests
         var query = "What is machine learning?";
 
         // Act
-        var result = await service.SearchAsync(query);
+        var result = await service.SearchAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -217,7 +217,7 @@ public class SelfRAGServiceTests
                 Arg.Any<CancellationToken>()).Returns(CreateDefaultHybridResults(3));
 
         // Act
-        var result = await service.SearchAsync(query, options);
+        var result = await service.SearchAsync(query, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -231,7 +231,7 @@ public class SelfRAGServiceTests
         var service = CreateService(withLlm: false);
 
         // Act
-        var result = await service.SearchAsync(string.Empty);
+        var result = await service.SearchAsync(string.Empty, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert - Empty query is handled gracefully, may return empty results or process
         Assert.NotNull(result);
@@ -245,7 +245,7 @@ public class SelfRAGServiceTests
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>(() =>
-            service.SearchAsync(null!));
+            service.SearchAsync(null!, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -269,7 +269,7 @@ public class SelfRAGServiceTests
         var query = "machine learning algorithms";
 
         // Act
-        var result = await service.SearchAsync(query);
+        var result = await service.SearchAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -289,7 +289,7 @@ public class SelfRAGServiceTests
         var query = "test query";
 
         // Act
-        var result = await service.SearchAsync(query);
+        var result = await service.SearchAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.FinalQualityScore >= 0 && result.FinalQualityScore <= 1);
@@ -309,7 +309,7 @@ public class SelfRAGServiceTests
         var query = "test";
 
         // Act
-        var result = await service.SearchAsync(query, options);
+        var result = await service.SearchAsync(query, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -335,7 +335,7 @@ public class SelfRAGServiceTests
         var service = CreateService(withLlm: false);
 
         // Act
-        var result = await service.SearchAsync("test query", options);
+        var result = await service.SearchAsync("test query", options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -356,7 +356,7 @@ public class SelfRAGServiceTests
         var documents = CreateTestDocuments(5, "machine learning");
 
         // Act
-        var assessment = await service.AssessResultQualityAsync(query, documents);
+        var assessment = await service.AssessResultQualityAsync(query, documents, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(assessment);
@@ -374,7 +374,7 @@ public class SelfRAGServiceTests
         var documents = new List<Document>();
 
         // Act
-        var assessment = await service.AssessResultQualityAsync(query, documents);
+        var assessment = await service.AssessResultQualityAsync(query, documents, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(assessment);
@@ -392,7 +392,7 @@ public class SelfRAGServiceTests
         var documents = CreateTestDocuments(10, "machine learning");
 
         // Act
-        var assessment = await service.AssessResultQualityAsync(query, documents);
+        var assessment = await service.AssessResultQualityAsync(query, documents, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(assessment);
@@ -408,7 +408,7 @@ public class SelfRAGServiceTests
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>(() =>
-            service.AssessResultQualityAsync(null!, documents));
+            service.AssessResultQualityAsync(null!, documents, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -419,7 +419,7 @@ public class SelfRAGServiceTests
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>(() =>
-            service.AssessResultQualityAsync("query", null!));
+            service.AssessResultQualityAsync("query", null!, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -431,7 +431,7 @@ public class SelfRAGServiceTests
         var documents = CreateTestDocuments(1, "unrelated content");
 
         // Act
-        var assessment = await service.AssessResultQualityAsync(query, documents);
+        var assessment = await service.AssessResultQualityAsync(query, documents, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(assessment);
@@ -447,7 +447,7 @@ public class SelfRAGServiceTests
         var documents = CreateTestDocuments(2);
 
         // Act
-        var assessment = await service.AssessResultQualityAsync(query, documents);
+        var assessment = await service.AssessResultQualityAsync(query, documents, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(assessment);
@@ -475,7 +475,7 @@ public class SelfRAGServiceTests
         };
 
         // Act
-        var assessment = await service.AssessResultQualityAsync(query, documents);
+        var assessment = await service.AssessResultQualityAsync(query, documents, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(assessment);
@@ -507,7 +507,7 @@ public class SelfRAGServiceTests
         };
 
         // Act
-        var suggestions = await service.SuggestQueryRefinementsAsync(originalQuery, assessment);
+        var suggestions = await service.SuggestQueryRefinementsAsync(originalQuery, assessment, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(suggestions);
@@ -533,7 +533,7 @@ public class SelfRAGServiceTests
         };
 
         // Act
-        var suggestions = await service.SuggestQueryRefinementsAsync(originalQuery, assessment);
+        var suggestions = await service.SuggestQueryRefinementsAsync(originalQuery, assessment, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(suggestions);
@@ -557,7 +557,7 @@ public class SelfRAGServiceTests
         };
 
         // Act
-        var suggestions = await service.SuggestQueryRefinementsAsync(originalQuery, assessment);
+        var suggestions = await service.SuggestQueryRefinementsAsync(originalQuery, assessment, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(suggestions);
@@ -577,7 +577,7 @@ public class SelfRAGServiceTests
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>(() =>
-            service.SuggestQueryRefinementsAsync(null!, assessment));
+            service.SuggestQueryRefinementsAsync(null!, assessment, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -588,7 +588,7 @@ public class SelfRAGServiceTests
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>(() =>
-            service.SuggestQueryRefinementsAsync("query", null!));
+            service.SuggestQueryRefinementsAsync("query", null!, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -608,7 +608,7 @@ public class SelfRAGServiceTests
         };
 
         // Act
-        var suggestions = await service.SuggestQueryRefinementsAsync(originalQuery, assessment);
+        var suggestions = await service.SuggestQueryRefinementsAsync(originalQuery, assessment, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(suggestions);
@@ -631,7 +631,7 @@ public class SelfRAGServiceTests
         };
 
         // Act
-        var suggestions = await service.SuggestQueryRefinementsAsync("test", assessment);
+        var suggestions = await service.SuggestQueryRefinementsAsync("test", assessment, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(suggestions);
@@ -657,9 +657,9 @@ public class SelfRAGServiceTests
         var query = "machine learning applications";
 
         // Act - Full Self-RAG workflow
-        var searchResult = await service.SearchAsync(query);
-        var assessment = await service.AssessResultQualityAsync(query, searchResult.FinalResults);
-        var suggestions = await service.SuggestQueryRefinementsAsync(query, assessment);
+        var searchResult = await service.SearchAsync(query, cancellationToken: TestContext.Current.CancellationToken);
+        var assessment = await service.AssessResultQualityAsync(query, searchResult.FinalResults, TestContext.Current.CancellationToken);
+        var suggestions = await service.SuggestQueryRefinementsAsync(query, assessment, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(searchResult);
@@ -681,7 +681,7 @@ public class SelfRAGServiceTests
         var service = CreateService(withLlm: false);
 
         // Act
-        var result = await service.SearchAsync("test query", options);
+        var result = await service.SearchAsync("test query", options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -701,7 +701,7 @@ public class SelfRAGServiceTests
         var service = CreateService(withLlm: false);
 
         // Act
-        var result = await service.SearchAsync("test query", options);
+        var result = await service.SearchAsync("test query", options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -769,7 +769,7 @@ public class SelfRAGServiceTests
         };
 
         // Act
-        var result = await service.SearchAsync("test", searchOptions);
+        var result = await service.SearchAsync("test", searchOptions, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -788,7 +788,7 @@ public class SelfRAGServiceTests
         var query = string.Join(" ", Enumerable.Repeat("machine learning", 100));
 
         // Act
-        var result = await service.SearchAsync(query);
+        var result = await service.SearchAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -802,7 +802,7 @@ public class SelfRAGServiceTests
         var query = "machine learning? with special!@#$% chars";
 
         // Act
-        var result = await service.SearchAsync(query);
+        var result = await service.SearchAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -815,7 +815,7 @@ public class SelfRAGServiceTests
         var service = CreateService(withLlm: false);
 
         // Act
-        var result = await service.SearchAsync("   ");
+        var result = await service.SearchAsync("   ", cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert - Whitespace query is handled gracefully
         Assert.NotNull(result);
@@ -833,7 +833,7 @@ public class SelfRAGServiceTests
         var service = CreateService(withLlm: false);
 
         // Act
-        var result = await service.SearchAsync("test query");
+        var result = await service.SearchAsync("test query", cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -848,7 +848,7 @@ public class SelfRAGServiceTests
         var documents = CreateTestDocuments(1);
 
         // Act
-        var assessment = await service.AssessResultQualityAsync("test", documents);
+        var assessment = await service.AssessResultQualityAsync("test", documents, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(assessment);
@@ -867,7 +867,7 @@ public class SelfRAGServiceTests
         };
 
         // Act
-        var result = await service.SearchAsync("test query", searchOptions);
+        var result = await service.SearchAsync("test query", searchOptions, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -886,7 +886,7 @@ public class SelfRAGServiceTests
         var documents = CreateTestDocuments(5);
 
         // Act
-        var assessment = await service.AssessResultQualityAsync("test query", documents);
+        var assessment = await service.AssessResultQualityAsync("test query", documents, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(assessment.CredibilityScore >= 0 && assessment.CredibilityScore <= 1);
@@ -900,7 +900,7 @@ public class SelfRAGServiceTests
         var documents = CreateTestDocuments(5);
 
         // Act
-        var assessment = await service.AssessResultQualityAsync("test query", documents);
+        var assessment = await service.AssessResultQualityAsync("test query", documents, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(assessment.FreshnessScore >= 0 && assessment.FreshnessScore <= 1);
@@ -914,7 +914,7 @@ public class SelfRAGServiceTests
         var documents = CreateTestDocuments(3);
 
         // Act
-        var assessment = await service.AssessResultQualityAsync("machine learning", documents);
+        var assessment = await service.AssessResultQualityAsync("machine learning", documents, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(assessment.Rationale);

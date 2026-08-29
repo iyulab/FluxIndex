@@ -109,7 +109,7 @@ public class OpenAICompatibleRerankerServiceTests : IDisposable
         _sut = new OpenAICompatibleRerankerService(
             "http://localhost", null, "model", _logger);
 
-        var result = await _sut.RerankAsync("query", []);
+        var result = await _sut.RerankAsync("query", [], cancellationToken: TestContext.Current.CancellationToken);
 
         result.Should().BeEmpty();
     }
@@ -142,7 +142,7 @@ public class OpenAICompatibleRerankerServiceTests : IDisposable
             new() { Id = "3", Content = "Third document", InitialRank = 3 }
         };
 
-        var results = (await _sut.RerankAsync("test query", candidates)).ToList();
+        var results = (await _sut.RerankAsync("test query", candidates, cancellationToken: TestContext.Current.CancellationToken)).ToList();
 
         results.Should().HaveCount(3);
         // Ordered by descending relevance score
@@ -177,7 +177,7 @@ public class OpenAICompatibleRerankerServiceTests : IDisposable
             new() { Id = "1", Content = "doc content", InitialRank = 1 }
         };
 
-        await _sut.RerankAsync("search query", candidates);
+        await _sut.RerankAsync("search query", candidates, cancellationToken: TestContext.Current.CancellationToken);
 
         handler.LastRequest.Should().NotBeNull();
         handler.LastRequestUri!.ToString().Should().Contain("rerank");
@@ -287,7 +287,7 @@ public class OpenAICompatibleRerankerServiceTests : IDisposable
         };
 
         var options = new RerankOptions { ScoreThreshold = 0.5f };
-        var results = (await _sut.RerankAsync("query", candidates, options)).ToList();
+        var results = (await _sut.RerankAsync("query", candidates, options, TestContext.Current.CancellationToken)).ToList();
 
         results.Should().HaveCount(1);
         results[0].Id.Should().Be("1");

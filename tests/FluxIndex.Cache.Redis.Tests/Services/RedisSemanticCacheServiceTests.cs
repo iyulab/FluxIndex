@@ -13,7 +13,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace FluxIndex.Cache.Redis.Tests.Services;
 
@@ -94,7 +93,7 @@ public class RedisSemanticCacheServiceTests : RedisTestBase
         return vector;
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task GetCachedResultAsync_WithNewQuery_ReturnsNull()
     {
         // Skip test if Docker is not available
@@ -104,13 +103,13 @@ public class RedisSemanticCacheServiceTests : RedisTestBase
         var query = "새로운 테스트 쿼리";
 
         // Act
-        var result = await _cacheService!.GetCachedResultAsync(query);
+        var result = await _cacheService!.GetCachedResultAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Null(result);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task SetAndGetCachedResult_ShouldWorkCorrectly()
     {
         // Skip test if Docker is not available
@@ -130,8 +129,8 @@ public class RedisSemanticCacheServiceTests : RedisTestBase
         };
 
         // Act
-        await _cacheService!.SetCachedResultAsync(query, results);
-        var cachedResult = await _cacheService.GetCachedResultAsync(query, 0.9f);
+        await _cacheService!.SetCachedResultAsync(query, results, cancellationToken: TestContext.Current.CancellationToken);
+        var cachedResult = await _cacheService.GetCachedResultAsync(query, 0.9f, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(cachedResult);
@@ -140,21 +139,21 @@ public class RedisSemanticCacheServiceTests : RedisTestBase
         Assert.True(cachedResult.SimilarityScore >= 0.9f);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task GetCacheStatisticsAsync_ShouldReturnStatistics()
     {
         // Skip test if Docker is not available
         SkipIfDockerNotAvailable();
 
         // Arrange & Act
-        var statistics = await _cacheService!.GetCacheStatisticsAsync();
+        var statistics = await _cacheService!.GetCacheStatisticsAsync(TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(statistics);
         Assert.True(statistics.TotalEntries >= 0);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task InvalidateCacheAsync_ShouldWork()
     {
         // Skip test if Docker is not available
@@ -164,23 +163,23 @@ public class RedisSemanticCacheServiceTests : RedisTestBase
         var query = "무효화 테스트 쿼리";
         var results = new List<CacheDocumentChunk> { new CacheDocumentChunk { Content = "내용", ChunkIndex = 0, DocumentId = "doc1", Id = "chunk1" } };
 
-        await _cacheService!.SetCachedResultAsync(query, results);
+        await _cacheService!.SetCachedResultAsync(query, results, cancellationToken: TestContext.Current.CancellationToken);
 
         // Act
-        await _cacheService.InvalidateCacheAsync("무효화*");
-        var cachedResult = await _cacheService.GetCachedResultAsync(query);
+        await _cacheService.InvalidateCacheAsync("무효화*", TestContext.Current.CancellationToken);
+        var cachedResult = await _cacheService.GetCachedResultAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Null(cachedResult);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task CompactCacheAsync_ShouldNotThrow()
     {
         // Skip test if Docker is not available
         SkipIfDockerNotAvailable();
 
         // Act & Assert - Should not throw
-        await _cacheService!.CompactCacheAsync();
+        await _cacheService!.CompactCacheAsync(TestContext.Current.CancellationToken);
     }
 }

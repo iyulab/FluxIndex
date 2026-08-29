@@ -224,7 +224,7 @@ public static class CITestHelper
         {
             System.Console.WriteLine($"Skipping SQLite-vec test - Enable Flag: {Environment.GetEnvironmentVariable("ENABLE_SQLITEVEC_TESTS")}");
         }
-        Skip.If(shouldSkip, SqliteVecNotAvailableSkipMessage);
+        Assert.SkipWhen(shouldSkip, SqliteVecNotAvailableSkipMessage);
     }
 
     /// <summary>
@@ -237,6 +237,6 @@ public static class CITestHelper
         {
             System.Console.WriteLine($"Skipping performance test - Enable Flag: {Environment.GetEnvironmentVariable("ENABLE_PERFORMANCE_TESTS")}");
         }
-        Skip.If(shouldSkip, PerformanceTestSkipMessage);
+        Assert.SkipWhen(shouldSkip, PerformanceTestSkipMessage);
     }
 }

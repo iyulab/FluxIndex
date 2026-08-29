@@ -16,7 +16,6 @@
     <!-- Testcontainers for integration tests -->
     <PackageReference Include="Testcontainers.Neo4j" />
     <PackageReference Include="Testcontainers.Qdrant" />
-    <PackageReference Include="Xunit.SkippableFact" />
   </ItemGroup>
 
   <ItemGroup>

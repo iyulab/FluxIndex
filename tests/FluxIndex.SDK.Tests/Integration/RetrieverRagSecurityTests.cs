@@ -23,7 +23,7 @@ public class RetrieverRagSecurityTests
             .SearchAsync(Arg.Any<float[]>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
             .Returns([CleanChunk(), PoisonedChunk()]);
 
-        var response = await retriever.SearchAsync("find documents", new SearchOptions());
+        var response = await retriever.SearchAsync("find documents", new SearchOptions(), TestContext.Current.CancellationToken);
 
         // No pipeline registered — this is the pre-existing behavior, unchanged.
         Assert.Equal(2, response.Results.Count);
@@ -37,7 +37,7 @@ public class RetrieverRagSecurityTests
             .SearchAsync(Arg.Any<float[]>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
             .Returns([CleanChunk(), PoisonedChunk()]);
 
-        var response = await retriever.SearchAsync("find documents", new SearchOptions());
+        var response = await retriever.SearchAsync("find documents", new SearchOptions(), TestContext.Current.CancellationToken);
 
         Assert.Single(response.Results);
         Assert.Equal("chunk-clean", response.Results[0].Id);
@@ -51,7 +51,7 @@ public class RetrieverRagSecurityTests
             .SearchAsync(Arg.Any<float[]>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
             .Returns([CleanChunk()]);
 
-        var response = await retriever.SearchAsync("find documents", new SearchOptions());
+        var response = await retriever.SearchAsync("find documents", new SearchOptions(), TestContext.Current.CancellationToken);
 
         // Confirms the pipeline isn't a blanket filter — a genuinely clean result set survives
         // it fully, not just "fewer results because a pipeline is present".

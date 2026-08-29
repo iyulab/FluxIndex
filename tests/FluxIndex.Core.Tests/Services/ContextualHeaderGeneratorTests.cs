@@ -37,7 +37,7 @@ public class ContextualHeaderGeneratorTests
         var chunk = CreateTestChunk(contextDependency: 0.3);
 
         // Act
-        var header = await generator.GenerateAsync(chunk);
+        var header = await generator.GenerateAsync(chunk, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotEmpty(header);
@@ -53,7 +53,7 @@ public class ContextualHeaderGeneratorTests
         var chunk = CreateTestChunk(contextDependency: 0.9);
 
         // Act
-        var header = await generator.GenerateAsync(chunk);
+        var header = await generator.GenerateAsync(chunk, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotEmpty(header);
@@ -72,7 +72,7 @@ public class ContextualHeaderGeneratorTests
         var chunk = CreateTestChunk(contextDependency: 0.9);
 
         // Act
-        var header = await generator.GenerateAsync(chunk);
+        var header = await generator.GenerateAsync(chunk, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Contains("authentication", header);
@@ -88,7 +88,7 @@ public class ContextualHeaderGeneratorTests
         var chunk = CreateTestChunk(startPage: 42);
 
         // Act
-        var header = await generator.GenerateAsync(chunk);
+        var header = await generator.GenerateAsync(chunk, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Contains("[p.42]", header);
@@ -102,7 +102,7 @@ public class ContextualHeaderGeneratorTests
         var chunk = CreateTestChunk(startPage: 10, endPage: 12);
 
         // Act
-        var header = await generator.GenerateAsync(chunk);
+        var header = await generator.GenerateAsync(chunk, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Contains("[pp.10-12]", header);
@@ -126,7 +126,7 @@ public class ContextualHeaderGeneratorTests
         };
 
         // Act
-        var headers = await generator.GenerateBatchAsync(chunks);
+        var headers = await generator.GenerateBatchAsync(chunks, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(3, headers.Count);
@@ -156,7 +156,7 @@ public class ContextualHeaderGeneratorTests
         var chunk = CreateTestChunk();
 
         // Act
-        var header = await generator.GenerateAsync(chunk);
+        var header = await generator.GenerateAsync(chunk, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(header.Length <= 33); // 30 + "..."
@@ -179,7 +179,7 @@ public class ContextualHeaderGeneratorTests
         var chunk = CreateTestChunk();
 
         // Act
-        var header = await generator.GenerateAsync(chunk);
+        var header = await generator.GenerateAsync(chunk, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.DoesNotContain("Chapter 1", header);

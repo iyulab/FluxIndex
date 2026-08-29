@@ -33,13 +33,12 @@ public class KeywordLegPersistenceTests : IDisposable
     public async Task ADocumentIndexedByOneProcess_IsKeywordSearchableByTheNext()
     {
         var writer = NewProcess();
-        await writer.Indexer.IndexDocumentAsync(
-            "Distributed transaction boundaries in the provisioning layer", "doc-1");
+        await writer.Indexer.IndexDocumentAsync("Distributed transaction boundaries in the provisioning layer", "doc-1", cancellationToken: TestContext.Current.CancellationToken);
         (writer as IDisposable)?.Dispose();
 
         var reader = NewProcess();
         var keywordSearch = reader.ServiceProvider.GetRequiredService<IKeywordSearchService>();
-        var results = await keywordSearch.SearchAsync("provisioning");
+        var results = await keywordSearch.SearchAsync("provisioning", cancellationToken: TestContext.Current.CancellationToken);
         (reader as IDisposable)?.Dispose();
 
         results.Should().ContainSingle(r => r.Chunk.DocumentId == "doc-1",
@@ -50,12 +49,12 @@ public class KeywordLegPersistenceTests : IDisposable
     public async Task KoreanDocumentIndexedByOneProcess_IsKeywordSearchableByTheNext()
     {
         var writer = NewProcess();
-        await writer.Indexer.IndexDocumentAsync("착수계약서 검토 결과를 정리한 문서", "doc-ko");
+        await writer.Indexer.IndexDocumentAsync("착수계약서 검토 결과를 정리한 문서", "doc-ko", cancellationToken: TestContext.Current.CancellationToken);
         (writer as IDisposable)?.Dispose();
 
         var reader = NewProcess();
         var keywordSearch = reader.ServiceProvider.GetRequiredService<IKeywordSearchService>();
-        var results = await keywordSearch.SearchAsync("착수계약서");
+        var results = await keywordSearch.SearchAsync("착수계약서", cancellationToken: TestContext.Current.CancellationToken);
         (reader as IDisposable)?.Dispose();
 
         results.Should().ContainSingle(r => r.Chunk.DocumentId == "doc-ko",
@@ -100,14 +99,14 @@ public class KeywordLegPersistenceTests : IDisposable
     public async Task ADocumentDeletedByOneProcess_StaysDeletedForTheNext()
     {
         var writer = NewProcess();
-        await writer.Indexer.IndexDocumentAsync("retention policy for archived records", "doc-1");
-        await writer.Indexer.IndexDocumentAsync("retention of build artifacts", "doc-2");
-        await writer.Indexer.DeleteByDocumentIdAsync("doc-1");
+        await writer.Indexer.IndexDocumentAsync("retention policy for archived records", "doc-1", cancellationToken: TestContext.Current.CancellationToken);
+        await writer.Indexer.IndexDocumentAsync("retention of build artifacts", "doc-2", cancellationToken: TestContext.Current.CancellationToken);
+        await writer.Indexer.DeleteByDocumentIdAsync("doc-1", TestContext.Current.CancellationToken);
         (writer as IDisposable)?.Dispose();
 
         var reader = NewProcess();
         var keywordSearch = reader.ServiceProvider.GetRequiredService<IKeywordSearchService>();
-        var results = await keywordSearch.SearchAsync("retention");
+        var results = await keywordSearch.SearchAsync("retention", cancellationToken: TestContext.Current.CancellationToken);
         (reader as IDisposable)?.Dispose();
 
         results.Should().NotContain(r => r.Chunk.DocumentId == "doc-1",

@@ -3,7 +3,6 @@ using System;
 using System.Threading.Tasks;
 using Testcontainers.Redis;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace FluxIndex.Cache.Redis.Tests.Infrastructure;
 
@@ -22,7 +21,7 @@ public abstract class RedisTestBase : IAsyncLifetime
         Output = output;
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         DockerAvailable = await DockerTestHelper.IsDockerAvailableAsync();
 
@@ -52,7 +51,7 @@ public abstract class RedisTestBase : IAsyncLifetime
         }
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         if (DockerAvailable && RedisContainer != null)
         {
@@ -66,6 +65,7 @@ public abstract class RedisTestBase : IAsyncLifetime
                 Output.WriteLine($"Error disposing Redis container: {ex.Message}");
             }
         }
+        GC.SuppressFinalize(this);
     }
 
     /// <summary>
@@ -83,6 +83,6 @@ public abstract class RedisTestBase : IAsyncLifetime
     /// </summary>
     protected void SkipIfDockerNotAvailable()
     {
-        Skip.If(!DockerAvailable, DockerTestHelper.DockerNotAvailableSkipMessage);
+        Assert.SkipWhen(!DockerAvailable, DockerTestHelper.DockerNotAvailableSkipMessage);
     }
 }

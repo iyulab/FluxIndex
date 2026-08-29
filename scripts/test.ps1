@@ -57,11 +57,13 @@ Write-Output ""
 # Everything else must pass. Excluding by category rather than by project also covers the case an
 # allowlist cannot express: a service-dependent test living inside an otherwise self-contained
 # project.
-$categoryFilter = "Category!=Integration&Category!=Performance"
-
-$testArgs = @("test", "--verbosity", $Verbosity, "--configuration", $Configuration, "--filter", $categoryFilter, "--blame-hang", "--blame-hang-timeout", "5m")
+# --filter-not-trait (repeated, ANDs together) is MTP's equivalent of VSTest's compound
+# "Category!=A&Category!=B" filter syntax. --hangdump/--hangdump-timeout is the equivalent of
+# --blame-hang. --coverlet/--coverlet-output-format is coverlet.MTP's equivalent of
+# --collect:"XPlat Code Coverage" (coverlet.collector) — BD-20260829-xunit-v3-pilot.
+$testArgs = @("test", "--verbosity", $Verbosity, "--configuration", $Configuration, "--filter-not-trait", "Category=Integration", "--filter-not-trait", "Category=Performance", "--hangdump", "--hangdump-timeout", "5m")
 if ($NoBuild)  { $testArgs += "--no-build" }
-if ($Coverage) { $testArgs += "--collect:XPlat Code Coverage" }
+if ($Coverage) { $testArgs += "--coverlet"; $testArgs += "--coverlet-output-format"; $testArgs += "cobertura" }
 
 $allResults = @()
 $totalPassed = 0
@@ -76,18 +78,22 @@ foreach ($project in $testProjects) {
     Write-ColorOutput "`nRunning tests for: $projectName" "Yellow"
     Write-Output "-----------------------------------"
 
-    $testOutput = & dotnet @testArgs $project 2>&1
+    # MTP's dotnet-test driver wants the project via --project, not as a trailing positional
+    # (VSTest accepted the latter; MTP native mode rejects it: "Specifying a project for
+    # 'dotnet test' should be via '--project'.") — BD-20260829-xunit-v3-pilot.
+    $testOutput = & dotnet @testArgs --project $project 2>&1
     $exitCode = $LASTEXITCODE
     $testOutput | ForEach-Object { Write-Output $_ }
 
+    # MTP's summary is multi-line ("Test run summary: Passed!" followed by indented
+    # "total:"/"failed:"/"succeeded:"/"skipped:" lines), unlike VSTest's single combined line —
+    # BD-20260829-xunit-v3-pilot.
     $passed = 0; $failed = 0; $skipped = 0; $total = 0
     foreach ($line in $testOutput) {
-        if ($line -match "(?:Passed|Failed)!\s+-\s+Failed:\s+(\d+),\s+Passed:\s+(\d+),\s+Skipped:\s+(\d+),\s+Total:\s+(\d+)") {
-            $failed = [int]$matches[1]
-            $passed = [int]$matches[2]
-            $skipped = [int]$matches[3]
-            $total = [int]$matches[4]
-        }
+        if ($line -match "^\s*total:\s+(\d+)\s*$")     { $total = [int]$matches[1] }
+        elseif ($line -match "^\s*failed:\s+(\d+)\s*$")    { $failed = [int]$matches[1] }
+        elseif ($line -match "^\s*succeeded:\s+(\d+)\s*$") { $passed = [int]$matches[1] }
+        elseif ($line -match "^\s*skipped:\s+(\d+)\s*$")   { $skipped = [int]$matches[1] }
     }
 
     $allResults += [PSCustomObject]@{
@@ -101,14 +107,18 @@ foreach ($project in $testProjects) {
     $totalSkipped += $skipped
     $totalTests += $total
 
-    if ($exitCode -eq 0) {
-        if ($total -eq 0) {
-            # Not a failure: a project whose tests are all Integration/Performance filters down to
-            # nothing, and `dotnet test` exits 0. Reported so it is visible rather than inferred.
-            Write-ColorOutput "Result: no tests matched the category filter" "Yellow"
-        } else {
-            Write-ColorOutput "Result: PASSED ($passed/$total)" "Green"
-        }
+    # MTP treats an assembly whose filter matches zero tests as a non-success exit (observed:
+    # exit code 8, not VSTest's 0) — xunit/xunit#3077, confirmed via this repo's own
+    # Cache.Redis.Tests/Storage.Neo4j.Tests (entirely Docker/Integration-tagged, filtered to
+    # nothing by this script's Category!=Integration exclusion). $total is the ground truth for
+    # "did anything actually fail" regardless of exit code here — BD-20260829-xunit-v3-pilot.
+    if ($total -eq 0) {
+        # Not a failure: a project whose tests are all Integration/Performance filters down to
+        # nothing. Reported so it is visible rather than inferred.
+        Write-ColorOutput "Result: no tests matched the category filter" "Yellow"
+    }
+    elseif ($exitCode -eq 0) {
+        Write-ColorOutput "Result: PASSED ($passed/$total)" "Green"
     }
     else {
         Write-ColorOutput "Result: FAILED ($failed failed, $passed passed, $skipped skipped)" "Red"

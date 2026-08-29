@@ -79,7 +79,7 @@ public class LMSupplyEmbeddingServiceTests : IAsyncDisposable
         _mockModel.EmbedAsync("test text", Arg.Any<CancellationToken>())
             .Returns(new ValueTask<float[]>(s_singleEmbedding));
 
-        var result = await _service.GenerateEmbeddingAsync("test text");
+        var result = await _service.GenerateEmbeddingAsync("test text", TestContext.Current.CancellationToken);
 
         result.Should().BeEquivalentTo(s_singleEmbedding);
         await _mockModel.Received(1).EmbedAsync("test text", Arg.Any<CancellationToken>());
@@ -88,7 +88,7 @@ public class LMSupplyEmbeddingServiceTests : IAsyncDisposable
     [Fact]
     public async Task GenerateEmbeddingAsync_EmptyText_ReturnsEmptyArray()
     {
-        var result = await _service.GenerateEmbeddingAsync("");
+        var result = await _service.GenerateEmbeddingAsync("", TestContext.Current.CancellationToken);
 
         result.Should().BeEmpty();
         await _mockModel.DidNotReceive().EmbedAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
@@ -97,7 +97,7 @@ public class LMSupplyEmbeddingServiceTests : IAsyncDisposable
     [Fact]
     public async Task GenerateEmbeddingAsync_WhitespaceText_ReturnsEmptyArray()
     {
-        var result = await _service.GenerateEmbeddingAsync("   ");
+        var result = await _service.GenerateEmbeddingAsync("   ", TestContext.Current.CancellationToken);
 
         result.Should().BeEmpty();
         await _mockModel.DidNotReceive().EmbedAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
@@ -106,7 +106,7 @@ public class LMSupplyEmbeddingServiceTests : IAsyncDisposable
     [Fact]
     public async Task GenerateEmbeddingAsync_NullText_ReturnsEmptyArray()
     {
-        var result = await _service.GenerateEmbeddingAsync(null!);
+        var result = await _service.GenerateEmbeddingAsync(null!, TestContext.Current.CancellationToken);
 
         result.Should().BeEmpty();
     }
@@ -122,7 +122,7 @@ public class LMSupplyEmbeddingServiceTests : IAsyncDisposable
         _mockModel.EmbedAsync(Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>())
             .Returns(new ValueTask<float[][]>(s_batchEmbeddings));
 
-        var result = (await _service.GenerateEmbeddingsBatchAsync(texts)).ToList();
+        var result = (await _service.GenerateEmbeddingsBatchAsync(texts, TestContext.Current.CancellationToken)).ToList();
 
         result.Should().HaveCount(3);
         result[0].Should().BeEquivalentTo(s_embed1);
@@ -135,7 +135,7 @@ public class LMSupplyEmbeddingServiceTests : IAsyncDisposable
         _mockModel.EmbedAsync(Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>())
             .Returns(new ValueTask<float[][]>(Array.Empty<float[]>()));
 
-        var result = (await _service.GenerateEmbeddingsBatchAsync(Enumerable.Empty<string>())).ToList();
+        var result = (await _service.GenerateEmbeddingsBatchAsync(Enumerable.Empty<string>(), TestContext.Current.CancellationToken)).ToList();
 
         result.Should().BeEmpty();
     }
@@ -146,7 +146,7 @@ public class LMSupplyEmbeddingServiceTests : IAsyncDisposable
         _mockModel.EmbedAsync(Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>())
             .Returns(new ValueTask<float[][]>(s_singleBatchResult));
 
-        var result = (await _service.GenerateEmbeddingsBatchAsync(s_singleTextArg)).ToList();
+        var result = (await _service.GenerateEmbeddingsBatchAsync(s_singleTextArg, TestContext.Current.CancellationToken)).ToList();
 
         result.Should().HaveCount(1);
     }
@@ -165,7 +165,7 @@ public class LMSupplyEmbeddingServiceTests : IAsyncDisposable
     public async Task CountTokensAsync_EnglishText_ReturnsEstimate()
     {
         // "hello world" = 11 chars, ~11/4 + 2 = 4 tokens
-        var count = await _service.CountTokensAsync("hello world");
+        var count = await _service.CountTokensAsync("hello world", TestContext.Current.CancellationToken);
 
         count.Should().BeGreaterThan(0);
     }
@@ -173,7 +173,7 @@ public class LMSupplyEmbeddingServiceTests : IAsyncDisposable
     [Fact]
     public async Task CountTokensAsync_EmptyText_ReturnsZero()
     {
-        var count = await _service.CountTokensAsync("");
+        var count = await _service.CountTokensAsync("", TestContext.Current.CancellationToken);
 
         count.Should().Be(0);
     }
@@ -182,7 +182,7 @@ public class LMSupplyEmbeddingServiceTests : IAsyncDisposable
     public async Task CountTokensAsync_CjkText_CountsPerCharacter()
     {
         // Korean: 5 Hangul chars -> 5 CJK tokens + 2 special = 7
-        var count = await _service.CountTokensAsync("안녕하세요");
+        var count = await _service.CountTokensAsync("안녕하세요", TestContext.Current.CancellationToken);
 
         count.Should().Be(7);
     }
@@ -191,7 +191,7 @@ public class LMSupplyEmbeddingServiceTests : IAsyncDisposable
     public async Task CountTokensAsync_MixedText_HandlesBoth()
     {
         // "Hello 세계" = 6 non-CJK chars + 2 CJK chars
-        var count = await _service.CountTokensAsync("Hello 세계");
+        var count = await _service.CountTokensAsync("Hello 세계", TestContext.Current.CancellationToken);
 
         count.Should().BeGreaterThan(0);
     }

@@ -30,7 +30,7 @@ public class PostgreSQLVectorStoreIntegrationTests : IAsyncLifetime
             .Build();
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await _container.StartAsync();
 
@@ -55,13 +55,14 @@ public class PostgreSQLVectorStoreIntegrationTests : IAsyncLifetime
         _store = new PostgreSQLVectorStore(_context, NullLogger<PostgreSQLVectorStore>.Instance, options);
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         if (_context is not null)
             await _context.DisposeAsync();
         if (_dataSource is not null)
             await _dataSource.DisposeAsync();
         await _container.DisposeAsync();
+        GC.SuppressFinalize(this);
     }
 
     private static Core.Domain.Entities.DocumentChunk CreateChunk(
@@ -87,14 +88,14 @@ public class PostgreSQLVectorStoreIntegrationTests : IAsyncLifetime
         var query = new float[] { 1f, 0f, 0f, 0f };
 
         for (var i = 0; i < 10; i++)
-            await _store.StoreAsync(CreateChunk($"other-{i}", [1f, 0.01f * i, 0f, 0f], "ws-other", i));
+            await _store.StoreAsync(CreateChunk($"other-{i}", [1f, 0.01f * i, 0f, 0f], "ws-other", i), TestContext.Current.CancellationToken);
 
-        await _store.StoreAsync(CreateChunk("target", [0f, 1f, 0f, 0f], "ws-target"));
+        await _store.StoreAsync(CreateChunk("target", [0f, 1f, 0f, 0f], "ws-target"), TestContext.Current.CancellationToken);
 
         var filters = new Dictionary<string, object> { ["workspace_id"] = "ws-target" };
 
         // Act
-        var results = (await _store.SearchAsync(query, topK: 1, minScore: -1f, filters: filters)).ToList();
+        var results = (await _store.SearchAsync(query, topK: 1, minScore: -1f, filters: filters, cancellationToken: TestContext.Current.CancellationToken)).ToList();
 
         // Assert
         results.Should().ContainSingle();
@@ -111,10 +112,10 @@ public class PostgreSQLVectorStoreIntegrationTests : IAsyncLifetime
         var query = new float[] { 1f, 0f, 0f, 0f };
 
         for (var i = 0; i < 10; i++)
-            await _store.StoreAsync(CreateChunk($"other-{i}", [1f, 0.01f * i, 0f, 0f], "ws-other", i));
+            await _store.StoreAsync(CreateChunk($"other-{i}", [1f, 0.01f * i, 0f, 0f], "ws-other", i), TestContext.Current.CancellationToken);
 
-        await _store.StoreAsync(CreateChunk("target-a", [0f, 1f, 0f, 0f], "ws-a"));
-        await _store.StoreAsync(CreateChunk("target-b", [0f, 0.9f, 0.1f, 0f], "ws-b"));
+        await _store.StoreAsync(CreateChunk("target-a", [0f, 1f, 0f, 0f], "ws-a"), TestContext.Current.CancellationToken);
+        await _store.StoreAsync(CreateChunk("target-b", [0f, 0.9f, 0.1f, 0f], "ws-b"), TestContext.Current.CancellationToken);
 
         var filters = new Dictionary<string, object>
         {
@@ -122,7 +123,7 @@ public class PostgreSQLVectorStoreIntegrationTests : IAsyncLifetime
         };
 
         // Act
-        var results = (await _store.SearchAsync(query, topK: 2, minScore: -1f, filters: filters)).ToList();
+        var results = (await _store.SearchAsync(query, topK: 2, minScore: -1f, filters: filters, cancellationToken: TestContext.Current.CancellationToken)).ToList();
 
         // Assert
         results.Should().HaveCount(2);
@@ -132,23 +133,23 @@ public class PostgreSQLVectorStoreIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task DeleteByFilterAsync_CollectionFilter_RemovesAnyMatchingValue()
     {
-        await _store.StoreAsync(CreateChunk("doc-a", [1f, 0f, 0f, 0f], "ws-a"));
-        await _store.StoreAsync(CreateChunk("doc-b", [0f, 1f, 0f, 0f], "ws-b"));
-        await _store.StoreAsync(CreateChunk("doc-c", [0f, 0f, 1f, 0f], "ws-c"));
+        await _store.StoreAsync(CreateChunk("doc-a", [1f, 0f, 0f, 0f], "ws-a"), TestContext.Current.CancellationToken);
+        await _store.StoreAsync(CreateChunk("doc-b", [0f, 1f, 0f, 0f], "ws-b"), TestContext.Current.CancellationToken);
+        await _store.StoreAsync(CreateChunk("doc-c", [0f, 0f, 1f, 0f], "ws-c"), TestContext.Current.CancellationToken);
 
         var deleted = await _store.DeleteByFilterAsync(new Dictionary<string, object>
         {
             ["workspace_id"] = new[] { "ws-a", "ws-c" }
-        });
+        }, TestContext.Current.CancellationToken);
 
         deleted.Should().Be(2);
-        (await _store.CountAsync()).Should().Be(1);
+        (await _store.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
     }
 
     [Fact]
     public async Task SearchAsync_UnsupportedFilterValue_ThrowsInsteadOfSilentZeroResults()
     {
-        await _store.StoreAsync(CreateChunk("doc-1", [1f, 0f, 0f, 0f], "ws-1"));
+        await _store.StoreAsync(CreateChunk("doc-1", [1f, 0f, 0f, 0f], "ws-1"), TestContext.Current.CancellationToken);
 
         var act = () => _store.SearchAsync(
             [1f, 0f, 0f, 0f], topK: 5, minScore: -1f,
@@ -160,11 +161,9 @@ public class PostgreSQLVectorStoreIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task SearchAsync_MetadataFilter_NoMatch_ReturnsEmpty()
     {
-        await _store.StoreAsync(CreateChunk("doc-1", [1f, 0f, 0f, 0f], "ws-1"));
+        await _store.StoreAsync(CreateChunk("doc-1", [1f, 0f, 0f, 0f], "ws-1"), TestContext.Current.CancellationToken);
 
-        var results = await _store.SearchAsync(
-            [1f, 0f, 0f, 0f], topK: 5, minScore: -1f,
-            filters: new Dictionary<string, object> { ["workspace_id"] = "ws-absent" });
+        var results = await _store.SearchAsync([1f, 0f, 0f, 0f], topK: 5, minScore: -1f, filters: new Dictionary<string, object> { ["workspace_id"] = "ws-absent" }, cancellationToken: TestContext.Current.CancellationToken);
 
         results.Should().BeEmpty();
     }
@@ -172,10 +171,10 @@ public class PostgreSQLVectorStoreIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task SearchAsync_NoFilter_StillReturnsResults()
     {
-        await _store.StoreAsync(CreateChunk("doc-1", [1f, 0f, 0f, 0f], "ws-1"));
-        await _store.StoreAsync(CreateChunk("doc-2", [0f, 1f, 0f, 0f], "ws-2"));
+        await _store.StoreAsync(CreateChunk("doc-1", [1f, 0f, 0f, 0f], "ws-1"), TestContext.Current.CancellationToken);
+        await _store.StoreAsync(CreateChunk("doc-2", [0f, 1f, 0f, 0f], "ws-2"), TestContext.Current.CancellationToken);
 
-        var results = (await _store.SearchAsync([1f, 0f, 0f, 0f], topK: 2, minScore: -1f)).ToList();
+        var results = (await _store.SearchAsync([1f, 0f, 0f, 0f], topK: 2, minScore: -1f, cancellationToken: TestContext.Current.CancellationToken)).ToList();
 
         results.Should().HaveCount(2);
         results[0].DocumentId.Should().Be("doc-1");
@@ -185,19 +184,18 @@ public class PostgreSQLVectorStoreIntegrationTests : IAsyncLifetime
     public async Task DeleteByFilterAsync_RemovesOnlyMatchingTenant()
     {
         // Arrange — 2 tenants share the collection; deleting one must not touch the other.
-        await _store.StoreAsync(CreateChunk("other-1", [1f, 0f, 0f, 0f], "ws-other", 0));
-        await _store.StoreAsync(CreateChunk("other-2", [0f, 1f, 0f, 0f], "ws-other", 1));
-        await _store.StoreAsync(CreateChunk("target", [0f, 0f, 1f, 0f], "ws-target"));
+        await _store.StoreAsync(CreateChunk("other-1", [1f, 0f, 0f, 0f], "ws-other", 0), TestContext.Current.CancellationToken);
+        await _store.StoreAsync(CreateChunk("other-2", [0f, 1f, 0f, 0f], "ws-other", 1), TestContext.Current.CancellationToken);
+        await _store.StoreAsync(CreateChunk("target", [0f, 0f, 1f, 0f], "ws-target"), TestContext.Current.CancellationToken);
 
         // Act
-        var deleted = await _store.DeleteByFilterAsync(
-            new Dictionary<string, object> { ["workspace_id"] = "ws-other" });
+        var deleted = await _store.DeleteByFilterAsync(new Dictionary<string, object> { ["workspace_id"] = "ws-other" }, TestContext.Current.CancellationToken);
 
         // Assert
         deleted.Should().Be(2);
-        (await _store.CountAsync()).Should().Be(1);
+        (await _store.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
 
-        var remaining = (await _store.SearchAsync([0f, 0f, 1f, 0f], topK: 5, minScore: -1f)).ToList();
+        var remaining = (await _store.SearchAsync([0f, 0f, 1f, 0f], topK: 5, minScore: -1f, cancellationToken: TestContext.Current.CancellationToken)).ToList();
         remaining.Should().ContainSingle();
         remaining[0].DocumentId.Should().Be("target");
     }
@@ -205,13 +203,12 @@ public class PostgreSQLVectorStoreIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task DeleteByFilterAsync_NoMatch_ReturnsZero()
     {
-        await _store.StoreAsync(CreateChunk("doc-1", [1f, 0f, 0f, 0f], "ws-1"));
+        await _store.StoreAsync(CreateChunk("doc-1", [1f, 0f, 0f, 0f], "ws-1"), TestContext.Current.CancellationToken);
 
-        var deleted = await _store.DeleteByFilterAsync(
-            new Dictionary<string, object> { ["workspace_id"] = "ws-absent" });
+        var deleted = await _store.DeleteByFilterAsync(new Dictionary<string, object> { ["workspace_id"] = "ws-absent" }, TestContext.Current.CancellationToken);
 
         deleted.Should().Be(0);
-        (await _store.CountAsync()).Should().Be(1);
+        (await _store.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
     }
 
     [Fact]
@@ -229,11 +226,9 @@ public class PostgreSQLVectorStoreIntegrationTests : IAsyncLifetime
         // compares normalized JSON text — both must agree or pushdown matches get dropped.
         var chunk = CreateChunk("doc-flag", [1f, 0f, 0f, 0f], "ws-1");
         chunk.Metadata!["published"] = true;
-        await _store.StoreAsync(chunk);
+        await _store.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
-        var results = (await _store.SearchAsync(
-            [1f, 0f, 0f, 0f], topK: 5, minScore: -1f,
-            filters: new Dictionary<string, object> { ["published"] = true })).ToList();
+        var results = (await _store.SearchAsync([1f, 0f, 0f, 0f], topK: 5, minScore: -1f, filters: new Dictionary<string, object> { ["published"] = true }, cancellationToken: TestContext.Current.CancellationToken)).ToList();
 
         results.Should().ContainSingle();
         results[0].DocumentId.Should().Be("doc-flag");

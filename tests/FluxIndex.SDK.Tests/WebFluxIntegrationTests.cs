@@ -58,7 +58,7 @@ public class WebFluxIntegrationTests : IDisposable
         {
             Url = "https://example.test/page",
             StatusCode = 200
-        });
+        }, TestContext.Current.CancellationToken);
 
         Assert.NotNull(received);
         Assert.Equal("https://example.test/page", received!.Url);

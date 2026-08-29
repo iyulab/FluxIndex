@@ -10,7 +10,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace FluxIndex.Storage.SQLite.Tests;
 
@@ -194,7 +193,7 @@ public class SQLiteVecPerformanceTests : IDisposable
         _legacyProvider = services2.BuildServiceProvider();
     }
 
-    [SkippableTheory]
+    [Theory]
     [InlineData(100, 10)]
     [InlineData(500, 20)]
     [InlineData(1000, 50)]
@@ -216,8 +215,8 @@ public class SQLiteVecPerformanceTests : IDisposable
         var queryVector = CreateTestEmbedding();
 
         // 데이터 로드
-        await sqliteVecStore.StoreBatchAsync(testChunks);
-        await legacyStore.StoreBatchAsync(testChunks);
+        await sqliteVecStore.StoreBatchAsync(testChunks, TestContext.Current.CancellationToken);
+        await legacyStore.StoreBatchAsync(testChunks, TestContext.Current.CancellationToken);
 
         var searchIterations = Math.Max(10, 100 / (datasetSize / 100)); // 데이터 크기에 따라 반복 횟수 조정
 
@@ -226,7 +225,7 @@ public class SQLiteVecPerformanceTests : IDisposable
         for (int i = 0; i < searchIterations; i++)
         {
             var stopwatch = Stopwatch.StartNew();
-            var results = await sqliteVecStore.SearchAsync(queryVector, topK, 0.0f);
+            var results = await sqliteVecStore.SearchAsync(queryVector, topK, 0.0f, cancellationToken: TestContext.Current.CancellationToken);
             stopwatch.Stop();
             sqliteVecTimes.Add(stopwatch.ElapsedMilliseconds);
 
@@ -238,7 +237,7 @@ public class SQLiteVecPerformanceTests : IDisposable
         for (int i = 0; i < searchIterations; i++)
         {
             var stopwatch = Stopwatch.StartNew();
-            var results = await legacyStore.SearchAsync(queryVector, topK, 0.0f);
+            var results = await legacyStore.SearchAsync(queryVector, topK, 0.0f, cancellationToken: TestContext.Current.CancellationToken);
             stopwatch.Stop();
             legacyTimes.Add(stopwatch.ElapsedMilliseconds);
 
@@ -266,7 +265,7 @@ public class SQLiteVecPerformanceTests : IDisposable
         }
     }
 
-    [SkippableTheory]
+    [Theory]
     [InlineData(100)]
     [InlineData(500)]
     [InlineData(1000)]
@@ -287,11 +286,11 @@ public class SQLiteVecPerformanceTests : IDisposable
 
         // Act - SQLite-vec 배치 삽입
         var stopwatch = Stopwatch.StartNew();
-        var sqliteVecIds = await sqliteVecStore.StoreBatchAsync(testChunks);
+        var sqliteVecIds = await sqliteVecStore.StoreBatchAsync(testChunks, TestContext.Current.CancellationToken);
         var sqliteVecTime = stopwatch.ElapsedMilliseconds;
 
         stopwatch.Restart();
-        var legacyIds = await legacyStore.StoreBatchAsync(testChunks);
+        var legacyIds = await legacyStore.StoreBatchAsync(testChunks, TestContext.Current.CancellationToken);
         var legacyTime = stopwatch.ElapsedMilliseconds;
 
         // Assert
@@ -310,7 +309,7 @@ public class SQLiteVecPerformanceTests : IDisposable
         legacyThroughput.Should().BeGreaterThan(10);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task MemoryUsageTest_LargeDataset_ShouldNotExceedLimits()
     {
         // Skip if sqlite-vec is not available (CI environment)
@@ -327,13 +326,13 @@ public class SQLiteVecPerformanceTests : IDisposable
         var initialMemory = GC.GetTotalMemory(true);
 
         // Act
-        var ids = await sqliteVecStore.StoreBatchAsync(testChunks);
+        var ids = await sqliteVecStore.StoreBatchAsync(testChunks, TestContext.Current.CancellationToken);
 
         // 검색 수행
         for (int i = 0; i < 50; i++)
         {
             var queryVector = CreateTestEmbedding();
-            var results = await sqliteVecStore.SearchAsync(queryVector, topK: 20);
+            var results = await sqliteVecStore.SearchAsync(queryVector, topK: 20, cancellationToken: TestContext.Current.CancellationToken);
             results.Should().HaveCountLessThanOrEqualTo(20);
         }
 
@@ -351,7 +350,7 @@ public class SQLiteVecPerformanceTests : IDisposable
         memoryIncrease.Should().BeLessThan(500); // 500MB 이하
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ConcurrentAccessPerformance_MultipleClients_ShouldMaintainThroughput()
     {
         // Skip if sqlite-vec is not available (CI environment)
@@ -366,7 +365,7 @@ public class SQLiteVecPerformanceTests : IDisposable
 
         // 기본 데이터 로드
         var baseChunks = GenerateTestDataset(1000);
-        await sqliteVecStore.StoreBatchAsync(baseChunks);
+        await sqliteVecStore.StoreBatchAsync(baseChunks, TestContext.Current.CancellationToken);
 
         const int concurrentClients = 5;
         const int operationsPerClient = 20;

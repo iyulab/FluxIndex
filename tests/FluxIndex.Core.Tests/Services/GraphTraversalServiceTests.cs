@@ -29,7 +29,7 @@ public class GraphTraversalServiceTests
         SetupEmptyRelationships();
 
         // Act
-        var result = await _service.TraverseBfsAsync("chunk1");
+        var result = await _service.TraverseBfsAsync("chunk1", cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -51,7 +51,7 @@ public class GraphTraversalServiceTests
         SetupRelationships(relationships);
 
         // Act
-        var result = await _service.TraverseBfsAsync("chunk1");
+        var result = await _service.TraverseBfsAsync("chunk1", cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(3, result.VisitedChunkIds.Count);
@@ -81,7 +81,7 @@ public class GraphTraversalServiceTests
         var options = new GraphTraversalOptions { MaxDepth = 2 };
 
         // Act
-        var result = await _service.TraverseBfsAsync("chunk1", options);
+        var result = await _service.TraverseBfsAsync("chunk1", options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(3, result.VisitedChunkIds.Count); // chunk1 (depth 0) + chunk2 (depth 1) + chunk3 (depth 2)
@@ -111,7 +111,7 @@ public class GraphTraversalServiceTests
         };
 
         // Act
-        var result = await _service.TraverseBfsAsync("chunk1", options);
+        var result = await _service.TraverseBfsAsync("chunk1", options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(2, result.VisitedChunkIds.Count);
@@ -145,7 +145,7 @@ public class GraphTraversalServiceTests
         var options = new GraphTraversalOptions { MaxNodes = 3 };
 
         // Act
-        var result = await _service.TraverseBfsAsync("center", options);
+        var result = await _service.TraverseBfsAsync("center", options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.VisitedChunkIds.Count <= 3);
@@ -169,7 +169,7 @@ public class GraphTraversalServiceTests
         SetupRelationships(relationships);
 
         // Act
-        var result = await _service.TraverseDfsAsync("chunk1");
+        var result = await _service.TraverseDfsAsync("chunk1", cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(3, result.VisitedChunkIds.Count);
@@ -193,7 +193,7 @@ public class GraphTraversalServiceTests
         var options = new GraphTraversalOptions { MaxDepth = 1 };
 
         // Act
-        var result = await _service.TraverseDfsAsync("a", options);
+        var result = await _service.TraverseDfsAsync("a", options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(2, result.VisitedChunkIds.Count);
@@ -217,7 +217,7 @@ public class GraphTraversalServiceTests
         SetupRelationships(relationships);
 
         // Act
-        var result = await _service.FindShortestPathAsync("chunk1", "chunk2");
+        var result = await _service.FindShortestPathAsync("chunk1", "chunk2", cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.PathExists);
@@ -233,7 +233,7 @@ public class GraphTraversalServiceTests
         SetupEmptyRelationships();
 
         // Act
-        var result = await _service.FindShortestPathAsync("chunk1", "chunk2");
+        var result = await _service.FindShortestPathAsync("chunk1", "chunk2", cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.False(result.PathExists);
@@ -247,7 +247,7 @@ public class GraphTraversalServiceTests
         SetupEmptyRelationships();
 
         // Act
-        var result = await _service.FindShortestPathAsync("chunk1", "chunk1");
+        var result = await _service.FindShortestPathAsync("chunk1", "chunk1", cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.PathExists);
@@ -276,7 +276,7 @@ public class GraphTraversalServiceTests
         SetupRelationships(relationships);
 
         // Act
-        var result = await _service.FindShortestPathAsync("chunk1", "chunk4");
+        var result = await _service.FindShortestPathAsync("chunk1", "chunk4", cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.PathExists);
@@ -308,7 +308,7 @@ public class GraphTraversalServiceTests
         SetupRelationships(relationships);
 
         // Act
-        var result = await _service.GetNeighborhoodAsync("chunk1", 1);
+        var result = await _service.GetNeighborhoodAsync("chunk1", 1, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(2, result.TotalNeighbors); // chunk2 and chunk3
@@ -330,7 +330,7 @@ public class GraphTraversalServiceTests
         SetupRelationships(relationships);
 
         // Act
-        var result = await _service.GetNeighborhoodAsync("A", 2);
+        var result = await _service.GetNeighborhoodAsync("A", 2, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(2, result.TotalNeighbors); // B and C
@@ -358,7 +358,7 @@ public class GraphTraversalServiceTests
         SetupRelationships(relationships);
 
         // Act
-        var result = await _service.FindConnectedComponentsAsync();
+        var result = await _service.FindConnectedComponentsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Single(result);
@@ -382,7 +382,7 @@ public class GraphTraversalServiceTests
         SetupRelationships(relationships);
 
         // Act
-        var result = await _service.FindConnectedComponentsAsync();
+        var result = await _service.FindConnectedComponentsAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(2, result.Count);
@@ -408,7 +408,7 @@ public class GraphTraversalServiceTests
         SetupRelationships(relationships);
 
         // Act
-        var result = await _service.DetectCyclesAsync();
+        var result = await _service.DetectCyclesAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Empty(result);
@@ -430,7 +430,7 @@ public class GraphTraversalServiceTests
         SetupRelationships(relationships);
 
         // Act
-        var result = await _service.DetectCyclesAsync();
+        var result = await _service.DetectCyclesAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotEmpty(result);
@@ -448,7 +448,7 @@ public class GraphTraversalServiceTests
         SetupChunksByLevel(new List<string>());
 
         // Act
-        var result = await _service.ComputeChunkImportanceAsync();
+        var result = await _service.ComputeChunkImportanceAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Empty(result);
@@ -462,7 +462,7 @@ public class GraphTraversalServiceTests
         SetupEmptyRelationships();
 
         // Act
-        var result = await _service.ComputeChunkImportanceAsync();
+        var result = await _service.ComputeChunkImportanceAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Single(result);
@@ -491,7 +491,7 @@ public class GraphTraversalServiceTests
         SetupRelationships(relationships);
 
         // Act
-        var result = await _service.ComputeChunkImportanceAsync();
+        var result = await _service.ComputeChunkImportanceAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(4, result.Count);
@@ -517,7 +517,7 @@ public class GraphTraversalServiceTests
         SetupRelationships(relationships);
 
         // Act
-        var result = await _service.CheckConsistencyAsync();
+        var result = await _service.CheckConsistencyAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.IsConsistent);
@@ -541,7 +541,7 @@ public class GraphTraversalServiceTests
         SetupRelationships(relationships);
 
         // Act
-        var result = await _service.ComputeTransitiveClosureAsync("A");
+        var result = await _service.ComputeTransitiveClosureAsync("A", cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);

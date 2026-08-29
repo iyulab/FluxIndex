@@ -9,7 +9,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace FluxIndex.Storage.SQLite.Tests;
 
@@ -48,7 +47,7 @@ public class SQLiteVecRealWorldTests : IAsyncLifetime
         _serviceProvider = services.BuildServiceProvider();
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         // Skip if sqlite-vec is not available (CI environment)
         if (CITestHelper.ShouldSkipSqliteVec())
@@ -67,7 +66,7 @@ public class SQLiteVecRealWorldTests : IAsyncLifetime
         _output.WriteLine($"테스트 데이터베이스 초기화 완료: {_testDatabasePath}");
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         // 호스팅 서비스 정지
         var hostedServices = _serviceProvider.GetServices<IHostedService>();
@@ -84,6 +83,7 @@ public class SQLiteVecRealWorldTests : IAsyncLifetime
 
         // 테스트 파일 정리 (재시도 로직)
         await DeleteDatabaseFileWithRetryAsync(_testDatabasePath);
+        GC.SuppressFinalize(this);
     }
 
     private async Task DeleteDatabaseFileWithRetryAsync(string path, int maxRetries = 3)
@@ -111,7 +111,7 @@ public class SQLiteVecRealWorldTests : IAsyncLifetime
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ExtensionLoading_WithRealNuGetPackage_ShouldLoadSuccessfully()
     {
         // Skip if sqlite-vec is not available (CI environment)
@@ -125,7 +125,7 @@ public class SQLiteVecRealWorldTests : IAsyncLifetime
         var testChunk = CreateTestChunk("extension_test", 0);
 
         var stopwatch = Stopwatch.StartNew();
-        var id = await vectorStore.StoreAsync(testChunk);
+        var id = await vectorStore.StoreAsync(testChunk, TestContext.Current.CancellationToken);
         stopwatch.Stop();
 
         _output.WriteLine($"벡터 저장 시간: {stopwatch.ElapsedMilliseconds}ms");
@@ -133,14 +133,14 @@ public class SQLiteVecRealWorldTests : IAsyncLifetime
         id.Should().NotBeEmpty();
 
         // 저장된 데이터 검색 테스트
-        var results = await vectorStore.SearchAsync(testChunk.Embedding!, topK: 1, minScore: 0.0f);
+        var results = await vectorStore.SearchAsync(testChunk.Embedding!, topK: 1, minScore: 0.0f, cancellationToken: TestContext.Current.CancellationToken);
         results.Should().HaveCount(1);
         results.First().Id.Should().Be(id);
 
         _output.WriteLine("✅ sqlite-vec 확장 로딩 및 기본 기능 검증 완료");
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task VectorSearch_WithNativeExtension_ShouldReturnAccurateResults()
     {
         // Skip if sqlite-vec is not available (CI environment)
@@ -162,12 +162,12 @@ public class SQLiteVecRealWorldTests : IAsyncLifetime
             CreateTestChunk("doc5", 0, AddNoise(baseVector, 0.1f)) // 10% 노이즈
         };
 
-        await vectorStore.StoreBatchAsync(chunks);
+        await vectorStore.StoreBatchAsync(chunks, TestContext.Current.CancellationToken);
         _output.WriteLine($"테스트 벡터 {chunks.Count}개 저장 완료");
 
         // Act
         var stopwatch = Stopwatch.StartNew();
-        var results = await vectorStore.SearchAsync(baseVector, topK: 5, minScore: 0.0f);
+        var results = await vectorStore.SearchAsync(baseVector, topK: 5, minScore: 0.0f, cancellationToken: TestContext.Current.CancellationToken);
         stopwatch.Stop();
 
         // Assert
@@ -192,7 +192,7 @@ public class SQLiteVecRealWorldTests : IAsyncLifetime
         _output.WriteLine("✅ 네이티브 벡터 검색 정확도 검증 완료");
     }
 
-    [SkippableTheory]
+    [Theory]
     [InlineData(100, 5)]
     [InlineData(500, 10)]
     [InlineData(1000, 20)]
@@ -210,7 +210,7 @@ public class SQLiteVecRealWorldTests : IAsyncLifetime
 
         // 대량 데이터 인덱싱
         var indexingStopwatch = Stopwatch.StartNew();
-        await vectorStore.StoreBatchAsync(testData);
+        await vectorStore.StoreBatchAsync(testData, TestContext.Current.CancellationToken);
         indexingStopwatch.Stop();
 
         _output.WriteLine($"인덱싱 시간: {indexingStopwatch.ElapsedMilliseconds}ms ({datasetSize / (indexingStopwatch.ElapsedMilliseconds / 1000.0):F1} vectors/sec)");
@@ -220,13 +220,13 @@ public class SQLiteVecRealWorldTests : IAsyncLifetime
         var searchTimes = new List<long>();
 
         // 워밍업
-        await vectorStore.SearchAsync(queryVector, topK: topK);
+        await vectorStore.SearchAsync(queryVector, topK: topK, cancellationToken: TestContext.Current.CancellationToken);
 
         // 실제 측정
         for (int i = 0; i < 10; i++)
         {
             var searchStopwatch = Stopwatch.StartNew();
-            var results = await vectorStore.SearchAsync(queryVector, topK: topK);
+            var results = await vectorStore.SearchAsync(queryVector, topK: topK, cancellationToken: TestContext.Current.CancellationToken);
             searchStopwatch.Stop();
 
             searchTimes.Add(searchStopwatch.ElapsedMilliseconds);
@@ -247,7 +247,7 @@ public class SQLiteVecRealWorldTests : IAsyncLifetime
         _output.WriteLine("✅ 성능 기준 충족");
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ConcurrentAccess_WithNativeExtension_ShouldMaintainConsistency()
     {
         // Skip if sqlite-vec is not available (CI environment)
@@ -326,7 +326,7 @@ public class SQLiteVecRealWorldTests : IAsyncLifetime
         // 최종 데이터 일관성 확인 — 검증도 자기 스코프에서
         using var assertionScope = _serviceProvider.CreateScope();
         var finalCount = await assertionScope.ServiceProvider
-            .GetRequiredService<IVectorStore>().CountAsync();
+            .GetRequiredService<IVectorStore>().CountAsync(TestContext.Current.CancellationToken);
         finalCount.Should().BeGreaterThanOrEqualTo((int)(totalSuccesses.Count * 0.95));
 
         _output.WriteLine($"동시성 테스트 결과: {totalSuccesses.Count}/{expectedCount}개 성공, 최종 개수: {finalCount}");
@@ -334,7 +334,7 @@ public class SQLiteVecRealWorldTests : IAsyncLifetime
         _output.WriteLine($"✅ 동시성 테스트 완료: {totalSuccesses.Count}개 성공, {totalErrors.Count}개 오류");
     }
 
-    [SkippableFact]
+    [Fact]
     [Trait("Category", "Performance")]
     public async Task LargeDataset_RealWorldScenario_ShouldHandleEfficiently()
     {
@@ -362,7 +362,7 @@ public class SQLiteVecRealWorldTests : IAsyncLifetime
         for (int i = 0; i < documents.Count; i += batchSize)
         {
             var batch = documents.Skip(i).Take(batchSize);
-            await vectorStore.StoreBatchAsync(batch);
+            await vectorStore.StoreBatchAsync(batch, TestContext.Current.CancellationToken);
 
             if (i % (batchSize * 4) == 0) // 2000개마다 진행률 출력
             {
@@ -383,7 +383,7 @@ public class SQLiteVecRealWorldTests : IAsyncLifetime
                 var queryVector = CreateCategoryBasedEmbedding(category.ToString()!);
 
                 var searchStart = Stopwatch.StartNew();
-                var results = await vectorStore.SearchAsync(queryVector, topK: 10);
+                var results = await vectorStore.SearchAsync(queryVector, topK: 10, cancellationToken: TestContext.Current.CancellationToken);
                 searchStart.Stop();
 
                 searchResults.Add((category.ToString()!, searchStart.ElapsedMilliseconds, results.Count()));
@@ -408,7 +408,7 @@ public class SQLiteVecRealWorldTests : IAsyncLifetime
         avgSearchTime.Should().BeLessThan(50); // 평균 50ms 이하
         avgResultCount.Should().BeGreaterThan(5); // 평균 5개 이상 결과
 
-        var finalCount = await vectorStore.CountAsync();
+        var finalCount = await vectorStore.CountAsync(TestContext.Current.CancellationToken);
         finalCount.Should().Be(largeDatasetSize);
 
         _output.WriteLine("✅ 대용량 실전 시나리오 테스트 완료");

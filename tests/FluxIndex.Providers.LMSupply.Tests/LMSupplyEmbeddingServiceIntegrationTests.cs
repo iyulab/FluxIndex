@@ -31,7 +31,7 @@ public sealed class LMSupplyEmbeddingServiceIntegrationTests
     {
         var service = await _fixture.GetServiceAsync();
 
-        var embedding = await service.GenerateEmbeddingAsync("The quick brown fox jumps over the lazy dog.");
+        var embedding = await service.GenerateEmbeddingAsync("The quick brown fox jumps over the lazy dog.", TestContext.Current.CancellationToken);
 
         embedding.Should().HaveCount(service.GetEmbeddingDimension());
         embedding.Should().OnlyContain(v => float.IsFinite(v));
@@ -44,8 +44,8 @@ public sealed class LMSupplyEmbeddingServiceIntegrationTests
         var service = await _fixture.GetServiceAsync();
         const string text = "FluxIndex retrieves relevant chunks for RAG pipelines.";
 
-        var first = await service.GenerateEmbeddingAsync(text);
-        var second = await service.GenerateEmbeddingAsync(text);
+        var first = await service.GenerateEmbeddingAsync(text, TestContext.Current.CancellationToken);
+        var second = await service.GenerateEmbeddingAsync(text, TestContext.Current.CancellationToken);
 
         second.Should().BeEquivalentTo(first, options => options.WithStrictOrdering());
     }
@@ -55,8 +55,8 @@ public sealed class LMSupplyEmbeddingServiceIntegrationTests
     {
         var service = await _fixture.GetServiceAsync();
 
-        var a = await service.GenerateEmbeddingAsync("Cats are independent household pets.");
-        var b = await service.GenerateEmbeddingAsync("Quarterly revenue exceeded analyst expectations.");
+        var a = await service.GenerateEmbeddingAsync("Cats are independent household pets.", TestContext.Current.CancellationToken);
+        var b = await service.GenerateEmbeddingAsync("Quarterly revenue exceeded analyst expectations.", TestContext.Current.CancellationToken);
 
         a.Should().NotBeEquivalentTo(b);
     }
@@ -67,11 +67,11 @@ public sealed class LMSupplyEmbeddingServiceIntegrationTests
         var service = await _fixture.GetServiceAsync();
         string[] texts = ["First sentence.", "Second, unrelated sentence."];
 
-        var batch = (await service.GenerateEmbeddingsBatchAsync(texts)).ToList();
+        var batch = (await service.GenerateEmbeddingsBatchAsync(texts, TestContext.Current.CancellationToken)).ToList();
         var individual = new List<float[]>();
         foreach (var t in texts)
         {
-            individual.Add(await service.GenerateEmbeddingAsync(t));
+            individual.Add(await service.GenerateEmbeddingAsync(t, TestContext.Current.CancellationToken));
         }
 
         batch.Should().HaveCount(texts.Length);

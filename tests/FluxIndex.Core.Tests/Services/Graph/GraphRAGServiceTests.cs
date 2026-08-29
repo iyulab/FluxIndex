@@ -101,7 +101,7 @@ public class GraphRAGServiceTests
         SetupMocksForBuildIndex();
 
         // Act
-        var result = await _service.BuildIndexAsync(chunks);
+        var result = await _service.BuildIndexAsync(chunks, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -121,7 +121,7 @@ public class GraphRAGServiceTests
         SetupMocksForBuildIndex();
 
         // Act
-        var result = await _service.BuildIndexAsync(chunks, options);
+        var result = await _service.BuildIndexAsync(chunks, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(5, result.Chunks.Count);
@@ -135,7 +135,7 @@ public class GraphRAGServiceTests
         SetupMocksForBuildIndex();
 
         // Act
-        var result = await _service.BuildIndexAsync(chunks);
+        var result = await _service.BuildIndexAsync(chunks, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -150,7 +150,7 @@ public class GraphRAGServiceTests
         SetupMocksForBuildIndex();
 
         // Act
-        var result = await _service.BuildIndexAsync(chunks);
+        var result = await _service.BuildIndexAsync(chunks, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(5, result.Stats.TotalChunks);
@@ -170,7 +170,7 @@ public class GraphRAGServiceTests
         SetupMocksForSearch();
 
         // Act
-        var result = await _service.QueryAsync("What is Entity A?", index, options);
+        var result = await _service.QueryAsync("What is Entity A?", index, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(QueryScope.Local, result.UsedScope);
@@ -190,7 +190,7 @@ public class GraphRAGServiceTests
         SetupMocksForSearch();
 
         // Act
-        var result = await _service.QueryAsync("Summarize the main themes", index, options);
+        var result = await _service.QueryAsync("Summarize the main themes", index, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(QueryScope.Global, result.UsedScope);
@@ -210,7 +210,7 @@ public class GraphRAGServiceTests
         SetupMocksForSearch();
 
         // Act
-        var result = await _service.QueryAsync("How does Entity A relate to the theme?", index, options);
+        var result = await _service.QueryAsync("How does Entity A relate to the theme?", index, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(QueryScope.Hybrid, result.UsedScope);
@@ -224,7 +224,7 @@ public class GraphRAGServiceTests
         SetupMocksForSearch();
 
         // Act
-        var result = await _service.QueryAsync("test query", index);
+        var result = await _service.QueryAsync("test query", index, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.Stats.TotalTimeMs > 0);
@@ -243,7 +243,7 @@ public class GraphRAGServiceTests
         var query = "What is the definition of Entity X?";
 
         // Act
-        var result = await _service.DetectQueryScopeAsync(query);
+        var result = await _service.DetectQueryScopeAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(QueryScope.Local, result.Scope);
@@ -257,7 +257,7 @@ public class GraphRAGServiceTests
         var query = "Summarize the main themes and key topics overall";
 
         // Act
-        var result = await _service.DetectQueryScopeAsync(query);
+        var result = await _service.DetectQueryScopeAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(QueryScope.Global, result.Scope);
@@ -270,7 +270,7 @@ public class GraphRAGServiceTests
         var query = "What is the relationship between Entity A and Entity B?";
 
         // Act
-        var result = await _service.DetectQueryScopeAsync(query);
+        var result = await _service.DetectQueryScopeAsync(query, TestContext.Current.CancellationToken);
 
         // Assert - either Hybrid (relationship keyword) or Local (entity mentions) is acceptable
         Assert.True(result.Scope == QueryScope.Hybrid || result.Scope == QueryScope.Local,
@@ -285,7 +285,7 @@ public class GraphRAGServiceTests
         var query = "Compare the entities across all categories";
 
         // Act
-        var result = await _service.DetectQueryScopeAsync(query);
+        var result = await _service.DetectQueryScopeAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result.Indicators);
@@ -299,7 +299,7 @@ public class GraphRAGServiceTests
         var query = "Tell me about Microsoft and Google";
 
         // Act
-        var result = await _service.DetectQueryScopeAsync(query);
+        var result = await _service.DetectQueryScopeAsync(query, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotEmpty(result.DetectedEntities);
@@ -318,7 +318,7 @@ public class GraphRAGServiceTests
         SetupMocksForSearch();
 
         // Act
-        var result = await _service.LocalSearchAsync("Entity query", index);
+        var result = await _service.LocalSearchAsync("Entity query", index, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -335,7 +335,7 @@ public class GraphRAGServiceTests
         SetupMocksForSearch();
 
         // Act
-        var result = await _service.LocalSearchAsync("query", index, options);
+        var result = await _service.LocalSearchAsync("query", index, options, TestContext.Current.CancellationToken);
 
         // Assert
         await _mockEntityGraphService.Received(1).SearchByEntitiesAsync(
@@ -357,7 +357,7 @@ public class GraphRAGServiceTests
         SetupMocksForSearch();
 
         // Act
-        var result = await _service.GlobalSearchAsync("Broad thematic query", index);
+        var result = await _service.GlobalSearchAsync("Broad thematic query", index, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -374,7 +374,7 @@ public class GraphRAGServiceTests
         SetupMocksForSearch();
 
         // Act
-        var result = await _service.GlobalSearchAsync("query", index, options);
+        var result = await _service.GlobalSearchAsync("query", index, options, TestContext.Current.CancellationToken);
 
         // Assert
         await _mockSummarizationService.Received(1).GlobalSearchAsync(
@@ -396,7 +396,7 @@ public class GraphRAGServiceTests
         SetupMocksForSearch();
 
         // Act
-        var result = await _service.HybridSearchAsync("Hybrid query", index);
+        var result = await _service.HybridSearchAsync("Hybrid query", index, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -417,7 +417,7 @@ public class GraphRAGServiceTests
         SetupMocksForSearch();
 
         // Act
-        var result = await _service.HybridSearchAsync("query", index, options);
+        var result = await _service.HybridSearchAsync("query", index, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(GraphFusionStrategy.ReciprocalRankFusion, result.FusionStrategy);
@@ -436,7 +436,7 @@ public class GraphRAGServiceTests
         SetupMocksForSearch();
 
         // Act
-        var result = await _service.HybridSearchAsync("query", index, options);
+        var result = await _service.HybridSearchAsync("query", index, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -456,7 +456,7 @@ public class GraphRAGServiceTests
         SetupMocksForUpdate();
 
         // Act
-        var result = await _service.UpdateIndexAsync(index, newChunks);
+        var result = await _service.UpdateIndexAsync(index, newChunks, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -474,7 +474,7 @@ public class GraphRAGServiceTests
         SetupMocksForUpdate();
 
         // Act
-        var result = await _service.UpdateIndexAsync(index, newChunks, options);
+        var result = await _service.UpdateIndexAsync(index, newChunks, options, TestContext.Current.CancellationToken);
 
         // Assert
         await _mockLeidenCommunityService.Received(1).DetectHierarchicalCommunitiesAsync(
@@ -493,7 +493,7 @@ public class GraphRAGServiceTests
         SetupMocksForUpdate();
 
         // Act
-        var result = await _service.UpdateIndexAsync(index, newChunks, options);
+        var result = await _service.UpdateIndexAsync(index, newChunks, options, TestContext.Current.CancellationToken);
 
         // Assert
         await _mockSummarizationService.Received(1).UpdateSummariesAsync(
@@ -543,7 +543,7 @@ public class GraphRAGServiceTests
         SetupMocksForSearch();
 
         // Act
-        var result = await _service.HybridSearchAsync("query", index, options);
+        var result = await _service.HybridSearchAsync("query", index, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result.FusedDocuments);
@@ -562,7 +562,7 @@ public class GraphRAGServiceTests
         SetupMocksForSearch();
 
         // Act
-        var result = await _service.HybridSearchAsync("query", index, options);
+        var result = await _service.HybridSearchAsync("query", index, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result.FusedDocuments);

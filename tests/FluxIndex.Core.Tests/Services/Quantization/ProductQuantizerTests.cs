@@ -58,7 +58,7 @@ public class ProductQuantizerTests
         var trainingVectors = GenerateTrainingVectors(100, 16);
 
         // Act
-        await quantizer.TrainAsync(trainingVectors);
+        await quantizer.TrainAsync(trainingVectors, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(quantizer.IsTrained);
@@ -72,7 +72,7 @@ public class ProductQuantizerTests
         var trainingVectors = GenerateTrainingVectors(3, 8); // 코드북 크기보다 적음
 
         // Act
-        await quantizer.TrainAsync(trainingVectors);
+        await quantizer.TrainAsync(trainingVectors, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(quantizer.IsTrained);
@@ -88,12 +88,12 @@ public class ProductQuantizerTests
         // Arrange
         var quantizer = CreateQuantizer(dimension: 16, numSubvectors: 4, codebookSize: 8);
         var trainingVectors = GenerateTrainingVectors(50, 16);
-        await quantizer.TrainAsync(trainingVectors);
+        await quantizer.TrainAsync(trainingVectors, TestContext.Current.CancellationToken);
 
         var testVector = GenerateTrainingVectors(1, 16)[0];
 
         // Act
-        var result = await quantizer.QuantizeAsync(testVector);
+        var result = await quantizer.QuantizeAsync(testVector, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(QuantizationType.ProductQuantization, result.Type);
@@ -110,7 +110,7 @@ public class ProductQuantizerTests
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => quantizer.QuantizeAsync(vector));
+            () => quantizer.QuantizeAsync(vector, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -119,13 +119,13 @@ public class ProductQuantizerTests
         // Arrange
         var quantizer = CreateQuantizer(dimension: 16, numSubvectors: 4);
         var trainingVectors = GenerateTrainingVectors(50, 16);
-        await quantizer.TrainAsync(trainingVectors);
+        await quantizer.TrainAsync(trainingVectors, TestContext.Current.CancellationToken);
 
         var wrongVector = new float[8]; // 잘못된 차원
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentException>(
-            () => quantizer.QuantizeAsync(wrongVector));
+            () => quantizer.QuantizeAsync(wrongVector, TestContext.Current.CancellationToken));
     }
 
     #endregion
@@ -138,13 +138,13 @@ public class ProductQuantizerTests
         // Arrange
         var quantizer = CreateQuantizer(dimension: 16, numSubvectors: 4, codebookSize: 16);
         var trainingVectors = GenerateTrainingVectors(100, 16);
-        await quantizer.TrainAsync(trainingVectors);
+        await quantizer.TrainAsync(trainingVectors, TestContext.Current.CancellationToken);
 
         var original = trainingVectors[0];
 
         // Act
-        var quantized = await quantizer.QuantizeAsync(original);
-        var reconstructed = await quantizer.DequantizeAsync(quantized);
+        var quantized = await quantizer.QuantizeAsync(original, TestContext.Current.CancellationToken);
+        var reconstructed = await quantizer.DequantizeAsync(quantized, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(original.Length, reconstructed.Length);
@@ -167,7 +167,7 @@ public class ProductQuantizerTests
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => quantizer.DequantizeAsync(fakeQuantized));
+            () => quantizer.DequantizeAsync(fakeQuantized, TestContext.Current.CancellationToken));
     }
 
     #endregion
@@ -180,11 +180,11 @@ public class ProductQuantizerTests
         // Arrange
         var quantizer = CreateQuantizer(dimension: 16, numSubvectors: 4, codebookSize: 16);
         var trainingVectors = GenerateTrainingVectors(100, 16);
-        await quantizer.TrainAsync(trainingVectors);
+        await quantizer.TrainAsync(trainingVectors, TestContext.Current.CancellationToken);
 
         var vector = trainingVectors[0];
-        var q1 = await quantizer.QuantizeAsync(vector);
-        var q2 = await quantizer.QuantizeAsync(vector);
+        var q1 = await quantizer.QuantizeAsync(vector, TestContext.Current.CancellationToken);
+        var q2 = await quantizer.QuantizeAsync(vector, TestContext.Current.CancellationToken);
 
         // Act
         var distance = quantizer.ComputeDistance(q1, q2);
@@ -199,10 +199,10 @@ public class ProductQuantizerTests
         // Arrange
         var quantizer = CreateQuantizer(dimension: 16, numSubvectors: 4, codebookSize: 16);
         var trainingVectors = GenerateTrainingVectors(100, 16);
-        await quantizer.TrainAsync(trainingVectors);
+        await quantizer.TrainAsync(trainingVectors, TestContext.Current.CancellationToken);
 
-        var q1 = await quantizer.QuantizeAsync(trainingVectors[0]);
-        var q2 = await quantizer.QuantizeAsync(trainingVectors[50]); // 다른 벡터
+        var q1 = await quantizer.QuantizeAsync(trainingVectors[0], TestContext.Current.CancellationToken);
+        var q2 = await quantizer.QuantizeAsync(trainingVectors[50], TestContext.Current.CancellationToken); // 다른 벡터
 
         // Act
         var distance = quantizer.ComputeDistance(q1, q2);
@@ -217,12 +217,12 @@ public class ProductQuantizerTests
         // Arrange
         var quantizer = CreateQuantizer(dimension: 16, numSubvectors: 4, codebookSize: 16);
         var trainingVectors = GenerateTrainingVectors(100, 16);
-        await quantizer.TrainAsync(trainingVectors);
+        await quantizer.TrainAsync(trainingVectors, TestContext.Current.CancellationToken);
 
         var vector1 = trainingVectors[0];
         var vector2 = trainingVectors[1];
 
-        var quantized = await quantizer.QuantizeAsync(vector1);
+        var quantized = await quantizer.QuantizeAsync(vector1, TestContext.Current.CancellationToken);
 
         // Act
         var distanceToSelf = quantizer.ComputeDistanceToVector(quantized, vector1);
@@ -243,7 +243,7 @@ public class ProductQuantizerTests
         // Arrange
         var quantizer = CreateQuantizer(dimension: 16, numSubvectors: 4, codebookSize: 8);
         var trainingVectors = GenerateTrainingVectors(50, 16);
-        await quantizer.TrainAsync(trainingVectors);
+        await quantizer.TrainAsync(trainingVectors, TestContext.Current.CancellationToken);
 
         var queryVector = trainingVectors[0];
 
@@ -261,11 +261,11 @@ public class ProductQuantizerTests
         // Arrange
         var quantizer = CreateQuantizer(dimension: 16, numSubvectors: 4, codebookSize: 8);
         var trainingVectors = GenerateTrainingVectors(50, 16);
-        await quantizer.TrainAsync(trainingVectors);
+        await quantizer.TrainAsync(trainingVectors, TestContext.Current.CancellationToken);
 
         var queryVector = trainingVectors[0];
         var targetVector = trainingVectors[10];
-        var quantizedTarget = await quantizer.QuantizeAsync(targetVector);
+        var quantizedTarget = await quantizer.QuantizeAsync(targetVector, TestContext.Current.CancellationToken);
 
         // Act
         var table = quantizer.BuildDistanceTable(queryVector);
@@ -287,12 +287,12 @@ public class ProductQuantizerTests
         // Arrange
         var quantizer = CreateQuantizer(dimension: 16, numSubvectors: 4, codebookSize: 8);
         var trainingVectors = GenerateTrainingVectors(50, 16);
-        await quantizer.TrainAsync(trainingVectors);
+        await quantizer.TrainAsync(trainingVectors, TestContext.Current.CancellationToken);
 
         var testVectors = trainingVectors.Take(5).ToList();
 
         // Act
-        var results = (await quantizer.QuantizeBatchAsync(testVectors)).ToList();
+        var results = (await quantizer.QuantizeBatchAsync(testVectors, TestContext.Current.CancellationToken)).ToList();
 
         // Assert
         Assert.Equal(5, results.Count);

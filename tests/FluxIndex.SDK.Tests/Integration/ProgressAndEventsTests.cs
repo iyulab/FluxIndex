@@ -126,7 +126,7 @@ public class ProgressAndEventsTests
         mocks.VectorStore.StoreBatchAsync(Arg.Any<IEnumerable<DocumentChunkEntity>>(), Arg.Any<CancellationToken>()).Returns(new List<string> { "chunk1", "chunk2" });
 
         // Act
-        await indexer.IndexDocumentAsync(document, progress);
+        await indexer.IndexDocumentAsync(document, progress, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotEmpty(progressReports);
@@ -148,7 +148,7 @@ public class ProgressAndEventsTests
         mocks.VectorStore.StoreBatchAsync(Arg.Any<IEnumerable<DocumentChunkEntity>>(), Arg.Any<CancellationToken>()).Returns(new List<string> { "chunk1" });
 
         // Act
-        await indexer.IndexDocumentAsync(document);
+        await indexer.IndexDocumentAsync(document, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(capturedEvent);
@@ -169,7 +169,7 @@ public class ProgressAndEventsTests
         mocks.VectorStore.StoreBatchAsync(Arg.Any<IEnumerable<DocumentChunkEntity>>(), Arg.Any<CancellationToken>()).Returns(new List<string> { "chunk1" });
 
         // Act
-        await indexer.IndexDocumentAsync(document);
+        await indexer.IndexDocumentAsync(document, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(capturedEvent);
@@ -286,7 +286,7 @@ public class ProgressAndEventsTests
         mocks.VectorStore.SearchAsync(Arg.Any<float[]>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>()).Returns(new List<DocumentChunkEntity>());
 
         // Act
-        await retriever.SearchAsync(query, progress);
+        await retriever.SearchAsync(query, progress, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotEmpty(progressReports);
@@ -309,7 +309,7 @@ public class ProgressAndEventsTests
         mocks.VectorStore.SearchAsync(Arg.Any<float[]>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>()).Returns(new List<DocumentChunkEntity>());
 
         // Act
-        await retriever.SearchAsync(query);
+        await retriever.SearchAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(capturedEvent);
@@ -331,7 +331,7 @@ public class ProgressAndEventsTests
         mocks.VectorStore.SearchAsync(Arg.Any<float[]>(), Arg.Any<int>(), Arg.Any<float>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>()).Returns(new List<DocumentChunkEntity>());
 
         // Act
-        await retriever.SearchAsync(query);
+        await retriever.SearchAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(capturedEvent);

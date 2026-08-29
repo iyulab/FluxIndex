@@ -18,7 +18,7 @@ public class KeywordOverlapEvaluatorTests
         var contexts = new[] { "The quick brown fox jumps over the lazy dog" };
         var answer = "quick brown fox";
 
-        var (faithfulness, _) = await _sut.EvaluateAsync("test query", contexts, answer);
+        var (faithfulness, _) = await _sut.EvaluateAsync("test query", contexts, answer, TestContext.Current.CancellationToken);
 
         faithfulness.Should().Be(1.0);
     }
@@ -29,7 +29,7 @@ public class KeywordOverlapEvaluatorTests
         var contexts = new[] { "completely unrelated text about astronomy" };
         var answer = "neural network training process";
 
-        var (faithfulness, _) = await _sut.EvaluateAsync("test query", contexts, answer);
+        var (faithfulness, _) = await _sut.EvaluateAsync("test query", contexts, answer, TestContext.Current.CancellationToken);
 
         faithfulness.Should().Be(0.0);
     }
@@ -41,7 +41,7 @@ public class KeywordOverlapEvaluatorTests
         // "machine", "learning" overlap; "quantum" does not (after stopword removal)
         var answer = "machine learning quantum";
 
-        var (faithfulness, _) = await _sut.EvaluateAsync("test query", contexts, answer);
+        var (faithfulness, _) = await _sut.EvaluateAsync("test query", contexts, answer, TestContext.Current.CancellationToken);
 
         // 2 out of 3 content words appear in context
         faithfulness.Should().BeApproximately(2.0 / 3.0, 0.01);
@@ -53,7 +53,7 @@ public class KeywordOverlapEvaluatorTests
         var contexts = new[] { "Artificial Intelligence is evolving" };
         var answer = "artificial INTELLIGENCE evolving";
 
-        var (faithfulness, _) = await _sut.EvaluateAsync("test query", contexts, answer);
+        var (faithfulness, _) = await _sut.EvaluateAsync("test query", contexts, answer, TestContext.Current.CancellationToken);
 
         faithfulness.Should().Be(1.0);
     }
@@ -64,7 +64,7 @@ public class KeywordOverlapEvaluatorTests
         var contexts = Array.Empty<string>();
         var answer = "some meaningful answer";
 
-        var (faithfulness, _) = await _sut.EvaluateAsync("test query", contexts, answer);
+        var (faithfulness, _) = await _sut.EvaluateAsync("test query", contexts, answer, TestContext.Current.CancellationToken);
 
         faithfulness.Should().Be(0.0);
     }
@@ -75,7 +75,7 @@ public class KeywordOverlapEvaluatorTests
         var contexts = new[] { "alpha beta", "gamma delta" };
         var answer = "alpha gamma epsilon";
 
-        var (faithfulness, _) = await _sut.EvaluateAsync("test query", contexts, answer);
+        var (faithfulness, _) = await _sut.EvaluateAsync("test query", contexts, answer, TestContext.Current.CancellationToken);
 
         // 2 of 3 content words found across combined contexts
         faithfulness.Should().BeApproximately(2.0 / 3.0, 0.01);
@@ -90,10 +90,7 @@ public class KeywordOverlapEvaluatorTests
     {
         var answer = "machine learning algorithms are powerful tools";
 
-        var (_, relevancy) = await _sut.EvaluateAsync(
-            "machine learning algorithms",
-            ["some context"],
-            answer);
+        var (_, relevancy) = await _sut.EvaluateAsync("machine learning algorithms", ["some context"], answer, TestContext.Current.CancellationToken);
 
         relevancy.Should().Be(1.0);
     }
@@ -103,10 +100,7 @@ public class KeywordOverlapEvaluatorTests
     {
         var answer = "completely different topic here";
 
-        var (_, relevancy) = await _sut.EvaluateAsync(
-            "quantum physics entanglement",
-            ["some context"],
-            answer);
+        var (_, relevancy) = await _sut.EvaluateAsync("quantum physics entanglement", ["some context"], answer, TestContext.Current.CancellationToken);
 
         relevancy.Should().Be(0.0);
     }
@@ -117,10 +111,7 @@ public class KeywordOverlapEvaluatorTests
         // After stopword removal: "machine", "learning", "deep"
         var answer = "machine processing unit";
 
-        var (_, relevancy) = await _sut.EvaluateAsync(
-            "machine learning deep",
-            ["some context"],
-            answer);
+        var (_, relevancy) = await _sut.EvaluateAsync("machine learning deep", ["some context"], answer, TestContext.Current.CancellationToken);
 
         // Only "machine" appears in answer: 1/3
         relevancy.Should().BeApproximately(1.0 / 3.0, 0.01);
@@ -132,10 +123,7 @@ public class KeywordOverlapEvaluatorTests
         // "the", "is", "of" are stopwords; only "cat" is a content word
         var answer = "the cat sat on the mat";
 
-        var (_, relevancy) = await _sut.EvaluateAsync(
-            "the cat is of",
-            ["some context"],
-            answer);
+        var (_, relevancy) = await _sut.EvaluateAsync("the cat is of", ["some context"], answer, TestContext.Current.CancellationToken);
 
         // Only "cat" counted from query; "cat" present in answer => 1.0
         relevancy.Should().Be(1.0);
@@ -152,7 +140,7 @@ public class KeywordOverlapEvaluatorTests
         // "the" and "is" are stopwords; only "important" and "data" are content words
         var answer = "the important data is here";
 
-        var (faithfulness, _) = await _sut.EvaluateAsync("test", contexts, answer);
+        var (faithfulness, _) = await _sut.EvaluateAsync("test", contexts, answer, TestContext.Current.CancellationToken);
 
         // "important", "data", "here" are non-stopwords after tokenizer (words > 1 char)
         // "important" + "data" in context, "here" is not => 2/3
@@ -165,10 +153,7 @@ public class KeywordOverlapEvaluatorTests
         // Korean particles should be filtered from query
         var answer = "인공지능 기술 발전";
 
-        var (_, relevancy) = await _sut.EvaluateAsync(
-            "인공지능 은 기술 의",
-            ["some context"],
-            answer);
+        var (_, relevancy) = await _sut.EvaluateAsync("인공지능 은 기술 의", ["some context"], answer, TestContext.Current.CancellationToken);
 
         // After Korean stopword removal ("은", "의" removed), query content words: "인공지능", "기술"
         // Both present in answer => 1.0
@@ -182,10 +167,7 @@ public class KeywordOverlapEvaluatorTests
     [Fact]
     public async Task EmptyAnswer_ReturnsBothZero()
     {
-        var (faithfulness, relevancy) = await _sut.EvaluateAsync(
-            "some query",
-            ["some context"],
-            "");
+        var (faithfulness, relevancy) = await _sut.EvaluateAsync("some query", ["some context"], "", TestContext.Current.CancellationToken);
 
         faithfulness.Should().Be(0.0);
         relevancy.Should().Be(0.0);
@@ -194,10 +176,7 @@ public class KeywordOverlapEvaluatorTests
     [Fact]
     public async Task WhitespaceOnlyAnswer_ReturnsBothZero()
     {
-        var (faithfulness, relevancy) = await _sut.EvaluateAsync(
-            "some query",
-            ["some context"],
-            "   \t  \n  ");
+        var (faithfulness, relevancy) = await _sut.EvaluateAsync("some query", ["some context"], "   \t  \n  ", TestContext.Current.CancellationToken);
 
         faithfulness.Should().Be(0.0);
         relevancy.Should().Be(0.0);
@@ -207,10 +186,7 @@ public class KeywordOverlapEvaluatorTests
     public async Task StopwordOnlyAnswer_FaithfulnessIs1()
     {
         // Only stopwords in answer => vacuously faithful
-        var (faithfulness, _) = await _sut.EvaluateAsync(
-            "test query",
-            ["anything"],
-            "the is a an");
+        var (faithfulness, _) = await _sut.EvaluateAsync("test query", ["anything"], "the is a an", TestContext.Current.CancellationToken);
 
         faithfulness.Should().Be(1.0);
     }
@@ -219,10 +195,7 @@ public class KeywordOverlapEvaluatorTests
     public async Task StopwordOnlyQuery_RelevancyIs1()
     {
         // All query words are stopwords => vacuously relevant
-        var (_, relevancy) = await _sut.EvaluateAsync(
-            "the is and or",
-            ["anything"],
-            "some answer text");
+        var (_, relevancy) = await _sut.EvaluateAsync("the is and or", ["anything"], "some answer text", TestContext.Current.CancellationToken);
 
         relevancy.Should().Be(1.0);
     }
@@ -230,10 +203,7 @@ public class KeywordOverlapEvaluatorTests
     [Fact]
     public async Task EmptyQuery_RelevancyIs1()
     {
-        var (_, relevancy) = await _sut.EvaluateAsync(
-            "",
-            ["some context"],
-            "some answer");
+        var (_, relevancy) = await _sut.EvaluateAsync("", ["some context"], "some answer", TestContext.Current.CancellationToken);
 
         relevancy.Should().Be(1.0);
     }
@@ -245,10 +215,7 @@ public class KeywordOverlapEvaluatorTests
         var contexts = new[] { "alpha beta gamma delta epsilon" };
         var answer = "alpha beta gamma delta epsilon";
 
-        var (faithfulness, relevancy) = await _sut.EvaluateAsync(
-            "alpha beta gamma",
-            contexts,
-            answer);
+        var (faithfulness, relevancy) = await _sut.EvaluateAsync("alpha beta gamma", contexts, answer, TestContext.Current.CancellationToken);
 
         faithfulness.Should().BeGreaterThanOrEqualTo(0.0).And.BeLessThanOrEqualTo(1.0);
         relevancy.Should().BeGreaterThanOrEqualTo(0.0).And.BeLessThanOrEqualTo(1.0);
@@ -275,7 +242,7 @@ public class KeywordOverlapEvaluatorTests
         var contexts = new[] { "hello world" };
         var answer = "hello, world!";
 
-        var (faithfulness, _) = await _sut.EvaluateAsync("test", contexts, answer);
+        var (faithfulness, _) = await _sut.EvaluateAsync("test", contexts, answer, TestContext.Current.CancellationToken);
 
         faithfulness.Should().Be(1.0);
     }
@@ -287,7 +254,7 @@ public class KeywordOverlapEvaluatorTests
         var contexts = new[] { "important result" };
         var answer = "I got important result";
 
-        var (faithfulness, _) = await _sut.EvaluateAsync("test", contexts, answer);
+        var (faithfulness, _) = await _sut.EvaluateAsync("test", contexts, answer, TestContext.Current.CancellationToken);
 
         // "got" is not in context, "important" + "result" are => 2/3
         faithfulness.Should().BeApproximately(2.0 / 3.0, 0.01);

@@ -29,7 +29,7 @@ public class Neo4jGraphStoreIntegrationTests : IAsyncLifetime
         _logger = NullLogger<Neo4jGraphStore>.Instance;
     }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         try
         {
@@ -51,13 +51,14 @@ public class Neo4jGraphStoreIntegrationTests : IAsyncLifetime
         }
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         if (_graphStore != null)
         {
             await _graphStore.DisposeAsync();
         }
         await _container.DisposeAsync();
+        GC.SuppressFinalize(this);
     }
 
     private bool IsDockerAvailable => _graphStore != null;
@@ -102,25 +103,25 @@ public class Neo4jGraphStoreIntegrationTests : IAsyncLifetime
 
     #region Entity Operations
 
-    [SkippableFact]
+    [Fact]
     public async Task StoreEntityAsync_ValidEntity_ReturnsEntityId()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var entity = CreateTestEntity();
 
         // Act
-        var result = await _graphStore.StoreEntityAsync(entity);
+        var result = await _graphStore.StoreEntityAsync(entity, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().Be(entity.Id);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task StoreEntitiesBatchAsync_MultipleEntities_ReturnsAllIds()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var entities = Enumerable.Range(0, 5)
@@ -128,24 +129,24 @@ public class Neo4jGraphStoreIntegrationTests : IAsyncLifetime
             .ToList();
 
         // Act
-        var results = await _graphStore.StoreEntitiesBatchAsync(entities);
+        var results = await _graphStore.StoreEntitiesBatchAsync(entities, TestContext.Current.CancellationToken);
 
         // Assert
         results.Should().HaveCount(5);
         results.Should().BeEquivalentTo(entities.Select(e => e.Id));
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task GetEntityByIdAsync_ExistingEntity_ReturnsEntity()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var entity = CreateTestEntity();
-        await _graphStore.StoreEntityAsync(entity);
+        await _graphStore.StoreEntityAsync(entity, TestContext.Current.CancellationToken);
 
         // Act
-        var result = await _graphStore.GetEntityByIdAsync(entity.Id);
+        var result = await _graphStore.GetEntityByIdAsync(entity.Id, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().NotBeNull();
@@ -154,67 +155,67 @@ public class Neo4jGraphStoreIntegrationTests : IAsyncLifetime
         result.Type.Should().Be(entity.Type);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task GetEntityByIdAsync_NonExistingEntity_ReturnsNull()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Act
-        var result = await _graphStore.GetEntityByIdAsync(Guid.NewGuid().ToString());
+        var result = await _graphStore.GetEntityByIdAsync(Guid.NewGuid().ToString(), TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().BeNull();
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task GetEntitiesByNameAsync_ExactMatch_ReturnsMatchingEntities()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var uniqueName = $"UniqueTestEntity_{Guid.NewGuid():N}";
         var entity = CreateTestEntity(name: uniqueName);
-        await _graphStore.StoreEntityAsync(entity);
+        await _graphStore.StoreEntityAsync(entity, TestContext.Current.CancellationToken);
 
         // Act
-        var results = await _graphStore.GetEntitiesByNameAsync(uniqueName, fuzzyMatch: false);
+        var results = await _graphStore.GetEntitiesByNameAsync(uniqueName, fuzzyMatch: false, ct: TestContext.Current.CancellationToken);
 
         // Assert
         results.Should().HaveCount(1);
         results[0].Name.Should().Be(uniqueName);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task GetEntitiesByTypeAsync_ValidType_ReturnsMatchingEntities()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
-        await _graphStore.ClearAsync();
+        await _graphStore.ClearAsync(TestContext.Current.CancellationToken);
         var personEntities = Enumerable.Range(0, 3)
             .Select(_ => CreateTestEntity(type: NamedEntityType.Person))
             .ToList();
-        await _graphStore.StoreEntitiesBatchAsync(personEntities);
+        await _graphStore.StoreEntitiesBatchAsync(personEntities, TestContext.Current.CancellationToken);
 
         var orgEntity = CreateTestEntity(type: NamedEntityType.Organization);
-        await _graphStore.StoreEntityAsync(orgEntity);
+        await _graphStore.StoreEntityAsync(orgEntity, TestContext.Current.CancellationToken);
 
         // Act
-        var results = await _graphStore.GetEntitiesByTypeAsync(NamedEntityType.Person);
+        var results = await _graphStore.GetEntitiesByTypeAsync(NamedEntityType.Person, ct: TestContext.Current.CancellationToken);
 
         // Assert
         results.Should().HaveCount(3);
         results.Should().AllSatisfy(e => e.Type.Should().Be(NamedEntityType.Person));
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task UpdateEntityAsync_ExistingEntity_UpdatesSuccessfully()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var entity = CreateTestEntity();
-        await _graphStore.StoreEntityAsync(entity);
+        await _graphStore.StoreEntityAsync(entity, TestContext.Current.CancellationToken);
 
         var updatedEntity = entity with
         {
@@ -223,32 +224,32 @@ public class Neo4jGraphStoreIntegrationTests : IAsyncLifetime
         };
 
         // Act
-        var result = await _graphStore.UpdateEntityAsync(updatedEntity);
+        var result = await _graphStore.UpdateEntityAsync(updatedEntity, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().BeTrue();
 
-        var retrieved = await _graphStore.GetEntityByIdAsync(entity.Id);
+        var retrieved = await _graphStore.GetEntityByIdAsync(entity.Id, TestContext.Current.CancellationToken);
         retrieved!.Description.Should().Be("Updated description");
         retrieved.ImportanceScore.Should().Be(0.9);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task DeleteEntityAsync_ExistingEntity_RemovesEntity()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var entity = CreateTestEntity();
-        await _graphStore.StoreEntityAsync(entity);
+        await _graphStore.StoreEntityAsync(entity, TestContext.Current.CancellationToken);
 
         // Act
-        var result = await _graphStore.DeleteEntityAsync(entity.Id);
+        var result = await _graphStore.DeleteEntityAsync(entity.Id, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().BeTrue();
 
-        var retrieved = await _graphStore.GetEntityByIdAsync(entity.Id);
+        var retrieved = await _graphStore.GetEntityByIdAsync(entity.Id, TestContext.Current.CancellationToken);
         retrieved.Should().BeNull();
     }
 
@@ -256,91 +257,91 @@ public class Neo4jGraphStoreIntegrationTests : IAsyncLifetime
 
     #region Relationship Operations
 
-    [SkippableFact]
+    [Fact]
     public async Task StoreRelationshipAsync_ValidRelationship_ReturnsRelationshipId()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var entity1 = CreateTestEntity();
         var entity2 = CreateTestEntity();
-        await _graphStore.StoreEntitiesBatchAsync([entity1, entity2]);
+        await _graphStore.StoreEntitiesBatchAsync([entity1, entity2], TestContext.Current.CancellationToken);
 
         var relationship = CreateTestRelationship(entity1.Id, entity2.Id);
 
         // Act
-        var result = await _graphStore.StoreRelationshipAsync(relationship);
+        var result = await _graphStore.StoreRelationshipAsync(relationship, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().Be(relationship.Id);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task GetRelationshipsAsync_ExistingRelationships_ReturnsRelationships()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var entity1 = CreateTestEntity();
         var entity2 = CreateTestEntity();
         var entity3 = CreateTestEntity();
-        await _graphStore.StoreEntitiesBatchAsync([entity1, entity2, entity3]);
+        await _graphStore.StoreEntitiesBatchAsync([entity1, entity2, entity3], TestContext.Current.CancellationToken);
 
         var rel1 = CreateTestRelationship(entity1.Id, entity2.Id);
         var rel2 = CreateTestRelationship(entity1.Id, entity3.Id);
-        await _graphStore.StoreRelationshipsBatchAsync([rel1, rel2]);
+        await _graphStore.StoreRelationshipsBatchAsync([rel1, rel2], TestContext.Current.CancellationToken);
 
         // Act
-        var results = await _graphStore.GetRelationshipsAsync(entity1.Id, TraversalDirection.Outgoing);
+        var results = await _graphStore.GetRelationshipsAsync(entity1.Id, TraversalDirection.Outgoing, TestContext.Current.CancellationToken);
 
         // Assert
         results.Should().HaveCount(2);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task GetRelationshipsByTypeAsync_ValidType_ReturnsMatchingRelationships()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
-        await _graphStore.ClearAsync();
+        await _graphStore.ClearAsync(TestContext.Current.CancellationToken);
         var entities = Enumerable.Range(0, 4)
             .Select(_ => CreateTestEntity())
             .ToList();
-        await _graphStore.StoreEntitiesBatchAsync(entities);
+        await _graphStore.StoreEntitiesBatchAsync(entities, TestContext.Current.CancellationToken);
 
         var relatedToRel = CreateTestRelationship(entities[0].Id, entities[1].Id, RelationType.RelatedTo);
         var worksForRel = CreateTestRelationship(entities[2].Id, entities[3].Id, RelationType.WorksFor);
-        await _graphStore.StoreRelationshipsBatchAsync([relatedToRel, worksForRel]);
+        await _graphStore.StoreRelationshipsBatchAsync([relatedToRel, worksForRel], TestContext.Current.CancellationToken);
 
         // Act
-        var results = await _graphStore.GetRelationshipsByTypeAsync(RelationType.WorksFor);
+        var results = await _graphStore.GetRelationshipsByTypeAsync(RelationType.WorksFor, ct: TestContext.Current.CancellationToken);
 
         // Assert
         results.Should().HaveCount(1);
         results[0].Type.Should().Be(RelationType.WorksFor);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task DeleteRelationshipAsync_ExistingRelationship_RemovesRelationship()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var entity1 = CreateTestEntity();
         var entity2 = CreateTestEntity();
-        await _graphStore.StoreEntitiesBatchAsync([entity1, entity2]);
+        await _graphStore.StoreEntitiesBatchAsync([entity1, entity2], TestContext.Current.CancellationToken);
 
         var relationship = CreateTestRelationship(entity1.Id, entity2.Id);
-        await _graphStore.StoreRelationshipAsync(relationship);
+        await _graphStore.StoreRelationshipAsync(relationship, TestContext.Current.CancellationToken);
 
         // Act
-        var result = await _graphStore.DeleteRelationshipAsync(relationship.Id);
+        var result = await _graphStore.DeleteRelationshipAsync(relationship.Id, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().BeTrue();
 
-        var relationships = await _graphStore.GetRelationshipsAsync(entity1.Id);
+        var relationships = await _graphStore.GetRelationshipsAsync(entity1.Id, ct: TestContext.Current.CancellationToken);
         relationships.Should().BeEmpty();
     }
 
@@ -348,20 +349,20 @@ public class Neo4jGraphStoreIntegrationTests : IAsyncLifetime
 
     #region Traversal Operations
 
-    [SkippableFact]
+    [Fact]
     public async Task TraverseAsync_ValidStartEntity_ReturnsConnectedEntities()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange - Create a simple graph: A -> B -> C
         var entityA = CreateTestEntity(name: "EntityA");
         var entityB = CreateTestEntity(name: "EntityB");
         var entityC = CreateTestEntity(name: "EntityC");
-        await _graphStore.StoreEntitiesBatchAsync([entityA, entityB, entityC]);
+        await _graphStore.StoreEntitiesBatchAsync([entityA, entityB, entityC], TestContext.Current.CancellationToken);
 
         var relAB = CreateTestRelationship(entityA.Id, entityB.Id);
         var relBC = CreateTestRelationship(entityB.Id, entityC.Id);
-        await _graphStore.StoreRelationshipsBatchAsync([relAB, relBC]);
+        await _graphStore.StoreRelationshipsBatchAsync([relAB, relBC], TestContext.Current.CancellationToken);
 
         var options = new GraphStoreTraversalOptions
         {
@@ -370,30 +371,30 @@ public class Neo4jGraphStoreIntegrationTests : IAsyncLifetime
         };
 
         // Act
-        var result = await _graphStore.TraverseAsync(entityA.Id, options);
+        var result = await _graphStore.TraverseAsync(entityA.Id, options, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().NotBeNull();
         result.Entities.Should().HaveCountGreaterThanOrEqualTo(2); // B and C
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task FindShortestPathAsync_ConnectedEntities_ReturnsPath()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange - Create graph: A -> B -> C
         var entityA = CreateTestEntity(name: "PathA");
         var entityB = CreateTestEntity(name: "PathB");
         var entityC = CreateTestEntity(name: "PathC");
-        await _graphStore.StoreEntitiesBatchAsync([entityA, entityB, entityC]);
+        await _graphStore.StoreEntitiesBatchAsync([entityA, entityB, entityC], TestContext.Current.CancellationToken);
 
         var relAB = CreateTestRelationship(entityA.Id, entityB.Id);
         var relBC = CreateTestRelationship(entityB.Id, entityC.Id);
-        await _graphStore.StoreRelationshipsBatchAsync([relAB, relBC]);
+        await _graphStore.StoreRelationshipsBatchAsync([relAB, relBC], TestContext.Current.CancellationToken);
 
         // Act
-        var path = await _graphStore.FindShortestPathAsync(entityA.Id, entityC.Id, maxDepth: 5);
+        var path = await _graphStore.FindShortestPathAsync(entityA.Id, entityC.Id, maxDepth: 5, ct: TestContext.Current.CancellationToken);
 
         // Assert
         path.Should().NotBeNull();
@@ -401,40 +402,40 @@ public class Neo4jGraphStoreIntegrationTests : IAsyncLifetime
         path.Length.Should().Be(2);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task FindShortestPathAsync_UnconnectedEntities_ReturnsNull()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange - Create two disconnected entities
         var entityA = CreateTestEntity(name: "DisconnectedA");
         var entityB = CreateTestEntity(name: "DisconnectedB");
-        await _graphStore.StoreEntitiesBatchAsync([entityA, entityB]);
+        await _graphStore.StoreEntitiesBatchAsync([entityA, entityB], TestContext.Current.CancellationToken);
 
         // Act
-        var path = await _graphStore.FindShortestPathAsync(entityA.Id, entityB.Id, maxDepth: 5);
+        var path = await _graphStore.FindShortestPathAsync(entityA.Id, entityB.Id, maxDepth: 5, ct: TestContext.Current.CancellationToken);
 
         // Assert
         path.Should().BeNull();
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task GetNeighborsAsync_EntityWithNeighbors_ReturnsNeighbors()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var center = CreateTestEntity(name: "Center");
         var neighbor1 = CreateTestEntity(name: "Neighbor1");
         var neighbor2 = CreateTestEntity(name: "Neighbor2");
-        await _graphStore.StoreEntitiesBatchAsync([center, neighbor1, neighbor2]);
+        await _graphStore.StoreEntitiesBatchAsync([center, neighbor1, neighbor2], TestContext.Current.CancellationToken);
 
         var rel1 = CreateTestRelationship(center.Id, neighbor1.Id);
         var rel2 = CreateTestRelationship(center.Id, neighbor2.Id);
-        await _graphStore.StoreRelationshipsBatchAsync([rel1, rel2]);
+        await _graphStore.StoreRelationshipsBatchAsync([rel1, rel2], TestContext.Current.CancellationToken);
 
         // Act
-        var neighbors = await _graphStore.GetNeighborsAsync(center.Id, depth: 1);
+        var neighbors = await _graphStore.GetNeighborsAsync(center.Id, depth: 1, ct: TestContext.Current.CancellationToken);
 
         // Assert
         neighbors.Should().HaveCount(2);
@@ -444,45 +445,45 @@ public class Neo4jGraphStoreIntegrationTests : IAsyncLifetime
 
     #region Statistics Operations
 
-    [SkippableFact]
+    [Fact]
     public async Task GetStatisticsAsync_AfterStoringData_ReturnsCorrectCounts()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
-        await _graphStore.ClearAsync();
+        await _graphStore.ClearAsync(TestContext.Current.CancellationToken);
         var entities = Enumerable.Range(0, 5)
             .Select(_ => CreateTestEntity())
             .ToList();
-        await _graphStore.StoreEntitiesBatchAsync(entities);
+        await _graphStore.StoreEntitiesBatchAsync(entities, TestContext.Current.CancellationToken);
 
         var rel = CreateTestRelationship(entities[0].Id, entities[1].Id);
-        await _graphStore.StoreRelationshipAsync(rel);
+        await _graphStore.StoreRelationshipAsync(rel, TestContext.Current.CancellationToken);
 
         // Act
-        var stats = await _graphStore.GetStatisticsAsync();
+        var stats = await _graphStore.GetStatisticsAsync(TestContext.Current.CancellationToken);
 
         // Assert
         stats.EntityCount.Should().Be(5);
         stats.RelationshipCount.Should().Be(1);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ClearAsync_WithExistingData_RemovesAllData()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var entities = Enumerable.Range(0, 3)
             .Select(_ => CreateTestEntity())
             .ToList();
-        await _graphStore.StoreEntitiesBatchAsync(entities);
+        await _graphStore.StoreEntitiesBatchAsync(entities, TestContext.Current.CancellationToken);
 
         // Act
-        await _graphStore.ClearAsync();
+        await _graphStore.ClearAsync(TestContext.Current.CancellationToken);
 
         // Assert
-        var stats = await _graphStore.GetStatisticsAsync();
+        var stats = await _graphStore.GetStatisticsAsync(TestContext.Current.CancellationToken);
         stats.EntityCount.Should().Be(0);
     }
 
@@ -490,16 +491,16 @@ public class Neo4jGraphStoreIntegrationTests : IAsyncLifetime
 
     #region Community Operations
 
-    [SkippableFact]
+    [Fact]
     public async Task StoreCommunityAsync_ValidCommunity_ReturnsCommunityId()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var entities = Enumerable.Range(0, 3)
             .Select(_ => CreateTestEntity())
             .ToList();
-        await _graphStore.StoreEntitiesBatchAsync(entities);
+        await _graphStore.StoreEntitiesBatchAsync(entities, TestContext.Current.CancellationToken);
 
         var community = new GraphCommunity
         {
@@ -513,16 +514,16 @@ public class Neo4jGraphStoreIntegrationTests : IAsyncLifetime
         };
 
         // Act
-        var result = await _graphStore.StoreCommunityAsync(community);
+        var result = await _graphStore.StoreCommunityAsync(community, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().Be(community.Id);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task GetCommunityByIdAsync_ExistingCommunity_ReturnsCommunity()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var community = new GraphCommunity
@@ -535,10 +536,10 @@ public class Neo4jGraphStoreIntegrationTests : IAsyncLifetime
             ImportanceScore = 0.5,
             Level = 0
         };
-        await _graphStore.StoreCommunityAsync(community);
+        await _graphStore.StoreCommunityAsync(community, TestContext.Current.CancellationToken);
 
         // Act
-        var result = await _graphStore.GetCommunityByIdAsync(community.Id);
+        var result = await _graphStore.GetCommunityByIdAsync(community.Id, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().NotBeNull();
@@ -546,13 +547,13 @@ public class Neo4jGraphStoreIntegrationTests : IAsyncLifetime
         result.Name.Should().Be("Retrievable Community");
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task GetTopCommunitiesAsync_WithCommunities_ReturnsOrderedByImportance()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
-        await _graphStore.ClearAsync();
+        await _graphStore.ClearAsync(TestContext.Current.CancellationToken);
         var communities = new[]
         {
             new GraphCommunity { Id = Guid.NewGuid().ToString(), Name = "Low", ImportanceScore = 0.2, Level = 0 },
@@ -562,11 +563,11 @@ public class Neo4jGraphStoreIntegrationTests : IAsyncLifetime
 
         foreach (var community in communities)
         {
-            await _graphStore.StoreCommunityAsync(community);
+            await _graphStore.StoreCommunityAsync(community, TestContext.Current.CancellationToken);
         }
 
         // Act
-        var results = await _graphStore.GetTopCommunitiesAsync(limit: 3);
+        var results = await _graphStore.GetTopCommunitiesAsync(limit: 3, ct: TestContext.Current.CancellationToken);
 
         // Assert
         results.Should().HaveCount(3);
@@ -577,13 +578,13 @@ public class Neo4jGraphStoreIntegrationTests : IAsyncLifetime
 
     #region EntityGraphService Integration
 
-    [SkippableFact]
+    [Fact]
     public async Task EntityGraphService_WithNeo4jStore_PersistsEntities()
     {
-        Skip.IfNot(IsDockerAvailable, "Docker is not available");
+        Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
-        await _graphStore.ClearAsync();
+        await _graphStore.ClearAsync(TestContext.Current.CancellationToken);
 
         var entityGraphService = new EntityGraphService(
             entityExtractionService: null,
@@ -644,21 +645,21 @@ public class Neo4jGraphStoreIntegrationTests : IAsyncLifetime
         };
 
         // Act - Persist manual graph
-        await entityGraphService.PersistGraphAsync(manualGraph);
+        await entityGraphService.PersistGraphAsync(manualGraph, TestContext.Current.CancellationToken);
 
         // Assert - Verify entities were stored in Neo4j
-        var stats = await _graphStore.GetStatisticsAsync();
+        var stats = await _graphStore.GetStatisticsAsync(TestContext.Current.CancellationToken);
         stats.EntityCount.Should().BeGreaterThanOrEqualTo(2);
         stats.RelationshipCount.Should().BeGreaterThanOrEqualTo(1);
 
         // Verify specific entity
-        var appleEntity = await _graphStore.GetEntityByIdAsync("entity-apple");
+        var appleEntity = await _graphStore.GetEntityByIdAsync("entity-apple", TestContext.Current.CancellationToken);
         appleEntity.Should().NotBeNull();
         appleEntity!.Name.Should().Be("Apple Inc.");
         appleEntity.Type.Should().Be(NamedEntityType.Organization);
 
         // Verify relationship
-        var relationships = await _graphStore.GetRelationshipsAsync("entity-steve", TraversalDirection.Outgoing);
+        var relationships = await _graphStore.GetRelationshipsAsync("entity-steve", TraversalDirection.Outgoing, TestContext.Current.CancellationToken);
         relationships.Should().HaveCount(1);
         relationships[0].TargetEntityId.Should().Be("entity-apple");
     }
@@ -673,6 +674,10 @@ public class Neo4jCollection : ICollectionFixture<Neo4jFixture>
 
 public class Neo4jFixture : IAsyncLifetime
 {
-    public Task InitializeAsync() => Task.CompletedTask;
-    public Task DisposeAsync() => Task.CompletedTask;
+    public ValueTask InitializeAsync() => ValueTask.CompletedTask;
+    public ValueTask DisposeAsync()
+    {
+        GC.SuppressFinalize(this);
+        return default;
+    }
 }

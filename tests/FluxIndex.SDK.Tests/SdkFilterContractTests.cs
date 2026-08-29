@@ -130,13 +130,9 @@ public class SdkFilterContractTests
         var store = new JsonRoundTripVectorStore();
         var chunk = DocumentChunkEntity.Create("doc-1", "tenant a content", 0, 1);
         chunk.Metadata = new Dictionary<string, object> { [TenantKey] = "ws-a" };
-        await store.StoreAsync(chunk);
+        await store.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
-        var results = await CreateRetriever(store).SearchAsync(
-            "content",
-            maxResults: 10,
-            minScore: 0f,
-            filter: new Dictionary<string, object> { [TenantKey] = "ws-a" });
+        var results = await CreateRetriever(store).SearchAsync("content", maxResults: 10, minScore: 0f, filter: new Dictionary<string, object> { [TenantKey] = "ws-a" }, cancellationToken: TestContext.Current.CancellationToken);
 
         results.Should().HaveCount(1, "the store matched the filter and the SDK must not discard the row over a JSON round-trip");
     }
@@ -148,13 +144,9 @@ public class SdkFilterContractTests
         var store = new JsonRoundTripVectorStore();
         var chunk = DocumentChunkEntity.Create("doc-1", "tenant a content", 0, 1);
         chunk.Metadata = new Dictionary<string, object> { [TenantKey] = "ws-a" };
-        await store.StoreAsync(chunk);
+        await store.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
-        var results = await CreateRetriever(store).SearchAsync(
-            "content",
-            maxResults: 10,
-            minScore: 0f,
-            filter: new Dictionary<string, object> { [TenantKey] = "ws-b" });
+        var results = await CreateRetriever(store).SearchAsync("content", maxResults: 10, minScore: 0f, filter: new Dictionary<string, object> { [TenantKey] = "ws-b" }, cancellationToken: TestContext.Current.CancellationToken);
 
         results.Should().BeEmpty();
     }
@@ -166,13 +158,9 @@ public class SdkFilterContractTests
         var store = new JsonRoundTripVectorStore();
         var chunk = DocumentChunkEntity.Create("doc-1", "published content", 0, 1);
         chunk.Metadata = new Dictionary<string, object> { ["published"] = true, ["version"] = 3 };
-        await store.StoreAsync(chunk);
+        await store.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
-        var results = await CreateRetriever(store).SearchAsync(
-            "content",
-            maxResults: 10,
-            minScore: 0f,
-            filter: new Dictionary<string, object> { ["published"] = true, ["version"] = 3 });
+        var results = await CreateRetriever(store).SearchAsync("content", maxResults: 10, minScore: 0f, filter: new Dictionary<string, object> { ["published"] = true, ["version"] = 3 }, cancellationToken: TestContext.Current.CancellationToken);
 
         results.Should().HaveCount(1);
     }
@@ -203,12 +191,9 @@ public class SdkFilterContractTests
     {
         var store = new JsonRoundTripVectorStore();
 
-        await CreateIndexer(store).IndexDocumentAsync(
-            "tenant a content",
-            "doc-1",
-            new Dictionary<string, object> { [TenantKey] = "ws-a" });
+        await CreateIndexer(store).IndexDocumentAsync("tenant a content", "doc-1", new Dictionary<string, object> { [TenantKey] = "ws-a" }, TestContext.Current.CancellationToken);
 
-        var stored = await store.GetByDocumentIdAsync("doc-1");
+        var stored = await store.GetByDocumentIdAsync("doc-1", TestContext.Current.CancellationToken);
         stored.Should().ContainSingle()
             .Which.Metadata.Should().ContainKey(TenantKey);
     }
@@ -218,16 +203,9 @@ public class SdkFilterContractTests
     public async Task IndexDocumentAsync_ConvenienceOverload_ThenSearchWithFilter_FindsTheDocument()
     {
         var store = new JsonRoundTripVectorStore();
-        await CreateIndexer(store).IndexDocumentAsync(
-            "tenant a content",
-            "doc-1",
-            new Dictionary<string, object> { [TenantKey] = "ws-a" });
+        await CreateIndexer(store).IndexDocumentAsync("tenant a content", "doc-1", new Dictionary<string, object> { [TenantKey] = "ws-a" }, TestContext.Current.CancellationToken);
 
-        var results = await CreateRetriever(store).SearchAsync(
-            "content",
-            maxResults: 10,
-            minScore: 0f,
-            filter: new Dictionary<string, object> { [TenantKey] = "ws-a" });
+        var results = await CreateRetriever(store).SearchAsync("content", maxResults: 10, minScore: 0f, filter: new Dictionary<string, object> { [TenantKey] = "ws-a" }, cancellationToken: TestContext.Current.CancellationToken);
 
         results.Should().ContainSingle().Which.DocumentChunk.DocumentId.Should().Be("doc-1");
     }
@@ -246,9 +224,9 @@ public class SdkFilterContractTests
             Metadata = new Dictionary<string, object> { ["section"] = "intro" }
         };
 
-        await CreateIndexer(store).IndexChunksAsync(new[] { chunk }, "doc-1");
+        await CreateIndexer(store).IndexChunksAsync(new[] { chunk }, "doc-1", cancellationToken: TestContext.Current.CancellationToken);
 
-        var stored = await store.GetByDocumentIdAsync("doc-1");
+        var stored = await store.GetByDocumentIdAsync("doc-1", TestContext.Current.CancellationToken);
         stored.Should().ContainSingle()
             .Which.Metadata.Should().ContainKey("section");
     }
@@ -270,12 +248,9 @@ public class SdkFilterContractTests
             Metadata = new Dictionary<string, object> { ["scope"] = "chunk" }
         };
 
-        await CreateIndexer(store).IndexChunksAsync(
-            new[] { chunk },
-            "doc-1",
-            new Dictionary<string, object> { ["scope"] = "document", [TenantKey] = "ws-a" });
+        await CreateIndexer(store).IndexChunksAsync(new[] { chunk }, "doc-1", new Dictionary<string, object> { ["scope"] = "document", [TenantKey] = "ws-a" }, TestContext.Current.CancellationToken);
 
-        var stored = (await store.GetByDocumentIdAsync("doc-1")).Single();
+        var stored = (await store.GetByDocumentIdAsync("doc-1", TestContext.Current.CancellationToken)).Single();
         VectorStoreBase.NormalizeFilterValue(stored.Metadata!["scope"]).Should().Be("chunk");
         VectorStoreBase.NormalizeFilterValue(stored.Metadata![TenantKey]).Should().Be("ws-a");
     }

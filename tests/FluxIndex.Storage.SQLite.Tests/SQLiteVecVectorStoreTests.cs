@@ -10,7 +10,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace FluxIndex.Storage.SQLite.Tests;
 
@@ -51,7 +50,7 @@ public class SQLiteVecVectorStoreTests : IDisposable
         _serviceProvider = services.BuildServiceProvider();
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task StoreAsync_WithValidChunk_ShouldReturnId()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
@@ -61,19 +60,19 @@ public class SQLiteVecVectorStoreTests : IDisposable
         var chunk = CreateTestChunk();
 
         // Act
-        var id = await vectorStore.StoreAsync(chunk);
+        var id = await vectorStore.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Assert
         id.Should().NotBeEmpty();
         chunk.Id = id; // ID 설정
 
-        var retrieved = await vectorStore.GetAsync(id);
+        var retrieved = await vectorStore.GetAsync(id, TestContext.Current.CancellationToken);
         retrieved.Should().NotBeNull();
         retrieved!.DocumentId.Should().Be(chunk.DocumentId);
         retrieved.Content.Should().Be(chunk.Content);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task StoreBatchAsync_WithMultipleChunks_ShouldReturnAllIds()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
@@ -88,7 +87,7 @@ public class SQLiteVecVectorStoreTests : IDisposable
         };
 
         // Act
-        var ids = await vectorStore.StoreBatchAsync(chunks);
+        var ids = await vectorStore.StoreBatchAsync(chunks, TestContext.Current.CancellationToken);
 
         // Assert
         ids.Should().HaveCount(3);
@@ -97,12 +96,12 @@ public class SQLiteVecVectorStoreTests : IDisposable
         // 각 항목이 제대로 저장되었는지 확인
         foreach (var id in ids)
         {
-            var retrieved = await vectorStore.GetAsync(id);
+            var retrieved = await vectorStore.GetAsync(id, TestContext.Current.CancellationToken);
             retrieved.Should().NotBeNull();
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task SearchAsync_WithSimilarVectors_ShouldReturnOrderedResults()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
@@ -120,10 +119,10 @@ public class SQLiteVecVectorStoreTests : IDisposable
             CreateTestChunk("doc3", 0, CreateRandomEmbedding()) // 완전히 다른 벡터
         };
 
-        await vectorStore.StoreBatchAsync(chunks);
+        await vectorStore.StoreBatchAsync(chunks, TestContext.Current.CancellationToken);
 
         // Act
-        var results = await vectorStore.SearchAsync(baseVector, topK: 3, minScore: 0.5f);
+        var results = await vectorStore.SearchAsync(baseVector, topK: 3, minScore: 0.5f, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         results.Should().NotBeEmpty();
@@ -134,7 +133,7 @@ public class SQLiteVecVectorStoreTests : IDisposable
         results.First().ChunkIndex.Should().Be(0);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task SearchAsync_WithEmptyStore_ShouldReturnEmpty()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
@@ -144,13 +143,13 @@ public class SQLiteVecVectorStoreTests : IDisposable
         var queryVector = CreateTestEmbedding();
 
         // Act
-        var results = await vectorStore.SearchAsync(queryVector, topK: 5);
+        var results = await vectorStore.SearchAsync(queryVector, topK: 5, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         results.Should().BeEmpty();
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task GetByDocumentIdAsync_WithValidDocumentId_ShouldReturnAllChunks()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
@@ -166,10 +165,10 @@ public class SQLiteVecVectorStoreTests : IDisposable
             CreateTestChunk("other-document", 0) // 다른 문서
         };
 
-        await vectorStore.StoreBatchAsync(chunks);
+        await vectorStore.StoreBatchAsync(chunks, TestContext.Current.CancellationToken);
 
         // Act
-        var results = await vectorStore.GetByDocumentIdAsync(documentId);
+        var results = await vectorStore.GetByDocumentIdAsync(documentId, TestContext.Current.CancellationToken);
 
         // Assert
         results.Should().HaveCount(3);
@@ -183,7 +182,7 @@ public class SQLiteVecVectorStoreTests : IDisposable
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task UpdateAsync_WithValidChunk_ShouldUpdateSuccessfully()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
@@ -191,7 +190,7 @@ public class SQLiteVecVectorStoreTests : IDisposable
         // Arrange
         var vectorStore = _serviceProvider.GetRequiredService<IVectorStore>();
         var chunk = CreateTestChunk();
-        var id = await vectorStore.StoreAsync(chunk);
+        var id = await vectorStore.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Act
         chunk.Id = id;
@@ -199,19 +198,19 @@ public class SQLiteVecVectorStoreTests : IDisposable
         chunk.TokenCount = 999;
         chunk.Metadata!["updated"] = true;
 
-        var updated = await vectorStore.UpdateAsync(chunk);
+        var updated = await vectorStore.UpdateAsync(chunk, TestContext.Current.CancellationToken);
 
         // Assert
         updated.Should().BeTrue();
 
-        var retrieved = await vectorStore.GetAsync(id);
+        var retrieved = await vectorStore.GetAsync(id, TestContext.Current.CancellationToken);
         retrieved.Should().NotBeNull();
         retrieved!.Content.Should().Be("Updated content");
         retrieved.TokenCount.Should().Be(999);
         retrieved.Metadata.Should().ContainKey("updated");
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task DeleteAsync_WithValidId_ShouldRemoveChunk()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
@@ -219,26 +218,26 @@ public class SQLiteVecVectorStoreTests : IDisposable
         // Arrange
         var vectorStore = _serviceProvider.GetRequiredService<IVectorStore>();
         var chunk = CreateTestChunk();
-        var id = await vectorStore.StoreAsync(chunk);
+        var id = await vectorStore.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // 저장 확인
-        var existsBefore = await vectorStore.ExistsAsync(id);
+        var existsBefore = await vectorStore.ExistsAsync(id, TestContext.Current.CancellationToken);
         existsBefore.Should().BeTrue();
 
         // Act
-        var deleted = await vectorStore.DeleteAsync(id);
+        var deleted = await vectorStore.DeleteAsync(id, TestContext.Current.CancellationToken);
 
         // Assert
         deleted.Should().BeTrue();
 
-        var existsAfter = await vectorStore.ExistsAsync(id);
+        var existsAfter = await vectorStore.ExistsAsync(id, TestContext.Current.CancellationToken);
         existsAfter.Should().BeFalse();
 
-        var retrieved = await vectorStore.GetAsync(id);
+        var retrieved = await vectorStore.GetAsync(id, TestContext.Current.CancellationToken);
         retrieved.Should().BeNull();
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task DeleteByDocumentIdAsync_WithValidDocumentId_ShouldRemoveAllChunks()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
@@ -253,24 +252,24 @@ public class SQLiteVecVectorStoreTests : IDisposable
             CreateTestChunk("other-document", 0) // 보존되어야 할 청크
         };
 
-        var ids = await vectorStore.StoreBatchAsync(chunks);
+        var ids = await vectorStore.StoreBatchAsync(chunks, TestContext.Current.CancellationToken);
 
         // Act
-        var deleted = await vectorStore.DeleteByDocumentIdAsync(documentId);
+        var deleted = await vectorStore.DeleteByDocumentIdAsync(documentId, TestContext.Current.CancellationToken);
 
         // Assert
         deleted.Should().BeTrue();
 
         // 해당 문서의 청크들이 삭제되었는지 확인
-        var remainingChunks = await vectorStore.GetByDocumentIdAsync(documentId);
+        var remainingChunks = await vectorStore.GetByDocumentIdAsync(documentId, TestContext.Current.CancellationToken);
         remainingChunks.Should().BeEmpty();
 
         // 다른 문서의 청크는 보존되어야 함
-        var otherChunks = await vectorStore.GetByDocumentIdAsync("other-document");
+        var otherChunks = await vectorStore.GetByDocumentIdAsync("other-document", TestContext.Current.CancellationToken);
         otherChunks.Should().HaveCount(1);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task CountAsync_WithStoredChunks_ShouldReturnCorrectCount()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
@@ -284,17 +283,17 @@ public class SQLiteVecVectorStoreTests : IDisposable
             CreateTestChunk("doc2", 0)
         };
 
-        var initialCount = await vectorStore.CountAsync();
-        await vectorStore.StoreBatchAsync(chunks);
+        var initialCount = await vectorStore.CountAsync(TestContext.Current.CancellationToken);
+        await vectorStore.StoreBatchAsync(chunks, TestContext.Current.CancellationToken);
 
         // Act
-        var finalCount = await vectorStore.CountAsync();
+        var finalCount = await vectorStore.CountAsync(TestContext.Current.CancellationToken);
 
         // Assert
         finalCount.Should().Be(initialCount + 3);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ClearAsync_WithStoredChunks_ShouldRemoveAllChunks()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
@@ -307,19 +306,19 @@ public class SQLiteVecVectorStoreTests : IDisposable
             CreateTestChunk("doc2", 0)
         };
 
-        await vectorStore.StoreBatchAsync(chunks);
-        var countBefore = await vectorStore.CountAsync();
+        await vectorStore.StoreBatchAsync(chunks, TestContext.Current.CancellationToken);
+        var countBefore = await vectorStore.CountAsync(TestContext.Current.CancellationToken);
         countBefore.Should().BeGreaterThan(0);
 
         // Act
-        await vectorStore.ClearAsync();
+        await vectorStore.ClearAsync(TestContext.Current.CancellationToken);
 
         // Assert
-        var countAfter = await vectorStore.CountAsync();
+        var countAfter = await vectorStore.CountAsync(TestContext.Current.CancellationToken);
         countAfter.Should().Be(0);
     }
 
-    [SkippableTheory]
+    [Theory]
     [Trait("Category", "Performance")]
     [InlineData(10, 5)]
     [InlineData(100, 20)]
@@ -339,13 +338,13 @@ public class SQLiteVecVectorStoreTests : IDisposable
 
         // Act & Assert
         // 배치 저장 성능
-        await vectorStore.StoreBatchAsync(chunks);
+        await vectorStore.StoreBatchAsync(chunks, TestContext.Current.CancellationToken);
         var storeTime = stopwatch.ElapsedMilliseconds;
         _output.WriteLine($"배치 저장 시간 ({chunkCount}개): {storeTime}ms");
 
         // 검색 성능
         stopwatch.Restart();
-        var searchResults = await vectorStore.SearchAsync(CreateTestEmbedding(), topK: topK);
+        var searchResults = await vectorStore.SearchAsync(CreateTestEmbedding(), topK: topK, cancellationToken: TestContext.Current.CancellationToken);
         var searchTime = stopwatch.ElapsedMilliseconds;
         _output.WriteLine($"검색 시간 (topK={topK}): {searchTime}ms");
 
@@ -369,19 +368,18 @@ public class SQLiteVecVectorStoreTests : IDisposable
         var b1 = CreateTestChunk(documentId: "doc-b1");
         b1.Metadata!["desk"] = "B";
 
-        a1.Id = await vectorStore.StoreAsync(a1);
-        a2.Id = await vectorStore.StoreAsync(a2);
-        b1.Id = await vectorStore.StoreAsync(b1);
+        a1.Id = await vectorStore.StoreAsync(a1, TestContext.Current.CancellationToken);
+        a2.Id = await vectorStore.StoreAsync(a2, TestContext.Current.CancellationToken);
+        b1.Id = await vectorStore.StoreAsync(b1, TestContext.Current.CancellationToken);
 
         // Act - purge everything tagged desk=A in one call
-        var deleted = await vectorStore.DeleteByFilterAsync(
-            new Dictionary<string, object> { ["desk"] = "A" });
+        var deleted = await vectorStore.DeleteByFilterAsync(new Dictionary<string, object> { ["desk"] = "A" }, TestContext.Current.CancellationToken);
 
         // Assert - only the two desk=A chunks removed, desk=B survives
         deleted.Should().Be(2);
-        (await vectorStore.GetAsync(a1.Id)).Should().BeNull();
-        (await vectorStore.GetAsync(a2.Id)).Should().BeNull();
-        (await vectorStore.GetAsync(b1.Id)).Should().NotBeNull();
+        (await vectorStore.GetAsync(a1.Id, TestContext.Current.CancellationToken)).Should().BeNull();
+        (await vectorStore.GetAsync(a2.Id, TestContext.Current.CancellationToken)).Should().BeNull();
+        (await vectorStore.GetAsync(b1.Id, TestContext.Current.CancellationToken)).Should().NotBeNull();
     }
 
     [Fact]
@@ -390,12 +388,12 @@ public class SQLiteVecVectorStoreTests : IDisposable
         // Arrange
         var vectorStore = _serviceProvider.GetRequiredService<IVectorStore>();
         var chunk = CreateTestChunk();
-        chunk.Id = await vectorStore.StoreAsync(chunk);
+        chunk.Id = await vectorStore.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Act + Assert - an empty filter must not silently delete all vectors
         var act = async () => await vectorStore.DeleteByFilterAsync(new Dictionary<string, object>());
         await act.Should().ThrowAsync<ArgumentException>();
-        (await vectorStore.GetAsync(chunk.Id)).Should().NotBeNull();
+        (await vectorStore.GetAsync(chunk.Id, TestContext.Current.CancellationToken)).Should().NotBeNull();
     }
 
     private DocumentChunk CreateTestChunk(string? documentId = null, int chunkIndex = 0, float[]? embedding = null)
@@ -550,7 +548,7 @@ public class SQLiteVecExtensionLoaderTests : IDisposable
         _serviceProvider = services.BuildServiceProvider();
     }
 
-    [SkippableFact]
+    [Fact]
     public void GetExtensionPath_ShouldReturnPlatformSpecificPath()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
@@ -576,7 +574,7 @@ public class SQLiteVecExtensionLoaderTests : IDisposable
         }
     }
 
-    [SkippableFact]
+    [Fact]
     public void ExtensionFileExists_WithValidPath_ShouldReturnTrue()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
@@ -602,7 +600,7 @@ public class SQLiteVecExtensionLoaderTests : IDisposable
 /// </summary>
 public class SQLiteVecOptionsTests
 {
-    [SkippableFact]
+    [Fact]
     public void Validate_WithValidOptions_ShouldNotThrow()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
@@ -619,7 +617,7 @@ public class SQLiteVecOptionsTests
         options.Invoking(o => o.Validate()).Should().NotThrow();
     }
 
-    [SkippableTheory]
+    [Theory]
     [InlineData(0)]
     [InlineData(-1)]
     public void Validate_WithInvalidVectorDimension_ShouldThrow(int dimension)
@@ -633,7 +631,7 @@ public class SQLiteVecOptionsTests
         options.Invoking(o => o.Validate()).Should().Throw<ArgumentException>();
     }
 
-    [SkippableTheory]
+    [Theory]
     [InlineData(0)]
     [InlineData(-1)]
     public void Validate_WithInvalidMaxBatchSize_ShouldThrow(int batchSize)
@@ -647,7 +645,7 @@ public class SQLiteVecOptionsTests
         options.Invoking(o => o.Validate()).Should().Throw<ArgumentException>();
     }
 
-    [SkippableTheory]
+    [Theory]
     [InlineData(-1.1f)]
     [InlineData(1.1f)]
     public void Validate_WithInvalidMinScore_ShouldThrow(float minScore)
@@ -661,7 +659,7 @@ public class SQLiteVecOptionsTests
         options.Invoking(o => o.Validate()).Should().Throw<ArgumentException>();
     }
 
-    [SkippableFact]
+    [Fact]
     public void GetVecTableSchema_ShouldReturnValidSQL()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
@@ -683,7 +681,7 @@ public class SQLiteVecOptionsTests
         schema.Should().Contain("metric=cosine");
     }
 
-    [SkippableFact]
+    [Fact]
     public void GetVecTableName_ShouldIncludeFingerprint()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
@@ -696,7 +694,7 @@ public class SQLiteVecOptionsTests
         options.GetVecTableName().Should().Be("chunk_embeddings_bgesmallenV15384");
     }
 
-    [SkippableFact]
+    [Fact]
     public void CreateForTesting_ShouldReturnValidTestOptions()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
@@ -712,7 +710,7 @@ public class SQLiteVecOptionsTests
         options.MaxBatchSize.Should().Be(100);
     }
 
-    [SkippableFact]
+    [Fact]
     public void CreateForProduction_ShouldReturnValidProductionOptions()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();

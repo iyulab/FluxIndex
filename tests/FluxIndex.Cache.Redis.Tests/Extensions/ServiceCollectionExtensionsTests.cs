@@ -10,7 +10,6 @@ using System;
 using System.Linq;
 using System.Threading;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace FluxIndex.Cache.Redis.Tests.Extensions;
 
@@ -24,7 +23,7 @@ public class ServiceCollectionExtensionsTests : RedisTestBase
     {
     }
 
-    [SkippableFact]
+    [Fact]
     public void AddRedisSemanticCache_WithConnectionString_RegistersServices()
     {
         // Skip test if Docker is not available
@@ -53,7 +52,7 @@ public class ServiceCollectionExtensionsTests : RedisTestBase
         Assert.Equal(ConnectionString, options.Value.ConnectionString);
     }
 
-    [SkippableFact]
+    [Fact]
     public void AddRedisSemanticCache_WithOptionsAction_RegistersServicesWithCustomConfiguration()
     {
         // Skip test if Docker is not available
@@ -87,7 +86,7 @@ public class ServiceCollectionExtensionsTests : RedisTestBase
         Assert.Equal(TimeSpan.FromMinutes(45), configuredOptions.Value.DefaultTtl);
     }
 
-    [SkippableFact]
+    [Fact]
     public void AddRedisSemanticCacheWithExistingConnection_RegistersSemanticCacheOnly()
     {
         // Skip test if Docker is not available
@@ -122,7 +121,7 @@ public class ServiceCollectionExtensionsTests : RedisTestBase
         Assert.Equal("existing:", options.Value.KeyPrefix);
     }
 
-    [SkippableFact]
+    [Fact]
     public void AddRedisDistributedCacheWithSemanticCache_RegistersBothServices()
     {
         // Skip test if Docker is not available
@@ -195,7 +194,7 @@ public class ServiceCollectionExtensionsTests : RedisTestBase
             services.AddRedisSemanticCache((Action<RedisSemanticCacheOptions>)null!));
     }
 
-    [SkippableFact]
+    [Fact]
     public void Multiple_AddRedisSemanticCache_Calls_DoNotDuplicate()
     {
         // Skip test if Docker is not available
@@ -229,7 +228,7 @@ public class ServiceCollectionExtensionsTests : RedisTestBase
         Assert.Single(semanticCacheServices);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task RegisteredSemanticCacheService_CanBeUsed()
     {
         // Skip test if Docker is not available
@@ -260,7 +259,7 @@ public class ServiceCollectionExtensionsTests : RedisTestBase
         var semanticCache = serviceProvider.GetRequiredService<ISemanticCacheService>();
 
         // Basic smoke test - ensure the service can be instantiated and called
-        var statistics = await semanticCache.GetCacheStatisticsAsync();
+        var statistics = await semanticCache.GetCacheStatisticsAsync(TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(statistics);

@@ -19,9 +19,14 @@ public class PostgreSQLStorageInitializerIntegrationTests : IAsyncLifetime
     private readonly PostgreSqlContainer _container =
         new PostgreSqlBuilder("pgvector/pgvector:pg16").Build();
 
-    public Task InitializeAsync() => _container.StartAsync();
+    public ValueTask InitializeAsync() => new ValueTask(_container.StartAsync());
 
-    public Task DisposeAsync() => _container.DisposeAsync().AsTask();
+    public ValueTask DisposeAsync()
+    {
+        _container.DisposeAsync();
+        GC.SuppressFinalize(this);
+        return default;
+    }
 
     /// <summary>
     /// Regression for the shared-database no-op: a consumer that points FluxIndex at a database that

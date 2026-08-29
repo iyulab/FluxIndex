@@ -47,7 +47,7 @@ public class ChunkClassificationServiceTests
         var chunk = CreateTestChunk(quality: 0.1);
 
         // Act
-        var result = await validationService.ValidateAsync(chunk);
+        var result = await validationService.ValidateAsync(chunk, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.False(result.RequiresLlmClassification);
@@ -62,7 +62,7 @@ public class ChunkClassificationServiceTests
         var chunk = CreateTestChunk(content: "Short");
 
         // Act
-        var result = await validationService.ValidateAsync(chunk);
+        var result = await validationService.ValidateAsync(chunk, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.False(result.RequiresLlmClassification);
@@ -77,7 +77,7 @@ public class ChunkClassificationServiceTests
         var chunk = CreateTestChunk();
 
         // Act
-        var result = await validationService.ValidateAsync(chunk);
+        var result = await validationService.ValidateAsync(chunk, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.RequiresLlmClassification);
@@ -96,7 +96,7 @@ public class ChunkClassificationServiceTests
         };
 
         // Act
-        var result = await validationService.ValidateAsync(chunk);
+        var result = await validationService.ValidateAsync(chunk, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.RequiresLlmClassification);
@@ -111,7 +111,7 @@ public class ChunkClassificationServiceTests
         var chunk = CreateTestChunk(contextDependency: 0.3);
 
         // Act
-        var result = await validationService.ValidateAsync(chunk);
+        var result = await validationService.ValidateAsync(chunk, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.RequiresLlmClassification);
@@ -132,7 +132,7 @@ public class ChunkClassificationServiceTests
         };
 
         // Act
-        var results = await validationService.ValidateBatchAsync(chunks);
+        var results = await validationService.ValidateBatchAsync(chunks, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(3, results.Count);
@@ -231,7 +231,7 @@ public class ChunkClassificationServiceTests
         var chunk = CreateTestChunk();
 
         // Act
-        var result = await classificationService.ClassifyAsync(chunk);
+        var result = await classificationService.ClassifyAsync(chunk, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(ClassificationSource.Skipped, result.Source);
@@ -250,7 +250,7 @@ public class ChunkClassificationServiceTests
         var chunk = CreateTestChunk(quality: 0.1);
 
         // Act
-        var result = await classificationService.ClassifyAsync(chunk);
+        var result = await classificationService.ClassifyAsync(chunk, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(ClassificationSource.Skipped, result.Source);
@@ -280,7 +280,7 @@ public class ChunkClassificationServiceTests
         var chunk = CreateTestChunk();
 
         // Act
-        var result = await classificationService.ClassifyAsync(chunk);
+        var result = await classificationService.ClassifyAsync(chunk, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(ClassificationSource.Llm, result.Source);
@@ -315,7 +315,7 @@ public class ChunkClassificationServiceTests
         };
 
         // Act
-        var results = await classificationService.ClassifyBatchAsync(chunks);
+        var results = await classificationService.ClassifyBatchAsync(chunks, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(3, results.Count);
@@ -346,7 +346,7 @@ public class ChunkClassificationServiceTests
         var chunk = CreateTestChunk();
 
         // Act
-        var result = await classificationService.ClassifyAsync(chunk);
+        var result = await classificationService.ClassifyAsync(chunk, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert - Should fail validation and return skipped after retries
         Assert.Equal(ClassificationSource.Skipped, result.Source);

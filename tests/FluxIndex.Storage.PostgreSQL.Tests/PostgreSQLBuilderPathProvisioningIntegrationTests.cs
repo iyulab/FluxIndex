@@ -24,9 +24,14 @@ public class PostgreSQLBuilderPathProvisioningIntegrationTests : IAsyncLifetime
     private readonly PostgreSqlContainer _container =
         new PostgreSqlBuilder("pgvector/pgvector:pg16").Build();
 
-    public Task InitializeAsync() => _container.StartAsync();
+    public ValueTask InitializeAsync() => new ValueTask(_container.StartAsync());
 
-    public Task DisposeAsync() => _container.DisposeAsync().AsTask();
+    public ValueTask DisposeAsync()
+    {
+        _container.DisposeAsync();
+        GC.SuppressFinalize(this);
+        return default;
+    }
 
     [Fact]
     public async Task BuildProvisioning_WithFullPostgreSQLStack_CreatesEveryEnabledComponentSchema()

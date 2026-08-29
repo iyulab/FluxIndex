@@ -66,7 +66,7 @@ public class LeidenCommunityServiceTests
         var chunks = Enumerable.Empty<LeidenChunk>();
 
         // Act
-        var result = await service.DetectHierarchicalCommunitiesAsync(chunks);
+        var result = await service.DetectHierarchicalCommunitiesAsync(chunks, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Empty(result.Levels);
@@ -85,7 +85,7 @@ public class LeidenCommunityServiceTests
         var options = new LeidenOptions { MinCommunitySize = 1 };
 
         // Act
-        var result = await service.DetectHierarchicalCommunitiesAsync(chunks, options);
+        var result = await service.DetectHierarchicalCommunitiesAsync(chunks, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(1, result.TotalChunks);
@@ -108,7 +108,7 @@ public class LeidenCommunityServiceTests
         var options = new LeidenOptions { MinCommunitySize = 1, SimilarityThreshold = 0.5 };
 
         // Act
-        var result = await service.DetectHierarchicalCommunitiesAsync(chunks, options);
+        var result = await service.DetectHierarchicalCommunitiesAsync(chunks, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(5, result.TotalChunks);
@@ -131,7 +131,7 @@ public class LeidenCommunityServiceTests
         };
 
         // Act
-        var result = await service.DetectHierarchicalCommunitiesAsync(chunks, options);
+        var result = await service.DetectHierarchicalCommunitiesAsync(chunks, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(options, result.Options);
@@ -146,8 +146,8 @@ public class LeidenCommunityServiceTests
         var options = new LeidenOptions { RandomSeed = 42, MinCommunitySize = 1 };
 
         // Act
-        var result1 = await service.DetectHierarchicalCommunitiesAsync(chunks, options);
-        var result2 = await service.DetectHierarchicalCommunitiesAsync(chunks, options);
+        var result1 = await service.DetectHierarchicalCommunitiesAsync(chunks, options, TestContext.Current.CancellationToken);
+        var result2 = await service.DetectHierarchicalCommunitiesAsync(chunks, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(result1.LevelCount, result2.LevelCount);
@@ -162,7 +162,7 @@ public class LeidenCommunityServiceTests
         var options = new LeidenOptions { MinCommunitySize = 1 };
 
         // Act
-        var result = await service.DetectHierarchicalCommunitiesAsync(chunks, options);
+        var result = await service.DetectHierarchicalCommunitiesAsync(chunks, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result.Statistics);
@@ -213,7 +213,7 @@ public class LeidenCommunityServiceTests
         var options = new LeidenOptions { MinCommunitySize = 1, SimilarityThreshold = 0.5 };
 
         // Act
-        var result = await service.DetectHierarchicalCommunitiesAsync(chunks, options);
+        var result = await service.DetectHierarchicalCommunitiesAsync(chunks, options, TestContext.Current.CancellationToken);
 
         // Assert
         if (result.LevelCount > 0)
@@ -240,7 +240,7 @@ public class LeidenCommunityServiceTests
         var options = new LeidenOptions { MinCommunitySize = 1, SimilarityThreshold = 0.5 };
 
         // Act
-        var result = await service.DetectHierarchicalCommunitiesAsync(chunks, options);
+        var result = await service.DetectHierarchicalCommunitiesAsync(chunks, options, TestContext.Current.CancellationToken);
 
         // Assert
         if (result.LevelCount > 0 && result.Levels[0].Communities.Any())
@@ -266,7 +266,7 @@ public class LeidenCommunityServiceTests
         var options = new LeidenOptions { MinCommunitySize = 1, SimilarityThreshold = 0.5 };
 
         // Act
-        var result = await service.DetectHierarchicalCommunitiesAsync(chunks, options);
+        var result = await service.DetectHierarchicalCommunitiesAsync(chunks, options, TestContext.Current.CancellationToken);
 
         // Assert
         if (result.LevelCount > 0 && result.Levels[0].Communities.Any())
@@ -286,7 +286,7 @@ public class LeidenCommunityServiceTests
         var options = new LeidenOptions { UseRefinement = true, MinCommunitySize = 1 };
 
         // Act
-        var result = await service.DetectHierarchicalCommunitiesAsync(chunks, options);
+        var result = await service.DetectHierarchicalCommunitiesAsync(chunks, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -315,7 +315,7 @@ public class LeidenCommunityServiceTests
         };
 
         // Act
-        var result = await service.DetectHierarchicalCommunitiesAsync(chunks, options);
+        var result = await service.DetectHierarchicalCommunitiesAsync(chunks, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -338,7 +338,7 @@ public class LeidenCommunityServiceTests
         };
 
         // Act
-        var result = await service.GenerateSummariesAsync(hierarchy, 5);
+        var result = await service.GenerateSummariesAsync(hierarchy, 5, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Empty(result);
@@ -360,7 +360,7 @@ public class LeidenCommunityServiceTests
         };
 
         // Act
-        var result = await service.GenerateSummariesAsync(hierarchy, -1);
+        var result = await service.GenerateSummariesAsync(hierarchy, -1, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Empty(result);
@@ -393,7 +393,7 @@ public class LeidenCommunityServiceTests
         };
 
         // Act
-        var result = await service.GenerateSummariesAsync(hierarchy, 0);
+        var result = await service.GenerateSummariesAsync(hierarchy, 0, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Single(result);
@@ -430,7 +430,7 @@ public class LeidenCommunityServiceTests
         };
 
         // Act
-        var result = await service.GenerateSummariesAsync(hierarchy, 0);
+        var result = await service.GenerateSummariesAsync(hierarchy, 0, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Single(result);
@@ -467,7 +467,7 @@ public class LeidenCommunityServiceTests
         };
 
         // Act - should not throw
-        var result = await service.GenerateSummariesAsync(hierarchy, 0);
+        var result = await service.GenerateSummariesAsync(hierarchy, 0, TestContext.Current.CancellationToken);
 
         // Assert - may return empty or non-empty depending on implementation
         Assert.NotNull(result);
@@ -520,7 +520,7 @@ public class LeidenCommunityServiceTests
         };
 
         // Act
-        var result = await service.FindRelevantCommunitiesAsync(queryEmbedding, hierarchy, level: 5);
+        var result = await service.FindRelevantCommunitiesAsync(queryEmbedding, hierarchy, level: 5, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Empty(result);
@@ -543,7 +543,7 @@ public class LeidenCommunityServiceTests
         };
 
         // Act
-        var result = await service.FindRelevantCommunitiesAsync(queryEmbedding, hierarchy, level: -1);
+        var result = await service.FindRelevantCommunitiesAsync(queryEmbedding, hierarchy, level: -1, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Empty(result);
@@ -581,7 +581,7 @@ public class LeidenCommunityServiceTests
         };
 
         // Act
-        var result = await service.FindRelevantCommunitiesAsync(queryEmbedding, hierarchy, level: 0, topK: 3);
+        var result = await service.FindRelevantCommunitiesAsync(queryEmbedding, hierarchy, level: 0, topK: 3, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(3, result.Count);
@@ -619,7 +619,7 @@ public class LeidenCommunityServiceTests
         };
 
         // Act
-        var result = await service.FindRelevantCommunitiesAsync(queryEmbedding, hierarchy, level: 0, topK: 3);
+        var result = await service.FindRelevantCommunitiesAsync(queryEmbedding, hierarchy, level: 0, topK: 3, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(3, result.Count);
@@ -652,7 +652,7 @@ public class LeidenCommunityServiceTests
         };
 
         // Act
-        var result = await service.FindRelevantCommunitiesAsync(queryEmbedding, hierarchy, level: 0, topK: 5);
+        var result = await service.FindRelevantCommunitiesAsync(queryEmbedding, hierarchy, level: 0, topK: 5, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Single(result);
@@ -684,7 +684,7 @@ public class LeidenCommunityServiceTests
         };
 
         // Act
-        var result = await service.FindRelevantCommunitiesAsync(queryEmbedding, hierarchy, level: 0, topK: 5);
+        var result = await service.FindRelevantCommunitiesAsync(queryEmbedding, hierarchy, level: 0, topK: 5, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Single(result);
@@ -709,7 +709,7 @@ public class LeidenCommunityServiceTests
         var newChunks = CreateTestChunks(5);
 
         // Act
-        var result = await service.UpdateHierarchyAsync(existingHierarchy, newChunks);
+        var result = await service.UpdateHierarchyAsync(existingHierarchy, newChunks, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(5, result.TotalChunks);
@@ -730,7 +730,7 @@ public class LeidenCommunityServiceTests
         var newOptions = new LeidenOptions { Resolution = 2.0, MinCommunitySize = 1 };
 
         // Act
-        var result = await service.UpdateHierarchyAsync(existingHierarchy, newChunks, newOptions);
+        var result = await service.UpdateHierarchyAsync(existingHierarchy, newChunks, newOptions, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(newOptions.Resolution, result.Options.Resolution);
@@ -751,7 +751,7 @@ public class LeidenCommunityServiceTests
         var newChunks = CreateTestChunks(3);
 
         // Act
-        var result = await service.UpdateHierarchyAsync(existingHierarchy, newChunks);
+        var result = await service.UpdateHierarchyAsync(existingHierarchy, newChunks, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(existingOptions.Resolution, result.Options.Resolution);
@@ -791,8 +791,8 @@ public class LeidenCommunityServiceTests
         var highResOptions = new LeidenOptions { Resolution = 2.0, MinCommunitySize = 1 };
 
         // Act
-        var lowResResult = await service.DetectHierarchicalCommunitiesAsync(chunks, lowResOptions);
-        var highResResult = await service.DetectHierarchicalCommunitiesAsync(chunks, highResOptions);
+        var lowResResult = await service.DetectHierarchicalCommunitiesAsync(chunks, lowResOptions, TestContext.Current.CancellationToken);
+        var highResResult = await service.DetectHierarchicalCommunitiesAsync(chunks, highResOptions, TestContext.Current.CancellationToken);
 
         // Assert - generally higher resolution produces more communities
         Assert.NotNull(lowResResult);
@@ -808,7 +808,7 @@ public class LeidenCommunityServiceTests
         var options = new LeidenOptions { MinCommunitySize = 3 };
 
         // Act
-        var result = await service.DetectHierarchicalCommunitiesAsync(chunks, options);
+        var result = await service.DetectHierarchicalCommunitiesAsync(chunks, options, TestContext.Current.CancellationToken);
 
         // Assert
         if (result.LevelCount > 0)
@@ -830,7 +830,7 @@ public class LeidenCommunityServiceTests
         };
 
         // Act
-        var result = await service.DetectHierarchicalCommunitiesAsync(chunks, options);
+        var result = await service.DetectHierarchicalCommunitiesAsync(chunks, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -850,7 +850,7 @@ public class LeidenCommunityServiceTests
         };
 
         // Act
-        var result = await service.DetectHierarchicalCommunitiesAsync(chunks, options);
+        var result = await service.DetectHierarchicalCommunitiesAsync(chunks, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -871,7 +871,7 @@ public class LeidenCommunityServiceTests
         var options = new LeidenOptions { MinCommunitySize = 1, SimilarityThreshold = 0.5 };
 
         // Act
-        var result = await service.DetectHierarchicalCommunitiesAsync(chunks, options);
+        var result = await service.DetectHierarchicalCommunitiesAsync(chunks, options, TestContext.Current.CancellationToken);
 
         // Assert
         if (result.LevelCount > 0 && result.Levels[0].Communities.Any())

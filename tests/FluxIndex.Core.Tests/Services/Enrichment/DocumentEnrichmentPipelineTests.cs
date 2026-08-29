@@ -100,7 +100,7 @@ public class DocumentEnrichmentPipelineTests
         };
 
         // Act
-        var result = await pipeline.EnrichChunkAsync(input, options);
+        var result = await pipeline.EnrichChunkAsync(input, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -128,7 +128,7 @@ public class DocumentEnrichmentPipelineTests
         };
 
         // Act
-        var result = await pipeline.EnrichChunkAsync(input, options);
+        var result = await pipeline.EnrichChunkAsync(input, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -156,7 +156,7 @@ public class DocumentEnrichmentPipelineTests
                 Arg.Any<CancellationToken>()).Returns("Machine learning is a field of artificial intelligence that enables computers to learn from data.");
 
         // Act
-        var result = await pipeline.EnrichChunkAsync(input, options);
+        var result = await pipeline.EnrichChunkAsync(input, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -207,7 +207,7 @@ public class DocumentEnrichmentPipelineTests
             });
 
         // Act
-        var result = await pipeline.EnrichChunkAsync(input, options);
+        var result = await pipeline.EnrichChunkAsync(input, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -257,7 +257,7 @@ public class DocumentEnrichmentPipelineTests
             });
 
         // Act
-        var result = await pipeline.EnrichChunkAsync(input, options);
+        var result = await pipeline.EnrichChunkAsync(input, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -289,7 +289,7 @@ public class DocumentEnrichmentPipelineTests
         };
 
         // Act
-        var results = await pipeline.EnrichChunksBatchAsync(inputs, options);
+        var results = await pipeline.EnrichChunksBatchAsync(inputs, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(results);
@@ -363,7 +363,7 @@ public class DocumentEnrichmentPipelineTests
         };
 
         // Act
-        var result = await pipeline.EnrichDocumentAsync(input, options);
+        var result = await pipeline.EnrichDocumentAsync(input, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -383,7 +383,7 @@ public class DocumentEnrichmentPipelineTests
         };
 
         // Act
-        var result = await pipeline.EnrichDocumentAsync(input);
+        var result = await pipeline.EnrichDocumentAsync(input, ct: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -408,7 +408,7 @@ public class DocumentEnrichmentPipelineTests
         };
 
         // Act
-        var result = await pipeline.GenerateEmbeddingsAsync("Simple test content", options);
+        var result = await pipeline.GenerateEmbeddingsAsync("Simple test content", options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -429,7 +429,7 @@ public class DocumentEnrichmentPipelineTests
         };
 
         // Act
-        var result = await pipeline.GenerateEmbeddingsAsync("Test content about AI", options);
+        var result = await pipeline.GenerateEmbeddingsAsync("Test content about AI", options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -448,7 +448,7 @@ public class DocumentEnrichmentPipelineTests
 
         // Act & Assert - Implementation throws NullReferenceException when input is null
         await Assert.ThrowsAnyAsync<Exception>(
-            () => pipeline.EnrichChunkAsync(null!));
+            () => pipeline.EnrichChunkAsync(null!, ct: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -469,7 +469,7 @@ public class DocumentEnrichmentPipelineTests
         };
 
         // Act
-        var result = await pipeline.EnrichChunkAsync(input, options);
+        var result = await pipeline.EnrichChunkAsync(input, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -491,7 +491,7 @@ public class DocumentEnrichmentPipelineTests
 
         // Act & Assert
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => pipeline.EnrichChunkAsync(input, options));
+            () => pipeline.EnrichChunkAsync(input, options, TestContext.Current.CancellationToken));
     }
 
     #endregion
@@ -517,7 +517,7 @@ public class DocumentEnrichmentPipelineTests
         var input = CreateTestInput();
 
         // Act - use default options from config (null options parameter)
-        var result = await pipeline.EnrichChunkAsync(input, null);
+        var result = await pipeline.EnrichChunkAsync(input, null, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -575,7 +575,7 @@ public class DocumentEnrichmentPipelineTests
         };
 
         // Act
-        var result = await pipeline.BuildGraphDataAsync(enrichedChunks);
+        var result = await pipeline.BuildGraphDataAsync(enrichedChunks, ct: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -591,7 +591,7 @@ public class DocumentEnrichmentPipelineTests
         var enrichedChunks = new List<EnrichedChunk>();
 
         // Act
-        var result = await pipeline.BuildGraphDataAsync(enrichedChunks);
+        var result = await pipeline.BuildGraphDataAsync(enrichedChunks, ct: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -614,7 +614,7 @@ public class DocumentEnrichmentPipelineTests
                 Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns("This chunk discusses how ML algorithms work with data.");
 
         // Act
-        var result = await pipeline.GenerateContextualSummaryAsync(chunkContent);
+        var result = await pipeline.GenerateContextualSummaryAsync(chunkContent, ct: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -631,10 +631,7 @@ public class DocumentEnrichmentPipelineTests
         var precedingChunks = "Introduction to machine learning concepts.";
 
         // Act
-        var result = await pipeline.GenerateContextualSummaryAsync(
-            chunkContent,
-            documentContext,
-            precedingChunks);
+        var result = await pipeline.GenerateContextualSummaryAsync(chunkContent, documentContext, precedingChunks, ct: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -674,7 +671,7 @@ public class DocumentEnrichmentPipelineTests
             });
 
         // Act
-        var result = await pipeline.ExtractEntitiesAsync(content);
+        var result = await pipeline.ExtractEntitiesAsync(content, ct: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -695,7 +692,7 @@ public class DocumentEnrichmentPipelineTests
         };
 
         // Act
-        var result = await pipeline.ExtractEntitiesAsync(content, options);
+        var result = await pipeline.ExtractEntitiesAsync(content, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);

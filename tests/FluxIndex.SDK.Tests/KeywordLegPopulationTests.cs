@@ -28,11 +28,9 @@ public class KeywordLegPopulationTests
         var context = BuildContext();
         var keywordSearch = context.ServiceProvider.GetRequiredService<IKeywordSearchService>();
 
-        await context.Indexer.IndexDocumentAsync(
-            "Distributed systems require careful transaction boundaries",
-            "doc-1");
+        await context.Indexer.IndexDocumentAsync("Distributed systems require careful transaction boundaries", "doc-1", cancellationToken: TestContext.Current.CancellationToken);
 
-        var results = await keywordSearch.SearchAsync("transaction");
+        var results = await keywordSearch.SearchAsync("transaction", cancellationToken: TestContext.Current.CancellationToken);
 
         results.Should().NotBeEmpty(
             "the indexing API must fill the keyword leg — nothing else does, so hybrid search " +
@@ -46,12 +44,12 @@ public class KeywordLegPopulationTests
         var context = BuildContext();
         var keywordSearch = context.ServiceProvider.GetRequiredService<IKeywordSearchService>();
 
-        await context.Indexer.IndexDocumentAsync("retention policy for archived records", "doc-1");
-        await context.Indexer.IndexDocumentAsync("retention of build artifacts", "doc-2");
+        await context.Indexer.IndexDocumentAsync("retention policy for archived records", "doc-1", cancellationToken: TestContext.Current.CancellationToken);
+        await context.Indexer.IndexDocumentAsync("retention of build artifacts", "doc-2", cancellationToken: TestContext.Current.CancellationToken);
 
-        await context.Indexer.DeleteByDocumentIdAsync("doc-1");
+        await context.Indexer.DeleteByDocumentIdAsync("doc-1", TestContext.Current.CancellationToken);
 
-        var results = await keywordSearch.SearchAsync("retention");
+        var results = await keywordSearch.SearchAsync("retention", cancellationToken: TestContext.Current.CancellationToken);
 
         results.Should().NotContain(r => r.Chunk.DocumentId == "doc-1",
             "a deleted document must not keep matching through the keyword leg");
@@ -71,11 +69,11 @@ public class KeywordLegPopulationTests
         var keywordSearch = context.ServiceProvider.GetRequiredService<IKeywordSearchService>();
         var vectorStore = context.ServiceProvider.GetRequiredService<IVectorStore>();
 
-        await context.Indexer.IndexDocumentAsync("provisioning contract", "doc-1");
-        await context.Indexer.IndexDocumentAsync("provisioning contract", "doc-1");
+        await context.Indexer.IndexDocumentAsync("provisioning contract", "doc-1", cancellationToken: TestContext.Current.CancellationToken);
+        await context.Indexer.IndexDocumentAsync("provisioning contract", "doc-1", cancellationToken: TestContext.Current.CancellationToken);
 
-        var keywordResults = await keywordSearch.SearchAsync("provisioning");
-        var storedChunks = await vectorStore.GetByDocumentIdAsync("doc-1");
+        var keywordResults = await keywordSearch.SearchAsync("provisioning", cancellationToken: TestContext.Current.CancellationToken);
+        var storedChunks = await vectorStore.GetByDocumentIdAsync("doc-1", TestContext.Current.CancellationToken);
 
         keywordResults.Should().HaveCount(storedChunks.Count(),
             "the keyword leg must hold exactly the chunks the vector store holds — a mismatch is how " +
@@ -92,16 +90,16 @@ public class KeywordLegPopulationTests
         var context = BuildContext();
         var keywordSearch = context.ServiceProvider.GetRequiredService<IKeywordSearchService>();
 
-        await context.Indexer.IndexDocumentAsync("superseded provisioning contract", "doc-1");
+        await context.Indexer.IndexDocumentAsync("superseded provisioning contract", "doc-1", cancellationToken: TestContext.Current.CancellationToken);
 
         var replacement = Core.Domain.Entities.Document.Create("doc-1");
         replacement.Content = "replacement text about embeddings";
         replacement.AddChunk(Core.Domain.Entities.DocumentChunk.Create(
             "doc-1", "replacement text about embeddings", 0, 1));
-        await context.Indexer.UpdateDocumentAsync("doc-1", replacement);
+        await context.Indexer.UpdateDocumentAsync("doc-1", replacement, TestContext.Current.CancellationToken);
 
-        var staleResults = await keywordSearch.SearchAsync("superseded");
-        var freshResults = await keywordSearch.SearchAsync("embeddings");
+        var staleResults = await keywordSearch.SearchAsync("superseded", cancellationToken: TestContext.Current.CancellationToken);
+        var freshResults = await keywordSearch.SearchAsync("embeddings", cancellationToken: TestContext.Current.CancellationToken);
 
         staleResults.Should().BeEmpty("the replaced content must not keep matching");
         freshResults.Should().ContainSingle(r => r.Chunk.DocumentId == "doc-1");
@@ -121,9 +119,9 @@ public class KeywordLegPopulationTests
         var context = BuildContextWithoutKeywordIndexing();
         var keywordSearch = context.ServiceProvider.GetRequiredService<IKeywordSearchService>();
 
-        await context.Indexer.IndexDocumentAsync("transaction boundaries", "doc-1");
+        await context.Indexer.IndexDocumentAsync("transaction boundaries", "doc-1", cancellationToken: TestContext.Current.CancellationToken);
 
-        var results = await keywordSearch.SearchAsync("transaction");
+        var results = await keywordSearch.SearchAsync("transaction", cancellationToken: TestContext.Current.CancellationToken);
 
         results.Should().BeEmpty(
             "opting out stops the indexer writing to the keyword index — which also means keyword " +
@@ -139,10 +137,10 @@ public class KeywordLegPopulationTests
     {
         // 인덱스에 항목이 있는 상태를 먼저 만든다(옵션 on).
         var writer = BuildContext();
-        await writer.Indexer.IndexDocumentAsync("retention policy for archived records", "doc-1");
+        await writer.Indexer.IndexDocumentAsync("retention policy for archived records", "doc-1", cancellationToken: TestContext.Current.CancellationToken);
 
         var keywordSearch = writer.ServiceProvider.GetRequiredService<IKeywordSearchService>();
-        (await keywordSearch.SearchAsync("retention")).Should().NotBeEmpty();
+        (await keywordSearch.SearchAsync("retention", cancellationToken: TestContext.Current.CancellationToken)).Should().NotBeEmpty();
 
         // 같은 인덱스를 공유하는 인덱서를 옵션 off 로 만들어 삭제시킨다.
         var indexerWithoutKeywordWrites = new Indexer(
@@ -153,9 +151,9 @@ public class KeywordLegPopulationTests
             new IndexerOptions { IndexKeyword = false },
             keywordSearchService: keywordSearch);
 
-        await indexerWithoutKeywordWrites.DeleteByDocumentIdAsync("doc-1");
+        await indexerWithoutKeywordWrites.DeleteByDocumentIdAsync("doc-1", TestContext.Current.CancellationToken);
 
-        (await keywordSearch.SearchAsync("retention")).Should().BeEmpty(
+        (await keywordSearch.SearchAsync("retention", cancellationToken: TestContext.Current.CancellationToken)).Should().BeEmpty(
             "a deleted document must not keep matching just because keyword indexing was turned off");
     }
 

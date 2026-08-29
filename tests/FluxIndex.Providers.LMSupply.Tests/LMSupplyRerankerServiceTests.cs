@@ -37,7 +37,7 @@ public class LMSupplyRerankerServiceTests
         };
 
         // Act
-        var results = (await service.RerankAsync("test query", candidates)).ToList();
+        var results = (await service.RerankAsync("test query", candidates, cancellationToken: TestContext.Current.CancellationToken)).ToList();
 
         // Assert
         results.Should().HaveCount(2);
@@ -58,7 +58,7 @@ public class LMSupplyRerankerServiceTests
         var service = new LMSupplyRerankerService(model, logger);
 
         // Act
-        var results = await service.RerankAsync("query", Enumerable.Empty<RetrievalCandidate>());
+        var results = await service.RerankAsync("query", Enumerable.Empty<RetrievalCandidate>(), cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         results.Should().BeEmpty();
@@ -97,7 +97,7 @@ public class LMSupplyRerankerServiceTests
         var options = new RerankOptions { ScoreThreshold = 0.5f };
 
         // Act
-        var results = (await service.RerankAsync("query", candidates, options)).ToList();
+        var results = (await service.RerankAsync("query", candidates, options, TestContext.Current.CancellationToken)).ToList();
 
         // Assert
         results.Should().HaveCount(1);

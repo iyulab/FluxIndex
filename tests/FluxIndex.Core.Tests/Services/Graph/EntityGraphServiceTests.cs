@@ -88,7 +88,7 @@ public class EntityGraphServiceTests
             });
 
         // Act
-        var result = await service.BuildEntityGraphAsync(chunks);
+        var result = await service.BuildEntityGraphAsync(chunks, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -108,7 +108,7 @@ public class EntityGraphServiceTests
         };
 
         // Act
-        var result = await service.BuildEntityGraphAsync(chunks);
+        var result = await service.BuildEntityGraphAsync(chunks, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -139,7 +139,7 @@ public class EntityGraphServiceTests
         var options = new EntityGraphBuildOptions { LinkEntitiesAcrossChunks = true };
 
         // Act
-        var result = await service.BuildEntityGraphAsync(chunks, options);
+        var result = await service.BuildEntityGraphAsync(chunks, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -184,7 +184,7 @@ public class EntityGraphServiceTests
             });
 
         // Act
-        var result = await service.SearchByEntitiesAsync("Who founded Microsoft?", entityGraph);
+        var result = await service.SearchByEntitiesAsync("Who founded Microsoft?", entityGraph, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -209,7 +209,7 @@ public class EntityGraphServiceTests
         _mockEntityService.ExtractEntitiesAsync(Arg.Any<string>(), Arg.Any<EntityExtractionOptions>(), Arg.Any<CancellationToken>()).Returns(new List<ExtractedEntity>());
 
         // Act
-        var result = await service.SearchByEntitiesAsync("Who founded Microsoft?", entityGraph);
+        var result = await service.SearchByEntitiesAsync("Who founded Microsoft?", entityGraph, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -247,7 +247,7 @@ public class EntityGraphServiceTests
         };
 
         // Act
-        var result = await service.TraverseEntityRelationsAsync(new[] { "e2" }, entityGraph);
+        var result = await service.TraverseEntityRelationsAsync(new[] { "e2" }, entityGraph, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -281,7 +281,7 @@ public class EntityGraphServiceTests
         var options = new EntityTraversalOptions { MaxHops = 2 };
 
         // Act
-        var result = await service.TraverseEntityRelationsAsync(new[] { "e1" }, entityGraph, options);
+        var result = await service.TraverseEntityRelationsAsync(new[] { "e1" }, entityGraph, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -313,7 +313,7 @@ public class EntityGraphServiceTests
         };
 
         // Act
-        var scores = await service.ComputeEntityImportanceAsync(entityGraph);
+        var scores = await service.ComputeEntityImportanceAsync(entityGraph, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(scores);
@@ -342,10 +342,8 @@ public class EntityGraphServiceTests
         };
 
         // Act
-        var scoresWithSeed = await service.ComputeEntityImportanceAsync(
-            entityGraph, new[] { "e1" });
-        var scoresWithoutSeed = await service.ComputeEntityImportanceAsync(
-            entityGraph, null);
+        var scoresWithSeed = await service.ComputeEntityImportanceAsync(entityGraph, new[] { "e1" }, cancellationToken: TestContext.Current.CancellationToken);
+        var scoresWithoutSeed = await service.ComputeEntityImportanceAsync(entityGraph, null, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(scoresWithSeed);
@@ -392,7 +390,7 @@ public class EntityGraphServiceTests
         };
 
         // Act
-        var merged = await service.MergeEntityGraphsAsync(new[] { graph1, graph2 });
+        var merged = await service.MergeEntityGraphsAsync(new[] { graph1, graph2 }, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(merged);
@@ -410,7 +408,7 @@ public class EntityGraphServiceTests
         var graphs = Array.Empty<EntityGraphResult>();
 
         // Act
-        var result = await service.MergeEntityGraphsAsync(graphs);
+        var result = await service.MergeEntityGraphsAsync(graphs, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -437,7 +435,7 @@ public class EntityGraphServiceTests
         };
 
         // Act
-        var result = await service.GetChunksForEntitiesAsync(new[] { "e1" }, entityGraph);
+        var result = await service.GetChunksForEntitiesAsync(new[] { "e1" }, entityGraph, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -481,7 +479,7 @@ public class EntityGraphServiceTests
         var options = new BridgeEntityOptions { MinConnections = 3, TopN = 5 };
 
         // Act
-        var bridges = await service.FindBridgeEntitiesAsync(entityGraph, options);
+        var bridges = await service.FindBridgeEntitiesAsync(entityGraph, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(bridges);

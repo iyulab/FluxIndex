@@ -38,7 +38,7 @@ public class ScalarQuantizerTests
         var vector = new float[] { 0.5f, -0.5f, 1.0f, -1.0f };
 
         // Act
-        var result = await quantizer.QuantizeAsync(vector);
+        var result = await quantizer.QuantizeAsync(vector, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(QuantizationType.ScalarInt8, result.Type);
@@ -54,8 +54,8 @@ public class ScalarQuantizerTests
         var original = new float[] { 0.5f, -0.5f, 0.25f, -0.25f };
 
         // Act
-        var quantized = await quantizer.QuantizeAsync(original);
-        var reconstructed = await quantizer.DequantizeAsync(quantized);
+        var quantized = await quantizer.QuantizeAsync(original, TestContext.Current.CancellationToken);
+        var reconstructed = await quantizer.DequantizeAsync(quantized, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(original.Length, reconstructed.Length);
@@ -76,8 +76,8 @@ public class ScalarQuantizerTests
         var vector = new float[] { 0f, 0f, 0f, 0f };
 
         // Act
-        var quantized = await quantizer.QuantizeAsync(vector);
-        var reconstructed = await quantizer.DequantizeAsync(quantized);
+        var quantized = await quantizer.QuantizeAsync(vector, TestContext.Current.CancellationToken);
+        var reconstructed = await quantizer.DequantizeAsync(quantized, TestContext.Current.CancellationToken);
 
         // Assert
         foreach (var val in reconstructed)
@@ -98,7 +98,7 @@ public class ScalarQuantizerTests
         var vector = new float[] { 0.1f, 0.5f, 0.8f, 1.0f };
 
         // Act
-        var result = await quantizer.QuantizeAsync(vector);
+        var result = await quantizer.QuantizeAsync(vector, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(QuantizationType.ScalarUInt8, result.Type);
@@ -113,8 +113,8 @@ public class ScalarQuantizerTests
         var original = new float[] { 0.1f, 0.4f, 0.6f, 0.9f };
 
         // Act
-        var quantized = await quantizer.QuantizeAsync(original);
-        var reconstructed = await quantizer.DequantizeAsync(quantized);
+        var quantized = await quantizer.QuantizeAsync(original, TestContext.Current.CancellationToken);
+        var reconstructed = await quantizer.DequantizeAsync(quantized, TestContext.Current.CancellationToken);
 
         // Assert
         for (int i = 0; i < original.Length; i++)
@@ -136,7 +136,7 @@ public class ScalarQuantizerTests
         var vector = new float[] { 0.1f, -0.1f, 0.5f, -0.5f, 0.9f, -0.9f, 0.3f, -0.3f };
 
         // Act
-        var result = await quantizer.QuantizeAsync(vector);
+        var result = await quantizer.QuantizeAsync(vector, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(QuantizationType.ScalarInt4, result.Type);
@@ -151,8 +151,8 @@ public class ScalarQuantizerTests
         var original = new float[] { 0.5f, -0.5f, 0.25f, -0.25f };
 
         // Act
-        var quantized = await quantizer.QuantizeAsync(original);
-        var reconstructed = await quantizer.DequantizeAsync(quantized);
+        var quantized = await quantizer.QuantizeAsync(original, TestContext.Current.CancellationToken);
+        var reconstructed = await quantizer.DequantizeAsync(quantized, TestContext.Current.CancellationToken);
 
         // Assert (Int4는 정밀도가 낮으므로 더 큰 오차 허용)
         for (int i = 0; i < original.Length; i++)
@@ -190,8 +190,8 @@ public class ScalarQuantizerTests
         var quantizer = CreateQuantizer(QuantizationType.ScalarInt8, 4);
         var vector = new float[] { 0.5f, -0.5f, 0.25f, -0.25f };
 
-        var q1 = await quantizer.QuantizeAsync(vector);
-        var q2 = await quantizer.QuantizeAsync(vector);
+        var q1 = await quantizer.QuantizeAsync(vector, TestContext.Current.CancellationToken);
+        var q2 = await quantizer.QuantizeAsync(vector, TestContext.Current.CancellationToken);
 
         // Act
         var distance = quantizer.ComputeDistance(q1, q2);
@@ -208,8 +208,8 @@ public class ScalarQuantizerTests
         var vector1 = new float[] { 1.0f, 0.0f, 0.0f, 0.0f };
         var vector2 = new float[] { 0.0f, 1.0f, 0.0f, 0.0f };
 
-        var q1 = await quantizer.QuantizeAsync(vector1);
-        var q2 = await quantizer.QuantizeAsync(vector2);
+        var q1 = await quantizer.QuantizeAsync(vector1, TestContext.Current.CancellationToken);
+        var q2 = await quantizer.QuantizeAsync(vector2, TestContext.Current.CancellationToken);
 
         // Act
         var distance = quantizer.ComputeDistance(q1, q2);
@@ -226,7 +226,7 @@ public class ScalarQuantizerTests
         var vector1 = new float[] { 1.0f, 0.0f, 0.0f, 0.0f };
         var vector2 = new float[] { 0.9f, 0.1f, 0.0f, 0.0f };
 
-        var quantized = await quantizer.QuantizeAsync(vector1);
+        var quantized = await quantizer.QuantizeAsync(vector1, TestContext.Current.CancellationToken);
 
         // Act
         var distance = quantizer.ComputeDistanceToVector(quantized, vector2);
@@ -252,7 +252,7 @@ public class ScalarQuantizerTests
         };
 
         // Act
-        await quantizer.TrainAsync(trainingVectors);
+        await quantizer.TrainAsync(trainingVectors, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(quantizer.IsTrained);
@@ -266,7 +266,7 @@ public class ScalarQuantizerTests
         var emptyVectors = new List<float[]>();
 
         // Act
-        await quantizer.TrainAsync(emptyVectors);
+        await quantizer.TrainAsync(emptyVectors, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(quantizer.IsTrained);
@@ -289,7 +289,7 @@ public class ScalarQuantizerTests
         };
 
         // Act
-        var results = (await quantizer.QuantizeBatchAsync(vectors)).ToList();
+        var results = (await quantizer.QuantizeBatchAsync(vectors, TestContext.Current.CancellationToken)).ToList();
 
         // Assert
         Assert.Equal(3, results.Count);
@@ -307,7 +307,7 @@ public class ScalarQuantizerTests
         var quantizer = CreateQuantizer();
 
         // Act & Assert
-        await Assert.ThrowsAsync<ArgumentException>(() => quantizer.QuantizeAsync(null!));
+        await Assert.ThrowsAsync<ArgumentException>(() => quantizer.QuantizeAsync(null!, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -318,7 +318,7 @@ public class ScalarQuantizerTests
         var wrongDimension = new float[] { 1.0f, 2.0f }; // 2차원 instead of 4
 
         // Act & Assert
-        await Assert.ThrowsAsync<ArgumentException>(() => quantizer.QuantizeAsync(wrongDimension));
+        await Assert.ThrowsAsync<ArgumentException>(() => quantizer.QuantizeAsync(wrongDimension, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -328,7 +328,7 @@ public class ScalarQuantizerTests
         var quantizer = CreateQuantizer();
 
         // Act & Assert
-        await Assert.ThrowsAsync<ArgumentNullException>(() => quantizer.DequantizeAsync(null!));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => quantizer.DequantizeAsync(null!, TestContext.Current.CancellationToken));
     }
 
     #endregion

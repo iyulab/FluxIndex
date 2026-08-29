@@ -29,14 +29,15 @@ public class KeywordBackendEquivalenceTests : IAsyncLifetime
     private readonly string _sqlitePath =
         Path.Combine(Path.GetTempPath(), $"fluxindex-equiv-{Guid.NewGuid():N}.db");
 
-    public Task InitializeAsync() => _container.StartAsync();
+    public ValueTask InitializeAsync() => new ValueTask(_container.StartAsync());
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         await _container.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearPool(
             new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={_sqlitePath}"));
         try { if (File.Exists(_sqlitePath)) File.Delete(_sqlitePath); } catch (IOException) { }
+        GC.SuppressFinalize(this);
     }
 
     /// <summary>
@@ -247,19 +248,19 @@ public class KeywordBackendEquivalenceTests : IAsyncLifetime
 
         try
         {
-            await sqlite.ClearIndexAsync();
-            await postgres.ClearIndexAsync();
-            await sqlite.IndexChunksAsync(corpus);
-            await postgres.IndexChunksAsync(corpus);
+            await sqlite.ClearIndexAsync(TestContext.Current.CancellationToken);
+            await postgres.ClearIndexAsync(TestContext.Current.CancellationToken);
+            await sqlite.IndexChunksAsync(corpus, TestContext.Current.CancellationToken);
+            await postgres.IndexChunksAsync(corpus, TestContext.Current.CancellationToken);
 
-            var sqliteRemoved = await sqlite.DeleteByFilterAsync(filter);
-            var postgresRemoved = await postgres.DeleteByFilterAsync(filter);
+            var sqliteRemoved = await sqlite.DeleteByFilterAsync(filter, TestContext.Current.CancellationToken);
+            var postgresRemoved = await postgres.DeleteByFilterAsync(filter, TestContext.Current.CancellationToken);
 
             sqliteRemoved.Should().BeGreaterThan(0, "otherwise both backends agreeing on zero proves nothing");
             postgresRemoved.Should().Be(sqliteRemoved);
 
-            var sqliteLeft = await sqlite.SearchAsync("provisioning schema");
-            var postgresLeft = await postgres.SearchAsync("provisioning schema");
+            var sqliteLeft = await sqlite.SearchAsync("provisioning schema", cancellationToken: TestContext.Current.CancellationToken);
+            var postgresLeft = await postgres.SearchAsync("provisioning schema", cancellationToken: TestContext.Current.CancellationToken);
 
             sqliteLeft.Should().NotBeEmpty("the other tenant's rows must survive");
             postgresLeft.Select(r => r.Chunk.Id).Should().Equal(sqliteLeft.Select(r => r.Chunk.Id));

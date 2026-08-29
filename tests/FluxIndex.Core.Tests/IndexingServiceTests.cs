@@ -99,7 +99,7 @@ public class IndexingServiceTests
         _mockVectorStore.UpdateAsync(Arg.Any<DocumentChunk>(), Arg.Any<CancellationToken>()).Returns(true);
 
         // Act
-        var result = await _service.IndexDocumentAsync(documentId, chunks, metadata);
+        var result = await _service.IndexDocumentAsync(documentId, chunks, metadata, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -183,7 +183,7 @@ public class IndexingServiceTests
         _mockVectorStore.UpdateAsync(Arg.Any<DocumentChunk>(), Arg.Any<CancellationToken>()).Returns(true);
 
         // Act
-        await _service.IndexDocumentAsync(documentId, chunks, metadata);
+        await _service.IndexDocumentAsync(documentId, chunks, metadata, TestContext.Current.CancellationToken);
 
         // Assert
         // Verify enrichment called for each chunk with correct context
@@ -267,7 +267,7 @@ public class IndexingServiceTests
         _mockVectorStore.UpdateAsync(Arg.Any<DocumentChunk>(), Arg.Any<CancellationToken>()).Returns(true);
 
         // Act
-        await _service.IndexDocumentAsync(documentId, chunks, metadata);
+        await _service.IndexDocumentAsync(documentId, chunks, metadata, TestContext.Current.CancellationToken);
 
         // Assert
         await _mockMetadataEnrichmentService.Received(1).EvaluateQualityAsync(
@@ -318,7 +318,7 @@ public class IndexingServiceTests
 
         // Act & Assert
         await Assert.ThrowsAsync<Exception>(() =>
-            _service.IndexDocumentAsync(documentId, chunks, metadata));
+            _service.IndexDocumentAsync(documentId, chunks, metadata, TestContext.Current.CancellationToken));
 
         // Verify document was marked as failed
         await _mockDocumentRepository.Received(1).UpdateAsync(
@@ -337,7 +337,7 @@ public class IndexingServiceTests
         _mockDocumentRepository.DeleteAsync(documentId, Arg.Any<CancellationToken>()).Returns(true);
 
         // Act
-        var result = await _service.DeleteDocumentAsync(documentId);
+        var result = await _service.DeleteDocumentAsync(documentId, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result);
@@ -417,7 +417,7 @@ public class IndexingServiceTests
         _mockVectorStore.UpdateAsync(Arg.Any<DocumentChunk>(), Arg.Any<CancellationToken>()).Returns(true);
 
         // Act
-        await _service.IndexDocumentAsync(documentId, chunks, metadata);
+        await _service.IndexDocumentAsync(documentId, chunks, metadata, TestContext.Current.CancellationToken);
 
         // Assert
         // Verify relationship analysis was called for each chunk
@@ -487,7 +487,7 @@ public class IndexingServiceTests
         _mockVectorStore.UpdateAsync(Arg.Any<DocumentChunk>(), Arg.Any<CancellationToken>()).Returns(true);
 
         // Act
-        var result = await _service.IndexDocumentAsync(documentId, chunks, metadata);
+        var result = await _service.IndexDocumentAsync(documentId, chunks, metadata, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(chunkCount, result.Chunks.Count);

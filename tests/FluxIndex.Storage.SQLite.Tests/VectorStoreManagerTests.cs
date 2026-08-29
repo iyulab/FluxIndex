@@ -71,19 +71,19 @@ public class VectorStoreManagerTests : IDisposable
             _connection, tableName, identity.Dimension, "distance_metric=cosine", CancellationToken.None);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ListCollectionsAsync_NoCollections_ReturnsEmpty()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
 
         // Act
-        var result = await ((IVectorStoreManager)_store).ListCollectionsAsync();
+        var result = await ((IVectorStoreManager)_store).ListCollectionsAsync(TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().BeEmpty();
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ListCollectionsAsync_MultipleCollections_ReturnsAll()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
@@ -96,7 +96,7 @@ public class VectorStoreManagerTests : IDisposable
         await CreateCollectionForIdentity(identityB);
 
         // Act
-        var result = await ((IVectorStoreManager)_store).ListCollectionsAsync();
+        var result = await ((IVectorStoreManager)_store).ListCollectionsAsync(TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().HaveCount(2);
@@ -111,7 +111,7 @@ public class VectorStoreManagerTests : IDisposable
         result.Should().AllSatisfy(c => c.StorageSizeBytes.Should().BeNull());
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task GetCollectionInfoAsync_ExistingCollection_ReturnsInfo()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
@@ -122,7 +122,7 @@ public class VectorStoreManagerTests : IDisposable
         var tableName = $"chunk_embeddings_{identity.Fingerprint}";
 
         // Act
-        var result = await ((IVectorStoreManager)_store).GetCollectionInfoAsync(tableName);
+        var result = await ((IVectorStoreManager)_store).GetCollectionInfoAsync(tableName, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().NotBeNull();
@@ -132,7 +132,7 @@ public class VectorStoreManagerTests : IDisposable
         result.StorageSizeBytes.Should().BeNull();
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task GetCollectionInfoAsync_NonExistent_ReturnsNull()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
@@ -141,13 +141,13 @@ public class VectorStoreManagerTests : IDisposable
         var tableName = "chunk_embeddings_nonexist";
 
         // Act
-        var result = await ((IVectorStoreManager)_store).GetCollectionInfoAsync(tableName);
+        var result = await ((IVectorStoreManager)_store).GetCollectionInfoAsync(tableName, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().BeNull();
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task DeleteCollectionAsync_ExistingCollection_ReturnsTrueAndRemoves()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
@@ -158,20 +158,20 @@ public class VectorStoreManagerTests : IDisposable
         var tableName = $"chunk_embeddings_{identity.Fingerprint}";
 
         // Verify it exists first
-        var before = await ((IVectorStoreManager)_store).GetCollectionInfoAsync(tableName);
+        var before = await ((IVectorStoreManager)_store).GetCollectionInfoAsync(tableName, TestContext.Current.CancellationToken);
         before.Should().NotBeNull();
 
         // Act
-        var deleted = await ((IVectorStoreManager)_store).DeleteCollectionAsync(tableName);
+        var deleted = await ((IVectorStoreManager)_store).DeleteCollectionAsync(tableName, TestContext.Current.CancellationToken);
 
         // Assert
         deleted.Should().BeTrue();
 
-        var after = await ((IVectorStoreManager)_store).GetCollectionInfoAsync(tableName);
+        var after = await ((IVectorStoreManager)_store).GetCollectionInfoAsync(tableName, TestContext.Current.CancellationToken);
         after.Should().BeNull();
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task DeleteCollectionAsync_NonExistent_ReturnsFalse()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
@@ -180,20 +180,20 @@ public class VectorStoreManagerTests : IDisposable
         var tableName = "chunk_embeddings_nothere";
 
         // Act
-        var result = await ((IVectorStoreManager)_store).DeleteCollectionAsync(tableName);
+        var result = await ((IVectorStoreManager)_store).DeleteCollectionAsync(tableName, TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().BeFalse();
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task ListCollectionsAsync_LegacyDimensionTable_IncludedAsOrphan()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
 
         // Arrange: create a legacy dimension-only table directly (no fingerprint)
         if (_connection.State != System.Data.ConnectionState.Open)
-            await _connection.OpenAsync();
+            await _connection.OpenAsync(TestContext.Current.CancellationToken);
 
         await _extensionLoader.LoadExtensionAsync(_connection, CancellationToken.None);
         await _extensionLoader.CreateVecTableAsync(
@@ -201,7 +201,7 @@ public class VectorStoreManagerTests : IDisposable
 
         // Act
         IVectorStoreManager manager = _store;
-        var collections = await manager.ListCollectionsAsync();
+        var collections = await manager.ListCollectionsAsync(TestContext.Current.CancellationToken);
 
         // Assert: legacy table appears in listing
         collections.Should().HaveCount(1);
@@ -216,7 +216,7 @@ public class VectorStoreManagerTests : IDisposable
     /// InvalidOperationException ("no store type mapping for CancellationToken").
     /// The catch block swallowed the error, so every unmemorize leaked a vec0 row.
     /// </summary>
-    [SkippableFact]
+    [Fact]
     public async Task DeleteVectorFromVecTableAsync_WithNonDefaultCancellationToken_DeletesRow()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
@@ -253,17 +253,17 @@ public class VectorStoreManagerTests : IDisposable
         return Convert.ToInt32(result, System.Globalization.CultureInfo.InvariantCulture);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task EnumerateVecTableNamesAsync_NoTables_ReturnsEmpty()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
 
-        var names = await _context.EnumerateVecTableNamesAsync();
+        var names = await _context.EnumerateVecTableNamesAsync(TestContext.Current.CancellationToken);
 
         names.Should().BeEmpty();
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task EnumerateVecTableNamesAsync_SingleFingerprint_ReturnsOneTable()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
@@ -271,12 +271,12 @@ public class VectorStoreManagerTests : IDisposable
         var identity = new EmbeddingIdentity { Provider = "Test", Model = "single", Dimension = 4 };
         await CreateCollectionForIdentity(identity);
 
-        var names = await _context.EnumerateVecTableNamesAsync();
+        var names = await _context.EnumerateVecTableNamesAsync(TestContext.Current.CancellationToken);
 
         names.Should().ContainSingle().Which.Should().Be($"chunk_embeddings_{identity.Fingerprint}");
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task EnumerateVecTableNamesAsync_TwoFingerprints_ReturnsBoth()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
@@ -286,7 +286,7 @@ public class VectorStoreManagerTests : IDisposable
         await CreateCollectionForIdentity(current);
         await CreateCollectionForIdentity(legacy);
 
-        var names = await _context.EnumerateVecTableNamesAsync();
+        var names = await _context.EnumerateVecTableNamesAsync(TestContext.Current.CancellationToken);
 
         names.Should().BeEquivalentTo(new[]
         {
@@ -295,7 +295,7 @@ public class VectorStoreManagerTests : IDisposable
         });
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task EnumerateVecTableNamesAsync_IgnoresShadowTables()
     {
         // sqlite-vec creates shadow tables (chunk_embeddings_<fp>_rowids, _chunks).
@@ -305,13 +305,13 @@ public class VectorStoreManagerTests : IDisposable
         var identity = new EmbeddingIdentity { Provider = "Test", Model = "shadow-check", Dimension = 4 };
         await CreateCollectionForIdentity(identity);
 
-        var names = await _context.EnumerateVecTableNamesAsync();
+        var names = await _context.EnumerateVecTableNamesAsync(TestContext.Current.CancellationToken);
 
         names.Should().ContainSingle()
             .Which.Should().NotContain("_rowids").And.NotContain("_chunks");
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task DeleteVectorFromVecTableAsync_LegacyFingerprintTable_RemovesRow()
     {
         // Issue: upstream-fluxindex-legacy-fingerprint-vec0-orphan
@@ -349,7 +349,7 @@ public class VectorStoreManagerTests : IDisposable
             "delete must remove the row from the legacy fingerprint table even though the context points at the current fingerprint");
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task DeleteVectorFromVecTableAsync_RowsInBothFingerprintTables_RemovesBoth()
     {
         // Pathological case: same chunk_id present in two fingerprint tables (e.g. mid-migration).
@@ -380,7 +380,7 @@ public class VectorStoreManagerTests : IDisposable
         (await CountVecRowsAsync(tableB, chunkId)).Should().Be(0);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task DeleteVectorFromVecTableAsync_InsideOuterTransaction_DoesNotThrowNestedTransactionError()
     {
         // Regression for the 0.13.7 multi-fingerprint refactor: SQLiteVecVectorStore.DeleteAsync
@@ -397,14 +397,14 @@ public class VectorStoreManagerTests : IDisposable
         const string chunkId = "nested-tx-chunk";
         await _context.StoreVectorInVecTableAsync(chunkId, new[] { 0.1f, 0.2f, 0.3f, 0.4f }, CancellationToken.None);
 
-        await using var tx = await _context.Database.BeginTransactionAsync();
+        await using var tx = await _context.Database.BeginTransactionAsync(TestContext.Current.CancellationToken);
         await _context.DeleteVectorFromVecTableAsync(chunkId, CancellationToken.None);
-        await tx.CommitAsync();
+        await tx.CommitAsync(TestContext.Current.CancellationToken);
 
         (await CountVecRowsAsync($"chunk_embeddings_{identity.Fingerprint}", chunkId)).Should().Be(0);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task DeleteVectorFromVecTableAsync_OnlyCurrentFingerprintExists_BehavesUnchanged()
     {
         // Single-fingerprint deployment (the common case): no behavior or perf regression expected.
@@ -430,7 +430,7 @@ public class VectorStoreManagerTests : IDisposable
     // Startup orphan sweep (Issue: upstream-fluxindex-legacy-fingerprint-vec0-orphan)
     // ---------------------------------------------------------------------
 
-    [SkippableFact]
+    [Fact]
     public async Task SweepOrphanVectorsAsync_NoVecTables_RecordsMarkerAndReturnsZero()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
@@ -442,12 +442,12 @@ public class VectorStoreManagerTests : IDisposable
         (await CountMigrationMarkerAsync("orphan-sweep-v1")).Should().Be(1);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task SweepOrphanVectorsAsync_OrphanedRows_AreRemoved()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
 
-        await _context.Database.EnsureCreatedAsync();
+        await _context.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
         var identity = new EmbeddingIdentity { Provider = "Test", Model = "sweep-orphan", Dimension = 4 };
         _options.EmbeddingFingerprint = identity.Fingerprint;
         _options.VectorDimension = identity.Dimension;
@@ -469,12 +469,12 @@ public class VectorStoreManagerTests : IDisposable
         (await CountMigrationMarkerAsync("orphan-sweep-v1")).Should().Be(1);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task SweepOrphanVectorsAsync_LiveRows_AreNotRemoved()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
 
-        await _context.Database.EnsureCreatedAsync();
+        await _context.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
         var identity = new EmbeddingIdentity { Provider = "Test", Model = "sweep-live", Dimension = 4 };
         _options.EmbeddingFingerprint = identity.Fingerprint;
         _options.VectorDimension = identity.Dimension;
@@ -492,7 +492,7 @@ public class VectorStoreManagerTests : IDisposable
             Metadata = new Dictionary<string, object>(),
             CreatedAt = DateTime.UtcNow,
         });
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(TestContext.Current.CancellationToken);
         await _context.StoreVectorInVecTableAsync(liveId, new[] { 0.1f, 0.2f, 0.3f, 0.4f }, CancellationToken.None);
 
         var removed = await _context.SweepOrphanVectorsAsync(CancellationToken.None);
@@ -502,13 +502,13 @@ public class VectorStoreManagerTests : IDisposable
             "the live row must survive the sweep");
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task SweepOrphanVectorsAsync_RunTwice_SecondRunIsSkipped()
     {
         // Idempotency: marker prevents re-execution.
         CITestHelper.SkipIfSqliteVecNotAvailable();
 
-        await _context.Database.EnsureCreatedAsync();
+        await _context.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
         var identity = new EmbeddingIdentity { Provider = "Test", Model = "sweep-idem", Dimension = 4 };
         _options.EmbeddingFingerprint = identity.Fingerprint;
         await CreateCollectionForIdentity(identity);
@@ -526,13 +526,13 @@ public class VectorStoreManagerTests : IDisposable
             "the late orphan must survive because the second sweep is skipped");
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task SweepOrphanVectorsAsync_MultipleFingerprints_CleansAllTables()
     {
         // Filer scenario: post-migration deployment has orphans in both legacy and current vec0 tables.
         CITestHelper.SkipIfSqliteVecNotAvailable();
 
-        await _context.Database.EnsureCreatedAsync();
+        await _context.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
 
         var legacy = new EmbeddingIdentity { Provider = "Test", Model = "sweep-legacy", Dimension = 4 };
         var current = new EmbeddingIdentity { Provider = "Test", Model = "sweep-current", Dimension = 4 };
@@ -553,7 +553,7 @@ public class VectorStoreManagerTests : IDisposable
         (await CountVecRowsAsync($"chunk_embeddings_{current.Fingerprint}", "current-orphan")).Should().Be(0);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task SweepOrphanVectorsAsync_VectorChunksTableMissing_TreatsAllAsOrphans()
     {
         // Pathological case: vec0 has rows but vector_chunks does not exist yet
@@ -589,12 +589,12 @@ public class VectorStoreManagerTests : IDisposable
     // Issue: ISSUE-158 / cross-fingerprint-orphan-vec-table — whole-table fingerprint divergence
     // with live vectors (distinct from the row-level orphan-sweep-v1).
 
-    [SkippableFact]
+    [Fact]
     public async Task DetectCrossFingerprintOrphanTables_DivergentTableWithVectors_IsReportedAndNotDeleted()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
 
-        await _context.Database.EnsureCreatedAsync();
+        await _context.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
         var effective = new EmbeddingIdentity { Provider = "Test", Model = "effective", Dimension = 4 };
         var orphan = new EmbeddingIdentity { Provider = "Test", Model = "orphan", Dimension = 4 };
         await CreateCollectionForIdentity(effective);
@@ -622,12 +622,12 @@ public class VectorStoreManagerTests : IDisposable
         (await CountVecRowsAsync($"chunk_embeddings_{orphan.Fingerprint}", "orphan-vec-2")).Should().Be(1);
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task DetectCrossFingerprintOrphanTables_OnlyEffectiveTable_ReturnsEmpty()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
 
-        await _context.Database.EnsureCreatedAsync();
+        await _context.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
         var effective = new EmbeddingIdentity { Provider = "Test", Model = "only-effective", Dimension = 4 };
         await CreateCollectionForIdentity(effective);
         _options.EmbeddingFingerprint = effective.Fingerprint;
@@ -639,12 +639,12 @@ public class VectorStoreManagerTests : IDisposable
         orphans.Should().BeEmpty("the effective table is never its own orphan");
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task DetectCrossFingerprintOrphanTables_DivergentTableEmpty_NotReported()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
 
-        await _context.Database.EnsureCreatedAsync();
+        await _context.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
         var effective = new EmbeddingIdentity { Provider = "Test", Model = "eff-2", Dimension = 4 };
         var emptyOrphan = new EmbeddingIdentity { Provider = "Test", Model = "empty-orphan", Dimension = 4 };
         await CreateCollectionForIdentity(effective);
@@ -669,7 +669,7 @@ public class VectorStoreManagerTests : IDisposable
         orphans.Should().BeEmpty("detection cannot determine the effective table without a bound fingerprint");
     }
 
-    [SkippableFact]
+    [Fact]
     public async Task EnsureInitialized_FiresCrossFingerprintWarn_ViaInitPath_WhenFingerprintBound()
     {
         // Proves the scan fires from the store init path (where the fingerprint is guaranteed bound),
@@ -684,7 +684,7 @@ public class VectorStoreManagerTests : IDisposable
         var fallback = new Lazy<SQLiteVectorStore>(() => throw new InvalidOperationException("Fallback should not be used"));
         var store = new SQLiteVecVectorStore(ctx, NullLogger<SQLiteVecVectorStore>.Instance, optionsWrapper, _extensionLoader, fallback);
 
-        await ctx.Database.EnsureCreatedAsync();
+        await ctx.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
         var effective = new EmbeddingIdentity { Provider = "Test", Model = "init-effective", Dimension = 4 };
         var orphan = new EmbeddingIdentity { Provider = "Test", Model = "init-orphan", Dimension = 4 };
         await CreateCollectionForIdentity(effective);

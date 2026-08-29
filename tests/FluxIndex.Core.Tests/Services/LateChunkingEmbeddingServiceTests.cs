@@ -85,7 +85,7 @@ public class LateChunkingEmbeddingServiceTests
         var boundaries = CreateChunkBoundaries(document, 40);
 
         // Act
-        var result = await service.GenerateLateChunkingEmbeddingsAsync(document, boundaries);
+        var result = await service.GenerateLateChunkingEmbeddingsAsync(document, boundaries, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -102,7 +102,7 @@ public class LateChunkingEmbeddingServiceTests
         var boundaries = CreateChunkBoundaries(document);
 
         // Act
-        var result = await service.GenerateLateChunkingEmbeddingsAsync(document, boundaries);
+        var result = await service.GenerateLateChunkingEmbeddingsAsync(document, boundaries, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result.DocumentEmbedding);
@@ -118,7 +118,7 @@ public class LateChunkingEmbeddingServiceTests
         var boundaries = CreateChunkBoundaries(document, 20);
 
         // Act
-        var result = await service.GenerateLateChunkingEmbeddingsAsync(document, boundaries);
+        var result = await service.GenerateLateChunkingEmbeddingsAsync(document, boundaries, TestContext.Current.CancellationToken);
 
         // Assert
         foreach (var chunkEmbed in result.ChunkEmbeddings)
@@ -146,7 +146,7 @@ public class LateChunkingEmbeddingServiceTests
         var boundaries = CreateChunkBoundaries(document, 50);
 
         // Act
-        var result = await service.GenerateLateChunkingEmbeddingsAsync(document, boundaries);
+        var result = await service.GenerateLateChunkingEmbeddingsAsync(document, boundaries, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -170,7 +170,7 @@ public class LateChunkingEmbeddingServiceTests
         };
 
         // Act
-        var results = await service.GenerateChunkEmbeddingsWithContextAsync(chunks, contextWindowSize: 1);
+        var results = await service.GenerateChunkEmbeddingsWithContextAsync(chunks, contextWindowSize: 1, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(results);
@@ -195,7 +195,7 @@ public class LateChunkingEmbeddingServiceTests
         };
 
         // Act
-        var results = await service.GenerateChunkEmbeddingsWithContextAsync(chunks, contextWindowSize: 2);
+        var results = await service.GenerateChunkEmbeddingsWithContextAsync(chunks, contextWindowSize: 2, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         var firstChunk = results[0];
@@ -216,7 +216,7 @@ public class LateChunkingEmbeddingServiceTests
         };
 
         // Act
-        var results = await service.GenerateChunkEmbeddingsWithContextAsync(chunks, contextWindowSize: 2);
+        var results = await service.GenerateChunkEmbeddingsWithContextAsync(chunks, contextWindowSize: 2, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         var lastChunk = results[2];
@@ -256,7 +256,7 @@ public class LateChunkingEmbeddingServiceTests
         };
 
         // Act
-        var result = await service.GenerateLateChunkingEmbeddingsAsync(document, boundaries);
+        var result = await service.GenerateLateChunkingEmbeddingsAsync(document, boundaries, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -284,7 +284,7 @@ public class LateChunkingEmbeddingServiceTests
         var boundaries = CreateChunkBoundaries(document);
 
         // Act
-        var result = await service.GenerateLateChunkingEmbeddingsAsync(document, boundaries);
+        var result = await service.GenerateLateChunkingEmbeddingsAsync(document, boundaries, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -307,7 +307,7 @@ public class LateChunkingEmbeddingServiceTests
         var boundaries = new List<ChunkBoundary>();
 
         // Act
-        var result = await service.GenerateLateChunkingEmbeddingsAsync(document, boundaries);
+        var result = await service.GenerateLateChunkingEmbeddingsAsync(document, boundaries, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -323,7 +323,7 @@ public class LateChunkingEmbeddingServiceTests
         var chunks = new List<IEnrichedChunk>();
 
         // Act
-        var results = await service.GenerateChunkEmbeddingsWithContextAsync(chunks);
+        var results = await service.GenerateChunkEmbeddingsWithContextAsync(chunks, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(results);
@@ -341,7 +341,7 @@ public class LateChunkingEmbeddingServiceTests
         };
 
         // Act
-        var results = await service.GenerateChunkEmbeddingsWithContextAsync(chunks, contextWindowSize: 2);
+        var results = await service.GenerateChunkEmbeddingsWithContextAsync(chunks, contextWindowSize: 2, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Single(results);
@@ -362,7 +362,7 @@ public class LateChunkingEmbeddingServiceTests
         var boundaries = CreateChunkBoundaries(document);
 
         // Act
-        var result = await service.GenerateLateChunkingEmbeddingsAsync(document, boundaries);
+        var result = await service.GenerateLateChunkingEmbeddingsAsync(document, boundaries, TestContext.Current.CancellationToken);
 
         // Assert
         // Document embedding should be normalized (magnitude ≈ 1)

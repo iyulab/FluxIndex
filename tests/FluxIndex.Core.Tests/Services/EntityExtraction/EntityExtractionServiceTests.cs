@@ -64,7 +64,7 @@ public class EntityExtractionServiceTests
         var service = new EntityExtractionService(_loggerMock);
 
         // Act
-        var result = await service.ExtractEntitiesAsync("");
+        var result = await service.ExtractEntitiesAsync("", cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Empty(result);
@@ -77,7 +77,7 @@ public class EntityExtractionServiceTests
         var service = new EntityExtractionService(_loggerMock);
 
         // Act
-        var result = await service.ExtractEntitiesAsync(null!);
+        var result = await service.ExtractEntitiesAsync(null!, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Empty(result);
@@ -91,7 +91,7 @@ public class EntityExtractionServiceTests
         var content = "Contact us at support@example.com for more information.";
 
         // Act
-        var result = await service.ExtractEntitiesAsync(content);
+        var result = await service.ExtractEntitiesAsync(content, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Contains(result, e => e.Type == NamedEntityType.Email && e.Text.Contains("support@example.com"));
@@ -105,7 +105,7 @@ public class EntityExtractionServiceTests
         var content = "Visit https://www.example.com for more details.";
 
         // Act
-        var result = await service.ExtractEntitiesAsync(content);
+        var result = await service.ExtractEntitiesAsync(content, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Contains(result, e => e.Type == NamedEntityType.Url && e.Text.Contains("https://www.example.com"));
@@ -119,7 +119,7 @@ public class EntityExtractionServiceTests
         var content = "Call us at +1-800-555-1234 for support.";
 
         // Act
-        var result = await service.ExtractEntitiesAsync(content);
+        var result = await service.ExtractEntitiesAsync(content, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Contains(result, e => e.Type == NamedEntityType.PhoneNumber);
@@ -133,7 +133,7 @@ public class EntityExtractionServiceTests
         var content = "The event was held on January 15, 2024 at the convention center.";
 
         // Act
-        var result = await service.ExtractEntitiesAsync(content);
+        var result = await service.ExtractEntitiesAsync(content, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Contains(result, e => e.Type == NamedEntityType.DateTime);
@@ -147,7 +147,7 @@ public class EntityExtractionServiceTests
         var content = "The product costs $99.99 plus tax.";
 
         // Act
-        var result = await service.ExtractEntitiesAsync(content);
+        var result = await service.ExtractEntitiesAsync(content, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Contains(result, e => e.Type == NamedEntityType.Money && e.Text.Contains("$99.99"));
@@ -161,7 +161,7 @@ public class EntityExtractionServiceTests
         var content = "Sales increased by 25.5% last quarter.";
 
         // Act
-        var result = await service.ExtractEntitiesAsync(content);
+        var result = await service.ExtractEntitiesAsync(content, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Contains(result, e => e.Type == NamedEntityType.Percentage && e.Text.Contains("25.5%"));
@@ -175,7 +175,7 @@ public class EntityExtractionServiceTests
         var content = "We use Python and React for our development stack.";
 
         // Act
-        var result = await service.ExtractEntitiesAsync(content);
+        var result = await service.ExtractEntitiesAsync(content, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Contains(result, e => e.Type == NamedEntityType.Technology && e.Text == "Python");
@@ -190,7 +190,7 @@ public class EntityExtractionServiceTests
         var content = "The file size is 100MB and transfer speed is 10Mbps.";
 
         // Act
-        var result = await service.ExtractEntitiesAsync(content);
+        var result = await service.ExtractEntitiesAsync(content, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Contains(result, e => e.Type == NamedEntityType.Quantity);
@@ -204,7 +204,7 @@ public class EntityExtractionServiceTests
         var content = "Microsoft Corp announced new products today.";
 
         // Act
-        var result = await service.ExtractEntitiesAsync(content);
+        var result = await service.ExtractEntitiesAsync(content, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Contains(result, e => e.Type == NamedEntityType.Organization && e.Text.Contains("Microsoft"));
@@ -222,7 +222,7 @@ public class EntityExtractionServiceTests
         };
 
         // Act
-        var result = await service.ExtractEntitiesAsync(content, options);
+        var result = await service.ExtractEntitiesAsync(content, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.All(result, e => Assert.Equal(NamedEntityType.Email, e.Type));
@@ -240,7 +240,7 @@ public class EntityExtractionServiceTests
         };
 
         // Act
-        var result = await service.ExtractEntitiesAsync(content, options);
+        var result = await service.ExtractEntitiesAsync(content, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.All(result, e => Assert.True(e.Confidence >= 0.8));
@@ -258,7 +258,7 @@ public class EntityExtractionServiceTests
         };
 
         // Act
-        var result = await service.ExtractEntitiesAsync(content, options);
+        var result = await service.ExtractEntitiesAsync(content, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.Count <= 3);
@@ -277,7 +277,7 @@ public class EntityExtractionServiceTests
         };
 
         // Act
-        var result = await service.ExtractEntitiesAsync(content, options);
+        var result = await service.ExtractEntitiesAsync(content, options, TestContext.Current.CancellationToken);
 
         // Assert
         var orgEntity = result.FirstOrDefault(e => e.Type == NamedEntityType.Organization);
@@ -292,7 +292,7 @@ public class EntityExtractionServiceTests
         var content = "Python is great. I love Python. We use Python daily.";
 
         // Act
-        var result = await service.ExtractEntitiesAsync(content);
+        var result = await service.ExtractEntitiesAsync(content, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         var pythonEntities = result.Where(e => e.Text == "Python").ToList();
@@ -312,7 +312,7 @@ public class EntityExtractionServiceTests
         var options = new EntityExtractionOptions { UseLlm = true };
 
         // Act
-        var result = await service.ExtractEntitiesAsync(content, options);
+        var result = await service.ExtractEntitiesAsync(content, options, TestContext.Current.CancellationToken);
 
         // Assert
         await _llmServiceMock.Received(1).CompleteAsync(
@@ -345,7 +345,7 @@ public class EntityExtractionServiceTests
         var service = new EntityExtractionService(_loggerMock);
 
         // Act
-        var result = await service.ExtractRelationsAsync("");
+        var result = await service.ExtractRelationsAsync("", cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Empty(result);
@@ -359,7 +359,7 @@ public class EntityExtractionServiceTests
         var content = "Python is popular.";
 
         // Act
-        var result = await service.ExtractRelationsAsync(content);
+        var result = await service.ExtractRelationsAsync(content, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert - may have 0 or 1 entity, so no relations
         Assert.Empty(result);
@@ -378,7 +378,7 @@ public class EntityExtractionServiceTests
         };
 
         // Act
-        var result = await service.ExtractRelationsAsync(content, entities);
+        var result = await service.ExtractRelationsAsync(content, entities, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotEmpty(result);
@@ -397,7 +397,7 @@ public class EntityExtractionServiceTests
         };
 
         // Act
-        var result = await service.ExtractRelationsAsync(content, entities);
+        var result = await service.ExtractRelationsAsync(content, entities, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Contains(result, r => r.Type == RelationType.WorksFor);
@@ -416,7 +416,7 @@ public class EntityExtractionServiceTests
         };
 
         // Act
-        var result = await service.ExtractRelationsAsync(content, entities);
+        var result = await service.ExtractRelationsAsync(content, entities, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Contains(result, r => r.Type == RelationType.LocatedIn);
@@ -435,7 +435,7 @@ public class EntityExtractionServiceTests
         };
 
         // Act
-        var result = await service.ExtractRelationsAsync(content, entities);
+        var result = await service.ExtractRelationsAsync(content, entities, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Contains(result, r => r.Type == RelationType.FoundedBy);
@@ -454,7 +454,7 @@ public class EntityExtractionServiceTests
         };
 
         // Act
-        var result = await service.ExtractRelationsAsync(content, entities);
+        var result = await service.ExtractRelationsAsync(content, entities, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Contains(result, r => r.Type == RelationType.Uses);
@@ -473,7 +473,7 @@ public class EntityExtractionServiceTests
         };
 
         // Act
-        var result = await service.ExtractRelationsAsync(content, entities);
+        var result = await service.ExtractRelationsAsync(content, entities, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert - should deduplicate same relations
         var worksForRelations = result.Where(r => r.Type == RelationType.WorksFor).ToList();
@@ -492,7 +492,7 @@ public class EntityExtractionServiceTests
         var options = new EntityExtractionOptions();
 
         // Act
-        var result = await service.ExtractEntityGraphAsync("", options);
+        var result = await service.ExtractEntityGraphAsync("", options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Empty(result.Entities);
@@ -508,7 +508,7 @@ public class EntityExtractionServiceTests
         var options = new EntityExtractionOptions { ExtractRelations = true };
 
         // Act
-        var result = await service.ExtractEntityGraphAsync(content, options);
+        var result = await service.ExtractEntityGraphAsync(content, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotEmpty(result.Entities);
@@ -524,7 +524,7 @@ public class EntityExtractionServiceTests
         var options = new EntityExtractionOptions();
 
         // Act
-        var result = await service.ExtractEntityGraphAsync(content, options);
+        var result = await service.ExtractEntityGraphAsync(content, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result.Stats);
@@ -541,7 +541,7 @@ public class EntityExtractionServiceTests
         var options = new EntityExtractionOptions { ExtractRelations = false };
 
         // Act
-        var result = await service.ExtractEntityGraphAsync(content, options);
+        var result = await service.ExtractEntityGraphAsync(content, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Empty(result.Relations);
@@ -555,8 +555,8 @@ public class EntityExtractionServiceTests
         var content = "Test content";
 
         // Act
-        var result1 = await service.ExtractEntityGraphAsync(content);
-        var result2 = await service.ExtractEntityGraphAsync(content);
+        var result1 = await service.ExtractEntityGraphAsync(content, cancellationToken: TestContext.Current.CancellationToken);
+        var result2 = await service.ExtractEntityGraphAsync(content, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotEqual(result1.SourceId, result2.SourceId);
@@ -573,7 +573,7 @@ public class EntityExtractionServiceTests
         var service = new EntityExtractionService(_loggerMock);
 
         // Act
-        var result = await service.ExtractBatchAsync(Enumerable.Empty<string>());
+        var result = await service.ExtractBatchAsync(Enumerable.Empty<string>(), cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Empty(result);
@@ -587,7 +587,7 @@ public class EntityExtractionServiceTests
         var contents = new[] { "Python is great.", "JavaScript is popular.", "C# is powerful." };
 
         // Act
-        var result = await service.ExtractBatchAsync(contents);
+        var result = await service.ExtractBatchAsync(contents, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(3, result.Count);
@@ -619,7 +619,7 @@ public class EntityExtractionServiceTests
         };
 
         // Act
-        var result = await service.ExtractBatchAsync(contents, options);
+        var result = await service.ExtractBatchAsync(contents, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.All(result, graph =>
@@ -638,7 +638,7 @@ public class EntityExtractionServiceTests
         var graphs = Enumerable.Empty<EntityGraph>();
 
         // Act
-        var result = await service.LinkEntitiesAsync(graphs);
+        var result = await service.LinkEntitiesAsync(graphs, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Empty(result.Entities);
@@ -673,7 +673,7 @@ public class EntityExtractionServiceTests
         };
 
         // Act
-        var result = await service.LinkEntitiesAsync(graphs);
+        var result = await service.LinkEntitiesAsync(graphs, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Single(result.Entities);
@@ -708,7 +708,7 @@ public class EntityExtractionServiceTests
         };
 
         // Act
-        var result = await service.LinkEntitiesAsync(graphs);
+        var result = await service.LinkEntitiesAsync(graphs, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         var linkedEntity = Assert.Single(result.Entities);
@@ -738,7 +738,7 @@ public class EntityExtractionServiceTests
         };
 
         // Act
-        var result = await service.LinkEntitiesAsync(graphs);
+        var result = await service.LinkEntitiesAsync(graphs, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotEmpty(result.Relations);
@@ -766,7 +766,7 @@ public class EntityExtractionServiceTests
         };
 
         // Act
-        var result = await service.LinkEntitiesAsync(graphs);
+        var result = await service.LinkEntitiesAsync(graphs, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         var linkedEntity = Assert.Single(result.Entities);
@@ -792,7 +792,7 @@ public class EntityExtractionServiceTests
         };
 
         // Act
-        var result = await service.LinkEntitiesAsync(graphs);
+        var result = await service.LinkEntitiesAsync(graphs, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result.Stats);
@@ -820,7 +820,7 @@ public class EntityExtractionServiceTests
         var options = new EntityLinkingOptions { RequireSameType = true };
 
         // Act
-        var result = await service.LinkEntitiesAsync(graphs, options);
+        var result = await service.LinkEntitiesAsync(graphs, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(2, result.Entities.Count);
@@ -838,7 +838,7 @@ public class EntityExtractionServiceTests
         var content = "Test <script>alert('xss')</script> content with 特殊字符 and €100.";
 
         // Act
-        var result = await service.ExtractEntitiesAsync(content);
+        var result = await service.ExtractEntitiesAsync(content, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -854,7 +854,7 @@ public class EntityExtractionServiceTests
         var content = string.Join(" ", Enumerable.Repeat("Python JavaScript C# Go Rust", 100));
 
         // Act
-        var result = await service.ExtractEntitiesAsync(content);
+        var result = await service.ExtractEntitiesAsync(content, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -873,7 +873,7 @@ public class EntityExtractionServiceTests
         var options = new EntityExtractionOptions { UseLlm = true };
 
         // Act - should not throw
-        var result = await service.ExtractEntitiesAsync(content, options);
+        var result = await service.ExtractEntitiesAsync(content, options, TestContext.Current.CancellationToken);
 
         // Assert - should still return pattern-based results
         Assert.NotEmpty(result);
@@ -892,7 +892,7 @@ public class EntityExtractionServiceTests
         var options = new EntityExtractionOptions { UseLlm = true };
 
         // Act - should not throw
-        var result = await service.ExtractEntitiesAsync(content, options);
+        var result = await service.ExtractEntitiesAsync(content, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);

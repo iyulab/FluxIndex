@@ -107,7 +107,7 @@ public class CorrectiveRAGServiceTests
         var query = "test query";
 
         // Act
-        var result = await _service.RetrieveWithCorrectionAsync(query);
+        var result = await _service.RetrieveWithCorrectionAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -119,7 +119,7 @@ public class CorrectiveRAGServiceTests
     {
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>(
-            () => _service.RetrieveWithCorrectionAsync(null!));
+            () => _service.RetrieveWithCorrectionAsync(null!, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -141,7 +141,7 @@ public class CorrectiveRAGServiceTests
         var query = "test query";
 
         // Act
-        var result = await _service.RetrieveWithCorrectionAsync(query);
+        var result = await _service.RetrieveWithCorrectionAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotEmpty(result.Documents);
@@ -154,7 +154,7 @@ public class CorrectiveRAGServiceTests
         var query = "test query";
 
         // Act
-        var result = await _service.RetrieveWithCorrectionAsync(query);
+        var result = await _service.RetrieveWithCorrectionAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotEmpty(result.CorrectionSteps);
@@ -168,7 +168,7 @@ public class CorrectiveRAGServiceTests
         var query = "test query";
 
         // Act
-        var result = await _service.RetrieveWithCorrectionAsync(query);
+        var result = await _service.RetrieveWithCorrectionAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.ProcessingTime > TimeSpan.Zero);
@@ -186,7 +186,7 @@ public class CorrectiveRAGServiceTests
         };
 
         // Act
-        var result = await _service.RetrieveWithCorrectionAsync(query, options);
+        var result = await _service.RetrieveWithCorrectionAsync(query, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -200,7 +200,7 @@ public class CorrectiveRAGServiceTests
         var query = "test query";
 
         // Act
-        await _service.RetrieveWithCorrectionAsync(query);
+        await _service.RetrieveWithCorrectionAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         await _mockSearchService.Received().SearchAsync(
@@ -216,7 +216,7 @@ public class CorrectiveRAGServiceTests
         var query = "test query";
 
         // Act
-        var result = await _service.RetrieveWithCorrectionAsync(query);
+        var result = await _service.RetrieveWithCorrectionAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.ConfidenceScore >= 0);
@@ -238,7 +238,7 @@ public class CorrectiveRAGServiceTests
         };
 
         // Act
-        var result = await _service.GradeDocumentsAsync(query, documents);
+        var result = await _service.GradeDocumentsAsync(query, documents, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -253,7 +253,7 @@ public class CorrectiveRAGServiceTests
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>(
-            () => _service.GradeDocumentsAsync(null!, documents));
+            () => _service.GradeDocumentsAsync(null!, documents, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -261,7 +261,7 @@ public class CorrectiveRAGServiceTests
     {
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>(
-            () => _service.GradeDocumentsAsync("query", null!));
+            () => _service.GradeDocumentsAsync("query", null!, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -272,7 +272,7 @@ public class CorrectiveRAGServiceTests
         var documents = Array.Empty<DocumentChunk>();
 
         // Act
-        var result = await _service.GradeDocumentsAsync(query, documents);
+        var result = await _service.GradeDocumentsAsync(query, documents, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Empty(result.GradedDocuments);
@@ -290,7 +290,7 @@ public class CorrectiveRAGServiceTests
         };
 
         // Act
-        var result = await _service.GradeDocumentsAsync(query, documents);
+        var result = await _service.GradeDocumentsAsync(query, documents, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.All(result.GradedDocuments, graded =>
@@ -307,7 +307,7 @@ public class CorrectiveRAGServiceTests
         var documents = new[] { CreateDocumentChunk("doc-1", "Relevant test content") };
 
         // Act
-        var result = await _service.GradeDocumentsAsync(query, documents);
+        var result = await _service.GradeDocumentsAsync(query, documents, TestContext.Current.CancellationToken);
 
         // Assert
         var gradedDoc = result.GradedDocuments.First();
@@ -326,7 +326,7 @@ public class CorrectiveRAGServiceTests
         };
 
         // Act
-        var result = await _service.GradeDocumentsAsync(query, documents);
+        var result = await _service.GradeDocumentsAsync(query, documents, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(Enum.IsDefined(typeof(OverallAssessment), result.Assessment));
@@ -345,7 +345,7 @@ public class CorrectiveRAGServiceTests
         };
 
         // Act
-        var result = await _service.GradeDocumentsAsync(query, documents);
+        var result = await _service.GradeDocumentsAsync(query, documents, TestContext.Current.CancellationToken);
 
         // Assert
         var totalCount = result.CorrectCount + result.AmbiguousCount + result.IncorrectCount;
@@ -360,7 +360,7 @@ public class CorrectiveRAGServiceTests
         var documents = new[] { CreateDocumentChunk("doc-1", "Content") };
 
         // Act
-        var result = await _service.GradeDocumentsAsync(query, documents);
+        var result = await _service.GradeDocumentsAsync(query, documents, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.ProcessingTime >= TimeSpan.Zero);
@@ -381,7 +381,7 @@ public class CorrectiveRAGServiceTests
         };
 
         // Act
-        var result = await _service.RefineKnowledgeAsync(query, documents);
+        var result = await _service.RefineKnowledgeAsync(query, documents, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -395,7 +395,7 @@ public class CorrectiveRAGServiceTests
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>(
-            () => _service.RefineKnowledgeAsync(null!, documents));
+            () => _service.RefineKnowledgeAsync(null!, documents, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -403,7 +403,7 @@ public class CorrectiveRAGServiceTests
     {
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>(
-            () => _service.RefineKnowledgeAsync("query", null!));
+            () => _service.RefineKnowledgeAsync("query", null!, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -414,7 +414,7 @@ public class CorrectiveRAGServiceTests
         var documents = Array.Empty<DocumentChunk>();
 
         // Act
-        var result = await _service.RefineKnowledgeAsync(query, documents);
+        var result = await _service.RefineKnowledgeAsync(query, documents, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Empty(result.RefinedDocuments);
@@ -431,7 +431,7 @@ public class CorrectiveRAGServiceTests
         };
 
         // Act
-        var result = await _service.RefineKnowledgeAsync(query, documents);
+        var result = await _service.RefineKnowledgeAsync(query, documents, TestContext.Current.CancellationToken);
 
         // Assert
         if (result.RefinedDocuments.Any())
@@ -452,7 +452,7 @@ public class CorrectiveRAGServiceTests
         };
 
         // Act
-        var result = await _service.RefineKnowledgeAsync(query, documents);
+        var result = await _service.RefineKnowledgeAsync(query, documents, TestContext.Current.CancellationToken);
 
         // Assert
         // Should either succeed or fail gracefully
@@ -467,7 +467,7 @@ public class CorrectiveRAGServiceTests
         var documents = new[] { CreateDocumentChunk("doc-1", "Content") };
 
         // Act
-        var result = await _service.RefineKnowledgeAsync(query, documents);
+        var result = await _service.RefineKnowledgeAsync(query, documents, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.ProcessingTime >= TimeSpan.Zero);
@@ -488,7 +488,7 @@ public class CorrectiveRAGServiceTests
         };
 
         // Act
-        var result = await _service.PerformAlternativeRetrievalAsync(query, originalDocuments);
+        var result = await _service.PerformAlternativeRetrievalAsync(query, originalDocuments, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -502,7 +502,7 @@ public class CorrectiveRAGServiceTests
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>(
-            () => _service.PerformAlternativeRetrievalAsync(null!, documents));
+            () => _service.PerformAlternativeRetrievalAsync(null!, documents, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -510,7 +510,7 @@ public class CorrectiveRAGServiceTests
     {
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>(
-            () => _service.PerformAlternativeRetrievalAsync("query", null!));
+            () => _service.PerformAlternativeRetrievalAsync("query", null!, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -524,7 +524,7 @@ public class CorrectiveRAGServiceTests
         };
 
         // Act
-        var result = await _service.PerformAlternativeRetrievalAsync(query, originalDocuments);
+        var result = await _service.PerformAlternativeRetrievalAsync(query, originalDocuments, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(Enum.IsDefined(typeof(AlternativeRetrievalStrategy), result.Strategy));
@@ -538,7 +538,7 @@ public class CorrectiveRAGServiceTests
         var originalDocuments = new[] { CreateDocumentChunk("doc-1", "Content") };
 
         // Act
-        var result = await _service.PerformAlternativeRetrievalAsync(query, originalDocuments);
+        var result = await _service.PerformAlternativeRetrievalAsync(query, originalDocuments, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.ProcessingTime >= TimeSpan.Zero);
@@ -555,7 +555,7 @@ public class CorrectiveRAGServiceTests
         };
 
         // Act
-        var result = await _service.PerformAlternativeRetrievalAsync(query, originalDocuments);
+        var result = await _service.PerformAlternativeRetrievalAsync(query, originalDocuments, TestContext.Current.CancellationToken);
 
         // Assert
         // Transformed query should be present if transformation was applied
@@ -573,7 +573,7 @@ public class CorrectiveRAGServiceTests
         };
 
         // Act
-        var result = await _service.PerformAlternativeRetrievalAsync(query, originalDocuments);
+        var result = await _service.PerformAlternativeRetrievalAsync(query, originalDocuments, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result.Documents);
@@ -596,7 +596,7 @@ public class CorrectiveRAGServiceTests
         var service = CreateService();
 
         // Act
-        var result = await service.RetrieveWithCorrectionAsync(query);
+        var result = await service.RetrieveWithCorrectionAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         // With highly relevant docs, should take minimal correction action
@@ -617,7 +617,7 @@ public class CorrectiveRAGServiceTests
         var service = CreateService();
 
         // Act
-        var result = await service.RetrieveWithCorrectionAsync(query);
+        var result = await service.RetrieveWithCorrectionAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -683,7 +683,7 @@ public class CorrectiveRAGServiceTests
         };
 
         // Act
-        var result = await _service.RetrieveWithCorrectionAsync(query, options);
+        var result = await _service.RetrieveWithCorrectionAsync(query, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -706,7 +706,7 @@ public class CorrectiveRAGServiceTests
         var service = CreateService();
 
         // Act
-        var result = await service.RetrieveWithCorrectionAsync(query);
+        var result = await service.RetrieveWithCorrectionAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -720,7 +720,7 @@ public class CorrectiveRAGServiceTests
         var query = "test query";
 
         // Act
-        var result = await _service.RetrieveWithCorrectionAsync(query);
+        var result = await _service.RetrieveWithCorrectionAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result.Metadata);
@@ -749,7 +749,7 @@ public class CorrectiveRAGServiceTests
         };
 
         // Act
-        var result = await _service.GradeDocumentsAsync(query, documents);
+        var result = await _service.GradeDocumentsAsync(query, documents, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -766,7 +766,7 @@ public class CorrectiveRAGServiceTests
         };
 
         // Act
-        var result = await _service.GradeDocumentsAsync(query, documents);
+        var result = await _service.GradeDocumentsAsync(query, documents, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -784,7 +784,7 @@ public class CorrectiveRAGServiceTests
         };
 
         // Act
-        var result = await _service.RefineKnowledgeAsync(query, documents);
+        var result = await _service.RefineKnowledgeAsync(query, documents, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -798,7 +798,7 @@ public class CorrectiveRAGServiceTests
         var originalDocuments = Array.Empty<DocumentChunk>();
 
         // Act
-        var result = await _service.PerformAlternativeRetrievalAsync(query, originalDocuments);
+        var result = await _service.PerformAlternativeRetrievalAsync(query, originalDocuments, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);

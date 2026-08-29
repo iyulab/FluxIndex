@@ -114,7 +114,7 @@ public class HierarchicalSummarizationServiceTests
         var chunks = CreateMockChunks(hierarchy);
 
         // Act
-        var result = await service.GenerateHierarchicalSummariesAsync(hierarchy, chunks);
+        var result = await service.GenerateHierarchicalSummariesAsync(hierarchy, chunks, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -134,7 +134,7 @@ public class HierarchicalSummarizationServiceTests
         _mockLlmService.CompleteAsync(Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns("This is a generated summary about the community topic.");
 
         // Act
-        var result = await service.GenerateHierarchicalSummariesAsync(hierarchy, chunks);
+        var result = await service.GenerateHierarchicalSummariesAsync(hierarchy, chunks, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -156,7 +156,7 @@ public class HierarchicalSummarizationServiceTests
         };
 
         // Act
-        var result = await service.GenerateHierarchicalSummariesAsync(hierarchy, chunks, options);
+        var result = await service.GenerateHierarchicalSummariesAsync(hierarchy, chunks, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -175,7 +175,7 @@ public class HierarchicalSummarizationServiceTests
         _mockEmbeddingService.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new float[] { 0.1f, 0.2f, 0.3f });
 
         // Act
-        var result = await service.GenerateHierarchicalSummariesAsync(hierarchy, chunks);
+        var result = await service.GenerateHierarchicalSummariesAsync(hierarchy, chunks, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -194,7 +194,7 @@ public class HierarchicalSummarizationServiceTests
         var chunks = new List<DocumentChunk>();
 
         // Act
-        var result = await service.GenerateHierarchicalSummariesAsync(hierarchy, chunks);
+        var result = await service.GenerateHierarchicalSummariesAsync(hierarchy, chunks, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -217,10 +217,10 @@ public class HierarchicalSummarizationServiceTests
         _mockEmbeddingService.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new float[] { 0.1f, 0.2f, 0.3f });
 
         // Generate summaries first
-        var summaryResult = await service.GenerateHierarchicalSummariesAsync(hierarchy, chunks);
+        var summaryResult = await service.GenerateHierarchicalSummariesAsync(hierarchy, chunks, cancellationToken: TestContext.Current.CancellationToken);
 
         // Act
-        var searchResult = await service.GlobalSearchAsync("topic0 information", summaryResult);
+        var searchResult = await service.GlobalSearchAsync("topic0 information", summaryResult, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(searchResult);
@@ -240,10 +240,10 @@ public class HierarchicalSummarizationServiceTests
 
         _mockLlmService.CompleteAsync(Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns("Based on the community information, here is the synthesized answer about the topic.");
 
-        var summaryResult = await service.GenerateHierarchicalSummariesAsync(hierarchy, chunks);
+        var summaryResult = await service.GenerateHierarchicalSummariesAsync(hierarchy, chunks, cancellationToken: TestContext.Current.CancellationToken);
 
         // Act
-        var searchResult = await service.GlobalSearchAsync("What is topic0?", summaryResult);
+        var searchResult = await service.GlobalSearchAsync("What is topic0?", summaryResult, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(searchResult.Answer);
@@ -258,11 +258,11 @@ public class HierarchicalSummarizationServiceTests
         var hierarchy = CreateMockHierarchy(levelCount: 3, communitiesPerLevel: 2);
         var chunks = CreateMockChunks(hierarchy);
 
-        var summaryResult = await service.GenerateHierarchicalSummariesAsync(hierarchy, chunks);
+        var summaryResult = await service.GenerateHierarchicalSummariesAsync(hierarchy, chunks, cancellationToken: TestContext.Current.CancellationToken);
         var options = new GlobalSearchOptions { SearchLevel = 1 };
 
         // Act
-        var searchResult = await service.GlobalSearchAsync("query", summaryResult, options);
+        var searchResult = await service.GlobalSearchAsync("query", summaryResult, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(1, searchResult.SearchLevel);
@@ -284,7 +284,7 @@ public class HierarchicalSummarizationServiceTests
         };
 
         // Act
-        var searchResult = await service.GlobalSearchAsync("query", summaryResult);
+        var searchResult = await service.GlobalSearchAsync("query", summaryResult, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(searchResult);
@@ -318,7 +318,7 @@ public class HierarchicalSummarizationServiceTests
         };
 
         // Act
-        var answer = await service.SynthesizeAnswerAsync("query", summaries);
+        var answer = await service.SynthesizeAnswerAsync("query", summaries, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(answer);
@@ -346,7 +346,7 @@ public class HierarchicalSummarizationServiceTests
         _mockLlmService.CompleteAsync(Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>()).Returns("Synthesized answer about topic A based on the community.");
 
         // Act
-        var answer = await service.SynthesizeAnswerAsync("query", summaries);
+        var answer = await service.SynthesizeAnswerAsync("query", summaries, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(answer);
@@ -361,7 +361,7 @@ public class HierarchicalSummarizationServiceTests
         var summaries = new List<CommunitySummary>();
 
         // Act
-        var answer = await service.SynthesizeAnswerAsync("query", summaries);
+        var answer = await service.SynthesizeAnswerAsync("query", summaries, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(answer);
@@ -382,7 +382,7 @@ public class HierarchicalSummarizationServiceTests
         var options = new AnswerSynthesisOptions { MinSummaryConfidence = 0.5 };
 
         // Act
-        var answer = await service.SynthesizeAnswerAsync("query", summaries, options);
+        var answer = await service.SynthesizeAnswerAsync("query", summaries, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Contains("High confidence", answer.Text);
@@ -412,10 +412,7 @@ public class HierarchicalSummarizationServiceTests
         };
 
         // Act
-        var result = await service.UpdateSummariesAsync(
-            existingResult,
-            Enumerable.Empty<DocumentChunk>(),
-            Enumerable.Empty<string>());
+        var result = await service.UpdateSummariesAsync(existingResult, Enumerable.Empty<DocumentChunk>(), Enumerable.Empty<string>(), TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Same(existingResult, result);
@@ -437,7 +434,7 @@ public class HierarchicalSummarizationServiceTests
         Assert.True(_cache.TryGetValue(cacheKey, out _));
 
         // Act
-        await service.InvalidateSummariesAsync(new[] { "test_community" });
+        await service.InvalidateSummariesAsync(new[] { "test_community" }, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.False(_cache.TryGetValue(cacheKey, out _));
@@ -450,7 +447,7 @@ public class HierarchicalSummarizationServiceTests
         var service = CreateService(withCache: false);
 
         // Act & Assert - should not throw
-        await service.InvalidateSummariesAsync(new[] { "test_community" });
+        await service.InvalidateSummariesAsync(new[] { "test_community" }, cancellationToken: TestContext.Current.CancellationToken);
     }
 
     #endregion
@@ -470,7 +467,7 @@ public class HierarchicalSummarizationServiceTests
         _cache.Set("HierarchicalSummary_test_id", summary);
 
         // Act
-        var result = await service.GetCachedSummaryAsync("test_id");
+        var result = await service.GetCachedSummaryAsync("test_id", TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result);
@@ -484,7 +481,7 @@ public class HierarchicalSummarizationServiceTests
         var service = CreateService(withCache: true);
 
         // Act
-        var result = await service.GetCachedSummaryAsync("nonexistent_id");
+        var result = await service.GetCachedSummaryAsync("nonexistent_id", TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Null(result);
@@ -497,7 +494,7 @@ public class HierarchicalSummarizationServiceTests
         var service = CreateService(withCache: false);
 
         // Act
-        var result = await service.GetCachedSummaryAsync("any_id");
+        var result = await service.GetCachedSummaryAsync("any_id", TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Null(result);
@@ -544,7 +541,7 @@ public class HierarchicalSummarizationServiceTests
         var chunks = CreateMockChunks(hierarchy);
 
         // Act
-        var result = await service.GenerateHierarchicalSummariesAsync(hierarchy, chunks);
+        var result = await service.GenerateHierarchicalSummariesAsync(hierarchy, chunks, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(result.Statistics);

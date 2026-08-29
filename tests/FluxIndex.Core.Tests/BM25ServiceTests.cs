@@ -53,7 +53,7 @@ public class BM25ServiceTests
         _mockVectorStore.GetByDocumentIdAsync("doc3", Arg.Any<CancellationToken>()).Returns(new[] { chunk3 });
 
         // Initialize IDF cache
-        await _service.UpdateIDFCacheAsync();
+        await _service.UpdateIDFCacheAsync(TestContext.Current.CancellationToken);
 
         // Act
         var score = _service.CalculateScore(query, document, averageDocLength);
@@ -143,7 +143,7 @@ public class BM25ServiceTests
         _mockVectorStore.GetByDocumentIdAsync("doc5", Arg.Any<CancellationToken>()).Returns(new[] { chunk5 });
 
         // Initialize IDF cache
-        await _service.UpdateIDFCacheAsync();
+        await _service.UpdateIDFCacheAsync(TestContext.Current.CancellationToken);
 
         // Act
         var score1 = _service.CalculateScore(query, doc1, averageDocLength);
@@ -224,7 +224,7 @@ public class BM25ServiceTests
         _mockVectorStore.GetByDocumentIdAsync("doc2", Arg.Any<CancellationToken>()).Returns(new[] { chunk2 });
 
         // Initialize IDF cache
-        await _service.UpdateIDFCacheAsync();
+        await _service.UpdateIDFCacheAsync(TestContext.Current.CancellationToken);
 
         // Act
         var idf = _service.GetIDF(unknownTerm);
@@ -241,7 +241,7 @@ public class BM25ServiceTests
         _mockDocumentRepository.GetAllAsync(Arg.Any<CancellationToken>()).Returns(Enumerable.Empty<Document>());
 
         // Act
-        var results = await _service.SearchAsync(query);
+        var results = await _service.SearchAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Empty(results);
@@ -287,7 +287,7 @@ public class BM25ServiceTests
         _mockVectorStore.GetByDocumentIdAsync("doc3", Arg.Any<CancellationToken>()).Returns(new[] { chunk3 });
 
         // Act
-        var results = await _service.SearchAsync(query, topK: 10);
+        var results = await _service.SearchAsync(query, topK: 10, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotEmpty(results);
@@ -305,7 +305,7 @@ public class BM25ServiceTests
         var query = "";
 
         // Act
-        var results = await _service.SearchAsync(query);
+        var results = await _service.SearchAsync(query, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Empty(results);
@@ -348,7 +348,7 @@ public class BM25ServiceTests
         }
 
         // Act
-        var results = await _service.SearchAsync(query, topK);
+        var results = await _service.SearchAsync(query, topK, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Equal(topK, results.Count());
@@ -392,7 +392,7 @@ public class BM25ServiceTests
         _mockVectorStore.GetByDocumentIdAsync("doc3", Arg.Any<CancellationToken>()).Returns(new[] { chunk3 });
 
         // Act
-        await _service.UpdateIDFCacheAsync();
+        await _service.UpdateIDFCacheAsync(TestContext.Current.CancellationToken);
 
         // Assert - Terms should have IDF values
         // "machine" appears in 1/3 documents, should have positive IDF
@@ -415,7 +415,7 @@ public class BM25ServiceTests
         _mockDocumentRepository.GetAllAsync(Arg.Any<CancellationToken>()).Returns(Enumerable.Empty<Document>());
 
         // Act & Assert - Should not throw
-        await _service.UpdateIDFCacheAsync();
+        await _service.UpdateIDFCacheAsync(TestContext.Current.CancellationToken);
 
         var idf = _service.GetIDF("test");
         // With 0 documents, default IDF is log(0+1) = log(1) = 0

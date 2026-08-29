@@ -100,7 +100,7 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         SetupMockProcessor(testFile, chunks: chunks, rawContent: rawContent);
 
         // Act
-        var result = await _pipeline.ExtractOnlyAsync(testFile);
+        var result = await _pipeline.ExtractOnlyAsync(testFile, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.Success);
@@ -131,7 +131,7 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         SetupMockProcessor(testFile, chunks: chunks, rawContent: rawContent);
 
         // Act
-        var result = await _pipeline.ExtractOnlyAsync(testFile, extractImages: true);
+        var result = await _pipeline.ExtractOnlyAsync(testFile, extractImages: true, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.Success);
@@ -150,7 +150,7 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         SetupMockProcessor(testFile, chunks: chunks);
 
         // Act
-        var result = await _pipeline.ExtractOnlyAsync(testFile, extractImages: false);
+        var result = await _pipeline.ExtractOnlyAsync(testFile, extractImages: false, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.Success);
@@ -170,7 +170,7 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         _mockProcessorFactory.Create(testFile).Returns(mockProcessor);
 
         // Act
-        var result = await _pipeline.ExtractOnlyAsync(testFile);
+        var result = await _pipeline.ExtractOnlyAsync(testFile, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.False(result.Success);
@@ -187,7 +187,7 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         SetupMockProcessor(testFile, chunks: chunks);
 
         // Act
-        var result = await _pipeline.ExtractOnlyAsync(testFile);
+        var result = await _pipeline.ExtractOnlyAsync(testFile, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.Success);
@@ -221,7 +221,7 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         _mockProcessorFactory.Create(Arg.Any<string>()).Returns(mockProcessor);
 
         // Act
-        var result = await _pipeline.ProcessFromContentAsync(content);
+        var result = await _pipeline.ProcessFromContentAsync(content, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.Success);
@@ -256,7 +256,7 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         _mockProcessorFactory.Create(Arg.Any<string>()).Returns(mockProcessor);
 
         // Act
-        var result = await _pipeline.ProcessFromContentAsync(content, options);
+        var result = await _pipeline.ProcessFromContentAsync(content, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.Success);
@@ -279,7 +279,7 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         _mockProcessorFactory.Create(Arg.Any<string>()).Returns(mockProcessor);
 
         // Act
-        var result = await _pipeline.ProcessFromContentAsync(content);
+        var result = await _pipeline.ProcessFromContentAsync(content, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.Success);
@@ -308,7 +308,7 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         _mockProcessorFactory.Create(Arg.Any<string>()).Returns(mockProcessor);
 
         // Act
-        var result = await _pipeline.ProcessFromContentAsync(content, options);
+        var result = await _pipeline.ProcessFromContentAsync(content, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.Success);
@@ -346,7 +346,7 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         _mockProcessorFactory.Create(Arg.Any<string>()).Returns(mockProcessor);
 
         // Act
-        var result = await _pipeline.ProcessFromExtractionAsync(extractionResult);
+        var result = await _pipeline.ProcessFromExtractionAsync(extractionResult, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.Success);
@@ -380,7 +380,7 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         _mockProcessorFactory.Create(Arg.Any<string>()).Returns(mockProcessor);
 
         // Act
-        var result = await _pipeline.ProcessFromExtractionAsync(extractionResult, modifiedContent);
+        var result = await _pipeline.ProcessFromExtractionAsync(extractionResult, modifiedContent, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.Success);
@@ -417,7 +417,7 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         _mockProcessorFactory.Create(Arg.Any<string>()).Returns(mockProcessor);
 
         // Act
-        var result = await _pipeline.ProcessFromExtractionAsync(extractionResult);
+        var result = await _pipeline.ProcessFromExtractionAsync(extractionResult, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.Success);
@@ -438,7 +438,7 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         };
 
         // Act
-        var result = await _pipeline.ProcessFromExtractionAsync(extractionResult);
+        var result = await _pipeline.ProcessFromExtractionAsync(extractionResult, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.False(result.Success);
@@ -579,7 +579,7 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         };
 
         // Act
-        var result = await _pipeline.ExtractOnlyAsync(testFile, options);
+        var result = await _pipeline.ExtractOnlyAsync(testFile, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.Success);
@@ -608,7 +608,7 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         };
 
         // Act
-        var result = await _pipeline.ExtractOnlyAsync(testFile, options);
+        var result = await _pipeline.ExtractOnlyAsync(testFile, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.Success);
@@ -641,7 +641,7 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         };
 
         // Act
-        var result = await _pipeline.ExtractOnlyAsync(testFile, options);
+        var result = await _pipeline.ExtractOnlyAsync(testFile, options, TestContext.Current.CancellationToken);
 
         // Assert
         Assert.True(result.Success);
@@ -656,7 +656,7 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         var text = "# Title\n\nParagraph content.\n\n- Item 1\n- Item 2";
 
         // Act
-        var (markdown, statistics) = await _pipeline.ConvertToMarkdownAsync(text);
+        var (markdown, statistics) = await _pipeline.ConvertToMarkdownAsync(text, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotEmpty(markdown);
@@ -671,7 +671,7 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         var text = "";
 
         // Act
-        var (markdown, statistics) = await _pipeline.ConvertToMarkdownAsync(text);
+        var (markdown, statistics) = await _pipeline.ConvertToMarkdownAsync(text, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(statistics);
@@ -685,7 +685,7 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         var text = "| Column A | Column B |\n|----------|----------|\n| Data 1   | Data 2   |";
 
         // Act
-        var (markdown, statistics) = await _pipeline.ConvertToMarkdownAsync(text);
+        var (markdown, statistics) = await _pipeline.ConvertToMarkdownAsync(text, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.NotNull(statistics);
@@ -699,7 +699,7 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         var text = "```python\ndef hello():\n    print('Hello')\n```";
 
         // Act
-        var (markdown, statistics) = await _pipeline.ConvertToMarkdownAsync(text);
+        var (markdown, statistics) = await _pipeline.ConvertToMarkdownAsync(text, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         Assert.Contains("```", markdown);

@@ -7,7 +7,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace FluxIndex.Storage.SQLite.Tests;
 
@@ -50,7 +49,7 @@ public class SQLiteVecBindIdentityDriftTests : IDisposable
         Metadata = new Dictionary<string, object> { ["probe"] = true },
     };
 
-    [SkippableFact]
+    [Fact]
     public async Task WriteAfterFingerprintDrift_LandsInCurrentFingerprintTable()
     {
         CITestHelper.SkipIfSqliteVecNotAvailable();
@@ -75,11 +74,11 @@ public class SQLiteVecBindIdentityDriftTests : IDisposable
         //    EF relational tables (vector_chunks) BEFORE the vec0 table, then the vec0 table for A.
         store.BindIdentity(IdentityA());
         var ctx = scope.ServiceProvider.GetRequiredService<SQLiteVecDbContext>();
-        await ctx.InitializeAsync();
+        await ctx.InitializeAsync(TestContext.Current.CancellationToken);
 
         // 1) Real write under fingerprint A so the store latches _initialized=true against table A.
-        var idA = await store.StoreAsync(Chunk("doc-a"));
-        (await store.GetAsync(idA)).Should().NotBeNull("baseline write under fingerprint A must round-trip");
+        var idA = await store.StoreAsync(Chunk("doc-a"), TestContext.Current.CancellationToken);
+        (await store.GetAsync(idA, TestContext.Current.CancellationToken)).Should().NotBeNull("baseline write under fingerprint A must round-trip");
 
         // 2) Drift the effective fingerprint to B on the same shared options instance.
         //    A second BindIdentity on the same store throws by design (EmbeddingModelMismatch),
