@@ -11,6 +11,7 @@ on:
       # job. Without them a test-only or CI-only change never exercised the gate it modified, and
       # the next release was the first run to use it.
       - 'tests/**'
+      - 'scripts/**'
       - '.github/workflows/build-and-release.yml'
 
   # 수동 실행 가능
