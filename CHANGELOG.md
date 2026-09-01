@@ -9,6 +9,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.28.4]
+
+### Changed
+- Re-pinned `FileFlux` from `0.22.1` to `0.22.2` — patch re-consumption of an already-consumed
+  sibling package. No source changes.
+
+---
+
 ## [0.28.3]
 
 ### Changed
