@@ -9,6 +9,15 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.28.2]
+
+### Changed
+- Re-pinned already-consumed sibling packages to their latest patch/minor: `FileFlux`
+  (`0.20.1`→`0.22.1`), `FluxGuard.Remote` (`0.13.0`→`0.14.1`), `LMSupply.Embedder`/`.Generator`/
+  `.Reranker` (`0.42.2`→`0.42.10`). No source changes.
+
+---
+
 ## [0.28.1]
 
 ### Changed
