@@ -9,6 +9,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.28.3]
+
+### Changed
+- Re-pinned `FluxImprover` from `0.11.1` to `0.11.2` — patch re-consumption of an already-consumed
+  sibling package. No source changes.
+
+---
+
 ## [0.28.2]
 
 ### Changed
