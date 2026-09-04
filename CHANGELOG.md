@@ -9,6 +9,15 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.28.5]
+
+### Changed
+- Re-pinned `LMSupply.Embedder`/`.Generator`/`.Reranker` from `0.42.10` to `0.54.0` — patch
+  re-consumption of already-consumed sibling packages (cold-GPU-kernel-hang protection propagated
+  to all ONNX-backed lm-supply modules). No source changes.
+
+---
+
 ## [0.28.4]
 
 ### Changed

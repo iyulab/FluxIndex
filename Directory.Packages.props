@@ -55,9 +55,9 @@
     <PackageVersion Include="Google.Cloud.AIPlatform.V1" Version="3.76.0" />
     <PackageVersion Include="Mscc.GenerativeAI" Version="3.1.0" />
     <!-- LMSupply: Full AI stack (Embedder + Generator + Reranker) -->
-    <PackageVersion Include="LMSupply.Embedder" Version="0.42.10" />
-    <PackageVersion Include="LMSupply.Generator" Version="0.42.10" />
-    <PackageVersion Include="LMSupply.Reranker" Version="0.42.10" />
+    <PackageVersion Include="LMSupply.Embedder" Version="0.54.0" />
+    <PackageVersion Include="LMSupply.Generator" Version="0.54.0" />
+    <PackageVersion Include="LMSupply.Reranker" Version="0.54.0" />
   </ItemGroup>
   <!-- Storage/Cache Packages -->
   <ItemGroup>
