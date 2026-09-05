@@ -9,6 +9,16 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.28.6]
+
+### Fixed
+- Re-pinned `LMSupply.Embedder`/`.Generator`/`.Reranker` from `0.54.0` to `0.55.0` — `0.54.0` was
+  never actually published to nuget.org for these packages (their published history jumps
+  `0.45.0` -> `0.55.0`), so `0.28.5`'s restore failed with NU1603 escalated to error and no nupkg
+  for `0.28.5` was ever produced.
+
+---
+
 ## [0.28.5]
 
 ### Changed
