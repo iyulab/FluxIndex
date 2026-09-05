@@ -7,6 +7,12 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [Unreleased]
 
+### Deprecated
+- `CollectionNamingStrategy.DimensionSuffix` is now documented as planned for removal in a future
+  release. It has been superseded by `ModelFingerprint` (the default since the deprecation) for
+  every consumer we are aware of; if your configuration sets `NamingStrategy` to `DimensionSuffix`
+  explicitly, migrate before upgrading past that release.
+
 ---
 
 ## [0.28.6]

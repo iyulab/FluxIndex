@@ -12,7 +12,13 @@ public enum CollectionNamingStrategy
     /// Separates collections by embedding dimension only.
     /// Does NOT distinguish different models with the same dimension.
     /// </summary>
-    [Obsolete("Use ModelFingerprint instead. DimensionSuffix cannot distinguish different models with the same dimension.")]
+    /// <remarks>
+    /// Planned for removal in a future release. If your configuration sets
+    /// <c>NamingStrategy</c> to <see cref="DimensionSuffix"/> explicitly, migrate to
+    /// <see cref="ModelFingerprint"/> (the default since this option was deprecated) before
+    /// upgrading past that release.
+    /// </remarks>
+    [Obsolete("Use ModelFingerprint instead. DimensionSuffix cannot distinguish different models with the same dimension. Planned for removal in a future release.")]
     DimensionSuffix,
 
     /// <summary>
