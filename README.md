@@ -90,6 +90,31 @@ var context = FluxIndexContext.CreateBuilder()
     .Build();
 ```
 
+## Command-line tool
+
+`FluxIndex.CLI` (`fluxindex`) runs the extract → chunk → embed pipeline on a single file. It needs
+**no API key and no server**: with nothing configured it embeds locally through
+`LMSupply.Embedder` (the model is downloaded on first use and cached; on a machine with a GPU the
+first run may fall back from DirectML to CPU automatically — that is expected and logged).
+
+```bash
+# from the repo — or `dotnet tool install -g FluxIndex.CLI` once published
+dotnet run --project cli/FluxIndex.CLI -- ./document.pdf -o ./out
+
+# extract and chunk only (no embedding, no model download)
+fluxindex ./document.pdf --no-embeddings
+
+# use a remote OpenAI-compatible embedding server instead of the local model
+fluxindex set GPUSTACK_ENDPOINT http://localhost:80
+fluxindex set GPUSTACK_API_KEY sk-xxx
+fluxindex set GPUSTACK_EMBEDDING_MODEL_NAME bge-m3
+```
+
+Output goes to `<file>_output/` (or `-o`): `extract.md`, `metadata.json`, `chunks/`, and
+`qa_pairs.json` when `--generate-qa` is set. The command exits with code 1 on any failure, and
+failures raised by local embedding print the options above as a hint. Settings live in
+`~/.fluxindex/settings.json` (`fluxindex set` lists them).
+
 ## MCP Server
 
 FluxIndex provides Model Context Protocol (MCP) server for AI assistant integration.
