@@ -104,13 +104,17 @@ public static class ProcessCommand
             var enrich = parseResult.GetValue(enrichOption);
             var verbose = parseResult.GetValue(verboseOption);
 
-            await ExecuteAsync(file, output, language, chunkSize, noEmbeddings, clean, contextualEnrich, generateQa, maxQaPairs, enrich, verbose);
+            return await ExecuteAsync(file, output, language, chunkSize, noEmbeddings, clean, contextualEnrich, generateQa, maxQaPairs, enrich, verbose);
         });
 
         return command;
     }
 
-    public static async Task ExecuteAsync(
+    /// <summary>
+    /// Runs the process command. Returns 0 on success and 1 on any failure so a scripted or CI
+    /// caller sees the failure instead of a silent success exit code.
+    /// </summary>
+    public static async Task<int> ExecuteAsync(
         FileInfo file,
         DirectoryInfo? output,
         string? language,
@@ -126,7 +130,7 @@ public static class ProcessCommand
         if (!file.Exists)
         {
             AnsiConsole.MarkupLine($"[red]✗[/] File not found: [yellow]{file.FullName}[/]");
-            return;
+            return 1;
         }
 
         var settings = CliSettings.Load();
@@ -199,7 +203,7 @@ public static class ProcessCommand
             if (result == null)
             {
                 AnsiConsole.MarkupLine("[red]✗[/] Processing returned null result");
-                return;
+                return 1;
             }
 
             // Display results
@@ -207,21 +211,46 @@ public static class ProcessCommand
 
             if (result.Success)
             {
-                DisplaySuccessResult(result, verbose);
+                DisplaySuccessResult(result, outputDir, verbose);
+                return 0;
             }
-            else
-            {
-                AnsiConsole.MarkupLine($"[red]✗[/] Processing failed: {result.ErrorMessage}");
-            }
+
+            AnsiConsole.MarkupLine($"[red]✗[/] Processing failed: {Markup.Escape(result.ErrorMessage ?? "unknown error")}");
+            PrintFailureHint(result.ErrorMessage, noEmbeddings);
+            return 1;
         }
         catch (Exception ex)
         {
-            AnsiConsole.MarkupLine($"[red]✗[/] Error: {ex.Message}");
+            AnsiConsole.MarkupLine($"[red]✗[/] Error: {Markup.Escape(ex.Message)}");
+            PrintFailureHint(ex.Message, noEmbeddings);
             if (verbose)
             {
                 AnsiConsole.WriteException(ex);
             }
+            return 1;
         }
+    }
+
+    /// <summary>
+    /// Turns a library-level failure into a next step the user can actually take from this CLI.
+    /// The local embedding stack reports GPU hangs in terms of its own API (ExecutionProvider);
+    /// this CLI has no such setting, so translate to the commands that exist here.
+    /// </summary>
+    private static void PrintFailureHint(string? message, bool noEmbeddings)
+    {
+        if (noEmbeddings || message is null)
+            return;
+
+        var embeddingRelated = message.Contains("embed", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("Inference", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("ExecutionProvider", StringComparison.OrdinalIgnoreCase);
+        if (!embeddingRelated)
+            return;
+
+        AnsiConsole.MarkupLine("[dim]Hint:[/] the failure came from local embedding generation. You can:");
+        AnsiConsole.MarkupLine("  - re-run with [yellow]--no-embeddings[/] to extract and chunk without embeddings, or");
+        AnsiConsole.MarkupLine("  - retry (a first run on a GPU may warm up the local model), or");
+        AnsiConsole.MarkupLine("  - configure a remote embedding provider via [yellow]fluxindex set GPUSTACK_ENDPOINT ...[/] (see [yellow]fluxindex set[/]).");
     }
 
     private static ServiceProvider BuildServices(CliSettings settings, bool verbose)
@@ -267,7 +296,7 @@ public static class ProcessCommand
         services.AddLMSupplyTextCompletion();
     }
 
-    private static void DisplaySuccessResult(DocumentProcessingResult result, bool verbose)
+    private static void DisplaySuccessResult(DocumentProcessingResult result, string outputDir, bool verbose)
     {
         var table = new Table()
             .Border(TableBorder.Rounded)
@@ -295,29 +324,21 @@ public static class ProcessCommand
         AnsiConsole.WriteLine();
         AnsiConsole.MarkupLine("[bold]Output files:[/]");
 
-        var tree = new Tree($"[cyan]{Path.GetFileName(result.SourcePath)}_output/[/]");
+        // Report what is actually on disk in the directory that was actually used (which may be a
+        // user-supplied -o path, not <file>_output/), rather than reconstructing a guess.
+        var tree = new Tree($"[cyan]{Markup.Escape(Path.GetFileName(outputDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)))}/[/]");
 
-        if (File.Exists(Path.Combine(Path.GetDirectoryName(result.SourcePath) ?? ".", Path.GetFileName(result.SourcePath) + "_output", "extract.md")))
-            tree.AddNode("[dim]extract.md[/]");
-
-        if (result.CleanedText != null)
-            tree.AddNode("[dim]cleaned.md[/]");
-
-        tree.AddNode("[dim]metadata.json[/]");
-
-        if (result.Images.Count != 0)
+        foreach (var name in new[] { "extract.md", "cleaned.md", "metadata.json", "qa_pairs.json" })
         {
-            tree.AddNode($"[dim]images/ ({result.Images.Count} files)[/]");
+            if (File.Exists(Path.Combine(outputDir, name)))
+                tree.AddNode($"[dim]{name}[/]");
         }
 
-        if (result.Chunks.Count != 0)
+        foreach (var sub in new[] { "images", "chunks" })
         {
-            tree.AddNode($"[dim]chunks/ ({result.Chunks.Count * 2} files)[/]");
-        }
-
-        if (result.QAPairs.Count != 0)
-        {
-            tree.AddNode($"[dim]qa_pairs.json ({result.QAPairs.Count} pairs)[/]");
+            var dir = Path.Combine(outputDir, sub);
+            if (Directory.Exists(dir))
+                tree.AddNode($"[dim]{sub}/ ({Directory.GetFiles(dir).Length} files)[/]");
         }
 
         AnsiConsole.Write(tree);

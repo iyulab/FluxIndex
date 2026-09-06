@@ -7,6 +7,21 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [Unreleased]
 
+---
+
+## [0.28.7]
+
+### Fixed
+- Re-pinned `LMSupply.Embedder`/`.Generator`/`.Reranker` from `0.55.0` to `0.55.2` — picks up the
+  embedder's provider fallback on inference timeout and the tokenizer fix that stops padding every
+  input to the model maximum (a short sentence on CPU went from ~38s to ~0.4s).
+- CLI (`FluxIndex.CLI` 0.4.1): `fluxindex <file>` now exits with code 1 when processing fails
+  (previously 0, so scripted callers saw a silent success); failures from local embedding print a
+  hint with actions that exist on this CLI (`--no-embeddings`, retry, `fluxindex set GPUSTACK_*`);
+  the banner version is read from the assembly instead of a hard-coded string; the output summary
+  lists what is actually in the `-o` directory; settings moved to `~/.fluxindex/settings.json`
+  (legacy `~/.vault/settings.json` is still read until the next save).
+
 ### Deprecated
 - `CollectionNamingStrategy.DimensionSuffix` is now documented as planned for removal in a future
   release. It has been superseded by `ModelFingerprint` (the default since the deprecation) for

@@ -10,9 +10,22 @@ public class CliSettings
 {
     private static readonly string SettingsDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-        ".vault");
+        ".fluxindex");
 
     private static readonly string SettingsFile = Path.Combine(SettingsDirectory, "settings.json");
+
+    // Settings used to live under ~/.vault (a name inherited from the FileVault era, which has
+    // since moved out of this package). Existing installs are read from there until they save
+    // once, after which the file lives under ~/.fluxindex.
+    private static readonly string LegacySettingsFile = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        ".vault",
+        "settings.json");
+
+    /// <summary>
+    /// Path of the settings file the CLI reads from and writes to.
+    /// </summary>
+    public static string SettingsPath => SettingsFile;
 
     /// <summary>
     /// AI Provider type (openai, azure, gpustack, local)
@@ -104,14 +117,17 @@ public class CliSettings
     /// </summary>
     public static CliSettings Load()
     {
-        if (!File.Exists(SettingsFile))
+        var path = File.Exists(SettingsFile) ? SettingsFile
+            : File.Exists(LegacySettingsFile) ? LegacySettingsFile
+            : null;
+        if (path is null)
         {
             return new CliSettings();
         }
 
         try
         {
-            var json = File.ReadAllText(SettingsFile);
+            var json = File.ReadAllText(path);
             return JsonSerializer.Deserialize<CliSettings>(json, GetJsonOptions()) ?? new CliSettings();
         }
         catch

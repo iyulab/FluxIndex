@@ -19,7 +19,7 @@
     <!-- Package metadata for local tool installation -->
     <IsPackable>true</IsPackable>
     <PackageId>FluxIndex.CLI</PackageId>
-    <Version>0.4.0</Version>
+    <Version>0.4.1</Version>
     <Description>FluxIndex CLI - Document processing and RAG indexing tool</Description>
     <Authors>FluxIndex</Authors>
   </PropertyGroup>

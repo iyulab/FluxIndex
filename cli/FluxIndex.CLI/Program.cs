@@ -75,6 +75,26 @@ public class Program
             .Color(Color.Blue));
 
         AnsiConsole.MarkupLine("[dim]Document Processing & RAG Infrastructure[/]");
-        AnsiConsole.MarkupLine("[dim]Version 0.3.1[/]");
+        AnsiConsole.MarkupLine($"[dim]Version {GetVersion()}[/]");
+    }
+
+    /// <summary>
+    /// The version the assembly was actually built with, so the banner cannot drift from the
+    /// project file (it previously hard-coded a version two releases behind).
+    /// </summary>
+    private static string GetVersion()
+    {
+        var assembly = typeof(Program).Assembly;
+        var informational = assembly
+            .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            .OfType<System.Reflection.AssemblyInformationalVersionAttribute>()
+            .FirstOrDefault()?.InformationalVersion;
+        if (!string.IsNullOrEmpty(informational))
+        {
+            // Strip a SourceLink "+<commit>" suffix if present.
+            var plus = informational.IndexOf('+');
+            return plus > 0 ? informational[..plus] : informational;
+        }
+        return assembly.GetName().Version?.ToString(3) ?? "unknown";
     }
 }
