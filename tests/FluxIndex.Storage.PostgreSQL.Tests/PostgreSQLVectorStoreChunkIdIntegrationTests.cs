@@ -24,7 +24,7 @@ namespace FluxIndex.Storage.PostgreSQL.Tests;
 public class PostgreSQLVectorStoreChunkIdIntegrationTests : IAsyncLifetime
 {
     private readonly PostgreSqlContainer _container =
-        new PostgreSqlBuilder("pgvector/pgvector:pg16").Build();
+        PostgreSqlTestContainer.Create();
 
     // Deliberately left as a bare container: pgvector is NOT pre-installed here. The store's own
     // initializer has to install it and still write successfully afterwards, which is the guard for
@@ -32,11 +32,13 @@ public class PostgreSQLVectorStoreChunkIdIntegrationTests : IAsyncLifetime
     // source the store then writes with left it holding a catalogue from before `vector` existed).
     public ValueTask InitializeAsync() => new ValueTask(_container.StartAsync());
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        _container.DisposeAsync();
+        // Awaited: an unawaited DisposeAsync returns before the container is torn down, and the
+        // ValueTask this method returns would claim a teardown that never ran -- leaking a
+        // container per test class.
+        await _container.DisposeAsync();
         GC.SuppressFinalize(this);
-        return default;
     }
 
     private static DocumentChunk Chunk(string id) => new()

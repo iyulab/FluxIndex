@@ -25,7 +25,7 @@ namespace FluxIndex.Storage.PostgreSQL.Tests.KeywordSearch;
 [Trait("Category", "Integration")]
 public class KeywordBackendEquivalenceTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder().Build();
+    private readonly PostgreSqlContainer _container = PostgreSqlTestContainer.Create();
     private readonly string _sqlitePath =
         Path.Combine(Path.GetTempPath(), $"fluxindex-equiv-{Guid.NewGuid():N}.db");
 

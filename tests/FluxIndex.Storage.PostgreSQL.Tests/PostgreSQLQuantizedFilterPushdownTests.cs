@@ -30,15 +30,17 @@ public class PostgreSQLQuantizedFilterPushdownTests : IAsyncLifetime
     private const int Dimension = 8;
 
     private readonly PostgreSqlContainer _container =
-        new PostgreSqlBuilder("pgvector/pgvector:pg16").Build();
+        PostgreSqlTestContainer.Create();
 
     public ValueTask InitializeAsync() => new(_container.StartAsync());
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        _container.DisposeAsync();
+        // Awaited: an unawaited DisposeAsync returns before the container is torn down, and the
+        // ValueTask this method returns would claim a teardown that never ran -- leaking a
+        // container per test class.
+        await _container.DisposeAsync();
         GC.SuppressFinalize(this);
-        return default;
     }
 
     /// <summary>
@@ -51,8 +53,8 @@ public class PostgreSQLQuantizedFilterPushdownTests : IAsyncLifetime
     {
         var store = await CreateStoreAsync();
 
-        await SeedNoiseAsync(store, 12);
-        await store.StoreAsync(Chunk("wanted", "wanted-tenant", Far()));
+        await SeedNoiseAsync(store, 12, TestContext.Current.CancellationToken);
+        await store.StoreAsync(Chunk("wanted", "wanted-tenant", Far()), TestContext.Current.CancellationToken);
 
         var results = await store.SearchAsync(
             Near(0f), topK: 3, minScore: 0f,
@@ -72,8 +74,8 @@ public class PostgreSQLQuantizedFilterPushdownTests : IAsyncLifetime
     {
         var store = await CreateStoreAsync();
 
-        await SeedNoiseAsync(store, 12);
-        await store.StoreAsync(Chunk("wanted", "wanted-tenant", Far()));
+        await SeedNoiseAsync(store, 12, TestContext.Current.CancellationToken);
+        await store.StoreAsync(Chunk("wanted", "wanted-tenant", Far()), TestContext.Current.CancellationToken);
 
         var results = await store.SearchAsync(
             Near(0f), topK: 3, minScore: 0f,
@@ -96,7 +98,7 @@ public class PostgreSQLQuantizedFilterPushdownTests : IAsyncLifetime
     {
         var store = await CreateStoreAsync();
 
-        await SeedNoiseAsync(store, 5);
+        await SeedNoiseAsync(store, 5, TestContext.Current.CancellationToken);
 
         var results = await store.SearchAsync(
             Near(0f), topK: 10, minScore: 0f,
@@ -106,11 +108,11 @@ public class PostgreSQLQuantizedFilterPushdownTests : IAsyncLifetime
         results.Should().BeEmpty();
     }
 
-    private static async Task SeedNoiseAsync(PostgreSQLQuantizedVectorStore store, int count)
+    private static async Task SeedNoiseAsync(PostgreSQLQuantizedVectorStore store, int count, CancellationToken ct)
     {
         for (var i = 0; i < count; i++)
         {
-            await store.StoreAsync(Chunk($"noise-{i}", "other-tenant", Near(i * 0.0001f)));
+            await store.StoreAsync(Chunk($"noise-{i}", "other-tenant", Near(i * 0.0001f)), ct);
         }
     }
 

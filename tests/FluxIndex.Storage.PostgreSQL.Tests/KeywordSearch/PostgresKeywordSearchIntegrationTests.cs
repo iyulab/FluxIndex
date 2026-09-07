@@ -21,15 +21,17 @@ namespace FluxIndex.Storage.PostgreSQL.Tests.KeywordSearch;
 [Trait("Category", "Integration")]
 public class PostgresKeywordSearchIntegrationTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder().Build();
+    private readonly PostgreSqlContainer _container = PostgreSqlTestContainer.Create();
 
     public ValueTask InitializeAsync() => new ValueTask(_container.StartAsync());
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        _container.DisposeAsync();
+        // Awaited: an unawaited DisposeAsync returns before the container is torn down, and the
+        // ValueTask this method returns would claim a teardown that never ran -- leaking a
+        // container per test class.
+        await _container.DisposeAsync();
         GC.SuppressFinalize(this);
-        return default;
     }
 
     private PostgresKeywordSearchService CreateService() =>

@@ -25,7 +25,7 @@ public class EntityGraphSchemaIntegrationTests : IAsyncLifetime
 
     public EntityGraphSchemaIntegrationTests()
     {
-        _container = new PostgreSqlBuilder("pgvector/pgvector:pg16").Build();
+        _container = PostgreSqlTestContainer.Create();
     }
 
     public async ValueTask InitializeAsync()

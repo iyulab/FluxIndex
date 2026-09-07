@@ -22,15 +22,17 @@ namespace FluxIndex.Storage.PostgreSQL.Tests;
 public class PostgreSQLBuilderPathProvisioningIntegrationTests : IAsyncLifetime
 {
     private readonly PostgreSqlContainer _container =
-        new PostgreSqlBuilder("pgvector/pgvector:pg16").Build();
+        PostgreSqlTestContainer.Create();
 
     public ValueTask InitializeAsync() => new ValueTask(_container.StartAsync());
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
-        _container.DisposeAsync();
+        // Awaited: an unawaited DisposeAsync returns before the container is torn down, and the
+        // ValueTask this method returns would claim a teardown that never ran -- leaking a
+        // container per test class.
+        await _container.DisposeAsync();
         GC.SuppressFinalize(this);
-        return default;
     }
 
     [Fact]
