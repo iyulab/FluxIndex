@@ -9,6 +9,22 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.29.1]
+
+### Changed
+- `FluxIndex.Storage.PostgreSQL`: `PostgreSQLQuantizedVectorStore` now reports the same recall loss
+  `0.29.0` made visible in the SQLite vec store. It fetches a `topK * 3` candidate window from the
+  database and applies the metadata filter afterwards — the metadata is a jsonb column the query
+  does not constrain — so a scope narrow relative to the table loses matches that never enter the
+  window. A search that requested `topK`, ran a filter, saw a full window and still came up short
+  now warns; one that fills its request, or has no filter, stays silent. The non-quantized
+  `PostgreSQLVectorStore` is unaffected: it constrains the query itself, so its filter is a real
+  pre-filter. An audit of every `IVectorStore` implementation found these two stores are the only
+  ones that filter after a candidate window; Qdrant filters server-side and the remaining SQLite
+  stores filter before any trim.
+
+---
+
 ## [0.29.0]
 
 > Numbered as a minor, not a patch, to correct the version line: `0.28.9` removed a public enum
