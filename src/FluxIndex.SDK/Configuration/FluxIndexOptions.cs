@@ -94,7 +94,6 @@ public class VectorStoreOptions
     /// <summary>
     /// Qdrant collection naming strategy name. Default: "ModelFingerprint" (recommended).
     /// - "ModelFingerprint": {baseName}_{fingerprint} - auto-adapts to embedding model identity
-    /// - "DimensionSuffix": {baseName}_{dimension} - legacy, cannot distinguish same-dimension models
     /// - "Fixed": exact name specified - requires explicit VectorSize
     /// </summary>
     public string QdrantNamingStrategy { get; set; } = "ModelFingerprint";

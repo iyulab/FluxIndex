@@ -139,12 +139,9 @@ public class PostgreSQLVectorStoreChunkIdIntegrationTests : IAsyncLifetime
         // own initializer -- so unlike the plain store above, this path provisions itself.
         var services = new ServiceCollection();
         services.AddLogging();
+        // No quantizer registered alongside it on purpose: the registration supplies the library
+        // default itself, and this activation is the guard on that.
         services.AddPostgreSQLQuantizedVectorStore(_container.GetConnectionString());
-        // AddPostgreSQLQuantizedVectorStore does not bring a quantizer of its own, so the store
-        // cannot be activated without one being registered alongside it. Remove this line once the
-        // registration supplies a default — choosing which one is a consumer-visible decision that
-        // the options type does not currently express, so it is still open.
-        services.AddSingleton<IVectorQuantizer, ScalarQuantizer>();
 
         var provider = services.BuildServiceProvider();
 

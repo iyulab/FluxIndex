@@ -1,4 +1,6 @@
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Services;
+using System.Linq;
 using FluxIndex.Core.Constants;
 using Microsoft.Extensions.Options;
 using Microsoft.EntityFrameworkCore;
@@ -260,6 +262,15 @@ public static class ServiceCollectionExtensions
             });
             dbOptions.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
         }, ServiceLifetime.Scoped);
+
+        // The store takes an IVectorQuantizer as a required collaborator, so registering the store
+        // without one leaves it impossible to activate. Supply the library default only when the
+        // consumer has not registered a quantizer, so an explicit AddVectorQuantization wins in
+        // either registration order.
+        if (services.All(descriptor => descriptor.ServiceType != typeof(IVectorQuantizer)))
+        {
+            services.AddVectorQuantization();
+        }
 
         // IQuantizedVectorStore 및 IVectorStore 등록
         services.AddScoped<SQLiteQuantizedVectorStore>();

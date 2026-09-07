@@ -62,7 +62,8 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
     /// <summary>
     /// Ensures the collection exists for the given embedding dimension.
     /// With ModelFingerprint strategy, uses <see cref="BoundIdentity"/> fingerprint.
-    /// With DimensionSuffix strategy, creates dimension-specific collections automatically.
+    /// Without a bound identity it falls back to a dimension suffix, creating dimension-specific
+    /// collections automatically.
     /// </summary>
     /// <exception cref="InvalidOperationException">Thrown when collection initialization fails.</exception>
     private async Task EnsureCollectionForDimensionAsync(int dimension, CancellationToken ct)
@@ -79,18 +80,14 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
                 return;
 
             // Resolve collection name based on naming strategy
-#pragma warning disable CS0618 // DimensionSuffix is obsolete
             var collectionName = _options.NamingStrategy switch
             {
                 CollectionNamingStrategy.ModelFingerprint when _boundIdentity is not null
                     => $"{_options.BaseCollectionName}_{_boundIdentity.Fingerprint}",
                 CollectionNamingStrategy.ModelFingerprint
                     => $"{_options.BaseCollectionName}_{dimension}",  // fallback if no identity bound yet
-                CollectionNamingStrategy.DimensionSuffix
-                    => $"{_options.BaseCollectionName}_{dimension}",
                 _ => _options.BaseCollectionName
             };
-#pragma warning restore CS0618
 
             try
             {

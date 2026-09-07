@@ -1,4 +1,6 @@
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Services;
+using System.Linq;
 using FluxIndex.Core.Constants;
 using Microsoft.EntityFrameworkCore;
 using FluxIndex.SDK;
@@ -127,6 +129,15 @@ public static class ServiceCollectionExtensions
             });
             options.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
         });
+
+        // The store takes an IVectorQuantizer as a required collaborator, so registering the store
+        // without one leaves it impossible to activate. Supply the library default only when the
+        // consumer has not registered a quantizer, so an explicit AddVectorQuantization wins in
+        // either registration order.
+        if (services.All(descriptor => descriptor.ServiceType != typeof(IVectorQuantizer)))
+        {
+            services.AddVectorQuantization();
+        }
 
         // Register quantized vector store (implements both interfaces)
         services.AddScoped<PostgreSQLQuantizedVectorStore>();

@@ -11,7 +11,8 @@ namespace FluxIndex.Storage.Qdrant.Tests;
 
 /// <summary>
 /// Tests for dynamic vector dimension adaptation in QdrantVectorStore.
-/// Verifies that collections are automatically created with dimension suffixes.
+/// Verifies that collections are automatically created with dimension suffixes, which is what
+/// ModelFingerprint falls back to until an embedding identity is bound.
 /// </summary>
 [Collection("Qdrant")]
 [Trait("Category", "Integration")]
@@ -54,7 +55,7 @@ public class DimensionAdaptationTests : IAsyncLifetime
 
     private QdrantVectorStore CreateVectorStore(
         string baseCollectionName,
-        CollectionNamingStrategy strategy = CollectionNamingStrategy.DimensionSuffix,
+        CollectionNamingStrategy strategy = CollectionNamingStrategy.ModelFingerprint,
         int vectorSize = 1536)
     {
         var options = Options.Create(new QdrantOptions
@@ -103,16 +104,16 @@ public class DimensionAdaptationTests : IAsyncLifetime
         return chunk;
     }
 
-    #region DimensionSuffix Strategy Tests
+    #region Dimension-suffix fallback tests (ModelFingerprint with no identity bound)
 
     [Fact]
-    public async Task Store_WithDimensionSuffix_CreatesCorrectCollection()
+    public async Task Store_WithNoIdentityBound_CreatesDimensionSuffixedCollection()
     {
         Assert.SkipUnless(IsDockerAvailable, "Docker is not available");
 
         // Arrange
         var baseName = $"test_{Guid.NewGuid():N}";
-        await using var vectorStore = CreateVectorStore(baseName, CollectionNamingStrategy.DimensionSuffix);
+        await using var vectorStore = CreateVectorStore(baseName, CollectionNamingStrategy.ModelFingerprint);
         var chunk = CreateTestChunk(384);
 
         // Act
@@ -139,12 +140,12 @@ public class DimensionAdaptationTests : IAsyncLifetime
         var baseName = $"test_{Guid.NewGuid():N}";
 
         // Store 384-dim chunk
-        await using var vectorStore384 = CreateVectorStore(baseName, CollectionNamingStrategy.DimensionSuffix);
+        await using var vectorStore384 = CreateVectorStore(baseName, CollectionNamingStrategy.ModelFingerprint);
         var chunk384 = CreateTestChunk(384);
         await vectorStore384.StoreAsync(chunk384, TestContext.Current.CancellationToken);
 
         // Store 1024-dim chunk (new vector store instance)
-        await using var vectorStore1024 = CreateVectorStore(baseName, CollectionNamingStrategy.DimensionSuffix);
+        await using var vectorStore1024 = CreateVectorStore(baseName, CollectionNamingStrategy.ModelFingerprint);
         var chunk1024 = CreateTestChunk(1024, seed: 100);
         await vectorStore1024.StoreAsync(chunk1024, TestContext.Current.CancellationToken);
 
@@ -168,7 +169,7 @@ public class DimensionAdaptationTests : IAsyncLifetime
 
         // Arrange
         var baseName = $"test_{Guid.NewGuid():N}";
-        await using var vectorStore = CreateVectorStore(baseName, CollectionNamingStrategy.DimensionSuffix);
+        await using var vectorStore = CreateVectorStore(baseName, CollectionNamingStrategy.ModelFingerprint);
 
         var embedding = CreateTestEmbedding(384);
         var chunk = CreateTestChunk(384);
@@ -191,7 +192,7 @@ public class DimensionAdaptationTests : IAsyncLifetime
 
         // Arrange
         var baseName = $"test_{Guid.NewGuid():N}";
-        await using var vectorStore = CreateVectorStore(baseName, CollectionNamingStrategy.DimensionSuffix);
+        await using var vectorStore = CreateVectorStore(baseName, CollectionNamingStrategy.ModelFingerprint);
 
         var chunks = Enumerable.Range(0, 5)
             .Select(i => CreateTestChunk(512, seed: 100 + i))

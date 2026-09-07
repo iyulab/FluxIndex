@@ -9,6 +9,29 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.28.9]
+
+### Removed
+- `FluxIndex.Storage.Qdrant`: `CollectionNamingStrategy.DimensionSuffix`, deprecated in `0.28.8`,
+  is gone. Set `NamingStrategy` to `ModelFingerprint` (the default) instead — it distinguishes
+  models that share a dimension, and until an embedding identity is bound it falls back to the same
+  `{baseName}_{dimension}` collection name the removed member produced, so an existing deployment
+  keeps addressing its collections. The remaining members keep the numeric values they shipped with
+  (`Fixed = 1`, `ModelFingerprint = 2`) so a configuration that binds this strategy as a number does
+  not silently change meaning.
+
+### Fixed
+- `FluxIndex.Storage.PostgreSQL`, `FluxIndex.Storage.SQLite`: `AddPostgreSQLQuantizedVectorStore`
+  and `AddSQLiteQuantizedVectorStore` now register a default `IVectorQuantizer`, so a quantized
+  store can be activated from the registration alone. Both stores take the quantizer as a required
+  constructor dependency and neither registration supplied one, which made direct registration fail
+  with `Unable to resolve service for type 'IVectorQuantizer'`; the SDK builder resolved it as
+  optional and so never supplied one either. The default is the library's existing
+  `QuantizationOptions` default (`ScalarInt8`), not a new choice, and an explicit
+  `AddVectorQuantization` still wins in either registration order.
+
+---
+
 ## [0.28.8]
 
 ### Fixed

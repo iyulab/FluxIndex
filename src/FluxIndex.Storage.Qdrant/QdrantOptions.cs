@@ -7,32 +7,23 @@ namespace FluxIndex.Storage.Qdrant;
 /// </summary>
 public enum CollectionNamingStrategy
 {
-    /// <summary>
-    /// Dynamic naming: {baseName}_{dimension}.
-    /// Separates collections by embedding dimension only.
-    /// Does NOT distinguish different models with the same dimension.
-    /// </summary>
-    /// <remarks>
-    /// Planned for removal in a future release. If your configuration sets
-    /// <c>NamingStrategy</c> to <see cref="DimensionSuffix"/> explicitly, migrate to
-    /// <see cref="ModelFingerprint"/> (the default since this option was deprecated) before
-    /// upgrading past that release.
-    /// </remarks>
-    [Obsolete("Use ModelFingerprint instead. DimensionSuffix cannot distinguish different models with the same dimension. Planned for removal in a future release.")]
-    DimensionSuffix,
+    // Values are assigned explicitly and 0 is deliberately left unused: a deprecated dimension-suffix
+    // member used to occupy it, and renumbering on its removal would silently change the meaning of
+    // any configuration that binds this strategy as a number rather than a name.
 
     /// <summary>
     /// Fixed naming: uses the exact name specified (legacy compatibility).
     /// Requires explicit VectorSize configuration.
     /// </summary>
-    Fixed,
+    Fixed = 1,
 
     /// <summary>
     /// Dynamic naming: {baseName}_{fingerprint} (recommended default).
     /// Uses the embedding model's fingerprint (SHA256 hash of Provider:Model) to identify collections.
     /// Automatically creates separate collections per embedding model, regardless of dimension.
+    /// Until an embedding identity is bound, falls back to a dimension suffix.
     /// </summary>
-    ModelFingerprint
+    ModelFingerprint = 2
 }
 
 /// <summary>
@@ -66,8 +57,9 @@ public class QdrantOptions
     public string? ApiKey { get; set; }
 
     /// <summary>
-    /// Base collection name. Actual name may include dimension suffix based on NamingStrategy.
-    /// With DimensionSuffix strategy: "fluxindex_chunks" becomes "fluxindex_chunks_384" for 384-dim vectors.
+    /// Base collection name. Actual name may include a suffix based on NamingStrategy.
+    /// With ModelFingerprint and no identity bound yet: "fluxindex_chunks" becomes
+    /// "fluxindex_chunks_384" for 384-dim vectors.
     /// </summary>
     public string BaseCollectionName { get; set; } = "fluxindex_chunks";
 
@@ -84,14 +76,13 @@ public class QdrantOptions
     /// <summary>
     /// Collection naming strategy. Default: ModelFingerprint (recommended).
     /// - ModelFingerprint: {baseName}_{fingerprint} - auto-adapts to embedding model identity
-    /// - DimensionSuffix: {baseName}_{dimension} - legacy, cannot distinguish same-dimension models
     /// - Fixed: exact name specified - requires explicit VectorSize
     /// </summary>
     public CollectionNamingStrategy NamingStrategy { get; set; } = CollectionNamingStrategy.ModelFingerprint;
 
     /// <summary>
     /// Vector dimension size. Only used when NamingStrategy is Fixed.
-    /// With DimensionSuffix strategy, dimension is auto-detected from embeddings.
+    /// With ModelFingerprint, dimension is auto-detected from embeddings.
     /// </summary>
     public int VectorSize { get; set; } = EmbeddingDefaults.DefaultVectorDimension;
 
