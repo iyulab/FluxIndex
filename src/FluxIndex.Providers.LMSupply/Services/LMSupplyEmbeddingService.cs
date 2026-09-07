@@ -30,14 +30,21 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
     /// Creates an embedding service by loading a local ONNX model.
     /// </summary>
     /// <param name="modelId">LMSupply catalog alias (e.g., "default", "fast", "large") or model ID.</param>
+    /// <param name="revision">
+    /// Optional pipeline revision. Raise it when the same model starts producing vectors that are
+    /// incomparable with what is already indexed — an upgrade that changes tokenization, pooling or
+    /// quantization does exactly that while leaving the model id untouched. See
+    /// <see cref="FluxIndex.Core.Domain.ValueObjects.EmbeddingIdentity.Revision"/>.
+    /// </param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A ready-to-use embedding service.</returns>
     public static async Task<LMSupplyEmbeddingService> CreateAsync(
         string modelId = "default",
+        string? revision = null,
         CancellationToken cancellationToken = default)
     {
         var model = await LocalEmbedder.LoadAsync(modelId, cancellationToken: cancellationToken);
-        return new LMSupplyEmbeddingService(model);
+        return new LMSupplyEmbeddingService(model) { Revision = revision };
     }
 
     /// <inheritdoc />

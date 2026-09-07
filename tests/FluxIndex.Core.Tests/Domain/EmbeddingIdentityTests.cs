@@ -115,6 +115,20 @@ public class EmbeddingIdentityTests
         Assert.Null(new PlainEmbeddingService().GetIdentity().Revision);
     }
 
+    /// <summary>
+    /// 이 리포가 제공하는 provider 구현체는 전부 <c>sealed</c>다 — <c>GetRevision()</c>을 override할
+    /// 수 없다. 객체 초기화자로 설정하는 경로가 없으면 seam이 기반 클래스에만 있고 정작 소비자가
+    /// 쓰는 자리에서는 닿지 않는다.
+    /// </summary>
+    [Fact]
+    public void GetIdentity_CarriesARevisionSetThroughTheObjectInitializer()
+    {
+        var service = new PlainEmbeddingService { Revision = "r2" };
+
+        Assert.Equal("r2", service.GetIdentity().Revision);
+        Assert.NotEqual(Identity().Fingerprint, service.GetIdentity().Fingerprint);
+    }
+
     private class PlainEmbeddingService : EmbeddingServiceBase
     {
         public override int GetEmbeddingDimension() => 768;

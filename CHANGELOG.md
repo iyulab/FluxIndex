@@ -18,13 +18,23 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   normalisation change, a quantization switch, or an ONNX re-export all change the numbers while
   leaving both names untouched. Raising `Revision` declares a new vector space, so the fingerprint
   changes and the collections and tables named after it separate instead of silently mixing.
-- `FluxIndex.Core`: `EmbeddingServiceBase.GetRevision()` — a `protected virtual` seam returning
-  `null` by default, so a service declares its pipeline revision the same way it declares its
-  provider and model. `GetIdentity()` carries it; services that override `GetIdentity()` outright
-  are unaffected.
+- `FluxIndex.Core`: `EmbeddingServiceBase.Revision` (an `init` property) and
+  `EmbeddingServiceBase.GetRevision()` (a `protected virtual` seam) — two ways to declare it, because
+  every embedding service this repository ships is `sealed` and so cannot override anything. Set the
+  property in an object initializer, or override the method when the revision is computed.
+  `GetIdentity()` carries whichever is used; services that override `GetIdentity()` outright are
+  unaffected.
+- `FluxIndex.Providers.LMSupply`: `LMSupplyEmbeddingService.CreateAsync` and `AddLMSupplyEmbedding`
+  take an optional `revision`, so the revision can be set through the registration a consumer
+  already uses rather than by constructing the service by hand.
+
+### Changed
+- `LMSupplyEmbeddingService.CreateAsync`'s parameter order — `revision` sits before
+  `cancellationToken`, which analyzer rules require to come last. Callers passing the token
+  positionally must name it; callers using the default are unaffected.
 
 ### Compatibility
-- Additive. With no `Revision` set the fingerprint is byte-identical to every previous release, so
+- Additive apart from that parameter order. With no `Revision` set the fingerprint is byte-identical to every previous release, so
   no existing collection or table is renamed by upgrading — a regression test pins the pre-revision
   hash to keep it that way.
 - A blank or whitespace-only `Revision` normalises to unset, so a configuration binding that yields

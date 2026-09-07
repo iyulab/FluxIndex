@@ -152,6 +152,20 @@ public class SQLiteVecBindIdentityDriftTests : IDisposable
         (await store.GetAsync(idAfter, TestContext.Current.CancellationToken)).Should().NotBeNull(
             "the store must create and use the table for the revised fingerprint");
 
+        // The separation is the point, not merely that the write succeeded. What the fingerprint
+        // partitions is the vector table, not the chunk rows: chunk metadata lives in the shared
+        // relational table, so GetAsync still finds the old chunk by id. A vector search under the
+        // revised fingerprint is where the separation is observable — the pre-revision embedding
+        // is not in the new vec table, so it cannot be ranked against the new ones.
+        var hits = await store.SearchAsync(
+            new[] { 0.1f, 0.2f, 0.3f, 0.4f }, topK: 10, minScore: 0f,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        hits.Select(h => h.Id).Should().NotContain(idBefore,
+            "vectors written before the revision must not be searchable alongside the new ones");
+        hits.Select(h => h.Id).Should().Contain(idAfter,
+            "vectors written after the revision must be searchable");
+
         _output.WriteLine($"unrevised={IdentityA().Fingerprint} revised={IdentityARevised().Fingerprint}");
     }
 

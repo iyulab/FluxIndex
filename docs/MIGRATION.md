@@ -147,7 +147,18 @@ names stay exactly the same — a tokenizer fix, a pooling or normalisation chan
 switch, or an ONNX re-export. Until 0.30.0 there was no way to say so, and the old and new vectors
 would share a collection and be ranked against each other.
 
-Override `GetRevision()` and raise the value at that moment:
+Every embedding service shipped here is `sealed`, so the usual path is the `Revision` property —
+set it where you already register the service:
+
+```csharp
+services.AddLMSupplyEmbedding("multilingual-e5-base", revision: "r2");
+
+// or, constructing directly:
+var embedder = await LMSupplyEmbeddingService.CreateAsync("multilingual-e5-base", revision: "r2");
+```
+
+If you write your own service and the revision is computed rather than configured, override
+`GetRevision()` instead:
 
 ```csharp
 public sealed class MyEmbeddingService : EmbeddingServiceBase

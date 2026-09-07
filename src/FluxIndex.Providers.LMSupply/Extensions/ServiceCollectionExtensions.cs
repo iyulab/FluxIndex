@@ -21,13 +21,18 @@ public static class ServiceCollectionExtensions
     /// </summary>
     /// <param name="services">The service collection.</param>
     /// <param name="modelId">LMSupply catalog alias (e.g., "default", "fast", "large") or model ID.</param>
+    /// <param name="revision">
+    /// Optional pipeline revision — raise it when an upgrade makes this model's vectors
+    /// incomparable with what is already indexed, so the collection separates instead of mixing.
+    /// </param>
     /// <returns>The service collection for chaining.</returns>
     public static IServiceCollection AddLMSupplyEmbedding(
         this IServiceCollection services,
-        string modelId = "default")
+        string modelId = "default",
+        string? revision = null)
     {
         services.AddSingleton<IEmbeddingService>(sp =>
-            LMSupplyEmbeddingService.CreateAsync(modelId).GetAwaiter().GetResult());
+            LMSupplyEmbeddingService.CreateAsync(modelId, revision: revision).GetAwaiter().GetResult());
         return services;
     }
 
