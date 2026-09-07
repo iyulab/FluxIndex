@@ -9,6 +9,24 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.29.2]
+
+### Fixed
+- `FluxIndex.Storage.PostgreSQL`: `PostgreSQLQuantizedVectorStore` now applies a metadata filter as
+  part of the query instead of over rows already selected by distance, so a scope narrow relative
+  to the table no longer loses matches. `0.29.1` made that loss visible; this removes it. The
+  warning it added is gone with it — there is no filter shape left that runs after the candidate
+  window, and a warning that can never fire is worse than none.
+- The predicate builder both PostgreSQL stores use now lives in one place, so they cannot drift on
+  where a filter runs. Behaviour of `PostgreSQLVectorStore` is unchanged; it already pushed the
+  filter down.
+
+> `FluxIndex.Storage.SQLite`'s `SQLiteVecVectorStore` still filters after its KNN step and still
+> warns — vec0 can only pre-filter on columns declared on the virtual table, which is a schema
+> change rather than a query change.
+
+---
+
 ## [0.29.1]
 
 ### Changed

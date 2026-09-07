@@ -178,19 +178,20 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
 
         var queryVector = new Vector(queryEmbedding);
 
-        // Use pgvector's cosine distance for efficient search. The metadata lives in a jsonb
-        // column this query does not constrain, so the filter cannot be pushed into the database
-        // and is applied below instead; the window is over-fetched so that matching chunks are
-        // less likely to be crowded out of it by higher-scoring non-matching ones.
-        //
-        // This is a bounded mitigation, not a fix: a scope narrow enough relative to the table
-        // still loses matches that never enter the window. When that happens the search reports
-        // it below rather than returning a quietly short result. The non-quantized
-        // PostgreSQLVectorStore does not have this problem — it constrains the query itself.
-        var candidateWindow = topK * 3;
-        var candidates = await _context.Vectors
+        // Push metadata filters down to SQL (jsonb @> containment) BEFORE the candidate trim —
+        // otherwise higher-scoring non-matching rows crowd matching rows out of the window and the
+        // caller silently receives fewer results than exist. Same predicate builder the
+        // non-quantized store uses, so the two cannot drift on where a filter runs.
+        var query = _context.Vectors.AsQueryable();
+        if (filters is { Count: > 0 })
+        {
+            query = query.Where(MetadataPredicateBuilder.Build<QuantizedVectorEntity>(filters, v => v.Metadata));
+        }
+
+        // Over-fetch so the minScore cut below still has candidates to work with.
+        var candidates = await query
             .OrderBy(v => v.Embedding.CosineDistance(queryVector))
-            .Take(candidateWindow)
+            .Take(topK * 3)
             .Select(v => new
             {
                 Distance = v.Embedding.CosineDistance(queryVector),
@@ -198,27 +199,13 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
             })
             .ToListAsync(cancellationToken);
 
-        // Apply metadata filters before the final topK trim (IVectorStore filter contract, incl.
-        // collection values = MatchAny) — previously filters were silently ignored, leaking
-        // chunks across filter scope (e.g. other tenants).
-        var results = candidates
+        return candidates
             .Select(c => new { Chunk = MapToChunk(c.Entity), Similarity = 1.0 - c.Distance })
-            .Where(r => filters is not { Count: > 0 }
-                || FluxIndex.Core.Application.Services.Base.VectorStoreBase.MatchesMetadataFilter(r.Chunk.Metadata, filters))
             .Where(r => r.Similarity >= minScore)
             .OrderByDescending(r => r.Similarity)
             .Take(topK)
             .Select(r => r.Chunk)
             .ToList();
-
-        // A saturated window that still could not fill topK means matching chunks may exist
-        // outside it — the caller's result is short for a reason it cannot otherwise see.
-        if (filters is { Count: > 0 } && candidates.Count >= candidateWindow && results.Count < topK)
-        {
-            LogFilterWindowSaturated(_logger, results.Count, topK, candidateWindow);
-        }
-
-        return results;
     }
 
     public async Task<bool> DeleteAsync(string id, CancellationToken cancellationToken = default)
@@ -641,11 +628,6 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
     #endregion
 
     #region LoggerMessage Definitions
-
-    [LoggerMessage(
-        Level = LogLevel.Warning,
-        Message = "Quantized vector search returned {Count} of {TopK} requested results: the metadata filter is applied after the database candidate window and the {WindowSize}-candidate window was full, so matching chunks may exist outside it. Narrow the query, raise topK, or scope the store")]
-    private static partial void LogFilterWindowSaturated(ILogger logger, int count, int topK, int windowSize);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to auto-quantize embedding for chunk {ChunkId}")]
     private static partial void LogAutoQuantizeFailed(ILogger logger, Exception exception, Guid chunkId);
