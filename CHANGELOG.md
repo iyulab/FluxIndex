@@ -9,6 +9,31 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.30.0]
+
+### Added
+- `FluxIndex.Core`: `EmbeddingIdentity.Revision` — an optional, opaque pipeline revision supplied by
+  the consumer. `Provider + Model` cannot express the case where the *same* model starts producing
+  vectors that are incomparable with what is already stored: a tokenizer fix, a pooling or
+  normalisation change, a quantization switch, or an ONNX re-export all change the numbers while
+  leaving both names untouched. Raising `Revision` declares a new vector space, so the fingerprint
+  changes and the collections and tables named after it separate instead of silently mixing.
+- `FluxIndex.Core`: `EmbeddingServiceBase.GetRevision()` — a `protected virtual` seam returning
+  `null` by default, so a service declares its pipeline revision the same way it declares its
+  provider and model. `GetIdentity()` carries it; services that override `GetIdentity()` outright
+  are unaffected.
+
+### Compatibility
+- Additive. With no `Revision` set the fingerprint is byte-identical to every previous release, so
+  no existing collection or table is renamed by upgrading — a regression test pins the pre-revision
+  hash to keep it that way.
+- A blank or whitespace-only `Revision` normalises to unset, so a configuration binding that yields
+  an empty value cannot split a vector space by accident.
+- `Revision` is case-sensitive, unlike `Provider` and `Model`. It is an opaque token whose whole
+  purpose is to distinguish; folding case would let two different revisions share one fingerprint.
+
+---
+
 ## [0.29.2]
 
 ### Fixed

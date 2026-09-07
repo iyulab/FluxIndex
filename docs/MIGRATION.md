@@ -134,6 +134,43 @@ If you were calling these SDK methods directly, they were removed in 0.11.0 (the
 
 If you use a custom `IEmbeddingService`, ensure `GetModelName()` returns a stable, unique string. Starting from 0.12.0, model name is used for vector collection naming (`EmbeddingFingerprint`). Returning an empty or null string will cause `ArgumentException` at indexing time.
 
+Stability is the point: the model name identifies a *vector space*, so it must not encode anything
+that varies between runs. Do not append a pipeline version to it either — see Step 9.
+
+---
+
+### Step 9: Declare a pipeline revision when your vectors change meaning (0.30.0+)
+
+Nothing needs to change to upgrade. This step matters the day your embedding pipeline starts
+producing vectors that are incomparable with the ones already stored, while the provider and model
+names stay exactly the same — a tokenizer fix, a pooling or normalisation change, a quantization
+switch, or an ONNX re-export. Until 0.30.0 there was no way to say so, and the old and new vectors
+would share a collection and be ranked against each other.
+
+Override `GetRevision()` and raise the value at that moment:
+
+```csharp
+public sealed class MyEmbeddingService : EmbeddingServiceBase
+{
+    // Raise this whenever the same model would produce vectors incompatible with
+    // what is already indexed. Any opaque token works: "r2", "2026-09-tokenizer-fix".
+    protected override string? GetRevision() => "r2";
+}
+```
+
+The fingerprint changes with it, so the collection or table named after the fingerprint separates
+from the old one — which is what lets a drift check notice and a re-index run.
+
+Two things worth knowing before you use it:
+
+- **Leaving it unset keeps the old fingerprint byte-for-byte.** Upgrading renames nothing.
+- **Raising it strands the vectors under the previous fingerprint.** They are not migrated or
+  deleted; searches see the new, empty space until you re-embed. That is deliberate — mixing the
+  two spaces is the failure this exists to prevent — but plan the re-index before you raise it.
+
+Do not encode the revision in `GetModelName()` instead: that string is also what warmup, telemetry
+and any model-facing UI report, so a revision suffix leaks into all of them.
+
 ---
 
 ### Step 7: Register the storage provider you select (0.19.0+)

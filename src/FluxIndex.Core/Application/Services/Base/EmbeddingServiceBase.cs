@@ -80,12 +80,24 @@ public abstract class EmbeddingServiceBase : IEmbeddingService
     /// </summary>
     protected abstract string GetProviderName();
 
+    /// <summary>
+    /// 이 서비스가 만드는 임베딩의 파이프라인 리비전을 반환한다. 기본은 <c>null</c>(리비전 없음).
+    /// </summary>
+    /// <remarks>
+    /// 같은 Provider + Model이 이전과 «비교 불가능한» 벡터를 내게 됐을 때만 올린다 —
+    /// 토크나이저 수정, 풀링/정규화 변경, 양자화 전환, ONNX 재export 같은 수치 변경이 그 경우다.
+    /// 올리면 <see cref="EmbeddingIdentity.Fingerprint"/>가 바뀌고, 지문으로 이름을 짓는
+    /// 컬렉션/테이블이 갈라져 기존 벡터와 섞이지 않는다.
+    /// </remarks>
+    protected virtual string? GetRevision() => null;
+
     /// <inheritdoc />
     public virtual EmbeddingIdentity GetIdentity() => new()
     {
         Provider = GetProviderName(),
         Model = GetModelName(),
-        Dimension = GetEmbeddingDimension()
+        Dimension = GetEmbeddingDimension(),
+        Revision = GetRevision()
     };
 
     /// <inheritdoc />

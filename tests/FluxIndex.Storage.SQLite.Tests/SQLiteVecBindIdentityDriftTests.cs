@@ -39,6 +39,12 @@ public class SQLiteVecBindIdentityDriftTests : IDisposable
     private static EmbeddingIdentity IdentityB() =>
         new() { Provider = "test-b", Model = "model-b", Dimension = 4 };
 
+    // Same Provider/Model/Dimension as A — only the pipeline Revision differs. This is the case
+    // a model rename cannot express: the embedder's numerics changed (a tokenizer fix, a pooling
+    // change) so the vectors are no longer comparable with what A wrote, while both names stay put.
+    private static EmbeddingIdentity IdentityARevised() =>
+        new() { Provider = "test-a", Model = "model-a", Dimension = 4, Revision = "r2" };
+
     private static DocumentChunk Chunk(string documentId) => new()
     {
         DocumentId = documentId,
@@ -99,6 +105,54 @@ public class SQLiteVecBindIdentityDriftTests : IDisposable
 
         await act.Should().NotThrowAsync(
             "EnsureInitializedAsync must ensure the table for the current effective fingerprint before writing");
+    }
+
+    /// <summary>
+    /// A raised <see cref="EmbeddingIdentity.Revision"/> must separate storage the same way a model
+    /// change does: writes land in a different <c>chunk_embeddings_{fp}</c> table, so vectors from
+    /// two incompatible pipelines are never ranked against each other in one table.
+    /// </summary>
+    [Fact]
+    public async Task RaisingTheRevision_MovesWritesToADifferentFingerprintTable()
+    {
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+
+        IdentityARevised().Fingerprint.Should().NotBe(
+            IdentityA().Fingerprint,
+            "a raised revision is the only thing declaring that the vector space changed");
+
+        var services = new ServiceCollection();
+        services.AddLogging(b => b.AddConsole().SetMinimumLevel(LogLevel.Warning));
+        services.AddSQLiteVecVectorStore(o =>
+        {
+            o.UseInMemory = true;
+            o.UseSQLiteVec = true;
+            o.VectorDimension = 4;
+            o.DatabasePath = _dbPath;
+            o.FallbackToInMemoryOnError = false;
+        });
+        _sp = services.BuildServiceProvider();
+
+        using var scope = _sp.CreateScope();
+        var store = scope.ServiceProvider.GetRequiredService<SQLiteVecVectorStore>();
+
+        store.BindIdentity(IdentityA());
+        var ctx = scope.ServiceProvider.GetRequiredService<SQLiteVecDbContext>();
+        await ctx.InitializeAsync(TestContext.Current.CancellationToken);
+
+        var idBefore = await store.StoreAsync(Chunk("doc-before"), TestContext.Current.CancellationToken);
+        (await store.GetAsync(idBefore, TestContext.Current.CancellationToken)).Should().NotBeNull(
+            "baseline write under the unrevised identity must round-trip");
+
+        // Raise the revision the way a consumer would after its embedder shipped a numerics change.
+        var options = scope.ServiceProvider.GetRequiredService<IOptions<SQLiteVecOptions>>().Value;
+        options.EmbeddingFingerprint = IdentityARevised().Fingerprint;
+
+        var idAfter = await store.StoreAsync(Chunk("doc-after"), TestContext.Current.CancellationToken);
+        (await store.GetAsync(idAfter, TestContext.Current.CancellationToken)).Should().NotBeNull(
+            "the store must create and use the table for the revised fingerprint");
+
+        _output.WriteLine($"unrevised={IdentityA().Fingerprint} revised={IdentityARevised().Fingerprint}");
     }
 
     public void Dispose()
