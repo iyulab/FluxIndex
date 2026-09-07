@@ -155,7 +155,10 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
     {
         await EnsureInitializedAsync(cancellationToken);
 
+        // AsTracking: NoTracking context, and Remove() on a detached instance throws when the
+        // same row is already tracked (a Store in the same scope leaves it so).
         var entity = await _context.Vectors
+            .AsTracking()
             .FirstOrDefaultAsync(v => v.Id == id, cancellationToken);
 
         if (entity == null) return false;
@@ -208,6 +211,7 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
         await EnsureInitializedAsync(cancellationToken);
 
         var entities = await _context.Vectors
+            .AsTracking()
             .Where(v => v.DocumentId == documentId)
             .ToListAsync(cancellationToken);
 
@@ -227,7 +231,7 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
     protected override async Task ClearCoreAsync(CancellationToken cancellationToken)
     {
         await EnsureInitializedAsync(cancellationToken);
-        _context.Vectors.RemoveRange(_context.Vectors);
+        _context.Vectors.RemoveRange(_context.Vectors.AsTracking());
         await _context.SaveChangesAsync(cancellationToken);
     }
 
@@ -244,7 +248,7 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
 
         await EnsureInitializedAsync(cancellationToken);
 
-        var entities = await _context.Vectors.ToListAsync(cancellationToken);
+        var entities = await _context.Vectors.AsTracking().ToListAsync(cancellationToken);
         var matched = entities
             .Where(v => MatchesMetadataFilter(MapToChunk(v).Metadata, filters))
             .ToList();

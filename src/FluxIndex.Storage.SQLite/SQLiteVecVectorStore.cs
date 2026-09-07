@@ -968,7 +968,14 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
 
                 try
                 {
+                    // AsTracking is load-bearing on every write path in this class: the context
+                    // is registered NoTracking, so a plain query returns a detached instance and
+                    // Remove() tries to attach it. If the same row is already tracked — a Store in
+                    // the same scope leaves it tracked after SaveChanges — that attach throws
+                    // "another instance with the same key value is already being tracked".
+                    // AsTracking resolves to the instance already in the tracker instead.
                     var entity = await _context.VectorChunks
+                        .AsTracking()
                         .FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
 
                     if (entity == null)
@@ -1025,6 +1032,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 try
                 {
                     var entities = await _context.VectorChunks
+                        .AsTracking()
                         .Where(c => c.DocumentId == documentId)
                         .ToListAsync(cancellationToken);
 
@@ -1101,7 +1109,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
             try
             {
-                var all = await _context.VectorChunks.ToListAsync(cancellationToken);
+                var all = await _context.VectorChunks.AsTracking().ToListAsync(cancellationToken);
                 var matched = all
                     .Where(e => VectorStoreBase.MatchesMetadataFilter(e.Metadata, filters))
                     .ToList();
@@ -1302,7 +1310,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                     }
 
                     // 메타데이터 테이블 클리어
-                    _context.VectorChunks.RemoveRange(_context.VectorChunks);
+                    _context.VectorChunks.RemoveRange(_context.VectorChunks.AsTracking());
                     await _context.SaveChangesAsync(cancellationToken);
                     await transaction.CommitAsync(cancellationToken);
 

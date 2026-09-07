@@ -136,7 +136,11 @@ public class PostgreSQLVectorStore : VectorStoreBase
 
     protected override async Task<bool> DeleteCoreAsync(string id, CancellationToken cancellationToken)
     {
+        // AsTracking regardless of how this context happens to be registered — the sibling
+        // quantized context is NoTracking, where Remove() on a detached instance throws if the
+        // same row is already tracked.
         var entity = await _context.Vectors
+            .AsTracking()
             .FirstOrDefaultAsync(v => v.Id == ChunkStorageId.ToStorageGuid(id), cancellationToken);
 
         if (entity == null) return false;
@@ -187,6 +191,7 @@ public class PostgreSQLVectorStore : VectorStoreBase
         CancellationToken cancellationToken)
     {
         var entities = await _context.Vectors
+            .AsTracking()
             .Where(v => v.DocumentId == documentId)
             .ToListAsync(cancellationToken);
 

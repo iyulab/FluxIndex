@@ -213,12 +213,14 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
     {
         await EnsureInitializedAsync(cancellationToken);
 
-        var entity = await _context.Vectors.FirstOrDefaultAsync(v => v.Id == id, cancellationToken);
+        // AsTracking: NoTracking context, and Remove() on a detached instance throws when the
+        // same row is already tracked (a Store in the same scope leaves it so).
+        var entity = await _context.Vectors.AsTracking().FirstOrDefaultAsync(v => v.Id == id, cancellationToken);
         if (entity == null) return false;
 
         _context.Vectors.Remove(entity);
 
-        var quantizedEntity = await _context.QuantizedVectors.FirstOrDefaultAsync(q => q.ChunkId == id, cancellationToken);
+        var quantizedEntity = await _context.QuantizedVectors.AsTracking().FirstOrDefaultAsync(q => q.ChunkId == id, cancellationToken);
         if (quantizedEntity != null)
         {
             _context.QuantizedVectors.Remove(quantizedEntity);
@@ -233,6 +235,7 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
         await EnsureInitializedAsync(cancellationToken);
 
         var entities = await _context.Vectors
+            .AsTracking()
             .Where(v => v.DocumentId == documentId)
             .ToListAsync(cancellationToken);
 
@@ -240,6 +243,7 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
 
         var chunkIds = entities.Select(e => e.Id).ToList();
         var quantizedEntities = await _context.QuantizedVectors
+            .AsTracking()
             .Where(q => chunkIds.Contains(q.ChunkId))
             .ToListAsync(cancellationToken);
 
@@ -301,8 +305,8 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
     {
         await EnsureInitializedAsync(cancellationToken);
 
-        _context.QuantizedVectors.RemoveRange(_context.QuantizedVectors);
-        _context.Vectors.RemoveRange(_context.Vectors);
+        _context.QuantizedVectors.RemoveRange(_context.QuantizedVectors.AsTracking());
+        _context.Vectors.RemoveRange(_context.Vectors.AsTracking());
         await _context.SaveChangesAsync(cancellationToken);
     }
 

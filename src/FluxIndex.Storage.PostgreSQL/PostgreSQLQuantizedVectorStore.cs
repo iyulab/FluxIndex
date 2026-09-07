@@ -211,12 +211,15 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
     public async Task<bool> DeleteAsync(string id, CancellationToken cancellationToken = default)
     {
         var guid = ChunkStorageId.ToStorageGuid(id);
-        var entity = await _context.Vectors.FirstOrDefaultAsync(v => v.Id == guid, cancellationToken);
+        // AsTracking: NoTracking context — Remove() on a detached instance throws when the same
+        // row is already tracked (a Store in the same scope leaves it so).
+        var entity = await _context.Vectors.AsTracking().FirstOrDefaultAsync(v => v.Id == guid, cancellationToken);
         if (entity == null) return false;
 
         _context.Vectors.Remove(entity);
 
         var quantizedEntity = await _context.QuantizedVectors
+            .AsTracking()
             .FirstOrDefaultAsync(q => q.ChunkId == id, cancellationToken);
         if (quantizedEntity != null)
         {
@@ -230,6 +233,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
     public async Task<bool> DeleteByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default)
     {
         var entities = await _context.Vectors
+            .AsTracking()
             .Where(v => v.DocumentId == documentId)
             .ToListAsync(cancellationToken);
 
@@ -237,6 +241,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
 
         var chunkIds = entities.Select(e => e.Id.ToString()).ToList();
         var quantizedEntities = await _context.QuantizedVectors
+            .AsTracking()
             .Where(q => chunkIds.Contains(q.ChunkId))
             .ToListAsync(cancellationToken);
 

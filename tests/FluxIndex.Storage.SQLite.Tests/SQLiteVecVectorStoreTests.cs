@@ -6,6 +6,7 @@ using FluxIndex.Storage.SQLite.Tests.Infrastructure;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -17,7 +18,7 @@ namespace FluxIndex.Storage.SQLite.Tests;
 /// SQLite-vec 벡터 저장소 테스트
 /// </summary>
 [Collection("SQLite Tests")]
-public class SQLiteVecVectorStoreTests : IDisposable
+public class SQLiteVecVectorStoreTests : IAsyncLifetime
 {
     private readonly ITestOutputHelper _output;
     private readonly ServiceProvider _serviceProvider;
@@ -28,26 +29,49 @@ public class SQLiteVecVectorStoreTests : IDisposable
     {
         _output = output;
         // 테스트 격리를 위해 고유한 데이터베이스 이름 사용
-        _testDatabasePath = $"test_{Guid.NewGuid():N}.db";
+        _testDatabasePath = Path.Combine(Path.GetTempPath(), $"fluxindex_vecstore_{Guid.NewGuid():N}.db");
 
-        _options = SQLiteVecOptions.CreateForTesting(useSqliteVec: false);
+        _options = SQLiteVecOptions.CreateForTesting(useSqliteVec: true);
         _options.DatabasePath = _testDatabasePath;
 
         var services = new ServiceCollection();
         services.AddLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Warning));
-        
+
         // 고유한 데이터베이스 경로를 사용하여 테스트 격리 보장
         services.AddSQLiteVecVectorStore(options =>
         {
-            options.UseInMemory = true;
+            // These four settings decide WHICH implementation this class exercises, and they were
+            // wrong for a long time: with UseSQLiteVec = false and FallbackToInMemoryOnError = true,
+            // SQLiteVecVectorStore delegates every call to its in-memory fallback store. The class
+            // named after the sqlite-vec store therefore never executed it — which is why five
+            // silent no-op UpdateAsync defects shipped past a green suite (docket #200).
+            //
+            // Keep the real path: sqlite-vec on, no fallback (so a loading failure is a loud test
+            // failure rather than a silent substitution), and a file-backed database so a second
+            // context can read what this one wrote.
+            options.UseInMemory = false;
             options.VectorDimension = 384;
-            options.UseSQLiteVec = false;
+            options.UseSQLiteVec = true;
             options.AutoMigrate = true;
-            options.FallbackToInMemoryOnError = true;
+            options.FallbackToInMemoryOnError = false;
+            options.EmbeddingFingerprint = "vecstoretests384";
             options.DatabasePath = _testDatabasePath;
         });
 
         _serviceProvider = services.BuildServiceProvider();
+    }
+
+    /// <summary>
+    /// The relational schema is created by a hosted service, which nothing starts outside a host —
+    /// without this the store fails with "no such table: vector_chunks".
+    /// </summary>
+    public async ValueTask InitializeAsync()
+    {
+        if (CITestHelper.ShouldSkipSqliteVec())
+            return;
+
+        foreach (var service in _serviceProvider.GetServices<IHostedService>())
+            await service.StartAsync(CancellationToken.None);
     }
 
     [Fact]
@@ -483,9 +507,9 @@ public class SQLiteVecVectorStoreTests : IDisposable
         return noisyVector;
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        _serviceProvider?.Dispose();
+        await _serviceProvider.DisposeAsync();
 
         // 이 픽스처가 소유한 연결 풀만 정리한다. ClearAllPools 는 프로세스 전역이라 다른 픽스처의
         // 풀까지 비우므로, 정리 범위를 자기 DB 로 한정하는 것이 맞다.

@@ -12,6 +12,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.31.0]
 
 ### Fixed
+- `FluxIndex.Storage.SQLite`, `FluxIndex.Storage.PostgreSQL`: deleting a chunk in the same scope it
+  was stored in threw `InvalidOperationException` ("another instance with the same key value is
+  already being tracked"). Same root cause as the update defect below, in the opposite direction:
+  the delete paths read through a `NoTracking` query and then called `Remove`, which tries to attach
+  the detached instance and collides with the one a preceding `Store` left in the change tracker.
+  Every delete path across the five vector stores — by id, by document id, by filter, and clear —
+  now reads with `AsTracking()`.
 - `FluxIndex.Storage.SQLite`, `FluxIndex.Storage.PostgreSQL`: `UpdateAsync` returned `true` while
   persisting nothing. These contexts are registered with `QueryTrackingBehavior.NoTracking` for read
   performance, so the entity the method queried was never in the change tracker and
