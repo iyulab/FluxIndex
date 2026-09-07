@@ -9,6 +9,28 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.29.0]
+
+> Numbered as a minor, not a patch, to correct the version line: `0.28.9` removed a public enum
+> member (`CollectionNamingStrategy.DimensionSuffix`), which is a breaking change and should not
+> have shipped in a patch. `FluxIndex.Storage.Qdrant` `0.28.9` is being unlisted; the other packages
+> at that version are unaffected and stay available. Nothing in this release re-adds the removed
+> member — migrate to `ModelFingerprint` as `0.28.9` describes.
+
+### Changed
+- `FluxIndex.Storage.SQLite`: a vector search whose metadata filter could not be satisfied from
+  within the candidate window now logs a warning instead of returning a quietly short result. The
+  filter is applied after the KNN step — the metadata lives in `vector_chunks`, not in the vec0
+  table — so a scope narrow enough relative to the store loses matches that never enter the
+  `topK * 3` window. That recall loss was previously indistinguishable from "the store held
+  nothing else". A search that fills its request, or one with no filter, stays silent.
+- `FluxIndex.Storage.SQLite`: corrected the comment claiming vec0 cannot filter on metadata. It can
+  — sqlite-vec has supported metadata columns and partition keys since 0.1.6 and this project pins
+  0.1.7 — but only for columns declared on the vec0 table, which this store does not do. Pushing
+  the filter down properly is a schema change and is tracked separately.
+
+---
+
 ## [0.28.9]
 
 ### Removed

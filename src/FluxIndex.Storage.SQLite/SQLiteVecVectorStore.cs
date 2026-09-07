@@ -520,9 +520,17 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         // sqlite-vec 네이티브 검색 사용
         var vectorString = "[" + string.Join(",", queryEmbedding.Select(f => f.ToString("F6", CultureInfo.InvariantCulture))) + "]";
 
-        // vec0 cannot filter on metadata (it lives in vector_chunks), so metadata filters are
-        // applied after the KNN step. Over-fetch the KNN window when filters are present so
-        // matching chunks are not crowded out of it by higher-scoring non-matching chunks.
+        // Metadata lives in vector_chunks, not in the vec0 table, so this store cannot hand the
+        // filter to vec0 and applies it after the KNN step instead. The window is over-fetched
+        // when filters are present so that matching chunks are less likely to be crowded out of
+        // it by higher-scoring non-matching ones.
+        //
+        // This is a bounded mitigation, not a fix: a scope narrow enough relative to the store
+        // still loses matches that never enter the window. When that happens the search reports
+        // it (see LogVecFilterWindowSaturated below) rather than returning a quietly short result.
+        // A real pre-filter is possible — vec0 has supported metadata columns and partition keys
+        // since sqlite-vec 0.1.6 and this project pins 0.1.7 — but it means declaring those
+        // columns on the vec0 table, which changes the on-disk schema and needs a migration.
         var knnK = filters is { Count: > 0 } ? topK * 3 : topK;
 
         // sqlite-vec vec0: CTEs and JOINs with vec0 virtual tables are unreliable
@@ -637,6 +645,14 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 // knnResults may hold an over-fetched window (filters present) — cap at topK.
                 if (results.Count >= topK)
                     break;
+            }
+
+            // The filter runs after the KNN step, so a saturated window that still could not fill
+            // topK means matching chunks may exist outside it — the caller's result is short for a
+            // reason it cannot otherwise see. Say so instead of returning quietly.
+            if (filters is { Count: > 0 } && knnResults.Count >= knnK && results.Count < topK)
+            {
+                LogVecFilterWindowSaturated(_logger, results.Count, topK, knnK);
             }
 
             LogVecSearchCompleted(_logger, results.Count);

@@ -59,6 +59,11 @@ public partial class SQLiteVecVectorStore
     [LoggerMessage(Level = LogLevel.Error, Message = "sqlite-vec native search failed")]
     private static partial void LogVecNativeSearchFailed(ILogger logger, Exception exception);
 
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "sqlite-vec search returned {Count} of {TopK} requested results: the metadata filter is applied after the KNN step and the {WindowSize}-candidate window was full, so matching chunks may exist outside it. Narrow the query, raise topK, or scope the store")]
+    private static partial void LogVecFilterWindowSaturated(ILogger logger, int count, int topK, int windowSize);
+
     [LoggerMessage(Level = LogLevel.Debug, Message = "Hybrid search completed: vector={VectorCount}, FTS={FtsCount}, combined={CombinedCount}")]
     private static partial void LogHybridSearchCompleted(ILogger logger, int vectorCount, int ftsCount, int combinedCount);
 
