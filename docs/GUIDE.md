@@ -512,6 +512,29 @@ Console.WriteLine($"Total: {results.TotalResults}");
 Console.WriteLine($"Time: {results.SearchTime.TotalMilliseconds}ms");
 ```
 
+#### How stores apply a metadata filter
+
+A filter narrows *which* chunks can be returned, but where it runs differs by store, and that
+difference is visible in the results when a scope is narrow relative to the store:
+
+| Store | Where the filter runs |
+|---|---|
+| `FluxIndex.Storage.Qdrant` | Server-side, as part of the search — a true pre-filter |
+| `FluxIndex.Storage.PostgreSQL` (`PostgreSQLVectorStore`) | In the SQL query — a true pre-filter |
+| `FluxIndex.Storage.SQLite` (non-vec stores) | In memory, over every row, before any trim |
+| `FluxIndex.Storage.SQLite` (`SQLiteVecVectorStore`) | **After** a `TopK * 3` nearest-neighbour window |
+| `FluxIndex.Storage.PostgreSQL` (`PostgreSQLQuantizedVectorStore`) | **After** a `TopK * 3` candidate window |
+
+For the last two, the metadata is not part of the index the search runs against, so candidates are
+selected by similarity first and filtered afterwards. If enough non-matching chunks score higher
+than your matches, your matches never enter the window and the result comes back short — no error,
+just fewer rows than exist.
+
+Those two stores log a warning when exactly that happens (the filter ran, the window came back
+full, and the result still fell short of `TopK`), so it is visible rather than silent. If you see
+it, raise `TopK`, narrow the query, or split the data across stores. If your workload depends on
+narrow scopes over a large store, prefer Qdrant or the non-quantized PostgreSQL store.
+
 ---
 
 ## GraphRAG
