@@ -67,6 +67,22 @@ public interface IVectorStore
             $"{GetType().Name} does not support DeleteByFilterAsync.");
     Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default);
     Task<DocumentChunk?> GetByIdAsync(string id, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Replaces the stored content, token count, metadata and (when supplied) embedding of an
+    /// existing chunk.
+    /// </summary>
+    /// <returns>
+    /// <c>true</c> when the chunk exists and the store has persisted the update — including the
+    /// case where the supplied values are identical to what is stored, which is a successful
+    /// no-op. <c>false</c> when no chunk with this id exists, or when the update had changes that
+    /// reached no row.
+    /// </returns>
+    /// <remarks>
+    /// The return value is meaningful and must not be discarded. Implementations backed by a
+    /// change-tracking ORM can accept an update, report success, and write nothing; a caller that
+    /// ignores the result cannot tell that apart from a completed write, which is how such a
+    /// defect stays silent all the way to the consumer.
+    /// </remarks>
     Task<bool> UpdateAsync(DocumentChunk chunk, CancellationToken cancellationToken = default);
     Task<int> CountAsync(CancellationToken cancellationToken = default);
     Task<int> GetCountAsync(CancellationToken cancellationToken = default);

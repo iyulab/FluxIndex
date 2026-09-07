@@ -148,7 +148,10 @@ public class PostgreSQLVectorStore : VectorStoreBase
 
     protected override async Task<bool> UpdateCoreAsync(DocumentChunk chunk, CancellationToken cancellationToken)
     {
-        var entity = await _context.Vectors
+        // AsTracking regardless of how this context happens to be registered — the sibling
+        // quantized context is NoTracking for read performance, and under that registration an
+        // untracked entity's mutations are dropped without a word.
+        var entity = await _context.Vectors.AsTracking()
             .FirstOrDefaultAsync(v => v.Id == ChunkStorageId.ToStorageGuid(chunk.Id), cancellationToken);
 
         if (entity == null) return false;
@@ -158,11 +161,13 @@ public class PostgreSQLVectorStore : VectorStoreBase
         entity.TokenCount = chunk.TokenCount;
         entity.Metadata = chunk.Metadata ?? new();
 
-        // Explicitly mark Metadata as modified for EF Core change tracking
+        // Metadata is a mapped JSON column; EF does not always detect an in-place mutation of
+        // the dictionary instance, so mark it modified explicitly.
         _context.Entry(entity).Property(e => e.Metadata).IsModified = true;
 
-        await _context.SaveChangesAsync(cancellationToken);
-        return true;
+        var hadChanges = _context.ChangeTracker.HasChanges();
+        var written = await _context.SaveChangesAsync(cancellationToken);
+        return !hadChanges || written > 0;
     }
 
     protected override async Task<IEnumerable<DocumentChunk>> GetByDocumentIdCoreAsync(

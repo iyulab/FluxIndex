@@ -1188,7 +1188,13 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
 
                 try
                 {
+                    // AsTracking is load-bearing: the context is registered NoTracking, so
+                    // without it the entity below is untracked, SaveChangesAsync finds no changes,
+                    // and this method reports success over a row it never wrote. AsTracking also
+                    // resolves to the instance already tracked from an earlier Store in the same
+                    // scope, which a bare Update(entity) would reject as a duplicate key.
                     var entity = await _context.VectorChunks
+                        .AsTracking()
                         .FirstOrDefaultAsync(c => c.Id == chunk.Id, cancellationToken);
 
                     if (entity == null)
@@ -1204,7 +1210,16 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                         await _context.StoreVectorInVecTableAsync(chunk.Id, chunk.Embedding, cancellationToken);
                     }
 
-                    await _context.SaveChangesAsync(cancellationToken);
+                    // An update that changes nothing is a legitimate no-op; an update that had
+                    // changes but wrote no rows is the silent failure above, so say so.
+                    var hadChanges = _context.ChangeTracker.HasChanges();
+                    var written = await _context.SaveChangesAsync(cancellationToken);
+                    if (hadChanges && written == 0)
+                    {
+                        await transaction.RollbackAsync(cancellationToken);
+                        return false;
+                    }
+
                     await transaction.CommitAsync(cancellationToken);
 
                     return true;

@@ -9,6 +9,35 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.31.0]
+
+### Fixed
+- `FluxIndex.Storage.SQLite`, `FluxIndex.Storage.PostgreSQL`: `UpdateAsync` returned `true` while
+  persisting nothing. These contexts are registered with `QueryTrackingBehavior.NoTracking` for read
+  performance, so the entity the method queried was never in the change tracker and
+  `SaveChangesAsync` found no changes to write — the row was never touched, and no error said so.
+  Affected `SQLiteVecVectorStore.UpdateAsync`, `SQLiteQuantizedVectorStore.UpdateAsync` and
+  `UpdateQuantizedEmbeddingAsync`, and the same two methods on
+  `PostgreSQLQuantizedVectorStore`; a re-quantized vector was discarded the same way a metadata
+  edit was. The lookup in each now runs `AsTracking()`.
+- `FluxIndex.Storage.SQLite`, `FluxIndex.Storage.PostgreSQL`: the non-quantized
+  `SQLiteVectorStore.UpdateAsync` and `PostgreSQLVectorStore.UpdateAsync` had the same shape and
+  worked only because their contexts happen to be registered with tracking left on. They no longer
+  depend on that: enabling `NoTracking` on those registrations is now a performance decision rather
+  than a silent data-loss one.
+
+### Changed
+- **`IVectorStore.UpdateAsync` can now return `false`.** Previously it returned `true` whenever the
+  chunk existed, regardless of whether anything was written. It now reports `false` when the update
+  had changes that reached no row. An update whose values are identical to what is stored is still
+  a successful no-op and returns `true`. Callers that ignored the return value should start reading
+  it — a discarded `false` is the shape that turned this defect into a silent one downstream.
+
+### Dependencies
+- `LMSupply.Embedder`, `LMSupply.Generator`, `LMSupply.Reranker`: 0.55.4 → 0.56.0.
+
+---
+
 ## [0.30.0]
 
 ### Added

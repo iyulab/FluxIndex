@@ -169,7 +169,10 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
     {
         await EnsureInitializedAsync(cancellationToken);
 
-        var entity = await _context.Vectors
+        // AsTracking regardless of how this context happens to be registered — the sibling
+        // stores are NoTracking for read performance, and under that registration an untracked
+        // entity's mutations are dropped without a word.
+        var entity = await _context.Vectors.AsTracking()
             .FirstOrDefaultAsync(v => v.Id == chunk.Id, cancellationToken);
 
         if (entity == null) return false;
@@ -179,8 +182,9 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
         entity.TokenCount = chunk.TokenCount;
         entity.Metadata = chunk.Metadata ?? new();
 
-        await _context.SaveChangesAsync(cancellationToken);
-        return true;
+        var hadChanges = _context.ChangeTracker.HasChanges();
+        var written = await _context.SaveChangesAsync(cancellationToken);
+        return !hadChanges || written > 0;
     }
 
     protected override async Task<IEnumerable<DocumentChunk>> GetByDocumentIdCoreAsync(

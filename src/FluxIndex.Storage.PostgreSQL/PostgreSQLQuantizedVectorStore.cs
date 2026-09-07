@@ -257,7 +257,9 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
 
     public async Task<bool> UpdateAsync(DocumentChunk chunk, CancellationToken cancellationToken = default)
     {
-        var entity = await _context.Vectors
+        // AsTracking: the quantized context is registered NoTracking, so without it the
+        // mutations below are never written and this method reports success anyway.
+        var entity = await _context.Vectors.AsTracking()
             .FirstOrDefaultAsync(v => v.Id == ChunkStorageId.ToStorageGuid(chunk.Id ?? ""), cancellationToken);
 
         if (entity == null) return false;
@@ -267,8 +269,9 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
         entity.TokenCount = chunk.TokenCount;
         entity.Metadata = chunk.Metadata ?? new Dictionary<string, object>();
 
-        await _context.SaveChangesAsync(cancellationToken);
-        return true;
+        var hadChanges = _context.ChangeTracker.HasChanges();
+        var written = await _context.SaveChangesAsync(cancellationToken);
+        return !hadChanges || written > 0;
     }
 
     public async Task<int> CountAsync(CancellationToken cancellationToken = default)
@@ -433,7 +436,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
         string chunkId,
         CancellationToken cancellationToken = default)
     {
-        var entity = await _context.QuantizedVectors
+        var entity = await _context.QuantizedVectors.AsTracking()
             .FirstOrDefaultAsync(q => q.ChunkId == chunkId, cancellationToken);
 
         return entity != null ? DeserializeQuantizedVector(entity) : null;
@@ -469,8 +472,9 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
                 : null;
         }
 
-        await _context.SaveChangesAsync(cancellationToken);
-        return true;
+        var hadQuantizedChanges = _context.ChangeTracker.HasChanges();
+        var quantizedWritten = await _context.SaveChangesAsync(cancellationToken);
+        return !hadQuantizedChanges || quantizedWritten > 0;
     }
 
     public async Task<QuantizedStorageStats> GetQuantizedStatsAsync(CancellationToken cancellationToken = default)
