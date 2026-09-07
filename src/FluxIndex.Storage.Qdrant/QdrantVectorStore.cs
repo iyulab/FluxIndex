@@ -308,6 +308,7 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
     {
         var payload = new Dictionary<string, Value>
         {
+            [ChunkIdPayloadKey] = chunk.Id,
             ["document_id"] = chunk.DocumentId,
             ["content"] = chunk.Content,
             ["chunk_index"] = chunk.ChunkIndex,
@@ -331,10 +332,9 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
             }
         }
 
-        // Use Guid for ID
         return new PointStruct
         {
-            Id = Guid.Parse(chunk.Id),
+            Id = ToPointId(chunk.Id),
             Vectors = chunk.Embedding!,
             Payload = { payload }
         };
@@ -355,11 +355,7 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
 
         try
         {
-            if (!Guid.TryParse(id, out var guid))
-            {
-                LogInvalidChunkIdFormat(_logger, id);
-                return null;
-            }
+            var guid = ToPointId(id);
 
             var points = await _client.RetrieveAsync(
                 collectionName: _resolvedCollectionName!,
@@ -425,20 +421,17 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
 
         foreach (var id in idList)
         {
-            if (Guid.TryParse(id, out var guid))
-            {
-                var points = await _client.RetrieveAsync(
-                    collectionName: _resolvedCollectionName!,
-                    id: guid,
-                    withPayload: true,
-                    withVectors: true,
-                    cancellationToken: cancellationToken);
+            var points = await _client.RetrieveAsync(
+                collectionName: _resolvedCollectionName!,
+                id: ToPointId(id),
+                withPayload: true,
+                withVectors: true,
+                cancellationToken: cancellationToken);
 
-                var point = points.Count > 0 ? points[0] : null;
-                if (point != null)
-                {
-                    results.Add(MapPointToChunk(point));
-                }
+            var point = points.Count > 0 ? points[0] : null;
+            if (point != null)
+            {
+                results.Add(MapPointToChunk(point));
             }
         }
 
@@ -451,7 +444,7 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
 
         var chunk = new DocumentChunk
         {
-            Id = point.Id.Uuid,
+            Id = ChunkIdFromPayload(payload) ?? point.Id.Uuid,
             DocumentId = GetPayloadString(payload, "document_id"),
             Content = GetPayloadString(payload, "content"),
             ChunkIndex = GetPayloadInt(payload, "chunk_index"),
@@ -614,7 +607,7 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
 
         var chunk = new DocumentChunk
         {
-            Id = point.Id.Uuid,
+            Id = ChunkIdFromPayload(payload) ?? point.Id.Uuid,
             DocumentId = GetPayloadString(payload, "document_id"),
             Content = GetPayloadString(payload, "content"),
             ChunkIndex = GetPayloadInt(payload, "chunk_index"),
@@ -714,11 +707,7 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
     {
         await EnsureCollectionAsync(cancellationToken);
 
-        if (!Guid.TryParse(id, out var guid))
-        {
-            LogInvalidDeleteId(_logger, id);
-            return false;
-        }
+        var guid = ToPointId(id);
 
         await _client.DeleteAsync(
             collectionName: _resolvedCollectionName!,
@@ -950,14 +939,8 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Debug, Message = "Stored {Count} chunks in batch (dim={Dimension})")]
     private static partial void LogBatchStored(ILogger logger, int count, int dimension);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "Invalid chunk ID format: {ChunkId}")]
-    private static partial void LogInvalidChunkIdFormat(ILogger logger, string chunkId);
-
     [LoggerMessage(Level = LogLevel.Debug, Message = "Failed to retrieve chunk {ChunkId}")]
     private static partial void LogRetrieveChunkFailed(ILogger logger, Exception exception, string chunkId);
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Invalid chunk ID format for delete: {ChunkId}")]
-    private static partial void LogInvalidDeleteId(ILogger logger, string chunkId);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Deleted chunk {ChunkId}")]
     private static partial void LogChunkDeleted(ILogger logger, string chunkId);

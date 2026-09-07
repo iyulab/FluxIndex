@@ -68,6 +68,22 @@ public interface IReranker
 }
 ```
 
+#### Chunk identity
+
+`DocumentChunk.Id` is a free string and every store honours it: what you store under is what you
+read back, and what you pass to `GetAsync`/`DeleteAsync`/`ExistsAsync`. Leave it empty and the store
+generates one and returns it.
+
+Backends that cannot key on a string absorb that themselves rather than pushing it onto you. Qdrant
+accepts only UUIDs or integers as point ids, and the PostgreSQL schema keys on `uuid`; both map a
+non-UUID id to a deterministic UUID (`ChunkStorageId.ToStorageGuid`) and keep your original id
+beside the row, so re-storing the same id is an update rather than a duplicate. An id that already
+is a UUID is used verbatim, which is what keeps collections and tables written before this readable.
+
+Practical consequence: you can move a corpus between SQLite, Qdrant and PostgreSQL without changing
+how your application addresses chunks. Do not derive ids yourself to "help" a backend — that
+defeats the round trip, since the store would then return the derived id rather than yours.
+
 ### Package Structure
 
 | Package | Purpose |

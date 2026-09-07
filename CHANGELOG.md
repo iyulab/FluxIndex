@@ -11,8 +11,34 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [0.28.8]
 
+### Fixed
+- `FluxIndex.Storage.PostgreSQL`: `AddPostgreSQLVectorStore` now registers its schema initializer,
+  so a direct registration provisions the pgvector extension and tables like the quantized overload
+  already did. Previously only the SDK builder registered it, and a direct caller's first write
+  failed with `relation "vectors" does not exist`. The `EnableAutoMigration` opt-out moved onto the
+  registration as an optional `enableAutoMigration` argument (default true).
+- `FluxIndex.Storage.PostgreSQL`: installing the pgvector extension no longer leaves the store
+  unable to write on a fresh database. The extension was created through the same data source the
+  store then wrote with, and Npgsql had already cached that database's type catalogue from before
+  `vector` existed, so the first write failed with "Cannot resolve 'vector' to a fully qualified
+  datatype name". It is now installed over a separate short-lived connection.
+- `FluxIndex.Storage.PostgreSQL`: the vector stores now honour `DocumentChunk.Id`. `StoreAsync`
+  previously generated an id of its own and returned that, discarding the one the caller set, while
+  every read path ran the caller's id through `Guid.Parse` and threw on anything that was not a
+  UUID — so a consumer with its own id scheme could neither store under it nor look a chunk up by
+  it. Ids are now kept as given (a non-UUID one is mapped to a deterministic key and preserved
+  alongside the row), and reads return the id that was stored. A UUID id is still used as the key
+  verbatim, leaving existing rows readable.
+- `FluxIndex.Storage.Qdrant`: chunks whose `Id` is not a UUID can now be stored, retrieved and
+  deleted. Qdrant accepts only UUIDs or unsigned integers as point ids, and the adapter previously
+  handed `DocumentChunk.Id` straight to `Guid.Parse` — so any consumer using its own id scheme hit
+  a `FormatException` on the first store, even though every other `IVectorStore` implementation
+  treats the id as a free string. A non-UUID id is now mapped to a deterministic name-based UUID
+  (RFC 9562 version 8) and the original id is preserved in the point payload, so reads return the
+  id the caller supplied. UUID ids are still used verbatim, leaving existing collections readable.
+
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.22.2 -> 0.22.6, `FluxImprover` 0.11.2 -> 0.11.4, `LMSupply.Embedder` 0.55.2 -> 0.55.4, `LMSupply.Generator` 0.55.2 -> 0.55.4, `LMSupply.Reranker` 0.55.2 -> 0.55.4 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.22.2 -> 0.22.6, `FluxImprover` 0.11.2 -> 0.11.4, `LMSupply.Embedder` 0.55.2 -> 0.55.4, `LMSupply.Generator` 0.55.2 -> 0.55.4, `LMSupply.Reranker` 0.55.2 -> 0.55.4 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
 
 ---
 

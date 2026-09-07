@@ -3,6 +3,7 @@ using FluxIndex.Core.Constants;
 using Microsoft.EntityFrameworkCore;
 using FluxIndex.SDK;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using Pgvector.Npgsql;
@@ -20,9 +21,17 @@ public static class ServiceCollectionExtensions
     /// <param name="services">The service collection</param>
     /// <param name="configureOptions">Configuration action</param>
     /// <returns>Service collection for chaining</returns>
+    /// <param name="enableAutoMigration">
+    /// Register the schema initializer that creates the pgvector extension and this store's tables.
+    /// Default true, matching the quantized overload — direct registration used to provision nothing
+    /// at all, so the first write failed with <c>relation "vectors" does not exist</c> unless the
+    /// caller went through the SDK builder. Pass false when schema is managed externally, or on a
+    /// managed PostgreSQL without CREATE EXTENSION privilege.
+    /// </param>
     public static IServiceCollection AddPostgreSQLVectorStore(
         this IServiceCollection services,
-        Action<PostgreSQLOptions> configureOptions)
+        Action<PostgreSQLOptions> configureOptions,
+        bool enableAutoMigration = true)
     {
         // Configure options
         services.Configure(configureOptions);
@@ -51,6 +60,14 @@ public static class ServiceCollectionExtensions
         // Register vector store
         services.AddScoped<IVectorStore, PostgreSQLVectorStore>();
 
+        // Schema provisioning, symmetric with the quantized overload. TryAddEnumerable keeps this
+        // idempotent for the SDK builder path, which registers the same initializer itself.
+        if (enableAutoMigration)
+        {
+            services.TryAddEnumerable(
+                ServiceDescriptor.Singleton<IStorageInitializer, PostgreSQLStorageInitializer>());
+        }
+
         return services;
     }
 
@@ -60,17 +77,22 @@ public static class ServiceCollectionExtensions
     /// <param name="services">The service collection</param>
     /// <param name="connectionString">PostgreSQL connection string</param>
     /// <param name="embeddingDimensions">Embedding vector dimensions (default: 1536)</param>
+    /// <param name="enableAutoMigration">
+    /// Register the schema initializer that creates the pgvector extension and this store's tables
+    /// (default true). Pass false when schema is managed externally.
+    /// </param>
     /// <returns>Service collection for chaining</returns>
     public static IServiceCollection AddPostgreSQLVectorStore(
         this IServiceCollection services,
         string connectionString,
-        int embeddingDimensions = EmbeddingDefaults.DefaultVectorDimension)
+        int embeddingDimensions = EmbeddingDefaults.DefaultVectorDimension,
+        bool enableAutoMigration = true)
     {
         return services.AddPostgreSQLVectorStore(options =>
         {
             options.ConnectionString = connectionString;
             options.EmbeddingDimensions = embeddingDimensions;
-        });
+        }, enableAutoMigration);
     }
 
     /// <summary>

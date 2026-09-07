@@ -40,7 +40,8 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
 
     public async Task<string> StoreAsync(DocumentChunk chunk, CancellationToken cancellationToken = default)
     {
-        var id = Guid.NewGuid();
+        var chunkId = ResolveChunkId(chunk);
+        var id = ChunkStorageId.ToStorageGuid(chunkId);
         var entity = new QuantizedVectorEntity
         {
             Id = id,
@@ -49,7 +50,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
             Content = chunk.Content,
             Embedding = chunk.Embedding != null ? new Vector(chunk.Embedding) : new Vector(Array.Empty<float>()),
             TokenCount = chunk.TokenCount,
-            Metadata = chunk.Metadata ?? new Dictionary<string, object>()
+            Metadata = WithOriginalId(chunk.Metadata, chunkId)
         };
 
         _context.Vectors.Add(entity);
@@ -60,7 +61,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
             try
             {
                 var quantized = await _quantizer.QuantizeAsync(chunk.Embedding, cancellationToken);
-                var quantizedEntity = CreateQuantizedEntity(id.ToString(), quantized);
+                var quantizedEntity = CreateQuantizedEntity(chunkId, quantized);
                 _context.QuantizedVectors.Add(quantizedEntity);
             }
             catch (Exception ex)
@@ -70,7 +71,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
         }
 
         await _context.SaveChangesAsync(cancellationToken);
-        return id.ToString();
+        return chunkId;
     }
 
     public async Task<IEnumerable<string>> StoreBatchAsync(
@@ -82,8 +83,9 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
 
         foreach (var chunk in chunkList)
         {
-            var id = Guid.NewGuid();
-            ids.Add(id.ToString());
+            var chunkId = ResolveChunkId(chunk);
+            var id = ChunkStorageId.ToStorageGuid(chunkId);
+            ids.Add(chunkId);
 
             var entity = new QuantizedVectorEntity
             {
@@ -93,7 +95,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
                 Content = chunk.Content,
                 Embedding = chunk.Embedding != null ? new Vector(chunk.Embedding) : new Vector(Array.Empty<float>()),
                 TokenCount = chunk.TokenCount,
-                Metadata = chunk.Metadata ?? new Dictionary<string, object>()
+                Metadata = WithOriginalId(chunk.Metadata, chunkId)
             };
             _context.Vectors.Add(entity);
         }
@@ -135,7 +137,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
     public async Task<DocumentChunk?> GetAsync(string id, CancellationToken cancellationToken = default)
     {
         var entity = await _context.Vectors
-            .FirstOrDefaultAsync(v => v.Id == Guid.Parse(id), cancellationToken);
+            .FirstOrDefaultAsync(v => v.Id == ChunkStorageId.ToStorageGuid(id), cancellationToken);
 
         return entity != null ? MapToChunk(entity) : null;
     }
@@ -156,7 +158,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
         IEnumerable<string> ids,
         CancellationToken cancellationToken = default)
     {
-        var guids = ids.Select(Guid.Parse).ToList();
+        var guids = ids.Select(ChunkStorageId.ToStorageGuid).ToList();
         var entities = await _context.Vectors
             .Where(v => guids.Contains(v.Id))
             .ToListAsync(cancellationToken);
@@ -203,7 +205,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
 
     public async Task<bool> DeleteAsync(string id, CancellationToken cancellationToken = default)
     {
-        var guid = Guid.Parse(id);
+        var guid = ChunkStorageId.ToStorageGuid(id);
         var entity = await _context.Vectors.FirstOrDefaultAsync(v => v.Id == guid, cancellationToken);
         if (entity == null) return false;
 
@@ -242,7 +244,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
 
     public async Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default)
     {
-        return await _context.Vectors.AnyAsync(v => v.Id == Guid.Parse(id), cancellationToken);
+        return await _context.Vectors.AnyAsync(v => v.Id == ChunkStorageId.ToStorageGuid(id), cancellationToken);
     }
 
     public Task<DocumentChunk?> GetByIdAsync(string id, CancellationToken cancellationToken = default)
@@ -251,7 +253,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
     public async Task<bool> UpdateAsync(DocumentChunk chunk, CancellationToken cancellationToken = default)
     {
         var entity = await _context.Vectors
-            .FirstOrDefaultAsync(v => v.Id == Guid.Parse(chunk.Id ?? ""), cancellationToken);
+            .FirstOrDefaultAsync(v => v.Id == ChunkStorageId.ToStorageGuid(chunk.Id ?? ""), cancellationToken);
 
         if (entity == null) return false;
 
@@ -295,7 +297,8 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
         QuantizedVector quantizedEmbedding,
         CancellationToken cancellationToken = default)
     {
-        var id = Guid.NewGuid();
+        var chunkId = ResolveChunkId(chunk);
+        var id = ChunkStorageId.ToStorageGuid(chunkId);
         var entity = new QuantizedVectorEntity
         {
             Id = id,
@@ -304,14 +307,14 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
             Content = chunk.Content,
             Embedding = chunk.Embedding != null ? new Vector(chunk.Embedding) : new Vector(Array.Empty<float>()),
             TokenCount = chunk.TokenCount,
-            Metadata = chunk.Metadata ?? new Dictionary<string, object>()
+            Metadata = WithOriginalId(chunk.Metadata, chunkId)
         };
 
         _context.Vectors.Add(entity);
-        _context.QuantizedVectors.Add(CreateQuantizedEntity(id.ToString(), quantizedEmbedding));
+        _context.QuantizedVectors.Add(CreateQuantizedEntity(chunkId, quantizedEmbedding));
         await _context.SaveChangesAsync(cancellationToken);
 
-        return id.ToString();
+        return chunkId;
     }
 
     public async Task<IEnumerable<string>> StoreBatchWithQuantizedAsync(
@@ -323,8 +326,9 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
 
         foreach (var (chunk, quantized) in items)
         {
-            var id = Guid.NewGuid();
-            ids.Add(id.ToString());
+            var chunkId = ResolveChunkId(chunk);
+            var id = ChunkStorageId.ToStorageGuid(chunkId);
+            ids.Add(chunkId);
 
             var entity = new QuantizedVectorEntity
             {
@@ -334,11 +338,11 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
                 Content = chunk.Content,
                 Embedding = chunk.Embedding != null ? new Vector(chunk.Embedding) : new Vector(Array.Empty<float>()),
                 TokenCount = chunk.TokenCount,
-                Metadata = chunk.Metadata ?? new Dictionary<string, object>()
+                Metadata = WithOriginalId(chunk.Metadata, chunkId)
             };
 
             _context.Vectors.Add(entity);
-            _context.QuantizedVectors.Add(CreateQuantizedEntity(id.ToString(), quantized));
+            _context.QuantizedVectors.Add(CreateQuantizedEntity(chunkId, quantized));
         }
 
         await _context.SaveChangesAsync(cancellationToken);
@@ -366,7 +370,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
             .ToList();
 
         // Fetch chunks
-        var chunkIds = candidates.Select(c => Guid.Parse(c.ChunkId)).ToList();
+        var chunkIds = candidates.Select(c => ChunkStorageId.ToStorageGuid(c.ChunkId)).ToList();
         var chunks = await _context.Vectors
             .Where(v => chunkIds.Contains(v.Id))
             .ToDictionaryAsync(v => v.Id.ToString(), v => v, cancellationToken);
@@ -496,6 +500,29 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
 
     #region Private Helpers
 
+    /// <summary>Chunk id the caller supplied, or a fresh one when the chunk carries none.</summary>
+    private static string ResolveChunkId(DocumentChunk chunk)
+        => string.IsNullOrWhiteSpace(chunk.Id) ? Guid.NewGuid().ToString() : chunk.Id;
+
+    /// <summary>Metadata with the caller's chunk id preserved, so reads can return it.</summary>
+    private static Dictionary<string, object> WithOriginalId(Dictionary<string, object>? metadata, string chunkId)
+    {
+        var result = metadata ?? new Dictionary<string, object>();
+        result[ChunkStorageId.OriginalIdKey] = chunkId;
+        return result;
+    }
+
+    /// <summary>
+    /// Returns the chunk id the caller supplied, or <c>null</c> for rows written before this store
+    /// began preserving it (those were keyed on the id itself, so the row key is still correct).
+    /// </summary>
+    private static string? OriginalChunkId(Dictionary<string, object>? metadata)
+        => metadata is not null
+           && metadata.TryGetValue(ChunkStorageId.OriginalIdKey, out var value)
+           && value?.ToString() is { Length: > 0 } original
+            ? original
+            : null;
+
     private static PostgresQuantizedEmbeddingEntity CreateQuantizedEntity(string chunkId, QuantizedVector quantized)
     {
         return new PostgresQuantizedEmbeddingEntity
@@ -530,7 +557,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
     {
         var chunk = new DocumentChunk
         {
-            Id = entity.Id.ToString(),
+            Id = OriginalChunkId(entity.Metadata) ?? entity.Id.ToString(),
             DocumentId = entity.DocumentId,
             ChunkIndex = entity.ChunkIndex,
             Content = entity.Content,

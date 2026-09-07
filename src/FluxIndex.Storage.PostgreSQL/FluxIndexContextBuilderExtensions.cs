@@ -40,16 +40,15 @@ public static class FluxIndexContextBuilderExtensions
 
         if (vectorProvider == "postgresql")
         {
-            services.AddPostgreSQLVectorStore(options.VectorStore.ConnectionString);
-
-            // Symmetric with SQLite (which always auto-initializes on Build): register a schema
-            // initializer so Build() creates the pgvector extension + tables. Gated by
-            // EnableAutoMigration (default true) so callers that manage schema externally — or run
-            // on managed PostgreSQL without CREATE EXTENSION privilege — can opt out.
-            if (options.VectorStore.EnableAutoMigration)
-            {
-                services.AddSingleton<IStorageInitializer, PostgreSQLStorageInitializer>();
-            }
+            // Symmetric with SQLite (which always auto-initializes on Build): the registration
+            // itself adds the schema initializer so Build() creates the pgvector extension +
+            // tables. Gated by EnableAutoMigration (default true) so callers that manage schema
+            // externally — or run on managed PostgreSQL without CREATE EXTENSION privilege — can
+            // opt out. The gate lives on the registration rather than here so that direct callers
+            // of AddPostgreSQLVectorStore get provisioning too; they used to get none.
+            services.AddPostgreSQLVectorStore(
+                options.VectorStore.ConnectionString,
+                enableAutoMigration: options.VectorStore.EnableAutoMigration);
         }
 
         // The keyword leg is resolved independently of the vector provider. Gating it on

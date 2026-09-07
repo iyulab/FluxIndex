@@ -32,16 +32,22 @@ public class PostgreSQLVectorStore : VectorStoreBase
 
     protected override async Task<string> StoreCoreAsync(DocumentChunk chunk, CancellationToken cancellationToken)
     {
-        var id = Guid.NewGuid().ToString();
+        // Honour the caller's chunk id. Generating one here and returning it instead (what this
+        // did before) silently discarded the id every other IVectorStore implementation keeps, so
+        // a consumer could not look up its own chunk without holding on to the returned value.
+        var id = string.IsNullOrWhiteSpace(chunk.Id) ? Guid.NewGuid().ToString() : chunk.Id;
+        var metadata = chunk.Metadata ?? new();
+        metadata[ChunkStorageId.OriginalIdKey] = id;
+
         var entity = new VectorEntity
         {
-            Id = Guid.Parse(id),
+            Id = ChunkStorageId.ToStorageGuid(id),
             DocumentId = chunk.DocumentId,
             ChunkIndex = chunk.ChunkIndex,
             Content = chunk.Content,
             Embedding = chunk.Embedding is not null ? new Vector(chunk.Embedding.ToArray()) : new Vector(Array.Empty<float>()),
             TokenCount = chunk.TokenCount,
-            Metadata = chunk.Metadata ?? new()
+            Metadata = metadata
         };
 
         _context.Vectors.Add(entity);
@@ -52,7 +58,7 @@ public class PostgreSQLVectorStore : VectorStoreBase
     protected override async Task<DocumentChunk?> GetCoreAsync(string id, CancellationToken cancellationToken)
     {
         var entity = await _context.Vectors
-            .FirstOrDefaultAsync(v => v.Id == Guid.Parse(id), cancellationToken);
+            .FirstOrDefaultAsync(v => v.Id == ChunkStorageId.ToStorageGuid(id), cancellationToken);
 
         return entity == null ? null : MapToChunk(entity);
     }
@@ -223,7 +229,7 @@ public class PostgreSQLVectorStore : VectorStoreBase
     protected override async Task<bool> DeleteCoreAsync(string id, CancellationToken cancellationToken)
     {
         var entity = await _context.Vectors
-            .FirstOrDefaultAsync(v => v.Id == Guid.Parse(id), cancellationToken);
+            .FirstOrDefaultAsync(v => v.Id == ChunkStorageId.ToStorageGuid(id), cancellationToken);
 
         if (entity == null) return false;
 
@@ -235,7 +241,7 @@ public class PostgreSQLVectorStore : VectorStoreBase
     protected override async Task<bool> UpdateCoreAsync(DocumentChunk chunk, CancellationToken cancellationToken)
     {
         var entity = await _context.Vectors
-            .FirstOrDefaultAsync(v => v.Id == Guid.Parse(chunk.Id), cancellationToken);
+            .FirstOrDefaultAsync(v => v.Id == ChunkStorageId.ToStorageGuid(chunk.Id), cancellationToken);
 
         if (entity == null) return false;
 
@@ -304,7 +310,7 @@ public class PostgreSQLVectorStore : VectorStoreBase
         IEnumerable<string> ids,
         CancellationToken cancellationToken = default)
     {
-        var guids = ids.Select(Guid.Parse).ToList();
+        var guids = ids.Select(ChunkStorageId.ToStorageGuid).ToList();
         var entities = await _context.Vectors
             .Where(v => guids.Contains(v.Id))
             .ToListAsync(cancellationToken);
@@ -315,18 +321,29 @@ public class PostgreSQLVectorStore : VectorStoreBase
     public override async Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(id)) return false;
-        return await _context.Vectors.AnyAsync(v => v.Id == Guid.Parse(id), cancellationToken);
+        return await _context.Vectors.AnyAsync(v => v.Id == ChunkStorageId.ToStorageGuid(id), cancellationToken);
     }
 
     #endregion
 
     #region Private Helper Methods
 
+    /// <summary>
+    /// Returns the chunk id the caller supplied, or <c>null</c> for rows written before this store
+    /// began preserving it (those were keyed on the id itself, so the row key is still correct).
+    /// </summary>
+    private static string? OriginalChunkId(Dictionary<string, object>? metadata)
+        => metadata is not null
+           && metadata.TryGetValue(ChunkStorageId.OriginalIdKey, out var value)
+           && value?.ToString() is { Length: > 0 } original
+            ? original
+            : null;
+
     private DocumentChunk MapToChunk(VectorEntity entity)
     {
         var chunk = new DocumentChunk
         {
-            Id = entity.Id.ToString(),
+            Id = OriginalChunkId(entity.Metadata) ?? entity.Id.ToString(),
             DocumentId = entity.DocumentId,
             ChunkIndex = entity.ChunkIndex,
             Content = entity.Content,
