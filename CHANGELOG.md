@@ -9,6 +9,21 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.31.3]
+
+### Fixed
+- `FluxIndex.Storage.SQLite`: the hosted startup initializer registered by `AddSQLiteVecVectorStore`
+  required an embedding identity before any consumer could bind one. With the default
+  `FallbackToInMemoryOnError = true` every host start logged an initialization error and a misleading
+  "continuing in fallback mode"; with `false` the host failed to start with
+  "EmbeddingFingerprint is required for vec table naming". The identity-dependent part of startup
+  (legacy vec table migration, vec0 table creation, warmup) is now deferred until the first access
+  after `IVectorStore.BindIdentity`, where it already ran for late-bound scopes. The native extension is
+  still validated at startup, so a missing sqlite-vec library surfaces as before. Consumers that set
+  `SQLiteVecOptions.EmbeddingFingerprint` explicitly keep the eager startup path.
+
+---
+
 ## [0.31.2]
 
 ### Changed

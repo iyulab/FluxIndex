@@ -295,6 +295,17 @@ public partial class SQLiteVecDbContext : DbContext
 
             if (extensionLoaded)
             {
+                if (_options.EmbeddingFingerprint is null)
+                {
+                    // The vec0 table is named by the embedding fingerprint, which is only known once
+                    // IVectorStore.BindIdentity has run — typically after host start, from the consumer
+                    // that owns the embedder. Defer the identity-dependent part to the store's
+                    // EnsureInitializedAsync (first bound access). The extension itself was validated
+                    // above, so a missing native library still surfaces here.
+                    LogVecTableDeferredUntilBind(_logger);
+                    return;
+                }
+
                 // Migrate legacy table if exists
                 await MigrateLegacyVecTableAsync(
                     (Microsoft.Data.Sqlite.SqliteConnection)connection, cancellationToken);
@@ -336,7 +347,7 @@ public partial class SQLiteVecDbContext : DbContext
     /// <summary>
     /// Legacy "chunk_embeddings" 테이블을 차원 기반 이름으로 자동 마이그레이션
     /// </summary>
-    private async Task MigrateLegacyVecTableAsync(
+    internal async Task MigrateLegacyVecTableAsync(
         Microsoft.Data.Sqlite.SqliteConnection connection,
         CancellationToken cancellationToken)
     {
@@ -912,6 +923,9 @@ public partial class SQLiteVecDbContext : DbContext
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "sqlite-vec extension load failed, using fallback mode")]
     private static partial void LogVecExtensionFallback(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "sqlite-vec table creation deferred until an embedding identity is bound (IVectorStore.BindIdentity)")]
+    private static partial void LogVecTableDeferredUntilBind(ILogger logger);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "sqlite-vec extension initialization error")]
     private static partial void LogVecExtensionInitError(ILogger logger, Exception exception);

@@ -1364,6 +1364,11 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
 
                 if (_sqliteVecAvailable)
                 {
+                    // Identity-dependent legacy migration runs here, at first bound access, because
+                    // the hosted startup initializer defers it when no identity was bound yet.
+                    await _context.MigrateLegacyVecTableAsync(
+                        (Microsoft.Data.Sqlite.SqliteConnection)connection, cancellationToken);
+
                     // vec0 테이블 생성 (이미 존재하면 무시)
                     await _extensionLoader.CreateVecTableAsync(
                         (Microsoft.Data.Sqlite.SqliteConnection)connection,

@@ -590,15 +590,24 @@ internal sealed partial class SQLiteVecMigrationService : IHostedService
             // Trigger IVectorStore.EnsureInitializedAsync at startup so the vec0 JIT warmup
             // (inside SQLiteVecVectorStore.EnsureInitializedAsync) runs here, not on the first
             // user-triggered batch. VerifyHealthAsync calls EnsureInitializedAsync internally.
-            try
+            if (options.EmbeddingFingerprint is null)
             {
-                var vectorStore = scope.ServiceProvider.GetRequiredService<IVectorStore>();
-                await vectorStore.VerifyHealthAsync(cancellationToken);
+                // No identity bound yet: the vec0 table cannot exist, so warmup would only throw.
+                // The store initializes (and warms up) at its first bound access instead.
+                LogVecWarmupDeferred(_logger);
             }
-            catch (Exception warmupEx)
+            else
             {
-                // Warmup is best-effort; failure is non-fatal — first user batch will pay cold-start cost.
-                LogVecWarmupFailed(_logger, warmupEx);
+                try
+                {
+                    var vectorStore = scope.ServiceProvider.GetRequiredService<IVectorStore>();
+                    await vectorStore.VerifyHealthAsync(cancellationToken);
+                }
+                catch (Exception warmupEx)
+                {
+                    // Warmup is best-effort; failure is non-fatal — first user batch will pay cold-start cost.
+                    LogVecWarmupFailed(_logger, warmupEx);
+                }
             }
 
             // One-time orphan sweep (idempotent via __fluxindex_migrations marker).
@@ -662,6 +671,9 @@ internal sealed partial class SQLiteVecMigrationService : IHostedService
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Vector store warmup failed at startup (non-fatal); first batch will pay cold-start cost")]
     private static partial void LogVecWarmupFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Vector store warmup deferred: no embedding identity bound at startup; the store initializes at first bound access")]
+    private static partial void LogVecWarmupDeferred(ILogger logger);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Startup orphan sweep failed (non-fatal); orphans will accumulate until the next successful run")]
     private static partial void LogOrphanSweepFailed(ILogger logger, Exception exception);
