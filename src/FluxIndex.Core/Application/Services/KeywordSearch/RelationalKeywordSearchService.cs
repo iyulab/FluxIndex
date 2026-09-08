@@ -32,20 +32,21 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     /// <summary>Backend name used in log messages (e.g. "SQLite", "PostgreSQL").</summary>
     protected abstract string BackendName { get; }
 
-    /// <summary>Stop words removed during tokenization.</summary>
-    private static readonly HashSet<string> StopWords = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "the", "is", "at", "which", "on", "a", "an", "and", "or", "but",
-        "in", "with", "to", "for", "of", "as", "by", "this", "that", "these", "those",
-        "it", "its", "be", "are", "was", "were", "been", "being", "have", "has", "had"
-    };
+    /// <summary>
+    /// The analyzer that turns chunk content and queries into index terms. One instance serves both
+    /// the index path and the query path, so the two cannot disagree; <see cref="DefaultTextAnalyzer"/>
+    /// unless the consumer supplies one.
+    /// </summary>
+    protected ITextAnalyzer Analyzer { get; }
 
     /// <summary>
-    /// Initializes the shared index with the logger used for its operations.
+    /// Initializes the shared index with the logger used for its operations and, optionally, the
+    /// analyzer that defines what a term is (<see cref="DefaultTextAnalyzer"/> when omitted).
     /// </summary>
-    protected RelationalKeywordSearchService(ILogger logger)
+    protected RelationalKeywordSearchService(ILogger logger, ITextAnalyzer? analyzer = null)
     {
         Logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        Analyzer = analyzer ?? DefaultTextAnalyzer.Instance;
     }
 
     #region Dialect surface
@@ -884,20 +885,8 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     }
 
     /// <inheritdoc />
-    public IEnumerable<string> Tokenize(string text)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-            yield break;
-
-        var tokens = Regex.Split(text.ToLowerInvariant(), @"\W+")
-            .Where(token => !string.IsNullOrWhiteSpace(token) && token.Length > 1)
-            .Where(token => !StopWords.Contains(token));
-
-        foreach (var token in tokens)
-        {
-            yield return token;
-        }
-    }
+    /// <remarks>Delegates to <see cref="Analyzer"/> — the same instance the index path uses.</remarks>
+    public IEnumerable<string> Tokenize(string text) => Analyzer.Tokenize(text);
 
     /// <summary>
     /// Brings a term into the casing the index stores. <see cref="Tokenize"/> already lower-cases, so

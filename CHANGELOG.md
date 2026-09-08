@@ -9,6 +9,19 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.33.0]
+
+### Added
+- `ITextAnalyzer` (`FluxIndex.Core`): the keyword (BM25) index's notion of a term — tokenization,
+  stop words and minimum token length as one unit — is now injectable. `RelationalKeywordSearchService`
+  and both backends (`SQLiteKeywordSearchService`, `PostgresKeywordSearchService`) take an optional
+  analyzer (constructor parameter; the DI registrations resolve a registered `ITextAnalyzer`), and use
+  the same instance on the index path and the query path. `DefaultTextAnalyzer` is the previous
+  behaviour, unchanged; `CjkBigramTextAnalyzer` is a dependency-free opt-in for Korean/Japanese/Chinese
+  text that emits overlapping character bigrams for CJK runs so a bare stem matches its inflected forms.
+  Before this the analyzer was a private static: a CJK consumer could not change it without
+  re-implementing the whole `IKeywordSearchService`.
+
 ## [0.32.1]
 
 ### Changed

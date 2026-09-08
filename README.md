@@ -251,6 +251,25 @@ FluxIndex rather than inside `FluxIndexContext` — can register the leg directl
 services.AddPostgreSQLKeywordSearch(connectionString);   // autoMigrate: true by default
 ```
 
+#### Choosing the analyzer (since 0.33.0)
+
+What counts as a term is an `ITextAnalyzer` — tokenization, stop words and minimum token length as
+one unit — and the relational keyword backends use the same instance on the index path and the
+query path, so the two cannot drift apart. Nothing registered means `DefaultTextAnalyzer` (split on
+non-word characters, lower-case, drop one-character tokens and English stop words). For Korean,
+Japanese or Chinese text that analyzer keeps every whitespace-delimited word as one term, so a bare
+stem in the query does not match its inflected forms in the index; `CjkBigramTextAnalyzer` emits
+overlapping character bigrams for CJK runs (Latin handled as before) and needs no morphological
+analyzer:
+
+```csharp
+services.AddSingleton<ITextAnalyzer>(CjkBigramTextAnalyzer.Instance);   // before AddSQLiteKeywordSearch / AddPostgreSQLKeywordSearch
+```
+
+Switching the analyzer of an existing index changes what a query can match — re-index afterwards.
+The in-memory `BM25SparseRetriever` fallback and the sqlite-vec store's native FTS5 leg have their
+own tokenization and are not affected.
+
 #### Scoping the keyword leg (since 0.25.0)
 
 The keyword index takes the same filter vocabulary as the vector store, so one filter object scopes

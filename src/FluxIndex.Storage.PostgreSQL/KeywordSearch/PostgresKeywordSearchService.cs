@@ -25,8 +25,9 @@ public sealed class PostgresKeywordSearchService : RelationalKeywordSearchServic
     /// <summary>Creates the service from the configured PostgreSQL options.</summary>
     public PostgresKeywordSearchService(
         IOptions<PostgreSQLOptions> options,
-        ILogger<PostgresKeywordSearchService> logger)
-        : base(logger)
+        ILogger<PostgresKeywordSearchService> logger,
+        ITextAnalyzer? analyzer = null)
+        : base(logger, analyzer)
     {
         ArgumentNullException.ThrowIfNull(options);
         _connectionString = options.Value.ConnectionString;
@@ -35,8 +36,9 @@ public sealed class PostgresKeywordSearchService : RelationalKeywordSearchServic
     /// <summary>Creates the service against an explicit connection string.</summary>
     public PostgresKeywordSearchService(
         string connectionString,
-        ILogger<PostgresKeywordSearchService> logger)
-        : base(logger)
+        ILogger<PostgresKeywordSearchService> logger,
+        ITextAnalyzer? analyzer = null)
+        : base(logger, analyzer)
     {
         _connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
     }

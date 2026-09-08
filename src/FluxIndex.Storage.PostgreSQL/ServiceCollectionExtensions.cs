@@ -228,7 +228,8 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton(sp => new KeywordSearch.PostgresKeywordSearchService(
             connectionString,
-            sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<KeywordSearch.PostgresKeywordSearchService>>()));
+            sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<KeywordSearch.PostgresKeywordSearchService>>(),
+            sp.GetService<FluxIndex.Core.Application.Interfaces.ITextAnalyzer>()));
         services.AddSingleton<IKeywordSearchService>(sp =>
             sp.GetRequiredService<KeywordSearch.PostgresKeywordSearchService>());
 

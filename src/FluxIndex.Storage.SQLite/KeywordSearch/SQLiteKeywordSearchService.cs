@@ -37,8 +37,9 @@ public sealed class SQLiteKeywordSearchService : RelationalKeywordSearchService
     /// <summary>Creates the service from the configured SQLite options.</summary>
     public SQLiteKeywordSearchService(
         IOptions<SQLiteOptions> options,
-        ILogger<SQLiteKeywordSearchService> logger)
-        : base(logger)
+        ILogger<SQLiteKeywordSearchService> logger,
+        ITextAnalyzer? analyzer = null)
+        : base(logger, analyzer)
     {
         ArgumentNullException.ThrowIfNull(options);
         var opts = options.Value;
@@ -50,8 +51,9 @@ public sealed class SQLiteKeywordSearchService : RelationalKeywordSearchService
     /// <summary>Creates the service against an explicit connection string.</summary>
     public SQLiteKeywordSearchService(
         string connectionString,
-        ILogger<SQLiteKeywordSearchService> logger)
-        : base(logger)
+        ILogger<SQLiteKeywordSearchService> logger,
+        ITextAnalyzer? analyzer = null)
+        : base(logger, analyzer)
     {
         _connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
     }

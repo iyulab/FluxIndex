@@ -198,7 +198,8 @@ public static class FluxIndexContextBuilderExtensions
         // registration wins. Singleton so the indexer and the retriever share one instance.
         services.AddSingleton<SQLiteKeywordSearchService>(sp => new SQLiteKeywordSearchService(
             connectionString,
-            sp.GetRequiredService<ILogger<SQLiteKeywordSearchService>>()));
+            sp.GetRequiredService<ILogger<SQLiteKeywordSearchService>>(),
+            sp.GetService<ITextAnalyzer>()));
         services.AddSingleton<IKeywordSearchService>(sp =>
             sp.GetRequiredService<SQLiteKeywordSearchService>());
 
