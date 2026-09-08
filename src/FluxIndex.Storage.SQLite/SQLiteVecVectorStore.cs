@@ -1,4 +1,4 @@
-﻿using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Models;
 using FluxIndex.Core.Application.Services.Base;
 using FluxIndex.Core.Application.Utilities;
@@ -675,6 +675,11 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
     /// <param name="topK">반환할 최대 결과 수</param>
     /// <param name="minScore">최소 점수 임계값</param>
     /// <param name="vectorWeight">벡터 점수 가중치 (0.0 ~ 1.0), null이면 옵션 기본값 사용</param>
+    /// <param name="filters">
+    /// 두 leg 모두에 융합 <em>전에</em> 적용되는 메타데이터 필터(<see cref="SearchAsync"/>와 같은 어휘).
+    /// 벡터 leg는 KNN 뒤 over-fetch 창에서, FTS5 leg는 매치 행에서 걸러진다 — 둘 다 이 저장소의 스키마 한계로
+    /// 사전 필터가 아니므로 좁은 스코프는 창 포화를 겪을 수 있다(<see cref="SearchWithSQLiteVecAsync"/> 주석).
+    /// </param>
     /// <param name="cancellationToken">취소 토큰</param>
     /// <returns>RRF로 결합된 검색 결과</returns>
     public async Task<IEnumerable<HybridSearchResult>> HybridSearchAsync(
@@ -683,6 +688,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         int topK = 10,
         float minScore = 0.0f,
         float? vectorWeight = null,
+        Dictionary<string, object>? filters = null,
         CancellationToken cancellationToken = default)
     {
         try
@@ -697,8 +703,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             var vectorResults = new Dictionary<string, (int Rank, DocumentChunk Chunk, float VectorScore)>();
             if (_sqliteVecAvailable && queryEmbedding != null && queryEmbedding.Length > 0)
             {
-                // HybridSearchAsync has no filters parameter on its public surface (yet).
-                var vectorChunks = await SearchWithSQLiteVecAsync(queryEmbedding, topK * 2, minScore, filters: null, cancellationToken);
+                var vectorChunks = await SearchWithSQLiteVecAsync(queryEmbedding, topK * 2, minScore, filters, cancellationToken);
                 int rank = 1;
                 foreach (var chunk in vectorChunks)
                 {
@@ -710,7 +715,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             var ftsResults = new Dictionary<string, (int Rank, DocumentChunk Chunk, float BM25Score)>();
             if (_options.UseFts5 && !string.IsNullOrWhiteSpace(textQuery))
             {
-                var ftsChunks = await SearchWithFts5Async(textQuery, topK * 2, cancellationToken);
+                var ftsChunks = await SearchWithFts5Async(textQuery, topK * 2, filters, cancellationToken);
                 int rank = 1;
                 foreach (var (chunk, bm25Score) in ftsChunks)
                 {
@@ -777,9 +782,10 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         int topK,
         float minScore,
         float? vectorWeight,
+        Dictionary<string, object>? filters,
         CancellationToken cancellationToken)
     {
-        var local = await HybridSearchAsync(queryEmbedding, textQuery, topK, minScore, vectorWeight, cancellationToken);
+        var local = await HybridSearchAsync(queryEmbedding, textQuery, topK, minScore, vectorWeight, filters, cancellationToken);
         return local.Select(r => new FluxIndex.Core.Domain.Models.HybridSearchResult
         {
             Chunk = r.Chunk,
@@ -797,8 +803,14 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
     private async Task<IEnumerable<(DocumentChunk Chunk, float BM25Score)>> SearchWithFts5Async(
         string textQuery,
         int topK,
+        Dictionary<string, object>? filters,
         CancellationToken cancellationToken)
     {
+        // Metadata is a JSON column on vector_chunks, so the filter cannot be part of the MATCH.
+        // Same shape as the vec leg: over-fetch when filtering, then keep the first topK matches.
+        var hasFilter = filters is { Count: > 0 };
+        var fetchK = hasFilter ? topK * 3 : topK;
+
         try
         {
             var connection = _context.Database.GetDbConnection();
@@ -827,16 +839,19 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 LIMIT @topK";
 
             command.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("@query", escapedQuery));
-            command.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("@topK", topK));
+            command.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("@topK", fetchK));
 
             var results = new List<(DocumentChunk, float)>();
 
             using var reader = await command.ExecuteReaderAsync(cancellationToken);
-            while (await reader.ReadAsync(cancellationToken))
+            while (await reader.ReadAsync(cancellationToken) && results.Count < topK)
             {
                 var metadataJson = reader.GetString(5);
                 var metadata = JsonSerializer.Deserialize<Dictionary<string, object>>(metadataJson)
                     ?? new Dictionary<string, object>();
+
+                if (hasFilter && !VectorStoreBase.MatchesMetadataFilter(metadata, filters!))
+                    continue;
 
                 var chunk = new DocumentChunk
                 {
@@ -897,7 +912,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             return Enumerable.Empty<DocumentChunk>();
         }
 
-        var results = await SearchWithFts5Async(textQuery, topK, cancellationToken);
+        var results = await SearchWithFts5Async(textQuery, topK, filters: null, cancellationToken);
         return results.Select(r => r.Chunk);
     }
 

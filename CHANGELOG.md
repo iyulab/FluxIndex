@@ -12,6 +12,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.32.0]
 
 ### Added
+- `INativeHybridSearch.HybridSearchAsync` takes a `filters` parameter (same vocabulary as
+  `IVectorStore.SearchAsync`) and `SQLiteVecVectorStore` applies it to **both** legs before fusion —
+  the vec leg through its existing over-fetch window, the FTS5 leg on the matched rows. A scoped
+  hybrid request is now answered by the fused ranking of the in-scope chunks; before, the native path
+  could only run unscoped, so a consumer that needed a document-id scope had to give up fusion
+  entirely. Breaking for external implementers of the interface (one parameter, optional at the
+  call site); the only implementation ships in this repository.
 - `FluxIndex.Providers.LMSupply`: `AddLMSupplyEmbedding`, `AddLMSupplyReranker` and `AddLMSupplyTextCompletion`
   now register **lazily loading** services — building the container and resolving the service never
   loads or downloads a model. The load happens on first use, with the caller's `CancellationToken`, or

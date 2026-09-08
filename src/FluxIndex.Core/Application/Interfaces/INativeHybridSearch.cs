@@ -10,9 +10,10 @@ namespace FluxIndex.Core.Application.Interfaces;
 /// When the registered vector store implements this, a hybrid search prefers it over
 /// a separately-registered <see cref="IHybridSearchService"/>. The reason is a population gap:
 /// <see cref="IHybridSearchService"/> requires an <see cref="IKeywordSearchService"/> whose index is
-/// filled via <c>IndexChunkAsync</c> — which ingestion-only pipelines do not call — whereas this
-/// native hybrid fuses over the keyword rows ingestion already wrote. Routing to the native
-/// capability yields real hybrid results over indexed data with no second index and no reindex.
+/// filled via <c>IndexChunkAsync</c> — a pipeline that writes only to the vector store never calls
+/// it — whereas this native hybrid fuses over the keyword rows the store itself wrote at ingestion.
+/// Routing to the native capability yields real hybrid results over indexed data with no second
+/// index and no reindex.
 /// </remarks>
 public interface INativeHybridSearch
 {
@@ -24,6 +25,12 @@ public interface INativeHybridSearch
     /// <param name="topK">Maximum results to return.</param>
     /// <param name="minScore">Minimum score threshold.</param>
     /// <param name="vectorWeight">Vector score weight (0.0–1.0); null uses the store's configured default.</param>
+    /// <param name="filters">
+    /// Metadata filter applied to <em>both</em> legs before fusion, with the same vocabulary as
+    /// <see cref="IVectorStore.SearchAsync"/> (a collection value matches any of its members).
+    /// A scoped hybrid request has to be answered by the fused ranking of the in-scope chunks —
+    /// filtering the fused list afterwards would rank out-of-scope chunks first and starve the scope.
+    /// </param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Fused results ordered by score.</returns>
     Task<IEnumerable<HybridSearchResult>> HybridSearchAsync(
@@ -32,5 +39,6 @@ public interface INativeHybridSearch
         int topK = 10,
         float minScore = 0.0f,
         float? vectorWeight = null,
+        Dictionary<string, object>? filters = null,
         CancellationToken cancellationToken = default);
 }
