@@ -72,6 +72,34 @@ public sealed class SQLiteVecDeferredIdentityStartupTests : IAsyncDisposable
         read!.DocumentId.Should().Be("doc-deferred");
     }
 
+    [Fact]
+    public async Task NoHostedServices_StoreCreatesItsOwnSchemaOnFirstBoundAccess()
+    {
+        // A consumer that never starts the hosted initializer (plain ServiceCollection, inline
+        // processing) must still get a working store: the EF tables have to exist before the vec0
+        // table is created, otherwise EnsureCreated sees "a database with tables" and skips them.
+        CITestHelper.SkipIfSqliteVecNotAvailable();
+        var sp = Build();
+
+        using var scope = sp.CreateScope();
+        var store = scope.ServiceProvider.GetRequiredService<IVectorStore>();
+        store.BindIdentity(Identity());
+
+        var chunk = new DocumentChunk
+        {
+            DocumentId = "doc-no-host",
+            Content = "store self-initializes",
+            ChunkIndex = 0,
+            Embedding = new float[] { 0.4f, 0.3f, 0.2f, 0.1f }
+        };
+
+        var id = await store.StoreAsync(chunk, TestContext.Current.CancellationToken);
+        var read = await store.GetAsync(id, TestContext.Current.CancellationToken);
+
+        read.Should().NotBeNull();
+        read!.DocumentId.Should().Be("doc-no-host");
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_sp is not null)

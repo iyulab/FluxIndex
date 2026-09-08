@@ -6,6 +6,8 @@ using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Core.Domain.Exceptions;
 using FluxIndex.Core.Domain.ValueObjects;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Text.Json;
@@ -1334,6 +1336,27 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         }
     }
 
+    private async Task EnsureModelTablesAsync(CancellationToken cancellationToken)
+    {
+        await _context.Database.EnsureCreatedAsync(cancellationToken);
+
+        var connection = _context.Database.GetDbConnection();
+        if (connection.State != System.Data.ConnectionState.Open)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        await using var probe = connection.CreateCommand();
+        probe.CommandText = "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='vector_chunks'";
+        var exists = Convert.ToInt64(await probe.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture) > 0;
+        if (!exists)
+        {
+            // EnsureCreated skipped because other tables (vec0) already existed: create the model tables explicitly.
+            await _context.GetService<IRelationalDatabaseCreator>().CreateTablesAsync(cancellationToken);
+            LogModelTablesRepaired(_logger);
+        }
+    }
+
     private async Task EnsureInitializedAsync(CancellationToken cancellationToken)
     {
         // Fast path: already initialized against the CURRENT effective vec table. When the bound
@@ -1348,6 +1371,13 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         {
             if (_initialized && (!_options.UseSQLiteVec || _options.GetVecTableName() == _initializedTableName))
                 return;
+
+            // Model tables first, unconditionally. EF's EnsureCreated is a no-op on a database that
+            // already has any table, so it must run before the vec0 virtual table exists — a store
+            // used without the hosted initializer (plain ServiceCollection, inline processing) used to
+            // end up with the vec0 table and no vector_chunks ("no such table"). A database already
+            // left in that mixed state is repaired through the relational creator.
+            await EnsureModelTablesAsync(cancellationToken);
 
             if (_options.UseSQLiteVec)
             {
@@ -1376,9 +1406,6 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                         _options.VectorDimension,
                         _options.VecTableOptions,
                         cancellationToken);
-
-                    // EF Core 테이블 생성
-                    await _context.Database.EnsureCreatedAsync(cancellationToken);
 
                     // Warm up vec0 query plan JIT so the first user batch is not cold-started.
                     // CreateVecTableAsync ensures the virtual table exists; this LIMIT 0 SELECT

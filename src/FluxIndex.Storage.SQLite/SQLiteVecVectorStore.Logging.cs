@@ -103,6 +103,9 @@ public partial class SQLiteVecVectorStore
     [LoggerMessage(Level = LogLevel.Debug, Message = "vec0 query plan JIT warmup completed during initialization")]
     private static partial void LogVecJitWarmupCompleted(ILogger logger);
 
+    [LoggerMessage(Level = LogLevel.Information, Message = "Model tables were missing next to an existing vec0 table; created them")]
+    private static partial void LogModelTablesRepaired(ILogger logger);
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "vec0 JIT warmup query failed (non-fatal); first batch will pay cold-start cost")]
     private static partial void LogVecJitWarmupFailed(ILogger logger, Exception exception);
 

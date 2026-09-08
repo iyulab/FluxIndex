@@ -21,6 +21,11 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   after `IVectorStore.BindIdentity`, where it already ran for late-bound scopes. The native extension is
   still validated at startup, so a missing sqlite-vec library surfaces as before. Consumers that set
   `SQLiteVecOptions.EmbeddingFingerprint` explicitly keep the eager startup path.
+- `FluxIndex.Storage.SQLite`: a store used without the hosted initializer (plain `ServiceCollection`, no
+  host start) created the vec0 virtual table before the EF model tables, so `EnsureCreated` saw a
+  database with tables and skipped them — the first write failed with "no such table: vector_chunks".
+  The store now creates the model tables first on its own first access, and repairs a database already
+  left in that state.
 
 ---
 
