@@ -128,7 +128,7 @@ public class LMSupplyRerankerServiceTests
     {
         var logger = Substitute.For<ILogger<LMSupplyRerankerService>>();
 
-        var act = () => new LMSupplyRerankerService(null!, logger);
+        var act = () => new LMSupplyRerankerService((IRerankerModel)null!, logger);
 
         act.Should().Throw<ArgumentNullException>();
     }

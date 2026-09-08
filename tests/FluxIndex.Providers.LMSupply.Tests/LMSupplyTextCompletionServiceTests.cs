@@ -32,7 +32,7 @@ public class LMSupplyTextCompletionServiceTests
     {
         var logger = Substitute.For<ILogger<LMSupplyTextCompletionService>>();
 
-        var act = () => new LMSupplyTextCompletionService(null!, logger);
+        var act = () => new LMSupplyTextCompletionService((ITextGenerator)null!, logger);
 
         act.Should().Throw<ArgumentNullException>();
     }

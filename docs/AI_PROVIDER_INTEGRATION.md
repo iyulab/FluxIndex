@@ -499,15 +499,19 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
-    // LMSupply Embedding 등록 (비동기 초기화)
-    public static IServiceCollection AddLMSupplyEmbedding(
-        this IServiceCollection services,
-        string modelId = "all-MiniLM-L6-v2")
-    {
-        services.AddSingleton<IEmbeddingService>(sp =>
-            LMSupplyEmbedder.CreateAsync(modelId).GetAwaiter().GetResult());
-        return services;
-    }
+    // LMSupply Embedding 등록 — 직접 쓰지 말고 FluxIndex.Providers.LMSupply의
+    // services.AddLMSupplyEmbedding(...)을 쓴다. 모델 로드는 컨테이너 해석 시점이 아니라
+    // 첫 사용(또는 WarmUpOnStart로 호스트 기동) 시점에 비동기로 일어나며, 진행률·취소·타임아웃이
+    // 옵션으로 통과된다. DI 팩토리 안에서 CreateAsync(...).GetAwaiter().GetResult()로 막는 형태는
+    // 진행률·취소가 없고 SynchronizationContext가 있는 호스트에서 교착 후보라 채택하지 않는다.
+    //
+    //   services.AddLMSupplyEmbedding(o =>
+    //   {
+    //       o.ModelId = "default";
+    //       o.Progress = new Progress<DownloadProgress>(p => Console.WriteLine(p));
+    //       o.LoadTimeout = TimeSpan.FromMinutes(10);
+    //       o.WarmUpOnStart = true;   // Generic Host: 기동 시 로드, 첫 요청은 다운로드를 기다리지 않는다
+    //   });
 
     // Text Completion 등록
     public static IServiceCollection AddOpenAICompletion(

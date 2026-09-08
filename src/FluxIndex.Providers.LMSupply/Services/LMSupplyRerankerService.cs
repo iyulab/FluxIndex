@@ -6,37 +6,45 @@ using Microsoft.Extensions.Logging;
 namespace FluxIndex.Providers.LMSupply.Services;
 
 /// <summary>
-/// Adapts LMSupply's <see cref="IRerankerModel"/> to FluxIndex's
-/// <see cref="IReranker"/> using the <see cref="RerankerBase"/> template.
+/// Adapts LMSupply's <see cref="IRerankerModel"/> to FluxIndex's <see cref="IReranker"/> using the
+/// <see cref="RerankerBase"/> template. Either wraps an already loaded model, or loads it on first use
+/// (see <see cref="LMSupplyRerankerService(LMSupplyRerankerOptions, ILogger)"/>).
 /// </summary>
-/// <remarks>
-/// Uses ONNX runtime for local cross-encoder reranking — no API key required.
-/// </remarks>
-public sealed partial class LMSupplyRerankerService : RerankerBase, IAsyncDisposable
+public sealed partial class LMSupplyRerankerService : RerankerBase, IAsyncDisposable, ILazilyLoadedModel
 {
-    private readonly IRerankerModel _model;
+    private readonly IRerankerModel? _eager;
+    private readonly LazyModelHandle<IRerankerModel>? _handle;
+    private readonly string _configuredModelId;
     private readonly ILogger _logger;
 
-    /// <summary>
-    /// Initializes a new instance wrapping the given <paramref name="model"/>.
-    /// </summary>
-    /// <param name="model">LMSupply reranker model.</param>
-    /// <param name="logger">Logger instance.</param>
+    /// <summary>Wraps an already loaded <paramref name="model"/>.</summary>
     public LMSupplyRerankerService(IRerankerModel model, ILogger logger)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(logger);
-        _model = model;
+        _eager = model;
+        _configuredModelId = model.ModelId;
         _logger = logger;
     }
 
     /// <summary>
-    /// Creates a reranker service by loading a local ONNX model.
+    /// Loads the model on the first rerank call (or <see cref="EnsureLoadedAsync"/>) under
+    /// <paramref name="options"/>' progress reporting and timeout; the container never blocks on it.
     /// </summary>
-    /// <param name="modelId">Model ID (e.g., "ms-marco-MiniLM-L6-v2") or "default".</param>
-    /// <param name="logger">Logger instance.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>A ready-to-use reranker service.</returns>
+    public LMSupplyRerankerService(LMSupplyRerankerOptions options, ILogger logger)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentException.ThrowIfNullOrWhiteSpace(options.ModelId);
+        ArgumentNullException.ThrowIfNull(logger);
+        _configuredModelId = options.ModelId;
+        _logger = logger;
+        _handle = new LazyModelHandle<IRerankerModel>(
+            (progress, ct) => LocalReranker.LoadAsync(options.ModelId, options.Reranker, progress, ct),
+            options.Progress,
+            options.LoadTimeout);
+    }
+
+    /// <summary>Creates a reranker by loading a local cross-encoder model now.</summary>
     public static async Task<LMSupplyRerankerService> CreateAsync(
         string modelId = "default",
         ILogger? logger = null,
@@ -47,6 +55,21 @@ public sealed partial class LMSupplyRerankerService : RerankerBase, IAsyncDispos
     }
 
     /// <inheritdoc />
+    public bool IsLoaded => _eager is not null || _handle!.IsLoaded;
+
+    /// <inheritdoc />
+    public async Task EnsureLoadedAsync(CancellationToken cancellationToken = default)
+    {
+        if (_handle is not null)
+            await _handle.GetAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private ValueTask<IRerankerModel> GetModelAsync(CancellationToken cancellationToken) =>
+        _eager is not null
+            ? ValueTask.FromResult(_eager)
+            : new ValueTask<IRerankerModel>(_handle!.GetAsync(cancellationToken));
+
+    /// <inheritdoc />
     protected override async Task<IEnumerable<(int Index, float Score)>> RerankCoreAsync(
         string query,
         IReadOnlyList<string> documents,
@@ -54,24 +77,22 @@ public sealed partial class LMSupplyRerankerService : RerankerBase, IAsyncDispos
         CancellationToken cancellationToken)
     {
         LogReranking(_logger, query.Length, documents.Count, topN);
-
-        var results = await _model.RerankAsync(query, documents, topK: topN, cancellationToken: cancellationToken);
+        var model = await GetModelAsync(cancellationToken).ConfigureAwait(false);
+        var results = await model.RerankAsync(query, documents, topK: topN, cancellationToken: cancellationToken).ConfigureAwait(false);
         return results.Select(r => (r.OriginalIndex, r.Score));
     }
 
     /// <inheritdoc />
     public override RerankModelInfo GetModelInfo() => new()
     {
-        Name = _model.ModelId,
+        Name = _eager?.ModelId ?? _handle!.LoadedModel?.ModelId ?? _configuredModelId,
         Type = RerankModel.Local,
         RequiresApiKey = false,
     };
 
     /// <inheritdoc />
-    public async ValueTask DisposeAsync()
-    {
-        await _model.DisposeAsync();
-    }
+    public ValueTask DisposeAsync() =>
+        _eager is not null ? _eager.DisposeAsync() : _handle!.DisposeAsync();
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Reranking {DocumentCount} documents for query (length={QueryLength}), topN={TopN}")]
     private static partial void LogReranking(ILogger logger, int queryLength, int documentCount, int topN);

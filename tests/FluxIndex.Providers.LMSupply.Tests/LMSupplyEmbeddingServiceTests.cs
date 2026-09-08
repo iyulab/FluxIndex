@@ -38,7 +38,7 @@ public class LMSupplyEmbeddingServiceTests : IAsyncDisposable
     [Fact]
     public void Constructor_NullModel_ThrowsArgumentNullException()
     {
-        var act = () => new LMSupplyEmbeddingService(null!);
+        var act = () => new LMSupplyEmbeddingService((IEmbeddingModel)null!);
 
         act.Should().Throw<ArgumentNullException>();
     }

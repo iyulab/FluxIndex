@@ -9,7 +9,29 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.31.3]
+## [0.32.0]
+
+### Added
+- `FluxIndex.Providers.LMSupply`: `AddLMSupplyEmbedding`, `AddLMSupplyReranker` and `AddLMSupplyTextCompletion`
+  now register **lazily loading** services — building the container and resolving the service never
+  loads or downloads a model. The load happens on first use, with the caller's `CancellationToken`, or
+  at host start with `WarmUpOnStart`. New `Action<…Options>` overloads expose `Progress`
+  (`IProgress<DownloadProgress>`), `LoadTimeout`, `WarmUpOnStart` and the LMSupply loader options;
+  `LMSupplyEmbeddingOptions` adds `Dimensions`/`ModelName` to announce the identity of a non-catalog
+  model before it is loaded (verified against the loaded model). The services implement
+  `ILazilyLoadedModel` (`IsLoaded`, `EnsureLoadedAsync`). Previously the DI factories blocked on
+  `CreateAsync(...).GetAwaiter().GetResult()` inside container resolution — no progress, no
+  cancellation, a deadlock candidate under a `SynchronizationContext`, and load failures surfaced as
+  "Error while validating the service descriptor".
+
+### Behaviour change
+- `FluxIndex.Providers.LMSupply`: for **catalog** models (`default`, `fast`, `quality`, `large`, …)
+  the embedding identity is announced from the LMSupply registry before the load, so `BindIdentity`
+  and collection naming work exactly as before without loading anything. For a HuggingFace repo id or a
+  local path the dimension is not known up front: `GetEmbeddingDimension()`/`GetIdentity()` throw an
+  actionable `InvalidOperationException` until the model is loaded (`EnsureLoadedAsync`,
+  `WarmUpOnStart`) or `LMSupplyEmbeddingOptions.Dimensions` is set. `FluxIndexContext` builds its
+  indexer eagerly, so such consumers must warm up or announce the dimension before `Build()`.
 
 ### Fixed
 - `FluxIndex.Storage.SQLite`: the hosted startup initializer registered by `AddSQLiteVecVectorStore`
