@@ -3,6 +3,7 @@ using FluxImprover.Models;
 using FluxImprover.Options;
 using FluxIndex.Integrations.FluxImprover.Adapters;
 using FluxIndexChunk = Flux.Abstractions.IEnrichedChunk;
+using FluxIndexContextualEnrichment = FluxIndex.Core.Application.Interfaces.IContextualEnrichmentService;
 
 namespace FluxIndex.Integrations.FluxImprover.Services;
 
@@ -19,7 +20,7 @@ namespace FluxIndex.Integrations.FluxImprover.Services;
 /// Reference: https://www.anthropic.com/news/contextual-retrieval
 /// </para>
 /// </remarks>
-public sealed class ContextualEnrichmentServiceWrapper
+public sealed class ContextualEnrichmentServiceWrapper : FluxIndexContextualEnrichment
 {
     private readonly IContextualEnrichmentService _contextualEnrichmentService;
 
@@ -108,6 +109,73 @@ public sealed class ContextualEnrichmentServiceWrapper
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// FluxIndex.Core's string-shaped port (<see cref="FluxIndexContextualEnrichment"/>), used by consumers that hold
+    /// plain chunk text — FluxFeed's ingestion pipeline and the FileFlux integration's document pipeline. One chunk,
+    /// one context; an empty string means "no context".
+    /// </summary>
+    public async Task<string> GenerateContextAsync(
+        string chunkContent,
+        string fullDocumentText,
+        int chunkIndex,
+        int totalChunks,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(fullDocumentText);
+        if (string.IsNullOrWhiteSpace(chunkContent))
+        {
+            return string.Empty;
+        }
+
+        var enriched = await _contextualEnrichmentService.EnrichAsync(
+            new Chunk
+            {
+                Id = chunkIndex.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                Content = chunkContent,
+                Metadata = new Dictionary<string, object> { ["position"] = chunkIndex, ["totalChunks"] = totalChunks }
+            },
+            fullDocumentText,
+            options: null,
+            cancellationToken);
+
+        return enriched.ContextSummary ?? string.Empty;
+    }
+
+    /// <inheritdoc cref="GenerateContextAsync"/>
+    /// <remarks>Returns exactly one context per input chunk, in input order — that alignment is the contract callers rely on.</remarks>
+    public async Task<IReadOnlyList<string>> GenerateContextBatchAsync(
+        IReadOnlyList<string> chunks,
+        string fullDocumentText,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(chunks);
+        ArgumentException.ThrowIfNullOrWhiteSpace(fullDocumentText);
+        if (chunks.Count == 0)
+        {
+            return Array.Empty<string>();
+        }
+
+        var inputs = chunks.Select((text, i) => new Chunk
+        {
+            Id = i.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            Content = text ?? string.Empty
+        }).ToList();
+
+        var enriched = await _contextualEnrichmentService.EnrichBatchAsync(inputs, fullDocumentText, options: null, cancellationToken);
+        if (enriched.Count != inputs.Count)
+        {
+            throw new InvalidOperationException(
+                $"FluxImprover returned {enriched.Count} enriched chunk(s) for {inputs.Count} input(s); expected one per chunk.");
+        }
+
+        var contexts = new string[inputs.Count];
+        for (var i = 0; i < inputs.Count; i++)
+        {
+            contexts[i] = enriched[i].ContextSummary ?? string.Empty;
+        }
+        return contexts;
     }
 
     /// <summary>

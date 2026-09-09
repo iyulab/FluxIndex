@@ -66,6 +66,7 @@ public static class ServiceCollectionExtensions
     /// <remarks>
     /// <para>
     /// This method requires FluxImprover's IContextualEnrichmentService to be already registered.
+    /// The wrapper is registered both as itself and as FluxIndex.Core's <c>IContextualEnrichmentService</c>.
     /// The wrapper is registered as scoped to match FluxImprover's service lifetime.
     /// </para>
     /// <para>
@@ -83,6 +84,11 @@ public static class ServiceCollectionExtensions
             var contextualService = provider.GetRequiredService<IContextualEnrichmentService>();
             return new ContextualEnrichmentServiceWrapper(contextualService);
         });
+        // The same instance also serves FluxIndex.Core's string port, so a consumer that only knows FluxIndex
+        // (FluxFeed's ingestion pipeline, the FileFlux integration) can resolve contextual enrichment without
+        // referencing FluxImprover types.
+        services.AddScoped<FluxIndex.Core.Application.Interfaces.IContextualEnrichmentService>(
+            provider => provider.GetRequiredService<ContextualEnrichmentServiceWrapper>());
 
         return services;
     }

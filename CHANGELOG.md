@@ -9,6 +9,18 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.34.0]
+
+### Added
+- `FluxIndex.Integrations.FluxImprover`: `ContextualEnrichmentServiceWrapper` now also implements FluxIndex.Core's
+  `IContextualEnrichmentService` (`GenerateContextAsync` / `GenerateContextBatchAsync`, one context per chunk in order),
+  and `AddContextualEnrichmentWrapper()` registers it under that port as well. Consumers that hold plain chunk text —
+  FluxFeed's ingestion pipeline, the FileFlux integration's document pipeline — can now get FluxImprover-backed
+  contextual retrieval by registering FluxImprover plus this wrapper, with no FluxImprover types in their own code.
+  Previously the Core port had no shipped implementation at all.
+
+---
+
 ## [0.33.1]
 
 ### Changed
