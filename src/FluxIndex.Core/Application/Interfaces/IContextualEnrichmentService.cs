@@ -39,10 +39,10 @@ public interface IContextualEnrichmentService
 }
 
 /// <summary>
-/// Mock implementation for contextual enrichment service.
+/// No-op implementation of contextual enrichment service.
 /// Returns empty context when no LLM service is available.
 /// </summary>
-public class MockContextualEnrichmentService : IContextualEnrichmentService
+public class NoOpContextualEnrichmentService : IContextualEnrichmentService
 {
     public Task<string> GenerateContextAsync(
         string chunkContent,

@@ -19,6 +19,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   contextual retrieval by registering FluxImprover plus this wrapper, with no FluxImprover types in their own code.
   Previously the Core port had no shipped implementation at all.
 
+### Changed
+- `FluxIndex.Core`: the three no-op defaults that shipped under "Mock" names in the production assembly are renamed
+  — `MockContextualEnrichmentService` → `NoOpContextualEnrichmentService`, `MockQAGenerationService` →
+  `NoOpQAGenerationService`, `MockTextCompletionService` → `NoOpTextCompletionService` (source-breaking rename;
+  0.x). `FluxIndex.Integrations.FileFlux.AddDocumentProcessingPipeline()` now registers them with `TryAdd`, so a real
+  implementation the consumer registered first is no longer shadowed by the no-op default (it used `Add`).
+
 ---
 
 ## [0.33.1]

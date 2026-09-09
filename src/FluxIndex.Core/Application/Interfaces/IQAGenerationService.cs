@@ -90,10 +90,10 @@ public class ChunkQAPairs
 }
 
 /// <summary>
-/// Mock implementation for QA generation service.
+/// No-op implementation of QA generation service.
 /// Returns empty results when no LLM service is available.
 /// </summary>
-public class MockQAGenerationService : IQAGenerationService
+public class NoOpQAGenerationService : IQAGenerationService
 {
     public Task<IReadOnlyList<GeneratedQAPair>> GenerateFromChunkAsync(
         string chunkContent,

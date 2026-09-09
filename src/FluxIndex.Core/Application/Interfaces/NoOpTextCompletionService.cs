@@ -3,9 +3,9 @@ using Flux.Abstractions;
 namespace FluxIndex.Core.Application.Interfaces;
 
 /// <summary>
-/// Mock implementation of <see cref="ITextCompletionService"/> for testing without a real provider.
+/// No-op implementation of <see cref="ITextCompletionService"/> for testing without a real provider.
 /// </summary>
-public class MockTextCompletionService : ITextCompletionService
+public class NoOpTextCompletionService : ITextCompletionService
 {
     /// <inheritdoc />
     public Task<string> CompleteAsync(

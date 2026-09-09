@@ -16,11 +16,13 @@ public static class DocumentProcessingExtensions
     /// </summary>
     public static IServiceCollection AddDocumentProcessingPipeline(this IServiceCollection services)
     {
-        // Register mock services for contextual enrichment and QA generation
-        // These return empty results when no LLM is available
-        services.AddSingleton<IContextualEnrichmentService, MockContextualEnrichmentService>();
-        services.AddSingleton<IQAGenerationService, MockQAGenerationService>();
-        services.AddSingleton<ITextCompletionService, MockTextCompletionService>();
+        // No-op defaults for contextual enrichment, QA generation and completion — they return empty
+        // results when no LLM is wired. TryAdd, so a real implementation the consumer registered first
+        // (e.g. the FluxImprover-backed IContextualEnrichmentService from FluxIndex.Integrations.FluxImprover)
+        // is never shadowed by these defaults; before 0.34.0 this used Add and silently replaced it.
+        services.TryAddSingleton<IContextualEnrichmentService, NoOpContextualEnrichmentService>();
+        services.TryAddSingleton<IQAGenerationService, NoOpQAGenerationService>();
+        services.TryAddSingleton<ITextCompletionService, NoOpTextCompletionService>();
 
         // Register the pipeline
         services.AddScoped<FluxIndex.Integrations.FileFlux.Processing.DocumentProcessingPipeline>();
@@ -53,9 +55,9 @@ public static class DocumentProcessingExtensions
     public static IServiceCollection AddDocumentProcessingPipelineWithFallback(this IServiceCollection services)
     {
         // Register mock services only if not already registered
-        services.TryAddSingleton<IContextualEnrichmentService, MockContextualEnrichmentService>();
-        services.TryAddSingleton<IQAGenerationService, MockQAGenerationService>();
-        services.TryAddSingleton<ITextCompletionService, MockTextCompletionService>();
+        services.TryAddSingleton<IContextualEnrichmentService, NoOpContextualEnrichmentService>();
+        services.TryAddSingleton<IQAGenerationService, NoOpQAGenerationService>();
+        services.TryAddSingleton<ITextCompletionService, NoOpTextCompletionService>();
 
         // Register the pipeline
         services.AddScoped<FluxIndex.Integrations.FileFlux.Processing.DocumentProcessingPipeline>();
