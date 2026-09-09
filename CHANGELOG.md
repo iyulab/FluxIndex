@@ -9,6 +9,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.34.1]
+
+### Changed
+- Re-pinned sibling package(s) `FileFlux` 0.22.11 -> 0.22.12, `FluxImprover` 0.11.9 -> 0.12.0, `LMSupply.Embedder` 0.59.1 -> 0.60.0, `LMSupply.Generator` 0.59.1 -> 0.60.0, `LMSupply.Reranker` 0.59.1 -> 0.60.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+
+---
+
 ## [0.34.0]
 
 ### Added
