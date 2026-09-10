@@ -40,12 +40,18 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   concurrency grows. Reported from a deployment with four indexing workers where it fired
   continuously, and each occurrence failed the entire indexing job because nothing retried
   PostgreSQL's `40P01`.
-  Every term row a transaction will touch is now acquired in one globally sorted pass before any
-  chunk is written — batch-wide, not per chunk, since the transaction spans the batch — and a
-  serialization failure (`40P01`/`40001`) retries the whole transaction with jittered backoff
-  instead of failing the job. Backends whose driver signals contention differently can override
-  `IsTransientConcurrencyFailure`. Consumers that dropped indexing concurrency to 1 to work around
-  this can raise it again.
+  The term rows a transaction *upserts* are now acquired in one globally sorted pass before any chunk
+  is written — batch-wide, not per chunk, since the transaction spans the batch. That removes the
+  first reported cycle (two concurrent upserts) outright.
+  The second reported cycle is **retried, not eliminated**: the document-frequency recompute updates
+  rows for terms whose postings are being *replaced*, which are not all in this run's upsert set, and
+  the database chooses its own row order for that statement. A serialization failure (`40P01`/
+  `40001`) now retries the whole transaction with jittered backoff instead of failing the job, so it
+  surfaces as a `Warning` log line under load rather than a dead job. Backends whose driver signals
+  contention differently can override `IsTransientConcurrencyFailure`.
+  Consumers that dropped indexing concurrency to 1 can raise it again — expect occasional retry
+  warnings rather than none. Moving the recompute out of the indexing transaction would remove the
+  remaining contention and is proposed separately.
 - **Reading a document from Qdrant no longer fails once its chunks exceed the gRPC receive limit.**
   `GetByDocumentIdAsync` issued a single unpaged scroll with `limit: 10000`, requesting full payload
   *and* vectors, so the response grew with the document rather than with a page size. Past the
