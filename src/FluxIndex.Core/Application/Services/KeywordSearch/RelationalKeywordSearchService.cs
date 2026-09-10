@@ -376,17 +376,65 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
 
         await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
 
+        // Tokenized once, outside the retry: the token stream does not change between attempts, and
+        // re-deriving it would pay the whole cost again for a failure that was purely a lock cycle.
+        var tokenized = chunkList
+            .Select(c => (Chunk: c, Terms: Tokenize(c.Content).ToList()))
+            .Where(t => t.Terms.Count > 0)
+            .ToList();
+
+        if (tokenized.Count == 0)
+            return;
+
+        var attempt = 0;
+        while (true)
+        {
+            try
+            {
+                await IndexTokenizedChunksAsync(tokenized, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+            catch (DbException ex) when (IsTransientConcurrencyFailure(ex) && attempt < MaxConcurrencyRetries)
+            {
+                // A serialization failure is the expected outcome of concurrent indexing, not a
+                // defect in the batch: the whole transaction rolled back, so retrying it is safe and
+                // is the only thing that can succeed. Before this, one occurrence failed the caller's
+                // entire indexing job.
+                attempt++;
+                LogConcurrencyRetry(Logger, attempt, ex.SqlState ?? "unknown");
+                await Task.Delay(ConcurrencyRetryDelay(attempt), cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    /// <summary>Attempts one transaction. Retried as a whole by the caller on a serialization failure.</summary>
+    private async Task IndexTokenizedChunksAsync(
+        IReadOnlyList<(DocumentChunk Chunk, List<string> Terms)> tokenized,
+        CancellationToken cancellationToken)
+    {
         await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
         try
         {
             var affectedTermIds = new HashSet<long>();
-            var indexedChunks = 0;
 
-            foreach (var chunk in chunkList)
+            // Every term row this transaction will touch is acquired HERE, in one globally sorted
+            // pass, before any chunk is written. See TermAcquisitionOrder for why the sort is the
+            // fix; doing it per chunk would not be enough, because the transaction spans the batch
+            // and two transactions could still interleave between chunks.
+            var termIds = await AcquireTermIdsAsync(
+                connection,
+                TermAcquisitionOrder(tokenized.Select(t => t.Terms)),
+                cancellationToken).ConfigureAwait(false);
+
+            foreach (var id in termIds.Values)
+                affectedTermIds.Add(id);
+
+            var indexedChunks = 0;
+            foreach (var (chunk, terms) in tokenized)
             {
-                if (await IndexChunkCoreAsync(connection, chunk, affectedTermIds, cancellationToken).ConfigureAwait(false))
+                if (await IndexChunkCoreAsync(connection, chunk, terms, termIds, affectedTermIds, cancellationToken).ConfigureAwait(false))
                     indexedChunks++;
             }
 
@@ -404,16 +452,84 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     }
 
     /// <summary>
+    /// The order in which a transaction must acquire term rows: every distinct normalized term of the
+    /// batch, sorted ordinally.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Upserting a term row takes a lock on it that is held to the end of the transaction. Terms used
+    /// to be upserted in whatever order a chunk's token stream produced them, so two transactions
+    /// indexing different documents that share vocabulary acquired the same rows in different orders
+    /// - the textbook deadlock, and one that needs no unusual input: any two documents in the same
+    /// language share common words, so the probability approaches 1 as concurrency grows. Observed
+    /// continuously against a deployment running four indexing workers.
+    /// </para>
+    /// <para>
+    /// A total order over the rows removes the cycle: transactions can still wait on each other, but
+    /// they can no longer wait in both directions. This is a pure function so the rule is held by
+    /// tests that need no database - the backend where it matters cannot be run in CI here.
+    /// </para>
+    /// </remarks>
+    internal static IReadOnlyList<string> TermAcquisitionOrder(IEnumerable<IEnumerable<string>> perChunkTerms)
+        => perChunkTerms
+            .SelectMany(terms => terms)
+            .Select(NormalizeTerm)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToList();
+
+    /// <summary>Upserts every term in the given order and returns their ids by normalized term.</summary>
+    private async Task<Dictionary<string, long>> AcquireTermIdsAsync(
+        DbConnection connection,
+        IReadOnlyList<string> orderedTerms,
+        CancellationToken cancellationToken)
+    {
+        var ids = new Dictionary<string, long>(orderedTerms.Count, StringComparer.Ordinal);
+
+        foreach (var term in orderedTerms)
+        {
+            await using var termCmd = connection.CreateCommand();
+            termCmd.CommandText = UpsertTermReturningIdSql;
+            AddParameter(termCmd, "@term", term);
+            var scalar = await termCmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+            ids[term] = Convert.ToInt64(scalar, CultureInfo.InvariantCulture);
+        }
+
+        return ids;
+    }
+
+    /// <summary>Attempts allowed after the first, when a transaction loses a lock cycle.</summary>
+    private const int MaxConcurrencyRetries = 4;
+
+    private static TimeSpan ConcurrencyRetryDelay(int attempt)
+        // Backing off by attempt, with jitter: two transactions that deadlocked are by definition
+        // running at the same time, and retrying both immediately reproduces the collision.
+        => TimeSpan.FromMilliseconds((25 * attempt) + Random.Shared.Next(0, 25));
+
+    /// <summary>
+    /// Whether a database failure is a concurrency conflict that a retry can resolve, rather than a
+    /// defect in the statement or the data.
+    /// </summary>
+    /// <remarks>
+    /// The base implementation recognizes the SQL-standard classes every backend here reports:
+    /// <c>40P01</c> (deadlock detected) and <c>40001</c> (serialization failure). A dialect whose
+    /// driver signals contention differently overrides this.
+    /// </remarks>
+    protected virtual bool IsTransientConcurrencyFailure(DbException exception)
+        => exception.SqlState is "40P01" or "40001";
+
+    /// <summary>
     /// Writes one chunk's payload and postings. Re-indexing an existing chunk replaces its postings
     /// wholesale rather than layering new ones on top, so document frequency cannot drift.
     /// </summary>
     private async Task<bool> IndexChunkCoreAsync(
         DbConnection connection,
         DocumentChunk chunk,
+        List<string> terms,
+        Dictionary<string, long> termIds,
         HashSet<long> affectedTermIds,
         CancellationToken cancellationToken)
     {
-        var terms = Tokenize(chunk.Content).ToList();
         if (terms.Count == 0)
             return false;
 
@@ -450,14 +566,10 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
 
         foreach (var (term, frequency) in termFrequencies)
         {
-            long termId;
-            await using (var termCmd = connection.CreateCommand())
-            {
-                termCmd.CommandText = UpsertTermReturningIdSql;
-                AddParameter(termCmd, "@term", term);
-                var scalar = await termCmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-                termId = Convert.ToInt64(scalar, CultureInfo.InvariantCulture);
-            }
+            // The row was already acquired, in the batch's sorted order, before any chunk was
+            // written. Upserting it here instead is what let two transactions take the same rows in
+            // opposite orders.
+            var termId = termIds[NormalizeTerm(term)];
 
             affectedTermIds.Add(termId);
 
@@ -1025,6 +1137,11 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Indexed {ChunkCount} chunks into the keyword index")]
     private static partial void LogChunksIndexed(ILogger logger, int chunkCount);
+
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "Keyword index transaction hit a concurrency conflict (SQLSTATE {SqlState}); retry {Attempt}")]
+    private static partial void LogConcurrencyRetry(ILogger logger, int attempt, string sqlState);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Deleted chunk {ChunkId} from keyword index")]
     private static partial void LogChunkDeleted(ILogger logger, string chunkId);

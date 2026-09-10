@@ -31,6 +31,21 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   > extra stub.
 
 ### Fixed
+- **Concurrent keyword indexing no longer deadlocks against itself.**
+  `RelationalKeywordSearchService.IndexChunksAsync` upserted term rows one statement at a time, in
+  whatever order each chunk's token stream produced them. An upsert holds that row's lock for the
+  rest of the transaction, so two transactions indexing different documents that share vocabulary
+  acquired the same rows in opposite orders — the textbook deadlock, and one that needs no unusual
+  input: any two documents in the same language share common words, so it becomes near-certain as
+  concurrency grows. Reported from a deployment with four indexing workers where it fired
+  continuously, and each occurrence failed the entire indexing job because nothing retried
+  PostgreSQL's `40P01`.
+  Every term row a transaction will touch is now acquired in one globally sorted pass before any
+  chunk is written — batch-wide, not per chunk, since the transaction spans the batch — and a
+  serialization failure (`40P01`/`40001`) retries the whole transaction with jittered backoff
+  instead of failing the job. Backends whose driver signals contention differently can override
+  `IsTransientConcurrencyFailure`. Consumers that dropped indexing concurrency to 1 to work around
+  this can raise it again.
 - **Reading a document from Qdrant no longer fails once its chunks exceed the gRPC receive limit.**
   `GetByDocumentIdAsync` issued a single unpaged scroll with `limit: 10000`, requesting full payload
   *and* vectors, so the response grew with the document rather than with a page size. Past the
