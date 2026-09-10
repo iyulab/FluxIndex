@@ -51,6 +51,29 @@ Write-Output "Discovered $($testProjects.Count) test project(s):"
 $testProjects | ForEach-Object { Write-Output "  $(Split-Path -Leaf $_)" }
 Write-Output ""
 
+# Projects whose every test needs an external service, so filtering Integration out legitimately leaves
+# nothing to run. Naming them is what lets zero tests be a failure everywhere else: without this list the
+# script had to treat "no tests matched" as normal for any project, which means a suite that vanishes -
+# a file deleted, a trait applied too widely, a filter typo - reports success. Green for the wrong reason
+# is the failure this repository has already seen once (McpServerE2ETests, 14/14 skipped, unnoticed).
+#
+# Entries are structural, not waivers, so they carry no expiry: a project either has non-integration tests
+# or it does not. Adding one means asserting that every test in it requires a service - check before you do.
+$serviceOnlyProjects = @(
+    "FluxIndex.Cache.Redis.Tests",    # Testcontainers Redis throughout
+    "FluxIndex.Storage.Neo4j.Tests"   # Testcontainers Neo4j throughout
+)
+
+# A name that matches nothing is rot: the project was renamed or deleted and the entry now excuses a
+# project that does not exist while covering nothing.
+$discoveredNames = $testProjects | ForEach-Object { [System.IO.Path]::GetFileNameWithoutExtension($_) }
+$staleEntries = @($serviceOnlyProjects | Where-Object { $discoveredNames -notcontains $_ })
+if ($staleEntries.Count -gt 0) {
+    Write-ColorOutput "ERROR: `$serviceOnlyProjects names project(s) that no longer exist: $($staleEntries -join ', ')" "Red"
+    Write-Output "Remove the entry, or fix the name. An entry matching nothing silently excuses nothing."
+    exit 1
+}
+
 # Categories excluded here are excluded for a reason that holds on any machine:
 #   Integration  - needs an external service (Testcontainers/Docker, a live database)
 #   Performance  - asserts on wall-clock time, which a shared runner cannot make meaningful
@@ -113,9 +136,19 @@ foreach ($project in $testProjects) {
     # nothing by this script's Category!=Integration exclusion). $total is the ground truth for
     # "did anything actually fail" regardless of exit code here — BD-20260829-xunit-v3-pilot.
     if ($total -eq 0) {
-        # Not a failure: a project whose tests are all Integration/Performance filters down to
-        # nothing. Reported so it is visible rather than inferred.
-        Write-ColorOutput "Result: no tests matched the category filter" "Yellow"
+        if ($serviceOnlyProjects -contains $projectName) {
+            # Expected: every test in this project needs an external service.
+            Write-ColorOutput "Result: no tests matched the category filter (service-only project)" "Yellow"
+        }
+        else {
+            # Not expected. This project has tests that should run here, and none did - which is what a
+            # deleted file, an over-applied trait, or a mistyped filter looks like from the outside.
+            Write-ColorOutput "Result: NO TESTS RAN" "Red"
+            Write-Output "This project is expected to contribute tests under the category filter and contributed none."
+            Write-Output "Either something stopped running, or the project genuinely needs a service - in which case"
+            Write-Output "add it to `$serviceOnlyProjects in this script and say why."
+            $failedProjects += $projectName
+        }
     }
     elseif ($exitCode -eq 0) {
         Write-ColorOutput "Result: PASSED ($passed/$total)" "Green"
@@ -135,7 +168,9 @@ Write-Output "Project                              Passed  Failed  Skipped  Tota
 Write-Output "--------------------------------------------------------------------------------"
 foreach ($result in $allResults) {
     $line = "$($result.Project.PadRight(35)) $($result.Passed.ToString().PadLeft(6))  $($result.Failed.ToString().PadLeft(6))  $($result.Skipped.ToString().PadLeft(8))  $($result.Total.ToString().PadLeft(6))"
-    $color = if ($result.Failed -gt 0) { "Red" } elseif ($result.Total -eq 0) { "Yellow" } else { "Green" }
+    $color = if ($result.Failed -gt 0 -or $failedProjects -contains $result.Project) { "Red" }
+             elseif ($result.Total -eq 0) { "Yellow" }
+             else { "Green" }
     Write-ColorOutput $line $color
 }
 Write-Output "--------------------------------------------------------------------------------"
