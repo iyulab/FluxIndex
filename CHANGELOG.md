@@ -23,6 +23,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 - `QdrantOptions.ScrollPageSize` (default `256`) — bounds the size of a scroll response. A value
   below 1 is rejected at construction rather than silently substituted.
 
+  > ⚠️ **If you mock `IVectorStore` in your tests, stub `GetChunkIdsByDocumentIdAsync` too.** The
+  > default implementation makes this additive for real stores, but a mocking framework intercepts
+  > the member instead of running the default — so a substitute that stubs only
+  > `GetByDocumentIdAsync` returns an empty id list here, and any delete path driven by it silently
+  > stops deleting. This repository's own test harnesses hit exactly that; four suites needed the
+  > extra stub.
+
 ### Fixed
 - **Reading a document from Qdrant no longer fails once its chunks exceed the gRPC receive limit.**
   `GetByDocumentIdAsync` issued a single unpaged scroll with `limit: 10000`, requesting full payload
