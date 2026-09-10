@@ -84,7 +84,11 @@ if ($staleEntries.Count -gt 0) {
 # "Category!=A&Category!=B" filter syntax. --hangdump/--hangdump-timeout is the equivalent of
 # --blame-hang. --coverlet/--coverlet-output-format is coverlet.MTP's equivalent of
 # --collect:"XPlat Code Coverage" (coverlet.collector) — BD-20260829-xunit-v3-pilot.
-$testArgs = @("test", "--verbosity", $Verbosity, "--configuration", $Configuration, "--filter-not-trait", "Category=Integration", "--filter-not-trait", "Category=Performance", "--hangdump", "--hangdump-timeout", "5m")
+# --no-ansi because the counts below are read out of this output. MTP colours the summary, and it
+# colours only the non-zero numbers - "succeeded: 0" arrives bare while "succeeded: 1809" arrives as
+# "<esc>[32m  succeeded: 1809". A parser anchored at the start of the line can therefore read zero
+# and nothing else, which is the one value that makes the zero-tests guard below fire.
+$testArgs = @("test", "--verbosity", $Verbosity, "--configuration", $Configuration, "--filter-not-trait", "Category=Integration", "--filter-not-trait", "Category=Performance", "--hangdump", "--hangdump-timeout", "5m", "--no-ansi")
 if ($NoBuild)  { $testArgs += "--no-build" }
 if ($Coverage) { $testArgs += "--coverlet"; $testArgs += "--coverlet-output-format"; $testArgs += "cobertura" }
 
@@ -112,11 +116,31 @@ foreach ($project in $testProjects) {
     # "total:"/"failed:"/"succeeded:"/"skipped:" lines), unlike VSTest's single combined line —
     # BD-20260829-xunit-v3-pilot.
     $passed = 0; $failed = 0; $skipped = 0; $total = 0
+    $sawSummary = $false; $readTotal = $false
     foreach ($line in $testOutput) {
-        if ($line -match "^\s*total:\s+(\d+)\s*$")     { $total = [int]$matches[1] }
+        if ($line -match "Test run summary:")          { $sawSummary = $true }
+        if ($line -match "^\s*total:\s+(\d+)\s*$")     { $total = [int]$matches[1]; $readTotal = $true }
         elseif ($line -match "^\s*failed:\s+(\d+)\s*$")    { $failed = [int]$matches[1] }
         elseif ($line -match "^\s*succeeded:\s+(\d+)\s*$") { $passed = [int]$matches[1] }
         elseif ($line -match "^\s*skipped:\s+(\d+)\s*$")   { $skipped = [int]$matches[1] }
+    }
+
+    # "I could not read the counts" and "the counts were zero" are different facts, and only the
+    # second one means anything about the tests. Collapsing the first into the second is how a
+    # parsing bug arrives disguised as a vanished suite: this script did exactly that once, reading
+    # zero out of a run that had just printed 1809 passed.
+    if ($sawSummary -and -not $readTotal) {
+        Write-ColorOutput "Result: COULD NOT READ THE TEST COUNTS" "Red"
+        Write-Output "MTP printed a summary for $projectName but no 'total:' line matched. The counts"
+        Write-Output "below are not measurements - do not read them as one. Check the summary format"
+        Write-Output "against this script's parser before trusting any run."
+        $failedProjects += $projectName
+        $allResults += [PSCustomObject]@{
+            Project = $projectName
+            Passed = 0; Failed = 0; Skipped = 0; Total = 0
+            ExitCode = $exitCode
+        }
+        continue
     }
 
     $allResults += [PSCustomObject]@{
