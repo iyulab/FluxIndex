@@ -109,6 +109,11 @@ public partial class QuantizedVectorStoreDecorator : IQuantizedVectorStore
     public Task<IEnumerable<DocumentChunk>> GetChunksByIdsAsync(IEnumerable<string> ids, CancellationToken cancellationToken = default)
         => _innerStore.GetChunksByIdsAsync(ids, cancellationToken);
 
+    // Forwarded rather than left to the interface default: the default would derive ids from
+    // GetByDocumentIdAsync, discarding the inner store's ability to fetch ids alone.
+    public Task<IReadOnlyList<string>> GetChunkIdsByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default)
+        => _innerStore.GetChunkIdsByDocumentIdAsync(documentId, cancellationToken);
+
     public Task<IEnumerable<DocumentChunk>> SearchAsync(
         float[] queryEmbedding,
         int topK = 10,
@@ -125,13 +130,14 @@ public partial class QuantizedVectorStoreDecorator : IQuantizedVectorStore
 
     public async Task<bool> DeleteByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default)
     {
-        // Get all chunk IDs for this document to remove quantized embeddings
-        var chunks = await _innerStore.GetByDocumentIdAsync(documentId, cancellationToken);
-        foreach (var chunk in chunks)
+        // Get all chunk IDs for this document to remove quantized embeddings. Only the ids are used,
+        // so the content and vectors GetByDocumentIdAsync would carry are pure overhead here.
+        var chunkIds = await _innerStore.GetChunkIdsByDocumentIdAsync(documentId, cancellationToken);
+        foreach (var chunkId in chunkIds)
         {
-            if (chunk.Id != null)
+            if (chunkId != null)
             {
-                _quantizedEmbeddings.TryRemove(chunk.Id, out _);
+                _quantizedEmbeddings.TryRemove(chunkId, out _);
             }
         }
         return await _innerStore.DeleteByDocumentIdAsync(documentId, cancellationToken);

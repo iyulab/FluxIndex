@@ -35,6 +35,18 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
         ILogger<QdrantVectorStore> logger)
     {
         _options = options.Value;
+
+        // A non-positive page size would make every scroll either return nothing or never advance.
+        // Rejecting it here names the misconfiguration; absorbing it would surface later as an empty
+        // collection or a hang.
+        if (_options.ScrollPageSize < 1)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(options),
+                _options.ScrollPageSize,
+                $"{nameof(QdrantOptions)}.{nameof(QdrantOptions.ScrollPageSize)} must be at least 1.");
+        }
+
         _logger = logger;
         _client = CreateClient();
     }
@@ -463,31 +475,83 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
     {
         await EnsureCollectionAsync(cancellationToken);
 
-        var filter = new Filter
-        {
-            Must =
+        var points = await ScrollAllAsync(
+            DocumentIdFilter(documentId),
+            new WithPayloadSelector { Enable = true },
+            new WithVectorsSelector { Enable = true },
+            cancellationToken);
+
+        return points.Select(MapPointToChunk).ToList();
+    }
+
+    /// <summary>
+    /// Returns the ids of every chunk belonging to a document, without fetching their content or
+    /// vectors.
+    /// </summary>
+    /// <remarks>
+    /// The caller that needs this - resolving which points to delete - consumes only the ids, so
+    /// requesting the full payload made the response orders of magnitude larger than the information
+    /// used. Only the chunk-id payload field is selected, and vectors are excluded entirely.
+    /// </remarks>
+    public async Task<IReadOnlyList<string>> GetChunkIdsByDocumentIdAsync(
+        string documentId,
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureCollectionAsync(cancellationToken);
+
+        var points = await ScrollAllAsync(
+            DocumentIdFilter(documentId),
+            new WithPayloadSelector
             {
-                new Condition
+                Include = new PayloadIncludeSelector { Fields = { ChunkIdPayloadKey } }
+            },
+            new WithVectorsSelector { Enable = false },
+            cancellationToken);
+
+        return points
+            .Select(p => ChunkIdFromPayload(p.Payload) ?? p.Id.Uuid)
+            .ToList();
+    }
+
+    private static Filter DocumentIdFilter(string documentId) => new()
+    {
+        Must =
+        {
+            new Condition
+            {
+                Field = new FieldCondition
                 {
-                    Field = new FieldCondition
-                    {
-                        Key = "document_id",
-                        Match = new Match { Keyword = documentId }
-                    }
+                    Key = "document_id",
+                    Match = new Match { Keyword = documentId }
                 }
             }
-        };
+        }
+    };
 
-        var scrollResponse = await _client.ScrollAsync(
-            collectionName: _resolvedCollectionName!,
-            filter: filter,
-            limit: 10000,
-            payloadSelector: new WithPayloadSelector { Enable = true },
-            vectorsSelector: new WithVectorsSelector { Enable = true },
-            cancellationToken: cancellationToken);
+    /// <summary>
+    /// Scrolls the resolved collection to completion, bounded by
+    /// <see cref="QdrantOptions.ScrollPageSize"/> per response rather than by the size of the data.
+    /// </summary>
+    private Task<List<RetrievedPoint>> ScrollAllAsync(
+        Filter? filter,
+        WithPayloadSelector payloadSelector,
+        WithVectorsSelector vectorsSelector,
+        CancellationToken cancellationToken)
+        => QdrantScroll.AllPagesAsync<RetrievedPoint>(
+            async (offset, ct) =>
+            {
+                var response = await _client.ScrollAsync(
+                    collectionName: _resolvedCollectionName!,
+                    filter: filter,
+                    limit: (uint)_options.ScrollPageSize,
+                    payloadSelector: payloadSelector,
+                    vectorsSelector: vectorsSelector,
+                    offset: offset,
+                    cancellationToken: ct);
 
-        return scrollResponse.Result.Select(MapPointToChunk);
-    }
+                return (response.Result, response.NextPageOffset);
+            },
+            cancellationToken);
 
     public async Task<IEnumerable<DocumentChunk>> GetChunksByIdsAsync(
         IEnumerable<string> ids,
@@ -885,33 +949,22 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
     {
         await EnsureCollectionAsync(cancellationToken);
 
-        var documentIds = new HashSet<string>();
-        PointId? nextOffset = null;
-
-        do
-        {
-            var scrollResponse = await _client.ScrollAsync(
-                collectionName: _resolvedCollectionName!,
-                filter: null,
-                limit: 1000,
-                payloadSelector: new WithPayloadSelector
-                {
-                    Include = new PayloadIncludeSelector { Fields = { "document_id" } }
-                },
-                vectorsSelector: new WithVectorsSelector { Enable = false },
-                offset: nextOffset,
-                cancellationToken: cancellationToken);
-
-            foreach (var point in scrollResponse.Result)
+        var points = await ScrollAllAsync(
+            filter: null,
+            new WithPayloadSelector
             {
-                var docId = GetPayloadString(point.Payload, "document_id");
-                if (!string.IsNullOrEmpty(docId))
-                    documentIds.Add(docId);
-            }
+                Include = new PayloadIncludeSelector { Fields = { "document_id" } }
+            },
+            new WithVectorsSelector { Enable = false },
+            cancellationToken);
 
-            nextOffset = scrollResponse.NextPageOffset;
+        var documentIds = new HashSet<string>();
+        foreach (var point in points)
+        {
+            var docId = GetPayloadString(point.Payload, "document_id");
+            if (!string.IsNullOrEmpty(docId))
+                documentIds.Add(docId);
         }
-        while (nextOffset != null);
 
         return documentIds.Count;
     }

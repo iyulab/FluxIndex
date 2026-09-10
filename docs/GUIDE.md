@@ -360,7 +360,23 @@ When multiple providers support the same capability:
 >     o.Host = "localhost"; o.GrpcPort = 6334; o.BaseCollectionName = "chunks";
 >     o.CreateCollectionOnStartup = true; // default is already true → auto-creates collections
 >     o.FailOnCollectionMismatch = false;  // default; see below
+>     o.ScrollPageSize = 256;              // default; points per scroll response, see below
 > });
+> ```
+
+> **`ScrollPageSize` bounds how much a single scroll response carries.** Reading a whole document or
+> counting distinct documents pages through the collection rather than fetching it in one call, so
+> the response size follows this setting instead of the size of the data. That matters because a gRPC
+> channel refuses any message over its receive limit (4 MB by default) with `ResourceExhausted` —
+> which is what an unpaged read of a few-MB document used to hit. Lower it when individual chunks
+> carry unusually large payloads; raise it to trade memory for round trips on small chunks.
+>
+> If you only need to know *which* chunks belong to a document — to delete a generation, or to check
+> what is indexed — use `GetChunkIdsByDocumentIdAsync` rather than `GetByDocumentIdAsync`. It fetches
+> ids alone, without content, metadata or embeddings:
+>
+> ```csharp
+> var chunkIds = await vectorStore.GetChunkIdsByDocumentIdAsync(documentId, ct);
 > ```
 
 > 🔴 **Changing the naming strategy on an existing deployment means re-indexing.**

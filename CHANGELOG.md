@@ -14,6 +14,24 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ### Added
 - `QdrantOptions.FailOnCollectionMismatch` (default `false`) — turns the new startup warning below
   into a startup failure, for deployments that would rather not start than serve empty results.
+- `IVectorStore.GetChunkIdsByDocumentIdAsync` — returns a document's chunk ids without loading their
+  content, metadata or embeddings. Callers that resolve which points belong to a document (a
+  generation to delete, an indexed-state check) used to fetch every chunk in full and discard all but
+  the id. The interface carries a default implementation deriving the ids from
+  `GetByDocumentIdAsync`, so every store answers it; Qdrant overrides it to select only the chunk-id
+  payload field and no vectors.
+- `QdrantOptions.ScrollPageSize` (default `256`) — bounds the size of a scroll response. A value
+  below 1 is rejected at construction rather than silently substituted.
+
+### Fixed
+- **Reading a document from Qdrant no longer fails once its chunks exceed the gRPC receive limit.**
+  `GetByDocumentIdAsync` issued a single unpaged scroll with `limit: 10000`, requesting full payload
+  *and* vectors, so the response grew with the document rather than with a page size. Past the
+  channel's 4 MB default the call threw `ResourceExhausted`, and `QdrantOptions` exposed no way to
+  raise the limit — an undocumented ceiling on indexable document size, reached by an ordinary
+  few-MB spreadsheet. The same call also truncated silently at 10 000 chunks. It now pages through
+  `NextPageOffset`, so response size is bounded by `ScrollPageSize` and no document is truncated.
+  A scroll whose reported next offset does not advance now throws instead of looping forever.
 
 ### Changed
 - **Qdrant now warns when it is about to serve an empty collection while a sibling of the same base

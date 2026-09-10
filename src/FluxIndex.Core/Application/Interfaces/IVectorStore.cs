@@ -18,6 +18,31 @@ public interface IVectorStore
     Task<IEnumerable<DocumentChunk>> GetChunksByIdsAsync(IEnumerable<string> ids, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Returns the ids of every chunk belonging to a document, without loading their content,
+    /// metadata or embeddings.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A caller that only needs to know *which* points belong to a document - resolving a generation
+    /// to delete, checking what is indexed - would otherwise call
+    /// <see cref="GetByDocumentIdAsync"/> and discard everything but the id. On a store that fetches
+    /// payload and vectors that is not merely wasteful: it makes the response grow with document
+    /// size, and a transport with a message-size limit turns a large document into a hard failure.
+    /// </para>
+    /// <para>
+    /// The default implementation derives the ids from <see cref="GetByDocumentIdAsync"/>, so every
+    /// store answers this correctly. Stores that can fetch ids without the rest override it.
+    /// </para>
+    /// </remarks>
+    async Task<IReadOnlyList<string>> GetChunkIdsByDocumentIdAsync(
+        string documentId,
+        CancellationToken cancellationToken = default)
+    {
+        var chunks = await GetByDocumentIdAsync(documentId, cancellationToken);
+        return chunks.Select(c => c.Id).ToList();
+    }
+
+    /// <summary>
     /// Searches for the <paramref name="topK"/> most similar chunks, optionally restricted by
     /// metadata <paramref name="filters"/>.
     /// </summary>
@@ -99,11 +124,12 @@ public interface IVectorStore
     /// Checks if any vectors exist for a given document.
     /// Used by integrity checks to detect missing embeddings.
     /// </summary>
-    Task<bool> HasVectorsForDocumentAsync(string documentId, CancellationToken cancellationToken = default)
+    async Task<bool> HasVectorsForDocumentAsync(string documentId, CancellationToken cancellationToken = default)
     {
-        // Default implementation using GetByDocumentIdAsync
-        return GetByDocumentIdAsync(documentId, cancellationToken)
-            .ContinueWith(t => t.Result.Any(), cancellationToken);
+        // Only the presence of ids matters, so this goes through the ids-only path rather than
+        // loading every chunk's content and embedding to then discard them.
+        var chunkIds = await GetChunkIdsByDocumentIdAsync(documentId, cancellationToken);
+        return chunkIds.Count > 0;
     }
 
     /// <summary>

@@ -147,6 +147,25 @@ public class QdrantOptions
     /// Connection timeout in seconds.
     /// </summary>
     public int TimeoutSeconds { get; set; } = 30;
+
+    /// <summary>
+    /// Maximum points fetched per scroll response when reading a whole document or collection.
+    /// Default: 256.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is what bounds the size of a scroll response. A gRPC channel refuses any message over its
+    /// receive limit (4 MB by default) with <c>ResourceExhausted</c>, so a document read in one
+    /// unpaged call fails once its chunks' payload grows past that - an undocumented ceiling on
+    /// indexable document size, reachable with an ordinary few-MB spreadsheet.
+    /// </para>
+    /// <para>
+    /// Lower it when individual chunks carry unusually large payloads; raise it to trade memory for
+    /// round trips on small chunks. Values below 1 are rejected at construction rather than silently
+    /// substituted, since a zero page size would scroll forever without returning anything.
+    /// </para>
+    /// </remarks>
+    public int ScrollPageSize { get; set; } = 256;
 }
 
 /// <summary>
