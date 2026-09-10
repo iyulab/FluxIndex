@@ -1,0 +1,90 @@
+# Unlists a published package version from nuget.org.
+#
+# This exists because the credential was never the blocker. Unlisting 0.28.9 sat parked for ten sessions
+# on "we do not have a nuget.org API key", checked each time by looking for it in a local shell - where it
+# has never been and does not belong. NUGET_API_KEY is a repository secret this repository's own release
+# workflow has used all along. The thing that was missing was somewhere to run the command, not the key.
+#
+# Manual dispatch only, deliberately: unlisting is outward-facing and reaches consumers, so it stays a
+# decision someone makes rather than something a schedule does. It is reversible through the nuget.org web
+# UI, which is why it is a dispatch and not a request for approval.
+#
+# What unlisting does and does not do: the version disappears from search and stops being chosen by
+# version ranges, but it remains restorable by exact version. Family members hard-pin their siblings at an
+# exact version, so unlisting one member does not break the closure for anyone already pinned to it.
+
+name: Unlist package version
+
+on:
+  workflow_dispatch:
+    inputs:
+      package_id:
+        description: 'Package id, e.g. FluxIndex.Storage.Qdrant'
+        required: true
+        type: string
+      version:
+        description: 'Version to unlist, e.g. 0.28.9'
+        required: true
+        type: string
+      reason:
+        description: 'Why this version is being withdrawn (recorded in the run log)'
+        required: true
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.package_id }}-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  unlist:
+    name: Unlist ${{ inputs.package_id }} ${{ inputs.version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      # Unlisting the version this repository is currently shipping would hide the release from every
+      # consumer resolving by range, which is never the intent of a withdrawal.
+      - name: Refuse to unlist the version currently declared
+        run: |
+          set -euo pipefail
+          declared=$(grep -oP '<Version>\K[^<]+' Directory.Build.props | head -1)
+          echo "declared version: ${declared}"
+          if [ "${declared}" = "${{ inputs.version }}" ]; then
+            echo "::error::${{ inputs.version }} is the version this repository currently declares."
+            echo "::error::Unlisting it would withdraw the current release. Bump first, or unlist an older version."
+            exit 1
+          fi
+
+      - name: Confirm the version is published and listed
+        run: |
+          set -euo pipefail
+          id_lower=$(echo "${{ inputs.package_id }}" | tr '[:upper:]' '[:lower:]')
+          if ! curl -sf "https://api.nuget.org/v3-flatcontainer/${id_lower}/index.json" \
+               | grep -q "\"${{ inputs.version }}\""; then
+            echo "::error::${{ inputs.package_id }} ${{ inputs.version }} is not on nuget.org - nothing to unlist."
+            exit 1
+          fi
+
+      - name: Unlist
+        run: |
+          echo "Reason: ${{ inputs.reason }}"
+          dotnet nuget delete "${{ inputs.package_id }}" "${{ inputs.version }}" \
+            --source https://api.nuget.org/v3/index.json \
+            --api-key "${{ secrets.NUGET_API_KEY }}" \
+            --non-interactive
+
+      # nuget.org takes a few minutes to reflect the change, so a pass here is not proof; a failure is
+      # still worth surfacing rather than reporting success on an unverified action.
+      - name: Report
+        run: |
+          echo "Unlisted ${{ inputs.package_id }} ${{ inputs.version }}."
+          echo "Search and range resolution stop offering it within a few minutes."
+          echo "It stays restorable by exact version, and can be relisted from the nuget.org web UI."
