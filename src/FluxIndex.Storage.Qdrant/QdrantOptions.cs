@@ -78,7 +78,39 @@ public class QdrantOptions
     /// - ModelFingerprint: {baseName}_{fingerprint} - auto-adapts to embedding model identity
     /// - Fixed: exact name specified - requires explicit VectorSize
     /// </summary>
+    /// <remarks>
+    /// Changing this on an existing deployment - or changing the bound embedding identity - resolves
+    /// the same logical index to a different collection name. The data already written stays in the
+    /// old collection and is not migrated: a strategy change means re-indexing, or migrating the
+    /// collection explicitly. The store warns at startup when the collection it is about to serve is
+    /// empty while a sibling of the same base name still holds points; see
+    /// <see cref="FailOnCollectionMismatch"/> to turn that warning into a startup failure.
+    /// </remarks>
     public CollectionNamingStrategy NamingStrategy { get; set; } = CollectionNamingStrategy.ModelFingerprint;
+
+    /// <summary>
+    /// Whether serving an empty collection that has populated siblings should fail startup instead of
+    /// logging a warning. Default: false.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The situation this covers is a naming change on an existing deployment (see
+    /// <see cref="NamingStrategy"/>): the store creates an empty collection, reports ready, and every
+    /// search returns zero results while the previous collection still holds the data. Nothing
+    /// throws, so the deployment looks healthy.
+    /// </para>
+    /// <para>
+    /// The default is false because an empty collection is also the ordinary state of a deployment
+    /// that simply has not indexed anything yet. A deployment that would rather not start than serve
+    /// empty results should set this to true.
+    /// </para>
+    /// <para>
+    /// A collection created during this initialization is left in place when it fails - deleting it
+    /// would put a destructive call on the startup path. The check clears itself once the collection
+    /// holds data, so nothing has to be suppressed after a deliberate re-index.
+    /// </para>
+    /// </remarks>
+    public bool FailOnCollectionMismatch { get; set; }
 
     /// <summary>
     /// Vector dimension size. Only used when NamingStrategy is Fixed.

@@ -110,6 +110,8 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
                         throw new InvalidOperationException(
                             $"Qdrant reported success creating collection '{collectionName}', but it is absent afterwards. Check Qdrant client/server version compatibility.");
                     }
+
+                    collections = afterCreate;
                 }
                 else if (!exists)
                 {
@@ -118,6 +120,15 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
                     throw new InvalidOperationException(
                         $"Qdrant collection '{collectionName}' does not exist and CreateCollectionOnStartup is disabled. Create the collection or enable auto-create.");
                 }
+
+                // Serving an empty collection while a sibling of the same base name holds data means
+                // the resolved name changed under an existing deployment (naming strategy, or the
+                // bound embedding identity). Nothing else reports it: the collection is valid and
+                // empty, so the store logs "ready" and every search returns zero results without an
+                // error. Checked on every initialization rather than only at creation, so a restart
+                // does not lose the signal - and it goes quiet by itself once the new collection has
+                // been indexed, which is why one collection per embedding model does not warn.
+                await WarnIfServingEmptyBesidePopulatedSiblingAsync(collectionName, collections, ct);
 
                 // Only update state after successful initialization
                 _resolvedCollectionName = collectionName;
@@ -141,6 +152,79 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
         {
             _initLock.Release();
         }
+    }
+
+    /// <summary>
+    /// Reports collections that could hold data written under a previous naming outcome for the same
+    /// base name, when the collection about to be served is itself empty.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The emptiness test is what keeps this precise. The harmful state is not "siblings exist" -
+    /// one collection per embedding model is exactly what <see cref="CollectionNamingStrategy.ModelFingerprint"/>
+    /// is for - it is "this store is about to serve nothing while the data sits next door". That
+    /// condition clears itself as soon as the new collection is indexed, so the warning stops without
+    /// anyone suppressing it.
+    /// </para>
+    /// <para>
+    /// Throws instead of warning when <see cref="QdrantOptions.FailOnCollectionMismatch"/> is set.
+    /// A created collection is left in place either way - deleting it would put a destructive call on
+    /// the initialization path.
+    /// </para>
+    /// </remarks>
+    private async Task WarnIfServingEmptyBesidePopulatedSiblingAsync(
+        string collectionName,
+        IReadOnlyList<string> existingCollections,
+        CancellationToken ct)
+    {
+        var siblings = QdrantCollectionSiblings.Find(
+            _options.BaseCollectionName, collectionName, existingCollections);
+
+        if (siblings.Count == 0)
+            return;
+
+        try
+        {
+            if (await _client.CountAsync(collectionName, cancellationToken: ct) > 0)
+                return;   // Serving real data; whatever the siblings hold is not this store's problem.
+        }
+        catch (Exception ex)
+        {
+            // Cannot tell whether we are empty. Saying nothing would be the silent failure this
+            // check exists to prevent, so fall through and report what the siblings hold.
+            LogSiblingCountFailed(_logger, ex, collectionName);
+        }
+
+        var counted = new List<(string Name, long? Count)>(siblings.Count);
+        foreach (var sibling in siblings)
+        {
+            try
+            {
+                counted.Add((sibling, (long)await _client.CountAsync(sibling, cancellationToken: ct)));
+            }
+            catch (Exception ex)
+            {
+                // A sibling can be mid-deletion, or unreadable with these credentials. An
+                // incomplete warning is worth more than none, so record it as unknown and continue.
+                LogSiblingCountFailed(_logger, ex, sibling);
+                counted.Add((sibling, null));
+            }
+        }
+
+        if (QdrantCollectionSiblings.DescribePopulated(counted) is not { } detail)
+            return;
+
+        if (_options.FailOnCollectionMismatch)
+        {
+            throw new InvalidOperationException(
+                $"Qdrant collection '{collectionName}' is empty, but these collections share base name " +
+                $"'{_options.BaseCollectionName}' and hold data: {detail}. This usually means the naming strategy " +
+                $"or the bound embedding identity changed, in which case the existing data will not be visible and " +
+                $"every search will return nothing. Re-index into '{collectionName}' or migrate the old collection. " +
+                $"Set FailOnCollectionMismatch to false to downgrade this to a warning.");
+        }
+
+        LogPopulatedSiblings(_logger, collectionName, _options.BaseCollectionName, detail);
     }
 
     /// <summary>
@@ -921,8 +1005,14 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Information, Message = "Qdrant collection ready: '{Collection}' (dim={Dimension}, strategy={Strategy})")]
     private static partial void LogCollectionReady(ILogger logger, string collection, int dimension, CollectionNamingStrategy strategy);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to initialize Qdrant collection '{Collection}' (assuming it exists)")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to initialize Qdrant collection '{Collection}'; the failure is propagated and the next operation retries")]
     private static partial void LogCollectionInitFailed(ILogger logger, Exception exception, string collection);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Qdrant collection '{Collection}' is empty, but these collections share base name '{BaseName}' and hold data: {Siblings}. If the naming strategy or the embedding identity changed, that data is not visible here and every search will return nothing - re-index or migrate it.")]
+    private static partial void LogPopulatedSiblings(ILogger logger, string collection, string baseName, string siblings);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Could not count points in sibling collection '{Collection}'")]
+    private static partial void LogSiblingCountFailed(ILogger logger, Exception exception, string collection);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Created Qdrant collection '{CollectionName}' with dimension {Dimension}")]
     private static partial void LogCollectionCreated(ILogger logger, string collectionName, int dimension);

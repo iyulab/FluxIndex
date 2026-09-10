@@ -359,8 +359,30 @@ When multiple providers support the same capability:
 > {
 >     o.Host = "localhost"; o.GrpcPort = 6334; o.BaseCollectionName = "chunks";
 >     o.CreateCollectionOnStartup = true; // default is already true → auto-creates collections
+>     o.FailOnCollectionMismatch = false;  // default; see below
 > });
 > ```
+
+> 🔴 **Changing the naming strategy on an existing deployment means re-indexing.**
+> `NamingStrategy` (and the bound embedding identity) decides the actual collection name —
+> `{BaseCollectionName}_{fingerprint}` under `ModelFingerprint`, the bare base name under `Fixed`.
+> Change either one and the store resolves a *different* collection: the data already written stays
+> where it was and is not migrated. Since 0.35.0 the store detects this at startup and logs a warning
+> naming the collections that still hold points:
+>
+> ```
+> Qdrant collection 'chunks_a1b2c3d4' is empty, but these collections share base name 'chunks'
+> and hold data: chunks_1024 (14950 points). If the naming strategy or the embedding identity
+> changed, that data is not visible here and every search will return nothing - re-index or
+> migrate it.
+> ```
+>
+> What it tests is that **the collection being served is empty**, not merely that siblings exist. So
+> several collections coexisting (one per embedding model — exactly what `ModelFingerprint` is for)
+> never warns; the warning survives a restart, unlike a one-shot check at creation; and it stops on
+> its own once the new collection has been indexed, with nobody having to suppress it. Set
+> `FailOnCollectionMismatch = true` to make it a startup failure instead — a created collection is
+> left in place either way, since deleting it would put a destructive call on the startup path.
 
 ### AI Services
 

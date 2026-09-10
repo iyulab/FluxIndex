@@ -9,6 +9,28 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.35.0]
+
+### Added
+- `QdrantOptions.FailOnCollectionMismatch` (default `false`) — turns the new startup warning below
+  into a startup failure, for deployments that would rather not start than serve empty results.
+
+### Changed
+- **Qdrant now warns when it is about to serve an empty collection while a sibling of the same base
+  name holds data.** Changing `CollectionNamingStrategy`, or the bound embedding identity, resolves
+  the same logical index to a different collection name. The store used to create the new (empty)
+  collection, log "ready", and return zero results for every search while the previous collection
+  still held the data — nothing threw, so the deployment looked healthy. The check is the emptiness
+  of the collection being served, not merely the existence of siblings: one collection per embedding
+  model (what `ModelFingerprint` is for) never warns, the warning survives a restart, and it stops on
+  its own once the new collection is indexed.
+- `NamingStrategy` documentation now states that changing it means re-indexing or migrating
+  explicitly; it previously said only that `ModelFingerprint` was recommended.
+- Corrected the collection-initialization failure log, which still claimed the store was "assuming it
+  exists" after that behaviour was replaced by propagating the failure.
+
+---
+
 ## [0.34.2]
 
 ### Changed
