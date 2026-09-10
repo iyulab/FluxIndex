@@ -51,7 +51,7 @@ jobs:
     # here) — BD-20260829-xunit-v3-pilot.
     - name: Run PostgreSQL integration tests
       run: >
-        dotnet test tests/FluxIndex.Storage.PostgreSQL.Tests/FluxIndex.Storage.PostgreSQL.Tests.csproj
+        dotnet test --project tests/FluxIndex.Storage.PostgreSQL.Tests/FluxIndex.Storage.PostgreSQL.Tests.csproj
         --configuration Release --no-build
         --verbosity normal
         --filter-trait "Category=Integration"
