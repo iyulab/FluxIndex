@@ -156,6 +156,17 @@ public class EntityGraphBuildOptions
     /// Whether to persist the graph to the configured graph store (Neo4j, etc.)
     /// </summary>
     public bool PersistToGraphStore { get; set; } = true;
+
+    /// <summary>
+    /// Whether a chunk whose entities are already in the graph store is reused instead of being sent
+    /// to the extractor again. Matched by chunk id (<c>GraphEntity.ChunkIds</c>): the stored entities,
+    /// their provenance and their relationships are reconstituted into the result, only the remaining
+    /// chunks are extracted, and an entity extracted again is joined to its stored counterpart
+    /// (same normalized name and type) rather than persisted a second time. Default true. Needs a
+    /// graph store; without one every chunk is extracted. A chunk that was extracted before but
+    /// yielded no entity leaves no trace in the store and is extracted again.
+    /// </summary>
+    public bool ReuseStoredExtractions { get; set; } = true;
 }
 
 /// <summary>
@@ -558,6 +569,17 @@ public class EntityGraphStats
     /// Processing time in milliseconds
     /// </summary>
     public double ProcessingTimeMs { get; init; }
+
+    /// <summary>
+    /// Number of chunks sent to the extractor in this build.
+    /// </summary>
+    public int ChunksExtracted { get; init; }
+
+    /// <summary>
+    /// Number of chunks whose stored extraction was reused instead
+    /// (<see cref="EntityGraphBuildOptions.ReuseStoredExtractions"/>).
+    /// </summary>
+    public int ChunksReused { get; init; }
 }
 
 /// <summary>

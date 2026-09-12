@@ -53,8 +53,20 @@ public partial class EntityGraphService : IEntityGraphService
             .GroupBy(c => c.Id)
             .ToDictionary(g => g.Key, g => g.First().DocumentId);
 
+        // Chunks whose extraction is already in the graph store are reconstituted from it rather
+        // than sent to the extractor again (options.ReuseStoredExtractions). Chunk ids are the join:
+        // a consumer that keys its chunks deterministically pays for extraction once per passage.
+        var reused = await LoadStoredExtractionsAsync(chunkList, options, cancellationToken);
+        var chunksToExtract = reused.CoveredChunkIds.Count == 0
+            ? chunkList
+            : chunkList.Where(c => !reused.CoveredChunkIds.Contains(c.Id)).ToList();
+        if (reused.CoveredChunkIds.Count > 0)
+        {
+            LogEntityGraphReuse(_logger, reused.CoveredChunkIds.Count, chunkList.Count, chunksToExtract.Count);
+        }
+
         // Process chunks in batches
-        var batches = chunkList
+        var batches = chunksToExtract
             .Select((chunk, index) => new { chunk, index })
             .GroupBy(x => x.index / options.BatchSize)
             .Select(g => g.Select(x => x.chunk).ToList());
@@ -141,14 +153,26 @@ public partial class EntityGraphService : IEntityGraphService
         // Convert relations to edges
         entityEdges = allRelations.Select(r => ConvertToEntityEdge(r)).ToList();
 
-        // Compute entity embeddings if enabled
+        // Fold the reconstituted graph in: a freshly extracted entity that the store already knows
+        // (same normalized name and type) joins the stored one under its id, so provenance
+        // accumulates on one entity instead of a new one being persisted per build.
+        var (mergedNodes, mergedEdges, mergedMappings, changedNodeIds) =
+            MergeWithStored(entityNodes, entityEdges, chunkMappings, reused);
+        entityNodes = mergedNodes;
+        entityEdges = mergedEdges;
+        chunkMappings = mergedMappings;
+        sourceChunkIds.AddRange(chunkList.Select(c => c.Id).Where(reused.CoveredChunkIds.Contains).Distinct());
+
+        // Compute entity embeddings if enabled — only for nodes that do not carry one already.
         if (options.ComputeEntityEmbeddings && _embeddingService != null)
         {
             await ComputeEntityEmbeddingsAsync(entityNodes, cancellationToken);
         }
 
         // Compute statistics
-        var stats = ComputeGraphStats(entityNodes, entityEdges, stopwatch.Elapsed.TotalMilliseconds);
+        var stats = ComputeGraphStats(
+            entityNodes, entityEdges, stopwatch.Elapsed.TotalMilliseconds,
+            chunksExtracted: chunksToExtract.Count, chunksReused: reused.CoveredChunkIds.Count);
 
         var entityGraphResult = new EntityGraphResult
         {
@@ -159,10 +183,16 @@ public partial class EntityGraphService : IEntityGraphService
             Stats = stats
         };
 
-        // Persist to graph store if available
+        // Persist to graph store if available — only the entities this build created or joined and
+        // the relations it extracted; what was merely reconstituted is already there.
         if (_graphStore != null && options.PersistToGraphStore)
         {
-            await PersistGraphAsync(entityGraphResult, cancellationToken);
+            await PersistCoreAsync(
+                entityNodes.Where(n => changedNodeIds.Contains(n.Id)).ToList(),
+                entityEdges.Where(e => !reused.EdgeIds.Contains(e.Id)).ToList(),
+                chunkMappings,
+                reused.EntitiesById,
+                cancellationToken);
         }
 
         stopwatch.Stop();
@@ -176,7 +206,24 @@ public partial class EntityGraphService : IEntityGraphService
     /// </summary>
     /// <param name="graph">The entity graph to persist.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    public async Task PersistGraphAsync(EntityGraphResult graph, CancellationToken cancellationToken = default)
+    public Task PersistGraphAsync(EntityGraphResult graph, CancellationToken cancellationToken = default)
+        => PersistCoreAsync(graph.Entities, graph.Relations, graph.ChunkMappings, EmptyStoredEntities, cancellationToken);
+
+    private static readonly IReadOnlyDictionary<string, GraphEntity> EmptyStoredEntities = new Dictionary<string, GraphEntity>();
+
+    /// <summary>
+    /// Writes entities and relations to the graph store. <paramref name="storedById"/> holds the
+    /// entities that were reconstituted from the store for this build: a node that is one of them is
+    /// written back with its stored provenance kept — this build only knows the chunks in its own
+    /// scope, and replacing the stored lists with that would drop every other document the entity
+    /// appears in.
+    /// </summary>
+    private async Task PersistCoreAsync(
+        IReadOnlyList<EntityNode> entities,
+        IReadOnlyList<EntityEdge> relations,
+        IReadOnlyList<EntityChunkMapping> chunkMappings,
+        IReadOnlyDictionary<string, GraphEntity> storedById,
+        CancellationToken cancellationToken)
     {
         if (_graphStore == null)
         {
@@ -184,12 +231,12 @@ public partial class EntityGraphService : IEntityGraphService
             return;
         }
 
-        LogEntityGraph5(_logger, graph.Entities.Count, graph.Relations.Count);
+        LogEntityGraph5(_logger, entities.Count, relations.Count);
 
         // Provenance rides on the chunk mappings; the store's scoped queries
         // (GetEntitiesByChunkIdsAsync, document scoping) match on these two lists,
         // so an entity stored without them can never be found by scope.
-        var provenanceByEntity = graph.ChunkMappings
+        var provenanceByEntity = chunkMappings
             .GroupBy(m => m.EntityId)
             .ToDictionary(
                 g => g.Key,
@@ -198,23 +245,35 @@ public partial class EntityGraphService : IEntityGraphService
                     DocumentIds: (IReadOnlyList<string>)g.Select(m => m.DocumentId).Where(id => id.Length > 0).Distinct().ToList()));
 
         // Convert EntityNodes to GraphEntities and store
-        var graphEntities = graph.Entities.Select(e =>
+        var graphEntities = entities.Select(e =>
         {
             var provenance = provenanceByEntity.GetValueOrDefault(e.Id);
+            var stored = storedById.GetValueOrDefault(e.Id);
+            IReadOnlyList<string> chunkIds = provenance.ChunkIds ?? [];
+            IReadOnlyList<string> documentIds = provenance.DocumentIds ?? [];
+            if (stored != null)
+            {
+                chunkIds = chunkIds.Union(stored.ChunkIds).ToList();
+                documentIds = documentIds.Union(stored.DocumentIds).ToList();
+            }
+
             return new GraphEntity
             {
                 Id = e.Id,
                 Name = e.Name,
                 NormalizedName = e.NormalizedName,
                 Type = e.Type,
+                SurfaceForms = e.SurfaceForms,
+                Description = stored?.Description,
                 Confidence = e.Confidence,
                 ImportanceScore = e.ImportanceScore,
                 MentionCount = e.MentionCount,
-                Embedding = e.Embedding,
-                ChunkIds = provenance.ChunkIds ?? [],
-                DocumentIds = provenance.DocumentIds ?? [],
+                Embedding = e.Embedding ?? stored?.Embedding,
+                ChunkIds = chunkIds,
+                DocumentIds = documentIds,
                 ExternalLinks = e.ExternalLinks,
-                Properties = e.Properties
+                Properties = e.Properties,
+                CreatedAt = stored?.CreatedAt ?? DateTimeOffset.UtcNow
             };
         }).ToList();
 
@@ -224,7 +283,7 @@ public partial class EntityGraphService : IEntityGraphService
         }
 
         // Convert EntityEdges to GraphRelationships and store
-        var relationships = graph.Relations.Select(r => new GraphRelationship
+        var relationships = relations.Select(r => new GraphRelationship
         {
             Id = r.Id,
             SourceEntityId = r.SourceEntityId,
@@ -703,6 +762,178 @@ public partial class EntityGraphService : IEntityGraphService
 
     #region Private Methods
 
+    /// <summary>What the store already holds for a build's chunks, in the shapes the build produces.</summary>
+    private sealed record StoredExtractions(
+        HashSet<string> CoveredChunkIds,
+        List<EntityNode> Nodes,
+        List<EntityChunkMapping> Mappings,
+        List<EntityEdge> Edges,
+        HashSet<string> EdgeIds,
+        IReadOnlyDictionary<string, GraphEntity> EntitiesById)
+    {
+        public static readonly StoredExtractions None = new([], [], [], [], [], new Dictionary<string, GraphEntity>());
+    }
+
+    private async Task<StoredExtractions> LoadStoredExtractionsAsync(
+        List<DocumentChunk> chunkList,
+        EntityGraphBuildOptions options,
+        CancellationToken cancellationToken)
+    {
+        if (_graphStore == null || !options.ReuseStoredExtractions || chunkList.Count == 0)
+        {
+            return StoredExtractions.None;
+        }
+
+        var chunkLookup = chunkList
+            .GroupBy(c => c.Id)
+            .ToDictionary(g => g.Key, g => g.First());
+        var stored = await _graphStore.GetEntitiesByChunkIdsAsync(chunkLookup.Keys, cancellationToken);
+        if (stored.Count == 0)
+        {
+            return StoredExtractions.None;
+        }
+
+        var entitiesById = new Dictionary<string, GraphEntity>();
+        foreach (var entity in stored)
+        {
+            entitiesById.TryAdd(entity.Id, entity);
+        }
+
+        var covered = entitiesById.Values
+            .SelectMany(e => e.ChunkIds)
+            .Where(chunkLookup.ContainsKey)
+            .ToHashSet();
+        var nodes = entitiesById.Values.Select(StoredGraphConversions.ToEntityNode).ToList();
+        var mappings = entitiesById.Values
+            .SelectMany(e => StoredGraphConversions.ToChunkMappings(e, chunkLookup))
+            .ToList();
+
+        var edges = new List<EntityEdge>();
+        var edgeIds = new HashSet<string>();
+        if (options.ExtractRelations)
+        {
+            foreach (var entityId in entitiesById.Keys)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var relationships = await _graphStore.GetRelationshipsAsync(entityId, TraversalDirection.Both, cancellationToken);
+                foreach (var relationship in relationships)
+                {
+                    if (!entitiesById.ContainsKey(relationship.SourceEntityId) || !entitiesById.ContainsKey(relationship.TargetEntityId))
+                        continue;
+                    if (edgeIds.Add(relationship.Id))
+                        edges.Add(StoredGraphConversions.ToEntityEdge(relationship));
+                }
+            }
+        }
+
+        return new StoredExtractions(covered, nodes, mappings, edges, edgeIds, entitiesById);
+    }
+
+    /// <summary>
+    /// Joins the freshly built graph to the reconstituted one. A new node whose normalized name and
+    /// type match a stored node takes the stored id (its mappings and edges follow); every other node
+    /// is kept as built. Returns the ids of the nodes this build created or changed — what has to be
+    /// written back.
+    /// </summary>
+    private static (List<EntityNode> Nodes, List<EntityEdge> Edges, List<EntityChunkMapping> Mappings, HashSet<string> ChangedNodeIds)
+        MergeWithStored(
+            List<EntityNode> newNodes,
+            List<EntityEdge> newEdges,
+            List<EntityChunkMapping> newMappings,
+            StoredExtractions reused)
+    {
+        if (reused.Nodes.Count == 0)
+        {
+            return (newNodes, newEdges, newMappings, newNodes.Select(n => n.Id).ToHashSet());
+        }
+
+        var storedByKey = new Dictionary<(string NormalizedName, NamedEntityType Type), EntityNode>();
+        foreach (var storedNode in reused.Nodes)
+        {
+            storedByKey.TryAdd((storedNode.NormalizedName, storedNode.Type), storedNode);
+        }
+
+        var merged = new Dictionary<string, EntityNode>();
+        foreach (var storedNode in reused.Nodes)
+        {
+            merged[storedNode.Id] = storedNode;
+        }
+
+        var idMap = new Dictionary<string, string>();
+        var changed = new HashSet<string>();
+        foreach (var node in newNodes)
+        {
+            if (storedByKey.TryGetValue((node.NormalizedName, node.Type), out var storedNode))
+            {
+                idMap[node.Id] = storedNode.Id;
+                var current = merged[storedNode.Id];
+                merged[storedNode.Id] = new EntityNode
+                {
+                    Id = current.Id,
+                    Name = current.Name,
+                    NormalizedName = current.NormalizedName,
+                    Type = current.Type,
+                    SurfaceForms = current.SurfaceForms.Union(node.SurfaceForms).Distinct().ToList(),
+                    Confidence = Math.Max(current.Confidence, node.Confidence),
+                    ImportanceScore = current.ImportanceScore,
+                    MentionCount = current.MentionCount + node.MentionCount,
+                    Embedding = current.Embedding,
+                    ExternalLinks = current.ExternalLinks.Count > 0 ? current.ExternalLinks : node.ExternalLinks,
+                    Properties = current.Properties
+                };
+                changed.Add(storedNode.Id);
+            }
+            else
+            {
+                merged[node.Id] = node;
+                changed.Add(node.Id);
+            }
+        }
+
+        var mappings = new List<EntityChunkMapping>(reused.Mappings);
+        foreach (var mapping in newMappings)
+        {
+            mappings.Add(idMap.TryGetValue(mapping.EntityId, out var mappedId)
+                ? new EntityChunkMapping
+                {
+                    EntityId = mappedId,
+                    ChunkId = mapping.ChunkId,
+                    DocumentId = mapping.DocumentId,
+                    MentionCount = mapping.MentionCount,
+                    Positions = mapping.Positions,
+                    RelevanceScore = mapping.RelevanceScore
+                }
+                : mapping);
+        }
+
+        var edges = new List<EntityEdge>(reused.Edges);
+        foreach (var edge in newEdges)
+        {
+            var source = idMap.GetValueOrDefault(edge.SourceEntityId, edge.SourceEntityId);
+            var target = idMap.GetValueOrDefault(edge.TargetEntityId, edge.TargetEntityId);
+            if (source == target)
+                continue;
+            edges.Add(source == edge.SourceEntityId && target == edge.TargetEntityId
+                ? edge
+                : new EntityEdge
+                {
+                    Id = edge.Id,
+                    SourceEntityId = source,
+                    TargetEntityId = target,
+                    RelationType = edge.RelationType,
+                    Label = edge.Label,
+                    Confidence = edge.Confidence,
+                    Weight = edge.Weight,
+                    IsDirectional = edge.IsDirectional,
+                    EvidenceChunkIds = edge.EvidenceChunkIds,
+                    EvidenceTexts = edge.EvidenceTexts,
+                    Properties = edge.Properties
+                });
+        }
+
+        return (merged.Values.ToList(), edges, mappings, changed);
+    }
+
     private async Task<List<(string ChunkId, List<ExtractedEntity> Entities, List<EntityRelation> Relations)>>
         ProcessChunkBatchAsync(
             List<DocumentChunk> chunks,
@@ -870,13 +1101,20 @@ public partial class EntityGraphService : IEntityGraphService
     {
         if (_embeddingService == null) return;
 
-        var texts = entities.Select(e => e.Name).ToList();
+        // Only nodes without an embedding: a node reconstituted from the store already carries one.
+        var targets = entities
+            .Select((entity, index) => (Entity: entity, Index: index))
+            .Where(t => t.Entity.Embedding == null)
+            .ToList();
+        if (targets.Count == 0) return;
+
+        var texts = targets.Select(t => t.Entity.Name).ToList();
         var embeddings = (await _embeddingService.GenerateEmbeddingsBatchAsync(texts, cancellationToken)).ToList();
 
-        for (var i = 0; i < entities.Count && i < embeddings.Count; i++)
+        for (var k = 0; k < targets.Count && k < embeddings.Count; k++)
         {
-            var entity = entities[i];
-            entities[i] = new EntityNode
+            var (entity, index) = targets[k];
+            entities[index] = new EntityNode
             {
                 Id = entity.Id,
                 Name = entity.Name,
@@ -884,8 +1122,9 @@ public partial class EntityGraphService : IEntityGraphService
                 Type = entity.Type,
                 SurfaceForms = entity.SurfaceForms,
                 Confidence = entity.Confidence,
+                ImportanceScore = entity.ImportanceScore,
                 MentionCount = entity.MentionCount,
-                Embedding = embeddings[i],
+                Embedding = embeddings[k],
                 ExternalLinks = entity.ExternalLinks,
                 Properties = entity.Properties
             };
@@ -895,7 +1134,9 @@ public partial class EntityGraphService : IEntityGraphService
     private static EntityGraphStats ComputeGraphStats(
         List<EntityNode> entities,
         List<EntityEdge> edges,
-        double processingTimeMs)
+        double processingTimeMs,
+        int chunksExtracted = 0,
+        int chunksReused = 0)
     {
         var n = entities.Count;
         var e = edges.Count;
@@ -921,7 +1162,9 @@ public partial class EntityGraphService : IEntityGraphService
             ConnectedComponents = components,
             Density = e / (double)maxEdges,
             AverageDegree = n > 0 ? 2.0 * e / n : 0,
-            ProcessingTimeMs = processingTimeMs
+            ProcessingTimeMs = processingTimeMs,
+            ChunksExtracted = chunksExtracted,
+            ChunksReused = chunksReused
         };
     }
 
@@ -1495,6 +1738,8 @@ public partial class EntityGraphService : IEntityGraphService
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Building entity graph from {ChunkCount} chunks")]
     private static partial void LogEntityGraph8(ILogger logger, int chunkCount);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Reusing stored extractions for {ReusedCount} of {ChunkCount} chunks; extracting {ExtractedCount}")]
+    private static partial void LogEntityGraphReuse(ILogger logger, int reusedCount, int chunkCount, int extractedCount);
     [LoggerMessage(Level = LogLevel.Information, Message = "Built entity graph with {EntityCount} entities and {RelationCount} relations in {ElapsedMs:F2}ms")]
     private static partial void LogEntityGraph7(ILogger logger, int entityCount, int relationCount, double elapsedMs);
     [LoggerMessage(Level = LogLevel.Warning, Message = "No graph store configured, skipping persistence")]

@@ -478,6 +478,11 @@ public partial class BM25SparseRetriever : IKeywordSearchService, IPersistableSp
 
         lock (_lockObject)
         {
+            // Indexing an id that is already indexed replaces it — the contract every keyword index
+            // shares. Without this the inverted index kept the previous postings next to the new ones
+            // and the chunk was counted twice.
+            RemoveChunkFromIndex(index, chunk.Id);
+
             // Add chunk to document index
             index.DocumentIndex[chunk.Id] = chunk;
 
@@ -686,21 +691,52 @@ public partial class BM25SparseRetriever : IKeywordSearchService, IPersistableSp
 
         lock (_lockObject)
         {
-            // Remove from document index
-            if (defaultIndex.DocumentIndex.TryRemove(chunkId, out _))
-            {
-                // Remove from inverted index
-                foreach (var kvp in defaultIndex.InvertedIndex)
-                {
-                    kvp.Value.RemoveAll(p => p.ChunkId == chunkId);
-                }
-
-                // Recalculate document count
-                defaultIndex.DocumentCount = defaultIndex.DocumentIndex.Count;
-            }
+            RemoveChunkFromIndex(defaultIndex, chunkId);
         }
 
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Removes a chunk and everything it contributed — its postings, its share of the term totals,
+    /// its length — so that the index reads as if it had never been indexed. Caller holds the lock.
+    /// </summary>
+    private static bool RemoveChunkFromIndex(BM25Index index, string chunkId)
+    {
+        if (!index.DocumentIndex.TryRemove(chunkId, out var previous))
+        {
+            return false;
+        }
+
+        var previousTokens = TokenizeContent(previous.Content);
+        foreach (var (term, frequency) in CountTermFrequencies(previousTokens))
+        {
+            if (index.InvertedIndex.TryGetValue(term, out var postings))
+            {
+                postings.RemoveAll(p => p.ChunkId == chunkId);
+                if (postings.Count == 0)
+                {
+                    index.InvertedIndex.TryRemove(term, out _);
+                }
+            }
+
+            if (index.TermFrequencies.TryGetValue(term, out var total))
+            {
+                var remaining = total - frequency;
+                if (remaining <= 0)
+                {
+                    index.TermFrequencies.TryRemove(term, out _);
+                }
+                else
+                {
+                    index.TermFrequencies[term] = remaining;
+                }
+            }
+        }
+
+        index.DocumentCount = index.DocumentIndex.Count;
+        index.TotalDocumentLength = Math.Max(0, index.TotalDocumentLength - previousTokens.Count);
+        return true;
     }
 
     /// <inheritdoc />
@@ -721,15 +757,8 @@ public partial class BM25SparseRetriever : IKeywordSearchService, IPersistableSp
 
             foreach (var chunkId in chunkIds)
             {
-                defaultIndex.DocumentIndex.TryRemove(chunkId, out _);
-
-                foreach (var kvp in defaultIndex.InvertedIndex)
-                {
-                    kvp.Value.RemoveAll(p => p.ChunkId == chunkId);
-                }
+                RemoveChunkFromIndex(defaultIndex, chunkId);
             }
-
-            defaultIndex.DocumentCount = defaultIndex.DocumentIndex.Count;
         }
 
         return Task.CompletedTask;

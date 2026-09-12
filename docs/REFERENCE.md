@@ -414,6 +414,17 @@ var results = await entityGraph.SearchByEntityAsync(entityId, new EntitySearchOp
 });
 ```
 
+**Stored extractions are reused.** With a graph store registered, `BuildEntityGraphAsync` looks up
+the entities already persisted for the chunks it is given (by chunk id) and reconstitutes them —
+entities, provenance, relationships — instead of extracting those chunks again; only chunks the
+store has nothing for go to the extractor, and an entity extracted again is joined to its stored
+counterpart (same normalized name and type) so provenance accumulates on one entity. Building the
+same chunks twice costs one round of extraction. `EntityGraphStats.ChunksReused` /
+`ChunksExtracted` say what happened; `EntityGraphBuildOptions.ReuseStoredExtractions = false`
+turns it off. This depends on chunk ids being stable across builds — a consumer that mints a fresh
+id per run reuses nothing. A chunk that was extracted before but yielded no entity leaves no trace
+and is extracted again.
+
 ### Hierarchical Summarization
 
 ```csharp

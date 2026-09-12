@@ -237,35 +237,8 @@ public partial class GraphRAGService : IGraphRAGService
         var mappings = new List<EntityChunkMapping>();
         foreach (var stored in storedEntities)
         {
-            entities.Add(new EntityNode
-            {
-                Id = stored.Id,
-                Name = stored.Name,
-                // Query-entity matching compares normalized names; an empty one would match every query.
-                NormalizedName = string.IsNullOrEmpty(stored.NormalizedName) ? stored.Name.ToLowerInvariant().Trim() : stored.NormalizedName,
-                Type = stored.Type,
-                SurfaceForms = stored.SurfaceForms.Count > 0 ? stored.SurfaceForms : [stored.Name],
-                Confidence = stored.Confidence,
-                ImportanceScore = stored.ImportanceScore,
-                MentionCount = stored.MentionCount,
-                Embedding = stored.Embedding,
-                ExternalLinks = stored.ExternalLinks,
-                Properties = stored.Properties
-            });
-
-            // Per-chunk mention counts and positions are not persisted; a reloaded mapping carries the
-            // entity's confidence as its relevance so that chunk ranking stays non-zero and comparable.
-            foreach (var chunkId in stored.ChunkIds.Where(chunkLookup.ContainsKey).Distinct())
-            {
-                mappings.Add(new EntityChunkMapping
-                {
-                    EntityId = stored.Id,
-                    ChunkId = chunkId,
-                    DocumentId = chunkLookup[chunkId].DocumentId,
-                    MentionCount = 1,
-                    RelevanceScore = stored.Confidence
-                });
-            }
+            entities.Add(StoredGraphConversions.ToEntityNode(stored));
+            mappings.AddRange(StoredGraphConversions.ToChunkMappings(stored, chunkLookup));
         }
 
         var relations = new List<EntityEdge>();
@@ -281,20 +254,7 @@ public partial class GraphRAGService : IGraphRAGService
                 {
                     if (!seen.Add(r.Id)) continue;
                     if (!loadedIds.Contains(r.SourceEntityId) || !loadedIds.Contains(r.TargetEntityId)) continue;
-                    relations.Add(new EntityEdge
-                    {
-                        Id = r.Id,
-                        SourceEntityId = r.SourceEntityId,
-                        TargetEntityId = r.TargetEntityId,
-                        RelationType = r.Type,
-                        Label = r.Label,
-                        Confidence = r.Confidence,
-                        Weight = r.Weight,
-                        IsDirectional = r.IsDirectional,
-                        EvidenceChunkIds = r.EvidenceChunkIds,
-                        EvidenceTexts = r.EvidenceTexts,
-                        Properties = r.Properties
-                    });
+                    relations.Add(StoredGraphConversions.ToEntityEdge(r));
                 }
             }
         }
