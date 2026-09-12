@@ -274,6 +274,29 @@ var scoped = await graphStore.GetEntitiesByChunkIdsAsync(documentChunkIds, ct);
 An entity linked across chunks keeps every source, so a document that mentions an entity also
 mentioned elsewhere still finds it under its own scope.
 
+### Loading a persisted index after a restart
+
+`IGraphRAGService.BuildIndexAsync` returns an in-memory `GraphRAGIndex`; the SDK `Indexer` and the
+FluxFeed vault pipeline persist what it extracts to the graph store but do not keep the instance.
+To query that graph later — in another process, or after a restart — load it back for the chunks
+you care about:
+
+```csharp
+// The chunks define the scope (typically one document's chunks, fetched from your vector store).
+var index = await graphRag.LoadIndexAsync(documentChunks, ct);
+
+var local = await graphRag.LocalSearchAsync("who are Acme's partners?", index, ct);
+foreach (var doc in local.Documents)
+    Console.WriteLine($"{doc.DocumentId}/{doc.ChunkId}: {doc.Content}");
+
+// Incremental: extend the loaded index with new chunks instead of rebuilding.
+index = await graphRag.UpdateIndexAsync(index, newChunks, cancellationToken: ct);
+```
+
+`LoadIndexAsync` needs an `IGraphStore` and reads entities by the scope's chunk ids plus the
+relationships between them. The loaded index has no community hierarchy or summaries yet, so
+`GlobalSearchAsync` on it finds nothing (it logs a warning); local and hybrid entity search work.
+
 ---
 
 ## Community Detection (Leiden Algorithm)

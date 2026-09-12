@@ -109,9 +109,29 @@ public partial class EntityGraphService : IEntityGraphService
 
         if (options.LinkEntitiesAcrossChunks)
         {
-            var (linkedNodes, updatedMappings) = LinkEntitiesAcrossChunks(allEntities, chunkMappings);
+            var (linkedNodes, updatedMappings, linkedIds) = LinkEntitiesAcrossChunks(allEntities, chunkMappings);
             entityNodes = linkedNodes;
             chunkMappings = updatedMappings;
+
+            // Relations were extracted against the per-chunk entity ids; linking replaced those ids,
+            // so the edges must follow or every one of them dangles (unreachable in traversal, and
+            // rejected by stores that enforce referential integrity). A relation whose two ends
+            // merged into the same entity is no longer a relation.
+            allRelations = allRelations
+                .Select(r => new EntityRelation
+                {
+                    Id = r.Id,
+                    SourceEntityId = linkedIds.GetValueOrDefault(r.SourceEntityId, r.SourceEntityId),
+                    TargetEntityId = linkedIds.GetValueOrDefault(r.TargetEntityId, r.TargetEntityId),
+                    Type = r.Type,
+                    Label = r.Label,
+                    Confidence = r.Confidence,
+                    IsDirectional = r.IsDirectional,
+                    SourceId = r.SourceId,
+                    Evidence = r.Evidence
+                })
+                .Where(r => r.SourceEntityId != r.TargetEntityId)
+                .ToList();
         }
         else
         {
@@ -728,7 +748,7 @@ public partial class EntityGraphService : IEntityGraphService
         return results;
     }
 
-    private static (List<EntityNode> Nodes, List<EntityChunkMapping> Mappings) LinkEntitiesAcrossChunks(
+    private static (List<EntityNode> Nodes, List<EntityChunkMapping> Mappings, Dictionary<string, string> LinkedIds) LinkEntitiesAcrossChunks(
         List<ExtractedEntity> entities,
         List<EntityChunkMapping> mappings)
     {
@@ -786,7 +806,7 @@ public partial class EntityGraphService : IEntityGraphService
             }
         }
 
-        return (linkedNodes, updatedMappings);
+        return (linkedNodes, updatedMappings, oldToNewIdMap);
     }
 
     private static string NormalizeEntityText(string text, NamedEntityType type)

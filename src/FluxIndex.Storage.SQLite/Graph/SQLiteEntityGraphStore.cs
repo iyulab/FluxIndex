@@ -610,7 +610,7 @@ public partial class SQLiteEntityGraphStore : IGraphStore
         {
             Id = entity.Id,
             Name = entity.Name,
-            NormalizedName = entity.Name.ToLowerInvariant().Trim(),
+            NormalizedName = entity.NormalizedName.Length > 0 ? entity.NormalizedName : entity.Name.ToLowerInvariant().Trim(),
             EntityType = (int)entity.Type,
             Description = entity.Description,
             Embedding = entity.Embedding != null ? VectorToBytes(entity.Embedding) : null,
@@ -633,6 +633,7 @@ public partial class SQLiteEntityGraphStore : IGraphStore
         {
             Id = dbEntity.Id,
             Name = dbEntity.Name,
+            NormalizedName = dbEntity.NormalizedName,
             Type = (NamedEntityType)dbEntity.EntityType,
             Description = dbEntity.Description,
             Embedding = dbEntity.Embedding != null ? BytesToVector(dbEntity.Embedding) : null,

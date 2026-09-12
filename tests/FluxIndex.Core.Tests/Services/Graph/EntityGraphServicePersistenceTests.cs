@@ -79,6 +79,45 @@ public class EntityGraphServicePersistenceTests
     }
 
     [Fact]
+    public async Task RelationsFollowTheLinkedEntityIds_SoNoEdgeDangles()
+    {
+        // Linking replaces per-chunk entity ids with one canonical id per entity. Relations were
+        // extracted against the per-chunk ids, so they must be re-keyed too — otherwise every edge
+        // points at ids no node has, and a store with referential integrity refuses to persist them.
+        var chunks = new List<DocumentChunk> { Chunk("c1", "doc-a", "Acme Corp partners with Globex."), Chunk("c2", "doc-a", "Globex again.") };
+        ExtractorReturns(
+            new EntityGraph
+            {
+                SourceId = "c1",
+                Entities = [Entity("e-acme-1", "Acme Corp", NamedEntityType.Organization), Entity("e-globex-1", "Globex", NamedEntityType.Organization)],
+                Relations = [new EntityRelation { SourceEntityId = "e-acme-1", TargetEntityId = "e-globex-1", Type = RelationType.RelatedTo, Label = "partners with", Confidence = 0.8 }]
+            },
+            new EntityGraph
+            {
+                SourceId = "c2",
+                Entities = [Entity("e-globex-2", "Globex", NamedEntityType.Organization)],
+                // Two surface forms of the same entity: after linking this is a self-loop and must be dropped.
+                Relations = [new EntityRelation { SourceEntityId = "e-globex-2", TargetEntityId = "e-globex-2", Type = RelationType.RelatedTo, Label = "self", Confidence = 0.5 }]
+            });
+        var stored = CaptureStoredEntities();
+        var storedRelations = new List<GraphRelationship>();
+        _store.StoreRelationshipsBatchAsync(Arg.Do<IEnumerable<GraphRelationship>>(r => storedRelations.AddRange(r)), Arg.Any<CancellationToken>())
+            .Returns(ci => Task.FromResult<IReadOnlyList<string>>(ci.Arg<IEnumerable<GraphRelationship>>().Select(r => r.Id).ToList()));
+
+        var result = await CreateService().BuildEntityGraphAsync(chunks, new EntityGraphBuildOptions { LinkEntitiesAcrossChunks = true }, TestContext.Current.CancellationToken);
+
+        var nodeIds = result.Entities.Select(e => e.Id).ToHashSet();
+        var edge = Assert.Single(result.Relations);
+        Assert.Contains(edge.SourceEntityId, nodeIds);
+        Assert.Contains(edge.TargetEntityId, nodeIds);
+        Assert.NotEqual(edge.SourceEntityId, edge.TargetEntityId);
+
+        var persisted = Assert.Single(storedRelations);
+        Assert.Contains(persisted.SourceEntityId, stored.Select(e => e.Id));
+        Assert.Contains(persisted.TargetEntityId, stored.Select(e => e.Id));
+    }
+
+    [Fact]
     public async Task ChunkMappings_CarryTheDocumentIdOfTheirChunk()
     {
         var chunks = new List<DocumentChunk> { Chunk("c1", "doc-a", "Acme Corp."), Chunk("c2", "doc-b", "Globex.") };

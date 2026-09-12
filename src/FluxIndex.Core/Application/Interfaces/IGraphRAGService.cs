@@ -110,6 +110,41 @@ public interface IGraphRAGService
         IEnumerable<DocumentChunk> newChunks,
         GraphRAGUpdateOptions? options = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reconstructs a <see cref="GraphRAGIndex"/> for the given chunks from the persisted graph store,
+    /// so that an index built (and persisted) in an earlier process can be queried and updated after a
+    /// restart. The chunks define the scope: only entities that were extracted from one of them, and
+    /// relationships between those entities, are loaded; the chunks themselves become
+    /// <see cref="GraphRAGIndex.Chunks"/>.
+    /// </summary>
+    /// <remarks>
+    /// Requires an <see cref="IGraphStore"/> to be wired; throws <see cref="InvalidOperationException"/>
+    /// otherwise. The loaded index carries the entity graph only — community hierarchy and summaries are
+    /// empty, because persisted community membership does not round-trip reliably yet; queries that
+    /// depend on them (global search) find nothing on a loaded index. An unscoped, whole-store load needs
+    /// a listing API on <see cref="IGraphStore"/> that does not exist today.
+    /// </remarks>
+    /// <param name="chunks">Chunks defining the scope of the loaded index (typically one document's chunks).</param>
+    /// <param name="options">Load options.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>An index whose entity graph was read back from the store.</returns>
+    Task<GraphRAGIndex> LoadIndexAsync(
+        IEnumerable<DocumentChunk> chunks,
+        GraphRAGLoadOptions? options = null,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Options for <see cref="IGraphRAGService.LoadIndexAsync"/>.
+/// </summary>
+public class GraphRAGLoadOptions
+{
+    /// <summary>
+    /// Whether to read the relationships between the loaded entities (one store call per entity).
+    /// Set to <c>false</c> for entity-only scopes where traversal is not needed.
+    /// </summary>
+    public bool LoadRelationships { get; set; } = true;
 }
 
 /// <summary>

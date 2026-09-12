@@ -197,6 +197,132 @@ public partial class GraphRAGService : IGraphRAGService
     }
 
     /// <inheritdoc />
+    /// <inheritdoc />
+    public async Task<GraphRAGIndex> LoadIndexAsync(
+        IEnumerable<DocumentChunk> chunks,
+        GraphRAGLoadOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (_graphStore == null)
+        {
+            throw new InvalidOperationException(
+                "LoadIndexAsync requires an IGraphStore. Register a graph store (e.g. AddNeo4jGraphStore / the SQLite or PostgreSQL entity graph store) before loading an index.");
+        }
+
+        options ??= new GraphRAGLoadOptions();
+        var sw = Stopwatch.StartNew();
+
+        var chunkList = chunks.ToList();
+        var chunkLookup = chunkList
+            .GroupBy(c => c.Id)
+            .ToDictionary(g => g.Key, g => g.First());
+        var scopeChunkIds = chunkLookup.Keys.ToList();
+
+        var storedEntities = scopeChunkIds.Count == 0
+            ? Array.Empty<GraphEntity>()
+            : await _graphStore.GetEntitiesByChunkIdsAsync(scopeChunkIds, cancellationToken);
+
+        var entities = new List<EntityNode>(storedEntities.Count);
+        var mappings = new List<EntityChunkMapping>();
+        foreach (var stored in storedEntities)
+        {
+            entities.Add(new EntityNode
+            {
+                Id = stored.Id,
+                Name = stored.Name,
+                // Query-entity matching compares normalized names; an empty one would match every query.
+                NormalizedName = string.IsNullOrEmpty(stored.NormalizedName) ? stored.Name.ToLowerInvariant().Trim() : stored.NormalizedName,
+                Type = stored.Type,
+                SurfaceForms = stored.SurfaceForms.Count > 0 ? stored.SurfaceForms : [stored.Name],
+                Confidence = stored.Confidence,
+                ImportanceScore = stored.ImportanceScore,
+                MentionCount = stored.MentionCount,
+                Embedding = stored.Embedding,
+                ExternalLinks = stored.ExternalLinks,
+                Properties = stored.Properties
+            });
+
+            // Per-chunk mention counts and positions are not persisted; a reloaded mapping carries the
+            // entity's confidence as its relevance so that chunk ranking stays non-zero and comparable.
+            foreach (var chunkId in stored.ChunkIds.Where(chunkLookup.ContainsKey).Distinct())
+            {
+                mappings.Add(new EntityChunkMapping
+                {
+                    EntityId = stored.Id,
+                    ChunkId = chunkId,
+                    DocumentId = chunkLookup[chunkId].DocumentId,
+                    MentionCount = 1,
+                    RelevanceScore = stored.Confidence
+                });
+            }
+        }
+
+        var relations = new List<EntityEdge>();
+        if (options.LoadRelationships && entities.Count > 0)
+        {
+            var loadedIds = entities.Select(e => e.Id).ToHashSet();
+            var seen = new HashSet<string>();
+            foreach (var entity in entities)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var stored = await _graphStore.GetRelationshipsAsync(entity.Id, TraversalDirection.Both, cancellationToken);
+                foreach (var r in stored)
+                {
+                    if (!seen.Add(r.Id)) continue;
+                    if (!loadedIds.Contains(r.SourceEntityId) || !loadedIds.Contains(r.TargetEntityId)) continue;
+                    relations.Add(new EntityEdge
+                    {
+                        Id = r.Id,
+                        SourceEntityId = r.SourceEntityId,
+                        TargetEntityId = r.TargetEntityId,
+                        RelationType = r.Type,
+                        Label = r.Label,
+                        Confidence = r.Confidence,
+                        Weight = r.Weight,
+                        IsDirectional = r.IsDirectional,
+                        EvidenceChunkIds = r.EvidenceChunkIds,
+                        EvidenceTexts = r.EvidenceTexts,
+                        Properties = r.Properties
+                    });
+                }
+            }
+        }
+
+        var entityGraph = new EntityGraphResult
+        {
+            Entities = entities,
+            Relations = relations,
+            ChunkMappings = mappings,
+            SourceChunkIds = scopeChunkIds,
+            Stats = new EntityGraphStats
+            {
+                TotalEntities = entities.Count,
+                TotalRelations = relations.Count,
+                EntitiesByType = entities.GroupBy(e => e.Type).ToDictionary(g => g.Key, g => g.Count()),
+                RelationsByType = relations.GroupBy(r => r.RelationType).ToDictionary(g => g.Key, g => g.Count())
+            }
+        };
+
+        sw.Stop();
+        LogGraphRAGIndexLoaded(_logger, entities.Count, relations.Count, chunkList.Count, sw.Elapsed.TotalMilliseconds);
+        LogGraphRAGLoadedWithoutCommunities(_logger);
+
+        return new GraphRAGIndex
+        {
+            EntityGraph = entityGraph,
+            CommunityHierarchy = new CommunityHierarchy { TotalChunks = chunkList.Count },
+            Summaries = new HierarchicalSummaryResult { ChunkLookup = chunkLookup },
+            Chunks = chunkLookup,
+            Stats = new GraphRAGIndexStats
+            {
+                TotalChunks = chunkList.Count,
+                TotalEntities = entities.Count,
+                TotalRelationships = relations.Count,
+                BuildTimeMs = sw.Elapsed.TotalMilliseconds
+            }
+        };
+    }
+
     public async Task<GraphRAGQueryResult> QueryAsync(
         string query,
         GraphRAGIndex index,
@@ -356,11 +482,16 @@ public partial class GraphRAGService : IGraphRAGService
             LogGraphRAG8(_logger, query);
 
         // Use entity graph service for entity-centric search
+        // MinEntityScore is the documented "minimum entity match score": the share of the query's
+        // entities a chunk actually mentions (0..1). It is applied below to that share, not to the
+        // PageRank-weighted chunk score — that one is probability mass spread over every entity in
+        // the graph, so a 0.5 floor on it filters out every chunk of any graph larger than a handful
+        // of entities.
         var entitySearchOptions = new EntitySearchOptions
         {
             TopK = options.MaxEntities,
             UsePersonalizedPageRank = true,
-            MinScore = options.MinEntityScore,
+            MinScore = 0,
             IncludeExplanation = true
         };
 
@@ -369,11 +500,14 @@ public partial class GraphRAGService : IGraphRAGService
 
         // Convert to GraphRAG document format
         var documents = entitySearchResult.Hits
+            .Where(hit => hit.EntityMatchScore >= options.MinEntityScore)
             .Select(hit => new GraphRAGDocument
             {
                 ChunkId = hit.ChunkId,
                 DocumentId = GetDocumentId(hit.ChunkId, index),
-                Content = hit.Content,
+                // Entity search works on the graph alone and never sees chunk text; the index does.
+                Content = hit.Content.Length > 0 ? hit.Content
+                    : index.Chunks.TryGetValue(hit.ChunkId, out var sourceChunk) ? sourceChunk.Content : string.Empty,
                 Score = hit.Score,
                 Source = "entity",
                 RelatedEntityIds = hit.Entities.Select(e => e.Id).ToList()
@@ -447,6 +581,9 @@ public partial class GraphRAGService : IGraphRAGService
 
         if (_logger.IsEnabled(LogLevel.Information))
             LogGraphRAG7(_logger, query);
+
+        if (index.Summaries.TotalCommunitiesSummarized == 0 && index.Summaries.SummariesByLevel.Count == 0)
+            LogGraphRAGGlobalSearchWithoutSummaries(_logger);
 
         // Use hierarchical summarization service for global search
         var globalResult = await _summarizationService.GlobalSearchAsync(
@@ -1361,6 +1498,12 @@ Provide a comprehensive answer that integrates both perspectives:";
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Building GraphRAG index for {ChunkCount} chunks")]
     private static partial void LogGraphRAG13(ILogger logger, int chunkCount);
+    [LoggerMessage(Level = LogLevel.Information, Message = "GraphRAG index loaded from graph store: {Entities} entities, {Relations} relationships for {Chunks} chunks in {TimeMs:F0}ms")]
+    private static partial void LogGraphRAGIndexLoaded(ILogger logger, int entities, int relations, int chunks, double timeMs);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Loaded GraphRAG index carries no community hierarchy or summaries; global search on it finds nothing (persisted community membership does not round-trip yet)")]
+    private static partial void LogGraphRAGLoadedWithoutCommunities(ILogger logger);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Global search on a GraphRAG index with no community summaries — nothing to rank; build the index in-process or wait for community round-trip support")]
+    private static partial void LogGraphRAGGlobalSearchWithoutSummaries(ILogger logger);
     [LoggerMessage(Level = LogLevel.Information, Message = "GraphRAG index built: {Entities} entities, {Communities} communities, {Summaries} summaries in {TimeMs:F0}ms")]
     private static partial void LogGraphRAG12(ILogger logger, int entities, int communities, int summaries, double timeMs);
     [LoggerMessage(Level = LogLevel.Debug, Message = "Persisting communities to graph store")]
