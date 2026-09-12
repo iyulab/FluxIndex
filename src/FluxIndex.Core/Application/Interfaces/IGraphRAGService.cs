@@ -120,9 +120,9 @@ public interface IGraphRAGService
     /// </summary>
     /// <remarks>
     /// Requires an <see cref="IGraphStore"/> to be wired; throws <see cref="InvalidOperationException"/>
-    /// otherwise. The loaded index carries the entity graph only — community hierarchy and summaries are
-    /// empty, because persisted community membership does not round-trip reliably yet; queries that
-    /// depend on them (global search) find nothing on a loaded index. An unscoped, whole-store load needs
+    /// otherwise. The loaded index carries the entity graph and every persisted community that groups
+    /// at least one of the chunks (with its summary, so global search works); per-chunk mention counts
+    /// and positions are not persisted and come back as defaults. An unscoped, whole-store load needs
     /// a listing API on <see cref="IGraphStore"/> that does not exist today.
     /// </remarks>
     /// <param name="chunks">Chunks defining the scope of the loaded index (typically one document's chunks).</param>

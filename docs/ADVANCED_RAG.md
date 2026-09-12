@@ -299,9 +299,13 @@ foreach (var doc in local.Documents)
 index = await graphRag.UpdateIndexAsync(index, newChunks, cancellationToken: ct);
 ```
 
-`LoadIndexAsync` needs an `IGraphStore` and reads entities by the scope's chunk ids plus the
-relationships between them. The loaded index has no community hierarchy or summaries yet, so
-`GlobalSearchAsync` on it finds nothing (it logs a warning); local and hybrid entity search work.
+`LoadIndexAsync` needs an `IGraphStore` and reads, by the scope's chunk ids, the entities, the
+relationships between them, and every persisted community that groups one of those chunks — with
+its summary, so `GlobalSearchAsync` works on the loaded index too. Per-chunk mention counts and
+positions are not persisted and come back as defaults. On the PostgreSQL and SQLite stores a
+community's chunk membership is derived from its member entities (there is no chunk column yet), so
+a community is found through the entities extracted from the scope's chunks; the Neo4j store keeps
+the chunk ids on the community node.
 
 ---
 

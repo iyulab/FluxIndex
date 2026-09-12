@@ -161,6 +161,16 @@ public interface IGraphStore
         int limit = 10,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// Gets every community that groups at least one of the given chunks — the community-side
+    /// counterpart of <see cref="GetEntitiesByChunkIdsAsync"/>, and what a chunk-scoped index load
+    /// stands on. Returned communities carry their full <see cref="GraphCommunity.ChunkIds"/>, not
+    /// only the ids that matched.
+    /// </summary>
+    Task<IReadOnlyList<GraphCommunity>> GetCommunitiesByChunkIdsAsync(
+        IEnumerable<string> chunkIds,
+        CancellationToken ct = default);
+
     #endregion
 
     #region Statistics and Maintenance
@@ -290,8 +300,22 @@ public record GraphCommunity
     /// <summary>AI-generated summary of the community</summary>
     public string? Summary { get; init; }
 
-    /// <summary>IDs of entities in this community</summary>
+    /// <summary>
+    /// IDs of the entities that belong to this community — the entities extracted from the chunks the
+    /// community groups. This is the membership the relational stores model (a member row references
+    /// an entity) and what <see cref="IGraphStore.GetCommunitiesForEntityAsync"/> answers from.
+    /// </summary>
     public IReadOnlyList<string> EntityIds { get; init; } = [];
+
+    /// <summary>
+    /// IDs of the chunks this community groups. GraphRAG communities are clusters of chunks (Leiden
+    /// over chunk embeddings); this list is what a chunk-scoped index load matches on
+    /// (<see cref="IGraphStore.GetCommunitiesByChunkIdsAsync"/>). The Neo4j store persists it as-is;
+    /// the relational stores have no column for it yet and derive it on read from the member
+    /// entities' own <see cref="GraphEntity.ChunkIds"/>, so a chunk that yielded no entity is not
+    /// reported as a member there.
+    /// </summary>
+    public IReadOnlyList<string> ChunkIds { get; init; } = [];
 
     /// <summary>Key topics/themes in this community</summary>
     public IReadOnlyList<string> Topics { get; init; } = [];

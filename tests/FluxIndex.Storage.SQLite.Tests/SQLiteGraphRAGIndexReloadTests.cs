@@ -12,10 +12,11 @@ using Xunit;
 namespace FluxIndex.Storage.SQLite.Tests;
 
 /// <summary>
-/// The consumer-facing promise of <see cref="IGraphRAGService.LoadIndexAsync"/>: an entity graph
+/// The consumer-facing promise of <see cref="IGraphRAGService.LoadIndexAsync"/>: an index built and
 /// persisted by one service instance can be loaded by a fresh one (a new process, after a restart)
-/// and queried, scoped to the chunks the consumer hands in. Persist two documents, load one, and
-/// local search must only ever answer from that one.
+/// and queried, scoped to the chunks the consumer hands in. Two documents are indexed; loading one
+/// must yield only that document's entities, relationships and communities, and both local and
+/// global search must work on what was loaded.
 /// </summary>
 public sealed class SQLiteGraphRAGIndexReloadTests : IAsyncDisposable
 {
@@ -34,9 +35,45 @@ public sealed class SQLiteGraphRAGIndexReloadTests : IAsyncDisposable
         _store = new SQLiteEntityGraphStore(_context, options, NullLogger<SQLiteEntityGraphStore>.Instance);
     }
 
-    private static DocumentChunk Chunk(string id, string documentId, string content) => new() { Id = id, DocumentId = documentId, Content = content, ChunkIndex = 0 };
+    private static DocumentChunk Chunk(string id, string documentId, string content) => new()
+    {
+        Id = id,
+        DocumentId = documentId,
+        Content = content,
+        ChunkIndex = 0,
+        Embedding = [0.1f, 0.2f, 0.3f]   // community detection only considers chunks with embeddings
+    };
 
     private static ExtractedEntity Org(string id, string text) => new() { Id = id, Text = text, Type = NamedEntityType.Organization, Confidence = 0.9 };
+
+    /// <summary>One community per document, with a summary, as a Leiden + summarisation pair would produce.</summary>
+    private static (ILeidenCommunityService Leiden, IHierarchicalSummarizationService Summaries) CommunityServicesFor(string communityId, string summaryText)
+    {
+        var leiden = Substitute.For<ILeidenCommunityService>();
+        leiden.DetectHierarchicalCommunitiesAsync(Arg.Any<IEnumerable<LeidenChunk>>(), Arg.Any<LeidenOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(ci => new CommunityHierarchy
+            {
+                Levels =
+                [
+                    new CommunityLevel
+                    {
+                        LevelIndex = 0,
+                        Communities = [new LeidenCommunity { Id = communityId, ChunkIds = ci.Arg<IEnumerable<LeidenChunk>>().Select(c => c.Id).ToList(), Cohesion = 0.8 }]
+                    }
+                ]
+            });
+        var summaries = Substitute.For<IHierarchicalSummarizationService>();
+        summaries.GenerateHierarchicalSummariesAsync(Arg.Any<CommunityHierarchy>(), Arg.Any<IEnumerable<DocumentChunk>>(), Arg.Any<HierarchicalSummarizationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(ci => new HierarchicalSummaryResult
+            {
+                SummariesByLevel = new Dictionary<int, IReadOnlyList<CommunitySummary>>
+                {
+                    [0] = [new CommunitySummary { CommunityId = communityId, Level = 0, Title = communityId, Summary = summaryText, Themes = ["partners"] }]
+                },
+                TotalCommunitiesSummarized = 1
+            });
+        return (leiden, summaries);
+    }
 
     [Fact]
     public async Task AnIndexPersistedByOneInstance_IsQueryableFromAFreshInstance_WithinTheRequestedScope()
@@ -45,7 +82,7 @@ public sealed class SQLiteGraphRAGIndexReloadTests : IAsyncDisposable
         var docA = new[] { Chunk("a1", "doc-a", "Acme Corp partners with Globex."), Chunk("a2", "doc-a", "Acme Corp is based in Springfield.") };
         var docB = new[] { Chunk("b1", "doc-b", "Initech ships widgets.") };
 
-        // --- process 1: extract + persist (extraction substituted, persistence real) ---
+        // --- process 1: extract + detect + summarise (all substituted) and persist (real) ---
         var extractor = Substitute.For<IAdvancedEntityExtractionService>();
         extractor.ExtractBatchAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EntityExtractionOptions>(), Arg.Any<CancellationToken>())
             .Returns(
@@ -58,33 +95,62 @@ public sealed class SQLiteGraphRAGIndexReloadTests : IAsyncDisposable
                 {
                     new() { SourceId = "b1", Entities = [Org("initech", "Initech")], Relations = [] }
                 });
-        var writer = new EntityGraphService(extractor, null, _store, NullLogger<EntityGraphService>.Instance);
-        await writer.BuildEntityGraphAsync(docA, cancellationToken: ct);
-        await writer.BuildEntityGraphAsync(docB, cancellationToken: ct);
+        var (leidenA, summariesA) = CommunityServicesFor("community-a", "Acme Corp and its partner Globex.");
+        var writerA = new GraphRAGService(new EntityGraphService(extractor, null, _store, NullLogger<EntityGraphService>.Instance), leidenA, summariesA, graphStore: _store, logger: NullLogger<GraphRAGService>.Instance);
+        await writerA.BuildIndexAsync(docA, cancellationToken: ct);
+        var (leidenB, summariesB) = CommunityServicesFor("community-b", "Initech and its widgets.");
+        var writerB = new GraphRAGService(new EntityGraphService(extractor, null, _store, NullLogger<EntityGraphService>.Instance), leidenB, summariesB, graphStore: _store, logger: NullLogger<GraphRAGService>.Instance);
+        await writerB.BuildIndexAsync(docB, cancellationToken: ct);
 
-        // --- process 2: a fresh service with no extraction service and no in-memory state ---
+        // --- process 2: a fresh service with no extraction, detection or summarisation state ---
+        var globalSearch = Substitute.For<IHierarchicalSummarizationService>();
+        HierarchicalSummaryResult? searched = null;
+        globalSearch.GlobalSearchAsync(Arg.Any<string>(), Arg.Do<HierarchicalSummaryResult>(s => searched = s), Arg.Any<GlobalSearchOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(ci => new GlobalSearchResult { Query = ci.Arg<string>() });
         var reader = new GraphRAGService(
             new EntityGraphService(null, null, _store, NullLogger<EntityGraphService>.Instance),
             Substitute.For<ILeidenCommunityService>(),
-            Substitute.For<IHierarchicalSummarizationService>(),
+            globalSearch,
             graphStore: _store,
             logger: NullLogger<GraphRAGService>.Instance);
 
         var index = await reader.LoadIndexAsync(docA, cancellationToken: ct);
 
+        // Entities and relationships: document A only.
         Assert.Equal(["a1", "a2"], index.Chunks.Keys.Order());
         Assert.Equal(["Acme Corp", "Globex"], index.EntityGraph.Entities.Select(e => e.Name).Order());
         Assert.DoesNotContain(index.EntityGraph.Entities, e => e.Name == "Initech");
         var edge = Assert.Single(index.EntityGraph.Relations);
         Assert.Equal(RelationType.RelatedTo, edge.RelationType);
 
-        var result = await reader.LocalSearchAsync("what do we know about acme corp", index, cancellationToken: ct);
+        // Communities: only the one that groups A's chunks, with its summary.
+        var level0 = Assert.Single(index.CommunityHierarchy.Levels);
+        var community = Assert.Single(level0.Communities);
+        Assert.Equal("community-a", community.Id);
+        Assert.Equal(["a1", "a2"], community.ChunkIds.Order());
 
-        Assert.NotEmpty(result.Documents);
-        Assert.All(result.Documents, d => Assert.Contains(d.ChunkId, new[] { "a1", "a2" }));
-        Assert.All(result.Documents, d => Assert.Equal("doc-a", d.DocumentId));
-        Assert.All(result.Documents, d => Assert.False(string.IsNullOrEmpty(d.Content), $"document {d.ChunkId} came back without its content"));
-        Assert.Contains(result.MatchedEntities, e => e.Text == "Acme Corp");
+        // Entity membership is real: the store's member rows reference the community's entities.
+        var acmeId = index.EntityGraph.Entities.Single(e => e.Name == "Acme Corp").Id;
+        var acmeCommunities = await _store.GetCommunitiesForEntityAsync(acmeId, ct);
+        Assert.Equal("community-a", Assert.Single(acmeCommunities).Id);
+        var initechCommunities = await _store.GetCommunitiesByChunkIdsAsync(["b1"], ct);
+        Assert.Equal("community-b", Assert.Single(initechCommunities).Id);
+        var summary = Assert.Single(index.Summaries.SummariesByLevel[0]);
+        Assert.Equal("Acme Corp and its partner Globex.", summary.Summary);
+
+        // Local search answers from A's chunks, with their content.
+        var local = await reader.LocalSearchAsync("what do we know about acme corp", index, cancellationToken: ct);
+        Assert.NotEmpty(local.Documents);
+        Assert.All(local.Documents, d => Assert.Contains(d.ChunkId, new[] { "a1", "a2" }));
+        Assert.All(local.Documents, d => Assert.Equal("doc-a", d.DocumentId));
+        Assert.All(local.Documents, d => Assert.False(string.IsNullOrEmpty(d.Content), $"document {d.ChunkId} came back without its content"));
+        Assert.Contains(local.MatchedEntities, e => e.Text == "Acme Corp");
+
+        // Global search receives the reloaded summaries, not an empty result.
+        await reader.GlobalSearchAsync("overview of the partners", index, cancellationToken: ct);
+        Assert.NotNull(searched);
+        Assert.Equal(1, searched!.TotalCommunitiesSummarized);
+        Assert.Equal("community-a", Assert.Single(searched.SummariesByLevel[0]).CommunityId);
     }
 
     public async ValueTask DisposeAsync()

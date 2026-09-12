@@ -791,6 +791,7 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable
                 SET c.name = $name,
                     c.summary = $summary,
                     c.entityIds = $entityIds,
+                    c.chunkIds = $chunkIds,
                     c.topics = $topics,
                     c.importanceScore = $importanceScore,
                     c.level = $level,
@@ -803,7 +804,8 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable
                 id,
                 name = community.Name,
                 summary = community.Summary,
-                entityIds = community.EntityIds.ToList(),
+                entityIds = community.EntityIds.Distinct().ToList(),
+                chunkIds = community.ChunkIds.Distinct().ToList(),
                 topics = community.Topics.ToList(),
                 importanceScore = community.ImportanceScore,
                 level = community.Level,
@@ -814,8 +816,9 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable
 
             await tx.RunAsync(query, parameters);
 
-            // Create relationships from community to its entities
-            foreach (var entityId in community.EntityIds)
+            // Entity membership as CONTAINS edges (entityIds are real entity ids; chunk membership
+            // lives only on the node since there are no chunk nodes in this graph).
+            foreach (var entityId in community.EntityIds.Distinct())
             {
                 var relQuery = $@"
                     MATCH (c:{CommunityLabel} {{id: $communityId}})
@@ -860,7 +863,8 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable
         return await session.ExecuteReadAsync(async tx =>
         {
             var query = $@"
-                MATCH (c:{CommunityLabel})-[:CONTAINS]->(e:{EntityLabel} {{id: $entityId}})
+                MATCH (c:{CommunityLabel})
+                WHERE $entityId IN coalesce(c.entityIds, [])
                 RETURN c";
 
             var cursor = await tx.RunAsync(query, new { entityId });
@@ -899,6 +903,34 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable
                 communities.Add(MapNodeToCommunity(node));
             }
 
+            return communities;
+        });
+    }
+
+    public async Task<IReadOnlyList<GraphCommunity>> GetCommunitiesByChunkIdsAsync(
+        IEnumerable<string> chunkIds,
+        CancellationToken ct = default)
+    {
+        var chunkIdList = chunkIds.Distinct().ToList();
+        if (chunkIdList.Count == 0) return [];
+
+        await using var session = await GetSessionAsync();
+        return await session.ExecuteReadAsync(async tx =>
+        {
+            // Chunk membership is the chunkIds list on the node. Nodes written before 0.36.0 carry no
+            // chunkIds (their entityIds were chunk ids under the old name), so coalesce keeps them
+            // findable; every node written since has chunkIds.
+            var query = $@"
+                MATCH (c:{CommunityLabel})
+                WHERE ANY(chunkId IN coalesce(c.chunkIds, c.entityIds, []) WHERE chunkId IN $chunkIds)
+                RETURN c";
+            var cursor = await tx.RunAsync(query, new { chunkIds = chunkIdList });
+            var communities = new List<GraphCommunity>();
+            while (await cursor.FetchAsync())
+            {
+                var node = cursor.Current["c"].As<INode>();
+                communities.Add(MapNodeToCommunity(node));
+            }
             return communities;
         });
     }
@@ -1068,7 +1100,15 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable
             Id = props["id"].As<string>(),
             Name = props["name"].As<string>(),
             Summary = props.TryGetValue("summary", out var s) ? s.As<string?>() : null,
-            EntityIds = props.TryGetValue("entityIds", out var eids) ? eids.As<List<object>>().Select(x => x.ToString()!).ToList() : [],
+            EntityIds = props.TryGetValue("entityIds", out var eids) && eids != null
+                ? eids.As<List<object>>().Select(x => x.ToString()!).ToList()
+                : [],
+            // Nodes written before 0.36.0 have no chunkIds; their entityIds were chunk ids.
+            ChunkIds = props.TryGetValue("chunkIds", out var cids) && cids != null
+                ? cids.As<List<object>>().Select(x => x.ToString()!).ToList()
+                : props.TryGetValue("entityIds", out var legacy) && legacy != null
+                    ? legacy.As<List<object>>().Select(x => x.ToString()!).ToList()
+                    : [],
             Topics = props.TryGetValue("topics", out var topics) ? topics.As<List<object>>().Select(x => x.ToString()!).ToList() : [],
             ImportanceScore = props.TryGetValue("importanceScore", out var ims) ? ims.As<double>() : 0,
             Level = props.TryGetValue("level", out var lvl) ? lvl.As<int>() : 0,

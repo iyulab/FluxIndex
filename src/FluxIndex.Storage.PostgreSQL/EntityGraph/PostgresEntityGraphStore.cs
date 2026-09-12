@@ -453,7 +453,9 @@ LIMIT 1";
 
         _context.CommunityMembers.RemoveRange(existingMembers);
 
-        foreach (var entityId in community.EntityIds)
+        // Member rows reference entities (foreign key). Chunk membership has no column here yet;
+        // it is derived on read from the member entities' chunk ids.
+        foreach (var entityId in community.EntityIds.Distinct())
         {
             _context.CommunityMembers.Add(new EntityCommunityMemberEntity
             {
@@ -473,7 +475,7 @@ LIMIT 1";
         CancellationToken ct = default)
     {
         var dbCommunity = await _context.Communities
-            .Include(c => c.Members)
+            .Include(c => c.Members).ThenInclude(m => m.Entity)
             .FirstOrDefaultAsync(c => c.Id == communityId, ct);
 
         return dbCommunity != null ? MapToGraphCommunity(dbCommunity) : null;
@@ -489,7 +491,7 @@ LIMIT 1";
             .ToListAsync(ct);
 
         var communities = await _context.Communities
-            .Include(c => c.Members)
+            .Include(c => c.Members).ThenInclude(m => m.Entity)
             .Where(c => communityIds.Contains(c.Id))
             .ToListAsync(ct);
 
@@ -501,9 +503,33 @@ LIMIT 1";
         CancellationToken ct = default)
     {
         var communities = await _context.Communities
-            .Include(c => c.Members)
+            .Include(c => c.Members).ThenInclude(m => m.Entity)
             .OrderByDescending(c => c.ImportanceScore)
             .Take(limit)
+            .ToListAsync(ct);
+
+        return communities.Select(MapToGraphCommunity).ToList();
+    }
+
+    public async Task<IReadOnlyList<GraphCommunity>> GetCommunitiesByChunkIdsAsync(
+        IEnumerable<string> chunkIds,
+        CancellationToken ct = default)
+    {
+        // No chunk column on communities yet: a chunk belongs to a community through the entities
+        // extracted from it, so go chunk ids -> entities -> member rows -> communities.
+        var entityIds = (await GetEntitiesByChunkIdsAsync(chunkIds, ct)).Select(e => e.Id).ToList();
+        if (entityIds.Count == 0) return [];
+
+        var communityIds = await _context.CommunityMembers
+            .Where(m => entityIds.Contains(m.EntityId))
+            .Select(m => m.CommunityId)
+            .Distinct()
+            .ToListAsync(ct);
+        if (communityIds.Count == 0) return [];
+
+        var communities = await _context.Communities
+            .Include(c => c.Members).ThenInclude(m => m.Entity)
+            .Where(c => communityIds.Contains(c.Id))
             .ToListAsync(ct);
 
         return communities.Select(MapToGraphCommunity).ToList();
@@ -764,7 +790,13 @@ LIMIT {options.MaxNodes}";
             ParentCommunityId = db.ParentCommunityId,
             Embedding = db.Embedding?.ToArray(),
             Topics = JsonSerializer.Deserialize<List<string>>(db.TopicsJson, _jsonOptions) ?? [],
-            EntityIds = db.Members.Select(m => m.EntityId).ToList(),
+            EntityIds = db.Members.Select(m => m.EntityId).Distinct().ToList(),
+            // Chunk membership derived from the member entities' provenance (needs Members.Entity loaded).
+            ChunkIds = db.Members
+                .Where(m => m.Entity != null)
+                .SelectMany(m => JsonSerializer.Deserialize<List<string>>(m.Entity!.ChunkIdsJson, _jsonOptions) ?? [])
+                .Distinct()
+                .ToList(),
             CreatedAt = db.CreatedAt
         };
     }

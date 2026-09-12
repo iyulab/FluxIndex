@@ -163,10 +163,20 @@ public partial class GraphRAGService : IGraphRAGService
 
         var persistedCount = 0;
 
+        // Communities are chunk clusters; the store's member rows reference entities. Derive the
+        // entity membership from the entity↔chunk mappings so both are persisted honestly.
+        var entityIdsByChunk = index.EntityGraph.ChunkMappings
+            .GroupBy(m => m.ChunkId)
+            .ToDictionary(g => g.Key, g => g.Select(m => m.EntityId).Distinct().ToList());
+
         foreach (var level in index.CommunityHierarchy.Levels)
         {
             foreach (var community in level.Communities)
             {
+                var memberEntityIds = community.ChunkIds
+                    .SelectMany(chunkId => entityIdsByChunk.GetValueOrDefault(chunkId) ?? [])
+                    .Distinct()
+                    .ToList();
                 // Find matching summary from SummariesByLevel
                 CommunitySummary? communitySummary = null;
                 if (index.Summaries.SummariesByLevel.TryGetValue(level.LevelIndex, out var levelSummaries))
@@ -179,7 +189,8 @@ public partial class GraphRAGService : IGraphRAGService
                     Id = community.Id,
                     Name = communitySummary?.Title ?? $"Community_{community.Id}",
                     Summary = communitySummary?.Summary,
-                    EntityIds = community.ChunkIds,  // ChunkIds are stored as EntityIds in graph context
+                    EntityIds = memberEntityIds,
+                    ChunkIds = community.ChunkIds,
                     Topics = communitySummary?.Themes.ToList() ?? [],
                     ImportanceScore = community.Cohesion,
                     Level = level.LevelIndex,
@@ -303,24 +314,96 @@ public partial class GraphRAGService : IGraphRAGService
             }
         };
 
+        // Communities: every persisted community that groups at least one scope chunk, rebuilt into
+        // the same hierarchy + summaries shape BuildIndexAsync produces, so global search and
+        // UpdateIndexAsync work on a loaded index exactly as on a built one.
+        var storedCommunities = scopeChunkIds.Count == 0
+            ? Array.Empty<GraphCommunity>()
+            : await _graphStore.GetCommunitiesByChunkIdsAsync(scopeChunkIds, cancellationToken);
+        var (communityHierarchy, summaries) = RebuildCommunities(storedCommunities, chunkList.Count, chunkLookup);
+
         sw.Stop();
-        LogGraphRAGIndexLoaded(_logger, entities.Count, relations.Count, chunkList.Count, sw.Elapsed.TotalMilliseconds);
-        LogGraphRAGLoadedWithoutCommunities(_logger);
+        LogGraphRAGIndexLoaded(_logger, entities.Count, relations.Count, storedCommunities.Count, chunkList.Count, sw.Elapsed.TotalMilliseconds);
+        if (entities.Count > 0 && storedCommunities.Count == 0)
+            LogGraphRAGLoadedWithoutCommunities(_logger);
 
         return new GraphRAGIndex
         {
             EntityGraph = entityGraph,
-            CommunityHierarchy = new CommunityHierarchy { TotalChunks = chunkList.Count },
-            Summaries = new HierarchicalSummaryResult { ChunkLookup = chunkLookup },
+            CommunityHierarchy = communityHierarchy,
+            Summaries = summaries,
             Chunks = chunkLookup,
             Stats = new GraphRAGIndexStats
             {
                 TotalChunks = chunkList.Count,
                 TotalEntities = entities.Count,
                 TotalRelationships = relations.Count,
+                TotalCommunities = storedCommunities.Count,
+                HierarchyLevels = communityHierarchy.LevelCount,
+                TotalSummaries = summaries.TotalCommunitiesSummarized,
                 BuildTimeMs = sw.Elapsed.TotalMilliseconds
             }
         };
+    }
+
+    private static (CommunityHierarchy Hierarchy, HierarchicalSummaryResult Summaries) RebuildCommunities(
+        IReadOnlyList<GraphCommunity> stored,
+        int totalChunks,
+        IReadOnlyDictionary<string, DocumentChunk> chunkLookup)
+    {
+        var hierarchyId = Guid.NewGuid().ToString();
+        var levels = new List<CommunityLevel>();
+        var summariesByLevel = new Dictionary<int, IReadOnlyList<CommunitySummary>>();
+        var summarised = 0;
+
+        foreach (var levelGroup in stored.GroupBy(c => c.Level).OrderBy(g => g.Key))
+        {
+            var communities = levelGroup
+                .OrderByDescending(c => c.ImportanceScore)
+                .Select((c, i) => new LeidenCommunity
+                {
+                    Id = c.Id,
+                    Index = i,
+                    ChunkIds = c.ChunkIds,
+                    Cohesion = c.ImportanceScore,
+                    ParentCommunityId = c.ParentCommunityId,
+                    Summary = c.Summary
+                })
+                .ToList();
+            levels.Add(new CommunityLevel { LevelIndex = levelGroup.Key, Communities = communities });
+
+            var levelSummaries = levelGroup
+                .Where(c => !string.IsNullOrEmpty(c.Summary))
+                .Select(c => new CommunitySummary
+                {
+                    CommunityId = c.Id,
+                    Level = c.Level,
+                    Summary = c.Summary!,
+                    Title = c.Name,
+                    Themes = c.Topics,
+                    Embedding = c.Embedding is { Length: > 0 } ? new EmbeddingVector(c.Embedding, "graph-store") : null,
+                    Confidence = 1.0,
+                    SourceChunkCount = c.ChunkIds.Count,
+                    SourceChunkIds = c.ChunkIds
+                })
+                .ToList();
+            if (levelSummaries.Count > 0)
+            {
+                summariesByLevel[levelGroup.Key] = levelSummaries;
+                summarised += levelSummaries.Count;
+            }
+        }
+
+        var hierarchy = new CommunityHierarchy { Id = hierarchyId, Levels = levels, TotalChunks = totalChunks };
+        var summaries = new HierarchicalSummaryResult
+        {
+            HierarchyId = hierarchyId,
+            SummariesByLevel = summariesByLevel,
+            TotalCommunitiesSummarized = summarised,
+            Hierarchy = hierarchy,
+            ChunkLookup = chunkLookup
+        };
+        return (hierarchy, summaries);
     }
 
     public async Task<GraphRAGQueryResult> QueryAsync(
@@ -1498,9 +1581,9 @@ Provide a comprehensive answer that integrates both perspectives:";
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Building GraphRAG index for {ChunkCount} chunks")]
     private static partial void LogGraphRAG13(ILogger logger, int chunkCount);
-    [LoggerMessage(Level = LogLevel.Information, Message = "GraphRAG index loaded from graph store: {Entities} entities, {Relations} relationships for {Chunks} chunks in {TimeMs:F0}ms")]
-    private static partial void LogGraphRAGIndexLoaded(ILogger logger, int entities, int relations, int chunks, double timeMs);
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Loaded GraphRAG index carries no community hierarchy or summaries; global search on it finds nothing (persisted community membership does not round-trip yet)")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "GraphRAG index loaded from graph store: {Entities} entities, {Relations} relationships, {Communities} communities for {Chunks} chunks in {TimeMs:F0}ms")]
+    private static partial void LogGraphRAGIndexLoaded(ILogger logger, int entities, int relations, int communities, int chunks, double timeMs);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Loaded GraphRAG index has entities but no communities for its chunks; global search on it finds nothing until the index is (re)built with community detection")]
     private static partial void LogGraphRAGLoadedWithoutCommunities(ILogger logger);
     [LoggerMessage(Level = LogLevel.Warning, Message = "Global search on a GraphRAG index with no community summaries — nothing to rank; build the index in-process or wait for community round-trip support")]
     private static partial void LogGraphRAGGlobalSearchWithoutSummaries(ILogger logger);
