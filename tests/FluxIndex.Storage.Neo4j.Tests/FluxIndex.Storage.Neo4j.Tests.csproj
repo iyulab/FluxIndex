@@ -11,6 +11,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\FluxIndex.Storage.Neo4j\FluxIndex.Storage.Neo4j.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.Core\FluxIndex.Core.csproj" />
+    <!-- Shared contract suites (Contract/*ContractSuite) live in the Core test project. -->
+    <ProjectReference Include="..\FluxIndex.Core.Tests\FluxIndex.Core.Tests.csproj" />
   </ItemGroup>
 
   <ItemGroup>

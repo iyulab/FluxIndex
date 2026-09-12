@@ -23,6 +23,8 @@
          implementation queries those relations by name. KeywordBackendDdlParityTests compares the
          two dialects' DDL, which is why this test project sees the SQLite backend. -->
     <ProjectReference Include="..\..\src\FluxIndex.Storage.SQLite\FluxIndex.Storage.SQLite.csproj" />
+    <!-- Shared contract suites (Contract/*ContractSuite) live in the Core test project. -->
+    <ProjectReference Include="..\FluxIndex.Core.Tests\FluxIndex.Core.Tests.csproj" />
   </ItemGroup>
 
 </Project>
