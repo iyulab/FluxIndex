@@ -597,8 +597,9 @@ public class SQLiteVecIntegrationTests : IAsyncLifetime
     private float[] CreateQueryEmbedding(string text)
     {
         // 실제로는 임베딩 모델을 사용하지만, 테스트에서는 텍스트 기반 의사 임베딩 생성
-        var hash = text.GetHashCode();
-        var random = new Random(Math.Abs(hash)); // 동일 텍스트는 동일 임베딩
+        // string.GetHashCode()는 프로세스마다 달라 실행 간 임베딩이 바뀐다 — 안정 해시로 시드(FluxIndex.Core.Tests.TestHash)
+        var hash = FluxIndex.Core.Tests.TestHash.Fnv1a(text);
+        var random = new Random(Math.Abs(hash)); // 동일 텍스트는 동일 임베딩 — 프로세스가 달라도
 
         var embedding = new float[384];
         for (int i = 0; i < embedding.Length; i++)

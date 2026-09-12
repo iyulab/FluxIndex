@@ -21,6 +21,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\FluxIndex.Cache.Redis\FluxIndex.Cache.Redis.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.Core\FluxIndex.Core.csproj" />
+    <!-- Shared test helpers (TestHash) — the same reference the SQLite storage tests carry. -->
+    <ProjectReference Include="..\FluxIndex.Core.Tests\FluxIndex.Core.Tests.csproj" />
   </ItemGroup>
 
 </Project>

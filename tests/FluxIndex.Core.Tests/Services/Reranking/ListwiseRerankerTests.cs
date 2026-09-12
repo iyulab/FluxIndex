@@ -630,9 +630,9 @@ public class ListwiseRerankerTests
         _mockEmbeddingService.GenerateEmbeddingAsync(
                 Arg.Any<string>(),
                 Arg.Any<CancellationToken>()).Returns(callInfo => { var text = callInfo.ArgAt<string>(0); 
-                // Generate a simple embedding based on text hash
+                // Generate a simple embedding based on a process-stable text hash (see TestHash)
                 var embedding = new float[384];
-                var hash = text.GetHashCode();
+                var hash = TestHash.Fnv1a(text);
                 for (int i = 0; i < embedding.Length; i++)
                 {
                     embedding[i] = (float)Math.Sin(hash + i) * 0.5f + 0.5f;

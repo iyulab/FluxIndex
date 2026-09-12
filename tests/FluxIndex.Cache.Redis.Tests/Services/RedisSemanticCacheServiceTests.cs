@@ -63,8 +63,9 @@ public class RedisSemanticCacheServiceTests : RedisTestBase
 
     private static float[] CreateMockEmbedding(string text)
     {
-        // Create a simple hash-based embedding for testing
-        var hash = text.GetHashCode();
+        // Create a simple hash-based embedding for testing — seeded by a process-stable hash
+        // (string.GetHashCode() differs per process, see FluxIndex.Core.Tests.TestHash)
+        var hash = FluxIndex.Core.Tests.TestHash.Fnv1a(text);
         var vector = new float[384]; // Standard embedding size
 
         // Generate deterministic vector based on text hash

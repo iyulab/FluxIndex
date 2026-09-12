@@ -506,8 +506,8 @@ public class SQLiteVecRealWorldTests : IAsyncLifetime
 
     private float[] CreateCategoryBasedEmbedding(string category)
     {
-        // 카테고리별로 일관된 임베딩 생성 (실제로는 임베딩 모델 사용)
-        var hash = category.GetHashCode();
+        // 카테고리별로 일관된 임베딩 생성 (실제로는 임베딩 모델 사용) — 프로세스 간에도 같도록 안정 해시로 시드
+        var hash = FluxIndex.Core.Tests.TestHash.Fnv1a(category);
         var random = new Random(Math.Abs(hash));
 
         var embedding = new float[384];
