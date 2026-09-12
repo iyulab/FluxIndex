@@ -91,7 +91,12 @@ public class EntityExtractionOptions
     public IReadOnlyList<NamedEntityType>? EntityTypes { get; set; }
 
     /// <summary>
-    /// Whether to use LLM for complex entity extraction
+    /// Whether to use the registered <c>ITextCompletionService</c> for entity extraction. When
+    /// <c>false</c>, or when no completion service is registered, extraction is pattern-only: the
+    /// built-in patterns cover e-mail, URL, phone, date, money, percentage, quantity and technology
+    /// terms, and recognise organisations and people from <b>Latin capitalised sequences only</b>.
+    /// On a corpus without letter case (Korean, Japanese, Chinese, ...) pattern-only extraction
+    /// therefore yields no named entities; the service logs a warning once when it runs that way.
     /// </summary>
     public bool UseLlm { get; set; } = true;
 

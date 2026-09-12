@@ -20,6 +20,7 @@ public partial class EntityExtractionService : IAdvancedEntityExtractionService
 {
     private readonly ITextCompletionService? _llmService;
     private readonly ILogger<EntityExtractionService> _logger;
+    private int _patternOnlyWarned;
 
     // Pre-compiled regex patterns for entity extraction
     private static readonly Dictionary<NamedEntityType, Regex> EntityPatterns = new()
@@ -120,6 +121,14 @@ public partial class EntityExtractionService : IAdvancedEntityExtractionService
             {
                 var llmEntities = await ExtractWithLlmAsync(content, options, cancellationToken);
                 entities.AddRange(llmEntities);
+            }
+            else if (Interlocked.Exchange(ref _patternOnlyWarned, 1) == 0)
+            {
+                // Pattern-only extraction recognises named entities by Latin capitalisation alone. On a
+                // corpus without case (Korean, Japanese, Chinese, ...) that yields no organisations or
+                // people and no error — say so once, so the operator can tell "nothing extracted" from
+                // "nothing to extract".
+                LogEntityExtractionPatternOnly(_logger);
             }
 
             // Step 4: Deduplicate and merge overlapping entities
@@ -933,6 +942,8 @@ public partial class EntityExtractionService : IAdvancedEntityExtractionService
 
     #region LoggerMessage Definitions
 
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Entity extraction is pattern-only (no ITextCompletionService registered or UseLlm=false): named entities are recognised from Latin capitalised sequences only, so a corpus without letter case yields no organisations or people")]
+    private static partial void LogEntityExtractionPatternOnly(ILogger logger);
     [LoggerMessage(Level = LogLevel.Debug, Message = "Extracted {Count} entities from content in {Time}ms (LLM: {UsedLlm})")]
     private static partial void LogEntityExtraction6(ILogger logger, int count, long time, bool usedLlm);
     [LoggerMessage(Level = LogLevel.Error, Message = "Error extracting entities from content")]

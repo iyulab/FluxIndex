@@ -234,6 +234,12 @@ foreach (var relation in graph.Relations)
 }
 ```
 
+> **Pattern-only extraction is Latin-only for named entities.** Without a registered
+> `ITextCompletionService` (or with `UseLlm = false`) the extractor relies on built-in patterns;
+> organisations and people are recognised from capitalised Latin sequences, so a Korean, Japanese
+> or Chinese corpus yields none. The service logs a warning once when it runs pattern-only. Register
+> a completion service, or plug your own extractor through `IAdvancedEntityExtractionService`.
+
 ### Entity Linking
 
 Link entities across multiple documents:
