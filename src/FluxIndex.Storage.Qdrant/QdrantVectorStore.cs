@@ -399,6 +399,14 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
 
     private PointStruct CreatePointFromChunk(DocumentChunk chunk)
     {
+        // A chunk stored without an id gets one here and reads it back from the returned ids, the
+        // same as every other store. Left empty, the point would have been keyed on the hash of ""
+        // and the caller told its id was "" - a row nobody could find or delete by id.
+        if (string.IsNullOrWhiteSpace(chunk.Id))
+        {
+            chunk.Id = Guid.NewGuid().ToString();
+        }
+
         var payload = new Dictionary<string, Value>
         {
             [ChunkIdPayloadKey] = chunk.Id,
