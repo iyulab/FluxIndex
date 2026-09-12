@@ -69,9 +69,9 @@
   </ItemGroup>
   <!-- Document Processing & Quality -->
   <ItemGroup>
-    <PackageVersion Include="FileFlux" Version="0.23.3" />
+    <PackageVersion Include="FileFlux" Version="0.23.4" />
     <PackageVersion Include="FluxCurator" Version="0.8.1" />
-    <PackageVersion Include="FluxImprover" Version="0.12.5" />
+    <PackageVersion Include="FluxImprover" Version="0.12.6" />
     <PackageVersion Include="WebFlux" Version="0.7.1" />
   </ItemGroup>
   <!-- Testing Packages (xUnit v3 / Microsoft.Testing.Platform — BD-20260829-xunit-v3-pilot rollout) -->
