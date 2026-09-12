@@ -96,8 +96,33 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore, IDisposab
             );
         }
 
+        Put(chunk);
+
+        await AutoSaveIfEnabledAsync(cancellationToken);
+        return chunk.Id;
+    }
+
+    /// <summary>
+    /// Writes <paramref name="chunk"/> under its id, replacing a chunk already stored under it —
+    /// re-storing an id is an update, not a duplicate (docs/REFERENCE.md, "Chunk identity"). The
+    /// document index follows: the id appears once under its current document, and leaves the
+    /// document it was filed under before if that changed.
+    /// </summary>
+    private void Put(DocumentChunk chunk)
+    {
         var embedding = chunk.Embedding ?? Array.Empty<float>();
-        _chunks.TryAdd(chunk.Id, (chunk, embedding));
+
+        if (_chunks.TryGetValue(chunk.Id, out var previous)
+            && !string.IsNullOrEmpty(previous.chunk.DocumentId)
+            && previous.chunk.DocumentId != chunk.DocumentId
+            && _documentChunks.TryGetValue(previous.chunk.DocumentId, out var previousIds))
+        {
+            previousIds.Remove(chunk.Id);
+            if (previousIds.Count == 0)
+                _documentChunks.TryRemove(previous.chunk.DocumentId, out _);
+        }
+
+        _chunks[chunk.Id] = (chunk, embedding);
 
         if (!string.IsNullOrEmpty(chunk.DocumentId))
         {
@@ -105,13 +130,11 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore, IDisposab
                 new List<string> { chunk.Id },
                 (key, existing) =>
                 {
-                    existing.Add(chunk.Id);
+                    if (!existing.Contains(chunk.Id))
+                        existing.Add(chunk.Id);
                     return existing;
                 });
         }
-
-        await AutoSaveIfEnabledAsync(cancellationToken);
-        return chunk.Id;
     }
 
     protected override Task<DocumentChunk?> GetCoreAsync(string id, CancellationToken cancellationToken)
@@ -280,19 +303,7 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore, IDisposab
                     chunkToStore.SetEmbedding(chunk.Embedding);
             }
 
-            var embedding = chunkToStore.Embedding ?? Array.Empty<float>();
-            _chunks.TryAdd(chunkToStore.Id, (chunkToStore, embedding));
-
-            if (!string.IsNullOrEmpty(chunkToStore.DocumentId))
-            {
-                _documentChunks.AddOrUpdate(chunkToStore.DocumentId,
-                    new List<string> { chunkToStore.Id },
-                    (key, existing) =>
-                    {
-                        existing.Add(chunkToStore.Id);
-                        return existing;
-                    });
-            }
+            Put(chunkToStore);
             results.Add(chunkToStore.Id);
         }
 

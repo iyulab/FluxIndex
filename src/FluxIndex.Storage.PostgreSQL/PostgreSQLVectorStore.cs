@@ -39,18 +39,40 @@ public class PostgreSQLVectorStore : VectorStoreBase
         var metadata = chunk.Metadata ?? new();
         metadata[ChunkStorageId.OriginalIdKey] = id;
 
-        var entity = new VectorEntity
-        {
-            Id = ChunkStorageId.ToStorageGuid(id),
-            DocumentId = chunk.DocumentId,
-            ChunkIndex = chunk.ChunkIndex,
-            Content = chunk.Content,
-            Embedding = chunk.Embedding is not null ? new Vector(chunk.Embedding.ToArray()) : new Vector(Array.Empty<float>()),
-            TokenCount = chunk.TokenCount,
-            Metadata = metadata
-        };
+        var storageId = ChunkStorageId.ToStorageGuid(id);
+        var embedding = chunk.Embedding is not null ? new Vector(chunk.Embedding.ToArray()) : new Vector(Array.Empty<float>());
 
-        _context.Vectors.Add(entity);
+        // Re-storing an id is an update, not a second row (docs/REFERENCE.md, "Chunk identity").
+        // Adding a fresh entity for a key that already exists fails twice over: a tracked instance
+        // from an earlier store in the same scope makes Add throw, and a fresh context hits the
+        // primary key. AsTracking so the edit below is what SaveChanges writes.
+        var existing = await _context.Vectors
+            .AsTracking()
+            .FirstOrDefaultAsync(v => v.Id == storageId, cancellationToken);
+
+        if (existing == null)
+        {
+            _context.Vectors.Add(new VectorEntity
+            {
+                Id = storageId,
+                DocumentId = chunk.DocumentId,
+                ChunkIndex = chunk.ChunkIndex,
+                Content = chunk.Content,
+                Embedding = embedding,
+                TokenCount = chunk.TokenCount,
+                Metadata = metadata
+            });
+        }
+        else
+        {
+            existing.DocumentId = chunk.DocumentId;
+            existing.ChunkIndex = chunk.ChunkIndex;
+            existing.Content = chunk.Content;
+            existing.Embedding = embedding;
+            existing.TokenCount = chunk.TokenCount;
+            existing.Metadata = metadata;
+        }
+
         await _context.SaveChangesAsync(cancellationToken);
         return id;
     }

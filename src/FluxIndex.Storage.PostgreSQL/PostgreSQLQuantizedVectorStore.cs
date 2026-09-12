@@ -42,18 +42,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
     {
         var chunkId = ResolveChunkId(chunk);
         var id = ChunkStorageId.ToStorageGuid(chunkId);
-        var entity = new QuantizedVectorEntity
-        {
-            Id = id,
-            DocumentId = chunk.DocumentId,
-            ChunkIndex = chunk.ChunkIndex,
-            Content = chunk.Content,
-            Embedding = chunk.Embedding != null ? new Vector(chunk.Embedding) : new Vector(Array.Empty<float>()),
-            TokenCount = chunk.TokenCount,
-            Metadata = WithOriginalId(chunk.Metadata, chunkId)
-        };
-
-        _context.Vectors.Add(entity);
+        await UpsertRowAsync(chunk, chunkId, id, cancellationToken);
 
         // Auto-quantize if enabled
         if (_options.AutoQuantizeOnStore && chunk.Embedding != null)
@@ -86,18 +75,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
             var chunkId = ResolveChunkId(chunk);
             var id = ChunkStorageId.ToStorageGuid(chunkId);
             ids.Add(chunkId);
-
-            var entity = new QuantizedVectorEntity
-            {
-                Id = id,
-                DocumentId = chunk.DocumentId,
-                ChunkIndex = chunk.ChunkIndex,
-                Content = chunk.Content,
-                Embedding = chunk.Embedding != null ? new Vector(chunk.Embedding) : new Vector(Array.Empty<float>()),
-                TokenCount = chunk.TokenCount,
-                Metadata = WithOriginalId(chunk.Metadata, chunkId)
-            };
-            _context.Vectors.Add(entity);
+            await UpsertRowAsync(chunk, chunkId, id, cancellationToken);
         }
 
         // Batch quantize
@@ -517,6 +495,54 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
     /// <summary>Chunk id the caller supplied, or a fresh one when the chunk carries none.</summary>
     private static string ResolveChunkId(DocumentChunk chunk)
         => string.IsNullOrWhiteSpace(chunk.Id) ? Guid.NewGuid().ToString() : chunk.Id;
+
+    /// <summary>
+    /// Adds the row for <paramref name="chunk"/>, or updates it when <paramref name="storageId"/>
+    /// is already stored — re-storing an id is an update, not a second row (docs/REFERENCE.md,
+    /// "Chunk identity"). On an update the previous quantized embedding is removed, since it
+    /// described the embedding that has just been replaced; the caller re-quantizes afterwards.
+    /// </summary>
+    private async Task UpsertRowAsync(DocumentChunk chunk, string chunkId, Guid storageId, CancellationToken cancellationToken)
+    {
+        var embedding = chunk.Embedding != null ? new Vector(chunk.Embedding) : new Vector(Array.Empty<float>());
+        var metadata = WithOriginalId(chunk.Metadata, chunkId);
+
+        // AsTracking: NoTracking context — the edit below must be what SaveChanges writes, and a
+        // fresh Add for an already-tracked key throws before the database is even reached.
+        var existing = await _context.Vectors
+            .AsTracking()
+            .FirstOrDefaultAsync(v => v.Id == storageId, cancellationToken);
+
+        if (existing == null)
+        {
+            _context.Vectors.Add(new QuantizedVectorEntity
+            {
+                Id = storageId,
+                DocumentId = chunk.DocumentId,
+                ChunkIndex = chunk.ChunkIndex,
+                Content = chunk.Content,
+                Embedding = embedding,
+                TokenCount = chunk.TokenCount,
+                Metadata = metadata
+            });
+            return;
+        }
+
+        existing.DocumentId = chunk.DocumentId;
+        existing.ChunkIndex = chunk.ChunkIndex;
+        existing.Content = chunk.Content;
+        existing.Embedding = embedding;
+        existing.TokenCount = chunk.TokenCount;
+        existing.Metadata = metadata;
+
+        var staleQuantized = await _context.QuantizedVectors
+            .AsTracking()
+            .FirstOrDefaultAsync(q => q.ChunkId == chunkId, cancellationToken);
+        if (staleQuantized != null)
+        {
+            _context.QuantizedVectors.Remove(staleQuantized);
+        }
+    }
 
     /// <summary>Metadata with the caller's chunk id preserved, so reads can return it.</summary>
     private static Dictionary<string, object> WithOriginalId(Dictionary<string, object>? metadata, string chunkId)

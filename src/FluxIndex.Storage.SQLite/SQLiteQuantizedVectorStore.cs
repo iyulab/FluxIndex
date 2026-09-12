@@ -60,10 +60,8 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
     {
         await EnsureInitializedAsync(cancellationToken);
 
-        var id = chunk.Id ?? Guid.NewGuid().ToString();
-        var entity = CreateVectorEntity(chunk, id);
-
-        _context.Vectors.Add(entity);
+        var id = ResolveChunkId(chunk);
+        await UpsertRowAsync(chunk, id, cancellationToken);
 
         // Auto-quantize if enabled and embedding exists
         if (_options.AutoQuantizeOnStore && chunk.Embedding != null)
@@ -95,11 +93,9 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
 
         foreach (var chunk in chunkList)
         {
-            var id = chunk.Id ?? Guid.NewGuid().ToString();
+            var id = ResolveChunkId(chunk);
             ids.Add(id);
-
-            var entity = CreateVectorEntity(chunk, id);
-            _context.Vectors.Add(entity);
+            await UpsertRowAsync(chunk, id, cancellationToken);
         }
 
         // Batch quantize if enabled
@@ -536,6 +532,46 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
     #endregion
 
     #region Private Helpers
+
+    /// <summary>Chunk id the caller supplied, or a fresh one when the chunk carries none.</summary>
+    private static string ResolveChunkId(DocumentChunk chunk)
+        => string.IsNullOrWhiteSpace(chunk.Id) ? Guid.NewGuid().ToString() : chunk.Id;
+
+    /// <summary>
+    /// Adds the row for <paramref name="chunk"/>, or updates it when <paramref name="id"/> is
+    /// already stored — re-storing an id is an update, not a second row (docs/REFERENCE.md,
+    /// "Chunk identity"). On an update the previous quantized embedding is removed, since it
+    /// described the embedding that has just been replaced; the caller re-quantizes afterwards.
+    /// </summary>
+    private async Task UpsertRowAsync(DocumentChunk chunk, string id, CancellationToken cancellationToken)
+    {
+        // AsTracking: NoTracking context — the edit below must be what SaveChanges writes, and a
+        // fresh Add for an already-tracked key throws before the database is even reached.
+        var existing = await _context.Vectors
+            .AsTracking()
+            .FirstOrDefaultAsync(v => v.Id == id, cancellationToken);
+
+        if (existing == null)
+        {
+            _context.Vectors.Add(CreateVectorEntity(chunk, id));
+            return;
+        }
+
+        existing.DocumentId = chunk.DocumentId;
+        existing.ChunkIndex = chunk.ChunkIndex;
+        existing.Content = chunk.Content;
+        existing.Embedding = chunk.Embedding?.ToArray();
+        existing.TokenCount = chunk.TokenCount;
+        existing.Metadata = chunk.Metadata ?? new Dictionary<string, object>();
+
+        var staleQuantized = await _context.QuantizedVectors
+            .AsTracking()
+            .FirstOrDefaultAsync(q => q.ChunkId == id, cancellationToken);
+        if (staleQuantized != null)
+        {
+            _context.QuantizedVectors.Remove(staleQuantized);
+        }
+    }
 
     private static QuantizedVectorEntity CreateVectorEntity(DocumentChunk chunk, string id)
     {

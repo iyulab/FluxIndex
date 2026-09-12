@@ -100,10 +100,19 @@ public class PostgreSQLVectorStoreChunkIdIntegrationTests : IAsyncLifetime
         var store = CreateStore();
 
         await store.StoreAsync(Chunk("chunk-dup"), ct);
-        var again = await store.GetAsync("chunk-dup", ct);
 
+        // The second write carries different content: the row must follow it, and there must
+        // still be exactly one row for the document. Before this stored twice, the test only
+        // stored once and so never exercised the "update, not duplicate" half of its own name.
+        var second = Chunk("chunk-dup");
+        second.Content = "the lazy dog";
+        (await store.StoreAsync(second, ct)).Should().Be("chunk-dup");
+
+        var again = await store.GetAsync("chunk-dup", ct);
         again.Should().NotBeNull();
+        again!.Content.Should().Be("the lazy dog");
         (await store.ExistsAsync("chunk-dup", ct)).Should().BeTrue();
+        (await store.GetByDocumentIdAsync("doc-1", ct)).Should().ContainSingle(c => c.Id == "chunk-dup");
     }
 
     [Fact]
@@ -170,9 +179,24 @@ public class PostgreSQLVectorStoreChunkIdIntegrationTests : IAsyncLifetime
         var returnedId = await writer.StoreAsync(Chunk("q-chunk-1"), ct);
         returnedId.Should().Be("q-chunk-1");
 
+        // Re-storing the same id through the writer is an update, not a duplicate (same contract
+        // as the unquantized store; the row and its quantized embedding both follow the new write).
+        var second = Chunk("q-chunk-1");
+        second.Content = "the lazy dog";
+        (await writer.StoreAsync(second, ct)).Should().Be("q-chunk-1");
+
         var fetched = await reader.GetAsync("q-chunk-1", ct);
         fetched.Should().NotBeNull();
         fetched!.Id.Should().Be("q-chunk-1");
+        fetched.Content.Should().Be("the lazy dog");
+        (await reader.GetByDocumentIdAsync("doc-1", ct)).Should().ContainSingle(c => c.Id == "q-chunk-1");
+
+        // The batch path is bound by the same contract.
+        var third = Chunk("q-chunk-1");
+        third.Content = "jumps over";
+        (await writer.StoreBatchAsync([third], ct)).Should().Equal("q-chunk-1");
+        (await reader.GetAsync("q-chunk-1", ct))!.Content.Should().Be("jumps over");
+        (await reader.GetByDocumentIdAsync("doc-1", ct)).Should().ContainSingle(c => c.Id == "q-chunk-1");
 
         (await reader.ExistsAsync("q-chunk-1", ct)).Should().BeTrue();
         (await reader.DeleteAsync("q-chunk-1", ct)).Should().BeTrue();
