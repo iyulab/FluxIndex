@@ -79,6 +79,8 @@ accepts only UUIDs or integers as point ids, and the PostgreSQL schema keys on `
 non-UUID id to a deterministic UUID (`ChunkStorageId.ToStorageGuid`) and keep your original id
 beside the row, so re-storing the same id is an update rather than a duplicate. An id that already
 is a UUID is used verbatim, which is what keeps collections and tables written before this readable.
+The SQLite stores key on the string itself (`vector_chunks.Id` and the vec0 `chunk_id` are TEXT), so no
+mapping is involved there; re-storing an id updates the row, its vector and its FTS5 entry.
 
 Practical consequence: you can move a corpus between SQLite, Qdrant and PostgreSQL without changing
 how your application addresses chunks. Do not derive ids yourself to "help" a backend — that

@@ -84,19 +84,36 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
     {
         await EnsureInitializedAsync(cancellationToken);
 
-        var id = Guid.NewGuid().ToString();
-        var entity = new VectorEntity
-        {
-            Id = id,
-            DocumentId = chunk.DocumentId,
-            ChunkIndex = chunk.ChunkIndex,
-            Content = chunk.Content,
-            Embedding = chunk.Embedding?.ToArray(),
-            TokenCount = chunk.TokenCount,
-            Metadata = chunk.Metadata ?? new()
-        };
+        // Honour the caller's chunk id (see SQLiteVecVectorStore.StoreCoreAsync); re-storing an id
+        // updates the row instead of adding a second one.
+        var id = string.IsNullOrWhiteSpace(chunk.Id) ? Guid.NewGuid().ToString() : chunk.Id;
+        var existing = await _context.Vectors
+            .AsTracking()
+            .FirstOrDefaultAsync(v => v.Id == id, cancellationToken);
 
-        _context.Vectors.Add(entity);
+        if (existing == null)
+        {
+            _context.Vectors.Add(new VectorEntity
+            {
+                Id = id,
+                DocumentId = chunk.DocumentId,
+                ChunkIndex = chunk.ChunkIndex,
+                Content = chunk.Content,
+                Embedding = chunk.Embedding?.ToArray(),
+                TokenCount = chunk.TokenCount,
+                Metadata = chunk.Metadata ?? new()
+            });
+        }
+        else
+        {
+            existing.DocumentId = chunk.DocumentId;
+            existing.ChunkIndex = chunk.ChunkIndex;
+            existing.Content = chunk.Content;
+            existing.Embedding = chunk.Embedding?.ToArray();
+            existing.TokenCount = chunk.TokenCount;
+            existing.Metadata = chunk.Metadata ?? new();
+        }
+
         await _context.SaveChangesAsync(cancellationToken);
         return id;
     }

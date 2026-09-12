@@ -104,30 +104,55 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             await _writeLock.WaitAsync(cancellationToken);
             try
             {
-                var id = Guid.NewGuid().ToString();
+                // Honour the caller's chunk id. Minting one here and returning it instead (what this
+                // did before) silently discarded the id every other IVectorStore implementation keeps,
+                // so a consumer that recorded the ids it wrote — to roll back a partial write, or to
+                // tie graph provenance to chunks — could never find those rows again.
+                var id = string.IsNullOrWhiteSpace(chunk.Id) ? Guid.NewGuid().ToString() : chunk.Id;
 
                 using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
 
                 try
                 {
-                    // 1. 메타데이터 저장
-                    var chunkEntity = new VectorChunkEntity
+                    // 1. 메타데이터 저장 — re-storing an id is an update, not a second row. AsTracking is
+                    // load-bearing: the context is NoTracking, so a plain query returns a detached instance
+                    // whose edits SaveChanges would never see.
+                    var existing = await _context.VectorChunks
+                        .AsTracking()
+                        .FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
+
+                    if (existing == null)
                     {
-                        Id = id,
-                        DocumentId = chunk.DocumentId,
-                        ChunkIndex = chunk.ChunkIndex,
-                        Content = chunk.Content,
-                        TokenCount = chunk.TokenCount,
-                        Metadata = chunk.Metadata ?? new Dictionary<string, object>(),
-                        CreatedAt = DateTime.UtcNow
-                    };
+                        _context.VectorChunks.Add(new VectorChunkEntity
+                        {
+                            Id = id,
+                            DocumentId = chunk.DocumentId,
+                            ChunkIndex = chunk.ChunkIndex,
+                            Content = chunk.Content,
+                            TokenCount = chunk.TokenCount,
+                            Metadata = chunk.Metadata ?? new Dictionary<string, object>(),
+                            CreatedAt = DateTime.UtcNow
+                        });
+                    }
+                    else
+                    {
+                        existing.DocumentId = chunk.DocumentId;
+                        existing.ChunkIndex = chunk.ChunkIndex;
+                        existing.Content = chunk.Content;
+                        existing.TokenCount = chunk.TokenCount;
+                        existing.Metadata = chunk.Metadata ?? new Dictionary<string, object>();
+                    }
 
-                    _context.VectorChunks.Add(chunkEntity);
-
-                    // 2. 벡터 저장 (sqlite-vec 사용)
+                    // 2. 벡터 저장 (sqlite-vec 사용) — delete + insert, so an update replaces the vector.
+                    // A re-store without an embedding drops the stale vector rather than leaving one that
+                    // no longer describes the row's content.
                     if (chunk.Embedding != null && _sqliteVecAvailable)
                     {
                         await _context.StoreVectorInVecTableAsync(id, chunk.Embedding, cancellationToken);
+                    }
+                    else if (existing != null && _sqliteVecAvailable)
+                    {
+                        await _context.DeleteVectorFromVecTableAsync(id, cancellationToken);
                     }
 
                     await _context.SaveChangesAsync(cancellationToken);
@@ -252,10 +277,13 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 var entities = new List<VectorChunkEntity>(chunkList.Count);
                 var vectorBatch = new List<(string Id, float[] Embedding)>();
 
-                // 1단계: 메타데이터 엔티티 준비 (메모리 작업) + ID 할당
+                // 1단계: 메타데이터 엔티티 준비 (메모리 작업) + ID 할당 — the caller's id is kept (see
+                // StoreCoreAsync). Within one batch the last chunk carrying an id wins, the same way
+                // two sequential stores of that id would resolve.
+                var vectorById = new Dictionary<string, float[]>(StringComparer.Ordinal);
                 foreach (var chunk in chunkList)
                 {
-                    var id = Guid.NewGuid().ToString();
+                    var id = string.IsNullOrWhiteSpace(chunk.Id) ? Guid.NewGuid().ToString() : chunk.Id;
                     ids.Add(id);
 
                     var entity = new VectorChunkEntity
@@ -272,11 +300,32 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
 
                     if (chunk.Embedding != null && _sqliteVecAvailable)
                     {
-                        vectorBatch.Add((id, chunk.Embedding));
+                        vectorById[id] = chunk.Embedding;
+                    }
+                    else
+                    {
+                        vectorById.Remove(id);
                     }
                 }
 
-                // 2단계: vector_chunks 일괄 삽입 (단일 raw SQL multi-row INSERT)
+                // Ids already stored: their vector rows must go before the batch insert below, because
+                // the vec0 table has no upsert and a second row for one chunk_id would be either a
+                // constraint failure or a duplicate hit in every search.
+                if (_sqliteVecAvailable && entities.Count > 0)
+                {
+                    var alreadyStored = await FindStoredIdsAsync(ids, cancellationToken);
+                    foreach (var storedId in alreadyStored)
+                    {
+                        await _context.DeleteVectorFromVecTableAsync(storedId, cancellationToken);
+                    }
+                }
+
+                foreach (var (id, embedding) in vectorById)
+                {
+                    vectorBatch.Add((id, embedding));
+                }
+
+                // 2단계: vector_chunks 일괄 삽입 (단일 raw SQL multi-row INSERT, upsert on Id)
                 // EF Core의 Add() × N + SaveChangesAsync()는 N개의 개별 INSERT를 발생시킨다.
                 // sqlite-vec의 chunk_embeddings 테이블이 이미 사용하는 multi-row VALUES 패턴을 적용.
                 if (entities.Count > 0)
@@ -314,9 +363,16 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
 
                         // Table name set via entity.ToTable("vector_chunks").
                         // Column names: PascalCase per EF Core convention (no explicit HasColumnName).
+                        // ON CONFLICT DO UPDATE keeps re-storing an id an update: the row's content follows
+                        // the new write while CreatedAt stays. The FTS5 UPDATE trigger fires for the DO
+                        // UPDATE branch, so the keyword index follows too.
                         var sql = "INSERT INTO \"vector_chunks\" " +
                                   "(\"Id\", \"DocumentId\", \"ChunkIndex\", \"Content\", \"TokenCount\", \"Metadata\", \"CreatedAt\") " +
-                                  $"VALUES {string.Join(",", valueClauses)}";
+                                  $"VALUES {string.Join(",", valueClauses)} " +
+                                  "ON CONFLICT(\"Id\") DO UPDATE SET " +
+                                  "\"DocumentId\" = excluded.\"DocumentId\", \"ChunkIndex\" = excluded.\"ChunkIndex\", " +
+                                  "\"Content\" = excluded.\"Content\", \"TokenCount\" = excluded.\"TokenCount\", " +
+                                  "\"Metadata\" = excluded.\"Metadata\"";
 
                         await _context.Database.ExecuteSqlRawAsync(sql, parameters.ToArray(), cancellationToken);
                         LogVectorChunksBatchInserted(_logger, batchSize);
@@ -331,6 +387,10 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
 
                 await transaction.CommitAsync(cancellationToken);
 
+                // The raw upsert bypassed the change tracker; an instance a same-scope StoreAsync left
+                // tracked for one of these ids would now be stale.
+                _context.ChangeTracker.Clear();
+
                 return ids;
             }
             catch
@@ -343,6 +403,26 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         {
             _writeLock.Release();
         }
+    }
+
+    /// <summary>
+    /// The subset of <paramref name="ids"/> that already has a row in <c>vector_chunks</c>.
+    /// Queried in slices so a large batch stays under SQLite's bound-parameter limit.
+    /// </summary>
+    private async Task<HashSet<string>> FindStoredIdsAsync(List<string> ids, CancellationToken cancellationToken)
+    {
+        var stored = new HashSet<string>(StringComparer.Ordinal);
+        const int idsPerQuery = 500;
+        for (var offset = 0; offset < ids.Count; offset += idsPerQuery)
+        {
+            var slice = ids.Skip(offset).Take(idsPerQuery).ToList();
+            var found = await _context.VectorChunks
+                .Where(c => slice.Contains(c.Id))
+                .Select(c => c.Id)
+                .ToListAsync(cancellationToken);
+            stored.UnionWith(found);
+        }
+        return stored;
     }
 
     /// <summary>

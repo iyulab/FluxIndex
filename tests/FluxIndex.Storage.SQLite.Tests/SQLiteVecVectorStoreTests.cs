@@ -87,8 +87,7 @@ public class SQLiteVecVectorStoreTests : IAsyncLifetime
         var id = await vectorStore.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Assert
-        id.Should().NotBeEmpty();
-        chunk.Id = id; // ID 설정
+        id.Should().Be(chunk.Id, "the store keys on the caller's id (docs/REFERENCE.md, Chunk identity)");
 
         var retrieved = await vectorStore.GetAsync(id, TestContext.Current.CancellationToken);
         retrieved.Should().NotBeNull();
@@ -392,9 +391,9 @@ public class SQLiteVecVectorStoreTests : IAsyncLifetime
         var b1 = CreateTestChunk(documentId: "doc-b1");
         b1.Metadata!["desk"] = "B";
 
-        a1.Id = await vectorStore.StoreAsync(a1, TestContext.Current.CancellationToken);
-        a2.Id = await vectorStore.StoreAsync(a2, TestContext.Current.CancellationToken);
-        b1.Id = await vectorStore.StoreAsync(b1, TestContext.Current.CancellationToken);
+        await vectorStore.StoreAsync(a1, TestContext.Current.CancellationToken);
+        await vectorStore.StoreAsync(a2, TestContext.Current.CancellationToken);
+        await vectorStore.StoreAsync(b1, TestContext.Current.CancellationToken);
 
         // Act - purge everything tagged desk=A in one call
         var deleted = await vectorStore.DeleteByFilterAsync(new Dictionary<string, object> { ["desk"] = "A" }, TestContext.Current.CancellationToken);
@@ -412,7 +411,7 @@ public class SQLiteVecVectorStoreTests : IAsyncLifetime
         // Arrange
         var vectorStore = _serviceProvider.GetRequiredService<IVectorStore>();
         var chunk = CreateTestChunk();
-        chunk.Id = await vectorStore.StoreAsync(chunk, TestContext.Current.CancellationToken);
+        await vectorStore.StoreAsync(chunk, TestContext.Current.CancellationToken);
 
         // Act + Assert - an empty filter must not silently delete all vectors
         var act = async () => await vectorStore.DeleteByFilterAsync(new Dictionary<string, object>());

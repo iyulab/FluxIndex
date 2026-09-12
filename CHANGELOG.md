@@ -9,6 +9,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.36.2]
+
+### Fixed
+- **The SQLite stores now honour `DocumentChunk.Id`.** `FluxIndex.Storage.SQLite`'s sqlite-vec store (the README default) and its in-process fallback store generated a `Guid` of their own in `StoreAsync`/`StoreBatchAsync` and returned that, discarding the id the caller set — while `docs/REFERENCE.md` promised that every store keys on the caller's id (the PostgreSQL and Qdrant stores were fixed to do so in 0.28.8). A consumer that recorded the ids it wrote could therefore never find those rows again: a partial-write rollback that deletes by recorded id removed nothing, and graph provenance written with the caller's chunk ids never matched the chunks a search returned. Ids are now kept as given (an empty one is still generated and returned), and re-storing an id is an update rather than a second row on all three indexes — the row (`ON CONFLICT DO UPDATE` on the batch path), the vec0 vector (deleted and re-inserted; dropped when the re-store carries no embedding) and the FTS5 keyword index (via the existing update trigger). Existing rows are unaffected: they were keyed on the generated UUID, which reads back verbatim.
+
+---
+
 ## [0.36.1]
 
 ### Changed
