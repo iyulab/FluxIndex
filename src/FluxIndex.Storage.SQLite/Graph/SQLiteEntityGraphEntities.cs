@@ -53,10 +53,12 @@ public class SQLiteEntityGraphEntity
     public string SurfaceFormsJson { get; set; } = "[]";
 
     /// <summary>
-    /// JSON array of chunk IDs where this entity appears.
+    /// The chunks this entity was extracted from, as an EF primitive collection (stored as a JSON
+    /// array in the same TEXT column as before) so a chunk-scoped lookup translates to
+    /// <c>json_each</c> over every row instead of a paged in-memory filter.
     /// </summary>
     [Column("chunk_ids")]
-    public string ChunkIdsJson { get; set; } = "[]";
+    public List<string> ChunkIds { get; set; } = [];
 
     /// <summary>
     /// JSON array of document IDs where this entity appears.

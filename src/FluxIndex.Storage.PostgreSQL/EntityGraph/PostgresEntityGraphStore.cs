@@ -416,11 +416,13 @@ LIMIT 1";
         IEnumerable<string> chunkIds,
         CancellationToken ct = default)
     {
-        var chunkIdSet = chunkIds.ToHashSet();
+        var chunkIdArray = chunkIds.Distinct().ToArray();
+        if (chunkIdArray.Length == 0) return [];
 
-        // Query entities that have any of the chunk IDs in their chunk_ids JSON array
+        // jsonb ?| : true when any of the given strings is a top-level element of the chunk_ids
+        // array — an exact element match, not the substring match a string Contains would be.
         var entities = await _context.Entities
-            .Where(e => chunkIdSet.Any(id => e.ChunkIdsJson.Contains(id)))
+            .Where(e => EF.Functions.JsonExistAny(e.ChunkIdsJson, chunkIdArray))
             .ToListAsync(ct);
 
         return entities.Select(MapToGraphEntity).ToList();

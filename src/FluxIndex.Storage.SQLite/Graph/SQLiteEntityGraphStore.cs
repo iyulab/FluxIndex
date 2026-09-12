@@ -447,23 +447,16 @@ public partial class SQLiteEntityGraphStore : IGraphStore
         IEnumerable<string> chunkIds,
         CancellationToken ct = default)
     {
-        var chunkIdSet = chunkIds.ToHashSet();
-        var entities = new List<GraphEntity>();
+        var chunkIdList = chunkIds.Distinct().ToList();
+        if (chunkIdList.Count == 0) return [];
 
-        var allEntities = await _context.Entities
-            .Take(_options.DefaultPageSize * 10)
+        // Primitive-collection membership translates to json_each on the chunk_ids column, so the
+        // scope is exact for any graph size (no page window, no substring match).
+        var dbEntities = await _context.Entities
+            .Where(e => e.ChunkIds.Any(id => chunkIdList.Contains(id)))
             .ToListAsync(ct);
 
-        foreach (var dbEntity in allEntities)
-        {
-            var entityChunkIds = JsonSerializer.Deserialize<List<string>>(dbEntity.ChunkIdsJson, _jsonOptions) ?? [];
-            if (entityChunkIds.Any(c => chunkIdSet.Contains(c)))
-            {
-                entities.Add(MapToGraphEntity(dbEntity));
-            }
-        }
-
-        return entities;
+        return dbEntities.Select(MapToGraphEntity).ToList();
     }
 
     #endregion
@@ -642,7 +635,7 @@ public partial class SQLiteEntityGraphStore : IGraphStore
             ImportanceScore = entity.ImportanceScore,
             MentionCount = entity.MentionCount,
             SurfaceFormsJson = JsonSerializer.Serialize(entity.SurfaceForms ?? [], _jsonOptions),
-            ChunkIdsJson = JsonSerializer.Serialize(entity.ChunkIds ?? [], _jsonOptions),
+            ChunkIds = (entity.ChunkIds ?? []).Distinct().ToList(),
             DocumentIdsJson = JsonSerializer.Serialize(entity.DocumentIds ?? [], _jsonOptions),
             ExternalLinksJson = JsonSerializer.Serialize(entity.ExternalLinks ?? new Dictionary<string, string>(), _jsonOptions),
             PropertiesJson = JsonSerializer.Serialize(entity.Properties ?? new Dictionary<string, object>(), _jsonOptions),
@@ -665,7 +658,7 @@ public partial class SQLiteEntityGraphStore : IGraphStore
             ImportanceScore = dbEntity.ImportanceScore,
             MentionCount = dbEntity.MentionCount,
             SurfaceForms = JsonSerializer.Deserialize<List<string>>(dbEntity.SurfaceFormsJson, _jsonOptions) ?? [],
-            ChunkIds = JsonSerializer.Deserialize<List<string>>(dbEntity.ChunkIdsJson, _jsonOptions) ?? [],
+            ChunkIds = dbEntity.ChunkIds ?? [],
             DocumentIds = JsonSerializer.Deserialize<List<string>>(dbEntity.DocumentIdsJson, _jsonOptions) ?? [],
             ExternalLinks = JsonSerializer.Deserialize<Dictionary<string, string>>(dbEntity.ExternalLinksJson, _jsonOptions) ?? new(),
             Properties = JsonSerializer.Deserialize<Dictionary<string, object>>(dbEntity.PropertiesJson, _jsonOptions) ?? new(),
