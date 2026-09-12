@@ -264,6 +264,15 @@ starts, so their tables were never created and the first graph, GraphRAG or sema
 failed on a missing table. If you use any of those features, upgrade; no code change is needed.
 See `docs/GUIDE.md` → "What Build() provisions" for the contract and the per-component opt-outs.
 
+**Existing databases gain new columns on start (0.36.0+).** Provisioning used to compare tables only,
+so a database created by an earlier version that lacked a column the current model declares was
+reported up to date and the first write failed with "no such column" / `42703`. From 0.36.0, once every
+owned table exists, provisioning adds the missing columns it can add without inventing data for
+existing rows (nullable, or with a default) — the entity-graph community table's `chunk_ids` column is
+the first one added this way. A required column with no default is still refused with an actionable
+error, and columns your database has that the model does not are left alone. The per-component
+opt-outs above turn this off together with table creation.
+
 ---
 
 ## Migrating from 0.11.x to 0.13.x

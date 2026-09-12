@@ -487,8 +487,7 @@ public partial class SQLiteEntityGraphStore : IGraphStore
         }
 
         // Membership rows reference entities (foreign key). Replace the set so a re-stored community
-        // does not keep members it no longer has. Chunk membership has no column here yet; it is
-        // derived on read from the member entities' chunk ids.
+        // does not keep members it no longer has. Chunk membership is the community row's own column.
         var staleMembers = await _context.CommunityMembers
             .Where(m => m.CommunityId == community.Id)
             .ToListAsync(ct);
@@ -553,20 +552,12 @@ public partial class SQLiteEntityGraphStore : IGraphStore
         IEnumerable<string> chunkIds,
         CancellationToken ct = default)
     {
-        // No chunk column on communities yet: a chunk belongs to a community through the entities
-        // extracted from it, so go chunk ids -> entities -> member rows -> communities.
-        var entityIds = (await GetEntitiesByChunkIdsAsync(chunkIds, ct)).Select(e => e.Id).ToList();
-        if (entityIds.Count == 0) return [];
+        var chunkIdList = chunkIds.Distinct().ToList();
+        if (chunkIdList.Count == 0) return [];
 
-        var communityIds = await _context.CommunityMembers
-            .Where(m => entityIds.Contains(m.EntityId))
-            .Select(m => m.CommunityId)
-            .Distinct()
-            .ToListAsync(ct);
-        if (communityIds.Count == 0) return [];
-
+        // Primitive-collection membership translates to json_each on the chunk_ids column.
         var dbCommunities = await _context.Communities
-            .Where(c => communityIds.Contains(c.Id))
+            .Where(c => c.ChunkIds != null && c.ChunkIds.Any(id => chunkIdList.Contains(id)))
             .ToListAsync(ct);
 
         return await MapWithMembersAsync(dbCommunities, ct);
@@ -579,32 +570,15 @@ public partial class SQLiteEntityGraphStore : IGraphStore
         if (dbCommunities.Count == 0) return [];
 
         var ids = dbCommunities.Select(c => c.Id).ToList();
-        var memberRows = await _context.CommunityMembers
-            .Where(m => ids.Contains(m.CommunityId))
-            .Select(m => new { m.CommunityId, m.EntityId })
-            .ToListAsync(ct);
-        var membersByCommunity = memberRows
+        var membersByCommunity = (await _context.CommunityMembers
+                .Where(m => ids.Contains(m.CommunityId))
+                .Select(m => new { m.CommunityId, m.EntityId })
+                .ToListAsync(ct))
             .GroupBy(m => m.CommunityId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<string>)g.Select(m => m.EntityId).Distinct().ToList());
 
-        // Chunk membership derived from the member entities' provenance.
-        var memberEntityIds = memberRows.Select(m => m.EntityId).Distinct().ToList();
-        var chunkIdsByEntity = (await _context.Entities
-                .Where(e => memberEntityIds.Contains(e.Id))
-                .Select(e => new { e.Id, e.ChunkIdsJson })
-                .ToListAsync(ct))
-            .ToDictionary(e => e.Id, e => JsonSerializer.Deserialize<List<string>>(e.ChunkIdsJson, _jsonOptions) ?? []);
-
         return dbCommunities
-            .Select(c =>
-            {
-                var members = membersByCommunity.GetValueOrDefault(c.Id) ?? [];
-                var chunkIds = members
-                    .SelectMany(id => chunkIdsByEntity.GetValueOrDefault(id) ?? [])
-                    .Distinct()
-                    .ToList();
-                return MapToGraphCommunity(c, members, chunkIds);
-            })
+            .Select(c => MapToGraphCommunity(c, membersByCommunity.GetValueOrDefault(c.Id)))
             .ToList();
     }
 
@@ -749,11 +723,12 @@ public partial class SQLiteEntityGraphStore : IGraphStore
             ParentCommunityId = community.ParentCommunityId,
             Embedding = community.Embedding != null ? VectorToBytes(community.Embedding) : null,
             TopicsJson = JsonSerializer.Serialize(community.Topics ?? [], _jsonOptions),
+            ChunkIds = community.ChunkIds.Distinct().ToList(),
             CreatedAt = community.CreatedAt
         };
     }
 
-    private GraphCommunity MapToGraphCommunity(SQLiteEntityCommunityEntity dbCommunity, IReadOnlyList<string>? entityIds = null, IReadOnlyList<string>? chunkIds = null)
+    private GraphCommunity MapToGraphCommunity(SQLiteEntityCommunityEntity dbCommunity, IReadOnlyList<string>? entityIds = null)
     {
         return new GraphCommunity
         {
@@ -766,7 +741,7 @@ public partial class SQLiteEntityGraphStore : IGraphStore
             Embedding = dbCommunity.Embedding != null ? BytesToVector(dbCommunity.Embedding) : null,
             Topics = JsonSerializer.Deserialize<List<string>>(dbCommunity.TopicsJson, _jsonOptions) ?? [],
             EntityIds = entityIds ?? [],
-            ChunkIds = chunkIds ?? [],
+            ChunkIds = dbCommunity.ChunkIds ?? [],
             CreatedAt = dbCommunity.CreatedAt
         };
     }

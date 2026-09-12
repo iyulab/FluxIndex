@@ -453,8 +453,8 @@ LIMIT 1";
 
         _context.CommunityMembers.RemoveRange(existingMembers);
 
-        // Member rows reference entities (foreign key). Chunk membership has no column here yet;
-        // it is derived on read from the member entities' chunk ids.
+        // Member rows reference entities (foreign key). Chunk membership is the community row's own
+        // column.
         foreach (var entityId in community.EntityIds.Distinct())
         {
             _context.CommunityMembers.Add(new EntityCommunityMemberEntity
@@ -475,7 +475,7 @@ LIMIT 1";
         CancellationToken ct = default)
     {
         var dbCommunity = await _context.Communities
-            .Include(c => c.Members).ThenInclude(m => m.Entity)
+            .Include(c => c.Members)
             .FirstOrDefaultAsync(c => c.Id == communityId, ct);
 
         return dbCommunity != null ? MapToGraphCommunity(dbCommunity) : null;
@@ -491,7 +491,7 @@ LIMIT 1";
             .ToListAsync(ct);
 
         var communities = await _context.Communities
-            .Include(c => c.Members).ThenInclude(m => m.Entity)
+            .Include(c => c.Members)
             .Where(c => communityIds.Contains(c.Id))
             .ToListAsync(ct);
 
@@ -503,7 +503,7 @@ LIMIT 1";
         CancellationToken ct = default)
     {
         var communities = await _context.Communities
-            .Include(c => c.Members).ThenInclude(m => m.Entity)
+            .Include(c => c.Members)
             .OrderByDescending(c => c.ImportanceScore)
             .Take(limit)
             .ToListAsync(ct);
@@ -515,21 +515,13 @@ LIMIT 1";
         IEnumerable<string> chunkIds,
         CancellationToken ct = default)
     {
-        // No chunk column on communities yet: a chunk belongs to a community through the entities
-        // extracted from it, so go chunk ids -> entities -> member rows -> communities.
-        var entityIds = (await GetEntitiesByChunkIdsAsync(chunkIds, ct)).Select(e => e.Id).ToList();
-        if (entityIds.Count == 0) return [];
+        var chunkIdList = chunkIds.Distinct().ToList();
+        if (chunkIdList.Count == 0) return [];
 
-        var communityIds = await _context.CommunityMembers
-            .Where(m => entityIds.Contains(m.EntityId))
-            .Select(m => m.CommunityId)
-            .Distinct()
-            .ToListAsync(ct);
-        if (communityIds.Count == 0) return [];
-
+        // Primitive-collection membership translates to an array overlap on the chunk_ids column.
         var communities = await _context.Communities
-            .Include(c => c.Members).ThenInclude(m => m.Entity)
-            .Where(c => communityIds.Contains(c.Id))
+            .Include(c => c.Members)
+            .Where(c => c.ChunkIds != null && c.ChunkIds.Any(id => chunkIdList.Contains(id)))
             .ToListAsync(ct);
 
         return communities.Select(MapToGraphCommunity).ToList();
@@ -774,6 +766,7 @@ LIMIT {options.MaxNodes}";
             ParentCommunityId = community.ParentCommunityId,
             Embedding = community.Embedding != null ? new Vector(community.Embedding) : null,
             TopicsJson = JsonSerializer.Serialize(community.Topics, _jsonOptions),
+            ChunkIds = community.ChunkIds.Distinct().ToList(),
             CreatedAt = community.CreatedAt
         };
     }
@@ -791,12 +784,7 @@ LIMIT {options.MaxNodes}";
             Embedding = db.Embedding?.ToArray(),
             Topics = JsonSerializer.Deserialize<List<string>>(db.TopicsJson, _jsonOptions) ?? [],
             EntityIds = db.Members.Select(m => m.EntityId).Distinct().ToList(),
-            // Chunk membership derived from the member entities' provenance (needs Members.Entity loaded).
-            ChunkIds = db.Members
-                .Where(m => m.Entity != null)
-                .SelectMany(m => JsonSerializer.Deserialize<List<string>>(m.Entity!.ChunkIdsJson, _jsonOptions) ?? [])
-                .Distinct()
-                .ToList(),
+            ChunkIds = db.ChunkIds ?? [],
             CreatedAt = db.CreatedAt
         };
     }

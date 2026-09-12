@@ -310,10 +310,8 @@ public record GraphCommunity
     /// <summary>
     /// IDs of the chunks this community groups. GraphRAG communities are clusters of chunks (Leiden
     /// over chunk embeddings); this list is what a chunk-scoped index load matches on
-    /// (<see cref="IGraphStore.GetCommunitiesByChunkIdsAsync"/>). The Neo4j store persists it as-is;
-    /// the relational stores have no column for it yet and derive it on read from the member
-    /// entities' own <see cref="GraphEntity.ChunkIds"/>, so a chunk that yielded no entity is not
-    /// reported as a member there.
+    /// (<see cref="IGraphStore.GetCommunitiesByChunkIdsAsync"/>). Every store persists it on the
+    /// community itself (a node property on Neo4j, a chunk-id column on PostgreSQL and SQLite).
     /// </summary>
     public IReadOnlyList<string> ChunkIds { get; init; } = [];
 

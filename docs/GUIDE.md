@@ -116,6 +116,12 @@ alone, so pointing FluxIndex at a database that already holds your application's
 component's tables already exist, `Build()` fails with an actionable error rather than half-repairing
 the schema.
 
+When every table is present, provisioning also adds columns the current model declares that the
+database lacks — a database created by an earlier version picks up new columns on the next start.
+Only columns that can be added without inventing data for existing rows are added (nullable, or with
+a default); a required column with no default is refused with the same actionable error. Columns your
+database has that the model does not, and type differences, are left alone.
+
 Opt out per component when you manage the schema externally:
 
 ```csharp

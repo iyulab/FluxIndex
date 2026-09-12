@@ -195,6 +195,14 @@ public class SQLiteEntityCommunityEntity
     [Column("topics")]
     public string TopicsJson { get; set; } = "[]";
 
+    /// <summary>
+    /// The chunks this community groups, as an EF primitive collection (stored as a JSON array) so
+    /// chunk-scoped lookups translate to <c>json_each</c> instead of a substring match. Nullable so
+    /// the column can be added to a database created before it existed; read as empty when null.
+    /// </summary>
+    [Column("chunk_ids")]
+    public List<string>? ChunkIds { get; set; }
+
     [Column("created_at")]
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 

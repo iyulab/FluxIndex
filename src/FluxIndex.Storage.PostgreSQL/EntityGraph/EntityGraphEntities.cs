@@ -196,6 +196,15 @@ public class EntityCommunityEntity
     [Column("topics", TypeName = "jsonb")]
     public string TopicsJson { get; set; } = "[]";
 
+    /// <summary>
+    /// The chunks this community groups, as an EF primitive collection (Npgsql maps it to
+    /// <c>text[]</c>) so chunk-scoped lookups translate to an array overlap instead of a substring
+    /// match. Nullable so the column can be added to a database created before it existed; read as
+    /// empty when null.
+    /// </summary>
+    [Column("chunk_ids")]
+    public List<string>? ChunkIds { get; set; }
+
     [Column("created_at")]
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 

@@ -1,9 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Data.Common;
 using System.Linq;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations.Operations;
 using Microsoft.EntityFrameworkCore.Storage;
 
 namespace FluxIndex.Storage.PostgreSQL;
@@ -33,12 +37,21 @@ internal enum SchemaInitializationPlan
 /// database shared with the consumer's application tables — or simply shared with another FluxIndex
 /// component that was provisioned first — silently got no schema at all, and the first write failed
 /// with <c>42P01</c> while startup reported success.
+/// <para>
+/// Once every owned relation exists, provisioning also adds columns the current model declares that
+/// the database does not have — but only columns that can be added without inventing data for
+/// existing rows: nullable ones, or ones with a default. A missing column that is neither is reported
+/// as a partial schema, the same way a missing relation is. Columns the database has that the model
+/// does not, and columns whose type differs from the model, are left alone: they are not evidence of
+/// a wrong schema and this provisioner does not rewrite tables.
+/// </para>
 /// </remarks>
 internal static class RelationalSchemaProvisioner
 {
     /// <summary>
-    /// Ensure the database exists and that every relation <paramref name="context"/> owns is present.
-    /// Unrelated relations are left untouched. Safe to run repeatedly.
+    /// Ensure the database exists and that every relation <paramref name="context"/> owns is present,
+    /// with every column the model can add in place. Unrelated relations are left untouched. Safe to
+    /// run repeatedly.
     /// </summary>
     /// <exception cref="InvalidOperationException">
     /// The context's schema is partially present, which automatic provisioning will not repair.
@@ -80,6 +93,7 @@ internal static class RelationalSchemaProvisioner
         switch (Plan(owned, existing))
         {
             case SchemaInitializationPlan.UpToDate:
+                AddMissingColumns(context);
                 return;
 
             case SchemaInitializationPlan.CreateAll:
@@ -125,6 +139,103 @@ internal static class RelationalSchemaProvisioner
     }
 
     /// <summary>
+    /// A column the model declares, and whether it can be added to an existing relation without
+    /// inventing a value for the rows already there.
+    /// </summary>
+    internal readonly record struct ModelColumn(string Name, bool CanAddInPlace);
+
+    /// <summary>
+    /// Decide which of a relation's model columns to add and which to refuse, given the columns the
+    /// database already has. Kept separate from the database round-trip so the decision is
+    /// unit-testable without a server.
+    /// </summary>
+    internal static (IReadOnlyList<string> Add, IReadOnlyList<string> Refuse) PlanColumns(
+        IEnumerable<ModelColumn> modelColumns,
+        IReadOnlySet<string> existingColumns)
+    {
+        var add = new List<string>();
+        var refuse = new List<string>();
+
+        foreach (var column in modelColumns)
+        {
+            if (existingColumns.Contains(column.Name))
+            {
+                continue;
+            }
+
+            (column.CanAddInPlace ? add : refuse).Add(column.Name);
+        }
+
+        return (add, refuse);
+    }
+
+    private static void AddMissingColumns(DbContext context)
+    {
+        var operations = new List<MigrationOperation>();
+        var refused = new List<string>();
+
+        // The runtime model is read-optimised and drops column facets (defaults, computed SQL,
+        // collation) that the ADD COLUMN needs; the design-time model keeps them.
+        var model = context.GetService<IDesignTimeModel>().Model;
+
+        foreach (var table in model.GetRelationalModel().Tables)
+        {
+            var schema = table.Schema ?? "public";
+            var existing = GetExistingColumns(context, schema, table.Name);
+            var (add, refuse) = PlanColumns(
+                table.Columns.Select(c => new ModelColumn(c.Name, CanAddInPlace(c))),
+                existing);
+
+            refused.AddRange(refuse.Select(name => $"{schema}.{table.Name}.{name}"));
+            operations.AddRange(table.Columns
+                .Where(c => add.Contains(c.Name, StringComparer.Ordinal))
+                .Select(c => ToAddColumn(table, c)));
+        }
+
+        if (refused.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"FluxIndex PostgreSQL schema for {context.GetType().Name} is partially present in " +
+                $"this database: the current model declares column(s) {string.Join(", ", refused)} that " +
+                "the database lacks, and they cannot be added automatically because they are required " +
+                "with no default (existing rows would need a value). Add the column(s) to match the " +
+                "model, or turn auto-migration off for this component and manage the schema externally.");
+        }
+
+        if (operations.Count == 0)
+        {
+            return;
+        }
+
+        // DDL single-sourced from the model: the provider's own migrations SQL generator renders the
+        // ADD COLUMN, so the type and nullability match what CreateTables would have produced.
+        var generator = context.GetService<IMigrationsSqlGenerator>();
+        foreach (var command in generator.Generate(operations, model))
+        {
+            ExecuteNonQuery(context, command.CommandText);
+        }
+    }
+
+    private static bool CanAddInPlace(IColumn column) =>
+        column.IsNullable || column.DefaultValue is not null || column.DefaultValueSql is not null;
+
+    private static AddColumnOperation ToAddColumn(ITable table, IColumn column) => new()
+    {
+        Schema = table.Schema,
+        Table = table.Name,
+        Name = column.Name,
+        ClrType = column.PropertyMappings[0].Property.ClrType,
+        ColumnType = column.StoreType,
+        IsNullable = column.IsNullable,
+        DefaultValue = column.DefaultValue,
+        DefaultValueSql = column.DefaultValueSql,
+        ComputedColumnSql = column.ComputedColumnSql,
+        IsStored = column.IsStored,
+        Collation = column.Collation,
+        Comment = column.Comment
+    };
+
+    /// <summary>
     /// Schema-qualified relation names owned by the context, taken from the EF model so the DDL stays
     /// single-sourced (hand-written CREATE TABLE would restate column types and index definitions and
     /// drift from the model).
@@ -144,6 +255,80 @@ internal static class RelationalSchemaProvisioner
         IReadOnlyCollection<string> ownedRelations)
     {
         var existing = new HashSet<string>(StringComparer.Ordinal);
+
+        WithOpenConnection(context, connection =>
+        {
+            foreach (var relation in ownedRelations)
+            {
+                using var command = connection.CreateCommand();
+                // ::text is required — Npgsql has no reader mapping for the raw regclass OID type.
+                command.CommandText = "SELECT to_regclass(@relation)::text";
+                command.Transaction = context.Database.CurrentTransaction?.GetDbTransaction();
+                AddParameter(command, "relation", relation);
+
+                var result = command.ExecuteScalar();
+
+                if (result is not null and not DBNull)
+                {
+                    existing.Add(relation);
+                }
+            }
+        });
+
+        return existing;
+    }
+
+    private static HashSet<string> GetExistingColumns(DbContext context, string schema, string table)
+    {
+        var existing = new HashSet<string>(StringComparer.Ordinal);
+
+        WithOpenConnection(context, connection =>
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText =
+                "SELECT column_name FROM information_schema.columns " +
+                "WHERE table_schema = @schema AND table_name = @table";
+            command.Transaction = context.Database.CurrentTransaction?.GetDbTransaction();
+            AddParameter(command, "schema", schema);
+            AddParameter(command, "table", table);
+
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                existing.Add(reader.GetString(0));
+            }
+        });
+
+        return existing;
+    }
+
+    private static void ExecuteNonQuery(DbContext context, string sql)
+    {
+        WithOpenConnection(context, connection =>
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = sql;
+            command.Transaction = context.Database.CurrentTransaction?.GetDbTransaction();
+            command.ExecuteNonQuery();
+        });
+    }
+
+    private static void AddParameter(DbCommand command, string name, string value)
+    {
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = name;
+        parameter.Value = value;
+        command.Parameters.Add(parameter);
+    }
+
+    /// <summary>
+    /// Run <paramref name="action"/> on the context's connection, opening it only if it is not
+    /// already open and closing it again in that case. Commands enlist in an ambient EF transaction
+    /// if one is open — ADO.NET refuses a command on a connection with a pending local transaction
+    /// unless the transaction is set.
+    /// </summary>
+    private static void WithOpenConnection(DbContext context, Action<DbConnection> action)
+    {
         var connection = context.Database.GetDbConnection();
         var openedHere = connection.State != ConnectionState.Open;
 
@@ -154,28 +339,7 @@ internal static class RelationalSchemaProvisioner
 
         try
         {
-            foreach (var relation in ownedRelations)
-            {
-                using var command = connection.CreateCommand();
-                // ::text is required — Npgsql has no reader mapping for the raw regclass OID type.
-                command.CommandText = "SELECT to_regclass(@relation)::text";
-
-                // Enlist in an ambient EF transaction if one is open — ADO.NET refuses a command on
-                // a connection with a pending local transaction unless the transaction is set.
-                command.Transaction = context.Database.CurrentTransaction?.GetDbTransaction();
-
-                var parameter = command.CreateParameter();
-                parameter.ParameterName = "relation";
-                parameter.Value = relation;
-                command.Parameters.Add(parameter);
-
-                var result = command.ExecuteScalar();
-
-                if (result is not null and not DBNull)
-                {
-                    existing.Add(relation);
-                }
-            }
+            action(connection);
         }
         finally
         {
@@ -184,7 +348,5 @@ internal static class RelationalSchemaProvisioner
                 connection.Close();
             }
         }
-
-        return existing;
     }
 }
