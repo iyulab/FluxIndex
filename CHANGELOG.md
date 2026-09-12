@@ -9,6 +9,16 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.36.0]
+
+### Fixed
+- **Persisted graph entities now carry their provenance.** `EntityGraphService.PersistGraphAsync` stored each entity with empty `GraphEntity.ChunkIds` and `GraphEntity.DocumentIds`, even though the build result already held the entity↔chunk mapping. Every chunk- or document-scoped read on the graph store (`IGraphStore.GetEntitiesByChunkIdsAsync`, and any tenant/document isolation built on it) therefore matched nothing — silently, since storing succeeded and querying returned an empty list without error. Entities are now stored with the distinct chunk ids and document ids they were extracted from, so scoped queries match. (Neo4j, PostgreSQL and SQLite stores already persisted both lists; only the producer was empty.)
+
+### Added
+- `EntityChunkMapping.DocumentId` — the document of the mapped chunk, filled during `BuildEntityGraphAsync` and preserved through cross-chunk entity linking and graph merging. Consumers reading `EntityGraphResult.ChunkMappings` get document provenance without a second lookup.
+
+---
+
 ## [0.35.4]
 
 ### Changed

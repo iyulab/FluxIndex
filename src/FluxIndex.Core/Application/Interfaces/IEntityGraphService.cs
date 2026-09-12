@@ -492,6 +492,13 @@ public class EntityChunkMapping
     public string ChunkId { get; init; } = string.Empty;
 
     /// <summary>
+    /// Document the chunk belongs to (<see cref="DocumentChunk.DocumentId"/>). Carried so that
+    /// persistence can record document provenance on <see cref="GraphEntity.DocumentIds"/> without a
+    /// second lookup; empty only when the source chunk had no document id.
+    /// </summary>
+    public string DocumentId { get; init; } = string.Empty;
+
+    /// <summary>
     /// Mention count in this chunk
     /// </summary>
     public int MentionCount { get; init; }

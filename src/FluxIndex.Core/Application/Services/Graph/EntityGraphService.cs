@@ -49,6 +49,9 @@ public partial class EntityGraphService : IEntityGraphService
         var allRelations = new List<EntityRelation>();
         var chunkMappings = new List<EntityChunkMapping>();
         var sourceChunkIds = new List<string>();
+        var documentIdByChunkId = chunkList
+            .GroupBy(c => c.Id)
+            .ToDictionary(g => g.Key, g => g.First().DocumentId);
 
         // Process chunks in batches
         var batches = chunkList
@@ -81,6 +84,7 @@ public partial class EntityGraphService : IEntityGraphService
                     {
                         EntityId = entity.Id,
                         ChunkId = result.ChunkId,
+                        DocumentId = documentIdByChunkId.GetValueOrDefault(result.ChunkId, string.Empty),
                         MentionCount = entity.OccurrenceCount,
                         Positions = entity.Occurrences
                             .Select(o => (o.StartPosition, o.EndPosition))
@@ -162,19 +166,36 @@ public partial class EntityGraphService : IEntityGraphService
 
         LogEntityGraph5(_logger, graph.Entities.Count, graph.Relations.Count);
 
+        // Provenance rides on the chunk mappings; the store's scoped queries
+        // (GetEntitiesByChunkIdsAsync, document scoping) match on these two lists,
+        // so an entity stored without them can never be found by scope.
+        var provenanceByEntity = graph.ChunkMappings
+            .GroupBy(m => m.EntityId)
+            .ToDictionary(
+                g => g.Key,
+                g => (
+                    ChunkIds: (IReadOnlyList<string>)g.Select(m => m.ChunkId).Where(id => id.Length > 0).Distinct().ToList(),
+                    DocumentIds: (IReadOnlyList<string>)g.Select(m => m.DocumentId).Where(id => id.Length > 0).Distinct().ToList()));
+
         // Convert EntityNodes to GraphEntities and store
-        var graphEntities = graph.Entities.Select(e => new GraphEntity
+        var graphEntities = graph.Entities.Select(e =>
         {
-            Id = e.Id,
-            Name = e.Name,
-            NormalizedName = e.NormalizedName,
-            Type = e.Type,
-            Confidence = e.Confidence,
-            ImportanceScore = e.ImportanceScore,
-            MentionCount = e.MentionCount,
-            Embedding = e.Embedding,
-            ExternalLinks = e.ExternalLinks,
-            Properties = e.Properties
+            var provenance = provenanceByEntity.GetValueOrDefault(e.Id);
+            return new GraphEntity
+            {
+                Id = e.Id,
+                Name = e.Name,
+                NormalizedName = e.NormalizedName,
+                Type = e.Type,
+                Confidence = e.Confidence,
+                ImportanceScore = e.ImportanceScore,
+                MentionCount = e.MentionCount,
+                Embedding = e.Embedding,
+                ChunkIds = provenance.ChunkIds ?? [],
+                DocumentIds = provenance.DocumentIds ?? [],
+                ExternalLinks = e.ExternalLinks,
+                Properties = e.Properties
+            };
         }).ToList();
 
         if (graphEntities.Count > 0)
@@ -519,6 +540,7 @@ public partial class EntityGraphService : IEntityGraphService
                 {
                     EntityId = newEntityId,
                     ChunkId = mapping.ChunkId,
+                    DocumentId = mapping.DocumentId,
                     MentionCount = mapping.MentionCount,
                     Positions = mapping.Positions,
                     RelevanceScore = mapping.RelevanceScore
@@ -756,6 +778,7 @@ public partial class EntityGraphService : IEntityGraphService
                 {
                     EntityId = newId,
                     ChunkId = mapping.ChunkId,
+                    DocumentId = mapping.DocumentId,
                     MentionCount = mapping.MentionCount,
                     Positions = mapping.Positions,
                     RelevanceScore = mapping.RelevanceScore

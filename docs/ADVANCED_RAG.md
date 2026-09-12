@@ -259,6 +259,21 @@ Console.WriteLine($"Linked entities: {linkedGraph.Entities.Count}");
 Console.WriteLine($"Merge count: {linkedGraph.Stats.MergeCount}");
 ```
 
+### Entity provenance and scoped graph reads
+
+`IEntityGraphService.BuildEntityGraphAsync` records where each entity came from: every
+`EntityGraphResult.ChunkMappings` entry carries the chunk id **and** its `DocumentId`, and the
+entities persisted to the graph store (`AddFullGraphRAG()` + a registered `IGraphStore`) carry the
+distinct `ChunkIds` / `DocumentIds` they were extracted from. Scoped reads stand on those lists:
+
+```csharp
+// Entities that appear in the chunks of one document
+var scoped = await graphStore.GetEntitiesByChunkIdsAsync(documentChunkIds, ct);
+```
+
+An entity linked across chunks keeps every source, so a document that mentions an entity also
+mentioned elsewhere still finds it under its own scope.
+
 ---
 
 ## Community Detection (Leiden Algorithm)
