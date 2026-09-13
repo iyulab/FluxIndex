@@ -5,8 +5,18 @@ using FluxIndex.Core.Constants;
 namespace FluxIndex.SDK.Configuration;
 
 /// <summary>
-/// FluxIndex 설정 옵션
+/// FluxIndex 설정 옵션 — <c>FluxIndexContextBuilder.Options</c> 로 노출되는 빌더의 공개 설정 트리.
 /// </summary>
+/// <remarks>
+/// 블록마다 «누가 읽는가»가 다르다. <see cref="VectorStore"/> · <see cref="Embedding"/> · <see cref="Cache"/> ·
+/// <see cref="GraphStore"/> · <see cref="SemanticCache"/> · <see cref="KeywordSearch"/> · <see cref="QualityMonitoring"/> 은
+/// 빌더가 서비스 등록에 쓴다(각 타입 문서에 읽히지 않는 개별 속성이 표시돼 있다). <see cref="Indexing"/> 과
+/// <see cref="Search"/> 는 <c>WithChunking(...)</c>/<c>WithSearchOptions(...)</c> 가 **채우기만** 하고 어느 코드도 읽지
+/// 않는다 — 실효 값은 각각 <c>IndexerOptions</c>/<c>RetrieverOptions</c> 다. <see cref="RAGEnhancement"/> 는 하위 블록
+/// (<see cref="LateChunkingConfiguration"/> · <see cref="MultiHyDEConfiguration"/> · <see cref="ContextualRetrievalConfiguration"/>)
+/// 까지 통째로 읽히지 않는다: 해당 기능은 Core 서비스로 존재하지만 이 블록으로 연결돼 있지 않다.
+/// 검증: <c>FluxIndex.SDK.Tests/OptionsReachabilityRosterTests</c>.
+/// </remarks>
 public class FluxIndexOptions
 {
     /// <summary>

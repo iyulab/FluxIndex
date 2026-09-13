@@ -70,7 +70,10 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   `QdrantOptions.HttpPort`, `GraphRAGBuildOptions.GenerateEntityEmbeddings` and
   `LocalSearchOptions.UseEntityEmbeddings` now say that nothing reads them and where the effective setting
   lives (the SQLite store scans every row per search — the "vector cache" it names does not exist; use
-  sqlite-vec for large collections). `docs/GUIDE.md` no longer lists chunking
+  sqlite-vec for large collections). `FluxIndexOptions` documents which of its blocks the builder reads:
+  `Indexing` and `Search` are only written to (by `WithChunking`/`WithSearchOptions`), and the whole
+  `RAGEnhancement` subtree is not wired to anything. The options-reachability roster now scans
+  `*Configuration` and `*Defaults` types as well as `*Options`. `docs/GUIDE.md` no longer lists chunking
   strategies the splitter does not have (`WithChunking("Sliding")` threw on `Enum.Parse`).
 - Five options that were declared but never read now do what their documentation says (found by the new
   options-reachability roster, which pins that every public `*Options` property has a reader):

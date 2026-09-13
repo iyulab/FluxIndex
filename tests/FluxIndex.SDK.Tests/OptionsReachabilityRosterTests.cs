@@ -47,6 +47,7 @@ public class OptionsReachabilityRosterTests
         ["FluxIndex.Core.Application.Interfaces.ContextExpansionOptions"] = ["MaxExpansionDistance"],
         ["FluxIndex.Core.Application.Interfaces.ContextualHeaderOptions"] = ["UsePromptCaching"],
         ["FluxIndex.Core.Application.Interfaces.CorrectiveRAGOptions"] = ["AmbiguousThreshold", "CorrectThreshold", "EnableDetailedLogging", "EnableWebSearch", "RetryCount", "Timeout"],
+        ["FluxIndex.Core.Application.Interfaces.DynamicFusionConfiguration"] = ["Complexity", "Reasoning", "TechnicalDomains"],
         ["FluxIndex.Core.Application.Interfaces.EmbeddingGenerationOptions"] = ["GenerateQuestionEmbeddings", "HyDEDocumentCount", "MaxQuestions", "ModelId", "Types", "UseCache"],
         ["FluxIndex.Core.Application.Interfaces.EnrichmentEntityOptions"] = ["EntityTypes", "LinkExternalKnowledge", "ResolveCoreferences"],
         ["FluxIndex.Core.Application.Interfaces.EnrichmentOptions"] = ["AnalyzeQuality", "CacheEmbeddings", "ExtractRelationships", "GenerateEntityEmbedding", "GraphBuildOptions", "MinEntityConfidence"],
@@ -66,6 +67,7 @@ public class OptionsReachabilityRosterTests
         ["FluxIndex.Core.Application.Interfaces.QueryDecompositionOptions"] = ["MaxDecompositionDepth"],
         ["FluxIndex.Core.Application.Interfaces.RerankOptions"] = ["Model", "ModelParameters"],
         ["FluxIndex.Core.Application.Interfaces.SelfRAGOptions"] = ["EnableContextExpansion", "EnableMultiPerspectiveSearch", "SearchTimeout"],
+        ["FluxIndex.Core.Application.Interfaces.StorageConfiguration"] = ["GraphProvider", "HasGraph", "HasRdb", "HasSemanticCache", "HasVector", "RdbProvider", "SemanticCacheProvider", "VectorProvider"],
         ["FluxIndex.Core.Application.Interfaces.SemanticCacheOptions"] = ["AutoOptimizationInterval", "CompressionThreshold", "DefaultExpiry", "DefaultSimilarityThreshold", "EnableAutoOptimization", "EnableCompression", "EnablePerformanceTracking", "MaxCacheSize", "MaxMemoryMB", "MaxQueryLength", "MinQueryLength", "SimilaritySearchBatchSize"],
         ["FluxIndex.Core.Application.Interfaces.VerificationOptions"] = ["CustomCriteria", "IncludeDetailedReasoning", "MaxHallucinationRisk"],
         ["FluxIndex.Core.Application.Models.ClassificationOptions"] = ["CacheExpirationHours", "Enabled"],
@@ -79,6 +81,7 @@ public class OptionsReachabilityRosterTests
         ["FluxIndex.Core.Domain.Models.BatchProcessingOptions"] = ["BatchSize", "MaxRetries", "ReportProgress", "RetryDelay", "StopOnError"],
         ["FluxIndex.Core.Domain.Models.HnswAutoTuningOptions"] = ["MaxIterations", "MaxMemoryUsageBytes", "MaxTuningTimeMs"],
         ["FluxIndex.Core.Domain.Models.HnswBenchmarkOptions"] = ["AccuracyK", "MaxTestTimeMs", "ParameterSets", "TestQueryCount"],
+        ["FluxIndex.Core.Domain.Models.EvaluationConfiguration"] = ["CustomSettings", "EnableAnswerRelevancyEvaluation", "EnableContextEvaluation", "EnableFaithfulnessEvaluation", "LLMModel", "MaxRetrievedDocuments", "MinRelevanceThreshold", "Temperature", "Timeout"],
         ["FluxIndex.Core.Domain.Models.HybridSearchOptions"] = ["DiversityThreshold", "EnableDiversity", "Filters", "TimeoutMs"],
         ["FluxIndex.Core.Domain.Models.MetadataExtractionOptions"] = ["AnalyzeSentiment", "CalculateImportance", "DetectLanguage", "EnableParallelProcessing", "ExtractEntities", "ExtractKeywords", "GenerateSummary", "MaxConcurrentRequests", "MaxKeywords", "MaxSummaryLength", "QualityThreshold"],
         ["FluxIndex.Core.Domain.Models.QuOTEOptions"] = ["DiversityLevel", "DomainWeights"],
@@ -94,10 +97,16 @@ public class OptionsReachabilityRosterTests
         ["FluxIndex.Integrations.FileFlux.Processing.DocumentProcessingOptions"] = ["EnableTextCleaning"],
         ["FluxIndex.Integrations.WebFlux.WebFluxOptions"] = ["DefaultIncludeImages"],
         ["FluxIndex.SDK.Configuration.CacheOptions"] = ["CacheDuration", "CacheTTL", "MaxCacheSize"],
+        ["FluxIndex.SDK.Configuration.ChunkingDefaults"] = ["MaxChunkSize", "OverlapSize", "PreserveFormatting", "Strategy"],
+        ["FluxIndex.SDK.Configuration.ContextualRetrievalConfiguration"] = ["EnablePromptCaching", "Enabled", "GenerateDualEmbeddings", "LlmThreshold", "MaxContextLength"],
         ["FluxIndex.SDK.Configuration.EmbeddingOptions"] = ["ApiKey", "BatchSize", "EnableCache", "MaxRetries", "ModelName", "ProviderSpecificOptions", "RetryDelay"],
         ["FluxIndex.SDK.Configuration.FluxIndexOptions"] = ["RAGEnhancement"],
+        ["FluxIndex.SDK.Configuration.IndexingConfiguration"] = ["ChunkBatchSize", "EnableProgressReporting", "MaxParallelDocuments", "ProgressReportInterval", "ValidateEmbeddings"],
+        ["FluxIndex.SDK.Configuration.LateChunkingConfiguration"] = ["ContextIntegrationMode", "DocumentContextWeight", "Enabled", "MaxDocumentLength", "SurroundingContextSize"],
+        ["FluxIndex.SDK.Configuration.MultiHyDEConfiguration"] = ["DocumentCount", "EnableParallelGeneration", "Enabled", "Perspectives", "TemperatureStep"],
         ["FluxIndex.SDK.Configuration.QualityMonitoringOptions"] = ["AlertCheckInterval", "EnableMonitoring", "EnableRealTimeAlerts", "MaxMetricsHistory", "MetricsInterval"],
         ["FluxIndex.SDK.Configuration.RAGEnhancementOptions"] = ["ContextualRetrieval", "IsAutoMode", "IsEnabled", "LateChunking", "Mode", "MultiHyDE"],
+        ["FluxIndex.SDK.Configuration.SearchConfiguration"] = ["DefaultKeywordWeight", "DefaultMaxResults", "DefaultMinScore", "DefaultVectorWeight", "EnableFaceting", "EnableHighlighting", "SearchTimeout"],
         ["FluxIndex.SDK.Configuration.SemanticCacheOptions"] = ["SimilarityThreshold"],
         ["FluxIndex.SDK.Configuration.VectorStoreOptions"] = ["ConnectionTimeout", "MaxConnections", "ProviderSpecificOptions", "QdrantHttpPort", "QdrantUseHttps"],
         ["FluxIndex.SDK.FacetSearchOptions"] = ["FacetFields", "MaxFacetValues"],
@@ -167,7 +176,12 @@ public class OptionsReachabilityRosterTests
         var optionTypes = assemblies
             .SelectMany(SafeTypes)
             .Where(t => t is { IsPublic: true, IsClass: true, IsAbstract: false } || t is { IsNestedPublic: true, IsClass: true, IsAbstract: false })
-            .Where(t => t.Name.EndsWith("Options", StringComparison.Ordinal))
+            // Option-shaped types are named three ways in this tree: *Options, the builder's
+            // *Configuration blocks, and *Defaults (ChunkingDefaults). A name rule that stops at
+            // "Options" left the builder's public configuration surface unscanned.
+            .Where(t => t.Name.EndsWith("Options", StringComparison.Ordinal)
+                     || t.Name.EndsWith("Configuration", StringComparison.Ordinal)
+                     || t.Name.EndsWith("Defaults", StringComparison.Ordinal))
             .OrderBy(t => t.FullName, StringComparer.Ordinal)
             .ToList();
 
