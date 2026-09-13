@@ -952,31 +952,72 @@ public partial class EntityGraphService : IEntityGraphService
             return results;
         }
 
-        var extractionOptions = new EntityExtractionOptions
-        {
-            MinConfidence = options.MinEntityConfidence,
-            MaxEntities = options.MaxEntitiesPerChunk,
-            ExtractRelations = options.ExtractRelations,
-            EntityTypes = options.EntityTypes?.ToList()
-        };
+        var extractionOptions = ResolveExtractionOptions(options);
 
         var contents = chunks.Select(c => c.Content).ToList();
         var graphs = await _entityExtractionService.ExtractBatchAsync(contents, extractionOptions, cancellationToken);
 
+        // The seam's contract is one graph per input, in input order (IAdvancedEntityExtractionService
+        // .ExtractBatchAsync remarks). Provenance is joined by position, so a short result would silently
+        // leave the tail chunks without entities — reject it instead.
+        if (graphs.Count != chunks.Count)
+        {
+            throw new InvalidOperationException(
+                $"Entity extractor returned {graphs.Count} graph(s) for {chunks.Count} chunk(s); " +
+                "ExtractBatchAsync must return exactly one EntityGraph per input, in input order.");
+        }
+
         for (var i = 0; i < chunks.Count; i++)
         {
-            var graph = graphs.ElementAtOrDefault(i);
-            if (graph != null)
-            {
-                results.Add((chunks[i].Id, graph.Entities.ToList(), graph.Relations.ToList()));
-            }
-            else
-            {
-                results.Add((chunks[i].Id, new List<ExtractedEntity>(), new List<EntityRelation>()));
-            }
+            results.Add((chunks[i].Id, graphs[i].Entities.ToList(), graphs[i].Relations.ToList()));
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// The options a batch is extracted with: the consumer's extractor-side options
+    /// (<see cref="EntityGraphBuildOptions.ExtractionOptions"/>) as the base, with the knobs this
+    /// pipeline declares itself laid over them — confidence floor, per-chunk cap and relation switch
+    /// always, the type filter when set.
+    /// </summary>
+    internal static EntityExtractionOptions ResolveExtractionOptions(EntityGraphBuildOptions options)
+    {
+        var resolved = options.ExtractionOptions?.Copy() ?? new EntityExtractionOptions();
+        resolved.MinConfidence = options.MinEntityConfidence;
+        resolved.MaxEntities = options.MaxEntitiesPerChunk;
+        resolved.ExtractRelations = options.ExtractRelations;
+        if (options.EntityTypes is { Count: > 0 } types)
+        {
+            resolved.EntityTypes = types.ToList();
+        }
+        return resolved;
+    }
+
+    /// <summary>
+    /// What the extractor said about an entity beyond name/type/confidence, kept on the node so it
+    /// reaches <c>GraphEntity.Properties</c> and the store: the extractor's <c>Metadata</c> entries plus
+    /// <c>Subtype</c> under <c>"subtype"</c>. When several extracted entities merge into one node the
+    /// canonical entity's values win and the others fill in keys it lacks.
+    /// </summary>
+    private static Dictionary<string, object> ToNodeProperties(IEnumerable<ExtractedEntity> entitiesCanonicalFirst)
+    {
+        var properties = new Dictionary<string, object>();
+        foreach (var entity in entitiesCanonicalFirst)
+        {
+            if (!string.IsNullOrEmpty(entity.Subtype))
+            {
+                properties.TryAdd("subtype", entity.Subtype);
+            }
+            foreach (var (key, value) in entity.Metadata)
+            {
+                if (value is not null)
+                {
+                    properties.TryAdd(key, value);
+                }
+            }
+        }
+        return properties;
     }
 
     private static (List<EntityNode> Nodes, List<EntityChunkMapping> Mappings, Dictionary<string, string> LinkedIds) LinkEntitiesAcrossChunks(
@@ -1016,7 +1057,8 @@ public partial class EntityGraphService : IEntityGraphService
                 MentionCount = groupList.Sum(e => e.OccurrenceCount),
                 ExternalLinks = canonicalEntity.ExternalLink != null
                     ? new Dictionary<string, string> { ["default"] = canonicalEntity.ExternalLink }
-                    : new Dictionary<string, string>()
+                    : new Dictionary<string, string>(),
+                Properties = ToNodeProperties(groupList.OrderByDescending(e => e.Confidence))
             });
         }
 
@@ -1070,7 +1112,8 @@ public partial class EntityGraphService : IEntityGraphService
             MentionCount = entity.OccurrenceCount,
             ExternalLinks = entity.ExternalLink != null
                 ? new Dictionary<string, string> { ["default"] = entity.ExternalLink }
-                : new Dictionary<string, string>()
+                : new Dictionary<string, string>(),
+            Properties = ToNodeProperties([entity])
         };
     }
 

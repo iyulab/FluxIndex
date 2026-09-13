@@ -9,6 +9,31 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.37.2]
+
+### Fixed
+
+- GraphRAG: `GraphRAGBuildOptions.EntityOptions` now reaches the entity extractor. It was declared but
+  never read — the entity graph build composed its own `EntityExtractionOptions` from
+  `EntityGraphBuildOptions` alone, so a consumer's `Language`, `UseLlm`, `CustomPatterns`,
+  `IncludeContext` and `ContextWindowSize` silently stayed at their defaults. They are now the base the
+  build lays its own knobs over (`MinEntityConfidence`, `MaxEntitiesPerChunk`, `ExtractRelations`
+  always; `EntityTypes` when set). New `EntityGraphBuildOptions.ExtractionOptions` is the seam the
+  build reads them through; consumers calling `IEntityGraphService` directly can set it themselves.
+- GraphRAG: an extractor that returns fewer graphs than inputs from `ExtractBatchAsync` is rejected
+  (`InvalidOperationException`) instead of the tail chunks silently indexing with no entities. The
+  contract — exactly one `EntityGraph` per input, in input order; a batch may be resolved as one set —
+  is now stated on the interface.
+- GraphRAG: what an extractor says about an entity beyond name/type/confidence now survives to the
+  graph store. `ExtractedEntity.Metadata` entries and `Subtype` (as `"subtype"`) land in
+  `EntityNode.Properties` → `GraphEntity.Properties`; they were dropped at the node conversion, with
+  and without cross-chunk linking.
+
+### Changed
+- Re-pinned sibling package(s) `FileFlux` 0.23.4 -> 0.23.5, `LMSupply.Embedder` 0.65.0 -> 0.65.1, `LMSupply.Generator` 0.65.0 -> 0.65.1, `LMSupply.Reranker` 0.65.0 -> 0.65.1 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
+
+---
+
 ## [0.37.1]
 
 ### Fixed

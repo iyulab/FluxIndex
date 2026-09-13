@@ -167,6 +167,36 @@ public class EntityGraphBuildOptions
     /// yielded no entity leaves no trace in the store and is extracted again.
     /// </summary>
     public bool ReuseStoredExtractions { get; set; } = true;
+
+    /// <summary>
+    /// Base options handed to <see cref="IAdvancedEntityExtractionService.ExtractBatchAsync"/> for every
+    /// batch — the extractor-side knobs (<c>UseLlm</c>, <c>Language</c>, <c>CustomPatterns</c>,
+    /// <c>IncludeContext</c>, …) that this class does not declare itself. The four knobs both classes
+    /// declare are taken from this class: <see cref="MinEntityConfidence"/>, <see cref="MaxEntitiesPerChunk"/>
+    /// and <see cref="ExtractRelations"/> always override, <see cref="EntityTypes"/> overrides when set.
+    /// <c>GraphRAGBuildOptions.EntityOptions</c> lands here when the consumer left this null.
+    /// </summary>
+    public EntityExtractionOptions? ExtractionOptions { get; set; }
+
+    /// <summary>
+    /// A copy of these options with <see cref="ExtractionOptions"/> set. Every settable property is
+    /// copied — <c>EntityGraphBuildOptionsCopyCompletenessTests</c> pins that a property added here
+    /// is added to this copy too.
+    /// </summary>
+    internal EntityGraphBuildOptions WithExtractionOptions(EntityExtractionOptions extractionOptions) => new()
+    {
+        MinEntityConfidence = MinEntityConfidence,
+        MinRelationConfidence = MinRelationConfidence,
+        MaxEntitiesPerChunk = MaxEntitiesPerChunk,
+        ExtractRelations = ExtractRelations,
+        LinkEntitiesAcrossChunks = LinkEntitiesAcrossChunks,
+        EntityTypes = EntityTypes,
+        ComputeEntityEmbeddings = ComputeEntityEmbeddings,
+        BatchSize = BatchSize,
+        PersistToGraphStore = PersistToGraphStore,
+        ReuseStoredExtractions = ReuseStoredExtractions,
+        ExtractionOptions = extractionOptions
+    };
 }
 
 /// <summary>

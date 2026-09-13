@@ -811,7 +811,7 @@ public partial class GraphRAGService : IGraphRAGService
         // Build entity graph for new chunks
         var newEntityGraph = await _entityGraphService.BuildEntityGraphAsync(
             chunkList,
-            index.Options.EntityGraphOptions,
+            ResolveEntityGraphOptions(index.Options),
             cancellationToken);
 
         // Merge with existing entity graph
@@ -932,8 +932,25 @@ public partial class GraphRAGService : IGraphRAGService
 
         return await _entityGraphService.BuildEntityGraphAsync(
             chunks,
-            options.EntityGraphOptions,
+            ResolveEntityGraphOptions(options),
             cancellationToken);
+    }
+
+    /// <summary>
+    /// <see cref="GraphRAGBuildOptions.EntityOptions"/> is the consumer's extractor-side configuration;
+    /// the entity graph build reads it through <see cref="EntityGraphBuildOptions.ExtractionOptions"/>.
+    /// Carry it across when the consumer set it and did not already set the latter — otherwise a
+    /// declared <c>Language</c>/<c>UseLlm</c>/<c>CustomPatterns</c> never reaches the extractor.
+    /// </summary>
+    internal static EntityGraphBuildOptions? ResolveEntityGraphOptions(GraphRAGBuildOptions options)
+    {
+        var graphOptions = options.EntityGraphOptions;
+        if (options.EntityOptions is null || graphOptions?.ExtractionOptions is not null)
+        {
+            return graphOptions;
+        }
+
+        return (graphOptions ?? new EntityGraphBuildOptions()).WithExtractionOptions(options.EntityOptions);
     }
 
     private async Task<CommunityHierarchy> BuildCommunityHierarchyAsync(

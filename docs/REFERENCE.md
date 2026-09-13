@@ -426,6 +426,20 @@ turns it off. This depends on chunk ids being stable across builds — a consume
 id per run reuses nothing. A chunk that was extracted before but yielded no entity leaves no trace
 and is extracted again.
 
+**What the extractor is handed, and what it must return.** The build calls
+`IAdvancedEntityExtractionService.ExtractBatchAsync` once per batch of `EntityGraphBuildOptions.BatchSize`
+chunks (default 10, contiguous). The options it passes start from
+`EntityGraphBuildOptions.ExtractionOptions` — the extractor-side configuration (`UseLlm`, `Language`,
+`CustomPatterns`, `IncludeContext`, …); `GraphRAGBuildOptions.EntityOptions` lands there when you go
+through `IGraphRAGService` — with the build's own knobs laid over: `MinEntityConfidence`,
+`MaxEntitiesPerChunk` and `ExtractRelations` always, `EntityTypes` when set. The extractor must return
+**exactly one `EntityGraph` per input, in input order** — provenance (`GraphEntity.ChunkIds`) is joined by
+position, and a shorter result is rejected rather than leaving chunks silently without entities. Whether
+a batch is extracted text by text or resolved as one set is the extractor's choice; an entity present
+in several inputs appears in each input's graph and is merged by normalized name and type. Anything the
+extractor puts in `ExtractedEntity.Metadata` (and `Subtype`, as `"subtype"`) is kept on the node's
+`Properties` and persisted.
+
 ### Hierarchical Summarization
 
 ```csharp

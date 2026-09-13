@@ -51,12 +51,21 @@ public interface IAdvancedEntityExtractionService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Batch extraction for multiple content pieces.
+    /// Batch extraction for multiple content pieces. This is the entry point the indexing pipeline
+    /// uses for every batch (<c>EntityGraphBuildOptions.BatchSize</c> inputs at a time).
     /// </summary>
+    /// <remarks>
+    /// Contract: the result holds <b>exactly one <see cref="EntityGraph"/> per input, in input order</b>
+    /// — the pipeline joins results back to chunks by position, and a shorter or reordered result is
+    /// rejected rather than silently leaving chunks without entities. Whether the implementation
+    /// treats the batch as independent texts or resolves it as one set (cross-input entity resolution)
+    /// is its own choice; an entity mentioned in several inputs appears in each of their graphs and
+    /// is merged downstream by normalized name and type.
+    /// </remarks>
     /// <param name="contents">List of content to analyze</param>
     /// <param name="options">Extraction options</param>
     /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>List of entity graphs</returns>
+    /// <returns>One entity graph per input, in input order</returns>
     Task<IReadOnlyList<EntityGraph>> ExtractBatchAsync(
         IEnumerable<string> contents,
         EntityExtractionOptions? options = null,
@@ -129,6 +138,23 @@ public class EntityExtractionOptions
     /// Context window size in characters
     /// </summary>
     public int ContextWindowSize { get; set; } = 100;
+
+    /// <summary>
+    /// Shallow copy — every settable property. <c>EntityExtractionOptionsCopyCompletenessTests</c> pins
+    /// that a property added here is added to the copy too.
+    /// </summary>
+    internal EntityExtractionOptions Copy() => new()
+    {
+        MinConfidence = MinConfidence,
+        EntityTypes = EntityTypes,
+        UseLlm = UseLlm,
+        MaxEntities = MaxEntities,
+        ExtractRelations = ExtractRelations,
+        Language = Language,
+        CustomPatterns = CustomPatterns,
+        IncludeContext = IncludeContext,
+        ContextWindowSize = ContextWindowSize
+    };
 }
 
 /// <summary>
