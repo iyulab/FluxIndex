@@ -179,6 +179,16 @@ var options = new HybridSearchOptions
 };
 ```
 
+**SDK options that are read, and where.** `Indexer.IndexDocumentAsync(string content, …)` is the only
+path on which the SDK splits text: it uses the builder's `IndexerOptions.ChunkSize`/`ChunkOverlap`
+(`WithChunking(...)` or `WithIndexerOptions(...)`; characters at the nearest sentence/paragraph/word
+boundary, overlap must be smaller than the size). The `Document` overloads index the chunks you pass. The
+per-call `IndexingOptions` is read for `EnableGraphRAG`, `GraphRAGOptions` and `CustomOptions` (AI metadata
+extraction via `WithAIMetadataExtraction(...)`, overlaid on `IndexerOptions.CustomOptions`); its
+`ChunkingStrategy`/`MaxChunkSize`/`OverlapSize`/`GenerateEmbeddings`/`ExtractMetadata`/`EnableOCR` are not
+read. On the search side `SearchOptions.UseHybridSearch` auto-detects, `UseGraphRAG = true` throws (see
+*Full GraphRAG*), and `IncludeVectors` is not read — `SearchResult` has no vector field.
+
 ---
 
 ## LocalReranker
@@ -482,14 +492,21 @@ var answer = await summarizer.GlobalSearchAsync(query, new GlobalSearchOptions
 
 ### Full GraphRAG
 
+Graph retrieval runs against an index built from a known set of chunks, so it is a two-step API on
+`IGraphRAGService` — it is **not** performed by `Retriever.SearchAsync` (setting
+`SearchOptions.UseGraphRAG = true` there throws rather than silently searching without the graph).
+
 ```csharp
 var graphRag = serviceProvider.GetRequiredService<IGraphRAGService>();
 
-var result = await graphRag.SearchAsync(query, new GraphRAGOptions
+// Build once (the SDK indexer does this for you when EnableGraphRAG is on) or load a persisted graph
+var index = await graphRag.BuildIndexAsync(chunks, new GraphRAGBuildOptions { GenerateEntityEmbeddings = true });
+// var index = await graphRag.LoadIndexAsync(chunks);
+
+var result = await graphRag.QueryAsync(query, index, new GraphRAGQueryOptions
 {
-    EnableLocalSearch = true,
-    EnableGlobalSearch = true,
-    CommunityLevel = 1
+    ForceScope = QueryScope.Hybrid,
+    IncludeRelationships = true
 });
 ```
 

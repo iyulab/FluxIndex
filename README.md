@@ -42,7 +42,9 @@ var context = FluxIndexContext.CreateBuilder()
     .AddSQLiteStorage()
     .Build();
 
-// 2. Index
+// 2. Index — the string overload splits the text into chunks of IndexerOptions.ChunkSize
+//    characters (default 512, at sentence/paragraph/word boundaries); pass a pre-chunked
+//    Document instead when FileFlux/FluxCurator already did the splitting
 await context.Indexer.IndexDocumentAsync(
     "FluxIndex is a RAG library for .NET", "doc-001");
 

@@ -9,10 +9,44 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.37.3]
+## [0.38.0]
+
+### Changed
+
+- **`Indexer.IndexDocumentAsync(string content, …)` now splits the text** into chunks of
+  `IndexerOptions.ChunkSize` characters (default 512, at the nearest sentence/paragraph/word boundary,
+  overlapping by `ChunkOverlap`). The builder had registered a splitter from these options and injected it
+  into the indexer since the option existed, but this overload never called it and stored the whole text as
+  one chunk — `WithChunking(...)`/`WithIndexerOptions(o => o.ChunkSize = …)` changed nothing. A document
+  indexed through the quick-start path now yields several chunks where it used to yield one; text that fits
+  in one chunk is stored verbatim as before. `ChunkOverlap >= ChunkSize` throws `ArgumentOutOfRangeException`.
+- **Breaking**: the SDK-local `FluxIndex.SDK.Services.SimpleChunkingService` is removed. It duplicated
+  `FluxIndex.Core.Services.SimpleChunkingService` with a worse algorithm (collapsed whitespace, overlapped by
+  `overlap / 10` words); the builder now registers the core one. Register your own `IChunkingService` if you
+  relied on the removed type.
+- `Retriever.SearchAsync(query, SearchOptions)` **throws** when `SearchOptions.UseGraphRAG` is `true` instead
+  of ignoring it: `InvalidOperationException` when no `IGraphRAGService` is registered, `NotSupportedException`
+  otherwise — free-text search has no chunk set to build a graph index from; use
+  `IGraphRAGService.BuildIndexAsync`/`LoadIndexAsync` + `QueryAsync`. `null` never auto-activated GraphRAG here;
+  the XML docs that said it did are corrected.
 
 ### Fixed
 
+- Per-call `IndexingOptions.CustomOptions` were discarded by the indexer, so
+  `new IndexingOptions().WithAIMetadataExtraction(...)` passed to `IndexDocumentAsync(document, options)` had
+  no effect — only the builder-level `IndexerOptions.CustomOptions` were read. Both are read now; the caller's
+  keys win.
+- The core splitter could loop forever when a sentence boundary sat within `chunkOverlap` characters of the
+  window start (the next window moved backwards). The window now always advances.
+- Every chunk the SDK indexer stored had `TotalChunks = 0`: the embedding step rebuilt each chunk by hand in
+  three places and none of them copied the field. Chunks are now embedded in place. (Persistent stores still
+  do not have a column for it — see the issue tracker; the in-memory store now returns the real value.)
+- `Indexer.ExtractMetadataBatchAsync` named two builder methods that do not exist in its "not configured"
+  error; it now points at `ConfigureServices`.
+- Documentation: `IndexingOptions.ChunkingStrategy/MaxChunkSize/OverlapSize/GenerateEmbeddings/ExtractMetadata/EnableOCR`,
+  `IndexerOptions.ChunkingStrategy`, `ChunkingDefaults` and `SearchOptions.IncludeVectors` now say that
+  nothing reads them and where the effective setting lives. `docs/GUIDE.md` no longer lists chunking
+  strategies the splitter does not have (`WithChunking("Sliding")` threw on `Enum.Parse`).
 - Five options that were declared but never read now do what their documentation says (found by the new
   options-reachability roster, which pins that every public `*Options` property has a reader):
   - `EntityExtractionOptions.Language` — the default extractor tells the LLM the text's language and to

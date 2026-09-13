@@ -369,7 +369,9 @@ public partial class Retriever
     /// <summary>
     /// SearchOptions 기반 검색 (자동 기능 감지 지원).
     /// UseHybridSearch가 null이면 등록된 서비스에 따라 자동 활성화됩니다.
-    /// GraphRAG는 별도 인덱스 구축이 필요하여 이 메서드에서 자동 활성화되지 않습니다.
+    /// GraphRAG는 이 메서드가 수행하지 않는다 — <see cref="SearchOptions.UseGraphRAG"/> 가 <c>true</c> 이면
+    /// 조용히 무시하는 대신 예외를 던진다(서비스 미등록: <see cref="InvalidOperationException"/>,
+    /// 등록됨: <see cref="NotSupportedException"/> — 그래프 질의는 <c>IGraphRAGService.QueryAsync</c> 로 직접 호출).
     /// </summary>
     /// <param name="query">검색 쿼리</param>
     /// <param name="options">검색 옵션 (null이면 기본값 사용)</param>
@@ -386,16 +388,29 @@ public partial class Retriever
         // Auto-detect Hybrid Search based on registered services
         var useHybridSearch = options.UseHybridSearch ?? (_hybridSearchService != null);
 
-        // GraphRAG requires pre-built index, so don't auto-activate
-        // Users should use GraphRAG-specific methods for graph-based retrieval
-        var graphRAGAvailable = _graphRAGService != null;
-
         // Validate explicitly enabled features
         if (options.UseHybridSearch == true && _hybridSearchService == null)
         {
             throw new InvalidOperationException(
                 "UseHybridSearch is enabled but IHybridSearchService is not registered. " +
                 "Use UseQdrantWithHybrid() or register IHybridSearchService manually.");
+        }
+
+        // GraphRAG needs an index built from the chunks being queried, which a free-text search does not
+        // have, so this method never runs it — and an explicit request must not be dropped silently.
+        if (options.UseGraphRAG == true)
+        {
+            if (_graphRAGService == null)
+            {
+                throw new InvalidOperationException(
+                    "UseGraphRAG is enabled but IGraphRAGService is not registered. " +
+                    "Use UseNeo4jGraph() or register IGraphRAGService manually.");
+            }
+
+            throw new NotSupportedException(
+                "UseGraphRAG is not supported by Retriever.SearchAsync: graph retrieval needs an index built " +
+                "from a known set of chunks. Build or load one with IGraphRAGService.BuildIndexAsync/LoadIndexAsync " +
+                "and query it with IGraphRAGService.QueryAsync.");
         }
 
         // Convert metadata filters to object dictionary
@@ -476,7 +491,7 @@ public partial class Retriever
             {
                 ["useHybridSearch"] = useHybridSearch,
                 ["hybridSearchAvailable"] = SupportsHybridSearch,
-                ["graphRAGAvailable"] = graphRAGAvailable
+                ["graphRAGAvailable"] = SupportsGraphRAG
             }
         };
     }

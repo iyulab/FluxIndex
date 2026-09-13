@@ -114,6 +114,12 @@ public partial class Indexer
     /// 간편 API: 문자열 콘텐츠로 직접 문서 인덱싱
     /// README 예제 코드와 호환되는 간단한 인터페이스 제공
     /// </summary>
+    /// <remarks>
+    /// 이 오버로드만 SDK 자체가 청킹한다 — <c>content</c> 를 <see cref="IndexerOptions.ChunkSize"/> /
+    /// <see cref="IndexerOptions.ChunkOverlap"/>(문자 수, 단어 경계) 기준으로 나눠 청크마다 한 행을 만든다.
+    /// <see cref="Document"/> 를 받는 오버로드는 호출자가 이미 나눈 <see cref="Document.Chunks"/> 를 그대로 쓴다.
+    /// 나뉜 청크는 전부 같은 <paramref name="metadata"/> 를 실으므로 필터는 어느 청크에나 매치된다.
+    /// </remarks>
     /// <param name="content">인덱싱할 문서 내용</param>
     /// <param name="documentId">문서 ID</param>
     /// <param name="metadata">
@@ -150,10 +156,20 @@ public partial class Indexer
             }
         }
 
-        // Create single chunk from content, carrying the caller's metadata so filters can see it
-        var chunk = DocumentChunkEntity.Create(documentId, content, 0, 1);
-        MergeDocumentMetadataIntoChunk(chunk, metadata);
-        document.AddChunk(chunk);
+        // Split by the configured chunk size. The chunking service is the one the builder registered
+        // from IndexerOptions.ChunkSize/ChunkOverlap; before 0.38.0 it was injected and never called,
+        // so this overload stored the whole content as one chunk regardless of the option.
+        var pieces = _chunkingService.ChunkText(content, _options.ChunkSize, _options.ChunkOverlap).ToList();
+        if (pieces.Count == 0)
+            pieces.Add(content);
+
+        // Every chunk carries the caller's metadata so filters can see it on any of them
+        for (var i = 0; i < pieces.Count; i++)
+        {
+            var chunk = DocumentChunkEntity.Create(documentId, pieces[i], i, pieces.Count);
+            MergeDocumentMetadataIntoChunk(chunk, metadata);
+            document.AddChunk(chunk);
+        }
 
         // Use existing indexing logic
         return await IndexDocumentAsync(document, cancellationToken);
@@ -245,15 +261,11 @@ public partial class Indexer
                 {
                     LogExtractingAIMetadata(_logger, document.Id);
 
-                    // IndexingOptions에서 AI 메타데이터 설정 확인
-                    var indexingOptions = new IndexingOptions();
-                    if (_options.CustomOptions != null)
-                    {
-                        foreach (var (key, value) in _options.CustomOptions)
-                        {
-                            indexingOptions.CustomOptions[key] = value;
-                        }
-                    }
+                    // Builder-level defaults (IndexerOptions.CustomOptions) overlaid by this call's
+                    // IndexingOptions.CustomOptions — the caller's keys win. Before 0.38.0 the per-call
+                    // options were discarded here, so `IndexingOptions.WithAIMetadataExtraction(...)`
+                    // passed to this method had no effect.
+                    var indexingOptions = ResolveMetadataOptions(options);
 
                     if (indexingOptions.ShouldExtractAIMetadata())
                     {
@@ -861,6 +873,12 @@ public partial class Indexer
         };
     }
 
+    /// <summary>
+    /// Attaches an embedding to every chunk. The chunks are mutated in place rather than rebuilt: three
+    /// hand-written copies of the entity used to live here (batch, parallel fallback, sequential fallback),
+    /// each with a different field list, and all of them dropped <see cref="DocumentChunkEntity.TotalChunks"/>
+    /// — so every chunk the SDK ever stored had TotalChunks = 0 regardless of what the caller built.
+    /// </summary>
     private async Task<List<DocumentChunkEntity>> GenerateEmbeddingsAsync(
         List<DocumentChunkEntity> chunks,
         CancellationToken cancellationToken)
@@ -888,19 +906,9 @@ public partial class Indexer
             var embeddings = await _embeddingService.GenerateEmbeddingsBatchAsync(texts, cancellationToken);
             var embeddingArray = embeddings.ToArray();
 
-            // 임베딩을 청크에 할당
             for (int i = 0; i < chunks.Count && i < embeddingArray.Length; i++)
             {
-                chunks[i] = new DocumentChunkEntity
-                {
-                    Id = chunks[i].Id,
-                    DocumentId = chunks[i].DocumentId,
-                    Content = chunks[i].Content,
-                    ChunkIndex = chunks[i].ChunkIndex,
-                    Embedding = embeddingArray[i],
-                    TokenCount = chunks[i].TokenCount,
-                    Metadata = chunks[i].Metadata
-                };
+                chunks[i].Embedding = embeddingArray[i];
             }
 
             LogBatchEmbeddingCompleted(_logger, chunks.Count);
@@ -910,7 +918,7 @@ public partial class Indexer
         {
             LogBatchEmbeddingFailed(_logger, ex);
 
-            // Fallback: 개별 임베딩 생성 (기존 병렬 처리 방식)
+            // Fallback: 개별 임베딩 생성
             if (_options.ParallelEmbedding && chunks.Count > 1)
             {
                 var semaphore = new SemaphoreSlim(_options.MaxParallelEmbedding);
@@ -919,53 +927,23 @@ public partial class Indexer
                     await semaphore.WaitAsync(cancellationToken);
                     try
                     {
-                        var embedding = await _embeddingService.GenerateEmbeddingAsync(
-                            chunk.Content, cancellationToken);
-                        return new DocumentChunkEntity
-                        {
-                            Id = chunk.Id,
-                            DocumentId = chunk.DocumentId,
-                            Content = chunk.Content,
-                        ChunkIndex = chunk.ChunkIndex,
-                        TokenCount = chunk.TokenCount,
-                        Metadata = chunk.Metadata,
-                        Embedding = embedding,
-                        Score = chunk.Score,
-                        CreatedAt = chunk.CreatedAt
-                    };
-                }
-                finally
-                {
-                    semaphore.Release();
-                }
-            });
+                        chunk.Embedding = await _embeddingService.GenerateEmbeddingAsync(chunk.Content, cancellationToken);
+                    }
+                    finally
+                    {
+                        semaphore.Release();
+                    }
+                });
 
-            var results = await Task.WhenAll(tasks);
-            return results.ToList();
-        }
-        else
-        {
-            // Sequential embedding generation
-            var result = new List<DocumentChunkEntity>();
+                await Task.WhenAll(tasks);
+                return chunks;
+            }
+
             foreach (var chunk in chunks)
             {
-                var embedding = await _embeddingService.GenerateEmbeddingAsync(
-                    chunk.Content, cancellationToken);
-                result.Add(new DocumentChunkEntity
-                {
-                    Id = chunk.Id,
-                    DocumentId = chunk.DocumentId,
-                    Content = chunk.Content,
-                    ChunkIndex = chunk.ChunkIndex,
-                    TokenCount = chunk.TokenCount,
-                    Metadata = chunk.Metadata,
-                    Embedding = embedding,
-                    Score = chunk.Score,
-                    CreatedAt = chunk.CreatedAt
-                });
+                chunk.Embedding = await _embeddingService.GenerateEmbeddingAsync(chunk.Content, cancellationToken);
             }
-            return result;
-        }
+            return chunks;
         }
     }
 
@@ -1037,6 +1015,26 @@ public partial class Indexer
     /// reaches the <see cref="Document"/> entity is invisible to every filter. The chunk's own
     /// metadata is the more specific scope and wins on key collision.
     /// </summary>
+    /// <summary>
+    /// Metadata-extraction settings for one call: the builder-level <see cref="IndexerOptions.CustomOptions"/>
+    /// as defaults, with the caller's <see cref="IndexingOptions.CustomOptions"/> overlaid on top.
+    /// </summary>
+    internal IndexingOptions ResolveMetadataOptions(IndexingOptions? perCall)
+    {
+        var resolved = new IndexingOptions();
+        if (_options.CustomOptions != null)
+        {
+            foreach (var (key, value) in _options.CustomOptions)
+                resolved.CustomOptions[key] = value;
+        }
+        if (perCall?.CustomOptions != null)
+        {
+            foreach (var (key, value) in perCall.CustomOptions)
+                resolved.CustomOptions[key] = value;
+        }
+        return resolved;
+    }
+
     private static void MergeDocumentMetadataIntoChunk(
         DocumentChunkEntity chunk,
         Dictionary<string, object>? documentMetadata)
@@ -1203,7 +1201,7 @@ public partial class Indexer
         if (_metadataExtractor == null)
         {
             throw new InvalidOperationException(
-                "Metadata extractor is not configured. Use WithOpenAIMetadataExtractor() or WithCustomMetadataExtractor() in the builder.");
+                "Metadata extractor is not configured. Register an IMetadataExtractor via ConfigureServices(...) on the builder.");
         }
 
         var docList = documents.ToList();
@@ -1229,14 +1227,7 @@ public partial class Indexer
         };
 
         // Extract metadata options from IndexerOptions
-        var indexingOptions = new IndexingOptions();
-        if (_options.CustomOptions != null)
-        {
-            foreach (var (key, value) in _options.CustomOptions)
-            {
-                indexingOptions.CustomOptions[key] = value;
-            }
-        }
+        var indexingOptions = ResolveMetadataOptions(null);
 
         var minConfidence = indexingOptions.GetMinMetadataConfidence();
         var customPrompt = indexingOptions.GetCustomMetadataPrompt();
@@ -1516,14 +1507,25 @@ public partial class Indexer
 }
 
 /// <summary>
-/// Indexer 옵션
+/// Indexer 옵션 — <see cref="FluxIndexContextBuilder.WithIndexerOptions"/> / <see cref="FluxIndexContextBuilder.WithChunking"/> 로 설정한다.
 /// </summary>
 public class IndexerOptions
 {
+    /// <summary>
+    /// <see cref="Indexer.IndexDocumentAsync(string, string, Dictionary{string, object}?, CancellationToken)"/> 가 문자열을 나누는
+    /// 최대 청크 길이(문자 수 — 토큰이 아니다). 문장 → 문단 → 단어 경계 순으로 자연 경계를 찾아 자른다.
+    /// 이미 나뉜 <c>Document</c> 를 받는 오버로드에는 영향이 없다. <see cref="IndexingStatistics"/> 에도 보고된다.
+    /// </summary>
     public int ChunkSize { get; set; } = 512;
+    /// <summary>
+    /// 연속한 청크가 공유하는 문자 수. <see cref="ChunkSize"/> 보다 작아야 한다 — 같거나 크면 첫 분할에서
+    /// <see cref="ArgumentOutOfRangeException"/>.
+    /// </summary>
     public int ChunkOverlap { get; set; } = 64;
     public bool ParallelEmbedding { get; set; } = true;
     public int MaxParallelEmbedding { get; set; } = 4;
+    /// <summary>읽히지 않는다 — SDK 의 분할기는 전략이 하나(자연 경계 고정 크기)뿐이다. 문장·문단·의미 단위 분할은
+    /// FileFlux/FluxCurator 로 나눈 뒤 <c>Document</c> 로 넘긴다.</summary>
     public ChunkingStrategy ChunkingStrategy { get; set; } = ChunkingStrategy.Auto;
 
     /// <summary>

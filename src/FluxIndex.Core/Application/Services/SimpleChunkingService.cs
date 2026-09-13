@@ -65,6 +65,11 @@ public class SimpleChunkingService : IChunkingService
 
         chunkSize = chunkSize > 0 ? chunkSize : _defaultChunkSize;
         chunkOverlap = chunkOverlap >= 0 ? chunkOverlap : _defaultChunkOverlap;
+        if (chunkOverlap >= chunkSize)
+        {
+            throw new ArgumentOutOfRangeException(nameof(chunkOverlap), chunkOverlap,
+                $"Chunk overlap must be smaller than the chunk size ({chunkSize}); otherwise no window can advance.");
+        }
 
         if (text.Length <= chunkSize)
         {
@@ -89,10 +94,13 @@ public class SimpleChunkingService : IChunkingService
 
             yield return text.Substring(start, end - start);
 
-            start = end - chunkOverlap;
-            if (start < 0) start = 0;
-            if (start >= text.Length)
+            if (end >= text.Length)
                 break;
+
+            // The next window starts `chunkOverlap` before this one ended, but it must advance:
+            // a natural break close to `start` could otherwise move the window backwards forever.
+            var next = end - chunkOverlap;
+            start = next > start ? next : end;
         }
     }
 

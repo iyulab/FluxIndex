@@ -106,7 +106,7 @@ public class OptionsReachabilityRosterTests
         ["FluxIndex.SDK.KeywordSearchOptions"] = ["CaseSensitive", "SearchFields", "UseFullTextSearch"],
         ["FluxIndex.SDK.RerankingOptions"] = ["RerankingModel", "Strategy", "TopK"],
         ["FluxIndex.SDK.RetrieverOptions"] = ["DefaultMaxResults", "DefaultMinScore"],
-        ["FluxIndex.SDK.SearchOptions"] = ["GraphRAGOptions", "IncludeVectors", "UseGraphRAG"],
+        ["FluxIndex.SDK.SearchOptions"] = ["GraphRAGOptions", "IncludeVectors"],
         ["FluxIndex.SDK.SemanticSearchOptions"] = ["EmbeddingModel", "UseCache"],
         ["FluxIndex.SDK.SimilarityOptions"] = ["ExcludeSelf", "SimilarityThreshold"],
         ["FluxIndex.Storage.Neo4j.Neo4jOptions"] = ["Encrypted", "NodeLabelPrefix"],

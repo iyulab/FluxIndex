@@ -881,8 +881,11 @@ public class FluxIndexContextBuilder
 
     private void ConfigureChunkingService()
     {
+        // The core splitter slices the original text at sentence/paragraph/word boundaries with a real
+        // character overlap. (An SDK-local copy that normalised whitespace and overlapped by
+        // `overlap / 10` words was removed in 0.38.0 — one implementation, in the layer that owns it.)
         _services.AddSingleton<IChunkingService>(sp =>
-            new SDK.Services.SimpleChunkingService(
+            new Core.Services.SimpleChunkingService(
                 _indexerOptions.ChunkSize,
                 _indexerOptions.ChunkOverlap
             )

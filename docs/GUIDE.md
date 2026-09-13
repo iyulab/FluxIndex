@@ -440,9 +440,11 @@ When multiple providers support the same capability:
     defaultMinScore: 0.5f)
 
 .WithChunking(
-    strategy: "Auto",      // Auto, Semantic, Sliding
-    chunkSize: 512,
-    chunkOverlap: 64)
+    chunkSize: 512,        // characters, not tokens — applies to Indexer.IndexDocumentAsync(string content, ...)
+    chunkOverlap: 64)      // must be smaller than chunkSize
+// `strategy` is accepted but not read: the SDK splitter has one algorithm (fixed size at the nearest
+// sentence/paragraph/word boundary). Documents split by FileFlux/FluxCurator are indexed as given —
+// pass them as a pre-chunked Document, or use UseFileFlux() / AddFileFluxIntegration().
 
 .WithCacheDuration(TimeSpan.FromHours(1))
 ```

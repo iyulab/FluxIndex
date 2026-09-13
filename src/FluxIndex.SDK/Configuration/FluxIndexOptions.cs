@@ -128,7 +128,8 @@ public class IndexingConfiguration
 }
 
 /// <summary>
-/// 청킹 기본값
+/// 청킹 기본값. <see cref="FluxIndexContextBuilder.WithChunking"/> 가 채우지만 **어느 코드도 읽지 않는다** — 실제로
+/// 분할에 쓰이는 값은 같은 호출이 함께 채우는 <see cref="IndexerOptions.ChunkSize"/>/<see cref="IndexerOptions.ChunkOverlap"/> 다.
 /// </summary>
 public class ChunkingDefaults
 {
