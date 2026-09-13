@@ -125,10 +125,15 @@ public partial class Retriever
     /// <summary>
     /// 벡터 유사도 검색
     /// </summary>
+    /// <param name="query">검색 질의</param>
+    /// <param name="maxResults">최대 결과 수. 생략(null)하면 <see cref="RetrieverOptions.DefaultMaxResults"/>(빌더 <c>WithSearchOptions</c>).</param>
+    /// <param name="minScore">최소 유사도. 생략(null)하면 <see cref="RetrieverOptions.DefaultMinScore"/>(기본 0.2).</param>
+    /// <param name="filter">청크 메타데이터 필터</param>
+    /// <param name="cancellationToken">취소 토큰</param>
     public async Task<IEnumerable<VectorSearchResult>> SearchAsync(
         string query,
-        int maxResults = 10,
-        float minScore = 0.2f, // Lowered from 0.5f for better recall
+        int? maxResults = null,
+        float? minScore = null,
         Dictionary<string, object>? filter = null,
         CancellationToken cancellationToken = default)
     {
@@ -136,15 +141,31 @@ public partial class Retriever
     }
 
     /// <summary>
-    /// 벡터 유사도 검색 (Phase 3: 진행률 모니터링 지원)
+    /// 벡터 유사도 검색 (Phase 3: 진행률 모니터링 지원). 생략한 <paramref name="maxResults"/>/<paramref name="minScore"/> 는
+    /// <see cref="RetrieverOptions"/> 의 기본값을 쓴다 — 0.38.0 전에는 <c>WithSearchOptions</c> 가 채운 그 값을 아무도 읽지 않았다.
     /// </summary>
     public async Task<IEnumerable<VectorSearchResult>> SearchAsync(
         string query,
         IProgress<SearchProgress>? progress,
-        int maxResults = 10,
-        float minScore = 0.2f,
+        int? maxResults = null,
+        float? minScore = null,
         Dictionary<string, object>? filter = null,
         CancellationToken cancellationToken = default)
+    {
+        return await SearchResolvedAsync(
+            query, progress,
+            maxResults ?? _options.DefaultMaxResults,
+            minScore ?? _options.DefaultMinScore,
+            filter, cancellationToken);
+    }
+
+    private async Task<IEnumerable<VectorSearchResult>> SearchResolvedAsync(
+        string query,
+        IProgress<SearchProgress>? progress,
+        int maxResults,
+        float minScore,
+        Dictionary<string, object>? filter,
+        CancellationToken cancellationToken)
     {
         var queryId = Guid.NewGuid().ToString();
         var startTime = DateTime.UtcNow;
@@ -562,7 +583,7 @@ public partial class Retriever
     public async Task<IEnumerable<VectorSearchResult>> HybridSearchAsync(
         string keyword,
         string query,
-        int maxResults = 10,
+        int? maxResults = null,
         double vectorWeight = 0.7,
         Dictionary<string, object>? filter = null,
         CancellationToken cancellationToken = default)
@@ -571,16 +592,30 @@ public partial class Retriever
     }
 
     /// <summary>
-    /// 하이브리드 검색 (키워드 + 벡터) with RRF fusion (Phase 3: 진행률 모니터링 지원)
+    /// 하이브리드 검색 (키워드 + 벡터) with RRF fusion (Phase 3: 진행률 모니터링 지원).
+    /// 생략한 <paramref name="maxResults"/> 는 <see cref="RetrieverOptions.DefaultMaxResults"/>.
     /// </summary>
     public async Task<IEnumerable<VectorSearchResult>> HybridSearchAsync(
         string keyword,
         string query,
         IProgress<SearchProgress>? progress,
-        int maxResults = 10,
+        int? maxResults = null,
         double vectorWeight = 0.7,
         Dictionary<string, object>? filter = null,
         CancellationToken cancellationToken = default)
+    {
+        return await HybridSearchResolvedAsync(
+            keyword, query, progress, maxResults ?? _options.DefaultMaxResults, vectorWeight, filter, cancellationToken);
+    }
+
+    private async Task<IEnumerable<VectorSearchResult>> HybridSearchResolvedAsync(
+        string keyword,
+        string query,
+        IProgress<SearchProgress>? progress,
+        int maxResults,
+        double vectorWeight,
+        Dictionary<string, object>? filter,
+        CancellationToken cancellationToken)
     {
         var queryId = Guid.NewGuid().ToString();
         var startTime = DateTime.UtcNow;
@@ -747,7 +782,7 @@ public partial class Retriever
     /// </remarks>
     public async Task<IEnumerable<VectorSearchResult>> KeywordSearchAsync(
         string keyword,
-        int maxResults = 10,
+        int? maxResults = null,
         Dictionary<string, object>? filter = null,
         CancellationToken cancellationToken = default)
     {
@@ -755,14 +790,26 @@ public partial class Retriever
     }
 
     /// <summary>
-    /// 키워드 기반 검색 (Phase 3: 진행률 모니터링 지원)
+    /// 키워드 기반 검색 (Phase 3: 진행률 모니터링 지원). 생략한 <paramref name="maxResults"/> 는
+    /// <see cref="RetrieverOptions.DefaultMaxResults"/>.
     /// </summary>
     public async Task<IEnumerable<VectorSearchResult>> KeywordSearchAsync(
         string keyword,
         IProgress<SearchProgress>? progress,
-        int maxResults = 10,
+        int? maxResults = null,
         Dictionary<string, object>? filter = null,
         CancellationToken cancellationToken = default)
+    {
+        return await KeywordSearchResolvedAsync(
+            keyword, progress, maxResults ?? _options.DefaultMaxResults, filter, cancellationToken);
+    }
+
+    private async Task<IEnumerable<VectorSearchResult>> KeywordSearchResolvedAsync(
+        string keyword,
+        IProgress<SearchProgress>? progress,
+        int maxResults,
+        Dictionary<string, object>? filter,
+        CancellationToken cancellationToken)
     {
         var queryId = Guid.NewGuid().ToString();
         var startTime = DateTime.UtcNow;
@@ -951,13 +998,23 @@ public partial class Retriever
     }
 
     /// <summary>
-    /// 유사 문서 찾기
+    /// 유사 문서 찾기. 생략한 <paramref name="maxResults"/> 는 <see cref="RetrieverOptions.DefaultMaxResults"/>;
+    /// <paramref name="minScore"/> 는 문서 간 유사도라 검색 임계값과 별개의 기본(0.5)을 갖는다.
     /// </summary>
     public async Task<IEnumerable<VectorSearchResult>> FindSimilarAsync(
         string documentId,
-        int maxResults = 10,
+        int? maxResults = null,
         float minScore = 0.5f,
         CancellationToken cancellationToken = default)
+    {
+        return await FindSimilarResolvedAsync(documentId, maxResults ?? _options.DefaultMaxResults, minScore, cancellationToken);
+    }
+
+    private async Task<IEnumerable<VectorSearchResult>> FindSimilarResolvedAsync(
+        string documentId,
+        int maxResults,
+        float minScore,
+        CancellationToken cancellationToken)
     {
         LogFindingSimilarDocuments(_logger, documentId);
 
@@ -1162,11 +1219,25 @@ public partial class Retriever
 /// <summary>
 /// Retriever 옵션
 /// </summary>
+/// <summary>
+/// Retriever 옵션 — <see cref="FluxIndexContextBuilder.WithSearchOptions"/> / <c>WithIndexerOptions</c> 류로 설정한다.
+/// </summary>
 public class RetrieverOptions
 {
     public TimeSpan CacheDuration { get; set; } = TimeSpan.FromMinutes(10);
+
+    /// <summary>
+    /// <c>SearchAsync</c>·<c>HybridSearchAsync</c>·<c>KeywordSearchAsync</c>·<c>FindSimilarAsync</c>·양자화 검색이
+    /// <c>maxResults</c> 를 생략했을 때의 결과 수.
+    /// </summary>
     public int DefaultMaxResults { get; set; } = 10;
-    public float DefaultMinScore { get; set; } = 0.5f;
+
+    /// <summary>
+    /// <c>SearchAsync</c> 가 <c>minScore</c> 를 생략했을 때의 최소 유사도. 기본 0.2 — 0.38.0 전까지 메서드 파라미터
+    /// 상수가 0.2 였고(이 속성은 0.5 로 선언만 돼 있었다) 그 실효값을 유지한다. <c>FindSimilarAsync</c>(0.5)와
+    /// 양자화 검색(0.0)은 자기 기본을 갖는다.
+    /// </summary>
+    public float DefaultMinScore { get; set; } = 0.2f;
 }
 
 /// <summary>

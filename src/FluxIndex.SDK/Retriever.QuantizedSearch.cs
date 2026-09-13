@@ -31,7 +31,7 @@ public partial class Retriever
     /// <exception cref="InvalidOperationException">양자화가 지원되지 않는 경우</exception>
     public async Task<IEnumerable<VectorSearchResult>> SearchQuantizedAsync(
         string query,
-        int maxResults = 10,
+        int? maxResults = null,
         float minScore = 0.0f,
         CancellationToken cancellationToken = default)
     {
@@ -39,14 +39,25 @@ public partial class Retriever
     }
 
     /// <summary>
-    /// 양자화 벡터를 사용한 빠른 근사 검색 (진행률 모니터링 지원)
+    /// 양자화 벡터를 사용한 빠른 근사 검색 (진행률 모니터링 지원). 생략한 <paramref name="maxResults"/> 는
+    /// <see cref="RetrieverOptions.DefaultMaxResults"/>; 근사 검색의 <paramref name="minScore"/> 기본은 0.
     /// </summary>
     public async Task<IEnumerable<VectorSearchResult>> SearchQuantizedAsync(
         string query,
         IProgress<SearchProgress>? progress,
-        int maxResults = 10,
+        int? maxResults = null,
         float minScore = 0.0f,
         CancellationToken cancellationToken = default)
+    {
+        return await SearchQuantizedResolvedAsync(query, progress, maxResults ?? _options.DefaultMaxResults, minScore, cancellationToken);
+    }
+
+    private async Task<IEnumerable<VectorSearchResult>> SearchQuantizedResolvedAsync(
+        string query,
+        IProgress<SearchProgress>? progress,
+        int maxResults,
+        float minScore,
+        CancellationToken cancellationToken)
     {
         if (_quantizedVectorStore == null || !SupportsQuantization)
         {
@@ -174,7 +185,7 @@ public partial class Retriever
     /// <returns>리랭킹된 검색 결과</returns>
     public async Task<IEnumerable<VectorSearchResult>> SearchWithRerankAsync(
         string query,
-        int maxResults = 10,
+        int? maxResults = null,
         int candidateMultiplier = 3,
         float minScore = 0.0f,
         CancellationToken cancellationToken = default)
@@ -183,15 +194,27 @@ public partial class Retriever
     }
 
     /// <summary>
-    /// 양자화 후보 선택 + 원본 벡터 리랭킹 검색 (진행률 모니터링 지원)
+    /// 양자화 후보 선택 + 원본 벡터 리랭킹 검색 (진행률 모니터링 지원). 생략한 <paramref name="maxResults"/> 는
+    /// <see cref="RetrieverOptions.DefaultMaxResults"/>.
     /// </summary>
     public async Task<IEnumerable<VectorSearchResult>> SearchWithRerankAsync(
         string query,
         IProgress<SearchProgress>? progress,
-        int maxResults = 10,
+        int? maxResults = null,
         int candidateMultiplier = 3,
         float minScore = 0.0f,
         CancellationToken cancellationToken = default)
+    {
+        return await SearchWithRerankResolvedAsync(query, progress, maxResults ?? _options.DefaultMaxResults, candidateMultiplier, minScore, cancellationToken);
+    }
+
+    private async Task<IEnumerable<VectorSearchResult>> SearchWithRerankResolvedAsync(
+        string query,
+        IProgress<SearchProgress>? progress,
+        int maxResults,
+        int candidateMultiplier,
+        float minScore,
+        CancellationToken cancellationToken)
     {
         if (_quantizedVectorStore == null || !SupportsQuantization)
         {

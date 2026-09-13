@@ -442,8 +442,9 @@ When multiple providers support the same capability:
 
 ```csharp
 .WithSearchOptions(
-    defaultMaxResults: 10,
-    defaultMinScore: 0.5f)
+    defaultMaxResults: 10,     // used by SearchAsync/HybridSearchAsync/KeywordSearchAsync/FindSimilarAsync
+    defaultMinScore: 0.5f)     // when the call omits maxResults / minScore (SearchAsync only for minScore;
+                               // default without this call: 10 / 0.2)
 
 .WithChunking(
     chunkSize: 512,        // characters, not tokens — applies to Indexer.IndexDocumentAsync(string content, ...)

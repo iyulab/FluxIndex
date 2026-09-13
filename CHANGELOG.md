@@ -24,6 +24,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   `FluxIndex.Core.Services.SimpleChunkingService` with a worse algorithm (collapsed whitespace, overlapped by
   `overlap / 10` words); the builder now registers the core one. Register your own `IChunkingService` if you
   relied on the removed type.
+- **Binary-breaking, source-compatible**: the `maxResults`/`minScore` parameters of `Retriever.SearchAsync`,
+  `HybridSearchAsync`, `KeywordSearchAsync`, `FindSimilarAsync`, `SearchQuantizedAsync`, `SearchWithRerankAsync`
+  and the `FluxIndexContext`/`IFluxIndexContext` facades are now nullable; an omitted argument takes
+  `RetrieverOptions.DefaultMaxResults`/`DefaultMinScore`. `WithSearchOptions(...)` wrote those options and no
+  search method read them — each overload carried its own constant (10 and 0.2; the `IFluxIndexContext`
+  interface declared 0.5, so the same call had a different threshold through the interface than through the
+  class). `RetrieverOptions.DefaultMinScore` now defaults to the 0.2 that actually ran, so callers who never
+  used `WithSearchOptions` see no change; interface callers who omitted `minScore` move from 0.5 to 0.2.
 - **Breaking**: `AddPostgreSQLVectorStore` no longer takes an `enableAutoMigration` parameter. Schema
   provisioning follows `PostgreSQLOptions.AutoMigrate` (the same shape every other component uses; the
   connection-string overload exposes it as `autoMigrate`). The builder maps `VectorStore.EnableAutoMigration`

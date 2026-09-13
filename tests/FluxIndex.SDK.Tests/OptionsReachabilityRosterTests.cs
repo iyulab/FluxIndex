@@ -114,7 +114,6 @@ public class OptionsReachabilityRosterTests
         ["FluxIndex.SDK.IndexingOptions"] = ["ChunkingStrategy", "EnableOCR", "ExtractMetadata", "GenerateEmbeddings", "MaxChunkSize", "OverlapSize"],
         ["FluxIndex.SDK.KeywordSearchOptions"] = ["CaseSensitive", "SearchFields", "UseFullTextSearch"],
         ["FluxIndex.SDK.RerankingOptions"] = ["RerankingModel", "Strategy", "TopK"],
-        ["FluxIndex.SDK.RetrieverOptions"] = ["DefaultMaxResults", "DefaultMinScore"],
         ["FluxIndex.SDK.SearchOptions"] = ["GraphRAGOptions", "IncludeVectors"],
         ["FluxIndex.SDK.SemanticSearchOptions"] = ["EmbeddingModel", "UseCache"],
         ["FluxIndex.SDK.SimilarityOptions"] = ["ExcludeSelf", "SimilarityThreshold"],

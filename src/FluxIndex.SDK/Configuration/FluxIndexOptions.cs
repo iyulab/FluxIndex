@@ -152,6 +152,11 @@ public class ChunkingDefaults
 /// <summary>
 /// 검색 설정
 /// </summary>
+/// <summary>
+/// 읽히지 않는 블록 — <c>WithSearchOptions(...)</c> 가 <see cref="DefaultMaxResults"/>/<see cref="DefaultMinScore"/> 를 채우지만
+/// 정본은 같은 호출이 함께 채우는 <c>RetrieverOptions</c> 다(검색 메서드가 인자를 생략했을 때 읽는 값). 나머지 속성은
+/// 쓰는 코드도 읽는 코드도 없다.
+/// </summary>
 public class SearchConfiguration
 {
     public int DefaultMaxResults { get; set; } = 10;

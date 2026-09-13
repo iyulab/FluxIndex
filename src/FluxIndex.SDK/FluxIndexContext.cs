@@ -113,8 +113,8 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable
     /// </summary>
     public async Task<IEnumerable<SearchResult>> SearchAsync(
         string query,
-        int maxResults = 10,
-        float minScore = 0.2f, // Lowered from 0.5f for better recall
+        int? maxResults = null,
+        float? minScore = null,
         Dictionary<string, object>? filter = null,
         CancellationToken cancellationToken = default)
     {
@@ -232,7 +232,7 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable
     public async Task<IEnumerable<SearchResult>> HybridSearchAsync(
         string keyword,
         string query,
-        int maxResults = 10,
+        int? maxResults = null,
         float vectorWeight = 0.7f,
         Dictionary<string, object>? filter = null,
         CancellationToken cancellationToken = default)
@@ -447,7 +447,7 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable
     /// <returns>검색 결과 목록</returns>
     public async Task<IEnumerable<SearchResult>> SearchQuantizedAsync(
         string query,
-        int maxResults = 10,
+        int? maxResults = null,
         float minScore = 0.0f,
         CancellationToken cancellationToken = default)
     {
@@ -470,7 +470,7 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable
     /// <returns>리랭킹된 검색 결과</returns>
     public async Task<IEnumerable<SearchResult>> SearchWithRerankAsync(
         string query,
-        int maxResults = 10,
+        int? maxResults = null,
         int candidateMultiplier = 3,
         float minScore = 0.0f,
         CancellationToken cancellationToken = default)
@@ -1100,8 +1100,12 @@ public interface IFluxIndexContext
     IServiceProvider ServiceProvider { get; }
 
     // Convenience methods
-    Task<IEnumerable<SearchResult>> SearchAsync(string query, int maxResults = 10, float minScore = 0.5f, Dictionary<string, object>? filter = null, CancellationToken cancellationToken = default);
-    Task<IEnumerable<SearchResult>> HybridSearchAsync(string keyword, string query, int maxResults = 10, float vectorWeight = 0.7f, Dictionary<string, object>? filter = null, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// 벡터 검색. <paramref name="maxResults"/>/<paramref name="minScore"/> 를 생략하면 <see cref="RetrieverOptions"/> 의 기본값
+    /// (빌더 <c>WithSearchOptions</c>) — 0.38.0 전에는 이 인터페이스(0.5)와 구현(0.2)의 기본 임계값이 서로 달랐다.
+    /// </summary>
+    Task<IEnumerable<SearchResult>> SearchAsync(string query, int? maxResults = null, float? minScore = null, Dictionary<string, object>? filter = null, CancellationToken cancellationToken = default);
+    Task<IEnumerable<SearchResult>> HybridSearchAsync(string keyword, string query, int? maxResults = null, float vectorWeight = 0.7f, Dictionary<string, object>? filter = null, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<HybridSearchResult>> HybridSearchV2Async(string query, FluxIndex.Core.Domain.Models.HybridSearchOptions? options = null, CancellationToken cancellationToken = default);
     Task<Document?> GetDocumentAsync(string documentId, CancellationToken cancellationToken = default);
     Task<string> IndexAsync(Document document, CancellationToken cancellationToken = default);
@@ -1118,9 +1122,9 @@ public interface IFluxIndexContext
     /// <summary>양자화기 인스턴스</summary>
     IVectorQuantizer? Quantizer { get; }
     /// <summary>양자화 벡터를 사용한 빠른 근사 검색</summary>
-    Task<IEnumerable<SearchResult>> SearchQuantizedAsync(string query, int maxResults = 10, float minScore = 0.0f, CancellationToken cancellationToken = default);
+    Task<IEnumerable<SearchResult>> SearchQuantizedAsync(string query, int? maxResults = null, float minScore = 0.0f, CancellationToken cancellationToken = default);
     /// <summary>양자화 후보 선택 + 원본 벡터 리랭킹 검색</summary>
-    Task<IEnumerable<SearchResult>> SearchWithRerankAsync(string query, int maxResults = 10, int candidateMultiplier = 3, float minScore = 0.0f, CancellationToken cancellationToken = default);
+    Task<IEnumerable<SearchResult>> SearchWithRerankAsync(string query, int? maxResults = null, int candidateMultiplier = 3, float minScore = 0.0f, CancellationToken cancellationToken = default);
     /// <summary>양자화 저장소 통계 조회</summary>
     Task<QuantizedStorageStats?> GetQuantizedStatsAsync(CancellationToken cancellationToken = default);
 

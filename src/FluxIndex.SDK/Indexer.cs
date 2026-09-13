@@ -124,7 +124,7 @@ public partial class Indexer
     /// <param name="documentId">문서 ID</param>
     /// <param name="metadata">
     /// 메타데이터 (선택). 문서에 저장되는 동시에 이 문서의 청크에도 복사되어
-    /// <see cref="Retriever.SearchAsync(string, int, float, Dictionary{string, object}?, CancellationToken)"/> 의
+    /// <see cref="Retriever.SearchAsync(string, int?, float?, Dictionary{string, object}?, CancellationToken)"/> 의
     /// <c>filter</c> 및 <see cref="Core.Application.Interfaces.IVectorStore.DeleteByFilterAsync"/> 에서 매치된다
     /// (두 계약 모두 청크 메타데이터를 읽는다).
     /// NOTE: 문서 레벨 메타데이터 자체는 영속되지 않는다 — <c>IDocumentRepository</c> 는 현재 인메모리 구현뿐이라
