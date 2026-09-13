@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -864,18 +865,19 @@ public partial class EntityExtractionService : IAdvancedEntityExtractionService
 
             var json = response.Substring(jsonStart, jsonEnd - jsonStart + 1);
 
-            // Parse using System.Text.Json
-            var parsed = System.Text.Json.JsonSerializer.Deserialize<List<LlmEntityResult>>(json);
+            var parsed = JsonSerializer.Deserialize<List<LlmEntityResult>>(json, LlmResponseJson);
 
             if (parsed == null)
             {
                 return entities;
             }
 
+            var unusable = 0;
             foreach (var item in parsed)
             {
                 if (string.IsNullOrWhiteSpace(item.Text))
                 {
+                    unusable++;
                     continue;
                 }
 
@@ -897,6 +899,11 @@ public partial class EntityExtractionService : IAdvancedEntityExtractionService
                     Context = context,
                     OccurrenceCount = 1
                 });
+            }
+
+            if (parsed.Count > 0 && unusable == parsed.Count)
+            {
+                LogLlmEntityResponseUnusable(_logger, parsed.Count);
             }
         }
         catch (Exception ex)
@@ -924,15 +931,22 @@ public partial class EntityExtractionService : IAdvancedEntityExtractionService
             }
 
             var json = response.Substring(jsonStart, jsonEnd - jsonStart + 1);
-            var parsed = System.Text.Json.JsonSerializer.Deserialize<List<LlmRelationResult>>(json);
+            var parsed = JsonSerializer.Deserialize<List<LlmRelationResult>>(json, LlmResponseJson);
 
             if (parsed == null)
             {
                 return relations;
             }
 
+            var unusable = 0;
             foreach (var item in parsed)
             {
+                if (string.IsNullOrWhiteSpace(item.Source) || string.IsNullOrWhiteSpace(item.Target))
+                {
+                    unusable++;
+                    continue;
+                }
+
                 var sourceEntity = entities.FirstOrDefault(e =>
                     e.Text.Equals(item.Source, StringComparison.OrdinalIgnoreCase));
                 var targetEntity = entities.FirstOrDefault(e =>
@@ -956,6 +970,11 @@ public partial class EntityExtractionService : IAdvancedEntityExtractionService
                     Confidence = Math.Clamp(item.Confidence, 0, 1),
                     IsDirectional = true
                 });
+            }
+
+            if (parsed.Count > 0 && unusable == parsed.Count)
+            {
+                LogLlmRelationResponseUnusable(_logger, parsed.Count);
             }
         }
         catch (Exception ex)
@@ -985,6 +1004,15 @@ public partial class EntityExtractionService : IAdvancedEntityExtractionService
     #endregion
 
     #region Helper Classes for JSON Parsing
+
+    /// <summary>
+    /// The extraction prompts ask the model for lowercase keys (<c>"text"</c>, <c>"source"</c>, ...) while the
+    /// result records below are PascalCase. <see cref="JsonSerializer"/>'s default matching is case-sensitive,
+    /// so without these options every property stayed at its default and every result was dropped as
+    /// empty — no exception, no log. Web defaults bind case-insensitively and tolerate numbers quoted as
+    /// strings, which is the shape a chat model actually returns.
+    /// </summary>
+    private static readonly JsonSerializerOptions LlmResponseJson = new(JsonSerializerDefaults.Web);
 
     private sealed class LlmEntityResult
     {
@@ -1019,6 +1047,10 @@ public partial class EntityExtractionService : IAdvancedEntityExtractionService
     private static partial void LogEntityExtraction2(ILogger logger, Exception exception);
     [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to parse LLM relation response")]
     private static partial void LogEntityExtraction1(ILogger logger, Exception exception);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "LLM entity response parsed as {Count} item(s) but none carried a non-empty 'text' field; every LLM-extracted entity was discarded. Check the response shape against the prompt's example")]
+    private static partial void LogLlmEntityResponseUnusable(ILogger logger, int count);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "LLM relation response parsed as {Count} item(s) but none carried non-empty 'source' and 'target' fields; every LLM-extracted relation was discarded. Check the response shape against the prompt's example")]
+    private static partial void LogLlmRelationResponseUnusable(ILogger logger, int count);
 
     #endregion
 }

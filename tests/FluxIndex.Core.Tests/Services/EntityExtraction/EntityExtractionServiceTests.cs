@@ -314,9 +314,12 @@ public class EntityExtractionServiceTests
         // Act
         var result = await service.ExtractEntitiesAsync(content, options, TestContext.Current.CancellationToken);
 
-        // Assert
+        // Assert — the call alone proved nothing: a response that bound no field was dropped silently
+        // while this fact stayed green. The LLM's entity must actually be in the result, with its fields.
         await _llmServiceMock.Received(1).CompleteAsync(
             Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>());
+        var apple = Assert.Single(result, e => e.Text == "Apple" && e.Type == NamedEntityType.Organization);
+        Assert.Equal(0.95, apple.Confidence, precision: 6);
     }
 
     [Fact]

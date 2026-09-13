@@ -44,6 +44,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ### Fixed
 
+- **LLM entity and relation extraction discarded every result.** `EntityExtractionService` asked the
+  model for lowercase keys (`"text"`, `"type"`, `"source"`, ... — its own prompt example) and then
+  deserialized the reply into PascalCase records with case-sensitive matching, so every field stayed at its
+  default and every item was dropped as empty — no exception, no log. With `UseLlm = true` a GraphRAG index
+  therefore contained zero LLM-derived entities and relations; only the Latin-capitalisation pattern
+  fallback ever contributed. Both replies now bind case-insensitively, and a reply that parses but carries
+  no usable item (wrong keys) is logged as a warning instead of vanishing.
 - `AutoMigrate = false` — the operator's "I manage this schema" switch — was never read by four
   provisioners: the SQLite graph store and entity-graph store (the builder copied
   `GraphStore.AutoMigrate` into their options and both ignored it, so the documented opt-out provisioned
