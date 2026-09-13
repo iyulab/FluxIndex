@@ -26,6 +26,16 @@
     <ProjectReference Include="..\..\src\FluxIndex.Storage.SQLite\FluxIndex.Storage.SQLite.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.Storage.Neo4j\FluxIndex.Storage.Neo4j.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.Storage.Qdrant\FluxIndex.Storage.Qdrant.csproj" />
+    <!-- The remaining library assemblies, referenced so OptionsReachabilityRosterTests scans every
+         public *Options type the packages ship — an option read only in an assembly that is not loaded
+         would otherwise be reported as unread. -->
+    <ProjectReference Include="..\..\src\FluxIndex.Storage.PostgreSQL\FluxIndex.Storage.PostgreSQL.csproj" />
+    <ProjectReference Include="..\..\src\FluxIndex.Cache.Redis\FluxIndex.Cache.Redis.csproj" />
+    <ProjectReference Include="..\..\src\FluxIndex.Integrations.FluxCurator\FluxIndex.Integrations.FluxCurator.csproj" />
+    <ProjectReference Include="..\..\src\FluxIndex.Integrations.FluxImprover\FluxIndex.Integrations.FluxImprover.csproj" />
+    <ProjectReference Include="..\..\src\FluxIndex.Providers.LMSupply\FluxIndex.Providers.LMSupply.csproj" />
+    <ProjectReference Include="..\..\src\FluxIndex.Providers.OpenAI\FluxIndex.Providers.OpenAI.csproj" />
+    <ProjectReference Include="..\..\src\FluxIndex.MCP\FluxIndex.MCP.csproj" />
     <!-- Shared IVectorStore filter-contract suite (VectorStoreFilterContractSuite) -->
     <ProjectReference Include="..\FluxIndex.Core.Tests\FluxIndex.Core.Tests.csproj" />
   </ItemGroup>
