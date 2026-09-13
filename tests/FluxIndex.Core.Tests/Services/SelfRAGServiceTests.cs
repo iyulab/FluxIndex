@@ -46,6 +46,43 @@ public class SelfRAGServiceTests
                 Arg.Any<CancellationToken>()).Returns(CreateDefaultHybridResults(5));
     }
 
+    [Fact]
+    public async Task SearchAsync_HonoursSearchTimeout_AsAnUnsuccessfulResultWithTheReason()
+    {
+        // SearchTimeout was declared on SelfRAGOptions (default 2 min) and never read; the one place it
+        // was ever copied was an unregistered sibling implementation. A search that overruns it ends
+        // as an unsuccessful result naming the timeout — the shape every failure takes here.
+        _mockSearchService.SearchAsync(Arg.Any<string>(), Arg.Any<HybridSearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                await Task.Delay(Timeout.Infinite, call.Arg<CancellationToken>());
+                return CreateDefaultHybridResults(0);
+            });
+        var service = CreateService();
+
+        var result = await service.SearchAsync("slow", new SelfRAGOptions { SearchTimeout = TimeSpan.FromMilliseconds(200) }, TestContext.Current.CancellationToken);
+
+        Assert.False(result.IsSuccessful);
+        Assert.StartsWith("Timeout:", result.TerminationReason);
+    }
+
+    [Fact]
+    public async Task SearchAsync_CallerCancellation_StillPropagates()
+    {
+        _mockSearchService.SearchAsync(Arg.Any<string>(), Arg.Any<HybridSearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                await Task.Delay(Timeout.Infinite, call.Arg<CancellationToken>());
+                return CreateDefaultHybridResults(0);
+            });
+        var service = CreateService();
+        using var cts = new CancellationTokenSource(100);
+
+        var act = () => service.SearchAsync("slow", new SelfRAGOptions { SearchTimeout = TimeSpan.FromSeconds(30) }, cts.Token);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(act);
+    }
+
     private SelfRAGService CreateService(
         SelfRAGServiceOptions? options = null,
         bool withLlm = true)

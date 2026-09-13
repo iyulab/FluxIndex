@@ -53,6 +53,15 @@ public partial class SelfRAGService : ISelfRAGService
 
         var opts = options ?? new SelfRAGOptions();
         var stopwatch = Stopwatch.StartNew();
+
+        // SearchTimeout was declared on the options (default 2 min) and never read. It now bounds the
+        // whole iterative search; an overrun ends the search as an unsuccessful result with the reason
+        // — the same shape every other failure takes here — not as a cancellation the caller did not ask for.
+        using var timeoutSource = opts.SearchTimeout > TimeSpan.Zero
+            ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)
+            : null;
+        timeoutSource?.CancelAfter(opts.SearchTimeout);
+        var searchToken = timeoutSource?.Token ?? cancellationToken;
         var result = new SelfRAGResult
         {
             Metadata = new Dictionary<string, object>
@@ -71,7 +80,7 @@ public partial class SelfRAGService : ISelfRAGService
 
             for (int i = 0; i < opts.MaxIterations; i++)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                searchToken.ThrowIfCancellationRequested();
 
                 if (_logger.IsEnabled(LogLevel.Debug))
                     LogSelfRAG7(_logger, i + 1, currentQuery);
@@ -81,11 +90,11 @@ public partial class SelfRAGService : ISelfRAGService
 
                 // Perform search
                 var iterationStart = Stopwatch.StartNew();
-                var searchResults = await ExecuteSearchAsync(currentQuery, strategy, opts, cancellationToken);
+                var searchResults = await ExecuteSearchAsync(currentQuery, strategy, opts, searchToken);
                 iterationStart.Stop();
 
                 // Assess quality
-                lastAssessment = await AssessResultQualityAsync(currentQuery, searchResults, cancellationToken);
+                lastAssessment = await AssessResultQualityAsync(currentQuery, searchResults, searchToken);
 
                 // Create iteration record
                 var iteration = new SearchIteration
@@ -131,7 +140,7 @@ public partial class SelfRAGService : ISelfRAGService
                 // Try to refine query if auto-refinement is enabled
                 if (opts.EnableAutoRefinement)
                 {
-                    var refinements = await SuggestQueryRefinementsAsync(currentQuery, lastAssessment, cancellationToken);
+                    var refinements = await SuggestQueryRefinementsAsync(currentQuery, lastAssessment, searchToken);
 
                     if (refinements.RefinedQueries.Count != 0)
                     {
@@ -172,6 +181,14 @@ public partial class SelfRAGService : ISelfRAGService
             var resultCount = finalResults.Count();
             LogSelfRAG4(_logger, resultCount, iterations.Count, result.FinalQualityScore);
 
+            return result;
+        }
+        catch (OperationCanceledException) when (timeoutSource is { IsCancellationRequested: true } && !cancellationToken.IsCancellationRequested)
+        {
+            stopwatch.Stop();
+            result.IsSuccessful = false;
+            result.TerminationReason = $"Timeout: the search did not complete within {opts.SearchTimeout}";
+            result.TotalProcessingTime = stopwatch.Elapsed;
             return result;
         }
         catch (OperationCanceledException)
