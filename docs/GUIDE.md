@@ -633,18 +633,35 @@ var result = await graphRag.QueryAsync(
 
 ### Entity Graph Operations
 
+The entity graph is built from chunks once and then handed to every query — build, search and
+traverse all take the `EntityGraphResult` explicitly.
+
 ```csharp
 var entityGraph = serviceProvider.GetRequiredService<IEntityGraphService>();
 
-// Build graph from documents
-await entityGraph.BuildGraphAsync(chunks);
+// Build the graph from chunks (extracts entities and relations, maps entities to chunks)
+EntityGraphResult graph = await entityGraph.BuildEntityGraphAsync(chunks);
 
-// Search by entity
-var results = await entityGraph.SearchByEntityAsync(entityId, new EntitySearchOptions
+// Entity-centric search: the query's entities seed a Personalized PageRank over the graph
+EntitySearchResult search = await entityGraph.SearchByEntitiesAsync(
+    "How are Machine Learning and Neural Networks related?",
+    graph,
+    new EntitySearchOptions { TopK = 10, DampingFactor = 0.85 });
+
+foreach (var hit in search.Hits)
 {
-    MaxDepth = 3,
-    DampingFactor = 0.85
-});
+    Console.WriteLine($"{hit.Score:F3}  {hit.ChunkId}  ({hit.Entities.Count} entities)");
+}
+
+// Multi-hop traversal from named entities, e.g. to answer "what connects A to B?"
+EntityTraversalResult traversal = await entityGraph.TraverseEntityRelationsAsync(
+    ["Machine Learning"],
+    graph,
+    new EntityTraversalOptions { MaxHops = 3, MinRelationStrength = 0.3 });
+
+// Importance of every entity in the graph (optionally personalised to seed entities)
+IReadOnlyDictionary<string, double> importance =
+    await entityGraph.ComputeEntityImportanceAsync(graph, seedEntities: ["Machine Learning"]);
 ```
 
 ---

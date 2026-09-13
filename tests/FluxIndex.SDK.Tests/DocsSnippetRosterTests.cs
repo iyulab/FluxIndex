@@ -48,11 +48,7 @@ public class DocsSnippetRosterTests
         ["docs/ADVANCED_RAG.md"] = ["AddAdvancedSearchServices", "ListwiseRerankingOptions (no such type in the library assemblies)"],
         ["docs/AI_PROVIDER_INTEGRATION.md"] = ["AddCohereReranker", "AddOpenAICompletion", "AddOpenAIEmbedding", "AddOpenAIServices"],
         ["docs/FLUXINDEX_PHILOSOPHY.md"] = ["AddFluxIndexAnthropic", "AddFluxIndexOpenAI"],
-        // The entity-graph example calls a method that does not exist (SearchByEntityAsync) with an option
-        // it does not have (MaxDepth); it needs rewriting against IEntityGraphService, not a rename.
-        ["docs/GUIDE.md"] = ["EntitySearchOptions.MaxDepth", "SearchByEntityAsync"],
         ["docs/MIGRATION.md"] = ["AddOpenAIEmbedding", "UseOpenAI"],
-        ["docs/REFERENCE.md"] = ["EntitySearchOptions.MaxDepth", "SearchByEntityAsync"],
     };
 
     /// <summary>Option-shaped types from other SDKs that a document legitimately shows (not ours to declare).</summary>

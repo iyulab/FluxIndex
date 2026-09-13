@@ -407,16 +407,28 @@ var relations = await extractor.ExtractRelationsAsync(content, entities);
 ```csharp
 var entityGraph = serviceProvider.GetRequiredService<IEntityGraphService>();
 
-// Build graph from documents
-await entityGraph.BuildGraphAsync(documents);
+// Build the graph from chunks; every query below takes the result explicitly
+EntityGraphResult graph = await entityGraph.BuildEntityGraphAsync(chunks);
 
-// Entity-centric search with Personalized PageRank
-var results = await entityGraph.SearchByEntityAsync(entityId, new EntitySearchOptions
-{
-    MaxDepth = 3,
-    DampingFactor = 0.85
-});
+// Entity-centric search with Personalized PageRank (the query's entities are the seeds)
+EntitySearchResult search = await entityGraph.SearchByEntitiesAsync(query, graph,
+    new EntitySearchOptions { TopK = 10, DampingFactor = 0.85, IncludeExplanation = true });
+
+// Multi-hop traversal from named entities
+EntityTraversalResult traversal = await entityGraph.TraverseEntityRelationsAsync(
+    ["Microsoft"], graph, new EntityTraversalOptions { MaxHops = 3 });
+
+// Entity importance (PPR), optionally personalised to seed entities
+IReadOnlyDictionary<string, double> importance =
+    await entityGraph.ComputeEntityImportanceAsync(graph, seedEntities: ["Microsoft"]);
 ```
+
+| Method | Options | Returns |
+|---|---|---|
+| `BuildEntityGraphAsync(chunks, EntityGraphBuildOptions?)` | extraction and mapping settings | `EntityGraphResult` — entities, relations, entity→chunk mappings |
+| `SearchByEntitiesAsync(query, graph, EntitySearchOptions?)` | `TopK`, `DampingFactor`, `MaxIterations`, `MinScore`, `PriorityEntityTypes` | `EntitySearchResult` — `Hits` (chunk, `Score`, `PprScore`), `QueryEntities`, `RelatedEntities` |
+| `TraverseEntityRelationsAsync(startEntities, graph, EntityTraversalOptions?)` | `MaxHops`, `MaxEntitiesPerHop`, `RelationTypes`, `MinRelationStrength` | `EntityTraversalResult` — `EntitiesByHop`, paths |
+| `ComputeEntityImportanceAsync(graph, seedEntities?, PersonalizedPageRankOptions?)` | `DampingFactor`, `MaxIterations`, `ConvergenceThreshold` | entity id → score |
 
 **Stored extractions are reused.** With a graph store registered, `BuildEntityGraphAsync` looks up
 the entities already persisted for the chunks it is given (by chunk id) and reconstitutes them —
