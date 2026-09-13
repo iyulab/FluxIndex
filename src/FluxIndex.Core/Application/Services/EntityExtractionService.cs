@@ -190,7 +190,7 @@ public partial class EntityExtractionService : IAdvancedEntityExtractionService
         // LLM-based relation extraction if enabled
         if (options.UseLlm && _llmService != null)
         {
-            var llmRelations = await ExtractRelationsWithLlmAsync(content, entities, cancellationToken);
+            var llmRelations = await ExtractRelationsWithLlmAsync(content, entities, options.Language, cancellationToken);
             relations.AddRange(llmRelations);
         }
 
@@ -350,6 +350,33 @@ public partial class EntityExtractionService : IAdvancedEntityExtractionService
     {
         var entities = new List<ExtractedEntity>();
 
+        // Consumer-declared patterns: one subtype per key, emitted as Custom so the EntityTypes filter and
+        // the identity/linking rules treat them like any other pattern match.
+        if (options.CustomPatterns is { Count: > 0 } customPatterns
+            && (options.EntityTypes is not { Count: > 0 } allowed || allowed.Contains(NamedEntityType.Custom)))
+        {
+            foreach (var (subtype, expression) in customPatterns)
+            {
+                foreach (Match match in CustomPattern(subtype, expression).Matches(content))
+                {
+                    entities.Add(new ExtractedEntity
+                    {
+                        Text = match.Value,
+                        NormalizedText = match.Value.Trim(),
+                        Type = NamedEntityType.Custom,
+                        Subtype = subtype,
+                        Confidence = 0.9,
+                        StartPosition = match.Index,
+                        EndPosition = match.Index + match.Length,
+                        Context = options.IncludeContext
+                            ? ExtractContext(content, match.Index, match.Length, options.ContextWindowSize)
+                            : null,
+                        OccurrenceCount = 1
+                    });
+                }
+            }
+        }
+
         foreach (var (entityType, pattern) in EntityPatterns)
         {
             if (options.EntityTypes?.Count > 0 && !options.EntityTypes.Contains(entityType))
@@ -379,6 +406,25 @@ public partial class EntityExtractionService : IAdvancedEntityExtractionService
         }
 
         return entities;
+    }
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Regex> CustomPatternCache = new(StringComparer.Ordinal);
+
+    // Compiled once per expression. An expression that does not parse is a caller error, reported with the
+    // key it came under rather than skipped — a silently dropped pattern is an extractor that "found nothing".
+    private static Regex CustomPattern(string subtype, string expression)
+    {
+        if (string.IsNullOrWhiteSpace(expression))
+            throw new ArgumentException($"{nameof(EntityExtractionOptions.CustomPatterns)}[\"{subtype}\"] is empty.");
+        try
+        {
+            return CustomPatternCache.GetOrAdd(expression,
+                static e => new Regex(e, RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1)));
+        }
+        catch (ArgumentException ex)
+        {
+            throw new ArgumentException($"{nameof(EntityExtractionOptions.CustomPatterns)}[\"{subtype}\"] is not a valid regular expression: {ex.Message}", ex);
+        }
     }
 
     private static List<ExtractedEntity> ExtractCapitalizedSequences(string content, EntityExtractionOptions options)
@@ -516,6 +562,7 @@ public partial class EntityExtractionService : IAdvancedEntityExtractionService
     private async Task<List<EntityRelation>> ExtractRelationsWithLlmAsync(
         string content,
         IReadOnlyList<ExtractedEntity> entities,
+        string? language,
         CancellationToken cancellationToken)
     {
         if (_llmService == null || entities.Count < 2)
@@ -525,7 +572,7 @@ public partial class EntityExtractionService : IAdvancedEntityExtractionService
 
         try
         {
-            var prompt = BuildRelationExtractionPrompt(content, entities);
+            var prompt = BuildRelationExtractionPrompt(content, entities, language);
             var response = await _llmService.CompleteAsync(
                 prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 1500, Temperature = 0.1f }, cancellationToken);
             return ParseLlmRelationResponse(response, entities);
@@ -539,9 +586,12 @@ public partial class EntityExtractionService : IAdvancedEntityExtractionService
 
     private static List<ExtractedEntity> DeduplicateEntities(List<ExtractedEntity> entities, string content)
     {
-        // Group by normalized text and type, merge occurrences
+        // Group by normalized text, type and subtype, merge occurrences. Subtype is part of the key so two
+        // Custom entities with the same text but different declared subtypes stay distinct, and it is
+        // carried onto the merged entity — a merge that rebuilt the entity without it made every
+        // CustomPatterns match arrive as a bare Custom.
         var grouped = entities
-            .GroupBy(e => (e.NormalizedText.ToLowerInvariant(), e.Type))
+            .GroupBy(e => (e.NormalizedText.ToLowerInvariant(), e.Type, e.Subtype))
             .Select(g =>
             {
                 var items = g.OrderByDescending(e => e.Confidence).ToList();
@@ -553,6 +603,8 @@ public partial class EntityExtractionService : IAdvancedEntityExtractionService
                     Text = primary.Text,
                     NormalizedText = primary.NormalizedText,
                     Type = primary.Type,
+                    Subtype = primary.Subtype,
+                    ExternalLink = primary.ExternalLink,
                     Confidence = items.Max(e => e.Confidence),
                     StartPosition = items.Min(e => e.StartPosition),
                     EndPosition = items.Max(e => e.EndPosition),
@@ -732,9 +784,11 @@ public partial class EntityExtractionService : IAdvancedEntityExtractionService
             ? string.Join(", ", options.EntityTypes)
             : "Person, Organization, Location, Technology, Concept, Product, Event";
 
+        var languageHint = LanguageHint(options.Language);
+
         return $$"""
             Extract named entities from the following text. Return the result as a JSON array.
-
+            {{languageHint}}
             Entity types to extract: {{typesList}}
 
             For each entity, provide:
@@ -754,13 +808,22 @@ public partial class EntityExtractionService : IAdvancedEntityExtractionService
             """;
     }
 
-    private static string BuildRelationExtractionPrompt(string content, IReadOnlyList<ExtractedEntity> entities)
+    // The option is a hint about the text, so it belongs in every prompt that reads the text: entities and
+    // relations alike. "Exactly as written" keeps a Korean corpus's names Korean — the parser matches the
+    // returned text back into the content, and a translated name matches nothing.
+    private static string LanguageHint(string? language) =>
+        string.IsNullOrWhiteSpace(language)
+            ? string.Empty
+            : $"The text is written in {language.Trim()}. Return each entity's text exactly as it appears in the text — do not translate or transliterate it.";
+
+    private static string BuildRelationExtractionPrompt(string content, IReadOnlyList<ExtractedEntity> entities, string? language)
     {
         var entityList = string.Join("\n", entities.Select(e => $"- {e.Text} ({e.Type})"));
+        var languageHint = LanguageHint(language);
 
         return $$"""
             Extract relationships between the following entities found in the text.
-
+            {{languageHint}}
             Entities:
             {{entityList}}
 

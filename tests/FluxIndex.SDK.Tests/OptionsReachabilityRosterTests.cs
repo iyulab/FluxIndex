@@ -32,7 +32,8 @@ public class OptionsReachabilityRosterTests
     // Filled by this roster's first run; see the issue draft named in the cycle log that introduced it.
     private static readonly Dictionary<string, string[]> KnownUnread = new(StringComparer.Ordinal)
     {
-        // First run, 2026-09-13 (FluxIndex 0.37.2 tree): 83 types. Each line is a set of promises the
+        // First run, 2026-09-13 (FluxIndex 0.37.2 tree): 83 types; 0.37.3 wired EntityExtractionOptions.Language/
+        // CustomPatterns and GraphRAGQueryOptions.Include* (81 types remain). Each line is a set of promises the
         // library does not keep today; the issue draft that introduced this roster lists them by type
         // with a wire-or-remove call for each. Shrink this list, never grow it silently.
         ["FluxIndex.Cache.Redis.Configuration.RedisSemanticCacheOptions"] = ["AutoCompactionInterval", "CleanupRatio", "CleanupThreshold", "CommandTimeoutSeconds", "ConnectionTimeoutSeconds", "DefaultSimilarityThreshold", "DomainWeights", "EnableAutoCompaction", "EnableDetailedLogging", "EnableMetrics", "EnableQueryNormalization", "EnableVectorCompression", "KeyPrefix", "RetryCount", "RetryDelay", "StatisticsInterval", "WarmupQueries"],
@@ -49,14 +50,12 @@ public class OptionsReachabilityRosterTests
         ["FluxIndex.Core.Application.Interfaces.EmbeddingGenerationOptions"] = ["GenerateQuestionEmbeddings", "HyDEDocumentCount", "MaxQuestions", "ModelId", "Types", "UseCache"],
         ["FluxIndex.Core.Application.Interfaces.EnrichmentEntityOptions"] = ["EntityTypes", "LinkExternalKnowledge", "ResolveCoreferences"],
         ["FluxIndex.Core.Application.Interfaces.EnrichmentOptions"] = ["AnalyzeQuality", "CacheEmbeddings", "ExtractRelationships", "GenerateEntityEmbedding", "GraphBuildOptions", "MinEntityConfidence"],
-        ["FluxIndex.Core.Application.Interfaces.EntityExtractionOptions"] = ["CustomPatterns", "Language"],
         ["FluxIndex.Core.Application.Interfaces.EntityGraphMergeOptions"] = ["UseEmbeddingsForMatching"],
         ["FluxIndex.Core.Application.Interfaces.EntityLinkingOptions"] = ["SimilarityThreshold", "UseEmbeddings", "UseFuzzyMatching"],
         ["FluxIndex.Core.Application.Interfaces.EntitySearchOptions"] = ["PriorityEntityTypes"],
         ["FluxIndex.Core.Application.Interfaces.GlobalSearchOptions"] = ["ScoreConfidence"],
         ["FluxIndex.Core.Application.Interfaces.GraphBuildOptions"] = ["CalculateImportanceScores", "MaxCommunityIterations", "MergeThreshold"],
         ["FluxIndex.Core.Application.Interfaces.GraphRAGBuildOptions"] = ["GenerateEntityEmbeddings"],
-        ["FluxIndex.Core.Application.Interfaces.GraphRAGQueryOptions"] = ["IncludeCommunityContext", "IncludeContext", "IncludeRelationships"],
         ["FluxIndex.Core.Application.Interfaces.GraphStoreTraversalOptions"] = ["EntityTypes", "IncludeEmbeddings", "IncludeEvidence"],
         ["FluxIndex.Core.Application.Interfaces.GraphTraversalOptions"] = ["DocumentIdFilter"],
         ["FluxIndex.Core.Application.Interfaces.IterativeRetrievalOptions"] = ["IncludeReasoningTrace"],
@@ -153,6 +152,8 @@ public class OptionsReachabilityRosterTests
         Assert.Contains("FluxIndex.Core.Application.Interfaces.EntityGraphBuildOptions.BatchSize", scan.Read);
         Assert.Contains("FluxIndex.Core.Application.Interfaces.GraphRAGBuildOptions.EntityOptions", scan.Read);
         Assert.Contains("FluxIndex.Core.Application.Interfaces.EntityExtractionOptions.UseLlm", scan.Read);
+        Assert.Contains("FluxIndex.Core.Application.Interfaces.EntityExtractionOptions.Language", scan.Read);
+        Assert.Contains("FluxIndex.Core.Application.Interfaces.GraphRAGQueryOptions.IncludeContext", scan.Read);
         Assert.NotEmpty(scan.CrossAssemblyReads);
     }
 

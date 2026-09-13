@@ -9,6 +9,32 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.37.3]
+
+### Fixed
+
+- Five options that were declared but never read now do what their documentation says (found by the new
+  options-reachability roster, which pins that every public `*Options` property has a reader):
+  - `EntityExtractionOptions.Language` — the default extractor tells the LLM the text's language and to
+    return entity text exactly as written, in both the entity and the relation prompt. Pattern extraction
+    is unaffected.
+  - `EntityExtractionOptions.CustomPatterns` — each `key → regex` pair now extracts; matches are emitted as
+    `NamedEntityType.Custom` with the key as `Subtype`, at pattern confidence, and honour `EntityTypes` and
+    `MinConfidence` like built-in patterns. An invalid expression throws `ArgumentException` naming the key.
+  - `GraphRAGQueryOptions.IncludeContext` — false returns `Documents` without chunk text (answer generation
+    still sees it). `IncludeRelationships` — the relationships the local search traversed are returned in
+    the new `GraphRAGQueryResult.Relationships` (local/hybrid scope). `IncludeCommunityContext` — false
+    keeps community summaries out of the answer context and `RelatedCommunities`.
+- Entity deduplication rebuilt the merged entity without `Subtype` and `ExternalLink`, so every
+  `CustomPatterns` match (and any extractor-supplied subtype) arrived as a bare `Custom`. Both are carried
+  now, and `Subtype` is part of the merge key.
+
+### Added
+
+- `GraphRAGQueryResult.Relationships`.
+
+---
+
 ## [0.37.2]
 
 ### Fixed

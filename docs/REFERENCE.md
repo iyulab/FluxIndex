@@ -440,6 +440,30 @@ in several inputs appears in each input's graph and is merged by normalized name
 extractor puts in `ExtractedEntity.Metadata` (and `Subtype`, as `"subtype"`) is kept on the node's
 `Properties` and persisted.
 
+**What the default extractor does with its options.** `Language` (free-form, e.g. `"ko"`) is a hint
+to the LLM: the prompt names the language and asks for entity text exactly as written, so names on a
+Korean corpus come back Korean rather than transliterated — the parser matches returned text back into
+the chunk, and a translated name matches nothing. Pattern extraction is language-independent.
+`CustomPatterns` maps a subtype to a .NET regular expression; every match is emitted as
+`NamedEntityType.Custom` with that subtype, at pattern confidence, and passes through the `EntityTypes`
+filter (which must include `Custom`) and `MinConfidence` like the built-in patterns. An expression that
+does not parse throws naming its key.
+
+```csharp
+var options = new EntityExtractionOptions
+{
+    Language = "ko",
+    CustomPatterns = new() { ["ticket"] = @"\bT-\d{4}\b", ["desk"] = @"\bDESK-[A-Z]+\b" }
+};
+```
+
+**Query-time switches.** `GraphRAGQueryOptions.IncludeContext = false` returns `Documents` without
+their chunk text (ids, scores, sources and entity links only — the answer is still generated from the
+full text). `IncludeRelationships` controls whether the relationships the local search traversed are
+returned in `GraphRAGQueryResult.Relationships` (local and hybrid scope; global scope has none).
+`IncludeCommunityContext = false` keeps community summaries out of the answer context and out of
+`RelatedCommunities`; global scope still retrieves community-derived documents.
+
 ### Hierarchical Summarization
 
 ```csharp

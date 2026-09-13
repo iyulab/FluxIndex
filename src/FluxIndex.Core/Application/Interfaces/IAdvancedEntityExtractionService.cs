@@ -120,12 +120,20 @@ public class EntityExtractionOptions
     public bool ExtractRelations { get; set; } = true;
 
     /// <summary>
-    /// Language hint for entity extraction
+    /// Language hint for entity extraction. The default extractor tells the LLM the text's language and
+    /// to return entity text exactly as written (no translation or transliteration) in both the entity
+    /// and the relation prompt; pattern extraction is language-independent. Free-form (e.g. "ko",
+    /// "Korean"). Null: no hint.
     /// </summary>
     public string? Language { get; set; }
 
     /// <summary>
-    /// Custom entity patterns (regex) for domain-specific entities
+    /// Custom entity patterns for domain-specific entities: key = the entity's <see cref="ExtractedEntity.Subtype"/>
+    /// (e.g. "ticket"), value = a .NET regular expression. Every match is emitted as
+    /// <see cref="NamedEntityType.Custom"/> with that subtype at pattern confidence (0.9); they take part in
+    /// deduplication, the <see cref="EntityTypes"/> filter (a filter that omits <c>Custom</c> drops them) and
+    /// <see cref="MinConfidence"/> like built-in pattern matches. An invalid expression throws
+    /// <see cref="ArgumentException"/> naming the key on first use — it is never skipped silently.
     /// </summary>
     public Dictionary<string, string>? CustomPatterns { get; set; }
 

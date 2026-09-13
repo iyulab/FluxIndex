@@ -214,17 +214,21 @@ public class GraphRAGQueryOptions
     public double MinConfidence { get; set; } = 0.5;
 
     /// <summary>
-    /// Whether to include full context in results
+    /// Whether the returned <see cref="GraphRAGQueryResult.Documents"/> carry their full chunk text
+    /// (<see cref="GraphRAGDocument.Content"/>). False returns ids, scores, sources and entity links only —
+    /// answer generation still sees the text; only the result is slimmed.
     /// </summary>
     public bool IncludeContext { get; set; } = true;
 
     /// <summary>
-    /// Whether to include entity relationships
+    /// Whether the entity relationships the local search traversed are returned in
+    /// <see cref="GraphRAGQueryResult.Relationships"/> (local and hybrid scope; global scope has none).
     /// </summary>
     public bool IncludeRelationships { get; set; } = true;
 
     /// <summary>
-    /// Whether to include community context
+    /// Whether community summaries take part in the answer and are returned in
+    /// <see cref="GraphRAGQueryResult.RelatedCommunities"/>. False answers from documents alone.
     /// </summary>
     public bool IncludeCommunityContext { get; set; } = true;
 
@@ -578,6 +582,12 @@ public class GraphRAGQueryResult
     /// Related communities
     /// </summary>
     public IReadOnlyList<GraphRAGCommunity> RelatedCommunities { get; init; } = Array.Empty<GraphRAGCommunity>();
+
+    /// <summary>
+    /// Entity relationships the local search traversed from the query's entities (local and hybrid
+    /// scope). Empty when <see cref="GraphRAGQueryOptions.IncludeRelationships"/> is false or the scope was global.
+    /// </summary>
+    public IReadOnlyList<EntityRelationInfo> Relationships { get; init; } = Array.Empty<EntityRelationInfo>();
 
     /// <summary>
     /// Citations in the answer

@@ -395,6 +395,7 @@ public partial class GraphRAGService : IGraphRAGService
         List<GraphRAGDocument> documents;
         List<GraphRAGEntity> relatedEntities = new();
         List<GraphRAGCommunity> relatedCommunities = new();
+        IReadOnlyList<EntityRelationInfo> relationships = Array.Empty<EntityRelationInfo>();
         double localSearchTime = 0;
         double globalSearchTime = 0;
 
@@ -412,6 +413,7 @@ public partial class GraphRAGService : IGraphRAGService
                 localSearchTime = localResult.ProcessingTimeMs;
                 documents = localResult.Documents.ToList();
                 relatedEntities = localResult.MatchedEntities.ToList();
+                relationships = localResult.Relationships;
                 break;
 
             case QueryScope.Global:
@@ -448,6 +450,7 @@ public partial class GraphRAGService : IGraphRAGService
                 globalSearchTime = hybridResult.GlobalResult.ProcessingTimeMs;
                 documents = hybridResult.FusedDocuments.ToList();
                 relatedEntities = hybridResult.LocalResult.MatchedEntities.ToList();
+                relationships = hybridResult.LocalResult.Relationships;
                 relatedCommunities = hybridResult.GlobalResult.MatchedCommunities
                     .Select(mc => new GraphRAGCommunity
                     {
@@ -462,6 +465,12 @@ public partial class GraphRAGService : IGraphRAGService
         }
 
         // Generate answer if LLM is available
+        // GraphRAGQueryOptions.IncludeCommunityContext: communities are left out of the answer and the result.
+        if (!options.IncludeCommunityContext)
+        {
+            relatedCommunities = new();
+        }
+
         var answer = "";
         var citations = new List<AnswerCitation>();
         double answerTime = 0;
@@ -493,9 +502,11 @@ public partial class GraphRAGService : IGraphRAGService
             Confidence = confidence,
             UsedScope = usedScope,
             ScopeDetection = scopeResult,
-            Documents = documents.Take(options.MaxResults).ToList(),
+            // IncludeContext: the answer was generated from the full text above; the result carries it only on request.
+            Documents = documents.Take(options.MaxResults).Select(d => options.IncludeContext ? d : WithoutContent(d)).ToList(),
             RelatedEntities = relatedEntities,
             RelatedCommunities = relatedCommunities,
+            Relationships = options.IncludeRelationships ? relationships : Array.Empty<EntityRelationInfo>(),
             Citations = citations,
             Stats = new QueryStats
             {
@@ -922,6 +933,17 @@ public partial class GraphRAGService : IGraphRAGService
     }
 
     #region Private Helper Methods
+
+    private static GraphRAGDocument WithoutContent(GraphRAGDocument d) => new()
+    {
+        ChunkId = d.ChunkId,
+        DocumentId = d.DocumentId,
+        Content = string.Empty,
+        Score = d.Score,
+        Source = d.Source,
+        RelatedEntityIds = d.RelatedEntityIds,
+        CommunityId = d.CommunityId
+    };
 
     private async Task<EntityGraphResult> BuildEntityGraphAsync(
         List<DocumentChunk> chunks,
