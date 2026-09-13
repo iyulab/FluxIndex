@@ -5,6 +5,7 @@ using FluxIndex.SDK;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 
 namespace FluxIndex.Storage.PostgreSQL;
 
@@ -22,6 +23,12 @@ internal sealed class PostgreSQLQuantizedStorageInitializer : IStorageInitialize
     public void InitializeSync(IServiceProvider serviceProvider)
     {
         using var scope = serviceProvider.CreateScope();
+        if (!scope.ServiceProvider.GetRequiredService<IOptions<PostgreSQLQuantizedOptions>>().Value.AutoMigrate)
+        {
+            // Schema managed externally: touch nothing — not even a connection.
+            return;
+        }
+
         var context = scope.ServiceProvider.GetRequiredService<FluxIndexQuantizedDbContext>();
 
         RelationalSchemaProvisioner.EnsureDatabase(context);

@@ -2,14 +2,17 @@ using AwesomeAssertions;
 using FluxIndex.SDK;
 using FluxIndex.SDK.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace FluxIndex.Storage.PostgreSQL.Tests;
 
 /// <summary>
 /// Docker-free tests for the PostgreSQL auto-initialization wiring. These assert the opt-out gate
-/// (<see cref="VectorStoreOptions.EnableAutoMigration"/>) without touching a live database, so they
-/// run in CI where the Integration-tagged schema-creation test is filtered out.
+/// (<see cref="VectorStoreOptions.EnableAutoMigration"/> → <see cref="PostgreSQLOptions.AutoMigrate"/>)
+/// without touching a live database, so they run in CI where the Integration-tagged schema-creation
+/// test is filtered out. Since 0.38.0 the initializer is always registered and reads the option itself,
+/// so the gate is observed on the option and on the initializer's behaviour, not on the registration.
 /// </summary>
 public class PostgreSQLStorageInitializerRegistrationTests
 {
@@ -37,14 +40,35 @@ public class PostgreSQLStorageInitializerRegistrationTests
     }
 
     [Fact]
-    public void RegisterPostgreSQLServices_WithAutoMigrationDisabled_DoesNotRegisterStorageInitializer()
+    public void RegisterPostgreSQLServices_WithAutoMigrationDisabled_TurnsTheStoreOptionOff()
     {
         var services = new ServiceCollection();
-
         FluxIndexContextBuilderExtensions.RegisterPostgreSQLServices(
             services, PostgresOptions(enableAutoMigration: false));
 
-        services.Should().NotContain(d => d.ServiceType == typeof(IStorageInitializer));
+        using var provider = services.BuildServiceProvider();
+        provider.GetRequiredService<IOptions<PostgreSQLOptions>>().Value.AutoMigrate.Should().BeFalse(
+            "the builder-level flag must reach the one switch the initializer reads");
+    }
+
+    [Fact]
+    public void StorageInitializer_WithAutoMigrateOff_TouchesNothing_NotEvenAConnection()
+    {
+        // An unreachable host: any attempt to provision would fail on connect. With AutoMigrate off the
+        // initializer must return before that — before 0.38.0 the option was never read at all.
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddPostgreSQLVectorStore(o =>
+        {
+            o.ConnectionString = "Host=192.0.2.1;Port=1;Database=flux;Username=u;Password=p;Timeout=1";
+            o.AutoMigrate = false;
+        });
+        using var provider = services.BuildServiceProvider();
+
+        var initializer = provider.GetServices<IStorageInitializer>().Should().ContainSingle().Subject;
+        var act = () => initializer.InitializeSync(provider);
+
+        act.Should().NotThrow();
     }
 
     [Fact]

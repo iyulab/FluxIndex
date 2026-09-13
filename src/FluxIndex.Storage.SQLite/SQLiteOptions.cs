@@ -18,27 +18,30 @@ public class SQLiteOptions
     public bool UseInMemory { get; set; }
 
     /// <summary>
-    /// 중복 문서 허용 여부
+    /// 읽히지 않는다 — 스토어는 청크 id 로 upsert 하므로(같은 id 재저장 = 갱신) «중복 문서» 라는 상태가 없다.
     /// </summary>
     public bool AllowDuplicates { get; set; }
 
     /// <summary>
-    /// 데이터베이스 마이그레이션 자동 실행 여부
+    /// 스키마 자동 프로비저닝(테이블·추가 컬럼·backfill) — 벡터 스토어는 호스트 시작 시 마이그레이션 서비스로,
+    /// 그래프 스토어(<c>SQLiteGraphOptions</c> 가 상속)는 빌더 <c>Build()</c>·호스트 시작에서 읽는다.
+    /// <c>false</c> = 스키마를 밖에서 관리한다(0.38.0 전에는 그래프 스토어가 이 값을 읽지 않았다).
     /// </summary>
     public bool AutoMigrate { get; set; } = true;
 
     /// <summary>
-    /// 벡터 검색 시 기본 임계값
+    /// 읽히지 않는다 — 검색 임계값은 호출마다 <c>minScore</c> 로 넘어온다(<c>Retriever</c> 기본 0.2). 여기 값을 존중하면
+    /// 같은 임계값의 출처가 둘이 된다.
     /// </summary>
     public double DefaultSearchThreshold { get; set; } = 0.7;
 
     /// <summary>
-    /// 하이브리드 검색 시 벡터 가중치 (0.0 ~ 1.0)
+    /// 읽히지 않는다 — 하이브리드 가중치는 <c>HybridSearchOptions.VectorWeight</c> 다.
     /// </summary>
     public double DefaultVectorWeight { get; set; } = 0.5;
 
     /// <summary>
-    /// 배치 작업 크기
+    /// 읽히지 않는다 — <c>StoreBatchAsync</c> 는 배치를 한 <c>SaveChanges</c> 로 쓴다.
     /// </summary>
     public int BatchSize { get; set; } = 100;
 
@@ -48,12 +51,13 @@ public class SQLiteOptions
     public int CommandTimeout { get; set; } = 30;
 
     /// <summary>
-    /// 벡터 검색 시 메모리 캐시 사용 여부
+    /// 읽히지 않는다 — 이 스토어에는 벡터 캐시가 없다: 검색마다 모든 행을 읽어 JSON 임베딩을 디코드한다(전수 스캔).
+    /// 큰 컬렉션은 sqlite-vec 스토어(<c>SQLiteVecOptions</c>)를 쓴다.
     /// </summary>
     public bool EnableVectorCache { get; set; } = true;
 
     /// <summary>
-    /// 벡터 캐시 크기 (문서 수)
+    /// 읽히지 않는다 — <see cref="EnableVectorCache"/> 참조.
     /// </summary>
     public int VectorCacheSize { get; set; } = 1000;
 

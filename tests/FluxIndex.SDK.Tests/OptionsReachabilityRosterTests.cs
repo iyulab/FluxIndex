@@ -111,10 +111,8 @@ public class OptionsReachabilityRosterTests
         ["FluxIndex.SDK.SimilarityOptions"] = ["ExcludeSelf", "SimilarityThreshold"],
         ["FluxIndex.Storage.Neo4j.Neo4jOptions"] = ["Encrypted", "NodeLabelPrefix"],
         ["FluxIndex.Storage.PostgreSQL.Cache.PostgresCacheOptions"] = ["SimilarityThreshold"],
-        ["FluxIndex.Storage.PostgreSQL.PostgreSQLOptions"] = ["AutoMigrate"],
         ["FluxIndex.Storage.Qdrant.QdrantOptions"] = ["CollectionName", "HttpPort"],
         ["FluxIndex.Storage.SQLite.Cache.SQLiteCacheOptions"] = ["SimilarityThreshold"],
-        ["FluxIndex.Storage.SQLite.Graph.SQLiteEntityGraphOptions"] = ["AutoMigrate"],
         ["FluxIndex.Storage.SQLite.SQLiteOptions"] = ["AllowDuplicates", "BatchSize", "DefaultSearchThreshold", "DefaultVectorWeight", "EnableVectorCache", "VectorCacheSize"],
         ["FluxIndex.Storage.SQLite.SQLiteVecOptions"] = ["BatchTransactionCommitInterval", "Fts5Bm25Weights", "IndexType"],
     };

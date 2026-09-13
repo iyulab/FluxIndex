@@ -10,8 +10,9 @@ namespace FluxIndex.Storage.PostgreSQL;
 /// <summary>
 /// PostgreSQL vector store initializer. Creates the pgvector extension and the vector store schema on
 /// Build(), symmetric with the SQLite initializer. Registered by
-/// <see cref="FluxIndexContextBuilderExtensions.AddPostgreSQLStorage"/> when
-/// <see cref="FluxIndex.SDK.Configuration.VectorStoreOptions.EnableAutoMigration"/> is true (the default).
+/// <see cref="FluxIndexContextBuilderExtensions.AddPostgreSQLStorage"/> and by direct registration;
+/// does nothing when <see cref="PostgreSQLOptions.AutoMigrate"/> is false (the builder maps
+/// <see cref="FluxIndex.SDK.Configuration.VectorStoreOptions.EnableAutoMigration"/> onto it).
 /// </summary>
 /// <remarks>
 /// Provisioning goes through <see cref="RelationalSchemaProvisioner"/>, which creates only the
@@ -23,6 +24,13 @@ internal sealed class PostgreSQLStorageInitializer : IStorageInitializer
     public void InitializeSync(IServiceProvider serviceProvider)
     {
         using var scope = serviceProvider.CreateScope();
+        var postgresOptions = scope.ServiceProvider.GetRequiredService<IOptions<PostgreSQLOptions>>().Value;
+        if (!postgresOptions.AutoMigrate)
+        {
+            // Schema managed externally: touch nothing — not even a connection.
+            return;
+        }
+
         var context = scope.ServiceProvider.GetRequiredService<FluxIndexDbContext>();
 
         // The pgvector extension must exist before the vector-typed column and HNSW index are built,
@@ -41,8 +49,7 @@ internal sealed class PostgreSQLStorageInitializer : IStorageInitializer
         // (a managed PostgreSQL usually has the extension already), which is why schema-only
         // provisioning tests never caught it. A short-lived connection of our own keeps the store's
         // data source untouched until the type exists.
-        var connectionString = scope.ServiceProvider
-            .GetRequiredService<IOptions<PostgreSQLOptions>>().Value.ConnectionString;
+        var connectionString = postgresOptions.ConnectionString;
 
         using (var connection = new NpgsqlConnection(connectionString))
         {

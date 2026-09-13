@@ -147,16 +147,24 @@ internal sealed partial class SQLiteEntityGraphSchemaInitializer : IStorageIniti
 
     public void InitializeSync(IServiceProvider serviceProvider)
     {
-        LogMigrationStarting(_logger);
-
         using var scope = serviceProvider.CreateScope();
+        var options = scope.ServiceProvider.GetRequiredService<IOptions<SQLiteEntityGraphOptions>>().Value;
+
+        // The operator's switch. Before 0.38.0 it was copied from the builder options and never read,
+        // so a schema "managed externally" was provisioned anyway.
+        if (!options.AutoMigrate)
+        {
+            LogMigrationSkipped(_logger);
+            return;
+        }
+
+        LogMigrationStarting(_logger);
         var context = scope.ServiceProvider.GetRequiredService<SQLiteEntityGraphDbContext>();
 
         try
         {
             SQLiteSchemaProvisioner.Provision(context);
 
-            var options = scope.ServiceProvider.GetRequiredService<IOptions<SQLiteEntityGraphOptions>>().Value;
             if (!options.UseInMemory)
             {
                 context.Database.ExecuteSqlRaw("PRAGMA journal_mode=WAL");
@@ -175,6 +183,9 @@ internal sealed partial class SQLiteEntityGraphSchemaInitializer : IStorageIniti
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Starting SQLite entity graph database migration")]
     private static partial void LogMigrationStarting(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "SQLite entity graph schema provisioning skipped: AutoMigrate is false")]
+    private static partial void LogMigrationSkipped(ILogger logger);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "SQLite entity graph database migration completed")]
     private static partial void LogMigrationCompleted(ILogger logger);
@@ -227,16 +238,24 @@ internal sealed partial class SQLiteGraphSchemaInitializer : IStorageInitializer
 
     public void InitializeSync(IServiceProvider serviceProvider)
     {
-        LogMigrationStarting(_logger);
-
         using var scope = serviceProvider.CreateScope();
+        var options = scope.ServiceProvider.GetRequiredService<IOptions<SQLiteGraphOptions>>().Value;
+
+        // The operator's switch (inherited from SQLiteOptions). Before 0.38.0 the graph store copied it
+        // from the builder options and never read it, so the schema was provisioned regardless.
+        if (!options.AutoMigrate)
+        {
+            LogMigrationSkipped(_logger);
+            return;
+        }
+
+        LogMigrationStarting(_logger);
         var context = scope.ServiceProvider.GetRequiredService<SQLiteGraphDbContext>();
 
         try
         {
             SQLiteSchemaProvisioner.Provision(context);
 
-            var options = scope.ServiceProvider.GetRequiredService<IOptions<SQLiteGraphOptions>>().Value;
             if (!options.UseInMemory)
             {
                 ApplyGraphPragmas(context, options);
@@ -271,6 +290,9 @@ internal sealed partial class SQLiteGraphSchemaInitializer : IStorageInitializer
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Starting SQLite graph database migration")]
     private static partial void LogMigrationStarting(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "SQLite graph schema provisioning skipped: AutoMigrate is false")]
+    private static partial void LogMigrationSkipped(ILogger logger);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "SQLite graph database migration completed")]
     private static partial void LogMigrationCompleted(ILogger logger);

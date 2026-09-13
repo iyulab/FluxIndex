@@ -42,7 +42,8 @@ public class QdrantOptions
     public int GrpcPort { get; set; } = 6334;
 
     /// <summary>
-    /// Qdrant HTTP port for REST API (default: 6333).
+    /// Not read — the store talks to Qdrant over gRPC only (<see cref="GrpcPort"/>). Kept for
+    /// configuration binding compatibility.
     /// </summary>
     public int HttpPort { get; set; } = 6333;
 
@@ -64,8 +65,9 @@ public class QdrantOptions
     public string BaseCollectionName { get; set; } = "fluxindex_chunks";
 
     /// <summary>
-    /// Collection name to store vectors (alias for BaseCollectionName for backward compatibility).
-    /// Prefer using BaseCollectionName with NamingStrategy for new code.
+    /// Alias for <see cref="BaseCollectionName"/> kept for backward compatibility: setting it works, but
+    /// the store reads <see cref="BaseCollectionName"/> (which is why an options-reachability scan lists
+    /// this getter as unread). Prefer <see cref="BaseCollectionName"/> with <see cref="NamingStrategy"/>.
     /// </summary>
     public string CollectionName
     {

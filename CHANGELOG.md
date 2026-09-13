@@ -24,6 +24,10 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   `FluxIndex.Core.Services.SimpleChunkingService` with a worse algorithm (collapsed whitespace, overlapped by
   `overlap / 10` words); the builder now registers the core one. Register your own `IChunkingService` if you
   relied on the removed type.
+- **Breaking**: `AddPostgreSQLVectorStore` no longer takes an `enableAutoMigration` parameter. Schema
+  provisioning follows `PostgreSQLOptions.AutoMigrate` (the same shape every other component uses; the
+  connection-string overload exposes it as `autoMigrate`). The builder maps `VectorStore.EnableAutoMigration`
+  onto it, so the builder-level opt-out is unchanged.
 - `Retriever.SearchAsync(query, SearchOptions)` **throws** when `SearchOptions.UseGraphRAG` is `true` instead
   of ignoring it: `InvalidOperationException` when no `IGraphRAGService` is registered, `NotSupportedException`
   otherwise — free-text search has no chunk set to build a graph index from; use
@@ -32,6 +36,12 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ### Fixed
 
+- `AutoMigrate = false` — the operator's "I manage this schema" switch — was never read by four
+  provisioners: the SQLite graph store and entity-graph store (the builder copied
+  `GraphStore.AutoMigrate` into their options and both ignored it, so the documented opt-out provisioned
+  anyway), and the PostgreSQL vector stores (plain and quantized), where `PostgreSQLOptions.AutoMigrate`
+  did nothing because a separate parameter was the gate. All four now honour it; with it off nothing is
+  touched, not even a connection.
 - Per-call `IndexingOptions.CustomOptions` were discarded by the indexer, so
   `new IndexingOptions().WithAIMetadataExtraction(...)` passed to `IndexDocumentAsync(document, options)` had
   no effect — only the builder-level `IndexerOptions.CustomOptions` were read. Both are read now; the caller's
@@ -55,8 +65,12 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 - `Indexer.ExtractMetadataBatchAsync` named two builder methods that do not exist in its "not configured"
   error; it now points at `ConfigureServices`.
 - Documentation: `IndexingOptions.ChunkingStrategy/MaxChunkSize/OverlapSize/GenerateEmbeddings/ExtractMetadata/EnableOCR`,
-  `IndexerOptions.ChunkingStrategy`, `ChunkingDefaults` and `SearchOptions.IncludeVectors` now say that
-  nothing reads them and where the effective setting lives. `docs/GUIDE.md` no longer lists chunking
+  `IndexerOptions.ChunkingStrategy`, `ChunkingDefaults`, `SearchOptions.IncludeVectors`,
+  `SQLiteOptions.AllowDuplicates/DefaultSearchThreshold/DefaultVectorWeight/BatchSize/EnableVectorCache/VectorCacheSize`,
+  `QdrantOptions.HttpPort`, `GraphRAGBuildOptions.GenerateEntityEmbeddings` and
+  `LocalSearchOptions.UseEntityEmbeddings` now say that nothing reads them and where the effective setting
+  lives (the SQLite store scans every row per search — the "vector cache" it names does not exist; use
+  sqlite-vec for large collections). `docs/GUIDE.md` no longer lists chunking
   strategies the splitter does not have (`WithChunking("Sliding")` threw on `Enum.Parse`).
 - Five options that were declared but never read now do what their documentation says (found by the new
   options-reachability roster, which pins that every public `*Options` property has a reader):

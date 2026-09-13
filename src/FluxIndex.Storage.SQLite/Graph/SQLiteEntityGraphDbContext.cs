@@ -156,7 +156,10 @@ public class SQLiteEntityGraphOptions
     public int DefaultPageSize { get; set; } = 100;
 
     /// <summary>
-    /// Enable automatic migration.
+    /// Provision this store's schema (tables, added columns, WAL pragma) at start-up — on the SDK builder's
+    /// <c>Build()</c> and on host start. <c>false</c> when the schema is managed externally; the store
+    /// then assumes the tables exist. Mapped from <c>FluxIndexOptions.GraphStore.AutoMigrate</c> on the
+    /// builder path.
     /// </summary>
     public bool AutoMigrate { get; set; } = true;
 

@@ -83,13 +83,30 @@ public class PostgreSQLBuilderPathProvisioningIntegrationTests : IAsyncLifetime
     /// Exactly what FluxIndexContextBuilder.Build() does for storage: register the PostgreSQL
     /// services the options select, build the provider, run every IStorageInitializer.
     /// </summary>
-    private static void RunBuildProvisioning(string connectionString)
+    [Fact]
+    public async Task BuildProvisioning_WithEnableAutoMigrationOff_LeavesTheVectorSchemaAlone()
+    {
+        // The operator's opt-out. Since 0.38.0 the initializer is always registered and reads
+        // PostgreSQLOptions.AutoMigrate (mapped from EnableAutoMigration) — the effect, not the
+        // registration, is what the switch promises.
+        var connectionString = _container.GetConnectionString();
+
+        RunBuildProvisioning(connectionString, enableVectorAutoMigration: false);
+
+        (await RegClassAsync(connectionString, "public.vectors")).Should().BeNull(
+            "EnableAutoMigration = false must keep the vector store from provisioning");
+        // The other components have their own switches and still provision.
+        (await RegClassAsync(connectionString, "public.chunk_hierarchies")).Should().NotBeNull();
+    }
+
+    private static void RunBuildProvisioning(string connectionString, bool enableVectorAutoMigration = true)
     {
         var options = new FluxIndexOptions();
 
         // Equivalent to builder.UsePostgreSQL(connectionString).
         options.VectorStore.Provider = "PostgreSQL";
         options.VectorStore.ConnectionString = connectionString;
+        options.VectorStore.EnableAutoMigration = enableVectorAutoMigration;
         options.GraphStore.Provider = "PostgreSQL";
         options.GraphStore.UseVectorStoreConnection = true;
         options.SemanticCache.Provider = "PostgreSQL";

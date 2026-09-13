@@ -132,6 +132,12 @@ builder.Options.SemanticCache.AutoMigrate = false;        // semantic cache
 var context = builder.AddPostgreSQLStorage().Build();
 ```
 
+When you register components directly instead of through the builder, the same switch is the option on
+each registration: `AddPostgreSQLVectorStore(o => o.AutoMigrate = false)`, `AddSQLiteGraphStore(o =>
+o.AutoMigrate = false)`, `AddSQLiteEntityGraphStore(o => o.AutoMigrate = false)`. (Before 0.38.0 the
+PostgreSQL vector store took a separate `enableAutoMigration` parameter and the SQLite graph stores did
+not read the option at all — `GraphStore.AutoMigrate = false` on SQLite provisioned the schema anyway.)
+
 `EnableAutoMigration` covers the keyword index as well, since it lives in the vector store's database.
 Note that opting out stops `Build()` from provisioning it but the keyword service still creates its
 tables lazily on first use — the flag delays that DDL rather than preventing it.

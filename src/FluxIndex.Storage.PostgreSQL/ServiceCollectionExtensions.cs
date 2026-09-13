@@ -21,19 +21,17 @@ public static class ServiceCollectionExtensions
     /// Adds PostgreSQL vector store to the service collection
     /// </summary>
     /// <param name="services">The service collection</param>
-    /// <param name="configureOptions">Configuration action</param>
-    /// <returns>Service collection for chaining</returns>
-    /// <param name="enableAutoMigration">
-    /// Register the schema initializer that creates the pgvector extension and this store's tables.
-    /// Default true, matching the quantized overload — direct registration used to provision nothing
-    /// at all, so the first write failed with <c>relation "vectors" does not exist</c> unless the
-    /// caller went through the SDK builder. Pass false when schema is managed externally, or on a
-    /// managed PostgreSQL without CREATE EXTENSION privilege.
+    /// <param name="configureOptions">
+    /// Configuration action. Schema provisioning (pgvector extension + this store's tables, on the SDK
+    /// builder's <c>Build()</c> and on host start) follows <see cref="PostgreSQLOptions.AutoMigrate"/>
+    /// (default true) — set it to false when the schema is managed externally, or on a managed PostgreSQL
+    /// without CREATE EXTENSION privilege. Until 0.38.0 that property was never read; the gate was a
+    /// separate <c>enableAutoMigration</c> parameter, and setting the option did nothing.
     /// </param>
+    /// <returns>Service collection for chaining</returns>
     public static IServiceCollection AddPostgreSQLVectorStore(
         this IServiceCollection services,
-        Action<PostgreSQLOptions> configureOptions,
-        bool enableAutoMigration = true)
+        Action<PostgreSQLOptions> configureOptions)
     {
         // Configure options
         services.Configure(configureOptions);
@@ -62,13 +60,11 @@ public static class ServiceCollectionExtensions
         // Register vector store
         services.AddScoped<IVectorStore, PostgreSQLVectorStore>();
 
-        // Schema provisioning, symmetric with the quantized overload. TryAddEnumerable keeps this
-        // idempotent for the SDK builder path, which registers the same initializer itself.
-        if (enableAutoMigration)
-        {
-            services.TryAddEnumerable(
-                ServiceDescriptor.Singleton<IStorageInitializer, PostgreSQLStorageInitializer>());
-        }
+        // Schema provisioning, symmetric with the quantized overload; the initializer itself honours
+        // PostgreSQLOptions.AutoMigrate. TryAddEnumerable keeps this idempotent for the SDK builder
+        // path, which registers the same initializer itself.
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IStorageInitializer, PostgreSQLStorageInitializer>());
 
         return services;
     }
@@ -79,22 +75,23 @@ public static class ServiceCollectionExtensions
     /// <param name="services">The service collection</param>
     /// <param name="connectionString">PostgreSQL connection string</param>
     /// <param name="embeddingDimensions">Embedding vector dimensions (default: 1536)</param>
-    /// <param name="enableAutoMigration">
-    /// Register the schema initializer that creates the pgvector extension and this store's tables
-    /// (default true). Pass false when schema is managed externally.
+    /// <param name="autoMigrate">
+    /// Provision the pgvector extension and this store's tables at start-up (default true); see
+    /// <see cref="PostgreSQLOptions.AutoMigrate"/>.
     /// </param>
     /// <returns>Service collection for chaining</returns>
     public static IServiceCollection AddPostgreSQLVectorStore(
         this IServiceCollection services,
         string connectionString,
         int embeddingDimensions = EmbeddingDefaults.DefaultVectorDimension,
-        bool enableAutoMigration = true)
+        bool autoMigrate = true)
     {
         return services.AddPostgreSQLVectorStore(options =>
         {
             options.ConnectionString = connectionString;
             options.EmbeddingDimensions = embeddingDimensions;
-        }, enableAutoMigration);
+            options.AutoMigrate = autoMigrate;
+        });
     }
 
     /// <summary>

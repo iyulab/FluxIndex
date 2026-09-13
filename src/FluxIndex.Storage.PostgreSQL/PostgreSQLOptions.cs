@@ -18,7 +18,11 @@ public class PostgreSQLOptions
     public int EmbeddingDimensions { get; set; } = EmbeddingDefaults.DefaultVectorDimension;
 
     /// <summary>
-    /// Auto migrate database on startup
+    /// Provision the pgvector extension and this store's tables at start-up — on the SDK builder's
+    /// <c>Build()</c> and on host start. <c>false</c> when the schema is managed externally or the role
+    /// lacks CREATE EXTENSION; the store then assumes the relations exist. The builder maps
+    /// <c>FluxIndexOptions.VectorStore.EnableAutoMigration</c> here. Also read by the quantized store
+    /// (<c>PostgreSQLQuantizedOptions</c> inherits it).
     /// </summary>
     public bool AutoMigrate { get; set; } = true;
 
