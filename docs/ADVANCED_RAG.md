@@ -34,11 +34,17 @@ services.AddSingleton<IAdvancedEntityExtractionService, EntityExtractionService>
 services.AddSingleton<ILeidenCommunityService, LeidenCommunityService>();
 ```
 
-### With Dependency Injection (Stack)
+### With the registration extensions
 
 ```csharp
-// In Startup.cs or Program.cs
-services.AddAdvancedSearchServices(configuration);
+// Everything above in one call: GraphRAG core (entity extraction, Leiden communities),
+// listwise reranking, iterative retrieval, and the entity graph service
+services.AddAdvancedRAG();
+
+// ...or piece by piece
+services.AddDynamicAlphaTuning();                      // IQueryComplexityAnalyzer + IDynamicFusionService
+services.AddListwiseReranking(o => o.TopN = 20);       // IListwiseReranker (+ its options)
+services.AddGraphRAGCore();                            // extraction + Leiden community detection
 ```
 
 ---
@@ -121,25 +127,24 @@ Unlike pointwise rerankers that score documents individually, listwise reranking
 ```csharp
 var reranker = serviceProvider.GetRequiredService<IListwiseReranker>();
 
-var options = new ListwiseRerankingOptions
+var options = new ListwiseRerankOptions
 {
     Method = ListwiseMethod.AttentionBased,
-    TopK = 10,
-    WindowSize = 5,  // For SlidingWindow
-    IncludeConfidence = true
+    TopN = 10,
+    WindowSize = 5,          // for SlidingWindow
+    IncludeExplanation = true
 };
 
-var rerankedResults = await reranker.RerankAsync(
+IReadOnlyList<ListwiseRerankResult> reranked = await reranker.RerankAsync(
     query: "machine learning frameworks",
-    candidates: searchResults,
+    candidates: searchResults,   // IEnumerable<RetrievalCandidate>
     options: options,
     cancellationToken: ct);
 
-foreach (var result in rerankedResults)
+foreach (var result in reranked)
 {
-    Console.WriteLine($"[{result.Score:F3}] {result.Content}");
-    Console.WriteLine($"  Original Rank: {result.OriginalRank}");
-    Console.WriteLine($"  New Rank: {result.NewRank}");
+    Console.WriteLine($"[{result.ListwiseScore:F3}] {result.Content}");
+    Console.WriteLine($"  Initial Rank: {result.InitialRank}  New Rank: {result.NewRank}  ({result.RankChange:+#;-#;0})");
     Console.WriteLine($"  Confidence: {result.Confidence:P1}");
 }
 ```
@@ -148,19 +153,20 @@ foreach (var result in rerankedResults)
 
 ```csharp
 // For high-throughput scenarios
-var options = new ListwiseRerankingOptions
+var options = new ListwiseRerankOptions
 {
     Method = ListwiseMethod.SlidingWindow,
     WindowSize = 10,
-    TopK = 20
+    WindowStep = 5,
+    TopN = 20
 };
 
 // For maximum quality
-var options = new ListwiseRerankingOptions
+var options = new ListwiseRerankOptions
 {
     Method = ListwiseMethod.Hybrid,
-    TopK = 10,
-    IncludeConfidence = true
+    TopN = 10,
+    IncludeExplanation = true
 };
 ```
 
@@ -605,7 +611,7 @@ _logger.LogInformation(
 
 // Track reranking impact
 var deltaSum = results.Sum(r => Math.Abs(r.OriginalRank - r.NewRank));
-_logger.LogMetric("rerank_delta_avg", deltaSum / (double)results.Count);
+_logger.LogInformation("rerank_delta_avg {Value}", deltaSum / (double)results.Count);
 ```
 
 ---

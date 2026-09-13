@@ -28,15 +28,15 @@ namespace FluxIndex.SDK.Tests;
 public class DocsSnippetRosterTests
 {
     /// <summary>
-    /// Method names the docs use that no scanned assembly declares: packages the test output does not
-    /// contain, and methods a sample defines for itself in the same block (its own service class).
+    /// Method names the docs use that no scanned assembly declares because they belong to packages the
+    /// test output does not contain. A method a document defines for itself (its own service class or
+    /// extension) is excluded per document by the scanner, not listed here.
     /// </summary>
     private static readonly HashSet<string> KnownExternal = new(StringComparer.Ordinal)
     {
         "AddConsole",              // Microsoft.Extensions.Logging.Console
         "PostAsJsonAsync",         // System.Net.Http.Json
         "GetChatCompletionsAsync", // Azure.AI.OpenAI, in the provider-integration guide's own-provider sample
-        "LogMetric",               // a method the ADVANCED_RAG sample defines on its own class
     };
 
     /// <summary>
@@ -45,9 +45,6 @@ public class DocsSnippetRosterTests
     /// </summary>
     private static readonly Dictionary<string, string[]> KnownDrift = new(StringComparer.Ordinal)
     {
-        ["docs/ADVANCED_RAG.md"] = ["AddAdvancedSearchServices", "ListwiseRerankingOptions (no such type in the library assemblies)"],
-        ["docs/AI_PROVIDER_INTEGRATION.md"] = ["AddCohereReranker", "AddOpenAICompletion", "AddOpenAIEmbedding", "AddOpenAIServices"],
-        ["docs/FLUXINDEX_PHILOSOPHY.md"] = ["AddFluxIndexAnthropic", "AddFluxIndexOpenAI"],
         ["docs/MIGRATION.md"] = ["AddOpenAIEmbedding", "UseOpenAI"],
     };
 
@@ -74,11 +71,15 @@ public class DocsSnippetRosterTests
         foreach (var file in files)
         {
             var relative = Path.GetRelativePath(root, file).Replace('\\', '/');
-            foreach (var block in CSharpBlocks(File.ReadAllText(file)))
+            var documentBlocks = CSharpBlocks(File.ReadAllText(file)).ToList();
+            // A guide that shows how to write your own provider defines methods in one block and calls
+            // them in the next; those are the document's own, not the library's.
+            var defined = DefinedMethods(documentBlocks);
+            foreach (var block in documentBlocks)
             {
                 blocks++;
                 var names = FindSnippets(block).SelectMany(s => Check(s, types))
-                    .Concat(RegistrationCalls(block).Where(n => !methods.Contains(n) && !KnownExternal.Contains(n)));
+                    .Concat(RegistrationCalls(block).Where(n => !methods.Contains(n) && !KnownExternal.Contains(n) && !defined.Contains(n)));
                 foreach (var name in names)
                 {
                     if (!findings.TryGetValue(relative, out var set))
@@ -117,6 +118,22 @@ public class DocsSnippetRosterTests
     }
 
     [Fact]
+    public void AMethodTheDocumentDefinesItself_IsNotDrift_ButAnUndefinedOneStillIs()
+    {
+        var blocks = new[]
+        {
+            "public static class MyExtensions\n{\n    public static IServiceCollection AddMyEmbedding(this IServiceCollection s, string key) => s;\n}",
+            "services.AddMyEmbedding(\"k\");\nservices.AddSomebodyElses(\"k\");",
+        };
+
+        var defined = DefinedMethods(blocks);
+        var calls = RegistrationCalls(blocks[1]).Where(n => !PublicMethodNames().Contains(n) && !defined.Contains(n)).ToList();
+
+        defined.Should().Contain("AddMyEmbedding");
+        calls.Should().BeEquivalentTo(["AddSomebodyElses"]);
+    }
+
+    [Fact]
     public void APhantomRegistrationCall_IsReported_AndARealOneIsNot()
     {
         var methods = PublicMethodNames();
@@ -143,6 +160,15 @@ public class DocsSnippetRosterTests
     // Every member call: `.Name(` after an identifier, a closing paren/bracket or a string literal — not a
     // decimal literal (`0.5f(` cannot occur) and not `new Type(` (no dot).
     private static readonly Regex Registration = new(@"(?<=[\w)\]""])\s*\.\s*([A-Z]\w*)\s*\(", RegexOptions.Compiled);
+
+    // A method (or constructor/record) declaration: an access modifier, then a return type and a name,
+    // then "(" — without crossing a statement or a body on the way.
+    private static readonly Regex Definition = new(@"\b(?:public|private|internal|protected)\b[^;{}=()]*?\b([A-Z]\w*)\s*(?:<[^>()]*>)?\s*\(", RegexOptions.Compiled);
+
+    /// <summary>Names a document's own C# blocks declare, so calls to them are not read as library API.</summary>
+    internal static HashSet<string> DefinedMethods(IEnumerable<string> blocks) =>
+        blocks.SelectMany(b => Definition.Matches(StripCommentsAndStrings(b)).Select(m => m.Groups[1].Value))
+            .ToHashSet(StringComparer.Ordinal);
 
     internal static IEnumerable<string> RegistrationCalls(string code) =>
         Registration.Matches(StripCommentsAndStrings(code)).Select(m => m.Groups[1].Value).Distinct(StringComparer.Ordinal);

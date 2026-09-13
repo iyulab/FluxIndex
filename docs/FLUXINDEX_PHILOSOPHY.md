@@ -35,9 +35,9 @@ FluxIndex strictly follows Clean Architecture principles with **unidirectional d
 services.AddFluxIndexCore();  // BM25, local algorithms
 
 // AI providers are optional plug-ins
-services.AddFluxIndexOpenAI(config);    // Optional
-services.AddFluxIndexAnthropic(config); // Optional
-services.AddCustomEmbedding<T>();       // Custom implementations
+services.AddOpenAICompatibleEmbedding(endpoint, apiKey, "text-embedding-3-small", dimension: 1536); // any OpenAI-compatible endpoint
+services.AddLMSupplyEmbedding(o => o.ModelId = "default");                                          // local, no network
+services.AddSingleton<IEmbeddingService, MyEmbeddingService>();                                     // your own implementation
 ```
 
 ### 1.3 Infrastructure Over Application
