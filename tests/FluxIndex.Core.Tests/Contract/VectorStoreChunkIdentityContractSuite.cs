@@ -131,4 +131,36 @@ public abstract class VectorStoreChunkIdentityContractSuite
         Assert.False(string.IsNullOrWhiteSpace(returned));
         Assert.NotNull(await store.GetAsync(returned, ct));
     }
+
+    // An id the store generated is the chunk's identity from then on, so the instance the caller
+    // handed over carries it too — not only the return value. A caller that keeps the object (to
+    // roll back, to tie provenance to it) must not be left holding one with no id.
+    [Fact]
+    public async Task StoreAsync_EmptyId_FillsTheChunkItWasGiven()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var store = await CreateStoreAsync();
+        var chunk = CreateChunk(string.Empty, "no id given", 0);
+
+        var returned = await store.StoreAsync(chunk, ct);
+
+        Assert.Equal(returned, chunk.Id);
+    }
+
+    [Fact]
+    public async Task StoreBatchAsync_EmptyIds_FillTheChunksTheyWereGiven()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var store = await CreateStoreAsync();
+        var chunks = new[]
+        {
+            CreateChunk(string.Empty, "first without id", 0, chunkIndex: 0),
+            CreateChunk(string.Empty, "second without id", 1, chunkIndex: 1),
+        };
+
+        var returned = await store.StoreBatchAsync(chunks, ct);
+
+        Assert.Equal(returned, chunks.Select(c => c.Id).ToList());
+        Assert.NotEqual(chunks[0].Id, chunks[1].Id);
+    }
 }

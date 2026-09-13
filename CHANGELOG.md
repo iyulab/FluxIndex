@@ -9,6 +9,18 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.37.1]
+
+### Fixed
+
+- Vector stores: an id generated for a chunk that carried none is now written onto the chunk instance in
+  every store, not only returned. Qdrant already did; the SQLite, PostgreSQL and in-memory stores left the
+  caller's object with an empty `Id` (the in-memory store stored a copy), so a consumer that kept the
+  instance could not address the row it had just written. Pinned by two new facts in the shared
+  `IVectorStore` chunk-identity contract suite. `docs/REFERENCE.md` "Chunk identity" states the rule.
+
+---
+
 ## [0.37.0]
 
 ### Added

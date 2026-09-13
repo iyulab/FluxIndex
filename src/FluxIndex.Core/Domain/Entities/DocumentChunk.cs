@@ -8,6 +8,19 @@ namespace FluxIndex.Core.Domain.Entities;
 public class DocumentChunk
 {
     public string Id { get; set; }
+
+    /// <summary>
+    /// The id this chunk is stored under: its own, or — when it carries none — a fresh one that is
+    /// written onto the chunk, so the instance a caller hands to a store carries the identity the
+    /// store will answer to (docs/REFERENCE.md, "Chunk identity"). Every <c>IVectorStore</c> resolves
+    /// the id through here, so a generated id lands on the instance in all of them alike.
+    /// </summary>
+    public string EnsureId()
+    {
+        if (string.IsNullOrWhiteSpace(Id))
+            Id = Guid.NewGuid().ToString();
+        return Id;
+    }
     public string DocumentId { get; set; }
     public string Content { get; set; }
     public int ChunkIndex { get; set; }

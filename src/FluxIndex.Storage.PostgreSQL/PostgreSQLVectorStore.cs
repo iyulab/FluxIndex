@@ -35,7 +35,7 @@ public class PostgreSQLVectorStore : VectorStoreBase
         // Honour the caller's chunk id. Generating one here and returning it instead (what this
         // did before) silently discarded the id every other IVectorStore implementation keeps, so
         // a consumer could not look up its own chunk without holding on to the returned value.
-        var id = string.IsNullOrWhiteSpace(chunk.Id) ? Guid.NewGuid().ToString() : chunk.Id;
+        var id = chunk.EnsureId();
         var metadata = chunk.Metadata ?? new();
         metadata[ChunkStorageId.OriginalIdKey] = id;
 

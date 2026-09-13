@@ -493,8 +493,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
     #region Private Helpers
 
     /// <summary>Chunk id the caller supplied, or a fresh one when the chunk carries none.</summary>
-    private static string ResolveChunkId(DocumentChunk chunk)
-        => string.IsNullOrWhiteSpace(chunk.Id) ? Guid.NewGuid().ToString() : chunk.Id;
+    private static string ResolveChunkId(DocumentChunk chunk) => chunk.EnsureId();
 
     /// <summary>
     /// Adds the row for <paramref name="chunk"/>, or updates it when <paramref name="storageId"/>

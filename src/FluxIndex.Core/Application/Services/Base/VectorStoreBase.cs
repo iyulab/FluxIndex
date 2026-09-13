@@ -48,6 +48,7 @@ public abstract partial class VectorStoreBase : IVectorStore
     /// <returns>The stored chunk's ID.</returns>
     protected abstract Task<string> StoreCoreAsync(DocumentChunk chunk, CancellationToken cancellationToken);
 
+
     /// <summary>
     /// Core retrieval by ID implementation.
     /// </summary>

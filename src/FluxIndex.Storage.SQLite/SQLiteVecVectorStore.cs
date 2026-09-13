@@ -108,7 +108,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 // did before) silently discarded the id every other IVectorStore implementation keeps,
                 // so a consumer that recorded the ids it wrote — to roll back a partial write, or to
                 // tie graph provenance to chunks — could never find those rows again.
-                var id = string.IsNullOrWhiteSpace(chunk.Id) ? Guid.NewGuid().ToString() : chunk.Id;
+                var id = chunk.EnsureId();
 
                 using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
 
@@ -283,7 +283,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 var vectorById = new Dictionary<string, float[]>(StringComparer.Ordinal);
                 foreach (var chunk in chunkList)
                 {
-                    var id = string.IsNullOrWhiteSpace(chunk.Id) ? Guid.NewGuid().ToString() : chunk.Id;
+                    var id = chunk.EnsureId();
                     ids.Add(id);
 
                     var entity = new VectorChunkEntity

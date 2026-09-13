@@ -164,6 +164,8 @@ public class SQLiteVecChunkIdContractTests : IAsyncLifetime
         var chunk = Chunk(string.Empty, "no id given", Embedding(1));
         var returned = await store.StoreAsync(chunk, ct);
 
+        Assert.Equal(returned, chunk.Id); // the generated id lands on the instance too
+
         returned.Should().NotBeNullOrWhiteSpace();
         (await store.GetAsync(returned, ct)).Should().NotBeNull();
     }

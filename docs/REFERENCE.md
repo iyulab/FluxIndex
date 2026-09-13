@@ -72,7 +72,8 @@ public interface IReranker
 
 `DocumentChunk.Id` is a free string and every store honours it: what you store under is what you
 read back, and what you pass to `GetAsync`/`DeleteAsync`/`ExistsAsync`. Leave it empty and the store
-generates one and returns it.
+generates one, returns it, and writes it onto the chunk you passed — the instance you keep carries the
+id the store answers to, in every backend alike.
 
 Backends that cannot key on a string absorb that themselves rather than pushing it onto you. Qdrant
 accepts only UUIDs or integers as point ids, and the PostgreSQL schema keys on `uuid`; both map a

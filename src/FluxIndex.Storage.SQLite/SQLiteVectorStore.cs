@@ -86,7 +86,7 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
 
         // Honour the caller's chunk id (see SQLiteVecVectorStore.StoreCoreAsync); re-storing an id
         // updates the row instead of adding a second one.
-        var id = string.IsNullOrWhiteSpace(chunk.Id) ? Guid.NewGuid().ToString() : chunk.Id;
+        var id = chunk.EnsureId();
         var existing = await _context.Vectors
             .AsTracking()
             .FirstOrDefaultAsync(v => v.Id == id, cancellationToken);

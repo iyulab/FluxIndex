@@ -86,15 +86,7 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore, IDisposab
 
     protected override async Task<string> StoreCoreAsync(DocumentChunk chunk, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrEmpty(chunk.Id))
-        {
-            chunk = DocumentChunk.Create(
-                chunk.DocumentId,
-                chunk.Content,
-                chunk.ChunkIndex,
-                1 // totalChunks - default
-            );
-        }
+        chunk.EnsureId();
 
         Put(chunk);
 
@@ -289,22 +281,9 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore, IDisposab
         var results = new List<string>();
         foreach (var chunk in chunks)
         {
-            var chunkToStore = chunk;
-            if (string.IsNullOrEmpty(chunk.Id))
-            {
-                chunkToStore = DocumentChunk.Create(
-                    chunk.DocumentId,
-                    chunk.Content,
-                    chunk.ChunkIndex,
-                    1
-                );
-                // Copy embedding from original
-                if (chunk.Embedding != null)
-                    chunkToStore.SetEmbedding(chunk.Embedding);
-            }
-
-            Put(chunkToStore);
-            results.Add(chunkToStore.Id);
+            chunk.EnsureId();
+            Put(chunk);
+            results.Add(chunk.Id);
         }
 
         await AutoSaveIfEnabledAsync(cancellationToken);

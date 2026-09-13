@@ -317,7 +317,7 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
     {
         await EnsureInitializedAsync(cancellationToken);
 
-        var id = chunk.Id ?? Guid.NewGuid().ToString();
+        var id = chunk.EnsureId();
         var entity = CreateVectorEntity(chunk, id);
         var quantizedEntity = CreateQuantizedEntity(id, quantizedEmbedding);
 
@@ -339,7 +339,7 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
 
         foreach (var (chunk, quantized) in items)
         {
-            var id = chunk.Id ?? Guid.NewGuid().ToString();
+            var id = chunk.EnsureId();
             ids.Add(id);
 
             _context.Vectors.Add(CreateVectorEntity(chunk, id));
@@ -534,8 +534,7 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
     #region Private Helpers
 
     /// <summary>Chunk id the caller supplied, or a fresh one when the chunk carries none.</summary>
-    private static string ResolveChunkId(DocumentChunk chunk)
-        => string.IsNullOrWhiteSpace(chunk.Id) ? Guid.NewGuid().ToString() : chunk.Id;
+    private static string ResolveChunkId(DocumentChunk chunk) => chunk.EnsureId();
 
     /// <summary>
     /// Adds the row for <paramref name="chunk"/>, or updates it when <paramref name="id"/> is
