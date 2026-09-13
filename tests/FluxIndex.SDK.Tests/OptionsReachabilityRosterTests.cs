@@ -66,7 +66,9 @@ public class OptionsReachabilityRosterTests
         ["FluxIndex.Core.Application.Interfaces.QuantizationOptions"] = ["NormalizeVectors", "TrainingSamples"],
         ["FluxIndex.Core.Application.Interfaces.QueryDecompositionOptions"] = ["MaxDecompositionDepth"],
         ["FluxIndex.Core.Application.Interfaces.RerankOptions"] = ["Model", "ModelParameters"],
-        ["FluxIndex.Core.Application.Interfaces.SelfRAGOptions"] = ["EnableContextExpansion", "EnableMultiPerspectiveSearch"],
+        // MinResults · EnableDetailedLogging · UserContext were read only by a second, never-registered
+        // SelfRAGService removed in 0.38.0 — the registered service never honoured them (roster blind spot ④).
+        ["FluxIndex.Core.Application.Interfaces.SelfRAGOptions"] = ["EnableContextExpansion", "EnableDetailedLogging", "EnableMultiPerspectiveSearch", "MinResults", "UserContext"],
         ["FluxIndex.Core.Application.Interfaces.StorageConfiguration"] = ["GraphProvider", "HasGraph", "HasRdb", "HasSemanticCache", "HasVector", "RdbProvider", "SemanticCacheProvider", "VectorProvider"],
         ["FluxIndex.Core.Application.Interfaces.SemanticCacheOptions"] = ["AutoOptimizationInterval", "CompressionThreshold", "DefaultExpiry", "DefaultSimilarityThreshold", "EnableAutoOptimization", "EnableCompression", "EnablePerformanceTracking", "MaxCacheSize", "MaxMemoryMB", "MaxQueryLength", "MinQueryLength", "SimilaritySearchBatchSize"],
         ["FluxIndex.Core.Application.Interfaces.VerificationOptions"] = ["CustomCriteria", "IncludeDetailedReasoning", "MaxHallucinationRisk"],

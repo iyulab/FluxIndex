@@ -50,7 +50,7 @@ public class SelfRAGOptions
     /// <summary>최대 결과 개수</summary>
     public int MaxResults { get; set; } = 20;
 
-    /// <summary>최소 결과 개수</summary>
+    /// <summary>최소 결과 개수. 현재 등록된 Self-RAG 서비스는 이 값을 읽지 않는다(성공 판정은 <see cref="QualityThreshold"/>만) — 연결 또는 제거는 후속 결정.</summary>
     public int MinResults { get; set; } = 5;
 
     /// <summary>검색 타임아웃</summary>
@@ -59,16 +59,16 @@ public class SelfRAGOptions
     /// <summary>자동 쿼리 개선 사용</summary>
     public bool EnableAutoRefinement { get; set; } = true;
 
-    /// <summary>컨텍스트 확장 사용</summary>
+    /// <summary>컨텍스트 확장 사용. 현재 등록된 Self-RAG 서비스는 이 값을 읽지 않는다 — 연결 또는 제거는 후속 결정.</summary>
     public bool EnableContextExpansion { get; set; } = true;
 
-    /// <summary>다중 관점 검색 사용</summary>
+    /// <summary>다중 관점 검색 사용. 현재 등록된 Self-RAG 서비스는 이 값을 읽지 않는다 — 연결 또는 제거는 후속 결정.</summary>
     public bool EnableMultiPerspectiveSearch { get; set; } = true;
 
-    /// <summary>상세 로깅</summary>
+    /// <summary>상세 로깅. 현재 등록된 Self-RAG 서비스는 이 값을 읽지 않는다 — 연결 또는 제거는 후속 결정.</summary>
     public bool EnableDetailedLogging { get; set; }
 
-    /// <summary>사용자 컨텍스트</summary>
+    /// <summary>사용자 컨텍스트. 현재 등록된 Self-RAG 서비스는 이 값을 읽지 않는다 — 연결 또는 제거는 후속 결정.</summary>
     public Dictionary<string, object> UserContext { get; set; } = new();
 }
 

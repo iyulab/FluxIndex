@@ -24,6 +24,11 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   `FluxIndex.Core.Services.SimpleChunkingService` with a worse algorithm (collapsed whitespace, overlapped by
   `overlap / 10` words); the builder now registers the core one. Register your own `IChunkingService` if you
   relied on the removed type.
+- **Breaking**: the second, never-registered `FluxIndex.Core.Services.SelfRAG.SelfRAGService` is removed. It
+  was a public type with no DI registration and no caller; `AddSelfRAG…` has always registered
+  `FluxIndex.Core.Application.Services.SelfRAGService`, which is the one every option and document describes.
+  With it gone, `SelfRAGOptions.MinResults` / `EnableDetailedLogging` / `UserContext` — which only that dead
+  class read — are now visibly unread (their XML docs say so); wiring or removing them is a follow-up decision.
 - **Binary-breaking, source-compatible**: the `maxResults`/`minScore` parameters of `Retriever.SearchAsync`,
   `HybridSearchAsync`, `KeywordSearchAsync`, `FindSimilarAsync`, `SearchQuantizedAsync`, `SearchWithRerankAsync`
   and the `FluxIndexContext`/`IFluxIndexContext` facades are now nullable; an omitted argument takes
