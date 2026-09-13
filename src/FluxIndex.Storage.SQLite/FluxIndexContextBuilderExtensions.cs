@@ -255,6 +255,7 @@ internal class SQLiteStorageInitializer : IStorageInitializer
         // The counterpart hosted service (SQLiteMigrationService) never runs on the builder path,
         // so this is the only thing provisioning the vector schema here.
         SQLiteSchemaProvisioner.Provision(context);
+        TotalChunksBackfill.Run(context, "vectors");
 
         // 추가 초기화 (필요시)
         var options = scope.ServiceProvider.GetService<Microsoft.Extensions.Options.IOptions<SQLiteOptions>>();

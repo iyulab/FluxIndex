@@ -38,9 +38,20 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   keys win.
 - The core splitter could loop forever when a sentence boundary sat within `chunkOverlap` characters of the
   window start (the next window moved backwards). The window now always advances.
-- Every chunk the SDK indexer stored had `TotalChunks = 0`: the embedding step rebuilt each chunk by hand in
-  three places and none of them copied the field. Chunks are now embedded in place. (Persistent stores still
-  do not have a column for it — see the issue tracker; the in-memory store now returns the real value.)
+- `DocumentChunk.TotalChunks` — the "of N" in a "chunk i of N" citation — was lost twice on the way to a
+  search result: the SDK indexer's embedding step rebuilt each chunk by hand in three places and none of them
+  copied the field, and the SQLite, sqlite-vec and PostgreSQL vector stores (plain and quantized) had no
+  column for it, so `Metadata["totalChunks"]` read `0` for every row. Chunks are now embedded in place, and
+  the stores persist the field: the column is added to an existing database at start-up and rows written
+  before it existed are backfilled with the per-document count, so nothing reads `0` afterwards. The shared
+  vector-store contract suite now round-trips chunk position on every read path (in-memory, SQLite ×3,
+  PostgreSQL, Qdrant).
+- The indexer's safety split for chunks over ~8,000 tokens threw on its second piece (the pieces were created
+  against the pre-split total) and never renumbered the document; the pieces and the chunks after them are
+  now numbered 0..N-1 with `TotalChunks = N`.
+- `SQLiteVectorStore` and the sqlite-vec store provision their tables through the shared per-table provisioner
+  instead of `EnsureCreated` plus a hand-written `CREATE TABLE` (which had already drifted from the model), so
+  they also pick up columns added later.
 - `Indexer.ExtractMetadataBatchAsync` named two builder methods that do not exist in its "not configured"
   error; it now points at `ConfigureServices`.
 - Documentation: `IndexingOptions.ChunkingStrategy/MaxChunkSize/OverlapSize/GenerateEmbeddings/ExtractMetadata/EnableOCR`,

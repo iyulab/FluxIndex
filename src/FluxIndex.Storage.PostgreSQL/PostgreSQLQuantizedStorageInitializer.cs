@@ -30,6 +30,7 @@ internal sealed class PostgreSQLQuantizedStorageInitializer : IStorageInitialize
         context.Database.ExecuteSqlRaw("CREATE EXTENSION IF NOT EXISTS vector");
 
         RelationalSchemaProvisioner.ProvisionTables(context);
+        TotalChunksBackfill.Run(context, "vectors");
     }
 }
 

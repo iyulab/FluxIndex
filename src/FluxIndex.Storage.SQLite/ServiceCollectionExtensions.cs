@@ -362,6 +362,7 @@ internal sealed partial class SQLiteQuantizedMigrationService : IHostedService
             // Per owned table, not EnsureCreated: several components share one database file, and
             // EnsureCreated stops as soon as any table exists.
             SQLiteSchemaProvisioner.Provision(context);
+            await TotalChunksBackfill.RunAsync(context, "vectors", cancellationToken);
 
             var options = scope.ServiceProvider.GetRequiredService<IOptions<SQLiteQuantizedOptions>>().Value;
             if (!options.UseInMemory)
@@ -512,6 +513,7 @@ internal sealed partial class SQLiteMigrationService : IHostedService
             // Per owned table, not EnsureCreated: several components share one database file, and
             // EnsureCreated stops as soon as any table exists.
             SQLiteSchemaProvisioner.Provision(context);
+            await TotalChunksBackfill.RunAsync(context, "vectors", cancellationToken);
 
             // 추가 초기화 (필요시)
             var options = scope.ServiceProvider.GetRequiredService<IOptions<SQLiteOptions>>().Value;

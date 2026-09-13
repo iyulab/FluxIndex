@@ -128,6 +128,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                             Id = id,
                             DocumentId = chunk.DocumentId,
                             ChunkIndex = chunk.ChunkIndex,
+                            TotalChunks = chunk.TotalChunks,
                             Content = chunk.Content,
                             TokenCount = chunk.TokenCount,
                             Metadata = chunk.Metadata ?? new Dictionary<string, object>(),
@@ -138,6 +139,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                     {
                         existing.DocumentId = chunk.DocumentId;
                         existing.ChunkIndex = chunk.ChunkIndex;
+                        existing.TotalChunks = chunk.TotalChunks;
                         existing.Content = chunk.Content;
                         existing.TokenCount = chunk.TokenCount;
                         existing.Metadata = chunk.Metadata ?? new Dictionary<string, object>();
@@ -291,6 +293,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                         Id = id,
                         DocumentId = chunk.DocumentId,
                         ChunkIndex = chunk.ChunkIndex,
+                        TotalChunks = chunk.TotalChunks,
                         Content = chunk.Content,
                         TokenCount = chunk.TokenCount,
                         Metadata = chunk.Metadata ?? new Dictionary<string, object>(),
@@ -337,7 +340,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                     {
                         var batchSize = Math.Min(rowsPerStatement, entities.Count - offset);
                         var valueClauses = new List<string>(batchSize);
-                        var parameters = new List<object>(batchSize * 7);
+                        var parameters = new List<object>(batchSize * 8);
                         int p = 0;
 
                         for (int j = 0; j < batchSize; j++)
@@ -348,17 +351,18 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                                 e.Metadata,
                                 (System.Text.Json.JsonSerializerOptions?)null);
 
-                            valueClauses.Add($"({{{p}}},{{{p + 1}}},{{{p + 2}}},{{{p + 3}}},{{{p + 4}}},{{{p + 5}}},{{{p + 6}}})");
+                            valueClauses.Add($"({{{p}}},{{{p + 1}}},{{{p + 2}}},{{{p + 3}}},{{{p + 4}}},{{{p + 5}}},{{{p + 6}}},{{{p + 7}}})");
                             parameters.Add(e.Id);
                             parameters.Add(e.DocumentId);
                             parameters.Add(e.ChunkIndex);
+                            parameters.Add((object?)e.TotalChunks ?? DBNull.Value);
                             parameters.Add(e.Content);
                             parameters.Add(e.TokenCount);
                             parameters.Add(metaJson);
                             // Pass DateTime as parameter so Microsoft.Data.Sqlite serializes it
                             // in the same TEXT format EF Core uses (ISO 8601 with fractional seconds).
                             parameters.Add(e.CreatedAt);
-                            p += 7;
+                            p += 8;
                         }
 
                         // Table name set via entity.ToTable("vector_chunks").
@@ -367,10 +371,11 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                         // the new write while CreatedAt stays. The FTS5 UPDATE trigger fires for the DO
                         // UPDATE branch, so the keyword index follows too.
                         var sql = "INSERT INTO \"vector_chunks\" " +
-                                  "(\"Id\", \"DocumentId\", \"ChunkIndex\", \"Content\", \"TokenCount\", \"Metadata\", \"CreatedAt\") " +
+                                  "(\"Id\", \"DocumentId\", \"ChunkIndex\", \"TotalChunks\", \"Content\", \"TokenCount\", \"Metadata\", \"CreatedAt\") " +
                                   $"VALUES {string.Join(",", valueClauses)} " +
                                   "ON CONFLICT(\"Id\") DO UPDATE SET " +
                                   "\"DocumentId\" = excluded.\"DocumentId\", \"ChunkIndex\" = excluded.\"ChunkIndex\", " +
+                                  "\"TotalChunks\" = excluded.\"TotalChunks\", " +
                                   "\"Content\" = excluded.\"Content\", \"TokenCount\" = excluded.\"TokenCount\", " +
                                   "\"Metadata\" = excluded.\"Metadata\"";
 
@@ -529,6 +534,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 Id = chunkEntity.Id,
                 DocumentId = chunkEntity.DocumentId,
                 ChunkIndex = chunkEntity.ChunkIndex,
+                TotalChunks = chunkEntity.TotalChunks ?? 0,
                 Content = chunkEntity.Content,
                 Embedding = null, // 필요시 별도 쿼리로 로드
                 TokenCount = chunkEntity.TokenCount,
@@ -662,11 +668,11 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             // Step 2: Fetch metadata for matched chunk IDs
             var placeholders = string.Join(",", knnResults.Select((_, i) => $"@id{i}"));
             var metaSql = $@"
-                SELECT Id, DocumentId, ChunkIndex, Content, TokenCount, Metadata
+                SELECT Id, DocumentId, ChunkIndex, Content, TokenCount, Metadata, TotalChunks
                 FROM vector_chunks
                 WHERE Id IN ({placeholders})";
 
-            var metaMap = new Dictionary<string, (string DocId, int ChunkIdx, string Content, int Tokens, string Meta)>();
+            var metaMap = new Dictionary<string, (string DocId, int ChunkIdx, string Content, int Tokens, string Meta, int Total)>();
             using (var metaCmd = connection.CreateCommand())
             {
                 metaCmd.CommandText = metaSql;
@@ -683,7 +689,8 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                         metaReader.GetInt32(2),
                         metaReader.GetString(3),
                         metaReader.GetInt32(4),
-                        metaReader.GetString(5));
+                        metaReader.GetString(5),
+                        metaReader.IsDBNull(6) ? 0 : metaReader.GetInt32(6));
                 }
             }
 
@@ -715,6 +722,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                     Id = chunkId,
                     DocumentId = meta.DocId,
                     ChunkIndex = meta.ChunkIdx,
+                    TotalChunks = meta.Total,
                     Content = meta.Content,
                     TokenCount = meta.Tokens,
                     Metadata = metadata,
@@ -911,7 +919,8 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                     vc.Content,
                     vc.TokenCount,
                     vc.Metadata,
-                    bm25(chunk_fts) as bm25_score
+                    bm25(chunk_fts) as bm25_score,
+                    vc.TotalChunks
                 FROM chunk_fts fts
                 JOIN vector_chunks vc ON vc.rowid = fts.rowid
                 WHERE chunk_fts MATCH @query
@@ -938,6 +947,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                     Id = reader.GetString(0),
                     DocumentId = reader.GetString(1),
                     ChunkIndex = reader.GetInt32(2),
+                    TotalChunks = reader.IsDBNull(7) ? 0 : reader.GetInt32(7),
                     Content = reader.GetString(3),
                     TokenCount = reader.GetInt32(4),
                     Metadata = metadata,
@@ -1033,6 +1043,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 Id = e.Id,
                 DocumentId = e.DocumentId,
                 ChunkIndex = e.ChunkIndex,
+                TotalChunks = e.TotalChunks ?? 0,
                 Content = e.Content,
                 TokenCount = e.TokenCount,
                 Metadata = e.Metadata,
@@ -1267,6 +1278,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             Id = e.Id,
             DocumentId = e.DocumentId,
             ChunkIndex = e.ChunkIndex,
+            TotalChunks = e.TotalChunks ?? 0,
             Content = e.Content,
             TokenCount = e.TokenCount,
             Metadata = e.Metadata,
@@ -1433,23 +1445,11 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
 
     private async Task EnsureModelTablesAsync(CancellationToken cancellationToken)
     {
-        await _context.Database.EnsureCreatedAsync(cancellationToken);
-
-        var connection = _context.Database.GetDbConnection();
-        if (connection.State != System.Data.ConnectionState.Open)
-        {
-            await connection.OpenAsync(cancellationToken);
-        }
-
-        await using var probe = connection.CreateCommand();
-        probe.CommandText = "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='vector_chunks'";
-        var exists = Convert.ToInt64(await probe.ExecuteScalarAsync(cancellationToken), CultureInfo.InvariantCulture) > 0;
-        if (!exists)
-        {
-            // EnsureCreated skipped because other tables (vec0) already existed: create the model tables explicitly.
-            await _context.GetService<IRelationalDatabaseCreator>().CreateTablesAsync(cancellationToken);
-            LogModelTablesRepaired(_logger);
-        }
+        // Per owned table: creates vector_chunks even when the vec0 virtual table already exists (where
+        // EnsureCreated would do nothing), and adds nullable columns an older database lacks. The
+        // backfill then gives pre-column rows their real TotalChunks instead of a silent 0.
+        SQLiteSchemaProvisioner.Provision(_context);
+        await TotalChunksBackfill.RunAsync(_context, "vector_chunks", cancellationToken);
     }
 
     private async Task EnsureInitializedAsync(CancellationToken cancellationToken)

@@ -148,8 +148,11 @@ public partial class SQLiteVecDbContext : DbContext
     {
         try
         {
-            // 기본 테이블 생성
-            await Database.EnsureCreatedAsync(cancellationToken);
+            // Model tables per owned table (not EnsureCreated, which is a no-op once any table exists),
+            // plus any nullable column the current model declares that an older database lacks — and
+            // the backfill that gives those older rows a real value.
+            SQLiteSchemaProvisioner.Provision(this);
+            await TotalChunksBackfill.RunAsync(this, "vector_chunks", cancellationToken);
 
             if (_options.UseSQLiteVec)
             {
@@ -460,6 +463,7 @@ public partial class SQLiteVecDbContext : DbContext
                         Id = legacy.Id,
                         DocumentId = legacy.DocumentId,
                         ChunkIndex = legacy.ChunkIndex,
+                        TotalChunks = legacy.TotalChunks,
                         Content = legacy.Content,
                         TokenCount = legacy.TokenCount,
                         Metadata = legacy.Metadata,
@@ -1013,6 +1017,8 @@ public class VectorChunkEntity
     public string Id { get; set; } = string.Empty;
     public string DocumentId { get; set; } = string.Empty;
     public int ChunkIndex { get; set; }
+    /// <summary>Nullable so the column can be added in place; see <see cref="TotalChunksBackfill"/>.</summary>
+    public int? TotalChunks { get; set; }
     public string Content { get; set; } = string.Empty;
     public int TokenCount { get; set; }
     public Dictionary<string, object> Metadata { get; set; } = new();

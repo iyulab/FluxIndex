@@ -91,6 +91,8 @@ public class QuantizedVectorEntity
     public Guid Id { get; set; }
     public string DocumentId { get; set; } = string.Empty;
     public int ChunkIndex { get; set; }
+    /// <summary>Nullable so the column can be added in place; see <see cref="TotalChunksBackfill"/>.</summary>
+    public int? TotalChunks { get; set; }
     public string Content { get; set; } = string.Empty;
     public Vector Embedding { get; set; } = new Vector(Array.Empty<float>());
     public int TokenCount { get; set; }

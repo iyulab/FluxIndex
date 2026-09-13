@@ -52,5 +52,6 @@ internal sealed class PostgreSQLStorageInitializer : IStorageInitializer
         }
 
         RelationalSchemaProvisioner.ProvisionTables(context);
+        TotalChunksBackfill.Run(context, "vectors");
     }
 }

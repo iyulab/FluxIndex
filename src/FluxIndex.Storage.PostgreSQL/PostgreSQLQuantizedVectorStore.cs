@@ -295,6 +295,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
             Id = id,
             DocumentId = chunk.DocumentId,
             ChunkIndex = chunk.ChunkIndex,
+            TotalChunks = chunk.TotalChunks,
             Content = chunk.Content,
             Embedding = chunk.Embedding != null ? new Vector(chunk.Embedding) : new Vector(Array.Empty<float>()),
             TokenCount = chunk.TokenCount,
@@ -326,6 +327,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
                 Id = id,
                 DocumentId = chunk.DocumentId,
                 ChunkIndex = chunk.ChunkIndex,
+                TotalChunks = chunk.TotalChunks,
                 Content = chunk.Content,
                 Embedding = chunk.Embedding != null ? new Vector(chunk.Embedding) : new Vector(Array.Empty<float>()),
                 TokenCount = chunk.TokenCount,
@@ -519,6 +521,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
                 Id = storageId,
                 DocumentId = chunk.DocumentId,
                 ChunkIndex = chunk.ChunkIndex,
+                TotalChunks = chunk.TotalChunks,
                 Content = chunk.Content,
                 Embedding = embedding,
                 TokenCount = chunk.TokenCount,
@@ -529,6 +532,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
 
         existing.DocumentId = chunk.DocumentId;
         existing.ChunkIndex = chunk.ChunkIndex;
+        existing.TotalChunks = chunk.TotalChunks;
         existing.Content = chunk.Content;
         existing.Embedding = embedding;
         existing.TokenCount = chunk.TokenCount;
@@ -599,6 +603,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
             Id = OriginalChunkId(entity.Metadata) ?? entity.Id.ToString(),
             DocumentId = entity.DocumentId,
             ChunkIndex = entity.ChunkIndex,
+            TotalChunks = entity.TotalChunks ?? 0,
             Content = entity.Content,
             Embedding = entity.Embedding?.ToArray(),
             TokenCount = entity.TokenCount,

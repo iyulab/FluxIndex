@@ -25,7 +25,7 @@ public abstract class VectorStoreChunkIdentityContractSuite
     /// <summary>Embedding dimension the store under test expects.</summary>
     protected virtual int Dimensions => 4;
 
-    private DocumentChunk CreateChunk(string id, string content, int axis, int chunkIndex = 0)
+    private DocumentChunk CreateChunk(string id, string content, int axis, int chunkIndex = 0, int totalChunks = 3)
     {
         var embedding = new float[Dimensions];
         embedding[axis % Dimensions] = 1f;
@@ -34,6 +34,7 @@ public abstract class VectorStoreChunkIdentityContractSuite
             Id = id,
             DocumentId = "doc-1",
             ChunkIndex = chunkIndex,
+            TotalChunks = totalChunks,
             Content = content,
             TokenCount = 2,
             Embedding = embedding,
@@ -162,5 +163,40 @@ public abstract class VectorStoreChunkIdentityContractSuite
 
         Assert.Equal(returned, chunks.Select(c => c.Id).ToList());
         Assert.NotEqual(chunks[0].Id, chunks[1].Id);
+    }
+
+    /// <summary>
+    /// The position a chunk was stored with is the position it reads back with — on every read path,
+    /// not only the metadata convenience keys some stores add. Four relational stores had no column for
+    /// <c>TotalChunks</c> at all, so every "chunk i of N" citation read "of 0" while their own suites were
+    /// green: nothing here ever set the field before this fact.
+    /// </summary>
+    [Fact]
+    public async Task StoreAsync_RoundTripsChunkPosition_OnEveryReadPath()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var store = await CreateStoreAsync();
+
+        await store.StoreBatchAsync(
+        [
+            CreateChunk("pos-0", "first of three", 0, chunkIndex: 0, totalChunks: 3),
+            CreateChunk("pos-1", "second of three", 1, chunkIndex: 1, totalChunks: 3),
+            CreateChunk("pos-2", "third of three", 2, chunkIndex: 2, totalChunks: 3),
+        ], ct);
+
+        var byId = await store.GetAsync("pos-1", ct);
+        Assert.NotNull(byId);
+        Assert.Equal((1, 3), (byId.ChunkIndex, byId.TotalChunks));
+
+        var byDocument = (await store.GetByDocumentIdAsync("doc-1", ct)).OrderBy(c => c.ChunkIndex).ToList();
+        Assert.Equal([0, 1, 2], byDocument.Select(c => c.ChunkIndex).ToList());
+        Assert.All(byDocument, c => Assert.Equal(3, c.TotalChunks));
+
+        var hit = Assert.Single(await store.SearchAsync(Axis(2), topK: 1, minScore: -1f, cancellationToken: ct));
+        Assert.Equal(("pos-2", 2, 3), (hit.Id, hit.ChunkIndex, hit.TotalChunks));
+
+        // Re-storing the row with a new position updates it — the field follows the write like Content does.
+        await store.StoreAsync(CreateChunk("pos-1", "second of four", 1, chunkIndex: 1, totalChunks: 4), ct);
+        Assert.Equal(4, (await store.GetAsync("pos-1", ct))?.TotalChunks);
     }
 }

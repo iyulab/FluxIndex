@@ -46,6 +46,7 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
         {
             if (_initialized) return;
             SQLiteSchemaProvisioner.Provision(_context);
+            await TotalChunksBackfill.RunAsync(_context, "vectors", cancellationToken);
             _initialized = true;
         }
         finally
@@ -558,6 +559,7 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
 
         existing.DocumentId = chunk.DocumentId;
         existing.ChunkIndex = chunk.ChunkIndex;
+        existing.TotalChunks = chunk.TotalChunks;
         existing.Content = chunk.Content;
         existing.Embedding = chunk.Embedding?.ToArray();
         existing.TokenCount = chunk.TokenCount;
@@ -579,6 +581,7 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
             Id = id,
             DocumentId = chunk.DocumentId,
             ChunkIndex = chunk.ChunkIndex,
+            TotalChunks = chunk.TotalChunks,
             Content = chunk.Content,
             Embedding = chunk.Embedding?.ToArray(),
             TokenCount = chunk.TokenCount,
@@ -623,6 +626,7 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
             Id = entity.Id,
             DocumentId = entity.DocumentId,
             ChunkIndex = entity.ChunkIndex,
+            TotalChunks = entity.TotalChunks ?? 0,
             Content = entity.Content,
             Embedding = entity.Embedding,
             TokenCount = entity.TokenCount,

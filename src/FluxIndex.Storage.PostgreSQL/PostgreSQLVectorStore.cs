@@ -57,6 +57,7 @@ public class PostgreSQLVectorStore : VectorStoreBase
                 Id = storageId,
                 DocumentId = chunk.DocumentId,
                 ChunkIndex = chunk.ChunkIndex,
+                TotalChunks = chunk.TotalChunks,
                 Content = chunk.Content,
                 Embedding = embedding,
                 TokenCount = chunk.TokenCount,
@@ -67,6 +68,7 @@ public class PostgreSQLVectorStore : VectorStoreBase
         {
             existing.DocumentId = chunk.DocumentId;
             existing.ChunkIndex = chunk.ChunkIndex;
+            existing.TotalChunks = chunk.TotalChunks;
             existing.Content = chunk.Content;
             existing.Embedding = embedding;
             existing.TokenCount = chunk.TokenCount;
@@ -286,6 +288,7 @@ public class PostgreSQLVectorStore : VectorStoreBase
             Id = OriginalChunkId(entity.Metadata) ?? entity.Id.ToString(),
             DocumentId = entity.DocumentId,
             ChunkIndex = entity.ChunkIndex,
+            TotalChunks = entity.TotalChunks ?? 0,
             Content = entity.Content,
             Embedding = entity.Embedding.ToArray(),
             TokenCount = entity.TokenCount,
@@ -313,6 +316,12 @@ public class VectorEntity
     public Guid Id { get; set; } = Guid.NewGuid();
     public string DocumentId { get; set; } = string.Empty;
     public int ChunkIndex { get; set; }
+    /// <summary>
+    /// Number of chunks in the document (<c>DocumentChunk.TotalChunks</c>). Nullable so the column can be
+    /// added to an existing database in place; <see cref="TotalChunksBackfill"/> fills older rows from a
+    /// per-document count right after provisioning.
+    /// </summary>
+    public int? TotalChunks { get; set; }
     public string Content { get; set; } = string.Empty;
     public Vector Embedding { get; set; } = new Vector(Array.Empty<float>());
     public int TokenCount { get; set; }

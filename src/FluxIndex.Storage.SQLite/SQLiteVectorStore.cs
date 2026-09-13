@@ -37,13 +37,12 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
         {
             if (_initialized) return;
 
-            // EnsureCreatedAsync는 데이터베이스가 이미 존재하면 테이블을 생성하지 않음
-            // fallback 모드에서 SQLiteVecDbContext가 먼저 데이터베이스를 생성했을 수 있음
-            await _context.Database.EnsureCreatedAsync(cancellationToken);
-
-            // CREATE TABLE IF NOT EXISTS를 사용하여 항상 테이블 존재 보장
-            // fallback 모드에서 SQLiteVecDbContext가 먼저 DB를 생성한 경우를 처리
-            await EnsureVectorsTableExistsAsync(cancellationToken);
+            // Per owned table (EnsureCreated is a no-op once any table exists — in fallback mode the
+            // sqlite-vec context may have created the database first), plus any nullable column an older
+            // database lacks, then the backfill that gives pre-column rows a real TotalChunks. This
+            // replaced a hand-written CREATE TABLE that had already drifted from the EF model.
+            SQLiteSchemaProvisioner.Provision(_context);
+            await TotalChunksBackfill.RunAsync(_context, "vectors", cancellationToken);
 
             _initialized = true;
         }
@@ -51,31 +50,6 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
         {
             _initLock.Release();
         }
-    }
-
-    /// <summary>
-    /// vectors 테이블이 존재하도록 보장 (CREATE TABLE IF NOT EXISTS 사용)
-    /// </summary>
-    private async Task EnsureVectorsTableExistsAsync(CancellationToken cancellationToken)
-    {
-        // CREATE TABLE IF NOT EXISTS를 사용하여 테이블이 이미 존재하면 무시
-        var createTableSql = @"
-            CREATE TABLE IF NOT EXISTS vectors (
-                Id TEXT PRIMARY KEY NOT NULL,
-                DocumentId TEXT NOT NULL,
-                ChunkIndex INTEGER NOT NULL,
-                Content TEXT NOT NULL,
-                Embedding TEXT,
-                TokenCount INTEGER NOT NULL,
-                Metadata TEXT
-            )";
-
-        var createIndexSql1 = "CREATE INDEX IF NOT EXISTS IX_vectors_DocumentId ON vectors(DocumentId)";
-        var createIndexSql2 = "CREATE INDEX IF NOT EXISTS IX_vectors_ChunkIndex ON vectors(ChunkIndex)";
-
-        await _context.Database.ExecuteSqlRawAsync(createTableSql, cancellationToken);
-        await _context.Database.ExecuteSqlRawAsync(createIndexSql1, cancellationToken);
-        await _context.Database.ExecuteSqlRawAsync(createIndexSql2, cancellationToken);
     }
 
     #region VectorStoreBase Core Implementations
@@ -98,6 +72,7 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
                 Id = id,
                 DocumentId = chunk.DocumentId,
                 ChunkIndex = chunk.ChunkIndex,
+                TotalChunks = chunk.TotalChunks,
                 Content = chunk.Content,
                 Embedding = chunk.Embedding?.ToArray(),
                 TokenCount = chunk.TokenCount,
@@ -108,6 +83,7 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
         {
             existing.DocumentId = chunk.DocumentId;
             existing.ChunkIndex = chunk.ChunkIndex;
+            existing.TotalChunks = chunk.TotalChunks;
             existing.Content = chunk.Content;
             existing.Embedding = chunk.Embedding?.ToArray();
             existing.TokenCount = chunk.TokenCount;
@@ -200,6 +176,7 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
         entity.Content = chunk.Content;
         entity.Embedding = chunk.Embedding?.ToArray();
         entity.TokenCount = chunk.TokenCount;
+        entity.TotalChunks = chunk.TotalChunks;
         entity.Metadata = chunk.Metadata ?? new();
 
         var hadChanges = _context.ChangeTracker.HasChanges();
@@ -324,6 +301,8 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
             Id = entity.Id,
             DocumentId = entity.DocumentId,
             ChunkIndex = entity.ChunkIndex,
+            // Null only on a schema managed outside FluxIndex that never ran the backfill.
+            TotalChunks = entity.TotalChunks ?? 0,
             Content = entity.Content,
             Embedding = entity.Embedding,
             TokenCount = entity.TokenCount,
@@ -351,6 +330,12 @@ public class VectorEntity
     public string Id { get; set; } = string.Empty;
     public string DocumentId { get; set; } = string.Empty;
     public int ChunkIndex { get; set; }
+    /// <summary>
+    /// Number of chunks in the document (<c>DocumentChunk.TotalChunks</c>). Nullable so the column can be
+    /// added to an existing database in place; <see cref="TotalChunksBackfill"/> fills older rows from a
+    /// per-document count right after provisioning.
+    /// </summary>
+    public int? TotalChunks { get; set; }
     public string Content { get; set; } = string.Empty;
     public float[]? Embedding { get; set; }
     public int TokenCount { get; set; }

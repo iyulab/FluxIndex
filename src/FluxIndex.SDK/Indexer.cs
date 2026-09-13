@@ -367,12 +367,15 @@ public partial class Indexer
                         var length = Math.Min(maxChunkChars, content.Length - startPos);
                         var subContent = content.Substring(startPos, length);
 
+                        // Positions are renumbered after the loop once the final count is known; the
+                        // factory only needs a total the running index cannot exceed.
                         var subChunk = DocumentChunkEntity.Create(
                             chunk.DocumentId,
                             subContent,
-                            chunkIndex++,
-                            chunks.Count // Will be adjusted later
+                            chunkIndex,
+                            chunkIndex + 1
                         );
+                        chunkIndex++;
                         // Copy metadata if exists
                         if (chunk.Metadata != null)
                         {
@@ -394,6 +397,18 @@ public partial class Indexer
             }
 
             LogTotalEntityChunksAfterSplitting(_logger, entityChunks.Count, chunks.Count);
+
+            // A split changed the positions of everything after it: renumber so ChunkIndex/TotalChunks
+            // describe the chunks that are actually stored (the sub-chunks were created with a
+            // provisional total, and the caller's untouched chunks still carry the pre-split count).
+            if (entityChunks.Count != chunks.Count)
+            {
+                for (var i = 0; i < entityChunks.Count; i++)
+                {
+                    entityChunks[i].ChunkIndex = i;
+                    entityChunks[i].TotalChunks = entityChunks.Count;
+                }
+            }
 
             // Phase 3: 진행률 보고 - 임베딩 생성
             progress?.Report(new IndexingProgress
