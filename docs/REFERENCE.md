@@ -194,54 +194,45 @@ searches (0.0) keep their own threshold defaults.
 
 ---
 
-## LocalReranker
+## Local reranking (LMSupply)
 
-Cross-encoder neural reranking for improved relevance.
+Cross-encoder reranking runs in-process through the `FluxIndex.Providers.LMSupply` package, which wraps
+`LMSupply.Reranker`. The model is loaded lazily — downloaded first when it is not cached — on first use,
+or at host start when `WarmUpOnStart` is set; building the container never blocks on it.
 
 ### Setup
 
 ```csharp
-// Resilient adapter with fallback (recommended)
 var context = FluxIndexContext.CreateBuilder()
-    .UseResilientLocalReranker(options =>
-    {
-        options.ModelId = "quality";  // "fast", "quality", "multilingual"
-    })
+    .UseSQLite("fluxindex.db")
+    .AddSQLiteStorage()
+    .ConfigureServices(s => s.AddLMSupplyReranker("quality"))   // alias or model id
     .Build();
 ```
 
-### Model Options
+### Model aliases
 
-| Model | Size | Multilingual | Speed | Quality |
-|-------|------|--------------|-------|---------|
-| `fast` | ~25MB | No | ★★★★★ | ★★★ |
-| `quality` | ~100MB | No | ★★★ | ★★★★★ |
-| `multilingual` | ~280MB | Yes | ★★ | ★★★★ |
+`default`, `fast`, `quality`, `multilingual` — the presets `LMSupply.Reranker` resolves; a model id or a
+local path works as well. Sizes and speed depend on the LMSupply catalog version you have pinned.
 
 ### Configuration
 
 ```csharp
-var options = new LocalRerankerOptions
+services.AddLMSupplyReranker(options =>
 {
-    ModelId = "quality",
-    MaxSequenceLength = 512,
-    UseGpu = false,
-    BatchSize = 32,
-    WarmupOnStartup = true
-};
+    options.ModelId = "quality";
+    options.WarmUpOnStart = true;                 // load at host start instead of first use
+    options.LoadTimeout = TimeSpan.FromMinutes(5); // null = no timeout
+    options.Reranker = new RerankerOptions          // LMSupply loader options
+    {
+        MaxSequenceLength = 512,
+        BatchSize = 32
+    };
+});
 ```
 
-### Resilient Mode Behavior
-
-```
-Startup:
-├─ Model load success → Semantic mode (high quality)
-└─ Model load failure → Algorithmic mode (fallback)
-
-Runtime:
-├─ Inference success → Return results
-└─ Inference failure → Algorithmic fallback → Return results
-```
+Failure to load or download the model surfaces on the first rerank call (or at start-up with
+`WarmUpOnStart`) as an exception; there is no silent algorithmic fallback.
 
 ---
 
@@ -318,10 +309,8 @@ var neighbors = await graphService.TraverseBfsAsync(
 // Shortest path
 var path = await graphService.FindShortestPathAsync(startId, endId);
 
-// PageRank importance
-var importance = await graphService.CalculateChunkImportanceAsync(
-    iterations: 20,
-    dampingFactor: 0.85);
+// PageRank importance (chunk id → score)
+var importance = await graphService.ComputeChunkImportanceAsync();
 ```
 
 ### Available Operations
@@ -527,8 +516,8 @@ Query-type specific weight optimization.
 ```csharp
 var dynamicFusion = serviceProvider.GetRequiredService<IDynamicFusionService>();
 
-var weights = dynamicFusion.CalculateWeights(queryAnalysis);
-// Returns optimized VectorWeight and SparseWeight based on query type
+var fusion = await dynamicFusion.CalculateDynamicWeightsAsync(query);
+// DynamicFusionConfiguration: VectorWeight and SparseWeight chosen from the query's type
 ```
 
 **Default Weights by Query Type**:
@@ -545,13 +534,13 @@ var weights = dynamicFusion.CalculateWeights(queryAnalysis);
 var transformer = serviceProvider.GetRequiredService<IQueryTransformationService>();
 
 // HyDE (Hypothetical Document Embedding)
-var hydeQuery = await transformer.TransformWithHyDEAsync(query);
-
-// Multi-Query expansion
-var multiQueries = await transformer.ExpandQueryAsync(query);
+var hyde = await transformer.GenerateHypotheticalDocumentAsync(query);
 
 // Query decomposition for complex questions
 var subQueries = await transformer.DecomposeQueryAsync(complexQuery);
+
+// Intent analysis (drives the dynamic fusion weights above)
+var intent = await transformer.AnalyzeQueryIntentAsync(query);
 ```
 
 ---

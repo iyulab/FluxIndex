@@ -17,20 +17,26 @@ namespace FluxIndex.SDK.Tests;
 /// <list type="number">
 /// <item>Object initializers <c>new &lt;Type&gt;{Options|Configuration|Defaults} { Name = … }</c> — the type
 /// must exist in the library assemblies and every assigned name must be a public settable property.</item>
-/// <item>Registration-style calls <c>.With…(</c> / <c>.Use…(</c> / <c>.Add…(</c> — a public method of that
-/// name must exist on some public type in the assemblies next to this test (the FluxIndex packages plus the
-/// framework packages they reference). Names from packages this test does not reference are listed in
-/// <see cref="KnownExternal"/>.</item>
+/// <item>Method calls <c>.Name(</c> — a public method of that name must exist on some public type in the
+/// assemblies next to this test (the FluxIndex packages, the sibling packages they integrate and the
+/// framework packages their registrations extend) or in the BCL. Names from packages this test does not
+/// reference, and names a sample defines itself, are listed in <see cref="KnownExternal"/>.</item>
 /// </list>
 /// Documented names that are known to be wrong and not yet repaired are pinned in <see cref="KnownDrift"/>
 /// with the file they live in, so the list can only shrink deliberately.
 /// </remarks>
 public class DocsSnippetRosterTests
 {
-    /// <summary>Method names the docs use from packages the test output does not contain.</summary>
+    /// <summary>
+    /// Method names the docs use that no scanned assembly declares: packages the test output does not
+    /// contain, and methods a sample defines for itself in the same block (its own service class).
+    /// </summary>
     private static readonly HashSet<string> KnownExternal = new(StringComparer.Ordinal)
     {
-        "AddConsole", // Microsoft.Extensions.Logging.Console
+        "AddConsole",              // Microsoft.Extensions.Logging.Console
+        "PostAsJsonAsync",         // System.Net.Http.Json
+        "GetChatCompletionsAsync", // Azure.AI.OpenAI, in the provider-integration guide's own-provider sample
+        "LogMetric",               // a method the ADVANCED_RAG sample defines on its own class
     };
 
     /// <summary>
@@ -42,13 +48,11 @@ public class DocsSnippetRosterTests
         ["docs/ADVANCED_RAG.md"] = ["AddAdvancedSearchServices", "ListwiseRerankingOptions (no such type in the library assemblies)"],
         ["docs/AI_PROVIDER_INTEGRATION.md"] = ["AddCohereReranker", "AddOpenAICompletion", "AddOpenAIEmbedding", "AddOpenAIServices"],
         ["docs/FLUXINDEX_PHILOSOPHY.md"] = ["AddFluxIndexAnthropic", "AddFluxIndexOpenAI"],
-        // The entity-graph snippet calls a method that does not exist either (SearchByEntityAsync); the
-        // whole example needs rewriting against IEntityGraphService, not a property rename.
-        ["docs/GUIDE.md"] = ["EntitySearchOptions.MaxDepth"],
+        // The entity-graph example calls a method that does not exist (SearchByEntityAsync) with an option
+        // it does not have (MaxDepth); it needs rewriting against IEntityGraphService, not a rename.
+        ["docs/GUIDE.md"] = ["EntitySearchOptions.MaxDepth", "SearchByEntityAsync"],
         ["docs/MIGRATION.md"] = ["AddOpenAIEmbedding", "UseOpenAI"],
-        // "LocalReranker" section describes an options type and a registration that never shipped; the
-        // real surface is AddLMSupplyReranker + LMSupplyRerankerOptions.
-        ["docs/REFERENCE.md"] = ["EntitySearchOptions.MaxDepth", "LocalRerankerOptions (no such type in the library assemblies)", "UseResilientLocalReranker"],
+        ["docs/REFERENCE.md"] = ["EntitySearchOptions.MaxDepth", "SearchByEntityAsync"],
     };
 
     /// <summary>Option-shaped types from other SDKs that a document legitimately shows (not ours to declare).</summary>
@@ -120,10 +124,13 @@ public class DocsSnippetRosterTests
     public void APhantomRegistrationCall_IsReported_AndARealOneIsNot()
     {
         var methods = PublicMethodNames();
-        var calls = RegistrationCalls("var c = FluxIndexContext.CreateBuilder().UseSQLite(\"x.db\").AddSQLiteStorage().UseImaginaryThing().Build();").ToList();
+        var calls = RegistrationCalls(
+            "var c = FluxIndexContext.CreateBuilder().UseSQLite(\"x.db\").AddSQLiteStorage().UseImaginaryThing().Build();\n" +
+            "var r = await graph.SearchByEntityAsync(id); // .NotACall( in a comment\n" +
+            "var s = \"text with .NotACallEither( inside\".ToUpperInvariant();").ToList();
 
-        calls.Should().BeEquivalentTo(["UseSQLite", "AddSQLiteStorage", "UseImaginaryThing"]);
-        calls.Where(n => !methods.Contains(n)).Should().Equal("UseImaginaryThing");
+        calls.Should().BeEquivalentTo(["CreateBuilder", "UseSQLite", "AddSQLiteStorage", "UseImaginaryThing", "Build", "SearchByEntityAsync", "ToUpperInvariant"]);
+        calls.Where(n => !methods.Contains(n)).Should().BeEquivalentTo(["UseImaginaryThing", "SearchByEntityAsync"]);
     }
 
     // ── scanner ─────────────────────────────────────────────────────────────────────────────
@@ -137,10 +144,42 @@ public class DocsSnippetRosterTests
 
     private static readonly Regex Opening = new(@"new\s+([A-Z]\w*(?:Options|Configuration|Defaults))\s*\{", RegexOptions.Compiled);
     private static readonly Regex Assignment = new(@"(?<![\w.])([A-Z]\w*)\s*=(?!=)", RegexOptions.Compiled);
-    private static readonly Regex Registration = new(@"\.((?:With|Use|Add)[A-Z]\w*)\s*\(", RegexOptions.Compiled);
+    // Every member call: `.Name(` after an identifier, a closing paren/bracket or a string literal — not a
+    // decimal literal (`0.5f(` cannot occur) and not `new Type(` (no dot).
+    private static readonly Regex Registration = new(@"(?<=[\w)\]""])\s*\.\s*([A-Z]\w*)\s*\(", RegexOptions.Compiled);
 
     internal static IEnumerable<string> RegistrationCalls(string code) =>
-        Registration.Matches(code).Select(m => m.Groups[1].Value).Distinct(StringComparer.Ordinal);
+        Registration.Matches(StripCommentsAndStrings(code)).Select(m => m.Groups[1].Value).Distinct(StringComparer.Ordinal);
+
+    /// <summary>Blank out string literals and comments so a `.Name(` inside them is not read as a call.</summary>
+    private static string StripCommentsAndStrings(string code)
+    {
+        var sb = new StringBuilder(code.Length);
+        for (var i = 0; i < code.Length; i++)
+        {
+            var c = code[i];
+            if (c == '"')
+            {
+                sb.Append('"');
+                i++;
+                while (i < code.Length && code[i] != '"')
+                {
+                    if (code[i] == '\\') i++;
+                    i++;
+                }
+                sb.Append('"');
+                continue;
+            }
+            if (c == '/' && i + 1 < code.Length && code[i + 1] == '/')
+            {
+                while (i < code.Length && code[i] != '\n') i++;
+                sb.Append('\n');
+                continue;
+            }
+            sb.Append(c);
+        }
+        return sb.ToString();
+    }
 
     internal static IEnumerable<Snippet> FindSnippets(string code)
     {
@@ -260,6 +299,15 @@ public class DocsSnippetRosterTests
         "Npgsql*.dll", "Qdrant*.dll", "StackExchange.Redis*.dll", "Neo4j*.dll",
     ];
 
+    /// <summary>BCL assemblies whose public method names the samples also call (LINQ, tasks, IO, JSON…).</summary>
+    private static readonly Assembly[] FrameworkAssemblies =
+    [
+        typeof(object).Assembly, typeof(Enumerable).Assembly, typeof(Task).Assembly, typeof(Console).Assembly,
+        typeof(File).Assembly, typeof(System.Text.Json.JsonSerializer).Assembly, typeof(Regex).Assembly,
+        typeof(System.Collections.Concurrent.ConcurrentDictionary<,>).Assembly, typeof(HttpClient).Assembly,
+        typeof(System.Diagnostics.Stopwatch).Assembly,
+    ];
+
     private static Dictionary<string, List<Type>> OptionTypes() =>
         LoadedAssemblies("FluxIndex*.dll")
             .Where(a => !a.GetName().Name!.EndsWith(".Tests", StringComparison.Ordinal))
@@ -274,6 +322,7 @@ public class DocsSnippetRosterTests
     private static HashSet<string> PublicMethodNames() =>
         MethodNamePatterns.SelectMany(LoadedAssemblies)
             .Where(a => !a.GetName().Name!.EndsWith(".Tests", StringComparison.Ordinal))
+            .Concat(FrameworkAssemblies)
             .Distinct()
             .SelectMany(ExportedTypes)
             .SelectMany(t =>

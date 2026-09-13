@@ -86,8 +86,12 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   REFERENCE (`UseOpenAIEmbedding`/`AddOpenAIEmbedding` → `AddOpenAICompatibleEmbedding`,
   `SearchOptions.MetadataFilter` → `MetadataFilters`, a GraphRAG query written against a method and type
   that never shipped, and wrong member names on `SelfRAGOptions`, `CorrectiveRAGOptions` and
-  `GlobalSearchOptions`). A test now checks every C# block in `README.md` and `docs/*.md` against the
-  public surface; the examples still known to be wrong are listed in it until their sections are rewritten. `docs/GUIDE.md` no longer lists chunking
+  `GlobalSearchOptions`; method names on `IGraphTraversalService`, `IDynamicFusionService`,
+  `IQueryTransformationService` and `ITextCompletionService`). The REFERENCE "LocalReranker" section, which
+  described an options type and a registration that never existed, now documents the real
+  `AddLMSupplyReranker` + `LMSupplyRerankerOptions` surface. A test checks every C# block in `README.md`
+  and `docs/*.md` — option initialisers and every method call — against the public surface; the examples
+  still known to be wrong are listed in it until their sections are rewritten. `docs/GUIDE.md` no longer lists chunking
   strategies the splitter does not have (`WithChunking("Sliding")` threw on `Enum.Parse`).
 - Five options that were declared but never read now do what their documentation says (found by the new
   options-reachability roster, which pins that every public `*Options` property has a reader):

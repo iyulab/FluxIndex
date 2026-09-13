@@ -732,7 +732,7 @@ public class RAGService
             Answer:
             """;
 
-        return await _llm.GenerateCompletionAsync(prompt);
+        return await _llm.CompleteAsync(prompt);
     }
 }
 ```
