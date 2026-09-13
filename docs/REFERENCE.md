@@ -348,8 +348,8 @@ var selfRag = serviceProvider.GetRequiredService<ISelfRAGService>();
 var result = await selfRag.SearchAsync(query, new SelfRAGOptions
 {
     MaxIterations = 3,
-    MinQualityThreshold = 0.7f,
-    EnableReflection = true
+    QualityThreshold = 0.7f,
+    EnableAutoRefinement = true
 });
 
 // Result contains FinalResults, FinalQualityScore, Iterations
@@ -364,9 +364,10 @@ var crag = serviceProvider.GetRequiredService<ICorrectiveRAGService>();
 
 var result = await crag.RetrieveWithCorrectionAsync(query, new CorrectiveRAGOptions
 {
-    EnableWebAugmentation = true,
-    GradingThreshold = 0.5f,
-    MaxCorrections = 2
+    EnableWebSearch = true,
+    CorrectThreshold = 0.7f,
+    AmbiguousThreshold = 0.4f,
+    RetryCount = 2
 });
 
 // Documents are graded as Correct, Ambiguous, or Incorrect
@@ -489,7 +490,7 @@ var summaries = await summarizer.GenerateSummariesAsync(communities, level: 1);
 var answer = await summarizer.GlobalSearchAsync(query, new GlobalSearchOptions
 {
     MaxCommunities = 5,
-    SummaryLevel = 1
+    SearchLevel = 1
 });
 ```
 

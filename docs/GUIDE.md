@@ -234,7 +234,8 @@ var context = FluxIndexContext.CreateBuilder()
     .AddQdrantStorage()      // Vector
     .AddPostgreSQLStorage()  // RDB + Cache
     .AddNeo4jStorage()       // Graph
-    .ConfigureServices(s => s.AddOpenAIEmbedding(apiKey))  // Your extension
+    .ConfigureServices(s => s.AddOpenAICompatibleEmbedding(
+        "https://api.openai.com/v1", apiKey, "text-embedding-3-small"))
     .Build();
 ```
 
@@ -553,7 +554,7 @@ var options = new SearchOptions
     TopK = 10,
     MinSimilarity = 0.5f,
     UseHybridSearch = true,
-    MetadataFilter = new Dictionary<string, object>
+    MetadataFilters = new Dictionary<string, string>
     {
         ["category"] = "technical"
     }
@@ -616,13 +617,16 @@ var context = FluxIndexContext.CreateBuilder()
 ```csharp
 var graphRag = serviceProvider.GetRequiredService<IGraphRAGService>();
 
-var result = await graphRag.SearchAsync(
+// The index is built once from the chunks (the SDK indexer does this when EnableGraphRAG is on)
+var index = await graphRag.BuildIndexAsync(chunks);
+
+var result = await graphRag.QueryAsync(
     "How are Machine Learning and Neural Networks related?",
-    new GraphRAGOptions
+    index,
+    new GraphRAGQueryOptions
     {
-        EnableLocalSearch = true,   // Entity-centric search
-        EnableGlobalSearch = true,  // Community-based search
-        CommunityLevel = 1
+        ForceScope = QueryScope.Hybrid,   // Local (entity-centric) + Global (community-based)
+        IncludeRelationships = true
     }
 );
 ```

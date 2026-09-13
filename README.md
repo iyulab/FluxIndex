@@ -220,7 +220,8 @@ no way to express a persistent keyword index at all:
 var builder = FluxIndexContext.CreateBuilder()
     .UseQdrant("localhost")
     .AddQdrantStorage()
-    .UseOpenAIEmbedding(apiKey);
+    .ConfigureServices(s => s.AddOpenAICompatibleEmbedding(
+        "https://api.openai.com/v1", apiKey, "text-embedding-3-small"));
 
 // Name the provider explicitly. Left unset, the leg follows the vector store — here that means
 // Qdrant, which has no keyword backend, so AddPostgreSQLStorage() below would contribute nothing.
