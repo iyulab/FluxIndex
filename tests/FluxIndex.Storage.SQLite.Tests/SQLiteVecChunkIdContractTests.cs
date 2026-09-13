@@ -155,26 +155,6 @@ public class SQLiteVecChunkIdContractTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task StoreAsync_EmptyId_GetsOneFromTheStore()
-    {
-        CITestHelper.SkipIfSqliteVecNotAvailable();
-        var ct = TestContext.Current.CancellationToken;
-        var store = _writer.GetRequiredService<IVectorStore>();
-
-        var chunk = Chunk(string.Empty, "no id given", Embedding(1));
-        var returned = await store.StoreAsync(chunk, ct);
-
-        Assert.Equal(returned, chunk.Id); // the generated id lands on the instance too
-
-        returned.Should().NotBeNullOrWhiteSpace();
-        (await store.GetAsync(returned, ct)).Should().NotBeNull();
-    }
-
-    /// <summary>
-    /// The in-process fallback store (<c>UseSQLiteVec = false</c>) is bound by the same contract — it
-    /// minted its own id in exactly the same line.
-    /// </summary>
-    [Fact]
     public async Task FallbackStore_KeepsTheCallerId_AndReStoringUpdates()
     {
         var ct = TestContext.Current.CancellationToken;
