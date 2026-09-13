@@ -1,4 +1,4 @@
-﻿using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Services;
 using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Logging;
@@ -32,6 +32,42 @@ public class AdaptiveSearchServiceTests
             _logger,
             dynamicFusion: null,
             semanticCache: _mockSemanticCache);
+    }
+
+    [Fact]
+    public async Task SearchAsync_HonoursTheTimeoutOption_WithATimeoutException()
+    {
+        // Timeout was declared on the options (default 30 s) and never read: a search ran as long
+        // as it liked. A search that exceeds it must fail as a timeout — not as a cancellation
+        // the caller did not ask for.
+        _mockAnalyzer.AnalyzeAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                await Task.Delay(Timeout.Infinite, call.Arg<CancellationToken>());
+                return new QueryAnalysis();
+            });
+        var options = new AdaptiveSearchOptions { UseCache = false, Timeout = TimeSpan.FromMilliseconds(200) };
+
+        var act = () => _service.SearchAsync("slow query", options, TestContext.Current.CancellationToken);
+
+        await Assert.ThrowsAsync<TimeoutException>(act);
+    }
+
+    [Fact]
+    public async Task SearchAsync_CallerCancellation_IsNotReportedAsATimeout()
+    {
+        _mockAnalyzer.AnalyzeAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                await Task.Delay(Timeout.Infinite, call.Arg<CancellationToken>());
+                return new QueryAnalysis();
+            });
+        using var cts = new CancellationTokenSource(100);
+        var options = new AdaptiveSearchOptions { UseCache = false, Timeout = TimeSpan.FromSeconds(30) };
+
+        var act = () => _service.SearchAsync("slow query", options, cts.Token);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(act);
     }
 
     [Fact]

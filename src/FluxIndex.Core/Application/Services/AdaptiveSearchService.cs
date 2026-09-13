@@ -74,6 +74,15 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
         options ??= new AdaptiveSearchOptions();
         var totalStopwatch = Stopwatch.StartNew();
 
+        // Timeout was declared on the options (default 30 s) and never read: a search ran as long
+        // as it liked. It now bounds the whole search; a search that exceeds it fails with a
+        // TimeoutException rather than an OperationCanceledException the caller did not ask for.
+        using var timeoutSource = options.Timeout > TimeSpan.Zero
+            ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)
+            : null;
+        timeoutSource?.CancelAfter(options.Timeout);
+        var searchToken = timeoutSource?.Token ?? cancellationToken;
+
         LogAdaptiveSearchStarted(_logger, query);
 
         try
@@ -88,7 +97,7 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
                     var cachedResult = await _semanticCache.GetCachedResultAsync(
                         query,
                         similarityThreshold: 0.95f,
-                        cancellationToken);
+                        searchToken);
 
                     if (cachedResult != null)
                     {
@@ -176,7 +185,7 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
 
             // 2. 쿼리 복잡도 분석
             var analysisStopwatch = Stopwatch.StartNew();
-            var queryAnalysis = await _queryAnalyzer.AnalyzeAsync(query, cancellationToken);
+            var queryAnalysis = await _queryAnalyzer.AnalyzeAsync(query, searchToken);
             analysisStopwatch.Stop();
 
             LogQueryAnalysisCompleted(_logger, queryAnalysis.Type, queryAnalysis.Complexity, queryAnalysis.ConfidenceScore);
@@ -201,14 +210,14 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
 
             // 4. 검색 실행 (Fallback 전략 포함)
             var searchStopwatch = Stopwatch.StartNew();
-            var searchResults = await ExecuteSearchWithFallback(query, strategy, options, strategyReasons, cancellationToken);
+            var searchResults = await ExecuteSearchWithFallback(query, strategy, options, strategyReasons, searchToken);
             searchStopwatch.Stop();
 
             // 5. A/B 테스트 처리
             ABTestInfo? abTestInfo = null;
             if (options.EnableABTest)
             {
-                abTestInfo = await PerformABTest(query, strategy, queryAnalysis, options, cancellationToken);
+                abTestInfo = await PerformABTest(query, strategy, queryAnalysis, options, searchToken);
             }
 
             // 6. 결과 구성
@@ -282,7 +291,7 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
                                 QualityScore = (float)result.Performance.AverageRelevanceScore
                             },
                             TimeSpan.FromHours(1),
-                            cancellationToken);
+                            searchToken);
 
                         LogSemanticCacheSaved(_logger, query, result.Performance.ResultCount);
                     }
@@ -305,6 +314,12 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
             LogAdaptiveSearchCompleted(_logger, strategy, result.Performance.ResultCount, totalStopwatch.ElapsedMilliseconds);
 
             return result;
+        }
+        catch (OperationCanceledException) when (timeoutSource is { IsCancellationRequested: true } && !cancellationToken.IsCancellationRequested)
+        {
+            var timeout = new TimeoutException($"Adaptive search for the query did not complete within {options.Timeout}");
+            LogAdaptiveSearchError(_logger, timeout, query);
+            throw timeout;
         }
         catch (Exception ex)
         {

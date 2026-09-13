@@ -44,6 +44,12 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ### Fixed
 
+- **`AdaptiveSearchOptions.Timeout` is honoured.** It was declared (default 30 s) and never read, so
+  an adaptive search ran as long as it liked. It now bounds the whole search; a search that exceeds it
+  fails with a `TimeoutException` (a caller's own cancellation still surfaces as
+  `OperationCanceledException`). `SelfRAGOptions.SearchTimeout`, which was dropped at the point
+  Self-RAG built the adaptive search's options, reaches it as that `Timeout`. A search that used to
+  run past 30 s now fails at 30 s unless `Timeout` is raised or set to `TimeSpan.Zero`.
 - **LLM entity and relation extraction discarded every result.** `EntityExtractionService` asked the
   model for lowercase keys (`"text"`, `"type"`, `"source"`, ... — its own prompt example) and then
   deserialized the reply into PascalCase records with case-sensitive matching, so every field stayed at its

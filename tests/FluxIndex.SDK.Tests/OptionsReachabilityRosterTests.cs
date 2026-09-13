@@ -37,7 +37,7 @@ public class OptionsReachabilityRosterTests
         // library does not keep today; the issue draft that introduced this roster lists them by type
         // with a wire-or-remove call for each. Shrink this list, never grow it silently.
         ["FluxIndex.Cache.Redis.Configuration.RedisSemanticCacheOptions"] = ["AutoCompactionInterval", "CleanupRatio", "CleanupThreshold", "CommandTimeoutSeconds", "ConnectionTimeoutSeconds", "DefaultSimilarityThreshold", "DomainWeights", "EnableAutoCompaction", "EnableDetailedLogging", "EnableMetrics", "EnableQueryNormalization", "EnableVectorCompression", "KeyPrefix", "RetryCount", "RetryDelay", "StatisticsInterval", "WarmupQueries"],
-        ["FluxIndex.Core.Application.Interfaces.AdaptiveSearchOptions"] = ["EnableDetailedLogging", "Timeout", "UserContext"],
+        ["FluxIndex.Core.Application.Interfaces.AdaptiveSearchOptions"] = ["EnableDetailedLogging", "UserContext"],
         ["FluxIndex.Core.Application.Interfaces.AgenticRetrievalOptions"] = ["EnableAdaptivePlanning"],
         ["FluxIndex.Core.Application.Interfaces.AnswerSynthesisOptions"] = ["StructuredAnswer"],
         ["FluxIndex.Core.Application.Interfaces.CacheMaintenanceOptions"] = ["CompactStorage", "TargetMemoryUsagePercent", "UpdateStatistics"],
@@ -66,7 +66,7 @@ public class OptionsReachabilityRosterTests
         ["FluxIndex.Core.Application.Interfaces.QuantizationOptions"] = ["NormalizeVectors", "TrainingSamples"],
         ["FluxIndex.Core.Application.Interfaces.QueryDecompositionOptions"] = ["MaxDecompositionDepth"],
         ["FluxIndex.Core.Application.Interfaces.RerankOptions"] = ["Model", "ModelParameters"],
-        ["FluxIndex.Core.Application.Interfaces.SelfRAGOptions"] = ["EnableContextExpansion", "EnableMultiPerspectiveSearch", "SearchTimeout"],
+        ["FluxIndex.Core.Application.Interfaces.SelfRAGOptions"] = ["EnableContextExpansion", "EnableMultiPerspectiveSearch"],
         ["FluxIndex.Core.Application.Interfaces.StorageConfiguration"] = ["GraphProvider", "HasGraph", "HasRdb", "HasSemanticCache", "HasVector", "RdbProvider", "SemanticCacheProvider", "VectorProvider"],
         ["FluxIndex.Core.Application.Interfaces.SemanticCacheOptions"] = ["AutoOptimizationInterval", "CompressionThreshold", "DefaultExpiry", "DefaultSimilarityThreshold", "EnableAutoOptimization", "EnableCompression", "EnablePerformanceTracking", "MaxCacheSize", "MaxMemoryMB", "MaxQueryLength", "MinQueryLength", "SimilaritySearchBatchSize"],
         ["FluxIndex.Core.Application.Interfaces.VerificationOptions"] = ["CustomCriteria", "IncludeDetailedReasoning", "MaxHallucinationRisk"],

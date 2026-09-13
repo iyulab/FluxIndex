@@ -56,6 +56,9 @@ public partial class SelfRAGService : ISelfRAGService
         var searchOptions = new AdaptiveSearchOptions
         {
             MaxResults = options.MaxResults,
+            // SearchTimeout was declared here and dropped at this mapping; the adaptive search now
+            // honours its Timeout, so the caller's bound reaches the search.
+            Timeout = options.SearchTimeout,
             EnableDetailedLogging = options.EnableDetailedLogging,
             UserContext = options.UserContext
         };
