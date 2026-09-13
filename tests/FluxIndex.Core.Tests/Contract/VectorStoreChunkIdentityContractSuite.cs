@@ -172,6 +172,44 @@ public abstract class VectorStoreChunkIdentityContractSuite
     /// green: nothing here ever set the field before this fact.
     /// </summary>
     [Fact]
+    public async Task StoreAsync_RoundTripsEveryCallerSetField_OnGet()
+    {
+        // The fixture sets every field a caller can set on a DocumentChunk. A store that drops one
+        // (TotalChunks was dropped by five stores for months) must fail here on every read path —
+        // not only on the field a previous fact happened to look at. Embedding is a store's own
+        // representation and is asserted by search, not here; Score is search-time; CreatedAt is
+        // the store's.
+        var ct = TestContext.Current.CancellationToken;
+        var store = await CreateStoreAsync();
+        var stored = CreateChunk("full-1", "every field set", 1, chunkIndex: 4, totalChunks: 9);
+        stored.TokenCount = 7;
+        stored.Metadata!["origin"] = "contract-full";
+        stored.Metadata["page"] = 12;
+
+        await store.StoreAsync(stored, ct);
+
+        var byId = await store.GetAsync("full-1", ct);
+        Assert.NotNull(byId);
+        AssertCallerFields(stored, byId);
+
+        var byDocument = Assert.Single(await store.GetByDocumentIdAsync("doc-1", ct), c => c.Id == "full-1");
+        AssertCallerFields(stored, byDocument);
+    }
+
+    private static void AssertCallerFields(DocumentChunk expected, DocumentChunk actual)
+    {
+        Assert.Equal(expected.Id, actual.Id);
+        Assert.Equal(expected.DocumentId, actual.DocumentId);
+        Assert.Equal(expected.ChunkIndex, actual.ChunkIndex);
+        Assert.Equal(expected.TotalChunks, actual.TotalChunks);
+        Assert.Equal(expected.Content, actual.Content);
+        Assert.Equal(expected.TokenCount, actual.TokenCount);
+        Assert.NotNull(actual.Metadata);
+        Assert.Equal("contract-full", actual.Metadata["origin"]?.ToString());
+        Assert.Equal("12", actual.Metadata["page"]?.ToString());
+    }
+
+    [Fact]
     public async Task StoreAsync_RoundTripsChunkPosition_OnEveryReadPath()
     {
         var ct = TestContext.Current.CancellationToken;
