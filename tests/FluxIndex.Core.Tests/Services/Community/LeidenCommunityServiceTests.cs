@@ -957,6 +957,40 @@ public class LeidenCommunityServiceTests
         return values;
     }
 
+    // A re-index of an unchanged document hands the detector the same chunks. Communities that come back with new
+    // ids (or a different partition) are persisted as new rows every time, so both must be a function of the input.
+    [Fact]
+    public async Task WithoutASeed_TheSameChunks_DetectTheSameCommunities_WithTheSameIds_InAnyInputOrder()
+    {
+        var chunks = CreateTestChunks(12);
+        var options = new LeidenOptions { MinCommunitySize = 1 };
+
+        var first = await new LeidenCommunityService(_loggerMock).DetectHierarchicalCommunitiesAsync(chunks, options, TestContext.Current.CancellationToken);
+        var second = await new LeidenCommunityService(_loggerMock).DetectHierarchicalCommunitiesAsync(chunks, options, TestContext.Current.CancellationToken);
+        var reordered = await new LeidenCommunityService(_loggerMock).DetectHierarchicalCommunitiesAsync(Enumerable.Reverse(chunks).ToList(), options, TestContext.Current.CancellationToken);
+
+        Assert.NotEmpty(first.Levels);
+        Assert.Equal(Describe(first), Describe(second));
+        Assert.Equal(Describe(first), Describe(reordered));
+    }
+
+    [Fact]
+    public async Task CommunityIds_FollowTheMembers_SoDifferentChunksNeverShareAnId()
+    {
+        var options = new LeidenOptions { MinCommunitySize = 1 };
+        var left = await new LeidenCommunityService(_loggerMock).DetectHierarchicalCommunitiesAsync(CreateTestChunks(6), options, TestContext.Current.CancellationToken);
+        var right = await new LeidenCommunityService(_loggerMock).DetectHierarchicalCommunitiesAsync(
+            Enumerable.Range(0, 6).Select(i => CreateChunk($"other-{i}", $"Other content {i}", CreateRandomEmbedding())).ToList(),
+            options,
+            TestContext.Current.CancellationToken);
+
+        var leftIds = left.Levels.SelectMany(l => l.Communities).Select(c => c.Id).ToHashSet();
+        Assert.All(right.Levels.SelectMany(l => l.Communities), c => Assert.DoesNotContain(c.Id, leftIds));
+    }
+
+    private static string[] Describe(CommunityHierarchy hierarchy)
+        => [.. hierarchy.Levels.SelectMany(l => l.Communities.Select(c => $"{l.LevelIndex}|{c.Id}|{string.Join(",", c.ChunkIds.Order(StringComparer.Ordinal))}")).Order(StringComparer.Ordinal)];
+
     private static List<LeidenChunk> CreateTestChunks(int count)
     {
         return Enumerable.Range(0, count)

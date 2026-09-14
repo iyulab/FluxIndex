@@ -127,7 +127,8 @@ public class LeidenOptions
     public bool GenerateSummariesOnDetection { get; set; }
 
     /// <summary>
-    /// Random seed for reproducibility.
+    /// Random seed for reproducibility. When null, the seed is derived from the input chunk ids, so the same chunks are
+    /// always partitioned the same way; set a value only to pin a specific partition across different inputs.
     /// Null = use random seed.
     /// </summary>
     public int? RandomSeed { get; set; }

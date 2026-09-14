@@ -70,6 +70,39 @@ public abstract class GraphStoreChunkProvenanceContractSuite
         Assert.Equal(id, Assert.Single(byNewChunk).Id);
     }
 
+    // Community ids are derived from level and member chunks, so a rebuilt document re-stores the same ids. That must
+    // update the row, not add a second community for the same members.
+    [Fact]
+    public async Task StoreCommunityAsync_SameIdTwice_UpdatesTheCommunity_WithoutASecondRow()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var store = await CreateStoreAsync();
+        var entityId = Fresh("entity");
+        var (c1, c2) = (Fresh("chunk"), Fresh("chunk"));
+        await store.StoreEntitiesBatchAsync([Entity(entityId, "Acme Corp", [c1, c2], ["doc-a"])], ct);
+        var communityId = Guid.NewGuid().ToString();
+
+        GraphCommunity Community(string summary) => new()
+        {
+            Id = communityId,
+            Name = "Acme",
+            Summary = summary,
+            EntityIds = [entityId],
+            ChunkIds = [c1, c2],
+            Topics = ["partners"],
+            ImportanceScore = 0.8,
+            Level = 0
+        };
+
+        await store.StoreCommunityAsync(Community("first build"), ct);
+        await store.StoreCommunityAsync(Community("rebuilt"), ct);
+
+        var byChunks = await store.GetCommunitiesByChunkIdsAsync([c1, c2], ct);
+        var only = Assert.Single(byChunks, c => c.Id == communityId);
+        Assert.Equal("rebuilt", only.Summary);
+        Assert.Single(await store.GetCommunitiesForEntityAsync(entityId, ct), c => c.Id == communityId);
+    }
+
     [Fact]
     public async Task GetEntitiesByChunkIdsAsync_MatchesAnyStoredChunkId_OncePerEntity()
     {

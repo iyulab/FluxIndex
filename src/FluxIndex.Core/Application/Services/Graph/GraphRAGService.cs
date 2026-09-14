@@ -1022,11 +1022,92 @@ public partial class GraphRAGService : IGraphRAGService
         if (_logger.IsEnabled(LogLevel.Information))
             LogGraphRAG1(_logger, hierarchy.LevelCount);
 
-        return await _summarizationService.GenerateHierarchicalSummariesAsync(
-            hierarchy,
-            chunks,
-            options.SummarizationOptions,
-            cancellationToken);
+        // A community id is derived from its level and member chunks, and chunk ids from their content, so a stored
+        // community with the same id and a summary describes exactly these chunks — rebuilding an unchanged document
+        // must not pay for that summary again.
+        var reused = await LoadStoredSummariesAsync(hierarchy, cancellationToken);
+        if (reused.Count == 0)
+        {
+            return await _summarizationService.GenerateHierarchicalSummariesAsync(
+                hierarchy, chunks, options.SummarizationOptions, cancellationToken);
+        }
+
+        var pending = new CommunityHierarchy
+        {
+            Id = hierarchy.Id,
+            TotalChunks = hierarchy.TotalChunks,
+            CreatedAt = hierarchy.CreatedAt,
+            Statistics = hierarchy.Statistics,
+            Options = hierarchy.Options,
+            Levels = [.. hierarchy.Levels.Select(l => new CommunityLevel
+            {
+                LevelIndex = l.LevelIndex,
+                Modularity = l.Modularity,
+                Resolution = l.Resolution,
+                Communities = [.. l.Communities.Where(c => !reused.ContainsKey(c.Id))]
+            })]
+        };
+
+        var generated = pending.Levels.Any(l => l.CommunityCount > 0)
+            ? await _summarizationService.GenerateHierarchicalSummariesAsync(pending, chunks, options.SummarizationOptions, cancellationToken)
+            : new HierarchicalSummaryResult { HierarchyId = hierarchy.Id };
+
+        var byLevel = new Dictionary<int, IReadOnlyList<CommunitySummary>>();
+        foreach (var level in hierarchy.Levels)
+        {
+            var fresh = generated.SummariesByLevel.TryGetValue(level.LevelIndex, out var list) ? list : [];
+            byLevel[level.LevelIndex] = [.. level.Communities
+                .Select(c => reused.TryGetValue(c.Id, out var stored) ? stored : fresh.FirstOrDefault(s => s.CommunityId == c.Id))
+                .Where(s => s is not null)
+                .Select(s => s!)];
+        }
+
+        var summarized = byLevel.Values.Sum(l => l.Count);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogReusedStoredSummaries(_logger, reused.Count, summarized - reused.Count);
+
+        return new HierarchicalSummaryResult
+        {
+            Id = generated.Id,
+            HierarchyId = hierarchy.Id,
+            SummariesByLevel = byLevel,
+            TotalCommunitiesSummarized = summarized,
+            GeneratedAt = generated.GeneratedAt,
+            Options = generated.Options,
+            Statistics = generated.Statistics
+        };
+    }
+
+    private async Task<Dictionary<string, CommunitySummary>> LoadStoredSummariesAsync(CommunityHierarchy hierarchy, CancellationToken cancellationToken)
+    {
+        var reused = new Dictionary<string, CommunitySummary>(StringComparer.Ordinal);
+        if (_graphStore == null)
+            return reused;
+
+        foreach (var level in hierarchy.Levels)
+        {
+            foreach (var community in level.Communities)
+            {
+                var stored = await _graphStore.GetCommunityByIdAsync(community.Id, cancellationToken);
+                if (stored is null || string.IsNullOrWhiteSpace(stored.Summary))
+                    continue;
+
+                reused[community.Id] = new CommunitySummary
+                {
+                    CommunityId = community.Id,
+                    Level = level.LevelIndex,
+                    Title = stored.Name,
+                    Summary = stored.Summary,
+                    Themes = stored.Topics,
+                    Embedding = stored.Embedding is { Length: > 0 } values ? new EmbeddingVector(values, community.Id) : null,
+                    SourceChunkIds = community.ChunkIds,
+                    SourceChunkCount = community.Size,
+                    IsCached = true
+                };
+            }
+        }
+
+        return reused;
     }
 
     private async Task<List<DocumentChunk>> GenerateChunkEmbeddingsAsync(
@@ -1609,6 +1690,9 @@ Provide a comprehensive answer that integrates both perspectives:";
     private static partial void LogGraphRAG2(ILogger logger);
     [LoggerMessage(Level = LogLevel.Debug, Message = "Generating hierarchical summaries for {LevelCount} levels")]
     private static partial void LogGraphRAG1(ILogger logger, int levelCount);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Reused {ReusedCount} stored community summaries; generated {GeneratedCount}")]
+    private static partial void LogReusedStoredSummaries(ILogger logger, int reusedCount, int generatedCount);
 
     #endregion
 }

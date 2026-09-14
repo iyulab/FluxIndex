@@ -9,6 +9,23 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.40.1]
+
+### Fixed
+- **GraphRAG: rebuilding an unchanged document no longer adds communities.** `LeidenCommunity.Id` was a new GUID on
+  every build and `LeidenCommunityService` shuffled nodes with an unseeded `Random`, so each re-index persisted a fresh
+  set of communities next to the previous ones (the graph store upserts by id, and no id ever matched) and paid for
+  every community summary again. Community ids are now derived from the level and the member chunk ids, detection
+  without `LeidenOptions.RandomSeed` uses a seed derived from the input chunk ids and no longer depends on input order,
+  and a stored community with the same id and a summary is reused instead of summarized again. A document whose text
+  changed still gets new communities; removing the previous build's communities is not part of this release.
+
+### Changed
+- `LeidenOptions.RandomSeed = null` now means "derived from the input" rather than "a different random seed each call":
+  the same chunks always produce the same communities.
+
+---
+
 ## [0.40.0]
 
 ### Added

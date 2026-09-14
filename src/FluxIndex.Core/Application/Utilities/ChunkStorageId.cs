@@ -64,7 +64,7 @@ public static class ChunkStorageId
     /// The bytes are still laid out per the RFC: namespace first in big-endian field order, then
     /// the UTF-8 name.
     /// </remarks>
-    private static Guid CreateNameBasedUuid(Guid namespaceId, string name)
+    internal static Guid CreateNameBasedUuid(Guid namespaceId, string name)
     {
         // Guid.ToByteArray emits the first three fields little-endian, so both ends of this method
         // swap to keep the hashed form and the produced value in the RFC's byte order.

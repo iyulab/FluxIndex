@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Flux.Abstractions;
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Utilities;
 using FluxIndex.Core.Domain.ValueObjects;
 using Microsoft.Extensions.Logging;
 
@@ -44,7 +45,9 @@ public partial class LeidenCommunityService : ILeidenCommunityService
         options ??= new LeidenOptions();
         var stopwatch = Stopwatch.StartNew();
 
-        var chunkList = chunks.ToList();
+        // Detection must be a function of the chunks, not of the order they arrive in: node indices below follow this
+        // order, and the shuffle permutes them.
+        var chunkList = chunks.OrderBy(c => c.Id, StringComparer.Ordinal).ToList();
         if (chunkList.Count == 0)
         {
             return new CommunityHierarchy
@@ -55,10 +58,9 @@ public partial class LeidenCommunityService : ILeidenCommunityService
             };
         }
 
-        // Initialize random with seed if provided
-        _random = options.RandomSeed.HasValue
-            ? new Random(options.RandomSeed.Value)
-            : new Random();
+        // Without an explicit seed the seed is derived from the chunks, so re-detecting an unchanged document yields the
+        // same partition (and, below, the same community ids) instead of a new set every build.
+        _random = new Random(options.RandomSeed ?? CommunityIdentity.SeedFor(chunkList.Select(c => c.Id)));
 
         LogLeidenCommunity4(_logger, chunkList.Count);
 
@@ -684,6 +686,7 @@ public partial class LeidenCommunityService : ILeidenCommunityService
 
             communities.Add(new LeidenCommunity
             {
+                Id = CommunityIdentity.For(level, chunkIds),
                 Index = group.Key,
                 ChunkIds = chunkIds,
                 Centroid = centroid,
