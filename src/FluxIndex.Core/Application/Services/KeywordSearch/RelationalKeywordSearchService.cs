@@ -610,7 +610,23 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         if (string.IsNullOrWhiteSpace(chunkId))
             return;
 
-        await DeleteChunksAsync([chunkId], cancellationToken).ConfigureAwait(false);
+        await DeleteChunkSetAsync([chunkId], cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task DeleteChunksAsync(IEnumerable<string> chunkIds, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(chunkIds);
+
+        var ids = chunkIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        if (ids.Count == 0)
+            return;
+
+        await DeleteChunkSetAsync(ids, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -727,7 +743,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         if (chunkIds.Count == 0)
             return 0;
 
-        await DeleteChunksAsync(chunkIds, cancellationToken).ConfigureAwait(false);
+        await DeleteChunkSetAsync(chunkIds, cancellationToken).ConfigureAwait(false);
         LogChunksDeletedByFilter(Logger, chunkIds.Count, expanded.Count);
         return chunkIds.Count;
     }
@@ -762,7 +778,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         if (chunkIds.Count == 0)
             return;
 
-        await DeleteChunksAsync(chunkIds, cancellationToken).ConfigureAwait(false);
+        await DeleteChunkSetAsync(chunkIds, cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task<List<string>> ReadChunkIdsForDocumentAsync(
@@ -784,7 +800,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         return chunkIds;
     }
 
-    private async Task DeleteChunksAsync(IReadOnlyList<string> chunkIds, CancellationToken cancellationToken)
+    private async Task DeleteChunkSetAsync(IReadOnlyList<string> chunkIds, CancellationToken cancellationToken)
     {
         await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
 

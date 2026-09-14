@@ -9,7 +9,17 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.39.2]
+## [0.40.0]
+
+### Added
+- **`IKeywordSearchService.DeleteChunksAsync(IEnumerable<string> chunkIds)`** — removes a set of chunks
+  as one operation, the removal counterpart of `IndexChunksAsync`. A generation swap that drops a
+  document's superseded chunks should call it once instead of `DeleteChunkAsync` per chunk: a
+  relational index rewrites the document frequency of every term the chunks hold, and per-chunk calls
+  rewrite the same shared term rows once for every chunk holding them. Blank and unknown ids are
+  ignored, a repeated id is removed once. Implemented by the SQLite, PostgreSQL and in-memory indexes;
+  held by the shared keyword contract suite. **Breaking for custom `IKeywordSearchService`
+  implementations**, which must add the member.
 
 ### Fixed
 - **Deleting keyword-index chunks no longer deadlocks against concurrent indexing.** Every

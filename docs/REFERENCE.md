@@ -92,7 +92,9 @@ defeats the round trip, since the store would then return the derived id rather 
 A pipeline that re-indexes a changed document replaces its rows as a *swap*: capture the ids the
 document currently has, write the new generation, then delete `previous - attempted`. Each leg of a
 hybrid index answers for its own rows — `IVectorStore.GetChunkIdsByDocumentIdAsync` for the vectors,
-`IKeywordSearchService.GetChunkIdsByDocumentIdAsync` (since 0.39.0) for the keyword index. Do not
+`IKeywordSearchService.GetChunkIdsByDocumentIdAsync` (since 0.39.0) for the keyword index. Drop the
+superseded keyword rows with one `IKeywordSearchService.DeleteChunksAsync(ids)` call (since 0.40.0) rather
+than `DeleteChunkAsync` per chunk — the relational indexes rewrite each shared term row once per call. Do not
 read one leg's ids and delete on the other with them: nothing guarantees the two legs key their rows
 identically (rows written before a store honoured caller ids never do), and a delete by an id the
 other leg never held is a silent no-op that leaves the previous keyword generation searchable.

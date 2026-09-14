@@ -740,6 +740,24 @@ public partial class BM25SparseRetriever : IKeywordSearchService, IPersistableSp
     }
 
     /// <inheritdoc />
+    public Task DeleteChunksAsync(IEnumerable<string> chunkIds, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(chunkIds);
+
+        var defaultIndex = _indexes.GetOrAdd("default", _ => new BM25Index());
+
+        lock (_lockObject)
+        {
+            foreach (var chunkId in chunkIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.Ordinal))
+            {
+                RemoveChunkFromIndex(defaultIndex, chunkId);
+            }
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
     public Task<IReadOnlyList<string>> GetChunkIdsByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(documentId))

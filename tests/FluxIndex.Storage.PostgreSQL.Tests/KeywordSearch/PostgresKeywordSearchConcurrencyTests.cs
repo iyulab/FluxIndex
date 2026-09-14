@@ -68,8 +68,17 @@ public sealed class PostgresKeywordSearchConcurrencyTests : IAsyncLifetime
 
                     await _service.IndexChunksAsync(generation);
 
-                    foreach (var chunk in previous)
-                        await _service.DeleteChunkAsync(chunk.Id);
+                    // Half the writers drop the previous generation in one call, half chunk by chunk, so the
+                    // batched and the single-chunk delete paths contend with each other and with indexing.
+                    if (worker % 2 == 0)
+                    {
+                        await _service.DeleteChunksAsync(previous.Select(chunk => chunk.Id));
+                    }
+                    else
+                    {
+                        foreach (var chunk in previous)
+                            await _service.DeleteChunkAsync(chunk.Id);
+                    }
 
                     previous = generation;
                 }

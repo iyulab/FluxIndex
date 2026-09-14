@@ -54,6 +54,27 @@ public interface IKeywordSearchService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Removes every given chunk from the keyword index as one operation.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The counterpart of <see cref="IndexChunksAsync"/> for removal. A generation swap that drops a
+    /// document's superseded chunks should call this once rather than <see cref="DeleteChunkAsync"/> per
+    /// chunk: a relational index rewrites the document frequency of every term the chunks held, and doing
+    /// that per chunk rewrites the same shared term rows once for every chunk that holds them — tens of
+    /// thousands of writes where one pass over each distinct term does.
+    /// </para>
+    /// <para>
+    /// Blank and unknown ids are ignored; a repeated id is removed once.
+    /// </para>
+    /// </remarks>
+    /// <param name="chunkIds">The chunk ids to remove.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task DeleteChunksAsync(
+        IEnumerable<string> chunkIds,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Ids of every chunk this index holds for <paramref name="documentId"/> — the keyword-index
     /// counterpart of <see cref="IVectorStore.GetChunkIdsByDocumentIdAsync"/>.
     /// </summary>

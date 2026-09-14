@@ -85,6 +85,45 @@ public abstract class KeywordSearchChunkIdentityContractSuite
     }
 
     [Fact]
+    public async Task DeleteChunksAsync_RemovesExactlyTheGivenChunks()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var service = await CreateServiceAsync();
+
+        await service.IndexChunksAsync(
+        [
+            CreateChunk("a-0", "alpha beta", 0, "doc-a"),
+            CreateChunk("a-1", "alpha gamma", 1, "doc-a"),
+            CreateChunk("a-2", "alpha delta", 2, "doc-a"),
+            CreateChunk("b-0", "gamma epsilon", 0, "doc-b")
+        ], ct);
+
+        // Unknown and blank ids are ignored, a repeated id is deleted once.
+        await service.DeleteChunksAsync(["a-0", "a-1", "a-1", "never-indexed", " "], ct);
+
+        Assert.Equal(["a-2"], await service.GetChunkIdsByDocumentIdAsync("doc-a", ct));
+        Assert.Equal(["b-0"], await service.GetChunkIdsByDocumentIdAsync("doc-b", ct));
+        Assert.Empty(await service.SearchAsync("beta", cancellationToken: ct));
+
+        // A term the deleted chunks shared with a surviving chunk keeps its postings for that chunk only.
+        var gamma = Assert.Single(await service.SearchAsync("gamma", cancellationToken: ct));
+        Assert.Equal("b-0", gamma.Chunk.Id);
+        Assert.Equal(2, (await service.GetStatisticsAsync(ct)).TotalDocuments);
+    }
+
+    [Fact]
+    public async Task DeleteChunksAsync_WithNoIds_IsANoOp()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var service = await CreateServiceAsync();
+        await service.IndexChunksAsync([CreateChunk("keep", "alpha beta")], ct);
+
+        await service.DeleteChunksAsync([], ct);
+
+        Assert.Single(await service.SearchAsync("alpha", cancellationToken: ct));
+    }
+
+    [Fact]
     public async Task GetChunkIdsByDocumentIdAsync_ReturnsThisIndexesOwnIdsForTheDocumentOnly()
     {
         var ct = TestContext.Current.CancellationToken;
