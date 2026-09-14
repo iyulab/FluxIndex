@@ -9,6 +9,24 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.39.2]
+
+### Fixed
+- **Deleting keyword-index chunks no longer deadlocks against concurrent indexing.** Every
+  transaction that writes the shared term rows now acquires them first, in the one order indexing
+  already used: deletion (`DeleteChunkAsync`, `DeleteByDocumentIdAsync`, `DeleteByFilterAsync`) and
+  the terms of chunks an indexing call replaces. Deletion used to update those rows in whatever order
+  the database chose, so a re-index that removed a document's previous chunks while another document
+  was being indexed could fail with PostgreSQL's `40P01`. Measured against a real PostgreSQL server:
+  six writers running re-index swaps over a shared vocabulary surfaced `40P01` before the change, and
+  complete with zero deadlocks after it.
+- **Deletion now retries a lost lock conflict** (`40P01`/`40001`) the way indexing does, instead of
+  failing its caller on the first one.
+- The cleanup of zero-frequency terms is scoped to the rows the transaction touched instead of
+  scanning every term on every write.
+
+---
+
 ## [0.39.1]
 
 ### Changed

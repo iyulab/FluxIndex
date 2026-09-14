@@ -386,20 +386,32 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         if (tokenized.Count == 0)
             return;
 
+        await RunWithConcurrencyRetryAsync(
+            () => IndexTokenizedChunksAsync(tokenized, cancellationToken), cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Runs one write transaction, retrying it whole when it loses a lock conflict.
+    /// </summary>
+    /// <remarks>
+    /// A serialization failure is the expected outcome of concurrent writers, not a defect in the batch:
+    /// the whole transaction rolled back, so retrying it is safe and is the only thing that can succeed.
+    /// Every transaction that writes term rows goes through here - indexing and deletion alike. Deletion
+    /// used to run without it, so a re-index that removed a document's previous chunks while another
+    /// document was being indexed failed its caller outright.
+    /// </remarks>
+    private async Task RunWithConcurrencyRetryAsync(Func<Task> transaction, CancellationToken cancellationToken)
+    {
         var attempt = 0;
         while (true)
         {
             try
             {
-                await IndexTokenizedChunksAsync(tokenized, cancellationToken).ConfigureAwait(false);
+                await transaction().ConfigureAwait(false);
                 return;
             }
             catch (DbException ex) when (IsTransientConcurrencyFailure(ex) && attempt < MaxConcurrencyRetries)
             {
-                // A serialization failure is the expected outcome of concurrent indexing, not a
-                // defect in the batch: the whole transaction rolled back, so retrying it is safe and
-                // is the only thing that can succeed. Before this, one occurrence failed the caller's
-                // entire indexing job.
                 attempt++;
                 LogConcurrencyRetry(Logger, attempt, ex.SqlState ?? "unknown");
                 await Task.Delay(ConcurrencyRetryDelay(attempt), cancellationToken).ConfigureAwait(false);
@@ -423,9 +435,13 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             // pass, before any chunk is written. See TermAcquisitionOrder for why the sort is the
             // fix; doing it per chunk would not be enough, because the transaction spans the batch
             // and two transactions could still interleave between chunks.
+            // Terms the replaced chunks held are written too - their document frequency drops - so they
+            // are acquired in the same pass rather than left for the recompute to lock in executor order.
+            var storedTerms = await ReadStoredTermsAsync(
+                connection, tokenized.Select(t => t.Chunk.Id), cancellationToken).ConfigureAwait(false);
             var termIds = await AcquireTermIdsAsync(
                 connection,
-                TermAcquisitionOrder(tokenized.Select(t => t.Terms)),
+                TermAcquisitionOrder(tokenized.Select(t => t.Terms).Append(storedTerms)),
                 cancellationToken).ConfigureAwait(false);
 
             foreach (var id in termIds.Values)
@@ -466,7 +482,9 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     /// </para>
     /// <para>
     /// A total order over the rows removes the cycle: transactions can still wait on each other, but
-    /// they can no longer wait in both directions. This is a pure function so the rule is held by
+    /// they can no longer wait in both directions. It holds only if <b>every</b> transaction that writes
+    /// term rows acquires them this way — indexing, including the terms of chunks it replaces, and
+    /// deletion. One writer taking rows in any other order reopens the cycle against all the others. This is a pure function so the rule is held by
     /// tests that need no database - the backend where it matters cannot be run in CI here.
     /// </para>
     /// </remarks>
@@ -770,12 +788,26 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     {
         await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
 
+        await RunWithConcurrencyRetryAsync(
+            () => DeleteChunksOnceAsync(chunkIds, cancellationToken), cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Attempts one deletion transaction. Retried as a whole on a serialization failure.</summary>
+    private async Task DeleteChunksOnceAsync(IReadOnlyList<string> chunkIds, CancellationToken cancellationToken)
+    {
         await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
         try
         {
-            var affectedTermIds = new HashSet<long>();
+            // Deletion rewrites the document frequency of every term the chunks held, so it takes those
+            // rows exactly the way indexing does: all of them, first, in TermAcquisitionOrder. The
+            // recompute used to lock them in whatever order the executor chose, which is a cycle against
+            // any indexing transaction sharing vocabulary.
+            var storedTerms = await ReadStoredTermsAsync(connection, chunkIds, cancellationToken).ConfigureAwait(false);
+            var termIds = await AcquireTermIdsAsync(
+                connection, TermAcquisitionOrder([storedTerms]), cancellationToken).ConfigureAwait(false);
+            var affectedTermIds = new HashSet<long>(termIds.Values);
 
             foreach (var chunkId in chunkIds)
             {
@@ -805,6 +837,36 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
             throw;
         }
+    }
+
+    /// <summary>
+    /// The terms the given chunks currently have postings for - the rows a transaction replacing or
+    /// deleting those chunks will rewrite.
+    /// </summary>
+    private static async Task<List<string>> ReadStoredTermsAsync(
+        DbConnection connection,
+        IEnumerable<string> chunkIds,
+        CancellationToken cancellationToken)
+    {
+        var terms = new List<string>();
+        foreach (var chunkId in chunkIds)
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT t.term FROM bm25_postings p
+                JOIN bm25_terms t ON t.id = p.term_id
+                WHERE p.chunk_id = @chunkId
+                """;
+            AddParameter(command, "@chunkId", chunkId);
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                terms.Add(reader.GetString(0));
+            }
+        }
+
+        return terms;
     }
 
     private static async Task CollectTermIdsForChunkAsync(
@@ -850,9 +912,15 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             await updateCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        await using var cleanupCmd = connection.CreateCommand();
-        cleanupCmd.CommandText = "DELETE FROM bm25_terms WHERE document_frequency <= 0";
-        await cleanupCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        // Scoped to the rows this transaction recomputed. The unscoped form scanned every term on every
+        // write and could wait on rows other transactions hold for reasons unrelated to this one.
+        foreach (var batch in Batch(termIds, TermIdBatchSize))
+        {
+            await using var cleanupCmd = connection.CreateCommand();
+            var predicate = BuildTermIdPredicate(cleanupCmd, "bm25_terms.id", batch);
+            cleanupCmd.CommandText = $"DELETE FROM bm25_terms WHERE {predicate} AND document_frequency <= 0";
+            await cleanupCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
     }
 
     private static IEnumerable<IReadOnlyCollection<long>> Batch(HashSet<long> ids, int batchSize)
