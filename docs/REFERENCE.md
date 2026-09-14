@@ -531,7 +531,7 @@ var result = await graphRag.QueryAsync(query, index, new GraphRAGQueryOptions
 
 ## Query Enhancement
 
-Dynamic fusion and query transformation.
+Dynamic fusion.
 
 ### Dynamic Fusion
 
@@ -551,21 +551,6 @@ var fusion = await dynamicFusion.CalculateDynamicWeightsAsync(query);
 | Analytical | 0.7 | 0.3 |
 | Exploratory | 0.8 | 0.2 |
 | Procedural | 0.5 | 0.5 |
-
-### Query Transformation
-
-```csharp
-var transformer = serviceProvider.GetRequiredService<IQueryTransformationService>();
-
-// HyDE (Hypothetical Document Embedding)
-var hyde = await transformer.GenerateHypotheticalDocumentAsync(query);
-
-// Query decomposition for complex questions
-var subQueries = await transformer.DecomposeQueryAsync(complexQuery);
-
-// Intent analysis (drives the dynamic fusion weights above)
-var intent = await transformer.AnalyzeQueryIntentAsync(query);
-```
 
 ---
 

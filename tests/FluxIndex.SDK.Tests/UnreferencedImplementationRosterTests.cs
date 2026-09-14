@@ -39,23 +39,9 @@ public class UnreferencedImplementationRosterTests
     ];
 
     // Undecided: each entry needs a decision — wire it, document it as consumer-constructed, or remove it.
-    // Filled by this roster's first run (0.38.1 tree): whole capability clusters whose interface has no
-    // registration and no caller either. The issue draft named in the cycle log that introduced it tracks them.
-    private static readonly string[] KnownUnreferenced =
-    [
-        "FluxIndex.Core.Application.Interfaces.InMemoryEvaluationResultCache",
-        "FluxIndex.Core.Application.Services.ColBERTService",
-        "FluxIndex.Core.Application.Services.CommunityDetectionService",
-        "FluxIndex.Core.Application.Services.QueryTransformationService",
-        "FluxIndex.Core.Evaluation.KeywordOverlapEvaluator",
-        "FluxIndex.Core.Services.BM25Service",
-        "FluxIndex.Core.Services.EvaluationJobManager",
-        "FluxIndex.Core.Services.GoldenDatasetManager",
-        "FluxIndex.Core.Services.HNSWParameterOptimizer",
-        "FluxIndex.Core.Services.QualityGateService",
-        "FluxIndex.Core.Services.Reranking.AlgorithmicReranker",
-        "FluxIndex.Core.Services.RuleBasedMetadataExtractor",
-    ];
+    // Empty since 0.40.0: the first run's twelve (whole capability clusters with no registration and no caller)
+    // were removed rather than wired. A new entry here is a deliberate decision, not a way to make the test pass.
+    private static readonly string[] KnownUnreferenced = [];
 
     private static readonly Lazy<Scan> Result = new(Run);
 

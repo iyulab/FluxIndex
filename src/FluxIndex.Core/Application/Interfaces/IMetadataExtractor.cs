@@ -91,30 +91,3 @@ public interface IMetadataExtractor
     string GetSchemaDescription(MetadataSchema schema);
 }
 
-/// <summary>
-/// 규칙 기반 메타데이터 추출기 인터페이스
-/// AI 서비스 없이 패턴 매칭으로 메타데이터 추출 (폴백용)
-/// </summary>
-public interface IRuleBasedMetadataExtractor
-{
-    /// <summary>
-    /// 규칙 기반 메타데이터 추출
-    /// AI 서비스 불필요, 빠른 처리
-    /// </summary>
-    /// <param name="content">문서 콘텐츠</param>
-    /// <param name="schema">메타데이터 스키마</param>
-    /// <param name="cancellationToken">취소 토큰</param>
-    /// <returns>추출된 메타데이터</returns>
-    Task<ExtractedMetadata> ExtractAsync(
-        string content,
-        MetadataSchema schema,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// 두 메타데이터를 병합 (AI + RuleBased 하이브리드 전략용)
-    /// </summary>
-    /// <param name="primary">주 메타데이터 (AI 추출)</param>
-    /// <param name="fallback">폴백 메타데이터 (RuleBased 추출)</param>
-    /// <returns>병합된 메타데이터</returns>
-    ExtractedMetadata MergeMetadata(ExtractedMetadata primary, ExtractedMetadata fallback);
-}

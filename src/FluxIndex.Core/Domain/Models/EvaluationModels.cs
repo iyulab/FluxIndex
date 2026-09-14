@@ -156,34 +156,3 @@ public class QualityThresholds
     public double MinContextRelevancy { get; set; } = 0.7;
     public double MaxAcceptableLatency { get; set; } = 2000; // milliseconds
 }
-
-/// <summary>
-/// 평가 상태
-/// </summary>
-public enum EvaluationStatus
-{
-    Pending,
-    Running,
-    Completed,
-    Failed,
-    Cancelled
-}
-
-/// <summary>
-/// 평가 작업 정보
-/// </summary>
-public class EvaluationJob
-{
-    public string JobId { get; set; } = string.Empty;
-    public string Name { get; set; } = string.Empty;
-    public EvaluationStatus Status { get; set; } = EvaluationStatus.Pending;
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public DateTime? StartedAt { get; set; }
-    public DateTime? CompletedAt { get; set; }
-    public string DatasetId { get; set; } = string.Empty;
-    public EvaluationConfiguration Configuration { get; set; } = new();
-    public QualityThresholds Thresholds { get; set; } = new();
-    public string ErrorMessage { get; set; } = string.Empty;
-    public int Progress { get; set; } // 0-100
-    public Dictionary<string, object> Metadata { get; set; } = new();
-}

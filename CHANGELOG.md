@@ -21,6 +21,35 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   held by the shared keyword contract suite. **Breaking for custom `IKeywordSearchService`
   implementations**, which must add the member.
 
+### Removed
+- **Twelve public service implementations that nothing in the library registered, constructed or called —
+  and the capability clusters around them.** Each compiled and passed its own tests, and none of it
+  ran: no DI registration, no caller, and in most cases no registration or caller for its interface
+  either. Removed with their interfaces and the models, options and tests only they used:
+  - `ColBERTService` / `IColBERTService` (+ `ColBERTOptions`, `ColBERTCompressionOptions` and the ColBERT
+    result records)
+  - `CommunityDetectionService` / `ICommunityDetectionService` — community detection runs through the
+    registered `LeidenCommunityService` / `ILeidenCommunityService`, which `GraphRAGService` consumes
+  - `BM25Service` / `IBM25Service` (+ `BM25Result`) — keyword search is `IKeywordSearchService`
+    (SQLite, PostgreSQL, in-memory `BM25SparseRetriever`)
+  - `QueryTransformationService` / `IQueryTransformationService` (+ both `QueryTransformationOptions`,
+    `HyDEOptions`, `QuOTEOptions`, `HyDEResult`, `QuOTEResult`, `QueryIntentResult`, `QueryComplexity`).
+    `docs/REFERENCE.md` showed resolving `IQueryTransformationService` from DI; it was never registered,
+    so that example threw — the section is removed
+  - evaluation tooling with no registration: `EvaluationJobManager`, `GoldenDatasetManager`,
+    `QualityGateService` and their interfaces (+ `QueryLog`, `DatasetValidationResult`,
+    `DatasetStatistics`, `QualityGateResult`, `PerformanceComparisonResult`, `EvaluationJob`, `EvaluationStatus`), `KeywordOverlapEvaluator` /
+    `IResponseEvaluator` (+ `QATestCase`, `EvalCaseResult`, `EvalRunResult`), `InMemoryEvaluationResultCache` /
+    `IEvaluationResultCache`, `MockEvaluationSearchProvider` / `IEvaluationSearchProvider`.
+    `IRAGEvaluationService` (consumer-implemented, `EnableEvaluation`) stays
+  - `HNSWParameterOptimizer` / `IVectorIndexOptimizer` (+ `HNSWOptimizerOptions`, `HNSWParameters`,
+    `HNSWPerformanceProfile`, `ParameterValidationResult`, `QualityTarget`, the Core `DistanceMetric` enum) —
+    no store accepted the parameters it produced
+  - `AlgorithmicReranker` — the registered `IReranker` implementations are unchanged
+  - `RuleBasedMetadataExtractor` / `IRuleBasedMetadataExtractor`
+  **Breaking** for code that constructed these types directly. The unreferenced-implementation roster
+  test is now empty, so the next public implementation nothing references fails the build.
+
 ### Fixed
 - **Deleting keyword-index chunks no longer deadlocks against concurrent indexing.** Every
   transaction that writes the shared term rows now acquires them first, in the one order indexing
