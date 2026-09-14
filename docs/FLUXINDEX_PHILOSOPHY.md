@@ -161,7 +161,7 @@ Chunk → [Enrichment] → [QA Generation] → [Evaluation] → Enhanced Chunk +
 | **Hybrid Search** | Vector (semantic) + BM25 (keyword) + RRF fusion |
 | **Embedding Management** | Generate, cache, and store vector embeddings |
 | **Contextual Enrichment** | Generate contextual headers, summaries |
-| **Reranking** | Neural (LocalReranker) + algorithmic fallback |
+| **Reranking** | Neural (LocalReranker) |
 | **Graph Traversal** | BFS, DFS, Dijkstra, PageRank-style importance |
 | **Vector Quantization** | Scalar, Product, Binary quantization |
 | **Semantic Caching** | Query-level caching with similarity matching |
@@ -198,7 +198,6 @@ Chunk → [Enrichment] → [QA Generation] → [Evaluation] → Enhanced Chunk +
 - [x] PageRank-style document importance
 - [x] Transitive closure computation
 - [x] MCP server for AI assistant integration
-- [x] HyDE & QuOTE query transformation
 
 ### 3.2 What FluxIndex DOES NOT Do
 

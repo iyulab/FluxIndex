@@ -9,7 +9,7 @@ RAG infrastructure library for .NET - Simple, fast, and local-first.
 | [**GUIDE.md**](GUIDE.md) | Storage modes, setup, indexing, search, examples |
 | [**AI_PROVIDER_INTEGRATION.md**](AI_PROVIDER_INTEGRATION.md) | OpenAI, Azure, LMSupply, custom embedding/LLM integration |
 | [**REFERENCE.md**](REFERENCE.md) | Architecture, retrieval mechanisms, advanced topics |
-| [**ADVANCED_RAG.md**](ADVANCED_RAG.md) | HyDE, GraphRAG, Self-RAG, Corrective RAG |
+| [**ADVANCED_RAG.md**](ADVANCED_RAG.md) | GraphRAG, Self-RAG, Corrective RAG |
 | [**FILEVAULT_GUIDE.md**](FILEVAULT_GUIDE.md) | FileVault file-to-vector sync, folder watching |
 | [**FLUXINDEX_PHILOSOPHY.md**](FLUXINDEX_PHILOSOPHY.md) | Core philosophy, role, and scope |
 | [**MIGRATION.md**](MIGRATION.md) | Upgrade checklists (0.2.x → 0.13.x) |

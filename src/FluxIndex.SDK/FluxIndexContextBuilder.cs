@@ -538,33 +538,6 @@ public class FluxIndexContextBuilder
     }
 
     /// <summary>
-    /// RAG 품질 평가 시스템 활성화 (소비자가 IRAGEvaluationService 구현체 제공 필요)
-    /// </summary>
-    public FluxIndexContextBuilder WithEvaluationSystem(string? datasetBasePath = null)
-    {
-        // 평가 시스템 인프라만 등록 (AI 구현체는 소비자 제공)
-        return this;
-    }
-
-    /// <summary>
-    /// 개발용 평가 시스템 (로컬 데이터셋 포함)
-    /// </summary>
-    public FluxIndexContextBuilder WithEvaluationSystemForDevelopment()
-    {
-        var datasetPath = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FluxIndex", "datasets");
-        return WithEvaluationSystem(datasetPath);
-    }
-
-    /// <summary>
-    /// 운영용 평가 시스템 (고성능 설정)
-    /// </summary>
-    public FluxIndexContextBuilder WithEvaluationSystemForProduction(string datasetBasePath)
-    {
-        WithEvaluationSystem(datasetBasePath);
-        return this;
-    }
-
-    /// <summary>
     /// Contextual Embedding Pipeline activation (Anthropic's Contextual Retrieval approach).
     /// Prepends LLM-generated context to chunks before embedding, improving retrieval by up to 67%.
     /// Research shows combining with BM25 reduces retrieval failures by 49%.

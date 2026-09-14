@@ -10,7 +10,7 @@
 
 - **Hybrid Search** - Vector (semantic) + Keyword (BM25) with automatic strategy selection
 - **High Performance** - Embedding cache (100% faster), batch indexing (24ms/1K chunks)
-- **Local Reranking** - Cross-encoder neural reranking with automatic algorithmic fallback
+- **Local Reranking** - Cross-encoder neural reranking
 - **Graph Traversal** - BFS/DFS, Dijkstra shortest path, PageRank-style importance
 - **Vector Quantization** - Scalar (Int8/Int4), Product Quantization, Binary (32x compression)
 - **Multiple Storage** - SQLite, PostgreSQL with pgvector
@@ -355,7 +355,7 @@ dotnet add package FluxIndex.Storage.SQLite
 
 - [Guide](./docs/GUIDE.md) - Quick start and configuration
 - [Reference](./docs/REFERENCE.md) - Architecture and API reference
-- [Advanced RAG](./docs/ADVANCED_RAG.md) - HyDE, Contextual Retrieval, Query Expansion
+- [Advanced RAG](./docs/ADVANCED_RAG.md) - GraphRAG, Self-RAG, Corrective RAG, Contextual Retrieval
 - [Philosophy](./docs/FLUXINDEX_PHILOSOPHY.md) - Core principles and design philosophy
 
 ## Examples

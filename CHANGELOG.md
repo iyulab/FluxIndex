@@ -40,14 +40,24 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
     `QualityGateService` and their interfaces (+ `QueryLog`, `DatasetValidationResult`,
     `DatasetStatistics`, `QualityGateResult`, `PerformanceComparisonResult`, `EvaluationJob`, `EvaluationStatus`), `KeywordOverlapEvaluator` /
     `IResponseEvaluator` (+ `QATestCase`, `EvalCaseResult`, `EvalRunResult`), `InMemoryEvaluationResultCache` /
-    `IEvaluationResultCache`, `MockEvaluationSearchProvider` / `IEvaluationSearchProvider`.
-    `IRAGEvaluationService` (consumer-implemented, `EnableEvaluation`) stays
+    `IEvaluationResultCache`, `MockEvaluationSearchProvider` / `IEvaluationSearchProvider`
   - `HNSWParameterOptimizer` / `IVectorIndexOptimizer` (+ `HNSWOptimizerOptions`, `HNSWParameters`,
     `HNSWPerformanceProfile`, `ParameterValidationResult`, `QualityTarget`, the Core `DistanceMetric` enum) —
     no store accepted the parameters it produced
   - `AlgorithmicReranker` — the registered `IReranker` implementations are unchanged
   - `RuleBasedMetadataExtractor` / `IRuleBasedMetadataExtractor`
-  **Breaking** for code that constructed these types directly. The unreferenced-implementation roster
+  - `IRAGEvaluationService` and its models (`RAGEvaluationResult`, `GoldenDatasetItem`, `EvaluationDifficulty`,
+    `EvaluationConfiguration`, `BatchEvaluationResult`, `EvaluationCriteria`, the Domain `QualityThresholds`) — no
+    implementation anywhere, and the builder's `WithEvaluationSystem` / `WithEvaluationSystemForDevelopment` /
+    `WithEvaluationSystemForProduction` returned the builder unchanged; those three methods are removed too
+    (the monitoring `QualityThresholds` used by `SetQualityThresholdsAsync` is unaffected; FluxIndex.Integrations.FluxImprover
+    keeps its own `RAGEvaluationService`)
+  - `QueryDecompositionResult`, `QueryRelationshipType` and the Domain `QueryIntent` (the `QueryIntent` enums used by
+    the complexity analyzer and token-aware search are separate types and stay)
+  - both unread `MetadataExtractionOptions` (Domain and Core.Options), `Core.Options.BatchProcessingOptions`, `MetadataExtractionStatistics` and `MetadataExtractionErrorType`
+  README and the philosophy page no longer promise an algorithmic reranking fallback (there is none) or
+  HyDE/QuOTE query transformation.
+  **Breaking** for code that constructed these types directly or called the evaluation builder methods. The unreferenced-implementation roster
   test is now empty, so the next public implementation nothing references fails the build.
 
 ### Fixed

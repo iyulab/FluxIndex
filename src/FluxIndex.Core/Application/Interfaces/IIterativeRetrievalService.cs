@@ -408,7 +408,6 @@ public class ReasoningIteration
 
 /// <summary>
 /// Result from iterative query decomposition (Self-Ask pattern)
-/// Note: This is distinct from Domain.Models.QueryDecompositionResult which is simpler
 /// </summary>
 public class IterativeDecompositionResult
 {
