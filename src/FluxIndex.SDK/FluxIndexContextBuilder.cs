@@ -479,17 +479,14 @@ public class FluxIndexContextBuilder
     }
 
     /// <summary>
-    /// 청킹 옵션 설정
+    /// 청킹 옵션 설정 — <see cref="Indexer.IndexDocumentAsync(string, string, Dictionary{string, object}?, CancellationToken)"/> 가
+    /// 문자열을 나누는 크기와 겹침(문자 수). SDK 의 분할기는 전략이 하나(자연 경계 고정 크기)뿐이다 — 문장·문단·의미 단위
+    /// 분할은 FileFlux/FluxCurator 로 나눈 뒤 <c>Document</c> 로 넘긴다.
     /// </summary>
-    public FluxIndexContextBuilder WithChunking(string strategy = "Auto", int chunkSize = 512, int chunkOverlap = 64)
+    public FluxIndexContextBuilder WithChunking(int chunkSize = 512, int chunkOverlap = 64)
     {
-        _options.Indexing.ChunkingDefaults.Strategy = strategy;
-        _options.Indexing.ChunkingDefaults.MaxChunkSize = chunkSize;
-        _options.Indexing.ChunkingDefaults.OverlapSize = chunkOverlap;
-
         _indexerOptions.ChunkSize = chunkSize;
         _indexerOptions.ChunkOverlap = chunkOverlap;
-        _indexerOptions.ChunkingStrategy = Enum.Parse<ChunkingStrategy>(strategy, true);
 
         return this;
     }
@@ -499,9 +496,6 @@ public class FluxIndexContextBuilder
     /// </summary>
     public FluxIndexContextBuilder WithSearchOptions(int defaultMaxResults = 10, float defaultMinScore = 0.5f)
     {
-        _options.Search.DefaultMaxResults = defaultMaxResults;
-        _options.Search.DefaultMinScore = defaultMinScore;
-
         _retrieverOptions.DefaultMaxResults = defaultMaxResults;
         _retrieverOptions.DefaultMinScore = defaultMinScore;
 

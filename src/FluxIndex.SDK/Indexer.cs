@@ -1539,9 +1539,6 @@ public class IndexerOptions
     public int ChunkOverlap { get; set; } = 64;
     public bool ParallelEmbedding { get; set; } = true;
     public int MaxParallelEmbedding { get; set; } = 4;
-    /// <summary>읽히지 않는다 — SDK 의 분할기는 전략이 하나(자연 경계 고정 크기)뿐이다. 문장·문단·의미 단위 분할은
-    /// FileFlux/FluxCurator 로 나눈 뒤 <c>Document</c> 로 넘긴다.</summary>
-    public ChunkingStrategy ChunkingStrategy { get; set; } = ChunkingStrategy.Auto;
 
     /// <summary>
     /// Whether indexing adds documents to the keyword (sparse) index used by the hybrid keyword leg.
@@ -1561,18 +1558,6 @@ public class IndexerOptions
     public bool IndexKeyword { get; set; } = true;
 
     public Dictionary<string, object>? CustomOptions { get; set; }
-}
-
-/// <summary>
-/// 청킹 전략
-/// </summary>
-public enum ChunkingStrategy
-{
-    Auto,
-    Fixed,
-    Sentence,
-    Paragraph,
-    Semantic
 }
 
 /// <summary>

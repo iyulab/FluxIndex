@@ -10,11 +10,8 @@ namespace FluxIndex.SDK.Configuration;
 /// <remarks>
 /// 블록마다 «누가 읽는가»가 다르다. <see cref="VectorStore"/> · <see cref="Embedding"/> · <see cref="Cache"/> ·
 /// <see cref="GraphStore"/> · <see cref="SemanticCache"/> · <see cref="KeywordSearch"/> · <see cref="QualityMonitoring"/> 은
-/// 빌더가 서비스 등록에 쓴다(각 타입 문서에 읽히지 않는 개별 속성이 표시돼 있다). <see cref="Indexing"/> 과
-/// <see cref="Search"/> 는 <c>WithChunking(...)</c>/<c>WithSearchOptions(...)</c> 가 **채우기만** 하고 어느 코드도 읽지
-/// 않는다 — 실효 값은 각각 <c>IndexerOptions</c>/<c>RetrieverOptions</c> 다. <see cref="RAGEnhancement"/> 는 하위 블록
-/// (<see cref="LateChunkingConfiguration"/> · <see cref="MultiHyDEConfiguration"/> · <see cref="ContextualRetrievalConfiguration"/>)
-/// 까지 통째로 읽히지 않는다: 해당 기능은 Core 서비스로 존재하지만 이 블록으로 연결돼 있지 않다.
+/// 빌더가 서비스 등록에 쓴다(각 타입 문서에 읽히지 않는 개별 속성이 표시돼 있다). 청킹과 검색 기본값은 이 트리가 아니라
+/// <c>IndexerOptions</c>/<c>RetrieverOptions</c> 에 있다(<c>WithChunking(...)</c>/<c>WithSearchOptions(...)</c>).
 /// 검증: <c>FluxIndex.SDK.Tests/OptionsReachabilityRosterTests</c>.
 /// </remarks>
 public class FluxIndexOptions
@@ -28,16 +25,6 @@ public class FluxIndexOptions
     /// 임베딩 서비스 설정
     /// </summary>
     public EmbeddingOptions Embedding { get; set; } = new();
-    
-    /// <summary>
-    /// 인덱싱 설정
-    /// </summary>
-    public IndexingConfiguration Indexing { get; set; } = new();
-    
-    /// <summary>
-    /// 검색 설정
-    /// </summary>
-    public SearchConfiguration Search { get; set; } = new();
     
     /// <summary>
     /// 캐싱 설정
@@ -63,12 +50,6 @@ public class FluxIndexOptions
     /// 품질 모니터링 설정
     /// </summary>
     public QualityMonitoringOptions QualityMonitoring { get; set; } = new();
-
-    /// <summary>
-    /// Advanced RAG Enhancement settings.
-    /// Includes Late Chunking, Multi-Hypothetical HyDE, and Contextual Retrieval.
-    /// </summary>
-    public RAGEnhancementOptions RAGEnhancement { get; set; } = new();
 }
 
 /// <summary>
@@ -122,50 +103,6 @@ public class EmbeddingOptions
     public TimeSpan RetryDelay { get; set; } = TimeSpan.FromSeconds(1);
     public bool EnableCache { get; set; } = true;
     public Dictionary<string, object> ProviderSpecificOptions { get; set; } = new();
-}
-
-/// <summary>
-/// 인덱싱 설정
-/// </summary>
-public class IndexingConfiguration
-{
-    public int MaxParallelDocuments { get; set; } = 5;
-    public int ChunkBatchSize { get; set; } = 50;
-    public bool EnableProgressReporting { get; set; } = true;
-    public TimeSpan ProgressReportInterval { get; set; } = TimeSpan.FromSeconds(1);
-    public bool ValidateEmbeddings { get; set; } = true;
-    public ChunkingDefaults ChunkingDefaults { get; set; } = new();
-}
-
-/// <summary>
-/// 청킹 기본값. <see cref="FluxIndexContextBuilder.WithChunking"/> 가 채우지만 **어느 코드도 읽지 않는다** — 실제로
-/// 분할에 쓰이는 값은 같은 호출이 함께 채우는 <see cref="IndexerOptions.ChunkSize"/>/<see cref="IndexerOptions.ChunkOverlap"/> 다.
-/// </summary>
-public class ChunkingDefaults
-{
-    public string Strategy { get; set; } = "Auto";
-    public int MaxChunkSize { get; set; } = 512;
-    public int OverlapSize { get; set; } = 64;
-    public bool PreserveFormatting { get; set; }
-}
-
-/// <summary>
-/// 검색 설정
-/// </summary>
-/// <summary>
-/// 읽히지 않는 블록 — <c>WithSearchOptions(...)</c> 가 <see cref="DefaultMaxResults"/>/<see cref="DefaultMinScore"/> 를 채우지만
-/// 정본은 같은 호출이 함께 채우는 <c>RetrieverOptions</c> 다(검색 메서드가 인자를 생략했을 때 읽는 값). 나머지 속성은
-/// 쓰는 코드도 읽는 코드도 없다.
-/// </summary>
-public class SearchConfiguration
-{
-    public int DefaultMaxResults { get; set; } = 10;
-    public float DefaultMinScore { get; set; }
-    public float DefaultVectorWeight { get; set; } = 0.7f;
-    public float DefaultKeywordWeight { get; set; } = 0.3f;
-    public bool EnableHighlighting { get; set; } = true;
-    public bool EnableFaceting { get; set; } = true;
-    public TimeSpan SearchTimeout { get; set; } = TimeSpan.FromSeconds(10);
 }
 
 /// <summary>
@@ -363,177 +300,4 @@ public class QualityMonitoringOptions
     public TimeSpan MetricsInterval { get; set; } = TimeSpan.FromMinutes(1);
     public TimeSpan AlertCheckInterval { get; set; } = TimeSpan.FromMinutes(5);
     public int MaxMetricsHistory { get; set; } = 1440; // 24 hours at 1 minute intervals
-}
-
-/// <summary>
-/// RAG Enhancement mode for intelligent feature selection.
-/// </summary>
-public enum RAGEnhancementMode
-{
-    /// <summary>
-    /// Disabled - No RAG enhancements applied (legacy behavior)
-    /// </summary>
-    Disabled,
-
-    /// <summary>
-    /// Auto (Default) - Intelligently selects optimal enhancements based on:
-    /// - Document characteristics (length, structure, language)
-    /// - Available resources (LLM availability, compute capacity)
-    /// - Query complexity and context requirements
-    /// </summary>
-    Auto,
-
-    /// <summary>
-    /// Custom - Manual configuration of individual enhancement features
-    /// </summary>
-    Custom
-}
-
-/// <summary>
-/// Advanced RAG Enhancement Options with intelligent defaults.
-///
-/// Minimal Configuration (recommended):
-///   "RAGEnhancement": { "Mode": "Auto" }
-///
-/// This enables intelligent selection of:
-/// - Late Chunking for long documents (>2000 chars)
-/// - Contextual headers for chunks with high context dependency
-/// - Multi-HyDE for complex/ambiguous queries (when LLM available)
-/// </summary>
-public class RAGEnhancementOptions
-{
-    /// <summary>
-    /// Enhancement mode. Default: Auto (intelligent feature selection)
-    /// - Disabled: No enhancements (legacy behavior)
-    /// - Auto: Intelligent selection based on content/query characteristics
-    /// - Custom: Manual configuration via sub-options
-    /// </summary>
-    public RAGEnhancementMode Mode { get; set; } = RAGEnhancementMode.Auto;
-
-    /// <summary>
-    /// Late Chunking configuration. Only used when Mode=Custom.
-    /// In Auto mode, Late Chunking activates for documents >2000 chars.
-    /// </summary>
-    public LateChunkingConfiguration LateChunking { get; set; } = new();
-
-    /// <summary>
-    /// Multi-HyDE configuration. Only used when Mode=Custom.
-    /// In Auto mode, Multi-HyDE activates for complex queries when LLM is available.
-    /// </summary>
-    public MultiHyDEConfiguration MultiHyDE { get; set; } = new();
-
-    /// <summary>
-    /// Contextual Retrieval configuration. Only used when Mode=Custom.
-    /// In Auto mode, contextual headers are added based on chunk context dependency.
-    /// </summary>
-    public ContextualRetrievalConfiguration ContextualRetrieval { get; set; } = new();
-
-    /// <summary>
-    /// Check if any enhancement should be applied (Mode is not Disabled)
-    /// </summary>
-    public bool IsEnabled => Mode != RAGEnhancementMode.Disabled;
-
-    /// <summary>
-    /// Check if running in Auto mode (intelligent selection)
-    /// </summary>
-    public bool IsAutoMode => Mode == RAGEnhancementMode.Auto;
-}
-
-/// <summary>
-/// Late Chunking configuration
-/// </summary>
-public class LateChunkingConfiguration
-{
-    /// <summary>
-    /// Enable Late Chunking embedding approach
-    /// </summary>
-    public bool Enabled { get; set; }
-
-    /// <summary>
-    /// Maximum document length for full document embedding.
-    /// Documents longer than this use sliding window approach.
-    /// </summary>
-    public int MaxDocumentLength { get; set; } = 8000;
-
-    /// <summary>
-    /// Context integration mode: PrependSummary, WeightedCombination, or SurroundingContext
-    /// </summary>
-    public string ContextIntegrationMode { get; set; } = "SurroundingContext";
-
-    /// <summary>
-    /// Weight for document context in weighted combination (0.0-1.0)
-    /// </summary>
-    public double DocumentContextWeight { get; set; } = 0.3;
-
-    /// <summary>
-    /// Size of surrounding context to include (characters)
-    /// </summary>
-    public int SurroundingContextSize { get; set; } = 500;
-}
-
-/// <summary>
-/// Multi-Hypothetical HyDE configuration
-/// </summary>
-public class MultiHyDEConfiguration
-{
-    /// <summary>
-    /// Enable Multi-Hypothetical HyDE for query transformation
-    /// </summary>
-    public bool Enabled { get; set; }
-
-    /// <summary>
-    /// Number of hypothetical documents to generate (1-10).
-    /// Recommended: 3-5 for multi-hypothetical mode.
-    /// </summary>
-    public int DocumentCount { get; set; } = 5;
-
-    /// <summary>
-    /// Temperature step for diversity in multi-document generation.
-    /// Applied as: base_temperature + (index * TemperatureStep)
-    /// </summary>
-    public float TemperatureStep { get; set; } = 0.1f;
-
-    /// <summary>
-    /// Enable parallel document generation (recommended for performance)
-    /// </summary>
-    public bool EnableParallelGeneration { get; set; } = true;
-
-    /// <summary>
-    /// Custom perspectives for document generation.
-    /// If empty, default perspectives are used:
-    /// ["expert technical", "beginner-friendly", "practical", "theoretical", "troubleshooting"]
-    /// </summary>
-    public List<string> Perspectives { get; set; } = new();
-}
-
-/// <summary>
-/// Contextual Retrieval configuration (Anthropic approach)
-/// </summary>
-public class ContextualRetrievalConfiguration
-{
-    /// <summary>
-    /// Enable Contextual Retrieval enrichment
-    /// </summary>
-    public bool Enabled { get; set; }
-
-    /// <summary>
-    /// LLM usage threshold for context generation (0.0-1.0).
-    /// Higher values use LLM more frequently.
-    /// </summary>
-    public double LlmThreshold { get; set; } = 0.7;
-
-    /// <summary>
-    /// Generate both contextual and standard embeddings for hybrid search
-    /// </summary>
-    public bool GenerateDualEmbeddings { get; set; }
-
-    /// <summary>
-    /// Enable prompt caching for reduced LLM costs (if provider supports)
-    /// </summary>
-    public bool EnablePromptCaching { get; set; } = true;
-
-    /// <summary>
-    /// Maximum context summary length (tokens)
-    /// </summary>
-    public int MaxContextLength { get; set; } = 100;
 }

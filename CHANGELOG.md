@@ -55,6 +55,22 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   - `QueryDecompositionResult`, `QueryRelationshipType` and the Domain `QueryIntent` (the `QueryIntent` enums used by
     the complexity analyzer and token-aware search are separate types and stay)
   - both unread `MetadataExtractionOptions` (Domain and Core.Options), `Core.Options.BatchProcessingOptions`, `MetadataExtractionStatistics` and `MetadataExtractionErrorType`
+- **SDK settings that nothing read.**
+  - `FluxIndexOptions.Indexing` (`IndexingConfiguration`, `ChunkingDefaults`), `FluxIndexOptions.Search`
+    (`SearchConfiguration`) and `FluxIndexOptions.RAGEnhancement` (`RAGEnhancementOptions`, `RAGEnhancementMode`,
+    `LateChunkingConfiguration`, `MultiHyDEConfiguration`, `ContextualRetrievalConfiguration`). The builder wrote
+    the first two and nothing read either; the third was never wired to the Core services it names.
+    Chunking and search defaults are `IndexerOptions` / `RetrieverOptions`, as before.
+  - `WithChunking(string strategy, int chunkSize, int chunkOverlap)` is now `WithChunking(int chunkSize, int chunkOverlap)`:
+    the SDK splitter has one algorithm, so `strategy` was parsed and discarded (`IndexerOptions.ChunkingStrategy` and the
+    `ChunkingStrategy` enum are removed with it).
+  - `IndexingOptions.ChunkingStrategy`, `MaxChunkSize`, `OverlapSize` and `EnableOCR` — the `Document` overloads they
+    were passed to do not chunk or parse files. (`GenerateEmbeddings` and `ExtractMetadata` remain, still not read,
+    pending a design decision.)
+  - `ISearchService`, which had no implementation, and the models only it used: `SearchRequest`,
+    `SemanticSearchOptions`, the SDK `KeywordSearchOptions`, `FacetSearchOptions`, `FacetedSearchResponse`,
+    `FacetValue`, `SimilarityOptions`, `RerankingOptions`. The Core `KeywordSearchOptions` used by
+    `IKeywordSearchService` is unaffected.
   README and the philosophy page no longer promise an algorithmic reranking fallback (there is none) or
   HyDE/QuOTE query transformation.
   **Breaking** for code that constructed these types directly or called the evaluation builder methods. The unreferenced-implementation roster
