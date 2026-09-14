@@ -71,6 +71,22 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
     `SemanticSearchOptions`, the SDK `KeywordSearchOptions`, `FacetSearchOptions`, `FacetedSearchResponse`,
     `FacetValue`, `SimilarityOptions`, `RerankingOptions`. The Core `KeywordSearchOptions` used by
     `IKeywordSearchService` is unaffected.
+- **Store, cache and service options that nothing read.** Setting any of these had no effect:
+  - `SQLiteOptions.AllowDuplicates`, `BatchSize`, `DefaultSearchThreshold`, `DefaultVectorWeight`, `EnableVectorCache`,
+    `VectorCacheSize` — the store upserts by chunk id, takes thresholds and weights per call, writes a batch in one
+    `SaveChanges`, and has no vector cache (it scans every row per search; use the sqlite-vec store for large
+    collections, now stated on `SQLiteOptions`)
+  - `QdrantOptions.HttpPort` (the store speaks gRPC only) and the `CollectionName` alias — use `BaseCollectionName`
+  - 17 `RedisSemanticCacheOptions` properties the Redis semantic cache never read (`KeyPrefix`, `DefaultSimilarityThreshold`,
+    the timeout/retry/compaction/metrics/normalization/warm-up settings, …)
+  - `AgenticRetrievalRouterOptions.DefaultMaxResults`, `EnableAdaptiveRouting`, `EnableDetailedExplanations`,
+    `EnablePerformanceTracking`, `MaxFallbackAttempts`, `MinRoutingConfidence`, `StrategyTimeout`
+  - `SelfRAGOptions.EnableDetailedLogging` and `UserContext`
+  - `GraphRAGBuildOptions.GenerateEntityEmbeddings` and `LocalSearchOptions.UseEntityEmbeddings` — local search matches
+    entities by name and never used entity embeddings
+  - the Core `SemanticCacheOptions` and `ValueObjects.CacheOptions` types (every property unread; FluxImprover's own
+    `CacheOptions` is unaffected), and the SDK `FluxIndexOptions.QualityMonitoring` block — `WithQualityMonitoring()`
+    still registers the monitoring service and loses its unread `enableRealTimeAlerts` parameter
   README and the philosophy page no longer promise an algorithmic reranking fallback (there is none) or
   HyDE/QuOTE query transformation.
   **Breaking** for code that constructed these types directly or called the evaluation builder methods. The unreferenced-implementation roster

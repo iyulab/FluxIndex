@@ -178,15 +178,6 @@ public class GraphRAGBuildOptions
     public bool ParallelProcessing { get; set; } = true;
 
     /// <summary>
-    /// Not read. Entity embeddings are computed by the entity-graph build when
-    /// <c>EntityGraphBuildOptions.ComputeEntityEmbeddings</c> is true (default false), and nothing on the
-    /// query side consumes them yet — <see cref="LocalSearchOptions.UseEntityEmbeddings"/> is not read
-    /// either. Wiring this switch through before a consumer exists would only add an embedding call per
-    /// entity at build time; both ends are tracked together.
-    /// </summary>
-    public bool GenerateEntityEmbeddings { get; set; } = true;
-
-    /// <summary>
     /// Whether to generate embeddings for summaries
     /// </summary>
     public bool GenerateSummaryEmbeddings { get; set; } = true;
@@ -261,12 +252,6 @@ public class LocalSearchOptions
     /// Maximum hops for entity traversal
     /// </summary>
     public int MaxHops { get; set; } = 2;
-
-    /// <summary>
-    /// Not read — local search matches entities by name/normalized name; entity embeddings (when the build
-    /// computed them) are not consulted. Paired with <see cref="GraphRAGBuildOptions.GenerateEntityEmbeddings"/>.
-    /// </summary>
-    public bool UseEntityEmbeddings { get; set; } = true;
 
     /// <summary>
     /// Minimum entity match score

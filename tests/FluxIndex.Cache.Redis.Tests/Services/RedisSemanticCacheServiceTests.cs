@@ -37,8 +37,6 @@ public class RedisSemanticCacheServiceTests : RedisTestBase
         var options = Microsoft.Extensions.Options.Options.Create(new RedisSemanticCacheOptions
         {
             ConnectionString = ConnectionString,
-            KeyPrefix = "test:fluxindex:semantic:",
-            DefaultSimilarityThreshold = 0.95f,
             DefaultTtl = TimeSpan.FromMinutes(5)
         });
 

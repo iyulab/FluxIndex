@@ -470,11 +470,9 @@ public class FluxIndexContextBuilder
     /// <summary>
     /// 품질 모니터링 시스템 활성화
     /// </summary>
-    public FluxIndexContextBuilder WithQualityMonitoring(bool enableRealTimeAlerts = true)
+    public FluxIndexContextBuilder WithQualityMonitoring()
     {
         _services.AddSingleton<IQualityMonitoringService, QualityMonitoringService>();
-        _options.QualityMonitoring.EnableMonitoring = true;
-        _options.QualityMonitoring.EnableRealTimeAlerts = enableRealTimeAlerts;
         return this;
     }
 

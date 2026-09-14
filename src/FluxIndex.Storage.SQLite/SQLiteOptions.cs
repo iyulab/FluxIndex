@@ -3,6 +3,10 @@ namespace FluxIndex.Storage.SQLite;
 /// <summary>
 /// SQLite 벡터 저장소 설정 옵션 (로컬 개발용)
 /// </summary>
+/// <remarks>
+/// 이 스토어에는 벡터 캐시나 인덱스가 없다 — 검색마다 모든 행을 읽어 JSON 임베딩을 디코드한다(전수 스캔).
+/// 큰 컬렉션은 sqlite-vec 스토어(<c>SQLiteVecOptions</c>)를 쓴다.
+/// </remarks>
 public class SQLiteOptions
 {
     /// <summary>
@@ -18,11 +22,6 @@ public class SQLiteOptions
     public bool UseInMemory { get; set; }
 
     /// <summary>
-    /// 읽히지 않는다 — 스토어는 청크 id 로 upsert 하므로(같은 id 재저장 = 갱신) «중복 문서» 라는 상태가 없다.
-    /// </summary>
-    public bool AllowDuplicates { get; set; }
-
-    /// <summary>
     /// 스키마 자동 프로비저닝(테이블·추가 컬럼·backfill) — 벡터 스토어는 호스트 시작 시 마이그레이션 서비스로,
     /// 그래프 스토어(<c>SQLiteGraphOptions</c> 가 상속)는 빌더 <c>Build()</c>·호스트 시작에서 읽는다.
     /// <c>false</c> = 스키마를 밖에서 관리한다(0.38.0 전에는 그래프 스토어가 이 값을 읽지 않았다).
@@ -30,36 +29,9 @@ public class SQLiteOptions
     public bool AutoMigrate { get; set; } = true;
 
     /// <summary>
-    /// 읽히지 않는다 — 검색 임계값은 호출마다 <c>minScore</c> 로 넘어온다(<c>Retriever</c> 기본 0.2). 여기 값을 존중하면
-    /// 같은 임계값의 출처가 둘이 된다.
-    /// </summary>
-    public double DefaultSearchThreshold { get; set; } = 0.7;
-
-    /// <summary>
-    /// 읽히지 않는다 — 하이브리드 가중치는 <c>HybridSearchOptions.VectorWeight</c> 다.
-    /// </summary>
-    public double DefaultVectorWeight { get; set; } = 0.5;
-
-    /// <summary>
-    /// 읽히지 않는다 — <c>StoreBatchAsync</c> 는 배치를 한 <c>SaveChanges</c> 로 쓴다.
-    /// </summary>
-    public int BatchSize { get; set; } = 100;
-
-    /// <summary>
     /// 명령 타임아웃 (초)
     /// </summary>
     public int CommandTimeout { get; set; } = 30;
-
-    /// <summary>
-    /// 읽히지 않는다 — 이 스토어에는 벡터 캐시가 없다: 검색마다 모든 행을 읽어 JSON 임베딩을 디코드한다(전수 스캔).
-    /// 큰 컬렉션은 sqlite-vec 스토어(<c>SQLiteVecOptions</c>)를 쓴다.
-    /// </summary>
-    public bool EnableVectorCache { get; set; } = true;
-
-    /// <summary>
-    /// 읽히지 않는다 — <see cref="EnableVectorCache"/> 참조.
-    /// </summary>
-    public int VectorCacheSize { get; set; } = 1000;
 
     // ============================================================
     // PRAGMA 성능 최적화 옵션

@@ -42,12 +42,6 @@ public class QdrantOptions
     public int GrpcPort { get; set; } = 6334;
 
     /// <summary>
-    /// Not read — the store talks to Qdrant over gRPC only (<see cref="GrpcPort"/>). Kept for
-    /// configuration binding compatibility.
-    /// </summary>
-    public int HttpPort { get; set; } = 6333;
-
-    /// <summary>
     /// Whether to use HTTPS for connection.
     /// </summary>
     public bool UseHttps { get; set; }
@@ -63,17 +57,6 @@ public class QdrantOptions
     /// "fluxindex_chunks_384" for 384-dim vectors.
     /// </summary>
     public string BaseCollectionName { get; set; } = "fluxindex_chunks";
-
-    /// <summary>
-    /// Alias for <see cref="BaseCollectionName"/> kept for backward compatibility: setting it works, but
-    /// the store reads <see cref="BaseCollectionName"/> (which is why an options-reachability scan lists
-    /// this getter as unread). Prefer <see cref="BaseCollectionName"/> with <see cref="NamingStrategy"/>.
-    /// </summary>
-    public string CollectionName
-    {
-        get => BaseCollectionName;
-        set => BaseCollectionName = value;
-    }
 
     /// <summary>
     /// Collection naming strategy. Default: ModelFingerprint (recommended).

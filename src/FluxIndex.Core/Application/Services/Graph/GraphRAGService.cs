@@ -407,7 +407,6 @@ public partial class GraphRAGService : IGraphRAGService
                     {
                         MaxEntities = options.MaxResults,
                         MaxHops = 2,
-                        UseEntityEmbeddings = true,
                         MinEntityScore = options.MinConfidence
                     }, cancellationToken);
                 localSearchTime = localResult.ProcessingTimeMs;

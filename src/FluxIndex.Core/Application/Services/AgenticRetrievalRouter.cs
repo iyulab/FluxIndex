@@ -1173,38 +1173,4 @@ internal sealed class StrategyPerformance
 /// </summary>
 public class AgenticRetrievalRouterOptions
 {
-    /// <summary>
-    /// Default maximum results to return.
-    /// </summary>
-    public int DefaultMaxResults { get; set; } = 10;
-
-    /// <summary>
-    /// Enable adaptive strategy selection based on feedback.
-    /// </summary>
-    public bool EnableAdaptiveRouting { get; set; } = true;
-
-    /// <summary>
-    /// Minimum confidence threshold for routing decisions.
-    /// </summary>
-    public double MinRoutingConfidence { get; set; } = 0.5;
-
-    /// <summary>
-    /// Maximum number of fallback strategies to try.
-    /// </summary>
-    public int MaxFallbackAttempts { get; set; } = 3;
-
-    /// <summary>
-    /// Timeout for individual strategy execution.
-    /// </summary>
-    public TimeSpan StrategyTimeout { get; set; } = TimeSpan.FromSeconds(30);
-
-    /// <summary>
-    /// Enable detailed routing explanations.
-    /// </summary>
-    public bool EnableDetailedExplanations { get; set; }
-
-    /// <summary>
-    /// Enable performance tracking.
-    /// </summary>
-    public bool EnablePerformanceTracking { get; set; } = true;
 }

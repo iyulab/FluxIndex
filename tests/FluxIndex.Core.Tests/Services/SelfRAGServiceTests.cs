@@ -768,7 +768,6 @@ public class SelfRAGServiceTests
         Assert.True(options.EnableAutoRefinement);
         Assert.True(options.EnableContextExpansion);
         Assert.True(options.EnableMultiPerspectiveSearch);
-        Assert.False(options.EnableDetailedLogging);
     }
 
     [Fact]

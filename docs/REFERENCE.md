@@ -516,7 +516,7 @@ Graph retrieval runs against an index built from a known set of chunks, so it is
 var graphRag = serviceProvider.GetRequiredService<IGraphRAGService>();
 
 // Build once (the SDK indexer does this for you when EnableGraphRAG is on) or load a persisted graph
-var index = await graphRag.BuildIndexAsync(chunks, new GraphRAGBuildOptions { GenerateEntityEmbeddings = true });
+var index = await graphRag.BuildIndexAsync(chunks, new GraphRAGBuildOptions());
 // var index = await graphRag.LoadIndexAsync(chunks);
 
 var result = await graphRag.QueryAsync(query, index, new GraphRAGQueryOptions

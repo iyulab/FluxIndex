@@ -63,8 +63,6 @@ public class ServiceCollectionExtensionsTests
             DatabasePath = "custom.db",
             UseInMemory = false,
             AutoMigrate = true,
-            DefaultSearchThreshold = 0.8,
-            BatchSize = 200,
             CommandTimeout = 45
         };
 
@@ -85,8 +83,6 @@ public class ServiceCollectionExtensionsTests
         Assert.Equal("custom.db", registeredOptions.DatabasePath);
         Assert.False(registeredOptions.UseInMemory);
         Assert.True(registeredOptions.AutoMigrate);
-        Assert.Equal(0.8, registeredOptions.DefaultSearchThreshold);
-        Assert.Equal(200, registeredOptions.BatchSize);
         Assert.Equal(45, registeredOptions.CommandTimeout);
     }
 
@@ -172,10 +168,6 @@ public class ServiceCollectionExtensionsTests
         {
             options.DatabasePath = "action_test.db";
             options.UseInMemory = false;
-            options.DefaultSearchThreshold = 0.9;
-            options.BatchSize = 150;
-            options.EnableVectorCache = false;
-            options.VectorCacheSize = 500;
         });
 
         var serviceProvider = services.BuildServiceProvider();
@@ -190,10 +182,6 @@ public class ServiceCollectionExtensionsTests
         var options = optionsService.Value;
         Assert.Equal("action_test.db", options.DatabasePath);
         Assert.False(options.UseInMemory);
-        Assert.Equal(0.9, options.DefaultSearchThreshold);
-        Assert.Equal(150, options.BatchSize);
-        Assert.False(options.EnableVectorCache);
-        Assert.Equal(500, options.VectorCacheSize);
     }
 
     [Fact]

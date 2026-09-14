@@ -69,8 +69,6 @@ public class ServiceCollectionExtensionsTests : RedisTestBase
         services.AddRedisSemanticCache(options =>
         {
             options.ConnectionString = ConnectionString;
-            options.KeyPrefix = "custom:test:";
-            options.DefaultSimilarityThreshold = 0.8f;
             options.MaxCacheEntries = 5000;
             options.DefaultTtl = TimeSpan.FromMinutes(45);
         });
@@ -80,8 +78,6 @@ public class ServiceCollectionExtensionsTests : RedisTestBase
 
         var configuredOptions = serviceProvider.GetRequiredService<IOptions<RedisSemanticCacheOptions>>();
         Assert.Equal(ConnectionString, configuredOptions.Value.ConnectionString);
-        Assert.Equal("custom:test:", configuredOptions.Value.KeyPrefix);
-        Assert.Equal(0.8f, configuredOptions.Value.DefaultSimilarityThreshold);
         Assert.Equal(5000, configuredOptions.Value.MaxCacheEntries);
         Assert.Equal(TimeSpan.FromMinutes(45), configuredOptions.Value.DefaultTtl);
     }
@@ -107,7 +103,6 @@ public class ServiceCollectionExtensionsTests : RedisTestBase
         services.AddRedisSemanticCacheWithExistingConnection(options =>
         {
             options.ConnectionString = ConnectionString;
-            options.KeyPrefix = "existing:";
         });
 
         // Assert
@@ -116,9 +111,6 @@ public class ServiceCollectionExtensionsTests : RedisTestBase
         // Verify semantic cache service is registered
         Assert.NotNull(serviceProvider.GetService<ISemanticCacheService>());
         Assert.NotNull(serviceProvider.GetService<IOptions<RedisSemanticCacheOptions>>());
-
-        var options = serviceProvider.GetRequiredService<IOptions<RedisSemanticCacheOptions>>();
-        Assert.Equal("existing:", options.Value.KeyPrefix);
     }
 
     [Fact]
@@ -141,11 +133,7 @@ public class ServiceCollectionExtensionsTests : RedisTestBase
             {
                 cacheOptions.InstanceName = "TestInstance";
             },
-            configureSemanticCache: semanticOptions =>
-            {
-                semanticOptions.KeyPrefix = "distributed:test:";
-                semanticOptions.DefaultSimilarityThreshold = 0.9f;
-            });
+            configureSemanticCache: _ => { });
 
         // Assert
         var serviceProvider = services.BuildServiceProvider();
@@ -156,10 +144,7 @@ public class ServiceCollectionExtensionsTests : RedisTestBase
         // Verify semantic cache is registered
         Assert.NotNull(serviceProvider.GetService<ISemanticCacheService>());
 
-        // Verify semantic cache options
-        var semanticOptions = serviceProvider.GetRequiredService<IOptions<RedisSemanticCacheOptions>>();
-        Assert.Equal("distributed:test:", semanticOptions.Value.KeyPrefix);
-        Assert.Equal(0.9f, semanticOptions.Value.DefaultSimilarityThreshold);
+        Assert.NotNull(serviceProvider.GetService<IOptions<RedisSemanticCacheOptions>>());
     }
 
     [Fact]
@@ -212,7 +197,6 @@ public class ServiceCollectionExtensionsTests : RedisTestBase
         services.AddRedisSemanticCache(options =>
         {
             options.ConnectionString = ConnectionString;
-            options.KeyPrefix = "second:";
         });
 
         // Assert
@@ -245,7 +229,6 @@ public class ServiceCollectionExtensionsTests : RedisTestBase
         services.AddRedisSemanticCache(options =>
         {
             options.ConnectionString = ConnectionString;
-            options.KeyPrefix = "integration:test:";
         });
 
         var serviceProvider = services.BuildServiceProvider();

@@ -9,7 +9,7 @@ namespace FluxIndex.SDK.Configuration;
 /// </summary>
 /// <remarks>
 /// 블록마다 «누가 읽는가»가 다르다. <see cref="VectorStore"/> · <see cref="Embedding"/> · <see cref="Cache"/> ·
-/// <see cref="GraphStore"/> · <see cref="SemanticCache"/> · <see cref="KeywordSearch"/> · <see cref="QualityMonitoring"/> 은
+/// <see cref="GraphStore"/> · <see cref="SemanticCache"/> · <see cref="KeywordSearch"/> 은
 /// 빌더가 서비스 등록에 쓴다(각 타입 문서에 읽히지 않는 개별 속성이 표시돼 있다). 청킹과 검색 기본값은 이 트리가 아니라
 /// <c>IndexerOptions</c>/<c>RetrieverOptions</c> 에 있다(<c>WithChunking(...)</c>/<c>WithSearchOptions(...)</c>).
 /// 검증: <c>FluxIndex.SDK.Tests/OptionsReachabilityRosterTests</c>.
@@ -46,10 +46,6 @@ public class FluxIndexOptions
     /// </summary>
     public KeywordSearchStoreOptions KeywordSearch { get; set; } = new();
 
-    /// <summary>
-    /// 품질 모니터링 설정
-    /// </summary>
-    public QualityMonitoringOptions QualityMonitoring { get; set; } = new();
 }
 
 /// <summary>
@@ -288,16 +284,4 @@ public class SemanticCacheOptions
     /// PostgreSQL: UNLOGGED 테이블 사용 (빠른 쓰기, 크래시 시 데이터 손실 가능)
     /// </summary>
     public bool UseUnloggedTable { get; set; } = true;
-}
-
-/// <summary>
-/// 품질 모니터링 옵션
-/// </summary>
-public class QualityMonitoringOptions
-{
-    public bool EnableMonitoring { get; set; }
-    public bool EnableRealTimeAlerts { get; set; }
-    public TimeSpan MetricsInterval { get; set; } = TimeSpan.FromMinutes(1);
-    public TimeSpan AlertCheckInterval { get; set; } = TimeSpan.FromMinutes(5);
-    public int MaxMetricsHistory { get; set; } = 1440; // 24 hours at 1 minute intervals
 }

@@ -318,67 +318,6 @@ public class CacheStatisticsTests
 
 #endregion
 
-#region CacheOptions Tests
-
-public class CacheOptionsTests
-{
-    [Fact]
-    public void Default_HasExpectedValues()
-    {
-        var options = CacheOptions.Default;
-
-        Assert.Equal(0.95f, options.DefaultSimilarityThreshold);
-        Assert.Equal(TimeSpan.FromHours(24), options.DefaultExpiry);
-        Assert.Equal(10000, options.MaxCacheSize);
-        Assert.True(options.EnableStatistics);
-        Assert.True(options.EnableCompression);
-        Assert.True(options.EnableWarmup);
-        Assert.True(options.EnableAutoOptimization);
-        Assert.Equal(10, options.BatchSize);
-    }
-
-    [Fact]
-    public void Development_HasReducedSettings()
-    {
-        var options = CacheOptions.Development;
-
-        Assert.Equal(TimeSpan.FromMinutes(30), options.DefaultExpiry);
-        Assert.Equal(1000, options.MaxCacheSize);
-        Assert.True(options.EnableStatistics);
-        Assert.False(options.EnableWarmup);
-    }
-
-    [Fact]
-    public void Production_HasScaledSettings()
-    {
-        var options = CacheOptions.Production;
-
-        Assert.Equal(TimeSpan.FromHours(24), options.DefaultExpiry);
-        Assert.Equal(50000, options.MaxCacheSize);
-        Assert.True(options.EnableStatistics);
-        Assert.True(options.EnableCompression);
-        Assert.True(options.EnableAutoOptimization);
-    }
-
-    [Fact]
-    public void DefaultCacheKeyPrefix_IsFluxIndex()
-    {
-        var options = new CacheOptions();
-
-        Assert.Equal("fluxindex:cache:", options.CacheKeyPrefix);
-    }
-
-    [Fact]
-    public void DefaultMaxMemoryUsageBytes_IsOneGigabyte()
-    {
-        var options = new CacheOptions();
-
-        Assert.Equal(1024L * 1024 * 1024, options.MaxMemoryUsageBytes);
-    }
-}
-
-#endregion
-
 #region CacheHitType Tests
 
 public class CacheHitTypeTests
