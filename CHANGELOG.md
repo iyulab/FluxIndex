@@ -9,6 +9,16 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.39.0]
+
+### Added
+- `IKeywordSearchService.GetChunkIdsByDocumentIdAsync(documentId)` — the ids the keyword index holds for a document, the counterpart of `IVectorStore.GetChunkIdsByDocumentIdAsync`. A pipeline swapping a document's generation can now capture the previous keyword generation from the keyword index itself instead of assuming it shares ids with the vector store. Implemented by the relational backends (SQLite, PostgreSQL) and the in-memory BM25 index; `KeywordSearchChunkIdentityContractSuite` covers all of them.
+
+### Changed
+- **Breaking for implementers**: `IKeywordSearchService` gained an abstract member; a custom keyword backend must implement it (answer from your own table — an unknown document yields an empty list).
+
+---
+
 ## [0.38.1]
 
 ### Changed

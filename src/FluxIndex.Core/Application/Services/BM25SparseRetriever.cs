@@ -740,6 +740,20 @@ public partial class BM25SparseRetriever : IKeywordSearchService, IPersistableSp
     }
 
     /// <inheritdoc />
+    public Task<IReadOnlyList<string>> GetChunkIdsByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(documentId))
+            return Task.FromResult<IReadOnlyList<string>>([]);
+
+        var defaultIndex = _indexes.GetOrAdd("default", _ => new BM25Index());
+
+        lock (_lockObject)
+        {
+            return Task.FromResult<IReadOnlyList<string>>(ChunkIdsForDocument(defaultIndex, documentId));
+        }
+    }
+
+    /// <inheritdoc />
     public Task DeleteByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(documentId))
@@ -749,11 +763,7 @@ public partial class BM25SparseRetriever : IKeywordSearchService, IPersistableSp
 
         lock (_lockObject)
         {
-            // Find all chunks for this document
-            var chunkIds = defaultIndex.DocumentIndex
-                .Where(kvp => kvp.Value.DocumentId == documentId)
-                .Select(kvp => kvp.Key)
-                .ToList();
+            var chunkIds = ChunkIdsForDocument(defaultIndex, documentId);
 
             foreach (var chunkId in chunkIds)
             {
@@ -763,6 +773,13 @@ public partial class BM25SparseRetriever : IKeywordSearchService, IPersistableSp
 
         return Task.CompletedTask;
     }
+
+    /// <summary>Chunk ids the index holds for a document. The caller holds <c>_lockObject</c>.</summary>
+    private static List<string> ChunkIdsForDocument(BM25Index index, string documentId) =>
+        index.DocumentIndex
+            .Where(kvp => kvp.Value.DocumentId == documentId)
+            .Select(kvp => kvp.Key)
+            .ToList();
 
     /// <inheritdoc />
     public Task ClearIndexAsync(CancellationToken cancellationToken = default)

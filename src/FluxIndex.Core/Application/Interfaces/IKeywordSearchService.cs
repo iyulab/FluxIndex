@@ -54,6 +54,28 @@ public interface IKeywordSearchService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Ids of every chunk this index holds for <paramref name="documentId"/> — the keyword-index
+    /// counterpart of <see cref="IVectorStore.GetChunkIdsByDocumentIdAsync"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A caller that replaces a document's rows captures the previous generation here, writes the new
+    /// one, and deletes only what the new generation did not write again — on this leg by this leg's
+    /// own ids. Reading the ids from the vector store instead assumes both legs key their rows
+    /// identically, which nothing enforces: rows written before a store honoured caller ids never
+    /// match, and each re-index then leaves the previous keyword generation in place.
+    /// </para>
+    /// <para>
+    /// Answers from the index's own table; an unknown document yields an empty list.
+    /// </para>
+    /// </remarks>
+    /// <param name="documentId">The document whose chunk ids to return.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<IReadOnlyList<string>> GetChunkIdsByDocumentIdAsync(
+        string documentId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Removes all chunks for a document from the keyword index.
     /// </summary>
     /// <param name="documentId">The document ID whose chunks should be removed.</param>

@@ -87,6 +87,16 @@ Practical consequence: you can move a corpus between SQLite, Qdrant and PostgreS
 how your application addresses chunks. Do not derive ids yourself to "help" a backend — that
 defeats the round trip, since the store would then return the derived id rather than yours.
 
+#### Replacing a document's rows (generation swap)
+
+A pipeline that re-indexes a changed document replaces its rows as a *swap*: capture the ids the
+document currently has, write the new generation, then delete `previous - attempted`. Each leg of a
+hybrid index answers for its own rows — `IVectorStore.GetChunkIdsByDocumentIdAsync` for the vectors,
+`IKeywordSearchService.GetChunkIdsByDocumentIdAsync` (since 0.39.0) for the keyword index. Do not
+read one leg's ids and delete on the other with them: nothing guarantees the two legs key their rows
+identically (rows written before a store honoured caller ids never do), and a delete by an id the
+other leg never held is a silent no-op that leaves the previous keyword generation searchable.
+
 ### Package Structure
 
 | Package | Purpose |

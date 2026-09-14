@@ -21,10 +21,10 @@ public abstract class KeywordSearchChunkIdentityContractSuite
     /// <summary>Creates a fresh, empty keyword index.</summary>
     protected abstract Task<IKeywordSearchService> CreateServiceAsync();
 
-    private static DocumentChunk CreateChunk(string id, string content, int chunkIndex = 0) => new()
+    private static DocumentChunk CreateChunk(string id, string content, int chunkIndex = 0, string documentId = "doc-1") => new()
     {
         Id = id,
-        DocumentId = "doc-1",
+        DocumentId = documentId,
         ChunkIndex = chunkIndex,
         Content = content,
         TokenCount = 3
@@ -82,5 +82,44 @@ public abstract class KeywordSearchChunkIdentityContractSuite
         var hit = Assert.Single(hits);
         Assert.Equal("keep", hit.Chunk.Id);
         Assert.Equal(1, (await service.GetStatisticsAsync(ct)).TotalDocuments);
+    }
+
+    [Fact]
+    public async Task GetChunkIdsByDocumentIdAsync_ReturnsThisIndexesOwnIdsForTheDocumentOnly()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var service = await CreateServiceAsync();
+
+        await service.IndexChunksAsync(
+        [
+            CreateChunk("a-0", "alpha beta", 0, "doc-a"),
+            CreateChunk("a-1", "alpha gamma", 1, "doc-a"),
+            CreateChunk("b-0", "alpha delta", 0, "doc-b")
+        ], ct);
+
+        var ids = await service.GetChunkIdsByDocumentIdAsync("doc-a", ct);
+        Assert.Equal(["a-0", "a-1"], ids.Order());
+
+        Assert.Empty(await service.GetChunkIdsByDocumentIdAsync("doc-none", ct));
+    }
+
+    [Fact]
+    public async Task GetChunkIdsByDocumentIdAsync_AfterReindexingAnIdAndDeletingAnother_ReflectsTheIndex()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var service = await CreateServiceAsync();
+
+        await service.IndexChunksAsync(
+        [
+            CreateChunk("a-0", "alpha beta", 0, "doc-a"),
+            CreateChunk("a-1", "alpha gamma", 1, "doc-a")
+        ], ct);
+        await service.IndexChunksAsync([CreateChunk("a-0", "alpha epsilon", 0, "doc-a")], ct);
+        await service.DeleteChunkAsync("a-1", ct);
+
+        // A generation swap deletes previous-minus-attempted by these ids: a duplicate would delete a
+        // row that was just written, a stale id would delete nothing and leave the row behind.
+        var ids = await service.GetChunkIdsByDocumentIdAsync("doc-a", ct);
+        Assert.Equal(["a-0"], ids);
     }
 }

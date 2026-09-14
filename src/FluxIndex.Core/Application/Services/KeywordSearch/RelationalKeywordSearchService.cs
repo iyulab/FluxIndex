@@ -715,6 +715,18 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<string>> GetChunkIdsByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(documentId))
+            return [];
+
+        await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        return await ReadChunkIdsForDocumentAsync(connection, documentId, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
     public async Task DeleteByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(documentId))
@@ -727,23 +739,31 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         // The chunk ids come from this index's own table. Reading them from the vector store instead
         // made deletion depend on the vector rows still being there, which they are not once the
         // caller has already dropped them.
-        var chunkIds = new List<string>();
-        await using (var chunkIdsCmd = connection.CreateCommand())
-        {
-            chunkIdsCmd.CommandText = "SELECT chunk_id FROM bm25_chunks WHERE document_id = @documentId";
-            AddParameter(chunkIdsCmd, "@documentId", documentId);
-
-            await using var reader = await chunkIdsCmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-            {
-                chunkIds.Add(reader.GetString(0));
-            }
-        }
+        var chunkIds = await ReadChunkIdsForDocumentAsync(connection, documentId, cancellationToken).ConfigureAwait(false);
 
         if (chunkIds.Count == 0)
             return;
 
         await DeleteChunksAsync(chunkIds, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<List<string>> ReadChunkIdsForDocumentAsync(
+        DbConnection connection,
+        string documentId,
+        CancellationToken cancellationToken)
+    {
+        var chunkIds = new List<string>();
+        await using var chunkIdsCmd = connection.CreateCommand();
+        chunkIdsCmd.CommandText = "SELECT chunk_id FROM bm25_chunks WHERE document_id = @documentId";
+        AddParameter(chunkIdsCmd, "@documentId", documentId);
+
+        await using var reader = await chunkIdsCmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            chunkIds.Add(reader.GetString(0));
+        }
+
+        return chunkIds;
     }
 
     private async Task DeleteChunksAsync(IReadOnlyList<string> chunkIds, CancellationToken cancellationToken)
