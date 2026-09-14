@@ -84,6 +84,7 @@ public abstract class TextCompletionServiceBase : ITextCompletionService
             StopSequences = options?.StopSequences,
             SystemPrompt = options?.SystemPrompt,
             ResponseFormat = "json",
+            ResponseSchema = options?.ResponseSchema,
         };
         var result = await CompleteCoreAsync(jsonPrompt, jsonOptions, cancellationToken);
 

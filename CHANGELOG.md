@@ -9,6 +9,25 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.41.0]
+
+### Added
+- `TextCompletionServiceBase.CompleteJsonAsync` passes the caller's `TextCompletionOptions.ResponseSchema`
+  (Flux.Abstractions 0.25.0) through, so an implementation over a schema-capable provider can enforce the shape the
+  caller parses.
+
+### Fixed
+- `FluxIndex.Providers.LMSupply`: `LMSupplyTextCompletionService` forwarded only `MaxTokens` and `Temperature` and
+  silently dropped the rest of `TextCompletionOptions`. `TopP`, `FrequencyPenalty`, `PresencePenalty`,
+  `StopSequences` and `ResponseSchema` (as `GenerationOptions.JsonSchema`) now reach the generator when set, unset
+  members keep the generator's defaults, and `SystemPrompt` is sent as the system message on the chat path.
+  `ResponseFormat = "json"` without a schema has no LMSupply counterpart and is documented as not forwarded.
+
+### Changed
+- Requires Flux.Abstractions 0.25.0.
+
+---
+
 ## [0.40.1]
 
 ### Fixed

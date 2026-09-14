@@ -67,6 +67,15 @@ public sealed partial class LMSupplyTextCompletionService : TextCompletionServic
         _eager ?? await _handle!.GetAsync(cancellationToken).ConfigureAwait(false);
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Every <see cref="TextCompletionOptions"/> member LMSupply's generator can express is forwarded; a member left
+    /// unset keeps the generator's own default. <see cref="TextCompletionOptions.SystemPrompt"/> switches to the chat
+    /// path (system message, then the prompt as the user message). <see cref="TextCompletionOptions.ResponseSchema"/>
+    /// becomes <see cref="GenerationOptions.JsonSchema"/> and is enforced by the generator.
+    /// <see cref="TextCompletionOptions.ResponseFormat"/> = <c>"json"</c> without a schema has no LMSupply counterpart
+    /// (a schema is the only structural constraint it offers, and a generic one would reject arrays), so it is not
+    /// forwarded; the JSON request then rests on the prompt.
+    /// </remarks>
     protected override async Task<string> CompleteCoreAsync(
         string prompt,
         TextCompletionOptions options,
@@ -79,9 +88,23 @@ public sealed partial class LMSupplyTextCompletionService : TextCompletionServic
             MaxTokens = options.MaxTokens,
             Temperature = options.Temperature,
         };
+        if (options.TopP is { } topP)
+            genOptions.TopP = topP;
+        if (options.FrequencyPenalty is { } frequencyPenalty)
+            genOptions.FrequencyPenalty = frequencyPenalty;
+        if (options.PresencePenalty is { } presencePenalty)
+            genOptions.PresencePenalty = presencePenalty;
+        if (options.StopSequences is { Count: > 0 } stops)
+            genOptions.StopSequences = stops;
+        if (!string.IsNullOrWhiteSpace(options.ResponseSchema))
+            genOptions.JsonSchema = options.ResponseSchema;
 
         var generator = await GetGeneratorAsync(cancellationToken).ConfigureAwait(false);
-        return await generator.GenerateCompleteAsync(prompt, genOptions, cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(options.SystemPrompt))
+            return await generator.GenerateCompleteAsync(prompt, genOptions, cancellationToken).ConfigureAwait(false);
+
+        ChatMessage[] messages = [ChatMessage.System(options.SystemPrompt), ChatMessage.User(prompt)];
+        return await generator.GenerateChatCompleteAsync(messages, genOptions, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />

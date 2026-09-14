@@ -65,7 +65,7 @@
        package that consumes it; consuming it here as a package rather than a project is what
        keeps the dependency graph acyclic. -->
   <ItemGroup>
-    <PackageVersion Include="Flux.Abstractions" Version="0.24.0" />
+    <PackageVersion Include="Flux.Abstractions" Version="0.25.0" />
   </ItemGroup>
   <!-- Document Processing & Quality -->
   <ItemGroup>
