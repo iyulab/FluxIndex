@@ -9,29 +9,29 @@
     <!-- FluxGuard (opt-in RAG security pipeline — see FluxIndex.SDK.Retriever) -->
     <PackageVersion Include="FluxGuard.Remote" Version="0.14.1" />
     <!-- Caching -->
-    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="10.0.8" />
-    <PackageVersion Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.8" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.12" />
     <!-- Configuration -->
-    <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.8" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.8" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.8" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.8" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="10.0.8" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.8" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.12" />
     <!-- DI -->
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.8" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.8" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
     <!-- Hosting -->
-    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.8" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.8" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.12" />
     <!-- Http -->
-    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.8" />
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.12" />
     <!-- Logging -->
-    <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.8" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.8" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="10.0.8" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="10.0.12" />
     <!-- Options -->
-    <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.8" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.12" />
   </ItemGroup>
   <!-- Entity Framework Core Packages - .NET 10.0 -->
   <ItemGroup>
@@ -69,10 +69,10 @@
   </ItemGroup>
   <!-- Document Processing & Quality -->
   <ItemGroup>
-    <PackageVersion Include="FileFlux" Version="0.23.8" />
-    <PackageVersion Include="FluxCurator" Version="0.8.1" />
-    <PackageVersion Include="FluxImprover" Version="0.12.7" />
-    <PackageVersion Include="WebFlux" Version="0.7.1" />
+    <PackageVersion Include="FileFlux" Version="0.23.9" />
+    <PackageVersion Include="FluxCurator" Version="0.8.2" />
+    <PackageVersion Include="FluxImprover" Version="0.12.8" />
+    <PackageVersion Include="WebFlux" Version="0.7.2" />
   </ItemGroup>
   <!-- Testing Packages (xUnit v3 / Microsoft.Testing.Platform — BD-20260829-xunit-v3-pilot rollout) -->
   <ItemGroup>

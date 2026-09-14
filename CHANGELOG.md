@@ -9,6 +9,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.41.1]
+
+### Changed
+- Re-pinned sibling package(s) `FileFlux` 0.23.8 -> 0.23.9, `FluxCurator` 0.8.1 -> 0.8.2, `FluxImprover` 0.12.7 -> 0.12.8, `WebFlux` 0.7.1 -> 0.7.2 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Raised `Microsoft.Extensions.*` package references from 10.0.8 to 10.0.12 (latest servicing release). The re-pinned `FluxCurator`, `FileFlux` and `WebFlux` releases declare `Microsoft.Extensions.*` floors above 10.0.8.
+
+---
+
 ## [0.41.0]
 
 ### Added
