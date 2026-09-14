@@ -106,6 +106,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 - The cleanup of zero-frequency terms is scoped to the rows the transaction touched instead of
   scanning every term on every write.
 
+### Changed
+- Re-pinned `FileFlux` 0.23.7 -> 0.23.8. `AddFileFlux` no longer sets `SizeLimit` on the host's shared `IMemoryCache`, which made GraphRAG community summaries (stored without a `Size`) throw and fail indexing when `FluxIndex.Integrations.FileFlux` shared a container with GraphRAG.
+
 ---
 
 ## [0.39.1]
