@@ -33,8 +33,6 @@
     <!-- NuGet Package Settings -->
     <PackageOutputPath>$(MSBuildThisFileDirectory)nupkgs</PackageOutputPath>
     
-    <!-- Suppress NuGet warnings for package management -->
-    <NoWarn>$(NoWarn);NU1506;NU1605;NU1107</NoWarn>
     <!-- Suppress XML documentation warnings -->
     <NoWarn>$(NoWarn);CS1591;CS1587</NoWarn>
     <!-- CS nullable suppressions removed in cycle-104 -->
