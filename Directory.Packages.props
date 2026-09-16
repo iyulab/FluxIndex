@@ -7,7 +7,7 @@
   <!-- Only packages directly referenced in *.csproj files -->
   <ItemGroup>
     <!-- FluxGuard (opt-in RAG security pipeline — see FluxIndex.SDK.Retriever) -->
-    <PackageVersion Include="FluxGuard.Remote" Version="0.14.1" />
+    <PackageVersion Include="FluxGuard.Remote" Version="0.14.2" />
     <!-- Caching -->
     <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.12" />
@@ -44,9 +44,9 @@
   <!-- AI/ML Packages -->
   <ItemGroup>
     <!-- LMSupply: Full AI stack (Embedder + Generator + Reranker) -->
-    <PackageVersion Include="LMSupply.Embedder" Version="0.66.0" />
-    <PackageVersion Include="LMSupply.Generator" Version="0.66.0" />
-    <PackageVersion Include="LMSupply.Reranker" Version="0.66.0" />
+    <PackageVersion Include="LMSupply.Embedder" Version="0.66.1" />
+    <PackageVersion Include="LMSupply.Generator" Version="0.66.1" />
+    <PackageVersion Include="LMSupply.Reranker" Version="0.66.1" />
   </ItemGroup>
   <!-- Storage/Cache Packages -->
   <ItemGroup>
@@ -69,9 +69,9 @@
   </ItemGroup>
   <!-- Document Processing & Quality -->
   <ItemGroup>
-    <PackageVersion Include="FileFlux" Version="0.23.10" />
+    <PackageVersion Include="FileFlux" Version="0.23.11" />
     <PackageVersion Include="FluxCurator" Version="0.8.2" />
-    <PackageVersion Include="FluxImprover" Version="0.12.8" />
+    <PackageVersion Include="FluxImprover" Version="0.12.9" />
     <PackageVersion Include="WebFlux" Version="0.7.2" />
   </ItemGroup>
   <!-- Testing Packages (xUnit v3 / Microsoft.Testing.Platform — BD-20260829-xunit-v3-pilot rollout) -->
