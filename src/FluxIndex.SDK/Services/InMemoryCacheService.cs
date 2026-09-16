@@ -26,10 +26,13 @@ internal sealed partial class InMemoryCacheService : ICacheService
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         
+        // Size on every entry: the injected IMemoryCache is the host's shared instance, and a host
+        // that sets SizeLimit on it makes Set throw for an entry without one. One value, one unit.
         _defaultOptions = new MemoryCacheEntryOptions
         {
             SlidingExpiration = TimeSpan.FromMinutes(15),
-            AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(1)
+            AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(1),
+            Size = 1
         };
     }
 
@@ -54,7 +57,7 @@ internal sealed partial class InMemoryCacheService : ICacheService
         where T : class
     {
         var options = expiry.HasValue
-            ? new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = expiry }
+            ? new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = expiry, Size = 1 }
             : _defaultOptions;
         
         _cache.Set(key, value, options);

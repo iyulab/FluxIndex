@@ -11,6 +11,16 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [0.43.0]
 
+### Removed
+
+- **`IAdvancedEntityExtractionService.LinkEntitiesAsync`, `EntityLinkingOptions`, `LinkedEntityGraph`,
+  `LinkedEntity`, `EntityLinkingStats`.** Nothing in the library called it: the indexing pipeline links
+  entities through `EntityGraphService` (one identity - normalized name, type, subtype - shared with the
+  stored merge), so this method was a second, unused implementation of linking that keyed on the
+  lower-cased normalized text and, with `RequireSameType = false`, collapsed every type into one. A
+  consumer that replaces the extractor no longer has to implement it. Options-roster baseline entry
+  for `EntityLinkingOptions` (three never-read properties) removed with it.
+
 ### Fixed
 
 - **Entity identity is defined in one place, and every stage that needs it uses that one.** Four
@@ -42,6 +52,10 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   entity that declares no subtype matches every subtype of that name and type, and `SearchByEntitiesAsync`
   now returns all of them rather than the first. **Behavior change after re-index**: subtyped and
   non-subtyped entities of one name are separate nodes.
+- **Cache entries declare a size.** `HierarchicalSummarizationService` (community summaries) and the SDK's
+  `InMemoryCacheService` wrote entries to the host's shared `IMemoryCache` without `Size`. A host that
+  sets `SizeLimit` on that cache - which any library sharing it is entitled to do - made `Set` throw,
+  and the whole memorize failed on the summary. Every entry now counts as one unit.
 - **Property values read back from a store are the values the build wrote.** Every store keeps node
   properties as JSON and deserialized them to `JsonElement`s, so `Properties["subtype"]` on a
   reconstituted node was never equal to the string the build compared it with - and a re-index would

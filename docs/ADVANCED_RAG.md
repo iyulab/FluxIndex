@@ -246,31 +246,6 @@ foreach (var relation in graph.Relations)
 > or Chinese corpus yields none. The service logs a warning once when it runs pattern-only. Register
 > a completion service, or plug your own extractor through `IAdvancedEntityExtractionService`.
 
-### Entity Linking
-
-Link entities across multiple documents:
-
-```csharp
-var graphs = new List<EntityGraph>();
-foreach (var doc in documents)
-{
-    var graph = await extractor.ExtractEntityGraphAsync(doc.Content);
-    graphs.Add(graph);
-}
-
-var linkedGraph = await extractor.LinkEntitiesAsync(
-    graphs,
-    options: new EntityLinkingOptions
-    {
-        RequireSameType = true
-    },
-    cancellationToken: ct);
-
-Console.WriteLine($"Original entities: {graphs.Sum(g => g.Entities.Count)}");
-Console.WriteLine($"Linked entities: {linkedGraph.Entities.Count}");
-Console.WriteLine($"Merge count: {linkedGraph.Stats.MergeCount}");
-```
-
 ### Entity provenance and scoped graph reads
 
 `IEntityGraphService.BuildEntityGraphAsync` records where each entity came from: every

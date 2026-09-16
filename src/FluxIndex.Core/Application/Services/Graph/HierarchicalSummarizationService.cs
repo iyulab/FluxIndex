@@ -589,9 +589,13 @@ public partial class HierarchicalSummarizationService : IHierarchicalSummarizati
         // Cache the summary
         if (options.EnableCaching && _cache != null)
         {
+            // The cache is the host's shared IMemoryCache. A host that sets SizeLimit on it (every
+            // library sharing the instance is entitled to) makes Set throw for an entry with no Size,
+            // and the whole memorize failed on the summary. One summary counts as one unit.
             var cacheOptions = new MemoryCacheEntryOptions
             {
-                AbsoluteExpirationRelativeToNow = options.CacheExpiration
+                AbsoluteExpirationRelativeToNow = options.CacheExpiration,
+                Size = 1
             };
             _cache.Set(CacheKeyPrefix + community.Id, summary, cacheOptions);
         }

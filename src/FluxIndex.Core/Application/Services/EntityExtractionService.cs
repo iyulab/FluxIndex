@@ -254,97 +254,6 @@ public partial class EntityExtractionService : IAdvancedEntityExtractionService
         return results;
     }
 
-    /// <inheritdoc />
-    public Task<LinkedEntityGraph> LinkEntitiesAsync(
-        IEnumerable<EntityGraph> entityGraphs,
-        EntityLinkingOptions? options = null,
-        CancellationToken cancellationToken = default)
-    {
-        var stopwatch = Stopwatch.StartNew();
-        options ??= new EntityLinkingOptions();
-
-        var graphs = entityGraphs.ToList();
-        var allEntities = graphs.SelectMany(g => g.Entities).ToList();
-        var allRelations = graphs.SelectMany(g => g.Relations).ToList();
-
-        // Group entities by normalized text and type for linking
-        var linkedEntities = new List<LinkedEntity>();
-        var entityGroups = allEntities
-            .GroupBy(e => options.RequireSameType
-                ? (e.NormalizedText.ToLowerInvariant(), e.Type)
-                : (e.NormalizedText.ToLowerInvariant(), NamedEntityType.Unknown));
-
-        foreach (var group in entityGroups)
-        {
-            var groupEntities = group.ToList();
-            var canonical = groupEntities
-                .OrderByDescending(e => e.Confidence)
-                .ThenByDescending(e => e.OccurrenceCount)
-                .First();
-
-            var linkedEntity = new LinkedEntity
-            {
-                CanonicalId = Guid.NewGuid().ToString(),
-                CanonicalText = canonical.NormalizedText,
-                Type = canonical.Type,
-                SurfaceForms = groupEntities.Select(e => e.Text).Distinct().ToList(),
-                MergedEntityIds = groupEntities.Select(e => e.Id).ToList(),
-                SourceIds = groupEntities.Select(e => e.SourceId).Where(s => s != null).Distinct().ToList()!,
-                TotalOccurrences = groupEntities.Sum(e => e.OccurrenceCount),
-                ImportanceScore = CalculateImportanceScore(groupEntities, allRelations)
-            };
-
-            linkedEntities.Add(linkedEntity);
-        }
-
-        // Update relation entity IDs to canonical IDs
-        var entityIdMap = new Dictionary<string, string>();
-        foreach (var linked in linkedEntities)
-        {
-            foreach (var originalId in linked.MergedEntityIds)
-            {
-                entityIdMap[originalId] = linked.CanonicalId;
-            }
-        }
-
-        var linkedRelations = allRelations
-            .Select(r => new EntityRelation
-            {
-                Id = r.Id,
-                SourceEntityId = entityIdMap.GetValueOrDefault(r.SourceEntityId, r.SourceEntityId),
-                TargetEntityId = entityIdMap.GetValueOrDefault(r.TargetEntityId, r.TargetEntityId),
-                Type = r.Type,
-                Label = r.Label,
-                Confidence = r.Confidence,
-                IsDirectional = r.IsDirectional,
-                Evidence = r.Evidence,
-                SourceId = r.SourceId,
-                Metadata = r.Metadata
-            })
-            .ToList();
-
-        // Deduplicate relations after linking
-        linkedRelations = DeduplicateRelations(linkedRelations);
-
-        stopwatch.Stop();
-
-        var stats = new EntityLinkingStats
-        {
-            OriginalEntityCount = allEntities.Count,
-            LinkedEntityCount = linkedEntities.Count,
-            MergeCount = allEntities.Count - linkedEntities.Count,
-            ProcessingTimeMs = stopwatch.ElapsedMilliseconds
-        };
-
-        return Task.FromResult(new LinkedEntityGraph
-        {
-            Entities = linkedEntities.OrderByDescending(e => e.ImportanceScore).ToList(),
-            Relations = linkedRelations,
-            SourceIds = graphs.Select(g => g.SourceId).ToList(),
-            Stats = stats
-        });
-    }
-
     #region Private Methods
 
     private static List<ExtractedEntity> ExtractWithPatterns(string content, EntityExtractionOptions options)
@@ -983,22 +892,6 @@ public partial class EntityExtractionService : IAdvancedEntityExtractionService
         }
 
         return relations;
-    }
-
-    private static double CalculateImportanceScore(
-        List<ExtractedEntity> entities,
-        List<EntityRelation> allRelations)
-    {
-        var totalOccurrences = entities.Sum(e => e.OccurrenceCount);
-        var avgConfidence = entities.Average(e => e.Confidence);
-
-        // Count relations involving any of these entities
-        var entityIds = entities.Select(e => e.Id).ToHashSet();
-        var relationCount = allRelations.Count(r =>
-            entityIds.Contains(r.SourceEntityId) || entityIds.Contains(r.TargetEntityId));
-
-        // Combine factors for importance score
-        return (totalOccurrences * 0.3 + avgConfidence * 0.4 + Math.Min(relationCount * 0.1, 0.3));
     }
 
     #endregion

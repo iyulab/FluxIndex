@@ -124,6 +124,29 @@ public class HierarchicalSummarizationServiceTests
     }
 
     [Fact]
+    public async Task GenerateHierarchicalSummariesAsync_OnASizeLimitedHostCache_StillCachesTheSummaries()
+    {
+        // The cache is the host's shared IMemoryCache. A host that sets SizeLimit on it makes Set throw
+        // for an entry with no Size - and the summary write sat inside the memorize path, so the whole
+        // memorize failed. Premise first: the limit is really enforced by this cache.
+        using var limited = new MemoryCache(new MemoryCacheOptions { SizeLimit = 100 });
+        var unsized = () => limited.Set("probe", "v", new MemoryCacheEntryOptions());
+        Assert.Throws<InvalidOperationException>(unsized);
+
+        var service = new HierarchicalSummarizationService(llmService: null, embeddingService: null, cache: limited, logger: _logger);
+        var hierarchy = CreateMockHierarchy(levelCount: 1, communitiesPerLevel: 2);
+        var chunks = CreateMockChunks(hierarchy);
+
+        var result = await service.GenerateHierarchicalSummariesAsync(
+            hierarchy, chunks, new HierarchicalSummarizationOptions { EnableCaching = true }, TestContext.Current.CancellationToken);
+
+        Assert.True(result.TotalCommunitiesSummarized > 0);
+        var community = hierarchy.Levels[0].Communities[0];
+        var cached = await service.GetCachedSummaryAsync(community.Id, TestContext.Current.CancellationToken);
+        Assert.NotNull(cached);
+    }
+
+    [Fact]
     public async Task GenerateHierarchicalSummariesAsync_WithLLM_GeneratesLLMSummaries()
     {
         // Arrange

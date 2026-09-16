@@ -60,7 +60,7 @@ public interface IAdvancedEntityExtractionService
     /// rejected rather than silently leaving chunks without entities. Whether the implementation
     /// treats the batch as independent texts or resolves it as one set (cross-input entity resolution)
     /// is its own choice; an entity mentioned in several inputs appears in each of their graphs and
-    /// is merged downstream by normalized name and type.
+    /// is merged downstream by normalized name, type and declared <see cref="ExtractedEntity.Subtype"/>.
     /// </remarks>
     /// <param name="contents">List of content to analyze</param>
     /// <param name="options">Extraction options</param>
@@ -69,18 +69,6 @@ public interface IAdvancedEntityExtractionService
     Task<IReadOnlyList<EntityGraph>> ExtractBatchAsync(
         IEnumerable<string> contents,
         EntityExtractionOptions? options = null,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Links entities across multiple documents to identify same entities.
-    /// </summary>
-    /// <param name="entityGraphs">Entity graphs from multiple documents</param>
-    /// <param name="options">Linking options</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Linked entity graph with merged entities</returns>
-    Task<LinkedEntityGraph> LinkEntitiesAsync(
-        IEnumerable<EntityGraph> entityGraphs,
-        EntityLinkingOptions? options = null,
         CancellationToken cancellationToken = default);
 }
 
@@ -163,32 +151,6 @@ public class EntityExtractionOptions
         IncludeContext = IncludeContext,
         ContextWindowSize = ContextWindowSize
     };
-}
-
-/// <summary>
-/// Entity linking options for cross-document entity resolution
-/// </summary>
-public class EntityLinkingOptions
-{
-    /// <summary>
-    /// Similarity threshold for entity matching (0.0-1.0)
-    /// </summary>
-    public double SimilarityThreshold { get; set; } = 0.8;
-
-    /// <summary>
-    /// Whether to use fuzzy matching for entity names
-    /// </summary>
-    public bool UseFuzzyMatching { get; set; } = true;
-
-    /// <summary>
-    /// Whether to consider entity type in matching
-    /// </summary>
-    public bool RequireSameType { get; set; } = true;
-
-    /// <summary>
-    /// Whether to use embeddings for entity similarity
-    /// </summary>
-    public bool UseEmbeddings { get; set; }
 }
 
 /// <summary>
@@ -384,78 +346,6 @@ public class EntityGraph
 }
 
 /// <summary>
-/// Linked entity graph across multiple documents
-/// </summary>
-public class LinkedEntityGraph
-{
-    /// <summary>
-    /// Merged entities with cross-document linking
-    /// </summary>
-    public IReadOnlyList<LinkedEntity> Entities { get; init; } = Array.Empty<LinkedEntity>();
-
-    /// <summary>
-    /// All relations across documents
-    /// </summary>
-    public IReadOnlyList<EntityRelation> Relations { get; init; } = Array.Empty<EntityRelation>();
-
-    /// <summary>
-    /// Source entity graphs that were linked
-    /// </summary>
-    public IReadOnlyList<string> SourceIds { get; init; } = Array.Empty<string>();
-
-    /// <summary>
-    /// Linking statistics
-    /// </summary>
-    public EntityLinkingStats Stats { get; init; } = new();
-}
-
-/// <summary>
-/// Entity that has been linked across multiple documents
-/// </summary>
-public class LinkedEntity
-{
-    /// <summary>
-    /// Canonical ID for the linked entity
-    /// </summary>
-    public string CanonicalId { get; init; } = Guid.NewGuid().ToString();
-
-    /// <summary>
-    /// Canonical/normalized text
-    /// </summary>
-    public string CanonicalText { get; init; } = string.Empty;
-
-    /// <summary>
-    /// Entity type
-    /// </summary>
-    public NamedEntityType Type { get; init; }
-
-    /// <summary>
-    /// All surface forms (different text representations)
-    /// </summary>
-    public IReadOnlyList<string> SurfaceForms { get; init; } = Array.Empty<string>();
-
-    /// <summary>
-    /// Source entity IDs that were merged
-    /// </summary>
-    public IReadOnlyList<string> MergedEntityIds { get; init; } = Array.Empty<string>();
-
-    /// <summary>
-    /// Documents/chunks where this entity appears
-    /// </summary>
-    public IReadOnlyList<string> SourceIds { get; init; } = Array.Empty<string>();
-
-    /// <summary>
-    /// Total occurrence count across all documents
-    /// </summary>
-    public int TotalOccurrences { get; init; }
-
-    /// <summary>
-    /// Importance score based on frequency and relations
-    /// </summary>
-    public double ImportanceScore { get; init; }
-}
-
-/// <summary>
 /// Entity extraction statistics
 /// </summary>
 public class EntityExtractionStats
@@ -484,32 +374,6 @@ public class EntityExtractionStats
     /// Whether LLM was used
     /// </summary>
     public bool UsedLlm { get; init; }
-}
-
-/// <summary>
-/// Entity linking statistics
-/// </summary>
-public class EntityLinkingStats
-{
-    /// <summary>
-    /// Number of original entities
-    /// </summary>
-    public int OriginalEntityCount { get; init; }
-
-    /// <summary>
-    /// Number of merged/linked entities
-    /// </summary>
-    public int LinkedEntityCount { get; init; }
-
-    /// <summary>
-    /// Number of entity merges performed
-    /// </summary>
-    public int MergeCount { get; init; }
-
-    /// <summary>
-    /// Processing time in milliseconds
-    /// </summary>
-    public double ProcessingTimeMs { get; init; }
 }
 
 /// <summary>

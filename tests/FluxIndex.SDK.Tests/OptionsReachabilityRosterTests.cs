@@ -49,7 +49,6 @@ public class OptionsReachabilityRosterTests
         ["FluxIndex.Core.Application.Interfaces.EnrichmentEntityOptions"] = ["EntityTypes", "LinkExternalKnowledge", "ResolveCoreferences"],
         ["FluxIndex.Core.Application.Interfaces.EnrichmentOptions"] = ["AnalyzeQuality", "CacheEmbeddings", "ExtractRelationships", "GenerateEntityEmbedding", "GraphBuildOptions", "MinEntityConfidence"],
         ["FluxIndex.Core.Application.Interfaces.EntityGraphMergeOptions"] = ["UseEmbeddingsForMatching"],
-        ["FluxIndex.Core.Application.Interfaces.EntityLinkingOptions"] = ["SimilarityThreshold", "UseEmbeddings", "UseFuzzyMatching"],
         ["FluxIndex.Core.Application.Interfaces.EntitySearchOptions"] = ["PriorityEntityTypes"],
         ["FluxIndex.Core.Application.Interfaces.GlobalSearchOptions"] = ["ScoreConfidence"],
         ["FluxIndex.Core.Application.Interfaces.GraphBuildOptions"] = ["CalculateImportanceScores", "MaxCommunityIterations", "MergeThreshold"],
