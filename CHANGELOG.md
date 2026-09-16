@@ -9,6 +9,33 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.43.0]
+
+### Fixed
+
+- **Entity identity is defined in one place, and every stage that needs it uses that one.** Four
+  stages had drifted apart, and nothing failed when they disagreed - the graph simply came out
+  differently depending on which path ran:
+  - In-build linking grouped entities by the normalized text **alone**. One name carried by two types
+    (`Apple` the organisation and `Apple` the product) collapsed into a single node, named after
+    whichever member scored the higher confidence.
+  - The merge against stored extractions keyed on **(normalized name, type)**. So the pair the first
+    stage had just collapsed was looked up as two - and a re-index whose confidences ordered
+    differently stopped matching the nodes the first index wrote.
+  - Whether the extractor's own `ExtractedEntity.NormalizedText` was honoured depended on
+    `EntityGraphBuildOptions.LinkEntitiesAcrossChunks`: the linking path recomputed the name and
+    dropped it, the non-linking path read it. Toggling that option changed stored identity.
+  - `NormalizedText` is a non-nullable string that defaults to empty, so the `??` the non-linking path
+    was written with could never reach its fallback: **every node built through that path was named the
+    empty string**, and because the merge keys on that name, all entities of one type collapsed onto a
+    single stored node.
+  Identity is now one function used by the grouping, the stored merge, both node-building paths and the
+  query-side match. **Behavior change after re-index**: entities that share a name but not a type are
+  now separate nodes (that is the point), and an extractor-supplied `NormalizedText` is honoured
+  whatever the linking option says.
+
+---
+
 ## [0.42.1]
 
 ### Changed

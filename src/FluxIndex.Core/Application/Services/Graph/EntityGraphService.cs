@@ -847,10 +847,10 @@ public partial class EntityGraphService : IEntityGraphService
             return (newNodes, newEdges, newMappings, newNodes.Select(n => n.Id).ToHashSet());
         }
 
-        var storedByKey = new Dictionary<(string NormalizedName, NamedEntityType Type), EntityNode>();
+        var storedByKey = new Dictionary<EntityIdentity, EntityNode>();
         foreach (var storedNode in reused.Nodes)
         {
-            storedByKey.TryAdd((storedNode.NormalizedName, storedNode.Type), storedNode);
+            storedByKey.TryAdd(IdentityOf(storedNode), storedNode);
         }
 
         var merged = new Dictionary<string, EntityNode>();
@@ -863,7 +863,7 @@ public partial class EntityGraphService : IEntityGraphService
         var changed = new HashSet<string>();
         foreach (var node in newNodes)
         {
-            if (storedByKey.TryGetValue((node.NormalizedName, node.Type), out var storedNode))
+            if (storedByKey.TryGetValue(IdentityOf(node), out var storedNode))
             {
                 idMap[node.Id] = storedNode.Id;
                 var current = merged[storedNode.Id];
@@ -1026,7 +1026,7 @@ public partial class EntityGraphService : IEntityGraphService
     {
         // Group entities by normalized text for linking
         var entityGroups = entities
-            .GroupBy(e => NormalizeEntityText(e.Text, e.Type))
+            .GroupBy(IdentityOf)
             .ToList();
 
         var linkedNodes = new List<EntityNode>();
@@ -1050,8 +1050,8 @@ public partial class EntityGraphService : IEntityGraphService
             {
                 Id = newId,
                 Name = canonicalEntity.Text,
-                NormalizedName = group.Key,
-                Type = canonicalEntity.Type,
+                NormalizedName = group.Key.NormalizedName,
+                Type = group.Key.Type,
                 SurfaceForms = groupList.Select(e => e.Text).Distinct().ToList(),
                 Confidence = groupList.Average(e => e.Confidence),
                 MentionCount = groupList.Sum(e => e.OccurrenceCount),
@@ -1082,6 +1082,46 @@ public partial class EntityGraphService : IEntityGraphService
         return (linkedNodes, updatedMappings, oldToNewIdMap);
     }
 
+    /// <summary>
+    /// What makes two entities the same entity. Defined once, on purpose.
+    /// </summary>
+    /// <remarks>
+    /// Entity identity used to be spelled out at each site that needed it, and the spellings had
+    /// drifted apart: the in-build linking grouped by the normalized text alone (so one name carried
+    /// by two types collapsed into a single node whose type was whichever member scored highest),
+    /// the merge against stored extractions keyed on (normalized name, type), and whether the
+    /// extractor's own <see cref="ExtractedEntity.NormalizedText"/> was honoured depended on which of
+    /// the two node-building paths ran - that is, on an option. The consequence was silent: the same
+    /// corpus could produce a different set of nodes on a first index than on a re-index, and nothing
+    /// failed. Keeping the definition in one place is also what lets a later change to identity (a
+    /// declared subtype, say) be one edit rather than three that must not be forgotten.
+    /// </remarks>
+    private readonly record struct EntityIdentity(string NormalizedName, NamedEntityType Type);
+
+    private static EntityIdentity IdentityOf(ExtractedEntity entity) =>
+        new(NormalizedNameOf(entity), entity.Type);
+
+    private static EntityIdentity IdentityOf(EntityNode node) =>
+        new(node.NormalizedName, node.Type);
+
+    /// <summary>
+    /// The normalized name a node carries, whichever path builds it. The extractor's own
+    /// <see cref="ExtractedEntity.NormalizedText"/> wins when it supplies one: it knows more about its
+    /// own output than this class's heuristics do.
+    /// </summary>
+    /// <remarks>
+    /// "Supplies one" has to mean non-empty, not non-null. <see cref="ExtractedEntity.NormalizedText"/>
+    /// is a non-nullable string that defaults to <see cref="string.Empty"/>, so the `??` this code used
+    /// to be written with could never take its right-hand side - every node built through the
+    /// non-linking path was named the empty string, and since the merge against stored extractions keys
+    /// on that name, all entities of one type collapsed onto a single stored node. Nothing failed: the
+    /// suite only exercised the linking path, which computed the name a different way.
+    /// </remarks>
+    private static string NormalizedNameOf(ExtractedEntity entity) =>
+        !string.IsNullOrWhiteSpace(entity.NormalizedText)
+            ? entity.NormalizedText
+            : NormalizeEntityText(entity.Text, entity.Type);
+
     private static string NormalizeEntityText(string text, NamedEntityType type)
     {
         var normalized = text.ToLowerInvariant().Trim();
@@ -1105,7 +1145,7 @@ public partial class EntityGraphService : IEntityGraphService
         {
             Id = entity.Id,
             Name = entity.Text,
-            NormalizedName = entity.NormalizedText ?? NormalizeEntityText(entity.Text, entity.Type),
+            NormalizedName = NormalizedNameOf(entity),
             Type = entity.Type,
             SurfaceForms = new List<string> { entity.Text },
             Confidence = entity.Confidence,
@@ -1260,10 +1300,15 @@ public partial class EntityGraphService : IEntityGraphService
 
             foreach (var entity in extracted)
             {
-                var normalizedText = NormalizeEntityText(entity.Text, entity.Type);
+                // Matched through the same identity the index was built with: a query entity that
+                // resolves to a different key than the stored one would search for something the
+                // writer never wrote. Surface forms stay a secondary, name-only fallback - they are
+                // aliases of a node whose type is already known.
+                var identity = IdentityOf(entity);
                 var match = entityGraph.Entities.FirstOrDefault(e =>
-                    e.NormalizedName == normalizedText ||
-                    e.SurfaceForms.Any(sf => NormalizeEntityText(sf, e.Type) == normalizedText));
+                    IdentityOf(e) == identity ||
+                    (e.Type == identity.Type &&
+                     e.SurfaceForms.Any(sf => NormalizeEntityText(sf, e.Type) == identity.NormalizedName)));
 
                 if (match != null && !matchedEntities.Contains(match))
                 {
