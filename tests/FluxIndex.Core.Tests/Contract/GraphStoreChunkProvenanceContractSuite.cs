@@ -104,6 +104,35 @@ public abstract class GraphStoreChunkProvenanceContractSuite
     }
 
     [Fact]
+    public async Task GetEntitiesByChunkIdsAsync_ReturnsEachSubtypeOfASharedName_WithItsLabelReadable()
+    {
+        // Two entities that differ only in the declared subtype are two entities. The store keeps
+        // them apart by id and returns both; the label each carries under "subtype" has to be
+        // readable as text on the way back, not only present.
+        var ct = TestContext.Current.CancellationToken;
+        var store = await CreateStoreAsync();
+        var (desk, project) = (Fresh("entity"), Fresh("entity"));
+        var chunk = Fresh("chunk");
+
+        await store.StoreEntitiesBatchAsync(
+        [
+            Entity(desk, "Zeus", [chunk], ["doc-a"]) with { Type = NamedEntityType.Custom, Properties = new Dictionary<string, object> { ["subtype"] = "desk" } },
+            Entity(project, "Zeus", [chunk], ["doc-a"]) with { Type = NamedEntityType.Custom, Properties = new Dictionary<string, object> { ["subtype"] = "project" } }
+        ], ct);
+
+        var both = await store.GetEntitiesByChunkIdsAsync([chunk], ct);
+        Assert.Equal(new[] { desk, project }.Order(), both.Select(e => e.Id).Order());
+
+        static string Label(object value) => value switch
+        {
+            string s => s,
+            System.Text.Json.JsonElement { ValueKind: System.Text.Json.JsonValueKind.String } e => e.GetString()!,
+            _ => throw new Xunit.Sdk.XunitException($"subtype came back as {value.GetType().Name}, not text")
+        };
+        Assert.Equal(new[] { "desk", "project" }, both.Select(e => Label(e.Properties["subtype"])).Order());
+    }
+
+    [Fact]
     public async Task GetEntitiesByChunkIdsAsync_MatchesAnyStoredChunkId_OncePerEntity()
     {
         var ct = TestContext.Current.CancellationToken;

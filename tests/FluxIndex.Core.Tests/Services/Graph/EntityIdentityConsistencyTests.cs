@@ -1,3 +1,4 @@
+using System.Text.Json;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services.Graph;
 using FluxIndex.Core.Domain.Entities;
@@ -46,7 +47,7 @@ public class EntityIdentityConsistencyTests
             {
                 var ids = ci.Arg<IEnumerable<string>>().ToHashSet();
                 return Task.FromResult<IReadOnlyList<GraphEntity>>(
-                    _storedEntities.Where(e => e.ChunkIds.Any(ids.Contains)).ToList());
+                    _storedEntities.Where(e => e.ChunkIds.Any(ids.Contains)).Select(RoundTripped).ToList());
             });
         _store.GetRelationshipsAsync(Arg.Any<string>(), Arg.Any<TraversalDirection>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<IReadOnlyList<GraphRelationship>>([]));
@@ -73,8 +74,19 @@ public class EntityIdentityConsistencyTests
         Text = e.Text,
         NormalizedText = e.NormalizedText,
         Type = e.Type,
+        Subtype = e.Subtype,
         Confidence = e.Confidence,
         OccurrenceCount = e.OccurrenceCount
+    };
+
+    // What every real store does to Properties: serialize to JSON on write, deserialize to
+    // Dictionary<string, object> on read - so a string comes back as a JsonElement, not a string.
+    // Handing the build the same object it stored would leave that path unexercised, and it is the
+    // path on which a stored node's subtype is read.
+    private static GraphEntity RoundTripped(GraphEntity stored) => stored with
+    {
+        Properties = JsonSerializer.Deserialize<Dictionary<string, object>>(
+            JsonSerializer.Serialize(stored.Properties)) ?? []
     };
 
     private static DocumentChunk Chunk(string id, string content) => new()
@@ -88,12 +100,13 @@ public class EntityIdentityConsistencyTests
     private EntityGraphService CreateService(IGraphStore? store) =>
         new(_extractor, null, store, NullLogger<EntityGraphService>.Instance);
 
-    private static ExtractedEntity Entity(string text, NamedEntityType type, double confidence, string? normalized = null) => new()
+    private static ExtractedEntity Entity(string text, NamedEntityType type, double confidence, string? normalized = null, string? subtype = null) => new()
     {
         Id = Guid.NewGuid().ToString(),
         Text = text,
-        NormalizedText = normalized,
+        NormalizedText = normalized!,   // null on purpose: the service must treat "not supplied" as absent
         Type = type,
+        Subtype = subtype,
         Confidence = confidence,
         OccurrenceCount = 1
     };
@@ -176,5 +189,109 @@ public class EntityIdentityConsistencyTests
 
         var entity = Assert.Single(graph.Entities);
         Assert.Equal("international business machines", entity.NormalizedName);
+    }
+
+    [Fact]
+    public async Task OneNameCarriedByTwoSubtypes_StaysTwoEntities_EachKeepingItsLabel()
+    {
+        // A consumer that extracts with its own vocabulary - two Custom subtypes sharing a name -
+        // needs both to reach the store. Keyed on name and type alone, the second merged into the
+        // first and its label was gone.
+        _extractionByContent["Zeus the desk and Zeus the project."] =
+        [
+            Entity("Zeus", NamedEntityType.Custom, 0.9, subtype: "desk"),
+            Entity("Zeus", NamedEntityType.Custom, 0.8, subtype: "project")
+        ];
+        var service = CreateService(store: null);
+
+        var graph = await service.BuildEntityGraphAsync(
+            [Chunk("c1", "Zeus the desk and Zeus the project.")],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, graph.Entities.Count);
+        Assert.Equal(
+            new[] { "desk", "project" },
+            graph.Entities.Select(e => e.Properties["subtype"]).OfType<string>().Order());
+    }
+
+    [Fact]
+    public async Task ReIndexingSubtypedEntities_MatchesTheStoredNodes_ThroughTheStoresJsonRoundTrip()
+    {
+        // Every store hands Properties back as JSON elements. If the stored node's subtype were read
+        // as one of those, no stored node would have a subtype, none would match the build, and a
+        // re-index would write a second node beside each. The double round-trips Properties through
+        // JSON for exactly that reason - assert the premise before relying on it.
+        _extractionByContent["Zeus the desk and Zeus the project."] =
+        [
+            Entity("Zeus", NamedEntityType.Custom, 0.9, subtype: "desk"),
+            Entity("Zeus", NamedEntityType.Custom, 0.8, subtype: "project")
+        ];
+        var service = CreateService(_store);
+
+        var first = await service.BuildEntityGraphAsync(
+            [Chunk("c1", "Zeus the desk and Zeus the project.")],
+            cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(2, first.Entities.Count);
+
+        var reread = await _store.GetEntitiesByChunkIdsAsync(["c1"], TestContext.Current.CancellationToken);
+        Assert.All(reread, e => Assert.IsType<JsonElement>(e.Properties["subtype"]));   // fixture premise
+
+        _extractionByContent["Zeus again."] =
+        [
+            Entity("Zeus", NamedEntityType.Custom, 0.7, subtype: "desk"),
+            Entity("Zeus", NamedEntityType.Custom, 0.95, subtype: "project")
+        ];
+        var second = await service.BuildEntityGraphAsync(
+            [Chunk("c1", "Zeus the desk and Zeus the project."), Chunk("c2", "Zeus again.")],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, second.Entities.Count);
+        Assert.Equal(2, _storedEntities.Count);
+        // The labels survived the round trip as strings, on the nodes the build handed back.
+        Assert.Equal(new[] { "desk", "project" }, second.Entities.Select(e => e.Properties["subtype"]).OfType<string>().Order());
+    }
+
+    [Fact]
+    public async Task AQueryEntityWithoutASubtype_MatchesEverySubtypeOfThatName()
+    {
+        // The query extractor sees a few words, not the vocabulary the index was built with. A query
+        // that declares no subtype has to reach every subtype of that name - the index holds two
+        // Zeus nodes and taking the first would silently drop the other from the search.
+        _extractionByContent["Zeus the desk and Zeus the project."] =
+        [
+            Entity("Zeus", NamedEntityType.Custom, 0.9, subtype: "desk"),
+            Entity("Zeus", NamedEntityType.Custom, 0.8, subtype: "project")
+        ];
+        _extractor.ExtractEntitiesAsync("tell me about Zeus", Arg.Any<EntityExtractionOptions>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<ExtractedEntity>>([Entity("Zeus", NamedEntityType.Custom, 0.9)]));
+        var service = CreateService(store: null);
+        var graph = await service.BuildEntityGraphAsync(
+            [Chunk("c1", "Zeus the desk and Zeus the project.")],
+            cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(2, graph.Entities.Count);   // fixture premise: there are two to find
+
+        var result = await service.SearchByEntitiesAsync("tell me about Zeus", graph, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(
+            new[] { "desk", "project" },
+            result.QueryEntities.Select(e => e.Properties["subtype"]).OfType<string>().Order());
+    }
+
+    [Fact]
+    public async Task AnUndeclaredSubtype_KeysAsNone_AndMergesWithTheStoredNode()
+    {
+        // Whitespace is not a declaration. An extractor that leaves the field blank on a re-index
+        // must still find the node it wrote with null.
+        _extractionByContent["Acme"] = [Entity("Acme", NamedEntityType.Organization, 0.9, subtype: null)];
+        var service = CreateService(_store);
+        await service.BuildEntityGraphAsync([Chunk("c1", "Acme")], cancellationToken: TestContext.Current.CancellationToken);
+
+        _extractionByContent["Acme again"] = [Entity("Acme", NamedEntityType.Organization, 0.9, subtype: "  ")];
+        var second = await service.BuildEntityGraphAsync(
+            [Chunk("c1", "Acme"), Chunk("c2", "Acme again")],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Single(second.Entities);
+        Assert.Single(_storedEntities);
     }
 }

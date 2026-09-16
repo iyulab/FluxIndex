@@ -462,9 +462,11 @@ through `IGraphRAGService` — with the build's own knobs laid over: `MinEntityC
 **exactly one `EntityGraph` per input, in input order** — provenance (`GraphEntity.ChunkIds`) is joined by
 position, and a shorter result is rejected rather than leaving chunks silently without entities. Whether
 a batch is extracted text by text or resolved as one set is the extractor's choice; an entity present
-in several inputs appears in each input's graph and is merged by normalized name and type. Anything the
+in several inputs appears in each input's graph and is merged by normalized name, type **and declared
+`Subtype`** — two `Custom` subtypes sharing a name are two nodes, each keeping its label. Anything the
 extractor puts in `ExtractedEntity.Metadata` (and `Subtype`, as `"subtype"`) is kept on the node's
-`Properties` and persisted.
+`Properties` and persisted; values read back from a store are the primitives the build wrote, not JSON
+elements. A query entity that declares no subtype matches every subtype of its name and type.
 
 **What the default extractor does with its options.** `Language` (free-form, e.g. `"ko"`) is a hint
 to the LLM: the prompt names the language and asks for entity text exactly as written, so names on a

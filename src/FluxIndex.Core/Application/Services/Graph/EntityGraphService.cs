@@ -1093,16 +1093,48 @@ public partial class EntityGraphService : IEntityGraphService
     /// extractor's own <see cref="ExtractedEntity.NormalizedText"/> was honoured depended on which of
     /// the two node-building paths ran - that is, on an option. The consequence was silent: the same
     /// corpus could produce a different set of nodes on a first index than on a re-index, and nothing
-    /// failed. Keeping the definition in one place is also what lets a later change to identity (a
-    /// declared subtype, say) be one edit rather than three that must not be forgotten.
+    /// failed. Keeping the definition in one place is also what lets a change to identity be one edit
+    /// rather than three that must not be forgotten - which is how <see cref="Subtype"/> joined it.
     /// </remarks>
-    private readonly record struct EntityIdentity(string NormalizedName, NamedEntityType Type);
+    /// <param name="NormalizedName">The name as <see cref="NormalizedNameOf"/> spells it.</param>
+    /// <param name="Type">The extractor's type for the entity.</param>
+    /// <param name="Subtype">
+    /// The extractor's declared subtype, or null when it declared none. A consumer that extracts with
+    /// a domain vocabulary (two <see cref="NamedEntityType.Custom"/> subtypes sharing a name, say)
+    /// needs the vocabulary to survive to the store as separate nodes; keyed on name and type alone,
+    /// the second subtype merged into the first and its label was dropped. The value is the declared
+    /// key as written - trimmed, compared ordinally, never lower-cased - because it is a vocabulary
+    /// term the consumer chose, not free text this class knows how to normalize.
+    /// </param>
+    private readonly record struct EntityIdentity(string NormalizedName, NamedEntityType Type, string? Subtype)
+    {
+        /// <summary>
+        /// Whether a node of this identity answers a query entity of <paramref name="query"/>'s. A
+        /// query entity is extracted from a few words without the vocabulary the index was built with,
+        /// so a query that declares no subtype matches every subtype of that name and type; a query
+        /// that does declare one matches only its own.
+        /// </summary>
+        public bool Answers(EntityIdentity query) =>
+            NormalizedName == query.NormalizedName
+            && Type == query.Type
+            && (query.Subtype is null || Subtype == query.Subtype);
+    }
 
     private static EntityIdentity IdentityOf(ExtractedEntity entity) =>
-        new(NormalizedNameOf(entity), entity.Type);
+        new(NormalizedNameOf(entity), entity.Type, SubtypeOf(entity.Subtype));
 
+    /// <remarks>
+    /// Reads the subtype the build stored under <c>"subtype"</c> (<see cref="ToNodeProperties"/>). A
+    /// node reconstituted from a store passes through <see cref="StoredGraphConversions.ToEntityNode"/>,
+    /// which unwraps the JSON element every store hands back - so the value here is the string the
+    /// build wrote, and a stored node keys the same as the build that wrote it.
+    /// </remarks>
     private static EntityIdentity IdentityOf(EntityNode node) =>
-        new(node.NormalizedName, node.Type);
+        new(node.NormalizedName, node.Type,
+            SubtypeOf(node.Properties.TryGetValue("subtype", out var subtype) ? subtype as string : null));
+
+    private static string? SubtypeOf(string? declared) =>
+        string.IsNullOrWhiteSpace(declared) ? null : declared.Trim();
 
     /// <summary>
     /// The normalized name a node carries, whichever path builds it. The extractor's own
@@ -1302,17 +1334,22 @@ public partial class EntityGraphService : IEntityGraphService
             {
                 // Matched through the same identity the index was built with: a query entity that
                 // resolves to a different key than the stored one would search for something the
-                // writer never wrote. Surface forms stay a secondary, name-only fallback - they are
-                // aliases of a node whose type is already known.
+                // writer never wrote. A query entity carries no subtype unless the extractor declared
+                // one, and then it answers every subtype of that name and type - the index may hold
+                // several, and picking the first would drop the rest. Surface forms stay a secondary,
+                // name-only fallback - they are aliases of a node whose type is already known.
                 var identity = IdentityOf(entity);
-                var match = entityGraph.Entities.FirstOrDefault(e =>
-                    IdentityOf(e) == identity ||
+                var matches = entityGraph.Entities.Where(e =>
+                    IdentityOf(e).Answers(identity) ||
                     (e.Type == identity.Type &&
                      e.SurfaceForms.Any(sf => NormalizeEntityText(sf, e.Type) == identity.NormalizedName)));
 
-                if (match != null && !matchedEntities.Contains(match))
+                foreach (var match in matches)
                 {
-                    matchedEntities.Add(match);
+                    if (!matchedEntities.Contains(match))
+                    {
+                        matchedEntities.Add(match);
+                    }
                 }
             }
         }

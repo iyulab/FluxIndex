@@ -262,8 +262,16 @@ public class ExtractedEntity
     public string? ExternalLink { get; init; }
 
     /// <summary>
-    /// Entity subtype for more specific classification
+    /// Entity subtype for more specific classification - the consumer's own vocabulary term (the key
+    /// of a custom pattern, or whatever a replacement extractor declares).
     /// </summary>
+    /// <remarks>
+    /// Part of entity identity: two extracted entities are the same entity when their normalized
+    /// name, <see cref="Type"/> and subtype agree, so a name shared by two subtypes is stored as two
+    /// nodes, each carrying its own label under <c>"subtype"</c> in the node's properties. The value
+    /// is trimmed and compared ordinally; it is not lower-cased, because it is a declared key rather
+    /// than free text. Null or whitespace means "none declared" and keys as null.
+    /// </remarks>
     public string? Subtype { get; init; }
 }
 

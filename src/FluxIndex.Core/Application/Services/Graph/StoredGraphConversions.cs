@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.Entities;
 
@@ -25,8 +26,56 @@ internal static class StoredGraphConversions
         MentionCount = stored.MentionCount,
         Embedding = stored.Embedding,
         ExternalLinks = stored.ExternalLinks,
-        Properties = stored.Properties
+        Properties = ToPlainProperties(stored.Properties)
     };
+
+    /// <summary>
+    /// Property values as the build wrote them, whatever the store handed back. Every store keeps
+    /// <see cref="GraphEntity.Properties"/> as JSON and deserializes it to
+    /// <c>Dictionary&lt;string, object&gt;</c>, so a string written as <c>"desk"</c> comes back as a
+    /// <see cref="JsonElement"/> of kind String - equal to nothing the build compares it with. Entity
+    /// identity reads <c>"subtype"</c> from here; left as a <see cref="JsonElement"/>, every stored
+    /// node would carry no subtype at all and a re-index would write a second node beside each one.
+    /// Primitives are unwrapped; objects and arrays are kept as the element they are.
+    /// </summary>
+    internal static IReadOnlyDictionary<string, object> ToPlainProperties(IReadOnlyDictionary<string, object> stored)
+    {
+        if (stored.Count == 0 || !stored.Values.Any(v => v is JsonElement))
+        {
+            return stored;
+        }
+
+        var plain = new Dictionary<string, object>(stored.Count);
+        foreach (var (key, value) in stored)
+        {
+            if (value is not JsonElement element)
+            {
+                plain[key] = value;
+                continue;
+            }
+
+            switch (element.ValueKind)
+            {
+                case JsonValueKind.String:
+                    plain[key] = element.GetString()!;
+                    break;
+                case JsonValueKind.Number:
+                    plain[key] = element.TryGetInt64(out var integer) ? integer : element.GetDouble();
+                    break;
+                case JsonValueKind.True:
+                case JsonValueKind.False:
+                    plain[key] = element.GetBoolean();
+                    break;
+                case JsonValueKind.Null:
+                case JsonValueKind.Undefined:
+                    break;
+                default:
+                    plain[key] = element;
+                    break;
+            }
+        }
+        return plain;
+    }
 
     /// <summary>
     /// One mapping per stored chunk id that is in scope. Per-chunk mention counts and positions are

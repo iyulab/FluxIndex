@@ -33,6 +33,20 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   query-side match. **Behavior change after re-index**: entities that share a name but not a type are
   now separate nodes (that is the point), and an extractor-supplied `NormalizedText` is honoured
   whatever the linking option says.
+- **The declared subtype is part of entity identity.** An extractor that classifies with its own
+  vocabulary - two `Custom` subtypes sharing a name - had the second merged into the first and its
+  label dropped, because identity was (normalized name, type) alone. Identity is now (normalized name,
+  type, subtype): each subtype is its own node carrying its label under `"subtype"` in the node's
+  properties, and `GetEntitiesByChunkIdsAsync` returns each with its own label. The subtype is trimmed
+  and compared ordinally (a declared key, not free text); null or whitespace keys as none. A query
+  entity that declares no subtype matches every subtype of that name and type, and `SearchByEntitiesAsync`
+  now returns all of them rather than the first. **Behavior change after re-index**: subtyped and
+  non-subtyped entities of one name are separate nodes.
+- **Property values read back from a store are the values the build wrote.** Every store keeps node
+  properties as JSON and deserialized them to `JsonElement`s, so `Properties["subtype"]` on a
+  reconstituted node was never equal to the string the build compared it with - and a re-index would
+  have written a second node beside every subtyped one. Reconstitution now unwraps JSON primitives
+  (string, number, boolean); objects and arrays stay elements.
 
 ---
 
