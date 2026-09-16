@@ -4,6 +4,7 @@ using FluxIndex.SDK.Configuration;
 using FluxIndex.Storage.SQLite.Cache;
 using FluxIndex.Storage.SQLite.Graph;
 using Microsoft.EntityFrameworkCore;
+using FluxIndex.Core.Application.Services.KeywordSearch;
 using FluxIndex.Storage.SQLite.KeywordSearch;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -199,7 +200,8 @@ public static class FluxIndexContextBuilderExtensions
         services.AddSingleton<SQLiteKeywordSearchService>(sp => new SQLiteKeywordSearchService(
             connectionString,
             sp.GetRequiredService<ILogger<SQLiteKeywordSearchService>>(),
-            sp.GetService<ITextAnalyzer>()));
+            sp.GetService<ITextAnalyzer>(),
+            sp.GetService<KeywordFieldOptions>()));
         services.AddSingleton<IKeywordSearchService>(sp =>
             sp.GetRequiredService<SQLiteKeywordSearchService>());
 

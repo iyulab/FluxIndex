@@ -38,8 +38,9 @@ public sealed class SQLiteKeywordSearchService : RelationalKeywordSearchService
     public SQLiteKeywordSearchService(
         IOptions<SQLiteOptions> options,
         ILogger<SQLiteKeywordSearchService> logger,
-        ITextAnalyzer? analyzer = null)
-        : base(logger, analyzer)
+        ITextAnalyzer? analyzer = null,
+        KeywordFieldOptions? fields = null)
+        : base(logger, analyzer, fields)
     {
         ArgumentNullException.ThrowIfNull(options);
         var opts = options.Value;
@@ -52,8 +53,9 @@ public sealed class SQLiteKeywordSearchService : RelationalKeywordSearchService
     public SQLiteKeywordSearchService(
         string connectionString,
         ILogger<SQLiteKeywordSearchService> logger,
-        ITextAnalyzer? analyzer = null)
-        : base(logger, analyzer)
+        ITextAnalyzer? analyzer = null,
+        KeywordFieldOptions? fields = null)
+        : base(logger, analyzer, fields)
     {
         _connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
     }
@@ -100,6 +102,17 @@ public sealed class SQLiteKeywordSearchService : RelationalKeywordSearchService
             FOREIGN KEY (term_id) REFERENCES bm25_terms(id) ON DELETE CASCADE
         );
 
+        CREATE TABLE IF NOT EXISTS bm25_field_postings (
+            term_id INTEGER NOT NULL,
+            chunk_id TEXT NOT NULL,
+            field TEXT NOT NULL,
+            term_frequency INTEGER NOT NULL,
+            field_length INTEGER NOT NULL,
+            document_length INTEGER NOT NULL,
+            PRIMARY KEY (term_id, chunk_id, field),
+            FOREIGN KEY (term_id) REFERENCES bm25_terms(id) ON DELETE CASCADE
+        );
+
         CREATE TABLE IF NOT EXISTS bm25_chunks (
             chunk_id TEXT PRIMARY KEY,
             document_id TEXT NOT NULL,
@@ -123,6 +136,7 @@ public sealed class SQLiteKeywordSearchService : RelationalKeywordSearchService
 
         CREATE INDEX IF NOT EXISTS idx_bm25_terms_term ON bm25_terms(term);
         CREATE INDEX IF NOT EXISTS idx_bm25_postings_chunk ON bm25_postings(chunk_id);
+        CREATE INDEX IF NOT EXISTS idx_bm25_field_postings_chunk ON bm25_field_postings(chunk_id);
         CREATE INDEX IF NOT EXISTS idx_bm25_chunks_document ON bm25_chunks(document_id);
         CREATE INDEX IF NOT EXISTS idx_bm25_chunk_metadata_lookup
             ON bm25_chunk_metadata(meta_key, meta_value);
@@ -154,9 +168,14 @@ public sealed class SQLiteKeywordSearchService : RelationalKeywordSearchService
         """;
 
     /// <inheritdoc />
+    protected override string UpsertFieldPostingSql => """
+        INSERT OR REPLACE INTO bm25_field_postings (term_id, chunk_id, field, term_frequency, field_length, document_length)
+        VALUES (@termId, @chunkId, @field, @tf, @fieldLen, @docLen);
+        """;
+
+    /// <inheritdoc />
     protected override string UpsertStatisticSql => """
-        INSERT OR REPLACE INTO bm25_statistics (key, value) VALUES ('total_documents', @totalDocs);
-        INSERT OR REPLACE INTO bm25_statistics (key, value) VALUES ('avg_doc_length', @avgLength);
+        INSERT OR REPLACE INTO bm25_statistics (key, value) VALUES (@key, @value);
         """;
 
     /// <inheritdoc />

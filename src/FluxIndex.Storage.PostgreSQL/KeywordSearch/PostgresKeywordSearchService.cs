@@ -26,8 +26,9 @@ public sealed class PostgresKeywordSearchService : RelationalKeywordSearchServic
     public PostgresKeywordSearchService(
         IOptions<PostgreSQLOptions> options,
         ILogger<PostgresKeywordSearchService> logger,
-        ITextAnalyzer? analyzer = null)
-        : base(logger, analyzer)
+        ITextAnalyzer? analyzer = null,
+        KeywordFieldOptions? fields = null)
+        : base(logger, analyzer, fields)
     {
         ArgumentNullException.ThrowIfNull(options);
         _connectionString = options.Value.ConnectionString;
@@ -37,8 +38,9 @@ public sealed class PostgresKeywordSearchService : RelationalKeywordSearchServic
     public PostgresKeywordSearchService(
         string connectionString,
         ILogger<PostgresKeywordSearchService> logger,
-        ITextAnalyzer? analyzer = null)
-        : base(logger, analyzer)
+        ITextAnalyzer? analyzer = null,
+        KeywordFieldOptions? fields = null)
+        : base(logger, analyzer, fields)
     {
         _connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
     }
@@ -76,6 +78,16 @@ public sealed class PostgresKeywordSearchService : RelationalKeywordSearchServic
             PRIMARY KEY (term_id, chunk_id)
         );
 
+        CREATE TABLE IF NOT EXISTS bm25_field_postings (
+            term_id bigint NOT NULL REFERENCES bm25_terms(id) ON DELETE CASCADE,
+            chunk_id text NOT NULL,
+            field text NOT NULL,
+            term_frequency integer NOT NULL,
+            field_length integer NOT NULL,
+            document_length integer NOT NULL,
+            PRIMARY KEY (term_id, chunk_id, field)
+        );
+
         CREATE TABLE IF NOT EXISTS bm25_chunks (
             chunk_id text PRIMARY KEY,
             document_id text NOT NULL,
@@ -102,6 +114,7 @@ public sealed class PostgresKeywordSearchService : RelationalKeywordSearchServic
 
         CREATE INDEX IF NOT EXISTS idx_bm25_terms_term ON bm25_terms(term);
         CREATE INDEX IF NOT EXISTS idx_bm25_postings_chunk ON bm25_postings(chunk_id);
+        CREATE INDEX IF NOT EXISTS idx_bm25_field_postings_chunk ON bm25_field_postings(chunk_id);
         CREATE INDEX IF NOT EXISTS idx_bm25_chunks_document ON bm25_chunks(document_id);
         """;
 
@@ -136,13 +149,19 @@ public sealed class PostgresKeywordSearchService : RelationalKeywordSearchServic
             document_length = excluded.document_length;
         """;
 
-    /// <summary>
-    /// Both rows go in one statement rather than two: Npgsql matches parameters per statement, and a
-    /// two-statement batch where each references only one of them is needlessly fragile.
-    /// </summary>
+    /// <inheritdoc />
+    protected override string UpsertFieldPostingSql => """
+        INSERT INTO bm25_field_postings (term_id, chunk_id, field, term_frequency, field_length, document_length)
+        VALUES (@termId, @chunkId, @field, @tf, @fieldLen, @docLen)
+        ON CONFLICT (term_id, chunk_id, field) DO UPDATE SET
+            term_frequency = excluded.term_frequency,
+            field_length = excluded.field_length,
+            document_length = excluded.document_length;
+        """;
+
+    /// <inheritdoc />
     protected override string UpsertStatisticSql => """
-        INSERT INTO bm25_statistics (key, value)
-        VALUES ('total_documents', @totalDocs), ('avg_doc_length', @avgLength)
+        INSERT INTO bm25_statistics (key, value) VALUES (@key, @value)
         ON CONFLICT (key) DO UPDATE SET value = excluded.value;
         """;
 

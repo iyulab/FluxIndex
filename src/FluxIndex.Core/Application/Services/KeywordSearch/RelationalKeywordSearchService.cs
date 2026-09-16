@@ -40,13 +40,22 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     protected ITextAnalyzer Analyzer { get; }
 
     /// <summary>
-    /// Initializes the shared index with the logger used for its operations and, optionally, the
-    /// analyzer that defines what a term is (<see cref="DefaultTextAnalyzer"/> when omitted).
+    /// The metadata fields scored alongside the chunk body (BM25F), and their weights. One instance
+    /// serves the index path and the query path, so a field indexed is a field queried; the default
+    /// scores <c>title</c> and <c>file_name</c>, <see cref="KeywordFieldOptions.None"/> is body-only.
     /// </summary>
-    protected RelationalKeywordSearchService(ILogger logger, ITextAnalyzer? analyzer = null)
+    protected KeywordFieldOptions Fields { get; }
+
+    /// <summary>
+    /// Initializes the shared index with the logger used for its operations and, optionally, the
+    /// analyzer that defines what a term is (<see cref="DefaultTextAnalyzer"/> when omitted) and the
+    /// metadata fields scored beside the body (the <see cref="KeywordFieldOptions"/> default when omitted).
+    /// </summary>
+    protected RelationalKeywordSearchService(ILogger logger, ITextAnalyzer? analyzer = null, KeywordFieldOptions? fields = null)
     {
         Logger = logger ?? throw new ArgumentNullException(nameof(logger));
         Analyzer = analyzer ?? DefaultTextAnalyzer.Instance;
+        Fields = fields ?? new KeywordFieldOptions();
     }
 
     #region Dialect surface
@@ -55,8 +64,11 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     protected abstract DbConnection CreateConnection();
 
     /// <summary>
-    /// DDL that creates the four index relations and their indexes if absent:
-    /// <c>bm25_terms</c>, <c>bm25_postings</c>, <c>bm25_chunks</c>, <c>bm25_statistics</c>.
+    /// DDL that creates the index relations and their indexes if absent: <c>bm25_terms</c>,
+    /// <c>bm25_postings</c>, <c>bm25_field_postings</c>, <c>bm25_chunks</c>, <c>bm25_chunk_metadata</c>,
+    /// <c>bm25_statistics</c>. Every statement is <c>IF NOT EXISTS</c>, so an index created by an
+    /// earlier version gains the relations it lacks on first use and keeps ranking as before until
+    /// its chunks are re-indexed.
     /// </summary>
     protected abstract string SchemaDdl { get; }
 
@@ -69,7 +81,13 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     /// <summary>Upsert for a row of <c>bm25_postings</c>, keyed on (<c>term_id</c>, <c>chunk_id</c>).</summary>
     protected abstract string UpsertPostingSql { get; }
 
-    /// <summary>Upsert for a row of <c>bm25_statistics</c>, keyed on <c>key</c>.</summary>
+    /// <summary>
+    /// Upsert for a row of <c>bm25_field_postings</c>, keyed on (<c>term_id</c>, <c>chunk_id</c>, <c>field</c>),
+    /// with parameters <c>@termId</c>, <c>@chunkId</c>, <c>@field</c>, <c>@tf</c>, <c>@fieldLen</c>, <c>@docLen</c>.
+    /// </summary>
+    protected abstract string UpsertFieldPostingSql { get; }
+
+    /// <summary>Upsert for one row of <c>bm25_statistics</c> (<c>@key</c>, <c>@value</c>), keyed on <c>key</c>.</summary>
     protected abstract string UpsertStatisticSql { get; }
 
     /// <summary>Statement run by <see cref="OptimizeIndexAsync"/> to compact the store, or null if none applies.</summary>
@@ -183,6 +201,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         if (totalDocs == 0 || avgDocLength == 0)
             return [];
 
+        var fieldAverageLengths = await LoadFieldAverageLengthsAsync(connection, cancellationToken).ConfigureAwait(false);
         var scores = new Dictionary<string, ScoreAccumulator>(StringComparer.Ordinal);
 
         foreach (var term in terms)
@@ -193,54 +212,107 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
 
             var idf = ComputeIdf(totalDocs, documentFrequency);
 
-            await using var postingCmd = connection.CreateCommand();
+            // Everything the index knows about this term per chunk — the body posting and any field
+            // postings — is collected first and scored once, so a chunk matched in its title and its
+            // body gets one BM25F score rather than two BM25 scores added together.
+            var evidence = new Dictionary<string, TermEvidence>(StringComparer.Ordinal);
 
-            // A document-scoped search restricts the postings themselves rather than the results, so
-            // the top-N cut still returns N matches inside that document instead of whatever survives
-            // filtering the global top N.
-            var scopeJoin = string.Empty;
-            if (!string.IsNullOrWhiteSpace(options.DocumentIdFilter))
+            await using (var postingCmd = connection.CreateCommand())
             {
-                scopeJoin = " JOIN bm25_chunks c ON c.chunk_id = p.chunk_id AND c.document_id = @documentIdFilter";
-                AddParameter(postingCmd, "@documentIdFilter", options.DocumentIdFilter);
+                var (scopeJoin, metadataPredicate) = BuildScope(postingCmd, "p", options, metadataFilter);
+                postingCmd.CommandText =
+                    "SELECT p.chunk_id, p.term_frequency, p.document_length " +
+                    $"FROM bm25_postings p{scopeJoin} WHERE p.term_id = @termId{metadataPredicate}";
+                AddParameter(postingCmd, "@termId", termId.Value);
+
+                await using var postingReader = await postingCmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+                while (await postingReader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    var chunkId = postingReader.GetString(0);
+                    evidence[chunkId] = new TermEvidence
+                    {
+                        BodyTf = postingReader.GetInt32(1),
+                        DocumentLength = postingReader.GetInt32(2),
+                    };
+                }
             }
 
-            // Same reason as the document scope above, and the reason this is not a post-filter: the
-            // condition restricts the postings, so MaxResults selects the top N *within* the scope
-            // instead of filtering whatever won the global ranking race.
-            var metadataPredicate = metadataFilter is null
-                ? string.Empty
-                : BuildMetadataPredicate(postingCmd, "p.chunk_id", metadataFilter);
-
-            postingCmd.CommandText =
-                "SELECT p.chunk_id, p.term_frequency, p.document_length " +
-                $"FROM bm25_postings p{scopeJoin} WHERE p.term_id = @termId{metadataPredicate}";
-            AddParameter(postingCmd, "@termId", termId.Value);
-
-            await using var postingReader = await postingCmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-            while (await postingReader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            if (Fields.Fields.Count > 0)
             {
-                var chunkId = postingReader.GetString(0);
-                var tf = postingReader.GetInt32(1);
-                var docLength = postingReader.GetInt32(2);
+                await using var fieldCmd = connection.CreateCommand();
+                var (scopeJoin, metadataPredicate) = BuildScope(fieldCmd, "f", options, metadataFilter);
+                var fieldPredicate = BuildFieldPredicate(fieldCmd, "f.field");
+                fieldCmd.CommandText =
+                    "SELECT f.chunk_id, f.field, f.term_frequency, f.field_length, f.document_length " +
+                    $"FROM bm25_field_postings f{scopeJoin} WHERE f.term_id = @termId AND {fieldPredicate}{metadataPredicate}";
+                AddParameter(fieldCmd, "@termId", termId.Value);
 
-                var normalizedTf = tf * (options.K1 + 1) /
-                    (tf + options.K1 * (1 - options.B + options.B * (docLength / avgDocLength)));
-                var bm25Score = idf * normalizedTf;
+                await using var fieldReader = await fieldCmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+                while (await fieldReader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    var chunkId = fieldReader.GetString(0);
+                    var field = fieldReader.GetString(1);
+                    var fieldTf = fieldReader.GetInt32(2);
+                    var fieldLength = fieldReader.GetInt32(3);
+                    var documentLength = fieldReader.GetInt32(4);
+
+                    var weight = FieldWeight(field);
+                    var averageLength = fieldAverageLengths.GetValueOrDefault(field);
+                    var lengthNorm = averageLength > 0
+                        ? 1 - options.B + options.B * (fieldLength / averageLength)
+                        : 1;
+
+                    if (!evidence.TryGetValue(chunkId, out var chunkEvidence))
+                    {
+                        chunkEvidence = new TermEvidence { DocumentLength = documentLength };
+                        evidence[chunkId] = chunkEvidence;
+                    }
+
+                    chunkEvidence.FieldContribution += weight * fieldTf / lengthNorm;
+                    chunkEvidence.FieldTf += fieldTf;
+                }
+            }
+
+            foreach (var (chunkId, chunkEvidence) in evidence)
+            {
+                double bm25Score;
+                if (chunkEvidence.FieldContribution == 0)
+                {
+                    // Body-only evidence keeps the classic BM25 expression verbatim, so an index with no
+                    // field postings — every index built before fields existed — scores bit-for-bit as
+                    // it always did. The BM25F branch below is algebraically the same for a body-only
+                    // chunk, but algebra is not floating point.
+                    var tf = chunkEvidence.BodyTf;
+                    var normalizedTf = tf * (options.K1 + 1) /
+                        (tf + options.K1 * (1 - options.B + options.B * (chunkEvidence.DocumentLength / avgDocLength)));
+                    bm25Score = idf * normalizedTf;
+                }
+                else
+                {
+                    // BM25F: each field's term frequency is length-normalized against that field's own
+                    // average, weighted, and summed into one frequency that is then saturated once.
+                    var bodyContribution = chunkEvidence.BodyTf == 0
+                        ? 0
+                        : chunkEvidence.BodyTf / (1 - options.B + options.B * (chunkEvidence.DocumentLength / avgDocLength));
+                    var combinedTf = bodyContribution + chunkEvidence.FieldContribution;
+                    bm25Score = idf * combinedTf * (options.K1 + 1) / (combinedTf + options.K1);
+                }
+
+                var reportedTf = chunkEvidence.BodyTf > 0 ? chunkEvidence.BodyTf : chunkEvidence.FieldTf;
 
                 if (scores.TryGetValue(chunkId, out var existing))
                 {
                     existing.MatchedTerms.Add(term);
-                    existing.TermFrequencies[term] = tf;
-                    scores[chunkId] = existing with { Score = existing.Score + bm25Score, DocumentLength = docLength };
+                    existing.TermFrequencies[term] = reportedTf;
+                    scores[chunkId] = existing with { Score = existing.Score + bm25Score, DocumentLength = chunkEvidence.DocumentLength };
                 }
                 else
                 {
                     scores[chunkId] = new ScoreAccumulator(
                         bm25Score,
                         [term],
-                        new Dictionary<string, int>(StringComparer.Ordinal) { [term] = tf },
-                        docLength);
+                        new Dictionary<string, int>(StringComparer.Ordinal) { [term] = reportedTf },
+                        chunkEvidence.DocumentLength);
                 }
             }
         }
@@ -352,6 +424,86 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         Dictionary<string, int> TermFrequencies,
         int DocumentLength);
 
+    /// <summary>What one term contributes to one chunk before saturation: the body posting and the field postings.</summary>
+    private sealed class TermEvidence
+    {
+        public int BodyTf;
+        public int DocumentLength;
+        public double FieldContribution;
+        public int FieldTf;
+    }
+
+    /// <summary>
+    /// The document scope and metadata filter a postings read has to carry, as a JOIN fragment and a
+    /// predicate fragment against the given table alias. Both the body read and the field read go
+    /// through here: a scoped query must not surface a title hit from another document.
+    /// </summary>
+    private static (string ScopeJoin, string MetadataPredicate) BuildScope(
+        DbCommand command,
+        string alias,
+        KeywordSearchOptions options,
+        IReadOnlyList<(string Key, IReadOnlyList<string> Accepted)>? metadataFilter)
+    {
+        // A document-scoped search restricts the postings themselves rather than the results, so
+        // the top-N cut still returns N matches inside that document instead of whatever survives
+        // filtering the global top N. Same for the metadata filter: the condition restricts the
+        // postings, so MaxResults selects the top N *within* the scope.
+        var scopeJoin = string.Empty;
+        if (!string.IsNullOrWhiteSpace(options.DocumentIdFilter))
+        {
+            scopeJoin = $" JOIN bm25_chunks c ON c.chunk_id = {alias}.chunk_id AND c.document_id = @documentIdFilter";
+            AddParameter(command, "@documentIdFilter", options.DocumentIdFilter);
+        }
+
+        var metadataPredicate = metadataFilter is null
+            ? string.Empty
+            : BuildMetadataPredicate(command, $"{alias}.chunk_id", metadataFilter);
+
+        return (scopeJoin, metadataPredicate);
+    }
+
+    /// <summary>
+    /// Restricts a field read to the fields currently configured. Rows a previous configuration
+    /// wrote for a field that is no longer listed stay in the table until the chunk is re-indexed,
+    /// and must not score.
+    /// </summary>
+    private string BuildFieldPredicate(DbCommand command, string columnRef)
+    {
+        var names = new string[Fields.Fields.Count];
+        for (var i = 0; i < names.Length; i++)
+        {
+            names[i] = $"@field{i}";
+            AddParameter(command, names[i], Fields.Fields[i].MetadataKey);
+        }
+
+        return $"{columnRef} IN ({string.Join(", ", names)})";
+    }
+
+    private double FieldWeight(string field)
+    {
+        foreach (var candidate in Fields.Fields)
+        {
+            if (string.Equals(candidate.MetadataKey, field, StringComparison.Ordinal))
+                return candidate.Weight;
+        }
+
+        return 0;
+    }
+
+    private static string FieldAverageLengthKey(string field) => "avg_field_length:" + field;
+
+    private async Task<Dictionary<string, double>> LoadFieldAverageLengthsAsync(DbConnection connection, CancellationToken cancellationToken)
+    {
+        var averages = new Dictionary<string, double>(StringComparer.Ordinal);
+        foreach (var field in Fields.Fields)
+        {
+            averages[field.MetadataKey] = await GetStatValueAsync(
+                connection, FieldAverageLengthKey(field.MetadataKey), cancellationToken).ConfigureAwait(false);
+        }
+
+        return averages;
+    }
+
     #endregion
 
     #region Index management
@@ -378,8 +530,10 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
 
         // Tokenized once, outside the retry: the token stream does not change between attempts, and
         // re-deriving it would pay the whole cost again for a failure that was purely a lock cycle.
+        // A chunk with no body terms is not indexed, fields or not: the body is what the index is of,
+        // and a title-only row would be a chunk the store cannot show a snippet for.
         var tokenized = chunkList
-            .Select(c => (Chunk: c, Terms: Tokenize(c.Content).ToList()))
+            .Select(c => (Chunk: c, Terms: Tokenize(c.Content).ToList(), FieldTerms: TokenizeFields(c)))
             .Where(t => t.Terms.Count > 0)
             .ToList();
 
@@ -419,9 +573,37 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         }
     }
 
+    /// <summary>
+    /// The terms of each configured field for a chunk: the field's metadata value(s), projected to
+    /// text the same way the filter dimension projects them, then analyzed by the one analyzer the
+    /// body uses. A field the chunk does not carry produces nothing.
+    /// </summary>
+    private List<(string Field, List<string> Terms)> TokenizeFields(DocumentChunk chunk)
+    {
+        var result = new List<(string Field, List<string> Terms)>();
+        if (Fields.Fields.Count == 0 || chunk.Metadata is not { Count: > 0 })
+            return result;
+
+        var projected = KeywordMetadataFilter.Project(chunk.Metadata).ToList();
+        foreach (var field in Fields.Fields)
+        {
+            var text = string.Join(
+                " ",
+                projected.Where(row => string.Equals(row.Key, field.MetadataKey, StringComparison.Ordinal)).Select(row => row.Value));
+            if (text.Length == 0)
+                continue;
+
+            var terms = Tokenize(text).ToList();
+            if (terms.Count > 0)
+                result.Add((field.MetadataKey, terms));
+        }
+
+        return result;
+    }
+
     /// <summary>Attempts one transaction. Retried as a whole by the caller on a serialization failure.</summary>
     private async Task IndexTokenizedChunksAsync(
-        IReadOnlyList<(DocumentChunk Chunk, List<string> Terms)> tokenized,
+        IReadOnlyList<(DocumentChunk Chunk, List<string> Terms, List<(string Field, List<string> Terms)> FieldTerms)> tokenized,
         CancellationToken cancellationToken)
     {
         await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
@@ -439,18 +621,23 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             // are acquired in the same pass rather than left for the recompute to lock in executor order.
             var storedTerms = await ReadStoredTermsAsync(
                 connection, tokenized.Select(t => t.Chunk.Id), cancellationToken).ConfigureAwait(false);
+            // Field terms are part of the same sorted pass: they are term rows like any other, and a
+            // second acquisition order for them would reopen the cycle the sort removes.
             var termIds = await AcquireTermIdsAsync(
                 connection,
-                TermAcquisitionOrder(tokenized.Select(t => t.Terms).Append(storedTerms)),
+                TermAcquisitionOrder(tokenized
+                    .Select(t => (IEnumerable<string>)t.Terms)
+                    .Concat(tokenized.SelectMany(t => t.FieldTerms.Select(f => (IEnumerable<string>)f.Terms)))
+                    .Append(storedTerms)),
                 cancellationToken).ConfigureAwait(false);
 
             foreach (var id in termIds.Values)
                 affectedTermIds.Add(id);
 
             var indexedChunks = 0;
-            foreach (var (chunk, terms) in tokenized)
+            foreach (var (chunk, terms, fieldTerms) in tokenized)
             {
-                if (await IndexChunkCoreAsync(connection, chunk, terms, termIds, affectedTermIds, cancellationToken).ConfigureAwait(false))
+                if (await IndexChunkCoreAsync(connection, chunk, terms, fieldTerms, termIds, affectedTermIds, cancellationToken).ConfigureAwait(false))
                     indexedChunks++;
             }
 
@@ -544,6 +731,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         DbConnection connection,
         DocumentChunk chunk,
         List<string> terms,
+        List<(string Field, List<string> Terms)> fieldTerms,
         Dictionary<string, long> termIds,
         HashSet<long> affectedTermIds,
         CancellationToken cancellationToken)
@@ -556,7 +744,10 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
 
         await using (var deleteCmd = connection.CreateCommand())
         {
-            deleteCmd.CommandText = "DELETE FROM bm25_postings WHERE chunk_id = @chunkId";
+            deleteCmd.CommandText = """
+                DELETE FROM bm25_postings WHERE chunk_id = @chunkId;
+                DELETE FROM bm25_field_postings WHERE chunk_id = @chunkId;
+                """;
             AddParameter(deleteCmd, "@chunkId", chunk.Id);
             await deleteCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -598,6 +789,29 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             AddParameter(postingCmd, "@tf", frequency);
             AddParameter(postingCmd, "@docLen", terms.Count);
             await postingCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        foreach (var (field, fieldTermList) in fieldTerms)
+        {
+            var fieldFrequencies = fieldTermList
+                .GroupBy(t => t, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+
+            foreach (var (term, frequency) in fieldFrequencies)
+            {
+                var termId = termIds[NormalizeTerm(term)];
+                affectedTermIds.Add(termId);
+
+                await using var fieldCmd = connection.CreateCommand();
+                fieldCmd.CommandText = UpsertFieldPostingSql;
+                AddParameter(fieldCmd, "@termId", termId);
+                AddParameter(fieldCmd, "@chunkId", chunk.Id);
+                AddParameter(fieldCmd, "@field", field);
+                AddParameter(fieldCmd, "@tf", frequency);
+                AddParameter(fieldCmd, "@fieldLen", fieldTermList.Count);
+                AddParameter(fieldCmd, "@docLen", terms.Count);
+                await fieldCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
         }
 
         LogChunkIndexed(Logger, chunk.Id, termFrequencies.Count);
@@ -832,6 +1046,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
                 await using var deleteCmd = connection.CreateCommand();
                 deleteCmd.CommandText = """
                     DELETE FROM bm25_postings WHERE chunk_id = @chunkId;
+                    DELETE FROM bm25_field_postings WHERE chunk_id = @chunkId;
                     DELETE FROM bm25_chunk_metadata WHERE chunk_id = @chunkId;
                     DELETE FROM bm25_chunks WHERE chunk_id = @chunkId;
                     """;
@@ -872,6 +1087,10 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
                 SELECT t.term FROM bm25_postings p
                 JOIN bm25_terms t ON t.id = p.term_id
                 WHERE p.chunk_id = @chunkId
+                UNION
+                SELECT t.term FROM bm25_field_postings f
+                JOIN bm25_terms t ON t.id = f.term_id
+                WHERE f.chunk_id = @chunkId
                 """;
             AddParameter(command, "@chunkId", chunkId);
 
@@ -892,7 +1111,9 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         CancellationToken cancellationToken)
     {
         await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT term_id FROM bm25_postings WHERE chunk_id = @chunkId";
+        command.CommandText =
+            "SELECT term_id FROM bm25_postings WHERE chunk_id = @chunkId " +
+            "UNION SELECT term_id FROM bm25_field_postings WHERE chunk_id = @chunkId";
         AddParameter(command, "@chunkId", chunkId);
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
@@ -919,10 +1140,16 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         {
             await using var updateCmd = connection.CreateCommand();
             var predicate = BuildTermIdPredicate(updateCmd, "bm25_terms.id", batch);
+            // A chunk that holds the term in its body and in a field is one document for IDF: the
+            // count is over distinct chunks across both posting relations, never a sum of rows.
             updateCmd.CommandText = $"""
                 UPDATE bm25_terms
                 SET document_frequency =
-                    (SELECT COUNT(*) FROM bm25_postings p WHERE p.term_id = bm25_terms.id)
+                    (SELECT COUNT(DISTINCT u.chunk_id) FROM (
+                        SELECT chunk_id, term_id FROM bm25_postings
+                        UNION ALL
+                        SELECT chunk_id, term_id FROM bm25_field_postings) u
+                     WHERE u.term_id = bm25_terms.id)
                 WHERE {predicate};
                 """;
             await updateCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
@@ -971,6 +1198,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         await using var command = connection.CreateCommand();
         command.CommandText = """
             DELETE FROM bm25_postings;
+            DELETE FROM bm25_field_postings;
             DELETE FROM bm25_terms;
             DELETE FROM bm25_chunk_metadata;
             DELETE FROM bm25_chunks;
@@ -1188,10 +1416,35 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
                 : 0;
         }
 
+        await UpsertStatisticAsync(connection, "total_documents", totalDocs, cancellationToken).ConfigureAwait(false);
+        await UpsertStatisticAsync(connection, "avg_doc_length", avgLength, cancellationToken).ConfigureAwait(false);
+
+        // One average per configured field, over the chunks that carry the field: BM25F normalizes a
+        // field's length against its own average, not the body's.
+        foreach (var field in Fields.Fields)
+        {
+            double fieldAverage;
+            await using (var fieldAvgCmd = connection.CreateCommand())
+            {
+                fieldAvgCmd.CommandText =
+                    "SELECT AVG(field_length) FROM (SELECT DISTINCT chunk_id, field_length FROM bm25_field_postings WHERE field = @field) lengths";
+                AddParameter(fieldAvgCmd, "@field", field.MetadataKey);
+                var result = await fieldAvgCmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+                fieldAverage = result is not null && result != DBNull.Value
+                    ? Convert.ToDouble(result, CultureInfo.InvariantCulture)
+                    : 0;
+            }
+
+            await UpsertStatisticAsync(connection, FieldAverageLengthKey(field.MetadataKey), fieldAverage, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task UpsertStatisticAsync(DbConnection connection, string key, double value, CancellationToken cancellationToken)
+    {
         await using var updateCmd = connection.CreateCommand();
         updateCmd.CommandText = UpsertStatisticSql;
-        AddParameter(updateCmd, "@totalDocs", totalDocs);
-        AddParameter(updateCmd, "@avgLength", avgLength);
+        AddParameter(updateCmd, "@key", key);
+        AddParameter(updateCmd, "@value", value);
         await updateCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 

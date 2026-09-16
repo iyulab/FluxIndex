@@ -83,7 +83,7 @@ public class KeywordBackendDdlParityTests
         var postgres = RelationsIn(DdlOf(Postgres()));
 
         sqlite.Keys.Should().BeEquivalentTo(
-            new[] { "bm25_terms", "bm25_postings", "bm25_chunks", "bm25_chunk_metadata", "bm25_statistics" },
+            new[] { "bm25_terms", "bm25_postings", "bm25_field_postings", "bm25_chunks", "bm25_chunk_metadata", "bm25_statistics" },
             "the parser must actually find the relations, otherwise the comparison below is vacuous");
         postgres.Keys.Should().BeEquivalentTo(sqlite.Keys);
     }
@@ -112,6 +112,7 @@ public class KeywordBackendDdlParityTests
                  {
                      "idx_bm25_terms_term",
                      "idx_bm25_postings_chunk",
+                     "idx_bm25_field_postings_chunk",
                      "idx_bm25_chunks_document"
                  })
         {
