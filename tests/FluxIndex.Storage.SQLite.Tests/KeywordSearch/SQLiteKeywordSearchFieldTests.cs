@@ -144,6 +144,31 @@ public sealed class SQLiteKeywordSearchFieldTests : KeywordSearchFieldContractSu
         service.SearchAsync("mu", cancellationToken: ct).GetAwaiter().GetResult().Should().BeEmpty("title is not in the registered field set");
     }
 
+    [Fact]
+    public async Task DocumentFrequency_CountsOnlyTheConfiguredFields_AfterTheConfigurationShrinks()
+    {
+        // Two chunks hold "zeta": one in its title only, one in its body. With the title field on,
+        // df is 2. Re-indexing the body chunk under a body-only configuration must recompute df from
+        // the rows that configuration reads — 1 — not from every field row still in the table.
+        var ct = TestContext.Current.CancellationToken;
+        var path = NewPath();
+
+        using (var fielded = Create(path, fields: null))
+        {
+            await fielded.IndexChunksAsync([
+                Chunk("in-title", "body without the word", ("title", "zeta")),
+                Chunk("in-body", "zeta appears in the body"),
+            ], ct);
+            fielded.GetIDF("zeta").Should().BeApproximately(Math.Log(1 + (2 - 2 + 0.5) / (2 + 0.5)), 1e-9, "both chunks count while the title field is on");
+        }
+
+        using var bodyOnly = Create(path, KeywordFieldOptions.None);
+        await bodyOnly.IndexChunksAsync([Chunk("in-body", "zeta appears in the body")], ct);
+
+        bodyOnly.GetIDF("zeta").Should().BeApproximately(Math.Log(1 + (2 - 1 + 0.5) / (1 + 0.5)), 1e-9,
+            "the title-only chunk no longer counts once title is not a configured field");
+    }
+
     public void Dispose()
     {
         foreach (var path in _paths)

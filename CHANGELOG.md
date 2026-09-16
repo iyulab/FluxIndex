@@ -9,6 +9,19 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.42.0]
+
+### Added
+- Relational keyword index (SQLite, PostgreSQL): chunk **metadata fields are scored with BM25F**. `KeywordFieldOptions` names the metadata keys the index treats as fields and their weights; a query term that appears only in a document's title or file name now retrieves the chunk. Register an instance (`services.AddSingleton(new KeywordFieldOptions { Fields = [new KeywordField("title", 2.0)] })`) before `AddSQLiteKeywordSearch` / `AddPostgreSQLKeywordSearch`; `KeywordFieldOptions.None` is body-only. The index path and the query path share one instance and the body's `ITextAnalyzer`. Fields are stored in a new relation (`bm25_field_postings`) created `IF NOT EXISTS`, so an existing database needs no migration.
+- `FluxIndex.SDK.HybridSearchOptions.FusionMethod` and `RrfK` pass through to the hybrid search service; previously only the two-value `RerankingStrategy` reached it, so relative-score fusion, product, maximum and harmonic mean were unreachable from the SDK.
+- `Indexer` writes `Document.FileName` into each chunk's `file_name` metadata when the chunk does not already carry one, so the default file-name field applies to documents indexed through the SDK, not only through FluxFeed.
+
+### Changed
+- **Behavior change after re-index**: the default field set is `title` and `file_name` at weight 1.0, on. A chunk carrying either key ranks differently once its keyword leg is re-indexed on 0.42.0 (that is the point) and exactly as before until then (an index with no field postings takes the previous scoring expression verbatim). Changing the field set of an existing index is like changing the analyzer: re-index the keyword leg afterwards. Document frequency counts a chunk once however many fields carry the term, and only the configured fields count.
+- `KeywordIndexStatistics.TotalTermOccurrences` is documented as a body count; field occurrences are not included.
+
+---
+
 ## [0.41.2]
 
 ### Changed

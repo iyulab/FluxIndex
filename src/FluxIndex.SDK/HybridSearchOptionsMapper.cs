@@ -14,19 +14,25 @@ internal static class HybridSearchOptionsMapper
 
     public static Core.Domain.Models.HybridSearchOptions ToCore(HybridSearchOptions sdkOptions)
     {
-        return new Core.Domain.Models.HybridSearchOptions
+        var coreOptions = new Core.Domain.Models.HybridSearchOptions
         {
             MaxResults = sdkOptions.TopK,
             VectorWeight = sdkOptions.VectorWeight,
             SparseWeight = sdkOptions.KeywordWeight,
             Filters = ToCoreFilters(sdkOptions),
-            FusionMethod = sdkOptions.RerankingStrategy switch
+            // An explicit fusion method wins over the two-value strategy, which cannot name the others.
+            FusionMethod = sdkOptions.FusionMethod ?? sdkOptions.RerankingStrategy switch
             {
                 RerankingStrategy.WeightedAverage => Core.Domain.Models.FusionMethod.WeightedSum,
                 RerankingStrategy.ReciprocalRankFusion => Core.Domain.Models.FusionMethod.RRF,
                 _ => Core.Domain.Models.FusionMethod.RRF
             }
         };
+
+        if (sdkOptions.RrfK is { } rrfK)
+            coreOptions.RrfK = rrfK;
+
+        return coreOptions;
     }
 
     /// <summary>

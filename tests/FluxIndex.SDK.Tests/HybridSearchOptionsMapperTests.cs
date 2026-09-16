@@ -56,6 +56,29 @@ public class HybridSearchOptionsMapperTests
     }
 
     [Fact]
+    public void ToCore_AnExplicitFusionMethod_WinsOverTheRerankingStrategy()
+    {
+        var core = HybridSearchOptionsMapper.ToCore(new HybridSearchOptions
+        {
+            RerankingStrategy = RerankingStrategy.WeightedAverage,
+            FusionMethod = Core.Domain.Models.FusionMethod.RelativeScoreFusion,
+        });
+
+        core.FusionMethod.Should().Be(Core.Domain.Models.FusionMethod.RelativeScoreFusion,
+            "the two-value strategy cannot name RSF, product, maximum or harmonic mean; the explicit method is how the SDK reaches them");
+    }
+
+    [Fact]
+    public void ToCore_CarriesRrfK_AndKeepsTheServiceDefaultWhenUnset()
+    {
+        var explicitK = HybridSearchOptionsMapper.ToCore(new HybridSearchOptions { RrfK = 20 });
+        var defaultK = HybridSearchOptionsMapper.ToCore(new HybridSearchOptions());
+
+        explicitK.RrfK.Should().Be(20);
+        defaultK.RrfK.Should().Be(new Core.Domain.Models.HybridSearchOptions().RrfK);
+    }
+
+    [Fact]
     public void ToCore_KeepsSdkAndContextPathsOnOneMapping()
     {
         // FluxIndexContext.ConvertToCore delegates here; this pins the shared shape so the two

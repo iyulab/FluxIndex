@@ -80,6 +80,19 @@ public class HybridSearchOptions : SearchOptions
     public float VectorWeight { get; set; } = 0.7f;
     public float KeywordWeight { get; set; } = 0.3f;
     public RerankingStrategy RerankingStrategy { get; set; } = RerankingStrategy.WeightedAverage;
+
+    /// <summary>
+    /// The fusion method the hybrid search service uses to merge the vector and keyword legs. Null
+    /// (the default) derives it from <see cref="RerankingStrategy"/>: <c>WeightedAverage</c> maps to
+    /// <c>WeightedSum</c>, <c>ReciprocalRankFusion</c> to <c>RRF</c>. Set it to reach the methods the
+    /// two-value strategy cannot name (relative-score fusion, product, maximum, harmonic mean).
+    /// </summary>
+    public Core.Domain.Models.FusionMethod? FusionMethod { get; set; }
+
+    /// <summary>
+    /// The <c>k</c> constant of reciprocal rank fusion. Null keeps the service default (60).
+    /// </summary>
+    public double? RrfK { get; set; }
 }
 
 /// <summary>

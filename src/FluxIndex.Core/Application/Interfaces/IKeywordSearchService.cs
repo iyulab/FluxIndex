@@ -285,7 +285,8 @@ public record KeywordIndexStatistics
     public int TotalTerms { get; init; }
 
     /// <summary>
-    /// Total number of term occurrences across all documents.
+    /// Total number of term occurrences across all documents, counted over chunk bodies. Metadata
+    /// fields scored beside the body (see <c>KeywordFieldOptions</c>) are not included.
     /// </summary>
     public long TotalTermOccurrences { get; init; }
 

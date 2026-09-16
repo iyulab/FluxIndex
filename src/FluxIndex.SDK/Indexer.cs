@@ -234,6 +234,7 @@ public partial class Indexer
         {
             // Phase 3: 이벤트 발생 - 인덱싱 시작
             var chunks = document.Chunks.ToList();
+            CarryFileNameIntoChunks(document, chunks);
             IndexingStarted?.Invoke(this, new IndexingStartedEventArgs
             {
                 JobId = jobId,
@@ -1048,6 +1049,25 @@ public partial class Indexer
                 resolved.CustomOptions[key] = value;
         }
         return resolved;
+    }
+
+    /// <summary>
+    /// Writes <see cref="Document.FileName"/> into each chunk's <c>file_name</c> metadata when the
+    /// chunk does not already carry one. The relational keyword index scores that key as a field
+    /// (<see cref="Core.Application.Services.KeywordSearch.KeywordFieldOptions"/>), so a document
+    /// indexed through the SDK is retrievable by its file name without the caller tagging every
+    /// chunk; a value the caller set is never overwritten.
+    /// </summary>
+    private static void CarryFileNameIntoChunks(Document document, List<DocumentChunkEntity> chunks)
+    {
+        if (string.IsNullOrWhiteSpace(document.FileName))
+            return;
+
+        foreach (var chunk in chunks)
+        {
+            chunk.Metadata ??= new Dictionary<string, object>();
+            chunk.Metadata.TryAdd(Core.Application.Services.KeywordSearch.KeywordFieldOptions.FileNameKey, document.FileName);
+        }
     }
 
     private static void MergeDocumentMetadataIntoChunk(

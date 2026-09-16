@@ -273,6 +273,29 @@ Switching the analyzer of an existing index changes what a query can match — r
 The in-memory `BM25SparseRetriever` fallback and the sqlite-vec store's native FTS5 leg have their
 own tokenization and are not affected.
 
+#### Scoring metadata fields (since 0.42.0)
+
+The keyword index scores chunk **metadata fields** beside the body with BM25F. A query term that
+appears only in a document's title or file name retrieves the chunk; how much a field counts is a
+weight. The default scores the `title` and `file_name` keys (the ones the SDK `Indexer` and FluxFeed
+write) at weight 1.0 — a short field already ranks well through length normalization, so raise the
+weight only when a field match should outrank body matches outright:
+
+```csharp
+services.AddSingleton(new KeywordFieldOptions
+{
+    Fields = [new KeywordField("title", Weight: 2.0), new KeywordField("file_name")]
+});                                                   // before AddSQLiteKeywordSearch / AddPostgreSQLKeywordSearch
+services.AddSingleton(KeywordFieldOptions.None);      // body-only, the behavior before 0.42.0
+```
+
+The index path and the query path share one instance, and fields are analyzed by the same
+`ITextAnalyzer` as the body. Field postings live in their own relation, created on first use, so an
+existing database needs no migration and ranks exactly as before until its chunks are re-indexed;
+changing the field set is like changing the analyzer — re-index the keyword leg afterwards. Document
+frequency counts a chunk once however many fields carry the term. The in-memory `BM25SparseRetriever`
+and the sqlite-vec FTS5 leg are not affected.
+
 #### Scoping the keyword leg (since 0.25.0)
 
 The keyword index takes the same filter vocabulary as the vector store, so one filter object scopes

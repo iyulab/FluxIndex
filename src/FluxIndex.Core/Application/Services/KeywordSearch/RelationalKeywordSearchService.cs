@@ -1141,14 +1141,18 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             await using var updateCmd = connection.CreateCommand();
             var predicate = BuildTermIdPredicate(updateCmd, "bm25_terms.id", batch);
             // A chunk that holds the term in its body and in a field is one document for IDF: the
-            // count is over distinct chunks across both posting relations, never a sum of rows.
+            // count is over distinct chunks across both posting relations, never a sum of rows. Only
+            // the fields currently configured count — the same rows the query reads — so rows left
+            // behind by a field dropped from the configuration cannot inflate IDF until the chunk is
+            // re-indexed.
+            var fieldRows = Fields.Fields.Count == 0
+                ? string.Empty
+                : $" UNION ALL SELECT chunk_id, term_id FROM bm25_field_postings WHERE {BuildFieldPredicate(updateCmd, "field")}";
             updateCmd.CommandText = $"""
                 UPDATE bm25_terms
                 SET document_frequency =
                     (SELECT COUNT(DISTINCT u.chunk_id) FROM (
-                        SELECT chunk_id, term_id FROM bm25_postings
-                        UNION ALL
-                        SELECT chunk_id, term_id FROM bm25_field_postings) u
+                        SELECT chunk_id, term_id FROM bm25_postings{fieldRows}) u
                      WHERE u.term_id = bm25_terms.id)
                 WHERE {predicate};
                 """;
