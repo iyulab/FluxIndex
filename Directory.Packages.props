@@ -35,9 +35,9 @@
   </ItemGroup>
   <!-- Entity Framework Core Packages - .NET 10.0 -->
   <ItemGroup>
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.8" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.8" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.8" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.1" />
     <PackageVersion Include="Pgvector.EntityFrameworkCore" Version="0.3.0" />
   </ItemGroup>

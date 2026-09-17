@@ -12,6 +12,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.43.2]
 
 ### Changed
+- Microsoft.Extensions.* / Microsoft.Data.Sqlite / EF Core pins raised to 10.0.12 (September 2026 .NET servicing).
 - Re-pinned sibling package(s) `FileFlux` 0.23.12 -> 0.23.14, `LMSupply.Embedder` 0.66.1 -> 0.67.0, `LMSupply.Generator` 0.66.1 -> 0.67.0, `LMSupply.Reranker` 0.66.1 -> 0.67.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
 
 ---
