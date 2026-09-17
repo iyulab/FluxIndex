@@ -244,6 +244,11 @@ public class OptionsReachabilityRosterTests
     /// differently-named copy helper is still excluded. Naming alone decided this before, and it was the
     /// one rule the two copies of this scanner disagreed on.
     /// </para>
+    /// <para>
+    /// Known limit: a fluent <c>Validate()</c> that returns <c>this</c> is indistinguishable by signature
+    /// from a copy, so its reads would not count. No options type here has one — if that changes, the
+    /// distinction has to come from the body rather than the signature.
+    /// </para>
     /// </summary>
     private static bool IsCopy(MethodBase method) =>
         method.Name == "<Clone>$"
