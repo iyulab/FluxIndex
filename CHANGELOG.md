@@ -9,6 +9,23 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.44.0]
+
+### Added
+- **Graph store partitions.** One `IGraphStore` instance can hold several tenants' graphs: `GraphEntity.Partition` and `GraphCommunity.Partition`, `GraphRAGBuildOptions.Partition` / `GraphRAGLoadOptions.Partition` / `GraphRAGIndex.Partition`, `EntityGraphBuildOptions.Partition`, `EntityGraphResult.Partition`, `LeidenOptions.GraphPartition`, and `GraphPartition.Default` (the empty string). Entities merge only within their partition, community ids are derived inside it, and `UpdateIndexAsync` writes into the index's partition. A build whose entity-graph or community options name a different partition than `GraphRAGBuildOptions.Partition` is refused.
+- `IGraphStore.GetEntitiesByNormalizedNamesAsync(normalizedNames, partition)` — exact normalized-name lookup in one round trip.
+
+### Changed
+- **Breaking:** the multi-result `IGraphStore` reads — `GetEntitiesByNameAsync`, `GetEntitiesByTypeAsync`, `GetRelationshipsByTypeAsync`, `GetEntitiesByChunkIdsAsync`, `GetTopCommunitiesAsync`, `GetCommunitiesByChunkIdsAsync`, `GetStatisticsAsync` — take `string partition = GraphPartition.Default` before the cancellation token, and return that partition only. The default is the default partition, not every partition. Callers passing the token positionally must name it (`ct: ct`); implementers add the parameter.
+- An entity extracted from one document now joins the stored entity of the same identity (normalized name, type, declared subtype) that another document produced, even when the two share no chunk — previously the join only reached entities already attached to the build's own chunks, so the graph gained one duplicate node per document mentioning an entity. Existing duplicates are not merged; re-index to collapse them.
+- SQLite and PostgreSQL entity graph stores add a `partition` column (default `''`) to entity and community tables; start-up provisioning adds it to existing databases, whose rows read as the default partition. Neo4j nodes without a `partition` property read as the default partition.
+
+### Fixed
+- Neo4j: `StoreEntitiesBatchAsync` did not write an entity's `Properties`, `Embedding` or `ExternalLinks` (the single-entity write did), so every entity the entity graph build persisted lost them — including the declared subtype its identity is keyed on. Both writes now share one upsert.
+- Documentation snippets for `LoadIndexAsync`, `LocalSearchAsync` and `GetEntitiesByChunkIdsAsync` passed the cancellation token into an options parameter.
+
+---
+
 ## [0.43.2]
 
 ### Changed

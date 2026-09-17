@@ -461,7 +461,7 @@ public class Neo4jGraphStoreIntegrationTests : IAsyncLifetime
         await _graphStore.StoreRelationshipAsync(rel, TestContext.Current.CancellationToken);
 
         // Act
-        var stats = await _graphStore.GetStatisticsAsync(TestContext.Current.CancellationToken);
+        var stats = await _graphStore.GetStatisticsAsync(ct: TestContext.Current.CancellationToken);
 
         // Assert
         stats.EntityCount.Should().Be(5);
@@ -483,7 +483,7 @@ public class Neo4jGraphStoreIntegrationTests : IAsyncLifetime
         await _graphStore.ClearAsync(TestContext.Current.CancellationToken);
 
         // Assert
-        var stats = await _graphStore.GetStatisticsAsync(TestContext.Current.CancellationToken);
+        var stats = await _graphStore.GetStatisticsAsync(ct: TestContext.Current.CancellationToken);
         stats.EntityCount.Should().Be(0);
     }
 
@@ -648,7 +648,7 @@ public class Neo4jGraphStoreIntegrationTests : IAsyncLifetime
         await entityGraphService.PersistGraphAsync(manualGraph, TestContext.Current.CancellationToken);
 
         // Assert - Verify entities were stored in Neo4j
-        var stats = await _graphStore.GetStatisticsAsync(TestContext.Current.CancellationToken);
+        var stats = await _graphStore.GetStatisticsAsync(ct: TestContext.Current.CancellationToken);
         stats.EntityCount.Should().BeGreaterThanOrEqualTo(2);
         stats.RelationshipCount.Should().BeGreaterThanOrEqualTo(1);
 

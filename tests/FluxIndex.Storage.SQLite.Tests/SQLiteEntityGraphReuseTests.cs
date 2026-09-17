@@ -82,7 +82,7 @@ public sealed class SQLiteEntityGraphReuseTests : IAsyncDisposable
         Assert.Equal(0, second.Stats.ChunksExtracted);
         Assert.Equal(first.Entities.Select(e => e.Id).Order(), second.Entities.Select(e => e.Id).Order());
 
-        var stored = await _store.GetEntitiesByChunkIdsAsync(["c1", "c2"], TestContext.Current.CancellationToken);
+        var stored = await _store.GetEntitiesByChunkIdsAsync(["c1", "c2"], ct: TestContext.Current.CancellationToken);
         Assert.Equal(2, stored.Count);
         Assert.Equal(new[] { "c1", "c2" }, stored.Single(e => e.Name == "Globex").ChunkIds.Order());
     }
@@ -107,10 +107,10 @@ public sealed class SQLiteEntityGraphReuseTests : IAsyncDisposable
         Assert.Equal(1, result.Stats.ChunksReused);
         Assert.Equal(1, result.Stats.ChunksExtracted);
 
-        var globex = await _store.GetEntitiesByChunkIdsAsync(["c3"], TestContext.Current.CancellationToken);
+        var globex = await _store.GetEntitiesByChunkIdsAsync(["c3"], ct: TestContext.Current.CancellationToken);
         var joined = Assert.Single(globex, e => e.Name == "Globex");
         Assert.Equal(new[] { "c1", "c2", "c3" }, joined.ChunkIds.Order());
-        var all = await _store.GetEntitiesByChunkIdsAsync(["c1", "c2", "c3"], TestContext.Current.CancellationToken);
+        var all = await _store.GetEntitiesByChunkIdsAsync(["c1", "c2", "c3"], ct: TestContext.Current.CancellationToken);
         Assert.Equal(3, all.Count); // Acme, Globex, Initech
     }
 

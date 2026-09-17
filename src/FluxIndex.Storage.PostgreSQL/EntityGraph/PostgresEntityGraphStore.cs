@@ -89,25 +89,46 @@ public partial class PostgresEntityGraphStore : IGraphStore
     public async Task<IReadOnlyList<GraphEntity>> GetEntitiesByNameAsync(
         string name,
         bool fuzzyMatch = false,
+        string partition = GraphPartition.Default,
         CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(partition);
         var normalized = name.ToLowerInvariant().Trim();
 
+        var inPartition = _context.Entities.Where(e => e.Partition == partition);
         var query = fuzzyMatch
-            ? _context.Entities.Where(e => e.NormalizedName.Contains(normalized))
-            : _context.Entities.Where(e => e.NormalizedName == normalized);
+            ? inPartition.Where(e => e.NormalizedName.Contains(normalized))
+            : inPartition.Where(e => e.NormalizedName == normalized);
 
         var dbEntities = await query.Take(_options.DefaultPageSize).ToListAsync(ct);
+        return dbEntities.Select(MapToGraphEntity).ToList();
+    }
+
+    public async Task<IReadOnlyList<GraphEntity>> GetEntitiesByNormalizedNamesAsync(
+        IEnumerable<string> normalizedNames,
+        string partition = GraphPartition.Default,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(partition);
+        var names = normalizedNames.Distinct(StringComparer.Ordinal).ToList();
+        if (names.Count == 0) return [];
+
+        var dbEntities = await _context.Entities
+            .Where(e => e.Partition == partition && names.Contains(e.NormalizedName))
+            .ToListAsync(ct);
+
         return dbEntities.Select(MapToGraphEntity).ToList();
     }
 
     public async Task<IReadOnlyList<GraphEntity>> GetEntitiesByTypeAsync(
         NamedEntityType type,
         int limit = 100,
+        string partition = GraphPartition.Default,
         CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(partition);
         var dbEntities = await _context.Entities
-            .Where(e => e.EntityType == (int)type)
+            .Where(e => e.Partition == partition && e.EntityType == (int)type)
             .OrderByDescending(e => e.ImportanceScore)
             .Take(limit)
             .ToListAsync(ct);
@@ -209,10 +230,14 @@ public partial class PostgresEntityGraphStore : IGraphStore
     public async Task<IReadOnlyList<GraphRelationship>> GetRelationshipsByTypeAsync(
         RelationType type,
         int limit = 100,
+        string partition = GraphPartition.Default,
         CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(partition);
+        // A relationship belongs to the partition of the entities it connects; its source decides.
         var dbRelationships = await _context.Relationships
-            .Where(r => r.RelationType == (int)type)
+            .Where(r => r.RelationType == (int)type
+                && _context.Entities.Any(e => e.Id == r.SourceEntityId && e.Partition == partition))
             .OrderByDescending(r => r.Weight)
             .Take(limit)
             .ToListAsync(ct);
@@ -414,15 +439,17 @@ LIMIT 1";
 
     public async Task<IReadOnlyList<GraphEntity>> GetEntitiesByChunkIdsAsync(
         IEnumerable<string> chunkIds,
+        string partition = GraphPartition.Default,
         CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(partition);
         var chunkIdArray = chunkIds.Distinct().ToArray();
         if (chunkIdArray.Length == 0) return [];
 
         // jsonb ?| : true when any of the given strings is a top-level element of the chunk_ids
         // array — an exact element match, not the substring match a string Contains would be.
         var entities = await _context.Entities
-            .Where(e => EF.Functions.JsonExistAny(e.ChunkIdsJson, chunkIdArray))
+            .Where(e => e.Partition == partition && EF.Functions.JsonExistAny(e.ChunkIdsJson, chunkIdArray))
             .ToListAsync(ct);
 
         return entities.Select(MapToGraphEntity).ToList();
@@ -502,10 +529,13 @@ LIMIT 1";
 
     public async Task<IReadOnlyList<GraphCommunity>> GetTopCommunitiesAsync(
         int limit = 10,
+        string partition = GraphPartition.Default,
         CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(partition);
         var communities = await _context.Communities
             .Include(c => c.Members)
+            .Where(c => c.Partition == partition)
             .OrderByDescending(c => c.ImportanceScore)
             .Take(limit)
             .ToListAsync(ct);
@@ -515,15 +545,17 @@ LIMIT 1";
 
     public async Task<IReadOnlyList<GraphCommunity>> GetCommunitiesByChunkIdsAsync(
         IEnumerable<string> chunkIds,
+        string partition = GraphPartition.Default,
         CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(partition);
         var chunkIdList = chunkIds.Distinct().ToList();
         if (chunkIdList.Count == 0) return [];
 
         // Primitive-collection membership translates to an array overlap on the chunk_ids column.
         var communities = await _context.Communities
             .Include(c => c.Members)
-            .Where(c => c.ChunkIds != null && c.ChunkIds.Any(id => chunkIdList.Contains(id)))
+            .Where(c => c.Partition == partition && c.ChunkIds != null && c.ChunkIds.Any(id => chunkIdList.Contains(id)))
             .ToListAsync(ct);
 
         return communities.Select(MapToGraphCommunity).ToList();
@@ -533,18 +565,22 @@ LIMIT 1";
 
     #region Statistics and Maintenance
 
-    public async Task<GraphStoreStatistics> GetStatisticsAsync(CancellationToken ct = default)
+    public async Task<GraphStoreStatistics> GetStatisticsAsync(string partition = GraphPartition.Default, CancellationToken ct = default)
     {
-        var entityCount = await _context.Entities.LongCountAsync(ct);
-        var relationshipCount = await _context.Relationships.LongCountAsync(ct);
-        var communityCount = await _context.Communities.LongCountAsync(ct);
+        ArgumentNullException.ThrowIfNull(partition);
+        var entities = _context.Entities.Where(e => e.Partition == partition);
+        var relationships = _context.Relationships
+            .Where(r => _context.Entities.Any(e => e.Id == r.SourceEntityId && e.Partition == partition));
+        var entityCount = await entities.LongCountAsync(ct);
+        var relationshipCount = await relationships.LongCountAsync(ct);
+        var communityCount = await _context.Communities.LongCountAsync(c => c.Partition == partition, ct);
 
-        var entityCountsByType = await _context.Entities
+        var entityCountsByType = await entities
             .GroupBy(e => e.EntityType)
             .Select(g => new { Type = g.Key, Count = g.LongCount() })
             .ToDictionaryAsync(x => (NamedEntityType)x.Type, x => x.Count, ct);
 
-        var relationshipCountsByType = await _context.Relationships
+        var relationshipCountsByType = await relationships
             .GroupBy(r => r.RelationType)
             .Select(g => new { Type = g.Key, Count = g.LongCount() })
             .ToDictionaryAsync(x => (RelationType)x.Type, x => x.Count, ct);
@@ -679,6 +715,7 @@ LIMIT {options.MaxNodes}";
             NormalizedName = entity.NormalizedName.Length > 0
                 ? entity.NormalizedName
                 : entity.Name.ToLowerInvariant().Trim(),
+            Partition = entity.Partition ?? throw new ArgumentException("GraphEntity.Partition must not be null.", nameof(entity)),
             EntityType = (int)entity.Type,
             Description = entity.Description,
             Embedding = entity.Embedding != null ? new Vector(entity.Embedding) : null,
@@ -702,6 +739,7 @@ LIMIT {options.MaxNodes}";
             Id = db.Id,
             Name = db.Name,
             NormalizedName = db.NormalizedName,
+            Partition = db.Partition,
             Type = (NamedEntityType)db.EntityType,
             Description = db.Description,
             Embedding = db.Embedding?.ToArray(),
@@ -762,6 +800,7 @@ LIMIT {options.MaxNodes}";
         {
             Id = community.Id,
             Name = community.Name,
+            Partition = community.Partition ?? throw new ArgumentException("GraphCommunity.Partition must not be null.", nameof(community)),
             Summary = community.Summary,
             ImportanceScore = community.ImportanceScore,
             Level = community.Level,
@@ -779,6 +818,7 @@ LIMIT {options.MaxNodes}";
         {
             Id = db.Id,
             Name = db.Name,
+            Partition = db.Partition,
             Summary = db.Summary,
             ImportanceScore = db.ImportanceScore,
             Level = db.Level,

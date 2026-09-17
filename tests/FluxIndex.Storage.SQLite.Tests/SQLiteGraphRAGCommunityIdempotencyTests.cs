@@ -90,7 +90,7 @@ public sealed class SQLiteGraphRAGCommunityIdempotencyTests : IAsyncDisposable
                 logger: NullLogger<GraphRAGService>.Instance);
             var index = await service.BuildIndexAsync(chunks, new GraphRAGBuildOptions { CommunityOptions = new LeidenOptions { MinCommunitySize = 1 } }, ct);
             Assert.NotEmpty(index.CommunityHierarchy.Levels);
-            return (await _store.GetCommunitiesByChunkIdsAsync(chunks.Select(c => c.Id), ct)).Count;
+            return (await _store.GetCommunitiesByChunkIdsAsync(chunks.Select(c => c.Id), ct: ct)).Count;
         }
 
         var afterFirst = await BuildAndCountAsync();
@@ -102,7 +102,7 @@ public sealed class SQLiteGraphRAGCommunityIdempotencyTests : IAsyncDisposable
         Assert.Equal(afterFirst, afterThird);
         await summarizer.Received(1).GenerateHierarchicalSummariesAsync(
             Arg.Any<CommunityHierarchy>(), Arg.Any<IEnumerable<DocumentChunk>>(), Arg.Any<HierarchicalSummarizationOptions?>(), Arg.Any<CancellationToken>());
-        var stored = await _store.GetCommunitiesByChunkIdsAsync(chunks.Select(c => c.Id), ct);
+        var stored = await _store.GetCommunitiesByChunkIdsAsync(chunks.Select(c => c.Id), ct: ct);
         Assert.All(stored, c => Assert.False(string.IsNullOrEmpty(c.Summary), $"community {c.Id} lost its summary on a rebuild"));
     }
 

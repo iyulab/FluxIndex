@@ -92,7 +92,8 @@ public partial class LeidenCommunityService : ILeidenCommunityService
                 partition,
                 chunkList,
                 level,
-                options.MinCommunitySize);
+                options.MinCommunitySize,
+                options.GraphPartition);
 
             if (communities.Count == 0)
             {
@@ -652,7 +653,8 @@ public partial class LeidenCommunityService : ILeidenCommunityService
         Dictionary<int, int> partition,
         List<LeidenChunk> chunks,
         int level,
-        int minCommunitySize)
+        int minCommunitySize,
+        string graphPartition)
     {
         var communities = new List<LeidenCommunity>();
         var groups = partition.GroupBy(kvp => kvp.Value);
@@ -686,7 +688,7 @@ public partial class LeidenCommunityService : ILeidenCommunityService
 
             communities.Add(new LeidenCommunity
             {
-                Id = CommunityIdentity.For(level, chunkIds),
+                Id = CommunityIdentity.For(level, chunkIds, graphPartition),
                 Index = group.Key,
                 ChunkIds = chunkIds,
                 Centroid = centroid,

@@ -133,7 +133,7 @@ public sealed class SQLiteGraphRAGIndexReloadTests : IAsyncDisposable
         var acmeId = index.EntityGraph.Entities.Single(e => e.Name == "Acme Corp").Id;
         var acmeCommunities = await _store.GetCommunitiesForEntityAsync(acmeId, ct);
         Assert.Equal("community-a", Assert.Single(acmeCommunities).Id);
-        var initechCommunities = await _store.GetCommunitiesByChunkIdsAsync(["b1"], ct);
+        var initechCommunities = await _store.GetCommunitiesByChunkIdsAsync(["b1"], ct: ct);
         Assert.Equal("community-b", Assert.Single(initechCommunities).Id);
         var summary = Assert.Single(index.Summaries.SummariesByLevel[0]);
         Assert.Equal("Acme Corp and its partner Globex.", summary.Summary);

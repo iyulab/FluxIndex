@@ -29,19 +29,42 @@ public interface IGraphStore
     Task<GraphEntity?> GetEntityByIdAsync(string id, CancellationToken ct = default);
 
     /// <summary>
-    /// Retrieves entities by their canonical name.
+    /// Retrieves entities by their canonical name, within one partition.
     /// </summary>
+    /// <param name="name">The name to match.</param>
+    /// <param name="fuzzyMatch">Whether to match partially rather than exactly.</param>
+    /// <param name="partition">The partition to read — see <see cref="GraphEntity.Partition"/>. <see cref="GraphPartition.Default"/> reads the default partition, not every partition.</param>
+    /// <param name="ct">Cancellation token.</param>
     Task<IReadOnlyList<GraphEntity>> GetEntitiesByNameAsync(
         string name,
         bool fuzzyMatch = false,
+        string partition = GraphPartition.Default,
         CancellationToken ct = default);
 
     /// <summary>
-    /// Retrieves entities by type.
+    /// Retrieves every entity in one partition whose <see cref="GraphEntity.NormalizedName"/> is one of
+    /// <paramref name="normalizedNames"/>, compared exactly — the lookup an indexing build joins its freshly
+    /// extracted entities to, in one round trip rather than one per name.
     /// </summary>
+    /// <param name="normalizedNames">Normalized names to match exactly.</param>
+    /// <param name="partition">The partition to read — see <see cref="GraphEntity.Partition"/>. <see cref="GraphPartition.Default"/> reads the default partition, not every partition.</param>
+    /// <param name="ct">Cancellation token.</param>
+    Task<IReadOnlyList<GraphEntity>> GetEntitiesByNormalizedNamesAsync(
+        IEnumerable<string> normalizedNames,
+        string partition = GraphPartition.Default,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Retrieves entities by type, within one partition.
+    /// </summary>
+    /// <param name="type">The entity type.</param>
+    /// <param name="limit">Maximum number of entities returned.</param>
+    /// <param name="partition">The partition to read — see <see cref="GraphEntity.Partition"/>. <see cref="GraphPartition.Default"/> reads the default partition, not every partition.</param>
+    /// <param name="ct">Cancellation token.</param>
     Task<IReadOnlyList<GraphEntity>> GetEntitiesByTypeAsync(
         NamedEntityType type,
         int limit = 100,
+        string partition = GraphPartition.Default,
         CancellationToken ct = default);
 
     /// <summary>
@@ -81,11 +104,17 @@ public interface IGraphStore
         CancellationToken ct = default);
 
     /// <summary>
-    /// Retrieves relationships of a specific type.
+    /// Retrieves relationships of a specific type between entities of one partition. A relationship has no
+    /// partition of its own: it belongs to the partition of the entities it connects.
     /// </summary>
+    /// <param name="type">The relationship type.</param>
+    /// <param name="limit">Maximum number of relationships returned.</param>
+    /// <param name="partition">The partition to read — see <see cref="GraphEntity.Partition"/>. <see cref="GraphPartition.Default"/> reads the default partition, not every partition.</param>
+    /// <param name="ct">Cancellation token.</param>
     Task<IReadOnlyList<GraphRelationship>> GetRelationshipsByTypeAsync(
         RelationType type,
         int limit = 100,
+        string partition = GraphPartition.Default,
         CancellationToken ct = default);
 
     /// <summary>
@@ -123,10 +152,15 @@ public interface IGraphStore
         CancellationToken ct = default);
 
     /// <summary>
-    /// Gets entities connected to specific chunks.
+    /// Gets the entities of one partition connected to specific chunks. The same chunk id can exist in two
+    /// partitions; only the entities of <paramref name="partition"/> are returned.
     /// </summary>
+    /// <param name="chunkIds">Chunk ids to match.</param>
+    /// <param name="partition">The partition to read — see <see cref="GraphEntity.Partition"/>. <see cref="GraphPartition.Default"/> reads the default partition, not every partition.</param>
+    /// <param name="ct">Cancellation token.</param>
     Task<IReadOnlyList<GraphEntity>> GetEntitiesByChunkIdsAsync(
         IEnumerable<string> chunkIds,
+        string partition = GraphPartition.Default,
         CancellationToken ct = default);
 
     #endregion
@@ -155,10 +189,14 @@ public interface IGraphStore
         CancellationToken ct = default);
 
     /// <summary>
-    /// Gets top communities by importance.
+    /// Gets the top communities of one partition by importance.
     /// </summary>
+    /// <param name="limit">Maximum number of communities returned.</param>
+    /// <param name="partition">The partition to read — see <see cref="GraphEntity.Partition"/>. <see cref="GraphPartition.Default"/> reads the default partition, not every partition.</param>
+    /// <param name="ct">Cancellation token.</param>
     Task<IReadOnlyList<GraphCommunity>> GetTopCommunitiesAsync(
         int limit = 10,
+        string partition = GraphPartition.Default,
         CancellationToken ct = default);
 
     /// <summary>
@@ -167,8 +205,12 @@ public interface IGraphStore
     /// stands on. Returned communities carry their full <see cref="GraphCommunity.ChunkIds"/>, not
     /// only the ids that matched.
     /// </summary>
+    /// <param name="chunkIds">Chunk ids to match.</param>
+    /// <param name="partition">The partition to read — see <see cref="GraphEntity.Partition"/>. <see cref="GraphPartition.Default"/> reads the default partition, not every partition.</param>
+    /// <param name="ct">Cancellation token.</param>
     Task<IReadOnlyList<GraphCommunity>> GetCommunitiesByChunkIdsAsync(
         IEnumerable<string> chunkIds,
+        string partition = GraphPartition.Default,
         CancellationToken ct = default);
 
     #endregion
@@ -176,12 +218,14 @@ public interface IGraphStore
     #region Statistics and Maintenance
 
     /// <summary>
-    /// Gets statistics about the graph store.
+    /// Gets statistics about one partition of the graph store.
     /// </summary>
-    Task<GraphStoreStatistics> GetStatisticsAsync(CancellationToken ct = default);
+    /// <param name="partition">The partition to count — see <see cref="GraphEntity.Partition"/>. <see cref="GraphPartition.Default"/> counts the default partition, not every partition.</param>
+    /// <param name="ct">Cancellation token.</param>
+    Task<GraphStoreStatistics> GetStatisticsAsync(string partition = GraphPartition.Default, CancellationToken ct = default);
 
     /// <summary>
-    /// Clears all data from the graph store.
+    /// Clears all data from the graph store — every partition.
     /// </summary>
     Task ClearAsync(CancellationToken ct = default);
 
@@ -189,6 +233,22 @@ public interface IGraphStore
 }
 
 #region Supporting Types
+
+/// <summary>
+/// Names the partition a graph store read or write belongs to.
+/// </summary>
+/// <remarks>
+/// A partition keeps the graphs one store instance holds apart: entities merge only with entities of their own
+/// partition, and every multi-result read returns one partition. A consumer serving several tenants from one store gives
+/// each tenant its own partition value; a consumer that does not partition never passes one and uses
+/// <see cref="Default"/> throughout. There is deliberately no "every partition" read: a caller that forgets its partition
+/// sees the default partition — empty in a partitioned deployment — rather than every tenant's graph.
+/// </remarks>
+public static class GraphPartition
+{
+    /// <summary>The partition of a consumer that does not partition, and of every row written before partitions existed.</summary>
+    public const string Default = "";
+}
 
 /// <summary>
 /// Entity for persistent graph storage.
@@ -203,6 +263,12 @@ public record GraphEntity
 
     /// <summary>Normalized name for matching (lowercase, trimmed)</summary>
     public string NormalizedName { get; init; } = string.Empty;
+
+    /// <summary>
+    /// The partition this entity belongs to (<see cref="GraphPartition"/>). Entities with the same identity in two
+    /// partitions are two entities; a relationship connects entities of one partition.
+    /// </summary>
+    public string Partition { get; init; } = GraphPartition.Default;
 
     /// <summary>Entity type from extraction</summary>
     public NamedEntityType Type { get; init; } = NamedEntityType.Unknown;
@@ -296,6 +362,9 @@ public record GraphCommunity
 
     /// <summary>Community name/title</summary>
     public required string Name { get; init; }
+
+    /// <summary>The partition this community belongs to (<see cref="GraphPartition"/>).</summary>
+    public string Partition { get; init; } = GraphPartition.Default;
 
     /// <summary>AI-generated summary of the community</summary>
     public string? Summary { get; init; }

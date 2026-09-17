@@ -65,8 +65,8 @@ public abstract class GraphStoreChunkProvenanceContractSuite
         Assert.Equal(new[] { c2, c3 }.Order(), stored.ChunkIds.Order());
         Assert.Equal(["doc-b"], stored.DocumentIds);
 
-        Assert.Empty(await store.GetEntitiesByChunkIdsAsync([c1], ct));
-        var byNewChunk = await store.GetEntitiesByChunkIdsAsync([c3], ct);
+        Assert.Empty(await store.GetEntitiesByChunkIdsAsync([c1], ct: ct));
+        var byNewChunk = await store.GetEntitiesByChunkIdsAsync([c3], ct: ct);
         Assert.Equal(id, Assert.Single(byNewChunk).Id);
     }
 
@@ -97,7 +97,7 @@ public abstract class GraphStoreChunkProvenanceContractSuite
         await store.StoreCommunityAsync(Community("first build"), ct);
         await store.StoreCommunityAsync(Community("rebuilt"), ct);
 
-        var byChunks = await store.GetCommunitiesByChunkIdsAsync([c1, c2], ct);
+        var byChunks = await store.GetCommunitiesByChunkIdsAsync([c1, c2], ct: ct);
         var only = Assert.Single(byChunks, c => c.Id == communityId);
         Assert.Equal("rebuilt", only.Summary);
         Assert.Single(await store.GetCommunitiesForEntityAsync(entityId, ct), c => c.Id == communityId);
@@ -120,7 +120,7 @@ public abstract class GraphStoreChunkProvenanceContractSuite
             Entity(project, "Zeus", [chunk], ["doc-a"]) with { Type = NamedEntityType.Custom, Properties = new Dictionary<string, object> { ["subtype"] = "project" } }
         ], ct);
 
-        var both = await store.GetEntitiesByChunkIdsAsync([chunk], ct);
+        var both = await store.GetEntitiesByChunkIdsAsync([chunk], ct: ct);
         Assert.Equal(new[] { desk, project }.Order(), both.Select(e => e.Id).Order());
 
         static string Label(object value) => value switch
@@ -146,16 +146,16 @@ public abstract class GraphStoreChunkProvenanceContractSuite
             Entity(e2, "Initech", [c2], ["doc-a"])
         ], ct);
 
-        var both = await store.GetEntitiesByChunkIdsAsync([c2], ct);
+        var both = await store.GetEntitiesByChunkIdsAsync([c2], ct: ct);
         Assert.Equal(new[] { e1, e2 }.Order(), both.Select(e => e.Id).Order());
 
-        var first = await store.GetEntitiesByChunkIdsAsync([c1], ct);
+        var first = await store.GetEntitiesByChunkIdsAsync([c1], ct: ct);
         Assert.Equal(e1, Assert.Single(first).Id);
 
-        Assert.Empty(await store.GetEntitiesByChunkIdsAsync([c9], ct));
+        Assert.Empty(await store.GetEntitiesByChunkIdsAsync([c9], ct: ct));
 
         // An entity matched through two of the requested ids comes back once.
-        var overlapping = await store.GetEntitiesByChunkIdsAsync([c1, c2], ct);
+        var overlapping = await store.GetEntitiesByChunkIdsAsync([c1, c2], ct: ct);
         Assert.Equal(2, overlapping.Count);
         Assert.Equal(overlapping.Count, overlapping.Select(e => e.Id).Distinct().Count());
     }
@@ -194,11 +194,11 @@ public abstract class GraphStoreChunkProvenanceContractSuite
         var id = Fresh("entity");
         var c1 = Fresh("chunk");
         await store.StoreEntitiesBatchAsync([Entity(id, "Acme", [c1], ["doc-a"])], ct);
-        Assert.Single(await store.GetEntitiesByChunkIdsAsync([c1], ct));
+        Assert.Single(await store.GetEntitiesByChunkIdsAsync([c1], ct: ct));
 
         Assert.True(await store.DeleteEntityAsync(id, ct));
 
         Assert.Null(await store.GetEntityByIdAsync(id, ct));
-        Assert.Empty(await store.GetEntitiesByChunkIdsAsync([c1], ct));
+        Assert.Empty(await store.GetEntitiesByChunkIdsAsync([c1], ct: ct));
     }
 }

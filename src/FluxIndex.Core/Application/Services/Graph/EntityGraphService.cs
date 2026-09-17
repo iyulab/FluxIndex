@@ -154,8 +154,11 @@ public partial class EntityGraphService : IEntityGraphService
         entityEdges = allRelations.Select(r => ConvertToEntityEdge(r)).ToList();
 
         // Fold the reconstituted graph in: a freshly extracted entity that the store already knows
-        // (same normalized name and type) joins the stored one under its id, so provenance
-        // accumulates on one entity instead of a new one being persisted per build.
+        // (same identity, same partition) joins the stored one under its id, so provenance
+        // accumulates on one entity instead of a new one being persisted per build. The chunk-scoped
+        // load above only finds entities this build's chunks already carry; a stored entity another
+        // document produced is found by identity here.
+        reused = await JoinStoredIdentitiesAsync(entityNodes, chunkList, reused, options, cancellationToken);
         var (mergedNodes, mergedEdges, mergedMappings, changedNodeIds) =
             MergeWithStored(entityNodes, entityEdges, chunkMappings, reused);
         entityNodes = mergedNodes;
@@ -176,6 +179,7 @@ public partial class EntityGraphService : IEntityGraphService
 
         var entityGraphResult = new EntityGraphResult
         {
+            Partition = options.Partition,
             Entities = entityNodes,
             Relations = entityEdges,
             ChunkMappings = chunkMappings,
@@ -192,6 +196,7 @@ public partial class EntityGraphService : IEntityGraphService
                 entityEdges.Where(e => !reused.EdgeIds.Contains(e.Id)).ToList(),
                 chunkMappings,
                 reused.EntitiesById,
+                options.Partition,
                 cancellationToken);
         }
 
@@ -207,7 +212,7 @@ public partial class EntityGraphService : IEntityGraphService
     /// <param name="graph">The entity graph to persist.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     public Task PersistGraphAsync(EntityGraphResult graph, CancellationToken cancellationToken = default)
-        => PersistCoreAsync(graph.Entities, graph.Relations, graph.ChunkMappings, EmptyStoredEntities, cancellationToken);
+        => PersistCoreAsync(graph.Entities, graph.Relations, graph.ChunkMappings, EmptyStoredEntities, graph.Partition, cancellationToken);
 
     private static readonly IReadOnlyDictionary<string, GraphEntity> EmptyStoredEntities = new Dictionary<string, GraphEntity>();
 
@@ -223,6 +228,7 @@ public partial class EntityGraphService : IEntityGraphService
         IReadOnlyList<EntityEdge> relations,
         IReadOnlyList<EntityChunkMapping> chunkMappings,
         IReadOnlyDictionary<string, GraphEntity> storedById,
+        string partition,
         CancellationToken cancellationToken)
     {
         if (_graphStore == null)
@@ -262,6 +268,7 @@ public partial class EntityGraphService : IEntityGraphService
                 Id = e.Id,
                 Name = e.Name,
                 NormalizedName = e.NormalizedName,
+                Partition = partition,
                 Type = e.Type,
                 SurfaceForms = e.SurfaceForms,
                 Description = stored?.Description,
@@ -579,6 +586,16 @@ public partial class EntityGraphService : IEntityGraphService
             return graphList[0];
         }
 
+        // Graphs of two partitions describe two tenants' entities; merging them is the cross-partition join a partition
+        // exists to prevent.
+        var partitions = graphList.Select(g => g.Partition).Distinct(StringComparer.Ordinal).ToList();
+        if (partitions.Count > 1)
+        {
+            throw new ArgumentException(
+                $"Cannot merge entity graphs of different partitions ({string.Join(", ", partitions.Select(p => $"'{p}'"))}).",
+                nameof(graphs));
+        }
+
         var mergedEntities = new Dictionary<string, EntityNode>();
         var mergedEdges = new List<EntityEdge>();
         var mergedMappings = new List<EntityChunkMapping>();
@@ -684,6 +701,7 @@ public partial class EntityGraphService : IEntityGraphService
 
         return new EntityGraphResult
         {
+            Partition = partitions[0],
             Entities = entities,
             Relations = mergedEdges,
             ChunkMappings = mergedMappings,
@@ -787,7 +805,7 @@ public partial class EntityGraphService : IEntityGraphService
         var chunkLookup = chunkList
             .GroupBy(c => c.Id)
             .ToDictionary(g => g.Key, g => g.First());
-        var stored = await _graphStore.GetEntitiesByChunkIdsAsync(chunkLookup.Keys, cancellationToken);
+        var stored = await _graphStore.GetEntitiesByChunkIdsAsync(chunkLookup.Keys, options.Partition, cancellationToken);
         if (stored.Count == 0)
         {
             return StoredExtractions.None;
@@ -827,6 +845,60 @@ public partial class EntityGraphService : IEntityGraphService
         }
 
         return new StoredExtractions(covered, nodes, mappings, edges, edgeIds, entitiesById);
+    }
+
+    /// <summary>
+    /// Adds to <paramref name="reused"/> the stored entity, in the build's partition, of every freshly built node's
+    /// identity that <paramref name="reused"/> does not already hold — whether or not it shares a chunk with this build.
+    /// Without it, a document that mentions an entity another document already stored creates a second entity of the
+    /// same identity, and the graph grows one duplicate per document. One stored entity per identity is joined; stored
+    /// duplicates written before this join existed stay as they are.
+    /// </summary>
+    private async Task<StoredExtractions> JoinStoredIdentitiesAsync(
+        List<EntityNode> builtNodes,
+        List<DocumentChunk> chunkList,
+        StoredExtractions reused,
+        EntityGraphBuildOptions options,
+        CancellationToken cancellationToken)
+    {
+        if (_graphStore == null || !options.PersistToGraphStore || builtNodes.Count == 0)
+        {
+            return reused;
+        }
+
+        var known = reused.Nodes.Select(IdentityOf).ToHashSet();
+        var wanted = builtNodes.Select(IdentityOf).Where(identity => !known.Contains(identity)).ToHashSet();
+        if (wanted.Count == 0)
+        {
+            return reused;
+        }
+
+        var stored = await _graphStore.GetEntitiesByNormalizedNamesAsync(
+            wanted.Select(identity => identity.NormalizedName).Distinct(StringComparer.Ordinal).ToList(),
+            options.Partition,
+            cancellationToken);
+
+        var chunkLookup = chunkList
+            .GroupBy(c => c.Id)
+            .ToDictionary(g => g.Key, g => g.First());
+        var entitiesById = new Dictionary<string, GraphEntity>(reused.EntitiesById);
+        var nodes = new List<EntityNode>(reused.Nodes);
+        var mappings = new List<EntityChunkMapping>(reused.Mappings);
+        foreach (var entity in stored)
+        {
+            if (entitiesById.ContainsKey(entity.Id))
+                continue;
+            var node = StoredGraphConversions.ToEntityNode(entity);
+            if (!wanted.Remove(IdentityOf(node)))
+                continue;
+            entitiesById[entity.Id] = entity;
+            nodes.Add(node);
+            mappings.AddRange(StoredGraphConversions.ToChunkMappings(entity, chunkLookup));
+        }
+
+        return nodes.Count == reused.Nodes.Count
+            ? reused
+            : reused with { Nodes = nodes, Mappings = mappings, EntitiesById = entitiesById };
     }
 
     /// <summary>

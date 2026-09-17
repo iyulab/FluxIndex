@@ -50,7 +50,7 @@ public sealed class SQLiteEntityGraphStoreScopedLookupTests : IAsyncDisposable
         entities.Add(Entity(beyondWindow, "target"));
         await _store.StoreEntitiesBatchAsync(entities, ct);
 
-        var found = await _store.GetEntitiesByChunkIdsAsync(["target"], ct);
+        var found = await _store.GetEntitiesByChunkIdsAsync(["target"], ct: ct);
 
         Assert.Equal([$"entity-{beyondWindow:D5}"], found.Select(e => e.Id));
     }
@@ -61,7 +61,7 @@ public sealed class SQLiteEntityGraphStoreScopedLookupTests : IAsyncDisposable
         var ct = TestContext.Current.CancellationToken;
         await _store.StoreEntitiesBatchAsync([Entity(1, "c10"), Entity(2, "c1")], ct);
 
-        var found = await _store.GetEntitiesByChunkIdsAsync(["c1"], ct);
+        var found = await _store.GetEntitiesByChunkIdsAsync(["c1"], ct: ct);
 
         Assert.Equal(["entity-00002"], found.Select(e => e.Id));
     }

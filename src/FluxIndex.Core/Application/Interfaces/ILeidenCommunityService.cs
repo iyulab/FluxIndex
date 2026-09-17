@@ -139,6 +139,35 @@ public class LeidenOptions
     /// Default: true
     /// </summary>
     public bool UseRefinement { get; set; } = true;
+
+    /// <summary>
+    /// The graph partition (<see cref="Interfaces.GraphPartition"/>) the detected communities belong to — the tenant
+    /// boundary of a shared graph store, not the clustering partition this algorithm computes. It enters every
+    /// community id, so the same chunks detected in two graph partitions yield two communities rather than one row two
+    /// tenants overwrite. Default <see cref="Interfaces.GraphPartition.Default"/>, whose ids are the ids detection has
+    /// always produced.
+    /// </summary>
+    public string GraphPartition { get; set; } = Interfaces.GraphPartition.Default;
+
+    /// <summary>
+    /// A copy of these options in <paramref name="graphPartition"/>. Every settable property is copied —
+    /// <c>LeidenOptions_WithGraphPartition_CarriesEverySettableProperty</c> pins that a property added here is added
+    /// to this copy too.
+    /// </summary>
+    internal LeidenOptions WithGraphPartition(string graphPartition) => new()
+    {
+        Resolution = Resolution,
+        MaxIterations = MaxIterations,
+        MinModularityGain = MinModularityGain,
+        MaxHierarchyLevels = MaxHierarchyLevels,
+        MinCommunitySize = MinCommunitySize,
+        SimilarityThreshold = SimilarityThreshold,
+        MaxNeighbors = MaxNeighbors,
+        GenerateSummariesOnDetection = GenerateSummariesOnDetection,
+        RandomSeed = RandomSeed,
+        UseRefinement = UseRefinement,
+        GraphPartition = graphPartition
+    };
 }
 
 /// <summary>

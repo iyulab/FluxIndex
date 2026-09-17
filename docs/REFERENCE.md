@@ -520,6 +520,8 @@ var graphRag = serviceProvider.GetRequiredService<IGraphRAGService>();
 // Build once (the SDK indexer does this for you when EnableGraphRAG is on) or load a persisted graph
 var index = await graphRag.BuildIndexAsync(chunks, new GraphRAGBuildOptions());
 // var index = await graphRag.LoadIndexAsync(chunks);
+// Several tenants in one graph store: new GraphRAGBuildOptions { Partition = "tenant-a" } (and GraphRAGLoadOptions.Partition)
+// — see ADVANCED_RAG.md «Partitions».
 
 var result = await graphRag.QueryAsync(query, index, new GraphRAGQueryOptions
 {

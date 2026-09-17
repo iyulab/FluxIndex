@@ -42,6 +42,9 @@ public class EntityGraphDbContext : DbContext
 
         entity.HasKey(e => e.Id);
 
+        // A database default, not only a CLR one: it is what lets the provisioner add the column to an existing table.
+        entity.Property(e => e.Partition).HasDefaultValue(string.Empty);
+
         // Index for name lookups
         entity.HasIndex(e => e.NormalizedName);
 
@@ -108,6 +111,8 @@ public class EntityGraphDbContext : DbContext
         var entity = modelBuilder.Entity<EntityCommunityEntity>();
 
         entity.HasKey(e => e.Id);
+
+        entity.Property(e => e.Partition).HasDefaultValue(string.Empty);
 
         // Index for hierarchy navigation
         entity.HasIndex(e => e.ParentCommunityId);

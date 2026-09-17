@@ -378,7 +378,7 @@ dotnet add package FluxIndex.Storage.SQLite
 
 - [Guide](./docs/GUIDE.md) - Quick start and configuration
 - [Reference](./docs/REFERENCE.md) - Architecture and API reference
-- [Advanced RAG](./docs/ADVANCED_RAG.md) - GraphRAG, Self-RAG, Corrective RAG, Contextual Retrieval
+- [Advanced RAG](./docs/ADVANCED_RAG.md) - GraphRAG (including graph store partitions for several tenants in one store), Self-RAG, Corrective RAG, Contextual Retrieval
 - [Philosophy](./docs/FLUXINDEX_PHILOSOPHY.md) - Core principles and design philosophy
 
 ## Examples

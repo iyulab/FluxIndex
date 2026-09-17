@@ -59,7 +59,7 @@ public class GraphRAGServiceLoadIndexTests
     public async Task LoadsEntitiesOfTheScopeChunks_AndKeepsOnlyInScopeProvenance()
     {
         var chunks = new[] { Chunk("c1", "doc-a"), Chunk("c2", "doc-a") };
-        _store.GetEntitiesByChunkIdsAsync(Arg.Is<IEnumerable<string>>(ids => ids.Order().SequenceEqual(new[] { "c1", "c2" })), Arg.Any<CancellationToken>())
+        _store.GetEntitiesByChunkIdsAsync(Arg.Is<IEnumerable<string>>(ids => ids.Order().SequenceEqual(new[] { "c1", "c2" })), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns([Entity("acme", "Acme Corp", "c1", "c9"), Entity("globex", "Globex", "c2")]);
         _store.GetRelationshipsAsync(Arg.Any<string>(), Arg.Any<TraversalDirection>(), Arg.Any<CancellationToken>())
             .Returns([]);
@@ -85,7 +85,7 @@ public class GraphRAGServiceLoadIndexTests
     public async Task LoadsOnlyRelationshipsBetweenLoadedEntities_Deduplicated()
     {
         var chunks = new[] { Chunk("c1", "doc-a") };
-        _store.GetEntitiesByChunkIdsAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>())
+        _store.GetEntitiesByChunkIdsAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns([Entity("acme", "Acme Corp", "c1"), Entity("globex", "Globex", "c1")]);
         var inScope = Relation("r1", "acme", "globex");
         var dangling = Relation("r2", "acme", "initech"); // initech was not loaded
@@ -103,9 +103,9 @@ public class GraphRAGServiceLoadIndexTests
     public async Task RebuildsCommunityHierarchyAndSummaries_FromStoredCommunities()
     {
         var chunks = new[] { Chunk("c1", "doc-a"), Chunk("c2", "doc-a") };
-        _store.GetEntitiesByChunkIdsAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>()).Returns([Entity("acme", "Acme Corp", "c1")]);
+        _store.GetEntitiesByChunkIdsAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns([Entity("acme", "Acme Corp", "c1")]);
         _store.GetRelationshipsAsync(Arg.Any<string>(), Arg.Any<TraversalDirection>(), Arg.Any<CancellationToken>()).Returns([]);
-        _store.GetCommunitiesByChunkIdsAsync(Arg.Is<IEnumerable<string>>(ids => ids.Order().SequenceEqual(new[] { "c1", "c2" })), Arg.Any<CancellationToken>())
+        _store.GetCommunitiesByChunkIdsAsync(Arg.Is<IEnumerable<string>>(ids => ids.Order().SequenceEqual(new[] { "c1", "c2" })), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(
             [
                 new GraphCommunity { Id = "leaf", Name = "Acme cluster", Summary = "Acme and its partners", Level = 0, ImportanceScore = 0.7, ChunkIds = ["c1", "c2"], Topics = ["partners"], ParentCommunityId = "root" },
@@ -136,7 +136,7 @@ public class GraphRAGServiceLoadIndexTests
     [Fact]
     public async Task LoadRelationshipsFalse_SkipsTheRelationshipReads()
     {
-        _store.GetEntitiesByChunkIdsAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>())
+        _store.GetEntitiesByChunkIdsAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns([Entity("acme", "Acme Corp", "c1")]);
 
         var index = await CreateService().LoadIndexAsync([Chunk("c1", "doc-a")], new GraphRAGLoadOptions { LoadRelationships = false }, TestContext.Current.CancellationToken);

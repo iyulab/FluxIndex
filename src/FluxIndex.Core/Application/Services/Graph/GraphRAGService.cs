@@ -87,6 +87,11 @@ public partial class GraphRAGService : IGraphRAGService
 
         LogGraphRAG13(_logger, chunkList.Count);
 
+        // Refuse options that split one build across two partitions before either phase writes anything — the two
+        // phases run in parallel, so a refusal raised inside one would not stop the other persisting.
+        _ = ResolveEntityGraphOptions(options, options.Partition);
+        _ = ResolveCommunityOptions(options, options.Partition);
+
         // Phase 1: Build entity graph
         var entityGraphTask = BuildEntityGraphAsync(chunkList, options, cancellationToken);
 
@@ -135,6 +140,7 @@ public partial class GraphRAGService : IGraphRAGService
 
         var index = new GraphRAGIndex
         {
+            Partition = options.Partition,
             EntityGraph = entityGraph,
             CommunityHierarchy = communityHierarchy,
             Summaries = summaries,
@@ -187,6 +193,7 @@ public partial class GraphRAGService : IGraphRAGService
                 var graphCommunity = new GraphCommunity
                 {
                     Id = community.Id,
+                    Partition = index.Partition,
                     Name = communitySummary?.Title ?? $"Community_{community.Id}",
                     Summary = communitySummary?.Summary,
                     EntityIds = memberEntityIds,
@@ -231,7 +238,7 @@ public partial class GraphRAGService : IGraphRAGService
 
         var storedEntities = scopeChunkIds.Count == 0
             ? Array.Empty<GraphEntity>()
-            : await _graphStore.GetEntitiesByChunkIdsAsync(scopeChunkIds, cancellationToken);
+            : await _graphStore.GetEntitiesByChunkIdsAsync(scopeChunkIds, options.Partition, cancellationToken);
 
         var entities = new List<EntityNode>(storedEntities.Count);
         var mappings = new List<EntityChunkMapping>();
@@ -261,6 +268,7 @@ public partial class GraphRAGService : IGraphRAGService
 
         var entityGraph = new EntityGraphResult
         {
+            Partition = options.Partition,
             Entities = entities,
             Relations = relations,
             ChunkMappings = mappings,
@@ -279,7 +287,7 @@ public partial class GraphRAGService : IGraphRAGService
         // UpdateIndexAsync work on a loaded index exactly as on a built one.
         var storedCommunities = scopeChunkIds.Count == 0
             ? Array.Empty<GraphCommunity>()
-            : await _graphStore.GetCommunitiesByChunkIdsAsync(scopeChunkIds, cancellationToken);
+            : await _graphStore.GetCommunitiesByChunkIdsAsync(scopeChunkIds, options.Partition, cancellationToken);
         var (communityHierarchy, summaries) = RebuildCommunities(storedCommunities, chunkList.Count, chunkLookup);
 
         sw.Stop();
@@ -289,6 +297,7 @@ public partial class GraphRAGService : IGraphRAGService
 
         return new GraphRAGIndex
         {
+            Partition = options.Partition,
             EntityGraph = entityGraph,
             CommunityHierarchy = communityHierarchy,
             Summaries = summaries,
@@ -816,12 +825,16 @@ public partial class GraphRAGService : IGraphRAGService
         options ??= new GraphRAGUpdateOptions();
         var chunkList = newChunks.ToList();
 
+        _ = ResolveEntityGraphOptions(index.Options, index.Partition);
+        _ = ResolveCommunityOptions(index.Options, index.Partition);
+
         LogGraphRAG5(_logger, chunkList.Count);
 
-        // Build entity graph for new chunks
+        // Build entity graph for new chunks — in the index's partition, which a loaded index carries even though its
+        // build options were never recorded.
         var newEntityGraph = await _entityGraphService.BuildEntityGraphAsync(
             chunkList,
-            ResolveEntityGraphOptions(index.Options),
+            ResolveEntityGraphOptions(index.Options, index.Partition),
             cancellationToken);
 
         // Merge with existing entity graph
@@ -838,6 +851,7 @@ public partial class GraphRAGService : IGraphRAGService
             mergedEntityGraph = new EntityGraphResult
             {
                 Id = index.EntityGraph.Id,
+                Partition = index.Partition,
                 Entities = index.EntityGraph.Entities.Concat(newEntityGraph.Entities).ToList(),
                 Relations = index.EntityGraph.Relations.Concat(newEntityGraph.Relations).ToList(),
                 ChunkMappings = index.EntityGraph.ChunkMappings.Concat(newEntityGraph.ChunkMappings).ToList(),
@@ -861,7 +875,7 @@ public partial class GraphRAGService : IGraphRAGService
 
             updatedHierarchy = await _leidenCommunityService.DetectHierarchicalCommunitiesAsync(
                 leidenChunks,
-                index.Options.CommunityOptions,
+                ResolveCommunityOptions(index.Options, index.Partition),
                 cancellationToken);
         }
         else
@@ -912,6 +926,7 @@ public partial class GraphRAGService : IGraphRAGService
         return new GraphRAGIndex
         {
             Id = index.Id,
+            Partition = index.Partition,
             EntityGraph = mergedEntityGraph,
             CommunityHierarchy = updatedHierarchy,
             Summaries = updatedSummaries,
@@ -953,25 +968,61 @@ public partial class GraphRAGService : IGraphRAGService
 
         return await _entityGraphService.BuildEntityGraphAsync(
             chunks,
-            ResolveEntityGraphOptions(options),
+            ResolveEntityGraphOptions(options, options.Partition),
             cancellationToken);
     }
 
     /// <summary>
-    /// <see cref="GraphRAGBuildOptions.EntityOptions"/> is the consumer's extractor-side configuration;
-    /// the entity graph build reads it through <see cref="EntityGraphBuildOptions.ExtractionOptions"/>.
-    /// Carry it across when the consumer set it and did not already set the latter — otherwise a
-    /// declared <c>Language</c>/<c>UseLlm</c>/<c>CustomPatterns</c> never reaches the extractor.
+    /// The entity graph options a build in <paramref name="partition"/> runs with.
+    /// <see cref="GraphRAGBuildOptions.EntityOptions"/> is the consumer's extractor-side configuration; the entity graph
+    /// build reads it through <see cref="EntityGraphBuildOptions.ExtractionOptions"/>. Carry it across when the consumer
+    /// set it and did not already set the latter — otherwise a declared <c>Language</c>/<c>UseLlm</c>/<c>CustomPatterns</c>
+    /// never reaches the extractor. The partition is carried the same way; entity graph options that name another
+    /// partition are refused, since the entities and the communities of one build would otherwise land in two.
     /// </summary>
-    internal static EntityGraphBuildOptions? ResolveEntityGraphOptions(GraphRAGBuildOptions options)
+    internal static EntityGraphBuildOptions? ResolveEntityGraphOptions(GraphRAGBuildOptions options, string partition)
     {
         var graphOptions = options.EntityGraphOptions;
-        if (options.EntityOptions is null || graphOptions?.ExtractionOptions is not null)
+        if (graphOptions is not null && graphOptions.Partition != GraphPartition.Default && graphOptions.Partition != partition)
+        {
+            throw new ArgumentException(
+                $"EntityGraphOptions.Partition is '{graphOptions.Partition}' but the GraphRAG build runs in partition '{partition}'. Set the partition once, on GraphRAGBuildOptions.Partition.",
+                nameof(options));
+        }
+
+        var carryExtraction = options.EntityOptions is not null && graphOptions?.ExtractionOptions is null;
+        var carryPartition = (graphOptions?.Partition ?? GraphPartition.Default) != partition;
+        if (!carryExtraction && !carryPartition)
         {
             return graphOptions;
         }
 
-        return (graphOptions ?? new EntityGraphBuildOptions()).WithExtractionOptions(options.EntityOptions);
+        var source = graphOptions ?? new EntityGraphBuildOptions();
+        var resolved = source.WithExtractionOptions(carryExtraction ? options.EntityOptions! : source.ExtractionOptions!);
+        resolved.Partition = partition;
+        return resolved;
+    }
+
+    /// <summary>
+    /// The community detection options a build in <paramref name="partition"/> runs with — the consumer's
+    /// <see cref="GraphRAGBuildOptions.CommunityOptions"/> in that graph partition, so community ids are derived inside it.
+    /// </summary>
+    internal static LeidenOptions? ResolveCommunityOptions(GraphRAGBuildOptions options, string partition)
+    {
+        var communityOptions = options.CommunityOptions;
+        if (communityOptions is not null && communityOptions.GraphPartition != GraphPartition.Default && communityOptions.GraphPartition != partition)
+        {
+            throw new ArgumentException(
+                $"CommunityOptions.GraphPartition is '{communityOptions.GraphPartition}' but the GraphRAG build runs in partition '{partition}'. Set the partition once, on GraphRAGBuildOptions.Partition.",
+                nameof(options));
+        }
+
+        if ((communityOptions?.GraphPartition ?? GraphPartition.Default) == partition)
+        {
+            return communityOptions;
+        }
+
+        return (communityOptions ?? new LeidenOptions()).WithGraphPartition(partition);
     }
 
     private async Task<CommunityHierarchy> BuildCommunityHierarchyAsync(
@@ -1009,7 +1060,7 @@ public partial class GraphRAGService : IGraphRAGService
 
         return await _leidenCommunityService.DetectHierarchicalCommunitiesAsync(
             leidenChunks,
-            options.CommunityOptions,
+            ResolveCommunityOptions(options, options.Partition),
             cancellationToken);
     }
 

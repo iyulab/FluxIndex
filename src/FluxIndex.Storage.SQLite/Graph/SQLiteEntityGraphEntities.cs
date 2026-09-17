@@ -25,6 +25,16 @@ public class SQLiteEntityGraphEntity
     [MaxLength(512)]
     public string NormalizedName { get; set; } = string.Empty;
 
+    /// <summary>
+    /// The graph partition this row belongs to (<c>GraphPartition</c>). Defaults to the empty string at the database,
+    /// so the schema provisioner can add the column to a table written before partitions existed and those rows read as
+    /// the default partition.
+    /// </summary>
+    [Required]
+    [Column("partition")]
+    [MaxLength(256)]
+    public string Partition { get; set; } = string.Empty;
+
     [Column("entity_type")]
     public int EntityType { get; set; }
 
@@ -171,6 +181,16 @@ public class SQLiteEntityCommunityEntity
     [Column("name")]
     [MaxLength(512)]
     public string Name { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The graph partition this row belongs to (<c>GraphPartition</c>). Defaults to the empty string at the database,
+    /// so the schema provisioner can add the column to a table written before partitions existed and those rows read as
+    /// the default partition.
+    /// </summary>
+    [Required]
+    [Column("partition")]
+    [MaxLength(256)]
+    public string Partition { get; set; } = string.Empty;
 
     [Column("summary")]
     public string? Summary { get; set; }

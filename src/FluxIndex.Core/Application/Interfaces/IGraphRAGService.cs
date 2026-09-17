@@ -145,6 +145,13 @@ public class GraphRAGLoadOptions
     /// Set to <c>false</c> for entity-only scopes where traversal is not needed.
     /// </summary>
     public bool LoadRelationships { get; set; } = true;
+
+    /// <summary>
+    /// The graph partition to load from (<see cref="GraphPartition"/>) — only entities and communities of this partition
+    /// are read, even when another partition holds the same chunk ids. The loaded index carries it, so an update of that
+    /// index stays in it.
+    /// </summary>
+    public string Partition { get; set; } = GraphPartition.Default;
 }
 
 /// <summary>
@@ -186,6 +193,15 @@ public class GraphRAGBuildOptions
     /// Maximum chunks to process. Null = no limit.
     /// </summary>
     public int? MaxChunks { get; set; }
+
+    /// <summary>
+    /// The graph partition this index is built in (<see cref="GraphPartition"/>): entities merge only with stored entities
+    /// of this partition, and entities and communities are persisted into it. It is the one place to set it for a build —
+    /// it reaches <see cref="EntityGraphBuildOptions.Partition"/> and <see cref="LeidenOptions.GraphPartition"/>, and a
+    /// build whose <see cref="EntityGraphOptions"/> or <see cref="CommunityOptions"/> name a different partition is
+    /// refused rather than split across two.
+    /// </summary>
+    public string Partition { get; set; } = GraphPartition.Default;
 }
 
 /// <summary>
@@ -377,6 +393,12 @@ public class GraphRAGIndex
     /// Unique index identifier
     /// </summary>
     public string Id { get; init; } = Guid.NewGuid().ToString();
+
+    /// <summary>
+    /// The graph partition this index was built in or loaded from (<see cref="GraphPartition"/>).
+    /// <see cref="IGraphRAGService.UpdateIndexAsync"/> writes into the same partition.
+    /// </summary>
+    public string Partition { get; init; } = GraphPartition.Default;
 
     /// <summary>
     /// Entity graph

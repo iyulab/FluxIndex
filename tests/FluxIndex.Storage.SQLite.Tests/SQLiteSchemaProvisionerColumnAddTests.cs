@@ -67,9 +67,53 @@ public sealed class SQLiteSchemaProvisionerColumnAddTests : IAsyncDisposable
         var store = new SQLiteEntityGraphStore(context, Options.Create(new SQLiteEntityGraphOptions()), NullLogger<SQLiteEntityGraphStore>.Instance);
         await store.StoreCommunityAsync(new GraphCommunity { Id = "c1", Name = "c1", ChunkIds = ["k1", "k2"] }, ct);
 
-        var found = await store.GetCommunitiesByChunkIdsAsync(["k2"], ct);
+        var found = await store.GetCommunitiesByChunkIdsAsync(["k2"], ct: ct);
         Assert.Equal("c1", Assert.Single(found).Id);
         Assert.Equal(["k1", "k2"], Assert.Single(found).ChunkIds.Order());
+    }
+
+    [Fact]
+    public async Task ProvisioningADatabaseFromBeforePartitions_AddsThePartitionColumns_AndItsRowsReadAsTheDefaultPartition()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        _connection.Open();
+
+        // Rows written, then the partition columns taken away: the shape a database written before partitions has.
+        await using (var older = NewContext())
+        {
+            older.Database.EnsureCreated();
+            var olderStore = new SQLiteEntityGraphStore(older, Options.Create(new SQLiteEntityGraphOptions()), NullLogger<SQLiteEntityGraphStore>.Instance);
+            await olderStore.StoreEntitiesBatchAsync([new GraphEntity { Id = "e1", Name = "Acme", NormalizedName = "acme", ChunkIds = ["k1"] }], ct);
+            await olderStore.StoreCommunityAsync(new GraphCommunity { Id = "c1", Name = "c1", EntityIds = ["e1"], ChunkIds = ["k1"] }, ct);
+            foreach (var clrType in new[] { typeof(SQLiteEntityGraphEntity), typeof(SQLiteEntityCommunityEntity) })
+            {
+                var (table, column) = PartitionColumn(older, clrType);
+                await older.Database.ExecuteSqlRawAsync($"ALTER TABLE \"{table}\" DROP COLUMN \"{column}\"", ct);
+                Assert.DoesNotContain(column, ColumnsOf(_connection, table));
+            }
+        }
+
+        await using var context = NewContext();
+        SQLiteSchemaProvisioner.Provision(context);
+
+        foreach (var clrType in new[] { typeof(SQLiteEntityGraphEntity), typeof(SQLiteEntityCommunityEntity) })
+        {
+            var (table, column) = PartitionColumn(context, clrType);
+            Assert.Contains(column, ColumnsOf(_connection, table));
+        }
+
+        var store = new SQLiteEntityGraphStore(context, Options.Create(new SQLiteEntityGraphOptions()), NullLogger<SQLiteEntityGraphStore>.Instance);
+        var entity = Assert.Single(await store.GetEntitiesByChunkIdsAsync(["k1"], ct: ct));
+        Assert.Equal(GraphPartition.Default, entity.Partition);
+        Assert.Equal("c1", Assert.Single(await store.GetCommunitiesByChunkIdsAsync(["k1"], ct: ct)).Id);
+        Assert.Empty(await store.GetEntitiesByChunkIdsAsync(["k1"], "desk-1", ct));
+    }
+
+    private static (string Table, string Column) PartitionColumn(DbContext context, Type clrType)
+    {
+        var entityType = context.Model.FindEntityType(clrType)!;
+        var table = entityType.GetTableName()!;
+        return (table, entityType.FindProperty("Partition")!.GetColumnName(StoreObjectIdentifier.Table(table))!);
     }
 
     [Fact]

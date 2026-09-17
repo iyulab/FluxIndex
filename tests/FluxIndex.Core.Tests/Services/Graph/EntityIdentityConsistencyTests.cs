@@ -42,7 +42,7 @@ public class EntityIdentityConsistencyTests
             });
         _store.StoreRelationshipsBatchAsync(Arg.Any<IEnumerable<GraphRelationship>>(), Arg.Any<CancellationToken>())
             .Returns(ci => Task.FromResult<IReadOnlyList<string>>(ci.Arg<IEnumerable<GraphRelationship>>().Select(r => r.Id).ToList()));
-        _store.GetEntitiesByChunkIdsAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>())
+        _store.GetEntitiesByChunkIdsAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(ci =>
             {
                 var ids = ci.Arg<IEnumerable<string>>().ToHashSet();
@@ -233,7 +233,7 @@ public class EntityIdentityConsistencyTests
             cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(2, first.Entities.Count);
 
-        var reread = await _store.GetEntitiesByChunkIdsAsync(["c1"], TestContext.Current.CancellationToken);
+        var reread = await _store.GetEntitiesByChunkIdsAsync(["c1"], ct: TestContext.Current.CancellationToken);
         Assert.All(reread, e => Assert.IsType<JsonElement>(e.Properties["subtype"]));   // fixture premise
 
         _extractionByContent["Zeus again."] =

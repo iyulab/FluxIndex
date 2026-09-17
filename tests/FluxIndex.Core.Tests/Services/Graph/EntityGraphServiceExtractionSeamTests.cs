@@ -217,7 +217,7 @@ public class EntityGraphServiceExtractionSeamTests
         var graphOptions = new EntityGraphBuildOptions { BatchSize = 5 };
         var options = new GraphRAGBuildOptions { EntityOptions = new EntityExtractionOptions { Language = "ko" }, EntityGraphOptions = graphOptions };
 
-        var resolved = GraphRAGService.ResolveEntityGraphOptions(options)!;
+        var resolved = GraphRAGService.ResolveEntityGraphOptions(options, GraphPartition.Default)!;
 
         Assert.NotSame(graphOptions, resolved);
         Assert.Null(graphOptions.ExtractionOptions);
@@ -225,8 +225,8 @@ public class EntityGraphServiceExtractionSeamTests
         Assert.Same(options.EntityOptions, resolved.ExtractionOptions);
 
         var already = new EntityGraphBuildOptions { ExtractionOptions = new EntityExtractionOptions { Language = "en" } };
-        Assert.Same(already, GraphRAGService.ResolveEntityGraphOptions(new GraphRAGBuildOptions { EntityOptions = options.EntityOptions, EntityGraphOptions = already }));
-        Assert.Null(GraphRAGService.ResolveEntityGraphOptions(new GraphRAGBuildOptions()));
+        Assert.Same(already, GraphRAGService.ResolveEntityGraphOptions(new GraphRAGBuildOptions { EntityOptions = options.EntityOptions, EntityGraphOptions = already }, GraphPartition.Default));
+        Assert.Null(GraphRAGService.ResolveEntityGraphOptions(new GraphRAGBuildOptions(), GraphPartition.Default));
     }
 
     private GraphRAGService CreateGraphRagService()
@@ -272,6 +272,18 @@ public class OptionsCopyCompletenessTests
         AssertAllPropertiesEqual(expected, copy);
     }
 
+    [Fact]
+    public void LeidenOptions_WithGraphPartition_CarriesEverySettableProperty()
+    {
+        var source = new LeidenOptions();
+        var expected = FillWithNonDefaults(source);
+
+        var copy = source.WithGraphPartition("desk-7");
+
+        expected[nameof(LeidenOptions.GraphPartition)] = "desk-7";
+        AssertAllPropertiesEqual(expected, copy);
+    }
+
     private static Dictionary<string, object?> FillWithNonDefaults(object target)
     {
         var values = new Dictionary<string, object?>();
@@ -309,6 +321,7 @@ public class OptionsCopyCompletenessTests
     {
         _ when type == typeof(bool) => !(bool)current!,
         _ when type == typeof(int) => (int)current! + 17,
+        _ when type == typeof(int?) => ((int?)current ?? 0) + 17,
         _ when type == typeof(double) => (double)current! + 0.125,
         _ when type == typeof(string) => "non-default",
         _ when type == typeof(IReadOnlyList<NamedEntityType>) => new List<NamedEntityType> { NamedEntityType.Event },

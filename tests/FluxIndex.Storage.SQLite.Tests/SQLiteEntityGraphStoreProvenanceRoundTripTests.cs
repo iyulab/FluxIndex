@@ -54,12 +54,12 @@ public sealed class SQLiteEntityGraphStoreProvenanceRoundTripTests : IAsyncDispo
 
         await service.BuildEntityGraphAsync(chunks, cancellationToken: ct);
 
-        var fromC1 = await _store.GetEntitiesByChunkIdsAsync(["c1"], ct);
+        var fromC1 = await _store.GetEntitiesByChunkIdsAsync(["c1"], ct: ct);
         var only = Assert.Single(fromC1);
         Assert.Equal("Acme Corp", only.Name);
         Assert.Equal(["doc-a"], only.DocumentIds);
 
-        var fromUnknown = await _store.GetEntitiesByChunkIdsAsync(["no-such-chunk"], ct);
+        var fromUnknown = await _store.GetEntitiesByChunkIdsAsync(["no-such-chunk"], ct: ct);
         Assert.Empty(fromUnknown);
     }
 

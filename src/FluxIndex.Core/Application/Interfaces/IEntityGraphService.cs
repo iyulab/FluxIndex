@@ -169,6 +169,14 @@ public class EntityGraphBuildOptions
     public bool ReuseStoredExtractions { get; set; } = true;
 
     /// <summary>
+    /// The graph partition this build reads and writes (<see cref="GraphPartition"/>). A freshly extracted entity joins
+    /// a stored entity of the same identity only within this partition — whether or not the two share a chunk — and is
+    /// persisted into it. Default <see cref="GraphPartition.Default"/>. A consumer serving several tenants from one
+    /// graph store sets one partition per tenant.
+    /// </summary>
+    public string Partition { get; set; } = GraphPartition.Default;
+
+    /// <summary>
     /// Base options handed to <see cref="IAdvancedEntityExtractionService.ExtractBatchAsync"/> for every
     /// batch — the extractor-side knobs (<c>UseLlm</c>, <c>Language</c>, <c>CustomPatterns</c>,
     /// <c>IncludeContext</c>, …) that this class does not declare itself. The four knobs both classes
@@ -195,6 +203,7 @@ public class EntityGraphBuildOptions
         BatchSize = BatchSize,
         PersistToGraphStore = PersistToGraphStore,
         ReuseStoredExtractions = ReuseStoredExtractions,
+        Partition = Partition,
         ExtractionOptions = extractionOptions
     };
 }
@@ -363,6 +372,12 @@ public class EntityGraphResult
     /// Unique identifier for this graph
     /// </summary>
     public string Id { get; init; } = Guid.NewGuid().ToString();
+
+    /// <summary>
+    /// The graph partition this graph was built in (<see cref="GraphPartition"/>) — where persisting it writes it, and
+    /// the partition every graph it is merged with must share.
+    /// </summary>
+    public string Partition { get; init; } = GraphPartition.Default;
 
     /// <summary>
     /// All entities in the graph

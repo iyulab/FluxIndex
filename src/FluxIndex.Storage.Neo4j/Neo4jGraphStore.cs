@@ -94,50 +94,55 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable
 
         await session.ExecuteWriteAsync(async tx =>
         {
-            var query = $@"
-                MERGE (e:{EntityLabel} {{id: $id}})
-                SET e.name = $name,
-                    e.normalizedName = $normalizedName,
-                    e.type = $type,
-                    e.surfaceForms = $surfaceForms,
-                    e.description = $description,
-                    e.embedding = $embedding,
-                    e.confidence = $confidence,
-                    e.importanceScore = $importanceScore,
-                    e.mentionCount = $mentionCount,
-                    e.chunkIds = $chunkIds,
-                    e.documentIds = $documentIds,
-                    e.externalLinks = $externalLinks,
-                    e.properties = $properties,
-                    e.createdAt = $createdAt,
-                    e.updatedAt = $updatedAt";
-
-            var parameters = new
-            {
-                id,
-                name = entity.Name,
-                normalizedName = entity.NormalizedName,
-                type = (int)entity.Type,
-                surfaceForms = entity.SurfaceForms.ToList(),
-                description = entity.Description,
-                embedding = entity.Embedding?.ToList(),
-                confidence = entity.Confidence,
-                importanceScore = entity.ImportanceScore,
-                mentionCount = entity.MentionCount,
-                chunkIds = entity.ChunkIds.ToList(),
-                documentIds = entity.DocumentIds.ToList(),
-                externalLinks = SerializeDict(entity.ExternalLinks),
-                properties = SerializeDict(entity.Properties),
-                createdAt = entity.CreatedAt.ToString("O"),
-                updatedAt = DateTimeOffset.UtcNow.ToString("O")
-            };
-
-            await tx.RunAsync(query, parameters);
+            await tx.RunAsync(EntityUpsertCypher, EntityUpsertParameters(entity, id));
         });
 
         LogEntityStored(_logger, id, entity.Name);
         return id;
     }
+
+    // One upsert for the single and the batch write. The batch used to carry its own copy that set neither
+    // properties, embedding nor externalLinks, so every entity the entity graph build persisted lost them — including
+    // the "subtype" its identity is keyed on.
+    private static readonly string EntityUpsertCypher = $@"
+        MERGE (e:{EntityLabel} {{id: $id}})
+        SET e.name = $name,
+            e.normalizedName = $normalizedName,
+            e.partition = $partition,
+            e.type = $type,
+            e.surfaceForms = $surfaceForms,
+            e.description = $description,
+            e.embedding = $embedding,
+            e.confidence = $confidence,
+            e.importanceScore = $importanceScore,
+            e.mentionCount = $mentionCount,
+            e.chunkIds = $chunkIds,
+            e.documentIds = $documentIds,
+            e.externalLinks = $externalLinks,
+            e.properties = $properties,
+            e.createdAt = $createdAt,
+            e.updatedAt = $updatedAt";
+
+    private static object EntityUpsertParameters(GraphEntity entity, string id) => new
+    {
+        id,
+        name = entity.Name,
+        normalizedName = entity.NormalizedName,
+        partition = PartitionOf(entity.Partition),
+        type = (int)entity.Type,
+        surfaceForms = entity.SurfaceForms.ToList(),
+        description = entity.Description,
+        embedding = entity.Embedding?.ToList(),
+        confidence = entity.Confidence,
+        importanceScore = entity.ImportanceScore,
+        mentionCount = entity.MentionCount,
+        chunkIds = entity.ChunkIds.ToList(),
+        documentIds = entity.DocumentIds.ToList(),
+        externalLinks = SerializeDict(entity.ExternalLinks),
+        properties = SerializeDict(entity.Properties),
+        createdAt = entity.CreatedAt.ToString("O"),
+        updatedAt = DateTimeOffset.UtcNow.ToString("O")
+    };
 
     public async Task<IReadOnlyList<string>> StoreEntitiesBatchAsync(
         IEnumerable<GraphEntity> entities,
@@ -156,39 +161,7 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable
                 var id = entity.Id ?? Guid.NewGuid().ToString();
                 ids.Add(id);
 
-                var query = $@"
-                    MERGE (e:{EntityLabel} {{id: $id}})
-                    SET e.name = $name,
-                        e.normalizedName = $normalizedName,
-                        e.type = $type,
-                        e.surfaceForms = $surfaceForms,
-                        e.description = $description,
-                        e.confidence = $confidence,
-                        e.importanceScore = $importanceScore,
-                        e.mentionCount = $mentionCount,
-                        e.chunkIds = $chunkIds,
-                        e.documentIds = $documentIds,
-                        e.createdAt = $createdAt,
-                        e.updatedAt = $updatedAt";
-
-                var parameters = new
-                {
-                    id,
-                    name = entity.Name,
-                    normalizedName = entity.NormalizedName,
-                    type = (int)entity.Type,
-                    surfaceForms = entity.SurfaceForms.ToList(),
-                    description = entity.Description,
-                    confidence = entity.Confidence,
-                    importanceScore = entity.ImportanceScore,
-                    mentionCount = entity.MentionCount,
-                    chunkIds = entity.ChunkIds.ToList(),
-                    documentIds = entity.DocumentIds.ToList(),
-                    createdAt = entity.CreatedAt.ToString("O"),
-                    updatedAt = DateTimeOffset.UtcNow.ToString("O")
-                };
-
-                await tx.RunAsync(query, parameters);
+                await tx.RunAsync(EntityUpsertCypher, EntityUpsertParameters(entity, id));
             }
         });
 
@@ -218,8 +191,10 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable
     public async Task<IReadOnlyList<GraphEntity>> GetEntitiesByNameAsync(
         string name,
         bool fuzzyMatch = false,
+        string partition = GraphPartition.Default,
         CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(partition);
         await using var session = await GetSessionAsync();
 
         return await session.ExecuteReadAsync(async tx =>
@@ -232,18 +207,20 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable
                 var normalizedName = name.ToLowerInvariant().Trim();
                 query = $@"
                     MATCH (e:{EntityLabel})
-                    WHERE toLower(e.name) CONTAINS $searchTerm
-                       OR e.normalizedName CONTAINS $normalizedName
+                    WHERE (toLower(e.name) CONTAINS $searchTerm
+                       OR e.normalizedName CONTAINS $normalizedName)
+                      AND coalesce(e.partition, '') = $partition
                     RETURN e";
-                parameters = new { searchTerm = name.ToLowerInvariant(), normalizedName };
+                parameters = new { searchTerm = name.ToLowerInvariant(), normalizedName, partition };
             }
             else
             {
                 query = $@"
                     MATCH (e:{EntityLabel})
-                    WHERE e.name = $name OR e.normalizedName = $normalizedName
+                    WHERE (e.name = $name OR e.normalizedName = $normalizedName)
+                      AND coalesce(e.partition, '') = $partition
                     RETURN e";
-                parameters = new { name, normalizedName = name.ToLowerInvariant().Trim() };
+                parameters = new { name, normalizedName = name.ToLowerInvariant().Trim(), partition };
             }
 
             var cursor = await tx.RunAsync(query, parameters);
@@ -259,21 +236,55 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable
         });
     }
 
+    public async Task<IReadOnlyList<GraphEntity>> GetEntitiesByNormalizedNamesAsync(
+        IEnumerable<string> normalizedNames,
+        string partition = GraphPartition.Default,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(partition);
+        var names = normalizedNames.Distinct(StringComparer.Ordinal).ToList();
+        if (names.Count == 0) return [];
+
+        await using var session = await GetSessionAsync();
+
+        return await session.ExecuteReadAsync(async tx =>
+        {
+            var query = $@"
+                MATCH (e:{EntityLabel})
+                WHERE e.normalizedName IN $names
+                  AND coalesce(e.partition, '') = $partition
+                RETURN e";
+
+            var cursor = await tx.RunAsync(query, new { names, partition });
+            var entities = new List<GraphEntity>();
+
+            while (await cursor.FetchAsync())
+            {
+                entities.Add(MapNodeToEntity(cursor.Current["e"].As<INode>()));
+            }
+
+            return entities;
+        });
+    }
+
     public async Task<IReadOnlyList<GraphEntity>> GetEntitiesByTypeAsync(
         NamedEntityType type,
         int limit = 100,
+        string partition = GraphPartition.Default,
         CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(partition);
         await using var session = await GetSessionAsync();
 
         return await session.ExecuteReadAsync(async tx =>
         {
             var query = $@"
                 MATCH (e:{EntityLabel} {{type: $type}})
+                WHERE coalesce(e.partition, '') = $partition
                 RETURN e
                 LIMIT $limit";
 
-            var cursor = await tx.RunAsync(query, new { type = (int)type, limit });
+            var cursor = await tx.RunAsync(query, new { type = (int)type, limit, partition });
             var entities = new List<GraphEntity>();
 
             while (await cursor.FetchAsync())
@@ -296,6 +307,7 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable
                 MATCH (e:{EntityLabel} {{id: $id}})
                 SET e.name = $name,
                     e.normalizedName = $normalizedName,
+                    e.partition = $partition,
                     e.type = $type,
                     e.surfaceForms = $surfaceForms,
                     e.description = $description,
@@ -315,6 +327,7 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable
                 id = entity.Id,
                 name = entity.Name,
                 normalizedName = entity.NormalizedName,
+                partition = PartitionOf(entity.Partition),
                 type = (int)entity.Type,
                 surfaceForms = entity.SurfaceForms.ToList(),
                 description = entity.Description,
@@ -504,19 +517,22 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable
     public async Task<IReadOnlyList<GraphRelationship>> GetRelationshipsByTypeAsync(
         RelationType type,
         int limit = 100,
+        string partition = GraphPartition.Default,
         CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(partition);
         await using var session = await GetSessionAsync();
 
         return await session.ExecuteReadAsync(async tx =>
         {
             var relType = GetRelationshipTypeName(type);
             var query = $@"
-                MATCH (source)-[r:{relType}]->(target)
+                MATCH (source:{EntityLabel})-[r:{relType}]->(target:{EntityLabel})
+                WHERE coalesce(source.partition, '') = $partition
                 RETURN r, source.id as sourceId, target.id as targetId
                 LIMIT $limit";
 
-            var cursor = await tx.RunAsync(query, new { limit });
+            var cursor = await tx.RunAsync(query, new { limit, partition });
             var relationships = new List<GraphRelationship>();
 
             while (await cursor.FetchAsync())
@@ -745,8 +761,10 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable
 
     public async Task<IReadOnlyList<GraphEntity>> GetEntitiesByChunkIdsAsync(
         IEnumerable<string> chunkIds,
+        string partition = GraphPartition.Default,
         CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(partition);
         var chunkIdList = chunkIds.ToList();
         if (chunkIdList.Count == 0) return [];
 
@@ -757,9 +775,10 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable
             var query = $@"
                 MATCH (e:{EntityLabel})
                 WHERE ANY(chunkId IN $chunkIds WHERE chunkId IN e.chunkIds)
+                  AND coalesce(e.partition, '') = $partition
                 RETURN DISTINCT e";
 
-            var cursor = await tx.RunAsync(query, new { chunkIds = chunkIdList });
+            var cursor = await tx.RunAsync(query, new { chunkIds = chunkIdList, partition });
             var entities = new List<GraphEntity>();
 
             while (await cursor.FetchAsync())
@@ -789,6 +808,7 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable
             var query = $@"
                 MERGE (c:{CommunityLabel} {{id: $id}})
                 SET c.name = $name,
+                    c.partition = $partition,
                     c.summary = $summary,
                     c.entityIds = $entityIds,
                     c.chunkIds = $chunkIds,
@@ -803,6 +823,7 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable
             {
                 id,
                 name = community.Name,
+                partition = PartitionOf(community.Partition),
                 summary = community.Summary,
                 entityIds = community.EntityIds.Distinct().ToList(),
                 chunkIds = community.ChunkIds.Distinct().ToList(),
@@ -882,19 +903,22 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable
 
     public async Task<IReadOnlyList<GraphCommunity>> GetTopCommunitiesAsync(
         int limit = 10,
+        string partition = GraphPartition.Default,
         CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(partition);
         await using var session = await GetSessionAsync();
 
         return await session.ExecuteReadAsync(async tx =>
         {
             var query = $@"
                 MATCH (c:{CommunityLabel})
+                WHERE coalesce(c.partition, '') = $partition
                 RETURN c
                 ORDER BY c.importanceScore DESC
                 LIMIT $limit";
 
-            var cursor = await tx.RunAsync(query, new { limit });
+            var cursor = await tx.RunAsync(query, new { limit, partition });
             var communities = new List<GraphCommunity>();
 
             while (await cursor.FetchAsync())
@@ -909,8 +933,10 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable
 
     public async Task<IReadOnlyList<GraphCommunity>> GetCommunitiesByChunkIdsAsync(
         IEnumerable<string> chunkIds,
+        string partition = GraphPartition.Default,
         CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(partition);
         var chunkIdList = chunkIds.Distinct().ToList();
         if (chunkIdList.Count == 0) return [];
 
@@ -923,8 +949,9 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable
             var query = $@"
                 MATCH (c:{CommunityLabel})
                 WHERE ANY(chunkId IN coalesce(c.chunkIds, c.entityIds, []) WHERE chunkId IN $chunkIds)
+                  AND coalesce(c.partition, '') = $partition
                 RETURN c";
-            var cursor = await tx.RunAsync(query, new { chunkIds = chunkIdList });
+            var cursor = await tx.RunAsync(query, new { chunkIds = chunkIdList, partition });
             var communities = new List<GraphCommunity>();
             while (await cursor.FetchAsync())
             {
@@ -939,35 +966,37 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable
 
     #region Statistics and Maintenance
 
-    public async Task<GraphStoreStatistics> GetStatisticsAsync(CancellationToken ct = default)
+    public async Task<GraphStoreStatistics> GetStatisticsAsync(string partition = GraphPartition.Default, CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(partition);
         await using var session = await GetSessionAsync();
 
         return await session.ExecuteReadAsync(async tx =>
         {
             // Count entities
-            var entityCountQuery = $"MATCH (e:{EntityLabel}) RETURN count(e) as count";
-            var entityCursor = await tx.RunAsync(entityCountQuery);
+            var entityCountQuery = $"MATCH (e:{EntityLabel}) WHERE coalesce(e.partition, '') = $partition RETURN count(e) as count";
+            var entityCursor = await tx.RunAsync(entityCountQuery, new { partition });
             await entityCursor.FetchAsync();
             var entityCount = entityCursor.Current["count"].As<long>();
 
-            // Count relationships
-            var relCountQuery = $"MATCH (:{EntityLabel})-[r]-(:{EntityLabel}) RETURN count(r)/2 as count";
-            var relCursor = await tx.RunAsync(relCountQuery);
+            // Count relationships — directed, so each is counted once; its source entity's partition is its partition.
+            var relCountQuery = $"MATCH (s:{EntityLabel})-[r]->(:{EntityLabel}) WHERE coalesce(s.partition, '') = $partition RETURN count(r) as count";
+            var relCursor = await tx.RunAsync(relCountQuery, new { partition });
             await relCursor.FetchAsync();
             var relCount = relCursor.Current["count"].As<long>();
 
             // Count communities
-            var communityCountQuery = $"MATCH (c:{CommunityLabel}) RETURN count(c) as count";
-            var communityCursor = await tx.RunAsync(communityCountQuery);
+            var communityCountQuery = $"MATCH (c:{CommunityLabel}) WHERE coalesce(c.partition, '') = $partition RETURN count(c) as count";
+            var communityCursor = await tx.RunAsync(communityCountQuery, new { partition });
             await communityCursor.FetchAsync();
             var communityCount = communityCursor.Current["count"].As<long>();
 
             // Entity counts by type
             var entityByTypeQuery = $@"
                 MATCH (e:{EntityLabel})
+                WHERE coalesce(e.partition, '') = $partition
                 RETURN e.type as type, count(e) as count";
-            var entityByTypeCursor = await tx.RunAsync(entityByTypeQuery);
+            var entityByTypeCursor = await tx.RunAsync(entityByTypeQuery, new { partition });
             var entityCountsByType = new Dictionary<NamedEntityType, long>();
             while (await entityByTypeCursor.FetchAsync())
             {
@@ -978,9 +1007,10 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable
 
             // Relationship counts by type
             var relByTypeQuery = $@"
-                MATCH (:{EntityLabel})-[r]-(:{EntityLabel})
-                RETURN r.type as type, count(r)/2 as count";
-            var relByTypeCursor = await tx.RunAsync(relByTypeQuery);
+                MATCH (s:{EntityLabel})-[r]->(:{EntityLabel})
+                WHERE coalesce(s.partition, '') = $partition
+                RETURN r.type as type, count(r) as count";
+            var relByTypeCursor = await tx.RunAsync(relByTypeQuery, new { partition });
             var relCountsByType = new Dictionary<RelationType, long>();
             while (await relByTypeCursor.FetchAsync())
             {
@@ -1039,6 +1069,9 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable
         return null;
     }
 
+    private static string PartitionOf(string? partition)
+        => partition ?? throw new ArgumentException("A graph row's Partition must not be null; use GraphPartition.Default.", nameof(partition));
+
     private static GraphEntity MapNodeToEntity(INode node)
     {
         var props = node.Properties;
@@ -1048,6 +1081,7 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable
             Id = props["id"].As<string>(),
             Name = props["name"].As<string>(),
             NormalizedName = props.TryGetValue("normalizedName", out var nn) ? nn.As<string>() : string.Empty,
+            Partition = props.TryGetValue("partition", out var partition) && partition != null ? partition.As<string>() : GraphPartition.Default,
             Type = props.TryGetValue("type", out var t) ? (NamedEntityType)t.As<int>() : NamedEntityType.Unknown,
             SurfaceForms = props.TryGetValue("surfaceForms", out var sf) ? sf.As<List<object>>().Select(x => x.ToString()!).ToList() : [],
             Description = props.TryGetValue("description", out var d) ? d.As<string?>() : null,
@@ -1099,6 +1133,7 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable
         {
             Id = props["id"].As<string>(),
             Name = props["name"].As<string>(),
+            Partition = props.TryGetValue("partition", out var partition) && partition != null ? partition.As<string>() : GraphPartition.Default,
             Summary = props.TryGetValue("summary", out var s) ? s.As<string?>() : null,
             EntityIds = props.TryGetValue("entityIds", out var eids) && eids != null
                 ? eids.As<List<object>>().Select(x => x.ToString()!).ToList()

@@ -87,25 +87,46 @@ public partial class SQLiteEntityGraphStore : IGraphStore
     public async Task<IReadOnlyList<GraphEntity>> GetEntitiesByNameAsync(
         string name,
         bool fuzzyMatch = false,
+        string partition = GraphPartition.Default,
         CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(partition);
         var normalized = name.ToLowerInvariant().Trim();
 
+        var inPartition = _context.Entities.Where(e => e.Partition == partition);
         var query = fuzzyMatch
-            ? _context.Entities.Where(e => e.NormalizedName.Contains(normalized))
-            : _context.Entities.Where(e => e.NormalizedName == normalized);
+            ? inPartition.Where(e => e.NormalizedName.Contains(normalized))
+            : inPartition.Where(e => e.NormalizedName == normalized);
 
         var dbEntities = await query.Take(_options.DefaultPageSize).ToListAsync(ct);
+        return dbEntities.Select(MapToGraphEntity).ToList();
+    }
+
+    public async Task<IReadOnlyList<GraphEntity>> GetEntitiesByNormalizedNamesAsync(
+        IEnumerable<string> normalizedNames,
+        string partition = GraphPartition.Default,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(partition);
+        var names = normalizedNames.Distinct(StringComparer.Ordinal).ToList();
+        if (names.Count == 0) return [];
+
+        var dbEntities = await _context.Entities
+            .Where(e => e.Partition == partition && names.Contains(e.NormalizedName))
+            .ToListAsync(ct);
+
         return dbEntities.Select(MapToGraphEntity).ToList();
     }
 
     public async Task<IReadOnlyList<GraphEntity>> GetEntitiesByTypeAsync(
         NamedEntityType type,
         int limit = 100,
+        string partition = GraphPartition.Default,
         CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(partition);
         var dbEntities = await _context.Entities
-            .Where(e => e.EntityType == (int)type)
+            .Where(e => e.Partition == partition && e.EntityType == (int)type)
             .OrderByDescending(e => e.ImportanceScore)
             .Take(limit)
             .ToListAsync(ct);
@@ -207,10 +228,14 @@ public partial class SQLiteEntityGraphStore : IGraphStore
     public async Task<IReadOnlyList<GraphRelationship>> GetRelationshipsByTypeAsync(
         RelationType type,
         int limit = 100,
+        string partition = GraphPartition.Default,
         CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(partition);
+        // A relationship belongs to the partition of the entities it connects; its source decides.
         var dbRelationships = await _context.Relationships
-            .Where(r => r.RelationType == (int)type)
+            .Where(r => r.RelationType == (int)type
+                && _context.Entities.Any(e => e.Id == r.SourceEntityId && e.Partition == partition))
             .OrderByDescending(r => r.Weight)
             .Take(limit)
             .ToListAsync(ct);
@@ -445,15 +470,17 @@ public partial class SQLiteEntityGraphStore : IGraphStore
 
     public async Task<IReadOnlyList<GraphEntity>> GetEntitiesByChunkIdsAsync(
         IEnumerable<string> chunkIds,
+        string partition = GraphPartition.Default,
         CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(partition);
         var chunkIdList = chunkIds.Distinct().ToList();
         if (chunkIdList.Count == 0) return [];
 
         // Primitive-collection membership translates to json_each on the chunk_ids column, so the
         // scope is exact for any graph size (no page window, no substring match).
         var dbEntities = await _context.Entities
-            .Where(e => e.ChunkIds.Any(id => chunkIdList.Contains(id)))
+            .Where(e => e.Partition == partition && e.ChunkIds.Any(id => chunkIdList.Contains(id)))
             .ToListAsync(ct);
 
         return dbEntities.Select(MapToGraphEntity).ToList();
@@ -531,9 +558,12 @@ public partial class SQLiteEntityGraphStore : IGraphStore
 
     public async Task<IReadOnlyList<GraphCommunity>> GetTopCommunitiesAsync(
         int limit = 10,
+        string partition = GraphPartition.Default,
         CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(partition);
         var dbCommunities = await _context.Communities
+            .Where(c => c.Partition == partition)
             .OrderByDescending(c => c.ImportanceScore)
             .Take(limit)
             .ToListAsync(ct);
@@ -543,14 +573,16 @@ public partial class SQLiteEntityGraphStore : IGraphStore
 
     public async Task<IReadOnlyList<GraphCommunity>> GetCommunitiesByChunkIdsAsync(
         IEnumerable<string> chunkIds,
+        string partition = GraphPartition.Default,
         CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(partition);
         var chunkIdList = chunkIds.Distinct().ToList();
         if (chunkIdList.Count == 0) return [];
 
         // Primitive-collection membership translates to json_each on the chunk_ids column.
         var dbCommunities = await _context.Communities
-            .Where(c => c.ChunkIds != null && c.ChunkIds.Any(id => chunkIdList.Contains(id)))
+            .Where(c => c.Partition == partition && c.ChunkIds != null && c.ChunkIds.Any(id => chunkIdList.Contains(id)))
             .ToListAsync(ct);
 
         return await MapWithMembersAsync(dbCommunities, ct);
@@ -579,11 +611,13 @@ public partial class SQLiteEntityGraphStore : IGraphStore
 
     #region Statistics & Maintenance
 
-    public async Task<GraphStoreStatistics> GetStatisticsAsync(CancellationToken ct = default)
+    public async Task<GraphStoreStatistics> GetStatisticsAsync(string partition = GraphPartition.Default, CancellationToken ct = default)
     {
-        var entityCount = await _context.Entities.CountAsync(ct);
-        var relationshipCount = await _context.Relationships.CountAsync(ct);
-        var communityCount = await _context.Communities.CountAsync(ct);
+        ArgumentNullException.ThrowIfNull(partition);
+        var entityCount = await _context.Entities.CountAsync(e => e.Partition == partition, ct);
+        var relationshipCount = await _context.Relationships
+            .CountAsync(r => _context.Entities.Any(e => e.Id == r.SourceEntityId && e.Partition == partition), ct);
+        var communityCount = await _context.Communities.CountAsync(c => c.Partition == partition, ct);
 
         var avgRelPerEntity = entityCount > 0
             ? (double)relationshipCount / entityCount
@@ -628,6 +662,7 @@ public partial class SQLiteEntityGraphStore : IGraphStore
             Id = entity.Id,
             Name = entity.Name,
             NormalizedName = entity.NormalizedName.Length > 0 ? entity.NormalizedName : entity.Name.ToLowerInvariant().Trim(),
+            Partition = entity.Partition ?? throw new ArgumentException("GraphEntity.Partition must not be null.", nameof(entity)),
             EntityType = (int)entity.Type,
             Description = entity.Description,
             Embedding = entity.Embedding != null ? VectorToBytes(entity.Embedding) : null,
@@ -651,6 +686,7 @@ public partial class SQLiteEntityGraphStore : IGraphStore
             Id = dbEntity.Id,
             Name = dbEntity.Name,
             NormalizedName = dbEntity.NormalizedName,
+            Partition = dbEntity.Partition,
             Type = (NamedEntityType)dbEntity.EntityType,
             Description = dbEntity.Description,
             Embedding = dbEntity.Embedding != null ? BytesToVector(dbEntity.Embedding) : null,
@@ -710,6 +746,7 @@ public partial class SQLiteEntityGraphStore : IGraphStore
         {
             Id = community.Id,
             Name = community.Name,
+            Partition = community.Partition ?? throw new ArgumentException("GraphCommunity.Partition must not be null.", nameof(community)),
             Summary = community.Summary,
             ImportanceScore = community.ImportanceScore,
             Level = community.Level,
@@ -727,6 +764,7 @@ public partial class SQLiteEntityGraphStore : IGraphStore
         {
             Id = dbCommunity.Id,
             Name = dbCommunity.Name,
+            Partition = dbCommunity.Partition,
             Summary = dbCommunity.Summary,
             ImportanceScore = dbCommunity.ImportanceScore,
             Level = dbCommunity.Level,

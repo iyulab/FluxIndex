@@ -237,7 +237,7 @@ public class GraphRAGEndToEndTests : IAsyncLifetime
         vectorCount.Should().Be(3);
 
         // Verify Neo4j storage
-        var graphStats = await _graphStore!.GetStatisticsAsync(TestContext.Current.CancellationToken);
+        var graphStats = await _graphStore!.GetStatisticsAsync(ct: TestContext.Current.CancellationToken);
         graphStats.EntityCount.Should().Be(4);
         graphStats.RelationshipCount.Should().Be(2);
 

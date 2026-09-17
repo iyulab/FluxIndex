@@ -255,11 +255,39 @@ distinct `ChunkIds` / `DocumentIds` they were extracted from. Scoped reads stand
 
 ```csharp
 // Entities that appear in the chunks of one document
-var scoped = await graphStore.GetEntitiesByChunkIdsAsync(documentChunkIds, ct);
+var scoped = await graphStore.GetEntitiesByChunkIdsAsync(documentChunkIds, ct: ct);
 ```
 
 An entity linked across chunks keeps every source, so a document that mentions an entity also
-mentioned elsewhere still finds it under its own scope.
+mentioned elsewhere still finds it under its own scope. A build joins a freshly extracted entity to
+the stored entity of the same identity (normalized name, type, declared subtype) even when the two
+documents share no chunk, so the graph holds one node per entity, not one per document.
+
+### Partitions — several tenants in one graph store
+
+One graph store instance can hold several tenants' graphs. Give each tenant a **partition**: entities
+merge only with entities of their own partition, communities are identified inside it, and every
+multi-result `IGraphStore` read returns one partition.
+
+```csharp
+// Build and persist into tenant "desk-7"
+var index = await graphRag.BuildIndexAsync(chunks, new GraphRAGBuildOptions { Partition = "desk-7" }, ct);
+
+// Load it back — only desk-7's entities and communities, even if another partition holds the same chunk ids
+var loaded = await graphRag.LoadIndexAsync(chunks, new GraphRAGLoadOptions { Partition = "desk-7" }, ct);
+
+// Read the store directly
+var acme = await graphStore.GetEntitiesByNameAsync("Acme", partition: "desk-7", ct: ct);
+```
+
+`GraphRAGBuildOptions.Partition` is the one place to set it for a build; it reaches the entity graph
+(`EntityGraphBuildOptions.Partition`) and community detection (`LeidenOptions.GraphPartition`), and
+sub-options that name a different partition are refused. `UpdateIndexAsync` writes into the index's
+own partition. Reads take `partition = GraphPartition.Default` (the empty string) — **the default
+partition, not every partition**: a caller that forgets its partition sees an empty graph rather
+than another tenant's. A consumer that does not partition never sets one and keeps working as before;
+rows written before partitions existed (and the SQLite/PostgreSQL columns start-up provisioning adds
+for them) read as the default partition.
 
 ### Loading a persisted index after a restart
 
@@ -270,9 +298,9 @@ you care about:
 
 ```csharp
 // The chunks define the scope (typically one document's chunks, fetched from your vector store).
-var index = await graphRag.LoadIndexAsync(documentChunks, ct);
+var index = await graphRag.LoadIndexAsync(documentChunks, cancellationToken: ct);
 
-var local = await graphRag.LocalSearchAsync("who are Acme's partners?", index, ct);
+var local = await graphRag.LocalSearchAsync("who are Acme's partners?", index, cancellationToken: ct);
 foreach (var doc in local.Documents)
     Console.WriteLine($"{doc.DocumentId}/{doc.ChunkId}: {doc.Content}");
 
