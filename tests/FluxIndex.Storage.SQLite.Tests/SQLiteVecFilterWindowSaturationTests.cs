@@ -36,7 +36,7 @@ public class SQLiteVecFilterWindowSaturationTests : IAsyncLifetime
         var services = new ServiceCollection();
         services.AddLogging(builder =>
         {
-            builder.SetMinimumLevel(LogLevel.Warning);
+            builder.SetMinimumLevel(LogLevel.Debug);
             builder.AddProvider(_logs);
         });
 
@@ -151,6 +151,11 @@ public class SQLiteVecFilterWindowSaturationTests : IAsyncLifetime
     /// on its own (x3 under a filter, x2 more on the hybrid path). A caller could not pick a safe
     /// topK without knowing those multipliers, so a window past the ceiling must be clamped — the
     /// search answers from what the clamped window holds and says it was clamped, never throws.
+    /// <para>
+    /// A store this small is <em>not</em> an operator warning, though: three chunks come back whole
+    /// whether the window is 4,096 or 4,098, so nothing starved. The clamp is still recorded, one
+    /// level down.
+    /// </para>
     /// </summary>
     [Theory]
     [InlineData(1_366, false)] // 1,366 x 3 = 4,098 — two past the ceiling
@@ -172,10 +177,11 @@ public class SQLiteVecFilterWindowSaturationTests : IAsyncLifetime
             TestContext.Current.CancellationToken);
 
         results.Should().HaveCount(3);
+        _logs.Warnings.Should().NotContain(m => m.Contains("was clamped"));
         if (withinCeiling)
-            _logs.Warnings.Should().NotContain(m => m.Contains("was clamped"));
+            _logs.Debugs.Should().NotContain(m => m.Contains("was clamped"));
         else
-            _logs.Warnings.Should().Contain(m => m.Contains("4098") && m.Contains("was clamped to 4096"));
+            _logs.Debugs.Should().Contain(m => m.Contains("4098") && m.Contains("was clamped to 4096"));
     }
 
     /// <summary>
@@ -202,7 +208,39 @@ public class SQLiteVecFilterWindowSaturationTests : IAsyncLifetime
             cancellationToken: TestContext.Current.CancellationToken);
 
         results.Select(r => r.Chunk.DocumentId).Should().BeEquivalentTo(["wanted-0", "wanted-1", "wanted-2"]);
-        _logs.Warnings.Should().Contain(m => m.Contains("was clamped to 4096"));
+        _logs.Warnings.Should().NotContain(m => m.Contains("was clamped"));
+        _logs.Debugs.Should().Contain(m => m.Contains("was clamped to 4096"));
+    }
+
+    /// <summary>
+    /// The clamp becomes an operator's problem only once the clamped window comes back full: past
+    /// that point the answer really is drawn from the nearest 4,096 chunks alone, and a filter
+    /// applied after the KNN step can starve inside it. This is the case the warning is for, and it
+    /// is the one a small vault must not be able to reach.
+    /// </summary>
+    [Fact]
+    public async Task SearchAsync_ClampedWindowFilledByTheStore_WarnsThatResultsMayStarve()
+    {
+        if (CITestHelper.ShouldSkipSqliteVec())
+            return;
+
+        var store = _serviceProvider.GetRequiredService<IVectorStore>();
+
+        // One row past the ceiling is enough for the clamped window to come back full.
+        const int rows = 4_100;
+        await store.StoreBatchAsync(
+            Enumerable.Range(0, rows).Select(i => Chunk($"noise-{i}", "other-tenant", Near(1f, i * 0.0001f))),
+            TestContext.Current.CancellationToken);
+        await store.StoreAsync(Chunk("wanted", "wanted-tenant", Near(1f, 0f)), TestContext.Current.CancellationToken);
+
+        var results = await store.SearchAsync(
+            Near(1f, 0f), topK: 1_366, minScore: 0f,
+            filters: new Dictionary<string, object> { ["tenant"] = "wanted-tenant" },
+            TestContext.Current.CancellationToken);
+
+        results.Should().NotBeNull();
+        _logs.Warnings.Should().Contain(m => m.Contains("4098") && m.Contains("was clamped to 4096"));
+        _logs.Debugs.Should().NotContain(m => m.Contains("no candidate was lost"));
     }
 
     private static DocumentChunk Chunk(string documentId, string tenant, float[] embedding) => new()
@@ -228,38 +266,47 @@ public class SQLiteVecFilterWindowSaturationTests : IAsyncLifetime
         return v;
     }
 
-    /// <summary>Captures warning-level messages so a test can assert on what an operator would see.</summary>
+    /// <summary>
+    /// Captures messages so a test can assert on what an operator would see — and, separately, on
+    /// what was recorded but kept below the operator's attention. A fact the store still notes at
+    /// Debug is a different outcome from one it never records, so both are captured and the level
+    /// is part of the assertion.
+    /// </summary>
     private sealed class CapturingLoggerProvider : ILoggerProvider
     {
-        private readonly List<string> _warnings = [];
+        private readonly List<(LogLevel Level, string Message)> _messages = [];
         private readonly Lock _gate = new();
 
-        public IReadOnlyList<string> Warnings
-        {
-            get { lock (_gate) return [.. _warnings]; }
-        }
+        public IReadOnlyList<string> Warnings => At(l => l >= LogLevel.Warning);
+
+        public IReadOnlyList<string> Debugs => At(l => l == LogLevel.Debug);
 
         public ILogger CreateLogger(string categoryName) => new CapturingLogger(this);
 
         public void Dispose() { }
 
-        private void Add(string message)
+        private IReadOnlyList<string> At(Func<LogLevel, bool> predicate)
         {
-            lock (_gate) _warnings.Add(message);
+            lock (_gate) return [.. _messages.Where(m => predicate(m.Level)).Select(m => m.Message)];
+        }
+
+        private void Add(LogLevel level, string message)
+        {
+            lock (_gate) _messages.Add((level, message));
         }
 
         private sealed class CapturingLogger(CapturingLoggerProvider owner) : ILogger
         {
             public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
 
-            public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Warning;
+            public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Debug;
 
             public void Log<TState>(
                 LogLevel logLevel, EventId eventId, TState state, Exception? exception,
                 Func<TState, Exception?, string> formatter)
             {
-                if (logLevel >= LogLevel.Warning)
-                    owner.Add(formatter(state, exception));
+                if (logLevel >= LogLevel.Debug)
+                    owner.Add(logLevel, formatter(state, exception));
             }
         }
     }

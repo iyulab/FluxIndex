@@ -628,12 +628,9 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         // vec0 rejects a KNN k above its compile-time ceiling ("k value in knn query too large"), and
         // that rejection fails the whole search. The window is this store's own widening, so the store
         // bounds it: a clamped window returns what it holds and says so, instead of throwing a query
-        // the caller could not have known was too large.
+        // the caller could not have known was too large. Whether the clamp cost anything is not known
+        // here — it is decided by how many rows the KNN actually returns (see below).
         var knnK = (int)Math.Min(requestedK, SqliteVecMaxK);
-        if (requestedK > SqliteVecMaxK)
-        {
-            LogVecKnnWindowClamped(_logger, requestedK, SqliteVecMaxK);
-        }
 
         // sqlite-vec vec0: CTEs and JOINs with vec0 virtual tables are unreliable
         // (silently return 0 rows). Use two-step approach:
@@ -670,6 +667,23 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 while (await knnReader.ReadAsync(cancellationToken))
                 {
                     knnResults.Add((knnReader.GetString(0), knnReader.GetFloat(1)));
+                }
+            }
+
+            // The clamp only costs the caller something when the clamped window actually filled. A
+            // store holding fewer rows than the window returns all of them either way, so warning
+            // there says "results may starve" about a search that starved nothing — and a vault of a
+            // few chunks would emit it for every query wide enough to trip the ceiling. The window
+            // coming back full is the same signal the post-filter saturation check below uses.
+            if (requestedK > SqliteVecMaxK)
+            {
+                if (knnResults.Count >= knnK)
+                {
+                    LogVecKnnWindowClamped(_logger, requestedK, SqliteVecMaxK);
+                }
+                else
+                {
+                    LogVecKnnWindowClampedWithoutLoss(_logger, requestedK, SqliteVecMaxK, knnResults.Count);
                 }
             }
 

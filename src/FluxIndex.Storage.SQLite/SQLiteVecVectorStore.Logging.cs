@@ -66,8 +66,13 @@ public partial class SQLiteVecVectorStore
 
     [LoggerMessage(
         Level = LogLevel.Warning,
-        Message = "sqlite-vec KNN window of {RequestedK} candidates exceeds the extension's limit and was clamped to {MaxK}: results come from the nearest {MaxK} chunks only, and a metadata filter applied after the KNN step may starve. Lower topK or scope the store")]
+        Message = "sqlite-vec KNN window of {RequestedK} candidates exceeds the extension's limit and was clamped to {MaxK}, and the clamped window came back full: results come from the nearest {MaxK} chunks only, and a metadata filter applied after the KNN step may starve. Lower topK or scope the store")]
     private static partial void LogVecKnnWindowClamped(ILogger logger, long requestedK, int maxK);
+
+    [LoggerMessage(
+        Level = LogLevel.Debug,
+        Message = "sqlite-vec KNN window of {RequestedK} candidates was clamped to {MaxK}, but the store answered with {Count} rows: it holds fewer than the clamped window, so no candidate was lost")]
+    private static partial void LogVecKnnWindowClampedWithoutLoss(ILogger logger, long requestedK, int maxK, int count);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Hybrid search completed: vector={VectorCount}, FTS={FtsCount}, combined={CombinedCount}")]
     private static partial void LogHybridSearchCompleted(ILogger logger, int vectorCount, int ftsCount, int combinedCount);

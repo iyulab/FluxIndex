@@ -9,6 +9,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.44.3]
+
+### Changed
+- **`SQLiteVecVectorStore`: the KNN-window clamp warns only when the clamped window actually filled.** 0.44.2 logged the clamp at `Warning` the moment the requested window passed the ceiling, so a store holding a handful of chunks reported "results may starve" for every query wide enough to trip it — the search had in fact returned everything it held. The clamp is now judged by what the KNN returns: a full window keeps the warning (the answer really is drawn from the nearest 4,096 chunks, and a filter applied after the KNN step can starve inside it), while a window the store could not fill is recorded at `Debug` naming the row count. Nothing about which results are returned changes.
+
+---
+
 ## [0.44.2]
 
 ### Fixed
