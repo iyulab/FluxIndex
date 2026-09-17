@@ -9,6 +9,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.44.2]
+
+### Fixed
+- **`SQLiteVecVectorStore`: a KNN window past sqlite-vec's `k` ceiling failed the whole search.** vec0 rejects `k > 4096` (`k value in knn query too large`), and the store widens the caller's `topK` on its own — ×3 under a metadata filter, ×2 more on the vector leg of `HybridSearchAsync` — so a scoped hybrid search with `topK` as low as 683 threw instead of answering. The window is now clamped to the ceiling; the search answers from the nearest 4,096 chunks and logs a warning naming the requested and clamped sizes (a filter applied after the KNN step may starve in a clamped window, which the existing saturation warning also reports).
+
+---
+
 ## [0.44.1]
 
 ### Changed

@@ -146,6 +146,65 @@ public class SQLiteVecFilterWindowSaturationTests : IAsyncLifetime
         _logs.Warnings.Should().NotContain(m => m.Contains("applied after the KNN step"));
     }
 
+    /// <summary>
+    /// vec0 rejects a KNN k above its compile-time ceiling, and the store widens the caller's topK
+    /// on its own (x3 under a filter, x2 more on the hybrid path). A caller could not pick a safe
+    /// topK without knowing those multipliers, so a window past the ceiling must be clamped — the
+    /// search answers from what the clamped window holds and says it was clamped, never throws.
+    /// </summary>
+    [Theory]
+    [InlineData(1_366, false)] // 1,366 x 3 = 4,098 — two past the ceiling
+    [InlineData(1_365, true)]  // 1,365 x 3 = 4,095 — inside it
+    public async Task SearchAsync_FilteredWindowAtTheKnnCeiling_ClampsInsteadOfThrowing(int topK, bool withinCeiling)
+    {
+        if (CITestHelper.ShouldSkipSqliteVec())
+            return;
+
+        var store = _serviceProvider.GetRequiredService<IVectorStore>();
+        for (var i = 0; i < 3; i++)
+        {
+            await store.StoreAsync(Chunk($"wanted-{i}", "wanted-tenant", Near(1f, i * 0.0001f)));
+        }
+
+        var results = await store.SearchAsync(
+            Near(1f, 0f), topK, minScore: 0f,
+            filters: new Dictionary<string, object> { ["tenant"] = "wanted-tenant" },
+            TestContext.Current.CancellationToken);
+
+        results.Should().HaveCount(3);
+        if (withinCeiling)
+            _logs.Warnings.Should().NotContain(m => m.Contains("was clamped"));
+        else
+            _logs.Warnings.Should().Contain(m => m.Contains("4098") && m.Contains("was clamped to 4096"));
+    }
+
+    /// <summary>
+    /// The consumer-measured shape: a document-scoped hybrid search whose widened window lands far
+    /// past the ceiling (topK 800 → 1,600 on the vector leg → 4,800 under the filter).
+    /// </summary>
+    [Fact]
+    public async Task HybridSearchAsync_ScopedWindowPastTheKnnCeiling_ReturnsHits()
+    {
+        if (CITestHelper.ShouldSkipSqliteVec())
+            return;
+
+        var store = _serviceProvider.GetRequiredService<IVectorStore>();
+        var hybrid = (INativeHybridSearch)store;
+        for (var i = 0; i < 3; i++)
+        {
+            await store.StoreAsync(Chunk($"wanted-{i}", "wanted-tenant", Near(1f, i * 0.0001f)));
+        }
+        await store.StoreAsync(Chunk("noise", "other-tenant", Near(1f, 0.00005f)));
+
+        var results = await hybrid.HybridSearchAsync(
+            Near(1f, 0f), "content", topK: 800, minScore: 0f,
+            filters: new Dictionary<string, object> { ["tenant"] = "wanted-tenant" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        results.Select(r => r.Chunk.DocumentId).Should().BeEquivalentTo(["wanted-0", "wanted-1", "wanted-2"]);
+        _logs.Warnings.Should().Contain(m => m.Contains("was clamped to 4096"));
+    }
+
     private static DocumentChunk Chunk(string documentId, string tenant, float[] embedding) => new()
     {
         DocumentId = documentId,

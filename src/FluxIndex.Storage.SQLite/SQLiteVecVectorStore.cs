@@ -37,6 +37,10 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
     private string? _initializedTableName;
     private EmbeddingIdentity? _boundIdentity;
     private readonly SemaphoreSlim _initLock = new(1, 1);
+
+    // sqlite-vec's vec0 KNN ceiling (SQLITE_VEC_VEC0_K_MAX, a compile-time constant of the bundled
+    // extension). A larger k is rejected as an error, not truncated.
+    internal const int SqliteVecMaxK = 4096;
     // SQLite는 동시 쓰기를 지원하지 않으므로 쓰기 작업을 직렬화
     private readonly SemaphoreSlim _writeLock = new(1, 1);
 
@@ -619,7 +623,17 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         // A real pre-filter is possible — vec0 has supported metadata columns and partition keys
         // since sqlite-vec 0.1.6 and this project pins 0.1.7 — but it means declaring those
         // columns on the vec0 table, which changes the on-disk schema and needs a migration.
-        var knnK = filters is { Count: > 0 } ? topK * 3 : topK;
+        var requestedK = filters is { Count: > 0 } ? (long)topK * 3 : topK;
+
+        // vec0 rejects a KNN k above its compile-time ceiling ("k value in knn query too large"), and
+        // that rejection fails the whole search. The window is this store's own widening, so the store
+        // bounds it: a clamped window returns what it holds and says so, instead of throwing a query
+        // the caller could not have known was too large.
+        var knnK = (int)Math.Min(requestedK, SqliteVecMaxK);
+        if (requestedK > SqliteVecMaxK)
+        {
+            LogVecKnnWindowClamped(_logger, requestedK, SqliteVecMaxK);
+        }
 
         // sqlite-vec vec0: CTEs and JOINs with vec0 virtual tables are unreliable
         // (silently return 0 rows). Use two-step approach:
