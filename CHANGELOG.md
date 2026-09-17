@@ -9,6 +9,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.44.1]
+
+### Changed
+- Re-pinned sibling package(s) `FileFlux` 0.23.14 -> 0.23.15, `FluxCurator` 0.8.2 -> 0.8.3, `FluxGuard.Remote` 0.15.0 -> 0.15.1, `FluxImprover` 0.12.10 -> 0.12.11 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+
+---
+
 ## [0.44.0]
 
 ### Added
