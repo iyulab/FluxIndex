@@ -62,6 +62,14 @@ public sealed class LMSupplyEmbeddingOptions : LMSupplyServiceOptionsBase
 /// <summary>Options for <see cref="Extensions.ServiceCollectionExtensions.AddLMSupplyReranker(Microsoft.Extensions.DependencyInjection.IServiceCollection, Action{LMSupplyRerankerOptions})"/>.</summary>
 public sealed class LMSupplyRerankerOptions : LMSupplyServiceOptionsBase
 {
+    /// <summary>
+    /// Creates reranker options whose <see cref="LMSupplyServiceOptionsBase.ModelId"/> is <c>"auto"</c>: LMSupply picks
+    /// the reranker by hardware tier — multilingual on Medium and above. The English-only <c>"default"</c> cross-encoder
+    /// ranks an unrelated passage in the query's language above a passage in another language that answers it, which a
+    /// corpus that is not English-only hits on the first query.
+    /// </summary>
+    public LMSupplyRerankerOptions() => ModelId = "auto";
+
     /// <summary>LMSupply loader options.</summary>
     public RerankerOptions? Reranker { get; set; }
 }

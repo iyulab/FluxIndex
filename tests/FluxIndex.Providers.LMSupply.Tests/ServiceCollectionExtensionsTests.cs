@@ -128,6 +128,18 @@ public sealed class ServiceCollectionExtensionsTests : IDisposable
     }
 
     [Fact]
+    public async Task AddLMSupplyReranker_WithoutAModel_UsesTheHardwareTieredAutoAlias_NotTheEnglishOnlyDefault()
+    {
+        new LMSupplyRerankerOptions().ModelId.Should().Be("auto");
+
+        foreach (var services in new[] { new ServiceCollection().AddLMSupplyReranker(), new ServiceCollection().AddLMSupplyReranker(_ => { }) })
+        {
+            await using var provider = services.BuildServiceProvider();
+            provider.GetRequiredService<IReranker>().GetModelInfo().Name.Should().Be("auto");
+        }
+    }
+
+    [Fact]
     public async Task AddLMSupplyTextCompletion_RegistersITextCompletionService_AndResolvesWithoutLoading()
     {
         var services = new ServiceCollection();

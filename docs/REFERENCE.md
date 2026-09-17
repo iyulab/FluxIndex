@@ -223,8 +223,13 @@ var context = FluxIndexContext.CreateBuilder()
 
 ### Model aliases
 
-`default`, `fast`, `quality`, `multilingual` — the presets `LMSupply.Reranker` resolves; a model id or a
-local path works as well. Sizes and speed depend on the LMSupply catalog version you have pinned.
+`auto` (the default), `default`, `fast`, `quality`, `large`, `multilingual` — the presets `LMSupply.Reranker`
+resolves; a model id or a local path works as well. Sizes and speed depend on the LMSupply catalog version you have pinned.
+
+`auto` picks by hardware tier: `default` on low-spec machines, `quality` on mid-range, `multilingual` above. `default`,
+`fast` and `ms-marco-l12` are **English-only** — over a non-English query they rank an unrelated passage in the query's
+language above one in another language that answers it. For a non-English or mixed-language corpus on a low-spec
+machine, name `quality` explicitly.
 
 ### Configuration
 

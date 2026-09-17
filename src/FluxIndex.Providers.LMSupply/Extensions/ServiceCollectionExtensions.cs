@@ -65,11 +65,14 @@ public static class ServiceCollectionExtensions
     /// loaded on first use.
     /// </summary>
     /// <param name="services">The service collection.</param>
-    /// <param name="modelId">Reranker model ID (e.g., "ms-marco-MiniLM-L6-v2") or "default".</param>
+    /// <param name="modelId">
+    /// Reranker alias or model id. Defaults to <c>"auto"</c> (by hardware tier, multilingual on Medium and above); the
+    /// English-only <c>"default"</c> misranks non-English corpora.
+    /// </param>
     /// <returns>The service collection for chaining.</returns>
     public static IServiceCollection AddLMSupplyReranker(
         this IServiceCollection services,
-        string modelId = "default")
+        string modelId = "auto")
         => services.AddLMSupplyReranker(o => o.ModelId = modelId);
 
     /// <summary>
