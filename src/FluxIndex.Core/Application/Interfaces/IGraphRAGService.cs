@@ -202,6 +202,25 @@ public class GraphRAGBuildOptions
     /// refused rather than split across two.
     /// </summary>
     public string Partition { get; set; } = GraphPartition.Default;
+
+    /// <summary>
+    /// A copy of these options in <paramref name="partition"/>, leaving this instance as it is — for a host that
+    /// assigns the partition (a tenant id) to options its caller supplied. Nested option objects are shared, not
+    /// cloned. Every settable property is copied; <c>GraphRAGBuildOptions_WithPartition_CarriesEverySettableProperty</c>
+    /// pins that a property added here is added to this copy too.
+    /// </summary>
+    /// <param name="partition">The partition of the copy.</param>
+    public GraphRAGBuildOptions WithPartition(string partition) => new()
+    {
+        EntityOptions = EntityOptions,
+        CommunityOptions = CommunityOptions,
+        SummarizationOptions = SummarizationOptions,
+        EntityGraphOptions = EntityGraphOptions,
+        ParallelProcessing = ParallelProcessing,
+        GenerateSummaryEmbeddings = GenerateSummaryEmbeddings,
+        MaxChunks = MaxChunks,
+        Partition = partition ?? throw new ArgumentNullException(nameof(partition))
+    };
 }
 
 /// <summary>

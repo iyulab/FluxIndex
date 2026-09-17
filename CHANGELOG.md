@@ -14,6 +14,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ### Added
 - **Graph store partitions.** One `IGraphStore` instance can hold several tenants' graphs: `GraphEntity.Partition` and `GraphCommunity.Partition`, `GraphRAGBuildOptions.Partition` / `GraphRAGLoadOptions.Partition` / `GraphRAGIndex.Partition`, `EntityGraphBuildOptions.Partition`, `EntityGraphResult.Partition`, `LeidenOptions.GraphPartition`, and `GraphPartition.Default` (the empty string). Entities merge only within their partition, community ids are derived inside it, and `UpdateIndexAsync` writes into the index's partition. A build whose entity-graph or community options name a different partition than `GraphRAGBuildOptions.Partition` is refused.
 - `IGraphStore.GetEntitiesByNormalizedNamesAsync(normalizedNames, partition)` — exact normalized-name lookup in one round trip.
+- `GraphRAGBuildOptions.WithPartition(partition)` — a copy in another partition, for a host that assigns the partition to options its caller supplied.
 
 ### Changed
 - **Breaking:** the multi-result `IGraphStore` reads — `GetEntitiesByNameAsync`, `GetEntitiesByTypeAsync`, `GetRelationshipsByTypeAsync`, `GetEntitiesByChunkIdsAsync`, `GetTopCommunitiesAsync`, `GetCommunitiesByChunkIdsAsync`, `GetStatisticsAsync` — take `string partition = GraphPartition.Default` before the cancellation token, and return that partition only. The default is the default partition, not every partition. Callers passing the token positionally must name it (`ct: ct`); implementers add the parameter.

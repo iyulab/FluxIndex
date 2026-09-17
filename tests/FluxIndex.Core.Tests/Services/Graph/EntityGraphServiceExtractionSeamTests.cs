@@ -284,6 +284,19 @@ public class OptionsCopyCompletenessTests
         AssertAllPropertiesEqual(expected, copy);
     }
 
+    [Fact]
+    public void GraphRAGBuildOptions_WithPartition_CarriesEverySettableProperty()
+    {
+        var source = new GraphRAGBuildOptions();
+        var expected = FillWithNonDefaults(source);
+
+        var copy = source.WithPartition("tenant-9");
+
+        expected[nameof(GraphRAGBuildOptions.Partition)] = "tenant-9";
+        AssertAllPropertiesEqual(expected, copy);
+        Assert.Equal("non-default", source.Partition);
+    }
+
     private static Dictionary<string, object?> FillWithNonDefaults(object target)
     {
         var values = new Dictionary<string, object?>();
@@ -327,6 +340,9 @@ public class OptionsCopyCompletenessTests
         _ when type == typeof(IReadOnlyList<NamedEntityType>) => new List<NamedEntityType> { NamedEntityType.Event },
         _ when type == typeof(Dictionary<string, string>) => new Dictionary<string, string> { ["k"] = "v" },
         _ when type == typeof(EntityExtractionOptions) => new EntityExtractionOptions { Language = "zz" },
+        _ when type == typeof(LeidenOptions) => new LeidenOptions { Resolution = 9.5 },
+        _ when type == typeof(HierarchicalSummarizationOptions) => new HierarchicalSummarizationOptions(),
+        _ when type == typeof(EntityGraphBuildOptions) => new EntityGraphBuildOptions { BatchSize = 99 },
         _ => throw new NotSupportedException($"Add a non-default generator for {type} — a new option type was introduced.")
     };
 }
