@@ -278,9 +278,9 @@ public class OptionsCopyCompletenessTests
         var source = new LeidenOptions();
         var expected = FillWithNonDefaults(source);
 
-        var copy = source.WithGraphPartition("desk-7");
+        var copy = source.WithGraphPartition("tenant-7");
 
-        expected[nameof(LeidenOptions.GraphPartition)] = "desk-7";
+        expected[nameof(LeidenOptions.GraphPartition)] = "tenant-7";
         AssertAllPropertiesEqual(expected, copy);
     }
 

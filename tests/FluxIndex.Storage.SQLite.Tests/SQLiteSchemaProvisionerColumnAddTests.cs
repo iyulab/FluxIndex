@@ -106,7 +106,7 @@ public sealed class SQLiteSchemaProvisionerColumnAddTests : IAsyncDisposable
         var entity = Assert.Single(await store.GetEntitiesByChunkIdsAsync(["k1"], ct: ct));
         Assert.Equal(GraphPartition.Default, entity.Partition);
         Assert.Equal("c1", Assert.Single(await store.GetCommunitiesByChunkIdsAsync(["k1"], ct: ct)).Id);
-        Assert.Empty(await store.GetEntitiesByChunkIdsAsync(["k1"], "desk-1", ct));
+        Assert.Empty(await store.GetEntitiesByChunkIdsAsync(["k1"], "tenant-1", ct));
     }
 
     private static (string Table, string Column) PartitionColumn(DbContext context, Type clrType)

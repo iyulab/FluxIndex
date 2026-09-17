@@ -270,14 +270,14 @@ merge only with entities of their own partition, communities are identified insi
 multi-result `IGraphStore` read returns one partition.
 
 ```csharp
-// Build and persist into tenant "desk-7"
-var index = await graphRag.BuildIndexAsync(chunks, new GraphRAGBuildOptions { Partition = "desk-7" }, ct);
+// Build and persist into partition "tenant-7"
+var index = await graphRag.BuildIndexAsync(chunks, new GraphRAGBuildOptions { Partition = "tenant-7" }, ct);
 
-// Load it back — only desk-7's entities and communities, even if another partition holds the same chunk ids
-var loaded = await graphRag.LoadIndexAsync(chunks, new GraphRAGLoadOptions { Partition = "desk-7" }, ct);
+// Load it back — only tenant-7's entities and communities, even if another partition holds the same chunk ids
+var loaded = await graphRag.LoadIndexAsync(chunks, new GraphRAGLoadOptions { Partition = "tenant-7" }, ct);
 
 // Read the store directly
-var acme = await graphStore.GetEntitiesByNameAsync("Acme", partition: "desk-7", ct: ct);
+var acme = await graphStore.GetEntitiesByNameAsync("Acme", partition: "tenant-7", ct: ct);
 ```
 
 `GraphRAGBuildOptions.Partition` is the one place to set it for a build; it reaches the entity graph

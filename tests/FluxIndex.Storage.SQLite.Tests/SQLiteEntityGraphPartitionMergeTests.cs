@@ -61,12 +61,12 @@ public sealed class SQLiteEntityGraphPartitionMergeTests : IAsyncDisposable
     public async Task TwoDocumentsWithNoSharedChunk_InOnePartition_LeaveOneEntity_CarryingBothDocuments()
     {
         var ct = TestContext.Current.CancellationToken;
-        var options = new EntityGraphBuildOptions { Partition = "desk-1" };
+        var options = new EntityGraphBuildOptions { Partition = "tenant-1" };
 
         await Service().BuildEntityGraphAsync([Chunk("a1", "doc-a", "Acme signed a contract.")], options, ct);
         await Service().BuildEntityGraphAsync([Chunk("b1", "doc-b", "Acme opened an office.")], options, ct);
 
-        var acme = Assert.Single(await _store.GetEntitiesByNormalizedNamesAsync(["acme"], "desk-1", ct));
+        var acme = Assert.Single(await _store.GetEntitiesByNormalizedNamesAsync(["acme"], "tenant-1", ct));
         Assert.Equal(new[] { "a1", "b1" }, acme.ChunkIds.Order());
         Assert.Equal(new[] { "doc-a", "doc-b" }, acme.DocumentIds.Order());
     }
@@ -76,14 +76,14 @@ public sealed class SQLiteEntityGraphPartitionMergeTests : IAsyncDisposable
     {
         var ct = TestContext.Current.CancellationToken;
 
-        await Service().BuildEntityGraphAsync([Chunk("a1", "doc-a", "Acme signed a contract.")], new EntityGraphBuildOptions { Partition = "desk-1" }, ct);
-        await Service().BuildEntityGraphAsync([Chunk("a1", "doc-a", "Acme signed a contract.")], new EntityGraphBuildOptions { Partition = "desk-2" }, ct);
+        await Service().BuildEntityGraphAsync([Chunk("a1", "doc-a", "Acme signed a contract.")], new EntityGraphBuildOptions { Partition = "tenant-1" }, ct);
+        await Service().BuildEntityGraphAsync([Chunk("a1", "doc-a", "Acme signed a contract.")], new EntityGraphBuildOptions { Partition = "tenant-2" }, ct);
 
-        var inDesk1 = Assert.Single(await _store.GetEntitiesByChunkIdsAsync(["a1"], "desk-1", ct));
-        var inDesk2 = Assert.Single(await _store.GetEntitiesByChunkIdsAsync(["a1"], "desk-2", ct));
-        Assert.NotEqual(inDesk1.Id, inDesk2.Id);
-        Assert.Equal("desk-1", inDesk1.Partition);
-        Assert.Equal("desk-2", inDesk2.Partition);
+        var inTenant1 = Assert.Single(await _store.GetEntitiesByChunkIdsAsync(["a1"], "tenant-1", ct));
+        var inTenant2 = Assert.Single(await _store.GetEntitiesByChunkIdsAsync(["a1"], "tenant-2", ct));
+        Assert.NotEqual(inTenant1.Id, inTenant2.Id);
+        Assert.Equal("tenant-1", inTenant1.Partition);
+        Assert.Equal("tenant-2", inTenant2.Partition);
         Assert.Empty(await _store.GetEntitiesByChunkIdsAsync(["a1"], ct: ct));
     }
 
@@ -93,23 +93,23 @@ public sealed class SQLiteEntityGraphPartitionMergeTests : IAsyncDisposable
         // Reuse off means every chunk is extracted again — the chunk-scoped reconstitution never runs, so only the
         // identity join keeps the second build from writing a second copy of every entity.
         var ct = TestContext.Current.CancellationToken;
-        var options = new EntityGraphBuildOptions { Partition = "desk-1", ReuseStoredExtractions = false };
+        var options = new EntityGraphBuildOptions { Partition = "tenant-1", ReuseStoredExtractions = false };
         var chunks = new List<DocumentChunk> { Chunk("a1", "doc-a", "Acme partners with Globex.") };
 
         await Service().BuildEntityGraphAsync(chunks, options, ct);
         await Service().BuildEntityGraphAsync(chunks, options, ct);
 
-        Assert.Equal(2, (await _store.GetEntitiesByChunkIdsAsync(["a1"], "desk-1", ct)).Count);
+        Assert.Equal(2, (await _store.GetEntitiesByChunkIdsAsync(["a1"], "tenant-1", ct)).Count);
     }
 
     [Fact]
     public async Task MergingEntityGraphsOfTwoPartitions_IsRefused()
     {
         var ct = TestContext.Current.CancellationToken;
-        var inDesk1 = await Service().BuildEntityGraphAsync([Chunk("a1", "doc-a", "Acme signed.")], new EntityGraphBuildOptions { Partition = "desk-1", PersistToGraphStore = false }, ct);
-        var inDesk2 = await Service().BuildEntityGraphAsync([Chunk("b1", "doc-b", "Globex signed.")], new EntityGraphBuildOptions { Partition = "desk-2", PersistToGraphStore = false }, ct);
+        var inTenant1 = await Service().BuildEntityGraphAsync([Chunk("a1", "doc-a", "Acme signed.")], new EntityGraphBuildOptions { Partition = "tenant-1", PersistToGraphStore = false }, ct);
+        var inTenant2 = await Service().BuildEntityGraphAsync([Chunk("b1", "doc-b", "Globex signed.")], new EntityGraphBuildOptions { Partition = "tenant-2", PersistToGraphStore = false }, ct);
 
-        await Assert.ThrowsAsync<ArgumentException>(() => Service().MergeEntityGraphsAsync([inDesk1, inDesk2], cancellationToken: ct));
+        await Assert.ThrowsAsync<ArgumentException>(() => Service().MergeEntityGraphsAsync([inTenant1, inTenant2], cancellationToken: ct));
     }
 
     public async ValueTask DisposeAsync()

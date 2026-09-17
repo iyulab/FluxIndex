@@ -17,14 +17,14 @@ public class GraphRAGPartitionResolutionTests
     {
         var graphOptions = new EntityGraphBuildOptions { BatchSize = 5 };
         var communityOptions = new LeidenOptions { Resolution = 2.0 };
-        var options = new GraphRAGBuildOptions { Partition = "desk-1", EntityGraphOptions = graphOptions, CommunityOptions = communityOptions };
+        var options = new GraphRAGBuildOptions { Partition = "tenant-1", EntityGraphOptions = graphOptions, CommunityOptions = communityOptions };
 
         var entity = GraphRAGService.ResolveEntityGraphOptions(options, options.Partition)!;
         var community = GraphRAGService.ResolveCommunityOptions(options, options.Partition)!;
 
-        Assert.Equal("desk-1", entity.Partition);
+        Assert.Equal("tenant-1", entity.Partition);
         Assert.Equal(5, entity.BatchSize);
-        Assert.Equal("desk-1", community.GraphPartition);
+        Assert.Equal("tenant-1", community.GraphPartition);
         Assert.Equal(2.0, community.Resolution);
         Assert.Equal(GraphPartition.Default, graphOptions.Partition);
         Assert.Equal(GraphPartition.Default, communityOptions.GraphPartition);
@@ -33,10 +33,10 @@ public class GraphRAGPartitionResolutionTests
     [Fact]
     public void ThePartition_ReachesBothPhases_WhenTheConsumerSetNoSubOptions()
     {
-        var options = new GraphRAGBuildOptions { Partition = "desk-1" };
+        var options = new GraphRAGBuildOptions { Partition = "tenant-1" };
 
-        Assert.Equal("desk-1", GraphRAGService.ResolveEntityGraphOptions(options, options.Partition)!.Partition);
-        Assert.Equal("desk-1", GraphRAGService.ResolveCommunityOptions(options, options.Partition)!.GraphPartition);
+        Assert.Equal("tenant-1", GraphRAGService.ResolveEntityGraphOptions(options, options.Partition)!.Partition);
+        Assert.Equal("tenant-1", GraphRAGService.ResolveCommunityOptions(options, options.Partition)!.GraphPartition);
     }
 
     [Fact]
@@ -51,8 +51,8 @@ public class GraphRAGPartitionResolutionTests
     [Fact]
     public void SubOptionsNamingAnotherPartition_AreRefused()
     {
-        var entityConflict = new GraphRAGBuildOptions { Partition = "desk-1", EntityGraphOptions = new EntityGraphBuildOptions { Partition = "desk-2" } };
-        var communityConflict = new GraphRAGBuildOptions { Partition = "desk-1", CommunityOptions = new LeidenOptions { GraphPartition = "desk-2" } };
+        var entityConflict = new GraphRAGBuildOptions { Partition = "tenant-1", EntityGraphOptions = new EntityGraphBuildOptions { Partition = "tenant-2" } };
+        var communityConflict = new GraphRAGBuildOptions { Partition = "tenant-1", CommunityOptions = new LeidenOptions { GraphPartition = "tenant-2" } };
 
         Assert.Throws<ArgumentException>(() => GraphRAGService.ResolveEntityGraphOptions(entityConflict, entityConflict.Partition));
         Assert.Throws<ArgumentException>(() => GraphRAGService.ResolveCommunityOptions(communityConflict, communityConflict.Partition));
@@ -67,9 +67,9 @@ public class GraphRAGPartitionResolutionTests
         Assert.Equal(legacy, CommunityIdentity.For(0, chunks));
         Assert.Equal(legacy, CommunityIdentity.For(0, chunks, GraphPartition.Default));
 
-        var desk1 = CommunityIdentity.For(0, chunks, "desk-1");
-        Assert.NotEqual(legacy, desk1);
-        Assert.NotEqual(desk1, CommunityIdentity.For(0, chunks, "desk-2"));
-        Assert.Equal(desk1, CommunityIdentity.For(0, ["c1", "c2"], "desk-1"));
+        var tenant1 = CommunityIdentity.For(0, chunks, "tenant-1");
+        Assert.NotEqual(legacy, tenant1);
+        Assert.NotEqual(tenant1, CommunityIdentity.For(0, chunks, "tenant-2"));
+        Assert.Equal(tenant1, CommunityIdentity.For(0, ["c1", "c2"], "tenant-1"));
     }
 }
