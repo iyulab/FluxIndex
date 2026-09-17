@@ -4,6 +4,7 @@ using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Storage.SQLite.Graph;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -69,6 +70,46 @@ public sealed class SQLiteEntityGraphPartitionMergeTests : IAsyncDisposable
         var acme = Assert.Single(await _store.GetEntitiesByNormalizedNamesAsync(["acme"], "tenant-1", ct));
         Assert.Equal(new[] { "a1", "b1" }, acme.ChunkIds.Order());
         Assert.Equal(new[] { "doc-a", "doc-b" }, acme.DocumentIds.Order());
+    }
+
+    [Fact]
+    public async Task AStoredEntityJoinedByASecondDocument_IsWrittenBack_ThroughTheRegisteredStore()
+    {
+        // The store as a consumer registers it (AddSQLiteEntityGraphStore), not a hand-built context: the join writes back
+        // an entity the store already holds, which is an update of an existing row, and that update is what the
+        // registration's tracking behaviour decides.
+        var ct = TestContext.Current.CancellationToken;
+        var path = Path.Combine(Path.GetTempPath(), $"fluxindex-entitygraph-{Guid.NewGuid():N}.db");
+        var services = new ServiceCollection()
+            .AddLogging()
+            .AddSQLiteEntityGraphStore(path);
+        await using var provider = services.BuildServiceProvider();
+        provider.GetRequiredService<SQLiteEntityGraphSchemaInitializer>().InitializeSync(provider);
+
+        try
+        {
+            var options = new EntityGraphBuildOptions { Partition = "tenant-1" };
+            async Task BuildInOwnScope(DocumentChunk chunk)
+            {
+                await using var scope = provider.CreateAsyncScope();
+                var store = scope.ServiceProvider.GetRequiredService<IGraphStore>();
+                await new EntityGraphService(_extractor, null, store, NullLogger<EntityGraphService>.Instance).BuildEntityGraphAsync([chunk], options, ct);
+            }
+
+            await BuildInOwnScope(Chunk("a1", "doc-a", "Acme signed a contract."));
+            await BuildInOwnScope(Chunk("b1", "doc-b", "Acme opened an office."));
+
+            await using var read = provider.CreateAsyncScope();
+            var reader = read.ServiceProvider.GetRequiredService<IGraphStore>();
+            var acme = Assert.Single(await reader.GetEntitiesByNormalizedNamesAsync(["acme"], "tenant-1", ct));
+            Assert.Equal(new[] { "a1", "b1" }, acme.ChunkIds.Order());
+            Assert.Equal(2, acme.MentionCount);
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            try { File.Delete(path); } catch (IOException) { }
+        }
     }
 
     [Fact]

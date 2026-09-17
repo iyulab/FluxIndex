@@ -26,6 +26,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ### Fixed
 - Neo4j: `StoreEntitiesBatchAsync` did not write an entity's `Properties`, `Embedding` or `ExternalLinks` (the single-entity write did), so every entity the entity graph build persisted lost them — including the declared subtype its identity is keyed on. Both writes now share one upsert.
 - Documentation snippets for `LoadIndexAsync`, `LocalSearchAsync` and `GetEntitiesByChunkIdsAsync` passed the cancellation token into an options parameter.
+- SQLite entity graph store registered through `AddSQLiteEntityGraphStore`: re-storing an entity, relationship or community that already existed (`StoreEntityAsync`, `StoreEntitiesBatchAsync`, `UpdateEntityAsync`, `StoreRelationshipAsync`, `StoreRelationshipsBatchAsync`, `StoreCommunityAsync`) changed nothing and reported success, because the registration's no-tracking context left the looked-up row detached. Inserts were unaffected, so the loss showed only as updates that never landed — an entity joined by a second document kept the first document's chunks and mention count. Existing rows are now loaded tracked.
 
 ---
 

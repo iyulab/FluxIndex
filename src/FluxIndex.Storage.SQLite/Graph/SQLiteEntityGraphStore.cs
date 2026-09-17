@@ -37,7 +37,7 @@ public partial class SQLiteEntityGraphStore : IGraphStore
     {
         var dbEntity = MapToDbEntity(entity);
 
-        var existing = await _context.Entities.FindAsync([entity.Id], ct);
+        var existing = await _context.Entities.AsTracking().FirstOrDefaultAsync(e => e.Id == entity.Id, ct);
         if (existing != null)
         {
             _context.Entry(existing).CurrentValues.SetValues(dbEntity);
@@ -61,7 +61,10 @@ public partial class SQLiteEntityGraphStore : IGraphStore
 
         foreach (var dbEntity in dbEntities)
         {
-            var existing = await _context.Entities.FindAsync([dbEntity.Id], ct);
+            // AsTracking is load-bearing here and at every SetValues below: the context is registered NoTracking, and
+            // SetValues on a detached instance changes nothing SaveChanges writes — an update of an existing row would be
+            // dropped without an error while inserts still land.
+            var existing = await _context.Entities.AsTracking().FirstOrDefaultAsync(e => e.Id == dbEntity.Id, ct);
             if (existing != null)
             {
                 _context.Entry(existing).CurrentValues.SetValues(dbEntity);
@@ -136,7 +139,7 @@ public partial class SQLiteEntityGraphStore : IGraphStore
 
     public async Task<bool> UpdateEntityAsync(GraphEntity entity, CancellationToken ct = default)
     {
-        var existing = await _context.Entities.FindAsync([entity.Id], ct);
+        var existing = await _context.Entities.AsTracking().FirstOrDefaultAsync(e => e.Id == entity.Id, ct);
         if (existing == null) return false;
 
         var dbEntity = MapToDbEntity(entity);
@@ -167,7 +170,7 @@ public partial class SQLiteEntityGraphStore : IGraphStore
     {
         var dbEntity = MapToDbRelationship(relationship);
 
-        var existing = await _context.Relationships.FindAsync([relationship.Id], ct);
+        var existing = await _context.Relationships.AsTracking().FirstOrDefaultAsync(r => r.Id == relationship.Id, ct);
         if (existing != null)
         {
             _context.Entry(existing).CurrentValues.SetValues(dbEntity);
@@ -190,7 +193,7 @@ public partial class SQLiteEntityGraphStore : IGraphStore
 
         foreach (var dbRel in dbRelationships)
         {
-            var existing = await _context.Relationships.FindAsync([dbRel.Id], ct);
+            var existing = await _context.Relationships.AsTracking().FirstOrDefaultAsync(r => r.Id == dbRel.Id, ct);
             if (existing != null)
             {
                 _context.Entry(existing).CurrentValues.SetValues(dbRel);
@@ -496,7 +499,7 @@ public partial class SQLiteEntityGraphStore : IGraphStore
     {
         var dbEntity = MapToDbCommunity(community);
 
-        var existing = await _context.Communities.FindAsync([community.Id], ct);
+        var existing = await _context.Communities.AsTracking().FirstOrDefaultAsync(c => c.Id == community.Id, ct);
         if (existing != null)
         {
             _context.Entry(existing).CurrentValues.SetValues(dbEntity);
