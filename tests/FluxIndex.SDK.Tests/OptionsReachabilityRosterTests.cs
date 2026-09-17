@@ -232,8 +232,22 @@ public class OptionsReachabilityRosterTests
         return new Scan(optionTypes, unread, read, crossAssembly);
     }
 
+    /// <summary>
+    /// A method that exists to produce another instance of the type it lives on — a clone, a copy, a
+    /// <c>With…</c> derivation, or the compiler's own record copy constructor. Reading a property in
+    /// order to carry it into a new instance is not consuming it, so those reads must not count; the
+    /// record copy constructor is the sharpest case, since it reads *every* property and would mark a
+    /// whole options record as read on its own.
+    /// <para>
+    /// Judged by what the method returns rather than by its name: a <c>WithRetries</c> that actually
+    /// applies the option (returning void, or something else) is a real read and stays counted, while a
+    /// differently-named copy helper is still excluded. Naming alone decided this before, and it was the
+    /// one rule the two copies of this scanner disagreed on.
+    /// </para>
+    /// </summary>
     private static bool IsCopy(MethodBase method) =>
-        method.Name is "Clone" or "Copy" or "<Clone>$" || method.Name.StartsWith("With", StringComparison.Ordinal);
+        method.Name == "<Clone>$"
+        || (method is MethodInfo { ReturnType: { } returned } && returned == method.DeclaringType);
 
     // Every method a body calls: call (0x28) / callvirt (0x6F) followed by a MethodDef (0x06) or
     // MemberRef (0x0A) token. A byte that merely looks like the opcode inside another operand yields a
