@@ -328,8 +328,8 @@ public partial class SQLiteVecDbContext : DbContext
                 if (!_options.FallbackToInMemoryOnError)
                 {
                     throw new InvalidOperationException(
-                        "sqlite-vec 확장을 로드할 수 없습니다. " +
-                        "확장 파일이 존재하는지 확인하거나 FallbackToInMemoryOnError 옵션을 활성화하세요.");
+                        "The sqlite-vec extension could not be loaded. " +
+                        "Check that the extension file exists, or enable FallbackToInMemoryOnError.");
                 }
                 LogVecExtensionFallback(_logger);
             }

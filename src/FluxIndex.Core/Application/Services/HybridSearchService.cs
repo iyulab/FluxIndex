@@ -218,7 +218,7 @@ public partial class HybridSearchService : IHybridSearchService
         CancellationToken cancellationToken = default)
     {
         if (testQueries.Count != groundTruth.Count)
-            throw new ArgumentException("테스트 쿼리와 정답 데이터의 개수가 일치하지 않습니다.");
+            throw new ArgumentException("The number of test queries does not match the number of ground-truth entries.");
 
         LogHybridSearch7(_logger, testQueries.Count);
 

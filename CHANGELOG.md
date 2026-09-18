@@ -9,6 +9,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.44.5]
+
+### Fixed
+- **Exception messages in `FluxIndex.Core` and `FluxIndex.Storage.SQLite` were not in English.** Twelve distinct messages, thrown from eighteen places (sqlite-vec extension loading, `SQLiteVecOptions.Validate`, the performance monitor, and the retrieval evaluation helpers), were Korean. Operators read exception messages, paste them into issues and search them in log pipelines, and the library's log messages were already English-only. The messages are now English; their meaning is unchanged.
+
+---
+
 ## [0.44.4]
 
 ### Changed

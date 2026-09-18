@@ -180,7 +180,7 @@ public class SQLiteVecOptions : SQLiteOptions
 
         // Return the first expected path even if it doesn't exist (for error reporting)
         return nugetCachePath ?? possiblePaths.FirstOrDefault() ??
-            throw new PlatformNotSupportedException($"지원되지 않는 플랫폼: {RuntimeInformation.OSDescription}");
+            throw new PlatformNotSupportedException($"Unsupported platform: {RuntimeInformation.OSDescription}");
     }
 
     /// <summary>
@@ -435,29 +435,29 @@ public class SQLiteVecOptions : SQLiteOptions
     {
         if (VectorDimension <= 0)
         {
-            throw new ArgumentException("벡터 차원은 0보다 커야 합니다.", nameof(VectorDimension));
+            throw new ArgumentException("The vector dimension must be greater than 0.", nameof(VectorDimension));
         }
 
         if (VectorDimension > 10000)
         {
-            throw new ArgumentException("벡터 차원이 너무 큽니다. 일반적으로 4096 이하를 권장합니다.", nameof(VectorDimension));
+            throw new ArgumentException("The vector dimension is too large; 4096 or less is recommended.", nameof(VectorDimension));
         }
 
         if (MaxBatchSize <= 0)
         {
-            throw new ArgumentException("배치 크기는 0보다 커야 합니다.", nameof(MaxBatchSize));
+            throw new ArgumentException("The batch size must be greater than 0.", nameof(MaxBatchSize));
         }
 
         if (DefaultMinScore < -1.0f || DefaultMinScore > 1.0f)
         {
-            throw new ArgumentException("최소 유사도 점수는 -1.0에서 1.0 사이여야 합니다.", nameof(DefaultMinScore));
+            throw new ArgumentException("The minimum similarity score must be between -1.0 and 1.0.", nameof(DefaultMinScore));
         }
 
         if (UseSQLiteVec && !string.IsNullOrEmpty(CustomExtensionPath) && !File.Exists(CustomExtensionPath))
         {
             if (!FallbackToInMemoryOnError)
             {
-                throw new FileNotFoundException($"지정된 sqlite-vec 확장 파일을 찾을 수 없습니다: {CustomExtensionPath}");
+                throw new FileNotFoundException($"The specified sqlite-vec extension file was not found: {CustomExtensionPath}");
             }
         }
     }

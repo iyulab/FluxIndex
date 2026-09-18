@@ -73,7 +73,7 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
                     return false;
                 }
 
-                throw new FileNotFoundException($"sqlite-vec 확장 파일을 찾을 수 없습니다: {expectedPath}");
+                throw new FileNotFoundException($"The sqlite-vec extension file was not found: {expectedPath}");
             }
 
             // 로드 확인 및 버전 로그 (프로세스당 1회만)

@@ -73,7 +73,7 @@ public partial class VectorIndexPerformanceMonitor
     {
         if (!_baselines.TryGetValue(indexName, out var baseline))
         {
-            throw new InvalidOperationException($"인덱스 {indexName}에 대한 기준선이 설정되지 않았습니다.");
+            throw new InvalidOperationException($"No baseline has been set for index {indexName}.");
         }
 
         if (_logger.IsEnabled(LogLevel.Information))
@@ -138,7 +138,7 @@ public partial class VectorIndexPerformanceMonitor
     {
         if (!_baselines.TryGetValue(indexName, out var baseline))
         {
-            throw new InvalidOperationException($"인덱스 {indexName}에 대한 기준선이 설정되지 않았습니다.");
+            throw new InvalidOperationException($"No baseline has been set for index {indexName}.");
         }
 
         if (_logger.IsEnabled(LogLevel.Information))
@@ -213,7 +213,7 @@ public partial class VectorIndexPerformanceMonitor
     {
         if (samples.Count < 2)
         {
-            throw new ArgumentException("트렌드 분석을 위해서는 최소 2개의 샘플이 필요합니다.");
+            throw new ArgumentException("Trend analysis needs at least 2 samples.");
         }
 
         var analysis = new PerformanceTrendAnalysis

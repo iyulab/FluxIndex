@@ -99,8 +99,8 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 else
                 {
                     throw new InvalidOperationException(
-                        "sqlite-vec 확장이 로드되지 않았습니다. " +
-                        "확장이 설치되어 있는지 확인하거나 FallbackToInMemoryOnError 옵션을 활성화하세요.");
+                        "The sqlite-vec extension is not loaded. " +
+                        "Check that the extension is installed, or enable FallbackToInMemoryOnError.");
                 }
             }
 
@@ -204,8 +204,8 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 else
                 {
                     throw new InvalidOperationException(
-                        "sqlite-vec 확장이 로드되지 않았습니다. " +
-                        "확장이 설치되어 있는지 확인하거나 FallbackToInMemoryOnError 옵션을 활성화하세요.");
+                        "The sqlite-vec extension is not loaded. " +
+                        "Check that the extension is installed, or enable FallbackToInMemoryOnError.");
                 }
             }
 
@@ -579,8 +579,8 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 else
                 {
                     throw new InvalidOperationException(
-                        "sqlite-vec 확장이 로드되지 않았습니다. " +
-                        "확장이 설치되어 있는지 확인하거나 FallbackToInMemoryOnError 옵션을 활성화하세요.");
+                        "The sqlite-vec extension is not loaded. " +
+                        "Check that the extension is installed, or enable FallbackToInMemoryOnError.");
                 }
             }
 
