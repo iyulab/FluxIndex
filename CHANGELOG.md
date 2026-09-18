@@ -9,6 +9,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.44.4]
+
+### Fixed
+- **`SQLiteVecVectorStore`: a metadata-filtered search could miss in-scope chunks that ranked past the KNN window, and on a large enough store it returned nothing at any `topK`.** The metadata lives in `vector_chunks`, not in the vec0 table, so the filter ran after a KNN window of `topK * 3`, capped at sqlite-vec's `k` ceiling of 4,096. A narrow scope inside a store of a few thousand chunks could therefore not be answered however large `topK` was. When the window comes back full and the filter still cannot fill `topK`, the store now computes exact distances over the whole vec0 table, using the table's own distance metric, and walks the candidates in distance order until `topK` pass the filter. The result is exact. vec0 is a brute-force index, so the scan costs about what the KNN costs, and it only runs in that case. The on-disk schema is unchanged, so an existing database works as it is. The window warnings added in 0.29.0 and 0.44.2/0.44.3 ("the metadata filter is applied after the KNN step", "results may starve") no longer describe a possible outcome and are gone. The clamp and the scan are recorded at `Debug`.
+- **`SQLiteVecVectorStore.HybridSearchAsync`: the text leg had the same shape.** A filtered FTS5 query read `LIMIT topK * 3` rows and filtered those, so an in-scope match ranked past that limit was dropped. Filtered text queries now read in rank order until `topK` matches pass.
+
+---
+
 ## [0.44.3]
 
 ### Changed

@@ -164,7 +164,7 @@ matters for recall/performance at scale:
 |-------|------------------------|------------------------|-------|
 | PostgreSQL | ✅ native (jsonb `@>`, multi-value = per-element OR) | ✅ single SQL DELETE | Add a GIN index on `Metadata` for large collections: `CREATE INDEX ON vectors USING gin (metadata jsonb_path_ops);` |
 | Qdrant | ✅ native (payload filter, multi-value = MatchAny) | ✅ | Payload indexes created on startup. Since 0.35.0, serving an *empty* collection while a sibling of the same base name holds data logs a warning — a naming-strategy or embedding-identity change leaves the old data behind (`FailOnCollectionMismatch` makes it a startup failure). See [GUIDE](docs/GUIDE.md#storage-backends) |
-| SQLite (sqlite-vec) | ✅ post-KNN with over-fetch | ✅ | vec0 cannot index metadata; KNN window is widened ×3 when filters are present |
+| SQLite (sqlite-vec) | ✅ exact (KNN window, then exact scan when the window cannot fill `topK`) | ✅ | vec0 cannot index metadata, so the filter runs after the KNN; a window that comes back full without filling `topK` falls through to an exact scan, so a narrow scope in a large store is still answered |
 | SQLite (in-memory scan) | ✅ pre-trim | ✅ | Full scan store |
 | InMemory (SDK) | ✅ pre-trim | ✅ | |
 

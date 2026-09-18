@@ -612,24 +612,19 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         // sqlite-vec 네이티브 검색 사용
         var vectorString = "[" + string.Join(",", queryEmbedding.Select(f => f.ToString("F6", CultureInfo.InvariantCulture))) + "]";
 
-        // Metadata lives in vector_chunks, not in the vec0 table, so this store cannot hand the
-        // filter to vec0 and applies it after the KNN step instead. The window is over-fetched
-        // when filters are present so that matching chunks are less likely to be crowded out of
-        // it by higher-scoring non-matching ones.
-        //
-        // This is a bounded mitigation, not a fix: a scope narrow enough relative to the store
-        // still loses matches that never enter the window. When that happens the search reports
-        // it (see LogVecFilterWindowSaturated below) rather than returning a quietly short result.
-        // A real pre-filter is possible — vec0 has supported metadata columns and partition keys
-        // since sqlite-vec 0.1.6 and this project pins 0.1.7 — but it means declaring those
-        // columns on the vec0 table, which changes the on-disk schema and needs a migration.
+        // Metadata lives in vector_chunks, not in the vec0 table, so the filter cannot be part of the
+        // KNN. The KNN runs first, over a window over-fetched when a filter is present, and the filter
+        // is applied to it in distance order. When the window comes back full and the filter still
+        // cannot fill topK, matching chunks may rank past it — so the store scans every vector exactly
+        // and keeps walking in distance order (see ScanAllDistancesAsync). vec0 is a brute-force index,
+        // so the scan costs about what the KNN costs; and the on-disk schema is unchanged, so there is
+        // nothing to migrate. (vec0 metadata columns cannot express a scope of many documents — no IN
+        // operator — and partition keys assume hundreds of vectors per value.)
         var requestedK = filters is { Count: > 0 } ? (long)topK * 3 : topK;
 
         // vec0 rejects a KNN k above its compile-time ceiling ("k value in knn query too large"), and
         // that rejection fails the whole search. The window is this store's own widening, so the store
-        // bounds it: a clamped window returns what it holds and says so, instead of throwing a query
-        // the caller could not have known was too large. Whether the clamp cost anything is not known
-        // here — it is decided by how many rows the KNN actually returns (see below).
+        // bounds it; what lies past the bound is reached by the exact scan below.
         var knnK = (int)Math.Min(requestedK, SqliteVecMaxK);
 
         // sqlite-vec vec0: CTEs and JOINs with vec0 virtual tables are unreliable
@@ -670,14 +665,10 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 }
             }
 
-            // The clamp only costs the caller something when the clamped window actually filled. A
-            // store holding fewer rows than the window returns all of them either way, so warning
-            // there says "results may starve" about a search that starved nothing — and a vault of a
-            // few chunks would emit it for every query wide enough to trip the ceiling. The window
-            // coming back full is the same signal the post-filter saturation check below uses.
+            var windowFull = knnResults.Count >= knnK;
             if (requestedK > SqliteVecMaxK)
             {
-                if (knnResults.Count >= knnK)
+                if (windowFull)
                 {
                     LogVecKnnWindowClamped(_logger, requestedK, SqliteVecMaxK);
                 }
@@ -693,8 +684,58 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 return [];
             }
 
-            // Step 2: Fetch metadata for matched chunk IDs
-            var placeholders = string.Join(",", knnResults.Select((_, i) => $"@id{i}"));
+            knnResults.Sort((a, b) => a.Distance.CompareTo(b.Distance));
+            var (results, reachedScoreFloor) = await CollectInDistanceOrderAsync(
+                connection, knnResults, topK, minScore, filters, cancellationToken);
+
+            // A full window that still could not fill topK leaves candidates unexamined past it —
+            // unless the walk stopped at minScore, in which case everything further is farther still.
+            if (windowFull && results.Count < topK && !reachedScoreFloor)
+            {
+                var all = await ScanAllDistancesAsync(connection, vectorString, cancellationToken);
+                if (all.Count > knnResults.Count)
+                {
+                    LogVecExactScopedScan(_logger, knnK, results.Count, topK, all.Count);
+                    (results, _) = await CollectInDistanceOrderAsync(
+                        connection, all, topK, minScore, filters, cancellationToken);
+                }
+            }
+
+            LogVecSearchCompleted(_logger, results.Count);
+            return results;
+        }
+        catch (Exception ex)
+        {
+            LogVecNativeSearchFailed(_logger, ex);
+            throw;
+        }
+    }
+
+    // Metadata rows fetched per round trip while walking candidates (well under SQLite's variable limit).
+    private const int CandidatePageSize = 500;
+
+    /// <summary>
+    /// Walks <paramref name="candidates"/> (ascending distance) a page at a time, fetching each page's
+    /// metadata, and keeps the chunks that pass the filter and <paramref name="minScore"/> until
+    /// <paramref name="topK"/> are found. Reports whether the walk stopped at the score floor — since
+    /// candidates are in distance order, nothing after that point can pass it either.
+    /// </summary>
+    private static async Task<(List<DocumentChunk> Results, bool ReachedScoreFloor)> CollectInDistanceOrderAsync(
+        System.Data.Common.DbConnection connection,
+        List<(string ChunkId, float Distance)> candidates,
+        int topK,
+        float minScore,
+        Dictionary<string, object>? filters,
+        CancellationToken cancellationToken)
+    {
+        var results = new List<DocumentChunk>();
+
+        for (var offset = 0; offset < candidates.Count && results.Count < topK; offset += CandidatePageSize)
+        {
+            var page = candidates.GetRange(offset, Math.Min(CandidatePageSize, candidates.Count - offset));
+
+            // Step 2: Fetch metadata for this page of chunk IDs
+            var placeholders = string.Join(",", page.Select((_, i) => $"@id{i}"));
             var metaSql = $@"
                 SELECT Id, DocumentId, ChunkIndex, Content, TokenCount, Metadata, TotalChunks
                 FROM vector_chunks
@@ -704,9 +745,9 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             using (var metaCmd = connection.CreateCommand())
             {
                 metaCmd.CommandText = metaSql;
-                for (int i = 0; i < knnResults.Count; i++)
+                for (int i = 0; i < page.Count; i++)
                 {
-                    metaCmd.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter($"@id{i}", knnResults[i].ChunkId));
+                    metaCmd.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter($"@id{i}", page[i].ChunkId));
                 }
 
                 using var metaReader = await metaCmd.ExecuteReaderAsync(cancellationToken);
@@ -722,10 +763,16 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 }
             }
 
-            // Combine KNN results with metadata
-            var results = new List<DocumentChunk>();
-            foreach (var (chunkId, distance) in knnResults.OrderBy(r => r.Distance))
+            foreach (var (chunkId, distance) in page)
             {
+                // Convert distance → similarity score (0–1 range, 1 = best).
+                // Uses general-purpose formula that works for both L2 and cosine distance:
+                //   L2:     d ∈ [0, ∞)  → score ∈ (0, 1]
+                //   cosine: d ∈ [0, 2]  → score ∈ [0.33, 1]
+                var score = 1.0f / (1.0f + distance);
+                if (score < minScore)
+                    return (results, true);
+
                 if (!metaMap.TryGetValue(chunkId, out var meta))
                     continue;
 
@@ -736,16 +783,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 if (filters is { Count: > 0 } && !VectorStoreBase.MatchesMetadataFilter(metadata, filters))
                     continue;
 
-                // Convert distance → similarity score (0–1 range, 1 = best).
-                // Uses general-purpose formula that works for both L2 and cosine distance:
-                //   L2:     d ∈ [0, ∞)  → score ∈ (0, 1]
-                //   cosine: d ∈ [0, 2]  → score ∈ [0.33, 1]
-                var score = 1.0f / (1.0f + distance);
-
-                if (score < minScore)
-                    continue;
-
-                var chunk = new DocumentChunk
+                results.Add(new DocumentChunk
                 {
                     Id = chunkId,
                     DocumentId = meta.DocId,
@@ -756,31 +794,63 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                     Metadata = metadata,
                     Embedding = null,
                     Score = score
-                };
+                });
 
-                results.Add(chunk);
-
-                // knnResults may hold an over-fetched window (filters present) — cap at topK.
                 if (results.Count >= topK)
                     break;
             }
-
-            // The filter runs after the KNN step, so a saturated window that still could not fill
-            // topK means matching chunks may exist outside it — the caller's result is short for a
-            // reason it cannot otherwise see. Say so instead of returning quietly.
-            if (filters is { Count: > 0 } && knnResults.Count >= knnK && results.Count < topK)
-            {
-                LogVecFilterWindowSaturated(_logger, results.Count, topK, knnK);
-            }
-
-            LogVecSearchCompleted(_logger, results.Count);
-            return results;
         }
-        catch (Exception ex)
+
+        return (results, false);
+    }
+
+    /// <summary>
+    /// Every stored vector's distance to the query, ascending — a full scan of the vec0 table with the
+    /// distance function matching the table's own metric, so the values are the ones the KNN reports.
+    /// </summary>
+    private async Task<List<(string ChunkId, float Distance)>> ScanAllDistancesAsync(
+        System.Data.Common.DbConnection connection,
+        string vectorString,
+        CancellationToken cancellationToken)
+    {
+        var all = new List<(string ChunkId, float Distance)>();
+        using (var cmd = connection.CreateCommand())
         {
-            LogVecNativeSearchFailed(_logger, ex);
-            throw;
+            cmd.CommandText = $@"
+                SELECT chunk_id, {VecDistanceFunction(_options.VecTableOptions)}(embedding, @vector)
+                FROM {_options.GetVecTableName()}";
+            cmd.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("@vector", vectorString));
+
+            using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                all.Add((reader.GetString(0), reader.GetFloat(1)));
+            }
         }
+
+        all.Sort((a, b) => a.Distance.CompareTo(b.Distance));
+        return all;
+    }
+
+    /// <summary>
+    /// The sqlite-vec scalar distance function for a vec0 table's <c>distance_metric</c> option —
+    /// vec0's default (no option) is L2.
+    /// </summary>
+    internal static string VecDistanceFunction(string? vecTableOptions)
+    {
+        var match = System.Text.RegularExpressions.Regex.Match(
+            vecTableOptions ?? string.Empty, @"distance_metric\s*=\s*(\w+)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        var metric = match.Success ? match.Groups[1].Value.ToLowerInvariant() : "l2";
+
+        return metric switch
+        {
+            "cosine" => "vec_distance_cosine",
+            "l2" => "vec_distance_l2",
+            "l1" => "vec_distance_l1",
+            _ => throw new NotSupportedException(
+                $"vec0 distance_metric '{metric}' has no matching sqlite-vec distance function for an exact scan."),
+        };
     }
 
     /// <summary>
@@ -922,10 +992,10 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         Dictionary<string, object>? filters,
         CancellationToken cancellationToken)
     {
-        // Metadata is a JSON column on vector_chunks, so the filter cannot be part of the MATCH.
-        // Same shape as the vec leg: over-fetch when filtering, then keep the first topK matches.
+        // Metadata is a JSON column on vector_chunks, so the filter cannot be part of the MATCH. With a
+        // filter the matches are read in rank order until topK pass it: a LIMIT of any fixed multiple of
+        // topK would drop in-scope matches ranked past it, silently, the way the vec leg's window did.
         var hasFilter = filters is { Count: > 0 };
-        var fetchK = hasFilter ? topK * 3 : topK;
 
         try
         {
@@ -953,10 +1023,10 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 JOIN vector_chunks vc ON vc.rowid = fts.rowid
                 WHERE chunk_fts MATCH @query
                 ORDER BY bm25_score
-                LIMIT @topK";
+                LIMIT @limit";
 
             command.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("@query", escapedQuery));
-            command.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("@topK", fetchK));
+            command.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("@limit", hasFilter ? -1 : topK));
 
             var results = new List<(DocumentChunk, float)>();
 

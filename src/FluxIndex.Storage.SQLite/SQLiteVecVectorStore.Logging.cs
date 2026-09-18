@@ -60,13 +60,13 @@ public partial class SQLiteVecVectorStore
     private static partial void LogVecNativeSearchFailed(ILogger logger, Exception exception);
 
     [LoggerMessage(
-        Level = LogLevel.Warning,
-        Message = "sqlite-vec search returned {Count} of {TopK} requested results: the metadata filter is applied after the KNN step and the {WindowSize}-candidate window was full, so matching chunks may exist outside it. Narrow the query, raise topK, or scope the store")]
-    private static partial void LogVecFilterWindowSaturated(ILogger logger, int count, int topK, int windowSize);
+        Level = LogLevel.Debug,
+        Message = "sqlite-vec KNN window of {WindowSize} candidates came back full but yielded {Count} of {TopK} results after the metadata filter; continuing with an exact scan of {Rows} vectors")]
+    private static partial void LogVecExactScopedScan(ILogger logger, int windowSize, int count, int topK, int rows);
 
     [LoggerMessage(
-        Level = LogLevel.Warning,
-        Message = "sqlite-vec KNN window of {RequestedK} candidates exceeds the extension's limit and was clamped to {MaxK}, and the clamped window came back full: results come from the nearest {MaxK} chunks only, and a metadata filter applied after the KNN step may starve. Lower topK or scope the store")]
+        Level = LogLevel.Debug,
+        Message = "sqlite-vec KNN window of {RequestedK} candidates was clamped to {MaxK} and came back full; results beyond it are reached by an exact scan when the window cannot fill the request")]
     private static partial void LogVecKnnWindowClamped(ILogger logger, long requestedK, int maxK);
 
     [LoggerMessage(

@@ -10,18 +10,19 @@ using Xunit;
 namespace FluxIndex.Storage.SQLite.Tests;
 
 /// <summary>
-/// A metadata filter on this store is applied <em>after</em> the KNN step, over an over-fetched
-/// window of <c>topK * 3</c> candidates — vec0 cannot filter on metadata as the table is currently
-/// declared, because the metadata lives in <c>vector_chunks</c>.
+/// A metadata filter on this store cannot be part of the KNN — the metadata lives in
+/// <c>vector_chunks</c>, not in the vec0 table — so the KNN runs over a window (over-fetched under a
+/// filter, capped at sqlite-vec's k ceiling of 4,096) and the filter is applied to it in distance order.
 /// <para>
-/// So a scope narrow enough relative to the store still loses matches that never enter the window:
-/// higher-scoring non-matching chunks fill it first. That recall loss used to be completely silent
-/// — the caller received a short result with no way to tell it apart from "there was nothing else".
-/// These tests fix the point at which the store must say so.
+/// A scope narrow enough relative to the store used to lose matches that never entered the window:
+/// on a 6,205-chunk vault a scoped question returned nothing at any k (docket iyulab/FluxIndex#346).
+/// When the window comes back full and the filter cannot fill topK, the store now scans every vector
+/// exactly and keeps walking in distance order. These tests fix that the answer is exact — not merely
+/// that the loss is reported.
 /// </para>
 /// </summary>
 [Collection("SQLite Tests")]
-public class SQLiteVecFilterWindowSaturationTests : IAsyncLifetime
+public class SQLiteVecScopedSearchTests : IAsyncLifetime
 {
     private const int Dimension = 8;
 
@@ -29,9 +30,9 @@ public class SQLiteVecFilterWindowSaturationTests : IAsyncLifetime
     private readonly CapturingLoggerProvider _logs = new();
     private readonly string _testDatabasePath;
 
-    public SQLiteVecFilterWindowSaturationTests()
+    public SQLiteVecScopedSearchTests()
     {
-        _testDatabasePath = Path.Combine(Path.GetTempPath(), $"fluxindex_saturation_{Guid.NewGuid()}.db");
+        _testDatabasePath = Path.Combine(Path.GetTempPath(), $"fluxindex_scoped_{Guid.NewGuid()}.db");
 
         var services = new ServiceCollection();
         services.AddLogging(builder =>
@@ -87,12 +88,11 @@ public class SQLiteVecFilterWindowSaturationTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// Fills the candidate window with chunks that score better than the one match, so the filter
-    /// has nothing left to return. The store must warn rather than answer "no results" as though
-    /// the store held none.
+    /// Fills the candidate window with chunks that score better than the one match. The match lies
+    /// outside the window, and the search must still return it.
     /// </summary>
     [Fact]
-    public async Task SearchAsync_FilterStarvedByASaturatedWindow_Warns()
+    public async Task SearchAsync_ScopedMatchOutsideTheWindow_IsFound()
     {
         if (CITestHelper.ShouldSkipSqliteVec())
             return;
@@ -101,7 +101,7 @@ public class SQLiteVecFilterWindowSaturationTests : IAsyncLifetime
         const int topK = 3;
 
         // The window is topK * 3 = 9. Store more than that many near-exact matches that the filter
-        // will reject, plus one accepted chunk placed further away so it cannot make the cut.
+        // will reject, plus one accepted chunk placed further away so it cannot make the window.
         for (var i = 0; i < 12; i++)
         {
             await store.StoreAsync(Chunk($"noise-{i}", "other-tenant", Near(1f, i * 0.0001f)));
@@ -113,18 +113,17 @@ public class SQLiteVecFilterWindowSaturationTests : IAsyncLifetime
             filters: new Dictionary<string, object> { ["tenant"] = "wanted-tenant" },
             TestContext.Current.CancellationToken);
 
-        results.Should().HaveCountLessThan(topK, "the accepted chunk sits outside the candidate window");
-        _logs.Warnings.Should().Contain(m => m.Contains("applied after the KNN step"),
-            "a short result caused by post-KNN filtering must be observable, not silent");
+        results.Select(r => r.DocumentId).Should().Equal("wanted");
+        _logs.Debugs.Should().Contain(m => m.Contains("exact scan"));
+        _logs.Warnings.Should().BeEmpty();
     }
 
     /// <summary>
-    /// The counterpart: when the filter is satisfied from inside the window, nothing is lost and
-    /// the store must stay quiet. A warning that fires on healthy searches is noise, and noise is
-    /// how a real one gets ignored.
+    /// The counterpart: when the filter is satisfied from inside the window, the KNN answer is already
+    /// exact and no scan is owed.
     /// </summary>
     [Fact]
-    public async Task SearchAsync_FilterSatisfiedWithinWindow_DoesNotWarn()
+    public async Task SearchAsync_FilterSatisfiedWithinWindow_DoesNotScan()
     {
         if (CITestHelper.ShouldSkipSqliteVec())
             return;
@@ -143,14 +142,14 @@ public class SQLiteVecFilterWindowSaturationTests : IAsyncLifetime
             TestContext.Current.CancellationToken);
 
         results.Should().HaveCount(3);
-        _logs.Warnings.Should().NotContain(m => m.Contains("applied after the KNN step"));
+        _logs.Debugs.Should().NotContain(m => m.Contains("exact scan"), "a window that fills topK needs no scan");
     }
 
     /// <summary>
     /// vec0 rejects a KNN k above its compile-time ceiling, and the store widens the caller's topK
     /// on its own (x3 under a filter, x2 more on the hybrid path). A caller could not pick a safe
     /// topK without knowing those multipliers, so a window past the ceiling must be clamped — the
-    /// search answers from what the clamped window holds and says it was clamped, never throws.
+    /// search answers without throwing, and records the clamp.
     /// <para>
     /// A store this small is <em>not</em> an operator warning, though: three chunks come back whole
     /// whether the window is 4,096 or 4,098, so nothing starved. The clamp is still recorded, one
@@ -213,41 +212,92 @@ public class SQLiteVecFilterWindowSaturationTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// The clamp becomes an operator's problem only once the clamped window comes back full: past
-    /// that point the answer really is drawn from the nearest 4,096 chunks alone, and a filter
-    /// applied after the KNN step can starve inside it. This is the case the warning is for, and it
-    /// is the one a small vault must not be able to reach.
+    /// The consumer-measured shape of docket iyulab/FluxIndex#346: more chunks than the KNN ceiling,
+    /// all of them nearer the query than the in-scope ones. The clamped window holds only out-of-scope
+    /// chunks, and before the exact scan a scoped search returned nothing at any topK.
     /// </summary>
     [Fact]
-    public async Task SearchAsync_ClampedWindowFilledByTheStore_WarnsThatResultsMayStarve()
+    public async Task SearchAsync_ScopeRankedPastTheKnnCeiling_IsFound()
     {
         if (CITestHelper.ShouldSkipSqliteVec())
             return;
 
         var store = _serviceProvider.GetRequiredService<IVectorStore>();
 
-        // One row past the ceiling is enough for the clamped window to come back full.
-        const int rows = 4_100;
+        const int rows = 4_200;
         await store.StoreBatchAsync(
             Enumerable.Range(0, rows).Select(i => Chunk($"noise-{i}", "other-tenant", Near(1f, i * 0.0001f))),
             TestContext.Current.CancellationToken);
-        await store.StoreAsync(Chunk("wanted", "wanted-tenant", Near(1f, 0f)), TestContext.Current.CancellationToken);
+        await store.StoreAsync(Chunk("wanted-a", "wanted-tenant", Far()), TestContext.Current.CancellationToken);
+        await store.StoreAsync(Chunk("wanted-b", "wanted-tenant", Far(-0.5f)), TestContext.Current.CancellationToken);
+
+        var results = (await store.SearchAsync(
+            Near(1f, 0f), topK: 5, minScore: 0f,
+            filters: new Dictionary<string, object> { ["tenant"] = "wanted-tenant" },
+            TestContext.Current.CancellationToken)).ToList();
+
+        results.Select(r => r.DocumentId).Should().Equal(["wanted-a", "wanted-b"], "the exact scan keeps distance order");
+        _logs.Warnings.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// A full window that stops at minScore has nothing further to find: candidates are in distance
+    /// order, so everything past the floor is below it too. No scan is owed there.
+    /// </summary>
+    [Fact]
+    public async Task SearchAsync_WindowEndingAtTheScoreFloor_DoesNotScan()
+    {
+        if (CITestHelper.ShouldSkipSqliteVec())
+            return;
+
+        var store = _serviceProvider.GetRequiredService<IVectorStore>();
+        for (var i = 0; i < 12; i++)
+        {
+            await store.StoreAsync(Chunk($"noise-{i}", "other-tenant", i < 6 ? Near(1f, i * 0.0001f) : Far()));
+        }
+        await store.StoreAsync(Chunk("wanted", "wanted-tenant", Far()));
 
         var results = await store.SearchAsync(
-            Near(1f, 0f), topK: 1_366, minScore: 0f,
+            Near(1f, 0f), topK: 3, minScore: 0.9f,
             filters: new Dictionary<string, object> { ["tenant"] = "wanted-tenant" },
             TestContext.Current.CancellationToken);
 
-        results.Should().NotBeNull();
-        _logs.Warnings.Should().Contain(m => m.Contains("4098") && m.Contains("was clamped to 4096"));
-        _logs.Debugs.Should().NotContain(m => m.Contains("no candidate was lost"));
+        results.Should().BeEmpty("the one in-scope chunk scores below the floor");
+        _logs.Debugs.Should().NotContain(m => m.Contains("exact scan"));
     }
 
-    private static DocumentChunk Chunk(string documentId, string tenant, float[] embedding) => new()
+    /// <summary>
+    /// The text leg had the same shape: a filtered FTS query read LIMIT topK * 3 rows and filtered
+    /// them, so an in-scope match ranked past that was dropped. It must reach the hybrid result.
+    /// </summary>
+    [Fact]
+    public async Task HybridSearchAsync_ScopedTextMatchRankedPastTheLimit_IsFoundByTheTextLeg()
+    {
+        if (CITestHelper.ShouldSkipSqliteVec())
+            return;
+
+        var store = (SQLiteVecVectorStore)_serviceProvider.GetRequiredService<IVectorStore>();
+        for (var i = 0; i < 40; i++)
+        {
+            await store.StoreAsync(Chunk($"noise-{i}", "other-tenant", Near(1f, i * 0.0001f), "harbor harbor harbor"));
+        }
+        await store.StoreAsync(Chunk("wanted", "wanted-tenant", Far(),
+            "harbor appears once in this much longer passage about unrelated shipping schedules and weather"));
+
+        var results = await store.HybridSearchAsync(
+            Near(1f, 0f), "harbor", topK: 3, minScore: 0f,
+            filters: new Dictionary<string, object> { ["tenant"] = "wanted-tenant" },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var wanted = results.Should().ContainSingle(r => r.Chunk.DocumentId == "wanted").Subject;
+        wanted.FoundInTextSearch.Should().BeTrue("the text leg must not drop an in-scope match ranked past its limit");
+    }
+
+    private static DocumentChunk Chunk(string documentId, string tenant, float[] embedding, string? content = null) => new()
     {
         DocumentId = documentId,
         ChunkIndex = 0,
-        Content = $"content for {documentId}",
+        Content = content ?? $"content for {documentId}",
         Embedding = embedding,
         Metadata = new Dictionary<string, object> { ["tenant"] = tenant }
     };
@@ -259,9 +309,11 @@ public class SQLiteVecFilterWindowSaturationTests : IAsyncLifetime
         return v;
     }
 
-    private static float[] Far()
+    // Orthogonal to the query by default; a positive lead tilts it toward the query, a negative one away.
+    private static float[] Far(float lead = 0f)
     {
         var v = new float[Dimension];
+        v[0] = lead;
         v[Dimension - 1] = 1f;
         return v;
     }
