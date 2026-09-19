@@ -44,9 +44,9 @@
   <!-- AI/ML Packages -->
   <ItemGroup>
     <!-- LMSupply: Full AI stack (Embedder + Generator + Reranker) -->
-    <PackageVersion Include="LMSupply.Embedder" Version="0.68.2" />
-    <PackageVersion Include="LMSupply.Generator" Version="0.68.2" />
-    <PackageVersion Include="LMSupply.Reranker" Version="0.68.2" />
+    <PackageVersion Include="LMSupply.Embedder" Version="0.68.3" />
+    <PackageVersion Include="LMSupply.Generator" Version="0.68.3" />
+    <PackageVersion Include="LMSupply.Reranker" Version="0.68.3" />
   </ItemGroup>
   <!-- Storage/Cache Packages -->
   <ItemGroup>
@@ -69,10 +69,10 @@
   </ItemGroup>
   <!-- Document Processing & Quality -->
   <ItemGroup>
-    <PackageVersion Include="FileFlux" Version="0.23.17" />
+    <PackageVersion Include="FileFlux" Version="0.23.18" />
     <PackageVersion Include="FluxCurator" Version="0.8.3" />
-    <PackageVersion Include="FluxImprover" Version="0.12.13" />
-    <PackageVersion Include="WebFlux" Version="0.7.3" />
+    <PackageVersion Include="FluxImprover" Version="0.12.14" />
+    <PackageVersion Include="WebFlux" Version="0.7.4" />
   </ItemGroup>
   <!-- Testing Packages (xUnit v3 / Microsoft.Testing.Platform — BD-20260829-xunit-v3-pilot rollout) -->
   <ItemGroup>

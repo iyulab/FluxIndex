@@ -11,6 +11,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [0.44.5]
 
+### Changed
+- Re-pinned sibling package(s) `FileFlux` 0.23.17 -> 0.23.18, `FluxImprover` 0.12.13 -> 0.12.14, `LMSupply.Embedder` 0.68.2 -> 0.68.3, `LMSupply.Generator` 0.68.2 -> 0.68.3, `LMSupply.Reranker` 0.68.2 -> 0.68.3, `WebFlux` 0.7.3 -> 0.7.4 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+
 ### Fixed
 - **Exception messages in `FluxIndex.Core` and `FluxIndex.Storage.SQLite` were not in English.** Twelve distinct messages, thrown from eighteen places (sqlite-vec extension loading, `SQLiteVecOptions.Validate`, the performance monitor, and the retrieval evaluation helpers), were Korean. Operators read exception messages, paste them into issues and search them in log pipelines, and the library's log messages were already English-only. The messages are now English; their meaning is unchanged.
 
