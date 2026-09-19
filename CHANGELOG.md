@@ -20,6 +20,12 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   is now read per term through the posting tables' keys, and the statistics move by what the transaction added and
   removed. An index written by an earlier release is recounted once, on its next write; `OptimizeIndexAsync`
   recounts on demand.
+- **A keyword search with a wide metadata filter no longer slows with the number of accepted values.** The filter
+  was tested per posting row, value list and all: on a 6 000-chunk index a search that takes 30 ms unfiltered took
+  9 s when scoped to every document id (a filter of 6 000 values) — the shape a vault-wide FluxFeed search sends on
+  every keyword and hybrid request. The filter is now an uncorrelated membership test, and one with more than 256
+  accepted values is resolved to its chunk set once per search (78 ms for the same request). Results are unchanged,
+  and the value list is no longer bounded by the backend's parameter limit.
 - **Re-indexing a chunk whose new content has no terms removes its old postings.** The chunk was skipped before its
   previous rows were deleted, so text it no longer held kept matching.
 - **Hybrid auto strategy matched technical terms as substrings.** "email", "maintain" and "html" counted as `AI` and

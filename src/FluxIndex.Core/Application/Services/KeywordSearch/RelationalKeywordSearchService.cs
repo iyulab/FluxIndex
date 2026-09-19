@@ -204,6 +204,21 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         var fieldAverageLengths = await LoadFieldAverageLengthsAsync(connection, cancellationToken).ConfigureAwait(false);
         var scores = new Dictionary<string, ScoreAccumulator>(StringComparer.Ordinal);
 
+        // A wide filter — a whole vault's document ids, say — is resolved to its chunk set once and the
+        // postings are tested against that set as they are read. Carried in SQL it is bound and
+        // resolved again by every statement below, two per query term, and its value list can outgrow
+        // the backend's parameter limit. A narrow filter stays in SQL, where it keeps the postings of a
+        // common term from being read at all. Scoring and the top-N cut happen after either, so the
+        // results are the same.
+        HashSet<string>? acceptedChunks = null;
+        if (metadataFilter is not null && metadataFilter.Sum(f => f.Accepted.Count) > WideFilterThreshold)
+        {
+            acceptedChunks = await ResolveAcceptedChunksAsync(connection, metadataFilter, cancellationToken).ConfigureAwait(false);
+            if (acceptedChunks.Count == 0)
+                return [];
+            metadataFilter = null;
+        }
+
         foreach (var term in terms)
         {
             var (termId, documentFrequency) = await TryGetTermAsync(connection, term, cancellationToken).ConfigureAwait(false);
@@ -229,6 +244,8 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
                 while (await postingReader.ReadAsync(cancellationToken).ConfigureAwait(false))
                 {
                     var chunkId = postingReader.GetString(0);
+                    if (acceptedChunks is not null && !acceptedChunks.Contains(chunkId))
+                        continue;
                     evidence[chunkId] = new TermEvidence
                     {
                         BodyTf = postingReader.GetInt32(1),
@@ -251,6 +268,8 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
                 while (await fieldReader.ReadAsync(cancellationToken).ConfigureAwait(false))
                 {
                     var chunkId = fieldReader.GetString(0);
+                    if (acceptedChunks is not null && !acceptedChunks.Contains(chunkId))
+                        continue;
                     var field = fieldReader.GetString(1);
                     var fieldTf = fieldReader.GetInt32(2);
                     var fieldLength = fieldReader.GetInt32(3);
@@ -431,6 +450,57 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         public int DocumentLength;
         public double FieldContribution;
         public int FieldTf;
+    }
+
+    /// <summary>Accepted values above which a metadata filter is resolved once instead of carried in SQL.</summary>
+    private const int WideFilterThreshold = 256;
+
+    /// <summary>Values bound per statement while resolving a wide filter — under every backend's parameter limit.</summary>
+    private const int FilterValueBatchSize = 900;
+
+    /// <summary>
+    /// The chunks a metadata filter accepts: for each key, the chunks carrying any accepted value;
+    /// across keys, the intersection.
+    /// </summary>
+    private static async Task<HashSet<string>> ResolveAcceptedChunksAsync(
+        DbConnection connection,
+        IReadOnlyList<(string Key, IReadOnlyList<string> Accepted)> metadataFilter,
+        CancellationToken cancellationToken)
+    {
+        HashSet<string>? accepted = null;
+        foreach (var (key, values) in metadataFilter)
+        {
+            var forKey = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var batch in values.Chunk(FilterValueBatchSize))
+            {
+                await using var command = connection.CreateCommand();
+                var parameters = new string[batch.Length];
+                for (var v = 0; v < batch.Length; v++)
+                {
+                    parameters[v] = $"@mfVal{v}";
+                    AddParameter(command, parameters[v], batch[v]);
+                }
+
+                AddParameter(command, "@mfKey", key);
+                command.CommandText =
+                    $"SELECT chunk_id FROM bm25_chunk_metadata WHERE meta_key = @mfKey AND meta_value IN ({string.Join(", ", parameters)})";
+                await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+                while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    forKey.Add(reader.GetString(0));
+                }
+            }
+
+            if (accepted is null)
+                accepted = forKey;
+            else
+                accepted.IntersectWith(forKey);
+
+            if (accepted.Count == 0)
+                break;
+        }
+
+        return accepted ?? [];
     }
 
     /// <summary>
@@ -924,13 +994,18 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
                 AddParameter(command, valueParams[v], accepted[v]);
             }
 
-            builder.Append(" AND EXISTS (SELECT 1 FROM bm25_chunk_metadata mf")
+            // An uncorrelated membership test, not EXISTS correlated on the chunk: the set of chunks the
+            // filter accepts is the same for every posting row, so it is resolved once per statement
+            // through the (meta_key, meta_value) index. The correlated form re-evaluated the value list
+            // for every posting row — with a whole vault's document ids as the accepted values, a
+            // search that takes 30 ms unfiltered took 9 s.
+            builder.Append(" AND ")
+                   .Append(chunkIdColumnRef)
+                   .Append(" IN (SELECT mf")
+                   .Append(i)
+                   .Append(".chunk_id FROM bm25_chunk_metadata mf")
                    .Append(i)
                    .Append(" WHERE mf")
-                   .Append(i)
-                   .Append(".chunk_id = ")
-                   .Append(chunkIdColumnRef)
-                   .Append(" AND mf")
                    .Append(i)
                    .Append(".meta_key = ")
                    .Append(keyParam)
