@@ -266,7 +266,12 @@ FluxIndex rather than inside `FluxIndexContext` — can register the leg directl
 
 ```csharp
 services.AddPostgreSQLKeywordSearch(connectionString);   // autoMigrate: true by default
+services.AddSQLiteKeywordSearch();                        // in the registered SQLite vector store's database
+services.AddSQLiteKeywordSearch("Data Source=keyword.db"); // or in a database of its own
 ```
+
+Both pick up a registered `ITextAnalyzer` and `KeywordFieldOptions` from the container and keep a keyword service
+registered earlier (`TryAdd`).
 
 #### Choosing the analyzer (since 0.33.0)
 

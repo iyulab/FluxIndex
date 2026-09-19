@@ -21,6 +21,12 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   Off by default, so existing searches are unchanged; `UseReranker = true` with no reranker registered throws
   `InvalidOperationException`. `Retriever`'s constructor takes a new optional `IReranker`.
 
+- **`AddSQLiteKeywordSearch()`** (`FluxIndex.Storage.SQLite`) registers the SQLite keyword index in a container the
+  builder does not assemble, as `AddPostgreSQLKeywordSearch` does for PostgreSQL. With no connection string it uses
+  the database of the registered SQLite vector store. It picks up a registered `ITextAnalyzer` and
+  `KeywordFieldOptions`, which a hand-written `new SQLiteKeywordSearchService(...)` registration has to remember.
+  The README has named this method since 0.33.0; it did not exist until now.
+
 ### Fixed
 - **`SearchOptions.MinSimilarity` no longer empties a hybrid search.** The builder registers a hybrid search service,
   so `Retriever.SearchAsync(query, options)` runs hybrid by default — and the threshold was mapped to the fused
