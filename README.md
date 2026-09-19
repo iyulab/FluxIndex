@@ -270,8 +270,8 @@ services.AddSQLiteKeywordSearch();                        // in the registered S
 services.AddSQLiteKeywordSearch("Data Source=keyword.db"); // or in a database of its own
 ```
 
-Both pick up a registered `ITextAnalyzer` and `KeywordFieldOptions` from the container and keep a keyword service
-registered earlier (`TryAdd`).
+Both pick up a registered `ITextAnalyzer` and `KeywordFieldOptions` from the container. `AddSQLiteKeywordSearch` keeps
+a keyword service registered earlier (`TryAdd`); `AddPostgreSQLKeywordSearch` replaces it.
 
 #### Choosing the analyzer (since 0.33.0)
 
