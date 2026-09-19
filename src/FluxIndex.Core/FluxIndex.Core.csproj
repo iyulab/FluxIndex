@@ -21,6 +21,7 @@
     <!-- The deadlock-ordering rule is internal because it is not a contract for consumers, but it is
          exactly what CI must hold: the backend it protects is a container CI does not run. -->
     <InternalsVisibleTo Include="FluxIndex.Core.Tests" />
+    <InternalsVisibleTo Include="FluxIndex.Storage.SQLite.Tests" />
   </ItemGroup>
 
 </Project>

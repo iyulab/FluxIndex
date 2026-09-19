@@ -949,12 +949,16 @@ public partial class HybridSearchService : IHybridSearchService
         return query.Split(' ').Any(token => char.IsUpper(token.FirstOrDefault()));
     }
 
+    private static readonly char[] TokenPunctuation = ['.', ',', ';', ':', '!', '?', '(', ')', '[', ']', '"', '\''];
+
     private static bool ContainsTechnicalTerms(string[] tokens)
     {
-        // 간단한 기술 용어 패턴 검사
-        var technicalPatterns = new[] { "API", "HTTP", "JSON", "SQL", "AI", "ML" };
-        return tokens.Any(token => technicalPatterns.Any(pattern =>
-            token.Contains(pattern, StringComparison.OrdinalIgnoreCase)));
+        // Whole tokens only. A substring test read "email", "maintain" and "html" as the technical
+        // terms AI and ML, which moved those queries to weighted-sum fusion — a different ranking and a
+        // different score scale from the rank fusion every other query gets.
+        var technicalTerms = new[] { "API", "HTTP", "JSON", "SQL", "AI", "ML" };
+        return tokens.Any(token => technicalTerms.Any(term =>
+            token.Trim(TokenPunctuation).Equals(term, StringComparison.OrdinalIgnoreCase)));
     }
 
     private static QueryMetrics CalculateQueryMetrics(IReadOnlyList<HybridSearchResult> results, IReadOnlyList<string> groundTruth)

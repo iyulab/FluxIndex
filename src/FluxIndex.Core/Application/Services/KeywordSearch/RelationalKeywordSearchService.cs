@@ -531,14 +531,11 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         // Tokenized once, outside the retry: the token stream does not change between attempts, and
         // re-deriving it would pay the whole cost again for a failure that was purely a lock cycle.
         // A chunk with no body terms is not indexed, fields or not: the body is what the index is of,
-        // and a title-only row would be a chunk the store cannot show a snippet for.
+        // and a title-only row would be a chunk the store cannot show a snippet for. It still goes
+        // through the transaction, because the rows a previous version of it left must be removed.
         var tokenized = chunkList
             .Select(c => (Chunk: c, Terms: Tokenize(c.Content).ToList(), FieldTerms: TokenizeFields(c)))
-            .Where(t => t.Terms.Count > 0)
             .ToList();
-
-        if (tokenized.Count == 0)
-            return;
 
         await RunWithConcurrencyRetryAsync(
             () => IndexTokenizedChunksAsync(tokenized, cancellationToken), cancellationToken).ConfigureAwait(false);
@@ -612,6 +609,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         try
         {
             var affectedTermIds = new HashSet<long>();
+            var statistics = new StatisticsDelta();
 
             // Every term row this transaction will touch is acquired HERE, in one globally sorted
             // pass, before any chunk is written. See TermAcquisitionOrder for why the sort is the
@@ -637,12 +635,12 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             var indexedChunks = 0;
             foreach (var (chunk, terms, fieldTerms) in tokenized)
             {
-                if (await IndexChunkCoreAsync(connection, chunk, terms, fieldTerms, termIds, affectedTermIds, cancellationToken).ConfigureAwait(false))
+                if (await IndexChunkCoreAsync(connection, chunk, terms, fieldTerms, termIds, affectedTermIds, statistics, cancellationToken).ConfigureAwait(false))
                     indexedChunks++;
             }
 
             await RecomputeDocumentFrequenciesAsync(connection, affectedTermIds, cancellationToken).ConfigureAwait(false);
-            await UpdateStatisticsAsync(connection, cancellationToken).ConfigureAwait(false);
+            await ApplyStatisticsDeltaAsync(connection, statistics, cancellationToken).ConfigureAwait(false);
 
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
             LogChunksIndexed(Logger, indexedChunks);
@@ -734,23 +732,37 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         List<(string Field, List<string> Terms)> fieldTerms,
         Dictionary<string, long> termIds,
         HashSet<long> affectedTermIds,
+        StatisticsDelta statistics,
         CancellationToken cancellationToken)
     {
-        if (terms.Count == 0)
-            return false;
-
         // Terms that lose a posting when this chunk is replaced still need their df recomputed.
         await CollectTermIdsForChunkAsync(connection, chunk.Id, affectedTermIds, cancellationToken).ConfigureAwait(false);
+        await SubtractStoredLengthsAsync(connection, chunk.Id, statistics, cancellationToken).ConfigureAwait(false);
 
+        // The previous rows go whatever the new content is. Returning before this when the new content
+        // analyzes to no terms left the old postings in place, so text the chunk no longer holds kept
+        // matching.
         await using (var deleteCmd = connection.CreateCommand())
         {
-            deleteCmd.CommandText = """
-                DELETE FROM bm25_postings WHERE chunk_id = @chunkId;
-                DELETE FROM bm25_field_postings WHERE chunk_id = @chunkId;
-                """;
+            deleteCmd.CommandText = terms.Count == 0
+                ? """
+                  DELETE FROM bm25_postings WHERE chunk_id = @chunkId;
+                  DELETE FROM bm25_field_postings WHERE chunk_id = @chunkId;
+                  DELETE FROM bm25_chunk_metadata WHERE chunk_id = @chunkId;
+                  DELETE FROM bm25_chunks WHERE chunk_id = @chunkId;
+                  """
+                : """
+                  DELETE FROM bm25_postings WHERE chunk_id = @chunkId;
+                  DELETE FROM bm25_field_postings WHERE chunk_id = @chunkId;
+                  """;
             AddParameter(deleteCmd, "@chunkId", chunk.Id);
             await deleteCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
+
+        if (terms.Count == 0)
+            return false;
+
+        statistics.AddDocument(terms.Count);
 
         await using (var chunkCmd = connection.CreateCommand())
         {
@@ -796,6 +808,8 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             var fieldFrequencies = fieldTermList
                 .GroupBy(t => t, StringComparer.Ordinal)
                 .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+            if (fieldFrequencies.Count > 0)
+                statistics.AddField(field, fieldTermList.Count);
 
             foreach (var (term, frequency) in fieldFrequencies)
             {
@@ -1038,10 +1052,12 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             var termIds = await AcquireTermIdsAsync(
                 connection, TermAcquisitionOrder([storedTerms]), cancellationToken).ConfigureAwait(false);
             var affectedTermIds = new HashSet<long>(termIds.Values);
+            var statistics = new StatisticsDelta();
 
             foreach (var chunkId in chunkIds)
             {
                 await CollectTermIdsForChunkAsync(connection, chunkId, affectedTermIds, cancellationToken).ConfigureAwait(false);
+                await SubtractStoredLengthsAsync(connection, chunkId, statistics, cancellationToken).ConfigureAwait(false);
 
                 await using var deleteCmd = connection.CreateCommand();
                 deleteCmd.CommandText = """
@@ -1055,7 +1071,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             }
 
             await RecomputeDocumentFrequenciesAsync(connection, affectedTermIds, cancellationToken).ConfigureAwait(false);
-            await UpdateStatisticsAsync(connection, cancellationToken).ConfigureAwait(false);
+            await ApplyStatisticsDeltaAsync(connection, statistics, cancellationToken).ConfigureAwait(false);
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
 
             foreach (var chunkId in chunkIds)
@@ -1145,17 +1161,9 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             // the fields currently configured count — the same rows the query reads — so rows left
             // behind by a field dropped from the configuration cannot inflate IDF until the chunk is
             // re-indexed.
-            var fieldRows = Fields.Fields.Count == 0
-                ? string.Empty
-                : $" UNION ALL SELECT chunk_id, term_id FROM bm25_field_postings WHERE {BuildFieldPredicate(updateCmd, "field")}";
-            updateCmd.CommandText = $"""
-                UPDATE bm25_terms
-                SET document_frequency =
-                    (SELECT COUNT(DISTINCT u.chunk_id) FROM (
-                        SELECT chunk_id, term_id FROM bm25_postings{fieldRows}) u
-                     WHERE u.term_id = bm25_terms.id)
-                WHERE {predicate};
-                """;
+            updateCmd.CommandText = BuildDocumentFrequencyUpdateSql(
+                Fields.Fields.Count == 0 ? null : BuildFieldPredicate(updateCmd, "f.field"),
+                predicate);
             await updateCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -1168,6 +1176,39 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             cleanupCmd.CommandText = $"DELETE FROM bm25_terms WHERE {predicate} AND document_frequency <= 0";
             await cleanupCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// The statement that rederives document frequency for the terms <paramref name="termPredicate"/>
+    /// selects.
+    /// </summary>
+    /// <remarks>
+    /// Every subquery is correlated on <c>term_id</c> directly, the leading column of both posting
+    /// tables' primary keys, so each term costs two index range reads. The earlier form counted over a
+    /// derived table — the body postings <c>UNION ALL</c> the field postings, filtered by
+    /// <c>term_id</c> outside it — and a planner that does not push that filter into the union reads
+    /// both posting tables in full for every statement: each write then costs the size of the index,
+    /// and writing a vault entry by entry costs its square. The body count needs no <c>DISTINCT</c>
+    /// because <c>(term_id, chunk_id)</c> is that table's key; a field row counts only when the chunk
+    /// has no body row for the term.
+    /// </remarks>
+    internal static string BuildDocumentFrequencyUpdateSql(string? fieldPredicate, string termPredicate)
+    {
+        var fieldOnlyChunks = fieldPredicate is null
+            ? string.Empty
+            : $"""
+
+                  + (SELECT COUNT(DISTINCT f.chunk_id) FROM bm25_field_postings f
+                     WHERE f.term_id = bm25_terms.id AND {fieldPredicate}
+                       AND NOT EXISTS (SELECT 1 FROM bm25_postings b
+                                       WHERE b.term_id = f.term_id AND b.chunk_id = f.chunk_id))
+              """;
+        return $"""
+            UPDATE bm25_terms
+            SET document_frequency =
+                (SELECT COUNT(*) FROM bm25_postings p WHERE p.term_id = bm25_terms.id){fieldOnlyChunks}
+            WHERE {termPredicate};
+            """;
     }
 
     private static IEnumerable<IReadOnlyCollection<long>> Batch(HashSet<long> ids, int batchSize)
@@ -1287,6 +1328,13 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             await cleanupCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
+        // The statistics move by deltas on every write; this is where they are rederived from the rows.
+        await using (var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false))
+        {
+            await RecountStatisticsAsync(connection, cancellationToken).ConfigureAwait(false);
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         if (CompactSql is { Length: > 0 } compactSql)
         {
             await using var compactCmd = connection.CreateCommand();
@@ -1398,48 +1446,210 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             : 0;
     }
 
-    private async Task UpdateStatisticsAsync(DbConnection connection, CancellationToken cancellationToken)
+    private const string TotalDocumentsKey = "total_documents";
+    private const string TotalDocumentLengthKey = "total_doc_length";
+    private const string AverageDocumentLengthKey = "avg_doc_length";
+
+    private static string FieldDocumentCountKey(string field) => "field_doc_count:" + field;
+
+    private static string FieldTotalLengthKey(string field) => "field_total_length:" + field;
+
+    /// <summary>
+    /// What one write transaction changes about the corpus statistics: documents and analyzed length
+    /// added and removed, for the body and per field.
+    /// </summary>
+    private sealed class StatisticsDelta
     {
-        double totalDocs;
-        await using (var totalDocsCmd = connection.CreateCommand())
+        public long Documents { get; private set; }
+
+        public long DocumentLength { get; private set; }
+
+        public SortedDictionary<string, (long Documents, long Length)> Fields { get; } = new(StringComparer.Ordinal);
+
+        public void AddDocument(long length)
         {
-            totalDocsCmd.CommandText = "SELECT COUNT(DISTINCT chunk_id) FROM bm25_postings";
-            totalDocs = Convert.ToDouble(
-                await totalDocsCmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false),
-                CultureInfo.InvariantCulture);
+            Documents++;
+            DocumentLength += length;
         }
 
-        double avgLength;
-        await using (var avgLengthCmd = connection.CreateCommand())
+        public void RemoveDocument(long length)
         {
-            avgLengthCmd.CommandText =
-                "SELECT AVG(document_length) FROM (SELECT DISTINCT chunk_id, document_length FROM bm25_postings) lengths";
-            var avgLengthResult = await avgLengthCmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-            avgLength = avgLengthResult is not null && avgLengthResult != DBNull.Value
-                ? Convert.ToDouble(avgLengthResult, CultureInfo.InvariantCulture)
-                : 0;
+            Documents--;
+            DocumentLength -= length;
         }
 
-        await UpsertStatisticAsync(connection, "total_documents", totalDocs, cancellationToken).ConfigureAwait(false);
-        await UpsertStatisticAsync(connection, "avg_doc_length", avgLength, cancellationToken).ConfigureAwait(false);
+        public void AddField(string field, long length) => Adjust(field, 1, length);
 
-        // One average per configured field, over the chunks that carry the field: BM25F normalizes a
-        // field's length against its own average, not the body's.
+        public void RemoveField(string field, long length) => Adjust(field, -1, -length);
+
+        private void Adjust(string field, long documents, long length)
+        {
+            Fields.TryGetValue(field, out var current);
+            Fields[field] = (current.Documents + documents, current.Length + length);
+        }
+    }
+
+    /// <summary>
+    /// Takes the lengths the chunk's stored rows hold out of <paramref name="statistics"/>. Called
+    /// before those rows are deleted or replaced; a chunk with no rows changes nothing.
+    /// </summary>
+    private static async Task SubtractStoredLengthsAsync(
+        DbConnection connection,
+        string chunkId,
+        StatisticsDelta statistics,
+        CancellationToken cancellationToken)
+    {
+        await using (var bodyCmd = connection.CreateCommand())
+        {
+            bodyCmd.CommandText = "SELECT MAX(document_length) FROM bm25_postings WHERE chunk_id = @chunkId";
+            AddParameter(bodyCmd, "@chunkId", chunkId);
+            var stored = await bodyCmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+            if (stored is not null && stored != DBNull.Value)
+                statistics.RemoveDocument(Convert.ToInt64(stored, CultureInfo.InvariantCulture));
+        }
+
+        await using var fieldCmd = connection.CreateCommand();
+        fieldCmd.CommandText =
+            "SELECT field, MAX(field_length) FROM bm25_field_postings WHERE chunk_id = @chunkId GROUP BY field";
+        AddParameter(fieldCmd, "@chunkId", chunkId);
+        await using var reader = await fieldCmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            statistics.RemoveField(reader.GetString(0), Convert.ToInt64(reader.GetValue(1), CultureInfo.InvariantCulture));
+        }
+    }
+
+    /// <summary>
+    /// Moves the stored statistics by what the transaction changed.
+    /// </summary>
+    /// <remarks>
+    /// The statistics used to be recounted from the posting tables on every write — a distinct count
+    /// and an average over every posting row, plus one more per field — so a write cost the size of
+    /// the index. The totals are kept as sums now and moved by the delta; the averages the scorer
+    /// reads are rewritten from them. A store whose sums are missing (written by an earlier release,
+    /// or a field that had no total yet) is recounted once, from the rows as the transaction leaves
+    /// them, which also makes the recount the repair path: <see cref="OptimizeIndexAsync"/> runs it.
+    /// Keys are written in ordinal order so two transactions never take the rows in opposite orders.
+    /// </remarks>
+    private async Task ApplyStatisticsDeltaAsync(DbConnection connection, StatisticsDelta delta, CancellationToken cancellationToken)
+    {
+        var stored = await ReadStatisticsAsync(connection, cancellationToken).ConfigureAwait(false);
+        var missing = !stored.ContainsKey(TotalDocumentLengthKey)
+            || !stored.ContainsKey(TotalDocumentsKey)
+            || delta.Fields.Keys.Any(f => !stored.ContainsKey(FieldDocumentCountKey(f)) || !stored.ContainsKey(FieldTotalLengthKey(f)));
+        if (missing)
+        {
+            await RecountStatisticsAsync(connection, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        var increments = new SortedDictionary<string, long>(StringComparer.Ordinal)
+        {
+            [TotalDocumentsKey] = delta.Documents,
+            [TotalDocumentLengthKey] = delta.DocumentLength,
+        };
+        foreach (var (field, change) in delta.Fields)
+        {
+            increments[FieldDocumentCountKey(field)] = change.Documents;
+            increments[FieldTotalLengthKey(field)] = change.Length;
+        }
+
+        foreach (var (key, change) in increments)
+        {
+            if (change == 0)
+                continue;
+
+            await using var incrementCmd = connection.CreateCommand();
+            incrementCmd.CommandText = "UPDATE bm25_statistics SET value = value + @delta WHERE key = @key";
+            AddParameter(incrementCmd, "@delta", (double)change);
+            AddParameter(incrementCmd, "@key", key);
+            await incrementCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        // Re-read after the increments: under a concurrent writer the totals this transaction now
+        // holds are the ones the averages must be derived from.
+        var totals = await ReadStatisticsAsync(connection, cancellationToken).ConfigureAwait(false);
+        if (delta.Documents != 0 || delta.DocumentLength != 0)
+        {
+            await UpsertStatisticAsync(
+                connection,
+                AverageDocumentLengthKey,
+                Average(totals.GetValueOrDefault(TotalDocumentLengthKey), totals.GetValueOrDefault(TotalDocumentsKey)),
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        foreach (var field in delta.Fields.Keys)
+        {
+            await UpsertStatisticAsync(
+                connection,
+                FieldAverageLengthKey(field),
+                Average(totals.GetValueOrDefault(FieldTotalLengthKey(field)), totals.GetValueOrDefault(FieldDocumentCountKey(field))),
+                cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private static double Average(double total, double count) => count > 0 ? total / count : 0;
+
+    private static async Task<Dictionary<string, double>> ReadStatisticsAsync(DbConnection connection, CancellationToken cancellationToken)
+    {
+        var values = new Dictionary<string, double>(StringComparer.Ordinal);
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT key, value FROM bm25_statistics";
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            values[reader.GetString(0)] = Convert.ToDouble(reader.GetValue(1), CultureInfo.InvariantCulture);
+        }
+
+        return values;
+    }
+
+    /// <summary>Rederives every statistic from the posting rows. Costs the size of the index.</summary>
+    private async Task RecountStatisticsAsync(DbConnection connection, CancellationToken cancellationToken)
+    {
+        var written = new SortedDictionary<string, double>(StringComparer.Ordinal);
+
+        await using (var bodyCmd = connection.CreateCommand())
+        {
+            bodyCmd.CommandText =
+                "SELECT COUNT(*), COALESCE(SUM(document_length), 0) FROM (SELECT DISTINCT chunk_id, document_length FROM bm25_postings) lengths";
+            await using var reader = await bodyCmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+            var documents = Convert.ToDouble(reader.GetValue(0), CultureInfo.InvariantCulture);
+            var length = Convert.ToDouble(reader.GetValue(1), CultureInfo.InvariantCulture);
+            written[TotalDocumentsKey] = documents;
+            written[TotalDocumentLengthKey] = length;
+            written[AverageDocumentLengthKey] = Average(length, documents);
+        }
+
+        // Every configured field gets its keys even with no rows yet, so the next write to it is an
+        // increment rather than another recount.
         foreach (var field in Fields.Fields)
         {
-            double fieldAverage;
-            await using (var fieldAvgCmd = connection.CreateCommand())
-            {
-                fieldAvgCmd.CommandText =
-                    "SELECT AVG(field_length) FROM (SELECT DISTINCT chunk_id, field_length FROM bm25_field_postings WHERE field = @field) lengths";
-                AddParameter(fieldAvgCmd, "@field", field.MetadataKey);
-                var result = await fieldAvgCmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-                fieldAverage = result is not null && result != DBNull.Value
-                    ? Convert.ToDouble(result, CultureInfo.InvariantCulture)
-                    : 0;
-            }
+            written[FieldDocumentCountKey(field.MetadataKey)] = 0;
+            written[FieldTotalLengthKey(field.MetadataKey)] = 0;
+            written[FieldAverageLengthKey(field.MetadataKey)] = 0;
+        }
 
-            await UpsertStatisticAsync(connection, FieldAverageLengthKey(field.MetadataKey), fieldAverage, cancellationToken).ConfigureAwait(false);
+        await using (var fieldCmd = connection.CreateCommand())
+        {
+            fieldCmd.CommandText =
+                "SELECT field, COUNT(*), COALESCE(SUM(field_length), 0) FROM (SELECT DISTINCT chunk_id, field, field_length FROM bm25_field_postings) lengths GROUP BY field";
+            await using var reader = await fieldCmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                var field = reader.GetString(0);
+                var documents = Convert.ToDouble(reader.GetValue(1), CultureInfo.InvariantCulture);
+                var length = Convert.ToDouble(reader.GetValue(2), CultureInfo.InvariantCulture);
+                written[FieldDocumentCountKey(field)] = documents;
+                written[FieldTotalLengthKey(field)] = length;
+                written[FieldAverageLengthKey(field)] = Average(length, documents);
+            }
+        }
+
+        foreach (var (key, value) in written)
+        {
+            await UpsertStatisticAsync(connection, key, value, cancellationToken).ConfigureAwait(false);
         }
     }
 

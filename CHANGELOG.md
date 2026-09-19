@@ -9,6 +9,25 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.44.7]
+
+### Fixed
+- **A keyword-index write costs what it writes, not the size of the index** (SQLite and PostgreSQL keyword
+  services). Every `IndexChunksAsync` and delete re-read both posting tables in full to update document frequency —
+  the term filter sat outside a `UNION ALL` the planner did not push it into — and recounted the corpus statistics
+  from every posting row. Writing entries one at a time therefore cost the square of the index: about 7 ms per entry
+  at the start of a 1 500-entry run and 41 ms at its end, half an hour for a 6 000-entry rebuild. Document frequency
+  is now read per term through the posting tables' keys, and the statistics move by what the transaction added and
+  removed. An index written by an earlier release is recounted once, on its next write; `OptimizeIndexAsync`
+  recounts on demand.
+- **Re-indexing a chunk whose new content has no terms removes its old postings.** The chunk was skipped before its
+  previous rows were deleted, so text it no longer held kept matching.
+- **Hybrid auto strategy matched technical terms as substrings.** "email", "maintain" and "html" counted as `AI` and
+  `ML`, which switched those queries from rank fusion to weighted-sum fusion — a different ranking and a different
+  score scale. Terms are matched as whole tokens.
+
+---
+
 ## [0.44.6]
 
 ### Fixed

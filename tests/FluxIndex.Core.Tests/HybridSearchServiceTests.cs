@@ -173,4 +173,16 @@ public class HybridSearchServiceTests
         await _mockVectorStore.Received(1).SearchAsync(embedding, Arg.Any<int>(), Arg.Any<float>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>());
         await _mockKeywordSearchService.Received(1).SearchAsync(query, Arg.Any<KeywordSearchOptions>(), Arg.Any<CancellationToken>());
     }
+
+    [Theory]
+    [InlineData("please email the maintainers about the rain", FusionMethod.RRF)]
+    [InlineData("html table layout", FusionMethod.RRF)]
+    [InlineData("REST API design", FusionMethod.WeightedSum)]
+    [InlineData("what is AI?", FusionMethod.WeightedSum)]
+    public async Task RecommendSearchStrategy_TreatsATechnicalTermAsAWholeToken_NotASubstring(string query, FusionMethod expected)
+    {
+        var strategy = await _service.RecommendSearchStrategyAsync(query, TestContext.Current.CancellationToken);
+
+        Assert.Equal(expected, strategy.RecommendedFusion);
+    }
 }
