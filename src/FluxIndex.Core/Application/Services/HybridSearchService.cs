@@ -302,7 +302,7 @@ public partial class HybridSearchService : IHybridSearchService
                     : null;
                 var vectorResults = await _vectorStore.SearchAsync(
                     embedding,
-                    options.VectorOptions.MaxResults,
+                    VectorLegSize(options),
                     (float)options.VectorOptions.MinScore,
                     filters,
                     cancellationToken);
@@ -346,14 +346,15 @@ public partial class HybridSearchService : IHybridSearchService
             // 쿼리 벡터 양자화
             var quantizedQuery = await _quantizer.QuantizeAsync(embedding, cancellationToken);
 
+            var legSize = VectorLegSize(options);
             if (_logger.IsEnabled(LogLevel.Information))
-                LogHybridSearch4(_logger, options.VectorOptions.MaxResults, options.QuantizedCandidateMultiplier);
+                LogHybridSearch4(_logger, legSize, options.QuantizedCandidateMultiplier);
 
             // Two-Stage 검색: 양자화 검색 후 원본 벡터로 리랭킹
             var results = await quantizedStore.SearchWithRerankAsync(
                 embedding,
                 quantizedQuery,
-                options.VectorOptions.MaxResults,
+                legSize,
                 options.QuantizedCandidateMultiplier,
                 options.QuantizedMinScore,
                 cancellationToken);
@@ -403,6 +404,15 @@ public partial class HybridSearchService : IHybridSearchService
     }
 
     /// <summary>
+    /// How many candidates a leg fetches: its own <c>MaxResults</c>, but never fewer than the fused list
+    /// is asked to return. The legs default to 10, so a caller that set only
+    /// <see cref="HybridSearchOptions.MaxResults"/> got two lists of 10 fused into at most 20 results —
+    /// about 15 after duplicates — whatever it asked for.
+    /// </summary>
+    private static int VectorLegSize(HybridSearchOptions options)
+        => Math.Max(options.VectorOptions.MaxResults, options.MaxResults);
+
+    /// <summary>
     /// Adapts the fusion-facing sparse options onto the keyword service contract.
     /// The two records exist because <c>HybridSearchOptions.SparseOptions</c> is public shape while
     /// <see cref="IKeywordSearchService"/> is the backend contract; only the interface was unified.
@@ -414,7 +424,7 @@ public partial class HybridSearchService : IHybridSearchService
 
         return new KeywordSearchOptions
         {
-            MaxResults = sparseOptions.MaxResults,
+            MaxResults = Math.Max(sparseOptions.MaxResults, options.MaxResults),
             MinScore = sparseOptions.MinScore,
             K1 = sparseOptions.K1,
             B = sparseOptions.B,

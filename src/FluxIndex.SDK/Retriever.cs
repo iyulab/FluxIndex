@@ -52,6 +52,9 @@ public partial class Retriever
     // since those are lower-level primitives advanced callers already use knowingly.
     private readonly IRAGSecurityPipeline? _ragSecurityPipeline;
 
+    // Opt-in per search (SearchOptions.UseReranker); null when no reranker is registered.
+    private readonly IReranker? _reranker;
+
     // Phase 3: 이벤트 기반 모니터링
     /// <summary>
     /// 검색 시작 시 발생하는 이벤트
@@ -80,8 +83,10 @@ public partial class Retriever
         IHybridSearchService? hybridSearchService = null,
         IGraphRAGService? graphRAGService = null,
         IKeywordSearchService? keywordSearchService = null,
-        IRAGSecurityPipeline? ragSecurityPipeline = null)
+        IRAGSecurityPipeline? ragSecurityPipeline = null,
+        IReranker? reranker = null)
     {
+        _reranker = reranker;
         _vectorStore = vectorStore;
         _documentRepository = documentRepository;
         _embeddingService = embeddingService;
@@ -387,6 +392,49 @@ public partial class Retriever
         }
     }
 
+    private async Task<List<SearchResult>> RerankAsync(
+        string query,
+        List<SearchResult> results,
+        int topK,
+        CancellationToken cancellationToken)
+    {
+        if (results.Count == 0)
+            return results;
+
+        var byId = new Dictionary<string, SearchResult>(StringComparer.Ordinal);
+        var candidates = new List<RetrievalCandidate>(results.Count);
+        for (var i = 0; i < results.Count; i++)
+        {
+            var result = results[i];
+            byId[result.Id] = result;
+            candidates.Add(new RetrievalCandidate
+            {
+                Id = result.Id,
+                DocumentId = result.DocumentId,
+                ChunkId = result.Id,
+                Content = result.Content,
+                InitialScore = result.Score,
+                InitialRank = i + 1,
+                Metadata = result.Metadata,
+            });
+        }
+
+        var reranked = await _reranker!.RerankAsync(query, candidates, new RerankOptions { TopN = topK }, cancellationToken);
+
+        var ordered = new List<SearchResult>(topK);
+        foreach (var item in reranked.OrderBy(r => r.NewRank).ThenByDescending(r => r.RerankScore))
+        {
+            if (ordered.Count == topK || !byId.Remove(item.Id, out var result))
+                continue;
+
+            result.RetrievalScore = result.Score;
+            result.Score = item.RerankScore;
+            ordered.Add(result);
+        }
+
+        return ordered;
+    }
+
     /// <summary>
     /// SearchOptions 기반 검색 (자동 기능 감지 지원).
     /// UseHybridSearch가 null이면 등록된 서비스에 따라 자동 활성화됩니다.
@@ -417,6 +465,18 @@ public partial class Retriever
                 "Register one (the builder registers HybridSearchService by default; AddQdrantWithHybridSearch registers Qdrant's) or leave UseHybridSearch unset.");
         }
 
+        if (options.UseReranker && _reranker == null)
+        {
+            throw new InvalidOperationException(
+                "UseReranker is set but no IReranker is registered. Register one (AddLMSupplyReranker, " +
+                "AddOpenAICompatibleReranker, or your own IReranker) or leave UseReranker unset.");
+        }
+
+        // The reranker orders candidates, so retrieval fetches more than the caller will get back.
+        var fetchCount = options.UseReranker
+            ? Math.Max(options.TopK, options.RerankCandidateCount ?? options.TopK * 3)
+            : options.TopK;
+
         // GraphRAG needs an index built from the chunks being queried, which a free-text search does not
         // have, so this method never runs it — and an explicit request must not be dropped silently.
         if (options.UseGraphRAG == true)
@@ -446,10 +506,9 @@ public partial class Retriever
         {
             LogHybridSearchActivated(_logger, query);
 
-            var hybridResults = await _hybridSearchService.SearchAsync(
-                query,
-                HybridSearchOptionsMapper.FromSearchOptions(options),
-                cancellationToken);
+            var hybridOptions = HybridSearchOptionsMapper.FromSearchOptions(options);
+            hybridOptions.MaxResults = fetchCount;
+            var hybridResults = await _hybridSearchService.SearchAsync(query, hybridOptions, cancellationToken);
 
             WarnIfSparseLegContributedNothing(hybridResults, query);
 
@@ -475,7 +534,7 @@ public partial class Retriever
         {
             var vectorResults = await SearchAsync(
                 query,
-                options.TopK,
+                fetchCount,
                 options.MinSimilarity,
                 filter,
                 cancellationToken);
@@ -502,6 +561,12 @@ public partial class Retriever
             results = await ApplyRagSecurityAsync(results, cancellationToken);
         }
 
+        // After the security pass: a document it removed must not reach the reranker's model either.
+        if (options.UseReranker && _reranker != null)
+        {
+            results = await RerankAsync(query, results, options.TopK, cancellationToken);
+        }
+
         return new SearchResponse
         {
             Query = query,
@@ -510,6 +575,7 @@ public partial class Retriever
             SearchTime = DateTime.UtcNow - startTime,
             Metadata = new Dictionary<string, object>
             {
+                ["reranked"] = options.UseReranker,
                 ["useHybridSearch"] = useHybridSearch,
                 ["hybridSearchAvailable"] = SupportsHybridSearch,
                 ["graphRAGAvailable"] = SupportsGraphRAG

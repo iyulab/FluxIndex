@@ -744,7 +744,8 @@ public class FluxIndexContextBuilder
                 hybridSearchService,
                 graphRAGService,
                 keywordSearchService,
-                ragSecurityPipeline
+                ragSecurityPipeline,
+                serviceProvider.GetService<IReranker>()
             );
         });
 

@@ -18,8 +18,10 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   `IEmbeddingService.GenerateEmbeddingsBatchAsync`. Always available. Query embeddings are cached per `Retriever`
   (in-process, not configurable); `UseMemoryCache` / `WithCacheDuration` cache search results.
 - **Reranking** (cross-encoder) — `IReranker.RerankAsync`, registered by `AddLMSupplyReranker` (local, no API key) or
-  `AddOpenAICompatibleReranker`. Opt-in, and **not** called by `Retriever` for you: resolve `IReranker` and rerank the
-  results yourself.
+  `AddOpenAICompatibleReranker`. Opt-in per search: `Retriever.SearchAsync(query, new SearchOptions { UseReranker = true })`
+  fetches `RerankCandidateCount` candidates (default `TopK × 3`), has the registered reranker order them and returns its
+  top `TopK` — `SearchResult.Score` is the rerank score, `RetrievalScore` the one retrieval gave. A registered reranker
+  does nothing for a search that does not ask; asking with none registered throws.
 - **Graph traversal** — `IGraphTraversalService` (`TraverseBfsAsync`, `TraverseDfsAsync`, `FindShortestPathAsync` (BFS),
   `FindStrongestPathAsync` (Dijkstra), `ComputeChunkImportanceAsync` (PageRank-style)). Registered by the builder.
   **GraphRAG**: opt-in with `AddGraphRAGService` / `AddFullGraphRAG` in `ConfigureServices`; query through

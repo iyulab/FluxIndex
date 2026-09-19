@@ -9,6 +9,34 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.45.0]
+
+### Added
+- **`SearchOptions.UseReranker` — a registered `IReranker` now reaches `Retriever`.** `AddLMSupplyReranker` and
+  `AddOpenAICompatibleReranker` registered a reranker that nothing called; you had to resolve it and rerank the
+  results yourself. With `UseReranker = true`, `Retriever.SearchAsync(query, options)` fetches
+  `RerankCandidateCount` candidates (default `TopK × 3`), runs them through the registered reranker after the RAG
+  security pass, and returns its top `TopK`. `SearchResult.Score` becomes the rerank score, the new
+  `SearchResult.RetrievalScore` keeps the retrieval score, and `SearchResponse.Metadata["reranked"]` reports it.
+  Off by default, so existing searches are unchanged; `UseReranker = true` with no reranker registered throws
+  `InvalidOperationException`. `Retriever`'s constructor takes a new optional `IReranker`.
+
+### Fixed
+- **`SearchOptions.MinSimilarity` no longer empties a hybrid search.** The builder registers a hybrid search service,
+  so `Retriever.SearchAsync(query, options)` runs hybrid by default — and the threshold was mapped to the fused
+  score, which is rank-sized under reciprocal rank fusion (about 0.016 at best), so any similarity-sized value
+  dropped every result. It is now a similarity floor on the vector leg, as it is on the vector path. **Behaviour
+  change**: a thresholded hybrid search returns results where it returned none.
+- **A hybrid search returns up to `MaxResults` / `TopK` results.** `HybridSearchService` fetched each leg's own
+  `MaxResults` (default 10) whatever the fused list was asked for, so a request for 25 returned about 17. A leg now
+  fetches at least as many candidates as the fused list must return.
+- **`HybridSearchOptions` (SDK) weights and `FusionMethod` are applied.** The hybrid service's auto strategy is on
+  by default and replaces the weights and the fusion method per query, so the values mapped from the SDK options
+  were dead. Passing the SDK's `HybridSearchOptions` now turns auto strategy off for that search; plain
+  `SearchOptions` keep it.
+
+---
+
 ## [0.44.7]
 
 ### Fixed

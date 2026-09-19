@@ -20,6 +20,9 @@ internal static class HybridSearchOptionsMapper
             VectorWeight = sdkOptions.VectorWeight,
             SparseWeight = sdkOptions.KeywordWeight,
             Filters = ToCoreFilters(sdkOptions),
+            // The caller named the weights and the fusion, so the service must not re-derive them from the
+            // query: with auto strategy on (its default) it replaces all three and these settings are dead.
+            EnableAutoStrategy = false,
             // An explicit fusion method wins over the two-value strategy, which cannot name the others.
             FusionMethod = sdkOptions.FusionMethod ?? sdkOptions.RerankingStrategy switch
             {
@@ -65,7 +68,9 @@ internal static class HybridSearchOptionsMapper
                 Filters = ToCoreFilters(options)
             };
 
-        coreOptions.MinFusedScore = options.MinSimilarity;
+        // A similarity floor belongs on the vector leg. Compared with the fused score — rank-sized under
+        // reciprocal rank fusion, about 0.016 at best — a similarity-sized threshold drops every result.
+        coreOptions.VectorOptions.MinScore = options.MinSimilarity;
         return coreOptions;
     }
 }

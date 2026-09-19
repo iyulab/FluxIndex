@@ -27,6 +27,12 @@ public class SearchResult
     public float Score { get; set; }
     public float? VectorScore { get; set; }
     public float? KeywordScore { get; set; }
+
+    /// <summary>
+    /// The score retrieval gave this result before a reranker replaced <see cref="Score"/>. Null when the
+    /// search was not reranked.
+    /// </summary>
+    public float? RetrievalScore { get; set; }
     public Dictionary<string, object> Metadata { get; set; } = new();
     public Dictionary<string, object> Highlights { get; set; } = new();
     public int ChunkIndex { get; set; }
@@ -70,6 +76,21 @@ public class SearchOptions
     /// - false: 강제 비활성화
     /// </summary>
     public bool? UseHybridSearch { get; set; }
+
+    /// <summary>
+    /// Reorders the retrieved candidates with the registered <c>IReranker</c> and returns its top
+    /// <see cref="TopK"/>. Off by default: a registered reranker does nothing until a search asks for it.
+    /// True with no <c>IReranker</c> registered throws <see cref="InvalidOperationException"/> rather than
+    /// returning results that were silently not reranked.
+    /// </summary>
+    public bool UseReranker { get; set; }
+
+    /// <summary>
+    /// How many candidates retrieval fetches for the reranker to order. Null uses three times
+    /// <see cref="TopK"/>. A reranker only reorders what it is given, so fetching <see cref="TopK"/>
+    /// would leave it nothing to promote. Read only when <see cref="UseReranker"/> is set.
+    /// </summary>
+    public int? RerankCandidateCount { get; set; }
 }
 
 /// <summary>

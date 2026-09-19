@@ -28,7 +28,9 @@ public class HybridSearchOptionsMapperTests
         core.VectorWeight.Should().BeApproximately(0.2, 0.0001);
         core.SparseWeight.Should().BeApproximately(0.8, 0.0001);
         core.MaxResults.Should().Be(25);
-        core.MinFusedScore.Should().BeApproximately(0.15, 0.0001);
+        core.VectorOptions.MinScore.Should().BeApproximately(0.15, 0.0001, "MinSimilarity is a floor on the vector leg");
+        core.MinFusedScore.Should().Be(0, "a similarity-sized value compared with the fused score drops every result");
+        core.EnableAutoStrategy.Should().BeFalse("the caller named the weights, so the service must not replace them");
     }
 
     [Fact]
@@ -41,6 +43,7 @@ public class HybridSearchOptionsMapperTests
         core.VectorWeight.Should().BeApproximately(HybridSearchOptionsMapper.DefaultVectorWeight, 0.0001);
         core.SparseWeight.Should().BeApproximately(HybridSearchOptionsMapper.DefaultSparseWeight, 0.0001);
         core.MaxResults.Should().Be(10);
+        core.EnableAutoStrategy.Should().BeTrue("plain options name no weights, so the service may choose them per query");
     }
 
     [Fact]
