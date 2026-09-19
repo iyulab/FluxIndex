@@ -9,6 +9,23 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.44.6]
+
+### Fixed
+- **A registered `IRAGSecurityPipeline` now reaches the builder's `Retriever`.** `FluxIndexContextBuilder.Build()`
+  constructed the retriever without it, so the guard registered in `ConfigureServices` never ran on a search. A roster
+  test now holds every optional retriever dependency to the container.
+- **The "UseHybridSearch is enabled but IHybridSearchService is not registered" error named a method that does not
+  exist** (`UseQdrantWithHybrid()`). It now points at `AddQdrantWithHybridSearch` and the builder's default registration.
+
+### Changed
+- **README: Key Features rewritten against the code** — each feature names its entry point and how to enable it.
+  Corrected along the way: `IReranker` is not called by `Retriever` (rerank the results yourself); the query-embedding
+  cache is internal to `Retriever`; `UseRedisCache` needs `AddRedisStorage()`; `FluxIndex.MCP` is a library you host.
+  The Performance table is removed — the benchmark results it cited are no longer in the repository.
+
+---
+
 ## [0.44.5]
 
 ### Changed

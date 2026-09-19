@@ -8,17 +8,38 @@
 
 ## Key Features
 
-- **Hybrid Search** - Vector (semantic) + Keyword (BM25) with automatic strategy selection
-- **High Performance** - Embedding cache (100% faster), batch indexing (24ms/1K chunks)
-- **Local Reranking** - Cross-encoder neural reranking
-- **Graph Traversal** - BFS/DFS, Dijkstra shortest path, PageRank-style importance
-- **Vector Quantization** - Scalar (Int8/Int4), Product Quantization, Binary (32x compression)
-- **Multiple Storage** - SQLite, PostgreSQL with pgvector
-- **AI Provider Agnostic** - Core provides abstract base classes, bring your own embedding service
-- **Document Processing** - PDF/DOCX/TXT via FileFlux, web crawling via WebFlux (opt-in `FluxIndex.Integrations.*` packages)
-- **MCP Server** - Model Context Protocol for AI assistant integration
-- **RAG Security (opt-in)** - `Retriever` accepts a `FluxGuard.Remote` `IRAGSecurityPipeline` to detect and block RAG poisoning / indirect prompt injection in retrieved documents
-- **Production Ready** - Redis caching, clean architecture, .NET 10.0
+Each line: what it does · the entry point · how to turn it on. "Builder" is `FluxIndexContext.CreateBuilder()`.
+
+- **Hybrid search** (vector + BM25) — `IHybridSearchService`; `SearchOptions.UseHybridSearch` (unset = on whenever the
+  service is registered). The builder registers `HybridSearchService` by default; a storage package's persistent keyword
+  index replaces the in-memory BM25 leg. Qdrant's native hybrid: `AddQdrantWithHybridSearch`. Query-driven strategy
+  choice: `HybridSearchOptions.EnableAutoStrategy` (default on) and `FluxIndexContext.AdaptiveSearchAsync`.
+- **Batch indexing** — `Indexer.IndexBatchAsync(documents, progress, parallelism)`; chunk embeddings go through
+  `IEmbeddingService.GenerateEmbeddingsBatchAsync`. Always available. Query embeddings are cached per `Retriever`
+  (in-process, not configurable); `UseMemoryCache` / `WithCacheDuration` cache search results.
+- **Reranking** (cross-encoder) — `IReranker.RerankAsync`, registered by `AddLMSupplyReranker` (local, no API key) or
+  `AddOpenAICompatibleReranker`. Opt-in, and **not** called by `Retriever` for you: resolve `IReranker` and rerank the
+  results yourself.
+- **Graph traversal** — `IGraphTraversalService` (`TraverseBfsAsync`, `TraverseDfsAsync`, `FindShortestPathAsync` (BFS),
+  `FindStrongestPathAsync` (Dijkstra), `ComputeChunkImportanceAsync` (PageRank-style)). Registered by the builder.
+  **GraphRAG**: opt-in with `AddGraphRAGService` / `AddFullGraphRAG` in `ConfigureServices`; query through
+  `IGraphRAGService.QueryAsync`.
+- **Vector quantization** — `IVectorQuantizer` (`ScalarQuantizer`, `ProductQuantizer`, `BinaryQuantizer`); opt-in with
+  `AddVectorQuantization` or `AddScalarQuantization` / `AddProductQuantization` / `AddBinaryQuantization`, stored by
+  `AddSQLiteQuantizedVectorStore` / `AddPostgreSQLQuantizedVectorStore`; searched with `SearchQuantizedAsync`.
+- **Storage** — builder `Use*` + the package's `Add*Storage()` (`Build()` throws if one is missing): SQLite
+  (`UseSQLite`, `AddSQLiteStorage`), PostgreSQL + pgvector (`UsePostgreSQL`, `AddPostgreSQLStorage`), Qdrant (`UseQdrant`,
+  `AddQdrantStorage`), Neo4j graph (`UseNeo4j`, `AddNeo4jStorage`). Plain DI: `AddSQLiteVectorStore`,
+  `AddPostgreSQLVectorStore`, `AddQdrantVectorStore`, `AddNeo4jGraphStore`.
+- **Redis cache** — builder `UseRedisCache(connection)` **plus** `AddRedisStorage()`; plain DI `AddRedisCacheStore` /
+  `AddRedisSemanticCache`.
+- **Document processing** — PDF/DOCX/TXT via FileFlux, web pages via WebFlux (`FluxIndex.Integrations.*`, opt-in).
+- **MCP server** — `FluxIndex.MCP` is a library: host it with `FluxIndexMcpServer.RunAsync(workspacePath)` or
+  `services.AddFluxIndexMcp(...)` (stdio). Tools: `memorize`, `search`, `status`, `unmemorize`.
+- **RAG security** (opt-in) — register a `FluxGuard.Remote` `IRAGSecurityPipeline`; `Retriever.SearchAsync` drops
+  documents it blocks and replaces the content of ones it sanitizes.
+- **Bring your own models** — `IEmbeddingService` / `ITextCompletionService` ports; `FluxIndex.Providers.LMSupply`
+  (local) and `FluxIndex.Providers.OpenAI` (OpenAI-compatible) implement them.
 
 ## Quick Start
 
@@ -124,17 +145,6 @@ FluxIndex provides Model Context Protocol (MCP) server for AI assistant integrat
 **Available Tools**: `search`, `memorize`, `unmemorize`, `status`
 
 See [FluxIndex.MCP](./src/FluxIndex.MCP/) for integration details.
-
-## Performance
-
-| Operation | Performance | Notes |
-|-----------|-------------|-------|
-| Batch Indexing | 24ms/1K chunks | 8-thread parallelism |
-| Vector Search | 0.6ms/query | In-memory embeddings |
-| Embedding Cache | 100% faster | Eliminates API calls |
-| Semantic Cache | <5ms | Redis, 95% similarity |
-
-Full benchmarks: [BENCHMARK_RESULTS.md](./benchmarks/FluxIndex.Benchmarks/BENCHMARK_RESULTS.md)
 
 ## Package Structure
 

@@ -729,6 +729,9 @@ public class FluxIndexContextBuilder
             // Same registration the indexer writes to — the keyword leg has one backend.
             var keywordSearchService = serviceProvider.GetService<IKeywordSearchService>();
 
+            // Opt-in RAG poisoning / indirect-injection guard applied to retrieved documents.
+            var ragSecurityPipeline = serviceProvider.GetService<FluxGuard.Remote.RAG.IRAGSecurityPipeline>();
+
             return new Retriever(
                 vectorStore,
                 documentRepository,
@@ -740,7 +743,8 @@ public class FluxIndexContextBuilder
                 loggerFactory.CreateLogger<Retriever>(),
                 hybridSearchService,
                 graphRAGService,
-                keywordSearchService
+                keywordSearchService,
+                ragSecurityPipeline
             );
         });
 

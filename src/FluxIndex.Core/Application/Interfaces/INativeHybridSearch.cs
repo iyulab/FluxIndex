@@ -13,7 +13,9 @@ namespace FluxIndex.Core.Application.Interfaces;
 /// filled via <c>IndexChunkAsync</c> — a pipeline that writes only to the vector store never calls
 /// it — whereas this native hybrid fuses over the keyword rows the store itself wrote at ingestion.
 /// Routing to the native capability yields real hybrid results over indexed data with no second
-/// index and no reindex.
+/// index and no reindex. A pipeline that does write a keyword index itself should fuse over that one
+/// instead, so a registered <see cref="ITextAnalyzer"/> and keyword field set reach hybrid search too —
+/// the store's own keyword rows use their own tokenizer and see neither.
 /// </remarks>
 public interface INativeHybridSearch
 {

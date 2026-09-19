@@ -414,7 +414,7 @@ public partial class Retriever
         {
             throw new InvalidOperationException(
                 "UseHybridSearch is enabled but IHybridSearchService is not registered. " +
-                "Use UseQdrantWithHybrid() or register IHybridSearchService manually.");
+                "Register one (the builder registers HybridSearchService by default; AddQdrantWithHybridSearch registers Qdrant's) or leave UseHybridSearch unset.");
         }
 
         // GraphRAG needs an index built from the chunks being queried, which a free-text search does not
