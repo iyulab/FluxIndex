@@ -616,10 +616,16 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         // KNN. The KNN runs first, over a window over-fetched when a filter is present, and the filter
         // is applied to it in distance order. When the window comes back full and the filter still
         // cannot fill topK, matching chunks may rank past it — so the store scans every vector exactly
-        // and keeps walking in distance order (see ScanAllDistancesAsync). vec0 is a brute-force index,
-        // so the scan costs about what the KNN costs; and the on-disk schema is unchanged, so there is
-        // nothing to migrate. (vec0 metadata columns cannot express a scope of many documents — no IN
-        // operator — and partition keys assume hundreds of vectors per value.)
+        // and keeps walking in distance order (see ScanAllDistancesAsync); the on-disk schema is
+        // unchanged, so there is nothing to migrate. (vec0 metadata columns cannot express a scope of
+        // many documents — no IN operator — and partition keys assume hundreds of vectors per value.)
+        //
+        // Cost: vec0 is brute-force, so the scan's distances cost about what the KNN's do, but the
+        // walk that follows does not — it reads every candidate's metadata in pages and matches it in
+        // memory. Measured over 6,000 chunks at topK 10 (SQLiteVecWideFilterCostTests): unfiltered
+        // 6 ms, a filter allowing every document 6 ms (the window fills, no walk), a filter allowing
+        // 100 of them 277 ms. So a wide scope is free here and a narrow one is not — the opposite of
+        // the keyword leg — and the narrow cost grows with the store, not with the scope.
         var requestedK = filters is { Count: > 0 } ? (long)topK * 3 : topK;
 
         // vec0 rejects a KNN k above its compile-time ceiling ("k value in knn query too large"), and
@@ -692,7 +698,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             // unless the walk stopped at minScore, in which case everything further is farther still.
             if (windowFull && results.Count < topK && !reachedScoreFloor)
             {
-                var all = await ScanAllDistancesAsync(connection, vectorString, cancellationToken);
+                var all = await ScanAllDistancesAsync(connection, queryEmbedding, cancellationToken);
                 if (all.Count > knnResults.Count)
                 {
                     LogVecExactScopedScan(_logger, knnK, results.Count, topK, all.Count);
@@ -729,6 +735,9 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         CancellationToken cancellationToken)
     {
         var results = new List<DocumentChunk>();
+        // Compiled once for the whole walk: this loop is the one that can touch every vector in the
+        // store, so expanding the filter per row made a narrow scope quadratic in allowed values.
+        var matcher = MetadataFilterMatcher.Compile(filters);
 
         for (var offset = 0; offset < candidates.Count && results.Count < topK; offset += CandidatePageSize)
         {
@@ -780,7 +789,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
 
                 // Metadata filter — without this the native path leaks chunks across filter
                 // scope (e.g. other tenants). Same match semantics as VectorStoreBase.
-                if (filters is { Count: > 0 } && !VectorStoreBase.MatchesMetadataFilter(metadata, filters))
+                if (!matcher.Matches(metadata))
                     continue;
 
                 results.Add(new DocumentChunk
@@ -810,7 +819,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
     /// </summary>
     private async Task<List<(string ChunkId, float Distance)>> ScanAllDistancesAsync(
         System.Data.Common.DbConnection connection,
-        string vectorString,
+        float[] queryEmbedding,
         CancellationToken cancellationToken)
     {
         var all = new List<(string ChunkId, float Distance)>();
@@ -819,7 +828,10 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             cmd.CommandText = $@"
                 SELECT chunk_id, {VecDistanceFunction(_options.VecTableOptions)}(embedding, @vector)
                 FROM {_options.GetVecTableName()}";
-            cmd.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("@vector", vectorString));
+            // Bound as a float32 BLOB, not as the "[1,2,...]" text the KNN uses. The KNN parses its
+            // argument once; a scalar distance function is called per row, so text made every row
+            // re-parse the whole query vector -- the scan's real cost, far above the match itself.
+            cmd.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("@vector", ToVectorBlob(queryEmbedding)));
 
             using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
@@ -830,6 +842,22 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
 
         all.Sort((a, b) => a.Distance.CompareTo(b.Distance));
         return all;
+    }
+
+    /// <summary>
+    /// Packs a vector as sqlite-vec's float32 BLOB representation (little-endian, one float per
+    /// element), which the distance functions accept without parsing.
+    /// </summary>
+    internal static byte[] ToVectorBlob(float[] vector)
+    {
+        var bytes = new byte[vector.Length * sizeof(float)];
+        for (var i = 0; i < vector.Length; i++)
+        {
+            System.Buffers.Binary.BinaryPrimitives.WriteSingleLittleEndian(
+                bytes.AsSpan(i * sizeof(float)), vector[i]);
+        }
+
+        return bytes;
     }
 
     /// <summary>
@@ -996,6 +1024,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         // filter the matches are read in rank order until topK pass it: a LIMIT of any fixed multiple of
         // topK would drop in-scope matches ranked past it, silently, the way the vec leg's window did.
         var hasFilter = filters is { Count: > 0 };
+        var ftsMatcher = MetadataFilterMatcher.Compile(filters);
 
         try
         {
@@ -1037,7 +1066,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 var metadata = JsonSerializer.Deserialize<Dictionary<string, object>>(metadataJson)
                     ?? new Dictionary<string, object>();
 
-                if (hasFilter && !VectorStoreBase.MatchesMetadataFilter(metadata, filters!))
+                if (hasFilter && !ftsMatcher.Matches(metadata))
                     continue;
 
                 var chunk = new DocumentChunk
@@ -1315,9 +1344,10 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
             try
             {
+                var deleteMatcher = MetadataFilterMatcher.Compile(filters);
                 var all = await _context.VectorChunks.AsTracking().ToListAsync(cancellationToken);
                 var matched = all
-                    .Where(e => VectorStoreBase.MatchesMetadataFilter(e.Metadata, filters))
+                    .Where(e => deleteMatcher.Matches(e.Metadata))
                     .ToList();
 
                 if (matched.Count == 0)

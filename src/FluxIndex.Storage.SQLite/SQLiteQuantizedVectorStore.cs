@@ -193,10 +193,10 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
         // Apply metadata filters BEFORE the topK trim (IVectorStore filter contract, incl.
         // collection values = MatchAny) — previously filters were silently ignored, leaking
         // chunks across filter scope (e.g. other tenants).
+        var matcher = Core.Application.Services.Base.MetadataFilterMatcher.Compile(filters);
         var results = entities
             .Select(e => new { Chunk = MapToChunk(e), Score = FastCosineSimilarity(queryEmbedding, e.Embedding!, queryMagnitude) })
-            .Where(x => filters is not { Count: > 0 }
-                || Core.Application.Services.Base.VectorStoreBase.MatchesMetadataFilter(x.Chunk.Metadata, filters))
+            .Where(x => matcher.Matches(x.Chunk.Metadata))
             .Where(x => x.Score >= minScore)
             .OrderByDescending(x => x.Score)
             .Take(topK)

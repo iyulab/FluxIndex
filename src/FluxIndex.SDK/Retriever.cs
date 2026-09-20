@@ -1160,7 +1160,10 @@ public partial class Retriever
     /// the raw CLR value the caller filtered on; raw object equality does not.
     /// </summary>
     private static List<VectorSearchResult> ApplyFilter(List<VectorSearchResult> results, Dictionary<string, object> filter)
-        => results.Where(r => VectorStoreBase.MatchesMetadataFilter(r.Metadata, filter)).ToList();
+    {
+        var matcher = MetadataFilterMatcher.Compile(filter);
+        return results.Where(r => matcher.Matches(r.Metadata)).ToList();
+    }
 
     private static IEnumerable<VectorSearchResult> CombineResults(
         IEnumerable<VectorSearchResult> vectorResults,

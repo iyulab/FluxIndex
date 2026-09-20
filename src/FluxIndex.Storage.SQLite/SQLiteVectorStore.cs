@@ -127,13 +127,14 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
         // Metadata filters MUST be applied before the topK*2 trim below — otherwise
         // higher-scoring non-matching chunks crowd matching ones out of the window.
         var results = new List<VectorSearchResult>();
+        var matcher = MetadataFilterMatcher.Compile(filters);
 
         foreach (var entity in entities)
         {
             if (entity.Embedding == null) continue;
 
             var chunk = MapToChunk(entity);
-            if (filters is { Count: > 0 } && !MatchesMetadataFilter(chunk.Metadata, filters))
+            if (!matcher.Matches(chunk.Metadata))
                 continue;
 
             var score = ComputeFastCosineSimilarity(queryEmbedding, entity.Embedding, queryMagnitude);
@@ -243,8 +244,9 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
         await EnsureInitializedAsync(cancellationToken);
 
         var entities = await _context.Vectors.AsTracking().ToListAsync(cancellationToken);
+        var deleteMatcher = MetadataFilterMatcher.Compile(filters);
         var matched = entities
-            .Where(v => MatchesMetadataFilter(MapToChunk(v).Metadata, filters))
+            .Where(v => deleteMatcher.Matches(MapToChunk(v).Metadata))
             .ToList();
 
         if (matched.Count == 0)

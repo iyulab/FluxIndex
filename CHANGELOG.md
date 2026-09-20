@@ -9,6 +9,35 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.46.0]
+
+### Fixed
+- **A scoped search on the SQLite vector store no longer re-parses the query vector once per stored
+  vector.** When a metadata filter is narrow enough that the candidate window cannot fill `TopK`, the
+  store walks every vector exactly (so a match ranked past the window is still found). That walk bound
+  the query vector as text, and the scalar distance function parses its argument per row — so the scan
+  paid for parsing the whole query vector 6,000 times on a 6,000-vector store. It is now bound as a
+  float32 blob. Measured over 6,000 chunks of 384 dimensions at `TopK` 10, a scope of 100 documents:
+  **277 ms to 63 ms**. Unfiltered and vault-wide scopes were already ~6 ms and are unchanged.
+
+### Added
+- **`MetadataFilterMatcher` — a metadata filter with its alternatives expanded once.** Every store that
+  cannot push a filter into its query matches rows in memory, and each of those loops re-expanded and
+  re-normalized the filter for every row: a scope of 100 documents over 6,000 rows was 600,000
+  normalizations for one search. `MetadataFilterMatcher.Compile(filters)` does that work once and
+  `Matches(metadata)` is a set lookup; all nine in-memory filter loops now use it.
+  `VectorStoreBase.MatchesMetadataFilter` remains for one-shot use and delegates to it, so match
+  semantics are defined in exactly one place. (This removes a quadratic; at the sizes measured above it
+  is not where the time was going — see the scan fix.)
+
+### Changed
+- **A malformed filter value now throws when the search starts, not when the first row is matched.**
+  Expanding the filter up front means an unsupported or empty collection value fails the search even
+  when no row reaches the match — previously such a filter passed silently as an empty result on an
+  empty store.
+
+---
+
 ## [0.45.0]
 
 ### Added

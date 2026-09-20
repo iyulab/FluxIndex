@@ -143,9 +143,10 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore, IDisposab
     {
         // Metadata filters are applied before the topK*2 trim — otherwise higher-scoring
         // non-matching chunks crowd matching ones out of the window.
+        var matcher = MetadataFilterMatcher.Compile(filters);
         var results = _chunks.Values
             .Where(item => item.embedding != null && item.embedding.Length > 0)
-            .Where(item => filters is not { Count: > 0 } || MatchesMetadataFilter(item.chunk.Metadata, filters))
+            .Where(item => matcher.Matches(item.chunk.Metadata))
             .Select(item => new VectorSearchResult(
                 item.chunk,
                 ComputeCosineSimilarity(queryEmbedding, item.embedding)))
@@ -230,8 +231,9 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore, IDisposab
                 "Filter must contain at least one key/value; use ClearAsync to remove all vectors.",
                 nameof(filters));
 
+        var deleteMatcher = MetadataFilterMatcher.Compile(filters);
         var matchedIds = _chunks
-            .Where(kvp => MatchesMetadataFilter(kvp.Value.chunk.Metadata, filters))
+            .Where(kvp => deleteMatcher.Matches(kvp.Value.chunk.Metadata))
             .Select(kvp => kvp.Key)
             .ToList();
 

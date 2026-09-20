@@ -208,7 +208,8 @@ public abstract partial class VectorStoreBase : IVectorStore
         // Idempotent w.r.t. native filtering done inside SearchCoreAsync.
         if (filters != null && filters.Count > 0)
         {
-            results = results.Where(r => MatchesMetadataFilter(r.Chunk.Metadata, filters));
+            var matcher = MetadataFilterMatcher.Compile(filters);
+            results = results.Where(r => matcher.Matches(r.Chunk.Metadata));
         }
 
         return SearchResultProcessor.FilterAndSort(results, minScore, topK);
@@ -220,36 +221,16 @@ public abstract partial class VectorStoreBase : IVectorStore
     /// matches when the metadata value equals ANY of its elements (see
     /// <see cref="ExpandFilterValue"/>). Shared by search post-filtering and
     /// <see cref="DeleteByFilterAsync"/> so both agree on match semantics.
+    /// <para>
+    /// This overload expands the filter on every call. Matching more than one row against the same
+    /// filter — every in-memory post-filter loop does — belongs on
+    /// <see cref="MetadataFilterMatcher.Compile"/> instead, which expands once.
+    /// </para>
     /// </summary>
     public static bool MatchesMetadataFilter(
         IReadOnlyDictionary<string, object>? metadata,
         IReadOnlyDictionary<string, object> filters)
-    {
-        if (metadata is null)
-            return false;
-
-        foreach (var (key, value) in filters)
-        {
-            if (!metadata.TryGetValue(key, out var metaValue))
-                return false;
-
-            var metaNormalized = NormalizeFilterValue(metaValue);
-            var matched = false;
-            foreach (var alternative in ExpandFilterValue(key, value))
-            {
-                if (string.Equals(metaNormalized, alternative, StringComparison.Ordinal))
-                {
-                    matched = true;
-                    break;
-                }
-            }
-
-            if (!matched)
-                return false;
-        }
-
-        return true;
-    }
+        => MetadataFilterMatcher.Compile(filters).Matches(metadata);
 
     /// <summary>
     /// Expands a filter value into its normalized match alternatives, enforcing the
