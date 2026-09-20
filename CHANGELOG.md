@@ -35,6 +35,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   Expanding the filter up front means an unsupported or empty collection value fails the search even
   when no row reaches the match — previously such a filter passed silently as an empty result on an
   empty store.
+- Re-pinned sibling package(s) `WebFlux` 0.7.4 -> 0.8.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
 
 ---
 
