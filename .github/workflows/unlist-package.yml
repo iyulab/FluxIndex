@@ -52,10 +52,25 @@ jobs:
 
       # Unlisting the version this repository is currently shipping would hide the release from every
       # consumer resolving by range, which is never the intent of a withdrawal.
+      #
+      # The extraction reads both spellings on purpose. This repository declares <Version> and WebFlux,
+      # which now carries a copy of this workflow, declares <VersionPrefix> - so a grep for one of them
+      # returns an empty string in the other, and an empty string compares unequal to every input, which
+      # would let this guard pass silently on the one case it exists to stop. A version it cannot find is
+      # a failure, not a pass.
       - name: Refuse to unlist the version currently declared
         run: |
           set -euo pipefail
-          declared=$(grep -oP '<Version>\K[^<]+' Directory.Build.props | head -1)
+          declared=$(grep -oP '<Version>\K[^<]+' Directory.Build.props | head -1 || true)
+          if [ -z "${declared}" ]; then
+            declared=$(grep -oP '<VersionPrefix>\K[^<]+' Directory.Build.props | head -1 || true)
+          fi
+          if [ -z "${declared}" ]; then
+            echo "::error::Could not read a declared version from Directory.Build.props."
+            echo "::error::Neither <Version> nor <VersionPrefix> was found, so the guard that stops this"
+            echo "::error::workflow from withdrawing the current release cannot be evaluated. Refusing."
+            exit 1
+          fi
           echo "declared version: ${declared}"
           if [ "${declared}" = "${{ inputs.version }}" ]; then
             echo "::error::${{ inputs.version }} is the version this repository currently declares."
