@@ -28,6 +28,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   drop negative scores, set `ScoreThreshold = 0f`.
 - Re-pinned sibling package(s) `LMSupply.Embedder` 0.69.0 -> 0.70.0, `LMSupply.Generator` 0.69.0 -> 0.70.0, `LMSupply.Reranker` 0.69.0 -> 0.70.0, `WebFlux` 0.10.0 -> 0.11.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
 - Re-pinned sibling package(s) `FluxImprover` 0.12.15 -> 0.12.16 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.23.19 -> 0.23.20 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
 
 ---
 
