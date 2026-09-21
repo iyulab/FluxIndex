@@ -139,11 +139,18 @@ services.AddOpenAICompatibleEmbedding(
     model: "text-embedding-3-small",
     dimension: 1536);
 
+// /v1/rerank 을 구현한 서버(llama.cpp `--rerank`, GPUStack, 호스티드 rerank API 등).
+// OpenAI 자체 API 에는 rerank 엔드포인트가 없다.
 services.AddOpenAICompatibleReranker(
-    endpoint: "https://api.openai.com/v1",
-    apiKey: apiKey,
-    model: "text-embedding-ada-002");
+    endpoint: "http://localhost:8080/v1",
+    apiKey: null,
+    model: "bge-reranker-v2-m3");
 ```
+
+`relevance_score` 의 스케일은 wire 형식이 정하지 않는다 — 호스티드 API 는 (0, 1), llama.cpp 서버는 raw logit 을
+답한다. 기본값 `ScoreScale.Auto` 는 응답마다 판정해(값 하나라도 [0, 1] 밖이면 그 응답 전체에 sigmoid) 어느 쪽이든
+0..1 점수를 돌려준다. 엔드포인트의 스케일을 알고 있으면 `scoreScale: ScoreScale.Logit` / `ScoreScale.Probability` 로
+명시한다 — 전부 [0, 1] 안에 드는 logit 응답은 `Auto` 가 가려낼 수 없다.
 
 직접 생성이 필요한 경우:
 

@@ -13,12 +13,19 @@ namespace FluxIndex.Providers.OpenAI.Services;
 /// Supports GPUStack, Cohere-compatible proxies, and any server implementing
 /// the OpenAI rerank extension format.
 /// </summary>
+/// <remarks>
+/// The wire format fixes the shape of the answer, not the scale of <c>relevance_score</c>.
+/// <see cref="ScoreScale"/> says which one the endpoint uses; with the default the scores this
+/// reranker returns lie between 0 and 1 either way, so a relevance threshold keeps its meaning when the
+/// endpoint changes.
+/// </remarks>
 public sealed partial class OpenAICompatibleRerankerService : RerankerBase, IDisposable
 {
     private readonly HttpClient _httpClient;
     private readonly string _model;
     private readonly ILogger<OpenAICompatibleRerankerService> _logger;
     private readonly bool _ownsHttpClient;
+    private readonly ScoreScale _scoreScale;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -30,15 +37,17 @@ public sealed partial class OpenAICompatibleRerankerService : RerankerBase, IDis
     /// <summary>
     /// Creates an OpenAI-compatible reranker service.
     /// </summary>
-    /// <param name="endpoint">Base API URL (e.g., "http://172.19.10.10/v1").</param>
+    /// <param name="endpoint">Base API URL (e.g., "http://localhost:8080/v1").</param>
     /// <param name="apiKey">API key for authentication. Null for unauthenticated endpoints.</param>
     /// <param name="model">Rerank model name (e.g., "qwen3-reranker-0.6b").</param>
     /// <param name="logger">Logger instance.</param>
+    /// <param name="scoreScale">The scale the endpoint answers on; see <see cref="ScoreScale"/>.</param>
     public OpenAICompatibleRerankerService(
         string endpoint,
         string? apiKey,
         string model,
-        ILogger<OpenAICompatibleRerankerService> logger)
+        ILogger<OpenAICompatibleRerankerService> logger,
+        ScoreScale scoreScale = ScoreScale.Auto)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(endpoint);
         ArgumentException.ThrowIfNullOrWhiteSpace(model);
@@ -47,6 +56,7 @@ public sealed partial class OpenAICompatibleRerankerService : RerankerBase, IDis
         _model = model;
         _logger = logger;
         _ownsHttpClient = true;
+        _scoreScale = scoreScale;
 
         _httpClient = new HttpClient
         {
@@ -67,7 +77,8 @@ public sealed partial class OpenAICompatibleRerankerService : RerankerBase, IDis
     public OpenAICompatibleRerankerService(
         HttpClient httpClient,
         string model,
-        ILogger<OpenAICompatibleRerankerService> logger)
+        ILogger<OpenAICompatibleRerankerService> logger,
+        ScoreScale scoreScale = ScoreScale.Auto)
     {
         ArgumentNullException.ThrowIfNull(httpClient);
         ArgumentException.ThrowIfNullOrWhiteSpace(model);
@@ -77,6 +88,7 @@ public sealed partial class OpenAICompatibleRerankerService : RerankerBase, IDis
         _model = model;
         _logger = logger;
         _ownsHttpClient = false;
+        _scoreScale = scoreScale;
     }
 
     /// <inheritdoc />
@@ -110,10 +122,20 @@ public sealed partial class OpenAICompatibleRerankerService : RerankerBase, IDis
                 $"No rerank results returned from model '{_model}'.");
         }
 
-        return result.Results
-            .OrderByDescending(r => r.RelevanceScore)
-            .Select(r => (r.Index, r.RelevanceScore));
+        // Ordered on the raw scores, then mapped: large logits saturate to the same float under a
+        // sigmoid, and the server's order must survive that.
+        var ordered = result.Results.OrderByDescending(r => r.RelevanceScore).ToList();
+        var asLogits = _scoreScale switch
+        {
+            ScoreScale.Logit => true,
+            ScoreScale.Probability => false,
+            _ => ordered.Any(r => r.RelevanceScore is < 0f or > 1f)
+        };
+
+        return ordered.Select(r => (r.Index, asLogits ? Sigmoid(r.RelevanceScore) : r.RelevanceScore));
     }
+
+    private static float Sigmoid(float logit) => (float)(1d / (1d + Math.Exp(-logit)));
 
     /// <inheritdoc />
     public override RerankModelInfo GetModelInfo() => new()
@@ -121,6 +143,7 @@ public sealed partial class OpenAICompatibleRerankerService : RerankerBase, IDis
         Name = _model,
         Type = RerankModel.Custom,
         RequiresApiKey = true,
+        Capabilities = new Dictionary<string, object> { ["ScoreScale"] = _scoreScale.ToString() },
     };
 
     /// <inheritdoc />

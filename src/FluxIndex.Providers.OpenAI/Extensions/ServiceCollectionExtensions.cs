@@ -63,16 +63,22 @@ public static class ServiceCollectionExtensions
     /// <param name="endpoint">Base API URL (e.g., "https://api.openai.com/v1").</param>
     /// <param name="apiKey">API key for authentication. Null for unauthenticated endpoints.</param>
     /// <param name="model">Rerank model name.</param>
+    /// <param name="scoreScale">
+    /// The scale the endpoint answers <c>relevance_score</c> on. The default decides per response,
+    /// so scores come back in (0, 1) whether the endpoint is a hosted API or a llama.cpp server.
+    /// </param>
     /// <returns>The service collection for chaining.</returns>
     public static IServiceCollection AddOpenAICompatibleReranker(
         this IServiceCollection services,
-        string endpoint, string? apiKey, string model)
+        string endpoint, string? apiKey, string model,
+        ScoreScale scoreScale = ScoreScale.Auto)
     {
         services.AddSingleton<IReranker>(sp =>
             new OpenAICompatibleRerankerService(
                 endpoint, apiKey, model,
                 sp.GetRequiredService<ILoggerFactory>()
-                    .CreateLogger<OpenAICompatibleRerankerService>()));
+                    .CreateLogger<OpenAICompatibleRerankerService>(),
+                scoreScale));
         return services;
     }
 }

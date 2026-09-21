@@ -9,6 +9,28 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.48.0]
+
+### Fixed
+- **`AddOpenAICompatibleReranker` returns scores between 0 and 1 whatever the endpoint answers in.**
+  "OpenAI-compatible" fixes the wire shape of `/v1/rerank`, not the scale of `relevance_score`: hosted
+  APIs answer in (0, 1), a llama.cpp server answers with raw logits (5.02 / −10.98 for a relevant and an
+  irrelevant document). The service passed the number through, so the same `RerankResult.RerankScore` —
+  and `SearchResult.Score` under `UseReranker` — meant two things, and a relevance threshold broke
+  silently when the endpoint changed. A response with any value outside [0, 1] is now mapped through a
+  sigmoid as a whole (order unchanged); a response already in [0, 1] is left as it is.
+  **Behaviour change:** scores from a logit-scale endpoint are different numbers than before. If you
+  compared them against a logit threshold, move the threshold to the 0..1 scale (`sigmoid(0) = 0.5`),
+  or pass `ScoreScale.Probability` to keep the raw values.
+
+### Added
+- `FluxIndex.Providers.OpenAI.ScoreScale` (`Auto`, `Probability`, `Logit`) — optional last parameter
+  of `AddOpenAICompatibleReranker` and of both `OpenAICompatibleRerankerService` constructors;
+  `GetModelInfo().Capabilities["ScoreScale"]` reports it. `Auto` cannot tell a logit response whose
+  values all fall inside [0, 1] from a probability one — say `Logit` for such an endpoint.
+
+---
+
 ## [0.47.0]
 
 ### Fixed

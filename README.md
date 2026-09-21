@@ -23,7 +23,10 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   top `TopK` — `SearchResult.Score` is the rerank score, `RetrievalScore` the one retrieval gave. A registered reranker
   does nothing for a search that does not ask; asking with none registered throws. `RerankOptions.ScoreThreshold`
   is `null` by default (no threshold) and is compared on the reranker's own scale — a logit-scale reranker scores
-  relevant documents below zero, so pick the number for the reranker you registered.
+  relevant documents below zero, so pick the number for the reranker you registered. Both built-in registrations
+  answer between 0 and 1: `AddOpenAICompatibleReranker` takes a `ScoreScale` (`Auto` by default — a response with any
+  value outside [0, 1] is read as logits and mapped through a sigmoid; `Logit` / `Probability` say it outright), so a
+  threshold keeps its meaning whether the endpoint is a hosted API or a llama.cpp server.
 - **Graph traversal** — `IGraphTraversalService` (`TraverseBfsAsync`, `TraverseDfsAsync`, `FindShortestPathAsync` (BFS),
   `FindStrongestPathAsync` (Dijkstra), `ComputeChunkImportanceAsync` (PageRank-style)). Registered by the builder.
   **GraphRAG**: opt-in with `AddGraphRAGService` / `AddFullGraphRAG` in `ConfigureServices`; query through
