@@ -11,6 +11,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [0.48.0]
 
+### Changed
+- Re-pinned sibling package(s) `WebFlux` 0.11.0 -> 0.12.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+
 ### Fixed
 - **`AddOpenAICompatibleReranker` returns scores between 0 and 1 whatever the endpoint answers in.**
   "OpenAI-compatible" fixes the wire shape of `/v1/rerank`, not the scale of `relevance_score`: hosted
