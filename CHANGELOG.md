@@ -26,6 +26,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   values. Assignments (`ScoreThreshold = 0.5f`) compile unchanged; code that *reads* the property as
   `float` — a custom `IReranker` honouring it — handles `null`. If you relied on the old default to
   drop negative scores, set `ScoreThreshold = 0f`.
+- Re-pinned sibling package(s) `LMSupply.Embedder` 0.69.0 -> 0.70.0, `LMSupply.Generator` 0.69.0 -> 0.70.0, `LMSupply.Reranker` 0.69.0 -> 0.70.0, `WebFlux` 0.10.0 -> 0.11.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
 
 ---
 
