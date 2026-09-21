@@ -71,9 +71,16 @@ public class RerankOptions
     public RerankModel Model { get; set; } = RerankModel.Local;
 
     /// <summary>
-    /// Minimum score threshold for results
+    /// Minimum score a result must reach to be returned. <c>null</c> (the default) applies no
+    /// threshold.
     /// </summary>
-    public float ScoreThreshold { get; set; }
+    /// <remarks>
+    /// The value is compared on the reranker's own score scale, and that scale is not the same
+    /// everywhere: a reranker that answers in (0, 1) and one that returns raw logits (where
+    /// relevant documents routinely score below zero) need different numbers. That is why the
+    /// default is "none" rather than <c>0</c> - zero is a real threshold on a logit scale.
+    /// </remarks>
+    public float? ScoreThreshold { get; set; }
 
     /// <summary>
     /// Whether to include explanations for reranking decisions

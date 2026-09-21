@@ -21,7 +21,9 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   `AddOpenAICompatibleReranker`. Opt-in per search: `Retriever.SearchAsync(query, new SearchOptions { UseReranker = true })`
   fetches `RerankCandidateCount` candidates (default `TopK × 3`), has the registered reranker order them and returns its
   top `TopK` — `SearchResult.Score` is the rerank score, `RetrievalScore` the one retrieval gave. A registered reranker
-  does nothing for a search that does not ask; asking with none registered throws.
+  does nothing for a search that does not ask; asking with none registered throws. `RerankOptions.ScoreThreshold`
+  is `null` by default (no threshold) and is compared on the reranker's own scale — a logit-scale reranker scores
+  relevant documents below zero, so pick the number for the reranker you registered.
 - **Graph traversal** — `IGraphTraversalService` (`TraverseBfsAsync`, `TraverseDfsAsync`, `FindShortestPathAsync` (BFS),
   `FindStrongestPathAsync` (Dijkstra), `ComputeChunkImportanceAsync` (PageRank-style)). Registered by the builder.
   **GraphRAG**: opt-in with `AddGraphRAGService` / `AddFullGraphRAG` in `ConfigureServices`; query through

@@ -73,7 +73,7 @@ public partial class ListwiseReranker : IListwiseReranker
 
         // Apply thresholds and limits
         var finalResults = results
-            .Where(r => r.ListwiseScore >= options.ScoreThreshold)
+            .Where(r => options.ScoreThreshold is not { } threshold || r.ListwiseScore >= threshold)
             .OrderByDescending(r => r.ListwiseScore)
             .Take(options.TopN)
             .Select((r, i) => r with { NewRank = i + 1 })

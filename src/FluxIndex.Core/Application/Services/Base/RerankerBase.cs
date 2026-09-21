@@ -85,7 +85,7 @@ public abstract class RerankerBase : IReranker
 
         foreach (var (index, score) in rankedResults)
         {
-            if (score < opts.ScoreThreshold)
+            if (opts.ScoreThreshold is { } threshold && score < threshold)
                 continue;
 
             var original = candidateList[index];

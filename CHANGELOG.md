@@ -9,6 +9,26 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.47.0]
+
+### Fixed
+- **A reranker that scores on a logit scale no longer loses rows to the default options.**
+  `RerankOptions.ScoreThreshold` defaulted to `0f`, which is "no threshold" only for a reranker that
+  answers in (0, 1). On a raw-logit reranker relevant documents routinely score below zero, so every
+  `RerankerBase` provider dropped them with nothing set — including the SDK's
+  `SearchOptions.UseReranker` path, which passes default options. `ListwiseRerankOptions` had the same
+  default and the same effect: candidates arriving with negative initial scores came back as an empty
+  list.
+
+### Changed
+- **Breaking: `RerankOptions.ScoreThreshold` and `ListwiseRerankOptions.ScoreThreshold` are `float?`,
+  default `null` = no threshold.** An explicit value still filters, including `0f` and negative
+  values. Assignments (`ScoreThreshold = 0.5f`) compile unchanged; code that *reads* the property as
+  `float` — a custom `IReranker` honouring it — handles `null`. If you relied on the old default to
+  drop negative scores, set `ScoreThreshold = 0f`.
+
+---
+
 ## [0.46.4]
 
 ### Changed
