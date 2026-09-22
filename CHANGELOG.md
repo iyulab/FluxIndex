@@ -11,6 +11,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [0.49.0]
 
+### Changed
+- Re-pinned sibling package(s) `FileFlux` 0.24.1 -> 0.25.0, `WebFlux` 0.12.0 -> 0.13.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+
 ### Added
 - **`EmbeddingIdentity.VectorSpaceRevision`** — the vector-space revision the embedding service *observed* (for
   `FluxIndex.Providers.LMSupply`: `IEmbeddingModel.VectorSpaceRevision` from LMSupply 0.71.0, derived from what the
