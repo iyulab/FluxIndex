@@ -9,6 +9,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.49.1]
+
+### Changed
+- `FluxIndex.Integrations.WebFlux` no longer sets `ChunkingOptions.IncludeMetadata` on the WebFlux chunking
+  options — WebFlux never read it and removes it in 0.14.0. No behaviour change.
+
+---
+
 ## [0.49.0]
 
 ### Changed

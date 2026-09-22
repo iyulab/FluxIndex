@@ -98,8 +98,9 @@ public partial class WebFluxIntegration
             Strategy = options.ChunkingStrategy,
             MaxChunkSize = options.MaxChunkSize,
             ChunkOverlap = options.ChunkOverlap,
-            IncludeImageDescriptions = options.IncludeImages,
-            IncludeMetadata = true
+            // IncludeMetadata used to be set here; WebFlux never read it (removed in WebFlux 0.14.0). Whether
+            // IncludeImageDescriptions has an implementation behind it is an open question on the WebFlux side.
+            IncludeImageDescriptions = options.IncludeImages
         };
 
         var chunks = new List<DocumentChunk>();
