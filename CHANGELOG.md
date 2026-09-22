@@ -21,6 +21,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ### Changed
 - `FluxIndex.Integrations.WebFlux` no longer sets `ChunkingOptions.IncludeMetadata` on the WebFlux chunking
   options — WebFlux never read it and removes it in 0.14.0. No behaviour change.
+- Re-pinned sibling package(s) `LMSupply.Embedder` 0.71.0 -> 0.72.0, `LMSupply.Generator` 0.71.0 -> 0.72.0, `LMSupply.Reranker` 0.71.0 -> 0.72.0, `WebFlux` 0.13.0 -> 0.14.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
 
 ---
 
