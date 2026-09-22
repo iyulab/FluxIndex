@@ -80,7 +80,6 @@ public class OptionsReachabilityRosterTests
         ["FluxIndex.Core.Models.AIMetadataExtractionOptions"] = ["CacheTTL", "ContinueOnFailure", "CustomPrompt", "EnableAdaptiveSampling", "EnableCaching", "MaxRetries", "MaxTokens", "MinConfidence", "RetryDelayMs", "Strategy", "TimeoutMs"],
         ["FluxIndex.Integrations.FileFlux.FileFluxOptions"] = ["EnableLlmRefine", "LlmRefineOptions"],
         ["FluxIndex.Integrations.FileFlux.Processing.DocumentProcessingOptions"] = ["EnableTextCleaning"],
-        ["FluxIndex.Integrations.WebFlux.WebFluxOptions"] = ["DefaultIncludeImages"],
         ["FluxIndex.SDK.Configuration.CacheOptions"] = ["CacheDuration", "CacheTTL", "MaxCacheSize"],
         ["FluxIndex.SDK.Configuration.EmbeddingOptions"] = ["ApiKey", "BatchSize", "EnableCache", "MaxRetries", "ModelName", "ProviderSpecificOptions", "RetryDelay"],
         ["FluxIndex.SDK.Configuration.SemanticCacheOptions"] = ["SimilarityThreshold"],

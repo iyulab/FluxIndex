@@ -24,7 +24,6 @@ class Program
                     options.DefaultMaxChunkSize = 1024;
                     options.DefaultChunkOverlap = 128;
                     options.DefaultChunkingStrategy = WebFlux.Core.Options.ChunkingStrategyType.Smart;
-                    options.DefaultIncludeImages = false;
                 })
                 .WithLogging(builder => builder.AddConsole().SetMinimumLevel(LogLevel.Information))
                 .Build();
@@ -124,10 +123,9 @@ class Program
                 var largeContentOptions = new WebFluxProcessingOptions
                 {
                     ChunkingStrategy = WebFlux.Core.Options.ChunkingStrategyType.MemoryOptimized,
-                    MaxChunkSize = 2048,
-                    IncludeImages = false
+                    MaxChunkSize = 2048
                 };
-                Console.WriteLine($"   📄 Large content config: Strategy={largeContentOptions.ChunkingStrategy}, ChunkSize={largeContentOptions.MaxChunkSize}, Images={largeContentOptions.IncludeImages}");
+                Console.WriteLine($"   📄 Large content config: Strategy={largeContentOptions.ChunkingStrategy}, ChunkSize={largeContentOptions.MaxChunkSize}");
 
                 Console.WriteLine("   ✅ Configuration options validated");
             }

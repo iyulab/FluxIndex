@@ -9,7 +9,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.49.1]
+## [0.50.0]
+
+### Removed
+- **Breaking** (`FluxIndex.Integrations.WebFlux`): `WebFluxOptions.DefaultIncludeImages` and
+  `WebFluxProcessingOptions.IncludeImages`. The first was read by nothing; the second was handed to WebFlux as
+  `ChunkingOptions.IncludeImageDescriptions`, which WebFlux never read — no image description ever reached a chunk
+  through either. WebFlux 0.14.0 removes the multimodal options it pointed at. Delete the assignment; there is no
+  replacement.
 
 ### Changed
 - `FluxIndex.Integrations.WebFlux` no longer sets `ChunkingOptions.IncludeMetadata` on the WebFlux chunking

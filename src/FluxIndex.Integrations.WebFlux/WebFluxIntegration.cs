@@ -97,10 +97,7 @@ public partial class WebFluxIntegration
         {
             Strategy = options.ChunkingStrategy,
             MaxChunkSize = options.MaxChunkSize,
-            ChunkOverlap = options.ChunkOverlap,
-            // IncludeMetadata used to be set here; WebFlux never read it (removed in WebFlux 0.14.0). Whether
-            // IncludeImageDescriptions has an implementation behind it is an open question on the WebFlux side.
-            IncludeImageDescriptions = options.IncludeImages
+            ChunkOverlap = options.ChunkOverlap
         };
 
         var chunks = new List<DocumentChunk>();
@@ -584,11 +581,6 @@ public class WebFluxOptions
     public int DefaultChunkOverlap { get; set; } = 50;
 
     /// <summary>
-    /// Whether to include image processing (default: false, requires IImageToTextService)
-    /// </summary>
-    public bool DefaultIncludeImages { get; set; }
-
-    /// <summary>
     /// Enable streaming API for memory-efficient processing of large websites
     /// </summary>
     public bool UseStreamingApi { get; set; } = true;
@@ -613,11 +605,6 @@ public class WebFluxProcessingOptions
     /// Overlap size between chunks
     /// </summary>
     public int ChunkOverlap { get; set; } = 50;
-
-    /// <summary>
-    /// Whether to include image processing
-    /// </summary>
-    public bool IncludeImages { get; set; }
 
     /// <summary>
     /// Optional crawl options for dynamic rendering and SPA support
