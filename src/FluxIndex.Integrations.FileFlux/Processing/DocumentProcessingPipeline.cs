@@ -786,7 +786,8 @@ public partial class DocumentProcessingPipeline
     {
         var extension = Path.GetExtension(filePath).ToLowerInvariant();
 
-        // For PDF files, use PdfDocumentReader directly to access StructuralHints for table quality
+        // For PDF files, read with PdfDocumentReader directly (historically for a table-quality check that read hints no
+        // reader writes — see ExtractPdfWithQualityCheckAsync)
         if (extension == ".pdf")
         {
             return await ExtractPdfWithQualityCheckAsync(filePath, cancellationToken);
@@ -815,26 +816,10 @@ public partial class DocumentProcessingPipeline
             var reader = new PdfDocumentReader();
             var rawContent = await reader.ExtractAsync(stream, Path.GetFileName(filePath), null, cancellationToken);
 
-            // Check table quality using StructuralHints (FileFlux v0.7.2+)
-            if (rawContent.Hints != null)
-            {
-                var tablesDetected = rawContent.Hints.TryGetValue("TablesDetected", out var tablesObj)
-                    ? Convert.ToInt32(tablesObj, CultureInfo.InvariantCulture) : 0;
-                var lowConfidenceTables = rawContent.Hints.TryGetValue("LowConfidenceTables", out var lowConfObj)
-                    ? Convert.ToInt32(lowConfObj, CultureInfo.InvariantCulture) : 0;
-                var minConfidence = rawContent.Hints.TryGetValue("MinTableConfidence", out var confObj)
-                    ? Convert.ToDouble(confObj, CultureInfo.InvariantCulture) : 1.0;
-
-                if (tablesDetected > 0)
-                {
-                    LogPdfTableQuality(_logger, tablesDetected, lowConfidenceTables, minConfidence);
-
-                    if (lowConfidenceTables > 0)
-                    {
-                        LogPdfLowConfidenceTables(_logger, lowConfidenceTables);
-                    }
-                }
-            }
+            // A table-quality check used to read "TablesDetected" / "LowConfidenceTables" / "MinTableConfidence" hints here.
+            // No FileFlux reader has ever written those keys (FileFlux 0.25.0 removed the ExtractOptions switches that
+            // promised them), so the branch never logged anything and was removed. The PDF path still returns the reader's
+            // own text rather than the processor's chunks — whether that special case should remain is a separate question.
 
             return rawContent.Text ?? string.Empty;
         }
@@ -1181,12 +1166,6 @@ JSON response:";
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Cannot process from failed extraction: {ErrorMessage}")]
     private static partial void LogCannotProcessFromFailedExtraction(ILogger logger, string? errorMessage);
-
-    [LoggerMessage(Level = LogLevel.Information, Message = "PDF table quality: {Tables} tables detected, {LowConf} low-confidence, min score: {MinConf:F2}")]
-    private static partial void LogPdfTableQuality(ILogger logger, int tables, int lowConf, double minConf);
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "PDF contains {Count} low-confidence tables (score < 0.5). Table content may be formatted as plain text for better readability.")]
-    private static partial void LogPdfLowConfidenceTables(ILogger logger, int count);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "PDF quality check failed for {FilePath}, falling back to standard extraction")]
     private static partial void LogPdfQualityCheckFailed(ILogger logger, Exception exception, string filePath);

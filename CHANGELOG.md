@@ -9,6 +9,30 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.49.0]
+
+### Added
+- **`EmbeddingIdentity.VectorSpaceRevision`** — the vector-space revision the embedding service *observed* (for
+  `FluxIndex.Providers.LMSupply`: `IEmbeddingModel.VectorSpaceRevision` from LMSupply 0.71.0, derived from what the
+  loader actually did — tokenizer, pooling, normalization, sequence length, model file). Store it next to your vectors and
+  compare on the next load: a different value means the vectors stored for that model id are stale. It is an
+  **information member**: it does not enter the `Fingerprint`, equality or the hash, so upgrading renames no collection
+  and a lazily loaded service's identity is the same before and after the load (the value is `null` before it, and
+  for a service that computes none). `EmbeddingServiceBase.GetVectorSpaceRevision()` is the seam for other providers;
+  `ToString()` appends ` vs:<value>` when set.
+- **`LMSupplyEmbeddingOptions.UseVectorSpaceRevision`** (also `LMSupplyEmbeddingService.UseVectorSpaceRevision` and a
+  `CreateAsync` parameter) — opt-in: fold that value into `Revision`, and so into the fingerprint, when no `Revision` is
+  set by hand. **Turning it on moves the collection/table name once** (a re-embed) and again whenever an LMSupply
+  release changes the model's vector space — stale and new vectors are then never mixed. `AddLMSupplyEmbedding` implies
+  `WarmUpOnStart` for it, because the value exists only after the load; reading the identity before the load throws
+  and says so. A hand `Revision` wins.
+
+### Removed
+- A PDF table-quality log branch in `FluxIndex.Integrations.FileFlux` that read `TablesDetected` /
+  `LowConfidenceTables` / `MinTableConfidence` hints no FileFlux reader ever writes — it never logged.
+
+---
+
 ## [0.48.1]
 
 ### Changed

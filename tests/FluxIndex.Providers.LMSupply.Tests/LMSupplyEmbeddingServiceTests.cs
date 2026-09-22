@@ -198,6 +198,84 @@ public class LMSupplyEmbeddingServiceTests : IAsyncDisposable
 
     #endregion
 
+    #region VectorSpaceRevision (0.49.0)
+
+    private static IEmbeddingModel ModelWithVectorSpace(string? vectorSpace)
+    {
+        var model = Substitute.For<IEmbeddingModel>();
+        model.Dimensions.Returns(384);
+        model.ModelId.Returns("all-MiniLM-L6-v2");
+        model.VectorSpaceRevision.Returns(vectorSpace);
+        return model;
+    }
+
+    [Fact]
+    public void GetIdentity_ReportsTheLoadedModelsVectorSpaceRevision_WithoutMovingTheFingerprint()
+    {
+        var plain = new LMSupplyEmbeddingService(ModelWithVectorSpace(null));
+        var observed = new LMSupplyEmbeddingService(ModelWithVectorSpace("3f2a9c1b"));
+
+        observed.GetIdentity().VectorSpaceRevision.Should().Be("3f2a9c1b");
+        observed.GetIdentity().Revision.Should().BeNull("the default only reports the value");
+        observed.GetIdentity().Fingerprint.Should().Be(plain.GetIdentity().Fingerprint, "off by default: no collection is renamed by an upgrade");
+        observed.GetIdentity().Should().Be(plain.GetIdentity(), "BindIdentity compares by equality, which ignores the observed value");
+    }
+
+    [Fact]
+    public void GetIdentity_UseVectorSpaceRevision_FoldsTheValueIntoTheRevisionAndTheFingerprint()
+    {
+        var plain = new LMSupplyEmbeddingService(ModelWithVectorSpace("3f2a9c1b"));
+        var folded = new LMSupplyEmbeddingService(ModelWithVectorSpace("3f2a9c1b")) { UseVectorSpaceRevision = true };
+
+        folded.GetIdentity().Revision.Should().Be("3f2a9c1b");
+        folded.GetIdentity().VectorSpaceRevision.Should().Be("3f2a9c1b");
+        folded.GetIdentity().Fingerprint.Should().NotBe(plain.GetIdentity().Fingerprint, "opting in is what moves the collection");
+        folded.GetIdentity().Fingerprint.Should().Be(new LMSupplyEmbeddingService(ModelWithVectorSpace(null)) { Revision = "3f2a9c1b" }.GetIdentity().Fingerprint,
+            "the folded value is exactly a hand revision of the same text");
+    }
+
+    [Fact]
+    public void GetIdentity_UseVectorSpaceRevision_AHandRevisionWins()
+    {
+        var service = new LMSupplyEmbeddingService(ModelWithVectorSpace("3f2a9c1b")) { Revision = "r2", UseVectorSpaceRevision = true };
+
+        service.GetIdentity().Revision.Should().Be("r2");
+        service.GetIdentity().VectorSpaceRevision.Should().Be("3f2a9c1b", "the observation is still reported");
+    }
+
+    [Fact]
+    public void GetIdentity_UseVectorSpaceRevision_ModelThatComputesNone_KeepsTheFingerprint()
+    {
+        var plain = new LMSupplyEmbeddingService(ModelWithVectorSpace(null));
+        var folded = new LMSupplyEmbeddingService(ModelWithVectorSpace(null)) { UseVectorSpaceRevision = true };
+
+        folded.GetIdentity().Revision.Should().BeNull();
+        folded.GetIdentity().Fingerprint.Should().Be(plain.GetIdentity().Fingerprint);
+    }
+
+    [Fact]
+    public async Task GetIdentity_UseVectorSpaceRevision_BeforeTheLoad_ThrowsAndSaysHow()
+    {
+        await using var lazy = new LMSupplyEmbeddingService(new LMSupplyEmbeddingOptions { ModelId = "fast", UseVectorSpaceRevision = true });
+
+        var act = () => lazy.GetIdentity();
+
+        act.Should().Throw<InvalidOperationException>()
+            .Which.Message.Should().Contain("UseVectorSpaceRevision").And.Contain("EnsureLoadedAsync").And.Contain("WarmUpOnStart");
+        lazy.IsLoaded.Should().BeFalse("reading the identity must not trigger a download");
+    }
+
+    [Fact]
+    public async Task GetIdentity_WithoutTheOptIn_BeforeTheLoad_ReportsNoVectorSpaceRevisionAndDoesNotThrow()
+    {
+        await using var lazy = new LMSupplyEmbeddingService(new LMSupplyEmbeddingOptions { ModelId = "fast" });
+
+        lazy.GetIdentity().VectorSpaceRevision.Should().BeNull("the value exists only after the load");
+        lazy.IsLoaded.Should().BeFalse();
+    }
+
+    #endregion
+
     #region DisposeAsync
 
     [Fact]

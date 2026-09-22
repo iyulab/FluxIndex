@@ -182,6 +182,21 @@ Two things worth knowing before you use it:
 Do not encode the revision in `GetModelName()` instead: that string is also what warmup, telemetry
 and any model-facing UI report, so a revision suffix leaks into all of them.
 
+**0.49.0 — let the loader say it.** With `FluxIndex.Providers.LMSupply` on LMSupply 0.71.0+, the
+service *observes* the revision instead of you guessing it: `EmbeddingIdentity.VectorSpaceRevision`
+carries a value derived from what the loader actually did (tokenizer, pooling, normalisation, sequence
+length, model file). It is informational — the fingerprint, equality and the hash ignore it — so store
+it next to your vectors and compare on the next load. To have it *name* the collection, opt in:
+
+```csharp
+services.AddLMSupplyEmbedding(o => { o.ModelId = "multilingual-e5-base"; o.UseVectorSpaceRevision = true; });
+```
+
+Opting in folds the value into `Revision` (a hand `Revision` still wins), so the collection moves once
+when you enable it and again whenever a release changes that model's vector space. The value exists
+only after the load: `AddLMSupplyEmbedding` therefore implies `WarmUpOnStart`, and reading the identity
+before the load throws rather than announcing a name the load would then change.
+
 ---
 
 ### Step 7: Register the storage provider you select (0.19.0+)

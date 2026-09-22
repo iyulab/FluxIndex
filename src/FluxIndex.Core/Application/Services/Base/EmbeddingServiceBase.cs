@@ -109,13 +109,21 @@ public abstract class EmbeddingServiceBase : IEmbeddingService
     /// </remarks>
     protected virtual string? GetRevision() => Revision;
 
+    /// <summary>
+    /// 이 서비스가 «관찰한» 벡터 공간 리비전 — 로더가 실제로 한 일에서 파생된 값이 있으면 그것(0.49.0).
+    /// 기본 <c>null</c>(계산하지 않음). <see cref="EmbeddingIdentity.VectorSpaceRevision"/> 으로 나가며 지문·동등성에는
+    /// 참여하지 않는다; 지문에 접는 것은 <see cref="GetRevision"/> 의 몫이다(provider 의 opt-in).
+    /// </summary>
+    protected virtual string? GetVectorSpaceRevision() => null;
+
     /// <inheritdoc />
     public virtual EmbeddingIdentity GetIdentity() => new()
     {
         Provider = GetProviderName(),
         Model = GetModelName(),
         Dimension = GetEmbeddingDimension(),
-        Revision = GetRevision()
+        Revision = GetRevision(),
+        VectorSpaceRevision = GetVectorSpaceRevision()
     };
 
     /// <inheritdoc />

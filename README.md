@@ -47,6 +47,9 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   documents it blocks and replaces the content of ones it sanitizes.
 - **Bring your own models** — `IEmbeddingService` / `ITextCompletionService` ports; `FluxIndex.Providers.LMSupply`
   (local) and `FluxIndex.Providers.OpenAI` (OpenAI-compatible) implement them.
+- **Vector-space revision** — `EmbeddingIdentity.VectorSpaceRevision` reports what the LMSupply loader actually did
+  (store it next to your vectors, compare on the next load; informational by default); opt in with
+  `LMSupplyEmbeddingOptions.UseVectorSpaceRevision` to fold it into the fingerprint that names the collection.
 
 ## Quick Start
 

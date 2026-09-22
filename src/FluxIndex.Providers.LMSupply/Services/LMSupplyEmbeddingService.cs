@@ -54,6 +54,7 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
 
         _configuredModelId = options.ModelId;
         Revision = options.Revision;
+        UseVectorSpaceRevision = options.UseVectorSpaceRevision;
 
         var (name, dimension) = AnnounceIdentity(options.ModelId);
         _announcedName = options.ModelName ?? name;
@@ -80,15 +81,48 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
     /// quantization does exactly that while leaving the model id untouched. See
     /// <see cref="FluxIndex.Core.Domain.ValueObjects.EmbeddingIdentity.Revision"/>.
     /// </param>
+    /// <param name="useVectorSpaceRevision">See <see cref="UseVectorSpaceRevision"/>.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A ready-to-use embedding service.</returns>
     public static async Task<LMSupplyEmbeddingService> CreateAsync(
         string modelId = "default",
         string? revision = null,
+        bool useVectorSpaceRevision = false,
         CancellationToken cancellationToken = default)
     {
         var model = await LocalEmbedder.LoadAsync(modelId, cancellationToken: cancellationToken);
-        return new LMSupplyEmbeddingService(model) { Revision = revision };
+        return new LMSupplyEmbeddingService(model) { Revision = revision, UseVectorSpaceRevision = useVectorSpaceRevision };
+    }
+
+    /// <summary>
+    /// Fold the loaded model's <c>VectorSpaceRevision</c> into <see cref="EmbeddingServiceBase.Revision"/> — and so into
+    /// the fingerprint — when no revision is set by hand. See <see cref="LMSupplyEmbeddingOptions.UseVectorSpaceRevision"/>
+    /// for what that moves. Default: false (the value is reported on <c>EmbeddingIdentity.VectorSpaceRevision</c> only).
+    /// </summary>
+    public bool UseVectorSpaceRevision { get; init; }
+
+    private IEmbeddingModel? LoadedModel => _eager ?? _handle!.LoadedModel;
+
+    /// <inheritdoc />
+    /// <remarks><c>null</c> before the model is loaded and for a model that computes none — never throws.</remarks>
+    protected override string? GetVectorSpaceRevision() => LoadedModel?.VectorSpaceRevision;
+
+    /// <inheritdoc />
+    /// <exception cref="InvalidOperationException">
+    /// <see cref="UseVectorSpaceRevision"/> is set, no hand revision is, and the model is not loaded yet — the revision is
+    /// derived from what the loader did, so an identity read now would name a different collection than the one after
+    /// the load.
+    /// </exception>
+    protected override string? GetRevision()
+    {
+        if (Revision is not null || !UseVectorSpaceRevision)
+            return Revision;
+
+        var model = LoadedModel ?? throw new InvalidOperationException(
+            $"UseVectorSpaceRevision is set for '{_configuredModelId}' but the model is not loaded yet, and the vector-space revision is derived from what the loader did. " +
+            "Load it first (await EnsureLoadedAsync, or LMSupplyEmbeddingOptions.WarmUpOnStart — AddLMSupplyEmbedding implies it when UseVectorSpaceRevision is set) " +
+            "before anything asks for the embedding identity: an identity announced without the revision would name a different collection than the identity after the load.");
+        return model.VectorSpaceRevision;
     }
 
     /// <inheritdoc />

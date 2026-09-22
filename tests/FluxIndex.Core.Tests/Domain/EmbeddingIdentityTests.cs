@@ -129,6 +129,69 @@ public class EmbeddingIdentityTests
         Assert.NotEqual(Identity().Fingerprint, service.GetIdentity().Fingerprint);
     }
 
+    private static EmbeddingIdentity Observed(string? vectorSpace, string? revision = null) => new()
+    {
+        Provider = "LMSupply",
+        Model = "multilingual-e5-base",
+        Dimension = 768,
+        Revision = revision,
+        VectorSpaceRevision = vectorSpace
+    };
+
+    /// <summary>
+    /// 0.49.0: 로더가 관찰한 벡터 공간 리비전은 정보 멤버다 — 지문(컬렉션명)을 움직이지 않는다.
+    /// 움직이게 하는 것은 서비스의 opt-in 이 그 값을 <c>Revision</c> 으로 접었을 때뿐이다.
+    /// </summary>
+    [Fact]
+    public void VectorSpaceRevision_DoesNotMoveTheFingerprint()
+    {
+        Assert.Equal(Identity().Fingerprint, Observed("3f2a9c").Fingerprint);
+        Assert.Equal(Identity("r2").Fingerprint, Observed("3f2a9c", "r2").Fingerprint);
+        Assert.NotEqual(Identity().Fingerprint, Identity("3f2a9c").Fingerprint);
+    }
+
+    /// <summary>
+    /// 지연 로드 서비스는 로드 전에 identity 를 공표하고 저장소가 거기 바인딩된다(<c>BindIdentity</c> 는 record 동등성으로
+    /// 불일치를 판정한다). 로드 뒤 채워지는 멤버가 동등성에 들어가면 같은 서비스가 자기 자신과 불일치한다.
+    /// </summary>
+    [Fact]
+    public void Equality_IgnoresTheVectorSpaceRevision()
+    {
+        Assert.Equal(Identity(), Observed("3f2a9c"));
+        Assert.Equal(Identity().GetHashCode(), Observed("3f2a9c").GetHashCode());
+        Assert.Equal(Observed("3f2a9c"), Observed("00ff00"));
+        Assert.NotEqual(Identity("r2"), Observed("3f2a9c"));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void VectorSpaceRevision_TreatsBlankAsUnset(string blank)
+    {
+        Assert.Null(Observed(blank).VectorSpaceRevision);
+    }
+
+    [Fact]
+    public void ToString_ShowsTheVectorSpaceRevisionOnlyWhenSet()
+    {
+        Assert.DoesNotContain("vs:", Identity().ToString(), StringComparison.Ordinal);
+        Assert.EndsWith("vs:3f2a9c", Observed("3f2a9c").ToString(), StringComparison.Ordinal);
+        Assert.Contains("@r2", Observed("3f2a9c", "r2").ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GetIdentity_CarriesTheVectorSpaceRevisionTheServiceObserves_AndNoneByDefault()
+    {
+        Assert.Equal("3f2a9c", new ObservingEmbeddingService().GetIdentity().VectorSpaceRevision);
+        Assert.Null(new ObservingEmbeddingService().GetIdentity().Revision);
+        Assert.Null(new PlainEmbeddingService().GetIdentity().VectorSpaceRevision);
+    }
+
+    private sealed class ObservingEmbeddingService : PlainEmbeddingService
+    {
+        protected override string? GetVectorSpaceRevision() => "3f2a9c";
+    }
+
     private class PlainEmbeddingService : EmbeddingServiceBase
     {
         public override int GetEmbeddingDimension() => 768;

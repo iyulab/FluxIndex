@@ -56,7 +56,8 @@ public static class ServiceCollectionExtensions
         configure(options);
 
         services.AddSingleton<IEmbeddingService>(_ => new LMSupplyEmbeddingService(options));
-        AddWarmUp<IEmbeddingService>(services, options);
+        // UseVectorSpaceRevision needs the loaded model before anything reads the identity — it implies the warm-up.
+        AddWarmUp<IEmbeddingService>(services, options, force: options.UseVectorSpaceRevision);
         return services;
     }
 
@@ -126,10 +127,10 @@ public static class ServiceCollectionExtensions
     private static ILogger CreateLogger<T>(IServiceProvider sp) =>
         sp.GetService<ILoggerFactory>()?.CreateLogger<T>() ?? NullLogger<T>.Instance;
 
-    private static void AddWarmUp<TService>(IServiceCollection services, LMSupplyServiceOptionsBase options)
+    private static void AddWarmUp<TService>(IServiceCollection services, LMSupplyServiceOptionsBase options, bool force = false)
         where TService : class
     {
-        if (!options.WarmUpOnStart)
+        if (!options.WarmUpOnStart && !force)
             return;
 
         services.AddSingleton<IHostedService>(sp => new LMSupplyWarmUpService(

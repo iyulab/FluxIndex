@@ -41,6 +41,28 @@ public sealed class LMSupplyEmbeddingOptions : LMSupplyServiceOptionsBase
     /// </summary>
     public string? Revision { get; set; }
 
+    /// <summary>
+    /// Fold the loaded model's <c>IEmbeddingModel.VectorSpaceRevision</c> (LMSupply 0.71.0+ — derived from what the
+    /// loader actually did: tokenizer, pooling, normalization, sequence length, model file) into
+    /// <see cref="Revision"/> and so into the <c>EmbeddingIdentity.Fingerprint</c>, when <see cref="Revision"/> is not
+    /// set by hand. Default: false — the fingerprint stays what it was, and the value is only reported on
+    /// <c>EmbeddingIdentity.VectorSpaceRevision</c> for you to store and compare.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Turning this on moves the collection/table name once</b> (the first fingerprint with the revision folded
+    /// in — a re-embed), and again whenever an LMSupply release changes this model's vector space. That is the
+    /// point: stale vectors are never mixed with new ones. Plan the re-index before enabling it.
+    /// </para>
+    /// <para>
+    /// The value exists only after the model is loaded, so this implies <see cref="LMSupplyServiceOptionsBase.WarmUpOnStart"/>
+    /// in <c>AddLMSupplyEmbedding</c>, and reading the identity before the load throws (an identity announced without
+    /// the revision would name a different collection than the identity after it). A hand-set <see cref="Revision"/>
+    /// wins and hides loader changes — that is the consumer's choice.
+    /// </para>
+    /// </remarks>
+    public bool UseVectorSpaceRevision { get; set; }
+
     /// <summary>LMSupply loader options (execution provider, cache directory, ...).</summary>
     public EmbedderOptions? Embedder { get; set; }
 

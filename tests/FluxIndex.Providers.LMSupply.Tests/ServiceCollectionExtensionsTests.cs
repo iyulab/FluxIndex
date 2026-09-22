@@ -102,6 +102,15 @@ public sealed class ServiceCollectionExtensionsTests : IDisposable
     }
 
     [Fact]
+    public void AddLMSupplyEmbedding_UseVectorSpaceRevision_ImpliesTheWarmUpHostedService()
+    {
+        var services = new ServiceCollection();
+        services.AddLMSupplyEmbedding(o => o.UseVectorSpaceRevision = true);
+
+        services.Count(sd => sd.ServiceType == typeof(IHostedService)).Should().Be(1, "the revision exists only after the load, so the host must load before anything reads the identity");
+    }
+
+    [Fact]
     public void AddLMSupplyEmbedding_Default_RegistersNoHostedService()
     {
         var services = new ServiceCollection();
