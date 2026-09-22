@@ -30,6 +30,10 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   `WarmUpOnStart` for it, because the value exists only after the load; reading the identity before the load throws
   and says so. A hand `Revision` wins.
 
+### Changed
+- `FluxIndex.Integrations.FileFlux`: compiles against FileFlux 0.25.0, where `LlmRefineOptions.MaxTokens` is `int?` (null or 0 = the
+  service's default; this adapter's default stays 4000).
+
 ### Removed
 - A PDF table-quality log branch in `FluxIndex.Integrations.FileFlux` that read `TablesDetected` /
   `LowConfidenceTables` / `MinTableConfidence` hints no FileFlux reader ever writes — it never logged.

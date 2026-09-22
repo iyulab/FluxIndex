@@ -70,7 +70,8 @@ public partial class LlmRefinerAdapter : ILlmRefiner
             var inputTokens = CountTokens(prompt);
 
             // Generate refined content
-            var maxTokens = options.MaxTokens > 0 ? options.MaxTokens : 4000;
+            // FileFlux 0.25.0: MaxTokens is int? (null or 0 = the service's default) — the literal 4000 is this adapter's default.
+            var maxTokens = options.MaxTokens is > 0 ? options.MaxTokens.Value : 4000;
             var refinedText = await _completionService.CompleteAsync(
                 prompt, new TextCompletionOptions { MaxTokens = maxTokens, Temperature = (float)options.Temperature }, cancellationToken);
 
