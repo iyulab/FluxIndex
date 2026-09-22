@@ -20,6 +20,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   `WarmUpOnStart = true` still loads at start. A load that reports a different revision than the one the
   identity was announced with fails instead of embedding into a collection named after another vector space.
   `EmbeddingIdentity.VectorSpaceRevision` reports the pre-read value before the load once it was read.
+- Re-pinned sibling package(s) `FluxImprover` 0.12.17 -> 0.12.18 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
 
 ### Removed
 - **Breaking** (`FluxIndex.Integrations.WebFlux`): `WebFluxOptions.DefaultIncludeImages` and
