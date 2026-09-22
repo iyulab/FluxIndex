@@ -102,12 +102,47 @@ public sealed class ServiceCollectionExtensionsTests : IDisposable
     }
 
     [Fact]
-    public void AddLMSupplyEmbedding_UseVectorSpaceRevision_ImpliesTheWarmUpHostedService()
+    public async Task AddLMSupplyEmbedding_UseVectorSpaceRevision_RegistersTheRevisionPreReadAtHostStart_NotTheWarmUp()
     {
         var services = new ServiceCollection();
         services.AddLMSupplyEmbedding(o => o.UseVectorSpaceRevision = true);
 
-        services.Count(sd => sd.ServiceType == typeof(IHostedService)).Should().Be(1, "the revision exists only after the load, so the host must load before anything reads the identity");
+        await using var provider = services.BuildServiceProvider();
+        provider.GetServices<IHostedService>().Should().ContainSingle()
+            .Which.Should().BeOfType<LMSupplyRevisionPreReadService>("the revision is read from the cached files; the model loads on first use");
+    }
+
+    [Fact]
+    public async Task AddLMSupplyEmbedding_UseVectorSpaceRevision_WithWarmUpOnStart_LoadsAtHostStart()
+    {
+        var services = new ServiceCollection();
+        services.AddLMSupplyEmbedding(o => { o.UseVectorSpaceRevision = true; o.WarmUpOnStart = true; });
+
+        await using var provider = services.BuildServiceProvider();
+        provider.GetServices<IHostedService>().Should().ContainSingle().Which.Should().BeOfType<LMSupplyWarmUpService>();
+    }
+
+    [Fact]
+    public void AddLMSupplyEmbedding_UseVectorSpaceRevision_WithAHandRevision_NeedsNothingAtHostStart()
+    {
+        var services = new ServiceCollection();
+        services.AddLMSupplyEmbedding(o => { o.UseVectorSpaceRevision = true; o.Revision = "r2"; });
+
+        services.Should().NotContain(sd => sd.ServiceType == typeof(IHostedService), "a hand-set revision wins, so the identity never waits on the model");
+    }
+
+    [Fact]
+    public async Task RevisionPreReadHostedService_FilesAnswer_AnnouncesTheFinalIdentityWithoutLoading()
+    {
+        await using var service = new LMSupplyEmbeddingService(
+            new LMSupplyEmbeddingOptions { ModelId = "fast", UseVectorSpaceRevision = true },
+            _ => Task.FromResult<string?>("3f2a9c1b"));
+        var hosted = new LMSupplyRevisionPreReadService(() => service, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+
+        await hosted.StartAsync(TestContext.Current.CancellationToken);
+
+        service.IsLoaded.Should().BeFalse();
+        service.GetIdentity().Revision.Should().Be("3f2a9c1b");
     }
 
     [Fact]

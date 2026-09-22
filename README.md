@@ -49,7 +49,8 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   (local) and `FluxIndex.Providers.OpenAI` (OpenAI-compatible) implement them.
 - **Vector-space revision** — `EmbeddingIdentity.VectorSpaceRevision` reports what the LMSupply loader actually did
   (store it next to your vectors, compare on the next load; informational by default); opt in with
-  `LMSupplyEmbeddingOptions.UseVectorSpaceRevision` to fold it into the fingerprint that names the collection.
+  `LMSupplyEmbeddingOptions.UseVectorSpaceRevision` to fold it into the fingerprint that names the collection — the
+  value is read from the cached model files at host start, so the model still loads lazily.
 
 ## Quick Start
 

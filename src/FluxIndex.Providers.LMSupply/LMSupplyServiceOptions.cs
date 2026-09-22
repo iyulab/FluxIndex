@@ -55,10 +55,11 @@ public sealed class LMSupplyEmbeddingOptions : LMSupplyServiceOptionsBase
     /// point: stale vectors are never mixed with new ones. Plan the re-index before enabling it.
     /// </para>
     /// <para>
-    /// The value exists only after the model is loaded, so this implies <see cref="LMSupplyServiceOptionsBase.WarmUpOnStart"/>
-    /// in <c>AddLMSupplyEmbedding</c>, and reading the identity before the load throws (an identity announced without
-    /// the revision would name a different collection than the identity after it). A hand-set <see cref="Revision"/>
-    /// wins and hides loader changes — that is the consumer's choice.
+    /// The identity needs the value before anything reads it. <c>AddLMSupplyEmbedding</c> reads it from the cached model
+    /// files at host start (no load — the model still loads on first use); only when the files cannot answer (not cached,
+    /// GGUF, dimension declared nowhere) does the host load the model instead. Reading the identity before either has
+    /// happened throws (an identity announced without the revision would name a different collection than the identity
+    /// after it). A hand-set <see cref="Revision"/> wins and hides loader changes — that is the consumer's choice.
     /// </para>
     /// </remarks>
     public bool UseVectorSpaceRevision { get; set; }

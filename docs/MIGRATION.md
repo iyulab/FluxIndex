@@ -193,9 +193,11 @@ services.AddLMSupplyEmbedding(o => { o.ModelId = "multilingual-e5-base"; o.UseVe
 ```
 
 Opting in folds the value into `Revision` (a hand `Revision` still wins), so the collection moves once
-when you enable it and again whenever a release changes that model's vector space. The value exists
-only after the load: `AddLMSupplyEmbedding` therefore implies `WarmUpOnStart`, and reading the identity
-before the load throws rather than announcing a name the load would then change.
+when you enable it and again whenever a release changes that model's vector space. Since 0.50.0 the
+value is read from the cached model files at host start (`PreReadVectorSpaceRevisionAsync`, LMSupply
+0.72.0) and the model still loads on first use; only when the files cannot answer (not cached, GGUF)
+does the host load the model instead. Reading the identity before either throws rather than announcing
+a name the load would then change, and a load whose revision disagrees with the pre-read value fails.
 
 ---
 

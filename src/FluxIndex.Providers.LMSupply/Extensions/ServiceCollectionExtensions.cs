@@ -56,8 +56,21 @@ public static class ServiceCollectionExtensions
         configure(options);
 
         services.AddSingleton<IEmbeddingService>(_ => new LMSupplyEmbeddingService(options));
-        // UseVectorSpaceRevision needs the loaded model before anything reads the identity — it implies the warm-up.
-        AddWarmUp<IEmbeddingService>(services, options, force: options.UseVectorSpaceRevision);
+
+        // UseVectorSpaceRevision needs the revision before anything reads the identity. It is read from the cached
+        // files at host start (LMSupply 0.72.0) and the model loads on first use; only when the files cannot answer
+        // does the host load the model. A hand-set Revision wins, so nothing is needed then; WarmUpOnStart loads anyway.
+        if (options.UseVectorSpaceRevision && options.Revision is null && !options.WarmUpOnStart)
+        {
+            services.AddSingleton<IHostedService>(sp => new LMSupplyRevisionPreReadService(
+                () => sp.GetRequiredService<IEmbeddingService>() as LMSupplyEmbeddingService,
+                CreateLogger<LMSupplyRevisionPreReadService>(sp)));
+        }
+        else
+        {
+            AddWarmUp<IEmbeddingService>(services, options);
+        }
+
         return services;
     }
 

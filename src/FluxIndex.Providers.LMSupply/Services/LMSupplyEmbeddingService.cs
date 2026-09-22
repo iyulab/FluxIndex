@@ -29,6 +29,8 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
     private readonly string _configuredModelId;
     private readonly string? _announcedName;
     private readonly int? _announcedDimension;
+    private readonly Func<CancellationToken, Task<string?>>? _preRead;
+    private string? _preReadRevision;
 
     /// <summary>
     /// Initializes a new instance wrapping the given, already loaded <paramref name="model"/>.
@@ -48,6 +50,13 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
     /// </summary>
     /// <param name="options">Model id, revision, loader options, progress, timeout and pre-load identity overrides.</param>
     public LMSupplyEmbeddingService(LMSupplyEmbeddingOptions options)
+        : this(options, preRead: null)
+    {
+    }
+
+    /// <param name="options">See the public constructor.</param>
+    /// <param name="preRead">Replaces the files-only read (<c>LocalEmbedder.GetVectorSpaceRevisionAsync</c>) — tests only.</param>
+    internal LMSupplyEmbeddingService(LMSupplyEmbeddingOptions options, Func<CancellationToken, Task<string?>>? preRead)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentException.ThrowIfNullOrWhiteSpace(options.ModelId);
@@ -65,10 +74,12 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
             {
                 var model = await LocalEmbedder.LoadAsync(options.ModelId, options.Embedder, progress, ct).ConfigureAwait(false);
                 VerifyAnnouncedIdentity(model);
+                VerifyPreReadRevision(model);
                 return model;
             },
             options.Progress,
             options.LoadTimeout);
+        _preRead = preRead ?? (ct => LocalEmbedder.GetVectorSpaceRevisionAsync(options.ModelId, options.Embedder, ct));
     }
 
     /// <summary>
@@ -104,8 +115,40 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
     private IEmbeddingModel? LoadedModel => _eager ?? _handle!.LoadedModel;
 
     /// <inheritdoc />
-    /// <remarks><c>null</c> before the model is loaded and for a model that computes none — never throws.</remarks>
-    protected override string? GetVectorSpaceRevision() => LoadedModel?.VectorSpaceRevision;
+    /// <remarks>
+    /// The loaded model's value; before the load, the value <see cref="PreReadVectorSpaceRevisionAsync"/> read from the
+    /// cached files, if it was called. <c>null</c> otherwise and for a model that computes none — never throws.
+    /// </remarks>
+    protected override string? GetVectorSpaceRevision() => LoadedModel?.VectorSpaceRevision ?? Volatile.Read(ref _preReadRevision);
+
+    /// <summary>
+    /// Reads the vector-space revision from the cached model files, without loading the model (LMSupply 0.72.0
+    /// <c>LocalEmbedder.GetVectorSpaceRevisionAsync</c>) — no inference session, no download, no request. Once it has
+    /// a value, <see cref="UseVectorSpaceRevision"/> no longer needs the model loaded before the identity is read, so a
+    /// lazily loaded service can announce its final identity at start and load on first use.
+    /// </summary>
+    /// <returns>
+    /// The revision, or <c>null</c> when it cannot be known without loading (the model is not cached, is GGUF, or its
+    /// dimension is declared nowhere) — then the identity still needs the load, as before. The loaded model's value
+    /// once it is loaded.
+    /// </returns>
+    /// <remarks>
+    /// When the load later reports a different value while <see cref="UseVectorSpaceRevision"/> folded the pre-read one
+    /// into the identity, the load fails: the collection was already named after the pre-read value, and embedding into
+    /// it with a different vector space is the mix this option exists to prevent.
+    /// </remarks>
+    public async Task<string?> PreReadVectorSpaceRevisionAsync(CancellationToken cancellationToken = default)
+    {
+        if (LoadedModel is { } loaded)
+            return loaded.VectorSpaceRevision;
+        if (Volatile.Read(ref _preReadRevision) is not null || _preRead is null)
+            return Volatile.Read(ref _preReadRevision);
+
+        var value = await _preRead(cancellationToken).ConfigureAwait(false);
+        if (value is not null)
+            Interlocked.CompareExchange(ref _preReadRevision, value, null);
+        return Volatile.Read(ref _preReadRevision);
+    }
 
     /// <inheritdoc />
     /// <exception cref="InvalidOperationException">
@@ -118,11 +161,15 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
         if (Revision is not null || !UseVectorSpaceRevision)
             return Revision;
 
-        var model = LoadedModel ?? throw new InvalidOperationException(
-            $"UseVectorSpaceRevision is set for '{_configuredModelId}' but the model is not loaded yet, and the vector-space revision is derived from what the loader did. " +
-            "Load it first (await EnsureLoadedAsync, or LMSupplyEmbeddingOptions.WarmUpOnStart — AddLMSupplyEmbedding implies it when UseVectorSpaceRevision is set) " +
+        if (LoadedModel is { } model)
+            return model.VectorSpaceRevision;
+        if (Volatile.Read(ref _preReadRevision) is { } preRead)
+            return preRead;
+
+        throw new InvalidOperationException(
+            $"UseVectorSpaceRevision is set for '{_configuredModelId}' but the vector-space revision is not known yet: the model is not loaded and its revision was not read from the cached files. " +
+            "Read it first (await PreReadVectorSpaceRevisionAsync — AddLMSupplyEmbedding does this at host start) or load the model (await EnsureLoadedAsync, or LMSupplyEmbeddingOptions.WarmUpOnStart) " +
             "before anything asks for the embedding identity: an identity announced without the revision would name a different collection than the identity after the load.");
-        return model.VectorSpaceRevision;
     }
 
     /// <inheritdoc />
@@ -217,6 +264,25 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
     // Dimensions is a placeholder; only entries that are actually in the catalog carry a real one.
     private static bool IsCatalogEntry(ModelInfo info) =>
         LocalEmbedder.GetAllModels().Any(catalog => catalog == info);
+
+    /// <summary>
+    /// Fails the load when the identity was announced with a pre-read revision the loaded model does not report.
+    /// Only when that value was folded into the identity — an informational pre-read changes no collection name.
+    /// </summary>
+    internal void VerifyPreReadRevision(IEmbeddingModel model)
+    {
+        if (!UseVectorSpaceRevision || Revision is not null)
+            return;
+        if (Volatile.Read(ref _preReadRevision) is not { } preRead)
+            return;
+        if (string.Equals(model.VectorSpaceRevision, preRead, StringComparison.Ordinal))
+            return;
+
+        throw new InvalidOperationException(
+            $"The loaded model '{model.ModelId}' reports vector-space revision '{model.VectorSpaceRevision ?? "(none)"}' but '{preRead}' was read from its cached files before the load " +
+            "and the embedding identity — and the collection named after it — was announced with that value. Embedding now would put a different vector space into that collection. " +
+            "Set LMSupplyEmbeddingOptions.WarmUpOnStart = true so the identity is read from the loaded model instead, and report the mismatch to LMSupply (the files-only read and the load disagree).");
+    }
 
     private void VerifyAnnouncedIdentity(IEmbeddingModel model)
     {

@@ -11,6 +11,16 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [0.50.0]
 
+### Changed
+- **`UseVectorSpaceRevision` no longer forces the embedding model to load at host start.**
+  `LMSupplyEmbeddingService.PreReadVectorSpaceRevisionAsync` reads the revision from the cached model files
+  (LMSupply 0.72.0 `LocalEmbedder.GetVectorSpaceRevisionAsync` — no session, no download), and
+  `AddLMSupplyEmbedding` does that at host start; the model loads on first use as without the option. Only when
+  the files cannot answer (not cached, GGUF, dimension declared nowhere) does the host load the model, as before.
+  `WarmUpOnStart = true` still loads at start. A load that reports a different revision than the one the
+  identity was announced with fails instead of embedding into a collection named after another vector space.
+  `EmbeddingIdentity.VectorSpaceRevision` reports the pre-read value before the load once it was read.
+
 ### Removed
 - **Breaking** (`FluxIndex.Integrations.WebFlux`): `WebFluxOptions.DefaultIncludeImages` and
   `WebFluxProcessingOptions.IncludeImages`. The first was read by nothing; the second was handed to WebFlux as

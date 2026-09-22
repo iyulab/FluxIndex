@@ -18,4 +18,8 @@
     <ProjectReference Include="..\FluxIndex.Core\FluxIndex.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="FluxIndex.Providers.LMSupply.Tests" />
+  </ItemGroup>
+
 </Project>

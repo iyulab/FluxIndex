@@ -265,6 +265,74 @@ public class LMSupplyEmbeddingServiceTests : IAsyncDisposable
         lazy.IsLoaded.Should().BeFalse("reading the identity must not trigger a download");
     }
 
+    // --- 0.50.0: the revision read from the cached files (LMSupply 0.72.0) before the load -------------------------
+
+    private static LMSupplyEmbeddingService LazyWithPreRead(Func<CancellationToken, Task<string?>> preRead, bool useVectorSpaceRevision = true) =>
+        new(new LMSupplyEmbeddingOptions { ModelId = "fast", UseVectorSpaceRevision = useVectorSpaceRevision }, preRead);
+
+    [Fact]
+    public async Task PreRead_GivesTheIdentityItsRevisionWithoutLoading()
+    {
+        await using var lazy = LazyWithPreRead(_ => Task.FromResult<string?>("3f2a9c1b"));
+
+        (await lazy.PreReadVectorSpaceRevisionAsync(TestContext.Current.CancellationToken)).Should().Be("3f2a9c1b");
+
+        var identity = lazy.GetIdentity();
+        identity.Revision.Should().Be("3f2a9c1b");
+        identity.VectorSpaceRevision.Should().Be("3f2a9c1b");
+        lazy.IsLoaded.Should().BeFalse("the point of the pre-read is that the identity no longer needs the load");
+
+        await using var handSet = new LMSupplyEmbeddingService(new LMSupplyEmbeddingOptions { ModelId = "fast", Revision = "3f2a9c1b" });
+        identity.Fingerprint.Should().Be(handSet.GetIdentity().Fingerprint, "the pre-read value names the same collection a hand revision of that value would");
+    }
+
+    [Fact]
+    public async Task PreRead_WhenTheFilesCannotAnswer_TheIdentityStillNeedsTheLoad_AndSaysHow()
+    {
+        await using var lazy = LazyWithPreRead(_ => Task.FromResult<string?>(null));
+
+        (await lazy.PreReadVectorSpaceRevisionAsync(TestContext.Current.CancellationToken)).Should().BeNull();
+
+        var act = () => lazy.GetIdentity();
+        act.Should().Throw<InvalidOperationException>()
+            .Which.Message.Should().Contain("PreReadVectorSpaceRevisionAsync").And.Contain("EnsureLoadedAsync");
+        lazy.IsLoaded.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task PreRead_ReadsTheFilesOnce()
+    {
+        var calls = 0;
+        await using var lazy = LazyWithPreRead(_ => { Interlocked.Increment(ref calls); return Task.FromResult<string?>("3f2a9c1b"); });
+
+        await lazy.PreReadVectorSpaceRevisionAsync(TestContext.Current.CancellationToken);
+        await lazy.PreReadVectorSpaceRevisionAsync(TestContext.Current.CancellationToken);
+
+        calls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task VerifyPreReadRevision_LoadThatDisagreesWithTheAnnouncedValue_Fails()
+    {
+        await using var lazy = LazyWithPreRead(_ => Task.FromResult<string?>("3f2a9c1b"));
+        await lazy.PreReadVectorSpaceRevisionAsync(TestContext.Current.CancellationToken);
+
+        lazy.Invoking(s => s.VerifyPreReadRevision(ModelWithVectorSpace("3f2a9c1b"))).Should().NotThrow();
+        lazy.Invoking(s => s.VerifyPreReadRevision(ModelWithVectorSpace("0000aaaa"))).Should().Throw<InvalidOperationException>()
+            .Which.Message.Should().Contain("3f2a9c1b").And.Contain("0000aaaa").And.Contain("WarmUpOnStart");
+    }
+
+    [Fact]
+    public async Task VerifyPreReadRevision_WithoutTheOptIn_AnInformationalPreReadNeverFailsTheLoad()
+    {
+        // The value was not folded into the identity, so no collection was named after it.
+        await using var lazy = LazyWithPreRead(_ => Task.FromResult<string?>("3f2a9c1b"), useVectorSpaceRevision: false);
+        await lazy.PreReadVectorSpaceRevisionAsync(TestContext.Current.CancellationToken);
+
+        lazy.GetIdentity().VectorSpaceRevision.Should().Be("3f2a9c1b", "reported before the load once it was read");
+        lazy.Invoking(s => s.VerifyPreReadRevision(ModelWithVectorSpace("0000aaaa"))).Should().NotThrow();
+    }
+
     [Fact]
     public async Task GetIdentity_WithoutTheOptIn_BeforeTheLoad_ReportsNoVectorSpaceRevisionAndDoesNotThrow()
     {
