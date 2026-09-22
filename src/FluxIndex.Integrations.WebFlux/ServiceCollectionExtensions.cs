@@ -15,7 +15,7 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddWebFluxIntegration(this IServiceCollection services, Action<WebFluxOptions>? configureOptions = null)
     {
         // Register ALL WebFlux services (crawlers, extractors, chunking, Playwright, etc.)
-        // This includes: HTTP clients, crawlers (BreadthFirst, DepthFirst, Sitemap, Intelligent, PlaywrightCrawler),
+        // This includes: HTTP clients, crawlers (BreadthFirst, DepthFirst, Sitemap; Dynamic via WebFlux.Playwright),
         // content extractors, chunking strategies, and Playwright browser automation
         services.AddWebFlux();
 

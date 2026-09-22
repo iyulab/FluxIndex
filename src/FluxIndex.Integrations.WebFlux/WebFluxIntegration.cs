@@ -566,7 +566,7 @@ public partial class WebFluxIntegration
 public class WebFluxOptions
 {
     /// <summary>
-    /// Default chunking strategy for content processing (Auto, Smart, Semantic, Intelligent, MemoryOptimized, Paragraph, FixedSize)
+    /// Default chunking strategy for content processing (Auto, Smart, Semantic, Paragraph, FixedSize, MemoryOptimized — WebFlux 0.14.0 removed Intelligent, which had no strategy behind it)
     /// </summary>
     public ChunkingStrategyType DefaultChunkingStrategy { get; set; } = ChunkingStrategyType.Auto;
 
