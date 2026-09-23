@@ -18,6 +18,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   option nothing changes. The service now reads the generator's finish reason (`GenerateCompleteResultAsync`, or the
   last `GenerateChatStreamAsync` chunk with a system prompt), so the call it makes changed — a test double of
   `ITextGenerator` stubs those members now.
+- Re-pinned sibling package(s) `FileFlux` 0.27.1 -> 0.28.0, `FluxImprover` 0.12.20 -> 0.13.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
 
 ### Dependencies
 - `LMSupply.*` 0.72.1 -> 0.73.0.
