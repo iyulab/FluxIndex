@@ -9,6 +9,21 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.51.0]
+
+### Changed
+- **`LMSupplyTextCompletionService` honours `TextCompletionOptions.ThrowOnTruncation`.** With the option set, an
+  answer the local model stopped at `MaxTokens` throws `TextCompletionTruncatedException` instead of being returned as
+  if it were whole — on the plain-prompt path and with a `SystemPrompt`, and through `CompleteJsonAsync`. Without the
+  option nothing changes. The service now reads the generator's finish reason (`GenerateCompleteResultAsync`, or the
+  last `GenerateChatStreamAsync` chunk with a system prompt), so the call it makes changed — a test double of
+  `ITextGenerator` stubs those members now.
+
+### Dependencies
+- `LMSupply.*` 0.72.1 -> 0.73.0.
+
+---
+
 ## [0.50.6]
 
 ### Changed

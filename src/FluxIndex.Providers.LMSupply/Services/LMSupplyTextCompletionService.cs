@@ -75,8 +75,11 @@ public sealed partial class LMSupplyTextCompletionService : TextCompletionServic
     /// <see cref="TextCompletionOptions.ResponseFormat"/> = <c>"json"</c> without a schema has no LMSupply counterpart
     /// (a schema is the only structural constraint it offers, and a generic one would reject arrays), so it is not
     /// forwarded; the JSON request then rests on the prompt.
-    /// <see cref="TextCompletionOptions.ThrowOnTruncation"/> is not honoured yet: LMSupply's text completion returns the
-    /// text without the reason it stopped, so a cut-off answer cannot be told apart and is returned as is.
+    /// Both paths read the generator's finish reason (<see cref="ITextGenerator.GenerateCompleteResultAsync"/> for a plain
+    /// prompt, the last <see cref="ITextGenerator.GenerateChatStreamAsync"/> chunk with a system prompt): with
+    /// <see cref="TextCompletionOptions.ThrowOnTruncation"/> set, an answer that stopped at
+    /// <see cref="TextCompletionOptions.MaxTokens"/> throws <see cref="TextCompletionTruncatedException"/> instead of
+    /// being returned as if it were whole.
     /// </remarks>
     protected override async Task<string> CompleteCoreAsync(
         string prompt,
@@ -102,11 +105,31 @@ public sealed partial class LMSupplyTextCompletionService : TextCompletionServic
             genOptions.JsonSchema = options.ResponseSchema;
 
         var generator = await GetGeneratorAsync(cancellationToken).ConfigureAwait(false);
+        string text;
+        string? finishReason;
         if (string.IsNullOrWhiteSpace(options.SystemPrompt))
-            return await generator.GenerateCompleteAsync(prompt, genOptions, cancellationToken).ConfigureAwait(false);
+        {
+            var result = await generator.GenerateCompleteResultAsync(prompt, genOptions, cancellationToken).ConfigureAwait(false);
+            text = result.Content;
+            finishReason = result.FinishReason;
+        }
+        else
+        {
+            ChatMessage[] messages = [ChatMessage.System(options.SystemPrompt), ChatMessage.User(prompt)];
+            var sb = new System.Text.StringBuilder();
+            finishReason = null;
+            await foreach (var chunk in generator.GenerateChatStreamAsync(messages, genOptions, cancellationToken).ConfigureAwait(false))
+            {
+                sb.Append(chunk.Text);
+                finishReason = chunk.FinishReason ?? finishReason;
+            }
+            text = sb.ToString();
+        }
 
-        ChatMessage[] messages = [ChatMessage.System(options.SystemPrompt), ChatMessage.User(prompt)];
-        return await generator.GenerateChatCompleteAsync(messages, genOptions, cancellationToken).ConfigureAwait(false);
+        if (options.ThrowOnTruncation && finishReason == "length")
+            throw new TextCompletionTruncatedException(options.MaxTokens);
+
+        return text;
     }
 
     /// <inheritdoc />
