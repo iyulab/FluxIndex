@@ -43,6 +43,11 @@ public abstract class TextCompletionServiceBase : ITextCompletionService
     /// <summary>
     /// Core generation method to implement. Called by <see cref="CompleteAsync"/> after validation.
     /// </summary>
+    /// <remarks>
+    /// An implementation that can observe the provider's completion reason throws
+    /// <see cref="TextCompletionTruncatedException"/> when <see cref="TextCompletionOptions.ThrowOnTruncation"/> is set and
+    /// the model stopped at <see cref="TextCompletionOptions.MaxTokens"/>.
+    /// </remarks>
     protected abstract Task<string> CompleteCoreAsync(
         string prompt,
         TextCompletionOptions options,
@@ -85,6 +90,7 @@ public abstract class TextCompletionServiceBase : ITextCompletionService
             SystemPrompt = options?.SystemPrompt,
             ResponseFormat = "json",
             ResponseSchema = options?.ResponseSchema,
+            ThrowOnTruncation = options?.ThrowOnTruncation ?? false,
         };
         var result = await CompleteCoreAsync(jsonPrompt, jsonOptions, cancellationToken);
 

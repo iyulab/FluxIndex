@@ -57,6 +57,19 @@ public class FluxIndexTextCompletionAdapterTests
     }
 
     [Fact]
+    public async Task GenerateAsync_asks_the_port_to_report_truncation()
+    {
+        // The port only throws on truncation when asked; FileFlux's GenerateAsync contract always reports it.
+        TextCompletionOptions? sent = null;
+        _service.CompleteAsync(Arg.Any<string>(), Arg.Do<TextCompletionOptions?>(o => sent = o), Arg.Any<CancellationToken>())
+            .Returns("ok");
+
+        await CreateAdapter().GenerateAsync("p", GenerationSettings.Default, TestContext.Current.CancellationToken);
+
+        sent!.ThrowOnTruncation.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task A_truncated_refinement_through_the_adapter_keeps_the_document_and_says_why()
     {
         var document = string.Join("\n\n", Enumerable.Range(1, 40).Select(i => $"Paragraph {i}: the quarterly report covers revenue, cost and headcount in detail."));

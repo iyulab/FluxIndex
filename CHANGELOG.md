@@ -17,13 +17,16 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   (`Flux.Abstractions.TextCompletionTruncatedException`), the adapter now throws FileFlux's
   `GenerationTruncatedException` (with `MaxTokens` and the original as inner exception), as FileFlux's
   `IDocumentAnalysisService` contract names. FileFlux's refiner keeps the document and records the skip instead of
-  adopting cut-off text.
+  adopting cut-off text. It sets `TextCompletionOptions.ThrowOnTruncation` on that call — the port reports
+  truncation only when asked.
+- **`TextCompletionServiceBase.CompleteJsonAsync` keeps `ThrowOnTruncation`.** It rebuilds the caller's options for the
+  JSON call; the new flag is now carried over like the other caller settings.
 
 ### Dependencies
 - `Flux.Abstractions` 0.25.0 -> 0.26.0 · `FileFlux` 0.26.1 -> 0.27.0.
 
 ### Known limitations
-- `LMSupplyTextCompletionService` does not report truncation yet: its raw-prompt path goes through
+- `LMSupplyTextCompletionService` ignores `ThrowOnTruncation` for now: its raw-prompt path goes through
   `GenerateCompleteAsync`, which returns text only.
 
 ---

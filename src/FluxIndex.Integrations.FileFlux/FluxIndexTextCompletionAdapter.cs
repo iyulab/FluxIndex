@@ -92,6 +92,8 @@ public partial class FluxIndexTextCompletionAdapter : IFileFluxDocumentAnalysisS
                 {
                     MaxTokens = settings.MaxTokens is > 0 ? settings.MaxTokens.Value : 2000,
                     Temperature = settings.Temperature is { } temperature ? (float)temperature : 0.7f,
+                    // FileFlux's GenerateAsync contract reports truncation; the port only does when asked.
+                    ThrowOnTruncation = true,
                 },
                 cancellationToken);
         }

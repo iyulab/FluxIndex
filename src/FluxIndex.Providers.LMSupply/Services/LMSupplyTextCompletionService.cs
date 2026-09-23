@@ -75,6 +75,8 @@ public sealed partial class LMSupplyTextCompletionService : TextCompletionServic
     /// <see cref="TextCompletionOptions.ResponseFormat"/> = <c>"json"</c> without a schema has no LMSupply counterpart
     /// (a schema is the only structural constraint it offers, and a generic one would reject arrays), so it is not
     /// forwarded; the JSON request then rests on the prompt.
+    /// <see cref="TextCompletionOptions.ThrowOnTruncation"/> is not honoured yet: LMSupply's text completion returns the
+    /// text without the reason it stopped, so a cut-off answer cannot be told apart and is returned as is.
     /// </remarks>
     protected override async Task<string> CompleteCoreAsync(
         string prompt,
