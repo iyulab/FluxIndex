@@ -19,6 +19,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 - **`FluxIndexTextCompletionAdapter.ProviderInfo.MaxContextLength` is 0 (not declared) instead of 128000.** The adapter
   wraps whatever `ITextCompletionService` is registered, a local model included, and FileFlux now reads this value to
   decide whether a prompt fits; 0 skips that check rather than passing prompts the model cannot take.
+- **`QuantizedVectorStoreDecorator` (`AddQuantizedVectorStoreDecorator`) answers for the store it wraps.** Seven
+  `IVectorStore` members with a default body fell through to that default on the decorator: `BindIdentity` never reached
+  the inner store (a decorated SQLiteVec store then refused every call with "Call BindIdentity() before accessing the
+  vector store", and a decorated Qdrant store lost fingerprint collection naming and the model-mismatch guard),
+  `BoundIdentity` / `ResolvedStoreName` / `DetectedDimension` were always null, `VerifyHealthAsync` always true,
+  `GetDistinctDocumentCountAsync` always 0, and `DeleteByFilterAsync` threw `NotSupportedException`. All now forward;
+  a filtered delete also drops the quantized copies of the chunks it removed.
 
 ### Known limitations
 - The adapter still cannot tell FileFlux that a response was cut off (`GenerationTruncatedException`):

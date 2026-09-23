@@ -1,5 +1,6 @@
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.Entities;
+using FluxIndex.Core.Domain.ValueObjects;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 
@@ -163,6 +164,46 @@ public partial class QuantizedVectorStoreDecorator : IQuantizedVectorStore
         _quantizedEmbeddings.Clear();
         await _innerStore.ClearAsync(cancellationToken);
     }
+
+    // The members below have interface defaults (no-op, constant, or NotSupported). Left to those
+    // defaults, a decorator answers for the store it wraps: BindIdentity never reached the inner
+    // store (SQLiteVec then refused every call), health was always true, the document count 0.
+
+    public async Task<int> DeleteByFilterAsync(
+        Dictionary<string, object> filters,
+        CancellationToken cancellationToken = default)
+    {
+        var deleted = await _innerStore.DeleteByFilterAsync(filters, cancellationToken);
+        if (deleted > 0)
+        {
+            // The inner store does not say which chunks matched; drop the quantized copies whose chunk is gone.
+            foreach (var id in _quantizedEmbeddings.Keys)
+            {
+                if (!await _innerStore.ExistsAsync(id, cancellationToken))
+                {
+                    _quantizedEmbeddings.TryRemove(id, out _);
+                }
+            }
+        }
+        return deleted;
+    }
+
+    public Task<int> GetDistinctDocumentCountAsync(CancellationToken cancellationToken = default)
+        => _innerStore.GetDistinctDocumentCountAsync(cancellationToken);
+
+    public Task<bool> HasVectorsForDocumentAsync(string documentId, CancellationToken cancellationToken = default)
+        => _innerStore.HasVectorsForDocumentAsync(documentId, cancellationToken);
+
+    public string? ResolvedStoreName => _innerStore.ResolvedStoreName;
+
+    public int? DetectedDimension => _innerStore.DetectedDimension;
+
+    public EmbeddingIdentity? BoundIdentity => _innerStore.BoundIdentity;
+
+    public void BindIdentity(EmbeddingIdentity identity) => _innerStore.BindIdentity(identity);
+
+    public Task<bool> VerifyHealthAsync(CancellationToken cancellationToken = default)
+        => _innerStore.VerifyHealthAsync(cancellationToken);
 
     #endregion
 
