@@ -146,6 +146,14 @@ public class DocsSnippetRosterTests
         calls.Where(n => !methods.Contains(n)).Should().BeEquivalentTo(["UseImaginaryThing", "SearchByEntityAsync"]);
     }
 
+    /// <summary>
+    /// Logging extension methods come from an assembly a shared framework also ships; whether it is copied to the test
+    /// output depends on the machine's runtime version. The scan must see it either way.
+    /// </summary>
+    [Fact]
+    public void AFrameworkSuppliedExtensionMethod_Resolves_WhetherOrNotItWasCopiedToTheOutput() =>
+        Assert.Contains("LogError", PublicMethodNames());
+
     // ── scanner ─────────────────────────────────────────────────────────────────────────────
 
     private static readonly Regex Fence = new(@"```(?:csharp|cs|c#)\s*\n(.*?)```", RegexOptions.Compiled | RegexOptions.Singleline | RegexOptions.IgnoreCase);
@@ -287,15 +295,29 @@ public class DocsSnippetRosterTests
         }
     }
 
-    private static IEnumerable<Assembly> LoadedAssemblies(string pattern) =>
-        Directory.EnumerateFiles(AppContext.BaseDirectory, pattern)
+    /// <summary>
+    /// Assemblies whose file name matches <paramref name="pattern"/>, from the test output and from the runtime's trusted
+    /// platform assemblies. The output alone is not enough: an assembly a shared framework also ships (ASP.NET Core carries
+    /// Microsoft.Extensions.*) is copied only when the package's version beats the installed framework's, so which names
+    /// resolve would depend on the machine's runtime - green on one machine, red on a newer CI image.
+    /// </summary>
+    private static IEnumerable<Assembly> LoadedAssemblies(string pattern)
+    {
+        var glob = new Regex("^" + Regex.Escape(pattern).Replace(@"\*", ".*", StringComparison.Ordinal) + "$", RegexOptions.IgnoreCase);
+        var platform = (AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string ?? string.Empty)
+            .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries);
+        return Directory.EnumerateFiles(AppContext.BaseDirectory, pattern)
+            .Concat(platform.Where(path => glob.IsMatch(Path.GetFileName(path))))
+            .DistinctBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase)
             .Select(path =>
             {
                 try { return Assembly.Load(AssemblyName.GetAssemblyName(path)); }
                 catch (BadImageFormatException) { return null; }
                 catch (FileLoadException) { return null; }
+                catch (FileNotFoundException) { return null; }
             })
             .Where(a => a is not null)!;
+    }
 
     private static List<Type> ExportedTypes(Assembly assembly)
     {
