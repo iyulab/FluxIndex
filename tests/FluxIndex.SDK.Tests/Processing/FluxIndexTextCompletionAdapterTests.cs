@@ -43,6 +43,38 @@ public class FluxIndexTextCompletionAdapterTests
     }
 
     [Fact]
+    public async Task A_truncation_reported_by_the_completion_port_arrives_as_FileFlux_GenerationTruncatedException()
+    {
+        var portError = new TextCompletionTruncatedException(3000);
+        _service.CompleteAsync(Arg.Any<string>(), Arg.Any<TextCompletionOptions?>(), Arg.Any<CancellationToken>())
+            .Returns<string>(_ => throw portError);
+
+        var act = () => CreateAdapter().GenerateAsync("p", new GenerationSettings(MaxTokens: 3000), TestContext.Current.CancellationToken);
+
+        var thrown = (await act.Should().ThrowExactlyAsync<GenerationTruncatedException>("FileFlux's contract names its own type")).Which;
+        thrown.MaxTokens.Should().Be(3000);
+        thrown.InnerException.Should().BeSameAs(portError);
+    }
+
+    [Fact]
+    public async Task A_truncated_refinement_through_the_adapter_keeps_the_document_and_says_why()
+    {
+        var document = string.Join("\n\n", Enumerable.Range(1, 40).Select(i => $"Paragraph {i}: the quarterly report covers revenue, cost and headcount in detail."));
+        _service.CompleteAsync(Arg.Any<string>(), Arg.Any<TextCompletionOptions?>(), Arg.Any<CancellationToken>())
+            .Returns<string>(_ => throw new TextCompletionTruncatedException(100));
+        var noiseOnly = new LlmRefineOptions
+        {
+            RestoreSentences = false, CorrectOcrErrors = false, RestructureSections = false, MergeDuplicates = false, RemoveNoise = true,
+        };
+
+        var result = await new FileFlux.Infrastructure.LlmRefiner(CreateAdapter())
+            .RefineAsync(new RefinedContent { Text = document }, noiseOnly, TestContext.Current.CancellationToken);
+
+        result.Text.Should().Be(document.Trim());
+        result.Info.Warnings.Should().ContainSingle().Which.Should().Contain("truncated at the output token limit");
+    }
+
+    [Fact]
     public void MaxContextLength_is_not_declared()
         => CreateAdapter().ProviderInfo.MaxContextLength.Should().Be(0, "the wrapped service may be any model; FileFlux skips its context check for 0");
 

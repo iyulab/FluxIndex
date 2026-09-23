@@ -9,6 +9,25 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.50.5]
+
+### Fixed
+- **`FluxIndexTextCompletionAdapter` hands FileFlux a truncation it can recognise.** When the wrapped
+  `ITextCompletionService` reports that the model stopped at the output token limit
+  (`Flux.Abstractions.TextCompletionTruncatedException`), the adapter now throws FileFlux's
+  `GenerationTruncatedException` (with `MaxTokens` and the original as inner exception), as FileFlux's
+  `IDocumentAnalysisService` contract names. FileFlux's refiner keeps the document and records the skip instead of
+  adopting cut-off text.
+
+### Dependencies
+- `Flux.Abstractions` 0.25.0 -> 0.26.0 · `FileFlux` 0.26.1 -> 0.27.0.
+
+### Known limitations
+- `LMSupplyTextCompletionService` does not report truncation yet: its raw-prompt path goes through
+  `GenerateCompleteAsync`, which returns text only.
+
+---
+
 ## [0.50.4]
 
 ### Changed

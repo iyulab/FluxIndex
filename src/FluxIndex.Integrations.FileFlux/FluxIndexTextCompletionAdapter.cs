@@ -95,6 +95,13 @@ public partial class FluxIndexTextCompletionAdapter : IFileFluxDocumentAnalysisS
                 },
                 cancellationToken);
         }
+        catch (TextCompletionTruncatedException ex) when (ex is not GenerationTruncatedException)
+        {
+            // The port reports truncation with its own exception; FileFlux's contract names GenerationTruncatedException.
+            throw ex.MaxTokens is { } maxTokens
+                ? new GenerationTruncatedException(maxTokens, ex)
+                : new GenerationTruncatedException(ex.Message, ex);
+        }
         catch (Exception ex)
         {
             LogFailedToGenerateTextCompletion(_logger, ex);
