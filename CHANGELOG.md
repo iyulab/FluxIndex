@@ -26,6 +26,15 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   `BoundIdentity` / `ResolvedStoreName` / `DetectedDimension` were always null, `VerifyHealthAsync` always true,
   `GetDistinctDocumentCountAsync` always 0, and `DeleteByFilterAsync` threw `NotSupportedException`. All now forward;
   a filtered delete also drops the quantized copies of the chunks it removed.
+- **`SQLiteVecVectorStore` reports the vec0 table it resolved and the bound dimension.** `ResolvedStoreName` and
+  `DetectedDimension` fell through to the interface default `null`, so retriever statistics showed "not resolved" for a
+  store that writes to a fingerprinted `chunk_embeddings_<fingerprint>` table — the one fact that says which model's
+  vectors a database holds. Both are now reported (null before initialization and on the in-memory fallback).
+- **`SQLiteVectorStore` and the SDK's `InMemoryVectorStore` count their documents.** `GetDistinctDocumentCountAsync`
+  returned 0, and retriever statistics treat 0 as "not implemented" and fall back to the document repository — which the
+  default in-memory repository resets on restart, so `TotalDocuments` read 0 after a restart while the store still held
+  every chunk. The sqlite-vec store's in-process fallback is `SQLiteVectorStore`, so it was affected too. Every store's
+  shared contract suite now checks the count.
 
 ### Known limitations
 - The adapter still cannot tell FileFlux that a response was cut off (`GenerationTruncatedException`):

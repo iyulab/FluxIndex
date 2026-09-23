@@ -47,6 +47,17 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
     /// <inheritdoc />
     public EmbeddingIdentity? BoundIdentity => _boundIdentity;
 
+    /// <inheritdoc />
+    /// <remarks>The vec0 table the last initialization created (fingerprinted once an identity is bound);
+    /// null before initialization and when the store fell back because sqlite-vec is unavailable.</remarks>
+    public string? ResolvedStoreName => _initialized && _sqliteVecAvailable ? _initializedTableName : null;
+
+    /// <inheritdoc />
+    /// <remarks>The bound identity's dimension; after initialization without a bound identity, the configured
+    /// dimension the vec0 table was created with.</remarks>
+    public int? DetectedDimension =>
+        _boundIdentity?.Dimension ?? (_initialized && _sqliteVecAvailable ? _options.VectorDimension : null);
+
     /// <summary>
     /// Binds an embedding identity to this store and configures fingerprint-based table naming.
     /// </summary>

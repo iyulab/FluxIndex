@@ -237,4 +237,29 @@ public abstract class VectorStoreChunkIdentityContractSuite
         await store.StoreAsync(CreateChunk("pos-1", "second of four", 1, chunkIndex: 1, totalChunks: 4), ct);
         Assert.Equal(4, (await store.GetAsync("pos-1", ct))?.TotalChunks);
     }
+
+    /// <summary>
+    /// Retriever statistics report this as the document total and only fall back to the (restart-volatile)
+    /// document repository on 0 — a store holding chunks must count the documents they belong to.
+    /// </summary>
+    [Fact]
+    public async Task GetDistinctDocumentCountAsync_CountsTheDocumentsTheStoredChunksBelongTo()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var store = await CreateStoreAsync();
+
+        Assert.Equal(0, await store.GetDistinctDocumentCountAsync(ct));
+
+        var a0 = CreateChunk("count-a0", "first of a", 0, chunkIndex: 0, totalChunks: 2);
+        var a1 = CreateChunk("count-a1", "second of a", 1, chunkIndex: 1, totalChunks: 2);
+        var b0 = CreateChunk("count-b0", "only of b", 2, chunkIndex: 0, totalChunks: 1);
+        a0.DocumentId = a1.DocumentId = "doc-a";
+        b0.DocumentId = "doc-b";
+        await store.StoreBatchAsync([a0, a1, b0], ct);
+
+        Assert.Equal(2, await store.GetDistinctDocumentCountAsync(ct));
+
+        await store.DeleteByDocumentIdAsync("doc-b", ct);
+        Assert.Equal(1, await store.GetDistinctDocumentCountAsync(ct));
+    }
 }

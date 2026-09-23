@@ -223,6 +223,16 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
         return await _context.Vectors.CountAsync(cancellationToken);
     }
 
+    /// <inheritdoc />
+    public override async Task<int> GetDistinctDocumentCountAsync(CancellationToken cancellationToken = default)
+    {
+        await EnsureInitializedAsync(cancellationToken);
+        return await _context.Vectors
+            .Select(v => v.DocumentId)
+            .Distinct()
+            .CountAsync(cancellationToken);
+    }
+
     protected override async Task ClearCoreAsync(CancellationToken cancellationToken)
     {
         await EnsureInitializedAsync(cancellationToken);

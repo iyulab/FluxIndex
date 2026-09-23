@@ -264,6 +264,12 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore, IDisposab
         return Task.FromResult(_chunks.Count);
     }
 
+    /// <inheritdoc />
+    public override Task<int> GetDistinctDocumentCountAsync(CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult(_documentChunks.Count);
+    }
+
     protected override async Task ClearCoreAsync(CancellationToken cancellationToken)
     {
         _chunks.Clear();
