@@ -9,6 +9,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.51.1]
+
+### Changed
+- Re-pinned sibling package(s) `WebFlux` 0.14.1 -> 0.15.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+
+---
+
 ## [0.51.0]
 
 ### Changed
