@@ -20,6 +20,12 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   `ITextGenerator` stubs those members now.
 - Re-pinned sibling package(s) `FileFlux` 0.27.1 -> 0.28.0, `FluxImprover` 0.12.20 -> 0.13.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
 
+### Fixed
+- **FluxImprover on a FluxIndex completion service hears about a cut-off answer.** `TextCompletionServiceAdapter` (the
+  FluxImprover `ITextGenerationService` over `ITextCompletionService`) passes FluxImprover 0.13.0's
+  `CompletionOptions.ThrowOnTruncation` to the port's `TextCompletionOptions.ThrowOnTruncation`, so FluxImprover's
+  summaries and contextual enrichment leave out cut-off text on this path too. Before, the adapter dropped the option.
+
 ### Dependencies
 - `LMSupply.*` 0.72.1 -> 0.73.0.
 

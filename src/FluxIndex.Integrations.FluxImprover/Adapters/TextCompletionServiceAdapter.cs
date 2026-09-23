@@ -33,6 +33,8 @@ public sealed class TextCompletionServiceAdapter : ITextGenerationService
     {
         var maxTokens = options?.MaxTokens ?? DefaultMaxTokens;
         var temperature = options?.Temperature ?? DefaultTemperature;
+        // Same meaning and exception type on both contracts: the port reports a cut-off answer when asked.
+        var throwOnTruncation = options?.ThrowOnTruncation ?? false;
 
         // Build the effective prompt with system prompt if provided
         var effectivePrompt = BuildEffectivePrompt(prompt, options);
@@ -41,11 +43,11 @@ public sealed class TextCompletionServiceAdapter : ITextGenerationService
         if (options?.JsonMode == true)
         {
             return await _fluxIndexService.CompleteJsonAsync(
-                effectivePrompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = maxTokens }, cancellationToken);
+                effectivePrompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = maxTokens, ThrowOnTruncation = throwOnTruncation }, cancellationToken);
         }
 
         return await _fluxIndexService.CompleteAsync(
-            effectivePrompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = maxTokens, Temperature = temperature }, cancellationToken);
+            effectivePrompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = maxTokens, Temperature = temperature, ThrowOnTruncation = throwOnTruncation }, cancellationToken);
     }
 
     /// <inheritdoc />
