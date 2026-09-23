@@ -54,7 +54,9 @@ public partial class FluxIndexTextCompletionAdapter : IFileFluxDocumentAnalysisS
             "gpt-4o",                // Legacy flagship: $2.50/1M input, $10.00/1M output
             "gpt-4o-2024-08-06"      // Legacy stable: $2.50/1M input, $10.00/1M output
         },
-        MaxContextLength = 128000, // Context window for both GPT-5 and GPT-4o series
+        // 0 = not declared: the wrapped ITextCompletionService may be any model (a local one included), and FileFlux
+        // reads this value to decide whether a prompt fits — a made-up figure would let prompts through that do not.
+        MaxContextLength = 0,
         InputTokenCost = 0.00005m, // gpt-5-nano pricing (most cost-effective)
         OutputTokenCost = 0.0004m,
         ApiVersion = "2025-08-07"  // GPT-5 release date
@@ -72,12 +74,26 @@ public partial class FluxIndexTextCompletionAdapter : IFileFluxDocumentAnalysisS
     /// <summary>
     /// Generate text completion using FluxIndex's service
     /// </summary>
-    public async Task<string> GenerateAsync(string prompt, CancellationToken cancellationToken = default)
+    public Task<string> GenerateAsync(string prompt, CancellationToken cancellationToken = default)
+        => GenerateAsync(prompt, GenerationSettings.Default, cancellationToken);
+
+    /// <summary>
+    /// Generate text completion with the caller's sampling settings; an unset value falls back to 2000 output tokens
+    /// and temperature 0.7.
+    /// </summary>
+    public async Task<string> GenerateAsync(string prompt, GenerationSettings settings, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(settings);
         try
         {
             return await _fluxIndexService.CompleteAsync(
-                prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 2000, Temperature = 0.7f }, cancellationToken);
+                prompt,
+                new Flux.Abstractions.TextCompletionOptions
+                {
+                    MaxTokens = settings.MaxTokens is > 0 ? settings.MaxTokens.Value : 2000,
+                    Temperature = settings.Temperature is { } temperature ? (float)temperature : 0.7f,
+                },
+                cancellationToken);
         }
         catch (Exception ex)
         {

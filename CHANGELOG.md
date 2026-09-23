@@ -9,6 +9,23 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.50.3]
+
+### Fixed
+- **FileFlux LLM refinement through `FluxIndexTextCompletionAdapter` gets the output budget and temperature it asks
+  for.** The adapter did not implement `GenerateAsync(prompt, GenerationSettings, ct)`, so FileFlux's settings were
+  dropped and every refinement pass ran on a fixed 2000 tokens — a long document's rewrite came back cut off. The
+  settings now reach `ITextCompletionService.CompleteAsync` (unset values keep 2000 tokens / 0.7).
+- **`FluxIndexTextCompletionAdapter.ProviderInfo.MaxContextLength` is 0 (not declared) instead of 128000.** The adapter
+  wraps whatever `ITextCompletionService` is registered, a local model included, and FileFlux now reads this value to
+  decide whether a prompt fits; 0 skips that check rather than passing prompts the model cannot take.
+
+### Known limitations
+- The adapter still cannot tell FileFlux that a response was cut off (`GenerationTruncatedException`):
+  `ITextCompletionService.CompleteAsync` returns text only, so the completion reason does not reach it.
+
+---
+
 ## [0.50.2]
 
 ### Changed
