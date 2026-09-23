@@ -157,6 +157,7 @@ public class DocsSnippetRosterTests
 
     private static readonly Regex Opening = new(@"new\s+([A-Z]\w*(?:Options|Configuration|Defaults))\s*\{", RegexOptions.Compiled);
     private static readonly Regex Assignment = new(@"(?<![\w.])([A-Z]\w*)\s*=(?!=)", RegexOptions.Compiled);
+    private static readonly Regex NestedInitializer = new(@"\G\s*\{", RegexOptions.Compiled);
     // Every member call: `.Name(` after an identifier, a closing paren/bracket or a string literal — not a
     // decimal literal (`0.5f(` cannot occur) and not `new Type(` (no dot).
     private static readonly Regex Registration = new(@"(?<=[\w)\]""])\s*\.\s*([A-Z]\w*)\s*\(", RegexOptions.Compiled);
@@ -210,7 +211,11 @@ public class DocsSnippetRosterTests
             var body = TopLevelBody(code, m.Index + m.Length - 1);
             if (body is null)
                 continue;
-            var properties = Assignment.Matches(body).Select(a => a.Groups[1].Value).Distinct(StringComparer.Ordinal).ToList();
+            // `Name = { ... }` is a nested collection/object initializer: legal on a get-only property, so it is
+            // marked and checked for a readable property instead of a settable one.
+            var properties = Assignment.Matches(body)
+                .Select(a => NestedInitializer.IsMatch(body, a.Index + a.Length) ? a.Groups[1].Value + "{" : a.Groups[1].Value)
+                .Distinct(StringComparer.Ordinal).ToList();
             yield return new Snippet(m.Groups[1].Value, properties);
         }
     }
@@ -270,10 +275,12 @@ public class DocsSnippetRosterTests
             yield break;
         }
 
-        foreach (var property in snippet.Properties)
+        foreach (var entry in snippet.Properties)
         {
+            var nested = entry.EndsWith('{');
+            var property = nested ? entry[..^1] : entry;
             var exists = candidates.Any(t =>
-                t.GetProperty(property, BindingFlags.Public | BindingFlags.Instance) is { SetMethod: not null }
+                t.GetProperty(property, BindingFlags.Public | BindingFlags.Instance) is { } p && (nested || p.SetMethod is not null)
                 || t.GetField(property, BindingFlags.Public | BindingFlags.Instance) is not null);
             if (!exists)
                 yield return $"{snippet.TypeName}.{property}";
