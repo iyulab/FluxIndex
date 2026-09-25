@@ -94,6 +94,54 @@ public class PostgreSQLStorageInitializerIntegrationTests : IAsyncLifetime
         (await RegClassAsync(connectionString, "public.vectors")).Should().NotBeNull();
     }
 
+    /// <summary>
+    /// A database created before 0.52.0 has <c>vectors."DocumentId"</c> as <c>varchar(50)</c>, and a longer document
+    /// id failed inside the store with <c>22001</c> while indexing looked like it had run. Startup widens it in place.
+    /// </summary>
+    [Fact]
+    public async Task InitializeSync_OnADatabaseWithTheOldBoundedDocumentId_WidensIt_AndALongIdStores()
+    {
+        var connectionString = _container.GetConnectionString();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddPostgreSQLVectorStore(connectionString, embeddingDimensions: 4);
+        await using var provider = services.BuildServiceProvider();
+        new PostgreSQLStorageInitializer().InitializeSync(provider);
+
+        // Reproduce the pre-0.52.0 column.
+        await ExecuteAsync(connectionString, "ALTER TABLE vectors ALTER COLUMN \"DocumentId\" TYPE varchar(50)");
+        (await MaxLengthAsync(connectionString, "vectors", "DocumentId")).Should().Be(50);
+
+        new PostgreSQLStorageInitializer().InitializeSync(provider);
+
+        (await MaxLengthAsync(connectionString, "vectors", "DocumentId")).Should().BeNull("startup widens a column the model no longer bounds");
+
+        var longId = new string('d', 200);
+        using var scope = provider.CreateScope();
+        var store = scope.ServiceProvider.GetRequiredService<FluxIndex.Core.Application.Interfaces.IVectorStore>();
+        await store.StoreAsync(new Core.Domain.Entities.DocumentChunk
+        {
+            Id = Guid.NewGuid().ToString(),
+            DocumentId = longId,
+            Content = "content",
+            Embedding = [1f, 0f, 0f, 0f],
+        }, TestContext.Current.CancellationToken);
+
+        (await store.GetByDocumentIdAsync(longId, TestContext.Current.CancellationToken)).Should().ContainSingle();
+    }
+
+    private static async Task<int?> MaxLengthAsync(string connectionString, string table, string column)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            "SELECT character_maximum_length FROM information_schema.columns WHERE table_name = @t AND column_name = @c", connection);
+        command.Parameters.AddWithValue("t", table);
+        command.Parameters.AddWithValue("c", column);
+        var result = await command.ExecuteScalarAsync();
+        return result is null or DBNull ? null : Convert.ToInt32(result, System.Globalization.CultureInfo.InvariantCulture);
+    }
+
     private static async Task ExecuteAsync(string connectionString, string sql)
     {
         await using var connection = new NpgsqlConnection(connectionString);

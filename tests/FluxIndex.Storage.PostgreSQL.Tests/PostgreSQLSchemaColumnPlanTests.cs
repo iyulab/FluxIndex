@@ -61,4 +61,41 @@ public class PostgreSQLSchemaColumnPlanTests
         add.Should().BeEmpty();
         refuse.Should().BeEmpty();
     }
+
+    // ---- widening: a column an earlier version created narrower than the current model ----
+
+    private static IReadOnlyDictionary<string, int?> Lengths(params (string Name, int? Length)[] columns)
+    {
+        var map = new Dictionary<string, int?>(System.StringComparer.Ordinal);
+        foreach (var (name, length) in columns) map[name] = length;
+        return map;
+    }
+
+    [Fact]
+    public void PlanWidenings_WidensAVarcharTheModelNoLongerBounds()
+    {
+        // vectors.DocumentId was varchar(50) until 0.52.0; a longer id failed deep in the store with 22001.
+        var widen = PlanWidenings(
+            [new BoundedColumn("Id", null), new BoundedColumn("DocumentId", null)],
+            Lengths(("Id", null), ("DocumentId", 50)));
+
+        widen.Should().Equal("DocumentId");
+    }
+
+    [Fact]
+    public void PlanWidenings_WidensToALargerModelBound()
+    {
+        PlanWidenings([new BoundedColumn("Type", 100)], Lengths(("Type", 50))).Should().Equal("Type");
+    }
+
+    [Fact]
+    public void PlanWidenings_NeverNarrows_AndIgnoresMatchingAndMissingColumns()
+    {
+        // Narrowing could fail on existing rows or truncate them — that is a migration, not provisioning.
+        var widen = PlanWidenings(
+            [new BoundedColumn("Type", 50), new BoundedColumn("Kind", 20), new BoundedColumn("New", null)],
+            Lengths(("Type", 50), ("Kind", 100)));
+
+        widen.Should().BeEmpty();
+    }
 }

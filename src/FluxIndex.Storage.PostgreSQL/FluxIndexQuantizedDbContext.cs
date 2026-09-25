@@ -36,9 +36,9 @@ public class FluxIndexQuantizedDbContext : DbContext
             entity.ToTable("vectors");
             entity.HasKey(e => e.Id);
 
+            // Unbounded: a document id is the caller's key, and a bound here only failed inside the store (22001).
             entity.Property(e => e.DocumentId)
-                .IsRequired()
-                .HasMaxLength(50);
+                .IsRequired();
 
             entity.Property(e => e.Content)
                 .IsRequired();
@@ -65,9 +65,9 @@ public class FluxIndexQuantizedDbContext : DbContext
             entity.ToTable("quantized_vectors");
             entity.HasKey(e => e.Id);
 
+            // Unbounded like the vectors.Id it refers to: a caller may supply its own chunk ids, and a bound here only failed inside the store (22001).
             entity.Property(e => e.ChunkId)
-                .IsRequired()
-                .HasMaxLength(50);
+                .IsRequired();
 
             entity.Property(e => e.QuantizedData)
                 .IsRequired();

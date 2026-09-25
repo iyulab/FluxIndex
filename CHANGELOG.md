@@ -9,6 +9,15 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.52.0]
+
+### Fixed
+- **A write through `Indexer` now invalidates what `Retriever` cached.** The search-result cache is on by default (`CacheProvider = "Memory"`), and the indexer held no cache, so a deleted or re-indexed document kept coming back for the same query for up to `RetrieverOptions.CacheDuration` (10 min) while the delete reported success. Every indexer write (index, update, add chunks, delete document/chunk, re-index, metadata update) now replaces a cache generation that search keys include, and drops the cached copy of the document. An add invalidates too, since a new document can belong to a cached result set. The generation lives in the same `ICacheService`, so a cache shared across processes (Redis) is invalidated for all of them. A write made directly to `IVectorStore` still bypasses this.
+- **`CacheOptions.EnableSearchCache = false` turns the retriever's cache off** — search results and document lookups. It was never read.
+- **PostgreSQL: `vectors."DocumentId"` (and `quantized_vectors."ChunkId"`) are no longer `varchar(50)`.** A longer id failed inside the store with `22001`. Startup widens the column in place on an existing database; in PostgreSQL this is a catalog-only change with no table rewrite. Provisioning now widens any character column the model no longer bounds, and never narrows one.
+
+---
+
 ## [0.51.4]
 
 ### Changed

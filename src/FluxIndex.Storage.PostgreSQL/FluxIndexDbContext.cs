@@ -33,9 +33,9 @@ public class FluxIndexDbContext : DbContext
 
             entity.HasKey(e => e.Id);
 
+            // Unbounded: a document id is the caller's key, and a bound here only failed inside the store (22001).
             entity.Property(e => e.DocumentId)
-                .IsRequired()
-                .HasMaxLength(50);
+                .IsRequired();
 
             entity.Property(e => e.Content)
                 .IsRequired();

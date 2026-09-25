@@ -16,7 +16,8 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   choice: `HybridSearchOptions.EnableAutoStrategy` (default on) and `FluxIndexContext.AdaptiveSearchAsync`.
 - **Batch indexing** — `Indexer.IndexBatchAsync(documents, progress, parallelism)`; chunk embeddings go through
   `IEmbeddingService.GenerateEmbeddingsBatchAsync`. Always available. Query embeddings are cached per `Retriever`
-  (in-process, not configurable); `UseMemoryCache` / `WithCacheDuration` cache search results.
+  (in-process, not configurable); `UseMemoryCache` / `WithCacheDuration` cache search results, and every `Indexer` write
+  invalidates them (`CacheOptions.EnableSearchCache = false` turns the cache off).
 - **Reranking** (cross-encoder) — `IReranker.RerankAsync`, registered by `AddLMSupplyReranker` (local, no API key) or
   `AddOpenAICompatibleReranker`. Opt-in per search: `Retriever.SearchAsync(query, new SearchOptions { UseReranker = true })`
   fetches `RerankCandidateCount` candidates (default `TopK × 3`), has the registered reranker order them and returns its

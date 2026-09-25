@@ -15,6 +15,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
+using FluxIndex.SDK.Services;
+
 namespace FluxIndex.SDK;
 
 /// <summary>
@@ -201,10 +203,13 @@ public partial class Retriever
                 Message = "Checking cache"
             });
 
-            // Check cache first
+            // Check cache first. The key is computed once, with the generation current *now*: re-deriving it at store
+            // time could file results read before an indexer write under the generation that write created.
+            string? cacheKey = null;
             if (_cacheService != null)
             {
-                var cacheKey = GenerateCacheKey(query, maxResults, minScore, filter);
+                var generation = await SearchCacheKeys.CurrentGenerationAsync(_cacheService, cancellationToken);
+                cacheKey = SearchCacheKeys.Search(generation, query, maxResults, minScore, filter);
                 var cachedResults = await _cacheService.GetAsync<List<VectorSearchResult>>(cacheKey, cancellationToken);
                 if (cachedResults != null)
                 {
@@ -344,9 +349,8 @@ public partial class Retriever
             }
 
             // Cache results
-            if (_cacheService != null && results.Count != 0)
+            if (_cacheService != null && cacheKey != null && results.Count != 0)
             {
-                var cacheKey = GenerateCacheKey(query, maxResults, minScore, filter);
                 await _cacheService.SetAsync(cacheKey, results, _options.CacheDuration, cancellationToken);
             }
 
@@ -1026,7 +1030,7 @@ public partial class Retriever
         // Check cache
         if (_cacheService != null)
         {
-            var cachedDoc = await _cacheService.GetAsync<Document>($"doc:{documentId}", cancellationToken);
+            var cachedDoc = await _cacheService.GetAsync<Document>(SearchCacheKeys.Document(documentId), cancellationToken);
             if (cachedDoc != null)
                 return cachedDoc;
         }
@@ -1045,7 +1049,7 @@ public partial class Retriever
             // Cache document
             if (_cacheService != null)
             {
-                await _cacheService.SetAsync($"doc:{documentId}", document, _options.CacheDuration, cancellationToken);
+                await _cacheService.SetAsync(SearchCacheKeys.Document(documentId), document, _options.CacheDuration, cancellationToken);
             }
         }
 
@@ -1210,12 +1214,6 @@ public partial class Retriever
         }
 
         return combined.Values.OrderByDescending(r => r.Score);
-    }
-
-    private static string GenerateCacheKey(string query, int maxResults, float minScore, Dictionary<string, object>? filter)
-    {
-        var filterStr = filter != null ? string.Join(",", filter.Select(kvp => $"{kvp.Key}:{kvp.Value}")) : "";
-        return $"search:{query}:{maxResults}:{minScore}:{filterStr}";
     }
 
     private static DocumentChunkModel ConvertToModelChunk(DocumentChunkEntity entityChunk)

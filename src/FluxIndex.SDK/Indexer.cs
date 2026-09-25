@@ -14,6 +14,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
+using FluxIndex.SDK.Services;
+
 namespace FluxIndex.SDK;
 
 /// <summary>
@@ -31,6 +33,7 @@ public partial class Indexer
     private readonly IKeywordSearchService? _keywordSearchService;
     private readonly ILogger<Indexer> _logger;
     private readonly IndexerOptions _options;
+    private readonly ICacheService? _cacheService;
 
     /// <summary>
     /// GraphRAG 서비스 사용 가능 여부
@@ -93,7 +96,8 @@ public partial class Indexer
         IMetadataExtractor? metadataExtractor = null,
         IGraphRAGService? graphRAGService = null,
         IHybridSearchService? hybridSearchService = null,
-        IKeywordSearchService? keywordSearchService = null)
+        IKeywordSearchService? keywordSearchService = null,
+        ICacheService? cacheService = null)
     {
         _vectorStore = vectorStore;
         _documentRepository = documentRepository;
@@ -103,6 +107,7 @@ public partial class Indexer
         _graphRAGService = graphRAGService;
         _hybridSearchService = hybridSearchService;
         _keywordSearchService = keywordSearchService;
+        _cacheService = cacheService;
         _options = options;
         _logger = logger ?? NullLogger<Indexer>.Instance;
 
@@ -310,6 +315,7 @@ public partial class Indexer
 
             // Save document metadata
             await _documentRepository.AddAsync(document, cancellationToken);
+            await InvalidateReadCachesAsync(document.Id, cancellationToken);
 
             // Process chunks
             if (chunks.Count == 0)
@@ -447,6 +453,7 @@ public partial class Indexer
             // leg is only ever populated by whatever searched in this process, so it is empty after a
             // restart and hybrid silently degrades to vector-only.
             await IndexKeywordAsync(embeddedEntityChunks, cancellationToken);
+            await InvalidateReadCachesAsync(document.Id, cancellationToken);
 
             // GraphRAG 인덱싱 (자동 감지)
             // - options?.EnableGraphRAG == null: 서비스가 등록되어 있으면 자동 활성화
@@ -745,6 +752,7 @@ public partial class Indexer
             await IndexKeywordAsync(chunks, cancellationToken);
         }
 
+        await InvalidateReadCachesAsync(documentId, cancellationToken);
         LogSuccessfullyUpdatedDocument(_logger, documentId);
     }
 
@@ -784,6 +792,7 @@ public partial class Indexer
         newChunks = await GenerateEmbeddingsAsync(newChunks, cancellationToken);
         await _vectorStore.StoreBatchAsync(newChunks, cancellationToken);
         await IndexKeywordAsync(newChunks, cancellationToken);
+        await InvalidateReadCachesAsync(documentId, cancellationToken);
 
         LogSuccessfullyAddedChunks(_logger, newChunks.Count, documentId);
     }
@@ -806,6 +815,7 @@ public partial class Indexer
 
             // Delete document from repository
             var deleted = await _documentRepository.DeleteAsync(documentId, cancellationToken);
+            await InvalidateReadCachesAsync(documentId, cancellationToken);
 
             if (deleted)
             {
@@ -837,7 +847,11 @@ public partial class Indexer
         if (HasKeywordIndex)
             await _keywordSearchService!.DeleteChunkAsync(chunkId, cancellationToken);
 
-        return await _vectorStore.DeleteAsync(chunkId, cancellationToken);
+        var deleted = await _vectorStore.DeleteAsync(chunkId, cancellationToken);
+        // The chunk's document id is not known here, so no single cached document can be dropped; the generation
+        // change covers search results, and a cached document is only a copy of what GetDocumentAsync assembled.
+        await InvalidateReadCachesAsync(documentId: null, cancellationToken);
+        return deleted;
     }
 
     /// <summary>
@@ -866,8 +880,20 @@ public partial class Indexer
         await _vectorStore.DeleteByDocumentIdAsync(documentId, cancellationToken);
         await _vectorStore.StoreBatchAsync(chunksList, cancellationToken);
         await IndexKeywordAsync(chunksList, cancellationToken);
+        await InvalidateReadCachesAsync(documentId, cancellationToken);
 
         LogSuccessfullyReindexedDocument(_logger, documentId, chunksList.Count);
+    }
+
+    /// <summary>
+    /// Makes the retriever's cached reads unable to outlive this write: every cached search result (they are keyed
+    /// under a generation this replaces) and the cached copy of <paramref name="documentId"/>. Runs after the write
+    /// has completed, so a search that starts afterwards cannot be answered from before it.
+    /// </summary>
+    private async Task InvalidateReadCachesAsync(string? documentId, CancellationToken cancellationToken)
+    {
+        if (_cacheService != null)
+            await SearchCacheKeys.InvalidateAsync(_cacheService, documentId, cancellationToken);
     }
 
     /// <summary>
@@ -1143,6 +1169,7 @@ public partial class Indexer
 
         // Save updated document
         await _documentRepository.UpdateAsync(document, cancellationToken);
+        await InvalidateReadCachesAsync(documentId, cancellationToken);
 
         LogMetadataUpdated(_logger, documentId);
     }
@@ -1183,6 +1210,7 @@ public partial class Indexer
 
         // Save updated document
         await _documentRepository.UpdateAsync(document, cancellationToken);
+        await InvalidateReadCachesAsync(documentId, cancellationToken);
 
         LogExtractedMetadataCorrected(_logger, documentId);
     }

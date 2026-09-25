@@ -94,6 +94,7 @@ internal static class RelationalSchemaProvisioner
         {
             case SchemaInitializationPlan.UpToDate:
                 AddMissingColumns(context);
+                WidenBoundedColumns(context);
                 return;
 
             case SchemaInitializationPlan.CreateAll:
@@ -216,6 +217,63 @@ internal static class RelationalSchemaProvisioner
         }
     }
 
+    /// <summary>
+    /// A model column's declared character bound: <c>null</c> when the model leaves it unbounded (<c>text</c>).
+    /// </summary>
+    internal readonly record struct BoundedColumn(string Name, int? ModelMaxLength);
+
+    /// <summary>
+    /// Decide which existing columns are narrower than the model now declares and must be widened. Only widening is
+    /// planned: narrowing can fail on, or truncate, rows already stored, so it is a migration and never done here.
+    /// Kept separate from the database round-trip so the decision is unit-testable without a server.
+    /// </summary>
+    internal static IReadOnlyList<string> PlanWidenings(
+        IEnumerable<BoundedColumn> modelColumns,
+        IReadOnlyDictionary<string, int?> existingMaxLengths)
+    {
+        var widen = new List<string>();
+        foreach (var column in modelColumns)
+        {
+            if (!existingMaxLengths.TryGetValue(column.Name, out var existing) || existing is not { } existingLength)
+            {
+                continue;
+            }
+
+            if (column.ModelMaxLength is not { } modelLength || modelLength > existingLength)
+            {
+                widen.Add(column.Name);
+            }
+        }
+
+        return widen;
+    }
+
+    /// <summary>
+    /// Widens character columns an earlier version created narrower than the current model — for example
+    /// <c>vectors."DocumentId"</c>, <c>varchar(50)</c> until 0.52.0, where a longer document id failed inside the
+    /// store with <c>22001</c>. In PostgreSQL, <c>varchar(n)</c> to <c>text</c> or to a larger <c>varchar</c> is a
+    /// catalog-only change: no table rewrite, and indexes stay valid.
+    /// </summary>
+    private static void WidenBoundedColumns(DbContext context)
+    {
+        var model = context.GetService<IDesignTimeModel>().Model;
+
+        foreach (var table in model.GetRelationalModel().Tables)
+        {
+            var schema = table.Schema ?? "public";
+            var existing = GetExistingColumnMaxLengths(context, schema, table.Name);
+            var widen = PlanWidenings(
+                table.Columns.Select(c => new BoundedColumn(c.Name, c.MaxLength)),
+                existing);
+
+            foreach (var column in table.Columns.Where(c => widen.Contains(c.Name, StringComparer.Ordinal)))
+            {
+                ExecuteNonQuery(context,
+                    $"ALTER TABLE \"{schema}\".\"{table.Name}\" ALTER COLUMN \"{column.Name}\" TYPE {column.StoreType}");
+            }
+        }
+    }
+
     private static bool CanAddInPlace(IColumn column) =>
         column.IsNullable || column.DefaultValue is not null || column.DefaultValueSql is not null;
 
@@ -300,6 +358,30 @@ internal static class RelationalSchemaProvisioner
         });
 
         return existing;
+    }
+
+    private static Dictionary<string, int?> GetExistingColumnMaxLengths(DbContext context, string schema, string table)
+    {
+        var lengths = new Dictionary<string, int?>(StringComparer.Ordinal);
+
+        WithOpenConnection(context, connection =>
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText =
+                "SELECT column_name, character_maximum_length FROM information_schema.columns " +
+                "WHERE table_schema = @schema AND table_name = @table";
+            command.Transaction = context.Database.CurrentTransaction?.GetDbTransaction();
+            AddParameter(command, "schema", schema);
+            AddParameter(command, "table", table);
+
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                lengths[reader.GetString(0)] = reader.IsDBNull(1) ? null : reader.GetInt32(1);
+            }
+        });
+
+        return lengths;
     }
 
     private static void ExecuteNonQuery(DbContext context, string sql)

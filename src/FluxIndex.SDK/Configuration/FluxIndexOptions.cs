@@ -107,6 +107,10 @@ public class EmbeddingOptions
 public class CacheOptions
 {
     public bool EnableEmbeddingCache { get; set; } = true;
+    /// <summary>
+    /// Whether <see cref="Retriever"/> caches search results and document lookups (default true). Every
+    /// <see cref="Indexer"/> write invalidates them; a write made directly to the vector store does not.
+    /// </summary>
     public bool EnableSearchCache { get; set; } = true;
     public int MaxCacheSize { get; set; } = 1000;
     public TimeSpan CacheDuration { get; set; } = TimeSpan.FromHours(1);

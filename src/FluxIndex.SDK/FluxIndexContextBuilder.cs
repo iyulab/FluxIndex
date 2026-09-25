@@ -717,7 +717,8 @@ public class FluxIndexContextBuilder
             var vectorStore = serviceProvider.GetRequiredService<IVectorStore>();
             var documentRepository = serviceProvider.GetRequiredService<IDocumentRepository>();
             var embeddingService = serviceProvider.GetRequiredService<IEmbeddingService>();
-            var cacheService = serviceProvider.GetService<ICacheService>();
+            // EnableSearchCache = false means the retriever caches nothing — neither search results nor documents.
+            var cacheService = _options.Cache.EnableSearchCache ? serviceProvider.GetService<ICacheService>() : null;
             var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
             var rankFusionService = serviceProvider.GetService<IRankFusionService>();
             var vectorQuantizer = serviceProvider.GetService<IVectorQuantizer>();
@@ -778,7 +779,9 @@ public class FluxIndexContextBuilder
                 metadataExtractor,
                 graphRAGService,
                 hybridSearchService,
-                keywordSearchService
+                keywordSearchService,
+                // Every write invalidates what the retriever cached, whether or not this context's retriever caches.
+                serviceProvider.GetService<ICacheService>()
             );
         });
 
