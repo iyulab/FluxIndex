@@ -18,6 +18,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ### Changed
 - Re-pinned `FluxImprover` 0.13.3 -> 0.14.0: contextual enrichment asks the model not to reason by default. A reasoning model had spent most of the output budget thinking, and about one context in ten was cut off and dropped.
 - Re-pinned sibling package(s) `LMSupply.Embedder` 0.76.0 -> 0.77.0, `LMSupply.Generator` 0.76.0 -> 0.77.0, `LMSupply.Reranker` 0.76.0 -> 0.77.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
+- Re-pinned sibling package(s) `FluxImprover` 0.14.0 -> 0.14.1 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
 
 ### Fixed
 - **A write through `Indexer` now invalidates what `Retriever` cached.** The search-result cache is on by default (`CacheProvider = "Memory"`), and the indexer held no cache, so a deleted or re-indexed document kept coming back for the same query for up to `RetrieverOptions.CacheDuration` (10 min) while the delete reported success. Every indexer write (index, update, add chunks, delete document/chunk, re-index, metadata update) now replaces a cache generation that search keys include, and drops the cached copy of the document. An add invalidates too, since a new document can belong to a cached result set. The generation lives in the same `ICacheService`, so a cache shared across processes (Redis) is invalidated for all of them. A write made directly to `IVectorStore` still bypasses this.
