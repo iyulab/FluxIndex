@@ -1455,6 +1455,66 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         return ComputeIdf(totalDocs, Convert.ToInt32(result, CultureInfo.InvariantCulture));
     }
 
+    /// <summary>Terms per lookup statement — well under every backend's bound-parameter limit (SQLite: 32 766).</summary>
+    private const int DocumentFrequencyLookupBatchSize = 500;
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Reads <c>bm25_terms.document_frequency</c>, the count scoring uses, with one <c>IN (…)</c> statement per
+    /// <see cref="DocumentFrequencyLookupBatchSize"/> distinct terms on a single connection.
+    /// </remarks>
+    public async Task<IReadOnlyDictionary<string, int>> GetDocumentFrequenciesAsync(
+        IEnumerable<string> terms,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(terms);
+
+        // The caller's spellings, grouped by the form the index stores.
+        var spellingsByTerm = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        var result = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var term in terms)
+        {
+            if (term is null || result.ContainsKey(term))
+                continue;
+
+            result[term] = 0;
+            var normalized = NormalizeTerm(term);
+            if (!spellingsByTerm.TryGetValue(normalized, out var spellings))
+                spellingsByTerm[normalized] = spellings = [];
+            spellings.Add(term);
+        }
+
+        if (spellingsByTerm.Count == 0)
+            return result;
+
+        await using var connection = CreateConnection();
+        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        foreach (var batch in spellingsByTerm.Keys.Chunk(DocumentFrequencyLookupBatchSize))
+        {
+            await using var command = connection.CreateCommand();
+            var names = new string[batch.Length];
+            for (var i = 0; i < batch.Length; i++)
+            {
+                names[i] = "@t" + i.ToString(CultureInfo.InvariantCulture);
+                AddParameter(command, names[i], batch[i]);
+            }
+
+            command.CommandText =
+                $"SELECT term, document_frequency FROM bm25_terms WHERE term IN ({string.Join(", ", names)})";
+
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                var frequency = Convert.ToInt32(reader.GetValue(1), CultureInfo.InvariantCulture);
+                foreach (var spelling in spellingsByTerm[reader.GetString(0)])
+                    result[spelling] = frequency;
+            }
+        }
+
+        return result;
+    }
+
     /// <inheritdoc />
     /// <remarks>Delegates to <see cref="Analyzer"/> — the same instance the index path uses.</remarks>
     public IEnumerable<string> Tokenize(string text) => Analyzer.Tokenize(text);

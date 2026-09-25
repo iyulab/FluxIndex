@@ -283,6 +283,10 @@ services.AddSQLiteKeywordSearch("Data Source=keyword.db"); // or in a database o
 Both pick up a registered `ITextAnalyzer` and `KeywordFieldOptions` from the container. `AddSQLiteKeywordSearch` keeps
 a keyword service registered earlier (`TryAdd`); `AddPostgreSQLKeywordSearch` replaces it.
 
+A term's rarity comes from the index's own statistics in one call:
+`IKeywordSearchService.GetDocumentFrequenciesAsync(terms)` returns how many chunks hold each term (0 when none), and
+`GetStatisticsAsync().TotalDocuments` gives the corpus size.
+
 #### Choosing the analyzer (since 0.33.0)
 
 What counts as a term is an `ITextAnalyzer` — tokenization, stop words and minimum token length as

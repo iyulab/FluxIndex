@@ -166,6 +166,23 @@ public interface IKeywordSearchService
     double GetIDF(string term);
 
     /// <summary>
+    /// Gets how many indexed chunks hold each term — the index's own document frequency, looked up in one call.
+    /// </summary>
+    /// <param name="terms">
+    /// Index terms, as <see cref="Tokenize"/> produces them. Matched case-insensitively; a term the index does not
+    /// hold maps to 0.
+    /// </param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>
+    /// One entry per distinct term, keyed by the caller's spelling. Together with
+    /// <see cref="KeywordIndexStatistics.TotalDocuments"/> from <see cref="GetStatisticsAsync"/> this gives a term's
+    /// rarity without inverting <see cref="GetIDF"/> or running a search per term.
+    /// </returns>
+    Task<IReadOnlyDictionary<string, int>> GetDocumentFrequenciesAsync(
+        IEnumerable<string> terms,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Tokenizes text into terms for BM25 processing.
     /// </summary>
     /// <param name="text">Text to tokenize.</param>

@@ -851,6 +851,31 @@ public partial class BM25SparseRetriever : IKeywordSearchService, IPersistableSp
     }
 
     /// <inheritdoc />
+    public Task<IReadOnlyDictionary<string, int>> GetDocumentFrequenciesAsync(
+        IEnumerable<string> terms,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(terms);
+        var defaultIndex = _indexes.GetOrAdd("default", _ => new BM25Index());
+        var frequencies = new Dictionary<string, int>(StringComparer.Ordinal);
+
+        lock (_lockObject)
+        {
+            foreach (var term in terms)
+            {
+                if (term is null || frequencies.ContainsKey(term))
+                    continue;
+
+                frequencies[term] = defaultIndex.InvertedIndex.TryGetValue(term.ToLowerInvariant(), out var postings)
+                    ? postings.Count
+                    : 0;
+            }
+        }
+
+        return Task.FromResult<IReadOnlyDictionary<string, int>>(frequencies);
+    }
+
+    /// <inheritdoc />
     public IEnumerable<string> Tokenize(string text)
     {
         return TokenizeContent(text);
