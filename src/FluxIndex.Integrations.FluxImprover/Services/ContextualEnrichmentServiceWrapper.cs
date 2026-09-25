@@ -23,16 +23,25 @@ namespace FluxIndex.Integrations.FluxImprover.Services;
 public sealed class ContextualEnrichmentServiceWrapper : FluxIndexContextualEnrichment
 {
     private readonly IContextualEnrichmentService _contextualEnrichmentService;
+    private readonly ContextualEnrichmentOptions? _defaultOptions;
 
     /// <summary>
     /// Creates a new wrapper around FluxImprover's ContextualEnrichmentService.
     /// </summary>
     /// <param name="contextualEnrichmentService">The FluxImprover contextual enrichment service to wrap.</param>
+    /// <param name="defaultOptions">
+    /// Options for every call that does not pass its own — in particular every call through FluxIndex.Core's string
+    /// port, which has no options parameter (FluxFeed's ingestion pipeline, the FileFlux integration). Null leaves
+    /// FluxImprover's defaults.
+    /// </param>
     /// <exception cref="ArgumentNullException">Thrown when contextualEnrichmentService is null.</exception>
-    public ContextualEnrichmentServiceWrapper(IContextualEnrichmentService contextualEnrichmentService)
+    public ContextualEnrichmentServiceWrapper(
+        IContextualEnrichmentService contextualEnrichmentService,
+        ContextualEnrichmentOptions? defaultOptions = null)
     {
         _contextualEnrichmentService = contextualEnrichmentService
             ?? throw new ArgumentNullException(nameof(contextualEnrichmentService));
+        _defaultOptions = defaultOptions;
     }
 
     /// <summary>
@@ -60,7 +69,7 @@ public sealed class ContextualEnrichmentServiceWrapper : FluxIndexContextualEnri
         var enrichedResult = await _contextualEnrichmentService.EnrichAsync(
             inputChunk,
             fullDocumentText,
-            options,
+            options ?? _defaultOptions,
             cancellationToken);
 
         // Merge FluxIndex metadata with enriched result
@@ -98,7 +107,7 @@ public sealed class ContextualEnrichmentServiceWrapper : FluxIndexContextualEnri
         var enrichedResults = await _contextualEnrichmentService.EnrichBatchAsync(
             inputChunks,
             fullDocumentText,
-            options,
+            options ?? _defaultOptions,
             cancellationToken);
 
         // Merge FluxIndex metadata with enriched results
@@ -137,7 +146,7 @@ public sealed class ContextualEnrichmentServiceWrapper : FluxIndexContextualEnri
                 Metadata = new Dictionary<string, object> { ["position"] = chunkIndex, ["totalChunks"] = totalChunks }
             },
             fullDocumentText,
-            options: null,
+            _defaultOptions,
             cancellationToken);
 
         return enriched.ContextSummary ?? string.Empty;
@@ -163,7 +172,7 @@ public sealed class ContextualEnrichmentServiceWrapper : FluxIndexContextualEnri
             Content = text ?? string.Empty
         }).ToList();
 
-        var enriched = await _contextualEnrichmentService.EnrichBatchAsync(inputs, fullDocumentText, options: null, cancellationToken);
+        var enriched = await _contextualEnrichmentService.EnrichBatchAsync(inputs, fullDocumentText, _defaultOptions, cancellationToken);
         if (enriched.Count != inputs.Count)
         {
             throw new InvalidOperationException(

@@ -5,6 +5,7 @@ using FluxImprover.ChunkFiltering;
 using FluxImprover.ContextualRetrieval;
 using FluxImprover.Enrichment;
 using FluxImprover.Evaluation;
+using FluxImprover.Options;
 using FluxImprover.QAGeneration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -62,6 +63,11 @@ public static class ServiceCollectionExtensions
     /// Registers the ContextualEnrichmentServiceWrapper for Anthropic's Contextual Retrieval pattern.
     /// </summary>
     /// <param name="services">The service collection to add services to.</param>
+    /// <param name="options">
+    /// Enrichment options for every call that does not pass its own — every call through FluxIndex.Core's string port
+    /// (FluxFeed, the FileFlux integration) — such as the output budget, temperature or reasoning mode. Null leaves
+    /// FluxImprover's defaults.
+    /// </param>
     /// <returns>The service collection for chaining.</returns>
     /// <remarks>
     /// <para>
@@ -77,12 +83,14 @@ public static class ServiceCollectionExtensions
     /// Reference: https://www.anthropic.com/news/contextual-retrieval
     /// </para>
     /// </remarks>
-    public static IServiceCollection AddContextualEnrichmentWrapper(this IServiceCollection services)
+    public static IServiceCollection AddContextualEnrichmentWrapper(
+        this IServiceCollection services,
+        ContextualEnrichmentOptions? options = null)
     {
         services.AddScoped<ContextualEnrichmentServiceWrapper>(provider =>
         {
             var contextualService = provider.GetRequiredService<IContextualEnrichmentService>();
-            return new ContextualEnrichmentServiceWrapper(contextualService);
+            return new ContextualEnrichmentServiceWrapper(contextualService, options);
         });
         // The same instance also serves FluxIndex.Core's string port, so a consumer that only knows FluxIndex
         // (FluxFeed's ingestion pipeline, the FileFlux integration) can resolve contextual enrichment without
