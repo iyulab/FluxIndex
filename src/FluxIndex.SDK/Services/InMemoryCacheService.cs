@@ -73,33 +73,6 @@ internal sealed partial class InMemoryCacheService : ICacheService
         return Task.FromResult(true);
     }
 
-    public Task<long> RemoveByPatternAsync(string pattern, CancellationToken cancellationToken = default)
-    {
-        // In-memory cache doesn't support pattern-based removal
-        LogPatternRemovalNotSupported(_logger);
-        return Task.FromResult(0L);
-    }
-
-    public async Task CacheSearchResultsAsync(
-        string query,
-        IEnumerable<FluxIndex.Core.Domain.Entities.SearchResult> results,
-        TimeSpan? expiry = null,
-        CancellationToken cancellationToken = default)
-    {
-        var cacheKey = $"search:{ComputeHash(query)}";
-        var resultList = results.ToList();
-        await SetAsync(cacheKey, resultList, expiry ?? TimeSpan.FromMinutes(5), cancellationToken);
-    }
-
-    public async Task<IEnumerable<FluxIndex.Core.Domain.Entities.SearchResult>?> GetCachedSearchResultsAsync(
-        string query,
-        CancellationToken cancellationToken = default)
-    {
-        var cacheKey = $"search:{ComputeHash(query)}";
-        var results = await GetAsync<List<FluxIndex.Core.Domain.Entities.SearchResult>>(cacheKey, cancellationToken);
-        return results;
-    }
-
     public Task<bool> ExistsAsync(string key, CancellationToken cancellationToken = default)
     {
         var exists = _cache.TryGetValue(key, out _);
@@ -131,9 +104,6 @@ internal sealed partial class InMemoryCacheService : ICacheService
     [LoggerMessage(Level = LogLevel.Debug, Message = "Removed cached value for key: {Key}")]
     private static partial void LogRemovedCachedValue(ILogger logger, string key);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Pattern-based removal is not supported in memory cache")]
-    private static partial void LogPatternRemovalNotSupported(ILogger logger);
-
     [LoggerMessage(Level = LogLevel.Debug, Message = "Cache key exists check for: {Key} = {Exists}")]
     private static partial void LogCacheKeyExistsCheck(ILogger logger, string key, bool exists);
 
@@ -141,10 +111,4 @@ internal sealed partial class InMemoryCacheService : ICacheService
     private static partial void LogCacheCleared(ILogger logger);
 
     #endregion
-
-    private static string ComputeHash(string text)
-    {
-        var bytes = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text));
-        return Convert.ToBase64String(bytes).Replace("/", "_").Replace("+", "-");
-    }
 }
