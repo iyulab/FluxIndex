@@ -33,6 +33,7 @@ public class FluxIndexContextBuilder
     private readonly IndexerOptions _indexerOptions;
     private readonly List<Action<IServiceCollection>> _storageRegistrations = new();
     private bool _suppressStartupMessages;
+    private bool _explicitInMemoryEmbedding;
 
     /// <summary>
     /// The store/cache provider the caller explicitly selected through a <c>Use*</c> call, if any.
@@ -122,9 +123,8 @@ public class FluxIndexContextBuilder
         _services.AddLogging();
         _services.AddMemoryCache();
 
-        // ✅ Default to InMemory embedding (for testing)
-        // For production, configure a real embedding service via ConfigureServices()
-        // LMSupply: .ConfigureServices(s => s.AddLMSupplyEmbedding()) - 소비 앱에서 직접 래퍼 구현
+        // Default: InMemory embedding (for testing), registered only if nothing else is — a real embedding
+        // service registered through ConfigureServices() or a provider package wins.
         _options.Embedding.Provider = "InMemory";
     }
 
@@ -218,6 +218,7 @@ public class FluxIndexContextBuilder
     public FluxIndexContextBuilder UseInMemoryEmbedding()
     {
         _options.Embedding.Provider = "InMemory";
+        _explicitInMemoryEmbedding = true;
         return this;
     }
 
@@ -669,7 +670,9 @@ public class FluxIndexContextBuilder
         }
 
         // Register core services
-        _services.AddSingleton<IDocumentRepository, InMemoryDocumentRepository>();
+        // Every default below is TryAdd: Build() runs after ConfigureServices() and the storage registrations,
+        // so an Add here would be the later registration and silently replace what the caller registered.
+        _services.TryAddSingleton<IDocumentRepository, InMemoryDocumentRepository>();
         _services.AddSingleton(_retrieverOptions);
         _services.AddSingleton(_indexerOptions);
 
@@ -697,16 +700,16 @@ public class FluxIndexContextBuilder
         // Singleton, not scoped: this index lives in process memory, so a scoped lifetime would hand
         // each scope its own empty index — the indexer would fill one and the retriever read another.
         _services.TryAddSingleton<IKeywordSearchService, BM25SparseRetriever>();
-        _services.AddScoped<IHybridSearchService, HybridSearchService>();
-        _services.AddScoped<IRankFusionService, RankFusionService>();
+        _services.TryAddScoped<IHybridSearchService, HybridSearchService>();
+        _services.TryAddScoped<IRankFusionService, RankFusionService>();
 
         // Register Small-to-Big services
-        _services.AddScoped<ISmallToBigRetriever, SmallToBigRetriever>();
+        _services.TryAddScoped<ISmallToBigRetriever, SmallToBigRetriever>();
         _services.AddMemoryCache(); // For query complexity caching
 
         // Register Adaptive Search services
-        _services.AddScoped<IQueryComplexityAnalyzer, QueryComplexityAnalyzer>();
-        _services.AddScoped<IAdaptiveSearchService, AdaptiveSearchService>();
+        _services.TryAddScoped<IQueryComplexityAnalyzer, QueryComplexityAnalyzer>();
+        _services.TryAddScoped<IAdaptiveSearchService, AdaptiveSearchService>();
 
         // Register Graph Traversal service for local graph search support
         CoreServiceExtensions.AddGraphTraversal(_services);
@@ -798,9 +801,14 @@ public class FluxIndexContextBuilder
         // Display AI service guidance (shows LMSupply options for missing services)
         if (!_suppressStartupMessages)
         {
+            // Describe the embedding service that was actually resolved: the default "InMemory" provider name
+            // is only true when nothing else was registered.
+            var effectiveEmbeddingProvider = serviceProvider.GetService<IEmbeddingService>() is InMemoryEmbeddingService
+                ? "InMemory"
+                : _options.Embedding.Provider is { } p && !p.Equals("InMemory", StringComparison.OrdinalIgnoreCase) ? p : "Custom";
             StartupMessageService.DisplayAIServiceGuidance(
                 serviceProvider,
-                _options.Embedding.Provider,
+                effectiveEmbeddingProvider,
                 _options.VectorStore.Provider);
         }
 
@@ -834,20 +842,17 @@ public class FluxIndexContextBuilder
     {
         switch (_options.Embedding.Provider?.ToLowerInvariant())
         {
-            case "inmemory":
-                // In-memory embedding service for testing (generates random embeddings)
-                _services.AddSingleton<IEmbeddingService, InMemoryEmbeddingService>();
-                break;
             case "custom":
-                // Custom embedding service already registered via UseEmbeddingService()
-                // Do nothing - service is already in DI container
+                // Registered by UseEmbeddingService().
+                break;
+            case "inmemory" when _explicitInMemoryEmbedding:
+                // UseInMemoryEmbedding() is an explicit selection and wins over an earlier registration.
+                _services.AddSingleton<IEmbeddingService, InMemoryEmbeddingService>();
                 break;
             default:
-                // ✅ Default: InMemory for basic testing
-                // For production, use ConfigureServices to register a real embedding service:
-                // - LMSupply: 소비 앱에서 EmbeddingServiceBase 확장하여 래퍼 구현
-                // - OpenAI/Azure: EmbeddingServiceBase 확장하여 구현 후 ConfigureServices로 등록
-                _services.AddSingleton<IEmbeddingService, InMemoryEmbeddingService>();
+                // The unselected default (random embeddings, for tests). TryAdd, so a real service registered
+                // through ConfigureServices() — e.g. AddOpenAICompatibleEmbedding — is the one resolved.
+                _services.TryAddSingleton<IEmbeddingService, InMemoryEmbeddingService>();
                 break;
         }
     }
@@ -857,7 +862,7 @@ public class FluxIndexContextBuilder
         // The core splitter slices the original text at sentence/paragraph/word boundaries with a real
         // character overlap. (An SDK-local copy that normalised whitespace and overlapped by
         // `overlap / 10` words was removed in 0.38.0 — one implementation, in the layer that owns it.)
-        _services.AddSingleton<IChunkingService>(sp =>
+        _services.TryAddSingleton<IChunkingService>(sp =>
             new Core.Services.SimpleChunkingService(
                 _indexerOptions.ChunkSize,
                 _indexerOptions.ChunkOverlap

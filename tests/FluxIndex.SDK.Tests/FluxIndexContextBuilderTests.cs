@@ -51,7 +51,10 @@ public class FluxIndexContextBuilderTests : IDisposable
         }
     }
 
+    // Loads a real LMSupply model (download on a cold cache). Before 0.52.1 the builder replaced this registration
+    // with the in-memory embedder, so the test passed without ever loading LMSupply — and the alias it named was gone.
     [Fact]
+    [Trait("Category", "Integration")]
     public void ConfigureServices_WithLMSupplyEmbedding_ShouldConfigure()
     {
         // Act
@@ -63,8 +66,10 @@ public class FluxIndexContextBuilderTests : IDisposable
         var context = builder.Build();
         try
         {
-            // Assert
+            // Assert: the registered LMSupply embedder is the one resolved
             Assert.NotNull(context);
+            Assert.IsType<FluxIndex.SDK.Tests.AI.LMSupplyEmbedder>(
+                context.ServiceProvider.GetService(typeof(FluxIndex.Core.Application.Interfaces.IEmbeddingService)));
         }
         finally
         {
@@ -72,20 +77,25 @@ public class FluxIndexContextBuilderTests : IDisposable
         }
     }
 
+    // Loads a real LMSupply model (download on a cold cache). Before 0.52.1 the builder replaced this registration
+    // with the in-memory embedder, so the test passed without ever loading LMSupply — and the alias it named was gone.
     [Fact]
+    [Trait("Category", "Integration")]
     public void ConfigureServices_WithLMSupplyCustomModel_ShouldConfigure()
     {
         // Act
         var builder = FluxIndexContext.CreateBuilder()
             .UseSQLite(_testDbPath)
             .AddSQLiteStorage()
-            .ConfigureServices(s => s.AddLMSupplyEmbedding("bge-small-en-v1.5"));
+            .ConfigureServices(s => s.AddLMSupplyEmbedding("fast"));
 
         var context = builder.Build();
         try
         {
-            // Assert
+            // Assert: the registered LMSupply embedder is the one resolved
             Assert.NotNull(context);
+            Assert.IsType<FluxIndex.SDK.Tests.AI.LMSupplyEmbedder>(
+                context.ServiceProvider.GetService(typeof(FluxIndex.Core.Application.Interfaces.IEmbeddingService)));
         }
         finally
         {
@@ -93,20 +103,25 @@ public class FluxIndexContextBuilderTests : IDisposable
         }
     }
 
+    // Loads a real LMSupply model (download on a cold cache). Before 0.52.1 the builder replaced this registration
+    // with the in-memory embedder, so the test passed without ever loading LMSupply — and the alias it named was gone.
     [Fact]
+    [Trait("Category", "Integration")]
     public void ConfigureServices_WithLMSupplyMultilingual_ShouldConfigure()
     {
         // Act
         var builder = FluxIndexContext.CreateBuilder()
             .UseSQLite(_testDbPath)
             .AddSQLiteStorage()
-            .ConfigureServices(s => s.AddLMSupplyEmbedding("multilingual"));
+            .ConfigureServices(s => s.AddLMSupplyEmbedding("multilingual-e5-small"));
 
         var context = builder.Build();
         try
         {
-            // Assert
+            // Assert: the registered LMSupply embedder is the one resolved
             Assert.NotNull(context);
+            Assert.IsType<FluxIndex.SDK.Tests.AI.LMSupplyEmbedder>(
+                context.ServiceProvider.GetService(typeof(FluxIndex.Core.Application.Interfaces.IEmbeddingService)));
         }
         finally
         {
@@ -158,6 +173,7 @@ public class FluxIndexContextBuilderTests : IDisposable
     }
 
     [Fact]
+    [Trait("Category", "Integration")]
     public async Task Builder_WithLMSupplyEmbedding_ShouldIndexSuccessfully()
     {
 

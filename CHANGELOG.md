@@ -9,6 +9,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.52.1]
+
+### Fixed
+- **A service registered through `FluxIndexContextBuilder.ConfigureServices()` is the one the context resolves.** `Build()` added its defaults after `ConfigureServices()` ran, so the default was the later registration and silently replaced the caller's: `ConfigureServices(s => s.AddOpenAICompatibleEmbedding(...))` — the README's own example — resolved the in-memory random embedder, and every write to a store sized for the real model failed on the dimension. The same happened to a registered `IChunkingService`, `IDocumentRepository`, `IHybridSearchService` (e.g. `AddQdrantWithHybridSearch`'s Qdrant hybrid), `IRankFusionService`, `ISmallToBigRetriever`, `IQueryComplexityAnalyzer` and `IAdaptiveSearchService`. The defaults now apply only when nothing is registered. `UseInMemoryEmbedding()` is an explicit selection and still wins.
+- The startup guidance names the embedding service that was resolved, not the default provider name.
+
+---
+
 ## [0.52.0]
 
 ### Added

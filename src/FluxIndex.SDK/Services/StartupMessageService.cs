@@ -32,7 +32,7 @@ public static class StartupMessageService
         var hasReranker = serviceProvider.GetService<IReranker>() != null;
         var hasContextualEnrichment = serviceProvider.GetService<IContextualEnrichmentService>() != null;
 
-        var isLMSupplyEmbedding = embeddingProvider?.ToLowerInvariant() is "LMSupply" or "localembedder" or null;
+        var isLMSupplyEmbedding = embeddingProvider?.ToLowerInvariant() is "lmsupply" or "localembedder" or null;
         var isInMemoryEmbedding = embeddingProvider?.ToLowerInvariant() == "inmemory";
 
         // Count active AI services
