@@ -2,7 +2,6 @@ using System.CommandLine;
 using FileFlux;
 using FluxIndex.CLI.AI;
 using FluxIndex.CLI.Configuration;
-using FluxIndex.SDK.Extensions;
 using FluxIndex.Integrations.FileFlux;
 using FluxIndex.Integrations.FileFlux.Processing;
 using Microsoft.Extensions.DependencyInjection;

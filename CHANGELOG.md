@@ -9,14 +9,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.53.2] - Unreleased
+## [0.54.0] - Unreleased
 
-### Fixed
-- **Every `services.AddFluxIndex(...)` overload registers the same defaults, and none replaces a service you registered first.**
-  - Before, only the `IConfiguration` overload registered `IKeywordSearchService` and `IHybridSearchService`, and it used `Add*`: a keyword index registered earlier was replaced by the in-memory BM25 default.
-  - The `Action<FluxIndexOptions>` and parameterless overloads registered neither.
-  - All three now `TryAdd` the same set, including the options instance, so calling it twice no longer duplicates anything.
-  - `FluxIndexContext.CreateBuilder()` remains the entry point that assembles a working pipeline.
+### Removed
+- **Breaking**: **`services.AddFluxIndex(...)` (all three overloads, `FluxIndex.SDK.Extensions`) is gone — `FluxIndexContext.CreateBuilder()` is the one way to register FluxIndex.**
+  - The overloads registered keyword and hybrid search without a vector store or an embedding service, so they could never assemble a working pipeline on their own, and `CacheProvider = "Redis"` registered nothing on that path.
+  - Migration: replace `services.AddFluxIndex(...)` with `FluxIndexContext.CreateBuilder()` (use `ConfigureServices` to add your own registrations; builder defaults are registered with `TryAdd`, so services you register there are kept). For a Redis cache, call `UseRedisCache(...)` + `AddRedisStorage()` from `FluxIndex.Cache.Redis`.
+- **Breaking**: **`CacheOptions.EnableEmbeddingCache` is removed — no embedding cache ever read it.**
+  - Its only reader was the removed `AddFluxIndex`, which used it to decide whether to register `IMemoryCache`; no FluxIndex path caches embeddings. A configuration key of that name is now ignored by binding.
 
 ---
 

@@ -106,7 +106,6 @@ public class EmbeddingOptions
 /// </summary>
 public class CacheOptions
 {
-    public bool EnableEmbeddingCache { get; set; } = true;
     /// <summary>
     /// Whether <see cref="Retriever"/> caches search results and document lookups (default true). Every
     /// <see cref="Indexer"/> write invalidates them; a write made directly to the vector store does not.
