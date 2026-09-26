@@ -104,7 +104,9 @@ public class PostgreSQLStorageInitializerIntegrationTests : IAsyncLifetime
         var connectionString = _container.GetConnectionString();
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddPostgreSQLVectorStore(connectionString, embeddingDimensions: 4);
+        // Default dimensions: the class shares one container, and a sibling fact may already have created `vectors`
+        // at the default size (startup does not recreate an existing table).
+        services.AddPostgreSQLVectorStore(connectionString);
         await using var provider = services.BuildServiceProvider();
         new PostgreSQLStorageInitializer().InitializeSync(provider);
 
@@ -124,10 +126,17 @@ public class PostgreSQLStorageInitializerIntegrationTests : IAsyncLifetime
             Id = Guid.NewGuid().ToString(),
             DocumentId = longId,
             Content = "content",
-            Embedding = [1f, 0f, 0f, 0f],
+            Embedding = UnitVector(1536),
         }, TestContext.Current.CancellationToken);
 
         (await store.GetByDocumentIdAsync(longId, TestContext.Current.CancellationToken)).Should().ContainSingle();
+    }
+
+    private static float[] UnitVector(int dimensions)
+    {
+        var vector = new float[dimensions];
+        vector[0] = 1f;
+        return vector;
     }
 
     private static async Task<int?> MaxLengthAsync(string connectionString, string table, string column)
