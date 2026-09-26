@@ -33,8 +33,10 @@ public class LMSupplyEmbeddingAnnounceIdentityTests
     [Fact]
     public void EveryAliasTheCatalogLists_AnnouncesItsDimension()
     {
-        var aliases = LocalEmbedder.GetAllModels().Select(m => m.AliasName).Where(a => !string.IsNullOrEmpty(a)).ToList();
-        aliases.Should().NotBeEmpty("the fixture must see the catalog");
+        // GetAliases, not GetAllModels: the model list holds one entry per repository, which is the very list the old
+        // check compared against — enumerating it cannot find the aliases it drops.
+        var aliases = EmbedderModelRegistry.Default.GetAliases().Select(a => a.Name).ToList();
+        aliases.Should().Contain("multilingual-e5-small", "the fixture must see the aliases the model list drops");
 
         aliases.Where(a => LMSupplyEmbeddingService.AnnounceIdentity(a).Dimension is null)
             .Should().BeEmpty("a lazy registration of a catalog alias must not need Dimensions");
