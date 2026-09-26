@@ -9,7 +9,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.53.1] - Unreleased
+## [0.53.1] - 2026-09-26
 
 ### Changed
 - Re-pinned sibling package(s) `LMSupply.Embedder` 0.79.0 -> 0.79.1, `LMSupply.Generator` 0.79.0 -> 0.79.1, `LMSupply.Reranker` 0.79.0 -> 0.79.1 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
