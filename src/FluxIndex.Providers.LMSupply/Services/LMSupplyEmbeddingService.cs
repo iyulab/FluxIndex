@@ -244,8 +244,9 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
     /// Mirrors <see cref="LocalEmbedder.LoadAsync"/>'s naming: a local model file is named by its file
     /// name; everything else keeps the id as given, after the qualifier split and the user-alias rewrite
     /// (the registry path uses that string as the model id, for catalog models and HuggingFace repo ids
-    /// alike). The dimension is only known for catalog models — the registry fabricates a placeholder
-    /// entry (384) for unknown repo ids and paths, which must not be announced.
+    /// alike). The dimension is only known for catalog models — every alias, full id and short name the
+    /// catalog lists, which is what <c>TryResolveCatalog</c> answers. <c>TryResolve</c> also answers unknown
+    /// repo ids and paths, with a placeholder entry (384) that must not be announced.
     /// </summary>
     internal static (string Name, int? Dimension) AnnounceIdentity(string modelId)
     {
@@ -259,17 +260,12 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
         if (File.Exists(name) || name.EndsWith(".onnx", StringComparison.OrdinalIgnoreCase))
             return (Path.GetFileNameWithoutExtension(name), null);
 
-        int? dimension = registry.TryResolve(modelId, out var info) && info is not null && IsCatalogEntry(info)
+        int? dimension = registry.TryResolveCatalog(modelId, out var info, out _) && info is not null
             ? info.Dimensions
             : null;
 
         return (name, dimension);
     }
-
-    // The registry answers every "org/repo" id and local path with a synthesized ModelInfo whose
-    // Dimensions is a placeholder; only entries that are actually in the catalog carry a real one.
-    private static bool IsCatalogEntry(ModelInfo info) =>
-        LocalEmbedder.GetAllModels().Any(catalog => catalog == info);
 
     /// <summary>
     /// Fails the load when the identity was announced with a pre-read revision the loaded model does not report.

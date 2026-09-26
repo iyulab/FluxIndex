@@ -1,6 +1,7 @@
 using Xunit;
 using FluxIndex.SDK;
-using FluxIndex.SDK.Tests.AI;
+using FluxIndex.Providers.LMSupply.Extensions;
+using FluxIndex.Providers.LMSupply.Services;
 using FluxIndex.Storage.SQLite;
 
 namespace FluxIndex.SDK.Tests;
@@ -53,9 +54,10 @@ public class FluxIndexContextBuilderTests : IDisposable
 
     // Loads a real LMSupply model (download on a cold cache). Before 0.52.1 the builder replaced this registration
     // with the in-memory embedder, so the test passed without ever loading LMSupply — and the alias it named was gone.
+    // The provider's registration is lazy, so the test embeds once: resolving alone would not prove the alias loads.
     [Fact]
     [Trait("Category", "Integration")]
-    public void ConfigureServices_WithLMSupplyEmbedding_ShouldConfigure()
+    public async Task ConfigureServices_WithLMSupplyEmbedding_ShouldConfigure()
     {
         // Act
         var builder = FluxIndexContext.CreateBuilder()
@@ -66,10 +68,12 @@ public class FluxIndexContextBuilderTests : IDisposable
         var context = builder.Build();
         try
         {
-            // Assert: the registered LMSupply embedder is the one resolved
+            // Assert: the registered LMSupply embedder is the one resolved, and its model loads
             Assert.NotNull(context);
-            Assert.IsType<FluxIndex.SDK.Tests.AI.LMSupplyEmbedder>(
+            var embedder = Assert.IsType<LMSupplyEmbeddingService>(
                 context.ServiceProvider.GetService(typeof(FluxIndex.Core.Application.Interfaces.IEmbeddingService)));
+            var vector = await embedder.GenerateEmbeddingAsync("alias check", TestContext.Current.CancellationToken);
+            Assert.NotEmpty(vector);
         }
         finally
         {
@@ -79,9 +83,10 @@ public class FluxIndexContextBuilderTests : IDisposable
 
     // Loads a real LMSupply model (download on a cold cache). Before 0.52.1 the builder replaced this registration
     // with the in-memory embedder, so the test passed without ever loading LMSupply — and the alias it named was gone.
+    // The provider's registration is lazy, so the test embeds once: resolving alone would not prove the alias loads.
     [Fact]
     [Trait("Category", "Integration")]
-    public void ConfigureServices_WithLMSupplyCustomModel_ShouldConfigure()
+    public async Task ConfigureServices_WithLMSupplyCustomModel_ShouldConfigure()
     {
         // Act
         var builder = FluxIndexContext.CreateBuilder()
@@ -92,10 +97,12 @@ public class FluxIndexContextBuilderTests : IDisposable
         var context = builder.Build();
         try
         {
-            // Assert: the registered LMSupply embedder is the one resolved
+            // Assert: the registered LMSupply embedder is the one resolved, and its model loads
             Assert.NotNull(context);
-            Assert.IsType<FluxIndex.SDK.Tests.AI.LMSupplyEmbedder>(
+            var embedder = Assert.IsType<LMSupplyEmbeddingService>(
                 context.ServiceProvider.GetService(typeof(FluxIndex.Core.Application.Interfaces.IEmbeddingService)));
+            var vector = await embedder.GenerateEmbeddingAsync("alias check", TestContext.Current.CancellationToken);
+            Assert.NotEmpty(vector);
         }
         finally
         {
@@ -105,9 +112,10 @@ public class FluxIndexContextBuilderTests : IDisposable
 
     // Loads a real LMSupply model (download on a cold cache). Before 0.52.1 the builder replaced this registration
     // with the in-memory embedder, so the test passed without ever loading LMSupply — and the alias it named was gone.
+    // The provider's registration is lazy, so the test embeds once: resolving alone would not prove the alias loads.
     [Fact]
     [Trait("Category", "Integration")]
-    public void ConfigureServices_WithLMSupplyMultilingual_ShouldConfigure()
+    public async Task ConfigureServices_WithLMSupplyMultilingual_ShouldConfigure()
     {
         // Act
         var builder = FluxIndexContext.CreateBuilder()
@@ -118,10 +126,12 @@ public class FluxIndexContextBuilderTests : IDisposable
         var context = builder.Build();
         try
         {
-            // Assert: the registered LMSupply embedder is the one resolved
+            // Assert: the registered LMSupply embedder is the one resolved, and its model loads
             Assert.NotNull(context);
-            Assert.IsType<FluxIndex.SDK.Tests.AI.LMSupplyEmbedder>(
+            var embedder = Assert.IsType<LMSupplyEmbeddingService>(
                 context.ServiceProvider.GetService(typeof(FluxIndex.Core.Application.Interfaces.IEmbeddingService)));
+            var vector = await embedder.GenerateEmbeddingAsync("alias check", TestContext.Current.CancellationToken);
+            Assert.NotEmpty(vector);
         }
         finally
         {

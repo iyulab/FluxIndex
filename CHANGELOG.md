@@ -9,6 +9,17 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.55.1] - Unreleased
+
+### Fixed
+- **`AddLMSupplyEmbedding` with any LMSupply catalog alias works in `FluxIndexContextBuilder`.** The registration is
+  lazy, so the provider announces the model's dimension before loading; it decided "is this a catalog model" by
+  comparing with the catalog's model list, which holds one entry per repository. An alias whose repository another
+  alias names — `multilingual-e5-small` shares `fast`'s — was taken for an unknown model, and `Build()` threw asking
+  for `LMSupplyEmbeddingOptions.Dimensions`. The provider now asks LMSupply's catalog resolver directly.
+
+---
+
 ## [0.55.0] - 2026-09-27
 
 ### Added
