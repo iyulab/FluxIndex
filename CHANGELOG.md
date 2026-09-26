@@ -9,7 +9,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.55.0] - Unreleased
+## [0.55.0] - 2026-09-27
 
 ### Added
 - **`IFluxIndexContext` (what `Build()` returns) and `FluxIndexWorkspace` are `IAsyncDisposable` — `await using var context = …Build();` releases every registered service.** `IFluxIndexContext` now also extends `IDisposable` (**Breaking** only for a custom implementation of the interface).
