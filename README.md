@@ -70,7 +70,9 @@ using FluxIndex.Storage.SQLite;
 // Build() also creates the schema for every component it enables (vector store, graph store,
 // entity graph, semantic cache), touching only the tables those components own — see
 // docs/GUIDE.md "What Build() provisions" to opt out and manage the schema yourself.
-var context = FluxIndexContext.CreateBuilder()
+// Dispose with `await using` (the context is IAsyncDisposable): a service you register through
+// ConfigureServices that implements only IAsyncDisposable cannot be released by a synchronous Dispose().
+await using var context = FluxIndexContext.CreateBuilder()
     .UseSQLite("fluxindex.db")
     .AddSQLiteStorage()
     .Build();

@@ -1,6 +1,6 @@
 using FluxIndex.SDK;
 using FluxIndex.Storage.SQLite;
-using FluxIndex.MCP.AI;
+using FluxIndex.Providers.LMSupply.Extensions;
 using Microsoft.Extensions.Logging;
 
 namespace FluxIndex.MCP.Workspace;
@@ -8,7 +8,7 @@ namespace FluxIndex.MCP.Workspace;
 /// <summary>
 /// Manages a FluxIndex workspace including initialization, configuration, and context creation
 /// </summary>
-public partial class FluxIndexWorkspace : IDisposable
+public partial class FluxIndexWorkspace : IDisposable, IAsyncDisposable
 {
     private readonly string _workspaceRoot;
     private readonly WorkspaceConfig _config;
@@ -159,12 +159,21 @@ public partial class FluxIndexWorkspace : IDisposable
     public string GetRelativePath(string absolutePath)
         => Path.GetRelativePath(_workspaceRoot, absolutePath);
 
+    /// <summary>
+    /// Disposes the context asynchronously, which also releases services that implement only
+    /// <see cref="IAsyncDisposable"/>. Prefer this over <see cref="Dispose"/>.
+    /// </summary>
+    public async ValueTask DisposeAsync()
+    {
+        if (_context is not null)
+            await _context.DisposeAsync().ConfigureAwait(false);
+        _context = null;
+        GC.SuppressFinalize(this);
+    }
+
     public void Dispose()
     {
-        if (_context is IDisposable disposable)
-        {
-            disposable.Dispose();
-        }
+        _context?.Dispose();
         _context = null;
         GC.SuppressFinalize(this);
     }

@@ -18,11 +18,7 @@
     <!-- FluxIndex SDK (FileFlux, WebFlux, FluxCurator, FluxImprover) -->
     <ProjectReference Include="..\FluxIndex.SDK\FluxIndex.SDK.csproj" />
     <ProjectReference Include="..\FluxIndex.Storage.SQLite\FluxIndex.Storage.SQLite.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <!-- LMSupply for local AI (direct reference) -->
-    <PackageReference Include="LMSupply.Embedder" />
+    <ProjectReference Include="..\FluxIndex.Providers.LMSupply\FluxIndex.Providers.LMSupply.csproj" />
   </ItemGroup>
 
 </Project>

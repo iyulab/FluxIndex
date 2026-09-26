@@ -1,6 +1,6 @@
 using System.CommandLine;
 using FileFlux;
-using FluxIndex.CLI.AI;
+using FluxIndex.Providers.LMSupply.Extensions;
 using FluxIndex.CLI.Configuration;
 using FluxIndex.Integrations.FileFlux;
 using FluxIndex.Integrations.FileFlux.Processing;

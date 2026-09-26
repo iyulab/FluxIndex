@@ -9,6 +9,20 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.55.0] - Unreleased
+
+### Added
+- **`IFluxIndexContext` (what `Build()` returns) and `FluxIndexWorkspace` are `IAsyncDisposable` — `await using var context = …Build();` releases every registered service.** `IFluxIndexContext` now also extends `IDisposable` (**Breaking** only for a custom implementation of the interface).
+  - A synchronous `Dispose()` cannot release a service that implements only `IAsyncDisposable`: the container throws on it and skips the registrations after it. `FluxIndexContext.Dispose()` caught and logged that throw, so the partial dispose was invisible. The sync `Dispose()` is unchanged; prefer `DisposeAsync`.
+
+### Changed
+- **The MCP workspace (`provider: local` / `lmsupply`) uses `FluxIndex.Providers.LMSupply`'s embedding service.** Before, it used its own copy, which implemented only `IAsyncDisposable` and loaded the model synchronously inside the DI factory. With the old copy, disposing a workspace whose embedder had been used threw `InvalidOperationException` inside `Dispose()`, and native model resources were not released. The model now loads on first use.
+
+### Removed
+- **Breaking**: `FluxIndex.MCP.AI.LMSupplyEmbedder` and `FluxIndex.MCP.AI.ServiceCollectionExtensions.AddLMSupplyEmbedding` — use `FluxIndex.Providers.LMSupply` (`AddLMSupplyEmbedding`, same name, namespace `FluxIndex.Providers.LMSupply.Extensions`).
+
+---
+
 ## [0.54.1] - 2026-09-27
 
 ### Changed

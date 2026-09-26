@@ -23,7 +23,7 @@ namespace FluxIndex.SDK;
 /// FluxIndex 컨텍스트 - Retriever와 Indexer를 통한 간편한 진입점
 /// 시맨틱 캐싱을 통한 성능 최적화 지원
 /// </summary>
-public partial class FluxIndexContext : IFluxIndexContext, IDisposable
+public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDisposable
 {
     private readonly Retriever _retriever;
     private readonly Indexer _indexer;
@@ -920,6 +920,79 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable
     }
 
     /// <summary>
+    /// Asynchronous dispose. Disposes the service provider with <c>DisposeAsync</c>, so a service that implements only
+    /// <see cref="IAsyncDisposable"/> (for example one registered through <c>ConfigureServices</c>) is released too.
+    /// The synchronous <see cref="Dispose()"/> cannot release such a service: the container throws on it, and the
+    /// registrations after it are not disposed. Prefer <c>await using</c>.
+    /// </summary>
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed)
+            return;
+
+        try
+        {
+            if (_qualityMonitor != null)
+            {
+                try
+                {
+                    await _qualityMonitor.StopMonitoringAsync().ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    LogFailedToStopQualityMonitoring(_logger, ex);
+                }
+            }
+
+            ReleaseStorage();
+
+            if (ServiceProvider is IAsyncDisposable asyncProvider)
+                await asyncProvider.DisposeAsync().ConfigureAwait(false);
+            else if (ServiceProvider is IDisposable disposableProvider)
+                disposableProvider.Dispose();
+
+            LogDisposedSuccessfully(_logger);
+        }
+        catch (Exception ex)
+        {
+            LogDisposeError(_logger, ex);
+        }
+
+        _disposed = true;
+        GC.SuppressFinalize(this);
+    }
+
+    private void ReleaseStorage()
+    {
+        // 2. Dispose VectorStore (DbContext) to close DB connections
+        if (ServiceProvider.GetService(typeof(IVectorStore)) is IDisposable vectorStore)
+        {
+            vectorStore.Dispose();
+        }
+
+        // 3. Dispose SQLite DbContext explicitly (via reflection to avoid storage dependency)
+        var dbContextType = Type.GetType("FluxIndex.Storage.SQLite.SQLiteDbContext, FluxIndex.Storage.SQLite");
+        if (dbContextType != null)
+        {
+            var dbContextObj = ServiceProvider.GetService(dbContextType);
+            if (dbContextObj != null)
+            {
+                // Close connection explicitly before disposing
+                // DbContext.Database.CloseConnection() via reflection
+                var databaseProp = dbContextObj.GetType().GetProperty("Database");
+                var database = databaseProp?.GetValue(dbContextObj);
+                if (database != null)
+                {
+                    var closeMethod = database.GetType().GetMethod("CloseConnection", BindingFlags.Public | BindingFlags.Instance);
+                    closeMethod?.Invoke(database, null);
+                }
+
+                (dbContextObj as IDisposable)?.Dispose();
+            }
+        }
+    }
+
+    /// <summary>
     /// Dispose pattern implementation for proper resource cleanup
     /// ✅ Issue #3 fix: Ensures SQLite connections are properly closed
     /// </summary>
@@ -951,32 +1024,8 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable
                     }
                 }
 
-                // 2. Dispose VectorStore (DbContext) to close DB connections
-                if (ServiceProvider.GetService(typeof(IVectorStore)) is IDisposable vectorStore)
-                {
-                    vectorStore.Dispose();
-                }
-
-                // 3. Dispose SQLite DbContext explicitly (via reflection to avoid storage dependency)
-                var dbContextType = Type.GetType("FluxIndex.Storage.SQLite.SQLiteDbContext, FluxIndex.Storage.SQLite");
-                if (dbContextType != null)
-                {
-                    var dbContextObj = ServiceProvider.GetService(dbContextType);
-                    if (dbContextObj != null)
-                    {
-                        // Close connection explicitly before disposing
-                        // DbContext.Database.CloseConnection() via reflection
-                        var databaseProp = dbContextObj.GetType().GetProperty("Database");
-                        var database = databaseProp?.GetValue(dbContextObj);
-                        if (database != null)
-                        {
-                            var closeMethod = database.GetType().GetMethod("CloseConnection", BindingFlags.Public | BindingFlags.Instance);
-                            closeMethod?.Invoke(database, null);
-                        }
-
-                        (dbContextObj as IDisposable)?.Dispose();
-                    }
-                }
+                // 2-3. Close the vector store and the SQLite DbContext
+                ReleaseStorage();
 
                 // 4. Dispose ServiceProvider
                 if (ServiceProvider is IDisposable disposableProvider)
@@ -1093,7 +1142,7 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable
 /// <summary>
 /// FluxIndex 컨텍스트 인터페이스
 /// </summary>
-public interface IFluxIndexContext
+public interface IFluxIndexContext : IDisposable, IAsyncDisposable
 {
     Retriever Retriever { get; }
     Indexer Indexer { get; }
