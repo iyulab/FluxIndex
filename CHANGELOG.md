@@ -11,6 +11,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [0.52.1]
 
+### Changed
+- Re-pinned sibling package(s) `LMSupply.Embedder` 0.77.0 -> 0.78.0, `LMSupply.Generator` 0.77.0 -> 0.78.0, `LMSupply.Reranker` 0.77.0 -> 0.78.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
+
 ### Fixed
 - **A service registered through `FluxIndexContextBuilder.ConfigureServices()` is the one the context resolves.** `Build()` added its defaults after `ConfigureServices()` ran, so the default was the later registration and silently replaced the caller's: `ConfigureServices(s => s.AddOpenAICompatibleEmbedding(...))` — the README's own example — resolved the in-memory random embedder, and every write to a store sized for the real model failed on the dimension. The same happened to a registered `IChunkingService`, `IDocumentRepository`, `IHybridSearchService` (e.g. `AddQdrantWithHybridSearch`'s Qdrant hybrid), `IRankFusionService`, `ISmallToBigRetriever`, `IQueryComplexityAnalyzer` and `IAdaptiveSearchService`. The defaults now apply only when nothing is registered. `UseInMemoryEmbedding()` is an explicit selection and still wins.
 - The startup guidance names the embedding service that was resolved, not the default provider name.
