@@ -385,7 +385,7 @@ public partial class FileFluxIntegration
         }
     }
 
-    private static FluxIndexDocumentChunk ConvertToFluxIndexChunk(FileFluxChunk fileFluxChunk, int chunkIndex, string filePath)
+    internal static FluxIndexDocumentChunk ConvertToFluxIndexChunk(FileFluxChunk fileFluxChunk, int chunkIndex, string filePath)
     {
         var documentId = Path.GetFileNameWithoutExtension(filePath);
         var fluxChunk = new FluxIndexDocumentChunk(fileFluxChunk.Content, chunkIndex)
@@ -439,6 +439,11 @@ public partial class FileFluxIntegration
                 fluxChunk.Metadata["ff_end_page"] = fileFluxChunk.Location.EndPage.Value;
             if (!string.IsNullOrEmpty(fileFluxChunk.Location.Section))
                 fluxChunk.Metadata["ff_section"] = fileFluxChunk.Location.Section;
+            // Timed sources (audio): where in the recording the chunk starts and ends, in seconds.
+            if (fileFluxChunk.Location.StartTime is { } startTime)
+                fluxChunk.Metadata["ff_start_seconds"] = startTime.TotalSeconds;
+            if (fileFluxChunk.Location.EndTime is { } endTime)
+                fluxChunk.Metadata["ff_end_seconds"] = endTime.TotalSeconds;
         }
 
         // Map document metadata from FileFlux

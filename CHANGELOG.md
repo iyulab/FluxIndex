@@ -9,6 +9,18 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.53.0] - Unreleased
+
+### Added
+- **A chunk from a recording says where in it it came from.** The FileFlux integration writes `ff_start_seconds` /
+  `ff_end_seconds` (seconds from the start) from a chunk's time range, next to the existing `pageNumber` /
+  `ff_start_page` / `ff_end_page` — the same keys FluxFeed writes, so a consumer reads one vocabulary on either path.
+
+### Changed
+- Re-pinned sibling package(s) `FileFlux` 0.30.0 -> 0.31.0, `FluxImprover` 0.14.2 -> 0.14.3, `LMSupply.Embedder` / `LMSupply.Generator` / `LMSupply.Reranker` 0.78.0 -> 0.79.0.
+
+---
+
 ## [0.52.3]
 
 ### Fixed
