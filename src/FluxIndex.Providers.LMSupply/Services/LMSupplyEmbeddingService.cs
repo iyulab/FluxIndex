@@ -22,7 +22,7 @@ namespace FluxIndex.Providers.LMSupply.Services;
 /// and verified against the loaded model: a mismatch fails the load instead of silently splitting the index.
 /// </para>
 /// </remarks>
-public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDisposable, ILazilyLoadedModel
+public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDisposable, IDisposable, ILazilyLoadedModel
 {
     private readonly IEmbeddingModel? _eager;
     private readonly LazyModelHandle<IEmbeddingModel>? _handle;
@@ -228,6 +228,12 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
 
     /// <inheritdoc />
     protected override string GetProviderName() => "LMSupply";
+
+    /// <summary>
+    /// Disposes synchronously, for a container or scope disposed with <c>Dispose()</c> (which throws on a service that is
+    /// only <see cref="IAsyncDisposable"/>). Blocks on <see cref="DisposeAsync"/>.
+    /// </summary>
+    public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
 
     /// <inheritdoc />
     public ValueTask DisposeAsync() =>

@@ -240,8 +240,13 @@ public sealed class ServiceCollectionExtensionsTests : IDisposable
             .ToList();
 
         sources.Should().NotBeEmpty();
+        // The one allowed block is the synchronous Dispose() over DisposeAsync(): a container or scope disposed with
+        // Dispose() throws on a service that is only IAsyncDisposable, and the LMSupply models offer no sync disposal.
+        // That runs at teardown, never in a factory or a load, so it is not the defect this guards.
         var offenders = sources
-            .Where(f => File.ReadAllText(f).Contains(".GetAwaiter().GetResult()", StringComparison.Ordinal))
+            .Where(f => File.ReadLines(f).Any(line =>
+                line.Contains(".GetAwaiter().GetResult()", StringComparison.Ordinal)
+                && !line.TrimStart().StartsWith("public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();", StringComparison.Ordinal)))
             .Select(Path.GetFileName)
             .ToList();
 

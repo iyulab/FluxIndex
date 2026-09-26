@@ -9,7 +9,7 @@ namespace FluxIndex.Storage.Neo4j;
 /// <summary>
 /// Neo4j implementation of IGraphStore for GraphRAG entity and relationship storage.
 /// </summary>
-public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable
+public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable, IDisposable
 {
     private readonly IDriver _driver;
     private readonly Neo4jOptions _options;
@@ -1202,6 +1202,16 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable
     }
 
     #endregion
+
+    /// <summary>
+    /// Disposes synchronously, for a container or scope disposed with <c>Dispose()</c> (which throws on a service that is
+    /// only <see cref="IAsyncDisposable"/>). Blocks on <see cref="DisposeAsync"/>.
+    /// </summary>
+    public void Dispose()
+    {
+        DisposeAsync().AsTask().GetAwaiter().GetResult();
+        GC.SuppressFinalize(this);
+    }
 
     public async ValueTask DisposeAsync()
     {

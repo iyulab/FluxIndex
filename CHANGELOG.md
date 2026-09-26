@@ -9,6 +9,15 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.53.1] - Unreleased
+
+### Fixed
+- **A service provider disposed with `Dispose()` no longer throws when an LMSupply service or the Qdrant / Neo4j store is registered.**
+  `LMSupplyEmbeddingService`, `LMSupplyRerankerService`, `LMSupplyTextCompletionService`, `QdrantVectorStore` and
+  `Neo4jGraphStore` implemented only `IAsyncDisposable`, and a container or scope disposed with `Dispose()` throws on such a service ("type only implements IAsyncDisposable"); it now implements `IDisposable` too.
+
+---
+
 ## [0.53.0] - 2026-09-26
 
 ### Added

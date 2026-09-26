@@ -10,7 +10,7 @@ namespace FluxIndex.Providers.LMSupply.Services;
 /// <see cref="RerankerBase"/> template. Either wraps an already loaded model, or loads it on first use
 /// (see <see cref="LMSupplyRerankerService(LMSupplyRerankerOptions, ILogger)"/>).
 /// </summary>
-public sealed partial class LMSupplyRerankerService : RerankerBase, IAsyncDisposable, ILazilyLoadedModel
+public sealed partial class LMSupplyRerankerService : RerankerBase, IAsyncDisposable, IDisposable, ILazilyLoadedModel
 {
     private readonly IRerankerModel? _eager;
     private readonly LazyModelHandle<IRerankerModel>? _handle;
@@ -89,6 +89,12 @@ public sealed partial class LMSupplyRerankerService : RerankerBase, IAsyncDispos
         Type = RerankModel.Local,
         RequiresApiKey = false,
     };
+
+    /// <summary>
+    /// Disposes synchronously, for a container or scope disposed with <c>Dispose()</c> (which throws on a service that is
+    /// only <see cref="IAsyncDisposable"/>). Blocks on <see cref="DisposeAsync"/>.
+    /// </summary>
+    public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
 
     /// <inheritdoc />
     public ValueTask DisposeAsync() =>

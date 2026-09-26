@@ -12,7 +12,7 @@ namespace FluxIndex.Providers.LMSupply.Services;
 /// <see cref="TextCompletionServiceBase"/> template. Either wraps an already loaded generator, or loads
 /// it on first use (see <see cref="LMSupplyTextCompletionService(LMSupplyTextCompletionOptions, ILogger)"/>).
 /// </summary>
-public sealed partial class LMSupplyTextCompletionService : TextCompletionServiceBase, IAsyncDisposable, ILazilyLoadedModel
+public sealed partial class LMSupplyTextCompletionService : TextCompletionServiceBase, IAsyncDisposable, IDisposable, ILazilyLoadedModel
 {
     private readonly ITextGenerator? _eager;
     private readonly LazyModelHandle<IGeneratorModel>? _handle;
@@ -131,6 +131,12 @@ public sealed partial class LMSupplyTextCompletionService : TextCompletionServic
 
         return text;
     }
+
+    /// <summary>
+    /// Disposes synchronously, for a container or scope disposed with <c>Dispose()</c> (which throws on a service that is
+    /// only <see cref="IAsyncDisposable"/>). Blocks on <see cref="DisposeAsync"/>.
+    /// </summary>
+    public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
 
     /// <inheritdoc />
     public ValueTask DisposeAsync() =>

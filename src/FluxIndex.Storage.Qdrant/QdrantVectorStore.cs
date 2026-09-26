@@ -17,7 +17,7 @@ namespace FluxIndex.Storage.Qdrant;
 /// Qdrant implementation of IVectorStore for high-performance vector similarity search.
 /// Supports dynamic dimension adaptation via CollectionNamingStrategy.
 /// </summary>
-public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
+public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable, IDisposable
 {
     private readonly QdrantClient _client;
     private readonly QdrantOptions _options;
@@ -1049,6 +1049,16 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable
     }
 
     #endregion
+
+    /// <summary>
+    /// Disposes synchronously, for a container or scope disposed with <c>Dispose()</c> (which throws on a service that is
+    /// only <see cref="IAsyncDisposable"/>). Blocks on <see cref="DisposeAsync"/>.
+    /// </summary>
+    public void Dispose()
+    {
+        DisposeAsync().AsTask().GetAwaiter().GetResult();
+        GC.SuppressFinalize(this);
+    }
 
     public ValueTask DisposeAsync()
     {
