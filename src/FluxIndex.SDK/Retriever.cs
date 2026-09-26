@@ -646,9 +646,9 @@ public partial class Retriever
     /// 하이브리드 검색 (키워드 + 벡터) with RRF fusion
     /// </summary>
     /// <remarks>
-    /// LIMITATION: 키워드 레그는 <c>IDocumentRepository</c> 를 통해 해석되는데 현재 인메모리 구현뿐이라,
-    /// 영속 스토어를 구성하더라도 <b>이 프로세스가 인덱싱한 문서만</b> 본다. 재시작 후 하이브리드 검색은
-    /// 사실상 vector-only 로 동작한다. 벡터 검색과 메타데이터 filter 는 영향받지 않는다.
+    /// 키워드 레그는 등록된 <c>IKeywordSearchService</c> 를 읽는다 — 영속 스토어가 키워드 인덱스를 등록하면
+    /// (예: SQLite) 재시작 뒤에도 그 인덱스를 본다. 기본 인메모리 BM25 만 등록된 경우에는 이 프로세스가 인덱싱한
+    /// 문서만 본다.
     /// </remarks>
     public async Task<IEnumerable<VectorSearchResult>> HybridSearchAsync(
         string keyword,
@@ -847,8 +847,8 @@ public partial class Retriever
     /// 키워드 기반 검색
     /// </summary>
     /// <remarks>
-    /// LIMITATION: <c>IDocumentRepository</c> 를 조회하는데 현재 인메모리 구현뿐이라, 영속 스토어를
-    /// 구성하더라도 <b>이 프로세스가 인덱싱한 문서만</b> 본다 — 재시작하면 결과가 비어 있다.
+    /// 등록된 <c>IKeywordSearchService</c> 를 읽는다 — 영속 스토어가 키워드 인덱스를 등록하면(예: SQLite)
+    /// 재시작 뒤에도 결과가 있다. 기본 인메모리 BM25 만 등록된 경우에는 이 프로세스가 인덱싱한 문서만 본다.
     /// </remarks>
     public async Task<IEnumerable<VectorSearchResult>> KeywordSearchAsync(
         string keyword,

@@ -16,9 +16,12 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   - A synchronous `Dispose()` cannot release a service that implements only `IAsyncDisposable`: the container throws on it and skips the registrations after it. `FluxIndexContext.Dispose()` caught and logged that throw, so the partial dispose was invisible. The sync `Dispose()` is unchanged; prefer `DisposeAsync`.
 
 ### Changed
+- **The MCP `search` tool honours its `strategy` argument.** `hybrid` (the default) runs vector + keyword. Before, every strategy ran the vector search alone, while the tool description promised hybrid. `vector` and `keyword` run one leg each, and an unknown value returns an error instead of a vector search. Keyword results come from the workspace's SQLite keyword index and survive a restart.
+- **The MCP workspace embedding config says what runs.** New workspaces write `provider: "lmsupply"`, `model: "default"`; `model` is used when the provider is `lmsupply`/`local`. Workspaces created before 0.55.0 have `"openai"` / `"text-embedding-3-small"` written as defaults. They keep running the local `default` model, now with a warning in the log, and the `status` tool reports that model instead of the configured name.
 - **The MCP workspace (`provider: local` / `lmsupply`) uses `FluxIndex.Providers.LMSupply`'s embedding service.** Before, it used its own copy, which implemented only `IAsyncDisposable` and loaded the model synchronously inside the DI factory. With the old copy, disposing a workspace whose embedder had been used threw `InvalidOperationException` inside `Dispose()`, and native model resources were not released. The model now loads on first use.
 
 ### Removed
+- **Breaking**: MCP `WorkspaceConfig.Completion` / `.Search` and `EmbeddingConfig.Dimensions` (and the `CompletionConfig` / `SearchConfig` types) — nothing read them. Keys already in a `config.json` are ignored on load. The `status` tool no longer echoes a search strategy and top-k that search never used.
 - **Breaking**: `FluxIndex.MCP.AI.LMSupplyEmbedder` and `FluxIndex.MCP.AI.ServiceCollectionExtensions.AddLMSupplyEmbedding` — use `FluxIndex.Providers.LMSupply` (`AddLMSupplyEmbedding`, same name, namespace `FluxIndex.Providers.LMSupply.Extensions`).
 
 ---

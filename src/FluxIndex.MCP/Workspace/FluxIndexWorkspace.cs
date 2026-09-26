@@ -100,12 +100,6 @@ public partial class FluxIndexWorkspace : IDisposable, IAsyncDisposable
         // Configure embedding service based on config
         ConfigureEmbeddingService(builder);
 
-        // Configure completion service if available
-        if (_config.Completion != null)
-        {
-            ConfigureCompletionService(builder);
-        }
-
         _context = builder.Build();
         if (_logger is not null)
             LogContextCreated(_logger, _workspaceRoot);
@@ -113,28 +107,25 @@ public partial class FluxIndexWorkspace : IDisposable, IAsyncDisposable
         return _context;
     }
 
+    /// <summary>
+    /// The embedding model the workspace actually runs — local LMSupply, <see cref="EmbeddingConfig.Model"/> when the
+    /// configured provider is local, otherwise the LMSupply <c>default</c> (see <see cref="EmbeddingConfig"/>).
+    /// </summary>
+    public string EmbeddingModel => IsLocalProvider(_config.Embedding.Provider) && !string.IsNullOrWhiteSpace(_config.Embedding.Model)
+        ? _config.Embedding.Model
+        : "default";
+
+    private static bool IsLocalProvider(string? provider)
+        => string.Equals(provider, "lmsupply", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(provider, "local", StringComparison.OrdinalIgnoreCase);
+
     private void ConfigureEmbeddingService(FluxIndexContextBuilder builder)
     {
-        switch (_config.Embedding.Provider.ToLowerInvariant())
-        {
-            case "local":
-            case "lmsupply":
-                // Use local AI embedder (ONNX-based, no API key required)
-                builder.ConfigureServices(s => s.AddLMSupplyEmbedding());
-                break;
+        if (!IsLocalProvider(_config.Embedding.Provider) && _logger is not null)
+            LogEmbeddingProviderFallback(_logger, _config.Embedding.Provider, EmbeddingModel);
 
-            default:
-                // Default to LMSupply for unknown providers
-                // External AI providers should be implemented by consuming applications
-                builder.ConfigureServices(s => s.AddLMSupplyEmbedding());
-                break;
-        }
-    }
-
-    private static void ConfigureCompletionService(FluxIndexContextBuilder builder)
-    {
-        // Completion service configuration can be extended here
-        // Currently OpenAI is used for both embedding and completion
+        var model = EmbeddingModel;
+        builder.ConfigureServices(s => s.AddLMSupplyEmbedding(model));
     }
 
     /// <summary>
@@ -185,6 +176,9 @@ public partial class FluxIndexWorkspace : IDisposable, IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Created FluxIndexContext for workspace at {Path}")]
     private static partial void LogContextCreated(ILogger logger, string path);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Embedding provider '{Provider}' is not built into the MCP workspace; using local LMSupply model '{Model}'")]
+    private static partial void LogEmbeddingProviderFallback(ILogger logger, string provider, string model);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Saved configuration to {Path}")]
     private static partial void LogConfigSaved(ILogger logger, string path);

@@ -20,12 +20,6 @@ public class WorkspaceConfig
     [JsonPropertyName("embedding")]
     public EmbeddingConfig Embedding { get; set; } = new();
 
-    [JsonPropertyName("completion")]
-    public CompletionConfig? Completion { get; set; }
-
-    [JsonPropertyName("search")]
-    public SearchConfig Search { get; set; } = new();
-
     [JsonPropertyName("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
@@ -51,35 +45,18 @@ public class WorkspaceConfig
     }
 }
 
+/// <summary>
+/// Embedding for the workspace. The MCP workspace has one built-in provider: local LMSupply (<c>"lmsupply"</c> or
+/// <c>"local"</c>), loaded on first use. Any other provider value falls back to it with a warning. Workspaces created
+/// before 0.55.0 have <c>"openai"</c> / <c>"text-embedding-3-small"</c> written as defaults; they have always run the
+/// local <c>default</c> model.
+/// </summary>
 public class EmbeddingConfig
 {
     [JsonPropertyName("provider")]
-    public string Provider { get; set; } = "openai";
+    public string Provider { get; set; } = "lmsupply";
 
+    /// <summary>The LMSupply model id or alias (used when <see cref="Provider"/> is local).</summary>
     [JsonPropertyName("model")]
-    public string Model { get; set; } = "text-embedding-3-small";
-
-    [JsonPropertyName("dimensions")]
-    public int? Dimensions { get; set; }
-}
-
-public class CompletionConfig
-{
-    [JsonPropertyName("provider")]
-    public string Provider { get; set; } = "openai";
-
-    [JsonPropertyName("model")]
-    public string Model { get; set; } = "gpt-4o-mini";
-}
-
-public class SearchConfig
-{
-    [JsonPropertyName("strategy")]
-    public string Strategy { get; set; } = "Hybrid";
-
-    [JsonPropertyName("top_k")]
-    public int TopK { get; set; } = 10;
-
-    [JsonPropertyName("min_score")]
-    public float MinScore { get; set; } = 0.5f;
+    public string Model { get; set; } = "default";
 }

@@ -46,7 +46,21 @@ public partial class SearchTool
         try
         {
             var context = _workspace.GetContext();
-            var results = await context.Retriever.SearchAsync(query, maxResults, 0.2f, null, cancellationToken);
+            var results = strategy.Trim().ToLowerInvariant() switch
+            {
+                "hybrid" => await context.Retriever.HybridSearchAsync(query, query, maxResults, cancellationToken: cancellationToken),
+                "vector" => await context.Retriever.SearchAsync(query, maxResults, 0.2f, null, cancellationToken),
+                "keyword" => await context.Retriever.KeywordSearchAsync(query, maxResults, null, cancellationToken),
+                _ => null,
+            };
+
+            if (results is null)
+            {
+                return JsonSerializer.Serialize(new
+                {
+                    error = $"Unknown search strategy '{strategy}'. Use 'hybrid', 'vector' or 'keyword'."
+                });
+            }
 
             if (results == null || !results.Any())
             {

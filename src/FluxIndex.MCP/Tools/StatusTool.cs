@@ -48,13 +48,9 @@ public partial class StatusTool
                     {
                         embedding = new
                         {
-                            provider = _workspace.Config.Embedding.Provider,
-                            model = _workspace.Config.Embedding.Model
-                        },
-                        search = new
-                        {
-                            strategy = _workspace.Config.Search.Strategy,
-                            topK = _workspace.Config.Search.TopK
+                            provider = "lmsupply",
+                            model = _workspace.EmbeddingModel,
+                            configuredProvider = _workspace.Config.Embedding.Provider
                         }
                     }
                 },

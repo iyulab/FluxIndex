@@ -43,7 +43,8 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   `AddRedisSemanticCache`.
 - **Document processing** — PDF/DOCX/TXT via FileFlux, web pages via WebFlux (`FluxIndex.Integrations.*`, opt-in).
 - **MCP server** — `FluxIndex.MCP` is a library: host it with `FluxIndexMcpServer.RunAsync(workspacePath)` or
-  `services.AddFluxIndexMcp(...)` (stdio). Tools: `memorize`, `search`, `status`, `unmemorize`.
+  `services.AddFluxIndexMcp(...)` (stdio). Tools: `memorize`, `search` (`strategy`: `hybrid` default · `vector` ·
+  `keyword`), `status`, `unmemorize`. Embedding is local LMSupply (`.vault/config.json` `embedding.model`).
 - **RAG security** (opt-in) — register a `FluxGuard.Remote` `IRAGSecurityPipeline`; `Retriever.SearchAsync` drops
   documents it blocks and replaces the content of ones it sanitizes.
 - **Bring your own models** — `IEmbeddingService` / `ITextCompletionService` ports; `FluxIndex.Providers.LMSupply`
