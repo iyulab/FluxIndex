@@ -9,6 +9,17 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.53.2] - Unreleased
+
+### Fixed
+- **Every `services.AddFluxIndex(...)` overload registers the same defaults, and none replaces a service you registered first.**
+  - Before, only the `IConfiguration` overload registered `IKeywordSearchService` and `IHybridSearchService`, and it used `Add*`: a keyword index registered earlier was replaced by the in-memory BM25 default.
+  - The `Action<FluxIndexOptions>` and parameterless overloads registered neither.
+  - All three now `TryAdd` the same set, including the options instance, so calling it twice no longer duplicates anything.
+  - `FluxIndexContext.CreateBuilder()` remains the entry point that assembles a working pipeline.
+
+---
+
 ## [0.53.1] - 2026-09-26
 
 ### Changed

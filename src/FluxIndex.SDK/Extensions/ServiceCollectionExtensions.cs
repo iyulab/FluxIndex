@@ -18,114 +18,68 @@ namespace FluxIndex.SDK.Extensions;
 public static class ServiceCollectionExtensions
 {
     /// <summary>
-    /// FluxIndex 서비스 등록
+    /// FluxIndex 서비스 등록 — <c>FluxIndex</c> 설정 섹션을 옵션으로 바인딩합니다.
     /// </summary>
+    /// <remarks>
+    /// 세 오버로드는 같은 기본값을 등록합니다(<see cref="AddFluxIndexCore"/>). 기본값은 <c>TryAdd</c> 로 등록하므로
+    /// 이 호출 <b>전에</b> 등록한 소비자 구현이 남습니다. 완성된 인덱싱·검색 파이프라인은 <c>FluxIndexContext.CreateBuilder()</c> 가 조립합니다.
+    /// </remarks>
     public static IServiceCollection AddFluxIndex(
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        // 설정 바인딩
+        var section = configuration.GetSection("FluxIndex");
         var options = new FluxIndexOptions();
-        configuration.GetSection("FluxIndex").Bind(options);
-        services.Configure<FluxIndexOptions>(configuration.GetSection("FluxIndex"));
-        
-        // 핵심 서비스 등록
-        services.AddSingleton(options);
-        
-        // 인터페이스 구현체는 아직 구현되지 않았으므로 주석 처리
-        // 추후 구현체 완성 시 주석 해제
-        
-        // 핵심 검색 서비스 등록
-        // Singleton, not scoped: the default keyword index lives in process memory, so a scoped
-        // lifetime would hand each scope its own empty index.
-        services.AddSingleton<IKeywordSearchService, BM25SparseRetriever>();
-        services.AddScoped<IHybridSearchService, HybridSearchService>();
+        section.Bind(options);
+        services.Configure<FluxIndexOptions>(section);
 
-        // services.AddScoped<IVectorStore, PostgresVectorStore>();
-        // services.AddScoped<IEmbeddingService, OpenAIEmbeddingService>();
-        // services.AddScoped<IIndexingService, DefaultIndexingService>();
-        
-        // 캐싱 서비스
-        if (options.Cache.EnableEmbeddingCache || options.Cache.EnableSearchCache)
-        {
-            if (options.Cache.CacheProvider.Equals("Redis", StringComparison.OrdinalIgnoreCase))
-            {
-                // Redis 캐시 설정
-                // services.AddStackExchangeRedisCache(opt =>
-                // {
-                //     opt.Configuration = options.Cache.RedisConnectionString;
-                // });
-            }
-            else
-            {
-                // 메모리 캐시 설정
-                services.AddMemoryCache();
-            }
-        }
-        
-        // HTTP 클라이언트 (OpenAI 등 외부 API용)
-        services.AddHttpClient();
-        
-        // 로깅
-        services.AddLogging();
-        
-        return services;
+        return AddFluxIndexCore(services, options);
     }
-    
+
     /// <summary>
     /// FluxIndex 서비스 등록 (액션 설정)
     /// </summary>
+    /// <remarks>기본값 등록 규칙은 <see cref="AddFluxIndex(IServiceCollection, IConfiguration)"/> 와 같습니다.</remarks>
     public static IServiceCollection AddFluxIndex(
         this IServiceCollection services,
         Action<FluxIndexOptions> configureOptions)
     {
         var options = new FluxIndexOptions();
         configureOptions(options);
-        
-        services.AddSingleton(options);
-        services.Configure<FluxIndexOptions>(opt =>
-        {
-            configureOptions(opt);
-        });
-        
-        // 나머지 서비스 등록 로직
+        services.Configure(configureOptions);
+
         return AddFluxIndexCore(services, options);
     }
-    
+
     /// <summary>
     /// FluxIndex 서비스 등록 (기본 설정)
     /// </summary>
+    /// <remarks>기본값 등록 규칙은 <see cref="AddFluxIndex(IServiceCollection, IConfiguration)"/> 와 같습니다.</remarks>
     public static IServiceCollection AddFluxIndex(this IServiceCollection services)
-    {
-        return services.AddFluxIndex(options =>
-        {
-            // 기본 설정 사용
-        });
-    }
-    
+        => services.AddFluxIndex(_ => { });
+
     private static IServiceCollection AddFluxIndexCore(
         IServiceCollection services,
         FluxIndexOptions options)
     {
-        // 캐싱 서비스
+        services.TryAddSingleton(options);
+
+        // Singleton, not scoped: the default keyword index lives in process memory, so a scoped
+        // lifetime would hand each scope its own empty index.
+        services.TryAddSingleton<IKeywordSearchService, BM25SparseRetriever>();
+        services.TryAddScoped<IHybridSearchService, HybridSearchService>();
+
         if (options.Cache.EnableEmbeddingCache || options.Cache.EnableSearchCache)
         {
-            if (options.Cache.CacheProvider.Equals("Redis", StringComparison.OrdinalIgnoreCase))
-            {
-                // Redis 캐시 설정
-            }
-            else
-            {
+            // CacheProvider "Redis" is not wired here: the Redis store lives in FluxIndex.Cache.Redis
+            // (AddRedisCacheStore()). Only the in-memory provider is registered by this method.
+            if (!options.Cache.CacheProvider.Equals("Redis", StringComparison.OrdinalIgnoreCase))
                 services.AddMemoryCache();
-            }
         }
-        
-        // HTTP 클라이언트
+
         services.AddHttpClient();
-        
-        // 로깅
         services.AddLogging();
-        
+
         return services;
     }
 
