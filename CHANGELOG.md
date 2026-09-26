@@ -9,7 +9,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.53.0] - Unreleased
+## [0.53.0] - 2026-09-26
 
 ### Added
 - **A chunk from a recording says where in it it came from.** The FileFlux integration writes `ff_start_seconds` /
