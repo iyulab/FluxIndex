@@ -59,6 +59,29 @@ internal sealed class PostgreSQLStorageInitializer : IStorageInitializer
         }
 
         RelationalSchemaProvisioner.ProvisionTables(context);
+        EnsureVectorSizeMatches(connectionString, postgresOptions.EmbeddingDimensions);
         TotalChunksBackfill.Run(context, "vectors");
+    }
+
+    /// <summary>
+    /// Table provisioning never alters an existing table, so a store configured for another embedding size (a model
+    /// change, a different <c>EmbeddingDimensions</c>) started cleanly and then failed every write and every vector
+    /// search with <c>22000: expected N dimensions, not M</c>. The mismatch is a startup error instead, naming both sizes.
+    /// </summary>
+    internal static void EnsureVectorSizeMatches(string connectionString, int configuredDimensions)
+    {
+        using var connection = new NpgsqlConnection(connectionString);
+        connection.Open();
+        using var command = new NpgsqlCommand(
+            "SELECT atttypmod FROM pg_attribute WHERE attrelid = to_regclass('vectors') AND attname = 'Embedding' AND NOT attisdropped",
+            connection);
+        if (command.ExecuteScalar() is not int stored || stored <= 0)
+            return; // no table yet, or an unsized vector column: nothing to compare
+
+        if (stored != configuredDimensions)
+            throw new InvalidOperationException(
+                $"The PostgreSQL vector store holds {stored}-dimension embeddings (vectors.\"Embedding\" is vector({stored})), " +
+                $"but EmbeddingDimensions is {configuredDimensions}. Configure {stored} to keep this index, or re-index into a new " +
+                "database or table for the new embedding model; the existing vectors cannot be compared with the new ones.");
     }
 }

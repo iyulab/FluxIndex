@@ -9,6 +9,17 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.52.3]
+
+### Fixed
+- **A PostgreSQL store started with a different embedding size than its table fails at startup, naming both sizes.**
+  Provisioning never alters an existing table, so after a model change (or a different `EmbeddingDimensions`) the store
+  started cleanly and then failed every write and vector search with `22000: expected N dimensions, not M`.
+  **Behaviour change**: `Build()` / startup initialization now throws `InvalidOperationException` in that case — configure
+  the table's size to keep the index, or re-index into a new database for the new model.
+
+---
+
 ## [0.52.2]
 
 ### Changed

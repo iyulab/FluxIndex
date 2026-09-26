@@ -132,6 +132,31 @@ public class PostgreSQLStorageInitializerIntegrationTests : IAsyncLifetime
         (await store.GetByDocumentIdAsync(longId, TestContext.Current.CancellationToken)).Should().ContainSingle();
     }
 
+    /// <summary>
+    /// A store whose table was created for one embedding size, started with another, fails at startup naming both —
+    /// it used to start cleanly and fail every write and search with <c>22000: expected N dimensions, not M</c>.
+    /// </summary>
+    [Fact]
+    public async Task InitializeSync_WithAnotherEmbeddingSizeThanTheTable_FailsNamingBoth()
+    {
+        var connectionString = _container.GetConnectionString();
+
+        var created = new ServiceCollection();
+        created.AddLogging();
+        created.AddPostgreSQLVectorStore(connectionString);
+        await using (var provider = created.BuildServiceProvider())
+            new PostgreSQLStorageInitializer().InitializeSync(provider);
+
+        var changed = new ServiceCollection();
+        changed.AddLogging();
+        changed.AddPostgreSQLVectorStore(connectionString, embeddingDimensions: 384);
+        await using var changedProvider = changed.BuildServiceProvider();
+
+        var start = () => new PostgreSQLStorageInitializer().InitializeSync(changedProvider);
+
+        start.Should().Throw<InvalidOperationException>().WithMessage("*1536*384*");
+    }
+
     private static float[] UnitVector(int dimensions)
     {
         var vector = new float[dimensions];
