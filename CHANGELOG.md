@@ -11,6 +11,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [0.55.1] - Unreleased
 
+### Changed
+- Re-pinned sibling package(s) `FileFlux` 0.31.3 -> 0.31.4, `FluxImprover` 0.14.5 -> 0.14.6, `LMSupply.Embedder` 0.80.0 -> 0.81.1, `LMSupply.Generator` 0.80.0 -> 0.81.1, `LMSupply.Reranker` 0.80.0 -> 0.81.1 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
+
 ### Fixed
 - **`AddLMSupplyEmbedding` with any LMSupply catalog alias works in `FluxIndexContextBuilder`.** The registration is
   lazy, so the provider announces the model's dimension before loading; it decided "is this a catalog model" by
