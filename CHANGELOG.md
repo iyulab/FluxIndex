@@ -13,6 +13,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ### Changed
 - Re-pinned sibling package(s) `LMSupply.Embedder` 0.79.0 -> 0.79.1, `LMSupply.Generator` 0.79.0 -> 0.79.1, `LMSupply.Reranker` 0.79.0 -> 0.79.1 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
+- Re-pinned sibling package(s) `FluxImprover` 0.14.3 -> 0.14.4 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
 
 ### Fixed
 - **A service provider disposed with `Dispose()` no longer throws when an LMSupply service or the Qdrant / Neo4j store is registered.**
