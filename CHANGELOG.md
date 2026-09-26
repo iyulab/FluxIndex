@@ -9,7 +9,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.54.0] - Unreleased
+## [0.54.0] - 2026-09-26
 
 ### Removed
 - **Breaking**: **`services.AddFluxIndex(...)` (all three overloads, `FluxIndex.SDK.Extensions`) is gone — `FluxIndexContext.CreateBuilder()` is the one way to register FluxIndex.**
