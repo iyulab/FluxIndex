@@ -32,7 +32,7 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   `FindStrongestPathAsync` (Dijkstra), `ComputeChunkImportanceAsync` (PageRank-style)). Registered by the builder.
   **GraphRAG**: opt-in with `AddGraphRAGService` / `AddFullGraphRAG` in `ConfigureServices`; query through
   `IGraphRAGService.QueryAsync`. A re-build replaces the communities the last build of those chunks persisted
-  (`IGraphStore.DeleteCommunitiesAsync`).
+  (`IGraphStore.DeleteCommunitiesAsync`); `IGraphRAGService.ForgetChunksAsync` removes what replaced or deleted chunks left in the graph.
 - **Vector quantization** — `IVectorQuantizer` (`ScalarQuantizer`, `ProductQuantizer`, `BinaryQuantizer`); opt-in with
   `AddVectorQuantization` or `AddScalarQuantization` / `AddProductQuantization` / `AddBinaryQuantization`, stored by
   `AddSQLiteQuantizedVectorStore` / `AddPostgreSQLQuantizedVectorStore`; searched with `SearchQuantizedAsync`.
