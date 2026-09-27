@@ -9,7 +9,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.56.0] - Unreleased
+## [0.56.0] - 2026-09-27
 
 ### Fixed
 - **Coarser community levels hold the right chunks.** `LeidenCommunityService.DetectHierarchicalCommunitiesAsync`
