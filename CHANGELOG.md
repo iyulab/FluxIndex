@@ -9,7 +9,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.57.0] - Unreleased
+## [0.57.0] - 2026-09-27
 
 ### Fixed
 - **`LeidenCommunityService.UpdateHierarchyAsync` keeps the existing hierarchy.** It detected communities among the new chunks only and
