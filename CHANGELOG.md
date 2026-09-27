@@ -9,7 +9,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.58.0] - Unreleased
+## [0.58.0] - 2026-09-27
 
 ### Fixed
 - **A GraphRAG re-build replaces the communities an earlier build of the same chunks persisted.** Community ids are
