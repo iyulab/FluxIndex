@@ -9,6 +9,15 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.57.0] - Unreleased
+
+### Fixed
+- **`LeidenCommunityService.UpdateHierarchyAsync` keeps the existing hierarchy.** It detected communities among the new chunks only and
+  returned that as the hierarchy. A GraphRAG `UpdateIndexAsync` with `RebuildCommunities = false` therefore replaced every existing community
+  with communities of the new chunks. Now each new chunk joins the level-0 community whose centroid is most similar (at least
+  `SimilarityThreshold`) and every ancestor of that community. Chunks that fit no community form their own level-0 communities. A chunk
+  already in the hierarchy is skipped. A community that gains chunks gets the id of its new chunk set.
+
 ## [0.56.0] - 2026-09-27
 
 ### Fixed

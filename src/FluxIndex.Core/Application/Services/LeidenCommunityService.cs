@@ -252,22 +252,160 @@ public partial class LeidenCommunityService : ILeidenCommunityService
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// The existing communities are kept. A new chunk joins the level-0 community whose centroid is most similar to it (at least
+    /// <see cref="LeidenOptions.SimilarityThreshold"/>) and, through the parent links, every ancestor of that community. The chunks that
+    /// fit no community are detected among themselves; their level-0 communities are added without a parent. A chunk already in the
+    /// hierarchy is skipped. A community that gains chunks gets the id of its new chunk set and loses its stored summary; keywords and
+    /// representatives keep describing the old members until the next full detection.
+    /// </remarks>
     public async Task<CommunityHierarchy> UpdateHierarchyAsync(
         CommunityHierarchy hierarchy,
         IEnumerable<LeidenChunk> newChunks,
         LeidenOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        // Simple implementation: rebuild with all chunks
-        // A more sophisticated implementation would incrementally update
-        var allChunks = new List<LeidenChunk>();
+        ArgumentNullException.ThrowIfNull(hierarchy);
+        options ??= hierarchy.Options;
 
-        // Note: In production, we would need to maintain the original chunks
-        // For now, we just detect on new chunks
-        return await DetectHierarchicalCommunitiesAsync(
-            newChunks,
-            options ?? hierarchy.Options,
-            cancellationToken);
+        if (hierarchy.LevelCount == 0)
+        {
+            return await DetectHierarchicalCommunitiesAsync(newChunks, options, cancellationToken);
+        }
+
+        var known = hierarchy.Levels[0].Communities.SelectMany(c => c.ChunkIds).ToHashSet(StringComparer.Ordinal);
+        var added = newChunks
+            .Where(c => known.Add(c.Id))
+            .OrderBy(c => c.Id, StringComparer.Ordinal)
+            .ToList();
+        if (added.Count == 0)
+        {
+            return hierarchy;
+        }
+
+        // Level 0: each new chunk joins its most similar community, or waits for the fresh-community pass.
+        var joined = new Dictionary<string, List<LeidenChunk>>(StringComparer.Ordinal);
+        var unassigned = new List<LeidenChunk>();
+        foreach (var chunk in added)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var best = hierarchy.Levels[0].Communities
+                .Where(c => c.Centroid != null)
+                .Select(c => (community: c, similarity: CalculateCosineSimilarity(chunk.Embedding, c.Centroid!)))
+                .OrderByDescending(x => x.similarity)
+                .ThenBy(x => x.community.Id, StringComparer.Ordinal)
+                .FirstOrDefault();
+
+            if (best.community != null && best.similarity >= options.SimilarityThreshold)
+            {
+                if (!joined.TryGetValue(best.community.Id, out var list))
+                    joined[best.community.Id] = list = [];
+                list.Add(chunk);
+            }
+            else
+            {
+                unassigned.Add(chunk);
+            }
+        }
+
+        // Every ancestor gains what its descendants gained.
+        var gains = new Dictionary<string, List<LeidenChunk>>(joined, StringComparer.Ordinal);
+        var byId = hierarchy.Levels.SelectMany(l => l.Communities).ToDictionary(c => c.Id, StringComparer.Ordinal);
+        foreach (var (communityId, chunks) in joined)
+        {
+            for (var parentId = byId[communityId].ParentCommunityId; parentId != null && byId.TryGetValue(parentId, out var parent); parentId = parent.ParentCommunityId)
+            {
+                if (!gains.TryGetValue(parentId, out var list))
+                    gains[parentId] = list = [];
+                list.AddRange(chunks);
+            }
+        }
+
+        // Rebuild each level with the gains applied; a changed community gets the id of its new chunk set.
+        var renamed = new Dictionary<string, string>(StringComparer.Ordinal);
+        var levels = new List<CommunityLevel>();
+        for (var i = 0; i < hierarchy.LevelCount; i++)
+        {
+            var level = hierarchy.Levels[i];
+            var communities = level.Communities.Select(c =>
+            {
+                if (!gains.TryGetValue(c.Id, out var gained))
+                    return c;
+                var chunkIds = c.ChunkIds.Concat(gained.Select(g => g.Id)).Order(StringComparer.Ordinal).ToList();
+                var id = CommunityIdentity.For(i, chunkIds, options.GraphPartition);
+                renamed[c.Id] = id;
+                return new LeidenCommunity
+                {
+                    Id = id,
+                    Index = c.Index,
+                    ChunkIds = chunkIds,
+                    Centroid = ExtendCentroid(c.Centroid, c.Size, gained),
+                    InternalDensity = c.InternalDensity,
+                    Cohesion = c.Cohesion,
+                    ParentCommunityId = c.ParentCommunityId,
+                    ChildCommunityIds = c.ChildCommunityIds,
+                    Keywords = c.Keywords,
+                    RepresentativeChunkIds = c.RepresentativeChunkIds,
+                };
+            }).ToList();
+            levels.Add(new CommunityLevel { LevelIndex = level.LevelIndex, Communities = communities, Modularity = level.Modularity, Resolution = level.Resolution });
+        }
+
+        // Links follow the renames.
+        for (var i = 0; i < levels.Count; i++)
+        {
+            var level = levels[i];
+            levels[i] = new CommunityLevel
+            {
+                LevelIndex = level.LevelIndex,
+                Modularity = level.Modularity,
+                Resolution = level.Resolution,
+                Communities = level.Communities.Select(c => c.WithHierarchyLinks(
+                    c.ParentCommunityId is { } p ? renamed.GetValueOrDefault(p, p) : null,
+                    c.ChildCommunityIds.Select(ch => renamed.GetValueOrDefault(ch, ch)).ToList())).ToList(),
+            };
+        }
+
+        // The chunks that fit nowhere: their own level-0 communities, without a parent.
+        var freshCount = 0;
+        if (unassigned.Count >= options.MinCommunitySize)
+        {
+            var fresh = await DetectHierarchicalCommunitiesAsync(unassigned, options, cancellationToken);
+            if (fresh.LevelCount > 0)
+            {
+                var freshLevel0 = fresh.Levels[0].Communities.Select(c => c.WithHierarchyLinks(null, Array.Empty<string>())).ToList();
+                freshCount = freshLevel0.Sum(c => c.Size);
+                levels[0] = new CommunityLevel
+                {
+                    LevelIndex = levels[0].LevelIndex,
+                    Modularity = levels[0].Modularity,
+                    Resolution = levels[0].Resolution,
+                    Communities = [.. levels[0].Communities, .. freshLevel0],
+                };
+            }
+        }
+
+        var joinedCount = joined.Values.Sum(l => l.Count);
+        if (_logger.IsEnabled(LogLevel.Debug))
+            LogLeidenIncrementalUpdate(_logger, added.Count, joinedCount, freshCount);
+
+        return new CommunityHierarchy
+        {
+            Levels = levels,
+            TotalChunks = hierarchy.TotalChunks + joinedCount + freshCount,
+            Options = options,
+            Statistics = hierarchy.Statistics,
+        };
+    }
+
+    /// <summary>The normalized mean of a community's members after <paramref name="gained"/> join it, from its stored (normalized) centroid.</summary>
+    private static EmbeddingVector? ExtendCentroid(EmbeddingVector? centroid, int size, List<LeidenChunk> gained)
+    {
+        var embeddings = new List<EmbeddingVector>(gained.Count + size);
+        if (centroid != null)
+            embeddings.AddRange(Enumerable.Repeat(centroid, Math.Max(size, 1)));
+        embeddings.AddRange(gained.Select(g => g.Embedding));
+        return CalculateCentroid(embeddings);
     }
 
     #region Private Methods
@@ -999,6 +1137,8 @@ public partial class LeidenCommunityService : ILeidenCommunityService
 
     #region LoggerMessage Definitions
 
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Incremental Leiden update: {Added} new chunks, {Joined} joined existing communities, {Fresh} formed new ones")]
+    private static partial void LogLeidenIncrementalUpdate(ILogger logger, int added, int joined, int fresh);
     [LoggerMessage(Level = LogLevel.Debug, Message = "Starting Leiden community detection on {Count} chunks")]
     private static partial void LogLeidenCommunity4(ILogger logger, int count);
     [LoggerMessage(Level = LogLevel.Debug, Message = "Level {Level}: {Communities} communities, modularity {Modularity:F4}")]
