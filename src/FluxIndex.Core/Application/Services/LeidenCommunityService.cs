@@ -66,6 +66,12 @@ public partial class LeidenCommunityService : ILeidenCommunityService
 
         // Step 1: Build similarity graph
         var graph = BuildSimilarityGraph(chunkList, options);
+        var chunkGraphEdges = graph.Values.Sum(neighbors => neighbors.Count) / 2;
+
+        // The chunks each node of the current graph stands for. At level 0 a node is one chunk; at every coarser level a
+        // node is a community of the level below, so it stands for the union of that community's chunks. Without this a
+        // coarser level read its node indices as chunk indices and named the first few chunks instead of its members.
+        var nodeChunks = Enumerable.Range(0, chunkList.Count).Select(i => (IReadOnlyList<int>)[i]).ToList();
 
         // Step 2: Detect communities at multiple levels
         var levels = new List<CommunityLevel>();
@@ -87,9 +93,22 @@ public partial class LeidenCommunityService : ILeidenCommunityService
 
             modularityHistory.Add(modularity);
 
+            // Number the communities 0..n-1 (the algorithm labels a community by one of its nodes) — the aggregated graph
+            // and the next level's partition index nodes by this number.
+            partition = RelabelContiguously(partition);
+            var communityCount = partition.Values.Distinct().Count();
+
+            // A coarser level that merged nothing repeats the level below with new ids — every consumer would then store
+            // and summarize the same communities twice.
+            if (level > 0 && communityCount == graph.Count)
+            {
+                break;
+            }
+
             // Build communities from partition
             var communities = BuildCommunitiesFromPartition(
                 partition,
+                nodeChunks,
                 chunkList,
                 level,
                 options.MinCommunitySize,
@@ -111,16 +130,21 @@ public partial class LeidenCommunityService : ILeidenCommunityService
             if (_logger.IsEnabled(LogLevel.Debug))
                 LogLeidenCommunity3(_logger, level, communities.Count, modularity);
 
-            // Check if we should stop
-            if (communities.Count == 1 ||
-                (level > 0 && communities.Count == levels[level - 1].CommunityCount))
+            // Stop when this level left a single community, or merged nothing (at level 0: every chunk is alone).
+            if (communities.Count == 1 || communityCount == graph.Count)
             {
                 break;
             }
 
-            // Aggregate graph for next level
+            // Aggregate graph for next level: one node per community, including communities too small to report — their
+            // chunks still belong somewhere in the coarser levels.
+            nodeChunks = Enumerable.Range(0, communityCount)
+                .Select(c => (IReadOnlyList<int>)partition.Where(kvp => kvp.Value == c)
+                    .SelectMany(kvp => nodeChunks[kvp.Key])
+                    .ToList())
+                .ToList();
             graph = AggregateGraph(graph, partition);
-            currentPartition = ResetPartition(communities.Count);
+            currentPartition = ResetPartition(communityCount);
         }
 
         // Link parent-child relationships between levels
@@ -138,7 +162,7 @@ public partial class LeidenCommunityService : ILeidenCommunityService
                 TotalIterations = levels.Count,
                 FinalModularity = modularityHistory.LastOrDefault(),
                 ProcessingTimeMs = stopwatch.ElapsedMilliseconds,
-                GraphEdges = graph.Values.Sum(neighbors => neighbors.Count) / 2,
+                GraphEdges = chunkGraphEdges,
                 AverageCommunitySize = levels.FirstOrDefault()?.Communities.Average(c => c.Size) ?? 0,
                 ModularityByLevel = modularityHistory
             }
@@ -651,17 +675,22 @@ public partial class LeidenCommunityService : ILeidenCommunityService
     /// </summary>
     private static List<LeidenCommunity> BuildCommunitiesFromPartition(
         Dictionary<int, int> partition,
+        List<IReadOnlyList<int>> nodeChunks,
         List<LeidenChunk> chunks,
         int level,
         int minCommunitySize,
         string graphPartition)
     {
         var communities = new List<LeidenCommunity>();
-        var groups = partition.GroupBy(kvp => kvp.Value);
+        var groups = partition.GroupBy(kvp => kvp.Value).OrderBy(g => g.Key);
 
         foreach (var group in groups)
         {
-            var nodeIndices = group.Select(kvp => kvp.Key).ToList();
+            // The community's chunks: the members of every node in it. The size rule counts chunks at every level.
+            var nodeIndices = group.Select(kvp => kvp.Key).OrderBy(n => n)
+                .SelectMany(node => nodeChunks[node])
+                .OrderBy(i => i)
+                .ToList();
 
             if (nodeIndices.Count < minCommunitySize)
             {
@@ -706,28 +735,53 @@ public partial class LeidenCommunityService : ILeidenCommunityService
     /// </summary>
     private static void LinkHierarchyLevels(List<CommunityLevel> levels)
     {
-        for (int i = 0; i < levels.Count - 1; i++)
+        // A coarser community is made of whole finer communities (see nodeChunks), so a finer community's parent is the
+        // coarser community that holds its chunks — any one of them. A finer community whose coarser node was too small to
+        // report has no parent.
+        for (int i = 0; i < levels.Count; i++)
         {
-            var finerLevel = levels[i];
-            var coarserLevel = levels[i + 1];
-
-            // For each community in the finer level, find parent in coarser level
-            // This is a simplified approach - in practice we'd track this during aggregation
-            foreach (var finerCommunity in finerLevel.Communities)
+            var parentOf = new Dictionary<string, string>(StringComparer.Ordinal);
+            if (i + 1 < levels.Count)
             {
-                var centroid = finerCommunity.Centroid;
-                if (centroid == null) continue;
+                var holder = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (var coarser in levels[i + 1].Communities)
+                    foreach (var chunkId in coarser.ChunkIds)
+                        holder[chunkId] = coarser.Id;
 
-                // Find closest community in coarser level
-                var bestParent = coarserLevel.Communities
-                    .Where(c => c.Centroid != null)
-                    .OrderByDescending(c => CalculateCosineSimilarity(centroid, c.Centroid!))
-                    .FirstOrDefault();
-
-                // Note: Would need mutable communities to set ParentCommunityId
-                // In practice, this would be tracked during the algorithm
+                foreach (var finer in levels[i].Communities)
+                    if (finer.ChunkIds.Count > 0 && holder.TryGetValue(finer.ChunkIds[0], out var parentId))
+                        parentOf[finer.Id] = parentId;
             }
+
+            var childrenOf = i > 0
+                ? levels[i - 1].Communities
+                    .Where(f => f.ParentCommunityId != null)
+                    .GroupBy(f => f.ParentCommunityId!, StringComparer.Ordinal)
+                    .ToDictionary(g => g.Key, g => (IReadOnlyList<string>)g.Select(f => f.Id).ToList(), StringComparer.Ordinal)
+                : new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+
+            var level = levels[i];
+            levels[i] = new CommunityLevel
+            {
+                LevelIndex = level.LevelIndex,
+                Modularity = level.Modularity,
+                Resolution = level.Resolution,
+                Communities = level.Communities.Select(c => c.WithHierarchyLinks(
+                    parentOf.GetValueOrDefault(c.Id),
+                    childrenOf.GetValueOrDefault(c.Id) ?? Array.Empty<string>())).ToList(),
+            };
         }
+    }
+
+    /// <summary>Numbers a partition's communities 0..n-1 in order of their smallest node.</summary>
+    private static Dictionary<int, int> RelabelContiguously(Dictionary<int, int> partition)
+    {
+        var numbers = partition
+            .GroupBy(kvp => kvp.Value)
+            .OrderBy(g => g.Min(kvp => kvp.Key))
+            .Select((g, n) => (label: g.Key, n))
+            .ToDictionary(x => x.label, x => x.n);
+        return partition.ToDictionary(kvp => kvp.Key, kvp => numbers[kvp.Value]);
     }
 
     /// <summary>

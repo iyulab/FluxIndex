@@ -9,6 +9,25 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.56.0] - Unreleased
+
+### Fixed
+- **Coarser community levels hold the right chunks.** `LeidenCommunityService.DetectHierarchicalCommunitiesAsync`
+  read the node numbers of an aggregated level as chunk numbers. Every community above level 0 therefore named the
+  first few chunks of the corpus instead of the chunks of the communities it merged. A GraphRAG build with the default
+  `MaxHierarchyLevels = 3` stored and summarized those wrong communities. A community at any level now holds exactly
+  the chunks of the communities under it. Community ids above level 0 are derived from their chunks, so they change
+  once when an index is rebuilt; level 0 is unchanged.
+- **The hierarchy is linked.** `ParentCommunityId` and `ChildCommunityIds` were never set. Every finer community now
+  names the coarser community that holds its chunks, and every coarser community lists its children. The reduce step
+  of hierarchical summarization combines exactly the child summaries of a community, instead of guessing them from
+  shared chunks.
+- **No repeated top level.** A coarser level that merged nothing was added as a copy of the level below with new ids,
+  and was stored and summarized twice. Detection now stops at the last level that merged something.
+- `MinCommunitySize` counts chunks at every level (its documentation now says so). Above level 0 it counted merged
+  communities. A small community still takes part in coarser levels even when it is not reported.
+
+
 ## [0.55.4] - 2026-09-27
 
 ### Changed

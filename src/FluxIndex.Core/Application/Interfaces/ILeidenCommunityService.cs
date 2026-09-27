@@ -101,8 +101,8 @@ public class LeidenOptions
     public int MaxHierarchyLevels { get; set; } = 3;
 
     /// <summary>
-    /// Minimum community size at finest level.
-    /// Communities smaller than this are merged or discarded.
+    /// Minimum number of chunks a reported community holds, at every level.
+    /// A smaller community is not reported, but its chunks still take part in the coarser levels.
     /// Default: 3
     /// </summary>
     public int MinCommunitySize { get; set; } = 3;
@@ -337,6 +337,22 @@ public class LeidenCommunity
     /// Representative chunk IDs for this community
     /// </summary>
     public IReadOnlyList<string> RepresentativeChunkIds { get; init; } = Array.Empty<string>();
+
+    /// <summary>A copy of this community with its place in the hierarchy set.</summary>
+    internal LeidenCommunity WithHierarchyLinks(string? parentCommunityId, IReadOnlyList<string> childCommunityIds) => new()
+    {
+        Id = Id,
+        Index = Index,
+        ChunkIds = ChunkIds,
+        Centroid = Centroid,
+        InternalDensity = InternalDensity,
+        Cohesion = Cohesion,
+        ParentCommunityId = parentCommunityId,
+        ChildCommunityIds = childCommunityIds,
+        Summary = Summary,
+        Keywords = Keywords,
+        RepresentativeChunkIds = RepresentativeChunkIds,
+    };
 }
 
 /// <summary>
