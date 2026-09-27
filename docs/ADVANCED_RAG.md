@@ -315,6 +315,13 @@ positions are not persisted and come back as defaults. A community's chunk membe
 community itself on every store (a node property on Neo4j, a `chunk_ids` column on PostgreSQL and
 SQLite that start-up provisioning adds to databases created before it existed).
 
+**Re-building replaces what the last build persisted** (0.58.0+). `BuildIndexAsync` stores the new hierarchy, then deletes every
+stored community that groups one of the build's chunks and is not in that hierarchy (`IGraphStore.DeleteCommunitiesAsync`). So
+after a document is edited and re-built, `LoadIndexAsync` returns only its new communities. A community that also groups other
+documents' chunks is deleted as well (it was clustered from content that changed), and comes back when those documents are built
+again. The build cannot see a community none of whose chunks are in it, such as one left by chunks the edit replaced
+entirely.
+
 `UpdateIndexAsync` returns the extended index **in memory**; it does not write the updated communities back to the graph store
 (only `BuildIndexAsync` persists communities). With `RebuildCommunities = true` (the default) communities are detected again over
 the old and new chunks; with `false` each new chunk joins its most similar existing community (when at least `SimilarityThreshold` similar) and that community's ancestors, and

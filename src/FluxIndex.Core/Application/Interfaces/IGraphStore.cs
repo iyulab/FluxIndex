@@ -213,6 +213,18 @@ public interface IGraphStore
         string partition = GraphPartition.Default,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// Deletes the given communities together with their membership rows. Ids that are not stored are ignored.
+    /// A GraphRAG build calls it for the communities it supersedes — stored ones that group any of the build's
+    /// chunks and are not part of the new hierarchy.
+    /// </summary>
+    /// <param name="communityIds">Ids of the communities to delete.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The number of communities deleted.</returns>
+    Task<int> DeleteCommunitiesAsync(
+        IEnumerable<string> communityIds,
+        CancellationToken ct = default);
+
     #endregion
 
     #region Statistics and Maintenance

@@ -531,6 +531,22 @@ public partial class SQLiteEntityGraphStore : IGraphStore
         return community.Id;
     }
 
+    public async Task<int> DeleteCommunitiesAsync(IEnumerable<string> communityIds, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(communityIds);
+        var ids = communityIds.Distinct(StringComparer.Ordinal).ToList();
+        if (ids.Count == 0) return 0;
+
+        var communities = await _context.Communities.AsTracking().Where(c => ids.Contains(c.Id)).ToListAsync(ct);
+        if (communities.Count == 0) return 0;
+
+        _context.CommunityMembers.RemoveRange(
+            await _context.CommunityMembers.Where(m => ids.Contains(m.CommunityId)).ToListAsync(ct));
+        _context.Communities.RemoveRange(communities);
+        await _context.SaveChangesAsync(ct);
+        return communities.Count;
+    }
+
     public async Task<GraphCommunity?> GetCommunityByIdAsync(
         string communityId,
         CancellationToken ct = default)

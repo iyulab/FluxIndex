@@ -854,6 +854,29 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable, IDisposabl
         return id;
     }
 
+    public async Task<int> DeleteCommunitiesAsync(IEnumerable<string> communityIds, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(communityIds);
+        var ids = communityIds.Distinct(StringComparer.Ordinal).ToList();
+        if (ids.Count == 0) return 0;
+
+        await using var session = await GetSessionAsync();
+
+        return await session.ExecuteWriteAsync(async tx =>
+        {
+            // Membership lives on the community node itself (entityIds / chunkIds); DETACH also drops any edge to it.
+            var query = $@"
+                MATCH (c:{CommunityLabel})
+                WHERE c.id IN $ids
+                DETACH DELETE c
+                RETURN count(c) AS deleted";
+
+            var cursor = await tx.RunAsync(query, new { ids });
+            var record = await cursor.SingleAsync();
+            return record["deleted"].As<int>();
+        });
+    }
+
     public async Task<GraphCommunity?> GetCommunityByIdAsync(
         string communityId,
         CancellationToken ct = default)

@@ -212,9 +212,28 @@ public partial class GraphRAGService : IGraphRAGService
 
         if (_logger.IsEnabled(LogLevel.Information))
             LogGraphRAG10(_logger, persistedCount);
+
+        // Only now are the previous build's communities superseded (new rows first, so a reader never sees none).
+        // A stored community that groups any chunk of this build but is not in the new hierarchy came from an
+        // earlier build of these chunks: the chunks were clustered again, so its membership and summary are stale.
+        // Community ids are upserted, so without this a changed document kept its old communities next to the new
+        // ones and LoadIndexAsync returned both. A community that also spans chunks outside this build (a corpus-wide
+        // build, re-built per document) is dropped too — a missing community is recoverable by building again, a
+        // stale summary is read as current. Communities none of whose chunks are in this build are not touched here.
+        var newIds = index.CommunityHierarchy.Levels
+            .SelectMany(l => l.Communities)
+            .Select(c => c.Id)
+            .ToHashSet(StringComparer.Ordinal);
+        var stored = await _graphStore.GetCommunitiesByChunkIdsAsync(index.Chunks.Keys, index.Partition, cancellationToken);
+        var superseded = stored.Where(c => !newIds.Contains(c.Id)).Select(c => c.Id).ToList();
+        if (superseded.Count > 0)
+        {
+            var deleted = await _graphStore.DeleteCommunitiesAsync(superseded, cancellationToken);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogSupersededCommunitiesDeleted(_logger, deleted, index.Partition);
+        }
     }
 
-    /// <inheritdoc />
     /// <inheritdoc />
     public async Task<GraphRAGIndex> LoadIndexAsync(
         IEnumerable<DocumentChunk> chunks,
@@ -1709,6 +1728,9 @@ Provide a comprehensive answer that integrates both perspectives:";
     #endregion
 
     #region LoggerMessage Definitions
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Deleted {Count} superseded GraphRAG communities in partition '{Partition}'")]
+    private static partial void LogSupersededCommunitiesDeleted(ILogger logger, int count, string partition);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Building GraphRAG index for {ChunkCount} chunks")]
     private static partial void LogGraphRAG13(ILogger logger, int chunkCount);

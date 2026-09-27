@@ -31,7 +31,8 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
 - **Graph traversal** — `IGraphTraversalService` (`TraverseBfsAsync`, `TraverseDfsAsync`, `FindShortestPathAsync` (BFS),
   `FindStrongestPathAsync` (Dijkstra), `ComputeChunkImportanceAsync` (PageRank-style)). Registered by the builder.
   **GraphRAG**: opt-in with `AddGraphRAGService` / `AddFullGraphRAG` in `ConfigureServices`; query through
-  `IGraphRAGService.QueryAsync`.
+  `IGraphRAGService.QueryAsync`. A re-build replaces the communities the last build of those chunks persisted
+  (`IGraphStore.DeleteCommunitiesAsync`).
 - **Vector quantization** — `IVectorQuantizer` (`ScalarQuantizer`, `ProductQuantizer`, `BinaryQuantizer`); opt-in with
   `AddVectorQuantization` or `AddScalarQuantization` / `AddProductQuantization` / `AddBinaryQuantization`, stored by
   `AddSQLiteQuantizedVectorStore` / `AddPostgreSQLQuantizedVectorStore`; searched with `SearchQuantizedAsync`.

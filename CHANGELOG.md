@@ -9,6 +9,26 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.58.0] - Unreleased
+
+### Fixed
+- **A GraphRAG re-build replaces the communities an earlier build of the same chunks persisted.** Community ids are
+  upserted, so a document whose chunks clustered differently on re-build (an edit, or the one-time id change of 0.56.0)
+  kept its old communities next to the new ones, and `LoadIndexAsync` returned both, the old summaries included. Now
+  `BuildIndexAsync` first stores the new hierarchy, then deletes every stored community that groups one of the build's
+  chunks and is not part of that hierarchy. A community that also groups chunks outside the build (a corpus-wide build
+  re-built per document) is deleted too: a missing community comes back with the next build, while a stale summary would
+  be read as current. A community with no chunk in the build is not touched. When every chunk of a document was
+  replaced, the build does not see its old communities; removing them per chunk is follow-up work.
+
+### Added
+- **`IGraphStore.DeleteCommunitiesAsync(ids)`** deletes communities with their membership rows and returns how many
+  it deleted. Implemented by the SQLite, PostgreSQL and Neo4j stores.
+  **Breaking** for custom `IGraphStore` implementations: implement the member. Delete the community rows and whatever
+  links entities to them.
+
+---
+
 ## [0.57.1] - 2026-09-27
 
 ### Changed
@@ -45,7 +65,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   once when an index is rebuilt; level 0 is unchanged.
   **Note for persisted GraphRAG stores:** the graph store upserts communities by id and does not remove old ones, so after the
   first rebuild a store written before 0.56.0 holds the old (wrong) coarser-level rows next to the new ones, and `LoadIndexAsync`
-  returns both. Clear the affected partition's communities before rebuilding until stale rows are removed on persist.
+  returns both. Fixed in 0.58.0: a re-build now deletes the communities it supersedes.
 - **The hierarchy is linked.** `ParentCommunityId` and `ChildCommunityIds` were never set. Every finer community now
   names the coarser community that holds its chunks, and every coarser community lists its children. The reduce step
   of hierarchical summarization combines exactly the child summaries of a community, instead of guessing them from
