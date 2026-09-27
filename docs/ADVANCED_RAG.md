@@ -320,7 +320,16 @@ stored community that groups one of the build's chunks and is not in that hierar
 after a document is edited and re-built, `LoadIndexAsync` returns only its new communities. A community that also groups other
 documents' chunks is deleted as well (it was clustered from content that changed), and comes back when those documents are built
 again. The build cannot see a community none of whose chunks are in it, such as one left by chunks the edit replaced
-entirely.
+entirely — for those, and for deleted documents, call `ForgetChunksAsync` (0.59.0+) with the chunk ids that are gone:
+
+```csharp
+// After deleting chunks from the vector store (a re-index's superseded chunks, or a deleted document's):
+var forgot = await graphRag.ForgetChunksAsync(removedChunkIds, partition, ct);
+// Communities grouping them are deleted; entities lose those chunk ids (and go when none remain);
+// relationships evidenced only by them go.
+```
+
+FluxFeed's vault pipeline calls it for superseded chunks and for removed documents.
 
 `UpdateIndexAsync` returns the extended index **in memory**; it does not write the updated communities back to the graph store
 (only `BuildIndexAsync` persists communities). With `RebuildCommunities = true` (the default) communities are detected again over

@@ -133,6 +133,46 @@ public interface IGraphRAGService
         IEnumerable<DocumentChunk> chunks,
         GraphRAGLoadOptions? options = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Removes what the persisted graph derived from chunks that no longer exist — call it with the chunks a re-index
+    /// replaced or a document deletion removed, so the graph leg forgets them as the vector and keyword legs do.
+    /// Communities that group any of the chunks are deleted (their summaries describe content that is gone). Each entity
+    /// extracted from them loses those chunk ids; an entity left with none is deleted with its relationships. A
+    /// relationship whose evidence lies only in the chunks is deleted; one with other evidence keeps it.
+    /// </summary>
+    /// <remarks>
+    /// Without an <see cref="IGraphStore"/> there is nothing persisted and the call does nothing. An entity's
+    /// <see cref="GraphEntity.DocumentIds"/> are left as they are: the store does not record which chunk a document id
+    /// came from.
+    /// </remarks>
+    /// <param name="chunkIds">Ids of the chunks to forget.</param>
+    /// <param name="partition">The graph partition the chunks were built into (<see cref="GraphPartition"/>).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>What was removed or trimmed.</returns>
+    Task<GraphForgetResult> ForgetChunksAsync(
+        IEnumerable<string> chunkIds,
+        string partition = GraphPartition.Default,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>What <see cref="IGraphRAGService.ForgetChunksAsync"/> removed or trimmed.</summary>
+public sealed record GraphForgetResult
+{
+    /// <summary>Communities deleted because they grouped a forgotten chunk.</summary>
+    public int CommunitiesDeleted { get; init; }
+
+    /// <summary>Entities deleted because every chunk they were extracted from was forgotten.</summary>
+    public int EntitiesDeleted { get; init; }
+
+    /// <summary>Entities kept with the forgotten chunk ids removed.</summary>
+    public int EntitiesTrimmed { get; init; }
+
+    /// <summary>Relationships deleted because all their evidence was in forgotten chunks (not counting those deleted with an entity).</summary>
+    public int RelationshipsDeleted { get; init; }
+
+    /// <summary>Relationships kept with the forgotten evidence chunk ids removed.</summary>
+    public int RelationshipsTrimmed { get; init; }
 }
 
 /// <summary>

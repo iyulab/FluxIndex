@@ -143,6 +143,90 @@ public sealed class SQLiteGraphRAGRebuildTests : IAsyncDisposable
         Assert.Equal("First.", stored.Summary);
     }
 
+    // Forgetting a deleted document's chunks: its community, the entities only it produced and the relationship only it
+    // evidenced go; an entity another document also mentions stays, with that document's chunk only.
+    [Fact]
+    public async Task ForgetChunks_RemovesWhatOnlyThoseChunksProduced_AndKeepsWhatAnotherDocumentShares()
+    {
+        static ExtractedEntity Org(string id, string text) => new() { Id = id, Text = text, Type = NamedEntityType.Organization, Confidence = 0.9 };
+        var extractor = Substitute.For<IAdvancedEntityExtractionService>();
+        extractor.ExtractBatchAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EntityExtractionOptions>(), Arg.Any<CancellationToken>())
+            .Returns(
+                new List<EntityGraph>
+                {
+                    new() { SourceId = "a1", Entities = [Org("acme", "Acme Corp"), Org("globex", "Globex")], Relations = [new EntityRelation { SourceEntityId = "acme", TargetEntityId = "globex", Type = RelationType.RelatedTo, Label = "partners with", Confidence = 0.8 }] },
+                    new() { SourceId = "a2", Entities = [Org("globex", "Globex")], Relations = [] }
+                },
+                new List<EntityGraph>
+                {
+                    new() { SourceId = "b1", Entities = [Org("acme", "Acme Corp")], Relations = [] }
+                });
+        GraphRAGService Service(string communityId) => new(
+            new EntityGraphService(extractor, null, _store, NullLogger<EntityGraphService>.Instance),
+            LeidenFor(communityId), SummariesFor(communityId), graphStore: _store, logger: NullLogger<GraphRAGService>.Instance);
+        await Service("doc-a").BuildIndexAsync([Chunk("a1", "doc-a"), Chunk("a2", "doc-a")], cancellationToken: Ct);
+        await Service("doc-b").BuildIndexAsync([Chunk("b1", "doc-b")], cancellationToken: Ct);
+        var acmeBefore = Assert.Single(await _store.GetEntitiesByNameAsync("Acme Corp", ct: Ct));
+        Assert.Equal(["a1", "b1"], acmeBefore.ChunkIds.Order());   // precondition: the shared entity spans both documents
+        Assert.NotEmpty(await _store.GetRelationshipsAsync(acmeBefore.Id, ct: Ct));
+
+        var result = await Service("unused").ForgetChunksAsync(["a1", "a2"], cancellationToken: Ct);
+
+        Assert.Equal(1, result.CommunitiesDeleted);
+        Assert.Empty(await _store.GetCommunitiesByChunkIdsAsync(["a1", "a2"], ct: Ct));
+        Assert.Equal("doc-b", Assert.Single(await _store.GetCommunitiesByChunkIdsAsync(["b1"], ct: Ct)).Id);
+        Assert.Empty(await _store.GetEntitiesByNameAsync("Globex", ct: Ct));
+        var acme = Assert.Single(await _store.GetEntitiesByNameAsync("Acme Corp", ct: Ct));
+        Assert.Equal(["b1"], acme.ChunkIds);
+        Assert.Empty(await _store.GetRelationshipsAsync(acme.Id, ct: Ct));
+        Assert.Equal(1, result.EntitiesDeleted);
+        Assert.Equal(1, result.EntitiesTrimmed);
+    }
+
+    [Fact]
+    public async Task ForgetChunks_WithoutAGraphStore_DoesNothing()
+    {
+        var service = new GraphRAGService(
+            new EntityGraphService(null, null, null, NullLogger<EntityGraphService>.Instance),
+            Substitute.For<ILeidenCommunityService>(), Substitute.For<IHierarchicalSummarizationService>(),
+            graphStore: null, logger: NullLogger<GraphRAGService>.Instance);
+
+        Assert.Equal(new GraphForgetResult(), await service.ForgetChunksAsync(["x"], cancellationToken: Ct));
+    }
+
+    private static ILeidenCommunityService LeidenFor(string communityId)
+    {
+        var leiden = Substitute.For<ILeidenCommunityService>();
+        leiden.DetectHierarchicalCommunitiesAsync(Arg.Any<IEnumerable<LeidenChunk>>(), Arg.Any<LeidenOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(ci => new CommunityHierarchy
+            {
+                Levels =
+                [
+                    new CommunityLevel
+                    {
+                        LevelIndex = 0,
+                        Communities = [new LeidenCommunity { Id = communityId, ChunkIds = ci.Arg<IEnumerable<LeidenChunk>>().Select(c => c.Id).ToList(), Cohesion = 0.8 }]
+                    }
+                ]
+            });
+        return leiden;
+    }
+
+    private static IHierarchicalSummarizationService SummariesFor(string communityId)
+    {
+        var summaries = Substitute.For<IHierarchicalSummarizationService>();
+        summaries.GenerateHierarchicalSummariesAsync(Arg.Any<CommunityHierarchy>(), Arg.Any<IEnumerable<DocumentChunk>>(), Arg.Any<HierarchicalSummarizationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new HierarchicalSummaryResult
+            {
+                SummariesByLevel = new Dictionary<int, IReadOnlyList<CommunitySummary>>
+                {
+                    [0] = [new CommunitySummary { CommunityId = communityId, Level = 0, Title = communityId, Summary = communityId }]
+                },
+                TotalCommunitiesSummarized = 1
+            });
+        return summaries;
+    }
+
     [Fact]
     public async Task DeleteCommunities_RemovesRowsAndMembers_AndIgnoresUnknownIds()
     {

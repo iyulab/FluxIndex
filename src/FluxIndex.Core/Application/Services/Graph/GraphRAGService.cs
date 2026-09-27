@@ -235,6 +235,82 @@ public partial class GraphRAGService : IGraphRAGService
     }
 
     /// <inheritdoc />
+    public async Task<GraphForgetResult> ForgetChunksAsync(
+        IEnumerable<string> chunkIds,
+        string partition = GraphPartition.Default,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(chunkIds);
+        ArgumentNullException.ThrowIfNull(partition);
+        var forgotten = chunkIds.ToHashSet(StringComparer.Ordinal);
+        if (_graphStore == null || forgotten.Count == 0)
+            return new GraphForgetResult();
+
+        // Communities first: a community's summary describes its chunks, so one that groups a forgotten chunk is stale.
+        var communities = await _graphStore.GetCommunitiesByChunkIdsAsync(forgotten, partition, cancellationToken);
+        var communitiesDeleted = communities.Count == 0
+            ? 0
+            : await _graphStore.DeleteCommunitiesAsync(communities.Select(c => c.Id), cancellationToken);
+
+        var entitiesDeleted = 0;
+        var entitiesTrimmed = 0;
+        var survivors = new List<string>();
+        foreach (var entity in await _graphStore.GetEntitiesByChunkIdsAsync(forgotten, partition, cancellationToken))
+        {
+            var remaining = entity.ChunkIds.Where(id => !forgotten.Contains(id)).ToList();
+            if (remaining.Count == 0)
+            {
+                // Deleting the entity removes its relationships and memberships with it (every store cascades).
+                if (await _graphStore.DeleteEntityAsync(entity.Id, cancellationToken))
+                    entitiesDeleted++;
+                continue;
+            }
+
+            await _graphStore.UpdateEntityAsync(entity with { ChunkIds = remaining }, cancellationToken);
+            entitiesTrimmed++;
+            survivors.Add(entity.Id);
+        }
+
+        // A relationship's evidence came from chunks both its entities were extracted from, so every relationship with
+        // forgotten evidence touches a surviving (trimmed) entity or was deleted with a deleted one.
+        var relationshipsDeleted = 0;
+        var relationshipsTrimmed = 0;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var entityId in survivors)
+        {
+            foreach (var relationship in await _graphStore.GetRelationshipsAsync(entityId, TraversalDirection.Both, cancellationToken))
+            {
+                if (!seen.Add(relationship.Id) || !relationship.EvidenceChunkIds.Any(forgotten.Contains))
+                    continue;
+
+                var evidence = relationship.EvidenceChunkIds.Where(id => !forgotten.Contains(id)).ToList();
+                if (evidence.Count == 0)
+                {
+                    if (await _graphStore.DeleteRelationshipAsync(relationship.Id, cancellationToken))
+                        relationshipsDeleted++;
+                }
+                else
+                {
+                    await _graphStore.StoreRelationshipAsync(relationship with { EvidenceChunkIds = evidence }, cancellationToken);
+                    relationshipsTrimmed++;
+                }
+            }
+        }
+
+        var result = new GraphForgetResult
+        {
+            CommunitiesDeleted = communitiesDeleted,
+            EntitiesDeleted = entitiesDeleted,
+            EntitiesTrimmed = entitiesTrimmed,
+            RelationshipsDeleted = relationshipsDeleted,
+            RelationshipsTrimmed = relationshipsTrimmed
+        };
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogChunksForgotten(_logger, forgotten.Count, partition, communitiesDeleted, entitiesDeleted, entitiesTrimmed, relationshipsDeleted, relationshipsTrimmed);
+        return result;
+    }
+
+    /// <inheritdoc />
     public async Task<GraphRAGIndex> LoadIndexAsync(
         IEnumerable<DocumentChunk> chunks,
         GraphRAGLoadOptions? options = null,
@@ -1731,6 +1807,9 @@ Provide a comprehensive answer that integrates both perspectives:";
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Deleted {Count} superseded GraphRAG communities in partition '{Partition}'")]
     private static partial void LogSupersededCommunitiesDeleted(ILogger logger, int count, string partition);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Forgot {ChunkCount} chunks in partition '{Partition}': deleted {Communities} communities, {EntitiesDeleted} entities and {RelationshipsDeleted} relationships; trimmed {EntitiesTrimmed} entities and {RelationshipsTrimmed} relationships")]
+    private static partial void LogChunksForgotten(ILogger logger, int chunkCount, string partition, int communities, int entitiesDeleted, int entitiesTrimmed, int relationshipsDeleted, int relationshipsTrimmed);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Building GraphRAG index for {ChunkCount} chunks")]
     private static partial void LogGraphRAG13(ILogger logger, int chunkCount);

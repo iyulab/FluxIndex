@@ -9,6 +9,23 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.59.0] - Unreleased
+
+### Added
+- **`IGraphRAGService.ForgetChunksAsync(chunkIds, partition)`: the graph leg forgets chunks that no longer exist.** Call it
+  with the chunks a re-index replaced or a document deletion removed. The graph store kept everything it derived from them:
+  communities, entity-to-chunk links and relationships, so deleted documents stayed in community listings and entity lookups.
+  Now:
+  - a community that groups any of the chunks is deleted;
+  - an entity loses those chunk ids, and is deleted with its relationships when none are left;
+  - a relationship whose evidence lies only in those chunks is deleted.
+
+  It returns `GraphForgetResult` with the counts. It does nothing without a graph store. An entity's `DocumentIds` are left
+  as they are. **Breaking** for custom `IGraphRAGService` implementations: implement the member (delegate to your store, or
+  return an empty `GraphForgetResult` if nothing is persisted).
+
+---
+
 ## [0.58.0] - 2026-09-27
 
 ### Fixed
