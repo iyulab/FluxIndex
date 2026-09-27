@@ -315,6 +315,12 @@ positions are not persisted and come back as defaults. A community's chunk membe
 community itself on every store (a node property on Neo4j, a `chunk_ids` column on PostgreSQL and
 SQLite that start-up provisioning adds to databases created before it existed).
 
+`UpdateIndexAsync` returns the extended index **in memory**; it does not write the updated communities back to the graph store
+(only `BuildIndexAsync` persists communities). With `RebuildCommunities = true` (the default) communities are detected again over
+the old and new chunks; with `false` each new chunk joins its most similar existing community (when at least `SimilarityThreshold` similar) and that community's ancestors, and
+chunks that fit none form their own communities. Either way a community that gained chunks gets a new id (ids follow chunk
+membership) and, with `UpdateSummaries = true` (the default), a new summary; summaries of unchanged communities are kept.
+
 ---
 
 ## Community Detection (Leiden Algorithm)
@@ -362,6 +368,11 @@ Console.WriteLine($"Levels: {hierarchy.LevelCount}");
 Console.WriteLine($"Total chunks: {hierarchy.TotalChunks}");
 Console.WriteLine($"Final modularity: {hierarchy.Statistics.FinalModularity:F4}");
 ```
+
+Each level above 0 is made of whole communities of the level below: a coarser community holds exactly the chunks of its
+children, `LeidenCommunity.ParentCommunityId` names the coarser community a community belongs to, and `ChildCommunityIds` lists
+a community's children. `MinCommunitySize` counts chunks at every level; a community below it is not reported, but its chunks
+still take part in the coarser levels. Detection stops at the last level that merged something.
 
 ### Navigating the Hierarchy
 
