@@ -9,7 +9,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.59.0] - Unreleased
+## [0.59.0] - 2026-09-27
 
 ### Added
 - **`IGraphRAGService.ForgetChunksAsync(chunkIds, partition)`: the graph leg forgets chunks that no longer exist.** Call it
