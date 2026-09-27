@@ -76,7 +76,7 @@ public class GraphRAGServiceUpdateIndexReuseTests
         var summaries = Substitute.For<IHierarchicalSummarizationService>();
         summaries.GenerateHierarchicalSummariesAsync(Arg.Any<CommunityHierarchy>(), Arg.Any<IEnumerable<DocumentChunk>>(), Arg.Any<HierarchicalSummarizationOptions?>(), Arg.Any<CancellationToken>())
             .Returns(new HierarchicalSummaryResult());
-        summaries.UpdateSummariesAsync(Arg.Any<HierarchicalSummaryResult>(), Arg.Any<IEnumerable<DocumentChunk>>(), Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>())
+        summaries.UpdateSummariesAsync(Arg.Any<HierarchicalSummaryResult>(), Arg.Any<CommunityHierarchy>(), Arg.Any<IEnumerable<DocumentChunk>>(), Arg.Any<IEnumerable<string>>(), Arg.Any<CancellationToken>())
             .Returns(new HierarchicalSummaryResult());
 
         return new GraphRAGService(

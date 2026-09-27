@@ -17,6 +17,15 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   with communities of the new chunks. Now each new chunk joins the level-0 community whose centroid is most similar (at least
   `SimilarityThreshold`) and every ancestor of that community. Chunks that fit no community form their own level-0 communities. A chunk
   already in the hierarchy is skipped. A community that gains chunks gets the id of its new chunk set.
+- **GraphRAG summaries follow the updated hierarchy.** After `UpdateIndexAsync`, the index stored the updated community hierarchy next to
+  summaries matched against the old one. A community's id follows its chunks, so a community that gained a chunk had no summary, and the
+  summary of its old id stayed. This happened on the default path (`RebuildCommunities = true`) too. Global search read those summaries.
+  Now every summarized community of the updated hierarchy has a summary. A summary is kept when its community is unchanged and not affected,
+  generated otherwise (coarser levels from the finer summaries just made), and dropped when its community is gone.
+
+### Changed
+- **Breaking** (implementers only): `IHierarchicalSummarizationService.UpdateSummariesAsync` takes the updated `CommunityHierarchy` as its
+  second parameter. Callers of `IGraphRAGService` are not affected. Migration: pass the hierarchy the summaries must describe.
 
 ## [0.56.0] - 2026-09-27
 

@@ -417,28 +417,77 @@ public class HierarchicalSummarizationServiceTests
     #region UpdateSummariesAsync Tests
 
     [Fact]
-    public async Task UpdateSummariesAsync_NoAffectedCommunities_ReturnsExisting()
+    public async Task UpdateSummariesAsync_KeepsAnUnchangedCommunitysSummary()
     {
-        // Arrange
         var service = CreateService(withLlm: false);
-        var existingResult = new HierarchicalSummaryResult
+        var hierarchy = CreateMockHierarchy(levelCount: 1, communitiesPerLevel: 1);
+        var existing = new HierarchicalSummaryResult
         {
             HierarchyId = "test",
             SummariesByLevel = new Dictionary<int, IReadOnlyList<CommunitySummary>>
             {
-                [0] = new List<CommunitySummary>
-                {
-                    new CommunitySummary { CommunityId = "c1", Summary = "Original" }
-                }
+                [0] = [new CommunitySummary { CommunityId = "community_L0_C0", Summary = "Original" }]
             },
-            ChunkLookup = new Dictionary<string, DocumentChunk>()
+            ChunkLookup = CreateMockChunks(hierarchy).ToDictionary(c => c.Id)
         };
 
-        // Act
-        var result = await service.UpdateSummariesAsync(existingResult, Enumerable.Empty<DocumentChunk>(), Enumerable.Empty<string>(), TestContext.Current.CancellationToken);
+        var result = await service.UpdateSummariesAsync(existing, hierarchy, [], [], TestContext.Current.CancellationToken);
 
-        // Assert
-        Assert.Same(existingResult, result);
+        Assert.Equal("Original", Assert.Single(result.SummariesByLevel[0]).Summary);
+        Assert.Same(hierarchy, result.Hierarchy);
+    }
+
+    [Fact]
+    public async Task UpdateSummariesAsync_SummarizesARenamedCommunity_AndDropsTheVanishedId()
+    {
+        // After chunks were added, community "grown" replaced "old" (a community id follows its chunks).
+        var service = CreateService(withLlm: false);
+        var grown = new LeidenCommunity { Id = "grown", ChunkIds = ["a", "b", "new"], Keywords = ["alpha"], RepresentativeChunkIds = ["a"] };
+        var hierarchy = new CommunityHierarchy
+        {
+            Id = "updated",
+            Levels = [new CommunityLevel { LevelIndex = 0, Communities = [grown] }],
+            Options = new LeidenOptions()
+        };
+        var chunks = new[] { "a", "b" }.Select(id => new DocumentChunk { Id = id, DocumentId = "d", Content = $"content of {id} about alpha", ChunkIndex = 0 }).ToList();
+        var added = new DocumentChunk { Id = "new", DocumentId = "d", Content = "new content about alpha", ChunkIndex = 1 };
+        var existing = new HierarchicalSummaryResult
+        {
+            HierarchyId = "old-hierarchy",
+            SummariesByLevel = new Dictionary<int, IReadOnlyList<CommunitySummary>>
+            {
+                [0] = [new CommunitySummary { CommunityId = "old", Summary = "Stale" }]
+            },
+            ChunkLookup = chunks.ToDictionary(c => c.Id)
+        };
+
+        var result = await service.UpdateSummariesAsync(existing, hierarchy, [added], ["grown"], TestContext.Current.CancellationToken);
+
+        var summary = Assert.Single(result.SummariesByLevel[0]);
+        Assert.Equal("grown", summary.CommunityId);
+        Assert.NotEqual("Stale", summary.Summary);
+        Assert.Equal("updated", result.HierarchyId);
+        Assert.Contains("new", result.ChunkLookup.Keys);
+    }
+
+    [Fact]
+    public async Task UpdateSummariesAsync_ResummarizesAnAffectedCommunityEvenWithAnUnchangedId()
+    {
+        var service = CreateService(withLlm: false);
+        var hierarchy = CreateMockHierarchy(levelCount: 1, communitiesPerLevel: 1);
+        var existing = new HierarchicalSummaryResult
+        {
+            HierarchyId = "test",
+            SummariesByLevel = new Dictionary<int, IReadOnlyList<CommunitySummary>>
+            {
+                [0] = [new CommunitySummary { CommunityId = "community_L0_C0", Summary = "Original" }]
+            },
+            ChunkLookup = CreateMockChunks(hierarchy).ToDictionary(c => c.Id)
+        };
+
+        var result = await service.UpdateSummariesAsync(existing, hierarchy, [], ["community_L0_C0"], TestContext.Current.CancellationToken);
+
+        Assert.NotEqual("Original", Assert.Single(result.SummariesByLevel[0]).Summary);
     }
 
     #endregion

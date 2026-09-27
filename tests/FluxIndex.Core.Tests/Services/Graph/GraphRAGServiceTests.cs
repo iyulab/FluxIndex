@@ -498,6 +498,7 @@ public class GraphRAGServiceTests
         // Assert
         await _mockSummarizationService.Received(1).UpdateSummariesAsync(
             Arg.Any<HierarchicalSummaryResult>(),
+            Arg.Any<CommunityHierarchy>(),
             Arg.Any<IEnumerable<DocumentChunk>>(),
             Arg.Any<IEnumerable<string>>(),
             Arg.Any<CancellationToken>());
@@ -753,6 +754,7 @@ public class GraphRAGServiceTests
 
         _mockSummarizationService.UpdateSummariesAsync(
                 Arg.Any<HierarchicalSummaryResult>(),
+                Arg.Any<CommunityHierarchy>(),
                 Arg.Any<IEnumerable<DocumentChunk>>(),
                 Arg.Any<IEnumerable<string>>(),
                 Arg.Any<CancellationToken>()).Returns(new HierarchicalSummaryResult

@@ -907,6 +907,7 @@ public partial class GraphRAGService : IGraphRAGService
 
             updatedSummaries = await _summarizationService.UpdateSummariesAsync(
                 index.Summaries,
+                updatedHierarchy,
                 chunkList,
                 affectedCommunityIds,
                 cancellationToken);

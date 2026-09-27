@@ -44,16 +44,20 @@ public interface IHierarchicalSummarizationService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Incrementally updates summaries when new chunks are added.
-    /// Only regenerates summaries for affected communities.
+    /// Brings summaries in line with an updated community hierarchy after chunks were added.
+    /// A community of <paramref name="updatedHierarchy"/> keeps its existing summary when it has one under the same id and is not in
+    /// <paramref name="affectedCommunityIds"/>; every other community is summarized (coarser levels from the finer summaries just made).
+    /// Summaries of communities that are no longer in the hierarchy are dropped.
     /// </summary>
     /// <param name="existingResult">Existing summary result</param>
+    /// <param name="updatedHierarchy">The hierarchy the summaries must describe (a community's id changes when its chunks do)</param>
     /// <param name="newChunks">Newly added chunks</param>
-    /// <param name="affectedCommunityIds">IDs of communities that need updates</param>
+    /// <param name="affectedCommunityIds">Communities to summarize again even when their id is unchanged</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Updated summary result</returns>
     Task<HierarchicalSummaryResult> UpdateSummariesAsync(
         HierarchicalSummaryResult existingResult,
+        CommunityHierarchy updatedHierarchy,
         IEnumerable<DocumentChunk> newChunks,
         IEnumerable<string> affectedCommunityIds,
         CancellationToken cancellationToken = default);

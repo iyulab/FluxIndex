@@ -228,17 +228,15 @@ public partial class HierarchicalSummarizationService : IHierarchicalSummarizati
     /// <inheritdoc />
     public async Task<HierarchicalSummaryResult> UpdateSummariesAsync(
         HierarchicalSummaryResult existingResult,
+        CommunityHierarchy updatedHierarchy,
         IEnumerable<DocumentChunk> newChunks,
         IEnumerable<string> affectedCommunityIds,
         CancellationToken cancellationToken = default)
     {
-        var affectedIds = affectedCommunityIds.ToHashSet();
-        if (affectedIds.Count == 0)
-        {
-            return existingResult;
-        }
-
-        if (_logger is not null) LogUpdatingCommunities(_logger, affectedIds.Count);
+        ArgumentNullException.ThrowIfNull(existingResult);
+        ArgumentNullException.ThrowIfNull(updatedHierarchy);
+        var affectedIds = affectedCommunityIds.ToHashSet(StringComparer.Ordinal);
+        var options = existingResult.Options;
 
         // Merge new chunks into lookup
         var updatedChunkLookup = new Dictionary<string, DocumentChunk>(existingResult.ChunkLookup);
@@ -247,80 +245,66 @@ public partial class HierarchicalSummarizationService : IHierarchicalSummarizati
             updatedChunkLookup[chunk.Id] = chunk;
         }
 
-        // Find parent communities that need update
-        var allAffectedIds = new HashSet<string>(affectedIds);
-        foreach (var level in existingResult.SummariesByLevel.Values)
-        {
-            foreach (var summary in level)
-            {
-                if (summary.ChildSummaryIds.Any(id => affectedIds.Contains(id)))
-                {
-                    allAffectedIds.Add(summary.CommunityId);
-                }
-            }
-        }
+        // A community id is derived from its chunks, so an existing summary under the same id still describes the same members.
+        var existingById = existingResult.SummariesByLevel.Values
+            .SelectMany(s => s)
+            .GroupBy(s => s.CommunityId, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
 
-        // Regenerate affected summaries
-        var updatedSummariesByLevel = new Dictionary<int, IReadOnlyList<CommunitySummary>>();
+        // Only the levels the original run summarized.
+        var summarizedLevels = options.LevelsToSummarize?.ToHashSet() ?? Enumerable.Range(0, updatedHierarchy.LevelCount).ToHashSet();
+
+        var summariesByLevel = new Dictionary<int, IReadOnlyList<CommunitySummary>>();
         var statistics = new SummarizationStatisticsBuilder();
+        var regenerated = 0;
 
-        foreach (var (level, summaries) in existingResult.SummariesByLevel)
+        for (var level = 0; level < updatedHierarchy.LevelCount; level++)
         {
-            var updatedSummaries = new List<CommunitySummary>();
+            if (!summarizedLevels.Contains(level))
+                continue;
+            cancellationToken.ThrowIfCancellationRequested();
 
-            foreach (var summary in summaries)
+            var levelSummaries = new List<CommunitySummary>();
+            foreach (var community in updatedHierarchy.Levels[level].Communities)
             {
-                if (allAffectedIds.Contains(summary.CommunityId))
+                if (!affectedIds.Contains(community.Id) && existingById.TryGetValue(community.Id, out var kept))
                 {
-                    // Regenerate this summary
-                    var community = existingResult.Hierarchy?.Levels[level].Communities
-                        .FirstOrDefault(c => c.Id == summary.CommunityId);
-
-                    if (community != null)
-                    {
-                        var newSummary = await GenerateCommunitySummaryAsync(
-                            community,
-                            level,
-                            updatedChunkLookup,
-                            updatedSummariesByLevel,
-                            existingResult.Options,
-                            statistics,
-                            cancellationToken);
-
-                        updatedSummaries.Add(newSummary ?? summary);
-                    }
-                    else
-                    {
-                        updatedSummaries.Add(summary);
-                    }
+                    levelSummaries.Add(kept);
+                    continue;
                 }
-                else
+
+                _cache?.Remove(CacheKeyPrefix + community.Id);
+                var summary = await GenerateCommunitySummaryAsync(
+                    community,
+                    level,
+                    updatedChunkLookup,
+                    summariesByLevel,
+                    options,
+                    statistics,
+                    cancellationToken);
+                if (summary != null)
                 {
-                    updatedSummaries.Add(summary);
+                    levelSummaries.Add(summary);
+                    regenerated++;
                 }
             }
 
-            updatedSummariesByLevel[level] = updatedSummaries;
+            summariesByLevel[level] = levelSummaries;
         }
 
-        // Invalidate cache for affected summaries
-        if (_cache != null)
-        {
-            foreach (var id in allAffectedIds)
-            {
-                _cache.Remove(CacheKeyPrefix + id);
-            }
-        }
+        LinkSummaryHierarchy(summariesByLevel);
+
+        if (_logger is not null) LogUpdatingCommunities(_logger, regenerated);
 
         return new HierarchicalSummaryResult
         {
             Id = Guid.NewGuid().ToString(),
-            HierarchyId = existingResult.HierarchyId,
-            SummariesByLevel = updatedSummariesByLevel,
-            TotalCommunitiesSummarized = updatedSummariesByLevel.Values.Sum(s => s.Count),
-            Options = existingResult.Options,
+            HierarchyId = updatedHierarchy.Id,
+            SummariesByLevel = summariesByLevel,
+            TotalCommunitiesSummarized = summariesByLevel.Values.Sum(s => s.Count),
+            Options = options,
             Statistics = statistics.Build(0, 0),
-            Hierarchy = existingResult.Hierarchy,
+            Hierarchy = updatedHierarchy,
             ChunkLookup = updatedChunkLookup
         };
     }
