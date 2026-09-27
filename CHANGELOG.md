@@ -36,6 +36,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   `MaxHierarchyLevels = 3` stored and summarized those wrong communities. A community at any level now holds exactly
   the chunks of the communities under it. Community ids above level 0 are derived from their chunks, so they change
   once when an index is rebuilt; level 0 is unchanged.
+  **Note for persisted GraphRAG stores:** the graph store upserts communities by id and does not remove old ones, so after the
+  first rebuild a store written before 0.56.0 holds the old (wrong) coarser-level rows next to the new ones, and `LoadIndexAsync`
+  returns both. Clear the affected partition's communities before rebuilding until stale rows are removed on persist.
 - **The hierarchy is linked.** `ParentCommunityId` and `ChildCommunityIds` were never set. Every finer community now
   names the coarser community that holds its chunks, and every coarser community lists its children. The reduce step
   of hierarchical summarization combines exactly the child summaries of a community, instead of guessing them from
