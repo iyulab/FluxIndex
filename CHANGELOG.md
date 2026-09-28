@@ -9,7 +9,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.60.0] - Unreleased
+## [0.60.0] - 2026-09-29
 
 ### Removed
 - **Breaking**: `AddGraphRAGService()`. It registered `IGraphRAGService` without the entity graph, community detection and
