@@ -13,11 +13,19 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
 - **Hybrid search** (vector + BM25) — `IHybridSearchService`; `SearchOptions.UseHybridSearch` (unset = on whenever the
   service is registered). The builder registers `HybridSearchService` by default; a storage package's persistent keyword
   index replaces the in-memory BM25 leg. Qdrant's native hybrid: `AddQdrantWithHybridSearch`. Query-driven strategy
-  choice: `HybridSearchOptions.EnableAutoStrategy` (default on) and `FluxIndexContext.AdaptiveSearchAsync`.
+  choice: `HybridSearchOptions.EnableAutoStrategy` (default on) and `FluxIndexContext.AdaptiveSearchAsync` — declared on
+  the concrete `FluxIndexContext`, not on the `IFluxIndexContext` that `Build()` returns, so cast
+  (`((FluxIndexContext)context).AdaptiveSearchAsync(query)`) or resolve `IAdaptiveSearchService` from
+  `context.ServiceProvider`.
 - **Batch indexing** — `Indexer.IndexBatchAsync(documents, progress, parallelism)`; chunk embeddings go through
   `IEmbeddingService.GenerateEmbeddingsBatchAsync`. Always available. Query embeddings are cached per `Retriever`
-  (in-process, not configurable); `UseMemoryCache` / `WithCacheDuration` cache search results, and every `Indexer` write
-  invalidates them (`CacheOptions.EnableSearchCache = false` turns the cache off).
+  (in-process, not configurable).
+- **Search result cache** — on by default: `CacheOptions.CacheProvider` is `"Memory"` and
+  `CacheOptions.EnableSearchCache` is `true`, so the builder registers an in-memory `ICacheService` and `Retriever`
+  caches search results and document lookups; every `Indexer` write invalidates them. How long an entry lives is
+  `RetrieverOptions.CacheDuration` (default 10 minutes), set with `WithCacheDuration`. The in-memory cache has no
+  size limit — `UseMemoryCache(maxCacheSize)` selects it but the size is not applied, and `CacheOptions.CacheTTL` is
+  not read. `EnableSearchCache = false` turns the cache off.
 - **Reranking** (cross-encoder) — `IReranker.RerankAsync`, registered by `AddLMSupplyReranker` (local, no API key) or
   `AddOpenAICompatibleReranker`. Opt-in per search: `Retriever.SearchAsync(query, new SearchOptions { UseReranker = true })`
   fetches `RerankCandidateCount` candidates (default `TopK × 3`), has the registered reranker order them and returns its
@@ -30,26 +38,54 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   threshold keeps its meaning whether the endpoint is a hosted API or a llama.cpp server.
 - **Graph traversal** — `IGraphTraversalService` (`TraverseBfsAsync`, `TraverseDfsAsync`, `FindShortestPathAsync` (BFS),
   `FindStrongestPathAsync` (Dijkstra), `ComputeChunkImportanceAsync` (PageRank-style)). Registered by the builder.
-  **GraphRAG**: opt-in with `AddGraphRAGService` / `AddFullGraphRAG` in `ConfigureServices`; query through
-  `IGraphRAGService.QueryAsync`. A re-build replaces the communities the last build of those chunks persisted
+  **GraphRAG**: opt-in with `ConfigureServices(s => s.AddFullGraphRAG())`, which registers `IGraphRAGService` together
+  with the entity graph, Leiden community detection and hierarchical summarization it needs (`AddGraphRAGService`
+  registers only the service itself — use it only when you register `IEntityGraphService`, `ILeidenCommunityService`
+  and `IHierarchicalSummarizationService` yourself). Once the service is registered, `Indexer` builds the graph for
+  every indexed document (`IndexingOptions.EnableGraphRAG`: unset = on when registered, `false` skips it).
+  `IGraphRAGService.QueryAsync(query, index)` takes a `GraphRAGIndex`: build one with `BuildIndexAsync(chunks)` or
+  read one back with `LoadIndexAsync(chunks)` (needs a registered `IGraphStore`). `Retriever.SearchAsync` does not run
+  GraphRAG (`SearchOptions.UseGraphRAG = true` throws). A re-build replaces the communities the last build of those chunks persisted
   (`IGraphStore.DeleteCommunitiesAsync`); `IGraphRAGService.ForgetChunksAsync` removes what replaced or deleted chunks left in the graph.
 - **Vector quantization** — `IVectorQuantizer` (`ScalarQuantizer`, `ProductQuantizer`, `BinaryQuantizer`); opt-in with
   `AddVectorQuantization` or `AddScalarQuantization` / `AddProductQuantization` / `AddBinaryQuantization`, stored by
   `AddSQLiteQuantizedVectorStore` / `AddPostgreSQLQuantizedVectorStore`; searched with `SearchQuantizedAsync`.
+  `SearchQuantizedAsync` needs the context's `IVectorStore` to be one of those quantized stores
+  (`IQuantizedVectorStore`; `SupportsQuantization` reports it) — register it as the vector store through
+  `ConfigureServices(s => s.AddSQLiteQuantizedVectorStore("vectors.db"))` instead of `UseSQLite` + `AddSQLiteStorage`,
+  which register the plain store; with a plain store the call throws `InvalidOperationException`.
 - **Storage** — builder `Use*` + the package's `Add*Storage()` (`Build()` throws if one is missing): SQLite
   (`UseSQLite`, `AddSQLiteStorage`), PostgreSQL + pgvector (`UsePostgreSQL`, `AddPostgreSQLStorage`), Qdrant (`UseQdrant`,
   `AddQdrantStorage`), Neo4j graph (`UseNeo4j`, `AddNeo4jStorage`). Plain DI: `AddSQLiteVectorStore`,
   `AddPostgreSQLVectorStore`, `AddQdrantVectorStore`, `AddNeo4jGraphStore`.
 - **Redis cache** — builder `UseRedisCache(connection)` **plus** `AddRedisStorage()`; plain DI `AddRedisCacheStore` /
   `AddRedisSemanticCache`.
-- **Document processing** — PDF/DOCX/TXT via FileFlux, web pages via WebFlux (`FluxIndex.Integrations.*`, opt-in).
+- **Document processing** — PDF/DOCX/TXT via FileFlux, web pages via WebFlux (`FluxIndex.Integrations.*`, opt-in):
+  `AddFileFluxIntegration` (builder `UseFileFlux`) for parsing and chunking, `AddDocumentProcessingPipeline` for the
+  document processing pipeline (no-op enrichment/QA defaults until you register real services), `AddWebFluxIntegration`
+  (builder `UseWebFlux`) for web pages. Text preprocessing: `AddFluxIndexFluxCurator` (FluxCurator over your
+  `IEmbeddingService`); LLM chunk enhancement: `AddFluxImproverIntegration` (FluxImprover over your
+  `ITextCompletionService`).
 - **MCP server** — `FluxIndex.MCP` is a library: host it with `FluxIndexMcpServer.RunAsync(workspacePath)` or
   `services.AddFluxIndexMcp(...)` (stdio). Tools: `memorize`, `search` (`strategy`: `hybrid` default · `vector` ·
   `keyword`), `status`, `unmemorize`. Embedding is local LMSupply (`.vault/config.json` `embedding.model`).
-- **RAG security** (opt-in) — register a `FluxGuard.Remote` `IRAGSecurityPipeline`; `Retriever.SearchAsync` drops
-  documents it blocks and replaces the content of ones it sanitizes.
+- **RAG security** (opt-in) — register a `FluxGuard.Remote` `IRAGSecurityPipeline`;
+  `Retriever.SearchAsync(query, SearchOptions)` (vector or hybrid) drops documents it blocks and replaces the content
+  of ones it sanitizes. Only that overload applies it: `Retriever.SearchAsync(query, maxResults, …)`,
+  `HybridSearchAsync`, `KeywordSearchAsync` and `context.SearchAsync` return results without the security pass.
 - **Bring your own models** — `IEmbeddingService` / `ITextCompletionService` ports; `FluxIndex.Providers.LMSupply`
-  (local) and `FluxIndex.Providers.OpenAI` (OpenAI-compatible) implement them.
+  (local) and `FluxIndex.Providers.OpenAI` (OpenAI-compatible) implement them. Local embedding, no API key:
+
+  ```csharp
+  using FluxIndex.Providers.LMSupply.Extensions;
+
+  builder.ConfigureServices(s => s.AddLMSupplyEmbedding("default"));          // model id
+  builder.ConfigureServices(s => s.AddLMSupplyEmbedding(o =>                  // LMSupplyEmbeddingOptions
+  {
+      o.ModelId = "default";
+      o.WarmUpOnStart = true;    // load at host start instead of first use (Generic Host)
+  }));
+  ```
 - **Vector-space revision** — `EmbeddingIdentity.VectorSpaceRevision` reports what the LMSupply loader actually did
   (store it next to your vectors, compare on the next load; informational by default); opt in with
   `LMSupplyEmbeddingOptions.UseVectorSpaceRevision` to fold it into the fingerprint that names the collection — the
@@ -117,6 +153,7 @@ public class LMSupplyEmbedder : EmbeddingServiceBase, IAsyncDisposable
 
     public override int GetEmbeddingDimension() => _model.Dimensions;
     public override string GetModelName() => _model.ModelId;
+    protected override string GetProviderName() => "LMSupply";
     public ValueTask DisposeAsync() => _model.DisposeAsync();
 }
 
@@ -160,7 +197,9 @@ FluxIndex provides Model Context Protocol (MCP) server for AI assistant integrat
 
 **Available Tools**: `search`, `memorize`, `unmemorize`, `status`
 
-See [FluxIndex.MCP](./src/FluxIndex.MCP/) for integration details.
+`FluxIndex.MCP` is a library you host: `FluxIndexMcpServer.RunAsync(workspacePath)` runs a stdio server, or register
+it in your own host with `services.AddFluxIndexMcp(...)`. See the **MCP server** entry under [Key Features](#key-features)
+for the tool parameters and embedding configuration.
 
 ## Package Structure
 
@@ -173,18 +212,23 @@ See [FluxIndex.MCP](./src/FluxIndex.MCP/) for integration details.
 | **FluxIndex.Storage.Neo4j** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Storage.Neo4j.svg)](https://www.nuget.org/packages/FluxIndex.Storage.Neo4j/) | Neo4j graph database |
 | **FluxIndex.Storage.Qdrant** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Storage.Qdrant.svg)](https://www.nuget.org/packages/FluxIndex.Storage.Qdrant/) | Qdrant vector database |
 | **FluxIndex.Cache.Redis** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Cache.Redis.svg)](https://www.nuget.org/packages/FluxIndex.Cache.Redis/) | Redis semantic cache |
-| **FluxIndex.Integrations.FileFlux** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Integrations.FileFlux.svg)](https://www.nuget.org/packages/FluxIndex.Integrations.FileFlux/) | Document parsing/chunking + the document processing pipeline |
-| **FluxIndex.Integrations.WebFlux** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Integrations.WebFlux.svg)](https://www.nuget.org/packages/FluxIndex.Integrations.WebFlux/) | Web content ingestion |
-| **FluxIndex.Integrations.FluxCurator** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Integrations.FluxCurator.svg)](https://www.nuget.org/packages/FluxIndex.Integrations.FluxCurator/) | Text preprocessing (PII detection, intelligent splitting) |
+| **FluxIndex.Integrations.FileFlux** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Integrations.FileFlux.svg)](https://www.nuget.org/packages/FluxIndex.Integrations.FileFlux/) | Document parsing/chunking (`AddFileFluxIntegration`) + the document processing pipeline (`AddDocumentProcessingPipeline`) |
+| **FluxIndex.Integrations.WebFlux** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Integrations.WebFlux.svg)](https://www.nuget.org/packages/FluxIndex.Integrations.WebFlux/) | Web content ingestion (`AddWebFluxIntegration`) |
+| **FluxIndex.Integrations.FluxCurator** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Integrations.FluxCurator.svg)](https://www.nuget.org/packages/FluxIndex.Integrations.FluxCurator/) | Text preprocessing (PII detection, intelligent splitting) (`AddFluxIndexFluxCurator`) |
 | **FluxIndex.Providers.LMSupply** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Providers.LMSupply.svg)](https://www.nuget.org/packages/FluxIndex.Providers.LMSupply/) | Local embedding, reranking and text completion (LMSupply — no API key) |
 | **FluxIndex.Providers.OpenAI** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Providers.OpenAI.svg)](https://www.nuget.org/packages/FluxIndex.Providers.OpenAI/) | OpenAI-compatible embedding and reranking |
-| **FluxIndex.Integrations.FluxImprover** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Integrations.FluxImprover.svg)](https://www.nuget.org/packages/FluxIndex.Integrations.FluxImprover/) | LLM-based chunk quality enhancement |
+| **FluxIndex.Integrations.FluxImprover** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Integrations.FluxImprover.svg)](https://www.nuget.org/packages/FluxIndex.Integrations.FluxImprover/) | LLM-based chunk quality enhancement (`AddFluxImproverIntegration`) |
+| **FluxIndex.MCP** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.MCP.svg)](https://www.nuget.org/packages/FluxIndex.MCP/) | Model Context Protocol server library (`FluxIndexMcpServer.RunAsync`, `AddFluxIndexMcp`) — see [MCP Server](#mcp-server) |
 
 > **Moved:** File-to-vector synchronization (formerly `FluxIndex.Extensions.FileVault`) was extracted to the **[FluxFeed](https://github.com/iyulab/FluxFeed)** repository in 0.16.0. Install `FluxFeed` for git-like file tracking / folder-monitoring document ingestion; it feeds into FluxIndex.
 
 ### Storage capability matrix
 
-Metadata filtering (`SearchAsync(..., filters:)`) is honored by **every** store — stores without
+`AddSQLiteStorage()` registers the full-scan SQLite store (`SQLiteVectorStore`, the "in-memory scan" row below); the
+sqlite-vec store is registered with `services.AddSQLiteVecVectorStore(databasePath, vectorDimension)` (or the
+`SQLiteVecOptions` overload).
+
+Metadata filtering (`SearchAsync(..., filter:)`) is honored by **every** store — stores without
 native pushdown fall back to a correctness backstop applied before the topK trim. Native pushdown
 matters for recall/performance at scale:
 
@@ -204,7 +248,7 @@ Filter semantics (identical across every store):
   still matches the raw value you filter on. The same semantics apply in the SDK's `Retriever`.
 - **Collection value** (`List<string>`, arrays, JSON arrays …) → **match ANY element** (OR within
   the key — Qdrant MatchAny, PostgreSQL per-element jsonb containment). One query replaces an
-  N-way fan-out: `filters: new() { ["document_id"] = fileHashes }`.
+  N-way fan-out: `filter: new() { ["document_id"] = fileHashes }`.
 - **Unsupported values** (arbitrary objects, nested/empty collections) **throw
   `ArgumentException`** — never a silent zero-result.
 
@@ -393,7 +437,8 @@ than quietly returning unscoped results.
 | Scenario | Packages |
 |----------|---------|
 | Embeddings + vector search only (no native deps, no document parsing) | `FluxIndex.Core` + storage |
-| Full RAG pipeline (PDF, DOCX, HWP, web crawling) | `FluxIndex.SDK` + storage |
+| RAG orchestration (context, indexer, retriever) | `FluxIndex.SDK` + storage |
+| Document parsing (PDF, DOCX, HWP) / web crawling | add `FluxIndex.Integrations.FileFlux` / `FluxIndex.Integrations.WebFlux` |
 | File system monitoring + auto-indexing (document ingestion) | [`FluxFeed`](https://github.com/iyulab/FluxFeed) (feeds into FluxIndex) |
 | Local AI embedding (ONNX, no API key required) | `FluxIndex.Providers.LMSupply` |
 
@@ -404,11 +449,13 @@ dotnet add package FluxIndex.Core
 dotnet add package FluxIndex.Storage.SQLite
 ```
 
-**Full SDK** — includes document processing (PDF, DOCX, HWP, web crawling):
+**Full SDK** — context, indexer and retriever; document processing is a separate integration package:
 
 ```bash
 dotnet add package FluxIndex.SDK
 dotnet add package FluxIndex.Storage.SQLite
+dotnet add package FluxIndex.Integrations.FileFlux   # PDF, DOCX, HWP parsing (optional)
+dotnet add package FluxIndex.Integrations.WebFlux    # web crawling (optional)
 ```
 
 ## Documentation
