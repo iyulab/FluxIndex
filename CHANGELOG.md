@@ -11,6 +11,17 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [0.61.0] - Unreleased
 
+### Changed
+- **Breaking**: `FluxIndex.Integrations.FileFlux.ProcessingOptions.MetadataSchema` and `FileFluxOptions.DefaultMetadataSchema` are
+  `MetadataSchema` (was `string`). The strings they took (`"Academic"`, `"Legal"`, …) named no schema that exists. Configuration
+  binding keeps working for the real names (`General`, `ProductManual`, `TechnicalDoc`, `Article`, `Custom`).
+- **Breaking**: `Indexer.IndexDocumentAsync` throws `InvalidOperationException` when the options ask for AI metadata extraction
+  (`IndexingOptions.WithAIMetadataExtraction`, or the builder default) and no `IMetadataExtractor` is registered. It used to
+  skip the extraction without a word.
+
+### Added
+- `Indexer.SupportsAIMetadata` — whether an `IMetadataExtractor` is registered.
+
 ### Removed
 - **Breaking**: `FluxIndex.Integrations.FileFlux.ProcessingOptions.EnableLanguageAutoDetection`. It only wrote a `CustomProperties` key
   FileFlux never reads, so it never did anything; leaving `Language` unset detects the language.
@@ -19,6 +30,10 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 - **The FileFlux integration's `Language` reaches FileFlux.** It was written into `ChunkingOptions.CustomProperties["language"]` (and
   auto-detection into `["enableLanguageAutoDetection"]`), keys FileFlux never reads, so a configured language had no effect on
   segmentation. It is passed as `ChunkingOptions.LanguageCode`, which FileFlux 0.33.0 hands to the chunker; unset means `auto`.
+- **The FileFlux integration's `EnableMetadataEnrichment` extracts AI metadata.** It was written into FileFlux chunking properties
+  no stage reads, so it did nothing. It now asks the indexer for AI metadata extraction with `MetadataSchema`, on every path that
+  indexes: the whole document, the streamed document, and the batches immediate indexing writes as it goes. With no
+  `IMetadataExtractor` registered, processing throws before the file is read.
 
 ---
 

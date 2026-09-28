@@ -44,6 +44,9 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   read one back with `LoadIndexAsync(chunks)` (needs a registered `IGraphStore`). `Retriever.SearchAsync` does not run
   GraphRAG (`SearchOptions.UseGraphRAG = true` throws). A re-build replaces the communities the last build of those chunks persisted
   (`IGraphStore.DeleteCommunitiesAsync`); `IGraphRAGService.ForgetChunksAsync` removes what replaced or deleted chunks left in the graph.
+- **AI metadata on indexing** — register your `IMetadataExtractor` (`ConfigureServices`; FluxIndex ships none) and ask for it
+  per call with `IndexingOptions.WithAIMetadataExtraction(schema)` (or as a builder default); the result lands in the
+  document's `AIExtractedMetadata`. Asking without a registered extractor throws; `Indexer.SupportsAIMetadata` reports it.
 - **Vector quantization** — `IVectorQuantizer` (`ScalarQuantizer`, `ProductQuantizer`, `BinaryQuantizer`); opt-in with
   `AddVectorQuantization` or `AddScalarQuantization` / `AddProductQuantization` / `AddBinaryQuantization`, stored by
   `AddSQLiteQuantizedVectorStore` / `AddPostgreSQLQuantizedVectorStore`; searched with `SearchQuantizedAsync`.
@@ -58,7 +61,8 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
 - **Redis cache** — builder `UseRedisCache(connection)` **plus** `AddRedisStorage()`; plain DI `AddRedisCacheStore` /
   `AddRedisSemanticCache`.
 - **Document processing** — PDF/DOCX/TXT via FileFlux, web pages via WebFlux (`FluxIndex.Integrations.*`, opt-in):
-  `AddFileFluxIntegration` (builder `UseFileFlux`) for parsing and chunking, `AddDocumentProcessingPipeline` for the
+  `AddFileFluxIntegration` (builder `UseFileFlux`) for parsing and chunking — `FileFluxOptions.EnableMetadataEnrichment` adds AI
+  metadata (see «AI metadata on indexing») to each indexed file — `AddDocumentProcessingPipeline` for the
   document processing pipeline (no-op enrichment/QA defaults until you register real services), `AddWebFluxIntegration`
   (builder `UseWebFlux`) for web pages. Text preprocessing: `AddFluxIndexFluxCurator` (FluxCurator over your
   `IEmbeddingService`); LLM chunk enhancement: `AddFluxImproverIntegration` (FluxImprover over your

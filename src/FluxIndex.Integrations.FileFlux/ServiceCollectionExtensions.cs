@@ -1,6 +1,8 @@
 using FileFlux;
 using FileFlux.Core;
 using FileFlux.Domain;
+using FluxIndex.Core.Interfaces;
+using MetadataSchema = FluxIndex.Core.Models.MetadataSchema;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using IFileFluxDocumentAnalysisService = FileFlux.IDocumentAnalysisService;
@@ -81,14 +83,15 @@ public class FileFluxOptions
     public bool EnableLanguageAutoDetection { get; set; } = true;
 
     /// <summary>
-    /// Enable metadata enrichment by default (requires ITextCompletionService)
+    /// Extract AI metadata for indexed documents by default (<see cref="ProcessingOptions.EnableMetadataEnrichment"/>);
+    /// requires an <see cref="IMetadataExtractor"/> registered on the FluxIndex builder.
     /// </summary>
     public bool EnableMetadataEnrichment { get; set; }
 
     /// <summary>
-    /// Default metadata schema (General, Academic, Technical, Legal, Medical)
+    /// Default schema for AI metadata extraction (<see cref="ProcessingOptions.MetadataSchema"/>).
     /// </summary>
-    public string DefaultMetadataSchema { get; set; } = "General";
+    public MetadataSchema DefaultMetadataSchema { get; set; } = MetadataSchema.General;
 
     /// <summary>
     /// Enable streaming API for memory-efficient processing of large files (recommended for files > 10MB)

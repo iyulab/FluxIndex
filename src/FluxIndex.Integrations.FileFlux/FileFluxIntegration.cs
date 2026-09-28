@@ -1,6 +1,8 @@
-﻿using FileFlux;
+using FileFlux;
 using FileFlux.Core;
 using FluxIndex.Core.Domain.Entities;
+using FluxIndex.Core.Interfaces;
+using MetadataSchema = FluxIndex.Core.Models.MetadataSchema;
 using FluxIndex.SDK;
 using Microsoft.Extensions.Logging;
 using FluxIndexDocumentChunk = FluxIndex.Core.Domain.Entities.DocumentChunk;
@@ -62,6 +64,7 @@ public partial class FileFluxIntegration
             EnableMetadataEnrichment = _options.EnableMetadataEnrichment,
             MetadataSchema = _options.DefaultMetadataSchema
         };
+        var indexingOptions = CreateIndexingOptions(options);
 
         LogProcessingFile(_logger, filePath, options.Language ?? "auto");
 
@@ -74,7 +77,7 @@ public partial class FileFluxIntegration
                 OverlapSize = options.OverlapSize
             };
 
-            // Add custom properties for language and metadata enrichment
+            // The language FileFlux segments with
             ApplyCustomProperties(chunkingOptions, options);
 
             var fluxIndexChunks = new List<FluxIndexDocumentChunk>();
@@ -123,8 +126,9 @@ public partial class FileFluxIntegration
 
             // Index with FluxIndex
             var indexedDocumentId = await _indexer.IndexDocumentAsync(
-                document: document,
-                cancellationToken: cancellationToken);
+                document,
+                indexingOptions,
+                cancellationToken);
 
             LogSuccessfullyProcessedAndIndexed(_logger, fluxIndexChunks.Count, indexedDocumentId);
 
@@ -165,6 +169,7 @@ public partial class FileFluxIntegration
             EnableMetadataEnrichment = _options.EnableMetadataEnrichment,
             MetadataSchema = _options.DefaultMetadataSchema
         };
+        var indexingOptions = CreateIndexingOptions(options);
 
         LogProcessingFileStreaming(_logger, filePath, options.Language ?? "auto");
 
@@ -177,7 +182,7 @@ public partial class FileFluxIntegration
                 OverlapSize = options.OverlapSize
             };
 
-            // Add custom properties for language and metadata enrichment
+            // The language FileFlux segments with
             ApplyCustomProperties(chunkingOptions, options);
 
             var documentId = Path.GetFileNameWithoutExtension(filePath);
@@ -198,7 +203,7 @@ public partial class FileFluxIntegration
                 if (_options.EnableImmediateIndexing && fluxIndexChunks.Count >= _options.ImmediateIndexingBatchSize)
                 {
                     LogImmediateBatchIndexing(_logger, fluxIndexChunks.Count);
-                    await BatchIndexChunksAsync(documentId, fluxIndexChunks, cancellationToken);
+                    await BatchIndexChunksAsync(documentId, fluxIndexChunks, indexingOptions, cancellationToken);
                     fluxIndexChunks.Clear();
                 }
 
@@ -249,8 +254,9 @@ public partial class FileFluxIntegration
 
                 // Index with FluxIndex
                 var indexedDocumentId = await _indexer.IndexDocumentAsync(
-                    document: document,
-                    cancellationToken: cancellationToken);
+                    document,
+                    indexingOptions,
+                    cancellationToken);
 
                 LogSuccessfullyProcessedAndIndexedStreaming(_logger, totalChunks, indexedDocumentId);
 
@@ -282,6 +288,7 @@ public partial class FileFluxIntegration
     private async Task BatchIndexChunksAsync(
         string documentId,
         List<FluxIndexDocumentChunk> chunks,
+        IndexingOptions? indexingOptions,
         CancellationToken cancellationToken)
     {
         if (chunks.Count == 0) return;
@@ -295,7 +302,7 @@ public partial class FileFluxIntegration
             partialDocument.Metadata["parent_document_id"] = documentId;
             partialDocument.Metadata["is_partial"] = true;
 
-            await _indexer.IndexDocumentAsync(partialDocument, cancellationToken);
+            await _indexer.IndexDocumentAsync(partialDocument, indexingOptions, cancellationToken);
             LogBatchIndexedChunks(_logger, chunks.Count, documentId);
         }
         catch (Exception ex)
@@ -316,12 +323,27 @@ public partial class FileFluxIntegration
         // reads — a configured language had no effect.
         chunkingOptions.LanguageCode = string.IsNullOrEmpty(options.Language) ? "auto" : options.Language;
 
-        // Metadata enrichment settings
-        if (options.EnableMetadataEnrichment)
+    }
+
+    /// <summary>
+    /// The indexing options that carry <see cref="ProcessingOptions.EnableMetadataEnrichment"/> to the indexer's AI metadata
+    /// extraction (<c>IndexingOptions.WithAIMetadataExtraction</c>), or null when enrichment is off. Checked before a file is
+    /// processed: enrichment without a metadata extractor would otherwise fail only after the whole file was chunked, or
+    /// be logged and skipped for the batches the streaming path indexes as it goes.
+    /// </summary>
+    private IndexingOptions? CreateIndexingOptions(ProcessingOptions options)
+    {
+        if (!options.EnableMetadataEnrichment)
+            return null;
+
+        if (!_indexer.SupportsAIMetadata)
         {
-            chunkingOptions.CustomProperties["enableMetadataEnrichment"] = true;
-            chunkingOptions.CustomProperties["metadataSchema"] = options.MetadataSchema;
+            throw new InvalidOperationException(
+                "ProcessingOptions.EnableMetadataEnrichment is set, but the indexer has no metadata extractor. " +
+                "Register an IMetadataExtractor via ConfigureServices(...) on the FluxIndex builder.");
         }
+
+        return new IndexingOptions().WithAIMetadataExtraction(options.MetadataSchema);
     }
 
     /// <summary>
@@ -576,14 +598,15 @@ public class ProcessingOptions
     public string? Language { get; set; }
 
     /// <summary>
-    /// Enable metadata enrichment with AI-powered extraction
+    /// Extract AI metadata (topics, keywords, description, …) for the indexed document, through the indexer's
+    /// <see cref="IMetadataExtractor"/> — processing throws when none is registered on the FluxIndex builder.
     /// </summary>
     public bool EnableMetadataEnrichment { get; set; }
 
     /// <summary>
-    /// Metadata schema for enrichment (General, Academic, Technical, Legal, Medical)
+    /// The schema AI metadata is extracted with when <see cref="EnableMetadataEnrichment"/> is set.
     /// </summary>
-    public string MetadataSchema { get; set; } = "General";
+    public MetadataSchema MetadataSchema { get; set; } = MetadataSchema.General;
 }
 
 /// <summary>

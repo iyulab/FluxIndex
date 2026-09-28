@@ -46,6 +46,12 @@ public partial class Indexer
     public bool SupportsHybridSearch => _hybridSearchService != null;
 
     /// <summary>
+    /// Whether an <see cref="IMetadataExtractor"/> is configured, so indexing can extract AI metadata
+    /// (<c>IndexingOptions.WithAIMetadataExtraction</c>). Indexing that asks for it without one throws.
+    /// </summary>
+    public bool SupportsAIMetadata => _metadataExtractor != null;
+
+    /// <summary>
     /// Whether this indexer adds new documents to the keyword (sparse) index. When false, nothing
     /// populates the keyword leg and hybrid search degrades to vector-only.
     /// Removal is deliberately not gated on this — see <see cref="HasKeywordIndex"/>.
@@ -261,17 +267,25 @@ public partial class Indexer
             });
 
             // Phase 3: AI 메타데이터 추출 (선택적)
+            // Builder-level defaults (IndexerOptions.CustomOptions) overlaid by this call's
+            // IndexingOptions.CustomOptions — the caller's keys win. Before 0.38.0 the per-call
+            // options were discarded here, so `IndexingOptions.WithAIMetadataExtraction(...)`
+            // passed to this method had no effect.
+            var indexingOptions = ResolveMetadataOptions(options);
+
+            // Extraction asked for with nothing to extract with is a configuration error, not an optional step to skip.
+            if (_metadataExtractor == null && indexingOptions.ShouldExtractAIMetadata())
+            {
+                throw new InvalidOperationException(
+                    "AI metadata extraction was requested, but no metadata extractor is configured. " +
+                    "Register an IMetadataExtractor via ConfigureServices(...) on the builder.");
+            }
+
             if (_metadataExtractor != null && !string.IsNullOrEmpty(document.Content))
             {
                 try
                 {
                     LogExtractingAIMetadata(_logger, document.Id);
-
-                    // Builder-level defaults (IndexerOptions.CustomOptions) overlaid by this call's
-                    // IndexingOptions.CustomOptions — the caller's keys win. Before 0.38.0 the per-call
-                    // options were discarded here, so `IndexingOptions.WithAIMetadataExtraction(...)`
-                    // passed to this method had no effect.
-                    var indexingOptions = ResolveMetadataOptions(options);
 
                     if (indexingOptions.ShouldExtractAIMetadata())
                     {
