@@ -13,21 +13,27 @@ namespace FluxIndex.SDK.Services;
 /// <summary>
 /// 메모리 기반 캐시 서비스 구현 (Core 인터페이스)
 /// </summary>
-internal sealed partial class InMemoryCacheService : ICacheService
+/// <remarks>
+/// Owns its <see cref="MemoryCache"/>, bounded at <c>sizeLimit</c> entries (<see cref="Configuration.CacheOptions.MaxCacheSize"/>)
+/// — a private instance, so the bound applies to this cache alone and no other <see cref="IMemoryCache"/> user in the
+/// container has to size its entries. At the bound a new entry is not stored and older ones are compacted away; the
+/// search-cache generation is replaced by a fresh value when evicted, so eviction only costs a miss.
+/// </remarks>
+internal sealed partial class InMemoryCacheService : ICacheService, IDisposable
 {
-    private readonly IMemoryCache _cache;
+    private readonly MemoryCache _cache;
     private readonly ILogger<InMemoryCacheService> _logger;
     private readonly MemoryCacheEntryOptions _defaultOptions;
 
     public InMemoryCacheService(
-        IMemoryCache cache,
+        int sizeLimit,
         ILogger<InMemoryCacheService> logger)
     {
-        _cache = cache ?? throw new ArgumentNullException(nameof(cache));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sizeLimit);
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        
-        // Size on every entry: the injected IMemoryCache is the host's shared instance, and a host
-        // that sets SizeLimit on it makes Set throw for an entry without one. One value, one unit.
+        _cache = new MemoryCache(new MemoryCacheOptions { SizeLimit = sizeLimit });
+
+        // Every entry counts as one against the limit.
         _defaultOptions = new MemoryCacheEntryOptions
         {
             SlidingExpiration = TimeSpan.FromMinutes(15),
@@ -59,7 +65,7 @@ internal sealed partial class InMemoryCacheService : ICacheService
         var options = expiry.HasValue
             ? new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = expiry, Size = 1 }
             : _defaultOptions;
-        
+
         _cache.Set(key, value, options);
         LogCachedValue(_logger, key);
 
@@ -82,13 +88,12 @@ internal sealed partial class InMemoryCacheService : ICacheService
 
     public Task ClearAsync(CancellationToken cancellationToken = default)
     {
-        if (_cache is MemoryCache memoryCache)
-        {
-            memoryCache.Compact(1.0);
-        }
+        _cache.Compact(1.0);
         LogCacheCleared(_logger);
         return Task.CompletedTask;
     }
+
+    public void Dispose() => _cache.Dispose();
 
     #region LoggerMessage Definitions
 

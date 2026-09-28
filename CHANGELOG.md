@@ -11,7 +11,17 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [0.60.0] - Unreleased
 
+### Removed
+- **Breaking**: `AddGraphRAGService()`. It registered `IGraphRAGService` without the entity graph, community detection and
+  summarization it is built from, so a context built on it alone failed to resolve the service. Use `AddFullGraphRAG()` —
+  every registration in it is a `TryAdd`, so services you registered first are still the ones used.
+- **Breaking**: `CacheOptions.CacheDuration` and `CacheOptions.CacheTTL`. Nothing read either; how long a cached search lives
+  is `RetrieverOptions.CacheDuration`, set with `WithCacheDuration` (unchanged).
+
 ### Fixed
+- **`UseMemoryCache(maxCacheSize)` bounds the search cache.** The size was stored and never read — the in-memory cache grew
+  without limit. It now holds at most `CacheOptions.MaxCacheSize` entries (default 1000) in its own `MemoryCache`, so the
+  bound does not touch any other `IMemoryCache` user. `UseMemoryCache` rejects a size below 1.
 - **A registered RAG security pipeline now guards every `Retriever` search path, not one overload.** `IRAGSecurityPipeline`
   used to run only in `SearchAsync(query, SearchOptions)`; `SearchAsync(query, maxResults, …)` (the Quick Start call),
   `HybridSearchAsync`, `KeywordSearchAsync`, `FindSimilarAsync`, `SearchQuantizedAsync`, `SearchWithRerankAsync` — and

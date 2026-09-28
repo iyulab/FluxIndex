@@ -23,9 +23,9 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
 - **Search result cache** — on by default: `CacheOptions.CacheProvider` is `"Memory"` and
   `CacheOptions.EnableSearchCache` is `true`, so the builder registers an in-memory `ICacheService` and `Retriever`
   caches search results and document lookups; every `Indexer` write invalidates them. How long an entry lives is
-  `RetrieverOptions.CacheDuration` (default 10 minutes), set with `WithCacheDuration`. The in-memory cache has no
-  size limit — `UseMemoryCache(maxCacheSize)` selects it but the size is not applied, and `CacheOptions.CacheTTL` is
-  not read. `EnableSearchCache = false` turns the cache off.
+  `RetrieverOptions.CacheDuration` (default 10 minutes), set with `WithCacheDuration`. The in-memory cache holds at
+  most `CacheOptions.MaxCacheSize` entries (default 1000; `UseMemoryCache(maxCacheSize)`) in its own `MemoryCache`.
+  `EnableSearchCache = false` turns the cache off.
 - **Reranking** (cross-encoder) — `IReranker.RerankAsync`, registered by `AddLMSupplyReranker` (local, no API key) or
   `AddOpenAICompatibleReranker`. Opt-in per search: `Retriever.SearchAsync(query, new SearchOptions { UseReranker = true })`
   fetches `RerankCandidateCount` candidates (default `TopK × 3`), has the registered reranker order them and returns its
@@ -39,9 +39,8 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
 - **Graph traversal** — `IGraphTraversalService` (`TraverseBfsAsync`, `TraverseDfsAsync`, `FindShortestPathAsync` (BFS),
   `FindStrongestPathAsync` (Dijkstra), `ComputeChunkImportanceAsync` (PageRank-style)). Registered by the builder.
   **GraphRAG**: opt-in with `ConfigureServices(s => s.AddFullGraphRAG())`, which registers `IGraphRAGService` together
-  with the entity graph, Leiden community detection and hierarchical summarization it needs (`AddGraphRAGService`
-  registers only the service itself — use it only when you register `IEntityGraphService`, `ILeidenCommunityService`
-  and `IHierarchicalSummarizationService` yourself). Once the service is registered, `Indexer` builds the graph for
+  with the entity graph, Leiden community detection and hierarchical summarization it needs — each a `TryAdd`, so an
+  `IEntityGraphService` (or either of the others) you register first is the one it uses. Once the service is registered, `Indexer` builds the graph for
   every indexed document (`IndexingOptions.EnableGraphRAG`: unset = on when registered, `false` skips it).
   `IGraphRAGService.QueryAsync(query, index)` takes a `GraphRAGIndex`: build one with `BuildIndexAsync(chunks)` or
   read one back with `LoadIndexAsync(chunks)` (needs a registered `IGraphStore`). `Retriever.SearchAsync` does not run

@@ -509,21 +509,23 @@ public class GraphRAGServiceTests
     #region DI Registration Tests
 
     [Fact]
-    public void AddGraphRAGService_AddsServiceToCollection()
+    public void AddFullGraphRAG_UsesServicesRegisteredBeforeIt_AndTheGraphServiceResolves()
     {
-        // Arrange
         var services = new ServiceCollection();
+        services.AddSingleton(typeof(Microsoft.Extensions.Logging.ILogger<>), typeof(Microsoft.Extensions.Logging.Abstractions.NullLogger<>));
         services.AddScoped<IEntityGraphService>(_ => _mockEntityGraphService);
         services.AddScoped<ILeidenCommunityService>(_ => _mockLeidenCommunityService);
         services.AddScoped<IHierarchicalSummarizationService>(_ => _mockSummarizationService);
 
-        // Act
-        services.AddGraphRAGService();
+        services.AddFullGraphRAG();
 
-        // Assert
-        var descriptor = services.FirstOrDefault(d => d.ServiceType == typeof(IGraphRAGService));
-        Assert.NotNull(descriptor);
+        var descriptor = services.Single(d => d.ServiceType == typeof(IGraphRAGService));
         Assert.Equal(ServiceLifetime.Scoped, descriptor.Lifetime);
+        using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
+        using var scope = provider.CreateScope();
+        Assert.IsType<FluxIndex.Core.Application.Services.Graph.GraphRAGService>(
+            scope.ServiceProvider.GetRequiredService<IGraphRAGService>());
+        Assert.Same(_mockEntityGraphService, scope.ServiceProvider.GetRequiredService<IEntityGraphService>());
     }
 
     #endregion

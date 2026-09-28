@@ -731,10 +731,15 @@ public static class MetadataAugmentationServiceExtensions
     }
 
     /// <summary>
-    /// Full GraphRAG Services registration.
-    /// Includes Entity Extraction, Leiden Community Detection, Entity Graph,
-    /// and Hierarchical Summarization for complete GraphRAG support.
+    /// GraphRAG registration: <see cref="IGraphRAGService"/> together with everything it needs — entity
+    /// extraction, Leiden community detection, the entity graph and hierarchical summarization.
+    /// Every registration is a <c>TryAdd</c>, so a service registered before this call (your own
+    /// <see cref="IEntityGraphService"/>, say) is the one the pipeline uses.
     /// </summary>
+    /// <remarks>
+    /// This is the one GraphRAG entry point. A registration of <see cref="IGraphRAGService"/> alone (the removed
+    /// <c>AddGraphRAGService</c>) built nothing: the service cannot be constructed without the three it orchestrates.
+    /// </remarks>
     /// <param name="services">Service collection</param>
     /// <returns>Service collection</returns>
     public static IServiceCollection AddFullGraphRAG(this IServiceCollection services)
@@ -742,21 +747,8 @@ public static class MetadataAugmentationServiceExtensions
         services.AddGraphRAGCore();
         services.AddEntityGraphService();
         services.AddHierarchicalSummarization(configureOptions: null);
-        services.AddGraphRAGService();
-
-        return services;
-    }
-
-    /// <summary>
-    /// GraphRAG Pipeline Service registration.
-    /// Orchestrates entity graph, community detection, and hierarchical summarization
-    /// for comprehensive retrieval-augmented generation with local and global search.
-    /// </summary>
-    /// <param name="services">Service collection</param>
-    /// <returns>Service collection</returns>
-    public static IServiceCollection AddGraphRAGService(this IServiceCollection services)
-    {
         services.TryAddScoped<IGraphRAGService, Graph.GraphRAGService>();
+
         return services;
     }
 

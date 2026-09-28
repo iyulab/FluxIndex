@@ -20,12 +20,12 @@ public class FluxIndexOptions
     /// 벡터 저장소 설정
     /// </summary>
     public VectorStoreOptions VectorStore { get; set; } = new();
-    
+
     /// <summary>
     /// 임베딩 서비스 설정
     /// </summary>
     public EmbeddingOptions Embedding { get; set; } = new();
-    
+
     /// <summary>
     /// 캐싱 설정
     /// </summary>
@@ -111,9 +111,13 @@ public class CacheOptions
     /// <see cref="Indexer"/> write invalidates them; a write made directly to the vector store does not.
     /// </summary>
     public bool EnableSearchCache { get; set; } = true;
+
+    /// <summary>
+    /// How many entries the in-memory search cache (<c>CacheProvider = "Memory"</c>) holds — search result sets and
+    /// document lookups each count as one (default 1000). Set with <see cref="FluxIndexContextBuilder.UseMemoryCache"/>.
+    /// How long an entry lives is <see cref="RetrieverOptions.CacheDuration"/> (<see cref="FluxIndexContextBuilder.WithCacheDuration"/>).
+    /// </summary>
     public int MaxCacheSize { get; set; } = 1000;
-    public TimeSpan CacheDuration { get; set; } = TimeSpan.FromHours(1);
-    public TimeSpan CacheTTL { get; set; } = TimeSpan.FromHours(1);
     public string CacheProvider { get; set; } = "Memory";
     public string RedisConnectionString { get; set; } = string.Empty;
 }

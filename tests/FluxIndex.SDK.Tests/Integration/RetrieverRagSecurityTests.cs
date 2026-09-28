@@ -5,7 +5,6 @@ using FluxIndex.Core.Services;
 using FluxIndex.Core.Domain.Models;
 using FluxIndex.SDK;
 using FluxIndex.SDK.Services;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using Xunit;
@@ -76,7 +75,7 @@ public class RetrieverRagSecurityTests
     [Fact]
     public async Task VectorSearch_CacheHit_IsGuardedToo()
     {
-        var cache = new InMemoryCacheService(new MemoryCache(new MemoryCacheOptions()), NullLogger<InMemoryCacheService>.Instance);
+        using var cache = new InMemoryCacheService(1000, NullLogger<InMemoryCacheService>.Instance);
         var (retriever, mocks) = CreateRetriever(ragSecurityPipeline: new IndirectInjectionDetector(), cacheService: cache);
         ReturnFromVectorStore(mocks.VectorStore, CleanChunk(), PoisonedChunk());
         var ct = TestContext.Current.CancellationToken;

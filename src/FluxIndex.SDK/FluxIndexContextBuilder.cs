@@ -1,4 +1,4 @@
-﻿using Flux.Abstractions;
+using Flux.Abstractions;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services;
 using FluxIndex.Core.Constants;
@@ -276,6 +276,7 @@ public class FluxIndexContextBuilder
     /// </summary>
     public FluxIndexContextBuilder UseMemoryCache(int maxCacheSize = 1000)
     {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxCacheSize);
         SelectCacheProvider("Memory");
         _options.Cache.MaxCacheSize = maxCacheSize;
         _options.Cache.EnableSearchCache = true;
@@ -506,7 +507,6 @@ public class FluxIndexContextBuilder
     /// </summary>
     public FluxIndexContextBuilder WithCacheDuration(TimeSpan duration)
     {
-        _options.Cache.CacheTTL = duration;
         _retrieverOptions.CacheDuration = duration;
         return this;
     }
@@ -666,7 +666,9 @@ public class FluxIndexContextBuilder
         if (_options.Cache.CacheProvider?.Equals("Memory", StringComparison.OrdinalIgnoreCase) == true
             && !_services.Any(d => d.ServiceType == typeof(ICacheService)))
         {
-            _services.AddSingleton<ICacheService, InMemoryCacheService>();
+            var maxCacheSize = _options.Cache.MaxCacheSize;
+            _services.AddSingleton<ICacheService>(sp => new InMemoryCacheService(
+                maxCacheSize, sp.GetRequiredService<ILogger<InMemoryCacheService>>()));
         }
 
         // Register core services
