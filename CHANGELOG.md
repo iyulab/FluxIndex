@@ -19,6 +19,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   (`IndexingOptions.WithAIMetadataExtraction`, or the builder default) and no `IMetadataExtractor` is registered. It used to
   skip the extraction without a word.
 - Re-pinned sibling package(s) `LMSupply.Embedder` 0.89.0 -> 0.90.0, `LMSupply.Generator` 0.89.0 -> 0.90.0, `LMSupply.Reranker` 0.89.0 -> 0.90.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
+- Re-pinned sibling package(s) `FluxImprover` 0.14.13 -> 0.14.14 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
 
 ### Added
 - `Indexer.SupportsAIMetadata` — whether an `IMetadataExtractor` is registered.
