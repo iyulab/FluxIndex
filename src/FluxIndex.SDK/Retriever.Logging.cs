@@ -97,7 +97,5 @@ public partial class Retriever
     [LoggerMessage(Level = LogLevel.Information, Message = "Quantized search with rerank for: {Query}")]
     private static partial void LogQuantizedSearchWithRerank(ILogger logger, string query);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "RAG security pipeline blocked document '{DocumentId}' (chunk '{ChunkId}', risk score {RiskScore:F2}) from search results")]
-    private static partial void LogRagSecurityBlocked(ILogger logger, string documentId, string chunkId, double riskScore);
 
 }

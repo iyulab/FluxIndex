@@ -9,6 +9,23 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.60.0] - Unreleased
+
+### Fixed
+- **A registered RAG security pipeline now guards every `Retriever` search path, not one overload.** `IRAGSecurityPipeline`
+  used to run only in `SearchAsync(query, SearchOptions)`; `SearchAsync(query, maxResults, …)` (the Quick Start call),
+  `HybridSearchAsync`, `KeywordSearchAsync`, `FindSimilarAsync`, `SearchQuantizedAsync`, `SearchWithRerankAsync` — and
+  `context.SearchAsync`/`HybridSearchAsync`, which delegate to them — returned blocked documents unmarked. Cache hits are
+  guarded too, and each call validates its final result once (a hybrid search no longer validates each leg separately).
+- **A sanitized result no longer rewrites the stored chunk.** The vector paths hand out the instance the store or cache
+  holds; sanitizing it in place made the sanitized text the stored text for every later reader. The result now carries
+  a copy.
+
+### Added
+- `DocumentChunk.WithContent(string)` — a copy of the chunk with other content, every other field (the id included) kept.
+
+---
+
 ## [0.59.5] - 2026-09-28
 
 ### Changed

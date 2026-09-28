@@ -69,10 +69,12 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
 - **MCP server** — `FluxIndex.MCP` is a library: host it with `FluxIndexMcpServer.RunAsync(workspacePath)` or
   `services.AddFluxIndexMcp(...)` (stdio). Tools: `memorize`, `search` (`strategy`: `hybrid` default · `vector` ·
   `keyword`), `status`, `unmemorize`. Embedding is local LMSupply (`.vault/config.json` `embedding.model`).
-- **RAG security** (opt-in) — register a `FluxGuard.Remote` `IRAGSecurityPipeline`;
-  `Retriever.SearchAsync(query, SearchOptions)` (vector or hybrid) drops documents it blocks and replaces the content
-  of ones it sanitizes. Only that overload applies it: `Retriever.SearchAsync(query, maxResults, …)`,
-  `HybridSearchAsync`, `KeywordSearchAsync` and `context.SearchAsync` return results without the security pass.
+- **RAG security** (opt-in) — register a `FluxGuard.Remote` `IRAGSecurityPipeline`; every `Retriever` search
+  (`SearchAsync` in both forms, `HybridSearchAsync`, `KeywordSearchAsync`, `FindSimilarAsync`, `SearchQuantizedAsync`,
+  `SearchWithRerankAsync`, and the `context.SearchAsync`/`HybridSearchAsync` calls that use them) drops documents it
+  blocks and hands out sanitized content for ones it sanitizes — cache hits included. Not yet applied:
+  `context.HybridSearchV2Async`, `AdaptiveSearchAsync` and `SmallToBigSearchAsync`. Lookups by id
+  (`GetDocumentAsync`, `GetChunkAsync`) are not searches and are not guarded.
 - **Bring your own models** — `IEmbeddingService` / `ITextCompletionService` ports; `FluxIndex.Providers.LMSupply`
   (local) and `FluxIndex.Providers.OpenAI` (OpenAI-compatible) implement them. Local embedding, no API key:
 

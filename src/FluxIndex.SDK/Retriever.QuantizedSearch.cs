@@ -49,7 +49,9 @@ public partial class Retriever
         float minScore = 0.0f,
         CancellationToken cancellationToken = default)
     {
-        return await SearchQuantizedResolvedAsync(query, progress, maxResults ?? _options.DefaultMaxResults, minScore, cancellationToken);
+        return await GuardAsync(
+            await SearchQuantizedResolvedAsync(query, progress, maxResults ?? _options.DefaultMaxResults, minScore, cancellationToken),
+            cancellationToken);
     }
 
     private async Task<IEnumerable<VectorSearchResult>> SearchQuantizedResolvedAsync(
@@ -205,7 +207,9 @@ public partial class Retriever
         float minScore = 0.0f,
         CancellationToken cancellationToken = default)
     {
-        return await SearchWithRerankResolvedAsync(query, progress, maxResults ?? _options.DefaultMaxResults, candidateMultiplier, minScore, cancellationToken);
+        return await GuardAsync(
+            await SearchWithRerankResolvedAsync(query, progress, maxResults ?? _options.DefaultMaxResults, candidateMultiplier, minScore, cancellationToken),
+            cancellationToken);
     }
 
     private async Task<IEnumerable<VectorSearchResult>> SearchWithRerankResolvedAsync(

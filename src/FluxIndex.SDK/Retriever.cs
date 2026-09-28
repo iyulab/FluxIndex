@@ -49,9 +49,8 @@ public partial class Retriever
     private readonly IQuantizedVectorStore? _quantizedVectorStore;
 
     // Opt-in RAG poisoning/indirect-injection guard (FluxGuard.Remote). Null by default — nothing
-    // changes for consumers who don't supply one. Applied in SearchAsync(query, SearchOptions?, ...)
-    // only (the unified, auto-detecting entry point) — not threaded through every legacy overload,
-    // since those are lower-level primitives advanced callers already use knowingly.
+    // changes for consumers who don't supply one. Applied to what every public search path returns
+    // (GuardAsync): a registered pipeline is a promise about every result this retriever hands out.
     private readonly IRAGSecurityPipeline? _ragSecurityPipeline;
 
     // Opt-in per search (SearchOptions.UseReranker); null when no reranker is registered.
@@ -159,11 +158,13 @@ public partial class Retriever
         Dictionary<string, object>? filter = null,
         CancellationToken cancellationToken = default)
     {
-        return await SearchResolvedAsync(
-            query, progress,
-            maxResults ?? _options.DefaultMaxResults,
-            minScore ?? _options.DefaultMinScore,
-            filter, cancellationToken);
+        return await GuardAsync(
+            await SearchResolvedAsync(
+                query, progress,
+                maxResults ?? _options.DefaultMaxResults,
+                minScore ?? _options.DefaultMinScore,
+                filter, cancellationToken),
+            cancellationToken);
     }
 
     private async Task<IEnumerable<VectorSearchResult>> SearchResolvedAsync(
@@ -536,8 +537,10 @@ public partial class Retriever
         // Default: Vector-only search
         else
         {
-            var vectorResults = await SearchAsync(
+            // The unguarded core: this method guards its own result once, below.
+            var vectorResults = await SearchResolvedAsync(
                 query,
+                progress: null,
                 fetchCount,
                 options.MinSimilarity,
                 filter,
@@ -562,7 +565,7 @@ public partial class Retriever
 
         if (_ragSecurityPipeline != null)
         {
-            results = await ApplyRagSecurityAsync(results, cancellationToken);
+            results = await RagSecurityGuard.ApplyAsync(_ragSecurityPipeline, _logger, results, cancellationToken);
         }
 
         // After the security pass: a document it removed must not reach the reranker's model either.
@@ -588,58 +591,17 @@ public partial class Retriever
     }
 
     /// <summary>
-    /// Runs retrieved documents through the opt-in <see cref="IRAGSecurityPipeline"/> (indirect
-    /// prompt injection / RAG poisoning detection) before they reach the caller. A document the
-    /// pipeline suggests blocking is dropped from the result set entirely; one it suggests
-    /// sanitizing has its content replaced with <see cref="RAGDocumentValidation.SanitizedContent"/>
-    /// when the pipeline provided one. <see cref="RAGAction.Review"/> and <see cref="RAGAction.Include"/>
-    /// pass through unchanged — the pipeline judged them safe enough to include, review is a
-    /// logging concern for the consumer's own guard result inspection, not this SDK's to enforce.
+    /// Applies the opt-in <see cref="IRAGSecurityPipeline"/> to what a public search path returns
+    /// (<see cref="RagSecurityGuard"/>). Every public path that hands out chunk content ends here; the
+    /// unguarded <c>*ResolvedAsync</c> cores are what other paths compose, so nothing is validated twice.
     /// </summary>
-    private async Task<List<SearchResult>> ApplyRagSecurityAsync(
-        List<SearchResult> results,
+    private async Task<IEnumerable<VectorSearchResult>> GuardAsync(
+        IEnumerable<VectorSearchResult> results,
         CancellationToken cancellationToken)
     {
-        if (results.Count == 0)
-        {
-            return results;
-        }
-
-        var documents = results.Select(r => new RAGDocument
-        {
-            Id = r.Id,
-            Content = r.Content,
-            Source = r.DocumentId,
-            RelevanceScore = r.Score
-        }).ToList();
-
-        var validations = await _ragSecurityPipeline!.ValidateDocumentsAsync(documents, cancellationToken);
-        var validationsById = validations.ToDictionary(v => v.Document.Id ?? string.Empty);
-
-        var filtered = new List<SearchResult>(results.Count);
-        foreach (var result in results)
-        {
-            if (!validationsById.TryGetValue(result.Id ?? string.Empty, out var validation))
-            {
-                filtered.Add(result);
-                continue;
-            }
-
-            if (validation.SuggestedAction == RAGAction.Block)
-            {
-                LogRagSecurityBlocked(_logger, result.DocumentId ?? string.Empty, result.Id ?? string.Empty, validation.RiskScore);
-                continue;
-            }
-
-            if (validation.SuggestedAction == RAGAction.Sanitize && validation.SanitizedContent != null)
-            {
-                result.Content = validation.SanitizedContent;
-            }
-
-            filtered.Add(result);
-        }
-
-        return filtered;
+        return _ragSecurityPipeline is null
+            ? results
+            : await RagSecurityGuard.ApplyAsync(_ragSecurityPipeline, _logger, results, cancellationToken);
     }
 
     /// <summary>
@@ -674,8 +636,10 @@ public partial class Retriever
         Dictionary<string, object>? filter = null,
         CancellationToken cancellationToken = default)
     {
-        return await HybridSearchResolvedAsync(
-            keyword, query, progress, maxResults ?? _options.DefaultMaxResults, vectorWeight, filter, cancellationToken);
+        return await GuardAsync(
+            await HybridSearchResolvedAsync(
+                keyword, query, progress, maxResults ?? _options.DefaultMaxResults, vectorWeight, filter, cancellationToken),
+            cancellationToken);
     }
 
     private async Task<IEnumerable<VectorSearchResult>> HybridSearchResolvedAsync(
@@ -735,7 +699,8 @@ public partial class Retriever
             });
 
             // Perform vector search
-            var vectorResults = await SearchAsync(query, maxResults * 2, 0, filter, cancellationToken);
+            // Unguarded legs: the fused result is guarded once by the public overload.
+            var vectorResults = await SearchResolvedAsync(query, progress: null, maxResults * 2, 0, filter, cancellationToken);
 
             // Phase 3: 진행률 보고 - 키워드 검색 (50%)
             progress?.Report(new SearchProgress
@@ -750,7 +715,7 @@ public partial class Retriever
             });
 
             // Perform keyword search
-            var keywordResults = await KeywordSearchAsync(keyword, maxResults * 2, filter, cancellationToken);
+            var keywordResults = await KeywordSearchResolvedAsync(keyword, progress: null, maxResults * 2, filter, cancellationToken);
 
             WarnIfKeywordLegContributedNothing(keywordResults, vectorResults, keyword);
 
@@ -870,8 +835,10 @@ public partial class Retriever
         Dictionary<string, object>? filter = null,
         CancellationToken cancellationToken = default)
     {
-        return await KeywordSearchResolvedAsync(
-            keyword, progress, maxResults ?? _options.DefaultMaxResults, filter, cancellationToken);
+        return await GuardAsync(
+            await KeywordSearchResolvedAsync(
+                keyword, progress, maxResults ?? _options.DefaultMaxResults, filter, cancellationToken),
+            cancellationToken);
     }
 
     private async Task<IEnumerable<VectorSearchResult>> KeywordSearchResolvedAsync(
@@ -1077,7 +1044,9 @@ public partial class Retriever
         float minScore = 0.5f,
         CancellationToken cancellationToken = default)
     {
-        return await FindSimilarResolvedAsync(documentId, maxResults ?? _options.DefaultMaxResults, minScore, cancellationToken);
+        return await GuardAsync(
+            await FindSimilarResolvedAsync(documentId, maxResults ?? _options.DefaultMaxResults, minScore, cancellationToken),
+            cancellationToken);
     }
 
     private async Task<IEnumerable<VectorSearchResult>> FindSimilarResolvedAsync(

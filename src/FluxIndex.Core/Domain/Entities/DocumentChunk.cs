@@ -84,6 +84,36 @@ public class DocumentChunk
         };
     }
 
+    /// <summary>
+    /// A copy of this chunk carrying <paramref name="content"/> in place of its own — every other field,
+    /// the id included, is the same. For a caller that must hand out rewritten text (a sanitized search
+    /// result) without rewriting the instance a store or cache still holds. Collections are copied, not
+    /// shared; the value objects they hold (relationships, chunk metadata, quality) are shared.
+    /// </summary>
+    public DocumentChunk WithContent(string content)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+
+        var copy = new DocumentChunk
+        {
+            Id = Id,
+            DocumentId = DocumentId,
+            Content = content,
+            ChunkIndex = ChunkIndex,
+            TotalChunks = TotalChunks,
+            Embedding = Embedding,
+            Properties = new Dictionary<string, object>(Properties),
+            CreatedAt = CreatedAt,
+            TokenCount = TokenCount,
+            Score = Score,
+            Metadata = Metadata is null ? null : new Dictionary<string, object>(Metadata),
+            ChunkMetadata = ChunkMetadata,
+            Relationships = new List<ChunkRelationship>(Relationships),
+            Quality = Quality,
+        };
+        return copy;
+    }
+
     public void SetEmbedding(EmbeddingVector embedding)
     {
         ArgumentNullException.ThrowIfNull(embedding);
