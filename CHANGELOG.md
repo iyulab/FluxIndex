@@ -15,14 +15,21 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 - **A registered RAG security pipeline now guards every `Retriever` search path, not one overload.** `IRAGSecurityPipeline`
   used to run only in `SearchAsync(query, SearchOptions)`; `SearchAsync(query, maxResults, …)` (the Quick Start call),
   `HybridSearchAsync`, `KeywordSearchAsync`, `FindSimilarAsync`, `SearchQuantizedAsync`, `SearchWithRerankAsync` — and
-  `context.SearchAsync`/`HybridSearchAsync`, which delegate to them — returned blocked documents unmarked. Cache hits are
-  guarded too, and each call validates its final result once (a hybrid search no longer validates each leg separately).
+  `context.SearchAsync`/`HybridSearchAsync`, which delegate to them — returned blocked documents unmarked, and so did the
+  context searches that bypass the retriever (`HybridSearchV2Async`, `AdaptiveSearchAsync`/`AdaptiveSearchWithStrategyAsync`,
+  `SmallToBigSearchAsync`). Cache hits are guarded too, and each call validates its final result once (a hybrid search no
+  longer validates each leg separately). In a small-to-big result a blocked primary drops the result and a blocked context
+  chunk drops that chunk; `CombinedText` is rebuilt from what remains.
+- **Adaptive search no longer writes into the stored chunk's metadata.** Each result document took the chunk's own
+  `Metadata` dictionary and added `chunk_id`/`chunk_content`/`relevance_score` to it — the dictionary the store or cache
+  holds. It now copies it.
 - **A sanitized result no longer rewrites the stored chunk.** The vector paths hand out the instance the store or cache
   holds; sanitizing it in place made the sanitized text the stored text for every later reader. The result now carries
   a copy.
 
 ### Added
 - `DocumentChunk.WithContent(string)` — a copy of the chunk with other content, every other field (the id included) kept.
+- `SmallToBigResult.Combine(primary, context)` — the `CombinedText` format, for a caller that rebuilds a result from changed chunks.
 
 ---
 

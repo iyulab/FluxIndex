@@ -14,88 +14,30 @@ namespace FluxIndex.SDK.Services;
 /// guard result inspection, not this SDK's to enforce.
 /// </summary>
 /// <remarks>
-/// One judgement, one shape adapter per result type. Every public search path applies it to what it
-/// returns — once, after its own filtering, so an internal call that feeds a larger path (a hybrid
-/// leg, the vector leg of <c>SearchAsync(query, SearchOptions)</c>) is not validated twice.
+/// One judgement (<see cref="JudgeAsync"/>), one shape adapter per result type. Every public search path
+/// applies it to what it returns — once, after its own filtering, so an internal call that feeds a larger
+/// path (a hybrid leg, the vector leg of <c>SearchAsync(query, SearchOptions)</c>) is not validated twice.
+/// A result that carries a chunk the store or cache still holds is sanitized on a copy
+/// (<see cref="Core.Domain.Entities.DocumentChunk.WithContent"/>), never in place.
 /// </remarks>
 internal static partial class RagSecurityGuard
 {
-    /// <summary>
-    /// Guards <see cref="SearchResult"/> rows. They are built per call, so a sanitized one is rewritten in place.
-    /// </summary>
-    public static async Task<List<SearchResult>> ApplyAsync(
-        IRAGSecurityPipeline pipeline, ILogger logger, List<SearchResult> results, CancellationToken cancellationToken)
-    {
-        if (results.Count == 0)
-            return results;
+    /// <summary>What the pipeline sees of one result.</summary>
+    internal readonly record struct Row(string Id, string Content, string Source, double Score);
 
-        var validations = await ValidateAsync(
-            pipeline, results.Select(r => (r.Id, r.Content, r.DocumentId, (double)r.Score)), cancellationToken);
-
-        var kept = new List<SearchResult>(results.Count);
-        foreach (var result in results)
-        {
-            switch (Decide(logger, validations, result.Id, result.DocumentId))
-            {
-                case { Block: true }:
-                    continue;
-                case { Replacement: { } replacement }:
-                    result.Content = replacement;
-                    break;
-            }
-
-            kept.Add(result);
-        }
-
-        return kept;
-    }
+    /// <summary>Drop it, hand it out with <see cref="Replacement"/>, or (default) keep it as is.</summary>
+    internal readonly record struct Verdict(bool Block, string? Replacement);
 
     /// <summary>
-    /// Guards <see cref="VectorSearchResult"/> rows. Their chunk is the instance the store or cache holds, so a
-    /// sanitized one is handed out as a copy (<see cref="Core.Domain.Entities.DocumentChunk.WithContent"/>) —
-    /// rewriting it in place would make the sanitized text the stored text for every later reader.
+    /// Validates <paramref name="rows"/> in one pipeline call and answers a verdict per row, in order.
+    /// Rows are matched to validations by id; a row the pipeline did not answer for is kept.
     /// </summary>
-    public static async Task<List<VectorSearchResult>> ApplyAsync(
-        IRAGSecurityPipeline pipeline, ILogger logger, IEnumerable<VectorSearchResult> results, CancellationToken cancellationToken)
+    public static async Task<Verdict[]> JudgeAsync(
+        IRAGSecurityPipeline pipeline, ILogger logger, IReadOnlyList<Row> rows, CancellationToken cancellationToken)
     {
-        var list = results as List<VectorSearchResult> ?? results.ToList();
-        if (list.Count == 0)
-            return list;
+        if (rows.Count == 0)
+            return [];
 
-        var validations = await ValidateAsync(
-            pipeline, list.Select(r => (r.DocumentChunk.Id, r.DocumentChunk.Content, r.DocumentChunk.DocumentId, r.Score)), cancellationToken);
-
-        var kept = new List<VectorSearchResult>(list.Count);
-        foreach (var result in list)
-        {
-            var chunk = result.DocumentChunk;
-            switch (Decide(logger, validations, chunk.Id, chunk.DocumentId))
-            {
-                case { Block: true }:
-                    continue;
-                case { Replacement: { } replacement }:
-                    kept.Add(new VectorSearchResult
-                    {
-                        DocumentChunk = chunk.WithContent(replacement),
-                        Score = result.Score,
-                        Rank = result.Rank,
-                        Distance = result.Distance,
-                        Metadata = result.Metadata,
-                    });
-                    continue;
-            }
-
-            kept.Add(result);
-        }
-
-        return kept;
-    }
-
-    private static async Task<Dictionary<string, RAGDocumentValidation>> ValidateAsync(
-        IRAGSecurityPipeline pipeline,
-        IEnumerable<(string Id, string Content, string Source, double Score)> rows,
-        CancellationToken cancellationToken)
-    {
         var documents = rows.Select(r => new RAGDocument
         {
             Id = r.Id,
@@ -109,27 +51,81 @@ internal static partial class RagSecurityGuard
         var byId = new Dictionary<string, RAGDocumentValidation>(StringComparer.Ordinal);
         foreach (var validation in validations)
             byId[validation.Document.Id ?? string.Empty] = validation;
-        return byId;
-    }
 
-    private static Verdict Decide(
-        ILogger logger, Dictionary<string, RAGDocumentValidation> validations, string? id, string? documentId)
-    {
-        if (!validations.TryGetValue(id ?? string.Empty, out var validation))
-            return default;
-
-        if (validation.SuggestedAction == RAGAction.Block)
+        var verdicts = new Verdict[rows.Count];
+        for (var i = 0; i < rows.Count; i++)
         {
-            LogBlocked(logger, documentId ?? string.Empty, id ?? string.Empty, validation.RiskScore);
-            return new Verdict(Block: true, Replacement: null);
+            if (!byId.TryGetValue(rows[i].Id, out var validation))
+                continue;
+
+            if (validation.SuggestedAction == RAGAction.Block)
+            {
+                LogBlocked(logger, rows[i].Source, rows[i].Id, validation.RiskScore);
+                verdicts[i] = new Verdict(Block: true, Replacement: null);
+            }
+            else if (validation is { SuggestedAction: RAGAction.Sanitize, SanitizedContent: { } sanitized })
+            {
+                verdicts[i] = new Verdict(Block: false, Replacement: sanitized);
+            }
         }
 
-        return validation is { SuggestedAction: RAGAction.Sanitize, SanitizedContent: { } sanitized }
-            ? new Verdict(Block: false, Replacement: sanitized)
-            : default;
+        return verdicts;
     }
 
-    private readonly record struct Verdict(bool Block, string? Replacement);
+    /// <summary>
+    /// Guards a flat result list: <paramref name="read"/> says what the pipeline sees of an item,
+    /// <paramref name="sanitize"/> returns the item to hand out with the replacement content.
+    /// </summary>
+    public static async Task<List<T>> ApplyAsync<T>(
+        IRAGSecurityPipeline pipeline,
+        ILogger logger,
+        IEnumerable<T> items,
+        Func<T, Row> read,
+        Func<T, string, T> sanitize,
+        CancellationToken cancellationToken)
+    {
+        var list = items as IReadOnlyList<T> ?? items.ToList();
+        var verdicts = await JudgeAsync(pipeline, logger, list.Select(read).ToList(), cancellationToken);
+
+        var kept = new List<T>(list.Count);
+        for (var i = 0; i < list.Count; i++)
+        {
+            if (verdicts[i].Block)
+                continue;
+            kept.Add(verdicts[i].Replacement is { } replacement ? sanitize(list[i], replacement) : list[i]);
+        }
+
+        return kept;
+    }
+
+    /// <summary>
+    /// <see cref="SearchResult"/> rows are built per call, so a sanitized one is rewritten in place.
+    /// </summary>
+    public static Task<List<SearchResult>> ApplyAsync(
+        IRAGSecurityPipeline pipeline, ILogger logger, List<SearchResult> results, CancellationToken cancellationToken) =>
+        ApplyAsync(
+            pipeline, logger, results,
+            r => new Row(r.Id, r.Content, r.DocumentId, r.Score),
+            (r, content) => { r.Content = content; return r; },
+            cancellationToken);
+
+    /// <summary>
+    /// <see cref="VectorSearchResult"/> rows carry the chunk the store or cache holds — sanitized on a copy.
+    /// </summary>
+    public static Task<List<VectorSearchResult>> ApplyAsync(
+        IRAGSecurityPipeline pipeline, ILogger logger, IEnumerable<VectorSearchResult> results, CancellationToken cancellationToken) =>
+        ApplyAsync(
+            pipeline, logger, results,
+            r => new Row(r.DocumentChunk.Id, r.DocumentChunk.Content, r.DocumentChunk.DocumentId, r.Score),
+            (r, content) => new VectorSearchResult
+            {
+                DocumentChunk = r.DocumentChunk.WithContent(content),
+                Score = r.Score,
+                Rank = r.Rank,
+                Distance = r.Distance,
+                Metadata = r.Metadata,
+            },
+            cancellationToken);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "RAG security pipeline blocked document '{DocumentId}' (chunk '{ChunkId}', risk score {RiskScore:F2}) from search results")]
     private static partial void LogBlocked(ILogger logger, string documentId, string chunkId, double riskScore);

@@ -311,4 +311,26 @@ public class AdaptiveSearchServiceTests
         Assert.NotNull(result);
         Assert.True(Enum.IsDefined(typeof(SearchStrategy), result.UsedStrategy));
     }
+    [Fact]
+    public async Task SearchAsync_DoesNotWriteIntoTheStoredChunksMetadata()
+    {
+        // Each result Document took the chunk's own Metadata dictionary and wrote chunk_id /
+        // chunk_content / relevance_score into it — the dictionary the store or cache holds.
+        var stored = new DocumentChunk
+        {
+            Id = "chunk-1",
+            DocumentId = "doc-1",
+            Content = "stored text",
+            Metadata = new Dictionary<string, object> { ["source"] = "a.md" },
+        };
+        _mockAnalyzer.AnalyzeAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(new QueryAnalysis());
+        _mockHybridSearch.SearchAsync(Arg.Any<string>(), Arg.Any<FluxIndex.Core.Domain.Models.HybridSearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(new List<FluxIndex.Core.Domain.Models.HybridSearchResult> { new() { Chunk = stored, FusedScore = 0.9 } });
+        var options = new AdaptiveSearchOptions { UseCache = false, ForceStrategy = SearchStrategy.KeywordOnly };
+
+        var result = await _service.SearchAsync("query", options, TestContext.Current.CancellationToken);
+
+        Assert.Equal("stored text", result.Documents.Single().Metadata["chunk_content"]);
+        Assert.Equal(["source"], stored.Metadata!.Keys);
+    }
 }

@@ -728,7 +728,9 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
     private static Document CreateDocumentFromChunk(FluxIndex.Core.Domain.Models.CacheDocumentChunk chunk)
     {
         var document = Document.Create(chunk.DocumentId);
-        document.Metadata = chunk.Metadata ?? new Dictionary<string, object>();
+        // A copy: the chunk's own dictionary is the one its store or cache holds, and the keys below would
+        // otherwise be written into it on every search.
+        document.Metadata = chunk.Metadata is null ? new Dictionary<string, object>() : new Dictionary<string, object>(chunk.Metadata);
         document.Metadata["chunk_id"] = chunk.Id;
         document.Metadata["chunk_content"] = chunk.Content;
         document.Metadata["relevance_score"] = chunk.Score;
@@ -738,7 +740,9 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
     private static Document CreateDocumentFromChunk(FluxIndex.Core.Domain.Entities.DocumentChunk chunk)
     {
         var document = Document.Create(chunk.DocumentId);
-        document.Metadata = chunk.Metadata ?? new Dictionary<string, object>();
+        // A copy: the chunk's own dictionary is the one its store or cache holds, and the keys below would
+        // otherwise be written into it on every search.
+        document.Metadata = chunk.Metadata is null ? new Dictionary<string, object>() : new Dictionary<string, object>(chunk.Metadata);
         document.Metadata["chunk_id"] = chunk.Id;
         document.Metadata["chunk_content"] = chunk.Content;
         document.Metadata["relevance_score"] = chunk.Score ?? 0f;

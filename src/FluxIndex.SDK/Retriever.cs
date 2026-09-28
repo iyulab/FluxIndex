@@ -109,6 +109,12 @@ public partial class Retriever
     }
 
     /// <summary>
+    /// The pipeline this retriever guards with — read by <see cref="FluxIndexContext"/> so the paths it serves
+    /// without the retriever are guarded by the same registration, not a second one that could disagree.
+    /// </summary>
+    internal IRAGSecurityPipeline? RagSecurityPipeline => _ragSecurityPipeline;
+
+    /// <summary>
     /// 양자화 지원 여부 확인
     /// </summary>
     public bool SupportsQuantization => _quantizedVectorStore?.SupportsQuantization ?? false;

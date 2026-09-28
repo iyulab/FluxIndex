@@ -71,9 +71,9 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   `keyword`), `status`, `unmemorize`. Embedding is local LMSupply (`.vault/config.json` `embedding.model`).
 - **RAG security** (opt-in) — register a `FluxGuard.Remote` `IRAGSecurityPipeline`; every `Retriever` search
   (`SearchAsync` in both forms, `HybridSearchAsync`, `KeywordSearchAsync`, `FindSimilarAsync`, `SearchQuantizedAsync`,
-  `SearchWithRerankAsync`, and the `context.SearchAsync`/`HybridSearchAsync` calls that use them) drops documents it
-  blocks and hands out sanitized content for ones it sanitizes — cache hits included. Not yet applied:
-  `context.HybridSearchV2Async`, `AdaptiveSearchAsync` and `SmallToBigSearchAsync`. Lookups by id
+  `SearchWithRerankAsync`) and every context search (`SearchAsync`, `HybridSearchAsync`, `HybridSearchV2Async`,
+  `AdaptiveSearchAsync`, `AdaptiveSearchWithStrategyAsync`, `SmallToBigSearchAsync` — primary and context chunks alike)
+  drops documents it blocks and hands out sanitized content for ones it sanitizes — cache hits included. Lookups by id
   (`GetDocumentAsync`, `GetChunkAsync`) are not searches and are not guarded.
 - **Bring your own models** — `IEmbeddingService` / `ITextCompletionService` ports; `FluxIndex.Providers.LMSupply`
   (local) and `FluxIndex.Providers.OpenAI` (OpenAI-compatible) implement them. Local embedding, no API key:

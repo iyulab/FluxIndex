@@ -48,8 +48,14 @@ public class SmallToBigResult
     /// <summary>
     /// 전체 텍스트 (Primary + Context 결합)
     /// </summary>
-    public string CombinedText =>
-        $"{PrimaryChunk.Content}\n\n--- 관련 컨텍스트 ---\n{string.Join("\n\n", ContextChunks.Select(c => c.Content))}";
+    public string CombinedText => Combine(PrimaryChunk, ContextChunks);
+
+    /// <summary>
+    /// The <see cref="CombinedText"/> of a primary chunk and its context — for a caller that rebuilds a
+    /// result from changed chunks (a security pass that drops or sanitizes one) and must not restate the format.
+    /// </summary>
+    public static string Combine(DocumentChunk primary, IEnumerable<DocumentChunk> context) =>
+        $"{primary.Content}\n\n--- 관련 컨텍스트 ---\n{string.Join("\n\n", context.Select(c => c.Content))}";
 
     /// <summary>
     /// 컨텍스트 품질 점수
