@@ -19,6 +19,8 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   is `RetrieverOptions.CacheDuration`, set with `WithCacheDuration` (unchanged).
 
 ### Fixed
+- **The "GraphRAG is enabled but IGraphRAGService is not registered" errors name a method that exists** —
+  `AddFullGraphRAG()`, not `UseNeo4jGraph()`, which never did.
 - **`UseMemoryCache(maxCacheSize)` bounds the search cache.** The size was stored and never read — the in-memory cache grew
   without limit. It now holds at most `CacheOptions.MaxCacheSize` entries (default 1000) in its own `MemoryCache`, so the
   bound does not touch any other `IMemoryCache` user. `UseMemoryCache` rejects a size below 1.
@@ -38,6 +40,11 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   a copy.
 
 ### Added
+- **`IFluxIndexContext` — what `Build()` returns — now carries every public call of the context.** Ten were on the concrete
+  class only and needed a cast: `AdaptiveSearchAsync`, `AdaptiveSearchWithStrategyAsync`, `SupportsAdaptiveSearch`,
+  `GetStrategyPerformanceReportAsync`, `ProvideSearchFeedbackAsync`, `SmallToBigSearchAsync`, `AnalyzeQueryComplexityAsync`,
+  `GetCacheStatisticsAsync`, `WarmupCacheAsync`, `OptimizeCacheAsync`. **Breaking** only for a type that implements
+  `IFluxIndexContext` itself.
 - `DocumentChunk.WithContent(string)` — a copy of the chunk with other content, every other field (the id included) kept.
 - `SmallToBigResult.Combine(primary, context)` — the `CombinedText` format, for a caller that rebuilds a result from changed chunks.
 

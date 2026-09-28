@@ -496,7 +496,7 @@ public partial class Retriever
             {
                 throw new InvalidOperationException(
                     "UseGraphRAG is enabled but IGraphRAGService is not registered. " +
-                    "Use UseNeo4jGraph() or register IGraphRAGService manually.");
+                    "Register it with ConfigureServices(s => s.AddFullGraphRAG()), or register your own IGraphRAGService.");
             }
 
             throw new NotSupportedException(

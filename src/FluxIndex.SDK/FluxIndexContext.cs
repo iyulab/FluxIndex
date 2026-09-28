@@ -1,4 +1,4 @@
-﻿using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Models;
 using FluxIndex.Core.Domain.ValueObjects;
 using FluxIndex.Core.Domain.Models;
@@ -1258,6 +1258,32 @@ public interface IFluxIndexContext : IDisposable, IAsyncDisposable
     Task<IEnumerable<SearchResult>> SearchWithRerankAsync(string query, int? maxResults = null, int candidateMultiplier = 3, float minScore = 0.0f, CancellationToken cancellationToken = default);
     /// <summary>양자화 저장소 통계 조회</summary>
     Task<QuantizedStorageStats?> GetQuantizedStatsAsync(CancellationToken cancellationToken = default);
+
+    // Adaptive Search APIs (DAT) — throw InvalidOperationException when no IAdaptiveSearchService is registered
+    /// <summary>Whether an <see cref="IAdaptiveSearchService"/> is registered.</summary>
+    bool SupportsAdaptiveSearch { get; }
+    /// <summary>Adaptive search: picks a strategy and fusion weights from the query.</summary>
+    Task<AdaptiveSearchResult> AdaptiveSearchAsync(string query, AdaptiveSearchOptions? options = null, CancellationToken cancellationToken = default);
+    /// <summary>Adaptive search with a forced strategy.</summary>
+    Task<AdaptiveSearchResult> AdaptiveSearchWithStrategyAsync(string query, FluxIndex.Core.Application.Interfaces.SearchStrategy strategy, AdaptiveSearchOptions? options = null, CancellationToken cancellationToken = default);
+    /// <summary>Per-strategy performance report, or null without adaptive search.</summary>
+    Task<StrategyPerformanceReport?> GetStrategyPerformanceReportAsync(CancellationToken cancellationToken = default);
+    /// <summary>Feedback on an adaptive search result, for its learning.</summary>
+    Task ProvideSearchFeedbackAsync(string query, AdaptiveSearchResult result, UserFeedback feedback, CancellationToken cancellationToken = default);
+
+    // Small-to-Big APIs — empty / null when no ISmallToBigRetriever is registered
+    /// <summary>Small-to-big search: a precise match expanded with its surrounding context.</summary>
+    Task<IEnumerable<SmallToBigSearchResult>> SmallToBigSearchAsync(string query, SmallToBigSearchOptions? options = null, CancellationToken cancellationToken = default);
+    /// <summary>Query complexity analysis.</summary>
+    Task<QueryComplexityResult?> AnalyzeQueryComplexityAsync(string query, CancellationToken cancellationToken = default);
+
+    // Semantic Cache APIs — null / false / no-op when no ISemanticCacheService is registered
+    /// <summary>Semantic cache statistics.</summary>
+    Task<FluxIndex.Core.Domain.ValueObjects.CacheStatistics?> GetCacheStatisticsAsync(CancellationToken cancellationToken = default);
+    /// <summary>Pre-loads the semantic cache with the given queries.</summary>
+    Task<bool> WarmupCacheAsync(IEnumerable<string> commonQueries, CancellationToken cancellationToken = default);
+    /// <summary>Runs semantic cache maintenance.</summary>
+    Task OptimizeCacheAsync(CancellationToken cancellationToken = default);
 
     // Quality Monitoring APIs
     Task<QualityDashboard?> GetQualityDashboardAsync(TimeSpan? timeWindow = null, CancellationToken cancellationToken = default);

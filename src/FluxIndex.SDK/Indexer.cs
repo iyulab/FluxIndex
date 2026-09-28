@@ -466,7 +466,7 @@ public partial class Indexer
                 {
                     throw new InvalidOperationException(
                         "GraphRAG is enabled but IGraphRAGService is not registered. " +
-                        "Use UseNeo4jGraph() or register IGraphRAGService manually.");
+                        "Register it with ConfigureServices(s => s.AddFullGraphRAG()), or register your own IGraphRAGService.");
                 }
 
                 progress?.Report(new IndexingProgress
