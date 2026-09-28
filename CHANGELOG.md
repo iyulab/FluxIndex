@@ -9,6 +9,19 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.61.0] - Unreleased
+
+### Removed
+- **Breaking**: `FluxIndex.Integrations.FileFlux.ProcessingOptions.EnableLanguageAutoDetection`. It only wrote a `CustomProperties` key
+  FileFlux never reads, so it never did anything; leaving `Language` unset detects the language.
+
+### Fixed
+- **The FileFlux integration's `Language` reaches FileFlux.** It was written into `ChunkingOptions.CustomProperties["language"]` (and
+  auto-detection into `["enableLanguageAutoDetection"]`), keys FileFlux never reads, so a configured language had no effect on
+  segmentation. It is passed as `ChunkingOptions.LanguageCode`, which FileFlux 0.33.0 hands to the chunker; unset means `auto`.
+
+---
+
 ## [0.60.1] - 2026-09-29
 
 ### Changed

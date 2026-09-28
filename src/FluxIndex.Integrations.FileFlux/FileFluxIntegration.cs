@@ -309,18 +309,12 @@ public partial class FileFluxIntegration
     /// Apply custom properties to FileFlux ChunkingOptions based on ProcessingOptions
     /// Leverages FileFlux 0.4.8 language profiles and metadata enrichment
     /// </summary>
-    private static void ApplyCustomProperties(ChunkingOptions chunkingOptions, ProcessingOptions options)
+    internal static void ApplyCustomProperties(ChunkingOptions chunkingOptions, ProcessingOptions options)
     {
-        // Language-aware chunking (FileFlux 0.4.8 - 11 language profiles)
-        if (!string.IsNullOrEmpty(options.Language))
-        {
-            chunkingOptions.CustomProperties["language"] = options.Language;
-        }
-        else if (options.EnableLanguageAutoDetection)
-        {
-            // Signal FileFlux to use auto-detection via ILanguageProfileProvider
-            chunkingOptions.CustomProperties["enableLanguageAutoDetection"] = true;
-        }
+        // The language selects FileFlux's segmentation profile through ChunkingOptions.LanguageCode ("auto" detects it).
+        // This used to write "language" / "enableLanguageAutoDetection" into CustomProperties, which FileFlux never
+        // reads — a configured language had no effect.
+        chunkingOptions.LanguageCode = string.IsNullOrEmpty(options.Language) ? "auto" : options.Language;
 
         // Metadata enrichment settings
         if (options.EnableMetadataEnrichment)
@@ -576,17 +570,10 @@ public class ProcessingOptions
     public int OverlapSize { get; set; } = 128;
 
     /// <summary>
-    /// Language code for language-aware chunking (e.g., "ko", "en", "zh", "ja", "ar")
-    /// FileFlux 0.4.8 supports 11 language profiles with comprehensive text segmentation
-    /// Set to null or empty to enable automatic language detection
+    /// Language code for language-aware chunking (e.g., "ko", "en", "zh", "ja", "ar"), passed to FileFlux as
+    /// <c>ChunkingOptions.LanguageCode</c>. Null or empty detects the language.
     /// </summary>
     public string? Language { get; set; }
-
-    /// <summary>
-    /// Enable automatic language detection using Unicode script analysis (FileFlux 0.4.8)
-    /// When enabled and Language is not set, FileFlux will auto-detect the document language
-    /// </summary>
-    public bool EnableLanguageAutoDetection { get; set; } = true;
 
     /// <summary>
     /// Enable metadata enrichment with AI-powered extraction
