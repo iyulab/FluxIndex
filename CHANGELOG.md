@@ -18,6 +18,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 - **Breaking**: `Indexer.IndexDocumentAsync` throws `InvalidOperationException` when the options ask for AI metadata extraction
   (`IndexingOptions.WithAIMetadataExtraction`, or the builder default) and no `IMetadataExtractor` is registered. It used to
   skip the extraction without a word.
+- Re-pinned sibling package(s) `LMSupply.Embedder` 0.89.0 -> 0.90.0, `LMSupply.Generator` 0.89.0 -> 0.90.0, `LMSupply.Reranker` 0.89.0 -> 0.90.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
 
 ### Added
 - `Indexer.SupportsAIMetadata` — whether an `IMetadataExtractor` is registered.
