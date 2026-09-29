@@ -16,6 +16,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   published and 0.18.0 removes. `IndexWebContentAsync` crawls through `ProcessWebsiteAsync`, which raised no processing
   events before WebFlux 0.18.0; with 0.18.0 a subscriber sees `UrlProcessedEvent`/`UrlProcessingFailedEvent` per page,
   `ChunkGeneratedEvent` per chunk and `ProcessingCompletedEvent` at the end.
+- Re-pinned sibling package(s) `LMSupply.Embedder` 0.92.0 -> 0.92.1, `LMSupply.Generator` 0.92.0 -> 0.92.1, `LMSupply.Reranker` 0.92.0 -> 0.92.1, `WebFlux` 0.17.0 -> 0.18.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
 
 ---
 
