@@ -34,7 +34,7 @@ public partial class WebFluxIntegration
     }
 
     /// <summary>
-    /// The underlying WebFlux event stream (e.g. <c>PageCrawledEvent</c>, <c>ChunkGeneratedEvent</c>).
+    /// The underlying WebFlux event stream (e.g. <c>UrlProcessedEvent</c>, <c>ChunkGeneratedEvent</c>, <c>ProcessingCompletedEvent</c>).
     /// Subscribe via <see cref="IEventPublisher.Subscribe{T}(Func{T, Task})"/> to observe crawl and
     /// processing progress while <see cref="IndexWebContentAsync"/> runs. The integration wrapper
     /// intentionally exposes the publisher instead of swallowing it — consumers must not have to

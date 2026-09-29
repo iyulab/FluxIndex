@@ -9,6 +9,16 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.61.4] - Unreleased
+
+### Changed
+- **`WebFluxIntegration.Events` documents the events a crawl now raises.** It named `PageCrawledEvent`, which WebFlux never
+  published and 0.18.0 removes. `IndexWebContentAsync` crawls through `ProcessWebsiteAsync`, which raised no processing
+  events before WebFlux 0.18.0; with 0.18.0 a subscriber sees `UrlProcessedEvent`/`UrlProcessingFailedEvent` per page,
+  `ChunkGeneratedEvent` per chunk and `ProcessingCompletedEvent` at the end.
+
+---
+
 ## [0.61.3] - 2026-09-29
 
 ### Changed
