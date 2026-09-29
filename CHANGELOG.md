@@ -9,7 +9,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.61.4] - Unreleased
+## [0.61.4] - 2026-09-29
 
 ### Changed
 - **`WebFluxIntegration.Events` documents the events a crawl now raises.** It named `PageCrawledEvent`, which WebFlux never
