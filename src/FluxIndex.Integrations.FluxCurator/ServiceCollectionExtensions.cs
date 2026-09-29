@@ -1,4 +1,5 @@
 using FluxCurator;
+using FluxCurator.Core;
 using FluxCurator.Core.Core;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Integrations.FluxCurator.Adapters;
@@ -45,7 +46,7 @@ public static class ServiceCollectionExtensions
     /// Registers:
     /// <list type="bullet">
     /// <item><description>EmbeddingServiceAdapter - bridges FluxIndex embedding to FluxCurator</description></item>
-    /// <item><description>FluxCurator instance - configured with the embedding adapter</description></item>
+    /// <item><description><see cref="IFluxCurator"/> - a curator configured with the embedding adapter</description></item>
     /// </list>
     /// </para>
     /// </remarks>
@@ -57,7 +58,7 @@ public static class ServiceCollectionExtensions
         services.AddFluxCuratorEmbeddingAdapter();
 
         // Register FluxCurator with the embedding adapter
-        services.AddSingleton(provider =>
+        services.AddSingleton<IFluxCurator>(provider =>
         {
             var embedder = provider.GetRequiredService<IEmbedder>();
             var options = new FluxCuratorOptions();
@@ -112,7 +113,7 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         Action<FluxCuratorOptions>? configure = null)
     {
-        services.AddSingleton(provider =>
+        services.AddSingleton<IFluxCurator>(provider =>
         {
             var options = new FluxCuratorOptions();
             configure?.Invoke(options);

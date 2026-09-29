@@ -64,7 +64,7 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   `AddFileFluxIntegration` (builder `UseFileFlux`) for parsing and chunking — `FileFluxOptions.EnableMetadataEnrichment` adds AI
   metadata (see «AI metadata on indexing») to each indexed file — `AddDocumentProcessingPipeline` for the
   document processing pipeline (no-op enrichment/QA defaults until you register real services), `AddWebFluxIntegration`
-  (builder `UseWebFlux`) for web pages. Text preprocessing: `AddFluxIndexFluxCurator` (FluxCurator over your
+  (builder `UseWebFlux`) for web pages. Text preprocessing: `AddFluxIndexFluxCurator` (registers `IFluxCurator` over your
   `IEmbeddingService`); LLM chunk enhancement: `AddFluxImproverIntegration` (FluxImprover over your
   `ITextCompletionService`).
 - **MCP server** — `FluxIndex.MCP` is a library: host it with `FluxIndexMcpServer.RunAsync(workspacePath)` or

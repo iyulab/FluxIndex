@@ -9,6 +9,15 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.62.0] - Unreleased
+
+### Changed
+- **Breaking: `AddFluxIndexFluxCurator` and `AddFluxCuratorBasic` register the curator as `IFluxCurator`.** They
+  registered it under the concrete class, so a consumer resolving the contract (`IFluxCurator`, the type FluxCurator's
+  own `AddFluxCurator` registers) got nothing. Migration: resolve `IFluxCurator` instead of the concrete class.
+
+---
+
 ## [0.61.6] - 2026-09-29
 
 ### Changed
