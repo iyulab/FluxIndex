@@ -4,7 +4,6 @@ using Microsoft.Extensions.Logging;
 using WebFlux.Core.Interfaces;
 using WebFlux.Core.Models;
 using WebFlux.Core.Options;
-using CrawlProgressModel = WebFlux.Core.Models.CrawlProgress;
 using System.Globalization;
 
 namespace FluxIndex.Integrations.WebFlux;
