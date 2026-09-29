@@ -9,7 +9,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.62.0] - Unreleased
+## [0.62.0] - 2026-09-30
 
 ### Changed
 - **Breaking: `AddFluxIndexFluxCurator` and `AddFluxCuratorBasic` register the curator as `IFluxCurator`.** They
