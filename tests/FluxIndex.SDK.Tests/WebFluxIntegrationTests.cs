@@ -47,17 +47,17 @@ public class WebFluxIntegrationTests : IDisposable
         var integration = _context.GetWebFluxIntegration();
         Assert.NotNull(integration.Events);
 
-        PageCrawledEvent? received = null;
-        using var subscription = integration.Events!.Subscribe<PageCrawledEvent>(e =>
+        UrlProcessedEvent? received = null;
+        using var subscription = integration.Events!.Subscribe<UrlProcessedEvent>(e =>
         {
             received = e;
             return Task.CompletedTask;
         });
 
-        await integration.Events!.PublishAsync(new PageCrawledEvent
+        await integration.Events!.PublishAsync(new UrlProcessedEvent
         {
             Url = "https://example.test/page",
-            StatusCode = 200
+            ContentLength = 200
         }, TestContext.Current.CancellationToken);
 
         Assert.NotNull(received);
