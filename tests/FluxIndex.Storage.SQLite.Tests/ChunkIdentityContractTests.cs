@@ -33,7 +33,7 @@ public class SQLiteVectorStoreChunkIdentityContractTests : VectorStoreChunkIdent
             .Options;
         var context = new SQLiteDbContext(dbOptions, options);
         await context.Database.EnsureCreatedAsync();
-        return new SQLiteVectorStore(context, NullLogger<SQLiteVectorStore>.Instance, options);
+        return new SQLiteVectorStore(new DelegateDbContextFactory<SQLiteDbContext>(() => new SQLiteDbContext(dbOptions, options)), NullLogger<SQLiteVectorStore>.Instance, options);
     }
 }
 

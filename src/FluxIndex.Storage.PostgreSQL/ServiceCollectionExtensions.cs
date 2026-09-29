@@ -36,8 +36,11 @@ public static class ServiceCollectionExtensions
         // Configure options
         services.Configure(configureOptions);
 
-        // Register DbContext with NpgsqlDataSource for dynamic JSON support
-        services.AddDbContext<FluxIndexDbContext>((serviceProvider, options) =>
+        // Register a DbContext factory with NpgsqlDataSource for dynamic JSON support. The store opens
+        // a context per operation, so one store instance is safe for concurrent callers; the factory's
+        // options are built once, so the data source (and its connection pool) is shared rather than
+        // rebuilt per scope. The context type itself stays resolvable (scoped).
+        services.AddDbContextFactory<FluxIndexDbContext>((serviceProvider, options) =>
         {
             var postgresOptions = serviceProvider.GetRequiredService<IOptions<PostgreSQLOptions>>().Value;
 

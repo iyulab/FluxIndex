@@ -16,15 +16,19 @@ namespace FluxIndex.Storage.PostgreSQL;
 /// </summary>
 public class PostgreSQLVectorStore : VectorStoreBase
 {
-    private readonly FluxIndexDbContext _context;
+    private readonly IDbContextFactory<FluxIndexDbContext> _contextFactory;
     private readonly PostgreSQLOptions _options;
 
+    /// <summary>
+    /// Creates the store. Every operation opens its own <see cref="FluxIndexDbContext"/> from
+    /// <paramref name="contextFactory"/>, so one store instance is safe for concurrent callers.
+    /// </summary>
     public PostgreSQLVectorStore(
-        FluxIndexDbContext context,
+        IDbContextFactory<FluxIndexDbContext> contextFactory,
         ILogger<PostgreSQLVectorStore> logger,
         IOptions<PostgreSQLOptions> options) : base(logger)
     {
-        _context = context;
+        _contextFactory = contextFactory;
         _options = options.Value;
     }
 
@@ -32,6 +36,7 @@ public class PostgreSQLVectorStore : VectorStoreBase
 
     protected override async Task<string> StoreCoreAsync(DocumentChunk chunk, CancellationToken cancellationToken)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         // Honour the caller's chunk id. Generating one here and returning it instead (what this
         // did before) silently discarded the id every other IVectorStore implementation keeps, so
         // a consumer could not look up its own chunk without holding on to the returned value.
@@ -46,13 +51,13 @@ public class PostgreSQLVectorStore : VectorStoreBase
         // Adding a fresh entity for a key that already exists fails twice over: a tracked instance
         // from an earlier store in the same scope makes Add throw, and a fresh context hits the
         // primary key. AsTracking so the edit below is what SaveChanges writes.
-        var existing = await _context.Vectors
+        var existing = await context.Vectors
             .AsTracking()
             .FirstOrDefaultAsync(v => v.Id == storageId, cancellationToken);
 
         if (existing == null)
         {
-            _context.Vectors.Add(new VectorEntity
+            context.Vectors.Add(new VectorEntity
             {
                 Id = storageId,
                 DocumentId = chunk.DocumentId,
@@ -75,13 +80,14 @@ public class PostgreSQLVectorStore : VectorStoreBase
             existing.Metadata = metadata;
         }
 
-        await _context.SaveChangesAsync(cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
         return id;
     }
 
     protected override async Task<DocumentChunk?> GetCoreAsync(string id, CancellationToken cancellationToken)
     {
-        var entity = await _context.Vectors
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var entity = await context.Vectors
             .FirstOrDefaultAsync(v => v.Id == ChunkStorageId.ToStorageGuid(id), cancellationToken);
 
         return entity == null ? null : MapToChunk(entity);
@@ -93,12 +99,13 @@ public class PostgreSQLVectorStore : VectorStoreBase
         Dictionary<string, object>? filters,
         CancellationToken cancellationToken)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         var queryVector = new Vector(queryEmbedding);
 
         // Push metadata filters down to SQL (jsonb @> containment, GIN-indexable) BEFORE the
         // candidate trim — otherwise higher-scoring non-matching rows crowd matching rows out of
         // the topK*3 window (multi-tenant recall loss).
-        var query = _context.Vectors.AsQueryable();
+        var query = context.Vectors.AsQueryable();
         if (filters is { Count: > 0 })
         {
             query = query.Where(BuildMetadataPredicate(filters));
@@ -130,13 +137,14 @@ public class PostgreSQLVectorStore : VectorStoreBase
         Dictionary<string, object> filters,
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         ArgumentNullException.ThrowIfNull(filters);
         if (filters.Count == 0)
             throw new ArgumentException(
                 "Filter must contain at least one key/value; use ClearAsync to remove all vectors.",
                 nameof(filters));
 
-        return await _context.Vectors
+        return await context.Vectors
             .Where(BuildMetadataPredicate(filters))
             .ExecuteDeleteAsync(cancellationToken);
     }
@@ -160,26 +168,28 @@ public class PostgreSQLVectorStore : VectorStoreBase
 
     protected override async Task<bool> DeleteCoreAsync(string id, CancellationToken cancellationToken)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         // AsTracking regardless of how this context happens to be registered — the sibling
         // quantized context is NoTracking, where Remove() on a detached instance throws if the
         // same row is already tracked.
-        var entity = await _context.Vectors
+        var entity = await context.Vectors
             .AsTracking()
             .FirstOrDefaultAsync(v => v.Id == ChunkStorageId.ToStorageGuid(id), cancellationToken);
 
         if (entity == null) return false;
 
-        _context.Vectors.Remove(entity);
-        await _context.SaveChangesAsync(cancellationToken);
+        context.Vectors.Remove(entity);
+        await context.SaveChangesAsync(cancellationToken);
         return true;
     }
 
     protected override async Task<bool> UpdateCoreAsync(DocumentChunk chunk, CancellationToken cancellationToken)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         // AsTracking regardless of how this context happens to be registered — the sibling
         // quantized context is NoTracking for read performance, and under that registration an
         // untracked entity's mutations are dropped without a word.
-        var entity = await _context.Vectors.AsTracking()
+        var entity = await context.Vectors.AsTracking()
             .FirstOrDefaultAsync(v => v.Id == ChunkStorageId.ToStorageGuid(chunk.Id), cancellationToken);
 
         if (entity == null) return false;
@@ -191,10 +201,10 @@ public class PostgreSQLVectorStore : VectorStoreBase
 
         // Metadata is a mapped JSON column; EF does not always detect an in-place mutation of
         // the dictionary instance, so mark it modified explicitly.
-        _context.Entry(entity).Property(e => e.Metadata).IsModified = true;
+        context.Entry(entity).Property(e => e.Metadata).IsModified = true;
 
-        var hadChanges = _context.ChangeTracker.HasChanges();
-        var written = await _context.SaveChangesAsync(cancellationToken);
+        var hadChanges = context.ChangeTracker.HasChanges();
+        var written = await context.SaveChangesAsync(cancellationToken);
         return !hadChanges || written > 0;
     }
 
@@ -202,7 +212,8 @@ public class PostgreSQLVectorStore : VectorStoreBase
         string documentId,
         CancellationToken cancellationToken)
     {
-        var entities = await _context.Vectors
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var entities = await context.Vectors
             .Where(v => v.DocumentId == documentId)
             .OrderBy(v => v.ChunkIndex)
             .ToListAsync(cancellationToken);
@@ -214,26 +225,29 @@ public class PostgreSQLVectorStore : VectorStoreBase
         string documentId,
         CancellationToken cancellationToken)
     {
-        var entities = await _context.Vectors
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var entities = await context.Vectors
             .AsTracking()
             .Where(v => v.DocumentId == documentId)
             .ToListAsync(cancellationToken);
 
         if (entities.Count == 0) return false;
 
-        _context.Vectors.RemoveRange(entities);
-        await _context.SaveChangesAsync(cancellationToken);
+        context.Vectors.RemoveRange(entities);
+        await context.SaveChangesAsync(cancellationToken);
         return true;
     }
 
     protected override async Task<int> CountCoreAsync(CancellationToken cancellationToken)
     {
-        return await _context.Vectors.CountAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        return await context.Vectors.CountAsync(cancellationToken);
     }
 
     public override async Task<int> GetDistinctDocumentCountAsync(CancellationToken cancellationToken = default)
     {
-        return await _context.Vectors
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        return await context.Vectors
             .Select(v => v.DocumentId)
             .Distinct()
             .CountAsync(cancellationToken);
@@ -241,7 +255,8 @@ public class PostgreSQLVectorStore : VectorStoreBase
 
     protected override async Task ClearCoreAsync(CancellationToken cancellationToken)
     {
-        await _context.Database.ExecuteSqlRawAsync("TRUNCATE TABLE vectors", cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        await context.Database.ExecuteSqlRawAsync("TRUNCATE TABLE vectors", cancellationToken);
     }
 
     #endregion
@@ -252,8 +267,9 @@ public class PostgreSQLVectorStore : VectorStoreBase
         IEnumerable<string> ids,
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         var guids = ids.Select(ChunkStorageId.ToStorageGuid).ToList();
-        var entities = await _context.Vectors
+        var entities = await context.Vectors
             .Where(v => guids.Contains(v.Id))
             .ToListAsync(cancellationToken);
 
@@ -262,8 +278,9 @@ public class PostgreSQLVectorStore : VectorStoreBase
 
     public override async Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         if (string.IsNullOrWhiteSpace(id)) return false;
-        return await _context.Vectors.AnyAsync(v => v.Id == ChunkStorageId.ToStorageGuid(id), cancellationToken);
+        return await context.Vectors.AnyAsync(v => v.Id == ChunkStorageId.ToStorageGuid(id), cancellationToken);
     }
 
     #endregion

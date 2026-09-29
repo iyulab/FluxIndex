@@ -59,7 +59,7 @@ public static class ServiceCollectionExtensions
         }, ServiceLifetime.Scoped);
 
         // 폴백용 기존 SQLite 벡터 저장소 등록
-        services.AddScoped<SQLiteDbContext>((serviceProvider) =>
+        static SQLiteDbContext CreateFallbackContext(IServiceProvider serviceProvider)
         {
             var options = serviceProvider.GetRequiredService<IOptions<SQLiteVecOptions>>().Value;
             var dbOptions = new DbContextOptionsBuilder<SQLiteDbContext>()
@@ -67,15 +67,18 @@ public static class ServiceCollectionExtensions
                 .Options;
 
             return new SQLiteDbContext(dbOptions, Options.Create((SQLiteOptions)options));
-        });
+        }
+
+        services.AddScoped<SQLiteDbContext>(CreateFallbackContext);
 
         services.AddScoped<Lazy<SQLiteVectorStore>>(serviceProvider =>
             new Lazy<SQLiteVectorStore>(() =>
             {
-                var context = serviceProvider.GetRequiredService<SQLiteDbContext>();
+                // A context per operation, like every other registration of this store.
+                var contextFactory = new DelegateDbContextFactory<SQLiteDbContext>(() => CreateFallbackContext(serviceProvider));
                 var logger = serviceProvider.GetRequiredService<ILogger<SQLiteVectorStore>>();
                 var options = serviceProvider.GetRequiredService<IOptions<SQLiteOptions>>();
-                return new SQLiteVectorStore(context, logger, options);
+                return new SQLiteVectorStore(contextFactory, logger, options);
             }));
 
         // 주 벡터 저장소로 SQLiteVecVectorStore 등록 (IVectorStore + IVectorStoreManager 동일 인스턴스)
@@ -159,14 +162,15 @@ public static class ServiceCollectionExtensions
     {
         services.AddSingleton(options);
         
-        // DbContext 등록
-        services.AddDbContext<SQLiteDbContext>(dbOptions =>
+        // DbContext 등록 — the store opens a context per operation from the factory, so one store
+        // instance is safe for concurrent callers. The context type itself stays resolvable (scoped).
+        services.AddDbContextFactory<SQLiteDbContext>(dbOptions =>
         {
             dbOptions.UseSqlite(options.GetConnectionString(), sqliteOptions =>
             {
                 sqliteOptions.CommandTimeout(options.CommandTimeout);
             });
-        }, ServiceLifetime.Scoped);
+        });
         
         // Vector Store 등록
         services.AddScoped<IVectorStore, SQLiteVectorStore>();
@@ -221,15 +225,16 @@ public static class ServiceCollectionExtensions
         // Configure options with generic type parameter
         services.Configure<SQLiteOptions>(configureOptions);
 
-        // Use existing SQLiteOptions registration
-        services.AddDbContext<SQLiteDbContext>((serviceProvider, dbOptions) =>
+        // Use existing SQLiteOptions registration. A factory, not a scoped context: the store opens a
+        // context per operation, so one store instance is safe for concurrent callers.
+        services.AddDbContextFactory<SQLiteDbContext>((serviceProvider, dbOptions) =>
         {
             var options = serviceProvider.GetRequiredService<IOptions<SQLiteOptions>>().Value;
             dbOptions.UseSqlite(options.GetConnectionString(), sqliteOptions =>
             {
                 sqliteOptions.CommandTimeout(options.CommandTimeout);
             });
-        }, ServiceLifetime.Scoped);
+        });
 
         // Vector Store 등록
         services.AddScoped<IVectorStore, SQLiteVectorStore>();

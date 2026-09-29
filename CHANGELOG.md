@@ -9,6 +9,25 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.63.0] - Unreleased
+
+### Fixed
+- **One context can be shared by concurrent callers on the PostgreSQL and SQLite (in-memory scan) stores.** Overlapping
+  calls — one caller indexing or deleting while another searches — failed with EF Core's "A second operation was started
+  on this context instance", because the context kept one store, and the store one EF Core context, for its whole
+  lifetime. `PostgreSQLVectorStore` and `SQLiteVectorStore` now open a context per operation. The other EF-backed stores
+  (sqlite-vec, quantized, graph, semantic cache) follow.
+- `AddPostgreSQLVectorStore` builds its Npgsql data source once instead of once per scope, so every operation shares
+  one connection pool.
+
+### Changed
+- **Breaking: `PostgreSQLVectorStore` and `SQLiteVectorStore` take an `IDbContextFactory<TContext>` instead of a
+  context.** The storage registrations supply it (`AddDbContextFactory`); the context type itself stays resolvable.
+  Migration for a store built by hand: pass a factory — `services.AddDbContextFactory<FluxIndexDbContext>(...)`, or an
+  `IDbContextFactory<T>` over your own options.
+
+---
+
 ## [0.62.1] - 2026-09-30
 
 ### Changed

@@ -51,7 +51,7 @@ public class PostgreSQLVectorStoreIntegrationTests : IAsyncLifetime
         _context = new FluxIndexDbContext(contextOptions, options);
         await _context.Database.EnsureCreatedAsync();
 
-        _store = new PostgreSQLVectorStore(_context, NullLogger<PostgreSQLVectorStore>.Instance, options);
+        _store = new PostgreSQLVectorStore(new ContextFactory(() => new FluxIndexDbContext(contextOptions, options)), NullLogger<PostgreSQLVectorStore>.Instance, options);
     }
 
     public async ValueTask DisposeAsync()
@@ -231,5 +231,10 @@ public class PostgreSQLVectorStoreIntegrationTests : IAsyncLifetime
 
         results.Should().ContainSingle();
         results[0].DocumentId.Should().Be("doc-flag");
+    }
+
+    private sealed class ContextFactory(Func<FluxIndexDbContext> create) : IDbContextFactory<FluxIndexDbContext>
+    {
+        public FluxIndexDbContext CreateDbContext() => create();
     }
 }

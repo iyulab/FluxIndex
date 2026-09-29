@@ -41,8 +41,7 @@ public sealed class TotalChunksBackfillTests : IAsyncDisposable
             await insert.ExecuteNonQueryAsync(ct);
         }
 
-        await using var context = NewContext();
-        var store = new SQLiteVectorStore(context, NullLogger<SQLiteVectorStore>.Instance, Options.Create(new SQLiteOptions()));
+        var store = new SQLiteVectorStore(new DelegateDbContextFactory<SQLiteDbContext>(NewContext), NullLogger<SQLiteVectorStore>.Instance, Options.Create(new SQLiteOptions()));
 
         // First use provisions (adds the column) and backfills.
         var docA = (await store.GetByDocumentIdAsync("doc-a", ct)).OrderBy(c => c.ChunkIndex).ToList();

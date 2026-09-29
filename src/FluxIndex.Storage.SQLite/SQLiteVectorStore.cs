@@ -14,17 +14,21 @@ namespace FluxIndex.Storage.SQLite;
 /// </summary>
 public class SQLiteVectorStore : VectorStoreBase, IDisposable
 {
-    private readonly SQLiteDbContext _context;
+    private readonly IDbContextFactory<SQLiteDbContext> _contextFactory;
     private readonly SQLiteOptions _options;
     private bool _initialized;
     private readonly SemaphoreSlim _initLock = new(1, 1);
 
+    /// <summary>
+    /// Creates the store. Every operation opens its own <see cref="SQLiteDbContext"/> from
+    /// <paramref name="contextFactory"/>, so one store instance is safe for concurrent callers.
+    /// </summary>
     public SQLiteVectorStore(
-        SQLiteDbContext context,
+        IDbContextFactory<SQLiteDbContext> contextFactory,
         ILogger<SQLiteVectorStore> logger,
         IOptions<SQLiteOptions> options) : base(logger)
     {
-        _context = context;
+        _contextFactory = contextFactory;
         _options = options.Value;
     }
 
@@ -41,8 +45,9 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
             // sqlite-vec context may have created the database first), plus any nullable column an older
             // database lacks, then the backfill that gives pre-column rows a real TotalChunks. This
             // replaced a hand-written CREATE TABLE that had already drifted from the EF model.
-            SQLiteSchemaProvisioner.Provision(_context);
-            await TotalChunksBackfill.RunAsync(_context, "vectors", cancellationToken);
+            await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+            SQLiteSchemaProvisioner.Provision(context);
+            await TotalChunksBackfill.RunAsync(context, "vectors", cancellationToken);
 
             _initialized = true;
         }
@@ -57,17 +62,18 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
     protected override async Task<string> StoreCoreAsync(DocumentChunk chunk, CancellationToken cancellationToken)
     {
         await EnsureInitializedAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
 
         // Honour the caller's chunk id (see SQLiteVecVectorStore.StoreCoreAsync); re-storing an id
         // updates the row instead of adding a second one.
         var id = chunk.EnsureId();
-        var existing = await _context.Vectors
+        var existing = await context.Vectors
             .AsTracking()
             .FirstOrDefaultAsync(v => v.Id == id, cancellationToken);
 
         if (existing == null)
         {
-            _context.Vectors.Add(new VectorEntity
+            context.Vectors.Add(new VectorEntity
             {
                 Id = id,
                 DocumentId = chunk.DocumentId,
@@ -90,15 +96,16 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
             existing.Metadata = chunk.Metadata ?? new();
         }
 
-        await _context.SaveChangesAsync(cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
         return id;
     }
 
     protected override async Task<DocumentChunk?> GetCoreAsync(string id, CancellationToken cancellationToken)
     {
         await EnsureInitializedAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
 
-        var entity = await _context.Vectors
+        var entity = await context.Vectors
             .FirstOrDefaultAsync(v => v.Id == id, cancellationToken);
 
         return entity == null ? null : MapToChunk(entity);
@@ -111,9 +118,10 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
         CancellationToken cancellationToken)
     {
         await EnsureInitializedAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
 
         // Load all vectors for optimized in-memory search
-        var entities = await _context.Vectors
+        var entities = await context.Vectors
             .Where(v => v.Embedding != null)
             .ToListAsync(cancellationToken);
 
@@ -148,28 +156,30 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
     protected override async Task<bool> DeleteCoreAsync(string id, CancellationToken cancellationToken)
     {
         await EnsureInitializedAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
 
         // AsTracking: NoTracking context, and Remove() on a detached instance throws when the
         // same row is already tracked (a Store in the same scope leaves it so).
-        var entity = await _context.Vectors
+        var entity = await context.Vectors
             .AsTracking()
             .FirstOrDefaultAsync(v => v.Id == id, cancellationToken);
 
         if (entity == null) return false;
 
-        _context.Vectors.Remove(entity);
-        await _context.SaveChangesAsync(cancellationToken);
+        context.Vectors.Remove(entity);
+        await context.SaveChangesAsync(cancellationToken);
         return true;
     }
 
     protected override async Task<bool> UpdateCoreAsync(DocumentChunk chunk, CancellationToken cancellationToken)
     {
         await EnsureInitializedAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
 
         // AsTracking regardless of how this context happens to be registered — the sibling
         // stores are NoTracking for read performance, and under that registration an untracked
         // entity's mutations are dropped without a word.
-        var entity = await _context.Vectors.AsTracking()
+        var entity = await context.Vectors.AsTracking()
             .FirstOrDefaultAsync(v => v.Id == chunk.Id, cancellationToken);
 
         if (entity == null) return false;
@@ -180,8 +190,8 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
         entity.TotalChunks = chunk.TotalChunks;
         entity.Metadata = chunk.Metadata ?? new();
 
-        var hadChanges = _context.ChangeTracker.HasChanges();
-        var written = await _context.SaveChangesAsync(cancellationToken);
+        var hadChanges = context.ChangeTracker.HasChanges();
+        var written = await context.SaveChangesAsync(cancellationToken);
         return !hadChanges || written > 0;
     }
 
@@ -190,8 +200,9 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
         CancellationToken cancellationToken)
     {
         await EnsureInitializedAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
 
-        var entities = await _context.Vectors
+        var entities = await context.Vectors
             .Where(v => v.DocumentId == documentId)
             .OrderBy(v => v.ChunkIndex)
             .ToListAsync(cancellationToken);
@@ -204,30 +215,33 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
         CancellationToken cancellationToken)
     {
         await EnsureInitializedAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
 
-        var entities = await _context.Vectors
+        var entities = await context.Vectors
             .AsTracking()
             .Where(v => v.DocumentId == documentId)
             .ToListAsync(cancellationToken);
 
         if (entities.Count == 0) return false;
 
-        _context.Vectors.RemoveRange(entities);
-        await _context.SaveChangesAsync(cancellationToken);
+        context.Vectors.RemoveRange(entities);
+        await context.SaveChangesAsync(cancellationToken);
         return true;
     }
 
     protected override async Task<int> CountCoreAsync(CancellationToken cancellationToken)
     {
         await EnsureInitializedAsync(cancellationToken);
-        return await _context.Vectors.CountAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        return await context.Vectors.CountAsync(cancellationToken);
     }
 
     /// <inheritdoc />
     public override async Task<int> GetDistinctDocumentCountAsync(CancellationToken cancellationToken = default)
     {
         await EnsureInitializedAsync(cancellationToken);
-        return await _context.Vectors
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        return await context.Vectors
             .Select(v => v.DocumentId)
             .Distinct()
             .CountAsync(cancellationToken);
@@ -236,8 +250,9 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
     protected override async Task ClearCoreAsync(CancellationToken cancellationToken)
     {
         await EnsureInitializedAsync(cancellationToken);
-        _context.Vectors.RemoveRange(_context.Vectors.AsTracking());
-        await _context.SaveChangesAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        context.Vectors.RemoveRange(context.Vectors.AsTracking());
+        await context.SaveChangesAsync(cancellationToken);
     }
 
     /// <inheritdoc />
@@ -252,8 +267,9 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
                 nameof(filters));
 
         await EnsureInitializedAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
 
-        var entities = await _context.Vectors.AsTracking().ToListAsync(cancellationToken);
+        var entities = await context.Vectors.AsTracking().ToListAsync(cancellationToken);
         var deleteMatcher = MetadataFilterMatcher.Compile(filters);
         var matched = entities
             .Where(v => deleteMatcher.Matches(MapToChunk(v).Metadata))
@@ -262,8 +278,8 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
         if (matched.Count == 0)
             return 0;
 
-        _context.Vectors.RemoveRange(matched);
-        await _context.SaveChangesAsync(cancellationToken);
+        context.Vectors.RemoveRange(matched);
+        await context.SaveChangesAsync(cancellationToken);
         return matched.Count;
     }
 
@@ -276,9 +292,10 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
         CancellationToken cancellationToken = default)
     {
         await EnsureInitializedAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
 
         var idList = ids.ToList();
-        var entities = await _context.Vectors
+        var entities = await context.Vectors
             .Where(v => idList.Contains(v.Id))
             .ToListAsync(cancellationToken);
 
@@ -288,9 +305,10 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
     public override async Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default)
     {
         await EnsureInitializedAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
 
         if (string.IsNullOrWhiteSpace(id)) return false;
-        return await _context.Vectors.AnyAsync(v => v.Id == id, cancellationToken);
+        return await context.Vectors.AnyAsync(v => v.Id == id, cancellationToken);
     }
 
     #endregion
