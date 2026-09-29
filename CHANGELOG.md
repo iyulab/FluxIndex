@@ -16,6 +16,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   registered it under the concrete class, so a consumer resolving the contract (`IFluxCurator`, the type FluxCurator's
   own `AddFluxCurator` registers) got nothing. Migration: resolve `IFluxCurator` instead of the concrete class.
 - Re-pinned sibling package(s) `LMSupply.Embedder` 0.93.0 -> 0.93.1, `LMSupply.Generator` 0.93.0 -> 0.93.1, `LMSupply.Reranker` 0.93.0 -> 0.93.1 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
+- Re-pinned sibling package(s) `FluxCurator` 0.9.1 -> 0.10.0, `FluxImprover` 0.14.18 -> 0.14.19 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
 
 ---
 
