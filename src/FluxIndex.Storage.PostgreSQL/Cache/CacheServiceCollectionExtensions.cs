@@ -24,8 +24,10 @@ public static class CacheServiceCollectionExtensions
     {
         services.Configure(configureOptions);
 
-        // DbContext 등록 with dynamic JSON and pgvector support
-        services.AddDbContext<PostgresCacheDbContext>((serviceProvider, dbOptions) =>
+        // DbContext factory with dynamic JSON and pgvector support. The cache opens a context per operation, so one store instance is safe for concurrent callers. The context type itself
+        // stays resolvable (scoped). The options
+        // are built once, so the data source is shared rather than rebuilt per scope.
+        services.AddDbContextFactory<PostgresCacheDbContext>((serviceProvider, dbOptions) =>
         {
             var options = serviceProvider.GetRequiredService<IOptions<PostgresCacheOptions>>().Value;
 
@@ -40,7 +42,7 @@ public static class CacheServiceCollectionExtensions
                 npgsqlOptions.CommandTimeout(options.CommandTimeout);
             });
             dbOptions.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
-        }, ServiceLifetime.Scoped);
+        });
 
         // Cache 서비스 등록
         services.AddScoped<ISemanticCache, PostgresSemanticCache>();

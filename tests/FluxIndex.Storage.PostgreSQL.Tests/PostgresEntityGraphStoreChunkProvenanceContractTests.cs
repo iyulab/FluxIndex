@@ -37,15 +37,14 @@ public sealed class PostgresEntityGraphStoreChunkProvenanceContractTests : Graph
         dataSourceBuilder.EnableDynamicJson();
         dataSourceBuilder.UseVector();
         _dataSource = dataSourceBuilder.Build();
-        _context = new EntityGraphDbContext(
-            new DbContextOptionsBuilder<EntityGraphDbContext>().UseNpgsql(_dataSource, npgsql => npgsql.UseVector()).Options,
-            graphOptions);
+        var contextOptions = new DbContextOptionsBuilder<EntityGraphDbContext>().UseNpgsql(_dataSource, npgsql => npgsql.UseVector()).Options;
+        _context = new EntityGraphDbContext(contextOptions, graphOptions);
         await using (var cmd = _dataSource.CreateCommand("CREATE EXTENSION IF NOT EXISTS vector"))
         {
             await cmd.ExecuteNonQueryAsync();
         }
         await _context.Database.EnsureCreatedAsync();
-        _store = new PostgresEntityGraphStore(_context, graphOptions, NullLogger<PostgresEntityGraphStore>.Instance);
+        _store = new PostgresEntityGraphStore(new TestDbContextFactory<EntityGraphDbContext>(() => new EntityGraphDbContext(contextOptions, graphOptions)), graphOptions, NullLogger<PostgresEntityGraphStore>.Instance);
     }
 
     protected override Task<IGraphStore> CreateStoreAsync() => Task.FromResult<IGraphStore>(_store);

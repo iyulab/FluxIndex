@@ -32,7 +32,7 @@ public sealed class SQLiteEntityGraphPartitionMergeTests : IAsyncDisposable
             new DbContextOptionsBuilder<SQLiteEntityGraphDbContext>().UseSqlite(_connection).Options,
             options);
         _context.Database.EnsureCreated();
-        _store = new SQLiteEntityGraphStore(_context, options, NullLogger<SQLiteEntityGraphStore>.Instance);
+        _store = new SQLiteEntityGraphStore(new DelegateDbContextFactory<SQLiteEntityGraphDbContext>(() => new SQLiteEntityGraphDbContext(new DbContextOptionsBuilder<SQLiteEntityGraphDbContext>().UseSqlite(_connection).Options, options)), options, NullLogger<SQLiteEntityGraphStore>.Instance);
 
         _extractor.ExtractBatchAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EntityExtractionOptions>(), Arg.Any<CancellationToken>())
             .Returns(ci => Task.FromResult<IReadOnlyList<EntityGraph>>(ci.Arg<IEnumerable<string>>().Select(content => new EntityGraph

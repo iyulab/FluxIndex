@@ -13,7 +13,7 @@ namespace FluxIndex.Storage.SQLite.Cache;
 /// </summary>
 public partial class SQLiteSemanticCache : ISemanticCache, IDisposable
 {
-    private readonly SQLiteCacheDbContext _context;
+    private readonly IDbContextFactory<SQLiteCacheDbContext> _contextFactory;
     private readonly IEmbeddingService _embeddingService;
     private readonly SQLiteCacheOptions _options;
     private readonly ILogger<SQLiteSemanticCache> _logger;
@@ -21,12 +21,12 @@ public partial class SQLiteSemanticCache : ISemanticCache, IDisposable
     private DateTime _lastCleanup = DateTime.MinValue;
 
     public SQLiteSemanticCache(
-        SQLiteCacheDbContext context,
+        IDbContextFactory<SQLiteCacheDbContext> contextFactory,
         IEmbeddingService embeddingService,
         IOptions<SQLiteCacheOptions> options,
         ILogger<SQLiteSemanticCache> logger)
     {
-        _context = context;
+        _contextFactory = contextFactory;
         _embeddingService = embeddingService;
         _options = options.Value;
         _logger = logger;
@@ -38,19 +38,20 @@ public partial class SQLiteSemanticCache : ISemanticCache, IDisposable
         int maxResults = 10,
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         await CleanupExpiredIfNeededAsync(cancellationToken);
 
         // 쿼리 임베딩 생성
         var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
 
         // 만료되지 않은 캐시 항목 조회
-        var cacheEntries = await _context.SemanticCache
+        var cacheEntries = await context.SemanticCache
             .Where(c => c.ExpiresAt > DateTime.UtcNow)
             .ToListAsync(cancellationToken);
 
         if (cacheEntries.Count == 0)
         {
-            await UpdateStatsAsync(false, cancellationToken);
+            await UpdateStatsAsync(context, false, cancellationToken);
             return null;
         }
 
@@ -69,17 +70,19 @@ public partial class SQLiteSemanticCache : ISemanticCache, IDisposable
 
         if (similarities.Count == 0)
         {
-            await UpdateStatsAsync(false, cancellationToken);
+            await UpdateStatsAsync(context, false, cancellationToken);
             return null;
         }
 
         var bestMatch = similarities.First();
 
-        // 히트 카운트 및 접근 시간 업데이트
+        // 히트 카운트 및 접근 시간 업데이트 — attached first: the context is NoTracking, and a change to a
+        // detached instance is never written.
+        context.SemanticCache.Attach(bestMatch.Entry);
         bestMatch.Entry.HitCount++;
         bestMatch.Entry.LastAccessedAt = DateTime.UtcNow;
-        await _context.SaveChangesAsync(cancellationToken);
-        await UpdateStatsAsync(true, cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
+        await UpdateStatsAsync(context, true, cancellationToken);
 
         LogCacheHit(_logger, bestMatch.Similarity);
 
@@ -107,12 +110,13 @@ public partial class SQLiteSemanticCache : ISemanticCache, IDisposable
         TimeSpan? expiry = null,
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         var queryHash = ComputeHash(query);
         var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
         var expiresAt = DateTime.UtcNow + (expiry ?? _options.DefaultExpiry);
 
         // 기존 항목 확인
-        var existing = await _context.SemanticCache
+        var existing = await context.SemanticCache
             .FirstOrDefaultAsync(c => c.QueryHash == queryHash, cancellationToken);
 
         if (existing != null)
@@ -121,12 +125,12 @@ public partial class SQLiteSemanticCache : ISemanticCache, IDisposable
             existing.SetEmbedding(queryEmbedding);
             existing.ExpiresAt = expiresAt;
             existing.LastAccessedAt = DateTime.UtcNow;
-            _context.SemanticCache.Update(existing);
+            context.SemanticCache.Update(existing);
         }
         else
         {
             // 최대 항목 수 체크
-            await EnsureCapacityAsync(cancellationToken);
+            await EnsureCapacityAsync(context, cancellationToken);
 
             var entity = new SemanticCacheEntity
             {
@@ -142,10 +146,10 @@ public partial class SQLiteSemanticCache : ISemanticCache, IDisposable
                 entity.MetadataJson = JsonSerializer.Serialize(metadata);
             }
 
-            await _context.SemanticCache.AddAsync(entity, cancellationToken);
+            await context.SemanticCache.AddAsync(entity, cancellationToken);
         }
 
-        await _context.SaveChangesAsync(cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
         LogCacheSet(_logger, queryHash);
     }
 
@@ -164,9 +168,10 @@ public partial class SQLiteSemanticCache : ISemanticCache, IDisposable
         int maxSimilar = 5,
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
 
-        var cacheEntries = await _context.SemanticCache
+        var cacheEntries = await context.SemanticCache
             .Where(c => c.ExpiresAt > DateTime.UtcNow)
             .ToListAsync(cancellationToken);
 
@@ -193,12 +198,13 @@ public partial class SQLiteSemanticCache : ISemanticCache, IDisposable
         string pattern,
         CancellationToken cancellationToken = default)
     {
-        var toDelete = await _context.SemanticCache
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var toDelete = await context.SemanticCache
             .Where(c => EF.Functions.Like(c.Query, $"%{pattern}%"))
             .ToListAsync(cancellationToken);
 
-        _context.SemanticCache.RemoveRange(toDelete);
-        await _context.SaveChangesAsync(cancellationToken);
+        context.SemanticCache.RemoveRange(toDelete);
+        await context.SaveChangesAsync(cancellationToken);
 
         LogCacheInvalidated(_logger, toDelete.Count, pattern);
 
@@ -207,7 +213,8 @@ public partial class SQLiteSemanticCache : ISemanticCache, IDisposable
 
     public async Task ClearAsync(CancellationToken cancellationToken = default)
     {
-        await _context.Database.ExecuteSqlRawAsync(
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        await context.Database.ExecuteSqlRawAsync(
             "DELETE FROM semantic_cache", cancellationToken);
 
         LogCacheCleared(_logger);
@@ -216,11 +223,12 @@ public partial class SQLiteSemanticCache : ISemanticCache, IDisposable
     public async Task<CacheStatistics> GetStatisticsAsync(
         CancellationToken cancellationToken = default)
     {
-        var stats = await _context.CacheStats
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var stats = await context.CacheStats
             .FirstOrDefaultAsync(s => s.Id == 1, cancellationToken);
 
-        var entryCount = await _context.SemanticCache.CountAsync(cancellationToken);
-        var expiredCount = await _context.SemanticCache
+        var entryCount = await context.SemanticCache.CountAsync(cancellationToken);
+        var expiredCount = await context.SemanticCache
             .CountAsync(c => c.ExpiresAt <= DateTime.UtcNow, cancellationToken);
 
         return new CacheStatistics
@@ -236,30 +244,31 @@ public partial class SQLiteSemanticCache : ISemanticCache, IDisposable
     public async Task<CacheOptimizationResult> OptimizeAsync(
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         var startTime = DateTime.UtcNow;
         var messages = new List<string>();
 
         // 만료된 항목 삭제
-        var expiredCount = await _context.Database.ExecuteSqlRawAsync(
+        var expiredCount = await context.Database.ExecuteSqlRawAsync(
             "DELETE FROM semantic_cache WHERE ExpiresAt < {0}",
             DateTime.UtcNow);
 
         messages.Add($"Removed {expiredCount} expired entries");
 
         // LRU 기반 정리 (최대 항목 수 초과 시)
-        var currentCount = await _context.SemanticCache.CountAsync(cancellationToken);
+        var currentCount = await context.SemanticCache.CountAsync(cancellationToken);
         var lruRemoved = 0;
 
         if (currentCount > _options.MaxEntries)
         {
             var excessCount = currentCount - _options.MaxEntries;
-            var toRemove = await _context.SemanticCache
+            var toRemove = await context.SemanticCache
                 .OrderBy(c => c.LastAccessedAt)
                 .Take(excessCount)
                 .ToListAsync(cancellationToken);
 
-            _context.SemanticCache.RemoveRange(toRemove);
-            await _context.SaveChangesAsync(cancellationToken);
+            context.SemanticCache.RemoveRange(toRemove);
+            await context.SaveChangesAsync(cancellationToken);
             lruRemoved = toRemove.Count;
             messages.Add($"LRU evicted {lruRemoved} entries");
         }
@@ -267,7 +276,7 @@ public partial class SQLiteSemanticCache : ISemanticCache, IDisposable
         // VACUUM으로 공간 회수 (파일 기반 DB인 경우)
         if (!_options.UseInMemory)
         {
-            await _context.Database.ExecuteSqlRawAsync("VACUUM", cancellationToken);
+            await context.Database.ExecuteSqlRawAsync("VACUUM", cancellationToken);
             messages.Add("VACUUM completed");
         }
 
@@ -319,50 +328,45 @@ public partial class SQLiteSemanticCache : ISemanticCache, IDisposable
         return Convert.ToHexString(bytes).ToLowerInvariant();
     }
 
-    private async Task UpdateStatsAsync(bool isHit, CancellationToken cancellationToken)
+    /// <summary>
+    /// Counts a hit or a miss in one atomic upsert, so overlapping callers each count and two first
+    /// callers cannot both insert the statistics row.
+    /// </summary>
+    private static async Task UpdateStatsAsync(SQLiteCacheDbContext context, bool isHit, CancellationToken cancellationToken)
     {
-        var stats = await _context.CacheStats
-            .FirstOrDefaultAsync(s => s.Id == 1, cancellationToken);
-
-        if (stats == null)
-        {
-            stats = new CacheStatsEntity { Id = 1 };
-            await _context.CacheStats.AddAsync(stats, cancellationToken);
-        }
-
-        if (isHit)
-            stats.TotalHits++;
-        else
-            stats.TotalMisses++;
-
-        stats.LastUpdated = DateTime.UtcNow;
-        await _context.SaveChangesAsync(cancellationToken);
+        var hits = isHit ? 1 : 0;
+        var misses = isHit ? 0 : 1;
+        var now = DateTime.UtcNow;
+        await context.Database.ExecuteSqlInterpolatedAsync($@"
+            INSERT INTO cache_stats (""Id"", ""TotalHits"", ""TotalMisses"", ""TotalEvictions"", ""TotalEntries"", ""LastUpdated"")
+            VALUES (1, {hits}, {misses}, 0, 0, {now})
+            ON CONFLICT(""Id"") DO UPDATE SET
+                ""TotalHits"" = ""TotalHits"" + {hits},
+                ""TotalMisses"" = ""TotalMisses"" + {misses},
+                ""LastUpdated"" = {now}", cancellationToken);
     }
 
-    private async Task EnsureCapacityAsync(CancellationToken cancellationToken)
+    private async Task EnsureCapacityAsync(SQLiteCacheDbContext context, CancellationToken cancellationToken)
     {
-        var currentCount = await _context.SemanticCache.CountAsync(cancellationToken);
+        var currentCount = await context.SemanticCache.CountAsync(cancellationToken);
 
         if (currentCount >= _options.MaxEntries)
         {
             // LRU 방식으로 10% 삭제
             var removeCount = Math.Max(1, _options.MaxEntries / 10);
-            var toRemove = await _context.SemanticCache
+            var toRemove = await context.SemanticCache
                 .OrderBy(c => c.LastAccessedAt)
                 .Take(removeCount)
                 .ToListAsync(cancellationToken);
 
-            _context.SemanticCache.RemoveRange(toRemove);
+            context.SemanticCache.RemoveRange(toRemove);
+            await context.SaveChangesAsync(cancellationToken);
 
-            // 통계 업데이트
-            var stats = await _context.CacheStats
-                .FirstOrDefaultAsync(s => s.Id == 1, cancellationToken);
-            if (stats != null)
-            {
-                stats.TotalEvictions += removeCount;
-            }
-
-            await _context.SaveChangesAsync(cancellationToken);
+            // 통계 업데이트 — an increment in SQL: the context is NoTracking, so an edit to a queried
+            // statistics row would never be written.
+            await context.Database.ExecuteSqlInterpolatedAsync(
+                $@"UPDATE cache_stats SET ""TotalEvictions"" = ""TotalEvictions"" + {removeCount} WHERE ""Id"" = 1",
+                cancellationToken);
 
             LogCacheEvicted(_logger, removeCount);
         }
@@ -370,6 +374,7 @@ public partial class SQLiteSemanticCache : ISemanticCache, IDisposable
 
     private async Task CleanupExpiredIfNeededAsync(CancellationToken cancellationToken)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         if (!_options.EnableAutoCleanup)
             return;
 
@@ -381,7 +386,7 @@ public partial class SQLiteSemanticCache : ISemanticCache, IDisposable
 
         try
         {
-            var deleted = await _context.Database.ExecuteSqlRawAsync(
+            var deleted = await context.Database.ExecuteSqlRawAsync(
                 "DELETE FROM semantic_cache WHERE ExpiresAt < {0}",
                 DateTime.UtcNow);
 

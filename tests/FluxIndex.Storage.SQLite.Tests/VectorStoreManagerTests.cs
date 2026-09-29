@@ -50,8 +50,10 @@ public class VectorStoreManagerTests : IDisposable
         var fallbackStore = new Lazy<SQLiteVectorStore>(() =>
             throw new InvalidOperationException("Fallback should not be used"));
 
+        // A context per store operation, all over the one open in-memory connection.
         _store = new SQLiteVecVectorStore(
-            _context,
+            new DelegateDbContextFactory<SQLiteVecDbContext>(() => new SQLiteVecDbContext(
+                dbOptions, optionsWrapper, _extensionLoader, NullLogger<SQLiteVecDbContext>.Instance)),
             NullLogger<SQLiteVecVectorStore>.Instance,
             optionsWrapper,
             _extensionLoader,
@@ -682,7 +684,10 @@ public class VectorStoreManagerTests : IDisposable
         var optionsWrapper = Options.Create(_options);
         using var ctx = new SQLiteVecDbContext(dbOptions, optionsWrapper, _extensionLoader, new CapturingLogger<SQLiteVecDbContext>(captured));
         var fallback = new Lazy<SQLiteVectorStore>(() => throw new InvalidOperationException("Fallback should not be used"));
-        var store = new SQLiteVecVectorStore(ctx, NullLogger<SQLiteVecVectorStore>.Instance, optionsWrapper, _extensionLoader, fallback);
+        var store = new SQLiteVecVectorStore(
+            new DelegateDbContextFactory<SQLiteVecDbContext>(() => new SQLiteVecDbContext(
+                dbOptions, optionsWrapper, _extensionLoader, new CapturingLogger<SQLiteVecDbContext>(captured))),
+            NullLogger<SQLiteVecVectorStore>.Instance, optionsWrapper, _extensionLoader, fallback);
 
         await ctx.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
         var effective = new EmbeddingIdentity { Provider = "Test", Model = "init-effective", Dimension = 4 };

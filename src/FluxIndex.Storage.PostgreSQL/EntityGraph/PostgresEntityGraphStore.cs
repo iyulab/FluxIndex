@@ -14,17 +14,17 @@ namespace FluxIndex.Storage.PostgreSQL.EntityGraph;
 /// </summary>
 public partial class PostgresEntityGraphStore : IGraphStore
 {
-    private readonly EntityGraphDbContext _context;
+    private readonly IDbContextFactory<EntityGraphDbContext> _contextFactory;
     private readonly EntityGraphOptions _options;
     private readonly ILogger<PostgresEntityGraphStore> _logger;
     private readonly JsonSerializerOptions _jsonOptions;
 
     public PostgresEntityGraphStore(
-        EntityGraphDbContext context,
+        IDbContextFactory<EntityGraphDbContext> contextFactory,
         IOptions<EntityGraphOptions> options,
         ILogger<PostgresEntityGraphStore> logger)
     {
-        _context = context;
+        _contextFactory = contextFactory;
         _options = options.Value;
         _logger = logger;
         _jsonOptions = new JsonSerializerOptions
@@ -37,20 +37,21 @@ public partial class PostgresEntityGraphStore : IGraphStore
 
     public async Task<string> StoreEntityAsync(GraphEntity entity, CancellationToken ct = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(ct);
         var dbEntity = MapToDbEntity(entity);
 
-        var existing = await _context.Entities.FindAsync([entity.Id], ct);
+        var existing = await context.Entities.FindAsync([entity.Id], ct);
         if (existing != null)
         {
-            _context.Entry(existing).CurrentValues.SetValues(dbEntity);
+            context.Entry(existing).CurrentValues.SetValues(dbEntity);
             existing.UpdatedAt = DateTimeOffset.UtcNow;
         }
         else
         {
-            _context.Entities.Add(dbEntity);
+            context.Entities.Add(dbEntity);
         }
 
-        await _context.SaveChangesAsync(ct);
+        await context.SaveChangesAsync(ct);
         return entity.Id;
     }
 
@@ -58,31 +59,38 @@ public partial class PostgresEntityGraphStore : IGraphStore
         IEnumerable<GraphEntity> entities,
         CancellationToken ct = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(ct);
         var ids = new List<string>();
         var dbEntities = entities.Select(MapToDbEntity).ToList();
 
         foreach (var dbEntity in dbEntities)
         {
-            var existing = await _context.Entities.FindAsync([dbEntity.Id], ct);
+            var existing = await context.Entities.FindAsync([dbEntity.Id], ct);
             if (existing != null)
             {
-                _context.Entry(existing).CurrentValues.SetValues(dbEntity);
+                context.Entry(existing).CurrentValues.SetValues(dbEntity);
                 existing.UpdatedAt = DateTimeOffset.UtcNow;
             }
             else
             {
-                _context.Entities.Add(dbEntity);
+                context.Entities.Add(dbEntity);
             }
             ids.Add(dbEntity.Id);
         }
 
-        await _context.SaveChangesAsync(ct);
+        await context.SaveChangesAsync(ct);
         return ids;
     }
 
     public async Task<GraphEntity?> GetEntityByIdAsync(string id, CancellationToken ct = default)
     {
-        var dbEntity = await _context.Entities.FindAsync([id], ct);
+        await using var context = await _contextFactory.CreateDbContextAsync(ct);
+        return await GetEntityByIdAsync(context, id, ct);
+    }
+
+    private async Task<GraphEntity?> GetEntityByIdAsync(EntityGraphDbContext context, string id, CancellationToken ct)
+    {
+        var dbEntity = await context.Entities.FindAsync([id], ct);
         return dbEntity != null ? MapToGraphEntity(dbEntity) : null;
     }
 
@@ -92,10 +100,11 @@ public partial class PostgresEntityGraphStore : IGraphStore
         string partition = GraphPartition.Default,
         CancellationToken ct = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(ct);
         ArgumentNullException.ThrowIfNull(partition);
         var normalized = name.ToLowerInvariant().Trim();
 
-        var inPartition = _context.Entities.Where(e => e.Partition == partition);
+        var inPartition = context.Entities.Where(e => e.Partition == partition);
         var query = fuzzyMatch
             ? inPartition.Where(e => e.NormalizedName.Contains(normalized))
             : inPartition.Where(e => e.NormalizedName == normalized);
@@ -109,11 +118,12 @@ public partial class PostgresEntityGraphStore : IGraphStore
         string partition = GraphPartition.Default,
         CancellationToken ct = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(ct);
         ArgumentNullException.ThrowIfNull(partition);
         var names = normalizedNames.Distinct(StringComparer.Ordinal).ToList();
         if (names.Count == 0) return [];
 
-        var dbEntities = await _context.Entities
+        var dbEntities = await context.Entities
             .Where(e => e.Partition == partition && names.Contains(e.NormalizedName))
             .ToListAsync(ct);
 
@@ -126,8 +136,9 @@ public partial class PostgresEntityGraphStore : IGraphStore
         string partition = GraphPartition.Default,
         CancellationToken ct = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(ct);
         ArgumentNullException.ThrowIfNull(partition);
-        var dbEntities = await _context.Entities
+        var dbEntities = await context.Entities
             .Where(e => e.Partition == partition && e.EntityType == (int)type)
             .OrderByDescending(e => e.ImportanceScore)
             .Take(limit)
@@ -138,24 +149,26 @@ public partial class PostgresEntityGraphStore : IGraphStore
 
     public async Task<bool> UpdateEntityAsync(GraphEntity entity, CancellationToken ct = default)
     {
-        var existing = await _context.Entities.FindAsync([entity.Id], ct);
+        await using var context = await _contextFactory.CreateDbContextAsync(ct);
+        var existing = await context.Entities.FindAsync([entity.Id], ct);
         if (existing == null) return false;
 
         var dbEntity = MapToDbEntity(entity);
-        _context.Entry(existing).CurrentValues.SetValues(dbEntity);
+        context.Entry(existing).CurrentValues.SetValues(dbEntity);
         existing.UpdatedAt = DateTimeOffset.UtcNow;
 
-        await _context.SaveChangesAsync(ct);
+        await context.SaveChangesAsync(ct);
         return true;
     }
 
     public async Task<bool> DeleteEntityAsync(string id, CancellationToken ct = default)
     {
-        var entity = await _context.Entities.FindAsync([id], ct);
+        await using var context = await _contextFactory.CreateDbContextAsync(ct);
+        var entity = await context.Entities.FindAsync([id], ct);
         if (entity == null) return false;
 
-        _context.Entities.Remove(entity);
-        await _context.SaveChangesAsync(ct);
+        context.Entities.Remove(entity);
+        await context.SaveChangesAsync(ct);
         return true;
     }
 
@@ -167,19 +180,20 @@ public partial class PostgresEntityGraphStore : IGraphStore
         GraphRelationship relationship,
         CancellationToken ct = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(ct);
         var dbEntity = MapToDbRelationship(relationship);
 
-        var existing = await _context.Relationships.FindAsync([relationship.Id], ct);
+        var existing = await context.Relationships.FindAsync([relationship.Id], ct);
         if (existing != null)
         {
-            _context.Entry(existing).CurrentValues.SetValues(dbEntity);
+            context.Entry(existing).CurrentValues.SetValues(dbEntity);
         }
         else
         {
-            _context.Relationships.Add(dbEntity);
+            context.Relationships.Add(dbEntity);
         }
 
-        await _context.SaveChangesAsync(ct);
+        await context.SaveChangesAsync(ct);
         return relationship.Id;
     }
 
@@ -187,24 +201,25 @@ public partial class PostgresEntityGraphStore : IGraphStore
         IEnumerable<GraphRelationship> relationships,
         CancellationToken ct = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(ct);
         var ids = new List<string>();
         var dbRelationships = relationships.Select(MapToDbRelationship).ToList();
 
         foreach (var dbRel in dbRelationships)
         {
-            var existing = await _context.Relationships.FindAsync([dbRel.Id], ct);
+            var existing = await context.Relationships.FindAsync([dbRel.Id], ct);
             if (existing != null)
             {
-                _context.Entry(existing).CurrentValues.SetValues(dbRel);
+                context.Entry(existing).CurrentValues.SetValues(dbRel);
             }
             else
             {
-                _context.Relationships.Add(dbRel);
+                context.Relationships.Add(dbRel);
             }
             ids.Add(dbRel.Id);
         }
 
-        await _context.SaveChangesAsync(ct);
+        await context.SaveChangesAsync(ct);
         return ids;
     }
 
@@ -213,13 +228,23 @@ public partial class PostgresEntityGraphStore : IGraphStore
         TraversalDirection direction = TraversalDirection.Both,
         CancellationToken ct = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(ct);
+        return await GetRelationshipsAsync(context, entityId, direction, ct);
+    }
+
+    private async Task<IReadOnlyList<GraphRelationship>> GetRelationshipsAsync(
+        EntityGraphDbContext context,
+        string entityId,
+        TraversalDirection direction,
+        CancellationToken ct)
+    {
         var query = direction switch
         {
-            TraversalDirection.Outgoing => _context.Relationships
+            TraversalDirection.Outgoing => context.Relationships
                 .Where(r => r.SourceEntityId == entityId),
-            TraversalDirection.Incoming => _context.Relationships
+            TraversalDirection.Incoming => context.Relationships
                 .Where(r => r.TargetEntityId == entityId),
-            _ => _context.Relationships
+            _ => context.Relationships
                 .Where(r => r.SourceEntityId == entityId || r.TargetEntityId == entityId)
         };
 
@@ -233,11 +258,12 @@ public partial class PostgresEntityGraphStore : IGraphStore
         string partition = GraphPartition.Default,
         CancellationToken ct = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(ct);
         ArgumentNullException.ThrowIfNull(partition);
         // A relationship belongs to the partition of the entities it connects; its source decides.
-        var dbRelationships = await _context.Relationships
+        var dbRelationships = await context.Relationships
             .Where(r => r.RelationType == (int)type
-                && _context.Entities.Any(e => e.Id == r.SourceEntityId && e.Partition == partition))
+                && context.Entities.Any(e => e.Id == r.SourceEntityId && e.Partition == partition))
             .OrderByDescending(r => r.Weight)
             .Take(limit)
             .ToListAsync(ct);
@@ -247,11 +273,12 @@ public partial class PostgresEntityGraphStore : IGraphStore
 
     public async Task<bool> DeleteRelationshipAsync(string relationshipId, CancellationToken ct = default)
     {
-        var relationship = await _context.Relationships.FindAsync([relationshipId], ct);
+        await using var context = await _contextFactory.CreateDbContextAsync(ct);
+        var relationship = await context.Relationships.FindAsync([relationshipId], ct);
         if (relationship == null) return false;
 
-        _context.Relationships.Remove(relationship);
-        await _context.SaveChangesAsync(ct);
+        context.Relationships.Remove(relationship);
+        await context.SaveChangesAsync(ct);
         return true;
     }
 
@@ -264,7 +291,9 @@ public partial class PostgresEntityGraphStore : IGraphStore
         GraphStoreTraversalOptions options,
         CancellationToken ct = default)
     {
-        var startEntity = await GetEntityByIdAsync(startEntityId, ct);
+        // One context for the whole walk, the iterative fallback included.
+        await using var context = await _contextFactory.CreateDbContextAsync(ct);
+        var startEntity = await GetEntityByIdAsync(context, startEntityId, ct);
         if (startEntity == null)
         {
             return new GraphStoreTraversalResult
@@ -293,7 +322,7 @@ public partial class PostgresEntityGraphStore : IGraphStore
         try
         {
             // Execute raw SQL for recursive CTE
-            var results = await _context.Database
+            var results = await context.Database
                 .SqlQueryRaw<TraversalResultRow>(sql)
                 .ToListAsync(ct);
 
@@ -330,16 +359,16 @@ public partial class PostgresEntityGraphStore : IGraphStore
             LogTraversalCteFailed(_logger, ex);
             // Fallback to iterative BFS
             await TraverseIterativeAsync(
-                startEntityId, options, traversedEntityIds,
+                context, startEntityId, options, traversedEntityIds,
                 traversedRelationshipIds, ct);
         }
 
         // Load full entities
-        var entities = await _context.Entities
+        var entities = await context.Entities
             .Where(e => traversedEntityIds.Contains(e.Id))
             .ToListAsync(ct);
 
-        var relationships = await _context.Relationships
+        var relationships = await context.Relationships
             .Where(r => traversedRelationshipIds.Contains(r.Id) ||
                        (traversedEntityIds.Contains(r.SourceEntityId) &&
                         traversedEntityIds.Contains(r.TargetEntityId)))
@@ -362,6 +391,7 @@ public partial class PostgresEntityGraphStore : IGraphStore
         int maxDepth = 5,
         CancellationToken ct = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(ct);
         // Dijkstra-like shortest path using recursive CTE
         var sql = $@"
 WITH RECURSIVE shortest_path AS (
@@ -402,7 +432,7 @@ LIMIT 1";
 
         try
         {
-            var result = await _context.Database
+            var result = await context.Database
                 .SqlQueryRaw<ShortestPathRow>(sql)
                 .FirstOrDefaultAsync(ct);
 
@@ -442,13 +472,14 @@ LIMIT 1";
         string partition = GraphPartition.Default,
         CancellationToken ct = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(ct);
         ArgumentNullException.ThrowIfNull(partition);
         var chunkIdArray = chunkIds.Distinct().ToArray();
         if (chunkIdArray.Length == 0) return [];
 
         // jsonb ?| : true when any of the given strings is a top-level element of the chunk_ids
         // array — an exact element match, not the substring match a string Contains would be.
-        var entities = await _context.Entities
+        var entities = await context.Entities
             .Where(e => e.Partition == partition && EF.Functions.JsonExistAny(e.ChunkIdsJson, chunkIdArray))
             .ToListAsync(ct);
 
@@ -463,30 +494,31 @@ LIMIT 1";
         GraphCommunity community,
         CancellationToken ct = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(ct);
         var dbEntity = MapToDbCommunity(community);
 
-        var existing = await _context.Communities.FindAsync([community.Id], ct);
+        var existing = await context.Communities.FindAsync([community.Id], ct);
         if (existing != null)
         {
-            _context.Entry(existing).CurrentValues.SetValues(dbEntity);
+            context.Entry(existing).CurrentValues.SetValues(dbEntity);
         }
         else
         {
-            _context.Communities.Add(dbEntity);
+            context.Communities.Add(dbEntity);
         }
 
         // Update memberships
-        var existingMembers = await _context.CommunityMembers
+        var existingMembers = await context.CommunityMembers
             .Where(m => m.CommunityId == community.Id)
             .ToListAsync(ct);
 
-        _context.CommunityMembers.RemoveRange(existingMembers);
+        context.CommunityMembers.RemoveRange(existingMembers);
 
         // Member rows reference entities (foreign key). Chunk membership is the community row's own
         // column.
         foreach (var entityId in community.EntityIds.Distinct())
         {
-            _context.CommunityMembers.Add(new EntityCommunityMemberEntity
+            context.CommunityMembers.Add(new EntityCommunityMemberEntity
             {
                 CommunityId = community.Id,
                 EntityId = entityId,
@@ -495,23 +527,24 @@ LIMIT 1";
             });
         }
 
-        await _context.SaveChangesAsync(ct);
+        await context.SaveChangesAsync(ct);
         return community.Id;
     }
 
     public async Task<int> DeleteCommunitiesAsync(IEnumerable<string> communityIds, CancellationToken ct = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(ct);
         ArgumentNullException.ThrowIfNull(communityIds);
         var ids = communityIds.Distinct(StringComparer.Ordinal).ToList();
         if (ids.Count == 0) return 0;
 
-        var communities = await _context.Communities.Where(c => ids.Contains(c.Id)).ToListAsync(ct);
+        var communities = await context.Communities.Where(c => ids.Contains(c.Id)).ToListAsync(ct);
         if (communities.Count == 0) return 0;
 
-        _context.CommunityMembers.RemoveRange(
-            await _context.CommunityMembers.Where(m => ids.Contains(m.CommunityId)).ToListAsync(ct));
-        _context.Communities.RemoveRange(communities);
-        await _context.SaveChangesAsync(ct);
+        context.CommunityMembers.RemoveRange(
+            await context.CommunityMembers.Where(m => ids.Contains(m.CommunityId)).ToListAsync(ct));
+        context.Communities.RemoveRange(communities);
+        await context.SaveChangesAsync(ct);
         return communities.Count;
     }
 
@@ -519,7 +552,8 @@ LIMIT 1";
         string communityId,
         CancellationToken ct = default)
     {
-        var dbCommunity = await _context.Communities
+        await using var context = await _contextFactory.CreateDbContextAsync(ct);
+        var dbCommunity = await context.Communities
             .Include(c => c.Members)
             .FirstOrDefaultAsync(c => c.Id == communityId, ct);
 
@@ -530,12 +564,13 @@ LIMIT 1";
         string entityId,
         CancellationToken ct = default)
     {
-        var communityIds = await _context.CommunityMembers
+        await using var context = await _contextFactory.CreateDbContextAsync(ct);
+        var communityIds = await context.CommunityMembers
             .Where(m => m.EntityId == entityId)
             .Select(m => m.CommunityId)
             .ToListAsync(ct);
 
-        var communities = await _context.Communities
+        var communities = await context.Communities
             .Include(c => c.Members)
             .Where(c => communityIds.Contains(c.Id))
             .ToListAsync(ct);
@@ -548,8 +583,9 @@ LIMIT 1";
         string partition = GraphPartition.Default,
         CancellationToken ct = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(ct);
         ArgumentNullException.ThrowIfNull(partition);
-        var communities = await _context.Communities
+        var communities = await context.Communities
             .Include(c => c.Members)
             .Where(c => c.Partition == partition)
             .OrderByDescending(c => c.ImportanceScore)
@@ -564,12 +600,13 @@ LIMIT 1";
         string partition = GraphPartition.Default,
         CancellationToken ct = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(ct);
         ArgumentNullException.ThrowIfNull(partition);
         var chunkIdList = chunkIds.Distinct().ToList();
         if (chunkIdList.Count == 0) return [];
 
         // Primitive-collection membership translates to an array overlap on the chunk_ids column.
-        var communities = await _context.Communities
+        var communities = await context.Communities
             .Include(c => c.Members)
             .Where(c => c.Partition == partition && c.ChunkIds != null && c.ChunkIds.Any(id => chunkIdList.Contains(id)))
             .ToListAsync(ct);
@@ -583,13 +620,14 @@ LIMIT 1";
 
     public async Task<GraphStoreStatistics> GetStatisticsAsync(string partition = GraphPartition.Default, CancellationToken ct = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(ct);
         ArgumentNullException.ThrowIfNull(partition);
-        var entities = _context.Entities.Where(e => e.Partition == partition);
-        var relationships = _context.Relationships
-            .Where(r => _context.Entities.Any(e => e.Id == r.SourceEntityId && e.Partition == partition));
+        var entities = context.Entities.Where(e => e.Partition == partition);
+        var relationships = context.Relationships
+            .Where(r => context.Entities.Any(e => e.Id == r.SourceEntityId && e.Partition == partition));
         var entityCount = await entities.LongCountAsync(ct);
         var relationshipCount = await relationships.LongCountAsync(ct);
-        var communityCount = await _context.Communities.LongCountAsync(c => c.Partition == partition, ct);
+        var communityCount = await context.Communities.LongCountAsync(c => c.Partition == partition, ct);
 
         var entityCountsByType = await entities
             .GroupBy(e => e.EntityType)
@@ -617,10 +655,11 @@ LIMIT 1";
 
     public async Task ClearAsync(CancellationToken ct = default)
     {
-        await _context.CommunityMembers.ExecuteDeleteAsync(ct);
-        await _context.Communities.ExecuteDeleteAsync(ct);
-        await _context.Relationships.ExecuteDeleteAsync(ct);
-        await _context.Entities.ExecuteDeleteAsync(ct);
+        await using var context = await _contextFactory.CreateDbContextAsync(ct);
+        await context.CommunityMembers.ExecuteDeleteAsync(ct);
+        await context.Communities.ExecuteDeleteAsync(ct);
+        await context.Relationships.ExecuteDeleteAsync(ct);
+        await context.Entities.ExecuteDeleteAsync(ct);
     }
 
     #endregion
@@ -689,6 +728,7 @@ LIMIT {options.MaxNodes}";
     }
 
     private async Task TraverseIterativeAsync(
+        EntityGraphDbContext context,
         string startEntityId,
         GraphStoreTraversalOptions options,
         HashSet<string> visitedEntities,
@@ -704,7 +744,7 @@ LIMIT {options.MaxNodes}";
 
             if (depth >= options.MaxDepth) continue;
 
-            var relationships = await GetRelationshipsAsync(currentId, options.Direction, ct);
+            var relationships = await GetRelationshipsAsync(context, currentId, options.Direction, ct);
 
             foreach (var rel in relationships)
             {

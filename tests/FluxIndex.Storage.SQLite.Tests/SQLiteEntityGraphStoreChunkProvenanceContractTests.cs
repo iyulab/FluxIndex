@@ -24,6 +24,6 @@ public sealed class SQLiteEntityGraphStoreChunkProvenanceContractTests : GraphSt
             new DbContextOptionsBuilder<SQLiteEntityGraphDbContext>().UseSqlite(connection).Options,
             options);
         await context.Database.EnsureCreatedAsync();
-        return new SQLiteEntityGraphStore(context, options, NullLogger<SQLiteEntityGraphStore>.Instance);
+        return new SQLiteEntityGraphStore(new DelegateDbContextFactory<SQLiteEntityGraphDbContext>(() => new SQLiteEntityGraphDbContext(new DbContextOptionsBuilder<SQLiteEntityGraphDbContext>().UseSqlite(connection).Options, options)), options, NullLogger<SQLiteEntityGraphStore>.Instance);
     }
 }

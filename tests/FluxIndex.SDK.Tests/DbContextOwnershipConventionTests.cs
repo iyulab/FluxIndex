@@ -16,23 +16,6 @@ namespace FluxIndex.SDK.Tests;
 /// </summary>
 public class DbContextOwnershipConventionTests
 {
-    /// <summary>
-    /// Stores not yet moved to a context factory. This list only shrinks: an entry that no longer holds a
-    /// context fails the test below until it is removed from here.
-    /// </summary>
-    private static readonly HashSet<string> Pending = new(StringComparer.Ordinal)
-    {
-        "FluxIndex.Storage.PostgreSQL.Cache.PostgresSemanticCache",
-        "FluxIndex.Storage.PostgreSQL.EntityGraph.PostgresEntityGraphStore",
-        "FluxIndex.Storage.PostgreSQL.Graph.PostgresGraphStore",
-        "FluxIndex.Storage.PostgreSQL.PostgreSQLQuantizedVectorStore",
-        "FluxIndex.Storage.SQLite.Cache.SQLiteSemanticCache",
-        "FluxIndex.Storage.SQLite.Graph.SQLiteEntityGraphStore",
-        "FluxIndex.Storage.SQLite.Graph.SQLiteGraphStore",
-        "FluxIndex.Storage.SQLite.SQLiteQuantizedVectorStore",
-        "FluxIndex.Storage.SQLite.SQLiteVecVectorStore",
-    };
-
     private static readonly Assembly[] StorageAssemblies =
     [
         typeof(SQLiteVectorStore).Assembly,
@@ -53,16 +36,9 @@ public class DbContextOwnershipConventionTests
             .OrderBy(n => n, StringComparer.Ordinal);
 
     [Fact]
-    public void NoStorageTypeHoldsADbContext_OutsideThePendingList()
+    public void NoStorageTypeHoldsADbContext()
     {
-        TypesHoldingADbContext().Where(n => !Pending.Contains(n)).Should().BeEmpty(
+        TypesHoldingADbContext().Should().BeEmpty(
             "a store that keeps one DbContext fails under concurrent callers — take an IDbContextFactory<T> and open a context per operation");
-    }
-
-    [Fact]
-    public void EveryPendingEntry_StillHoldsADbContext()
-    {
-        Pending.Except(TypesHoldingADbContext()).Should().BeEmpty(
-            "a store that no longer holds a DbContext must leave the pending list, so the list only shrinks");
     }
 }

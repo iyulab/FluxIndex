@@ -12,19 +12,31 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.63.0] - Unreleased
 
 ### Fixed
-- **One context can be shared by concurrent callers on the PostgreSQL and SQLite (in-memory scan) stores.** Overlapping
-  calls — one caller indexing or deleting while another searches — failed with EF Core's "A second operation was started
-  on this context instance", because the context kept one store, and the store one EF Core context, for its whole
-  lifetime. `PostgreSQLVectorStore` and `SQLiteVectorStore` now open a context per operation. The other EF-backed stores
-  (sqlite-vec, quantized, graph, semantic cache) follow.
-- `AddPostgreSQLVectorStore` builds its Npgsql data source once instead of once per scope, so every operation shares
+- **One context can be shared by concurrent callers on every EF-backed store.** Overlapping calls — one caller indexing
+  or deleting while another searches — failed with EF Core's "A second operation was started on this context instance"
+  (on the sqlite-vec store: a failed extension load), because the context kept one store, and the store one EF Core
+  context, for its whole lifetime. The PostgreSQL and SQLite vector stores (in-memory scan, sqlite-vec, quantized), the
+  graph and entity graph stores and the semantic caches now open a context per operation; a multi-step write keeps one
+  context (and one transaction) for the whole operation. The sqlite-vec store loads the extension on each operation's
+  connection, so a delete no longer depends on the connection the store was initialized on.
+- The PostgreSQL registrations build their Npgsql data source once instead of once per scope, so every operation shares
   one connection pool.
+- **SQLite in-memory graph, entity graph and semantic cache databases keep their data across operations.** They used a
+  private `:memory:` database, which exists only as long as one connection — the schema created at start-up was not the
+  database a store then read. They now use a shared-cache in-memory database named per options instance, like the
+  vector store.
+- **Semantic cache statistics count every hit, miss and eviction.** The counters were edited on an untracked row and
+  never written after the first; they are now updated in one atomic statement. A SQLite cache hit also records its hit
+  count and access time. `UpdateQuantizedEmbeddingAsync` on both quantized stores writes an existing embedding instead
+  of reporting success without a write.
 
 ### Changed
-- **Breaking: `PostgreSQLVectorStore` and `SQLiteVectorStore` take an `IDbContextFactory<TContext>` instead of a
-  context.** The storage registrations supply it (`AddDbContextFactory`); the context type itself stays resolvable.
-  Migration for a store built by hand: pass a factory — `services.AddDbContextFactory<FluxIndexDbContext>(...)`, or an
-  `IDbContextFactory<T>` over your own options.
+- **Breaking: the EF-backed stores take an `IDbContextFactory<TContext>` instead of a context.** Changed constructors:
+  `PostgreSQLVectorStore`, `PostgreSQLQuantizedVectorStore`, `PostgresGraphStore`, `PostgresEntityGraphStore`,
+  `PostgresSemanticCache`, `SQLiteVectorStore`, `SQLiteVecVectorStore`, `SQLiteQuantizedVectorStore`, `SQLiteGraphStore`,
+  `SQLiteEntityGraphStore` and `SQLiteSemanticCache`. The storage registrations supply the factory
+  (`AddDbContextFactory`); the context type itself stays resolvable. Migration for a store built by hand: pass a factory
+  — `services.AddDbContextFactory<FluxIndexDbContext>(...)`, or an `IDbContextFactory<T>` over your own options.
 
 ---
 

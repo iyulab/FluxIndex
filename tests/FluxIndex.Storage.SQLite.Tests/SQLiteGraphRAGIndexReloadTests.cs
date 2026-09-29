@@ -32,7 +32,7 @@ public sealed class SQLiteGraphRAGIndexReloadTests : IAsyncDisposable
             new DbContextOptionsBuilder<SQLiteEntityGraphDbContext>().UseSqlite(_connection).Options,
             options);
         _context.Database.EnsureCreated();
-        _store = new SQLiteEntityGraphStore(_context, options, NullLogger<SQLiteEntityGraphStore>.Instance);
+        _store = new SQLiteEntityGraphStore(new DelegateDbContextFactory<SQLiteEntityGraphDbContext>(() => new SQLiteEntityGraphDbContext(new DbContextOptionsBuilder<SQLiteEntityGraphDbContext>().UseSqlite(_connection).Options, options)), options, NullLogger<SQLiteEntityGraphStore>.Instance);
     }
 
     private static DocumentChunk Chunk(string id, string documentId, string content) => new()

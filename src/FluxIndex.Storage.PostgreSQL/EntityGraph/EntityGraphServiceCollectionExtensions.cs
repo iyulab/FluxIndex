@@ -40,7 +40,9 @@ public static class EntityGraphServiceCollectionExtensions
             opt.AutoMigrate = options.AutoMigrate;
         });
 
-        services.AddDbContext<EntityGraphDbContext>((sp, dbOptions) =>
+        // A factory, not a scoped context: the store opens a context per operation, so one store instance is safe for concurrent callers. The context type itself
+        // stays resolvable (scoped).
+        services.AddDbContextFactory<EntityGraphDbContext>((sp, dbOptions) =>
         {
             dbOptions.UseNpgsql(options.ConnectionString, npgsqlOptions =>
             {

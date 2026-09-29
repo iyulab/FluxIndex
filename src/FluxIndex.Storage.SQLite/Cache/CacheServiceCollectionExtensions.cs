@@ -22,8 +22,9 @@ public static class CacheServiceCollectionExtensions
     {
         services.Configure(configureOptions);
 
-        // DbContext 등록
-        services.AddDbContext<SQLiteCacheDbContext>((serviceProvider, dbOptions) =>
+        // DbContext 등록 — a factory, not a scoped context: the cache opens a context per operation, so one store instance is safe for concurrent callers. The context type itself
+        // stays resolvable (scoped).
+        services.AddDbContextFactory<SQLiteCacheDbContext>((serviceProvider, dbOptions) =>
         {
             var options = serviceProvider.GetRequiredService<IOptions<SQLiteCacheOptions>>().Value;
             dbOptions.UseSqlite(options.GetCacheConnectionString(), sqliteOptions =>
@@ -31,7 +32,7 @@ public static class CacheServiceCollectionExtensions
                 sqliteOptions.CommandTimeout(options.CommandTimeout);
             });
             dbOptions.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
-        }, ServiceLifetime.Scoped);
+        });
 
         // Cache 서비스 등록
         services.AddScoped<ISemanticCache, SQLiteSemanticCache>();

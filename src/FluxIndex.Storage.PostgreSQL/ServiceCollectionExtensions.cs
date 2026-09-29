@@ -110,8 +110,10 @@ public static class ServiceCollectionExtensions
     {
         services.Configure(configureOptions);
 
-        // Register DbContext
-        services.AddDbContext<FluxIndexQuantizedDbContext>((serviceProvider, options) =>
+        // Register a DbContext factory: the store opens a context per operation, so one store instance is safe for concurrent callers. The context type itself
+        // stays resolvable (scoped). The options are built
+        // once, so the data source is shared rather than rebuilt per scope.
+        services.AddDbContextFactory<FluxIndexQuantizedDbContext>((serviceProvider, options) =>
         {
             var postgresOptions = serviceProvider.GetRequiredService<IOptions<PostgreSQLQuantizedOptions>>().Value;
 

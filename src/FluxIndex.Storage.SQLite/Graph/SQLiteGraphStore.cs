@@ -10,14 +10,14 @@ namespace FluxIndex.Storage.SQLite.Graph;
 /// </summary>
 public partial class SQLiteGraphStore : IChunkHierarchyRepository
 {
-    private readonly SQLiteGraphDbContext _context;
+    private readonly IDbContextFactory<SQLiteGraphDbContext> _contextFactory;
     private readonly ILogger<SQLiteGraphStore> _logger;
 
     public SQLiteGraphStore(
-        SQLiteGraphDbContext context,
+        IDbContextFactory<SQLiteGraphDbContext> contextFactory,
         ILogger<SQLiteGraphStore> logger)
     {
-        _context = context;
+        _contextFactory = contextFactory;
         _logger = logger;
     }
 
@@ -27,7 +27,8 @@ public partial class SQLiteGraphStore : IChunkHierarchyRepository
         string chunkId,
         CancellationToken cancellationToken = default)
     {
-        var entity = await _context.ChunkHierarchies
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var entity = await context.ChunkHierarchies
             .FirstOrDefaultAsync(h => h.ChunkId == chunkId, cancellationToken);
 
         return entity == null ? null : MapToChunkHierarchy(entity);
@@ -37,21 +38,22 @@ public partial class SQLiteGraphStore : IChunkHierarchyRepository
         ChunkHierarchy hierarchy,
         CancellationToken cancellationToken = default)
     {
-        var existing = await _context.ChunkHierarchies
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var existing = await context.ChunkHierarchies
             .FirstOrDefaultAsync(h => h.ChunkId == hierarchy.ChunkId, cancellationToken);
 
         if (existing != null)
         {
             UpdateHierarchyEntity(existing, hierarchy);
-            _context.ChunkHierarchies.Update(existing);
+            context.ChunkHierarchies.Update(existing);
         }
         else
         {
             var entity = MapToEntity(hierarchy);
-            await _context.ChunkHierarchies.AddAsync(entity, cancellationToken);
+            await context.ChunkHierarchies.AddAsync(entity, cancellationToken);
         }
 
-        await _context.SaveChangesAsync(cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
         LogHierarchySaved(_logger, hierarchy.ChunkId);
     }
 
@@ -59,7 +61,8 @@ public partial class SQLiteGraphStore : IChunkHierarchyRepository
         string parentChunkId,
         CancellationToken cancellationToken = default)
     {
-        var entities = await _context.ChunkHierarchies
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var entities = await context.ChunkHierarchies
             .Where(h => h.ParentChunkId == parentChunkId)
             .OrderBy(h => h.HierarchyLevel)
             .ToListAsync(cancellationToken);
@@ -72,7 +75,8 @@ public partial class SQLiteGraphStore : IChunkHierarchyRepository
         int level,
         CancellationToken cancellationToken = default)
     {
-        var entities = await _context.ChunkHierarchies
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var entities = await context.ChunkHierarchies
             .Where(h => h.ChunkId.StartsWith(documentId) && h.HierarchyLevel == level)
             .OrderBy(h => h.BoundaryStartPosition)
             .ToListAsync(cancellationToken);
@@ -88,21 +92,22 @@ public partial class SQLiteGraphStore : IChunkHierarchyRepository
         ChunkRelationshipExtended relationship,
         CancellationToken cancellationToken = default)
     {
-        var existing = await _context.ChunkRelationships
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var existing = await context.ChunkRelationships
             .FirstOrDefaultAsync(r => r.Id == relationship.Id, cancellationToken);
 
         if (existing != null)
         {
             UpdateRelationshipEntity(existing, relationship);
-            _context.ChunkRelationships.Update(existing);
+            context.ChunkRelationships.Update(existing);
         }
         else
         {
             var entity = MapToEntity(relationship);
-            await _context.ChunkRelationships.AddAsync(entity, cancellationToken);
+            await context.ChunkRelationships.AddAsync(entity, cancellationToken);
         }
 
-        await _context.SaveChangesAsync(cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
         LogRelationshipSaved(_logger, relationship.Id);
     }
 
@@ -111,7 +116,8 @@ public partial class SQLiteGraphStore : IChunkHierarchyRepository
         IEnumerable<RelationshipType>? relationshipTypes = null,
         CancellationToken cancellationToken = default)
     {
-        var query = _context.ChunkRelationships
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var query = context.ChunkRelationships
             .Where(r => r.SourceChunkId == chunkId || r.TargetChunkId == chunkId);
 
         if (relationshipTypes != null)
@@ -138,7 +144,8 @@ public partial class SQLiteGraphStore : IChunkHierarchyRepository
         string documentId,
         CancellationToken cancellationToken = default)
     {
-        var hierarchies = await _context.ChunkHierarchies
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var hierarchies = await context.ChunkHierarchies
             .Where(h => h.ChunkId.StartsWith(documentId))
             .ToListAsync(cancellationToken);
 
@@ -172,7 +179,7 @@ public partial class SQLiteGraphStore : IChunkHierarchyRepository
 
         // 관계 통계
         var chunkIds = hierarchies.Select(h => h.ChunkId).ToHashSet();
-        var relationships = await _context.ChunkRelationships
+        var relationships = await context.ChunkRelationships
             .Where(r => chunkIds.Contains(r.SourceChunkId))
             .ToListAsync(cancellationToken);
 
@@ -212,6 +219,7 @@ public partial class SQLiteGraphStore : IChunkHierarchyRepository
         int maxDepth = 10,
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         var sql = @"
             WITH RECURSIVE ancestors AS (
                 SELECT ChunkId, ParentChunkId, 1 as depth
@@ -230,7 +238,7 @@ public partial class SQLiteGraphStore : IChunkHierarchyRepository
             WHERE ParentChunkId IS NOT NULL
             ORDER BY depth";
 
-        var ancestors = await _context.Database
+        var ancestors = await context.Database
             .SqlQueryRaw<string>(sql, chunkId, maxDepth)
             .ToListAsync(cancellationToken);
 
@@ -245,6 +253,7 @@ public partial class SQLiteGraphStore : IChunkHierarchyRepository
         int maxDepth = 10,
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         var sql = @"
             WITH RECURSIVE descendants AS (
                 SELECT ChunkId, ChildChunkIdsJson, 1 as depth
@@ -263,7 +272,7 @@ public partial class SQLiteGraphStore : IChunkHierarchyRepository
             WHERE ChunkId != {0}
             ORDER BY depth";
 
-        var descendants = await _context.Database
+        var descendants = await context.Database
             .SqlQueryRaw<string>(sql, chunkId, maxDepth)
             .ToListAsync(cancellationToken);
 
@@ -278,6 +287,7 @@ public partial class SQLiteGraphStore : IChunkHierarchyRepository
         int maxHops = 3,
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         var sql = @"
             WITH RECURSIVE connected AS (
                 SELECT SourceChunkId as ChunkId, 0 as hops
@@ -307,7 +317,7 @@ public partial class SQLiteGraphStore : IChunkHierarchyRepository
             WHERE ChunkId != {0}
             ORDER BY ChunkId";
 
-        var connected = await _context.Database
+        var connected = await context.Database
             .SqlQueryRaw<string>(sql, chunkId, maxHops)
             .ToListAsync(cancellationToken);
 

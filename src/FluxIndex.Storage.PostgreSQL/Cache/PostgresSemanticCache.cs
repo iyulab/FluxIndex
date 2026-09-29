@@ -14,7 +14,7 @@ namespace FluxIndex.Storage.PostgreSQL.Cache;
 /// </summary>
 public partial class PostgresSemanticCache : ISemanticCache, IDisposable
 {
-    private readonly PostgresCacheDbContext _context;
+    private readonly IDbContextFactory<PostgresCacheDbContext> _contextFactory;
     private readonly IEmbeddingService _embeddingService;
     private readonly PostgresCacheOptions _options;
     private readonly ILogger<PostgresSemanticCache> _logger;
@@ -22,12 +22,12 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
     private DateTime _lastCleanup = DateTime.MinValue;
 
     public PostgresSemanticCache(
-        PostgresCacheDbContext context,
+        IDbContextFactory<PostgresCacheDbContext> contextFactory,
         IEmbeddingService embeddingService,
         IOptions<PostgresCacheOptions> options,
         ILogger<PostgresSemanticCache> logger)
     {
-        _context = context;
+        _contextFactory = contextFactory;
         _embeddingService = embeddingService;
         _options = options.Value;
         _logger = logger;
@@ -39,6 +39,7 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
         int maxResults = 10,
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         await CleanupExpiredIfNeededAsync(cancellationToken);
 
         // 쿼리 임베딩 생성
@@ -46,7 +47,7 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
         var queryVector = new Vector(queryEmbedding);
 
         // pgvector 코사인 유사도 검색 (1 - distance = similarity)
-        var result = await _context.SemanticCache
+        var result = await context.SemanticCache
             .Where(c => c.ExpiresAt > DateTime.UtcNow)
             .Where(c => c.Embedding != null)
             .Select(c => new
@@ -61,7 +62,7 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
 
         if (result == null)
         {
-            await UpdateStatsAsync(false, cancellationToken);
+            await UpdateStatsAsync(context, false, cancellationToken);
             return null;
         }
 
@@ -70,9 +71,9 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
         // 히트 카운트 및 접근 시간 업데이트
         result.Entry.HitCount++;
         result.Entry.LastAccessedAt = DateTime.UtcNow;
-        _context.SemanticCache.Update(result.Entry);
-        await _context.SaveChangesAsync(cancellationToken);
-        await UpdateStatsAsync(true, cancellationToken);
+        context.SemanticCache.Update(result.Entry);
+        await context.SaveChangesAsync(cancellationToken);
+        await UpdateStatsAsync(context, true, cancellationToken);
 
         LogCacheHit(_logger, similarity);
 
@@ -100,12 +101,13 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
         TimeSpan? expiry = null,
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         var queryHash = ComputeHash(query);
         var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
         var expiresAt = DateTime.UtcNow + (expiry ?? _options.DefaultExpiry);
 
         // 기존 항목 확인
-        var existing = await _context.SemanticCache
+        var existing = await context.SemanticCache
             .FirstOrDefaultAsync(c => c.QueryHash == queryHash, cancellationToken);
 
         if (existing != null)
@@ -122,12 +124,12 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
                     ["ResultCount"] = metadata.ResultCount
                 };
             }
-            _context.SemanticCache.Update(existing);
+            context.SemanticCache.Update(existing);
         }
         else
         {
             // 최대 항목 수 체크
-            await EnsureCapacityAsync(cancellationToken);
+            await EnsureCapacityAsync(context, cancellationToken);
 
             var entity = new SemanticCacheEntity
             {
@@ -148,10 +150,10 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
                 };
             }
 
-            await _context.SemanticCache.AddAsync(entity, cancellationToken);
+            await context.SemanticCache.AddAsync(entity, cancellationToken);
         }
 
-        await _context.SaveChangesAsync(cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
         LogCacheSet(_logger, queryHash);
     }
 
@@ -170,10 +172,11 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
         int maxSimilar = 5,
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
         var queryVector = new Vector(queryEmbedding);
 
-        var results = await _context.SemanticCache
+        var results = await context.SemanticCache
             .Where(c => c.ExpiresAt > DateTime.UtcNow)
             .Where(c => c.Embedding != null)
             .Select(c => new
@@ -200,12 +203,13 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
         string pattern,
         CancellationToken cancellationToken = default)
     {
-        var toDelete = await _context.SemanticCache
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var toDelete = await context.SemanticCache
             .Where(c => EF.Functions.ILike(c.Query, $"%{pattern}%"))
             .ToListAsync(cancellationToken);
 
-        _context.SemanticCache.RemoveRange(toDelete);
-        await _context.SaveChangesAsync(cancellationToken);
+        context.SemanticCache.RemoveRange(toDelete);
+        await context.SaveChangesAsync(cancellationToken);
 
         LogCacheInvalidated(_logger, toDelete.Count, pattern);
 
@@ -214,8 +218,9 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
 
     public async Task ClearAsync(CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         // TRUNCATE는 UNLOGGED 테이블에서 더 효율적
-        await _context.Database.ExecuteSqlRawAsync(
+        await context.Database.ExecuteSqlRawAsync(
             "TRUNCATE TABLE semantic_cache", cancellationToken);
 
         LogCacheCleared(_logger);
@@ -224,11 +229,12 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
     public async Task<CacheStatistics> GetStatisticsAsync(
         CancellationToken cancellationToken = default)
     {
-        var stats = await _context.CacheStats
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var stats = await context.CacheStats
             .FirstOrDefaultAsync(s => s.Id == 1, cancellationToken);
 
-        var entryCount = await _context.SemanticCache.CountAsync(cancellationToken);
-        var expiredCount = await _context.SemanticCache
+        var entryCount = await context.SemanticCache.CountAsync(cancellationToken);
+        var expiredCount = await context.SemanticCache
             .CountAsync(c => c.ExpiresAt <= DateTime.UtcNow, cancellationToken);
 
         return new CacheStatistics
@@ -244,18 +250,19 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
     public async Task<CacheOptimizationResult> OptimizeAsync(
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         var startTime = DateTime.UtcNow;
         var messages = new List<string>();
 
         // 만료된 항목 삭제
-        var expiredCount = await _context.Database.ExecuteSqlRawAsync(
+        var expiredCount = await context.Database.ExecuteSqlRawAsync(
             "DELETE FROM semantic_cache WHERE \"ExpiresAt\" < {0}",
             DateTime.UtcNow);
 
         messages.Add($"Removed {expiredCount} expired entries");
 
         // LRU 기반 정리 (최대 항목 수 초과 시)
-        var currentCount = await _context.SemanticCache.CountAsync(cancellationToken);
+        var currentCount = await context.SemanticCache.CountAsync(cancellationToken);
         var lruRemoved = 0;
 
         if (currentCount > _options.MaxEntries)
@@ -263,7 +270,7 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
             var excessCount = currentCount - _options.MaxEntries;
 
             // PostgreSQL에서 효율적인 LRU 삭제
-            lruRemoved = await _context.Database.ExecuteSqlRawAsync($@"
+            lruRemoved = await context.Database.ExecuteSqlRawAsync($@"
                 DELETE FROM semantic_cache
                 WHERE ""Id"" IN (
                     SELECT ""Id"" FROM semantic_cache
@@ -277,7 +284,7 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
         // VACUUM ANALYZE로 통계 업데이트 (UNLOGGED 테이블이라 빠름)
         try
         {
-            await _context.Database.ExecuteSqlRawAsync("VACUUM ANALYZE semantic_cache", cancellationToken);
+            await context.Database.ExecuteSqlRawAsync("VACUUM ANALYZE semantic_cache", cancellationToken);
             messages.Add("VACUUM ANALYZE completed");
         }
         catch (Exception ex)
@@ -316,36 +323,34 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
         return Convert.ToHexString(bytes).ToLowerInvariant();
     }
 
-    private async Task UpdateStatsAsync(bool isHit, CancellationToken cancellationToken)
+    /// <summary>
+    /// Counts a hit or a miss in one atomic upsert, so overlapping callers each count and two first
+    /// callers cannot both insert the statistics row.
+    /// </summary>
+    private static async Task UpdateStatsAsync(PostgresCacheDbContext context, bool isHit, CancellationToken cancellationToken)
     {
-        var stats = await _context.CacheStats
-            .FirstOrDefaultAsync(s => s.Id == 1, cancellationToken);
-
-        if (stats == null)
-        {
-            stats = new CacheStatsEntity { Id = 1 };
-            await _context.CacheStats.AddAsync(stats, cancellationToken);
-        }
-
-        if (isHit)
-            stats.TotalHits++;
-        else
-            stats.TotalMisses++;
-
-        stats.LastUpdated = DateTime.UtcNow;
-        await _context.SaveChangesAsync(cancellationToken);
+        var hits = isHit ? 1L : 0L;
+        var misses = isHit ? 0L : 1L;
+        var now = DateTime.UtcNow;
+        await context.Database.ExecuteSqlInterpolatedAsync($@"
+            INSERT INTO cache_stats (""Id"", ""TotalHits"", ""TotalMisses"", ""TotalEvictions"", ""TotalEntries"", ""LastUpdated"")
+            VALUES (1, {hits}, {misses}, 0, 0, {now})
+            ON CONFLICT (""Id"") DO UPDATE SET
+                ""TotalHits"" = cache_stats.""TotalHits"" + {hits},
+                ""TotalMisses"" = cache_stats.""TotalMisses"" + {misses},
+                ""LastUpdated"" = {now}", cancellationToken);
     }
 
-    private async Task EnsureCapacityAsync(CancellationToken cancellationToken)
+    private async Task EnsureCapacityAsync(PostgresCacheDbContext context, CancellationToken cancellationToken)
     {
-        var currentCount = await _context.SemanticCache.CountAsync(cancellationToken);
+        var currentCount = await context.SemanticCache.CountAsync(cancellationToken);
 
         if (currentCount >= _options.MaxEntries)
         {
             // LRU 방식으로 10% 삭제
             var removeCount = Math.Max(1, _options.MaxEntries / 10);
 
-            await _context.Database.ExecuteSqlRawAsync($@"
+            await context.Database.ExecuteSqlRawAsync($@"
                 DELETE FROM semantic_cache
                 WHERE ""Id"" IN (
                     SELECT ""Id"" FROM semantic_cache
@@ -353,14 +358,11 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
                     LIMIT {{0}}
                 )", removeCount);
 
-            // 통계 업데이트
-            var stats = await _context.CacheStats
-                .FirstOrDefaultAsync(s => s.Id == 1, cancellationToken);
-            if (stats != null)
-            {
-                stats.TotalEvictions += removeCount;
-                await _context.SaveChangesAsync(cancellationToken);
-            }
+            // 통계 업데이트 — an increment in SQL: the context is NoTracking, so an edit to a queried
+            // statistics row would never be written.
+            await context.Database.ExecuteSqlInterpolatedAsync(
+                $@"UPDATE cache_stats SET ""TotalEvictions"" = ""TotalEvictions"" + {removeCount} WHERE ""Id"" = 1",
+                cancellationToken);
 
             LogEvictedEntries(_logger, removeCount);
         }
@@ -368,6 +370,7 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
 
     private async Task CleanupExpiredIfNeededAsync(CancellationToken cancellationToken)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         if (!_options.EnableAutoCleanup)
             return;
 
@@ -379,7 +382,7 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
 
         try
         {
-            var deleted = await _context.Database.ExecuteSqlRawAsync(
+            var deleted = await context.Database.ExecuteSqlRawAsync(
                 "DELETE FROM semantic_cache WHERE \"ExpiresAt\" < {0}",
                 DateTime.UtcNow);
 

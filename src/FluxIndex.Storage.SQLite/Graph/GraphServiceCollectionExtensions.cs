@@ -22,8 +22,9 @@ public static class GraphServiceCollectionExtensions
     {
         services.Configure(configureOptions);
 
-        // DbContext 등록
-        services.AddDbContext<SQLiteGraphDbContext>((serviceProvider, dbOptions) =>
+        // DbContext 등록 — a factory, not a scoped context: the store opens a context per operation, so one store instance is safe for concurrent callers. The context type itself
+        // stays resolvable (scoped).
+        services.AddDbContextFactory<SQLiteGraphDbContext>((serviceProvider, dbOptions) =>
         {
             var options = serviceProvider.GetRequiredService<IOptions<SQLiteGraphOptions>>().Value;
             dbOptions.UseSqlite(options.GetGraphConnectionString(), sqliteOptions =>
@@ -31,7 +32,7 @@ public static class GraphServiceCollectionExtensions
                 sqliteOptions.CommandTimeout(options.CommandTimeout);
             });
             dbOptions.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
-        }, ServiceLifetime.Scoped);
+        });
 
         // Repository 등록
         services.AddScoped<IChunkHierarchyRepository, SQLiteGraphStore>();
@@ -81,8 +82,9 @@ public static class GraphServiceCollectionExtensions
     {
         services.Configure(configureOptions);
 
-        // DbContext 등록
-        services.AddDbContext<SQLiteEntityGraphDbContext>((serviceProvider, dbOptions) =>
+        // DbContext 등록 — a factory, not a scoped context: the store opens a context per operation, so one store instance is safe for concurrent callers. The context type itself
+        // stays resolvable (scoped).
+        services.AddDbContextFactory<SQLiteEntityGraphDbContext>((serviceProvider, dbOptions) =>
         {
             var options = serviceProvider.GetRequiredService<IOptions<SQLiteEntityGraphOptions>>().Value;
             dbOptions.UseSqlite(options.GetConnectionString(), sqliteOptions =>
@@ -90,7 +92,7 @@ public static class GraphServiceCollectionExtensions
                 sqliteOptions.CommandTimeout(options.CommandTimeout);
             });
             dbOptions.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
-        }, ServiceLifetime.Scoped);
+        });
 
         // IGraphStore 구현 등록
         services.AddScoped<IGraphStore, SQLiteEntityGraphStore>();

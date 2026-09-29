@@ -64,7 +64,7 @@ public sealed class SQLiteSchemaProvisionerColumnAddTests : IAsyncDisposable
 
         Assert.Contains(column, ColumnsOf(_connection, table));
 
-        var store = new SQLiteEntityGraphStore(context, Options.Create(new SQLiteEntityGraphOptions()), NullLogger<SQLiteEntityGraphStore>.Instance);
+        var store = new SQLiteEntityGraphStore(new DelegateDbContextFactory<SQLiteEntityGraphDbContext>(NewContext), Options.Create(new SQLiteEntityGraphOptions()), NullLogger<SQLiteEntityGraphStore>.Instance);
         await store.StoreCommunityAsync(new GraphCommunity { Id = "c1", Name = "c1", ChunkIds = ["k1", "k2"] }, ct);
 
         var found = await store.GetCommunitiesByChunkIdsAsync(["k2"], ct: ct);
@@ -82,7 +82,7 @@ public sealed class SQLiteSchemaProvisionerColumnAddTests : IAsyncDisposable
         await using (var older = NewContext())
         {
             older.Database.EnsureCreated();
-            var olderStore = new SQLiteEntityGraphStore(older, Options.Create(new SQLiteEntityGraphOptions()), NullLogger<SQLiteEntityGraphStore>.Instance);
+            var olderStore = new SQLiteEntityGraphStore(new DelegateDbContextFactory<SQLiteEntityGraphDbContext>(NewContext), Options.Create(new SQLiteEntityGraphOptions()), NullLogger<SQLiteEntityGraphStore>.Instance);
             await olderStore.StoreEntitiesBatchAsync([new GraphEntity { Id = "e1", Name = "Acme", NormalizedName = "acme", ChunkIds = ["k1"] }], ct);
             await olderStore.StoreCommunityAsync(new GraphCommunity { Id = "c1", Name = "c1", EntityIds = ["e1"], ChunkIds = ["k1"] }, ct);
             foreach (var clrType in new[] { typeof(SQLiteEntityGraphEntity), typeof(SQLiteEntityCommunityEntity) })
@@ -102,7 +102,7 @@ public sealed class SQLiteSchemaProvisionerColumnAddTests : IAsyncDisposable
             Assert.Contains(column, ColumnsOf(_connection, table));
         }
 
-        var store = new SQLiteEntityGraphStore(context, Options.Create(new SQLiteEntityGraphOptions()), NullLogger<SQLiteEntityGraphStore>.Instance);
+        var store = new SQLiteEntityGraphStore(new DelegateDbContextFactory<SQLiteEntityGraphDbContext>(NewContext), Options.Create(new SQLiteEntityGraphOptions()), NullLogger<SQLiteEntityGraphStore>.Instance);
         var entity = Assert.Single(await store.GetEntitiesByChunkIdsAsync(["k1"], ct: ct));
         Assert.Equal(GraphPartition.Default, entity.Partition);
         Assert.Equal("c1", Assert.Single(await store.GetCommunitiesByChunkIdsAsync(["k1"], ct: ct)).Id);

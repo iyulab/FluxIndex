@@ -35,8 +35,9 @@ public static class ServiceCollectionExtensions
         // 폴백용 로더도 등록
         services.AddSingleton<NoOpSQLiteVecExtensionLoader>();
 
-        // SQLiteVecDbContext 등록 (연결 풀링 및 성능 최적화)
-        services.AddDbContext<SQLiteVecDbContext>((serviceProvider, dbOptions) =>
+        // SQLiteVecDbContext 등록 — a factory, not a scoped context: the store opens a context per operation, so one store instance is safe for concurrent callers. The context type itself
+        // stays resolvable (scoped).
+        services.AddDbContextFactory<SQLiteVecDbContext>((serviceProvider, dbOptions) =>
         {
             var options = serviceProvider.GetRequiredService<IOptions<SQLiteVecOptions>>().Value;
             dbOptions.UseSqlite(options.GetConnectionString(), sqliteOptions =>
@@ -56,7 +57,7 @@ public static class ServiceCollectionExtensions
             dbOptions.EnableDetailedErrors(true);
             dbOptions.EnableSensitiveDataLogging(true);
             #endif
-        }, ServiceLifetime.Scoped);
+        });
 
         // 폴백용 기존 SQLite 벡터 저장소 등록
         static SQLiteDbContext CreateFallbackContext(IServiceProvider serviceProvider)
@@ -257,8 +258,9 @@ public static class ServiceCollectionExtensions
     {
         services.Configure(configureOptions);
 
-        // DbContext 등록
-        services.AddDbContext<SQLiteQuantizedDbContext>((serviceProvider, dbOptions) =>
+        // DbContext 등록 — a factory, not a scoped context: the store opens a context per operation, so one store instance is safe for concurrent callers. The context type itself
+        // stays resolvable (scoped).
+        services.AddDbContextFactory<SQLiteQuantizedDbContext>((serviceProvider, dbOptions) =>
         {
             var options = serviceProvider.GetRequiredService<IOptions<SQLiteQuantizedOptions>>().Value;
             dbOptions.UseSqlite(options.GetConnectionString(), sqliteOptions =>
@@ -266,7 +268,7 @@ public static class ServiceCollectionExtensions
                 sqliteOptions.CommandTimeout(options.CommandTimeout);
             });
             dbOptions.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
-        }, ServiceLifetime.Scoped);
+        });
 
         // The store takes an IVectorQuantizer as a required collaborator, so registering the store
         // without one leaves it impossible to activate. Supply the library default only when the

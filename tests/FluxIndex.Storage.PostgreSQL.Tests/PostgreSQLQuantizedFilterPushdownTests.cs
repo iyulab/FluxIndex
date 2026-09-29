@@ -152,7 +152,7 @@ public class PostgreSQLQuantizedFilterPushdownTests : IAsyncLifetime
             NullLogger<ScalarQuantizer>.Instance);
 
         return new PostgreSQLQuantizedVectorStore(
-            context, quantizer, NullLogger<PostgreSQLQuantizedVectorStore>.Instance, options);
+            new TestDbContextFactory<FluxIndexQuantizedDbContext>(() => new FluxIndexQuantizedDbContext(dbOptions, options)), quantizer, NullLogger<PostgreSQLQuantizedVectorStore>.Instance, options);
     }
 
     private static DocumentChunk Chunk(string documentId, string tenant, float[] embedding) => new()

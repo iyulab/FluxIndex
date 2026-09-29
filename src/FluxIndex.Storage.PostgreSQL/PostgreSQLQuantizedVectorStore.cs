@@ -16,18 +16,18 @@ namespace FluxIndex.Storage.PostgreSQL;
 /// </summary>
 public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
 {
-    private readonly FluxIndexQuantizedDbContext _context;
+    private readonly IDbContextFactory<FluxIndexQuantizedDbContext> _contextFactory;
     private readonly IVectorQuantizer _quantizer;
     private readonly ILogger<PostgreSQLQuantizedVectorStore> _logger;
     private readonly PostgreSQLQuantizedOptions _options;
 
     public PostgreSQLQuantizedVectorStore(
-        FluxIndexQuantizedDbContext context,
+        IDbContextFactory<FluxIndexQuantizedDbContext> contextFactory,
         IVectorQuantizer quantizer,
         ILogger<PostgreSQLQuantizedVectorStore> logger,
         IOptions<PostgreSQLQuantizedOptions> options)
     {
-        _context = context ?? throw new ArgumentNullException(nameof(context));
+        _contextFactory = contextFactory ?? throw new ArgumentNullException(nameof(contextFactory));
         _quantizer = quantizer ?? throw new ArgumentNullException(nameof(quantizer));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _options = options.Value;
@@ -40,9 +40,10 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
 
     public async Task<string> StoreAsync(DocumentChunk chunk, CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         var chunkId = ResolveChunkId(chunk);
         var id = ChunkStorageId.ToStorageGuid(chunkId);
-        await UpsertRowAsync(chunk, chunkId, id, cancellationToken);
+        await UpsertRowAsync(context, chunk, chunkId, id, cancellationToken);
 
         // Auto-quantize if enabled
         if (_options.AutoQuantizeOnStore && chunk.Embedding != null)
@@ -51,7 +52,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
             {
                 var quantized = await _quantizer.QuantizeAsync(chunk.Embedding, cancellationToken);
                 var quantizedEntity = CreateQuantizedEntity(chunkId, quantized);
-                _context.QuantizedVectors.Add(quantizedEntity);
+                context.QuantizedVectors.Add(quantizedEntity);
             }
             catch (Exception ex)
             {
@@ -59,7 +60,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
             }
         }
 
-        await _context.SaveChangesAsync(cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
         return chunkId;
     }
 
@@ -67,6 +68,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
         IEnumerable<DocumentChunk> chunks,
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         var chunkList = chunks.ToList();
         var ids = new List<string>();
 
@@ -75,7 +77,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
             var chunkId = ResolveChunkId(chunk);
             var id = ChunkStorageId.ToStorageGuid(chunkId);
             ids.Add(chunkId);
-            await UpsertRowAsync(chunk, chunkId, id, cancellationToken);
+            await UpsertRowAsync(context, chunk, chunkId, id, cancellationToken);
         }
 
         // Batch quantize
@@ -98,7 +100,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
                     {
                         var originalIndex = embeddingsToQuantize[i].Index;
                         var quantizedEntity = CreateQuantizedEntity(ids[originalIndex], quantizedArray[i]);
-                        _context.QuantizedVectors.Add(quantizedEntity);
+                        context.QuantizedVectors.Add(quantizedEntity);
                     }
                 }
                 catch (Exception ex)
@@ -108,13 +110,14 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
             }
         }
 
-        await _context.SaveChangesAsync(cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
         return ids;
     }
 
     public async Task<DocumentChunk?> GetAsync(string id, CancellationToken cancellationToken = default)
     {
-        var entity = await _context.Vectors
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var entity = await context.Vectors
             .FirstOrDefaultAsync(v => v.Id == ChunkStorageId.ToStorageGuid(id), cancellationToken);
 
         return entity != null ? MapToChunk(entity) : null;
@@ -124,7 +127,8 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
         string documentId,
         CancellationToken cancellationToken = default)
     {
-        var entities = await _context.Vectors
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var entities = await context.Vectors
             .Where(v => v.DocumentId == documentId)
             .OrderBy(v => v.ChunkIndex)
             .ToListAsync(cancellationToken);
@@ -136,8 +140,9 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
         IEnumerable<string> ids,
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         var guids = ids.Select(ChunkStorageId.ToStorageGuid).ToList();
-        var entities = await _context.Vectors
+        var entities = await context.Vectors
             .Where(v => guids.Contains(v.Id))
             .ToListAsync(cancellationToken);
 
@@ -151,6 +156,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
         Dictionary<string, object>? filters = null,
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         // Fail-loud at call time (IVectorStore filter contract).
         FluxIndex.Core.Application.Services.Base.VectorStoreBase.ValidateFilters(filters);
 
@@ -160,7 +166,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
         // otherwise higher-scoring non-matching rows crowd matching rows out of the window and the
         // caller silently receives fewer results than exist. Same predicate builder the
         // non-quantized store uses, so the two cannot drift on where a filter runs.
-        var query = _context.Vectors.AsQueryable();
+        var query = context.Vectors.AsQueryable();
         if (filters is { Count: > 0 })
         {
             query = query.Where(MetadataPredicateBuilder.Build<QuantizedVectorEntity>(filters, v => v.Metadata));
@@ -188,29 +194,31 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
 
     public async Task<bool> DeleteAsync(string id, CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         var guid = ChunkStorageId.ToStorageGuid(id);
         // AsTracking: NoTracking context — Remove() on a detached instance throws when the same
         // row is already tracked (a Store in the same scope leaves it so).
-        var entity = await _context.Vectors.AsTracking().FirstOrDefaultAsync(v => v.Id == guid, cancellationToken);
+        var entity = await context.Vectors.AsTracking().FirstOrDefaultAsync(v => v.Id == guid, cancellationToken);
         if (entity == null) return false;
 
-        _context.Vectors.Remove(entity);
+        context.Vectors.Remove(entity);
 
-        var quantizedEntity = await _context.QuantizedVectors
+        var quantizedEntity = await context.QuantizedVectors
             .AsTracking()
             .FirstOrDefaultAsync(q => q.ChunkId == id, cancellationToken);
         if (quantizedEntity != null)
         {
-            _context.QuantizedVectors.Remove(quantizedEntity);
+            context.QuantizedVectors.Remove(quantizedEntity);
         }
 
-        await _context.SaveChangesAsync(cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
         return true;
     }
 
     public async Task<bool> DeleteByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default)
     {
-        var entities = await _context.Vectors
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var entities = await context.Vectors
             .AsTracking()
             .Where(v => v.DocumentId == documentId)
             .ToListAsync(cancellationToken);
@@ -218,21 +226,22 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
         if (entities.Count == 0) return false;
 
         var chunkIds = entities.Select(e => e.Id.ToString()).ToList();
-        var quantizedEntities = await _context.QuantizedVectors
+        var quantizedEntities = await context.QuantizedVectors
             .AsTracking()
             .Where(q => chunkIds.Contains(q.ChunkId))
             .ToListAsync(cancellationToken);
 
-        _context.Vectors.RemoveRange(entities);
-        _context.QuantizedVectors.RemoveRange(quantizedEntities);
-        await _context.SaveChangesAsync(cancellationToken);
+        context.Vectors.RemoveRange(entities);
+        context.QuantizedVectors.RemoveRange(quantizedEntities);
+        await context.SaveChangesAsync(cancellationToken);
 
         return true;
     }
 
     public async Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default)
     {
-        return await _context.Vectors.AnyAsync(v => v.Id == ChunkStorageId.ToStorageGuid(id), cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        return await context.Vectors.AnyAsync(v => v.Id == ChunkStorageId.ToStorageGuid(id), cancellationToken);
     }
 
     public Task<DocumentChunk?> GetByIdAsync(string id, CancellationToken cancellationToken = default)
@@ -240,9 +249,10 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
 
     public async Task<bool> UpdateAsync(DocumentChunk chunk, CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         // AsTracking: the quantized context is registered NoTracking, so without it the
         // mutations below are never written and this method reports success anyway.
-        var entity = await _context.Vectors.AsTracking()
+        var entity = await context.Vectors.AsTracking()
             .FirstOrDefaultAsync(v => v.Id == ChunkStorageId.ToStorageGuid(chunk.Id ?? ""), cancellationToken);
 
         if (entity == null) return false;
@@ -252,14 +262,15 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
         entity.TokenCount = chunk.TokenCount;
         entity.Metadata = chunk.Metadata ?? new Dictionary<string, object>();
 
-        var hadChanges = _context.ChangeTracker.HasChanges();
-        var written = await _context.SaveChangesAsync(cancellationToken);
+        var hadChanges = context.ChangeTracker.HasChanges();
+        var written = await context.SaveChangesAsync(cancellationToken);
         return !hadChanges || written > 0;
     }
 
     public async Task<int> CountAsync(CancellationToken cancellationToken = default)
     {
-        return await _context.Vectors.CountAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        return await context.Vectors.CountAsync(cancellationToken);
     }
 
     public Task<int> GetCountAsync(CancellationToken cancellationToken = default)
@@ -267,7 +278,8 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
 
     public async Task<int> GetDistinctDocumentCountAsync(CancellationToken cancellationToken = default)
     {
-        return await _context.Vectors
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        return await context.Vectors
             .Select(v => v.DocumentId)
             .Distinct()
             .CountAsync(cancellationToken);
@@ -275,8 +287,9 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
 
     public async Task ClearAsync(CancellationToken cancellationToken = default)
     {
-        await _context.Database.ExecuteSqlRawAsync("TRUNCATE TABLE quantized_vectors", cancellationToken);
-        await _context.Database.ExecuteSqlRawAsync("TRUNCATE TABLE vectors", cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        await context.Database.ExecuteSqlRawAsync("TRUNCATE TABLE quantized_vectors", cancellationToken);
+        await context.Database.ExecuteSqlRawAsync("TRUNCATE TABLE vectors", cancellationToken);
     }
 
     #endregion
@@ -288,6 +301,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
         QuantizedVector quantizedEmbedding,
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         var chunkId = ResolveChunkId(chunk);
         var id = ChunkStorageId.ToStorageGuid(chunkId);
         var entity = new QuantizedVectorEntity
@@ -302,9 +316,9 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
             Metadata = WithOriginalId(chunk.Metadata, chunkId)
         };
 
-        _context.Vectors.Add(entity);
-        _context.QuantizedVectors.Add(CreateQuantizedEntity(chunkId, quantizedEmbedding));
-        await _context.SaveChangesAsync(cancellationToken);
+        context.Vectors.Add(entity);
+        context.QuantizedVectors.Add(CreateQuantizedEntity(chunkId, quantizedEmbedding));
+        await context.SaveChangesAsync(cancellationToken);
 
         return chunkId;
     }
@@ -313,6 +327,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
         IEnumerable<(DocumentChunk Chunk, QuantizedVector QuantizedEmbedding)> chunksWithQuantized,
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         var items = chunksWithQuantized.ToList();
         var ids = new List<string>();
 
@@ -334,11 +349,11 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
                 Metadata = WithOriginalId(chunk.Metadata, chunkId)
             };
 
-            _context.Vectors.Add(entity);
-            _context.QuantizedVectors.Add(CreateQuantizedEntity(chunkId, quantized));
+            context.Vectors.Add(entity);
+            context.QuantizedVectors.Add(CreateQuantizedEntity(chunkId, quantized));
         }
 
-        await _context.SaveChangesAsync(cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
         return ids;
     }
 
@@ -348,7 +363,8 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
         float minScore = 0.0f,
         CancellationToken cancellationToken = default)
     {
-        var quantizedEntities = await _context.QuantizedVectors.ToListAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var quantizedEntities = await context.QuantizedVectors.ToListAsync(cancellationToken);
         if (quantizedEntities.Count == 0) return Enumerable.Empty<(DocumentChunk, float)>();
 
         // Compute distances in memory (quantized search)
@@ -364,7 +380,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
 
         // Fetch chunks
         var chunkIds = candidates.Select(c => ChunkStorageId.ToStorageGuid(c.ChunkId)).ToList();
-        var chunks = await _context.Vectors
+        var chunks = await context.Vectors
             .Where(v => chunkIds.Contains(v.Id))
             .ToDictionaryAsync(v => v.Id.ToString(), v => v, cancellationToken);
 
@@ -421,7 +437,8 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
         string chunkId,
         CancellationToken cancellationToken = default)
     {
-        var entity = await _context.QuantizedVectors.AsTracking()
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var entity = await context.QuantizedVectors.AsTracking()
             .FirstOrDefaultAsync(q => q.ChunkId == chunkId, cancellationToken);
 
         return entity != null ? DeserializeQuantizedVector(entity) : null;
@@ -431,7 +448,8 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
         string chunkId,
         CancellationToken cancellationToken = default)
     {
-        return await _context.QuantizedVectors.AnyAsync(q => q.ChunkId == chunkId, cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        return await context.QuantizedVectors.AnyAsync(q => q.ChunkId == chunkId, cancellationToken);
     }
 
     public async Task<bool> UpdateQuantizedEmbeddingAsync(
@@ -439,13 +457,17 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
         QuantizedVector quantizedEmbedding,
         CancellationToken cancellationToken = default)
     {
-        var entity = await _context.QuantizedVectors
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        // AsTracking: the context is registered NoTracking, so without it the edits below are never
+        // written and this method reports success anyway.
+        var entity = await context.QuantizedVectors
+            .AsTracking()
             .FirstOrDefaultAsync(q => q.ChunkId == chunkId, cancellationToken);
 
         if (entity == null)
         {
             entity = CreateQuantizedEntity(chunkId, quantizedEmbedding);
-            _context.QuantizedVectors.Add(entity);
+            context.QuantizedVectors.Add(entity);
         }
         else
         {
@@ -457,17 +479,18 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
                 : null;
         }
 
-        var hadQuantizedChanges = _context.ChangeTracker.HasChanges();
-        var quantizedWritten = await _context.SaveChangesAsync(cancellationToken);
+        var hadQuantizedChanges = context.ChangeTracker.HasChanges();
+        var quantizedWritten = await context.SaveChangesAsync(cancellationToken);
         return !hadQuantizedChanges || quantizedWritten > 0;
     }
 
     public async Task<QuantizedStorageStats> GetQuantizedStatsAsync(CancellationToken cancellationToken = default)
     {
-        var totalCount = await _context.Vectors.CountAsync(cancellationToken);
-        var quantizedCount = await _context.QuantizedVectors.CountAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var totalCount = await context.Vectors.CountAsync(cancellationToken);
+        var quantizedCount = await context.QuantizedVectors.CountAsync(cancellationToken);
 
-        var quantizedEntities = await _context.QuantizedVectors.ToListAsync(cancellationToken);
+        var quantizedEntities = await context.QuantizedVectors.ToListAsync(cancellationToken);
 
         long quantizedSize = 0;
         long estimatedOriginalSize = 0;
@@ -503,20 +526,20 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
     /// "Chunk identity"). On an update the previous quantized embedding is removed, since it
     /// described the embedding that has just been replaced; the caller re-quantizes afterwards.
     /// </summary>
-    private async Task UpsertRowAsync(DocumentChunk chunk, string chunkId, Guid storageId, CancellationToken cancellationToken)
+    private static async Task UpsertRowAsync(FluxIndexQuantizedDbContext context, DocumentChunk chunk, string chunkId, Guid storageId, CancellationToken cancellationToken)
     {
         var embedding = chunk.Embedding != null ? new Vector(chunk.Embedding) : new Vector(Array.Empty<float>());
         var metadata = WithOriginalId(chunk.Metadata, chunkId);
 
         // AsTracking: NoTracking context — the edit below must be what SaveChanges writes, and a
         // fresh Add for an already-tracked key throws before the database is even reached.
-        var existing = await _context.Vectors
+        var existing = await context.Vectors
             .AsTracking()
             .FirstOrDefaultAsync(v => v.Id == storageId, cancellationToken);
 
         if (existing == null)
         {
-            _context.Vectors.Add(new QuantizedVectorEntity
+            context.Vectors.Add(new QuantizedVectorEntity
             {
                 Id = storageId,
                 DocumentId = chunk.DocumentId,
@@ -538,12 +561,12 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
         existing.TokenCount = chunk.TokenCount;
         existing.Metadata = metadata;
 
-        var staleQuantized = await _context.QuantizedVectors
+        var staleQuantized = await context.QuantizedVectors
             .AsTracking()
             .FirstOrDefaultAsync(q => q.ChunkId == chunkId, cancellationToken);
         if (staleQuantized != null)
         {
-            _context.QuantizedVectors.Remove(staleQuantized);
+            context.QuantizedVectors.Remove(staleQuantized);
         }
     }
 

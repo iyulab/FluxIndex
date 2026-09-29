@@ -22,7 +22,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
 {
     private static readonly char[] FtsQuerySeparators = [' ', '\t', '\n'];
 
-    private readonly SQLiteVecDbContext _context;
+    private readonly IDbContextFactory<SQLiteVecDbContext> _contextFactory;
     private readonly ILogger<SQLiteVecVectorStore> _logger;
     private readonly SQLiteVecOptions _options;
     private readonly ISQLiteVecExtensionLoader _extensionLoader;
@@ -78,14 +78,19 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         }
     }
 
+    /// <summary>
+    /// Creates the store. Every operation opens its own <see cref="SQLiteVecDbContext"/> from
+    /// <paramref name="contextFactory"/> (and loads sqlite-vec on that context's connection), so one store
+    /// instance is safe for concurrent callers.
+    /// </summary>
     public SQLiteVecVectorStore(
-        SQLiteVecDbContext context,
+        IDbContextFactory<SQLiteVecDbContext> contextFactory,
         ILogger<SQLiteVecVectorStore> logger,
         IOptions<SQLiteVecOptions> options,
         ISQLiteVecExtensionLoader extensionLoader,
         Lazy<SQLiteVectorStore> fallbackStore)
     {
-        _context = context;
+        _contextFactory = contextFactory;
         _logger = logger;
         _options = options.Value;
         _extensionLoader = extensionLoader;
@@ -125,20 +130,22 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 // tie graph provenance to chunks — could never find those rows again.
                 var id = chunk.EnsureId();
 
-                using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+                await using var context = await OpenContextAsync(cancellationToken);
+
+                using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
 
                 try
                 {
                     // 1. 메타데이터 저장 — re-storing an id is an update, not a second row. AsTracking is
                     // load-bearing: the context is NoTracking, so a plain query returns a detached instance
                     // whose edits SaveChanges would never see.
-                    var existing = await _context.VectorChunks
+                    var existing = await context.VectorChunks
                         .AsTracking()
                         .FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
 
                     if (existing == null)
                     {
-                        _context.VectorChunks.Add(new VectorChunkEntity
+                        context.VectorChunks.Add(new VectorChunkEntity
                         {
                             Id = id,
                             DocumentId = chunk.DocumentId,
@@ -165,14 +172,14 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                     // no longer describes the row's content.
                     if (chunk.Embedding != null && _sqliteVecAvailable)
                     {
-                        await _context.StoreVectorInVecTableAsync(id, chunk.Embedding, cancellationToken);
+                        await context.StoreVectorInVecTableAsync(id, chunk.Embedding, cancellationToken);
                     }
                     else if (existing != null && _sqliteVecAvailable)
                     {
-                        await _context.DeleteVectorFromVecTableAsync(id, cancellationToken);
+                        await context.DeleteVectorFromVecTableAsync(id, cancellationToken);
                     }
 
-                    await _context.SaveChangesAsync(cancellationToken);
+                    await context.SaveChangesAsync(cancellationToken);
                     await transaction.CommitAsync(cancellationToken);
 
                     LogVectorStored(_logger, id, chunk.DocumentId);
@@ -284,7 +291,8 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         await _writeLock.WaitAsync(cancellationToken);
         try
         {
-            using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+            await using var context = await OpenContextAsync(cancellationToken);
+            using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
 
             try
             {
@@ -331,10 +339,10 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 // constraint failure or a duplicate hit in every search.
                 if (_sqliteVecAvailable && entities.Count > 0)
                 {
-                    var alreadyStored = await FindStoredIdsAsync(ids, cancellationToken);
+                    var alreadyStored = await FindStoredIdsAsync(context, ids, cancellationToken);
                     foreach (var storedId in alreadyStored)
                     {
-                        await _context.DeleteVectorFromVecTableAsync(storedId, cancellationToken);
+                        await context.DeleteVectorFromVecTableAsync(storedId, cancellationToken);
                     }
                 }
 
@@ -394,7 +402,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                                   "\"Content\" = excluded.\"Content\", \"TokenCount\" = excluded.\"TokenCount\", " +
                                   "\"Metadata\" = excluded.\"Metadata\"";
 
-                        await _context.Database.ExecuteSqlRawAsync(sql, parameters.ToArray(), cancellationToken);
+                        await context.Database.ExecuteSqlRawAsync(sql, parameters.ToArray(), cancellationToken);
                         LogVectorChunksBatchInserted(_logger, batchSize);
                     }
                 }
@@ -402,14 +410,10 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 // 3단계: 벡터 배치 삽입 (단일 SQL 문으로 최적화)
                 if (vectorBatch.Count != 0)
                 {
-                    await StoreBatchVectorsAsync(vectorBatch, cancellationToken);
+                    await StoreBatchVectorsAsync(context, vectorBatch, cancellationToken);
                 }
 
                 await transaction.CommitAsync(cancellationToken);
-
-                // The raw upsert bypassed the change tracker; an instance a same-scope StoreAsync left
-                // tracked for one of these ids would now be stale.
-                _context.ChangeTracker.Clear();
 
                 return ids;
             }
@@ -429,14 +433,14 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
     /// The subset of <paramref name="ids"/> that already has a row in <c>vector_chunks</c>.
     /// Queried in slices so a large batch stays under SQLite's bound-parameter limit.
     /// </summary>
-    private async Task<HashSet<string>> FindStoredIdsAsync(List<string> ids, CancellationToken cancellationToken)
+    private static async Task<HashSet<string>> FindStoredIdsAsync(SQLiteVecDbContext context, List<string> ids, CancellationToken cancellationToken)
     {
         var stored = new HashSet<string>(StringComparer.Ordinal);
         const int idsPerQuery = 500;
         for (var offset = 0; offset < ids.Count; offset += idsPerQuery)
         {
             var slice = ids.Skip(offset).Take(idsPerQuery).ToList();
-            var found = await _context.VectorChunks
+            var found = await context.VectorChunks
                 .Where(c => slice.Contains(c.Id))
                 .Select(c => c.Id)
                 .ToListAsync(cancellationToken);
@@ -448,7 +452,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
     /// <summary>
     /// 벡터 배치 삽입 최적화 (단일 SQL 문으로 처리)
     /// </summary>
-    private async Task StoreBatchVectorsAsync(List<(string Id, float[] Embedding)> vectorBatch, CancellationToken cancellationToken)
+    private async Task StoreBatchVectorsAsync(SQLiteVecDbContext context, List<(string Id, float[] Embedding)> vectorBatch, CancellationToken cancellationToken)
     {
         if (vectorBatch.Count == 0) return;
 
@@ -474,7 +478,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
 
                 // 배치 삽입은 새 청크에 대해서만 호출되므로 순수 INSERT 사용
                 var sql = $"INSERT INTO {_options.GetVecTableName()} (chunk_id, embedding) VALUES {string.Join(", ", valuesClauses)}";
-                await _context.Database.ExecuteSqlRawAsync(sql, parameters.ToArray(), cancellationToken);
+                await context.Database.ExecuteSqlRawAsync(sql, parameters.ToArray(), cancellationToken);
 
                 LogBatchVectorInserted(_logger, batch.Count);
             }
@@ -483,8 +487,9 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         {
             LogBatchVectorInsertFailed(_logger, ex);
 
-            // Attempt self-healing: drop + recreate vec0 table
-            if (await TryRecreateVecTableAsync(cancellationToken))
+            // Attempt self-healing: drop + recreate vec0 table — on this operation's connection, which
+            // holds the open transaction.
+            if (await TryRecreateVecTableAsync(context, cancellationToken))
             {
                 // Retry once with fresh table
                 try
@@ -505,7 +510,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                             rpi += 2;
                         }
                         var retrySql = $"INSERT INTO {_options.GetVecTableName()} (chunk_id, embedding) VALUES {string.Join(", ", retryValues)}";
-                        await _context.Database.ExecuteSqlRawAsync(retrySql, retryParams.ToArray(), cancellationToken);
+                        await context.Database.ExecuteSqlRawAsync(retrySql, retryParams.ToArray(), cancellationToken);
                     }
                     LogVecTableRecovered(_logger);
                     return; // Recovery succeeded
@@ -538,7 +543,8 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 return await _fallbackStore.Value.GetAsync(id, cancellationToken);
             }
 
-            var chunkEntity = await _context.VectorChunks
+            await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+            var chunkEntity = await context.VectorChunks
                 .FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
 
             if (chunkEntity == null)
@@ -595,7 +601,8 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 }
             }
 
-            return await SearchWithSQLiteVecAsync(queryEmbedding, topK, minScore, filters, cancellationToken);
+            await using var context = await OpenContextAsync(cancellationToken);
+            return await SearchWithSQLiteVecAsync(context, queryEmbedding, topK, minScore, filters, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -614,6 +621,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
     }
 
     private async Task<IEnumerable<DocumentChunk>> SearchWithSQLiteVecAsync(
+        SQLiteVecDbContext context,
         float[] queryEmbedding,
         int topK,
         float minScore,
@@ -655,16 +663,8 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
 
         try
         {
-            var connection = _context.Database.GetDbConnection();
-            if (connection.State != System.Data.ConnectionState.Open)
-            {
-                await connection.OpenAsync(cancellationToken);
-            }
-
-            // sqlite-vec extension is per-connection; EF Core may return a different
-            // connection than the one used during initialization, so ensure it's loaded.
-            await _extensionLoader.LoadExtensionAsync(
-                (Microsoft.Data.Sqlite.SqliteConnection)connection, cancellationToken);
+            // Opened, with sqlite-vec loaded, by OpenContextAsync — the extension is per connection.
+            var connection = context.Database.GetDbConnection();
 
             // Step 1: KNN search — retrieve all k results, filter by score later.
             // Distance filtering is deferred because the vec0 table may use L2 or cosine
@@ -920,6 +920,9 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         {
             await EnsureInitializedAsync(cancellationToken);
 
+            // One context for both legs; opened with sqlite-vec loaded when the vector leg can run.
+            await using var context = await OpenContextAsync(cancellationToken);
+
             var weight = vectorWeight ?? _options.HybridVectorWeight;
             var textWeight = 1.0f - weight;
             var k = _options.RrfK;
@@ -928,7 +931,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             var vectorResults = new Dictionary<string, (int Rank, DocumentChunk Chunk, float VectorScore)>();
             if (_sqliteVecAvailable && queryEmbedding != null && queryEmbedding.Length > 0)
             {
-                var vectorChunks = await SearchWithSQLiteVecAsync(queryEmbedding, topK * 2, minScore, filters, cancellationToken);
+                var vectorChunks = await SearchWithSQLiteVecAsync(context, queryEmbedding, topK * 2, minScore, filters, cancellationToken);
                 int rank = 1;
                 foreach (var chunk in vectorChunks)
                 {
@@ -940,7 +943,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             var ftsResults = new Dictionary<string, (int Rank, DocumentChunk Chunk, float BM25Score)>();
             if (_options.UseFts5 && !string.IsNullOrWhiteSpace(textQuery))
             {
-                var ftsChunks = await SearchWithFts5Async(textQuery, topK * 2, filters, cancellationToken);
+                var ftsChunks = await SearchWithFts5Async(context, textQuery, topK * 2, filters, cancellationToken);
                 int rank = 1;
                 foreach (var (chunk, bm25Score) in ftsChunks)
                 {
@@ -1026,6 +1029,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
     /// FTS5 전문 검색 수행
     /// </summary>
     private async Task<IEnumerable<(DocumentChunk Chunk, float BM25Score)>> SearchWithFts5Async(
+        SQLiteVecDbContext context,
         string textQuery,
         int topK,
         Dictionary<string, object>? filters,
@@ -1039,10 +1043,10 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
 
         try
         {
-            var connection = _context.Database.GetDbConnection();
+            var connection = context.Database.GetDbConnection();
             if (connection.State != System.Data.ConnectionState.Open)
             {
-                await connection.OpenAsync(cancellationToken);
+                await context.Database.OpenConnectionAsync(cancellationToken);
             }
 
             // FTS5 쿼리 이스케이프 (특수문자 처리)
@@ -1140,7 +1144,8 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             return Enumerable.Empty<DocumentChunk>();
         }
 
-        var results = await SearchWithFts5Async(textQuery, topK, filters: null, cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var results = await SearchWithFts5Async(context, textQuery, topK, filters: null, cancellationToken);
         return results.Select(r => r.Chunk);
     }
 
@@ -1150,7 +1155,8 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         {
             await EnsureInitializedAsync(cancellationToken);
 
-            return await _context.VectorChunks
+            await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+            return await context.VectorChunks
                 .AnyAsync(c => c.DocumentId == documentId, cancellationToken);
         }
         catch (Exception ex)
@@ -1171,7 +1177,8 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 return await _fallbackStore.Value.GetByDocumentIdAsync(documentId, cancellationToken);
             }
 
-            var entities = await _context.VectorChunks
+            await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+            var entities = await context.VectorChunks
                 .Where(c => c.DocumentId == documentId)
                 .OrderBy(c => c.ChunkIndex)
                 .ToListAsync(cancellationToken);
@@ -1210,7 +1217,8 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             await _writeLock.WaitAsync(cancellationToken);
             try
             {
-                using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+                await using var context = await OpenContextAsync(cancellationToken);
+                using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
 
                 try
                 {
@@ -1220,22 +1228,22 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                     // the same scope leaves it tracked after SaveChanges — that attach throws
                     // "another instance with the same key value is already being tracked".
                     // AsTracking resolves to the instance already in the tracker instead.
-                    var entity = await _context.VectorChunks
+                    var entity = await context.VectorChunks
                         .AsTracking()
                         .FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
 
                     if (entity == null)
                         return false;
 
-                    _context.VectorChunks.Remove(entity);
+                    context.VectorChunks.Remove(entity);
 
                     // vec0 테이블에서도 삭제
                     if (_sqliteVecAvailable)
                     {
-                        await _context.DeleteVectorFromVecTableAsync(id, cancellationToken);
+                        await context.DeleteVectorFromVecTableAsync(id, cancellationToken);
                     }
 
-                    await _context.SaveChangesAsync(cancellationToken);
+                    await context.SaveChangesAsync(cancellationToken);
                     await transaction.CommitAsync(cancellationToken);
 
                     return true;
@@ -1273,11 +1281,12 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             await _writeLock.WaitAsync(cancellationToken);
             try
             {
-                using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+                await using var context = await OpenContextAsync(cancellationToken);
+                using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
 
                 try
                 {
-                    var entities = await _context.VectorChunks
+                    var entities = await context.VectorChunks
                         .AsTracking()
                         .Where(c => c.DocumentId == documentId)
                         .ToListAsync(cancellationToken);
@@ -1290,12 +1299,12 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                     {
                         foreach (var entity in entities)
                         {
-                            await _context.DeleteVectorFromVecTableAsync(entity.Id, cancellationToken);
+                            await context.DeleteVectorFromVecTableAsync(entity.Id, cancellationToken);
                         }
                     }
 
-                    _context.VectorChunks.RemoveRange(entities);
-                    await _context.SaveChangesAsync(cancellationToken);
+                    context.VectorChunks.RemoveRange(entities);
+                    await context.SaveChangesAsync(cancellationToken);
                     await transaction.CommitAsync(cancellationToken);
 
                     return true;
@@ -1327,7 +1336,8 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             return await _fallbackStore.Value.ExistsAsync(id, cancellationToken);
         }
 
-        return await _context.VectorChunks.AnyAsync(c => c.Id == id, cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        return await context.VectorChunks.AnyAsync(c => c.Id == id, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -1352,11 +1362,12 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         await _writeLock.WaitAsync(cancellationToken);
         try
         {
-            using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+            await using var context = await OpenContextAsync(cancellationToken);
+            using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
             try
             {
                 var deleteMatcher = MetadataFilterMatcher.Compile(filters);
-                var all = await _context.VectorChunks.AsTracking().ToListAsync(cancellationToken);
+                var all = await context.VectorChunks.AsTracking().ToListAsync(cancellationToken);
                 var matched = all
                     .Where(e => deleteMatcher.Matches(e.Metadata))
                     .ToList();
@@ -1372,12 +1383,12 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 {
                     foreach (var entity in matched)
                     {
-                        await _context.DeleteVectorFromVecTableAsync(entity.Id, cancellationToken);
+                        await context.DeleteVectorFromVecTableAsync(entity.Id, cancellationToken);
                     }
                 }
 
-                _context.VectorChunks.RemoveRange(matched);
-                await _context.SaveChangesAsync(cancellationToken);
+                context.VectorChunks.RemoveRange(matched);
+                await context.SaveChangesAsync(cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
 
                 return matched.Count;
@@ -1408,7 +1419,8 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             return await _fallbackStore.Value.GetChunksByIdsAsync(ids, cancellationToken);
         }
 
-        var entities = await _context.VectorChunks
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var entities = await context.VectorChunks
             .Where(c => ids.Contains(c.Id))
             .ToListAsync(cancellationToken);
 
@@ -1440,7 +1452,8 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             await _writeLock.WaitAsync(cancellationToken);
             try
             {
-                using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+                await using var context = await OpenContextAsync(cancellationToken);
+                using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
 
                 try
                 {
@@ -1449,7 +1462,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                     // and this method reports success over a row it never wrote. AsTracking also
                     // resolves to the instance already tracked from an earlier Store in the same
                     // scope, which a bare Update(entity) would reject as a duplicate key.
-                    var entity = await _context.VectorChunks
+                    var entity = await context.VectorChunks
                         .AsTracking()
                         .FirstOrDefaultAsync(c => c.Id == chunk.Id, cancellationToken);
 
@@ -1463,13 +1476,13 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                     // 벡터 업데이트
                     if (chunk.Embedding != null && _sqliteVecAvailable)
                     {
-                        await _context.StoreVectorInVecTableAsync(chunk.Id, chunk.Embedding, cancellationToken);
+                        await context.StoreVectorInVecTableAsync(chunk.Id, chunk.Embedding, cancellationToken);
                     }
 
                     // An update that changes nothing is a legitimate no-op; an update that had
                     // changes but wrote no rows is the silent failure above, so say so.
-                    var hadChanges = _context.ChangeTracker.HasChanges();
-                    var written = await _context.SaveChangesAsync(cancellationToken);
+                    var hadChanges = context.ChangeTracker.HasChanges();
+                    var written = await context.SaveChangesAsync(cancellationToken);
                     if (hadChanges && written == 0)
                     {
                         await transaction.RollbackAsync(cancellationToken);
@@ -1507,7 +1520,8 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             return await _fallbackStore.Value.CountAsync(cancellationToken);
         }
 
-        return await _context.VectorChunks.CountAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        return await context.VectorChunks.CountAsync(cancellationToken);
     }
 
     public async Task<int> GetCountAsync(CancellationToken cancellationToken = default)
@@ -1524,7 +1538,8 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             return await _fallbackStore.Value.GetDistinctDocumentCountAsync(cancellationToken);
         }
 
-        return await _context.VectorChunks
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        return await context.VectorChunks
             .Select(c => c.DocumentId)
             .Distinct()
             .CountAsync(cancellationToken);
@@ -1546,7 +1561,8 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             await _writeLock.WaitAsync(cancellationToken);
             try
             {
-                using var transaction = await _context.Database.BeginTransactionAsync(cancellationToken);
+                await using var context = await OpenContextAsync(cancellationToken);
+                using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
 
                 try
                 {
@@ -1554,12 +1570,12 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                     if (_sqliteVecAvailable)
                     {
                         var clearSql = $"DELETE FROM {_options.GetVecTableName()}";
-                        await _context.Database.ExecuteSqlRawAsync(clearSql, cancellationToken);
+                        await context.Database.ExecuteSqlRawAsync(clearSql, cancellationToken);
                     }
 
                     // 메타데이터 테이블 클리어
-                    _context.VectorChunks.RemoveRange(_context.VectorChunks.AsTracking());
-                    await _context.SaveChangesAsync(cancellationToken);
+                    context.VectorChunks.RemoveRange(context.VectorChunks.AsTracking());
+                    await context.SaveChangesAsync(cancellationToken);
                     await transaction.CommitAsync(cancellationToken);
 
                     LogStoreClearCompleted(_logger);
@@ -1582,13 +1598,13 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         }
     }
 
-    private async Task EnsureModelTablesAsync(CancellationToken cancellationToken)
+    private static async Task EnsureModelTablesAsync(SQLiteVecDbContext context, CancellationToken cancellationToken)
     {
         // Per owned table: creates vector_chunks even when the vec0 virtual table already exists (where
         // EnsureCreated would do nothing), and adds nullable columns an older database lacks. The
         // backfill then gives pre-column rows their real TotalChunks instead of a silent 0.
-        SQLiteSchemaProvisioner.Provision(_context);
-        await TotalChunksBackfill.RunAsync(_context, "vector_chunks", cancellationToken);
+        SQLiteSchemaProvisioner.Provision(context);
+        await TotalChunksBackfill.RunAsync(context, "vector_chunks", cancellationToken);
     }
 
     private async Task EnsureInitializedAsync(CancellationToken cancellationToken)
@@ -1611,15 +1627,19 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             // used without the hosted initializer (plain ServiceCollection, inline processing) used to
             // end up with the vec0 table and no vector_chunks ("no such table"). A database already
             // left in that mixed state is repaired through the relational creator.
-            await EnsureModelTablesAsync(cancellationToken);
+            // A context of its own for provisioning; the flags below stay on the store.
+            await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+            await EnsureModelTablesAsync(context, cancellationToken);
 
             if (_options.UseSQLiteVec)
             {
-                // SQLite 확장은 연결 수준에서 로드되므로, 현재 연결에서 확장을 로드해야 함
-                var connection = _context.Database.GetDbConnection();
+                // SQLite 확장은 연결 수준에서 로드되므로, 현재 연결에서 확장을 로드해야 함. The result is kept as a fact
+                // of the process and the extension file; every later operation loads the extension on its own
+                // connection (OpenContextAsync).
+                var connection = context.Database.GetDbConnection();
                 if (connection.State != System.Data.ConnectionState.Open)
                 {
-                    await connection.OpenAsync(cancellationToken);
+                    await context.Database.OpenConnectionAsync(cancellationToken);
                 }
 
                 // 확장 로드 시도 (per-connection: SQLite 확장은 연결마다 로드 필요)
@@ -1630,7 +1650,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 {
                     // Identity-dependent legacy migration runs here, at first bound access, because
                     // the hosted startup initializer defers it when no identity was bound yet.
-                    await _context.MigrateLegacyVecTableAsync(
+                    await context.MigrateLegacyVecTableAsync(
                         (Microsoft.Data.Sqlite.SqliteConnection)connection, cancellationToken);
 
                     // vec0 테이블 생성 (이미 존재하면 무시)
@@ -1650,7 +1670,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                         // GetVecTableName() returns a sanitized identifier (chunk_embeddings_{hex}) —
                         // no SQL injection risk. Build the string outside the call to satisfy EF1002.
                         var warmupSql = "SELECT count(*) FROM " + _options.GetVecTableName() + " LIMIT 0";
-                        await _context.Database.ExecuteSqlRawAsync(warmupSql, cancellationToken);
+                        await context.Database.ExecuteSqlRawAsync(warmupSql, cancellationToken);
                         LogVecJitWarmupCompleted(_logger);
                     }
                     catch (Exception warmupEx)
@@ -1667,7 +1687,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                     {
                         try
                         {
-                            await _context.DetectCrossFingerprintOrphanTablesAsync(cancellationToken);
+                            await context.DetectCrossFingerprintOrphanTablesAsync(cancellationToken);
                         }
                         catch (Exception scanEx)
                         {
@@ -1700,6 +1720,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             if (!_sqliteVecAvailable)
                 return true; // Not using sqlite-vec — nothing to verify
 
+            await using var context = await OpenContextAsync(cancellationToken);
             var testId = $"__health_check_{Guid.NewGuid():N}";
             var dimension = _options.VectorDimension;
             var testVector = new float[dimension];
@@ -1708,11 +1729,11 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
 
             // Test INSERT
             var insertSql = $"INSERT INTO {tableName} (chunk_id, embedding) VALUES ({{0}}, {{1}})";
-            await _context.Database.ExecuteSqlRawAsync(insertSql, [testId, vectorString], cancellationToken);
+            await context.Database.ExecuteSqlRawAsync(insertSql, [testId, vectorString], cancellationToken);
 
             // Cleanup
             var deleteSql = $"DELETE FROM {tableName} WHERE chunk_id = {{0}}";
-            await _context.Database.ExecuteSqlRawAsync(deleteSql, [testId], cancellationToken);
+            await context.Database.ExecuteSqlRawAsync(deleteSql, [testId], cancellationToken);
 
             LogHealthCheckPassed(_logger);
             return true;
@@ -1721,8 +1742,9 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         {
             LogHealthCheckFailed(_logger, ex);
 
-            // Attempt recovery
-            if (await TryRecreateVecTableAsync(cancellationToken))
+            // Attempt recovery (the failed operation's context is already disposed here)
+            await using var recoveryContext = await OpenContextAsync(cancellationToken);
+            if (await TryRecreateVecTableAsync(recoveryContext, cancellationToken))
             {
                 LogVecTableRecovered(_logger);
                 return false; // Recovered but data lost — caller should re-index
@@ -1735,6 +1757,32 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         {
             LogHealthCheckFailed(_logger, ex);
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Opens a context for one operation. While sqlite-vec is in use the connection is opened here and the
+    /// extension loaded on it: an extension belongs to one connection, and each context gets its own
+    /// (pooled) connection, so vec0 SQL run without this would fail — or, on the delete paths that
+    /// tolerate a vec0 error, leave the vector behind.
+    /// </summary>
+    private async Task<SQLiteVecDbContext> OpenContextAsync(CancellationToken cancellationToken)
+    {
+        var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        if (!_sqliteVecAvailable)
+            return context;
+
+        try
+        {
+            await context.Database.OpenConnectionAsync(cancellationToken);
+            await _extensionLoader.LoadExtensionAsync(
+                (Microsoft.Data.Sqlite.SqliteConnection)context.Database.GetDbConnection(), cancellationToken);
+            return context;
+        }
+        catch
+        {
+            await context.DisposeAsync();
+            throw;
         }
     }
 
@@ -1761,13 +1809,13 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
     /// <summary>
     /// Attempts to drop and recreate the vec0 virtual table.
     /// </summary>
-    private async Task<bool> TryRecreateVecTableAsync(CancellationToken cancellationToken)
+    private async Task<bool> TryRecreateVecTableAsync(SQLiteVecDbContext context, CancellationToken cancellationToken)
     {
         try
         {
-            var connection = (Microsoft.Data.Sqlite.SqliteConnection)_context.Database.GetDbConnection();
+            var connection = (Microsoft.Data.Sqlite.SqliteConnection)context.Database.GetDbConnection();
             if (connection.State != System.Data.ConnectionState.Open)
-                await connection.OpenAsync(cancellationToken);
+                await context.Database.OpenConnectionAsync(cancellationToken);
 
             return await _extensionLoader.RecreateVecTableAsync(
                 connection,

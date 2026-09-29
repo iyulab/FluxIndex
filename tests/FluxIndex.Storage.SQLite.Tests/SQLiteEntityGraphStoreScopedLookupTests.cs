@@ -28,7 +28,7 @@ public sealed class SQLiteEntityGraphStoreScopedLookupTests : IAsyncDisposable
             new DbContextOptionsBuilder<SQLiteEntityGraphDbContext>().UseSqlite(_connection).Options,
             options);
         context.Database.EnsureCreated();
-        _store = new SQLiteEntityGraphStore(context, options, NullLogger<SQLiteEntityGraphStore>.Instance);
+        _store = new SQLiteEntityGraphStore(new DelegateDbContextFactory<SQLiteEntityGraphDbContext>(() => new SQLiteEntityGraphDbContext(new DbContextOptionsBuilder<SQLiteEntityGraphDbContext>().UseSqlite(_connection).Options, options)), options, NullLogger<SQLiteEntityGraphStore>.Instance);
     }
 
     private static GraphEntity Entity(int index, params string[] chunkIds) => new()

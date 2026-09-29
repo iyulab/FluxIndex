@@ -101,6 +101,11 @@ public class SQLiteGraphOptions : SQLiteOptions
     /// </summary>
     public string? GraphDatabasePath { get; set; }
 
+    // Named per options instance and shared-cache: the store opens a connection per operation, and a
+    // private ":memory:" database lives only as long as one connection, so every operation (and the
+    // schema initializer) would see a different, empty database.
+    private readonly string _inMemoryName = $"fluxindex-graph-{Guid.NewGuid():N}";
+
     /// <summary>
     /// Graph 전용 연결 문자열 반환
     /// </summary>
@@ -109,7 +114,7 @@ public class SQLiteGraphOptions : SQLiteOptions
         if (!string.IsNullOrEmpty(GraphDatabasePath))
         {
             return UseInMemory
-                ? "Data Source=:memory:"
+                ? $"Data Source=file:{_inMemoryName}?mode=memory&cache=shared"
                 : $"Data Source={GraphDatabasePath}";
         }
         return GetConnectionString();

@@ -15,7 +15,7 @@ namespace FluxIndex.Storage.SQLite;
 /// </summary>
 public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDisposable
 {
-    private readonly SQLiteQuantizedDbContext _context;
+    private readonly IDbContextFactory<SQLiteQuantizedDbContext> _contextFactory;
     private readonly IVectorQuantizer _quantizer;
     private readonly ILogger<SQLiteQuantizedVectorStore> _logger;
     private readonly SQLiteQuantizedOptions _options;
@@ -23,12 +23,12 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
     private readonly SemaphoreSlim _initLock = new(1, 1);
 
     public SQLiteQuantizedVectorStore(
-        SQLiteQuantizedDbContext context,
+        IDbContextFactory<SQLiteQuantizedDbContext> contextFactory,
         IVectorQuantizer quantizer,
         ILogger<SQLiteQuantizedVectorStore> logger,
         IOptions<SQLiteQuantizedOptions> options)
     {
-        _context = context ?? throw new ArgumentNullException(nameof(context));
+        _contextFactory = contextFactory ?? throw new ArgumentNullException(nameof(contextFactory));
         _quantizer = quantizer ?? throw new ArgumentNullException(nameof(quantizer));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _options = options.Value;
@@ -45,8 +45,9 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
         try
         {
             if (_initialized) return;
-            SQLiteSchemaProvisioner.Provision(_context);
-            await TotalChunksBackfill.RunAsync(_context, "vectors", cancellationToken);
+            await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+            SQLiteSchemaProvisioner.Provision(context);
+            await TotalChunksBackfill.RunAsync(context, "vectors", cancellationToken);
             _initialized = true;
         }
         finally
@@ -59,10 +60,11 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
 
     public async Task<string> StoreAsync(DocumentChunk chunk, CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         await EnsureInitializedAsync(cancellationToken);
 
         var id = ResolveChunkId(chunk);
-        await UpsertRowAsync(chunk, id, cancellationToken);
+        await UpsertRowAsync(context, chunk, id, cancellationToken);
 
         // Auto-quantize if enabled and embedding exists
         if (_options.AutoQuantizeOnStore && chunk.Embedding != null)
@@ -71,7 +73,7 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
             {
                 var quantized = await _quantizer.QuantizeAsync(chunk.Embedding, cancellationToken);
                 var quantizedEntity = CreateQuantizedEntity(id, quantized);
-                _context.QuantizedVectors.Add(quantizedEntity);
+                context.QuantizedVectors.Add(quantizedEntity);
             }
             catch (Exception ex)
             {
@@ -79,7 +81,7 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
             }
         }
 
-        await _context.SaveChangesAsync(cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
         return id;
     }
 
@@ -87,6 +89,7 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
         IEnumerable<DocumentChunk> chunks,
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         await EnsureInitializedAsync(cancellationToken);
 
         var chunkList = chunks.ToList();
@@ -96,7 +99,7 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
         {
             var id = ResolveChunkId(chunk);
             ids.Add(id);
-            await UpsertRowAsync(chunk, id, cancellationToken);
+            await UpsertRowAsync(context, chunk, id, cancellationToken);
         }
 
         // Batch quantize if enabled
@@ -119,7 +122,7 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
                     {
                         var originalIndex = embeddingsToQuantize[i].Index;
                         var quantizedEntity = CreateQuantizedEntity(ids[originalIndex], quantizedArray[i]);
-                        _context.QuantizedVectors.Add(quantizedEntity);
+                        context.QuantizedVectors.Add(quantizedEntity);
                     }
                 }
                 catch (Exception ex)
@@ -129,15 +132,16 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
             }
         }
 
-        await _context.SaveChangesAsync(cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
         return ids;
     }
 
     public async Task<DocumentChunk?> GetAsync(string id, CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         await EnsureInitializedAsync(cancellationToken);
 
-        var entity = await _context.Vectors.FirstOrDefaultAsync(v => v.Id == id, cancellationToken);
+        var entity = await context.Vectors.FirstOrDefaultAsync(v => v.Id == id, cancellationToken);
         return entity != null ? MapToChunk(entity) : null;
     }
 
@@ -145,9 +149,10 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
         string documentId,
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         await EnsureInitializedAsync(cancellationToken);
 
-        var entities = await _context.Vectors
+        var entities = await context.Vectors
             .Where(v => v.DocumentId == documentId)
             .OrderBy(v => v.ChunkIndex)
             .ToListAsync(cancellationToken);
@@ -159,10 +164,11 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
         IEnumerable<string> ids,
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         await EnsureInitializedAsync(cancellationToken);
 
         var idList = ids.ToList();
-        var entities = await _context.Vectors
+        var entities = await context.Vectors
             .Where(v => idList.Contains(v.Id))
             .ToListAsync(cancellationToken);
 
@@ -176,12 +182,13 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
         Dictionary<string, object>? filters = null,
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         // Fail-loud at call time (IVectorStore filter contract).
         Core.Application.Services.Base.VectorStoreBase.ValidateFilters(filters);
 
         await EnsureInitializedAsync(cancellationToken);
 
-        var entities = await _context.Vectors
+        var entities = await context.Vectors
             .Where(v => v.Embedding != null)
             .ToListAsync(cancellationToken);
 
@@ -208,30 +215,32 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
 
     public async Task<bool> DeleteAsync(string id, CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         await EnsureInitializedAsync(cancellationToken);
 
         // AsTracking: NoTracking context, and Remove() on a detached instance throws when the
         // same row is already tracked (a Store in the same scope leaves it so).
-        var entity = await _context.Vectors.AsTracking().FirstOrDefaultAsync(v => v.Id == id, cancellationToken);
+        var entity = await context.Vectors.AsTracking().FirstOrDefaultAsync(v => v.Id == id, cancellationToken);
         if (entity == null) return false;
 
-        _context.Vectors.Remove(entity);
+        context.Vectors.Remove(entity);
 
-        var quantizedEntity = await _context.QuantizedVectors.AsTracking().FirstOrDefaultAsync(q => q.ChunkId == id, cancellationToken);
+        var quantizedEntity = await context.QuantizedVectors.AsTracking().FirstOrDefaultAsync(q => q.ChunkId == id, cancellationToken);
         if (quantizedEntity != null)
         {
-            _context.QuantizedVectors.Remove(quantizedEntity);
+            context.QuantizedVectors.Remove(quantizedEntity);
         }
 
-        await _context.SaveChangesAsync(cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
         return true;
     }
 
     public async Task<bool> DeleteByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         await EnsureInitializedAsync(cancellationToken);
 
-        var entities = await _context.Vectors
+        var entities = await context.Vectors
             .AsTracking()
             .Where(v => v.DocumentId == documentId)
             .ToListAsync(cancellationToken);
@@ -239,22 +248,23 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
         if (entities.Count == 0) return false;
 
         var chunkIds = entities.Select(e => e.Id).ToList();
-        var quantizedEntities = await _context.QuantizedVectors
+        var quantizedEntities = await context.QuantizedVectors
             .AsTracking()
             .Where(q => chunkIds.Contains(q.ChunkId))
             .ToListAsync(cancellationToken);
 
-        _context.Vectors.RemoveRange(entities);
-        _context.QuantizedVectors.RemoveRange(quantizedEntities);
-        await _context.SaveChangesAsync(cancellationToken);
+        context.Vectors.RemoveRange(entities);
+        context.QuantizedVectors.RemoveRange(quantizedEntities);
+        await context.SaveChangesAsync(cancellationToken);
 
         return true;
     }
 
     public async Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         await EnsureInitializedAsync(cancellationToken);
-        return await _context.Vectors.AnyAsync(v => v.Id == id, cancellationToken);
+        return await context.Vectors.AnyAsync(v => v.Id == id, cancellationToken);
     }
 
     public Task<DocumentChunk?> GetByIdAsync(string id, CancellationToken cancellationToken = default)
@@ -262,11 +272,12 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
 
     public async Task<bool> UpdateAsync(DocumentChunk chunk, CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         await EnsureInitializedAsync(cancellationToken);
 
         // AsTracking: the context is registered NoTracking, so without it the mutations below
         // are never written and this method reports success anyway.
-        var entity = await _context.Vectors.AsTracking()
+        var entity = await context.Vectors.AsTracking()
             .FirstOrDefaultAsync(v => v.Id == chunk.Id, cancellationToken);
         if (entity == null) return false;
 
@@ -275,15 +286,16 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
         entity.TokenCount = chunk.TokenCount;
         entity.Metadata = chunk.Metadata ?? new Dictionary<string, object>();
 
-        var hadChanges = _context.ChangeTracker.HasChanges();
-        var written = await _context.SaveChangesAsync(cancellationToken);
+        var hadChanges = context.ChangeTracker.HasChanges();
+        var written = await context.SaveChangesAsync(cancellationToken);
         return !hadChanges || written > 0;
     }
 
     public async Task<int> CountAsync(CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         await EnsureInitializedAsync(cancellationToken);
-        return await _context.Vectors.CountAsync(cancellationToken);
+        return await context.Vectors.CountAsync(cancellationToken);
     }
 
     public Task<int> GetCountAsync(CancellationToken cancellationToken = default)
@@ -291,8 +303,9 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
 
     public async Task<int> GetDistinctDocumentCountAsync(CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         await EnsureInitializedAsync(cancellationToken);
-        return await _context.Vectors
+        return await context.Vectors
             .Select(v => v.DocumentId)
             .Distinct()
             .CountAsync(cancellationToken);
@@ -300,11 +313,12 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
 
     public async Task ClearAsync(CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         await EnsureInitializedAsync(cancellationToken);
 
-        _context.QuantizedVectors.RemoveRange(_context.QuantizedVectors.AsTracking());
-        _context.Vectors.RemoveRange(_context.Vectors.AsTracking());
-        await _context.SaveChangesAsync(cancellationToken);
+        context.QuantizedVectors.RemoveRange(context.QuantizedVectors.AsTracking());
+        context.Vectors.RemoveRange(context.Vectors.AsTracking());
+        await context.SaveChangesAsync(cancellationToken);
     }
 
     #endregion
@@ -316,15 +330,16 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
         QuantizedVector quantizedEmbedding,
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         await EnsureInitializedAsync(cancellationToken);
 
         var id = chunk.EnsureId();
         var entity = CreateVectorEntity(chunk, id);
         var quantizedEntity = CreateQuantizedEntity(id, quantizedEmbedding);
 
-        _context.Vectors.Add(entity);
-        _context.QuantizedVectors.Add(quantizedEntity);
-        await _context.SaveChangesAsync(cancellationToken);
+        context.Vectors.Add(entity);
+        context.QuantizedVectors.Add(quantizedEntity);
+        await context.SaveChangesAsync(cancellationToken);
 
         return id;
     }
@@ -333,6 +348,7 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
         IEnumerable<(DocumentChunk Chunk, QuantizedVector QuantizedEmbedding)> chunksWithQuantized,
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         await EnsureInitializedAsync(cancellationToken);
 
         var items = chunksWithQuantized.ToList();
@@ -343,11 +359,11 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
             var id = chunk.EnsureId();
             ids.Add(id);
 
-            _context.Vectors.Add(CreateVectorEntity(chunk, id));
-            _context.QuantizedVectors.Add(CreateQuantizedEntity(id, quantized));
+            context.Vectors.Add(CreateVectorEntity(chunk, id));
+            context.QuantizedVectors.Add(CreateQuantizedEntity(id, quantized));
         }
 
-        await _context.SaveChangesAsync(cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
         return ids;
     }
 
@@ -357,9 +373,10 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
         float minScore = 0.0f,
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         await EnsureInitializedAsync(cancellationToken);
 
-        var quantizedEntities = await _context.QuantizedVectors.ToListAsync(cancellationToken);
+        var quantizedEntities = await context.QuantizedVectors.ToListAsync(cancellationToken);
         if (quantizedEntities.Count == 0) return Enumerable.Empty<(DocumentChunk, float)>();
 
         // Compute distances and rank
@@ -375,7 +392,7 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
 
         // Fetch chunks
         var chunkIds = candidates.Select(c => c.ChunkId).ToList();
-        var chunks = await _context.Vectors
+        var chunks = await context.Vectors
             .Where(v => chunkIds.Contains(v.Id))
             .ToDictionaryAsync(v => v.Id, v => v, cancellationToken);
 
@@ -435,9 +452,10 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
         string chunkId,
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         await EnsureInitializedAsync(cancellationToken);
 
-        var entity = await _context.QuantizedVectors.AsTracking()
+        var entity = await context.QuantizedVectors.AsTracking()
             .FirstOrDefaultAsync(q => q.ChunkId == chunkId, cancellationToken);
 
         return entity != null ? DeserializeQuantizedVector(entity) : null;
@@ -447,8 +465,9 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
         string chunkId,
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         await EnsureInitializedAsync(cancellationToken);
-        return await _context.QuantizedVectors.AnyAsync(q => q.ChunkId == chunkId, cancellationToken);
+        return await context.QuantizedVectors.AnyAsync(q => q.ChunkId == chunkId, cancellationToken);
     }
 
     public async Task<bool> UpdateQuantizedEmbeddingAsync(
@@ -456,15 +475,19 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
         QuantizedVector quantizedEmbedding,
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         await EnsureInitializedAsync(cancellationToken);
 
-        var entity = await _context.QuantizedVectors
+        // AsTracking: the context is registered NoTracking, so without it the edits below are never
+        // written and this method reports success anyway.
+        var entity = await context.QuantizedVectors
+            .AsTracking()
             .FirstOrDefaultAsync(q => q.ChunkId == chunkId, cancellationToken);
 
         if (entity == null)
         {
             entity = CreateQuantizedEntity(chunkId, quantizedEmbedding);
-            _context.QuantizedVectors.Add(entity);
+            context.QuantizedVectors.Add(entity);
         }
         else
         {
@@ -476,19 +499,20 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
                 : null;
         }
 
-        var hadQuantizedChanges = _context.ChangeTracker.HasChanges();
-        var quantizedWritten = await _context.SaveChangesAsync(cancellationToken);
+        var hadQuantizedChanges = context.ChangeTracker.HasChanges();
+        var quantizedWritten = await context.SaveChangesAsync(cancellationToken);
         return !hadQuantizedChanges || quantizedWritten > 0;
     }
 
     public async Task<QuantizedStorageStats> GetQuantizedStatsAsync(CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         await EnsureInitializedAsync(cancellationToken);
 
-        var totalCount = await _context.Vectors.CountAsync(cancellationToken);
-        var quantizedCount = await _context.QuantizedVectors.CountAsync(cancellationToken);
+        var totalCount = await context.Vectors.CountAsync(cancellationToken);
+        var quantizedCount = await context.QuantizedVectors.CountAsync(cancellationToken);
 
-        var quantizedEntities = await _context.QuantizedVectors.ToListAsync(cancellationToken);
+        var quantizedEntities = await context.QuantizedVectors.ToListAsync(cancellationToken);
 
         long quantizedSize = 0;
         long estimatedOriginalSize = 0;
@@ -543,17 +567,17 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
     /// "Chunk identity"). On an update the previous quantized embedding is removed, since it
     /// described the embedding that has just been replaced; the caller re-quantizes afterwards.
     /// </summary>
-    private async Task UpsertRowAsync(DocumentChunk chunk, string id, CancellationToken cancellationToken)
+    private static async Task UpsertRowAsync(SQLiteQuantizedDbContext context, DocumentChunk chunk, string id, CancellationToken cancellationToken)
     {
         // AsTracking: NoTracking context — the edit below must be what SaveChanges writes, and a
         // fresh Add for an already-tracked key throws before the database is even reached.
-        var existing = await _context.Vectors
+        var existing = await context.Vectors
             .AsTracking()
             .FirstOrDefaultAsync(v => v.Id == id, cancellationToken);
 
         if (existing == null)
         {
-            _context.Vectors.Add(CreateVectorEntity(chunk, id));
+            context.Vectors.Add(CreateVectorEntity(chunk, id));
             return;
         }
 
@@ -565,12 +589,12 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
         existing.TokenCount = chunk.TokenCount;
         existing.Metadata = chunk.Metadata ?? new Dictionary<string, object>();
 
-        var staleQuantized = await _context.QuantizedVectors
+        var staleQuantized = await context.QuantizedVectors
             .AsTracking()
             .FirstOrDefaultAsync(q => q.ChunkId == id, cancellationToken);
         if (staleQuantized != null)
         {
-            _context.QuantizedVectors.Remove(staleQuantized);
+            context.QuantizedVectors.Remove(staleQuantized);
         }
     }
 

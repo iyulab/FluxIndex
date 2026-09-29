@@ -23,8 +23,10 @@ public static class GraphServiceCollectionExtensions
     {
         services.Configure(configureOptions);
 
-        // DbContext 등록 with dynamic JSON support
-        services.AddDbContext<PostgresGraphDbContext>((serviceProvider, dbOptions) =>
+        // DbContext factory with dynamic JSON support. The store opens a context per operation, so one store instance is safe for concurrent callers. The context type itself
+        // stays resolvable (scoped). The options are
+        // built once, so the data source is shared rather than rebuilt per scope.
+        services.AddDbContextFactory<PostgresGraphDbContext>((serviceProvider, dbOptions) =>
         {
             var options = serviceProvider.GetRequiredService<IOptions<PostgresGraphOptions>>().Value;
 
@@ -38,7 +40,7 @@ public static class GraphServiceCollectionExtensions
                 npgsqlOptions.CommandTimeout(options.CommandTimeout);
             });
             dbOptions.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
-        }, ServiceLifetime.Scoped);
+        });
 
         // Repository 등록
         services.AddScoped<IChunkHierarchyRepository, PostgresGraphStore>();

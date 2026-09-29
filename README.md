@@ -244,9 +244,9 @@ matters for recall/performance at scale:
 | InMemory (SDK) | ✅ pre-trim | ✅ | |
 
 **Concurrent callers.** One context can be shared by overlapping callers — a DI singleton serving HTTP requests
-alongside a background indexer — with the PostgreSQL store and the SQLite in-memory-scan store: they open an EF Core
-context per operation (0.63.0). The sqlite-vec store, the quantized stores, the graph stores and the semantic caches
-still keep one EF Core context each; with those, serialize calls into the context.
+alongside a background indexer. Every EF-backed store (PostgreSQL and SQLite vector stores including sqlite-vec and the
+quantized stores, the graph stores, the semantic caches) opens an EF Core context per operation (0.63.0), so no caller
+needs to serialize calls into the context.
 
 Filter semantics (identical across every store):
 

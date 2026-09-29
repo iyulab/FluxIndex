@@ -55,6 +55,6 @@ public class SQLiteQuantizedVectorStoreFilterContractTests : VectorStoreFilterCo
             NullLogger<ScalarQuantizer>.Instance);
 
         return new SQLiteQuantizedVectorStore(
-            context, quantizer, NullLogger<SQLiteQuantizedVectorStore>.Instance, options);
+            new DelegateDbContextFactory<SQLiteQuantizedDbContext>(() => new SQLiteQuantizedDbContext(dbOptions, options)), quantizer, NullLogger<SQLiteQuantizedVectorStore>.Instance, options);
     }
 }

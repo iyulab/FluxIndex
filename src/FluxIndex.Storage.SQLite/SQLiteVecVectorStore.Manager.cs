@@ -20,9 +20,10 @@ public partial class SQLiteVecVectorStore
     public async Task<IReadOnlyList<CollectionInfo>> ListCollectionsAsync(
         CancellationToken cancellationToken = default)
     {
-        var connection = (Microsoft.Data.Sqlite.SqliteConnection)_context.Database.GetDbConnection();
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var connection = (Microsoft.Data.Sqlite.SqliteConnection)context.Database.GetDbConnection();
         if (connection.State != System.Data.ConnectionState.Open)
-            await connection.OpenAsync(cancellationToken);
+            await context.Database.OpenConnectionAsync(cancellationToken);
 
         await _extensionLoader.LoadExtensionAsync(connection, cancellationToken);
 
@@ -56,9 +57,10 @@ public partial class SQLiteVecVectorStore
         if (string.IsNullOrWhiteSpace(collectionName))
             throw new ArgumentException("Collection name must not be null or whitespace.", nameof(collectionName));
 
-        var connection = (Microsoft.Data.Sqlite.SqliteConnection)_context.Database.GetDbConnection();
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var connection = (Microsoft.Data.Sqlite.SqliteConnection)context.Database.GetDbConnection();
         if (connection.State != System.Data.ConnectionState.Open)
-            await connection.OpenAsync(cancellationToken);
+            await context.Database.OpenConnectionAsync(cancellationToken);
 
         await _extensionLoader.LoadExtensionAsync(connection, cancellationToken);
 
@@ -96,9 +98,10 @@ public partial class SQLiteVecVectorStore
                 nameof(collectionName));
         }
 
-        var connection = (Microsoft.Data.Sqlite.SqliteConnection)_context.Database.GetDbConnection();
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var connection = (Microsoft.Data.Sqlite.SqliteConnection)context.Database.GetDbConnection();
         if (connection.State != System.Data.ConnectionState.Open)
-            await connection.OpenAsync(cancellationToken);
+            await context.Database.OpenConnectionAsync(cancellationToken);
 
         await _extensionLoader.LoadExtensionAsync(connection, cancellationToken);
 

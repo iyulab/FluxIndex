@@ -12,16 +12,16 @@ namespace FluxIndex.Storage.PostgreSQL.Graph;
 /// </summary>
 public partial class PostgresGraphStore : IChunkHierarchyRepository
 {
-    private readonly PostgresGraphDbContext _context;
+    private readonly IDbContextFactory<PostgresGraphDbContext> _contextFactory;
     private readonly PostgresGraphOptions _options;
     private readonly ILogger<PostgresGraphStore> _logger;
 
     public PostgresGraphStore(
-        PostgresGraphDbContext context,
+        IDbContextFactory<PostgresGraphDbContext> contextFactory,
         IOptions<PostgresGraphOptions> options,
         ILogger<PostgresGraphStore> logger)
     {
-        _context = context;
+        _contextFactory = contextFactory;
         _options = options.Value;
         _logger = logger;
     }
@@ -32,7 +32,8 @@ public partial class PostgresGraphStore : IChunkHierarchyRepository
         string chunkId,
         CancellationToken cancellationToken = default)
     {
-        var entity = await _context.ChunkHierarchies
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var entity = await context.ChunkHierarchies
             .FirstOrDefaultAsync(h => h.ChunkId == chunkId, cancellationToken);
 
         return entity == null ? null : MapToChunkHierarchy(entity);
@@ -42,21 +43,22 @@ public partial class PostgresGraphStore : IChunkHierarchyRepository
         ChunkHierarchy hierarchy,
         CancellationToken cancellationToken = default)
     {
-        var existing = await _context.ChunkHierarchies
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var existing = await context.ChunkHierarchies
             .FirstOrDefaultAsync(h => h.ChunkId == hierarchy.ChunkId, cancellationToken);
 
         if (existing != null)
         {
             UpdateHierarchyEntity(existing, hierarchy);
-            _context.ChunkHierarchies.Update(existing);
+            context.ChunkHierarchies.Update(existing);
         }
         else
         {
             var entity = MapToEntity(hierarchy);
-            await _context.ChunkHierarchies.AddAsync(entity, cancellationToken);
+            await context.ChunkHierarchies.AddAsync(entity, cancellationToken);
         }
 
-        await _context.SaveChangesAsync(cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
         LogHierarchySaved(_logger, hierarchy.ChunkId);
     }
 
@@ -64,7 +66,8 @@ public partial class PostgresGraphStore : IChunkHierarchyRepository
         string parentChunkId,
         CancellationToken cancellationToken = default)
     {
-        var entities = await _context.ChunkHierarchies
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var entities = await context.ChunkHierarchies
             .Where(h => h.ParentChunkId == parentChunkId)
             .OrderBy(h => h.HierarchyLevel)
             .ToListAsync(cancellationToken);
@@ -77,7 +80,8 @@ public partial class PostgresGraphStore : IChunkHierarchyRepository
         int level,
         CancellationToken cancellationToken = default)
     {
-        var entities = await _context.ChunkHierarchies
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var entities = await context.ChunkHierarchies
             .Where(h => h.ChunkId.StartsWith(documentId) && h.HierarchyLevel == level)
             .OrderBy(h => h.BoundaryStartPosition)
             .ToListAsync(cancellationToken);
@@ -93,21 +97,22 @@ public partial class PostgresGraphStore : IChunkHierarchyRepository
         ChunkRelationshipExtended relationship,
         CancellationToken cancellationToken = default)
     {
-        var existing = await _context.ChunkRelationships
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var existing = await context.ChunkRelationships
             .FirstOrDefaultAsync(r => r.Id == relationship.Id, cancellationToken);
 
         if (existing != null)
         {
             UpdateRelationshipEntity(existing, relationship);
-            _context.ChunkRelationships.Update(existing);
+            context.ChunkRelationships.Update(existing);
         }
         else
         {
             var entity = MapToEntity(relationship);
-            await _context.ChunkRelationships.AddAsync(entity, cancellationToken);
+            await context.ChunkRelationships.AddAsync(entity, cancellationToken);
         }
 
-        await _context.SaveChangesAsync(cancellationToken);
+        await context.SaveChangesAsync(cancellationToken);
         LogRelationshipSaved(_logger, relationship.Id);
     }
 
@@ -116,7 +121,8 @@ public partial class PostgresGraphStore : IChunkHierarchyRepository
         IEnumerable<RelationshipType>? relationshipTypes = null,
         CancellationToken cancellationToken = default)
     {
-        var query = _context.ChunkRelationships
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var query = context.ChunkRelationships
             .Where(r => r.SourceChunkId == chunkId || r.TargetChunkId == chunkId);
 
         if (relationshipTypes != null)
@@ -143,7 +149,8 @@ public partial class PostgresGraphStore : IChunkHierarchyRepository
         string documentId,
         CancellationToken cancellationToken = default)
     {
-        var hierarchies = await _context.ChunkHierarchies
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+        var hierarchies = await context.ChunkHierarchies
             .Where(h => h.ChunkId.StartsWith(documentId))
             .ToListAsync(cancellationToken);
 
@@ -177,7 +184,7 @@ public partial class PostgresGraphStore : IChunkHierarchyRepository
 
         // 관계 통계
         var chunkIds = hierarchies.Select(h => h.ChunkId).ToHashSet();
-        var relationships = await _context.ChunkRelationships
+        var relationships = await context.ChunkRelationships
             .Where(r => chunkIds.Contains(r.SourceChunkId))
             .ToListAsync(cancellationToken);
 
@@ -217,6 +224,7 @@ public partial class PostgresGraphStore : IChunkHierarchyRepository
         int maxDepth = 10,
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         var effectiveMaxDepth = Math.Min(maxDepth, _options.MaxRecursionDepth);
 
         var sql = $@"
@@ -237,7 +245,7 @@ public partial class PostgresGraphStore : IChunkHierarchyRepository
             WHERE ""ParentChunkId"" IS NOT NULL
             ORDER BY ""ParentChunkId""";
 
-        var ancestors = await _context.Database
+        var ancestors = await context.Database
             .SqlQueryRaw<string>(sql, chunkId, effectiveMaxDepth)
             .ToListAsync(cancellationToken);
 
@@ -252,6 +260,7 @@ public partial class PostgresGraphStore : IChunkHierarchyRepository
         int maxDepth = 10,
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         var effectiveMaxDepth = Math.Min(maxDepth, _options.MaxRecursionDepth);
 
         var sql = $@"
@@ -272,7 +281,7 @@ public partial class PostgresGraphStore : IChunkHierarchyRepository
             WHERE ""ChunkId"" != {{0}}
             ORDER BY depth, ""ChunkId""";
 
-        var descendants = await _context.Database
+        var descendants = await context.Database
             .SqlQueryRaw<string>(sql, chunkId, effectiveMaxDepth)
             .ToListAsync(cancellationToken);
 
@@ -287,6 +296,7 @@ public partial class PostgresGraphStore : IChunkHierarchyRepository
         int maxHops = 3,
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         var effectiveMaxHops = Math.Min(maxHops, _options.MaxRecursionDepth);
 
         var sql = $@"
@@ -318,7 +328,7 @@ public partial class PostgresGraphStore : IChunkHierarchyRepository
             WHERE chunk_id != {{0}}
             ORDER BY chunk_id";
 
-        var connected = await _context.Database
+        var connected = await context.Database
             .SqlQueryRaw<string>(sql, chunkId, effectiveMaxHops)
             .ToListAsync(cancellationToken);
 
@@ -334,6 +344,7 @@ public partial class PostgresGraphStore : IChunkHierarchyRepository
         int maxDepth = 10,
         CancellationToken cancellationToken = default)
     {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         var effectiveMaxDepth = Math.Min(maxDepth, _options.MaxRecursionDepth);
 
         var sql = $@"
@@ -374,7 +385,7 @@ public partial class PostgresGraphStore : IChunkHierarchyRepository
 
         try
         {
-            var path = await _context.Database
+            var path = await context.Database
                 .SqlQueryRaw<string>(sql, sourceChunkId, targetChunkId, effectiveMaxDepth)
                 .ToListAsync(cancellationToken);
 
