@@ -64,7 +64,7 @@ public static class ServiceCollectionExtensions
             var options = new FluxCuratorOptions();
             configure?.Invoke(options);
 
-            var curator = global::FluxCurator.FluxCurator.Create();
+            var curator = Curator.Create();
 
             // Configure PII masking if enabled
             if (options.EnablePIIMasking)
@@ -118,7 +118,7 @@ public static class ServiceCollectionExtensions
             var options = new FluxCuratorOptions();
             configure?.Invoke(options);
 
-            var curator = global::FluxCurator.FluxCurator.Create();
+            var curator = Curator.Create();
 
             if (options.EnablePIIMasking)
             {
