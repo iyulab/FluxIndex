@@ -9,6 +9,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.62.1] - 2026-09-30
+
+### Changed
+- Re-pinned sibling package(s) `FluxGuard.Remote` 0.17.0 -> 0.17.1 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+
+---
+
 ## [0.62.0] - 2026-09-30
 
 ### Changed
