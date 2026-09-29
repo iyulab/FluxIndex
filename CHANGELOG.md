@@ -18,6 +18,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   `ChunkGeneratedEvent` per chunk and `ProcessingCompletedEvent` at the end.
 - Re-pinned sibling package(s) `LMSupply.Embedder` 0.92.0 -> 0.92.1, `LMSupply.Generator` 0.92.0 -> 0.92.1, `LMSupply.Reranker` 0.92.0 -> 0.92.1, `WebFlux` 0.17.0 -> 0.18.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
 - Re-pinned sibling package(s) `FluxImprover` 0.14.16 -> 0.14.17 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
+- Re-pinned sibling package(s) `FileFlux` 0.33.3 -> 0.33.4 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
 
 ---
 
