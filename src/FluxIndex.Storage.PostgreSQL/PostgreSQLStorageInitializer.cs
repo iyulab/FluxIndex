@@ -39,27 +39,13 @@ internal sealed class PostgreSQLStorageInitializer : IStorageInitializer
 
         // CREATE EXTENSION IF NOT EXISTS is a privilege-free no-op when the extension is already
         // installed (the managed-PostgreSQL case); it only needs CREATE privilege when the extension
-        // is absent — the one scenario where a caller should opt out via EnableAutoMigration.
-        //
-        // It deliberately does NOT go through `context`. Npgsql caches a data source's type
-        // catalogue when that source opens its first connection, so installing `vector` through the
-        // very data source the store then writes with leaves it holding a catalogue from before the
-        // type existed — and every later write of a Pgvector.Vector fails with "Cannot resolve
-        // 'vector' to a fully qualified datatype name". Only a genuinely fresh database hits it
-        // (a managed PostgreSQL usually has the extension already), which is why schema-only
-        // provisioning tests never caught it. A short-lived connection of our own keeps the store's
-        // data source untouched until the type exists.
-        var connectionString = postgresOptions.ConnectionString;
-
-        using (var connection = new NpgsqlConnection(connectionString))
-        {
-            connection.Open();
-            using var command = new NpgsqlCommand("CREATE EXTENSION IF NOT EXISTS vector", connection);
-            command.ExecuteNonQuery();
-        }
+        // is absent — the one scenario where a caller should opt out via EnableAutoMigration. The helper
+        // also reloads the data source's type catalogue, which EnsureDatabase above cached before the
+        // type existed.
+        RelationalSchemaProvisioner.EnsureVectorExtension(context);
 
         RelationalSchemaProvisioner.ProvisionTables(context);
-        EnsureVectorSizeMatches(connectionString, postgresOptions.EmbeddingDimensions);
+        EnsureVectorSizeMatches(postgresOptions.ConnectionString, postgresOptions.EmbeddingDimensions);
         TotalChunksBackfill.Run(context, "vectors");
     }
 

@@ -78,21 +78,21 @@ public static class EntityGraphServiceCollectionExtensions
     /// Ensures the entity graph database schema is created.
     /// Call this during application startup.
     /// </summary>
-    public static async Task EnsureEntityGraphSchemaAsync(
+    public static Task EnsureEntityGraphSchemaAsync(
         this IServiceProvider services,
         CancellationToken ct = default)
     {
         using var scope = services.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<EntityGraphDbContext>();
 
-        // Ensure pgvector extension is created
-        await context.Database.ExecuteSqlRawAsync(
-            "CREATE EXTENSION IF NOT EXISTS vector",
-            ct);
+        // Ensure pgvector extension is created (and reload the data source's type catalogue — see the helper)
+        ct.ThrowIfCancellationRequested();
+        RelationalSchemaProvisioner.EnsureVectorExtension(context);
 
         // Create or migrate schema. Provisioning per owned relation rather than EnsureCreated, which
         // creates nothing once the database holds any relation at all — including relations another
         // FluxIndex component put there.
         RelationalSchemaProvisioner.ProvisionTables(context);
+        return Task.CompletedTask;
     }
 }

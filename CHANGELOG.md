@@ -29,6 +29,12 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   never written after the first; they are now updated in one atomic statement. A SQLite cache hit also records its hit
   count and access time. `UpdateQuantizedEmbeddingAsync` on both quantized stores writes an existing embedding instead
   of reporting success without a write.
+- **The PostgreSQL semantic cache stores and serves entries.** On a fresh database it could not write at all: its data
+  source did not register pgvector (`InvalidCastException` writing the query embedding), and the extension was installed
+  through a data source that had already read the type catalogue ("Cannot resolve 'vector'"). Its UNLOGGED tables
+  also used `timestamp` columns where the model maps `timestamptz`, so every hit failed saving its count; existing
+  tables have those columns converted (the stored values are UTC). Every PostgreSQL store now installs the extension
+  and reloads the data source's types in one place.
 
 ### Changed
 - **Breaking: the EF-backed stores take an `IDbContextFactory<TContext>` instead of a context.** Changed constructors:

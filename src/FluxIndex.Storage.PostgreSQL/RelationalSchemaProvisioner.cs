@@ -404,6 +404,28 @@ internal static class RelationalSchemaProvisioner
     }
 
     /// <summary>
+    /// Install the pgvector extension if it is absent, then have the context's data source re-read the server's
+    /// type catalogue. Npgsql caches that catalogue when a data source opens its first connection — and
+    /// <see cref="EnsureDatabase"/> has already connected — so without the reload a store whose data source was
+    /// opened before the extension existed fails every write of a <c>Pgvector.Vector</c> with "Cannot resolve
+    /// 'vector' to a fully qualified datatype name". Only a fresh database hits it: where the extension is already
+    /// installed, the catalogue had it from the start.
+    /// </summary>
+    internal static void EnsureVectorExtension(DbContext context)
+    {
+        WithOpenConnection(context, connection =>
+        {
+            using (var command = connection.CreateCommand())
+            {
+                command.CommandText = "CREATE EXTENSION IF NOT EXISTS vector";
+                command.ExecuteNonQuery();
+            }
+
+            ((Npgsql.NpgsqlConnection)connection).ReloadTypes();
+        });
+    }
+
+    /// <summary>
     /// Run <paramref name="action"/> on the context's connection, opening it only if it is not
     /// already open and closing it again in that case. Commands enlist in an ambient EF transaction
     /// if one is open — ADO.NET refuses a command on a connection with a pending local transaction

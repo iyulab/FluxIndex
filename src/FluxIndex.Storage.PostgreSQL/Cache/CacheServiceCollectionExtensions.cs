@@ -32,8 +32,11 @@ public static class CacheServiceCollectionExtensions
             var options = serviceProvider.GetRequiredService<IOptions<PostgresCacheOptions>>().Value;
 
             // NpgsqlDataSource for dynamic JSONB support
+            // UseVector() must be on the data source too: the EF-level npgsqlOptions.UseVector() below only adds the
+            // type mappings, and writing the cached query embedding then fails with InvalidCastException.
             var dataSourceBuilder = new NpgsqlDataSourceBuilder(options.ConnectionString);
             dataSourceBuilder.EnableDynamicJson();
+            dataSourceBuilder.UseVector();
             var dataSource = dataSourceBuilder.Build();
 
             dbOptions.UseNpgsql(dataSource, npgsqlOptions =>
@@ -142,7 +145,7 @@ internal sealed partial class PostgresCacheSchemaInitializer : IStorageInitializ
     {
         try
         {
-            context.Database.ExecuteSqlRaw("CREATE EXTENSION IF NOT EXISTS vector");
+            RelationalSchemaProvisioner.EnsureVectorExtension(context);
             LogPgVectorEnabled(_logger);
         }
         catch (Exception ex)
@@ -165,10 +168,10 @@ internal sealed partial class PostgresCacheSchemaInitializer : IStorageInitializ
                 ""Embedding"" vector({options.EmbeddingDimensions}),
                 ""Results"" JSONB,
                 ""Metadata"" JSONB,
-                ""CreatedAt"" TIMESTAMP NOT NULL DEFAULT NOW(),
-                ""ExpiresAt"" TIMESTAMP NOT NULL,
+                ""CreatedAt"" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                ""ExpiresAt"" TIMESTAMPTZ NOT NULL,
                 ""HitCount"" INTEGER NOT NULL DEFAULT 0,
-                ""LastAccessedAt"" TIMESTAMP NOT NULL DEFAULT NOW()
+                ""LastAccessedAt"" TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
 
             CREATE TABLE IF NOT EXISTS cache_stats (
@@ -177,13 +180,32 @@ internal sealed partial class PostgresCacheSchemaInitializer : IStorageInitializ
                 ""TotalMisses"" BIGINT NOT NULL DEFAULT 0,
                 ""TotalEvictions"" BIGINT NOT NULL DEFAULT 0,
                 ""TotalEntries"" BIGINT NOT NULL DEFAULT 0,
-                ""LastUpdated"" TIMESTAMP NOT NULL DEFAULT NOW()
+                ""LastUpdated"" TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
 
             INSERT INTO cache_stats (""Id"") VALUES (1) ON CONFLICT DO NOTHING;
         ";
 
         context.Database.ExecuteSqlRaw(createTableSql);
+
+        // Tables created before these columns were TIMESTAMPTZ hold TIMESTAMP (without time zone), which reads back as
+        // DateTime.Kind Unspecified — and Npgsql refuses to write that to the timestamptz the model maps, so every cache
+        // hit failed when it saved its hit count. The stored values were written as UTC, so convert them as UTC.
+        context.Database.ExecuteSqlRaw(@"
+            DO $$
+            DECLARE col record;
+            BEGIN
+                FOR col IN
+                    SELECT table_name, column_name FROM information_schema.columns
+                    WHERE table_schema = current_schema()
+                      AND table_name IN ('semantic_cache', 'cache_stats')
+                      AND column_name IN ('CreatedAt', 'ExpiresAt', 'LastAccessedAt', 'LastUpdated')
+                      AND data_type = 'timestamp without time zone'
+                LOOP
+                    EXECUTE format('ALTER TABLE %I ALTER COLUMN %I TYPE timestamptz USING %I AT TIME ZONE ''UTC''',
+                                   col.table_name, col.column_name, col.column_name);
+                END LOOP;
+            END $$;");
         LogUnloggedTablesCreated(_logger);
     }
 

@@ -34,7 +34,7 @@ internal sealed class PostgreSQLQuantizedStorageInitializer : IStorageInitialize
         RelationalSchemaProvisioner.EnsureDatabase(context);
 
         // Both tables carry vector-typed columns, so the extension has to exist first.
-        context.Database.ExecuteSqlRaw("CREATE EXTENSION IF NOT EXISTS vector");
+        RelationalSchemaProvisioner.EnsureVectorExtension(context);
 
         RelationalSchemaProvisioner.ProvisionTables(context);
         TotalChunksBackfill.Run(context, "vectors");
