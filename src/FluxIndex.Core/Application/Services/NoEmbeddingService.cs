@@ -29,9 +29,10 @@ public sealed class NoEmbeddingService : IEmbeddingService
     /// <summary>Whether <paramref name="embeddingService"/> is the keyword-only placeholder (or absent).</summary>
     public static bool IsKeywordOnly(IEmbeddingService? embeddingService) => embeddingService is null or NoEmbeddingService;
 
-    internal const string NotConfiguredMessage =
-        "No embedding service is configured, so this FluxIndex context is keyword-only: vector and similarity search " +
-        "need an embedder. Register one with UseEmbeddingService(...) or an embedding provider package " +
+    /// <summary>The message every refused embedding call carries.</summary>
+    public const string NotConfiguredMessage =
+        "No embedding service is configured, so this FluxIndex context is keyword-only: vector search needs an " +
+        "embedder. Register one with UseEmbeddingService(...) or an embedding provider package " +
         "(UseInMemoryEmbedding() gives deterministic test vectors), or use keyword search.";
 
     /// <inheritdoc />

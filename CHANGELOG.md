@@ -26,12 +26,23 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   sqlite-vec and the in-memory store keep chunks without vectors. sqlite-vec creates no vector table until an
   embedding identity is bound, and a vector search on an unbound sqlite-vec store says it is keyword-only rather
   than returning nothing.
+- **`Indexer.BackfillEmbeddingsAsync(documentId)`**: embeds the chunks of a document that were stored without a
+  vector (indexed keyword-only), in one batch, and writes them back under their ids. Returns how many it filled.
 - **`MetadataValues`** (`FluxIndex.Core.Application.Utilities`): `Deserialize(json)` and `ToPlain(...)`, the conversion
   every store read uses; for a custom store or keyword index that keeps metadata as JSON.
 - **`MetadataHelper.ForStorage(chunk)` and `MetadataHelper.RestoreRichMetadata(chunk)`**: the write and read halves of a
   chunk's rich state, for a custom `IVectorStore` that does not derive from `VectorStoreBase`.
 
 ### Fixed
+- **Breaking: `Retriever.FindSimilarAsync` searches with the whole document, one result per document, with real
+  scores, and takes a `filter`.** Before, it searched with the first chunk's vector, returned several chunks of the
+  same neighbour, reported every score as 1.0, took no filter, and returned nothing for a document without vectors.
+  - With an embedder, the query is the L2-normalized mean of the document's chunk vectors.
+  - Keyword-only, the query is the document's 24 most frequent terms, ranked by BM25, and `minScore` does not apply.
+  - **Migration:** the new `filter` parameter sits before `cancellationToken`, so a positional call passing a token
+    must name it (`cancellationToken:`).
+- **`Indexer.DeleteByDocumentIdAsync` returns true when it removed the document's chunks.** It returned the
+  process-local document record's answer, which is false after a restart even when the store held the document.
 - **`Retriever.KeywordSearchAsync` pushes its metadata filter into the keyword query.** It used to filter the top
   `maxResults` of the whole index, so a scope whose chunks ranked below other scopes got nothing back.
 - **Chunk metadata reads back as plain values on every store and every hybrid leg.** SQLite, sqlite-vec, the SQLite

@@ -821,8 +821,34 @@ public partial class Indexer
     }
 
     /// <summary>
-    /// 문서 삭제
+    /// Fills the vectors of a document's chunks that were stored without one: chunks indexed keyword-only, before an
+    /// embedding service was registered. Only those chunks are embedded (one batch), and each is written back under its
+    /// own id, which adds its vector. Content, metadata and the keyword index are left as they are.
     /// </summary>
+    /// <returns>The number of chunks that got a vector (0 when every chunk already had one, or the document has none).</returns>
+    /// <exception cref="InvalidOperationException">This indexer has no embedding service (<see cref="IsKeywordOnly"/>).</exception>
+    public async Task<int> BackfillEmbeddingsAsync(string documentId, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(documentId);
+        if (IsKeywordOnly)
+            throw new InvalidOperationException(NoEmbeddingService.NotConfiguredMessage);
+
+        var missing = (await _vectorStore.GetByDocumentIdAsync(documentId, cancellationToken))
+            .Where(c => c.Embedding is not { Length: > 0 })
+            .ToList();
+        if (missing.Count == 0)
+            return 0;
+
+        var embedded = await GenerateEmbeddingsAsync(missing, cancellationToken);
+        await _vectorStore.StoreBatchAsync(embedded, cancellationToken);
+        await InvalidateReadCachesAsync(documentId, cancellationToken);
+        return embedded.Count;
+    }
+
+    /// <summary>
+    /// Deletes a document: its chunks from the vector store and the keyword index, and its record.
+    /// </summary>
+    /// <returns>Whether anything of the document was removed — its chunks or its record.</returns>
     public async Task<bool> DeleteByDocumentIdAsync(
         string documentId,
         CancellationToken cancellationToken = default)
@@ -834,10 +860,12 @@ public partial class Indexer
             // Delete chunks from vector store. The keyword index is dropped first because its own
             // record of which chunks belong to the document is what makes the removal possible.
             await DeleteKeywordByDocumentIdAsync(documentId, cancellationToken);
-            await _vectorStore.DeleteByDocumentIdAsync(documentId, cancellationToken);
+            var removedChunks = await _vectorStore.DeleteByDocumentIdAsync(documentId, cancellationToken);
 
-            // Delete document from repository
-            var deleted = await _documentRepository.DeleteAsync(documentId, cancellationToken);
+            // Delete document from repository. The repository is process-local, so after a restart it no longer knows
+            // a document the store still held: the answer is whether either of them removed something.
+            var removedRecord = await _documentRepository.DeleteAsync(documentId, cancellationToken);
+            var deleted = removedChunks || removedRecord;
             await InvalidateReadCachesAsync(documentId, cancellationToken);
 
             if (deleted)

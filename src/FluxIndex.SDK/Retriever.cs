@@ -1058,60 +1058,159 @@ public partial class Retriever
     }
 
     /// <summary>
-    /// 유사 문서 찾기. 생략한 <paramref name="maxResults"/> 는 <see cref="RetrieverOptions.DefaultMaxResults"/>;
-    /// <paramref name="minScore"/> 는 문서 간 유사도라 검색 임계값과 별개의 기본(0.5)을 갖는다.
+    /// Documents similar to <paramref name="documentId"/>, one result per document (its best-matching chunk), best first,
+    /// the source document excluded.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// With an embedding service the whole document is the query: the mean of its chunk vectors, searched like any
+    /// vector, with <paramref name="minScore"/> as the similarity floor (default 0.5, separate from the search
+    /// threshold). Keyword-only (<see cref="IsKeywordOnly"/>, or a document whose chunks have no vectors yet) the
+    /// document's most frequent terms are the keyword query, ranked by BM25; <paramref name="minScore"/> does not apply
+    /// to those scores. Either way <paramref name="filter"/> scopes the candidates the way it scopes a search.
+    /// </para>
+    /// <para>An unknown document yields no results.</para>
+    /// </remarks>
     public async Task<IEnumerable<VectorSearchResult>> FindSimilarAsync(
         string documentId,
         int? maxResults = null,
         float minScore = 0.5f,
+        Dictionary<string, object>? filter = null,
         CancellationToken cancellationToken = default)
     {
         return await GuardAsync(
-            await FindSimilarResolvedAsync(documentId, maxResults ?? _options.DefaultMaxResults, minScore, cancellationToken),
+            await FindSimilarResolvedAsync(documentId, maxResults ?? _options.DefaultMaxResults, minScore, filter, cancellationToken),
             cancellationToken);
     }
+
+    /// <summary>How many terms of the source document make up the keyword query of a keyword-only similarity search.</summary>
+    private const int SimilarityQueryTerms = 24;
 
     private async Task<IEnumerable<VectorSearchResult>> FindSimilarResolvedAsync(
         string documentId,
         int maxResults,
         float minScore,
+        Dictionary<string, object>? filter,
         CancellationToken cancellationToken)
     {
         LogFindingSimilarDocuments(_logger, documentId);
 
-        // Get document chunks
-        var chunks = await _vectorStore.GetByDocumentIdAsync(documentId, cancellationToken);
-        if (!chunks.Any())
-            return Enumerable.Empty<VectorSearchResult>();
+        var chunks = (await _vectorStore.GetByDocumentIdAsync(documentId, cancellationToken)).ToList();
+        if (chunks.Count == 0 || maxResults <= 0)
+            return [];
 
-        // Use first chunk's embedding for similarity search
-        var firstChunk = chunks.First();
-        if (firstChunk.Embedding == null)
-            return Enumerable.Empty<VectorSearchResult>();
+        var vectors = chunks.Where(c => c.Embedding is { Length: > 0 }).Select(c => c.Embedding!).ToList();
+        var candidates = !IsKeywordOnly && vectors.Count > 0
+            ? await SimilarByVectorAsync(Centroid(vectors), chunks.Count, maxResults, minScore, filter, cancellationToken)
+            : await SimilarByKeywordAsync(chunks, maxResults, filter, cancellationToken);
 
-        // Search for similar chunks
-        var similarDocumentChunks = await _vectorStore.SearchAsync(
-            firstChunk.Embedding,
-            maxResults + chunks.Count(), // Get extra to filter out same document
-            minScore,
-            filters: null,
+        // One result per document: its best chunk. The source document is never its own neighbour.
+        return candidates
+            .Where(r => r.DocumentChunk.DocumentId != documentId)
+            .GroupBy(r => r.DocumentChunk.DocumentId, StringComparer.Ordinal)
+            .Select(g => g.OrderByDescending(r => r.Score).First())
+            .OrderByDescending(r => r.Score)
+            .Take(maxResults)
+            .Select((r, rank) => new VectorSearchResult
+            {
+                DocumentChunk = r.DocumentChunk,
+                Score = r.Score,
+                Rank = rank + 1,
+                Distance = r.Distance,
+                Metadata = r.Metadata,
+            })
+            .ToList();
+    }
+
+    private async Task<List<VectorSearchResult>> SimilarByVectorAsync(
+        float[] query, int sourceChunks, int maxResults, float minScore, Dictionary<string, object>? filter, CancellationToken cancellationToken)
+    {
+        // Several chunks per document come back, and the source's own chunks rank first: fetch enough to still have
+        // maxResults other documents after grouping.
+        var topK = (maxResults + 1) * 4 + sourceChunks;
+        var hits = await _vectorStore.SearchAsync(query, topK, minScore, filter, cancellationToken);
+        return hits.Select(chunk => new VectorSearchResult
+        {
+            DocumentChunk = chunk,
+            Score = chunk.Score ?? 0f,
+            Distance = 1f - (chunk.Score ?? 0f),
+            Metadata = chunk.Metadata ?? new(),
+        }).ToList();
+    }
+
+    private async Task<List<VectorSearchResult>> SimilarByKeywordAsync(
+        List<DocumentChunkEntity> chunks, int maxResults, Dictionary<string, object>? filter, CancellationToken cancellationToken)
+    {
+        if (_keywordSearchService is null)
+            return [];
+
+        var query = SimilarityQuery(chunks.Select(c => c.Content));
+        if (query.Length == 0)
+            return [];
+
+        var matches = await _keywordSearchService.SearchAsync(
+            query,
+            new Core.Application.Interfaces.KeywordSearchOptions
+            {
+                MaxResults = (maxResults + 1) * 4 + chunks.Count,
+                MetadataFilter = filter is { Count: > 0 } ? filter : null,
+            },
             cancellationToken);
 
-        // Convert to VectorSearchResult and filter out chunks from the same document
-        var results = similarDocumentChunks
-            .Where(c => c.DocumentId != documentId)
-            .Take(maxResults)
-            .Select(chunk => new VectorSearchResult
-            {
-                DocumentChunk = chunk, // Use entity directly
-                Score = 1.0f, // Default score
-                Rank = 0,
-                Distance = 0,
-                Metadata = chunk.Metadata ?? new()
-            });
+        return matches.Select(match => new VectorSearchResult
+        {
+            DocumentChunk = match.Chunk,
+            Score = (float)match.Score,
+            Metadata = match.Chunk.Metadata ?? new(),
+        }).ToList();
+    }
 
-        return results;
+    /// <summary>
+    /// The keyword query standing for a whole document: its most frequent terms (letters or digits, two or more
+    /// characters), most frequent first; ties keep first appearance. The keyword analyzer tokenizes it like any query.
+    /// </summary>
+    internal static string SimilarityQuery(IEnumerable<string> contents)
+    {
+        var counts = new Dictionary<string, (int Count, int First)>(StringComparer.OrdinalIgnoreCase);
+        var position = 0;
+        foreach (var content in contents)
+        {
+            foreach (System.Text.RegularExpressions.Match m in SimilarityTermPattern().Matches(content ?? string.Empty))
+            {
+                var term = m.Value;
+                counts[term] = counts.TryGetValue(term, out var seen) ? (seen.Count + 1, seen.First) : (1, position);
+                position++;
+            }
+        }
+
+        return string.Join(' ', counts
+            .OrderByDescending(kv => kv.Value.Count)
+            .ThenBy(kv => kv.Value.First)
+            .Take(SimilarityQueryTerms)
+            .Select(kv => kv.Key));
+    }
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"[\p{L}\p{N}]{2,}")]
+    private static partial System.Text.RegularExpressions.Regex SimilarityTermPattern();
+
+    /// <summary>The L2-normalized mean of the vectors: the document as one point in the vector space.</summary>
+    private static float[] Centroid(List<float[]> vectors)
+    {
+        var dimension = vectors[0].Length;
+        var sum = new float[dimension];
+        foreach (var v in vectors.Where(v => v.Length == dimension))
+        {
+            for (var i = 0; i < dimension; i++)
+                sum[i] += v[i];
+        }
+
+        var norm = MathF.Sqrt(sum.Sum(x => x * x));
+        if (norm > 0f)
+        {
+            for (var i = 0; i < dimension; i++)
+                sum[i] /= norm;
+        }
+        return sum;
     }
 
     /// <summary>

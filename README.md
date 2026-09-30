@@ -146,6 +146,13 @@ Without a registered `IEmbeddingService` the context is **keyword-only** (`conte
   created until an embedder is bound), or in-memory. Qdrant and PostgreSQL keep vectors only and refuse such chunks.
 - Register an embedder with `UseEmbeddingService(...)`, a provider package, or `ConfigureServices`. For tests,
   `UseInMemoryEmbedding()` gives deterministic vectors that are **not semantically meaningful**.
+- An embedder added later fills the vectors of chunks indexed without one: `await context.Indexer.BackfillEmbeddingsAsync(documentId)`
+  embeds only the chunks that have no vector and leaves their content and keyword entries as they are.
+
+«Documents like this one» works in both modes: `context.Retriever.FindSimilarAsync(documentId, maxResults, minScore, filter)`
+returns one result per document (its best chunk), the source excluded. With an embedder, the query is the mean of the
+document's chunk vectors, and `minScore` is the similarity floor. Keyword-only, the query is the document's most
+frequent terms, ranked by BM25. `filter` scopes the candidates the way it scopes a search.
 
 ### Using Custom Embedding Service
 
