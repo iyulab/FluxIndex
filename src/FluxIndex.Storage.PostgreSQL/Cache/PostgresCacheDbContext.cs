@@ -6,7 +6,7 @@ namespace FluxIndex.Storage.PostgreSQL.Cache;
 /// <summary>
 /// PostgreSQL 시맨틱 캐시용 DbContext
 /// </summary>
-public class PostgresCacheDbContext : DbContext
+public class PostgresCacheDbContext : DbContext, IEmbeddingDimensionsModel
 {
     private readonly PostgresCacheOptions _options;
 
@@ -20,6 +20,16 @@ public class PostgresCacheDbContext : DbContext
 
     public DbSet<SemanticCacheEntity> SemanticCache { get; set; } = null!;
     public DbSet<CacheStatsEntity> CacheStats { get; set; } = null!;
+
+    int IEmbeddingDimensionsModel.EmbeddingDimensions => _options.EmbeddingDimensions;
+
+    /// <inheritdoc />
+    /// <remarks>The model depends on the embedding dimension, so the model cache is keyed on it too.</remarks>
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        base.OnConfiguring(optionsBuilder);
+        optionsBuilder.ReplaceService<Microsoft.EntityFrameworkCore.Infrastructure.IModelCacheKeyFactory, EmbeddingDimensionsModelCacheKeyFactory>();
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

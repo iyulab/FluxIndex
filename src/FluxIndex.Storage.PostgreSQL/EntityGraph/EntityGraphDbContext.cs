@@ -6,7 +6,7 @@ namespace FluxIndex.Storage.PostgreSQL.EntityGraph;
 /// <summary>
 /// DbContext for entity graph storage in PostgreSQL.
 /// </summary>
-public class EntityGraphDbContext : DbContext
+public class EntityGraphDbContext : DbContext, IEmbeddingDimensionsModel
 {
     private readonly EntityGraphOptions _options;
 
@@ -22,6 +22,16 @@ public class EntityGraphDbContext : DbContext
     public DbSet<EntityGraphRelationshipEntity> Relationships => Set<EntityGraphRelationshipEntity>();
     public DbSet<EntityCommunityEntity> Communities => Set<EntityCommunityEntity>();
     public DbSet<EntityCommunityMemberEntity> CommunityMembers => Set<EntityCommunityMemberEntity>();
+
+    int IEmbeddingDimensionsModel.EmbeddingDimensions => _options.EmbeddingDimension;
+
+    /// <inheritdoc />
+    /// <remarks>The model depends on the embedding dimension, so the model cache is keyed on it too.</remarks>
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        base.OnConfiguring(optionsBuilder);
+        optionsBuilder.ReplaceService<Microsoft.EntityFrameworkCore.Infrastructure.IModelCacheKeyFactory, EmbeddingDimensionsModelCacheKeyFactory>();
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
