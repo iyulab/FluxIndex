@@ -42,10 +42,12 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   `GetQuantizedStatsAsync` and took candidate slots in every quantized search. `DeleteAsync`, re-storing a chunk and
   the quantized-embedding lookups also find rows written by earlier versions, which named the chunk by its row key.
 - **The PostgreSQL quantized search returns chunks with non-UUID ids.** `SearchQuantizedAsync` (and the candidate phase
-  of `SearchWithRerankAsync`) dropped every chunk whose id was not a UUID and fell back to the unquantized search.
+  of `SearchWithRerankAsync`) dropped every chunk whose id was not a UUID and fell back to the unquantized search. A
+  chunk holding a quantized row under each id spelling is returned once.
 - **Two PostgreSQL stores with different `EmbeddingDimensions` in one process each get their own vector column.** The
   EF Core model was cached per context type, so the first store's dimension was used for every later one: the second
-  store's table was created as the wrong `vector(N)` and every write to it failed.
+  store's table was created as the wrong `vector(N)` and every write to it failed. Applies to the vector store, the
+  quantized vector store, the semantic cache and the entity graph.
 
 ---
 

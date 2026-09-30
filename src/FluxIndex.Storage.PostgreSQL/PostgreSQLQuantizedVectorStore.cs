@@ -464,10 +464,14 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
             .Where(v => chunkIds.Contains(v.Id))
             .ToDictionaryAsync(v => v.Id, v => v, cancellationToken);
 
+        // A chunk re-stored across the change in how quantized rows are named can hold one row under each spelling;
+        // it is still one chunk, so it is returned once (at its closest distance — candidates are in distance order).
         var results = new List<(DocumentChunk, float)>();
+        var seen = new HashSet<Guid>();
         foreach (var candidate in candidates)
         {
-            if (!chunks.TryGetValue(ChunkStorageId.ToStorageGuid(candidate.ChunkId), out var entity)) continue;
+            var key = ChunkStorageId.ToStorageGuid(candidate.ChunkId);
+            if (!seen.Add(key) || !chunks.TryGetValue(key, out var entity)) continue;
 
             var score = ConvertDistanceToScore(candidate.Distance);
             if (score >= minScore)

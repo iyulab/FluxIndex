@@ -151,6 +151,38 @@ public sealed class PostgreSQLQuantizedDeleteTests : IAsyncLifetime
         (await SearchQuantizedIdsAsync(ct)).Should().Equal("doc-a#0");
     }
 
+    /// <summary>
+    /// A chunk re-stored by an earlier version can hold one quantized row under each spelling; a quantized search returns
+    /// it once, and deleting it removes both.
+    /// </summary>
+    [Fact]
+    public async Task ChunkWithAQuantizedRowUnderEachSpelling_IsReturnedOnce_AndDeletedCompletely()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await _store.StoreAsync(Chunk("doc-a", "doc-a#0", 0), ct);
+        await using (var context = NewContext())
+        {
+            var row = await context.QuantizedVectors.SingleAsync(q => q.ChunkId == "doc-a#0", ct);
+            context.QuantizedVectors.Add(new PostgresQuantizedEmbeddingEntity
+            {
+                Id = Guid.NewGuid(),
+                ChunkId = ChunkStorageId.ToStorageGuid("doc-a#0").ToString(),
+                QuantizedData = row.QuantizedData,
+                QuantizationType = row.QuantizationType,
+                OriginalDimension = row.OriginalDimension,
+                MetadataJson = row.MetadataJson,
+                CreatedAt = row.CreatedAt
+            });
+            await context.SaveChangesAsync(ct);
+        }
+        (await _store.GetQuantizedStatsAsync(ct)).QuantizedChunkCount.Should().Be(2);
+
+        (await SearchQuantizedIdsAsync(ct)).Should().Equal("doc-a#0");
+
+        (await _store.DeleteAsync("doc-a#0", ct)).Should().BeTrue();
+        (await _store.GetQuantizedStatsAsync(ct)).QuantizedChunkCount.Should().Be(0);
+    }
+
     private async Task<List<string>> SearchQuantizedIdsAsync(CancellationToken ct)
     {
         var query = await _quantizer.QuantizeAsync(Embedding(0), ct);
