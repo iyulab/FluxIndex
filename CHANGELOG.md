@@ -24,6 +24,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   registered: it used to be keyed on the provider name, so the builder's in-memory fallback never warned and Qdrant
   did.
 - Re-pinned sibling package(s) `LMSupply.Embedder` 0.96.0 -> 0.97.0, `LMSupply.Generator` 0.96.0 -> 0.97.0, `LMSupply.Reranker` 0.96.0 -> 0.97.0.
+- Re-pinned sibling package(s) `FluxImprover` 0.14.22 -> 0.14.23.
 
 - **The batch APIs write once.** `IndexDocumentsBatchAsync` and `IndexBatchAsync` prepare each document on its own
   (split, metadata, embeddings) and then write all of them through one replacement per store, instead of indexing one
