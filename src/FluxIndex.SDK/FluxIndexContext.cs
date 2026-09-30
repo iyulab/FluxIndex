@@ -264,11 +264,11 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDi
         {
             var startTime = DateTime.UtcNow;
             var results = await _hybridSearchService.SearchAsync(query, options, cancellationToken);
-            if (_retriever.RagSecurityPipeline is { } pipeline)
+            if (_retriever.RetrievalGuard is { } pipeline)
             {
                 results = await RagSecurityGuard.ApplyAsync(
                     pipeline, _logger, results,
-                    r => new RagSecurityGuard.Row(r.Chunk.Id, r.Chunk.Content, r.Chunk.DocumentId, r.FusedScore),
+                    r => new RetrievedItem(r.Chunk.Id, r.Chunk.Content, r.Chunk.DocumentId, r.FusedScore),
                     (r, content) => r with { Chunk = r.Chunk.WithContent(content) },
                     cancellationToken);
             }
@@ -371,12 +371,12 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDi
     /// </summary>
     private async Task<AdaptiveSearchResult> GuardAsync(AdaptiveSearchResult result, CancellationToken cancellationToken)
     {
-        if (_retriever.RagSecurityPipeline is not { } pipeline)
+        if (_retriever.RetrievalGuard is not { } pipeline)
             return result;
 
         result.Documents = await RagSecurityGuard.ApplyAsync(
             pipeline, _logger, result.Documents,
-            d => new RagSecurityGuard.Row(
+            d => new RetrievedItem(
                 d.Metadata.TryGetValue("chunk_id", out var id) && id is string chunkId ? chunkId : d.Id,
                 d.Metadata.TryGetValue("chunk_content", out var text) && text is string content ? content : d.Content,
                 d.Id,
@@ -760,13 +760,13 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDi
     private async Task<List<(SmallToBigResult Source, DocumentChunkEntity Primary, List<DocumentChunkEntity> Context)>> GuardAsync(
         List<SmallToBigResult> results, CancellationToken cancellationToken)
     {
-        if (_retriever.RagSecurityPipeline is not { } pipeline)
+        if (_retriever.RetrievalGuard is not { } pipeline)
             return results.Select(r => (r, r.PrimaryChunk, r.ContextChunks)).ToList();
 
         var chunks = results.SelectMany(r => r.ContextChunks.Prepend(r.PrimaryChunk)).ToList();
         var verdicts = await RagSecurityGuard.JudgeAsync(
             pipeline, _logger,
-            chunks.Select(c => new RagSecurityGuard.Row(c.Id, c.Content, c.DocumentId, c.Score ?? 0f)).ToList(),
+            chunks.Select(c => new RetrievedItem(c.Id, c.Content, c.DocumentId, c.Score ?? 0f)).ToList(),
             cancellationToken);
 
         var guarded = new List<(SmallToBigResult, DocumentChunkEntity, List<DocumentChunkEntity>)>(results.Count);
@@ -787,7 +787,7 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDi
 
         return guarded;
 
-        static DocumentChunkEntity? Apply(DocumentChunkEntity chunk, RagSecurityGuard.Verdict verdict) =>
+        static DocumentChunkEntity? Apply(DocumentChunkEntity chunk, RetrievalVerdict verdict) =>
             verdict.Block ? null
             : verdict.Replacement is { } replacement ? chunk.WithContent(replacement)
             : chunk;

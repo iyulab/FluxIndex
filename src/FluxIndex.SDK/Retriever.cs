@@ -1,4 +1,3 @@
-using FluxGuard.Remote.RAG;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Models;
 using FluxIndex.Core.Application.Services.Base;
@@ -55,10 +54,10 @@ public partial class Retriever
     // Quantization support
     private readonly IQuantizedVectorStore? _quantizedVectorStore;
 
-    // Opt-in RAG poisoning/indirect-injection guard (FluxGuard.Remote). Null by default — nothing
+    // Opt-in RAG poisoning/indirect-injection guard (IRetrievalGuard). Null by default — nothing
     // changes for consumers who don't supply one. Applied to what every public search path returns
     // (GuardAsync): a registered pipeline is a promise about every result this retriever hands out.
-    private readonly IRAGSecurityPipeline? _ragSecurityPipeline;
+    private readonly IRetrievalGuard? _retrievalGuard;
 
     // Opt-in per search (SearchOptions.UseReranker); null when no reranker is registered.
     private readonly IReranker? _reranker;
@@ -91,7 +90,7 @@ public partial class Retriever
         IHybridSearchService? hybridSearchService = null,
         IGraphRAGService? graphRAGService = null,
         IKeywordSearchService? keywordSearchService = null,
-        IRAGSecurityPipeline? ragSecurityPipeline = null,
+        IRetrievalGuard? retrievalGuard = null,
         IReranker? reranker = null)
     {
         _reranker = reranker;
@@ -106,7 +105,7 @@ public partial class Retriever
         _hybridSearchService = hybridSearchService;
         _graphRAGService = graphRAGService;
         _keywordSearchService = keywordSearchService;
-        _ragSecurityPipeline = ragSecurityPipeline;
+        _retrievalGuard = retrievalGuard;
 
         // Bind embedding identity to vector store for correct collection resolution
         if (!IsKeywordOnly)
@@ -120,7 +119,7 @@ public partial class Retriever
     /// The pipeline this retriever guards with — read by <see cref="FluxIndexContext"/> so the paths it serves
     /// without the retriever are guarded by the same registration, not a second one that could disagree.
     /// </summary>
-    internal IRAGSecurityPipeline? RagSecurityPipeline => _ragSecurityPipeline;
+    internal IRetrievalGuard? RetrievalGuard => _retrievalGuard;
 
     /// <summary>
     /// 양자화 지원 여부 확인
@@ -577,9 +576,9 @@ public partial class Retriever
             }).ToList();
         }
 
-        if (_ragSecurityPipeline != null)
+        if (_retrievalGuard != null)
         {
-            results = await RagSecurityGuard.ApplyAsync(_ragSecurityPipeline, _logger, results, cancellationToken);
+            results = await RagSecurityGuard.ApplyAsync(_retrievalGuard, _logger, results, cancellationToken);
         }
 
         // After the security pass: a document it removed must not reach the reranker's model either.
@@ -605,7 +604,7 @@ public partial class Retriever
     }
 
     /// <summary>
-    /// Applies the opt-in <see cref="IRAGSecurityPipeline"/> to what a public search path returns
+    /// Applies the opt-in <see cref="IRetrievalGuard"/> to what a public search path returns
     /// (<see cref="RagSecurityGuard"/>). Every public path that hands out chunk content ends here; the
     /// unguarded <c>*ResolvedAsync</c> cores are what other paths compose, so nothing is validated twice.
     /// </summary>
@@ -613,9 +612,9 @@ public partial class Retriever
         IEnumerable<VectorSearchResult> results,
         CancellationToken cancellationToken)
     {
-        return _ragSecurityPipeline is null
+        return _retrievalGuard is null
             ? results
-            : await RagSecurityGuard.ApplyAsync(_ragSecurityPipeline, _logger, results, cancellationToken);
+            : await RagSecurityGuard.ApplyAsync(_retrievalGuard, _logger, results, cancellationToken);
     }
 
     /// <summary>

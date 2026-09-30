@@ -1,5 +1,6 @@
 using DocumentChunkEntity = FluxIndex.Core.Domain.Entities.DocumentChunk;
 using FluxGuard.Remote.RAG;
+using FluxIndex.Integrations.FluxGuard;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Core.Domain.Models;
@@ -140,7 +141,7 @@ public class ContextRagSecurityTests
 
         var retriever = new Retriever(
             vectorStore, documentRepository, embeddingService, new RetrieverOptions(),
-            ragSecurityPipeline: ragSecurityPipeline);
+            retrievalGuard: ragSecurityPipeline is null ? null : new FluxGuardRetrievalGuard(ragSecurityPipeline));
         var indexer = new Indexer(
             vectorStore, documentRepository, embeddingService, Substitute.For<IChunkingService>(), new IndexerOptions());
 

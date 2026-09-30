@@ -1,5 +1,6 @@
 using DocumentChunkEntity = FluxIndex.Core.Domain.Entities.DocumentChunk;
 using FluxGuard.Remote.RAG;
+using FluxIndex.Integrations.FluxGuard;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Services;
 using FluxIndex.Core.Domain.Models;
@@ -254,7 +255,7 @@ public class RetrieverRagSecurityTests
             cacheService: cacheService,
             rankFusionService: rankFusion ? new RankFusionService() : null,
             keywordSearchService: keywordSearchService,
-            ragSecurityPipeline: ragSecurityPipeline);
+            retrievalGuard: ragSecurityPipeline is null ? null : new FluxGuardRetrievalGuard(ragSecurityPipeline));
 
         return (retriever, (vectorStore, documentRepository, embeddingService));
     }

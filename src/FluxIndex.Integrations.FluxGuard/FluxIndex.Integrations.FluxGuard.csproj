@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <PackageId>FluxIndex.Integrations.FluxGuard</PackageId>
+    <IsPackable>true</IsPackable>
+    <Description>FluxGuard RAG security for FluxIndex — an IRetrievalGuard that runs search results through a FluxGuard.Remote IRAGSecurityPipeline (indirect prompt injection and RAG poisoning detection).</Description>
+    <PackageTags>RAG;VectorStore;FluxIndex;FluxGuard;Security;Guardrails;Integration</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FluxIndex.Core\FluxIndex.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FluxGuard.Remote" />
+  </ItemGroup>
+
+</Project>

@@ -37,7 +37,18 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 - `IndexingOptions.EnableGraphRAG = true` without a registered `IGraphRAGService` throws before anything is written
   (it used to throw after the chunks were stored).
 
+- **Breaking: RAG security moved out of the SDK into `FluxIndex.Integrations.FluxGuard`.** `FluxIndex.SDK` no longer
+  depends on FluxGuard, so it no longer brings FluxGuard, ONNX Runtime and `Microsoft.ML.Tokenizers` into every install.
+  The SDK applies an `IRetrievalGuard` (new, in `FluxIndex.Core`) to every search path, exactly where it applied the
+  pipeline. The `Retriever` constructor parameter is now `IRetrievalGuard? retrievalGuard`.
+  - **Migration:** add `FluxIndex.Integrations.FluxGuard` and call `services.AddFluxGuardRetrievalGuard()` next to your
+    `IRAGSecurityPipeline` registration. `Build()` throws if a pipeline is registered without a retrieval guard, so the
+    upgrade cannot silently turn RAG security off.
+
 ### Added
+- **`FluxIndex.Integrations.FluxGuard`**: `FluxGuardRetrievalGuard` and `AddFluxGuardRetrievalGuard()`.
+- **`IRetrievalGuard`** (`FluxIndex.Core.Application.Interfaces`): judge retrieved content before a search hands it out
+  (block / replace / keep), for a guard other than FluxGuard.
 - **`IVectorStore.ReplaceDocumentsAsync` / `IKeywordSearchService.ReplaceDocumentsAsync`**: replace every chunk of a
   set of documents with a given chunk list. Both have default implementations, so custom stores keep compiling.
 

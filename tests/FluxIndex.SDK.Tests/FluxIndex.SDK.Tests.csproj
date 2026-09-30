@@ -33,6 +33,7 @@
     <ProjectReference Include="..\..\src\FluxIndex.Cache.Redis\FluxIndex.Cache.Redis.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.Integrations.FluxCurator\FluxIndex.Integrations.FluxCurator.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.Integrations.FluxImprover\FluxIndex.Integrations.FluxImprover.csproj" />
+    <ProjectReference Include="..\..\src\FluxIndex.Integrations.FluxGuard\FluxIndex.Integrations.FluxGuard.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.Providers.LMSupply\FluxIndex.Providers.LMSupply.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.Providers.OpenAI\FluxIndex.Providers.OpenAI.csproj" />
     <ProjectReference Include="..\..\src\FluxIndex.MCP\FluxIndex.MCP.csproj" />

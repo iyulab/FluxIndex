@@ -69,6 +69,26 @@ public class FluxIndexContextBuilder
     }
 
     /// <summary>
+    /// Before 0.66.0 the SDK applied a registered FluxGuard <c>IRAGSecurityPipeline</c> itself. It no longer references
+    /// FluxGuard: the pipeline takes effect through <c>FluxIndex.Integrations.FluxGuard</c>'s
+    /// <c>AddFluxGuardRetrievalGuard()</c>. A container that still registers the pipeline without a retrieval guard would
+    /// build and silently return unguarded results — a security regression a version bump must not cause quietly. The
+    /// pipeline is recognized by name, since this assembly cannot reference its type.
+    /// </summary>
+    private void EnsureRetrievalGuardIsNotLostOnUpgrade()
+    {
+        const string pipelineType = "FluxGuard.Remote.RAG.IRAGSecurityPipeline";
+        if (_services.Any(d => d.ServiceType.FullName == pipelineType)
+            && !_services.Any(d => d.ServiceType == typeof(IRetrievalGuard)))
+        {
+            throw new InvalidOperationException(
+                "A FluxGuard IRAGSecurityPipeline is registered, but no IRetrievalGuard: since 0.66.0 FluxIndex applies RAG " +
+                "security only through an IRetrievalGuard, so search results would not be checked. Add the " +
+                "FluxIndex.Integrations.FluxGuard package and call services.AddFluxGuardRetrievalGuard() in ConfigureServices.");
+        }
+    }
+
+    /// <summary>
     /// Throws when the caller named a provider but its storage package never registered
     /// <paramref name="serviceType"/> — i.e. the <c>Use*</c> call set options and the matching
     /// <c>Add*Storage()</c> call is missing. Silence here is what makes the failure expensive: the
@@ -648,6 +668,8 @@ public class FluxIndexContextBuilder
         EnsureExplicitProviderIsRegistered(
             _explicitStoreProvider, typeof(IVectorStore), StoreRegistrationHint);
 
+        EnsureRetrievalGuardIsNotLostOnUpgrade();
+
         // Fallback: if no IVectorStore was registered by storage packages, use InMemory
         if (!_services.Any(d => d.ServiceType == typeof(IVectorStore)))
         {
@@ -736,7 +758,7 @@ public class FluxIndexContextBuilder
             var keywordSearchService = serviceProvider.GetService<IKeywordSearchService>();
 
             // Opt-in RAG poisoning / indirect-injection guard applied to retrieved documents.
-            var ragSecurityPipeline = serviceProvider.GetService<FluxGuard.Remote.RAG.IRAGSecurityPipeline>();
+            var retrievalGuard = serviceProvider.GetService<IRetrievalGuard>();
 
             return new Retriever(
                 vectorStore,
@@ -750,7 +772,7 @@ public class FluxIndexContextBuilder
                 hybridSearchService,
                 graphRAGService,
                 keywordSearchService,
-                ragSecurityPipeline,
+                retrievalGuard,
                 serviceProvider.GetService<IReranker>()
             );
         });

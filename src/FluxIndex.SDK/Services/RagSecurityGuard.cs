@@ -1,17 +1,13 @@
-using FluxGuard.Remote.RAG;
+using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.Models;
 using Microsoft.Extensions.Logging;
 
 namespace FluxIndex.SDK.Services;
 
 /// <summary>
-/// Runs retrieved chunks through the opt-in <see cref="IRAGSecurityPipeline"/> (indirect prompt
-/// injection / RAG poisoning detection) before they reach the caller. A chunk the pipeline suggests
-/// blocking is dropped from the result set; one it suggests sanitizing is handed out with
-/// <see cref="RAGDocumentValidation.SanitizedContent"/> when the pipeline provided one.
-/// <see cref="RAGAction.Review"/> and <see cref="RAGAction.Include"/> pass through unchanged — the
-/// pipeline judged them safe enough to include; review is a logging concern for the consumer's own
-/// guard result inspection, not this SDK's to enforce.
+/// Runs retrieved chunks through the opt-in <see cref="IRetrievalGuard"/> (RAG poisoning / indirect prompt injection
+/// detection) before they reach the caller. A blocked chunk is dropped from the result set; one with a replacement is
+/// handed out with that content; anything else passes through unchanged.
 /// </summary>
 /// <remarks>
 /// One judgement (<see cref="JudgeAsync"/>), one shape adapter per result type. Every public search path
@@ -22,70 +18,51 @@ namespace FluxIndex.SDK.Services;
 /// </remarks>
 internal static partial class RagSecurityGuard
 {
-    /// <summary>What the pipeline sees of one result.</summary>
-    internal readonly record struct Row(string Id, string Content, string Source, double Score);
-
-    /// <summary>Drop it, hand it out with <see cref="Replacement"/>, or (default) keep it as is.</summary>
-    internal readonly record struct Verdict(bool Block, string? Replacement);
-
     /// <summary>
-    /// Validates <paramref name="rows"/> in one pipeline call and answers a verdict per row, in order.
-    /// Rows are matched to validations by id; a row the pipeline did not answer for is kept.
+    /// Judges <paramref name="rows"/> in one guard call and answers a verdict per row, in order.
     /// </summary>
-    public static async Task<Verdict[]> JudgeAsync(
-        IRAGSecurityPipeline pipeline, ILogger logger, IReadOnlyList<Row> rows, CancellationToken cancellationToken)
+    /// <exception cref="InvalidOperationException">The guard answered a different number of verdicts.</exception>
+    public static async Task<RetrievalVerdict[]> JudgeAsync(
+        IRetrievalGuard guard, ILogger logger, IReadOnlyList<RetrievedItem> rows, CancellationToken cancellationToken)
     {
         if (rows.Count == 0)
             return [];
 
-        var documents = rows.Select(r => new RAGDocument
+        var verdicts = await guard.JudgeAsync(rows, cancellationToken);
+        if (verdicts.Count != rows.Count)
         {
-            Id = r.Id,
-            Content = r.Content,
-            Source = r.Source,
-            RelevanceScore = r.Score
-        }).ToList();
-
-        var validations = await pipeline.ValidateDocumentsAsync(documents, cancellationToken);
-
-        var byId = new Dictionary<string, RAGDocumentValidation>(StringComparer.Ordinal);
-        foreach (var validation in validations)
-            byId[validation.Document.Id ?? string.Empty] = validation;
-
-        var verdicts = new Verdict[rows.Count];
-        for (var i = 0; i < rows.Count; i++)
-        {
-            if (!byId.TryGetValue(rows[i].Id, out var validation))
-                continue;
-
-            if (validation.SuggestedAction == RAGAction.Block)
-            {
-                LogBlocked(logger, rows[i].Source, rows[i].Id, validation.RiskScore);
-                verdicts[i] = new Verdict(Block: true, Replacement: null);
-            }
-            else if (validation is { SuggestedAction: RAGAction.Sanitize, SanitizedContent: { } sanitized })
-            {
-                verdicts[i] = new Verdict(Block: false, Replacement: sanitized);
-            }
+            // A guard that loses track of rows cannot be applied safely: guessing which rows it meant would hand out
+            // content it may have blocked.
+            throw new InvalidOperationException(
+                $"{guard.GetType().Name} returned {verdicts.Count} verdicts for {rows.Count} retrieved items; " +
+                "an IRetrievalGuard answers one verdict per item, in order.");
         }
 
-        return verdicts;
+        var result = new RetrievalVerdict[rows.Count];
+        for (var i = 0; i < rows.Count; i++)
+        {
+            result[i] = verdicts[i];
+            if (verdicts[i].Block)
+                LogBlocked(logger, rows[i].Source, rows[i].Id, verdicts[i].RiskScore);
+        }
+
+        return result;
     }
 
     /// <summary>
-    /// Guards a flat result list: <paramref name="read"/> says what the pipeline sees of an item,
+    /// Guards a flat result list: <paramref name="read"/> says what the guard sees of an item,
     /// <paramref name="sanitize"/> returns the item to hand out with the replacement content.
     /// </summary>
     public static async Task<List<T>> ApplyAsync<T>(
-        IRAGSecurityPipeline pipeline,
+        IRetrievalGuard guard,
         ILogger logger,
         IEnumerable<T> items,
-        Func<T, Row> read,
+        Func<T, RetrievedItem> read,
         Func<T, string, T> sanitize,
         CancellationToken cancellationToken)
     {
         var list = items as IReadOnlyList<T> ?? items.ToList();
-        var verdicts = await JudgeAsync(pipeline, logger, list.Select(read).ToList(), cancellationToken);
+        var verdicts = await JudgeAsync(guard, logger, list.Select(read).ToList(), cancellationToken);
 
         var kept = new List<T>(list.Count);
         for (var i = 0; i < list.Count; i++)
@@ -102,10 +79,10 @@ internal static partial class RagSecurityGuard
     /// <see cref="SearchResult"/> rows are built per call, so a sanitized one is rewritten in place.
     /// </summary>
     public static Task<List<SearchResult>> ApplyAsync(
-        IRAGSecurityPipeline pipeline, ILogger logger, List<SearchResult> results, CancellationToken cancellationToken) =>
+        IRetrievalGuard guard, ILogger logger, List<SearchResult> results, CancellationToken cancellationToken) =>
         ApplyAsync(
-            pipeline, logger, results,
-            r => new Row(r.Id, r.Content, r.DocumentId, r.Score),
+            guard, logger, results,
+            r => new RetrievedItem(r.Id, r.Content, r.DocumentId, r.Score),
             (r, content) => { r.Content = content; return r; },
             cancellationToken);
 
@@ -113,10 +90,10 @@ internal static partial class RagSecurityGuard
     /// <see cref="VectorSearchResult"/> rows carry the chunk the store or cache holds — sanitized on a copy.
     /// </summary>
     public static Task<List<VectorSearchResult>> ApplyAsync(
-        IRAGSecurityPipeline pipeline, ILogger logger, IEnumerable<VectorSearchResult> results, CancellationToken cancellationToken) =>
+        IRetrievalGuard guard, ILogger logger, IEnumerable<VectorSearchResult> results, CancellationToken cancellationToken) =>
         ApplyAsync(
-            pipeline, logger, results,
-            r => new Row(r.DocumentChunk.Id, r.DocumentChunk.Content, r.DocumentChunk.DocumentId, r.Score),
+            guard, logger, results,
+            r => new RetrievedItem(r.DocumentChunk.Id, r.DocumentChunk.Content, r.DocumentChunk.DocumentId, r.Score),
             (r, content) => new VectorSearchResult
             {
                 DocumentChunk = r.DocumentChunk.WithContent(content),
@@ -127,6 +104,6 @@ internal static partial class RagSecurityGuard
             },
             cancellationToken);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "RAG security pipeline blocked document '{DocumentId}' (chunk '{ChunkId}', risk score {RiskScore:F2}) from search results")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Retrieval guard blocked document '{DocumentId}' (chunk '{ChunkId}', risk score {RiskScore:F2}) from search results")]
     private static partial void LogBlocked(ILogger logger, string documentId, string chunkId, double riskScore);
 }

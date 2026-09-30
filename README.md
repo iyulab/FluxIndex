@@ -76,7 +76,9 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
 - **MCP server** — `FluxIndex.MCP` is a library: host it with `FluxIndexMcpServer.RunAsync(workspacePath)` or
   `services.AddFluxIndexMcp(...)` (stdio). Tools: `memorize`, `search` (`strategy`: `hybrid` default · `vector` ·
   `keyword`), `status`, `unmemorize`. Embedding is local LMSupply (`.vault/config.json` `embedding.model`).
-- **RAG security** (opt-in) — register a `FluxGuard.Remote` `IRAGSecurityPipeline`; every `Retriever` search
+- **RAG security** (opt-in) — add `FluxIndex.Integrations.FluxGuard`, register a `FluxGuard.Remote`
+  `IRAGSecurityPipeline` and call `services.AddFluxGuardRetrievalGuard()` (or register your own `IRetrievalGuard`);
+  every `Retriever` search
   (`SearchAsync` in both forms, `HybridSearchAsync`, `KeywordSearchAsync`, `FindSimilarAsync`, `SearchQuantizedAsync`,
   `SearchWithRerankAsync`) and every context search (`SearchAsync`, `HybridSearchAsync`, `HybridSearchV2Async`,
   `AdaptiveSearchAsync`, `AdaptiveSearchWithStrategyAsync`, `SmallToBigSearchAsync` — primary and context chunks alike)
@@ -243,6 +245,7 @@ for the tool parameters and embedding configuration.
 | **FluxIndex.Providers.LMSupply** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Providers.LMSupply.svg)](https://www.nuget.org/packages/FluxIndex.Providers.LMSupply/) | Local embedding, reranking and text completion (LMSupply — no API key) |
 | **FluxIndex.Providers.OpenAI** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Providers.OpenAI.svg)](https://www.nuget.org/packages/FluxIndex.Providers.OpenAI/) | OpenAI-compatible embedding and reranking |
 | **FluxIndex.Integrations.FluxImprover** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Integrations.FluxImprover.svg)](https://www.nuget.org/packages/FluxIndex.Integrations.FluxImprover/) | LLM-based chunk quality enhancement (`AddFluxImproverIntegration`) |
+| **FluxIndex.Integrations.FluxGuard** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Integrations.FluxGuard.svg)](https://www.nuget.org/packages/FluxIndex.Integrations.FluxGuard/) | RAG security — search results checked by a FluxGuard `IRAGSecurityPipeline` (`AddFluxGuardRetrievalGuard`) |
 | **FluxIndex.MCP** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.MCP.svg)](https://www.nuget.org/packages/FluxIndex.MCP/) | Model Context Protocol server library (`FluxIndexMcpServer.RunAsync`, `AddFluxIndexMcp`) — see [MCP Server](#mcp-server) |
 
 > **Moved:** File-to-vector synchronization (formerly `FluxIndex.Extensions.FileVault`) was extracted to the **[FluxFeed](https://github.com/iyulab/FluxFeed)** repository in 0.16.0. Install `FluxFeed` for git-like file tracking / folder-monitoring document ingestion; it feeds into FluxIndex.

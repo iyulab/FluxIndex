@@ -6,7 +6,7 @@
   <!-- Microsoft.Extensions Packages - .NET 10.0 -->
   <!-- Only packages directly referenced in *.csproj files -->
   <ItemGroup>
-    <!-- FluxGuard (opt-in RAG security pipeline — see FluxIndex.SDK.Retriever) -->
+    <!-- FluxGuard (opt-in RAG security — FluxIndex.Integrations.FluxGuard) -->
     <PackageVersion Include="FluxGuard.Remote" Version="0.18.1" />
     <!-- Caching -->
     <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="10.0.12" />
