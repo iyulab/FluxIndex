@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using FluxIndex.Core.Application.Utilities;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.Entities;
 
@@ -36,7 +37,7 @@ internal static class StoredGraphConversions
     /// <see cref="JsonElement"/> of kind String - equal to nothing the build compares it with. Entity
     /// identity reads <c>"subtype"</c> from here; left as a <see cref="JsonElement"/>, every stored
     /// node would carry no subtype at all and a re-index would write a second node beside each one.
-    /// Primitives are unwrapped; objects and arrays are kept as the element they are.
+    /// Converted by <see cref="MetadataValues"/>, the conversion every chunk-metadata read uses.
     /// </summary>
     internal static IReadOnlyDictionary<string, object> ToPlainProperties(IReadOnlyDictionary<string, object> stored)
     {
@@ -48,31 +49,8 @@ internal static class StoredGraphConversions
         var plain = new Dictionary<string, object>(stored.Count);
         foreach (var (key, value) in stored)
         {
-            if (value is not JsonElement element)
-            {
-                plain[key] = value;
-                continue;
-            }
-
-            switch (element.ValueKind)
-            {
-                case JsonValueKind.String:
-                    plain[key] = element.GetString()!;
-                    break;
-                case JsonValueKind.Number:
-                    plain[key] = element.TryGetInt64(out var integer) ? integer : element.GetDouble();
-                    break;
-                case JsonValueKind.True:
-                case JsonValueKind.False:
-                    plain[key] = element.GetBoolean();
-                    break;
-                case JsonValueKind.Null:
-                case JsonValueKind.Undefined:
-                    break;
-                default:
-                    plain[key] = element;
-                    break;
-            }
+            if (MetadataValues.ToPlain(value) is { } converted)
+                plain[key] = converted;
         }
         return plain;
     }

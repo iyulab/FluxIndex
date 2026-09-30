@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Text.Json;
 using System.Globalization;
+using FluxIndex.Core.Application.Utilities;
 
 namespace FluxIndex.Storage.SQLite;
 
@@ -62,7 +63,7 @@ public partial class SQLiteVecDbContext : DbContext
                 .HasConversion(
                     new ValueConverter<Dictionary<string, object>, string>(
                         v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
-                        v => JsonSerializer.Deserialize<Dictionary<string, object>>(v, (JsonSerializerOptions?)null) ?? new Dictionary<string, object>()
+                        v => MetadataValues.Deserialize(v)
                     ),
                     new ValueComparer<Dictionary<string, object>>(
                         (l, r) => JsonSerializer.Serialize(l) == JsonSerializer.Serialize(r),
@@ -116,7 +117,7 @@ public partial class SQLiteVecDbContext : DbContext
                 .HasConversion(
                     new ValueConverter<Dictionary<string, object>, string>(
                         v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
-                        v => JsonSerializer.Deserialize<Dictionary<string, object>>(v, (JsonSerializerOptions?)null) ?? new Dictionary<string, object>()
+                        v => MetadataValues.Deserialize(v)
                     ),
                     new ValueComparer<Dictionary<string, object>>(
                         (l, r) => JsonSerializer.Serialize(l) == JsonSerializer.Serialize(r),

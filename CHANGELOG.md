@@ -7,6 +7,23 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [Unreleased]
 
+### Fixed
+- **Chunk metadata reads back as plain values on every store and every hybrid leg.** SQLite, sqlite-vec, the SQLite
+  and PostgreSQL quantized stores, PostgreSQL and the relational keyword index returned `JsonElement` values, so
+  `Metadata["file_name"] is string` was false for a keyword-only hybrid hit (and on those stores generally) while the
+  same chunk from another store read true. Strings are `string`, integers `long`, other numbers `double`, booleans
+  `bool`, arrays `List<object?>`, objects `Dictionary<string, object>`; a JSON `null` member is left out. Graph entity
+  and relationship properties follow the same rule, and an integral property no longer reads back as `double`.
+- **`ChunkQuality`, `ChunkMetadata` and chunk relationships survive a store round trip on every store.** sqlite-vec, the
+  SQLite and PostgreSQL quantized stores and Qdrant never wrote them, and the SQLite and PostgreSQL stores wrote them
+  but dropped them on read (their restore accepted only `string` values). New contract facts run on every store.
+
+### Added
+- **`MetadataValues`** (`FluxIndex.Core.Application.Utilities`): `Deserialize(json)` and `ToPlain(...)`, the conversion
+  every store read uses; for a custom store or keyword index that keeps metadata as JSON.
+- **`MetadataHelper.ForStorage(chunk)` and `MetadataHelper.RestoreRichMetadata(chunk)`**: the write and read halves of a
+  chunk's rich state, for a custom `IVectorStore` that does not derive from `VectorStoreBase`.
+
 ---
 
 ## [0.64.0] - 2026-09-30

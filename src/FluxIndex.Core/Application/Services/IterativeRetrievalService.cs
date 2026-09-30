@@ -13,6 +13,7 @@ using FluxIndex.Core.Domain.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Globalization;
+using FluxIndex.Core.Application.Utilities;
 
 namespace FluxIndex.Core.Application.Services;
 
@@ -945,7 +946,7 @@ public partial class IterativeRetrievalService : IIterativeRetrievalService
                 var inputStr = trimmed.Substring("INPUT:".Length).Trim();
                 try
                 {
-                    input = JsonSerializer.Deserialize<Dictionary<string, object>>(inputStr) ?? input;
+                    input = MetadataValues.Deserialize(inputStr);
                 }
                 catch (JsonException ex)
                 {

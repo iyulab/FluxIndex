@@ -421,10 +421,9 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable, IDispos
             payload[$"prop_{prop.Key}"] = prop.Value?.ToString() ?? string.Empty;
         }
 
-        // Add metadata
-        if (chunk.Metadata != null)
+        // Add metadata (with the chunk's rich state serialized into the reserved keys)
         {
-            foreach (var meta in chunk.Metadata)
+            foreach (var meta in MetadataHelper.ForStorage(chunk))
             {
                 payload[$"meta_{meta.Key}"] = meta.Value?.ToString() ?? string.Empty;
             }
@@ -631,7 +630,7 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable, IDispos
         chunk.Metadata["tokenCount"] = chunk.TokenCount;
 
         // Restore rich metadata (ChunkMetadata, ChunkQuality, ChunkRelationships)
-        RestoreRichMetadataStatic(chunk);
+        MetadataHelper.RestoreRichMetadata(chunk);
 
         return chunk;
     }
@@ -794,31 +793,11 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable, IDispos
         chunk.Metadata["tokenCount"] = chunk.TokenCount;
 
         // Restore rich metadata (ChunkMetadata, ChunkQuality, ChunkRelationships)
-        RestoreRichMetadataStatic(chunk);
+        MetadataHelper.RestoreRichMetadata(chunk);
 
         return chunk;
     }
 
-    private static void RestoreRichMetadataStatic(DocumentChunk chunk)
-    {
-        if (chunk.Metadata == null)
-            return;
-
-        var chunkMetadata = MetadataHelper.DeserializeChunkMetadata(chunk.Metadata);
-        if (chunkMetadata != null)
-            chunk.SetMetadata(chunkMetadata);
-
-        var quality = MetadataHelper.DeserializeChunkQuality(chunk.Metadata);
-        if (quality != null)
-            chunk.SetQuality(quality);
-
-        var relationships = MetadataHelper.DeserializeRelationships(chunk.Metadata);
-        if (relationships != null)
-        {
-            foreach (var rel in relationships)
-                chunk.AddRelationship(rel);
-        }
-    }
 
     #endregion
 

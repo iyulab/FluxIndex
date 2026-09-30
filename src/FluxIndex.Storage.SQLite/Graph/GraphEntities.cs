@@ -1,4 +1,5 @@
 using System.Text.Json;
+using FluxIndex.Core.Application.Utilities;
 
 namespace FluxIndex.Storage.SQLite.Graph;
 
@@ -51,7 +52,7 @@ public class ChunkRelationshipEntity
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public Dictionary<string, object> GetMetadata() =>
-        JsonSerializer.Deserialize<Dictionary<string, object>>(MetadataJson) ?? new Dictionary<string, object>();
+        MetadataValues.Deserialize(MetadataJson);
 
     public void SetMetadata(Dictionary<string, object> metadata) =>
         MetadataJson = JsonSerializer.Serialize(metadata);

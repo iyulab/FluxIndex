@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Pgvector;
 using Pgvector.EntityFrameworkCore;
+using FluxIndex.Core.Application.Utilities;
 
 namespace FluxIndex.Storage.PostgreSQL.EntityGraph;
 
@@ -806,7 +807,7 @@ LIMIT {options.MaxNodes}";
             ChunkIds = JsonSerializer.Deserialize<List<string>>(db.ChunkIdsJson, _jsonOptions) ?? [],
             DocumentIds = JsonSerializer.Deserialize<List<string>>(db.DocumentIdsJson, _jsonOptions) ?? [],
             ExternalLinks = JsonSerializer.Deserialize<Dictionary<string, string>>(db.ExternalLinksJson, _jsonOptions) ?? new(),
-            Properties = JsonSerializer.Deserialize<Dictionary<string, object>>(db.PropertiesJson, _jsonOptions) ?? new(),
+            Properties = MetadataValues.Deserialize(db.PropertiesJson),
             CreatedAt = db.CreatedAt,
             UpdatedAt = db.UpdatedAt
         };
@@ -845,7 +846,7 @@ LIMIT {options.MaxNodes}";
             IsDirectional = db.IsDirectional,
             EvidenceChunkIds = JsonSerializer.Deserialize<List<string>>(db.EvidenceChunkIdsJson, _jsonOptions) ?? [],
             EvidenceTexts = JsonSerializer.Deserialize<List<string>>(db.EvidenceTextsJson, _jsonOptions) ?? [],
-            Properties = JsonSerializer.Deserialize<Dictionary<string, object>>(db.PropertiesJson, _jsonOptions) ?? new(),
+            Properties = MetadataValues.Deserialize(db.PropertiesJson),
             CreatedAt = db.CreatedAt
         };
     }

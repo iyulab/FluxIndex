@@ -429,7 +429,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             var metadataJson = reader.IsDBNull(5) ? null : reader.GetString(5);
             if (!string.IsNullOrEmpty(metadataJson))
             {
-                chunk.Metadata = JsonSerializer.Deserialize<Dictionary<string, object>>(metadataJson);
+                chunk.Metadata = MetadataValues.Deserialize(metadataJson);
             }
 
             chunks[chunk.Id] = chunk;

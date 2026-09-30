@@ -376,7 +376,8 @@ public class PostgreSQLVectorStore : VectorStoreBase
         };
 
         // Include standard fields in metadata for consumer apps (RAG source citation)
-        chunk.Metadata = MetadataHelper.EnsureInitialized(chunk.Metadata);
+        // jsonb comes back as JsonElement values; a consumer reads the same plain values every store returns.
+        chunk.Metadata = MetadataValues.ToPlain(chunk.Metadata);
         chunk.Metadata["chunkIndex"] = chunk.ChunkIndex;
         chunk.Metadata["totalChunks"] = chunk.TotalChunks;
         chunk.Metadata["tokenCount"] = chunk.TokenCount;

@@ -209,6 +209,58 @@ public abstract class VectorStoreChunkIdentityContractSuite
         Assert.Equal("12", actual.Metadata["page"]?.ToString());
     }
 
+    /// <summary>
+    /// Metadata values read back as plain values, never as <c>JsonElement</c>: a consumer reading <c>value is string</c>
+    /// must not depend on which store — or which hybrid leg — returned the chunk. The fact above compares through
+    /// <c>ToString()</c>, which is exactly what let stores with a JSON column hand back <c>JsonElement</c> unnoticed.
+    /// </summary>
+    [Fact]
+    public async Task StoreAsync_MetadataValuesReadBack_AsPlainValues_NotJsonElements()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var store = await CreateStoreAsync();
+        var stored = CreateChunk("meta-1", "plain metadata values", 3);
+        stored.Metadata!["file_name"] = "report.pdf";
+        stored.Metadata["page"] = 12;
+        stored.Metadata["draft"] = true;
+
+        await store.StoreAsync(stored, ct);
+
+        var reads = new[]
+        {
+            await store.GetAsync("meta-1", ct),
+            Assert.Single(await store.GetByDocumentIdAsync("doc-1", ct), c => c.Id == "meta-1"),
+            Assert.Single(await store.SearchAsync(Axis(3), topK: 1, minScore: -1f, cancellationToken: ct)),
+        };
+
+        Assert.All(reads, chunk =>
+        {
+            Assert.NotNull(chunk?.Metadata);
+            Assert.Equal("report.pdf", Assert.IsType<string>(chunk.Metadata["file_name"]));
+            Assert.All(chunk.Metadata, kv => Assert.False(kv.Value is System.Text.Json.JsonElement,
+                $"metadata '{kv.Key}' read back as JsonElement"));
+        });
+    }
+
+    /// <summary>
+    /// The quality a caller sets is kept in a reserved metadata key and restored on read. Its restore accepted only a
+    /// <c>string</c> value, so a store whose JSON column returns <c>JsonElement</c> dropped it without a word.
+    /// </summary>
+    [Fact]
+    public async Task StoreAsync_RoundTripsChunkQuality()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var store = await CreateStoreAsync();
+        var stored = CreateChunk("quality-1", "a chunk with quality", 0);
+        stored.SetQuality(new ChunkQuality { Coherence = 0.8, InformationDensity = 0.6 });
+
+        await store.StoreAsync(stored, ct);
+
+        var read = await store.GetAsync("quality-1", ct);
+        Assert.NotNull(read);
+        Assert.Equal((0.8, 0.6), (read.Quality.Coherence, read.Quality.InformationDensity));
+    }
+
     [Fact]
     public async Task StoreAsync_RoundTripsChunkPosition_OnEveryReadPath()
     {

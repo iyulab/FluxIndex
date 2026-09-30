@@ -3,6 +3,7 @@ using FluxIndex.Core.Application.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using FluxIndex.Core.Application.Utilities;
 
 namespace FluxIndex.Storage.SQLite.Graph;
 
@@ -759,7 +760,7 @@ public partial class SQLiteEntityGraphStore : IGraphStore
             ChunkIds = dbEntity.ChunkIds ?? [],
             DocumentIds = JsonSerializer.Deserialize<List<string>>(dbEntity.DocumentIdsJson, _jsonOptions) ?? [],
             ExternalLinks = JsonSerializer.Deserialize<Dictionary<string, string>>(dbEntity.ExternalLinksJson, _jsonOptions) ?? new(),
-            Properties = JsonSerializer.Deserialize<Dictionary<string, object>>(dbEntity.PropertiesJson, _jsonOptions) ?? new(),
+            Properties = MetadataValues.Deserialize(dbEntity.PropertiesJson),
             CreatedAt = dbEntity.CreatedAt
         };
     }
@@ -797,7 +798,7 @@ public partial class SQLiteEntityGraphStore : IGraphStore
             IsDirectional = dbRel.IsDirectional,
             EvidenceChunkIds = JsonSerializer.Deserialize<List<string>>(dbRel.EvidenceChunkIdsJson, _jsonOptions) ?? [],
             EvidenceTexts = JsonSerializer.Deserialize<List<string>>(dbRel.EvidenceTextsJson, _jsonOptions) ?? [],
-            Properties = JsonSerializer.Deserialize<Dictionary<string, object>>(dbRel.PropertiesJson, _jsonOptions) ?? new(),
+            Properties = MetadataValues.Deserialize(dbRel.PropertiesJson),
             CreatedAt = dbRel.CreatedAt
         };
     }

@@ -457,42 +457,14 @@ public abstract partial class VectorStoreBase : IVectorStore
     /// </summary>
     protected virtual void PrepareMetadata(DocumentChunk chunk)
     {
-        chunk.Metadata = MetadataHelper.EnsureInitialized(chunk.Metadata);
-        MetadataHelper.AddStandardFields(chunk.Metadata, chunk);
-
-        // Serialize rich metadata for storage
-        MetadataHelper.SerializeChunkMetadata(chunk.Metadata, chunk.ChunkMetadata);
-        MetadataHelper.SerializeChunkQuality(chunk.Metadata, chunk.Quality);
-        MetadataHelper.SerializeRelationships(chunk.Metadata, chunk.Relationships);
+        MetadataHelper.AddStandardFields(MetadataHelper.ForStorage(chunk), chunk);
     }
 
     /// <summary>
     /// Restores rich metadata (ChunkMetadata, ChunkQuality, ChunkRelationships) from stored metadata.
     /// Call this in GetCoreAsync and SearchCoreAsync implementations to restore full chunk state.
     /// </summary>
-    protected virtual void RestoreRichMetadata(DocumentChunk chunk)
-    {
-        if (chunk.Metadata == null)
-            return;
-
-        // Restore ChunkMetadata
-        var chunkMetadata = MetadataHelper.DeserializeChunkMetadata(chunk.Metadata);
-        if (chunkMetadata != null)
-            chunk.SetMetadata(chunkMetadata);
-
-        // Restore ChunkQuality
-        var quality = MetadataHelper.DeserializeChunkQuality(chunk.Metadata);
-        if (quality != null)
-            chunk.SetQuality(quality);
-
-        // Restore ChunkRelationships
-        var relationships = MetadataHelper.DeserializeRelationships(chunk.Metadata);
-        if (relationships != null)
-        {
-            foreach (var rel in relationships)
-                chunk.AddRelationship(rel);
-        }
-    }
+    protected virtual void RestoreRichMetadata(DocumentChunk chunk) => MetadataHelper.RestoreRichMetadata(chunk);
 
     /// <summary>
     /// Helper for computing cosine similarity (delegates to VectorMathUtilities).

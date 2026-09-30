@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Microsoft.Extensions.Options;
 using System.Text.Json;
+using FluxIndex.Core.Application.Utilities;
 
 namespace FluxIndex.Storage.SQLite;
 
@@ -62,7 +63,7 @@ public class SQLiteDbContext : DbContext
                 .HasConversion(
                     new ValueConverter<Dictionary<string, object>, string>(
                         v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
-                        v => JsonSerializer.Deserialize<Dictionary<string, object>>(v, (JsonSerializerOptions?)null) ?? new Dictionary<string, object>()
+                        v => MetadataValues.Deserialize(v)
                     ),
                     new ValueComparer<Dictionary<string, object>>(
                         (l, r) => JsonSerializer.Serialize(l) == JsonSerializer.Serialize(r),

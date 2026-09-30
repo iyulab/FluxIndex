@@ -30,6 +30,13 @@ public class DocumentChunk
     public DateTime CreatedAt { get; set; }
     public int TokenCount { get; set; }
     public float? Score { get; set; }
+    /// <summary>
+    /// Caller metadata. On read every store returns plain values: a string is a <see cref="string"/>, an integral
+    /// number a <see cref="long"/>, any other number a <see cref="double"/>, a boolean a <see cref="bool"/>, an array a
+    /// <c>List&lt;object?&gt;</c> and an object a <c>Dictionary&lt;string, object&gt;</c>, never a
+    /// <see cref="System.Text.Json.JsonElement"/> (see <see cref="Application.Utilities.MetadataValues"/>). The Qdrant
+    /// store keeps every value as text, so there a number or boolean reads back as its string.
+    /// </summary>
     public Dictionary<string, object>? Metadata { get; set; }
 
     // Modern RAG 메타데이터

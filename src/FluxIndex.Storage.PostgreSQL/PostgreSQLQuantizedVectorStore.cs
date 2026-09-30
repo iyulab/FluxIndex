@@ -339,7 +339,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
         entity.Content = chunk.Content;
         entity.Embedding = chunk.Embedding != null ? new Vector(chunk.Embedding) : new Vector(Array.Empty<float>());
         entity.TokenCount = chunk.TokenCount;
-        entity.Metadata = chunk.Metadata ?? new Dictionary<string, object>();
+        entity.Metadata = MetadataHelper.ForStorage(chunk);
 
         var hadChanges = context.ChangeTracker.HasChanges();
         var written = await context.SaveChangesAsync(cancellationToken);
@@ -392,7 +392,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
             Content = chunk.Content,
             Embedding = chunk.Embedding != null ? new Vector(chunk.Embedding) : new Vector(Array.Empty<float>()),
             TokenCount = chunk.TokenCount,
-            Metadata = WithOriginalId(chunk.Metadata, chunkId)
+            Metadata = WithOriginalId(MetadataHelper.ForStorage(chunk), chunkId)
         };
 
         context.Vectors.Add(entity);
@@ -425,7 +425,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
                 Content = chunk.Content,
                 Embedding = chunk.Embedding != null ? new Vector(chunk.Embedding) : new Vector(Array.Empty<float>()),
                 TokenCount = chunk.TokenCount,
-                Metadata = WithOriginalId(chunk.Metadata, chunkId)
+                Metadata = WithOriginalId(MetadataHelper.ForStorage(chunk), chunkId)
             };
 
             context.Vectors.Add(entity);
@@ -621,7 +621,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
     private static async Task UpsertRowAsync(FluxIndexQuantizedDbContext context, DocumentChunk chunk, string chunkId, Guid storageId, CancellationToken cancellationToken)
     {
         var embedding = chunk.Embedding != null ? new Vector(chunk.Embedding) : new Vector(Array.Empty<float>());
-        var metadata = WithOriginalId(chunk.Metadata, chunkId);
+        var metadata = WithOriginalId(MetadataHelper.ForStorage(chunk), chunkId);
 
         // AsTracking: NoTracking context — the edit below must be what SaveChanges writes, and a
         // fresh Add for an already-tracked key throws before the database is even reached.
@@ -739,35 +739,16 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
         };
 
         // Include standard fields in metadata for consumer apps (RAG source citation)
-        chunk.Metadata = MetadataHelper.EnsureInitialized(chunk.Metadata);
+        // jsonb comes back as JsonElement values; a consumer reads the same plain values every store returns.
+        chunk.Metadata = MetadataValues.ToPlain(chunk.Metadata);
         chunk.Metadata["chunkIndex"] = chunk.ChunkIndex;
         chunk.Metadata["totalChunks"] = chunk.TotalChunks;
         chunk.Metadata["tokenCount"] = chunk.TokenCount;
 
-        RestoreRichMetadataStatic(chunk);
+        MetadataHelper.RestoreRichMetadata(chunk);
         return chunk;
     }
 
-    private static void RestoreRichMetadataStatic(DocumentChunk chunk)
-    {
-        if (chunk.Metadata == null)
-            return;
-
-        var chunkMetadata = MetadataHelper.DeserializeChunkMetadata(chunk.Metadata);
-        if (chunkMetadata != null)
-            chunk.SetMetadata(chunkMetadata);
-
-        var quality = MetadataHelper.DeserializeChunkQuality(chunk.Metadata);
-        if (quality != null)
-            chunk.SetQuality(quality);
-
-        var relationships = MetadataHelper.DeserializeRelationships(chunk.Metadata);
-        if (relationships != null)
-        {
-            foreach (var rel in relationships)
-                chunk.AddRelationship(rel);
-        }
-    }
 
     private static float ConvertDistanceToScore(float distance)
     {

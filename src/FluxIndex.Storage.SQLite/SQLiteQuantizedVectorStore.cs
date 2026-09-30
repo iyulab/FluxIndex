@@ -352,7 +352,7 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
         entity.Content = chunk.Content;
         entity.Embedding = chunk.Embedding?.ToArray();
         entity.TokenCount = chunk.TokenCount;
-        entity.Metadata = chunk.Metadata ?? new Dictionary<string, object>();
+        entity.Metadata = MetadataHelper.ForStorage(chunk);
 
         var hadChanges = context.ChangeTracker.HasChanges();
         var written = await context.SaveChangesAsync(cancellationToken);
@@ -655,7 +655,7 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
         existing.Content = chunk.Content;
         existing.Embedding = chunk.Embedding?.ToArray();
         existing.TokenCount = chunk.TokenCount;
-        existing.Metadata = chunk.Metadata ?? new Dictionary<string, object>();
+        existing.Metadata = MetadataHelper.ForStorage(chunk);
 
         var staleQuantized = await context.QuantizedVectors
             .AsTracking()
@@ -677,7 +677,7 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
             Content = chunk.Content,
             Embedding = chunk.Embedding?.ToArray(),
             TokenCount = chunk.TokenCount,
-            Metadata = chunk.Metadata ?? new Dictionary<string, object>()
+            Metadata = MetadataHelper.ForStorage(chunk)
         };
     }
 
@@ -731,30 +731,10 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
         chunk.Metadata["totalChunks"] = chunk.TotalChunks;
         chunk.Metadata["tokenCount"] = chunk.TokenCount;
 
-        RestoreRichMetadataStatic(chunk);
+        MetadataHelper.RestoreRichMetadata(chunk);
         return chunk;
     }
 
-    private static void RestoreRichMetadataStatic(DocumentChunk chunk)
-    {
-        if (chunk.Metadata == null)
-            return;
-
-        var chunkMetadata = MetadataHelper.DeserializeChunkMetadata(chunk.Metadata);
-        if (chunkMetadata != null)
-            chunk.SetMetadata(chunkMetadata);
-
-        var quality = MetadataHelper.DeserializeChunkQuality(chunk.Metadata);
-        if (quality != null)
-            chunk.SetQuality(quality);
-
-        var relationships = MetadataHelper.DeserializeRelationships(chunk.Metadata);
-        if (relationships != null)
-        {
-            foreach (var rel in relationships)
-                chunk.AddRelationship(rel);
-        }
-    }
 
     private static float ConvertDistanceToScore(float distance)
     {

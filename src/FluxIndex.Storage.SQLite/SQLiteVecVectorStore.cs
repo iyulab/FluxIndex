@@ -153,7 +153,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                             TotalChunks = chunk.TotalChunks,
                             Content = chunk.Content,
                             TokenCount = chunk.TokenCount,
-                            Metadata = chunk.Metadata ?? new Dictionary<string, object>(),
+                            Metadata = MetadataHelper.ForStorage(chunk),
                             CreatedAt = DateTime.UtcNow
                         });
                     }
@@ -164,7 +164,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                         existing.TotalChunks = chunk.TotalChunks;
                         existing.Content = chunk.Content;
                         existing.TokenCount = chunk.TokenCount;
-                        existing.Metadata = chunk.Metadata ?? new Dictionary<string, object>();
+                        existing.Metadata = MetadataHelper.ForStorage(chunk);
                     }
 
                     // 2. 벡터 저장 (sqlite-vec 사용) — delete + insert, so an update replaces the vector.
@@ -319,7 +319,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                         TotalChunks = chunk.TotalChunks,
                         Content = chunk.Content,
                         TokenCount = chunk.TokenCount,
-                        Metadata = chunk.Metadata ?? new Dictionary<string, object>(),
+                        Metadata = MetadataHelper.ForStorage(chunk),
                         CreatedAt = DateTime.UtcNow
                     };
                     entities.Add(entity);
@@ -562,7 +562,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 Metadata = chunkEntity.Metadata
             };
 
-            RestoreRichMetadataStatic(chunk);
+            MetadataHelper.RestoreRichMetadata(chunk);
             return chunk;
         }
         catch (Exception ex)
@@ -796,7 +796,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 if (!metaMap.TryGetValue(chunkId, out var meta))
                     continue;
 
-                var metadata = JsonSerializer.Deserialize<Dictionary<string, object>>(meta.Meta) ?? new Dictionary<string, object>();
+                var metadata = MetadataValues.Deserialize(meta.Meta);
 
                 // Metadata filter — without this the native path leaks chunks across filter
                 // scope (e.g. other tenants). Same match semantics as VectorStoreBase.
@@ -1078,8 +1078,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             while (await reader.ReadAsync(cancellationToken) && results.Count < topK)
             {
                 var metadataJson = reader.GetString(5);
-                var metadata = JsonSerializer.Deserialize<Dictionary<string, object>>(metadataJson)
-                    ?? new Dictionary<string, object>();
+                var metadata = MetadataValues.Deserialize(metadataJson);
 
                 if (hasFilter && !ftsMatcher.Matches(reader.GetString(1), metadata))
                     continue;
@@ -1557,7 +1556,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
 
                     entity.Content = chunk.Content;
                     entity.TokenCount = chunk.TokenCount;
-                    entity.Metadata = chunk.Metadata ?? new Dictionary<string, object>();
+                    entity.Metadata = MetadataHelper.ForStorage(chunk);
 
                     // 벡터 업데이트
                     if (chunk.Embedding != null && _sqliteVecAvailable)
@@ -1917,24 +1916,4 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         }
     }
 
-    private static void RestoreRichMetadataStatic(DocumentChunk chunk)
-    {
-        if (chunk.Metadata == null)
-            return;
-
-        var chunkMetadata = MetadataHelper.DeserializeChunkMetadata(chunk.Metadata);
-        if (chunkMetadata != null)
-            chunk.SetMetadata(chunkMetadata);
-
-        var quality = MetadataHelper.DeserializeChunkQuality(chunk.Metadata);
-        if (quality != null)
-            chunk.SetQuality(quality);
-
-        var relationships = MetadataHelper.DeserializeRelationships(chunk.Metadata);
-        if (relationships != null)
-        {
-            foreach (var rel in relationships)
-                chunk.AddRelationship(rel);
-        }
-    }
 }

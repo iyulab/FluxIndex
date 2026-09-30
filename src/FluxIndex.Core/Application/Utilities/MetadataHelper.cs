@@ -59,6 +59,48 @@ public static class MetadataHelper
     }
 
     /// <summary>
+    /// The metadata dictionary a store persists for <paramref name="chunk"/>: initialized, with the chunk's rich state
+    /// (<see cref="DocumentChunk.ChunkMetadata"/>, <see cref="DocumentChunk.Quality"/>, <see cref="DocumentChunk.Relationships"/>)
+    /// serialized into the reserved keys, where <see cref="RestoreRichMetadata"/> reads it back. Every store's write path
+    /// goes through here; a store that skipped it lost that state on every round trip while its read path looked for it.
+    /// </summary>
+    public static Dictionary<string, object> ForStorage(DocumentChunk chunk)
+    {
+        ArgumentNullException.ThrowIfNull(chunk);
+        chunk.Metadata = EnsureInitialized(chunk.Metadata);
+        SerializeChunkMetadata(chunk.Metadata, chunk.ChunkMetadata);
+        SerializeChunkQuality(chunk.Metadata, chunk.Quality);
+        SerializeRelationships(chunk.Metadata, chunk.Relationships);
+        return chunk.Metadata;
+    }
+
+    /// <summary>
+    /// Restores the rich state <see cref="ForStorage"/> wrote (ChunkMetadata, ChunkQuality, ChunkRelationships) onto a
+    /// chunk a store has just materialized.
+    /// </summary>
+    public static void RestoreRichMetadata(DocumentChunk chunk)
+    {
+        ArgumentNullException.ThrowIfNull(chunk);
+        if (chunk.Metadata == null)
+            return;
+
+        var chunkMetadata = DeserializeChunkMetadata(chunk.Metadata);
+        if (chunkMetadata != null)
+            chunk.SetMetadata(chunkMetadata);
+
+        var quality = DeserializeChunkQuality(chunk.Metadata);
+        if (quality != null)
+            chunk.SetQuality(quality);
+
+        var relationships = DeserializeRelationships(chunk.Metadata);
+        if (relationships != null)
+        {
+            foreach (var rel in relationships)
+                chunk.AddRelationship(rel);
+        }
+    }
+
+    /// <summary>
     /// Adds standard RAG fields to metadata if not already present.
     /// This ensures consistent metadata across all storage providers.
     /// </summary>
@@ -196,7 +238,7 @@ public static class MetadataHelper
         if (metadata == null || !metadata.TryGetValue(ReservedKeys.ChunkMetadata, out var value))
             return null;
 
-        if (value is string json && !string.IsNullOrEmpty(json))
+        if (MetadataValues.ToPlain(value) is string json && !string.IsNullOrEmpty(json))
         {
             try
             {
@@ -236,7 +278,7 @@ public static class MetadataHelper
         if (metadata == null || !metadata.TryGetValue(ReservedKeys.ChunkQuality, out var value))
             return null;
 
-        if (value is string json && !string.IsNullOrEmpty(json))
+        if (MetadataValues.ToPlain(value) is string json && !string.IsNullOrEmpty(json))
         {
             try
             {
@@ -276,7 +318,7 @@ public static class MetadataHelper
         if (metadata == null || !metadata.TryGetValue(ReservedKeys.ChunkRelationships, out var value))
             return null;
 
-        if (value is string json && !string.IsNullOrEmpty(json))
+        if (MetadataValues.ToPlain(value) is string json && !string.IsNullOrEmpty(json))
         {
             try
             {
