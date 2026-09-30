@@ -6,6 +6,8 @@
   <!-- Microsoft.Extensions Packages - .NET 10.0 -->
   <!-- Only packages directly referenced in *.csproj files -->
   <ItemGroup>
+    <!-- Roslyn: compiles the README's C# blocks in the SDK tests -->
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
     <!-- FluxGuard (opt-in RAG security — FluxIndex.Integrations.FluxGuard) -->
     <PackageVersion Include="FluxGuard.Remote" Version="0.18.1" />
     <!-- Caching -->

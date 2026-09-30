@@ -53,6 +53,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   set of documents with a given chunk list. Both have default implementations, so custom stores keep compiling.
 
 ### Fixed
+- **README examples compile against this release** — a test compiles every C# block of the README and runs the Quick Start.
 - **`Retriever.GetDocumentAsync` returned every chunk twice** (the record's own chunks plus the store's) and grew the
   stored record on each call. It now returns a copy carrying the store's chunks.
 
