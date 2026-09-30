@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.66.0] - Unreleased
+## [0.66.0] - 2026-10-01
 
 ### Changed
 - **Breaking: indexing a document id that is already indexed replaces the document.** `Indexer.IndexDocumentAsync`
