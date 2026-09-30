@@ -150,6 +150,12 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         }
     }
 
+    /// <summary>
+    /// Runs on every connection right after it opens, before any command — the place for per-connection settings.
+    /// </summary>
+    protected virtual Task OnConnectionOpenedAsync(DbConnection connection, CancellationToken cancellationToken)
+        => Task.CompletedTask;
+
     /// <summary>Creates and opens a connection.</summary>
     protected async Task<DbConnection> OpenConnectionAsync(CancellationToken cancellationToken)
     {
@@ -157,6 +163,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         try
         {
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+            await OnConnectionOpenedAsync(connection, cancellationToken).ConfigureAwait(false);
             return connection;
         }
         catch

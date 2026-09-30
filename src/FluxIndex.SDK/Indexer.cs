@@ -164,16 +164,23 @@ public partial class Indexer
         Dictionary<string, object>? metadata = null,
         CancellationToken cancellationToken = default)
     {
+        return await IndexDocumentAsync(CreateChunkedDocument(content, documentId, metadata), cancellationToken);
+    }
+
+    /// <summary>
+    /// The document the string overloads index: <paramref name="content"/> split by the configured chunk size, every
+    /// chunk carrying <paramref name="metadata"/>.
+    /// </summary>
+    private Document CreateChunkedDocument(string content, string documentId, Dictionary<string, object>? metadata)
+    {
         if (string.IsNullOrWhiteSpace(content))
             throw new ArgumentException("Content cannot be empty", nameof(content));
         if (string.IsNullOrWhiteSpace(documentId))
             throw new ArgumentException("Document ID cannot be empty", nameof(documentId));
 
-        // Create Document entity
         var document = Document.Create(documentId);
         document.Content = content;
 
-        // Add metadata if provided
         if (metadata != null)
         {
             foreach (var (key, value) in metadata)
@@ -197,8 +204,7 @@ public partial class Indexer
             document.AddChunk(chunk);
         }
 
-        // Use existing indexing logic
-        return await IndexDocumentAsync(document, cancellationToken);
+        return document;
     }
 
     /// <summary>
@@ -276,288 +282,9 @@ public partial class Indexer
 
         try
         {
-            // Phase 3: 이벤트 발생 - 인덱싱 시작
-            var chunks = document.Chunks.ToList();
-            CarryFileNameIntoChunks(document, chunks);
-            IndexingStarted?.Invoke(this, new IndexingStartedEventArgs
-            {
-                JobId = jobId,
-                DocumentId = document.Id,
-                TotalChunks = chunks.Count,
-                StartedAt = startTime
-            });
-
-            // Phase 3: 진행률 보고 - 초기화
-            progress?.Report(new IndexingProgress
-            {
-                JobId = jobId,
-                DocumentId = document.Id,
-                CurrentChunk = 0,
-                TotalChunks = chunks.Count,
-                ProgressPercentage = 0,
-                Status = "Starting",
-                Message = "Saving document metadata"
-            });
-
-            // Phase 3: AI 메타데이터 추출 (선택적)
-            // Builder-level defaults (IndexerOptions.CustomOptions) overlaid by this call's
-            // IndexingOptions.CustomOptions — the caller's keys win. Before 0.38.0 the per-call
-            // options were discarded here, so `IndexingOptions.WithAIMetadataExtraction(...)`
-            // passed to this method had no effect.
-            var indexingOptions = ResolveMetadataOptions(options);
-
-            // Extraction asked for with nothing to extract with is a configuration error, not an optional step to skip.
-            if (_metadataExtractor == null && indexingOptions.ShouldExtractAIMetadata())
-            {
-                throw new InvalidOperationException(
-                    "AI metadata extraction was requested, but no metadata extractor is configured. " +
-                    "Register an IMetadataExtractor via ConfigureServices(...) on the builder.");
-            }
-
-            if (_metadataExtractor != null && !string.IsNullOrEmpty(document.Content))
-            {
-                try
-                {
-                    LogExtractingAIMetadata(_logger, document.Id);
-
-                    if (indexingOptions.ShouldExtractAIMetadata())
-                    {
-                        var schema = indexingOptions.GetMetadataSchema();
-                        var strategy = indexingOptions.GetMetadataExtractionStrategy();
-                        var minConfidence = indexingOptions.GetMinMetadataConfidence();
-                        var customPrompt = indexingOptions.GetCustomMetadataPrompt();
-
-                        var extractionOptions = new AIMetadataExtractionOptions
-                        {
-                            Strategy = strategy,
-                            MinConfidence = minConfidence,
-                            CustomPrompt = customPrompt
-                        };
-
-                        // 캐시 키 생성
-                        var cacheKey = _metadataExtractor.GenerateCacheKey(document.Content, schema);
-
-                        // AI 메타데이터 추출 (캐싱 지원)
-                        var extractedMetadata = await _metadataExtractor.ExtractWithCacheAsync(
-                            document.Content,
-                            cacheKey,
-                            schema,
-                            extractionOptions,
-                            cancellationToken);
-
-                        // IndexingResult에 메타데이터 저장 (Document.Metadata에 포함)
-                        document.SetMetadata("AIExtractedMetadata", extractedMetadata);
-                        document.SetMetadata("MetadataExtractionMethod", extractedMetadata.ExtractionMethod);
-                        document.SetMetadata("MetadataConfidence", extractedMetadata.OverallConfidence);
-
-                        LogAIMetadataExtracted(_logger, extractedMetadata.OverallConfidence, extractedMetadata.Topics.Length);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogFailedToExtractAIMetadata(_logger, ex, document.Id);
-                    // Continue indexing without AI metadata
-                }
-            }
-
-            // Save document metadata. An upsert: indexing an id again stores the new version of the record too.
-            await _documentRepository.UpdateAsync(document, cancellationToken);
-            await InvalidateReadCachesAsync(document.Id, cancellationToken);
-
-            // Process chunks
-            if (chunks.Count == 0)
-            {
-                LogDocumentHasNoChunks(_logger, document.Id);
-
-                // A version with no chunks still replaces the previous one.
-                await ReplaceChunksAsync(replacedDocumentIds, [], cancellationToken);
-                await InvalidateReadCachesAsync(document.Id, cancellationToken);
-
-                IndexingCompleted?.Invoke(this, new IndexingCompletedEventArgs
-                {
-                    JobId = jobId,
-                    DocumentId = document.Id,
-                    ChunksIndexed = 0,
-                    TotalChunks = 0,
-                    Success = true,
-                    ProcessingTime = DateTime.UtcNow - startTime
-                });
-
-                return document.Id;
-            }
-
-            // Phase 3: 진행률 보고 - 청크 처리 시작
-            progress?.Report(new IndexingProgress
-            {
-                JobId = jobId,
-                DocumentId = document.Id,
-                CurrentChunk = 0,
-                TotalChunks = chunks.Count,
-                ProgressPercentage = 10,
-                Status = "Processing",
-                Message = $"Processing {chunks.Count} chunks"
-            });
-
-            // Convert to Entity chunks first with automatic oversized chunk splitting
-            LogConvertingChunksToEntities(_logger, chunks.Count);
-
-            var entityChunks = new List<DocumentChunkEntity>();
-            var chunkIndex = 0;
-
-            foreach (var chunk in chunks)
-            {
-                var estimatedTokens = chunk.Content.Length / 4;
-                LogChunkDetails(_logger, chunk.ChunkIndex, chunks.Count, chunk.Content.Length, estimatedTokens);
-
-                // SAFETY: Split oversized chunks automatically (WebFlux chunking bug workaround)
-                if (estimatedTokens > 8000)
-                {
-                    LogChunkExceedsTokenLimit(_logger, chunk.ChunkIndex, estimatedTokens);
-
-                    // Split into chunks of ~2000 tokens (8000 chars) to be safe
-                    const int maxChunkChars = 8000; // ~2000 tokens
-                    var content = chunk.Content;
-                    var subChunkCount = (int)Math.Ceiling((double)content.Length / maxChunkChars);
-
-                    for (int i = 0; i < subChunkCount; i++)
-                    {
-                        var startPos = i * maxChunkChars;
-                        var length = Math.Min(maxChunkChars, content.Length - startPos);
-                        var subContent = content.Substring(startPos, length);
-
-                        // Positions are renumbered after the loop once the final count is known; the
-                        // factory only needs a total the running index cannot exceed.
-                        var subChunk = DocumentChunkEntity.Create(
-                            chunk.DocumentId,
-                            subContent,
-                            chunkIndex,
-                            chunkIndex + 1
-                        );
-                        chunkIndex++;
-                        // Copy metadata if exists
-                        if (chunk.Metadata != null)
-                        {
-                            subChunk.Metadata = chunk.Metadata;
-                        }
-
-                        entityChunks.Add(subChunk);
-                        LogSubChunkCreated(_logger, i + 1, subChunkCount, subContent.Length, subContent.Length / 4);
-                    }
-
-                    LogSplitOversizedChunk(_logger, chunk.ChunkIndex, subChunkCount);
-                }
-                else
-                {
-                    // Normal sized chunk - add directly
-                    entityChunks.Add(chunk);
-                    chunkIndex++;
-                }
-            }
-
-            LogTotalEntityChunksAfterSplitting(_logger, entityChunks.Count, chunks.Count);
-
-            // A split changed the positions of everything after it: renumber so ChunkIndex/TotalChunks
-            // describe the chunks that are actually stored (the sub-chunks were created with a
-            // provisional total, and the caller's untouched chunks still carry the pre-split count).
-            if (entityChunks.Count != chunks.Count)
-            {
-                for (var i = 0; i < entityChunks.Count; i++)
-                {
-                    entityChunks[i].ChunkIndex = i;
-                    entityChunks[i].TotalChunks = entityChunks.Count;
-                }
-            }
-
-            // Phase 3: 진행률 보고 - 임베딩 생성
-            progress?.Report(new IndexingProgress
-            {
-                JobId = jobId,
-                DocumentId = document.Id,
-                CurrentChunk = 0,
-                TotalChunks = chunks.Count,
-                ProgressPercentage = 30,
-                Status = "Embedding",
-                Message = "Generating embeddings"
-            });
-
-            LogCallingGenerateEmbeddings(_logger, entityChunks.Count);
-
-            // Generate embeddings for entity chunks
-            var embeddedEntityChunks = await GenerateEmbeddingsAsync(entityChunks, cancellationToken);
-
-            // Phase 3: 진행률 보고 - 벡터 스토어 저장
-            progress?.Report(new IndexingProgress
-            {
-                JobId = jobId,
-                DocumentId = document.Id,
-                CurrentChunk = chunks.Count,
-                TotalChunks = chunks.Count,
-                ProgressPercentage = 80,
-                Status = "Storing",
-                Message = "Storing in vector store"
-            });
-
-            // Store in vector store, replacing the previous version of the document. The keyword index follows in
-            // step: without it the hybrid keyword leg is only ever populated by whatever searched in this process,
-            // so it is empty after a restart and hybrid silently degrades to vector-only.
-            await ReplaceChunksAsync(replacedDocumentIds, embeddedEntityChunks, cancellationToken);
-            await InvalidateReadCachesAsync(document.Id, cancellationToken);
-
-            // GraphRAG 인덱싱 (자동 감지)
-            // - options?.EnableGraphRAG == null: 서비스가 등록되어 있으면 자동 활성화
-            // - options?.EnableGraphRAG == true: 강제 활성화
-            // - options?.EnableGraphRAG == false: 강제 비활성화
-            var enableGraphRAG = options?.EnableGraphRAG ?? (_graphRAGService != null);
-            if (enableGraphRAG)
-            {
-                if (_graphRAGService == null)
-                {
-                    throw new InvalidOperationException(
-                        "GraphRAG is enabled but IGraphRAGService is not registered. " +
-                        "Register it with ConfigureServices(s => s.AddFullGraphRAG()), or register your own IGraphRAGService.");
-                }
-
-                progress?.Report(new IndexingProgress
-                {
-                    JobId = jobId,
-                    DocumentId = document.Id,
-                    CurrentChunk = chunks.Count,
-                    TotalChunks = chunks.Count,
-                    ProgressPercentage = 90,
-                    Status = "GraphRAG",
-                    Message = "Building GraphRAG index"
-                });
-
-                LogBuildingGraphRAGIndex(_logger, document.Id);
-                await _graphRAGService.BuildIndexAsync(embeddedEntityChunks, options?.GraphRAGOptions, cancellationToken);
-                LogGraphRAGIndexBuilt(_logger, document.Id);
-            }
-
-            // Phase 3: 진행률 보고 - 완료
-            progress?.Report(new IndexingProgress
-            {
-                JobId = jobId,
-                DocumentId = document.Id,
-                CurrentChunk = chunks.Count,
-                TotalChunks = chunks.Count,
-                ProgressPercentage = 100,
-                Status = "Completed",
-                Message = "Indexing completed successfully"
-            });
-
-            LogSuccessfullyIndexedDocument(_logger, document.Id, chunks.Count);
-
-            // Phase 3: 이벤트 발생 - 인덱싱 완료
-            IndexingCompleted?.Invoke(this, new IndexingCompletedEventArgs
-            {
-                JobId = jobId,
-                DocumentId = document.Id,
-                ChunksIndexed = chunks.Count,
-                TotalChunks = chunks.Count,
-                Success = true,
-                ProcessingTime = DateTime.UtcNow - startTime
-            });
-
+            var prepared = await PrepareDocumentAsync(document, options, progress, jobId, startTime, cancellationToken);
+            await WriteDocumentsAsync([prepared], replacedDocumentIds, options, progress, cancellationToken);
+            CompleteDocument(prepared, progress);
             return document.Id;
         }
         catch (Exception ex)
@@ -575,6 +302,411 @@ public partial class Indexer
 
             throw;
         }
+    }
+
+    /// <summary>
+    /// A document ready to be written: metadata extracted, oversized chunks split, chunks embedded.
+    /// </summary>
+    private sealed class PreparedDocument
+    {
+        public required Document Document { get; init; }
+        public required string JobId { get; init; }
+        public required DateTime StartTime { get; init; }
+        public required List<DocumentChunkEntity> Chunks { get; init; }
+    }
+
+    /// <summary>
+    /// Everything indexing does to one document before anything is written. Nothing here touches a store, so a batch
+    /// prepares each document on its own (a failure is that document's) and then writes them together.
+    /// </summary>
+    private async Task<PreparedDocument> PrepareDocumentAsync(
+        Document document,
+        IndexingOptions? options,
+        IProgress<IndexingProgress>? progress,
+        string jobId,
+        DateTime startTime,
+        CancellationToken cancellationToken)
+    {
+        // Phase 3: 이벤트 발생 - 인덱싱 시작
+        var chunks = document.Chunks.ToList();
+        CarryFileNameIntoChunks(document, chunks);
+        IndexingStarted?.Invoke(this, new IndexingStartedEventArgs
+        {
+            JobId = jobId,
+            DocumentId = document.Id,
+            TotalChunks = chunks.Count,
+            StartedAt = startTime
+        });
+
+        // Phase 3: 진행률 보고 - 초기화
+        progress?.Report(new IndexingProgress
+        {
+            JobId = jobId,
+            DocumentId = document.Id,
+            CurrentChunk = 0,
+            TotalChunks = chunks.Count,
+            ProgressPercentage = 0,
+            Status = "Starting",
+            Message = "Saving document metadata"
+        });
+
+        // A configuration error is found before anything is written, not after the chunks are stored.
+        if (options?.EnableGraphRAG == true && _graphRAGService == null)
+        {
+            throw new InvalidOperationException(
+                "GraphRAG is enabled but IGraphRAGService is not registered. " +
+                "Register it with ConfigureServices(s => s.AddFullGraphRAG()), or register your own IGraphRAGService.");
+        }
+
+        // Phase 3: AI 메타데이터 추출 (선택적)
+        // Builder-level defaults (IndexerOptions.CustomOptions) overlaid by this call's
+        // IndexingOptions.CustomOptions — the caller's keys win. Before 0.38.0 the per-call
+        // options were discarded here, so `IndexingOptions.WithAIMetadataExtraction(...)`
+        // passed to this method had no effect.
+        var indexingOptions = ResolveMetadataOptions(options);
+
+        // Extraction asked for with nothing to extract with is a configuration error, not an optional step to skip.
+        if (_metadataExtractor == null && indexingOptions.ShouldExtractAIMetadata())
+        {
+            throw new InvalidOperationException(
+                "AI metadata extraction was requested, but no metadata extractor is configured. " +
+                "Register an IMetadataExtractor via ConfigureServices(...) on the builder.");
+        }
+
+        if (_metadataExtractor != null && !string.IsNullOrEmpty(document.Content))
+        {
+            try
+            {
+                LogExtractingAIMetadata(_logger, document.Id);
+
+                if (indexingOptions.ShouldExtractAIMetadata())
+                {
+                    var schema = indexingOptions.GetMetadataSchema();
+                    var strategy = indexingOptions.GetMetadataExtractionStrategy();
+                    var minConfidence = indexingOptions.GetMinMetadataConfidence();
+                    var customPrompt = indexingOptions.GetCustomMetadataPrompt();
+
+                    var extractionOptions = new AIMetadataExtractionOptions
+                    {
+                        Strategy = strategy,
+                        MinConfidence = minConfidence,
+                        CustomPrompt = customPrompt
+                    };
+
+                    // 캐시 키 생성
+                    var cacheKey = _metadataExtractor.GenerateCacheKey(document.Content, schema);
+
+                    // AI 메타데이터 추출 (캐싱 지원)
+                    var extractedMetadata = await _metadataExtractor.ExtractWithCacheAsync(
+                        document.Content,
+                        cacheKey,
+                        schema,
+                        extractionOptions,
+                        cancellationToken);
+
+                    // IndexingResult에 메타데이터 저장 (Document.Metadata에 포함)
+                    document.SetMetadata("AIExtractedMetadata", extractedMetadata);
+                    document.SetMetadata("MetadataExtractionMethod", extractedMetadata.ExtractionMethod);
+                    document.SetMetadata("MetadataConfidence", extractedMetadata.OverallConfidence);
+
+                    LogAIMetadataExtracted(_logger, extractedMetadata.OverallConfidence, extractedMetadata.Topics.Length);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogFailedToExtractAIMetadata(_logger, ex, document.Id);
+                // Continue indexing without AI metadata
+            }
+        }
+
+        if (chunks.Count == 0)
+        {
+            LogDocumentHasNoChunks(_logger, document.Id);
+            return new PreparedDocument { Document = document, JobId = jobId, StartTime = startTime, Chunks = [] };
+        }
+
+        // Phase 3: 진행률 보고 - 청크 처리 시작
+        progress?.Report(new IndexingProgress
+        {
+            JobId = jobId,
+            DocumentId = document.Id,
+            CurrentChunk = 0,
+            TotalChunks = chunks.Count,
+            ProgressPercentage = 10,
+            Status = "Processing",
+            Message = $"Processing {chunks.Count} chunks"
+        });
+
+        // Convert to Entity chunks first with automatic oversized chunk splitting
+        LogConvertingChunksToEntities(_logger, chunks.Count);
+
+        var entityChunks = new List<DocumentChunkEntity>();
+        var chunkIndex = 0;
+
+        foreach (var chunk in chunks)
+        {
+            var estimatedTokens = chunk.Content.Length / 4;
+            LogChunkDetails(_logger, chunk.ChunkIndex, chunks.Count, chunk.Content.Length, estimatedTokens);
+
+            // SAFETY: Split oversized chunks automatically (WebFlux chunking bug workaround)
+            if (estimatedTokens > 8000)
+            {
+                LogChunkExceedsTokenLimit(_logger, chunk.ChunkIndex, estimatedTokens);
+
+                // Split into chunks of ~2000 tokens (8000 chars) to be safe
+                const int maxChunkChars = 8000; // ~2000 tokens
+                var content = chunk.Content;
+                var subChunkCount = (int)Math.Ceiling((double)content.Length / maxChunkChars);
+
+                for (int i = 0; i < subChunkCount; i++)
+                {
+                    var startPos = i * maxChunkChars;
+                    var length = Math.Min(maxChunkChars, content.Length - startPos);
+                    var subContent = content.Substring(startPos, length);
+
+                    // Positions are renumbered after the loop once the final count is known; the
+                    // factory only needs a total the running index cannot exceed.
+                    var subChunk = DocumentChunkEntity.Create(
+                        chunk.DocumentId,
+                        subContent,
+                        chunkIndex,
+                        chunkIndex + 1
+                    );
+                    chunkIndex++;
+                    // Copy metadata if exists
+                    if (chunk.Metadata != null)
+                    {
+                        subChunk.Metadata = chunk.Metadata;
+                    }
+
+                    entityChunks.Add(subChunk);
+                    LogSubChunkCreated(_logger, i + 1, subChunkCount, subContent.Length, subContent.Length / 4);
+                }
+
+                LogSplitOversizedChunk(_logger, chunk.ChunkIndex, subChunkCount);
+            }
+            else
+            {
+                // Normal sized chunk - add directly
+                entityChunks.Add(chunk);
+                chunkIndex++;
+            }
+        }
+
+        LogTotalEntityChunksAfterSplitting(_logger, entityChunks.Count, chunks.Count);
+
+        // A split changed the positions of everything after it: renumber so ChunkIndex/TotalChunks
+        // describe the chunks that are actually stored (the sub-chunks were created with a
+        // provisional total, and the caller's untouched chunks still carry the pre-split count).
+        if (entityChunks.Count != chunks.Count)
+        {
+            for (var i = 0; i < entityChunks.Count; i++)
+            {
+                entityChunks[i].ChunkIndex = i;
+                entityChunks[i].TotalChunks = entityChunks.Count;
+            }
+        }
+
+        // Phase 3: 진행률 보고 - 임베딩 생성
+        progress?.Report(new IndexingProgress
+        {
+            JobId = jobId,
+            DocumentId = document.Id,
+            CurrentChunk = 0,
+            TotalChunks = chunks.Count,
+            ProgressPercentage = 30,
+            Status = "Embedding",
+            Message = "Generating embeddings"
+        });
+
+        LogCallingGenerateEmbeddings(_logger, entityChunks.Count);
+
+        // Generate embeddings for entity chunks
+        var embeddedEntityChunks = await GenerateEmbeddingsAsync(entityChunks, cancellationToken);
+        return new PreparedDocument { Document = document, JobId = jobId, StartTime = startTime, Chunks = embeddedEntityChunks };
+    }
+
+    /// <summary>
+    /// Writes prepared documents as the new versions of <paramref name="replacedDocumentIds"/>: the records, then every
+    /// chunk through one replacement per store, then GraphRAG per document. One call is one transaction per store
+    /// (where the store has transactions), however many documents it carries.
+    /// </summary>
+    private async Task WriteDocumentsAsync(
+        IReadOnlyList<PreparedDocument> documents,
+        IReadOnlyCollection<string> replacedDocumentIds,
+        IndexingOptions? options,
+        IProgress<IndexingProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        var chunks = documents.SelectMany(d => d.Chunks).ToList();
+        if (progress != null && documents.Count == 1 && chunks.Count > 0)
+        {
+            progress.Report(new IndexingProgress
+            {
+                JobId = documents[0].JobId,
+                DocumentId = documents[0].Document.Id,
+                CurrentChunk = chunks.Count,
+                TotalChunks = chunks.Count,
+                ProgressPercentage = 80,
+                Status = "Storing",
+                Message = "Storing in vector store"
+            });
+        }
+
+        // Records are upserts: indexing an id again stores the new version of the record too.
+        foreach (var prepared in documents)
+            await _documentRepository.UpdateAsync(prepared.Document, cancellationToken);
+
+        // Store in vector store, replacing the previous versions. The keyword index follows in step: without it the
+        // hybrid keyword leg is only ever populated by whatever searched in this process, so it is empty after a
+        // restart and hybrid silently degrades to vector-only.
+        await ReplaceChunksAsync(replacedDocumentIds, chunks, cancellationToken);
+
+        foreach (var documentId in replacedDocumentIds)
+            await InvalidateReadCachesAsync(documentId, cancellationToken);
+
+        // GraphRAG 인덱싱 (자동 감지)
+        // - options?.EnableGraphRAG == null: 서비스가 등록되어 있으면 자동 활성화
+        // - options?.EnableGraphRAG == true: 강제 활성화 (미등록은 준비 단계에서 거부)
+        // - options?.EnableGraphRAG == false: 강제 비활성화
+        var enableGraphRAG = options?.EnableGraphRAG ?? (_graphRAGService != null);
+        if (!enableGraphRAG || _graphRAGService == null)
+            return;
+
+        foreach (var prepared in documents.Where(d => d.Chunks.Count > 0))
+        {
+            progress?.Report(new IndexingProgress
+            {
+                JobId = prepared.JobId,
+                DocumentId = prepared.Document.Id,
+                CurrentChunk = prepared.Chunks.Count,
+                TotalChunks = prepared.Chunks.Count,
+                ProgressPercentage = 90,
+                Status = "GraphRAG",
+                Message = "Building GraphRAG index"
+            });
+
+            LogBuildingGraphRAGIndex(_logger, prepared.Document.Id);
+            await _graphRAGService.BuildIndexAsync(prepared.Chunks, options?.GraphRAGOptions, cancellationToken);
+            LogGraphRAGIndexBuilt(_logger, prepared.Document.Id);
+        }
+    }
+
+    /// <summary>Reports a written document as completed.</summary>
+    private void CompleteDocument(PreparedDocument prepared, IProgress<IndexingProgress>? progress)
+    {
+        var count = prepared.Chunks.Count;
+
+        // Phase 3: 진행률 보고 - 완료
+        progress?.Report(new IndexingProgress
+        {
+            JobId = prepared.JobId,
+            DocumentId = prepared.Document.Id,
+            CurrentChunk = count,
+            TotalChunks = count,
+            ProgressPercentage = 100,
+            Status = "Completed",
+            Message = "Indexing completed successfully"
+        });
+
+        LogSuccessfullyIndexedDocument(_logger, prepared.Document.Id, count);
+
+        // Phase 3: 이벤트 발생 - 인덱싱 완료
+        IndexingCompleted?.Invoke(this, new IndexingCompletedEventArgs
+        {
+            JobId = prepared.JobId,
+            DocumentId = prepared.Document.Id,
+            ChunksIndexed = count,
+            TotalChunks = count,
+            Success = true,
+            ProcessingTime = DateTime.UtcNow - prepared.StartTime
+        });
+    }
+
+    /// <summary>
+    /// Prepares every document on its own (up to <paramref name="parallelism"/> at a time), then writes all prepared
+    /// documents at once. A document that fails preparation is reported through <paramref name="onDocumentDone"/> and
+    /// left out; the write is one replacement per store (see <see cref="WriteDocumentsAsync"/>) and throws to the caller.
+    /// When one id appears more than once, the last occurrence is the version written.
+    /// </summary>
+    /// <returns>The ids written, in input order.</returns>
+    private async Task<List<string>> IndexDocumentsCoreAsync(
+        List<Document> documents,
+        IndexingOptions? options,
+        int parallelism,
+        Action<Document, Exception?>? onDocumentDone,
+        CancellationToken cancellationToken)
+    {
+        var prepared = new PreparedDocument?[documents.Count];
+        using var gate = new SemaphoreSlim(Math.Max(1, parallelism));
+
+        await Task.WhenAll(documents.Select(async (document, index) =>
+        {
+            await gate.WaitAsync(cancellationToken);
+            var jobId = Guid.NewGuid().ToString();
+            try
+            {
+                LogIndexingDocument(_logger, document.Id, jobId);
+                prepared[index] = await PrepareDocumentAsync(document, options, null, jobId, DateTime.UtcNow, cancellationToken);
+                onDocumentDone?.Invoke(document, null);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            {
+                LogFailedToIndexDocument(_logger, ex, document.Id);
+                IndexingFailed?.Invoke(this, new IndexingFailedEventArgs
+                {
+                    JobId = jobId,
+                    DocumentId = document.Id,
+                    ErrorMessage = ex.Message,
+                    Exception = ex
+                });
+                onDocumentDone?.Invoke(document, ex);
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }));
+
+        // The last occurrence of an id is its version; earlier ones would otherwise be stored beside it.
+        var lastIndexById = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (var i = 0; i < prepared.Length; i++)
+        {
+            if (prepared[i] is { } p)
+                lastIndexById[p.Document.Id] = i;
+        }
+
+        var toWrite = prepared
+            .Where((p, i) => p != null && lastIndexById[p.Document.Id] == i)
+            .Select(p => p!)
+            .ToList();
+        if (toWrite.Count == 0)
+            return [];
+
+        try
+        {
+            await WriteDocumentsAsync(toWrite, lastIndexById.Keys.ToList(), options, null, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            foreach (var p in toWrite)
+            {
+                LogFailedToIndexDocument(_logger, ex, p.Document.Id);
+                IndexingFailed?.Invoke(this, new IndexingFailedEventArgs
+                {
+                    JobId = p.JobId,
+                    DocumentId = p.Document.Id,
+                    ErrorMessage = ex.Message,
+                    Exception = ex
+                });
+            }
+            throw;
+        }
+
+        foreach (var p in toWrite)
+            CompleteDocument(p, null);
+
+        return prepared.Where(p => p != null).Select(p => p!.Document.Id).ToList();
     }
 
     /// <summary>
@@ -679,72 +811,36 @@ public partial class Indexer
             FailedItems = 0
         });
 
-        var semaphore = new SemaphoreSlim(parallelism);
         var completedCount = 0;
         var successCount = 0;
         var failedCount = 0;
         var lockObject = new object();
 
-        var tasks = documentList.Select(async doc =>
+        var results = await IndexDocumentsCoreAsync(documentList, null, parallelism, (doc, error) =>
         {
-            await semaphore.WaitAsync(cancellationToken);
-            try
-            {
-                var result = await IndexDocumentAsync(doc, cancellationToken);
+            if (error != null)
+                LogFailedToIndexDocumentInBatch(_logger, error, doc.Id, batchId);
 
-                // Phase 3: 진행률 업데이트 (성공)
-                lock (lockObject)
+            lock (lockObject)
+            {
+                completedCount++;
+                if (error == null) successCount++; else failedCount++;
+
+                progress?.Report(new BatchProgress
                 {
-                    completedCount++;
-                    successCount++;
-
-                    progress?.Report(new BatchProgress
-                    {
-                        BatchId = batchId,
-                        CurrentItem = completedCount,
-                        TotalItems = totalDocuments,
-                        ProgressPercentage = (float)completedCount / totalDocuments * 100,
-                        Status = "Processing",
-                        Message = $"Indexed document {doc.Id} ({completedCount}/{totalDocuments})",
-                        SuccessfulItems = successCount,
-                        FailedItems = failedCount
-                    });
-                }
-
-                return result;
+                    BatchId = batchId,
+                    CurrentItem = completedCount,
+                    TotalItems = totalDocuments,
+                    ProgressPercentage = (float)completedCount / totalDocuments * 100,
+                    Status = "Processing",
+                    Message = error == null
+                        ? $"Prepared document {doc.Id} ({completedCount}/{totalDocuments})"
+                        : $"Failed to index document {doc.Id} ({completedCount}/{totalDocuments})",
+                    SuccessfulItems = successCount,
+                    FailedItems = failedCount
+                });
             }
-            catch (Exception ex)
-            {
-                LogFailedToIndexDocumentInBatch(_logger, ex, doc.Id, batchId);
-
-                // Phase 3: 진행률 업데이트 (실패)
-                lock (lockObject)
-                {
-                    completedCount++;
-                    failedCount++;
-
-                    progress?.Report(new BatchProgress
-                    {
-                        BatchId = batchId,
-                        CurrentItem = completedCount,
-                        TotalItems = totalDocuments,
-                        ProgressPercentage = (float)completedCount / totalDocuments * 100,
-                        Status = "Processing",
-                        Message = $"Failed to index document {doc.Id} ({completedCount}/{totalDocuments})",
-                        SuccessfulItems = successCount,
-                        FailedItems = failedCount
-                    });
-                }
-
-                return string.Empty; // Return empty for failed documents
-            }
-            finally
-            {
-                semaphore.Release();
-            }
-        });
-
-        var results = await Task.WhenAll(tasks);
+        }, cancellationToken);
 
         // Phase 3: 진행률 보고 - 완료
         progress?.Report(new BatchProgress
@@ -771,7 +867,7 @@ public partial class Indexer
             TotalProcessingTime = DateTime.UtcNow - startTime
         });
 
-        return results.Where(r => !string.IsNullOrEmpty(r));
+        return results;
     }
 
     /// <summary>
@@ -1444,11 +1540,27 @@ public partial class Indexer
     }
 
     /// <summary>
-    /// 여러 문서를 인덱싱하고 메타데이터를 자동 추출 (배치 모드)
+    /// Indexes many documents given as text, writing them together: each document is split, its metadata extracted (when
+    /// <paramref name="options"/> asks for it) and its chunks embedded on its own, then every document is written through
+    /// one replacement per store — one transaction each on the sqlite-vec store and the relational keyword indexes.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A document that cannot be prepared (empty content or id, an extraction or embedding failure) is counted in
+    /// <see cref="BatchIndexingResult.FailedDocuments"/> with its error in <see cref="BatchIndexingResult.Results"/>, and
+    /// the rest are written. The write is one replacement per store: the sqlite-vec store and a relational keyword index
+    /// each hold either the whole batch or none of it. When it throws, calling again with the same documents is safe — it
+    /// replaces them again rather than adding a second copy.
+    /// </para>
+    /// <para>
+    /// As with <see cref="IndexDocumentAsync(string, string, Dictionary{string, object}?, CancellationToken)"/>, an id that
+    /// is already indexed is replaced. When an id appears more than once in the batch, its last occurrence is written.
+    /// No AI service is needed — without one this is the bulk path of a keyword-only index.
+    /// </para>
+    /// </remarks>
     /// <param name="documents">문서 목록 (DocumentId, Content, Metadata)</param>
-    /// <param name="options">인덱싱 옵션</param>
-    /// <param name="progressCallback">진행 상황 콜백</param>
+    /// <param name="options">인덱싱 옵션 — 문서마다 같은 옵션이 적용된다</param>
+    /// <param name="progressCallback">진행 상황 콜백 (문서 준비마다 한 번, 끝에 한 번)</param>
     /// <param name="cancellationToken">취소 토큰</param>
     /// <returns>배치 인덱싱 결과</returns>
     public async Task<BatchIndexingResult> IndexDocumentsBatchAsync(
@@ -1483,49 +1595,55 @@ public partial class Indexer
             Message = "Starting batch document indexing..."
         });
 
-        for (int i = 0; i < docList.Count; i++)
+        var prepared = new List<Document>(docList.Count);
+        var completed = 0;
+        void Report(string documentId, Exception? error)
         {
-            var (documentId, content, metadata) = docList[i];
-
-            try
+            completed++;
+            if (error == null)
             {
-                // Index document with automatic metadata extraction
-                await IndexDocumentAsync(content, documentId, metadata, cancellationToken);
-
                 result.SuccessfulDocuments++;
-
-                // Report progress
-                progressCallback?.Report(new BatchProgress
-                {
-                    BatchId = result.BatchId,
-                    CurrentItem = i + 1,
-                    TotalItems = docList.Count,
-                    SuccessfulItems = result.SuccessfulDocuments,
-                    FailedItems = result.FailedDocuments,
-                    Status = "Processing",
-                    Message = $"Indexed document {i + 1}/{docList.Count}: {documentId}"
-                });
             }
-            catch (Exception ex)
+            else
             {
-                LogFailedToIndexDocumentWarning(_logger, ex, documentId);
-
+                LogFailedToIndexDocumentWarning(_logger, error, documentId);
                 result.FailedDocuments++;
                 result.Results.Add(new IndexingResult
                 {
                     DocumentId = documentId,
                     Success = false,
-                    Errors = new List<IndexingError>
-                    {
-                        new IndexingError
-                        {
-                            Message = ex.Message,
-                            ErrorCode = "INDEXING_FAILED"
-                        }
-                    }
+                    Errors = [new IndexingError { Message = error.Message, ErrorCode = "INDEXING_FAILED" }]
                 });
             }
+
+            progressCallback?.Report(new BatchProgress
+            {
+                BatchId = result.BatchId,
+                CurrentItem = completed,
+                TotalItems = docList.Count,
+                SuccessfulItems = result.SuccessfulDocuments,
+                FailedItems = result.FailedDocuments,
+                Status = "Processing",
+                Message = error == null
+                    ? $"Prepared document {completed}/{docList.Count}: {documentId}"
+                    : $"Failed to index document {completed}/{docList.Count}: {documentId}"
+            });
         }
+
+        foreach (var (documentId, content, metadata) in docList)
+        {
+            try
+            {
+                prepared.Add(CreateChunkedDocument(content, documentId, metadata));
+            }
+            catch (ArgumentException ex)
+            {
+                Report(documentId, ex);
+            }
+        }
+
+        // Preparation (metadata extraction, embedding) runs one document at a time, as the per-document loop did.
+        await IndexDocumentsCoreAsync(prepared, options, parallelism: 1, (doc, error) => Report(doc.Id, error), cancellationToken);
 
         result.TotalProcessingTime = DateTime.UtcNow - startTime;
 

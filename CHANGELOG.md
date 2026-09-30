@@ -24,6 +24,19 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   registered: it used to be keyed on the provider name, so the builder's in-memory fallback never warned and Qdrant
   did.
 
+- **The batch APIs write once.** `IndexDocumentsBatchAsync` and `IndexBatchAsync` prepare each document on its own
+  (split, metadata, embeddings) and then write all of them through one replacement per store, instead of indexing one
+  document at a time. On a file-backed SQLite index without an embedder, 2,000 short documents went from about
+  2.6 ms to about 0.4 ms per document.
+  - A document that cannot be prepared is still a per-document failure (`FailedDocuments`, `IndexingFailed`); a
+    failure of the write itself now throws, for the batch. Calling again with the same documents is safe.
+  - An id given twice in one batch is written as its last occurrence.
+  - `IndexDocumentsBatchAsync` now applies its `options` argument (it was accepted and ignored).
+- **SQLite keyword index: `synchronous=NORMAL` on a database in WAL mode**, the setting the sqlite-vec store already
+  applies to the same file. Each commit no longer waits for a sync of the log.
+- `IndexingOptions.EnableGraphRAG = true` without a registered `IGraphRAGService` throws before anything is written
+  (it used to throw after the chunks were stored).
+
 ### Added
 - **`IVectorStore.ReplaceDocumentsAsync` / `IKeywordSearchService.ReplaceDocumentsAsync`**: replace every chunk of a
   set of documents with a given chunk list. Both have default implementations, so custom stores keep compiling.

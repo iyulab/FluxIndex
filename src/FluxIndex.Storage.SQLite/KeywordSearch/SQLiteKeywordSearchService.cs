@@ -66,6 +66,36 @@ public sealed class SQLiteKeywordSearchService : RelationalKeywordSearchService
     /// <inheritdoc />
     protected override DbConnection CreateConnection() => new SqliteConnection(_connectionString);
 
+    /// <summary>Whether the database file is in WAL mode, once seen; until then every connection asks.</summary>
+    private volatile bool _walConfirmed;
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// A file in WAL mode gets <c>synchronous=NORMAL</c> on each connection — the setting the sqlite-vec store applies to
+    /// the same file. With the default (<c>FULL</c>) every commit waits for a sync of the log, which made indexing one
+    /// document at a time cost about 2 ms per document in this index alone. In WAL mode <c>NORMAL</c> keeps the database
+    /// consistent through a crash of the application; a power loss can drop the last commits. A file in another journal
+    /// mode is left at its default, where <c>NORMAL</c> would be weaker.
+    /// </remarks>
+    protected override async Task OnConnectionOpenedAsync(DbConnection connection, CancellationToken cancellationToken)
+    {
+        if (IsInMemory)
+            return;
+
+        await using var command = connection.CreateCommand();
+        if (!_walConfirmed)
+        {
+            command.CommandText = "PRAGMA journal_mode";
+            var mode = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) as string;
+            if (!string.Equals(mode, "wal", StringComparison.OrdinalIgnoreCase))
+                return;
+            _walConfirmed = true;
+        }
+
+        command.CommandText = "PRAGMA synchronous=NORMAL";
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     /// <inheritdoc />
     protected override async Task OnInitializingAsync(CancellationToken cancellationToken)
     {
