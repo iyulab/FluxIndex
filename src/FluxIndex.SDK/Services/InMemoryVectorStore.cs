@@ -45,7 +45,11 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore, IDisposab
     };
 
     private readonly ConcurrentDictionary<string, (DocumentChunk chunk, float[] embedding)> _chunks = new();
-    private readonly ConcurrentDictionary<string, List<string>> _documentChunks = new();
+    // Document id -> ids of its chunks. Every read and write of this index, and of _chunks together with it, holds
+    // _indexLock: an update is several steps (look up, change the set, drop an empty set), and two callers writing
+    // chunks of one document at once would otherwise lose ids or leave stale ones.
+    private readonly Dictionary<string, HashSet<string>> _documentChunks = new();
+    private readonly object _indexLock = new();
     private readonly string? _persistencePath;
     private readonly bool _autoSave;
     private readonly SemaphoreSlim _persistenceLock = new(1, 1);
@@ -104,28 +108,42 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore, IDisposab
     {
         var embedding = chunk.Embedding ?? Array.Empty<float>();
 
-        if (_chunks.TryGetValue(chunk.Id, out var previous)
-            && !string.IsNullOrEmpty(previous.chunk.DocumentId)
-            && previous.chunk.DocumentId != chunk.DocumentId
-            && _documentChunks.TryGetValue(previous.chunk.DocumentId, out var previousIds))
+        lock (_indexLock)
         {
-            previousIds.Remove(chunk.Id);
-            if (previousIds.Count == 0)
-                _documentChunks.TryRemove(previous.chunk.DocumentId, out _);
+            if (_chunks.TryGetValue(chunk.Id, out var previous)
+                && !string.IsNullOrEmpty(previous.chunk.DocumentId)
+                && previous.chunk.DocumentId != chunk.DocumentId)
+            {
+                RemoveFromIndex(previous.chunk.DocumentId, chunk.Id);
+            }
+
+            _chunks[chunk.Id] = (chunk, embedding);
+
+            if (!string.IsNullOrEmpty(chunk.DocumentId))
+            {
+                AddToIndex(chunk.DocumentId, chunk.Id);
+            }
+        }
+    }
+
+    /// <summary>Files <paramref name="chunkId"/> under <paramref name="documentId"/>. Caller holds <see cref="_indexLock"/>.</summary>
+    private void AddToIndex(string documentId, string chunkId)
+    {
+        if (!_documentChunks.TryGetValue(documentId, out var ids))
+        {
+            ids = new HashSet<string>(StringComparer.Ordinal);
+            _documentChunks[documentId] = ids;
         }
 
-        _chunks[chunk.Id] = (chunk, embedding);
+        ids.Add(chunkId);
+    }
 
-        if (!string.IsNullOrEmpty(chunk.DocumentId))
+    /// <summary>Removes <paramref name="chunkId"/> from <paramref name="documentId"/>, dropping an emptied entry. Caller holds <see cref="_indexLock"/>.</summary>
+    private void RemoveFromIndex(string documentId, string chunkId)
+    {
+        if (_documentChunks.TryGetValue(documentId, out var ids) && ids.Remove(chunkId) && ids.Count == 0)
         {
-            _documentChunks.AddOrUpdate(chunk.DocumentId,
-                new List<string> { chunk.Id },
-                (key, existing) =>
-                {
-                    if (!existing.Contains(chunk.Id))
-                        existing.Add(chunk.Id);
-                    return existing;
-                });
+            _documentChunks.Remove(documentId);
         }
     }
 
@@ -158,47 +176,63 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore, IDisposab
 
     protected override async Task<bool> DeleteCoreAsync(string id, CancellationToken cancellationToken)
     {
-        if (_chunks.TryRemove(id, out var item))
+        bool removed;
+        lock (_indexLock)
         {
-            // Remove from document chunks mapping
-            if (!string.IsNullOrEmpty(item.chunk.DocumentId) &&
-                _documentChunks.TryGetValue(item.chunk.DocumentId, out var chunkIds))
+            removed = _chunks.TryRemove(id, out var item);
+            if (removed && !string.IsNullOrEmpty(item.chunk.DocumentId))
             {
-                chunkIds.Remove(id);
-                if (chunkIds.Count == 0)
-                    _documentChunks.TryRemove(item.chunk.DocumentId, out _);
+                RemoveFromIndex(item.chunk.DocumentId, id);
             }
-
-            await AutoSaveIfEnabledAsync(cancellationToken);
-            return true;
         }
-        return false;
+
+        if (removed)
+        {
+            await AutoSaveIfEnabledAsync(cancellationToken);
+        }
+        return removed;
     }
 
     protected override async Task<bool> UpdateCoreAsync(DocumentChunk chunk, CancellationToken cancellationToken)
     {
-        if (_chunks.ContainsKey(chunk.Id))
+        bool updated;
+        lock (_indexLock)
         {
-            var embedding = chunk.Embedding ?? Array.Empty<float>();
-            _chunks[chunk.Id] = (chunk, embedding);
-
-            await AutoSaveIfEnabledAsync(cancellationToken);
-            return true;
+            updated = _chunks.TryGetValue(chunk.Id, out var previous);
+            if (updated)
+            {
+                _chunks[chunk.Id] = (chunk, chunk.Embedding ?? Array.Empty<float>());
+                if (previous.chunk.DocumentId != chunk.DocumentId)
+                {
+                    if (!string.IsNullOrEmpty(previous.chunk.DocumentId))
+                        RemoveFromIndex(previous.chunk.DocumentId, chunk.Id);
+                    if (!string.IsNullOrEmpty(chunk.DocumentId))
+                        AddToIndex(chunk.DocumentId, chunk.Id);
+                }
+            }
         }
-        return false;
+
+        if (updated)
+        {
+            await AutoSaveIfEnabledAsync(cancellationToken);
+        }
+        return updated;
     }
 
     protected override Task<IEnumerable<DocumentChunk>> GetByDocumentIdCoreAsync(
         string documentId,
         CancellationToken cancellationToken)
     {
-        if (_documentChunks.TryGetValue(documentId, out var chunkIds))
+        lock (_indexLock)
         {
-            var chunks = chunkIds
-                .Where(id => _chunks.ContainsKey(id))
-                .Select(id => _chunks[id].chunk)
-                .ToList();
-            return Task.FromResult<IEnumerable<DocumentChunk>>(chunks);
+            if (_documentChunks.TryGetValue(documentId, out var chunkIds))
+            {
+                var chunks = chunkIds
+                    .Where(id => _chunks.ContainsKey(id))
+                    .Select(id => _chunks[id].chunk)
+                    .ToList();
+                return Task.FromResult<IEnumerable<DocumentChunk>>(chunks);
+            }
         }
         return Task.FromResult<IEnumerable<DocumentChunk>>([]);
     }
@@ -207,17 +241,24 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore, IDisposab
         string documentId,
         CancellationToken cancellationToken)
     {
-        if (_documentChunks.TryRemove(documentId, out var chunkIds))
+        bool removed;
+        lock (_indexLock)
         {
-            foreach (var id in chunkIds)
+            removed = _documentChunks.Remove(documentId, out var chunkIds);
+            if (removed)
             {
-                _chunks.TryRemove(id, out _);
+                foreach (var id in chunkIds!)
+                {
+                    _chunks.TryRemove(id, out _);
+                }
             }
-
-            await AutoSaveIfEnabledAsync(cancellationToken);
-            return true;
         }
-        return false;
+
+        if (removed)
+        {
+            await AutoSaveIfEnabledAsync(cancellationToken);
+        }
+        return removed;
     }
 
     /// <inheritdoc />
@@ -238,18 +279,18 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore, IDisposab
             .ToList();
 
         var deleted = 0;
-        foreach (var id in matchedIds)
+        lock (_indexLock)
         {
-            if (!_chunks.TryRemove(id, out var item))
-                continue;
-
-            deleted++;
-            if (!string.IsNullOrEmpty(item.chunk.DocumentId) &&
-                _documentChunks.TryGetValue(item.chunk.DocumentId, out var chunkIds))
+            foreach (var id in matchedIds)
             {
-                chunkIds.Remove(id);
-                if (chunkIds.Count == 0)
-                    _documentChunks.TryRemove(item.chunk.DocumentId, out _);
+                if (!_chunks.TryRemove(id, out var item))
+                    continue;
+
+                deleted++;
+                if (!string.IsNullOrEmpty(item.chunk.DocumentId))
+                {
+                    RemoveFromIndex(item.chunk.DocumentId, id);
+                }
             }
         }
 
@@ -267,13 +308,19 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore, IDisposab
     /// <inheritdoc />
     public override Task<int> GetDistinctDocumentCountAsync(CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(_documentChunks.Count);
+        lock (_indexLock)
+        {
+            return Task.FromResult(_documentChunks.Count);
+        }
     }
 
     protected override async Task ClearCoreAsync(CancellationToken cancellationToken)
     {
-        _chunks.Clear();
-        _documentChunks.Clear();
+        lock (_indexLock)
+        {
+            _chunks.Clear();
+            _documentChunks.Clear();
+        }
 
         await AutoSaveIfEnabledAsync(cancellationToken);
     }
@@ -373,6 +420,8 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore, IDisposab
                 throw new InvalidDataException("Invalid vector store data format");
             }
 
+            lock (_indexLock)
+            {
             _chunks.Clear();
             _documentChunks.Clear();
 
@@ -395,14 +444,9 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore, IDisposab
 
                 if (!string.IsNullOrEmpty(chunkData.DocumentId))
                 {
-                    _documentChunks.AddOrUpdate(chunkData.DocumentId,
-                        new List<string> { chunkData.Id },
-                        (key, existing) =>
-                        {
-                            existing.Add(chunkData.Id);
-                            return existing;
-                        });
+                    AddToIndex(chunkData.DocumentId, chunkData.Id);
                 }
+            }
             }
         }
         finally

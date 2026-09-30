@@ -35,6 +35,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   also used `timestamp` columns where the model maps `timestamptz`, so every hit failed saving its count; existing
   tables have those columns converted (the stored values are UTC). Every PostgreSQL store now installs the extension
   and reloads the data source's types in one place.
+- **The in-memory vector store keeps its per-document index exact under concurrent writes.** Two callers storing or
+  deleting chunks of one document at once could lose chunk ids or leave stale ones, so `GetByDocumentIdAsync` and
+  `DeleteByDocumentIdAsync` missed chunks. Updating a chunk to another document now also moves it in the index.
 
 ### Changed
 - **Breaking: the EF-backed stores take an `IDbContextFactory<TContext>` instead of a context.** Changed constructors:

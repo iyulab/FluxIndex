@@ -21,6 +21,28 @@ public class InMemoryVectorStoreTests
     }
 
     [Fact]
+    public async Task ConcurrentWritesAndDeletesToOneDocument_KeepTheDocumentIndexExact()
+    {
+        // One document written and pruned by overlapping callers — the per-document chunk index must end up
+        // holding exactly the chunks that survived, no lost adds and no stale ids.
+        var ct = TestContext.Current.CancellationToken;
+        var store = new InMemoryVectorStore();
+        const int callers = 64;
+
+        await Task.WhenAll(Enumerable.Range(0, callers).Select(i => Task.Run(async () =>
+        {
+            var keep = CreateChunk("shared-doc", "ws", [1f, i]);
+            var drop = CreateChunk("shared-doc", "ws", [i, 1f]);
+            await store.StoreAsync(keep, ct);
+            await store.StoreAsync(drop, ct);
+            await store.DeleteAsync(drop.Id, ct);
+        }, ct)));
+
+        (await store.GetByDocumentIdAsync("shared-doc", ct)).Should().HaveCount(callers);
+        (await store.CountAsync(ct)).Should().Be(callers);
+    }
+
+    [Fact]
     public async Task DeleteByFilterAsync_RemovesOnlyMatchingChunks()
     {
         // Arrange

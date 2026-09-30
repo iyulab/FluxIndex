@@ -245,8 +245,9 @@ matters for recall/performance at scale:
 
 **Concurrent callers.** One context can be shared by overlapping callers — a DI singleton serving HTTP requests
 alongside a background indexer. Every EF-backed store (PostgreSQL and SQLite vector stores including sqlite-vec and the
-quantized stores, the graph stores, the semantic caches) opens an EF Core context per operation (0.63.0), so no caller
-needs to serialize calls into the context.
+quantized stores, the graph stores, the semantic caches) opens an EF Core context per operation (0.63.0), and the
+in-memory vector store keeps its per-document index consistent under overlapping writes, so no caller needs to
+serialize calls into the context.
 
 Filter semantics (identical across every store):
 
