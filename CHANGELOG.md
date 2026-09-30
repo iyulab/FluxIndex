@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [Unreleased]
+## [0.65.0] - Unreleased
 
 ### Changed
 - **Breaking: with no embedding service registered, the context is keyword-only instead of indexing random vectors.**
