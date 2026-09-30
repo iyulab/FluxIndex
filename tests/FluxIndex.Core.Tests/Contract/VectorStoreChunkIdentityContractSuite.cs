@@ -68,6 +68,42 @@ public abstract class VectorStoreChunkIdentityContractSuite
     }
 
     [Fact]
+    public async Task ReplaceDocumentsAsync_ReplacesTheDocumentsChunks_AndLeavesOthers()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var store = await CreateStoreAsync();
+        var other = CreateChunk("d2-a", "another document", 3);
+        other.DocumentId = "doc-2";
+        await store.StoreBatchAsync(
+        [
+            CreateChunk("d1-a", "alpha", 0, chunkIndex: 0),
+            CreateChunk("d1-b", "bravo", 1, chunkIndex: 1),
+            other,
+        ], ct);
+
+        var ids = await store.ReplaceDocumentsAsync(["doc-1"], [CreateChunk("d1-new", "charlie", 2, chunkIndex: 0, totalChunks: 1)], ct);
+
+        Assert.Equal(["d1-new"], ids);
+        Assert.Equal(["d1-new"], (await store.GetByDocumentIdAsync("doc-1", ct)).Select(c => c.Id));
+        Assert.Equal(["d2-a"], (await store.GetByDocumentIdAsync("doc-2", ct)).Select(c => c.Id));
+        Assert.Null(await store.GetAsync("d1-a", ct));
+        Assert.Equal("charlie", (await store.GetAsync("d1-new", ct))!.Content);
+    }
+
+    [Fact]
+    public async Task ReplaceDocumentsAsync_WithNoChunks_RemovesTheDocument()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var store = await CreateStoreAsync();
+        await store.StoreBatchAsync([CreateChunk("d1-a", "alpha", 0, chunkIndex: 0)], ct);
+
+        var ids = await store.ReplaceDocumentsAsync(["doc-1"], [], ct);
+
+        Assert.Empty(ids);
+        Assert.Empty(await store.GetByDocumentIdAsync("doc-1", ct));
+    }
+
+    [Fact]
     public async Task StoreBatchAsync_KeepsEveryCallerId_InOrder()
     {
         var ct = TestContext.Current.CancellationToken;

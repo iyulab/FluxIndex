@@ -52,6 +52,40 @@ public abstract class KeywordSearchChunkIdentityContractSuite
     }
 
     [Fact]
+    public async Task ReplaceDocumentsAsync_ReplacesTheDocumentsChunks_AndLeavesOthers()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var service = await CreateServiceAsync();
+        await service.IndexChunksAsync(
+        [
+            CreateChunk("d1-a", "alpha bravo", 0),
+            CreateChunk("d1-b", "charlie delta", 1),
+            CreateChunk("d2-a", "alpha echo", 0, documentId: "doc-2"),
+        ], ct);
+
+        await service.ReplaceDocumentsAsync(["doc-1"], [CreateChunk("d1-new", "foxtrot golf", 0)], ct);
+
+        Assert.Empty(await service.SearchAsync("charlie", cancellationToken: ct));
+        Assert.Equal("d2-a", Assert.Single(await service.SearchAsync("alpha", cancellationToken: ct)).Chunk.Id);
+        Assert.Equal("d1-new", Assert.Single(await service.SearchAsync("foxtrot", cancellationToken: ct)).Chunk.Id);
+        Assert.Equal(["d1-new"], await service.GetChunkIdsByDocumentIdAsync("doc-1", ct));
+        Assert.Equal(2, (await service.GetStatisticsAsync(ct)).TotalDocuments);
+    }
+
+    [Fact]
+    public async Task ReplaceDocumentsAsync_WithNoChunks_RemovesTheDocument()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var service = await CreateServiceAsync();
+        await service.IndexChunksAsync([CreateChunk("d1-a", "alpha bravo", 0)], ct);
+
+        await service.ReplaceDocumentsAsync(["doc-1"], [], ct);
+
+        Assert.Empty(await service.SearchAsync("alpha", cancellationToken: ct));
+        Assert.Equal(0, (await service.GetStatisticsAsync(ct)).TotalDocuments);
+    }
+
+    [Fact]
     public async Task IndexChunksAsync_SameIdTwiceWithTheSameContent_IsOneRow()
     {
         var ct = TestContext.Current.CancellationToken;
