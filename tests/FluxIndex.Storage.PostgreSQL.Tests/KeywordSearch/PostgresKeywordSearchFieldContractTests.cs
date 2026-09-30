@@ -10,7 +10,7 @@ namespace FluxIndex.Storage.PostgreSQL.Tests.KeywordSearch;
 
 /// <summary>
 /// Runs the shared keyword-field contract suite against the PostgreSQL keyword index on a real
-/// container — the backend the consumer that reported the defect (FluxIndex docket #28) runs. One
+/// container. One
 /// container serves every fact; each fact gets a fresh service over a cleared index, because the
 /// field set is constructor state.
 /// </summary>

@@ -58,8 +58,8 @@ public class KeywordLegPersistenceTests : IDisposable
         (reader as IDisposable)?.Dispose();
 
         results.Should().ContainSingle(r => r.Chunk.DocumentId == "doc-ko",
-            "both dogfooding consumers index Korean documents — an English-only fixture would pass " +
-            "while leaving them no better off");
+            "Korean text must be retrievable by a whole token — an English-only fixture would pass " +
+            "without exercising the tokenizer on it");
     }
 
     [Fact]

@@ -22,11 +22,11 @@
 
   </PropertyGroup>
 
-  <!-- xUnit v3 test projects are stand-alone executables (BD-20260829-xunit-v3-pilot).
+  <!-- xUnit v3 test projects are stand-alone executables.
        FluxIndex.LocalSimulation is a console app under tests/ (its own Program.cs entry
-       point), not an xUnit project — OutputType=Exe here would risk the same silent
-       Main-conflict class that killed WebFlux's entire test discovery (cycle-370), so it's
-       excluded from this and the package ItemGroup below. -->
+       point), not an xUnit project — OutputType=Exe plus the xUnit-generated entry point
+       would give it two Main methods, and that conflict silently removes test discovery,
+       so it's excluded from this and the package ItemGroup below. -->
   <PropertyGroup Condition="'$(MSBuildProjectName)' != 'FluxIndex.LocalSimulation'">
     <OutputType>Exe</OutputType>
   </PropertyGroup>
@@ -42,7 +42,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <!-- MTP equivalent of the ecosystem's VSTest blame-hang convention (BD-20260828-07) -->
+    <!-- MTP equivalent of VSTest's blame-hang: a hung test produces a dump instead of a silent job timeout -->
     <PackageReference Include="Microsoft.Testing.Extensions.HangDump" />
     <PackageReference Include="coverlet.MTP" />
     <PackageReference Include="AwesomeAssertions" />

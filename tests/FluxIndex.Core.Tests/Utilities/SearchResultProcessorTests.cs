@@ -58,8 +58,7 @@ public class SearchResultProcessorTests
     [Fact]
     public void FilterAndSort_StampsScoreOntoChunk()
     {
-        // Regression lock for ISSUE-fluxindex-sdk-retriever-fake-score-20260428-220000:
-        // FilterAndSort previously discarded VectorSearchResult.Score when projecting
+        // Regression lock: FilterAndSort previously discarded VectorSearchResult.Score when projecting
         // to DocumentChunk, forcing Retriever to stamp a misleading default. The fix
         // assigns Score onto the chunk before the wrapper is dropped, so downstream
         // consumers reading chunk.Score get the real similarity value.

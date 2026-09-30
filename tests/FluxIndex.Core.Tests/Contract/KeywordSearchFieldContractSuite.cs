@@ -6,8 +6,7 @@ using Xunit;
 namespace FluxIndex.Core.Tests.Contract;
 
 /// <summary>
-/// Shared contract for the field dimension of the relational keyword index (FluxIndex docket #28,
-/// part 1): a metadata value such as a title or a file name is a scored field, so a query term that
+/// Shared contract for the field dimension of the relational keyword index: a metadata value such as a title or a file name is a scored field, so a query term that
 /// appears only there still retrieves the chunk; the set of fields is configuration that the index
 /// path and the query path share; and an index with no field postings ranks exactly as it did before
 /// fields existed. Derive a concrete class per relational backend and implement

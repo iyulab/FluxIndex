@@ -7,8 +7,7 @@ using Xunit;
 namespace FluxIndex.Storage.SQLite.Tests;
 
 // Operator log pipelines (grep / Loki / Elastic) and international support require
-// English-only log messages. See Filer issue 2026-04-22 (fluxindex-sqlitevec-korean-logs.md):
-// Korean tokens land as opaque tokens in Latin-tokenized indexes and require UTF-8-aware
+// English-only log messages: Korean tokens land as opaque tokens in Latin-tokenized indexes and require UTF-8-aware
 // regex from operators.
 public class LogLanguageConventionTests
 {

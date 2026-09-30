@@ -17,7 +17,6 @@ namespace FluxIndex.Storage.PostgreSQL;
 /// <remarks>
 /// Provisioning goes through <see cref="RelationalSchemaProvisioner"/>, which creates only the
 /// relations this store owns — see that type for why <c>EnsureCreated()</c> cannot be used.
-/// Reported by All.Manual (2026-07-21).
 /// </remarks>
 internal sealed class PostgreSQLStorageInitializer : IStorageInitializer
 {

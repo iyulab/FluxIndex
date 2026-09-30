@@ -48,7 +48,7 @@ jobs:
     # --filter "Category=X" and --blame-hang (native MTP mode via global.json needs no --
     # separator before these flags); --verbosity replaces the VSTest-only --logger console
     # option (MTP has no --logger, verbosity is a top-level dotnet CLI switch already used
-    # here) — BD-20260829-xunit-v3-pilot.
+    # here).
     - name: Run PostgreSQL integration tests
       run: >
         dotnet test --project tests/FluxIndex.Storage.PostgreSQL.Tests/FluxIndex.Storage.PostgreSQL.Tests.csproj

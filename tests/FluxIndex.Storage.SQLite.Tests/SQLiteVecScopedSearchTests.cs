@@ -15,7 +15,7 @@ namespace FluxIndex.Storage.SQLite.Tests;
 /// filter, capped at sqlite-vec's k ceiling of 4,096) and the filter is applied to it in distance order.
 /// <para>
 /// A scope narrow enough relative to the store used to lose matches that never entered the window:
-/// on a 6,205-chunk vault a scoped question returned nothing at any k (docket iyulab/FluxIndex#346).
+/// on a store of a few thousand chunks a scoped question could return nothing at any k.
 /// When the window comes back full and the filter cannot fill topK, the store now scans every vector
 /// exactly and keeps walking in distance order. These tests fix that the answer is exact — not merely
 /// that the loss is reported.
@@ -212,7 +212,7 @@ public class SQLiteVecScopedSearchTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// The consumer-measured shape of docket iyulab/FluxIndex#346: more chunks than the KNN ceiling,
+    /// The failing shape: more chunks than the KNN ceiling,
     /// all of them nearer the query than the in-scope ones. The clamped window holds only out-of-scope
     /// chunks, and before the exact scan a scoped search returned nothing at any topK.
     /// </summary>

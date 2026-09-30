@@ -35,7 +35,6 @@ public class PostgreSQLStorageInitializerIntegrationTests : IAsyncLifetime
     /// already holds its own application tables must still get the vector schema. EnsureCreated()
     /// short-circuits on ANY pre-existing relation, so this configuration used to leave the schema
     /// uncreated and die with 42P01 on the first index write, while Build() reported success.
-    /// Reported by All.Manual (2026-07-21).
     /// </summary>
     [Fact]
     public async Task InitializeSync_OnDatabaseSharedWithApplicationTables_CreatesVectorSchema()

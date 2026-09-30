@@ -83,7 +83,7 @@ if ($staleEntries.Count -gt 0) {
 # --filter-not-trait (repeated, ANDs together) is MTP's equivalent of VSTest's compound
 # "Category!=A&Category!=B" filter syntax. --hangdump/--hangdump-timeout is the equivalent of
 # --blame-hang. --coverlet/--coverlet-output-format is coverlet.MTP's equivalent of
-# --collect:"XPlat Code Coverage" (coverlet.collector) — BD-20260829-xunit-v3-pilot.
+# --collect:"XPlat Code Coverage" (coverlet.collector).
 # --no-ansi because the counts below are read out of this output. MTP colours the summary, and it
 # colours only the non-zero numbers - "succeeded: 0" arrives bare while "succeeded: 1809" arrives as
 # "<esc>[32m  succeeded: 1809". A parser anchored at the start of the line can therefore read zero
@@ -107,14 +107,13 @@ foreach ($project in $testProjects) {
 
     # MTP's dotnet-test driver wants the project via --project, not as a trailing positional
     # (VSTest accepted the latter; MTP native mode rejects it: "Specifying a project for
-    # 'dotnet test' should be via '--project'.") — BD-20260829-xunit-v3-pilot.
+    # 'dotnet test' should be via '--project'.").
     $testOutput = & dotnet @testArgs --project $project 2>&1
     $exitCode = $LASTEXITCODE
     $testOutput | ForEach-Object { Write-Output $_ }
 
     # MTP's summary is multi-line ("Test run summary: Passed!" followed by indented
-    # "total:"/"failed:"/"succeeded:"/"skipped:" lines), unlike VSTest's single combined line —
-    # BD-20260829-xunit-v3-pilot.
+    # "total:"/"failed:"/"succeeded:"/"skipped:" lines), unlike VSTest's single combined line.
     $passed = 0; $failed = 0; $skipped = 0; $total = 0
     $sawSummary = $false; $readTotal = $false
     foreach ($line in $testOutput) {
@@ -158,7 +157,7 @@ foreach ($project in $testProjects) {
     # exit code 8, not VSTest's 0) — xunit/xunit#3077, confirmed via this repo's own
     # Cache.Redis.Tests/Storage.Neo4j.Tests (entirely Docker/Integration-tagged, filtered to
     # nothing by this script's Category!=Integration exclusion). $total is the ground truth for
-    # "did anything actually fail" regardless of exit code here — BD-20260829-xunit-v3-pilot.
+    # "did anything actually fail" regardless of exit code here.
     if ($total -eq 0) {
         if ($serviceOnlyProjects -contains $projectName) {
             # Expected: every test in this project needs an external service.

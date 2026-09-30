@@ -30,6 +30,12 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 - The new interface members have a default implementation that throws `NotSupportedException`, so existing
   implementations outside FluxIndex keep compiling.
 
+### Changed
+- **Documentation comments describe behaviour only.** Code comments, test descriptions, build files and past
+  release notes no longer refer to where a defect was found or to tracking ids outside this repository; they state
+  the behaviour and the condition that triggers it. The maintainer-local `build-local.ps1` script and an internal
+  planning document under `docs/plans/` were removed. Re-pin entries no longer name the tool that produced them.
+
 ### Fixed
 - **Deleting from the PostgreSQL quantized store removes the quantized embeddings too.** With a chunk id that is not a
   lower-case UUID, `DeleteByDocumentIdAsync` left every quantized row of the document behind: they stayed in
@@ -99,7 +105,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.62.1] - 2026-09-30
 
 ### Changed
-- Re-pinned sibling package(s) `FluxGuard.Remote` 0.17.0 -> 0.17.1 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FluxGuard.Remote` 0.17.0 -> 0.17.1. No source changes.
 
 ---
 
@@ -109,23 +115,23 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 - **Breaking: `AddFluxIndexFluxCurator` and `AddFluxCuratorBasic` register the curator as `IFluxCurator`.** They
   registered it under the concrete class, so a consumer resolving the contract (`IFluxCurator`, the type FluxCurator's
   own `AddFluxCurator` registers) got nothing. Migration: resolve `IFluxCurator` instead of the concrete class.
-- Re-pinned sibling package(s) `LMSupply.Embedder` 0.93.0 -> 0.93.1, `LMSupply.Generator` 0.93.0 -> 0.93.1, `LMSupply.Reranker` 0.93.0 -> 0.93.1 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
-- Re-pinned sibling package(s) `FluxCurator` 0.9.1 -> 0.10.0, `FluxImprover` 0.14.18 -> 0.14.19 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
-- Re-pinned sibling package(s) `FileFlux` 0.33.5 -> 0.33.6, `WebFlux` 0.19.0 -> 0.19.1 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
+- Re-pinned sibling package(s) `LMSupply.Embedder` 0.93.0 -> 0.93.1, `LMSupply.Generator` 0.93.0 -> 0.93.1, `LMSupply.Reranker` 0.93.0 -> 0.93.1.
+- Re-pinned sibling package(s) `FluxCurator` 0.9.1 -> 0.10.0, `FluxImprover` 0.14.18 -> 0.14.19.
+- Re-pinned sibling package(s) `FileFlux` 0.33.5 -> 0.33.6, `WebFlux` 0.19.0 -> 0.19.1.
 
 ---
 
 ## [0.61.6] - 2026-09-29
 
 ### Changed
-- Re-pinned sibling package(s) `WebFlux` 0.18.0 -> 0.19.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `WebFlux` 0.18.0 -> 0.19.0. No source changes.
 
 ---
 
 ## [0.61.5] - 2026-09-29
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.33.4 -> 0.33.5, `FluxImprover` 0.14.17 -> 0.14.18, `LMSupply.Embedder` 0.92.1 -> 0.93.0, `LMSupply.Generator` 0.92.1 -> 0.93.0, `LMSupply.Reranker` 0.92.1 -> 0.93.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.33.4 -> 0.33.5, `FluxImprover` 0.14.17 -> 0.14.18, `LMSupply.Embedder` 0.92.1 -> 0.93.0, `LMSupply.Generator` 0.92.1 -> 0.93.0, `LMSupply.Reranker` 0.92.1 -> 0.93.0. No source changes.
 
 ---
 
@@ -136,31 +142,31 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   published and 0.18.0 removes. `IndexWebContentAsync` crawls through `ProcessWebsiteAsync`, which raised no processing
   events before WebFlux 0.18.0; with 0.18.0 a subscriber sees `UrlProcessedEvent`/`UrlProcessingFailedEvent` per page,
   `ChunkGeneratedEvent` per chunk and `ProcessingCompletedEvent` at the end.
-- Re-pinned sibling package(s) `LMSupply.Embedder` 0.92.0 -> 0.92.1, `LMSupply.Generator` 0.92.0 -> 0.92.1, `LMSupply.Reranker` 0.92.0 -> 0.92.1, `WebFlux` 0.17.0 -> 0.18.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
-- Re-pinned sibling package(s) `FluxImprover` 0.14.16 -> 0.14.17 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
-- Re-pinned sibling package(s) `FileFlux` 0.33.3 -> 0.33.4 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
+- Re-pinned sibling package(s) `LMSupply.Embedder` 0.92.0 -> 0.92.1, `LMSupply.Generator` 0.92.0 -> 0.92.1, `LMSupply.Reranker` 0.92.0 -> 0.92.1, `WebFlux` 0.17.0 -> 0.18.0.
+- Re-pinned sibling package(s) `FluxImprover` 0.14.16 -> 0.14.17.
+- Re-pinned sibling package(s) `FileFlux` 0.33.3 -> 0.33.4.
 
 ---
 
 ## [0.61.3] - 2026-09-29
 
 ### Changed
-- Re-pinned sibling package(s) `FluxImprover` 0.14.15 -> 0.14.16, `LMSupply.Embedder` 0.91.0 -> 0.92.0, `LMSupply.Generator` 0.91.0 -> 0.92.0, `LMSupply.Reranker` 0.91.0 -> 0.92.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
-- Re-pinned sibling package(s) `FileFlux` 0.33.2 -> 0.33.3 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
+- Re-pinned sibling package(s) `FluxImprover` 0.14.15 -> 0.14.16, `LMSupply.Embedder` 0.91.0 -> 0.92.0, `LMSupply.Generator` 0.91.0 -> 0.92.0, `LMSupply.Reranker` 0.91.0 -> 0.92.0. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.33.2 -> 0.33.3.
 
 ---
 
 ## [0.61.2] - 2026-09-29
 
 ### Changed
-- Re-pinned sibling package(s) `WebFlux` 0.16.0 -> 0.17.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `WebFlux` 0.16.0 -> 0.17.0. No source changes.
 
 ---
 
 ## [0.61.1] - 2026-09-29
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.33.1 -> 0.33.2, `FluxImprover` 0.14.14 -> 0.14.15, `LMSupply.Embedder` 0.90.0 -> 0.91.0, `LMSupply.Generator` 0.90.0 -> 0.91.0, `LMSupply.Reranker` 0.90.0 -> 0.91.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.33.1 -> 0.33.2, `FluxImprover` 0.14.14 -> 0.14.15, `LMSupply.Embedder` 0.90.0 -> 0.91.0, `LMSupply.Generator` 0.90.0 -> 0.91.0, `LMSupply.Reranker` 0.90.0 -> 0.91.0. No source changes.
 
 ---
 
@@ -173,9 +179,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 - **Breaking**: `Indexer.IndexDocumentAsync` throws `InvalidOperationException` when the options ask for AI metadata extraction
   (`IndexingOptions.WithAIMetadataExtraction`, or the builder default) and no `IMetadataExtractor` is registered. It used to
   skip the extraction without a word.
-- Re-pinned sibling package(s) `LMSupply.Embedder` 0.89.0 -> 0.90.0, `LMSupply.Generator` 0.89.0 -> 0.90.0, `LMSupply.Reranker` 0.89.0 -> 0.90.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
-- Re-pinned sibling package(s) `FluxImprover` 0.14.13 -> 0.14.14 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
-- Re-pinned sibling package(s) `FileFlux` 0.33.0 -> 0.33.1 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
+- Re-pinned sibling package(s) `LMSupply.Embedder` 0.89.0 -> 0.90.0, `LMSupply.Generator` 0.89.0 -> 0.90.0, `LMSupply.Reranker` 0.89.0 -> 0.90.0.
+- Re-pinned sibling package(s) `FluxImprover` 0.14.13 -> 0.14.14.
+- Re-pinned sibling package(s) `FileFlux` 0.33.0 -> 0.33.1.
 
 ### Added
 - `Indexer.SupportsAIMetadata` — whether an `IMetadataExtractor` is registered.
@@ -198,7 +204,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.60.1] - 2026-09-29
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.32.0 -> 0.33.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.32.0 -> 0.33.0. No source changes.
 
 ---
 
@@ -246,35 +252,35 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.59.5] - 2026-09-28
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.31.13 -> 0.32.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.31.13 -> 0.32.0. No source changes.
 
 ---
 
 ## [0.59.4] - 2026-09-28
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.31.12 -> 0.31.13, `FluxImprover` 0.14.12 -> 0.14.13, `LMSupply.Embedder` 0.88.0 -> 0.89.0, `LMSupply.Generator` 0.88.0 -> 0.89.0, `LMSupply.Reranker` 0.88.0 -> 0.89.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.31.12 -> 0.31.13, `FluxImprover` 0.14.12 -> 0.14.13, `LMSupply.Embedder` 0.88.0 -> 0.89.0, `LMSupply.Generator` 0.88.0 -> 0.89.0, `LMSupply.Reranker` 0.88.0 -> 0.89.0. No source changes.
 
 ---
 
 ## [0.59.3] - 2026-09-28
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.31.11 -> 0.31.12 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.31.11 -> 0.31.12. No source changes.
 
 ---
 
 ## [0.59.2] - 2026-09-28
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.31.10 -> 0.31.11, `FluxImprover` 0.14.11 -> 0.14.12, `LMSupply.Embedder` 0.87.0 -> 0.88.0, `LMSupply.Generator` 0.87.0 -> 0.88.0, `LMSupply.Reranker` 0.87.0 -> 0.88.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.31.10 -> 0.31.11, `FluxImprover` 0.14.11 -> 0.14.12, `LMSupply.Embedder` 0.87.0 -> 0.88.0, `LMSupply.Generator` 0.87.0 -> 0.88.0, `LMSupply.Reranker` 0.87.0 -> 0.88.0. No source changes.
 
 ---
 
 ## [0.59.1] - 2026-09-28
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.31.8 -> 0.31.10, `FluxImprover` 0.14.10 -> 0.14.11, `LMSupply.Embedder` 0.86.0 -> 0.87.0, `LMSupply.Generator` 0.86.0 -> 0.87.0, `LMSupply.Reranker` 0.86.0 -> 0.87.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.31.8 -> 0.31.10, `FluxImprover` 0.14.10 -> 0.14.11, `LMSupply.Embedder` 0.86.0 -> 0.87.0, `LMSupply.Generator` 0.86.0 -> 0.87.0, `LMSupply.Reranker` 0.86.0 -> 0.87.0. No source changes.
 
 ---
 
@@ -318,7 +324,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.57.1] - 2026-09-27
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.31.7 -> 0.31.8, `FluxImprover` 0.14.9 -> 0.14.10, `LMSupply.Embedder` 0.85.0 -> 0.86.0, `LMSupply.Generator` 0.85.0 -> 0.86.0, `LMSupply.Reranker` 0.85.0 -> 0.86.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.31.7 -> 0.31.8, `FluxImprover` 0.14.9 -> 0.14.10, `LMSupply.Embedder` 0.85.0 -> 0.86.0, `LMSupply.Generator` 0.85.0 -> 0.86.0, `LMSupply.Reranker` 0.85.0 -> 0.86.0. No source changes.
 
 ---
 
@@ -365,28 +371,28 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.55.4] - 2026-09-27
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.31.6 -> 0.31.7, `FluxImprover` 0.14.8 -> 0.14.9, `LMSupply.Embedder` 0.84.0 -> 0.85.0, `LMSupply.Generator` 0.84.0 -> 0.85.0, `LMSupply.Reranker` 0.84.0 -> 0.85.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.31.6 -> 0.31.7, `FluxImprover` 0.14.8 -> 0.14.9, `LMSupply.Embedder` 0.84.0 -> 0.85.0, `LMSupply.Generator` 0.84.0 -> 0.85.0, `LMSupply.Reranker` 0.84.0 -> 0.85.0. No source changes.
 
 ---
 
 ## [0.55.3] - 2026-09-27
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.31.5 -> 0.31.6, `FluxImprover` 0.14.7 -> 0.14.8, `LMSupply.Embedder` 0.83.0 -> 0.84.0, `LMSupply.Generator` 0.83.0 -> 0.84.0, `LMSupply.Reranker` 0.83.0 -> 0.84.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.31.5 -> 0.31.6, `FluxImprover` 0.14.7 -> 0.14.8, `LMSupply.Embedder` 0.83.0 -> 0.84.0, `LMSupply.Generator` 0.83.0 -> 0.84.0, `LMSupply.Reranker` 0.83.0 -> 0.84.0. No source changes.
 
 ---
 
 ## [0.55.2] - 2026-09-27
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.31.4 -> 0.31.5, `FluxImprover` 0.14.6 -> 0.14.7, `LMSupply.Embedder` 0.81.1 -> 0.83.0, `LMSupply.Generator` 0.81.1 -> 0.83.0, `LMSupply.Reranker` 0.81.1 -> 0.83.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.31.4 -> 0.31.5, `FluxImprover` 0.14.6 -> 0.14.7, `LMSupply.Embedder` 0.81.1 -> 0.83.0, `LMSupply.Generator` 0.81.1 -> 0.83.0, `LMSupply.Reranker` 0.81.1 -> 0.83.0. No source changes.
 
 ---
 
 ## [0.55.1] - 2026-09-27
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.31.3 -> 0.31.4, `FluxImprover` 0.14.5 -> 0.14.6, `LMSupply.Embedder` 0.80.0 -> 0.81.1, `LMSupply.Generator` 0.80.0 -> 0.81.1, `LMSupply.Reranker` 0.80.0 -> 0.81.1 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
+- Re-pinned sibling package(s) `FileFlux` 0.31.3 -> 0.31.4, `FluxImprover` 0.14.5 -> 0.14.6, `LMSupply.Embedder` 0.80.0 -> 0.81.1, `LMSupply.Generator` 0.80.0 -> 0.81.1, `LMSupply.Reranker` 0.80.0 -> 0.81.1.
 
 ### Fixed
 - **`AddLMSupplyEmbedding` with any LMSupply catalog alias works in `FluxIndexContextBuilder`.** The registration is
@@ -417,7 +423,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.54.1] - 2026-09-27
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.31.1 -> 0.31.3, `FluxImprover` 0.14.4 -> 0.14.5, `LMSupply.Embedder` 0.79.1 -> 0.80.0, `LMSupply.Generator` 0.79.1 -> 0.80.0, `LMSupply.Reranker` 0.79.1 -> 0.80.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.31.1 -> 0.31.3, `FluxImprover` 0.14.4 -> 0.14.5, `LMSupply.Embedder` 0.79.1 -> 0.80.0, `LMSupply.Generator` 0.79.1 -> 0.80.0, `LMSupply.Reranker` 0.79.1 -> 0.80.0. No source changes.
 
 ---
 
@@ -435,9 +441,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.53.1] - 2026-09-26
 
 ### Changed
-- Re-pinned sibling package(s) `LMSupply.Embedder` 0.79.0 -> 0.79.1, `LMSupply.Generator` 0.79.0 -> 0.79.1, `LMSupply.Reranker` 0.79.0 -> 0.79.1 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
-- Re-pinned sibling package(s) `FluxImprover` 0.14.3 -> 0.14.4 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
-- Re-pinned sibling package(s) `FileFlux` 0.31.0 -> 0.31.1 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
+- Re-pinned sibling package(s) `LMSupply.Embedder` 0.79.0 -> 0.79.1, `LMSupply.Generator` 0.79.0 -> 0.79.1, `LMSupply.Reranker` 0.79.0 -> 0.79.1.
+- Re-pinned sibling package(s) `FluxImprover` 0.14.3 -> 0.14.4.
+- Re-pinned sibling package(s) `FileFlux` 0.31.0 -> 0.31.1.
 
 ### Fixed
 - **A service provider disposed with `Dispose()` no longer throws when an LMSupply service or the Qdrant / Neo4j store is registered.**
@@ -472,16 +478,16 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.52.2]
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.29.2 -> 0.30.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.29.2 -> 0.30.0. No source changes.
 
 ---
 
 ## [0.52.1]
 
 ### Changed
-- Re-pinned sibling package(s) `LMSupply.Embedder` 0.77.0 -> 0.78.0, `LMSupply.Generator` 0.77.0 -> 0.78.0, `LMSupply.Reranker` 0.77.0 -> 0.78.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
-- Re-pinned sibling package(s) `FluxImprover` 0.14.1 -> 0.14.2 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
-- Re-pinned sibling package(s) `FileFlux` 0.29.1 -> 0.29.2 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
+- Re-pinned sibling package(s) `LMSupply.Embedder` 0.77.0 -> 0.78.0, `LMSupply.Generator` 0.77.0 -> 0.78.0, `LMSupply.Reranker` 0.77.0 -> 0.78.0.
+- Re-pinned sibling package(s) `FluxImprover` 0.14.1 -> 0.14.2.
+- Re-pinned sibling package(s) `FileFlux` 0.29.1 -> 0.29.2.
 
 ### Fixed
 - **A service registered through `FluxIndexContextBuilder.ConfigureServices()` is the one the context resolves.** `Build()` added its defaults after `ConfigureServices()` ran, so the default was the later registration and silently replaced the caller's: `ConfigureServices(s => s.AddOpenAICompatibleEmbedding(...))` — the README's own example — resolved the in-memory random embedder, and every write to a store sized for the real model failed on the dimension. The same happened to a registered `IChunkingService`, `IDocumentRepository`, `IHybridSearchService` (e.g. `AddQdrantWithHybridSearch`'s Qdrant hybrid), `IRankFusionService`, `ISmallToBigRetriever`, `IQueryComplexityAnalyzer` and `IAdaptiveSearchService`. The defaults now apply only when nothing is registered. `UseInMemoryEmbedding()` is an explicit selection and still wins.
@@ -497,9 +503,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ### Changed
 - Re-pinned `FluxImprover` 0.13.3 -> 0.14.0: contextual enrichment asks the model not to reason by default. A reasoning model had spent most of the output budget thinking, and about one context in ten was cut off and dropped.
-- Re-pinned sibling package(s) `LMSupply.Embedder` 0.76.0 -> 0.77.0, `LMSupply.Generator` 0.76.0 -> 0.77.0, `LMSupply.Reranker` 0.76.0 -> 0.77.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
-- Re-pinned sibling package(s) `FluxImprover` 0.14.0 -> 0.14.1 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
-- Re-pinned sibling package(s) `FileFlux` 0.29.0 -> 0.29.1 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
+- Re-pinned sibling package(s) `LMSupply.Embedder` 0.76.0 -> 0.77.0, `LMSupply.Generator` 0.76.0 -> 0.77.0, `LMSupply.Reranker` 0.76.0 -> 0.77.0.
+- Re-pinned sibling package(s) `FluxImprover` 0.14.0 -> 0.14.1.
+- Re-pinned sibling package(s) `FileFlux` 0.29.0 -> 0.29.1.
 
 ### Fixed
 - **A write through `Indexer` now invalidates what `Retriever` cached.** The search-result cache is on by default (`CacheProvider = "Memory"`), and the indexer held no cache, so a deleted or re-indexed document kept coming back for the same query for up to `RetrieverOptions.CacheDuration` (10 min) while the delete reported success. Every indexer write (index, update, add chunks, delete document/chunk, re-index, metadata update) now replaces a cache generation that search keys include, and drops the cached copy of the document. An add invalidates too, since a new document can belong to a cached result set. The generation lives in the same `ICacheService`, so a cache shared across processes (Redis) is invalidated for all of them. A write made directly to `IVectorStore` still bypasses this.
@@ -511,28 +517,28 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.51.4]
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.28.2 -> 0.29.0, `FluxImprover` 0.13.2 -> 0.13.3, `LMSupply.Embedder` 0.75.0 -> 0.76.0, `LMSupply.Generator` 0.75.0 -> 0.76.0, `LMSupply.Reranker` 0.75.0 -> 0.76.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.28.2 -> 0.29.0, `FluxImprover` 0.13.2 -> 0.13.3, `LMSupply.Embedder` 0.75.0 -> 0.76.0, `LMSupply.Generator` 0.75.0 -> 0.76.0, `LMSupply.Reranker` 0.75.0 -> 0.76.0. No source changes.
 
 ---
 
 ## [0.51.3]
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.28.1 -> 0.28.2, `FluxImprover` 0.13.1 -> 0.13.2, `LMSupply.Embedder` 0.74.0 -> 0.75.0, `LMSupply.Generator` 0.74.0 -> 0.75.0, `LMSupply.Reranker` 0.74.0 -> 0.75.0, `WebFlux` 0.15.0 -> 0.16.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.28.1 -> 0.28.2, `FluxImprover` 0.13.1 -> 0.13.2, `LMSupply.Embedder` 0.74.0 -> 0.75.0, `LMSupply.Generator` 0.74.0 -> 0.75.0, `LMSupply.Reranker` 0.74.0 -> 0.75.0, `WebFlux` 0.15.0 -> 0.16.0. No source changes.
 
 ---
 
 ## [0.51.2]
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.28.0 -> 0.28.1, `FluxImprover` 0.13.0 -> 0.13.1, `LMSupply.Embedder` 0.73.0 -> 0.74.0, `LMSupply.Generator` 0.73.0 -> 0.74.0, `LMSupply.Reranker` 0.73.0 -> 0.74.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.28.0 -> 0.28.1, `FluxImprover` 0.13.0 -> 0.13.1, `LMSupply.Embedder` 0.73.0 -> 0.74.0, `LMSupply.Generator` 0.73.0 -> 0.74.0, `LMSupply.Reranker` 0.73.0 -> 0.74.0. No source changes.
 
 ---
 
 ## [0.51.1]
 
 ### Changed
-- Re-pinned sibling package(s) `WebFlux` 0.14.1 -> 0.15.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `WebFlux` 0.14.1 -> 0.15.0. No source changes.
 
 ---
 
@@ -545,7 +551,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   option nothing changes. The service now reads the generator's finish reason (`GenerateCompleteResultAsync`, or the
   last `GenerateChatStreamAsync` chunk with a system prompt), so the call it makes changed — a test double of
   `ITextGenerator` stubs those members now.
-- Re-pinned sibling package(s) `FileFlux` 0.27.1 -> 0.28.0, `FluxImprover` 0.12.20 -> 0.13.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.27.1 -> 0.28.0, `FluxImprover` 0.12.20 -> 0.13.0. No source changes.
 
 ### Fixed
 - **FluxImprover on a FluxIndex completion service hears about a cut-off answer.** `TextCompletionServiceAdapter` (the
@@ -561,7 +567,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.50.6]
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.27.0 -> 0.27.1, `FluxCurator` 0.9.0 -> 0.9.1, `FluxImprover` 0.12.19 -> 0.12.20, `WebFlux` 0.14.0 -> 0.14.1 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.27.0 -> 0.27.1, `FluxCurator` 0.9.0 -> 0.9.1, `FluxImprover` 0.12.19 -> 0.12.20, `WebFlux` 0.14.0 -> 0.14.1. No source changes.
 
 ---
 
@@ -590,7 +596,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.50.4]
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.26.0 -> 0.26.1, `FluxImprover` 0.12.18 -> 0.12.19, `LMSupply.Embedder` 0.72.0 -> 0.72.1, `LMSupply.Generator` 0.72.0 -> 0.72.1, `LMSupply.Reranker` 0.72.0 -> 0.72.1 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.26.0 -> 0.26.1, `FluxImprover` 0.12.18 -> 0.12.19, `LMSupply.Embedder` 0.72.0 -> 0.72.1, `LMSupply.Generator` 0.72.0 -> 0.72.1, `LMSupply.Reranker` 0.72.0 -> 0.72.1. No source changes.
 
 ---
 
@@ -630,14 +636,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.50.2]
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.25.1 -> 0.26.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.25.1 -> 0.26.0. No source changes.
 
 ---
 
 ## [0.50.1]
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.25.0 -> 0.25.1 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.25.0 -> 0.25.1. No source changes.
 
 ---
 
@@ -652,7 +658,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   `WarmUpOnStart = true` still loads at start. A load that reports a different revision than the one the
   identity was announced with fails instead of embedding into a collection named after another vector space.
   `EmbeddingIdentity.VectorSpaceRevision` reports the pre-read value before the load once it was read.
-- Re-pinned sibling package(s) `FluxImprover` 0.12.17 -> 0.12.18 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FluxImprover` 0.12.17 -> 0.12.18. No source changes.
 
 ### Removed
 - **Breaking** (`FluxIndex.Integrations.WebFlux`): `WebFluxOptions.DefaultIncludeImages` and
@@ -664,14 +670,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ### Changed
 - `FluxIndex.Integrations.WebFlux` no longer sets `ChunkingOptions.IncludeMetadata` on the WebFlux chunking
   options — WebFlux never read it and removes it in 0.14.0. No behaviour change.
-- Re-pinned sibling package(s) `LMSupply.Embedder` 0.71.0 -> 0.72.0, `LMSupply.Generator` 0.71.0 -> 0.72.0, `LMSupply.Reranker` 0.71.0 -> 0.72.0, `WebFlux` 0.13.0 -> 0.14.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `LMSupply.Embedder` 0.71.0 -> 0.72.0, `LMSupply.Generator` 0.71.0 -> 0.72.0, `LMSupply.Reranker` 0.71.0 -> 0.72.0, `WebFlux` 0.13.0 -> 0.14.0. No source changes.
 
 ---
 
 ## [0.49.0]
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.24.1 -> 0.25.0, `WebFlux` 0.12.0 -> 0.13.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.24.1 -> 0.25.0, `WebFlux` 0.12.0 -> 0.13.0. No source changes.
 
 ### Added
 - **`EmbeddingIdentity.VectorSpaceRevision`** — the vector-space revision the embedding service *observed* (for
@@ -702,14 +708,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.48.1]
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.23.20 -> 0.24.1, `FluxImprover` 0.12.16 -> 0.12.17, `LMSupply.Embedder` 0.70.0 -> 0.71.0, `LMSupply.Generator` 0.70.0 -> 0.71.0, `LMSupply.Reranker` 0.70.0 -> 0.71.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.23.20 -> 0.24.1, `FluxImprover` 0.12.16 -> 0.12.17, `LMSupply.Embedder` 0.70.0 -> 0.71.0, `LMSupply.Generator` 0.70.0 -> 0.71.0, `LMSupply.Reranker` 0.70.0 -> 0.71.0. No source changes.
 
 ---
 
 ## [0.48.0]
 
 ### Changed
-- Re-pinned sibling package(s) `WebFlux` 0.11.0 -> 0.12.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `WebFlux` 0.11.0 -> 0.12.0. No source changes.
 
 ### Fixed
 - **`AddOpenAICompatibleReranker` returns scores between 0 and 1 whatever the endpoint answers in.**
@@ -748,37 +754,37 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   values. Assignments (`ScoreThreshold = 0.5f`) compile unchanged; code that *reads* the property as
   `float` — a custom `IReranker` honouring it — handles `null`. If you relied on the old default to
   drop negative scores, set `ScoreThreshold = 0f`.
-- Re-pinned sibling package(s) `LMSupply.Embedder` 0.69.0 -> 0.70.0, `LMSupply.Generator` 0.69.0 -> 0.70.0, `LMSupply.Reranker` 0.69.0 -> 0.70.0, `WebFlux` 0.10.0 -> 0.11.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
-- Re-pinned sibling package(s) `FluxImprover` 0.12.15 -> 0.12.16 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
-- Re-pinned sibling package(s) `FileFlux` 0.23.19 -> 0.23.20 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `LMSupply.Embedder` 0.69.0 -> 0.70.0, `LMSupply.Generator` 0.69.0 -> 0.70.0, `LMSupply.Reranker` 0.69.0 -> 0.70.0, `WebFlux` 0.10.0 -> 0.11.0. No source changes.
+- Re-pinned sibling package(s) `FluxImprover` 0.12.15 -> 0.12.16. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.23.19 -> 0.23.20. No source changes.
 
 ---
 
 ## [0.46.4]
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.23.18 -> 0.23.19, `FluxCurator` 0.8.3 -> 0.9.0, `FluxImprover` 0.12.14 -> 0.12.15, `LMSupply.Embedder` 0.68.3 -> 0.69.0, `LMSupply.Generator` 0.68.3 -> 0.69.0, `LMSupply.Reranker` 0.68.3 -> 0.69.0, `WebFlux` 0.9.0 -> 0.10.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.23.18 -> 0.23.19, `FluxCurator` 0.8.3 -> 0.9.0, `FluxImprover` 0.12.14 -> 0.12.15, `LMSupply.Embedder` 0.68.3 -> 0.69.0, `LMSupply.Generator` 0.68.3 -> 0.69.0, `LMSupply.Reranker` 0.68.3 -> 0.69.0, `WebFlux` 0.9.0 -> 0.10.0. No source changes.
 
 ---
 
 ## [0.46.3]
 
 ### Changed
-- Re-pinned sibling package(s) `FluxGuard.Remote` 0.16.0 -> 0.17.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FluxGuard.Remote` 0.16.0 -> 0.17.0. No source changes.
 
 ---
 
 ## [0.46.2]
 
 ### Changed
-- Re-pinned sibling package(s) `WebFlux` 0.8.0 -> 0.9.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `WebFlux` 0.8.0 -> 0.9.0. No source changes.
 
 ---
 
 ## [0.46.1]
 
 ### Changed
-- Re-pinned sibling package(s) `FluxGuard.Remote` 0.15.1 -> 0.16.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FluxGuard.Remote` 0.15.1 -> 0.16.0. No source changes.
 
 ---
 
@@ -808,7 +814,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   Expanding the filter up front means an unsupported or empty collection value fails the search even
   when no row reaches the match — previously such a filter passed silently as an empty result on an
   empty store.
-- Re-pinned sibling package(s) `WebFlux` 0.7.4 -> 0.8.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `WebFlux` 0.7.4 -> 0.8.0. No source changes.
 
 ---
 
@@ -891,7 +897,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.44.5]
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.23.17 -> 0.23.18, `FluxImprover` 0.12.13 -> 0.12.14, `LMSupply.Embedder` 0.68.2 -> 0.68.3, `LMSupply.Generator` 0.68.2 -> 0.68.3, `LMSupply.Reranker` 0.68.2 -> 0.68.3, `WebFlux` 0.7.3 -> 0.7.4 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.23.17 -> 0.23.18, `FluxImprover` 0.12.13 -> 0.12.14, `LMSupply.Embedder` 0.68.2 -> 0.68.3, `LMSupply.Generator` 0.68.2 -> 0.68.3, `LMSupply.Reranker` 0.68.2 -> 0.68.3, `WebFlux` 0.7.3 -> 0.7.4. No source changes.
 
 ### Fixed
 - **Exception messages in `FluxIndex.Core` and `FluxIndex.Storage.SQLite` were not in English.** Twelve distinct messages, thrown from eighteen places (sqlite-vec extension loading, `SQLiteVecOptions.Validate`, the performance monitor, and the retrieval evaluation helpers), were Korean. Operators read exception messages, paste them into issues and search them in log pipelines, and the library's log messages were already English-only. The messages are now English; their meaning is unchanged.
@@ -901,7 +907,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.44.4]
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.23.15 -> 0.23.17, `FluxImprover` 0.12.11 -> 0.12.13, `LMSupply.Embedder` 0.68.0 -> 0.68.2, `LMSupply.Generator` 0.68.0 -> 0.68.2, `LMSupply.Reranker` 0.68.0 -> 0.68.2, `WebFlux` 0.7.2 -> 0.7.3 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.23.15 -> 0.23.17, `FluxImprover` 0.12.11 -> 0.12.13, `LMSupply.Embedder` 0.68.0 -> 0.68.2, `LMSupply.Generator` 0.68.0 -> 0.68.2, `LMSupply.Reranker` 0.68.0 -> 0.68.2, `WebFlux` 0.7.2 -> 0.7.3. No source changes.
 
 ### Fixed
 - **`SQLiteVecVectorStore`: a metadata-filtered search could miss in-scope chunks that ranked past the KNN window, and on a large enough store it returned nothing at any `topK`.** The metadata lives in `vector_chunks`, not in the vec0 table, so the filter ran after a KNN window of `topK * 3`, capped at sqlite-vec's `k` ceiling of 4,096. A narrow scope inside a store of a few thousand chunks could therefore not be answered however large `topK` was. When the window comes back full and the filter still cannot fill `topK`, the store now computes exact distances over the whole vec0 table, using the table's own distance metric, and walks the candidates in distance order until `topK` pass the filter. The result is exact. vec0 is a brute-force index, so the scan costs about what the KNN costs, and it only runs in that case. The on-disk schema is unchanged, so an existing database works as it is. The window warnings added in 0.29.0 and 0.44.2/0.44.3 ("the metadata filter is applied after the KNN step", "results may starve") no longer describe a possible outcome and are gone. The clamp and the scan are recorded at `Debug`.
@@ -926,7 +932,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.44.1]
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.23.14 -> 0.23.15, `FluxCurator` 0.8.2 -> 0.8.3, `FluxGuard.Remote` 0.15.0 -> 0.15.1, `FluxImprover` 0.12.10 -> 0.12.11 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.23.14 -> 0.23.15, `FluxCurator` 0.8.2 -> 0.8.3, `FluxGuard.Remote` 0.15.0 -> 0.15.1, `FluxImprover` 0.12.10 -> 0.12.11. No source changes.
 
 ---
 
@@ -955,14 +961,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ### Changed
 - Microsoft.Extensions.* / Microsoft.Data.Sqlite / EF Core pins raised to 10.0.12 (September 2026 .NET servicing).
-- Re-pinned sibling package(s) `FileFlux` 0.23.12 -> 0.23.14, `LMSupply.Embedder` 0.66.1 -> 0.67.0, `LMSupply.Generator` 0.66.1 -> 0.67.0, `LMSupply.Reranker` 0.66.1 -> 0.67.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.23.12 -> 0.23.14, `LMSupply.Embedder` 0.66.1 -> 0.67.0, `LMSupply.Generator` 0.66.1 -> 0.67.0, `LMSupply.Reranker` 0.66.1 -> 0.67.0. No source changes.
 
 ---
 
 ## [0.43.1]
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.23.11 -> 0.23.12, `FluxGuard.Remote` 0.14.2 -> 0.15.0, `FluxImprover` 0.12.9 -> 0.12.10 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.23.11 -> 0.23.12, `FluxGuard.Remote` 0.14.2 -> 0.15.0, `FluxImprover` 0.12.9 -> 0.12.10. No source changes.
 
 ---
 
@@ -1024,7 +1030,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.42.1]
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.23.10 -> 0.23.11, `FluxGuard.Remote` 0.14.1 -> 0.14.2, `FluxImprover` 0.12.8 -> 0.12.9, `LMSupply.Embedder` 0.66.0 -> 0.66.1, `LMSupply.Generator` 0.66.0 -> 0.66.1, `LMSupply.Reranker` 0.66.0 -> 0.66.1 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.23.10 -> 0.23.11, `FluxGuard.Remote` 0.14.1 -> 0.14.2, `FluxImprover` 0.12.8 -> 0.12.9, `LMSupply.Embedder` 0.66.0 -> 0.66.1, `LMSupply.Generator` 0.66.0 -> 0.66.1, `LMSupply.Reranker` 0.66.0 -> 0.66.1. No source changes.
 
 ---
 
@@ -1044,14 +1050,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.41.2]
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.23.9 -> 0.23.10, `LMSupply.Embedder` 0.65.1 -> 0.66.0, `LMSupply.Generator` 0.65.1 -> 0.66.0, `LMSupply.Reranker` 0.65.1 -> 0.66.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.23.9 -> 0.23.10, `LMSupply.Embedder` 0.65.1 -> 0.66.0, `LMSupply.Generator` 0.65.1 -> 0.66.0, `LMSupply.Reranker` 0.65.1 -> 0.66.0. No source changes.
 
 ---
 
 ## [0.41.1]
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.23.8 -> 0.23.9, `FluxCurator` 0.8.1 -> 0.8.2, `FluxImprover` 0.12.7 -> 0.12.8, `WebFlux` 0.7.1 -> 0.7.2 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.23.8 -> 0.23.9, `FluxCurator` 0.8.1 -> 0.8.2, `FluxImprover` 0.12.7 -> 0.12.8, `WebFlux` 0.7.1 -> 0.7.2. No source changes.
 - Raised `Microsoft.Extensions.*` package references from 10.0.8 to 10.0.12 (latest servicing release). The re-pinned `FluxCurator`, `FileFlux` and `WebFlux` releases declare `Microsoft.Extensions.*` floors above 10.0.8.
 
 ---
@@ -1197,7 +1203,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.39.1]
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.23.6 -> 0.23.7 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.23.6 -> 0.23.7. No source changes.
 
 ---
 
@@ -1214,7 +1220,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.38.1]
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.23.5 -> 0.23.6, `FluxImprover` 0.12.6 -> 0.12.7 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.23.5 -> 0.23.6, `FluxImprover` 0.12.6 -> 0.12.7. No source changes.
 
 ---
 
@@ -1366,7 +1372,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   and without cross-chunk linking.
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.23.4 -> 0.23.5, `LMSupply.Embedder` 0.65.0 -> 0.65.1, `LMSupply.Generator` 0.65.0 -> 0.65.1, `LMSupply.Reranker` 0.65.0 -> 0.65.1 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
+- Re-pinned sibling package(s) `FileFlux` 0.23.4 -> 0.23.5, `LMSupply.Embedder` 0.65.0 -> 0.65.1, `LMSupply.Generator` 0.65.0 -> 0.65.1, `LMSupply.Reranker` 0.65.0 -> 0.65.1.
 
 ---
 
@@ -1399,7 +1405,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.36.1]
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.23.3 -> 0.23.4, `FluxImprover` 0.12.5 -> 0.12.6 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.23.3 -> 0.23.4, `FluxImprover` 0.12.5 -> 0.12.6. No source changes.
 
 ---
 
@@ -1428,28 +1434,28 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.35.4]
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.23.2 -> 0.23.3, `FluxImprover` 0.12.4 -> 0.12.5, `LMSupply.Embedder` 0.64.0 -> 0.65.0, `LMSupply.Generator` 0.64.0 -> 0.65.0, `LMSupply.Reranker` 0.64.0 -> 0.65.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.23.2 -> 0.23.3, `FluxImprover` 0.12.4 -> 0.12.5, `LMSupply.Embedder` 0.64.0 -> 0.65.0, `LMSupply.Generator` 0.64.0 -> 0.65.0, `LMSupply.Reranker` 0.64.0 -> 0.65.0. No source changes.
 
 ---
 
 ## [0.35.3]
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.23.1 -> 0.23.2, `FluxImprover` 0.12.3 -> 0.12.4, `LMSupply.Embedder` 0.63.0 -> 0.64.0, `LMSupply.Generator` 0.63.0 -> 0.64.0, `LMSupply.Reranker` 0.63.0 -> 0.64.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.23.1 -> 0.23.2, `FluxImprover` 0.12.3 -> 0.12.4, `LMSupply.Embedder` 0.63.0 -> 0.64.0, `LMSupply.Generator` 0.63.0 -> 0.64.0, `LMSupply.Reranker` 0.63.0 -> 0.64.0. No source changes.
 
 ---
 
 ## [0.35.2]
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.23.0 -> 0.23.1, `FluxImprover` 0.12.2 -> 0.12.3, `LMSupply.Embedder` 0.62.0 -> 0.63.0, `LMSupply.Generator` 0.62.0 -> 0.63.0, `LMSupply.Reranker` 0.62.0 -> 0.63.0, `WebFlux` 0.7.0 -> 0.7.1 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.23.0 -> 0.23.1, `FluxImprover` 0.12.2 -> 0.12.3, `LMSupply.Embedder` 0.62.0 -> 0.63.0, `LMSupply.Generator` 0.62.0 -> 0.63.0, `LMSupply.Reranker` 0.62.0 -> 0.63.0, `WebFlux` 0.7.0 -> 0.7.1. No source changes.
 
 ---
 
 ## [0.35.1]
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.22.13 -> 0.23.0, `FluxImprover` 0.12.1 -> 0.12.2, `LMSupply.Embedder` 0.61.0 -> 0.62.0, `LMSupply.Generator` 0.61.0 -> 0.62.0, `LMSupply.Reranker` 0.61.0 -> 0.62.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.22.13 -> 0.23.0, `FluxImprover` 0.12.1 -> 0.12.2, `LMSupply.Embedder` 0.61.0 -> 0.62.0, `LMSupply.Generator` 0.61.0 -> 0.62.0, `LMSupply.Reranker` 0.61.0 -> 0.62.0. No source changes.
 
 ---
 
@@ -1524,14 +1530,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.34.2]
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.22.12 -> 0.22.13, `FluxImprover` 0.12.0 -> 0.12.1, `LMSupply.Embedder` 0.60.0 -> 0.61.0, `LMSupply.Generator` 0.60.0 -> 0.61.0, `LMSupply.Reranker` 0.60.0 -> 0.61.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.22.12 -> 0.22.13, `FluxImprover` 0.12.0 -> 0.12.1, `LMSupply.Embedder` 0.60.0 -> 0.61.0, `LMSupply.Generator` 0.60.0 -> 0.61.0, `LMSupply.Reranker` 0.60.0 -> 0.61.0. No source changes.
 
 ---
 
 ## [0.34.1]
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.22.11 -> 0.22.12, `FluxImprover` 0.11.9 -> 0.12.0, `LMSupply.Embedder` 0.59.1 -> 0.60.0, `LMSupply.Generator` 0.59.1 -> 0.60.0, `LMSupply.Reranker` 0.59.1 -> 0.60.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.22.11 -> 0.22.12, `FluxImprover` 0.11.9 -> 0.12.0, `LMSupply.Embedder` 0.59.1 -> 0.60.0, `LMSupply.Generator` 0.59.1 -> 0.60.0, `LMSupply.Reranker` 0.59.1 -> 0.60.0. No source changes.
 
 ---
 
@@ -1557,7 +1563,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.33.1]
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.22.9 -> 0.22.11, `FluxImprover` 0.11.7 -> 0.11.9, `LMSupply.Embedder` 0.59.0 -> 0.59.1, `LMSupply.Generator` 0.59.0 -> 0.59.1, `LMSupply.Reranker` 0.59.0 -> 0.59.1 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.22.9 -> 0.22.11, `FluxImprover` 0.11.7 -> 0.11.9, `LMSupply.Embedder` 0.59.0 -> 0.59.1, `LMSupply.Generator` 0.59.0 -> 0.59.1, `LMSupply.Reranker` 0.59.0 -> 0.59.1. No source changes.
 
 ---
 
@@ -1577,7 +1583,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.32.1]
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.22.8 -> 0.22.9, `FluxImprover` 0.11.6 -> 0.11.7, `LMSupply.Embedder` 0.58.0 -> 0.59.0, `LMSupply.Generator` 0.58.0 -> 0.59.0, `LMSupply.Reranker` 0.58.0 -> 0.59.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.22.8 -> 0.22.9, `FluxImprover` 0.11.6 -> 0.11.7, `LMSupply.Embedder` 0.58.0 -> 0.59.0, `LMSupply.Generator` 0.58.0 -> 0.59.0, `LMSupply.Reranker` 0.58.0 -> 0.59.0. No source changes.
 
 ---
 
@@ -1633,14 +1639,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.31.2]
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.22.7 -> 0.22.8, `FluxImprover` 0.11.5 -> 0.11.6, `LMSupply.Embedder` 0.57.0 -> 0.58.0, `LMSupply.Generator` 0.57.0 -> 0.58.0, `LMSupply.Reranker` 0.57.0 -> 0.58.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.22.7 -> 0.22.8, `FluxImprover` 0.11.5 -> 0.11.6, `LMSupply.Embedder` 0.57.0 -> 0.58.0, `LMSupply.Generator` 0.57.0 -> 0.58.0, `LMSupply.Reranker` 0.57.0 -> 0.58.0. No source changes.
 
 ---
 
 ## [0.31.1]
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.22.6 -> 0.22.7, `FluxImprover` 0.11.4 -> 0.11.5, `LMSupply.Embedder` 0.56.0 -> 0.57.0, `LMSupply.Generator` 0.56.0 -> 0.57.0, `LMSupply.Reranker` 0.56.0 -> 0.57.0 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`. No source changes.
+- Re-pinned sibling package(s) `FileFlux` 0.22.6 -> 0.22.7, `FluxImprover` 0.11.4 -> 0.11.5, `LMSupply.Embedder` 0.56.0 -> 0.57.0, `LMSupply.Generator` 0.56.0 -> 0.57.0, `LMSupply.Reranker` 0.56.0 -> 0.57.0. No source changes.
 
 ---
 
@@ -1823,7 +1829,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   id the caller supplied. UUID ids are still used verbatim, leaving existing collections readable.
 
 ### Changed
-- Re-pinned sibling package(s) `FileFlux` 0.22.2 -> 0.22.6, `FluxImprover` 0.11.2 -> 0.11.4, `LMSupply.Embedder` 0.55.2 -> 0.55.4, `LMSupply.Generator` 0.55.2 -> 0.55.4, `LMSupply.Reranker` 0.55.2 -> 0.55.4 — re-consumption of already-consumed iyulab packages via `check-pin-drift.ps1 -Fix`.
+- Re-pinned sibling package(s) `FileFlux` 0.22.2 -> 0.22.6, `FluxImprover` 0.11.2 -> 0.11.4, `LMSupply.Embedder` 0.55.2 -> 0.55.4, `LMSupply.Generator` 0.55.2 -> 0.55.4, `LMSupply.Reranker` 0.55.2 -> 0.55.4.
 
 ---
 
@@ -2380,7 +2386,7 @@ relations present, some missing) is refused with an actionable exception instead
 half-repaired; with the current single-relation model this guard cannot yet trigger, and it becomes
 live as soon as the context owns more than one relation.
 
-Reported by All.Manual. No API change — upgrading is enough.
+No API change — upgrading is enough.
 
 **Known adjacent gap (not fixed here).** PostgreSQL graph, entity-graph, and semantic-cache still
 initialize with `EnsureCreatedAsync` and, by default, on the vector store's connection. Tracked
@@ -2518,7 +2524,7 @@ keep their names.
 ## [0.15.0] - 2026-06-29
 
 ### Added
-- `FluxIndex.Extensions.FileVault` (MU-2): **terminal-await for background memorize**. The facade previously
+- `FluxIndex.Extensions.FileVault`: **terminal-await for background memorize**. The facade previously
   discarded the queued job id and returned an early-stage `VaultEntry`, so consumers in background mode polled
   entry stage / queue status to know when memorize actually finished ("success lie"). Two additive members:
   - `IVaultQueueService.WaitForJobAsync(jobId, ct)` — signal-driven (no polling) wait that resolves on the
@@ -2526,12 +2532,11 @@ keep their names.
   - `IVault.MemorizeAsync(filePath, bool waitForCompletion, ct)` — when `true`, awaits terminal completion and
     returns the entry at its Memorized stage; a failed/cancelled job surfaces as an exception rather than a
     silently-incomplete entry. `false` is identical to the existing single-arg overload (zero regression).
-  Reported via umbrella MU-2 (rule-of-three: AIMS, Filer, textree all hand-rolled completion polling).
 
 ## [0.13.19] - 2026-06-10
 
 ### Fixed
-- `FluxIndex.Extensions.FileVault`: a removed entry could persist in `ListAsync(null)` indefinitely after a preceding hybrid `SearchAsync`. Root cause: `VaultEntry.Load`/`SaveMetadata` opened `meta.json` without `FileShare.Delete`, so a concurrent `ListAsync` enumeration read blocked the background remove job's `Directory.Delete` (Windows `ERROR_SHARING_VIOLATION`), leaving the entry directory on disk (and growing it unboundedly). Now opened with `FileShare.ReadWrite | FileShare.Delete`, and `VaultStorageService.DeleteEntryStorageAsync` retries the directory delete (5×, 100 ms backoff) to absorb the residual `RemoveDirectory` race and transient foreign locks. Entries stuck in `RemovalPartial` from before the fix self-heal via `RecoverPartialRemovalsAsync` on next host start. Reported by Filer (golden gate `SC-RAG-1`).
+- `FluxIndex.Extensions.FileVault`: a removed entry could persist in `ListAsync(null)` indefinitely after a preceding hybrid `SearchAsync`. Root cause: `VaultEntry.Load`/`SaveMetadata` opened `meta.json` without `FileShare.Delete`, so a concurrent `ListAsync` enumeration read blocked the background remove job's `Directory.Delete` (Windows `ERROR_SHARING_VIOLATION`), leaving the entry directory on disk (and growing it unboundedly). Now opened with `FileShare.ReadWrite | FileShare.Delete`, and `VaultStorageService.DeleteEntryStorageAsync` retries the directory delete (5×, 100 ms backoff) to absorb the residual `RemoveDirectory` race and transient foreign locks. Entries stuck in `RemovalPartial` from before the fix self-heal via `RecoverPartialRemovalsAsync` on next host start.
 
 ---
 

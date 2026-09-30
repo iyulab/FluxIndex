@@ -531,7 +531,7 @@ public class VectorStoreManagerTests : IDisposable
     [Fact]
     public async Task SweepOrphanVectorsAsync_MultipleFingerprints_CleansAllTables()
     {
-        // Filer scenario: post-migration deployment has orphans in both legacy and current vec0 tables.
+        // After an embedding-model migration, orphans can exist in both the legacy and the current vec0 tables.
         CITestHelper.SkipIfSqliteVecNotAvailable();
 
         await _context.Database.EnsureCreatedAsync(TestContext.Current.CancellationToken);
@@ -588,8 +588,7 @@ public class VectorStoreManagerTests : IDisposable
         return Convert.ToInt32(result, System.Globalization.CultureInfo.InvariantCulture);
     }
 
-    // Issue: ISSUE-158 / cross-fingerprint-orphan-vec-table — whole-table fingerprint divergence
-    // with live vectors (distinct from the row-level orphan-sweep-v1).
+    // Whole-table fingerprint divergence with live vectors (distinct from the row-level orphan sweep).
 
     [Fact]
     public async Task DetectCrossFingerprintOrphanTables_DivergentTableWithVectors_IsReportedAndNotDeleted()

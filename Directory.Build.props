@@ -35,10 +35,6 @@
     
     <!-- Suppress XML documentation warnings -->
     <NoWarn>$(NoWarn);CS1591;CS1587</NoWarn>
-    <!-- CS nullable suppressions removed in cycle-104 -->
-    <!-- CA1001/CA1716: resolved in cycle-90 -->
-    <!-- CA1854/CA1859/CA1861: resolved in cycle-34. CA1848/CA1873: resolved in cycle-66 (Core) + cycle-76 (all non-Core) -->
-    <!-- CS1998/CS0162: resolved cycle-81 (0 violations) -->
     
     <!-- Strong Naming (Optional) -->
     <!--<SignAssembly>true</SignAssembly>

@@ -44,7 +44,7 @@ public class SQLiteVecVectorStoreTests : IAsyncLifetime
             // wrong for a long time: with UseSQLiteVec = false and FallbackToInMemoryOnError = true,
             // SQLiteVecVectorStore delegates every call to its in-memory fallback store. The class
             // named after the sqlite-vec store therefore never executed it — which is why five
-            // silent no-op UpdateAsync defects shipped past a green suite (docket #200).
+            // silent no-op UpdateAsync defects shipped past a green suite.
             //
             // Keep the real path: sqlite-vec on, no fallback (so a loading failure is a loud test
             // failure rather than a silent substitution), and a file-backed database so a second

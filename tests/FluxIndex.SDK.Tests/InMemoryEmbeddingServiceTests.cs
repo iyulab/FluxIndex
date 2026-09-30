@@ -5,7 +5,7 @@ namespace FluxIndex.SDK.Tests;
 
 /// <summary>
 /// Regression teeth for the testing embedder's determinism contract.
-/// Found by dogfooding 2026-07-17 (ironhive-umbrella cycle-170/171): the seed used
+/// The seed used to come from
 /// string.GetHashCode(), which .NET randomizes per process — vectors persisted by one
 /// process (e.g. into a SQLite store) could never match a later process's query vectors,
 /// contradicting the class's own "deterministic" documentation.

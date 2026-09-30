@@ -14,7 +14,7 @@ namespace FluxIndex.Storage.SQLite.Tests;
 /// <see cref="INativeHybridSearch.HybridSearchAsync"/> with a metadata filter: the scope has to reach
 /// <em>both</em> legs before fusion. The interface had no filter parameter, so a consumer that needed a
 /// document-id scope could not use native fusion at all and fell back to vector-only — for a consumer
-/// whose every search is scoped, that silently removed the hybrid strategy (FluxFeed docket #214).
+/// whose every search is scoped, that silently removed the hybrid strategy.
 /// Runs the real sqlite-vec store (no in-memory fallback) so both the vec and FTS5 legs execute.
 /// </summary>
 [Collection("SQLite Tests")]

@@ -10,8 +10,7 @@ using DocumentChunkEntity = FluxIndex.Core.Domain.Entities.DocumentChunk;
 namespace FluxIndex.SDK.Tests;
 
 /// <summary>
-/// Guards the SDK surface against the metadata-filter contract defects reported by All.Manual
-/// on FluxIndex 0.18.0: the convenience indexing overloads dropped metadata before it reached the
+/// Guards the SDK surface against the metadata-filter contract defects of FluxIndex 0.18.0: the convenience indexing overloads dropped metadata before it reached the
 /// chunk rows that filters actually read, and <c>Retriever</c> compared filter values with raw
 /// object equality, which a JSON round-trip (jsonb / JSON column) breaks.
 /// </summary>

@@ -12,7 +12,7 @@ using Xunit;
 namespace FluxIndex.SDK.Tests.Integration;
 
 /// <summary>
-/// Docket BD-20260827-01 (FluxGuard.Remote RAG security pipeline, opt-in). Uses the real
+/// The opt-in FluxGuard.Remote RAG security pipeline on the retriever. Uses the real
 /// <see cref="IndirectInjectionDetector"/> (not a mock) so the guard's actual regex-based
 /// detection is what's under test — the vector store and embedding service are mocked, since
 /// they aren't what this feature is verifying.

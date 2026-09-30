@@ -8,7 +8,7 @@ using Xunit;
 namespace FluxIndex.SDK.Tests;
 
 /// <summary>
-/// The file-name field reaches a document indexed through the SDK (FluxIndex docket #28, part 1):
+/// The file-name field reaches a document indexed through the SDK:
 /// <see cref="Indexer"/> carries <see cref="Document.FileName"/> into each chunk's <c>file_name</c>
 /// metadata, which the relational keyword index scores as a field by default, so a query quoting the
 /// file name retrieves the document without the caller tagging every chunk — and a value the caller

@@ -11,8 +11,7 @@ using Xunit;
 namespace FluxIndex.Storage.SQLite.Tests;
 
 /// <summary>
-/// Regression guard for the fingerprint-drift lost-write window described in
-/// Filer ISSUE-fluxindex-20260717 (SCOPE-REVERSAL section).
+/// Regression guard for the fingerprint-drift lost-write window.
 ///
 /// Scenario: a store instance is initialized against effective fingerprint A (creating
 /// chunk_embeddings_{A} and latching _initialized=true), then the effective fingerprint

@@ -52,7 +52,7 @@
   <ItemGroup>
     <PackageVersion Include="StackExchange.Redis" Version="3.1.31" />
     <PackageVersion Include="sqlite-vec" Version="0.1.7-alpha.2.1" />
-    <!-- cycle-171: explicit lift — Microsoft.Data.Sqlite 10.0.8 pulls SQLitePCLRaw 2.1.11
+    <!-- Explicit lift — Microsoft.Data.Sqlite 10.0.8 pulls SQLitePCLRaw 2.1.11
          (NU1903 high, GHSA-2m69-gcr7-jv3q); upstream 2.1.12 stable landed 2026-07-09. -->
     <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
     <!-- Graph Database -->
@@ -74,9 +74,9 @@
     <PackageVersion Include="FluxImprover" Version="0.14.20" />
     <PackageVersion Include="WebFlux" Version="0.19.2" />
   </ItemGroup>
-  <!-- Testing Packages (xUnit v3 / Microsoft.Testing.Platform — BD-20260829-xunit-v3-pilot rollout) -->
+  <!-- Testing Packages (xUnit v3 / Microsoft.Testing.Platform) -->
   <ItemGroup>
-    <!-- coverlet.MTP is coverlet.collector's MTP-native successor (D357-1) -->
+    <!-- coverlet.MTP is coverlet.collector's MTP-native successor -->
     <PackageVersion Include="coverlet.MTP" Version="10.0.1" />
     <PackageVersion Include="AwesomeAssertions" Version="9.6.0" />
     <PackageVersion Include="NSubstitute" Version="6.2.0" />

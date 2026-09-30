@@ -5,7 +5,7 @@ using Xunit;
 namespace FluxIndex.SDK.Tests;
 
 /// <summary>
-/// Guards against the silent non-persistence reported by All.Manual on 0.18.0: configuring a
+/// Guards against the silent non-persistence of 0.18.0: configuring a
 /// persistent provider (<c>UsePostgreSQL</c>/<c>UseSQLite</c>) only sets options — registration
 /// lives in the storage package's <c>Add*Storage()</c> extension. When that call was missing,
 /// <c>Build()</c> fell back to an in-memory store without a word, so the app "worked" and lost its

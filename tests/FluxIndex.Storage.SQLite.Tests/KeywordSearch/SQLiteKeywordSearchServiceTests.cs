@@ -92,8 +92,8 @@ public class SQLiteKeywordSearchServiceTests : IDisposable
     }
 
     /// <summary>
-    /// 두 소비자(AIMS, All.Manual) 모두 한국어 문서다. 영문 픽스처만으로 GREEN 을 만들면
-    /// 소비자에게 무용한 채로 "해결"로 보인다 — 토크나이저의 실제 거동을 여기서 고정한다.
+    /// 한국어 문서도 온전한 토큰으로 검색되어야 한다. 영문 픽스처만으로는 토크나이저의 한국어
+    /// 거동을 검증하지 못하므로 여기서 그 거동을 고정한다.
     /// </summary>
     [Fact]
     public async Task KoreanContent_IsRetrievable_ByAWholeToken()

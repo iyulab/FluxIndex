@@ -12,7 +12,7 @@ using Xunit;
 namespace FluxIndex.Storage.SQLite.Tests.KeywordSearch;
 
 /// <summary>
-/// The analyzer seam on the relational keyword index (FluxIndex docket #28, part 2): the analyzer a
+/// The analyzer seam on the relational keyword index: the analyzer a
 /// consumer supplies is the one that defines terms on <em>both</em> the index path and the query
 /// path, the default is the previous behaviour, and the container's <c>ITextAnalyzer</c> reaches the
 /// registered backend.
