@@ -20,6 +20,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
     tests, call `UseInMemoryEmbedding()` explicitly.
 - **Qdrant `StoreBatchAsync` throws for chunks without an embedding** instead of dropping them and returning fewer
   ids.
+- Re-pinned sibling package(s) `LMSupply.Embedder` 0.95.0 -> 0.96.0, `LMSupply.Generator` 0.95.0 -> 0.96.0, `LMSupply.Reranker` 0.95.0 -> 0.96.0.
 
 ### Added
 - **Keyword-only indexing** (`NoEmbeddingService`, `Indexer.IsKeywordOnly`, `Retriever.IsKeywordOnly`). SQLite,
