@@ -35,6 +35,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   release notes no longer refer to where a defect was found or to tracking ids outside this repository; they state
   the behaviour and the condition that triggers it. The maintainer-local `build-local.ps1` script and an internal
   planning document under `docs/plans/` were removed. Re-pin entries no longer name the tool that produced them.
+- Re-pinned sibling package(s) `FluxCurator` 0.10.1 -> 0.10.2, `FluxGuard.Remote` 0.18.0 -> 0.18.1, `LMSupply.Embedder` 0.94.0 -> 0.95.0, `LMSupply.Generator` 0.94.0 -> 0.95.0, `LMSupply.Reranker` 0.94.0 -> 0.95.0.
 
 ### Fixed
 - **Deleting from the PostgreSQL quantized store removes the quantized embeddings too.** With a chunk id that is not a
