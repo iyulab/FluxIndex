@@ -259,6 +259,69 @@ public class PostgreSQLVectorStore : VectorStoreBase
         await context.Database.ExecuteSqlRawAsync("TRUNCATE TABLE vectors", cancellationToken);
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// Rows are keyed on <see cref="ChunkStorageId.ToStorageGuid"/> of the chunk id, so a new chunk id is a new row
+    /// key: each row is re-inserted under its new key and the old one deleted, in one <c>SaveChanges</c> — one
+    /// transaction. The pgvector column is copied as stored.
+    /// </remarks>
+    public override async Task<int> ReassignDocumentAsync(
+        string oldDocumentId,
+        string newDocumentId,
+        IReadOnlyDictionary<string, string> chunkIdMap,
+        IReadOnlyDictionary<string, object?>? metadataUpdates = null,
+        CancellationToken cancellationToken = default)
+    {
+        DocumentReassignment.ValidateArguments(oldDocumentId, newDocumentId, chunkIdMap);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        var rows = await context.Vectors
+            .AsTracking()
+            .Where(v => v.DocumentId == oldDocumentId)
+            .ToListAsync(cancellationToken);
+        if (rows.Count == 0)
+            return 0;
+
+        var chunkIds = rows.Select(r => OriginalChunkId(r.Metadata) ?? r.Id.ToString()).ToList();
+        DocumentReassignment.EnsureCovered(chunkIds, chunkIdMap);
+
+        if (await context.Vectors.AnyAsync(v => v.DocumentId == newDocumentId, cancellationToken))
+            throw DocumentReassignment.TargetDocumentNotEmpty(newDocumentId);
+
+        var newKeys = chunkIds.ToDictionary(id => ChunkStorageId.ToStorageGuid(chunkIdMap[id]), id => chunkIdMap[id]);
+        var newGuids = newKeys.Keys.ToList();
+        var taken = await context.Vectors
+            .Where(v => newGuids.Contains(v.Id))
+            .Select(v => v.Id)
+            .ToListAsync(cancellationToken);
+        if (taken.Count > 0)
+            throw DocumentReassignment.TargetChunkIdsTaken(taken.Select(g => newKeys[g]).ToList());
+
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var row = rows[i];
+            var newId = chunkIdMap[chunkIds[i]];
+            var metadata = DocumentReassignment.RewriteMetadata(
+                row.Metadata, oldDocumentId, newDocumentId, newId, chunkIdMap, metadataUpdates);
+            metadata[ChunkStorageId.OriginalIdKey] = newId;
+            context.Vectors.Add(new VectorEntity
+            {
+                Id = ChunkStorageId.ToStorageGuid(newId),
+                DocumentId = newDocumentId,
+                ChunkIndex = row.ChunkIndex,
+                TotalChunks = row.TotalChunks,
+                Content = row.Content,
+                Embedding = row.Embedding,
+                TokenCount = row.TokenCount,
+                Metadata = metadata
+            });
+        }
+
+        context.Vectors.RemoveRange(rows);
+        await context.SaveChangesAsync(cancellationToken);
+        return rows.Count;
+    }
+
     #endregion
 
     #region Overrides for Batch Optimization

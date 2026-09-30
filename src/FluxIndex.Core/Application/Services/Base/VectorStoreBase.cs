@@ -356,6 +356,19 @@ public abstract partial class VectorStoreBase : IVectorStore
             $"{GetType().Name} does not support DeleteByFilterAsync.");
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Default implementation throws; every store derived from this base in FluxIndex overrides it.
+    /// </remarks>
+    public virtual Task<int> ReassignDocumentAsync(
+        string oldDocumentId,
+        string newDocumentId,
+        IReadOnlyDictionary<string, string> chunkIdMap,
+        IReadOnlyDictionary<string, object?>? metadataUpdates = null,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException(
+            $"{GetType().Name} does not support ReassignDocumentAsync.");
+
+    /// <inheritdoc />
     public Task<bool> DeleteAsync(string id, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(id))

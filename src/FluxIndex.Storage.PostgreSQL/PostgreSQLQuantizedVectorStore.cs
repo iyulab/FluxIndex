@@ -238,6 +238,86 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
         return true;
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// Rows are keyed on <see cref="ChunkStorageId.ToStorageGuid"/> of the chunk id, so each is re-inserted under its
+    /// new key and the old row deleted; the quantized rows keep their own keys and have their chunk id rewritten. One
+    /// <c>SaveChanges</c>, one transaction. Neither embedding is recomputed.
+    /// </remarks>
+    public async Task<int> ReassignDocumentAsync(
+        string oldDocumentId,
+        string newDocumentId,
+        IReadOnlyDictionary<string, string> chunkIdMap,
+        IReadOnlyDictionary<string, object?>? metadataUpdates = null,
+        CancellationToken cancellationToken = default)
+    {
+        DocumentReassignment.ValidateArguments(oldDocumentId, newDocumentId, chunkIdMap);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        var rows = await context.Vectors
+            .AsTracking()
+            .Where(v => v.DocumentId == oldDocumentId)
+            .ToListAsync(cancellationToken);
+        if (rows.Count == 0)
+            return 0;
+
+        var chunkIds = rows.Select(r => OriginalChunkId(r.Metadata) ?? r.Id.ToString()).ToList();
+        DocumentReassignment.EnsureCovered(chunkIds, chunkIdMap);
+
+        if (await context.Vectors.AnyAsync(v => v.DocumentId == newDocumentId, cancellationToken))
+            throw DocumentReassignment.TargetDocumentNotEmpty(newDocumentId);
+
+        var newKeys = chunkIds.ToDictionary(id => ChunkStorageId.ToStorageGuid(chunkIdMap[id]), id => chunkIdMap[id]);
+        var newGuids = newKeys.Keys.ToList();
+        var taken = await context.Vectors
+            .Where(v => newGuids.Contains(v.Id))
+            .Select(v => v.Id)
+            .ToListAsync(cancellationToken);
+        if (taken.Count > 0)
+            throw DocumentReassignment.TargetChunkIdsTaken(taken.Select(g => newKeys[g]).ToList());
+
+        // A quantized row names its chunk by the caller's id; rows written before that was preserved used the row key.
+        var quantizedKeys = new Dictionary<string, string>(StringComparer.Ordinal);
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var newId = chunkIdMap[chunkIds[i]];
+            quantizedKeys[chunkIds[i]] = newId;
+            quantizedKeys.TryAdd(rows[i].Id.ToString(), newId);
+        }
+        var quantizedLookup = quantizedKeys.Keys.ToList();
+        var quantized = await context.QuantizedVectors
+            .AsTracking()
+            .Where(q => quantizedLookup.Contains(q.ChunkId))
+            .ToListAsync(cancellationToken);
+
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var row = rows[i];
+            var newId = chunkIdMap[chunkIds[i]];
+            var metadata = DocumentReassignment.RewriteMetadata(
+                row.Metadata, oldDocumentId, newDocumentId, newId, chunkIdMap, metadataUpdates);
+            metadata[ChunkStorageId.OriginalIdKey] = newId;
+            context.Vectors.Add(new QuantizedVectorEntity
+            {
+                Id = ChunkStorageId.ToStorageGuid(newId),
+                DocumentId = newDocumentId,
+                ChunkIndex = row.ChunkIndex,
+                TotalChunks = row.TotalChunks,
+                Content = row.Content,
+                Embedding = row.Embedding,
+                TokenCount = row.TokenCount,
+                Metadata = metadata
+            });
+        }
+
+        foreach (var entity in quantized)
+            entity.ChunkId = quantizedKeys[entity.ChunkId];
+
+        context.Vectors.RemoveRange(rows);
+        await context.SaveChangesAsync(cancellationToken);
+        return rows.Count;
+    }
+
     public async Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default)
     {
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);

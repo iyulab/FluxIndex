@@ -260,6 +260,74 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
         return true;
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// Each chunk row is re-inserted under its new id and the old one deleted (EF Core cannot change a primary key in
+    /// place); the quantized rows keep their own keys and have their chunk id rewritten. One <c>SaveChanges</c>, one
+    /// transaction. Neither the full-precision nor the quantized embedding is recomputed.
+    /// </remarks>
+    public async Task<int> ReassignDocumentAsync(
+        string oldDocumentId,
+        string newDocumentId,
+        IReadOnlyDictionary<string, string> chunkIdMap,
+        IReadOnlyDictionary<string, object?>? metadataUpdates = null,
+        CancellationToken cancellationToken = default)
+    {
+        DocumentReassignment.ValidateArguments(oldDocumentId, newDocumentId, chunkIdMap);
+        await EnsureInitializedAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        var rows = await context.Vectors
+            .AsTracking()
+            .Where(v => v.DocumentId == oldDocumentId)
+            .ToListAsync(cancellationToken);
+        if (rows.Count == 0)
+            return 0;
+
+        DocumentReassignment.EnsureCovered(rows.Select(r => r.Id), chunkIdMap);
+
+        if (await context.Vectors.AnyAsync(v => v.DocumentId == newDocumentId, cancellationToken))
+            throw DocumentReassignment.TargetDocumentNotEmpty(newDocumentId);
+
+        var newIds = rows.Select(r => chunkIdMap[r.Id]).ToList();
+        var taken = await context.Vectors
+            .Where(v => newIds.Contains(v.Id))
+            .Select(v => v.Id)
+            .ToListAsync(cancellationToken);
+        if (taken.Count > 0)
+            throw DocumentReassignment.TargetChunkIdsTaken(taken);
+
+        var oldIds = rows.Select(r => r.Id).ToList();
+        var quantized = await context.QuantizedVectors
+            .AsTracking()
+            .Where(q => oldIds.Contains(q.ChunkId))
+            .ToListAsync(cancellationToken);
+
+        foreach (var row in rows)
+        {
+            var newId = chunkIdMap[row.Id];
+            context.Vectors.Add(new QuantizedVectorEntity
+            {
+                Id = newId,
+                DocumentId = newDocumentId,
+                ChunkIndex = row.ChunkIndex,
+                TotalChunks = row.TotalChunks,
+                Content = row.Content,
+                Embedding = row.Embedding,
+                TokenCount = row.TokenCount,
+                Metadata = DocumentReassignment.RewriteMetadata(
+                    row.Metadata, oldDocumentId, newDocumentId, newId, chunkIdMap, metadataUpdates)
+            });
+        }
+
+        foreach (var entity in quantized)
+            entity.ChunkId = chunkIdMap[entity.ChunkId];
+
+        context.Vectors.RemoveRange(rows);
+        await context.SaveChangesAsync(cancellationToken);
+        return rows.Count;
+    }
+
     public async Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default)
     {
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);

@@ -331,6 +331,10 @@ var forgot = await graphRag.ForgetChunksAsync(removedChunkIds, partition, ct);
 
 FluxFeed's vault pipeline calls it for superseded chunks and for removed documents.
 
+When chunks are renamed rather than removed — their document moved to a new id with its content unchanged — call
+`ReassignChunksAsync(chunkIdMap, oldDocumentId, newDocumentId, partition)` (0.64.0+) instead: entities, relationship
+evidence and communities point at the new chunk ids, and nothing is extracted or summarized again.
+
 `UpdateIndexAsync` returns the extended index **in memory**; it does not write the updated communities back to the graph store
 (only `BuildIndexAsync` persists communities). With `RebuildCommunities = true` (the default) communities are detected again over
 the old and new chunks; with `false` each new chunk joins its most similar existing community (when at least `SimilarityThreshold` similar) and that community's ancestors, and

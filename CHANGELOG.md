@@ -9,6 +9,29 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.64.0] - Unreleased
+
+### Added
+- **A document can be moved to a new id without re-embedding it.** `IVectorStore.ReassignDocumentAsync(oldDocumentId,
+  newDocumentId, chunkIdMap, metadataUpdates)` moves every chunk of a document to a new document id and to the chunk
+  ids the map gives, keeps content and vectors as stored, and applies metadata updates (a null value removes the key).
+  It returns the number of chunks moved. Every check runs before anything is written: a stored chunk missing from the
+  map throws `ArgumentException`; a target document that already has chunks, or a new chunk id that is already taken,
+  throws `InvalidOperationException`. Implemented by every shipped store — InMemory, SQLite (in-memory scan, quantized,
+  sqlite-vec), PostgreSQL (plain and quantized), Qdrant and the quantization decorator. The SQL stores do it in one
+  transaction; Qdrant copies each point with its stored vector to the new point id before deleting the old one.
+- **`IKeywordSearchService.ReassignDocumentAsync`** does the same for the keyword leg with the same checks: the relational
+  indexes (SQLite, PostgreSQL) rewrite the chunk, metadata and posting rows in one transaction, so a changed
+  `file_name` or `title` field is searchable under its new value; the in-memory BM25 index moves its entries.
+- **`IGraphRAGService.ReassignChunksAsync(chunkIdMap, oldDocumentId, newDocumentId, partition)`** points the persisted
+  graph — entity chunk and document ids, relationship evidence, community membership — at the new ids. Nothing is
+  extracted or summarized again.
+- `DocumentReassignment` holds the shared argument, coverage and metadata rules, for implementers outside FluxIndex.
+- The new interface members have a default implementation that throws `NotSupportedException`, so existing
+  implementations outside FluxIndex keep compiling.
+
+---
+
 ## [0.63.0] - 2026-09-30
 
 ### Fixed

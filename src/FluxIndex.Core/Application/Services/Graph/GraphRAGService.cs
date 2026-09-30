@@ -311,6 +311,81 @@ public partial class GraphRAGService : IGraphRAGService
     }
 
     /// <inheritdoc />
+    public async Task<GraphReassignResult> ReassignChunksAsync(
+        IReadOnlyDictionary<string, string> chunkIdMap,
+        string oldDocumentId,
+        string newDocumentId,
+        string partition = GraphPartition.Default,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(chunkIdMap);
+        ArgumentException.ThrowIfNullOrWhiteSpace(oldDocumentId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(newDocumentId);
+        ArgumentNullException.ThrowIfNull(partition);
+        if (_graphStore == null || chunkIdMap.Count == 0)
+            return new GraphReassignResult();
+
+        string Map(string id) => chunkIdMap.TryGetValue(id, out var mapped) ? mapped : id;
+        var mappedIds = chunkIdMap.Keys.ToList();
+
+        var communitiesUpdated = 0;
+        foreach (var community in await _graphStore.GetCommunitiesByChunkIdsAsync(mappedIds, partition, cancellationToken))
+        {
+            await _graphStore.StoreCommunityAsync(
+                community with { ChunkIds = community.ChunkIds.Select(Map).Distinct(StringComparer.Ordinal).ToList() },
+                cancellationToken);
+            communitiesUpdated++;
+        }
+
+        var entitiesUpdated = 0;
+        var entityIds = new List<string>();
+        foreach (var entity in await _graphStore.GetEntitiesByChunkIdsAsync(mappedIds, partition, cancellationToken))
+        {
+            var documentIds = entity.DocumentIds
+                .Select(id => string.Equals(id, oldDocumentId, StringComparison.Ordinal) ? newDocumentId : id)
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            await _graphStore.UpdateEntityAsync(
+                entity with
+                {
+                    ChunkIds = entity.ChunkIds.Select(Map).Distinct(StringComparer.Ordinal).ToList(),
+                    DocumentIds = documentIds
+                },
+                cancellationToken);
+            entitiesUpdated++;
+            entityIds.Add(entity.Id);
+        }
+
+        // A relationship's evidence came from chunks both its entities were extracted from, so every relationship
+        // evidenced by a mapped chunk touches one of the entities just rewritten.
+        var relationshipsUpdated = 0;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var entityId in entityIds)
+        {
+            foreach (var relationship in await _graphStore.GetRelationshipsAsync(entityId, TraversalDirection.Both, cancellationToken))
+            {
+                if (!seen.Add(relationship.Id) || !relationship.EvidenceChunkIds.Any(chunkIdMap.ContainsKey))
+                    continue;
+
+                await _graphStore.StoreRelationshipAsync(
+                    relationship with { EvidenceChunkIds = relationship.EvidenceChunkIds.Select(Map).Distinct(StringComparer.Ordinal).ToList() },
+                    cancellationToken);
+                relationshipsUpdated++;
+            }
+        }
+
+        var result = new GraphReassignResult
+        {
+            EntitiesUpdated = entitiesUpdated,
+            RelationshipsUpdated = relationshipsUpdated,
+            CommunitiesUpdated = communitiesUpdated
+        };
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogChunksReassigned(_logger, chunkIdMap.Count, partition, entitiesUpdated, relationshipsUpdated, communitiesUpdated);
+        return result;
+    }
+
+    /// <inheritdoc />
     public async Task<GraphRAGIndex> LoadIndexAsync(
         IEnumerable<DocumentChunk> chunks,
         GraphRAGLoadOptions? options = null,
@@ -1807,6 +1882,9 @@ Provide a comprehensive answer that integrates both perspectives:";
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Deleted {Count} superseded GraphRAG communities in partition '{Partition}'")]
     private static partial void LogSupersededCommunitiesDeleted(ILogger logger, int count, string partition);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Reassigned {ChunkCount} chunks in partition '{Partition}': rewrote {Entities} entities, {Relationships} relationships and {Communities} communities")]
+    private static partial void LogChunksReassigned(ILogger logger, int chunkCount, string partition, int entities, int relationships, int communities);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Forgot {ChunkCount} chunks in partition '{Partition}': deleted {Communities} communities, {EntitiesDeleted} entities and {RelationshipsDeleted} relationships; trimmed {EntitiesTrimmed} entities and {RelationshipsTrimmed} relationships")]
     private static partial void LogChunksForgotten(ILogger logger, int chunkCount, string partition, int communities, int entitiesDeleted, int entitiesTrimmed, int relationshipsDeleted, int relationshipsTrimmed);

@@ -44,6 +44,12 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   read one back with `LoadIndexAsync(chunks)` (needs a registered `IGraphStore`). `Retriever.SearchAsync` does not run
   GraphRAG (`SearchOptions.UseGraphRAG = true` throws). A re-build replaces the communities the last build of those chunks persisted
   (`IGraphStore.DeleteCommunitiesAsync`); `IGraphRAGService.ForgetChunksAsync` removes what replaced or deleted chunks left in the graph.
+- **Moving a document without re-embedding** — `IVectorStore.ReassignDocumentAsync(oldDocumentId, newDocumentId,
+  chunkIdMap, metadataUpdates)`, `IKeywordSearchService.ReassignDocumentAsync` (same arguments) and
+  `IGraphRAGService.ReassignChunksAsync` move a document's chunks to a new document id and new chunk ids, keeping the
+  stored vectors, for when the ids derive from something that changed (a file path). Always available on every shipped
+  store; a stored chunk missing from the map, a non-empty target document or a taken chunk id throws before anything is
+  written.
 - **AI metadata on indexing** — register your `IMetadataExtractor` (`ConfigureServices`; FluxIndex ships none) and ask for it
   per call with `IndexingOptions.WithAIMetadataExtraction(schema)` (or as a builder default); the result lands in the
   document's `AIExtractedMetadata`. Asking without a registered extractor throws; `Indexer.SupportsAIMetadata` reports it.
@@ -242,6 +248,10 @@ matters for recall/performance at scale:
 | SQLite (sqlite-vec) | ✅ exact (KNN window, then exact scan when the window cannot fill `topK`) | ✅ | vec0 cannot index metadata, so the filter runs after the KNN; a window that comes back full without filling `topK` falls through to an exact scan, so a narrow scope in a large store is still answered |
 | SQLite (in-memory scan) | ✅ pre-trim | ✅ | Full scan store |
 | InMemory (SDK) | ✅ pre-trim | ✅ | |
+
+Every store above also implements `ReassignDocumentAsync` (move a document to a new id, keeping its vectors): in one
+transaction on PostgreSQL and SQLite; on Qdrant by copying each point with its stored vector to the new point id and
+then deleting the old point, so an interrupted move leaves the document duplicated, never missing.
 
 **Concurrent callers.** One context can be shared by overlapping callers — a DI singleton serving HTTP requests
 alongside a background indexer. Every EF-backed store (PostgreSQL and SQLite vector stores including sqlite-vec and the

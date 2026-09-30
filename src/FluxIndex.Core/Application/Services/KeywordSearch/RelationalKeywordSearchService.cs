@@ -1,4 +1,5 @@
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Utilities;
 using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Logging;
 using System.Data;
@@ -1071,6 +1072,132 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// One transaction: the document's rows are read, checked, and written back under the new ids — chunk row, filterable
+    /// metadata rows, body postings and field postings — with the old rows removed, exactly as a delete followed by an
+    /// index of the same text would leave them. The stored text is re-analyzed rather than the posting rows re-keyed,
+    /// because a metadata update can change a scored field (the default fields are <c>title</c> and <c>file_name</c>),
+    /// and field postings copied under a new id would keep matching the old value. Nothing is embedded: this index has
+    /// no vectors.
+    /// </remarks>
+    public async Task<int> ReassignDocumentAsync(
+        string oldDocumentId,
+        string newDocumentId,
+        IReadOnlyDictionary<string, string> chunkIdMap,
+        IReadOnlyDictionary<string, object?>? metadataUpdates = null,
+        CancellationToken cancellationToken = default)
+    {
+        DocumentReassignment.ValidateArguments(oldDocumentId, newDocumentId, chunkIdMap);
+        await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+
+        var moved = 0;
+        await RunWithConcurrencyRetryAsync(
+            async () => moved = await ReassignDocumentOnceAsync(
+                oldDocumentId, newDocumentId, chunkIdMap, metadataUpdates, cancellationToken).ConfigureAwait(false),
+            cancellationToken).ConfigureAwait(false);
+        return moved;
+    }
+
+    /// <summary>Attempts one reassignment transaction. Retried as a whole on a serialization failure.</summary>
+    private async Task<int> ReassignDocumentOnceAsync(
+        string oldDocumentId,
+        string newDocumentId,
+        IReadOnlyDictionary<string, string> chunkIdMap,
+        IReadOnlyDictionary<string, object?>? metadataUpdates,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            var oldIds = await ReadChunkIdsForDocumentAsync(connection, oldDocumentId, cancellationToken).ConfigureAwait(false);
+            if (oldIds.Count == 0)
+            {
+                await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                return 0;
+            }
+
+            DocumentReassignment.EnsureCovered(oldIds, chunkIdMap);
+
+            var targetIds = await ReadChunkIdsForDocumentAsync(connection, newDocumentId, cancellationToken).ConfigureAwait(false);
+            if (targetIds.Count > 0)
+                throw DocumentReassignment.TargetDocumentNotEmpty(newDocumentId);
+
+            var taken = await LoadChunksAsync(connection, oldIds.Select(id => chunkIdMap[id]).ToList(), cancellationToken).ConfigureAwait(false);
+            if (taken.Count > 0)
+                throw DocumentReassignment.TargetChunkIdsTaken(taken.Keys.ToList());
+
+            var stored = await LoadChunksAsync(connection, oldIds, cancellationToken).ConfigureAwait(false);
+            var tokenized = stored.Values
+                .Select(chunk =>
+                {
+                    var newId = chunkIdMap[chunk.Id];
+                    var moved = new DocumentChunk
+                    {
+                        Id = newId,
+                        DocumentId = newDocumentId,
+                        ChunkIndex = chunk.ChunkIndex,
+                        Content = chunk.Content,
+                        TokenCount = chunk.TokenCount,
+                        Metadata = DocumentReassignment.RewriteMetadata(
+                            chunk.Metadata, oldDocumentId, newDocumentId, newId, chunkIdMap, metadataUpdates)
+                    };
+                    return (Chunk: moved, Terms: Tokenize(moved.Content).ToList(), FieldTerms: TokenizeFields(moved));
+                })
+                .ToList();
+
+            // Same acquisition discipline as indexing and deletion: every term row the transaction writes, the old
+            // chunks' and the new chunks', taken first in one sorted pass.
+            var storedTerms = await ReadStoredTermsAsync(connection, oldIds, cancellationToken).ConfigureAwait(false);
+            var termIds = await AcquireTermIdsAsync(
+                connection,
+                TermAcquisitionOrder(tokenized
+                    .Select(t => (IEnumerable<string>)t.Terms)
+                    .Concat(tokenized.SelectMany(t => t.FieldTerms.Select(f => (IEnumerable<string>)f.Terms)))
+                    .Append(storedTerms)),
+                cancellationToken).ConfigureAwait(false);
+            var affectedTermIds = new HashSet<long>(termIds.Values);
+            var statistics = new StatisticsDelta();
+
+            foreach (var chunkId in oldIds)
+            {
+                await CollectTermIdsForChunkAsync(connection, chunkId, affectedTermIds, cancellationToken).ConfigureAwait(false);
+                await SubtractStoredLengthsAsync(connection, chunkId, statistics, cancellationToken).ConfigureAwait(false);
+
+                await using var deleteCmd = connection.CreateCommand();
+                deleteCmd.CommandText = """
+                    DELETE FROM bm25_postings WHERE chunk_id = @chunkId;
+                    DELETE FROM bm25_field_postings WHERE chunk_id = @chunkId;
+                    DELETE FROM bm25_chunk_metadata WHERE chunk_id = @chunkId;
+                    DELETE FROM bm25_chunks WHERE chunk_id = @chunkId;
+                    """;
+                AddParameter(deleteCmd, "@chunkId", chunkId);
+                await deleteCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            var reindexed = 0;
+            foreach (var (chunk, terms, fieldTerms) in tokenized)
+            {
+                if (await IndexChunkCoreAsync(connection, chunk, terms, fieldTerms, termIds, affectedTermIds, statistics, cancellationToken).ConfigureAwait(false))
+                    reindexed++;
+            }
+
+            await RecomputeDocumentFrequenciesAsync(connection, affectedTermIds, cancellationToken).ConfigureAwait(false);
+            await ApplyStatisticsDeltaAsync(connection, statistics, cancellationToken).ConfigureAwait(false);
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+
+            LogDocumentReassigned(Logger, reindexed, oldDocumentId, newDocumentId);
+            return reindexed;
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<string>> GetChunkIdsByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(documentId))
@@ -1867,6 +1994,9 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         Level = LogLevel.Warning,
         Message = "Keyword index transaction hit a concurrency conflict (SQLSTATE {SqlState}); retry {Attempt}")]
     private static partial void LogConcurrencyRetry(ILogger logger, int attempt, string sqlState);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Reassigned {ChunkCount} keyword-index chunks from document {OldDocumentId} to {NewDocumentId}")]
+    private static partial void LogDocumentReassigned(ILogger logger, int chunkCount, string oldDocumentId, string newDocumentId);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Deleted chunk {ChunkId} from keyword index")]
     private static partial void LogChunkDeleted(ILogger logger, string chunkId);

@@ -927,6 +927,107 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable, IDispos
         return count;
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// <para>
+    /// A point id derives from the chunk id (<see cref="ChunkStorageId"/>), so a new chunk id is a new point. The old
+    /// points are read back <em>with their vectors</em> and written under the new point ids with the rewritten payload,
+    /// then the old points are deleted — the vectors travel as stored and nothing is re-embedded.
+    /// </para>
+    /// <para>
+    /// Qdrant has no multi-operation transaction. The new points are upserted before the old ones are deleted, so an
+    /// interrupted call leaves the document present under both ids (recoverable by calling again with the old id
+    /// removed, or by deleting the new document) rather than under neither.
+    /// </para>
+    /// </remarks>
+    public async Task<int> ReassignDocumentAsync(
+        string oldDocumentId,
+        string newDocumentId,
+        IReadOnlyDictionary<string, string> chunkIdMap,
+        IReadOnlyDictionary<string, object?>? metadataUpdates = null,
+        CancellationToken cancellationToken = default)
+    {
+        DocumentReassignment.ValidateArguments(oldDocumentId, newDocumentId, chunkIdMap);
+        await EnsureCollectionAsync(cancellationToken);
+        if (_resolvedCollectionName is null)
+            return 0;
+
+        var points = await ScrollAllAsync(
+            DocumentIdFilter(oldDocumentId),
+            new WithPayloadSelector { Enable = true },
+            new WithVectorsSelector { Enable = true },
+            cancellationToken);
+        if (points.Count == 0)
+            return 0;
+
+        var chunkIds = points.Select(p => ChunkIdFromPayload(p.Payload) ?? p.Id.Uuid).ToList();
+        DocumentReassignment.EnsureCovered(chunkIds, chunkIdMap);
+
+        var targetCount = await _client.CountAsync(
+            _resolvedCollectionName, DocumentIdFilter(newDocumentId), cancellationToken: cancellationToken);
+        if (targetCount > 0)
+            throw DocumentReassignment.TargetDocumentNotEmpty(newDocumentId);
+
+        var newPointIds = chunkIds.Select(id => (PointId)ToPointId(chunkIdMap[id])).ToList();
+        var existing = await _client.RetrieveAsync(
+            _resolvedCollectionName,
+            newPointIds,
+            new WithPayloadSelector { Include = new PayloadIncludeSelector { Fields = { ChunkIdPayloadKey } } },
+            new WithVectorsSelector { Enable = false },
+            cancellationToken: cancellationToken);
+        if (existing.Count > 0)
+            throw DocumentReassignment.TargetChunkIdsTaken(
+                existing.Select(p => ChunkIdFromPayload(p.Payload) ?? p.Id.Uuid).ToList());
+
+        var moved = new List<PointStruct>(points.Count);
+        for (var i = 0; i < points.Count; i++)
+        {
+            var point = points[i];
+            var newId = chunkIdMap[chunkIds[i]];
+            var dense = point.Vectors?.Vector?.GetDenseVector();
+            if (dense?.Data is not { Count: > 0 })
+                throw new InvalidOperationException(
+                    $"Point for chunk '{chunkIds[i]}' has no dense vector to carry over; the document was not moved.");
+
+            var payload = new Dictionary<string, Value>(point.Payload.Count);
+            foreach (var (key, value) in point.Payload)
+                payload[key] = value;
+            payload[ChunkIdPayloadKey] = newId;
+            payload["document_id"] = newDocumentId;
+
+            // Metadata lives in meta_-prefixed string fields (see CreatePointFromChunk); rewrite it through the shared
+            // rules and write it back in the same form.
+            var metadata = payload
+                .Where(kv => kv.Key.StartsWith("meta_", StringComparison.Ordinal))
+                .ToDictionary(kv => kv.Key[5..], kv => (object)GetPayloadString(point.Payload, kv.Key));
+            var rewritten = DocumentReassignment.RewriteMetadata(
+                metadata, oldDocumentId, newDocumentId, newId, chunkIdMap, metadataUpdates);
+            foreach (var key in metadata.Keys)
+                payload.Remove($"meta_{key}");
+            foreach (var (key, value) in rewritten)
+                payload[$"meta_{key}"] = value?.ToString() ?? string.Empty;
+
+            moved.Add(new PointStruct
+            {
+                Id = ToPointId(newId),
+                Vectors = dense.Data.ToArray(),
+                Payload = { payload }
+            });
+        }
+
+        await _client.UpsertAsync(
+            collectionName: _resolvedCollectionName,
+            points: moved,
+            cancellationToken: cancellationToken);
+
+        await _client.DeleteAsync(
+            collectionName: _resolvedCollectionName,
+            ids: points.Select(p => Guid.Parse(p.Id.Uuid)).ToList(),
+            cancellationToken: cancellationToken);
+
+        return points.Count;
+    }
+
     public async Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default)
     {
         var chunk = await GetByIdAsync(id, cancellationToken);

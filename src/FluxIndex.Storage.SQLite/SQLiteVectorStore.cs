@@ -283,6 +283,65 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
         return matched.Count;
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// The primary key cannot be changed in place through EF Core, so each row is re-inserted under its new id and
+    /// the old row deleted — in one <c>SaveChanges</c>, which is one transaction. The embedding column is copied as
+    /// stored.
+    /// </remarks>
+    public override async Task<int> ReassignDocumentAsync(
+        string oldDocumentId,
+        string newDocumentId,
+        IReadOnlyDictionary<string, string> chunkIdMap,
+        IReadOnlyDictionary<string, object?>? metadataUpdates = null,
+        CancellationToken cancellationToken = default)
+    {
+        DocumentReassignment.ValidateArguments(oldDocumentId, newDocumentId, chunkIdMap);
+        await EnsureInitializedAsync(cancellationToken);
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        var rows = await context.Vectors
+            .AsTracking()
+            .Where(v => v.DocumentId == oldDocumentId)
+            .ToListAsync(cancellationToken);
+        if (rows.Count == 0)
+            return 0;
+
+        DocumentReassignment.EnsureCovered(rows.Select(r => r.Id), chunkIdMap);
+
+        if (await context.Vectors.AnyAsync(v => v.DocumentId == newDocumentId, cancellationToken))
+            throw DocumentReassignment.TargetDocumentNotEmpty(newDocumentId);
+
+        var newIds = rows.Select(r => chunkIdMap[r.Id]).ToList();
+        var taken = await context.Vectors
+            .Where(v => newIds.Contains(v.Id))
+            .Select(v => v.Id)
+            .ToListAsync(cancellationToken);
+        if (taken.Count > 0)
+            throw DocumentReassignment.TargetChunkIdsTaken(taken);
+
+        foreach (var row in rows)
+        {
+            var newId = chunkIdMap[row.Id];
+            context.Vectors.Add(new VectorEntity
+            {
+                Id = newId,
+                DocumentId = newDocumentId,
+                ChunkIndex = row.ChunkIndex,
+                TotalChunks = row.TotalChunks,
+                Content = row.Content,
+                Embedding = row.Embedding,
+                TokenCount = row.TokenCount,
+                Metadata = DocumentReassignment.RewriteMetadata(
+                    row.Metadata, oldDocumentId, newDocumentId, newId, chunkIdMap, metadataUpdates)
+            });
+        }
+
+        context.Vectors.RemoveRange(rows);
+        await context.SaveChangesAsync(cancellationToken);
+        return rows.Count;
+    }
+
     #endregion
 
     #region Overrides for Batch Optimization

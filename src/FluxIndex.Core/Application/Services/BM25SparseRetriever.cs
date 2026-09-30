@@ -1,5 +1,6 @@
 using FluxIndex.Core.Application.Services.KeywordSearch;
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Utilities;
 using FluxIndex.Core.Domain.Models;
 using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Logging;
@@ -473,42 +474,50 @@ public partial class BM25SparseRetriever : IKeywordSearchService, IPersistableSp
     {
         await Task.CompletedTask;
 
-        var tokens = TokenizeContent(chunk.Content);
-        var termFrequencies = CountTermFrequencies(tokens);
-
         lock (_lockObject)
         {
             // Indexing an id that is already indexed replaces it — the contract every keyword index
             // shares. Without this the inverted index kept the previous postings next to the new ones
             // and the chunk was counted twice.
             RemoveChunkFromIndex(index, chunk.Id);
-
-            // Add chunk to document index
-            index.DocumentIndex[chunk.Id] = chunk;
-
-            // Update inverted index for each term
-            foreach (var termFreq in termFrequencies)
-            {
-                var term = termFreq.Key;
-                var frequency = termFreq.Value;
-
-                // Update global term frequency
-                index.TermFrequencies.AddOrUpdate(term, frequency, (_, existing) => existing + frequency);
-
-                // Update inverted index
-                index.InvertedIndex.AddOrUpdate(term,
-                    new List<Posting> { new(chunk.Id, frequency, tokens.Count) },
-                    (_, existing) =>
-                    {
-                        var updatedList = new List<Posting>(existing) { new(chunk.Id, frequency, tokens.Count) };
-                        return updatedList;
-                    });
-            }
-
-            // Update index statistics
-            index.DocumentCount++;
-            index.TotalDocumentLength += tokens.Count;
+            AddChunkToIndex(index, chunk);
         }
+    }
+
+    /// <summary>
+    /// Adds a chunk that is not in the index: its document entry, postings, term totals and length.
+    /// Caller holds the lock.
+    /// </summary>
+    private static void AddChunkToIndex(BM25Index index, DocumentChunk chunk)
+    {
+        var tokens = TokenizeContent(chunk.Content);
+        var termFrequencies = CountTermFrequencies(tokens);
+
+        // Add chunk to document index
+        index.DocumentIndex[chunk.Id] = chunk;
+
+        // Update inverted index for each term
+        foreach (var termFreq in termFrequencies)
+        {
+            var term = termFreq.Key;
+            var frequency = termFreq.Value;
+
+            // Update global term frequency
+            index.TermFrequencies.AddOrUpdate(term, frequency, (_, existing) => existing + frequency);
+
+            // Update inverted index
+            index.InvertedIndex.AddOrUpdate(term,
+                new List<Posting> { new(chunk.Id, frequency, tokens.Count) },
+                (_, existing) =>
+                {
+                    var updatedList = new List<Posting>(existing) { new(chunk.Id, frequency, tokens.Count) };
+                    return updatedList;
+                });
+        }
+
+        // Update index statistics
+        index.DocumentCount++;
+        index.TotalDocumentLength += tokens.Count;
     }
 
     private static async Task UpdateIndexStatisticsAsync(BM25Index index, CancellationToken cancellationToken)
@@ -790,6 +799,55 @@ public partial class BM25SparseRetriever : IKeywordSearchService, IPersistableSp
         }
 
         return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public async Task<int> ReassignDocumentAsync(
+        string oldDocumentId,
+        string newDocumentId,
+        IReadOnlyDictionary<string, string> chunkIdMap,
+        IReadOnlyDictionary<string, object?>? metadataUpdates = null,
+        CancellationToken cancellationToken = default)
+    {
+        DocumentReassignment.ValidateArguments(oldDocumentId, newDocumentId, chunkIdMap);
+        var defaultIndex = _indexes.GetOrAdd("default", _ => new BM25Index());
+
+        int moved;
+        lock (_lockObject)
+        {
+            var oldIds = ChunkIdsForDocument(defaultIndex, oldDocumentId);
+            if (oldIds.Count == 0)
+                return 0;
+
+            DocumentReassignment.EnsureCovered(oldIds, chunkIdMap);
+
+            if (ChunkIdsForDocument(defaultIndex, newDocumentId).Count > 0)
+                throw DocumentReassignment.TargetDocumentNotEmpty(newDocumentId);
+
+            var taken = oldIds.Select(id => chunkIdMap[id]).Where(defaultIndex.DocumentIndex.ContainsKey).ToList();
+            if (taken.Count > 0)
+                throw DocumentReassignment.TargetChunkIdsTaken(taken);
+
+            // Every check passed under the lock, so the rewrite below cannot stop half-way.
+            foreach (var oldId in oldIds)
+            {
+                var previous = defaultIndex.DocumentIndex[oldId];
+                var newId = chunkIdMap[oldId];
+                var chunk = previous.WithContent(previous.Content);
+                chunk.Id = newId;
+                chunk.DocumentId = newDocumentId;
+                chunk.Metadata = DocumentReassignment.RewriteMetadata(
+                    previous.Metadata, oldDocumentId, newDocumentId, newId, chunkIdMap, metadataUpdates);
+
+                RemoveChunkFromIndex(defaultIndex, oldId);
+                AddChunkToIndex(defaultIndex, chunk);
+            }
+
+            moved = oldIds.Count;
+        }
+
+        await AutoSaveIfEnabledAsync(cancellationToken);
+        return moved;
     }
 
     /// <summary>Chunk ids the index holds for a document. The caller holds <c>_lockObject</c>.</summary>

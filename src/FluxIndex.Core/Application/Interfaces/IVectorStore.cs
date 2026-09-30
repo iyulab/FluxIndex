@@ -92,6 +92,57 @@ public interface IVectorStore
         CancellationToken cancellationToken = default)
         => throw new System.NotSupportedException(
             $"{GetType().Name} does not support DeleteByFilterAsync.");
+
+    /// <summary>
+    /// Moves every chunk of <paramref name="oldDocumentId"/> to <paramref name="newDocumentId"/>, renaming each
+    /// chunk to the id <paramref name="chunkIdMap"/> gives it and applying <paramref name="metadataUpdates"/> to its
+    /// metadata. Content, token counts and embeddings are kept exactly as stored — nothing is re-embedded.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is how a document whose identity derives from something that changed (a file path, say) keeps its index
+    /// rows instead of being deleted and indexed again: the vectors already describe the content, only the keys and
+    /// the provenance around them are stale.
+    /// </para>
+    /// <para>
+    /// Everything is checked before anything is written, and a failed check throws with the store unchanged:
+    /// <list type="bullet">
+    /// <item><description>Every chunk the store holds for <paramref name="oldDocumentId"/> must have an entry in
+    /// <paramref name="chunkIdMap"/> — otherwise <see cref="System.ArgumentException"/>. Entries for ids the store does
+    /// not hold are ignored, so one map can serve every index of a hybrid setup.</description></item>
+    /// <item><description><paramref name="newDocumentId"/> must have no chunks, and no new chunk id may already be
+    /// stored — otherwise <see cref="System.InvalidOperationException"/>. A reassignment never merges documents or
+    /// overwrites rows.</description></item>
+    /// <item><description>Argument rules (blank or equal document ids, an empty map, duplicate new ids) are those of
+    /// <see cref="Utilities.DocumentReassignment.ValidateArguments"/>.</description></item>
+    /// </list>
+    /// </para>
+    /// <para>
+    /// A metadata update with a null value removes that key. The keys a store maintains itself follow the move (see
+    /// <see cref="Utilities.DocumentReassignment.RewriteMetadata"/>). The write is atomic where the backend offers a
+    /// transaction; a store without one writes the new rows before deleting the old, so an interrupted call leaves
+    /// the document duplicated rather than missing.
+    /// </para>
+    /// <para>
+    /// The default implementation throws <see cref="System.NotSupportedException"/>; every store shipped with
+    /// FluxIndex overrides it.
+    /// </para>
+    /// </remarks>
+    /// <param name="oldDocumentId">The document whose chunks move.</param>
+    /// <param name="newDocumentId">The document id the chunks move to.</param>
+    /// <param name="chunkIdMap">Old chunk id to new chunk id, covering every chunk of the old document.</param>
+    /// <param name="metadataUpdates">Metadata keys to set on every moved chunk; a null value removes the key.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The number of chunks moved; 0 when the store holds nothing for <paramref name="oldDocumentId"/>.</returns>
+    Task<int> ReassignDocumentAsync(
+        string oldDocumentId,
+        string newDocumentId,
+        IReadOnlyDictionary<string, string> chunkIdMap,
+        IReadOnlyDictionary<string, object?>? metadataUpdates = null,
+        CancellationToken cancellationToken = default)
+        => throw new System.NotSupportedException(
+            $"{GetType().Name} does not support ReassignDocumentAsync.");
+
     Task<bool> ExistsAsync(string id, CancellationToken cancellationToken = default);
     Task<DocumentChunk?> GetByIdAsync(string id, CancellationToken cancellationToken = default);
     /// <summary>

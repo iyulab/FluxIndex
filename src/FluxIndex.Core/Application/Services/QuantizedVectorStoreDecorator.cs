@@ -188,6 +188,31 @@ public partial class QuantizedVectorStoreDecorator : IQuantizedVectorStore
         return deleted;
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// Delegates to the wrapped store, then moves the quantized copies it keeps to the new chunk ids — the vectors
+    /// did not change, so neither do their quantized forms.
+    /// </remarks>
+    public async Task<int> ReassignDocumentAsync(
+        string oldDocumentId,
+        string newDocumentId,
+        IReadOnlyDictionary<string, string> chunkIdMap,
+        IReadOnlyDictionary<string, object?>? metadataUpdates = null,
+        CancellationToken cancellationToken = default)
+    {
+        var moved = await _innerStore.ReassignDocumentAsync(
+            oldDocumentId, newDocumentId, chunkIdMap, metadataUpdates, cancellationToken);
+        if (moved > 0)
+        {
+            foreach (var (oldId, newId) in chunkIdMap)
+            {
+                if (_quantizedEmbeddings.TryRemove(oldId, out var quantized))
+                    _quantizedEmbeddings[newId] = quantized;
+            }
+        }
+        return moved;
+    }
+
     public Task<int> GetDistinctDocumentCountAsync(CancellationToken cancellationToken = default)
         => _innerStore.GetDistinctDocumentCountAsync(cancellationToken);
 

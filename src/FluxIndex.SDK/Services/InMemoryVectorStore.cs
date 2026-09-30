@@ -300,6 +300,76 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore, IDisposab
         return deleted;
     }
 
+    /// <inheritdoc />
+    public override async Task<int> ReassignDocumentAsync(
+        string oldDocumentId,
+        string newDocumentId,
+        IReadOnlyDictionary<string, string> chunkIdMap,
+        IReadOnlyDictionary<string, object?>? metadataUpdates = null,
+        CancellationToken cancellationToken = default)
+    {
+        DocumentReassignment.ValidateArguments(oldDocumentId, newDocumentId, chunkIdMap);
+
+        int moved;
+        lock (_indexLock)
+        {
+            if (!_documentChunks.TryGetValue(oldDocumentId, out var oldIds) || oldIds.Count == 0)
+                return 0;
+
+            DocumentReassignment.EnsureCovered(oldIds, chunkIdMap);
+
+            if (_documentChunks.TryGetValue(newDocumentId, out var targetIds) && targetIds.Count > 0)
+                throw DocumentReassignment.TargetDocumentNotEmpty(newDocumentId);
+
+            var taken = oldIds.Select(id => chunkIdMap[id]).Where(_chunks.ContainsKey).ToList();
+            if (taken.Count > 0)
+                throw DocumentReassignment.TargetChunkIdsTaken(taken);
+
+            // Every check passed under the lock, so the rewrite below cannot fail half-way.
+            var newIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var oldId in oldIds.ToList())
+            {
+                if (!_chunks.TryRemove(oldId, out var item))
+                    continue;
+
+                var newId = chunkIdMap[oldId];
+                var chunk = item.chunk.WithContent(item.chunk.Content);
+                chunk.Id = newId;
+                for (var i = 0; i < chunk.Relationships.Count; i++)
+                {
+                    var relationship = chunk.Relationships[i];
+                    var source = chunkIdMap.GetValueOrDefault(relationship.SourceChunkId, relationship.SourceChunkId);
+                    var target = chunkIdMap.GetValueOrDefault(relationship.TargetChunkId, relationship.TargetChunkId);
+                    if (source == relationship.SourceChunkId && target == relationship.TargetChunkId)
+                        continue;
+
+                    chunk.Relationships[i] = new ChunkRelationship
+                    {
+                        Id = relationship.Id,
+                        SourceChunkId = source,
+                        TargetChunkId = target,
+                        Type = relationship.Type,
+                        Strength = relationship.Strength,
+                        Description = relationship.Description,
+                        CreatedAt = relationship.CreatedAt
+                    };
+                }
+                chunk.DocumentId = newDocumentId;
+                chunk.Metadata = DocumentReassignment.RewriteMetadata(
+                    item.chunk.Metadata, oldDocumentId, newDocumentId, newId, chunkIdMap, metadataUpdates);
+                _chunks[newId] = (chunk, item.embedding);
+                newIds.Add(newId);
+            }
+
+            _documentChunks.Remove(oldDocumentId);
+            _documentChunks[newDocumentId] = newIds;
+            moved = newIds.Count;
+        }
+
+        await AutoSaveIfEnabledAsync(cancellationToken);
+        return moved;
+    }
+
     protected override Task<int> CountCoreAsync(CancellationToken cancellationToken)
     {
         return Task.FromResult(_chunks.Count);

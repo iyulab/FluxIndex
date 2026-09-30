@@ -183,6 +183,69 @@ public sealed class SQLiteGraphRAGRebuildTests : IAsyncDisposable
         Assert.Equal(1, result.EntitiesTrimmed);
     }
 
+    // Renaming a document's chunks: entities, relationship evidence and communities follow the new ids and the new
+    // document id; provenance from another document is untouched, and nothing is extracted again.
+    [Fact]
+    public async Task ReassignChunks_PointsEntitiesRelationshipsAndCommunitiesAtTheNewIds()
+    {
+        static ExtractedEntity Org(string id, string text) => new() { Id = id, Text = text, Type = NamedEntityType.Organization, Confidence = 0.9 };
+        var extractor = Substitute.For<IAdvancedEntityExtractionService>();
+        extractor.ExtractBatchAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EntityExtractionOptions>(), Arg.Any<CancellationToken>())
+            .Returns(
+                new List<EntityGraph>
+                {
+                    new() { SourceId = "a1", Entities = [Org("acme", "Acme Corp"), Org("globex", "Globex")], Relations = [new EntityRelation { SourceEntityId = "acme", TargetEntityId = "globex", Type = RelationType.RelatedTo, Label = "partners with", Confidence = 0.8, SourceId = "a1" }] },
+                    new() { SourceId = "a2", Entities = [Org("globex", "Globex")], Relations = [] }
+                },
+                new List<EntityGraph>
+                {
+                    new() { SourceId = "b1", Entities = [Org("acme", "Acme Corp")], Relations = [] }
+                });
+        GraphRAGService Service(string communityId) => new(
+            new EntityGraphService(extractor, null, _store, NullLogger<EntityGraphService>.Instance),
+            LeidenFor(communityId), SummariesFor(communityId), graphStore: _store, logger: NullLogger<GraphRAGService>.Instance);
+        await Service("doc-a").BuildIndexAsync([Chunk("a1", "doc-a"), Chunk("a2", "doc-a")], cancellationToken: Ct);
+        await Service("doc-b").BuildIndexAsync([Chunk("b1", "doc-b")], cancellationToken: Ct);
+        extractor.ClearReceivedCalls();
+        var map = new Dictionary<string, string> { ["a1"] = "n1", ["a2"] = "n2" };
+
+        var result = await Service("unused").ReassignChunksAsync(map, "doc-a", "doc-n", cancellationToken: Ct);
+
+        Assert.Equal(1, result.CommunitiesUpdated);
+        Assert.Empty(await _store.GetCommunitiesByChunkIdsAsync(["a1", "a2"], ct: Ct));
+        var community = Assert.Single(await _store.GetCommunitiesByChunkIdsAsync(["n1"], ct: Ct));
+        Assert.Equal(["n1", "n2"], community.ChunkIds.Order());
+        Assert.Equal("doc-a", community.Id);
+        Assert.Equal("doc-a", community.Summary);
+
+        Assert.Empty(await _store.GetEntitiesByChunkIdsAsync(["a1", "a2"], ct: Ct));
+        var globex = Assert.Single(await _store.GetEntitiesByNameAsync("Globex", ct: Ct));
+        Assert.Equal(["n1", "n2"], globex.ChunkIds.Order());
+        var acme = Assert.Single(await _store.GetEntitiesByNameAsync("Acme Corp", ct: Ct));
+        Assert.Equal(["b1", "n1"], acme.ChunkIds.Order());
+        Assert.DoesNotContain("doc-a", acme.DocumentIds);
+        Assert.Contains("doc-b", acme.DocumentIds);
+
+        var relationship = Assert.Single(await _store.GetRelationshipsAsync(acme.Id, ct: Ct));
+        Assert.Equal(["n1"], relationship.EvidenceChunkIds);
+        Assert.Equal(2, result.EntitiesUpdated);
+        Assert.Equal(1, result.RelationshipsUpdated);
+        await extractor.DidNotReceiveWithAnyArgs().ExtractBatchAsync(default!, default!, default);
+    }
+
+    [Fact]
+    public async Task ReassignChunks_WithoutAGraphStore_DoesNothing()
+    {
+        var service = new GraphRAGService(
+            new EntityGraphService(null, null, null, NullLogger<EntityGraphService>.Instance),
+            Substitute.For<ILeidenCommunityService>(), Substitute.For<IHierarchicalSummarizationService>(),
+            graphStore: null, logger: NullLogger<GraphRAGService>.Instance);
+
+        Assert.Equal(
+            new GraphReassignResult(),
+            await service.ReassignChunksAsync(new Dictionary<string, string> { ["x"] = "y" }, "doc-a", "doc-b", cancellationToken: Ct));
+    }
+
     [Fact]
     public async Task ForgetChunks_WithoutAGraphStore_DoesNothing()
     {

@@ -99,6 +99,31 @@ read one leg's ids and delete on the other with them: nothing guarantees the two
 identically (rows written before a store honoured caller ids never do), and a delete by an id the
 other leg never held is a silent no-op that leaves the previous keyword generation searchable.
 
+#### Moving a document to a new id (reassignment, since 0.64.0)
+
+When a document's id — and with it the ids of its chunks — derives from something that changed, such as a file path,
+the rows can be re-keyed instead of deleted and indexed again. Each leg does it with its own call and one shared map
+from old to new chunk id:
+
+```csharp
+var moved = await vectorStore.ReassignDocumentAsync(oldDocId, newDocId, chunkIdMap,
+    new Dictionary<string, object?> { ["source_path"] = newPath, ["stale_key"] = null }, ct);
+await keywordSearch.ReassignDocumentAsync(oldDocId, newDocId, chunkIdMap, sameUpdates, ct);
+await graphRag.ReassignChunksAsync(chunkIdMap, oldDocId, newDocId, partition, ct);
+```
+
+- Content, token counts and vectors stay as stored: nothing is embedded. On Qdrant and PostgreSQL a new chunk id is a
+  new row key, so the store copies the stored vector to it.
+- Every check happens before any write, and a failed check leaves the store unchanged: a chunk the store holds for the
+  old document with no map entry throws `ArgumentException`; a target document that already has chunks, or a new chunk
+  id already stored, throws `InvalidOperationException`. Map entries for ids a leg does not hold are ignored, so one
+  map serves every leg.
+- A metadata update with a null value removes the key. Keys a store writes itself follow the move (`chunkId`, a
+  `documentId` equal to the old id, serialized chunk relationships).
+- The SQL stores and the relational keyword indexes write in one transaction. Qdrant has none: it upserts the new
+  points before deleting the old, so an interrupted move leaves the document present twice rather than not at all.
+  The graph call is composed of graph-store upserts and can be repeated with the same map.
+
 ### Package Structure
 
 | Package | Purpose |

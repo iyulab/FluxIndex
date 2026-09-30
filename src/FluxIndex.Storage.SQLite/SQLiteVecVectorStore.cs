@@ -1405,6 +1405,92 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         }
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// One transaction over all three tables. The <c>vector_chunks</c> row is updated in place (its rowid, and with it
+    /// the full-text row, stays; the FTS update trigger re-indexes the unchanged content). The vec0 row cannot change its
+    /// key, so its stored vector bytes are copied to the new id and the old row deleted — the embedding is never
+    /// recomputed.
+    /// </remarks>
+    public async Task<int> ReassignDocumentAsync(
+        string oldDocumentId,
+        string newDocumentId,
+        IReadOnlyDictionary<string, string> chunkIdMap,
+        IReadOnlyDictionary<string, object?>? metadataUpdates = null,
+        CancellationToken cancellationToken = default)
+    {
+        DocumentReassignment.ValidateArguments(oldDocumentId, newDocumentId, chunkIdMap);
+        await EnsureInitializedAsync(cancellationToken);
+
+        if (!_sqliteVecAvailable && _options.FallbackToInMemoryOnError)
+        {
+            return await _fallbackStore.Value.ReassignDocumentAsync(
+                oldDocumentId, newDocumentId, chunkIdMap, metadataUpdates, cancellationToken);
+        }
+
+        // SQLite는 동시 쓰기를 지원하지 않으므로 직렬화
+        await _writeLock.WaitAsync(cancellationToken);
+        try
+        {
+            await using var context = await OpenContextAsync(cancellationToken);
+            using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+            try
+            {
+                var rows = await context.VectorChunks
+                    .Where(c => c.DocumentId == oldDocumentId)
+                    .ToListAsync(cancellationToken);
+                if (rows.Count == 0)
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                    return 0;
+                }
+
+                DocumentReassignment.EnsureCovered(rows.Select(r => r.Id), chunkIdMap);
+
+                if (await context.VectorChunks.AnyAsync(c => c.DocumentId == newDocumentId, cancellationToken))
+                    throw DocumentReassignment.TargetDocumentNotEmpty(newDocumentId);
+
+                var newIds = rows.Select(r => chunkIdMap[r.Id]).ToList();
+                var taken = await context.VectorChunks
+                    .Where(c => newIds.Contains(c.Id))
+                    .Select(c => c.Id)
+                    .ToListAsync(cancellationToken);
+                if (taken.Count > 0)
+                    throw DocumentReassignment.TargetChunkIdsTaken(taken);
+
+                foreach (var row in rows)
+                {
+                    var newId = chunkIdMap[row.Id];
+                    var metadata = DocumentReassignment.RewriteMetadata(
+                        row.Metadata, oldDocumentId, newDocumentId, newId, chunkIdMap, metadataUpdates);
+                    // Same serialization as the EF Core value converter on the Metadata column.
+                    var metadataJson = System.Text.Json.JsonSerializer.Serialize(
+                        metadata, (System.Text.Json.JsonSerializerOptions?)null);
+
+                    await context.Database.ExecuteSqlRawAsync(
+                        "UPDATE \"vector_chunks\" SET \"Id\" = {0}, \"DocumentId\" = {1}, \"Metadata\" = {2} WHERE \"Id\" = {3}",
+                        new object[] { newId, newDocumentId, metadataJson, row.Id },
+                        cancellationToken);
+
+                    if (_sqliteVecAvailable)
+                        await context.MoveVectorInVecTablesAsync(row.Id, newId, cancellationToken);
+                }
+
+                await transaction.CommitAsync(cancellationToken);
+                return rows.Count;
+            }
+            catch
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                throw;
+            }
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
     public async Task<DocumentChunk?> GetByIdAsync(string id, CancellationToken cancellationToken = default)
     {
         return await GetAsync(id, cancellationToken);

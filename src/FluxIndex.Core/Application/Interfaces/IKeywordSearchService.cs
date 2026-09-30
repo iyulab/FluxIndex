@@ -125,6 +125,34 @@ public interface IKeywordSearchService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Moves every chunk this index holds for <paramref name="oldDocumentId"/> to <paramref name="newDocumentId"/>,
+    /// renaming each to the id <paramref name="chunkIdMap"/> gives it and applying <paramref name="metadataUpdates"/>
+    /// to its metadata — the keyword-index counterpart of <see cref="IVectorStore.ReassignDocumentAsync"/>, with the
+    /// same checks and the same meaning. The stored text is kept; an index may analyze it again so that fields scored
+    /// from metadata follow <paramref name="metadataUpdates"/>.
+    /// </summary>
+    /// <remarks>
+    /// The default implementation throws <see cref="NotSupportedException"/>; every index shipped with FluxIndex
+    /// overrides it.
+    /// </remarks>
+    /// <param name="oldDocumentId">The document whose chunks move.</param>
+    /// <param name="newDocumentId">The document id the chunks move to.</param>
+    /// <param name="chunkIdMap">Old chunk id to new chunk id, covering every chunk this index holds for the old document.</param>
+    /// <param name="metadataUpdates">Metadata keys to set on every moved chunk; a null value removes the key.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The number of chunks moved; 0 when the index holds nothing for <paramref name="oldDocumentId"/>.</returns>
+    /// <exception cref="ArgumentException">A stored chunk of the old document has no map entry, or the arguments are invalid.</exception>
+    /// <exception cref="InvalidOperationException">The new document already has chunks, or a new chunk id is taken.</exception>
+    Task<int> ReassignDocumentAsync(
+        string oldDocumentId,
+        string newDocumentId,
+        IReadOnlyDictionary<string, string> chunkIdMap,
+        IReadOnlyDictionary<string, object?>? metadataUpdates = null,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException(
+            $"{GetType().Name} does not support ReassignDocumentAsync.");
+
+    /// <summary>
     /// Clears all data from the keyword index.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token.</param>

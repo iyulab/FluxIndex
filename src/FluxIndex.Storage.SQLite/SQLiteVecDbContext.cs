@@ -582,6 +582,40 @@ public partial class SQLiteVecDbContext : DbContext
     }
 
     /// <summary>
+    /// Moves a chunk's stored embedding from <paramref name="oldChunkId"/> to <paramref name="newChunkId"/> in whichever
+    /// fingerprint vec0 table holds it. vec0 cannot update its primary key, so the stored vector bytes are read back and
+    /// inserted under the new id before the old row is deleted — the vector itself is never recomputed. Runs inside the
+    /// caller's transaction; unlike <see cref="DeleteVectorFromVecTableAsync"/> a failure propagates, because a moved
+    /// chunk that silently lost its vector would drop out of every search.
+    /// </summary>
+    /// <returns>Whether a vector was found and moved.</returns>
+    internal async Task<bool> MoveVectorInVecTablesAsync(string oldChunkId, string newChunkId, CancellationToken cancellationToken = default)
+    {
+        if (!_options.UseSQLiteVec)
+            return false;
+
+        var moved = false;
+        foreach (var tableName in await EnumerateVecTableNamesAsync(cancellationToken))
+        {
+            // tableName passed IsValidFingerprintVecTableName inside the enumerator; safe to interpolate.
+            var selectSql = $"SELECT embedding AS \"Value\" FROM {tableName} WHERE chunk_id = {{0}}";
+            var stored = await Database
+                .SqlQueryRaw<byte[]>(selectSql, oldChunkId)
+                .ToListAsync(cancellationToken);
+            if (stored.Count == 0)
+                continue;
+
+            var insertSql = $"INSERT INTO {tableName} (chunk_id, embedding) VALUES ({{0}}, {{1}})";
+            await Database.ExecuteSqlRawAsync(insertSql, new object[] { newChunkId, stored[0] }, cancellationToken);
+            var deleteSql = $"DELETE FROM {tableName} WHERE chunk_id = {{0}}";
+            await Database.ExecuteSqlRawAsync(deleteSql, new object[] { oldChunkId }, cancellationToken);
+            moved = true;
+        }
+
+        return moved;
+    }
+
+    /// <summary>
     /// Enumerate all vec0 virtual tables in the current database whose name follows the
     /// FluxIndex fingerprint convention ("chunk_embeddings_&lt;fingerprint&gt;").
     /// Used by cross-fingerprint cleanup paths (DELETE across legacy fingerprints,

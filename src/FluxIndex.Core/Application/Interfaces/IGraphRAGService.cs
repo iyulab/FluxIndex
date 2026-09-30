@@ -154,6 +154,54 @@ public interface IGraphRAGService
         IEnumerable<string> chunkIds,
         string partition = GraphPartition.Default,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Points what the persisted graph derived from some chunks at those chunks' new ids — the graph-leg counterpart of
+    /// <see cref="IVectorStore.ReassignDocumentAsync"/>, for a document whose chunks were renamed without changing their
+    /// content. Each entity extracted from a mapped chunk has that chunk id replaced (and
+    /// <paramref name="oldDocumentId"/> replaced by <paramref name="newDocumentId"/> in its document ids); each
+    /// relationship evidenced by one has its evidence ids replaced; each community that groups one has its chunk ids
+    /// replaced. Ids not in the map are left alone, so an entity also seen in other documents keeps that provenance.
+    /// Nothing is extracted, embedded or summarized again.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Built from <see cref="IGraphStore"/> reads and upserts, like <see cref="ForgetChunksAsync"/>, so every graph store
+    /// supports it; it is not atomic across those calls, and calling it again with the same map finishes an interrupted
+    /// call. Community ids are kept: a community id derives from its member chunks when it is built, and the next build
+    /// over the renamed chunks supersedes it as it supersedes any stale community. Without an <see cref="IGraphStore"/>
+    /// there is nothing persisted and the call does nothing.
+    /// </para>
+    /// <para>
+    /// The default implementation throws <see cref="NotSupportedException"/>; the FluxIndex service overrides it.
+    /// </para>
+    /// </remarks>
+    /// <param name="chunkIdMap">Old chunk id to new chunk id.</param>
+    /// <param name="oldDocumentId">The document id the chunks belonged to.</param>
+    /// <param name="newDocumentId">The document id they belong to now.</param>
+    /// <param name="partition">The graph partition the chunks were built into (<see cref="GraphPartition"/>).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>How many graph records were rewritten.</returns>
+    Task<GraphReassignResult> ReassignChunksAsync(
+        IReadOnlyDictionary<string, string> chunkIdMap,
+        string oldDocumentId,
+        string newDocumentId,
+        string partition = GraphPartition.Default,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException($"{GetType().Name} does not support ReassignChunksAsync.");
+}
+
+/// <summary>What <see cref="IGraphRAGService.ReassignChunksAsync"/> rewrote.</summary>
+public sealed record GraphReassignResult
+{
+    /// <summary>Entities whose chunk ids (and document ids) were rewritten.</summary>
+    public int EntitiesUpdated { get; init; }
+
+    /// <summary>Relationships whose evidence chunk ids were rewritten.</summary>
+    public int RelationshipsUpdated { get; init; }
+
+    /// <summary>Communities whose chunk ids were rewritten.</summary>
+    public int CommunitiesUpdated { get; init; }
 }
 
 /// <summary>What <see cref="IGraphRAGService.ForgetChunksAsync"/> removed or trimmed.</summary>
