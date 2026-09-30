@@ -37,6 +37,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   planning document under `docs/plans/` were removed. Re-pin entries no longer name the tool that produced them.
 - Re-pinned sibling package(s) `FluxCurator` 0.10.1 -> 0.10.2, `FluxGuard.Remote` 0.18.0 -> 0.18.1, `LMSupply.Embedder` 0.94.0 -> 0.95.0, `LMSupply.Generator` 0.94.0 -> 0.95.0, `LMSupply.Reranker` 0.94.0 -> 0.95.0.
 - Re-pinned sibling package(s) `FluxImprover` 0.14.20 -> 0.14.21, `WebFlux` 0.19.2 -> 0.19.3.
+- Re-pinned sibling package(s) `FileFlux` 0.33.7 -> 0.33.8.
 
 ### Fixed
 - **Deleting from the PostgreSQL quantized store removes the quantized embeddings too.** With a chunk id that is not a

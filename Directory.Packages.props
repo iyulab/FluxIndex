@@ -69,7 +69,7 @@
   </ItemGroup>
   <!-- Document Processing & Quality -->
   <ItemGroup>
-    <PackageVersion Include="FileFlux" Version="0.33.7" />
+    <PackageVersion Include="FileFlux" Version="0.33.8" />
     <PackageVersion Include="FluxCurator" Version="0.10.2" />
     <PackageVersion Include="FluxImprover" Version="0.14.21" />
     <PackageVersion Include="WebFlux" Version="0.19.3" />
