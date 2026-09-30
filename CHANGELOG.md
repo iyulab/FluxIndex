@@ -56,6 +56,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   `SQLiteEntityGraphStore` and `SQLiteSemanticCache`. The storage registrations supply the factory
   (`AddDbContextFactory`); the context type itself stays resolvable. Migration for a store built by hand: pass a factory
   — `services.AddDbContextFactory<FluxIndexDbContext>(...)`, or an `IDbContextFactory<T>` over your own options.
+- Re-pinned sibling package(s) `FluxCurator` 0.10.0 -> 0.10.1, `FluxGuard.Remote` 0.17.1 -> 0.18.0, `LMSupply.Embedder` 0.93.1 -> 0.94.0, `LMSupply.Generator` 0.93.1 -> 0.94.0, `LMSupply.Reranker` 0.93.1 -> 0.94.0.
 
 ---
 
