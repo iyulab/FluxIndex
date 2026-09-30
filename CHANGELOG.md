@@ -9,7 +9,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.63.0] - Unreleased
+## [0.63.0] - 2026-09-30
 
 ### Fixed
 - **One context can be shared by concurrent callers on every EF-backed store.** Overlapping calls — one caller indexing
