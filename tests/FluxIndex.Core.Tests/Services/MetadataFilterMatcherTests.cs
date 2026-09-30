@@ -1,3 +1,4 @@
+using FluxIndex.Core.Application.Interfaces;
 using AwesomeAssertions;
 using FluxIndex.Core.Application.Services.Base;
 using System.Text.Json;
@@ -40,13 +41,13 @@ public class MetadataFilterMatcherTests
 
         foreach (var row in rows)
         {
-            matcher.Matches(row).Should().Be(
-                VectorStoreBase.MatchesMetadataFilter(row, filters),
+            matcher.Matches(null, row).Should().Be(
+                VectorStoreBase.MatchesMetadataFilter(null, row, filters),
                 "compiling a filter must not change which rows it accepts");
         }
 
-        matcher.Matches(rows[0]).Should().BeTrue("the first row satisfies every entry — otherwise this fact is vacuous");
-        rows.Skip(1).Should().OnlyContain(r => !matcher.Matches(r));
+        matcher.Matches(null, rows[0]).Should().BeTrue("the first row satisfies every entry — otherwise this fact is vacuous");
+        rows.Skip(1).Should().OnlyContain(r => !matcher.Matches(null, r));
     }
 
     [Fact]
@@ -57,10 +58,10 @@ public class MetadataFilterMatcherTests
 
         var matcher = MetadataFilterMatcher.Compile(filters);
 
-        matcher.Matches(unowned).Should().BeTrue("null is one of the alternatives the filter allows");
-        matcher.Matches(unowned).Should().Be(VectorStoreBase.MatchesMetadataFilter(unowned, filters));
-        matcher.Matches(Meta(("owner", "ada"))).Should().BeTrue();
-        matcher.Matches(Meta(("owner", "grace"))).Should().BeFalse();
+        matcher.Matches(null, unowned).Should().BeTrue("null is one of the alternatives the filter allows");
+        matcher.Matches(null, unowned).Should().Be(VectorStoreBase.MatchesMetadataFilter(null, unowned, filters));
+        matcher.Matches(null, Meta(("owner", "ada"))).Should().BeTrue();
+        matcher.Matches(null, Meta(("owner", "grace"))).Should().BeFalse();
     }
 
     [Theory]
@@ -71,9 +72,37 @@ public class MetadataFilterMatcherTests
         var matcher = MetadataFilterMatcher.Compile(nullDictionary ? null : new Dictionary<string, object>());
 
         matcher.IsMatchAll.Should().BeTrue();
-        matcher.Matches(Meta(("anything", "at all"))).Should().BeTrue();
-        matcher.Matches(null).Should().BeFalse(
-            "MatchesMetadataFilter answered false for absent metadata whatever the filter was");
+        matcher.Matches(null, Meta(("anything", "at all"))).Should().BeTrue();
+        matcher.Matches(null, null).Should().BeTrue(
+            "a filter with no entries constrains nothing — a chunk without metadata is not outside it");
+    }
+
+    [Fact]
+    public void Matches_DocumentIdEntry_ComparesTheChunkDocumentIdNotAMetadataCopy()
+    {
+        var filters = new Dictionary<string, object> { [FilterKeys.DocumentId] = new[] { "doc-a", "doc-b" } };
+        var matcher = MetadataFilterMatcher.Compile(filters);
+
+        matcher.Matches("doc-b", null).Should().BeTrue("a chunk with no metadata at all is still in its document's scope");
+        matcher.Matches("doc-a", Meta(("file_name", "a.txt"))).Should().BeTrue("the metadata need not repeat the document id");
+        matcher.Matches("doc-z", Meta((FilterKeys.DocumentId, "doc-a"))).Should().BeFalse(
+            "a metadata entry of the same name is not consulted — the chunk's own document id decides");
+        matcher.Matches(null, Meta((FilterKeys.DocumentId, "doc-a"))).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Matches_DocumentIdEntryCombinedWithMetadataEntry_RequiresBoth()
+    {
+        var filters = new Dictionary<string, object>
+        {
+            [FilterKeys.DocumentId] = "doc-a",
+            ["tenant"] = "t1",
+        };
+        var matcher = MetadataFilterMatcher.Compile(filters);
+
+        matcher.Matches("doc-a", Meta(("tenant", "t1"))).Should().BeTrue();
+        matcher.Matches("doc-a", Meta(("tenant", "t2"))).Should().BeFalse();
+        matcher.Matches("doc-b", Meta(("tenant", "t1"))).Should().BeFalse();
     }
 
     [Fact]

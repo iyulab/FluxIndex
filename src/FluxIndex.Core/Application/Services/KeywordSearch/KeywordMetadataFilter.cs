@@ -1,3 +1,4 @@
+using FluxIndex.Core.Application.Interfaces;
 using System.Collections;
 using System.Globalization;
 using System.Text.Json;
@@ -180,9 +181,10 @@ public static class KeywordMetadataFilter
     }
 
     /// <summary>
-    /// Evaluates an expanded filter against a chunk's metadata in memory, with the semantics the SQL
-    /// backends implement: every entry must match, and an entry matches when any of its accepted
-    /// values is present.
+    /// Evaluates an expanded filter against a chunk in memory, with the semantics the SQL backends
+    /// implement: every entry must match, and an entry matches when any of its accepted values is
+    /// present. An entry under <see cref="FilterKeys.DocumentId"/> compares
+    /// <paramref name="documentId"/>, not a metadata value.
     /// </summary>
     /// <remarks>
     /// This runs the metadata through <see cref="Project"/> — the same projection the relational
@@ -191,23 +193,28 @@ public static class KeywordMetadataFilter
     /// shared formatting exists to remove.
     /// </remarks>
     public static bool Matches(
+        string? documentId,
         IReadOnlyDictionary<string, object>? metadata,
         IReadOnlyList<(string Key, IReadOnlyList<string> Accepted)> expanded)
     {
         if (expanded.Count == 0)
             return true;
 
-        if (metadata is null || metadata.Count == 0)
-            return false;
-
-        var projected = new HashSet<(string, string)>(Project(metadata));
+        var projected = metadata is { Count: > 0 }
+            ? new HashSet<(string, string)>(Project(metadata))
+            : [];
 
         foreach (var (key, accepted) in expanded)
         {
+            // The document scope names the chunk's own field, never a metadata copy the chunk may or
+            // may not carry — the relational backends compare the chunk table's column for the same reason.
+            var isDocumentScope = string.Equals(key, FilterKeys.DocumentId, StringComparison.Ordinal);
             var satisfied = false;
             foreach (var value in accepted)
             {
-                if (projected.Contains((key, value)))
+                if (isDocumentScope
+                        ? string.Equals(documentId, value, StringComparison.Ordinal)
+                        : projected.Contains((key, value)))
                 {
                     satisfied = true;
                     break;

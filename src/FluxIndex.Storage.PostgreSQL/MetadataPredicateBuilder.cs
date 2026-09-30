@@ -1,3 +1,4 @@
+using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services.Base;
 using Microsoft.EntityFrameworkCore;
 using System.Linq.Expressions;
@@ -29,21 +30,42 @@ internal static class MetadataPredicateBuilder
     /// </summary>
     /// <param name="filters">Filter contract values; a collection matches ANY of its elements.</param>
     /// <param name="metadata">Selects the entity's jsonb metadata column.</param>
+    /// <param name="documentId">
+    /// Selects the entity's document id column, which a <see cref="FilterKeys.DocumentId"/> entry
+    /// compares instead of the metadata.
+    /// </param>
     public static Expression<Func<TEntity, bool>> Build<TEntity>(
         Dictionary<string, object> filters,
-        Expression<Func<TEntity, Dictionary<string, object>>> metadata)
+        Expression<Func<TEntity, Dictionary<string, object>>> metadata,
+        Expression<Func<TEntity, string>> documentId)
     {
         // Contract validation (throws on unsupported / empty-collection values — fail-loud).
         VectorStoreBase.ValidateFilters(filters);
 
         var parameter = metadata.Parameters[0];
         var metadataAccess = metadata.Body;
+        var documentIdAccess = new ParameterReplaceVisitor(documentId.Parameters[0], parameter).Visit(documentId.Body)!;
 
         Expression? predicate = null;
         var scalars = new Dictionary<string, object?>();
 
         foreach (var (key, value) in filters)
         {
+            if (string.Equals(key, FilterKeys.DocumentId, StringComparison.Ordinal))
+            {
+                // The column, not a metadata copy: `document_id = ANY(@ids)`, as the other stores and
+                // the keyword index resolve the same key.
+                var ids = VectorStoreBase.ExpandFilterValue(key, value)
+                    .Where(id => id is not null)
+                    .Select(id => id!)
+                    .ToList();
+                var inIds = Expression.Call(
+                    typeof(Enumerable), nameof(Enumerable.Contains), [typeof(string)],
+                    Expression.Constant(ids), documentIdAccess);
+                predicate = predicate is null ? inIds : Expression.AndAlso(predicate, inIds);
+                continue;
+            }
+
             var rawAlternatives = EnumerateRawAlternatives(value);
             if (rawAlternatives is null)
             {

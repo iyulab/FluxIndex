@@ -38,8 +38,18 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 - **The in-memory vector store keeps its per-document index exact under concurrent writes.** Two callers storing or
   deleting chunks of one document at once could lose chunk ids or leave stale ones, so `GetByDocumentIdAsync` and
   `DeleteByDocumentIdAsync` missed chunks. Updating a chunk to another document now also moves it in the index.
+- **A `document_id` filter matches the chunk's own document id in every store and keyword index.** The Qdrant store
+  already read it that way; every other vector store, both relational keyword backends and the in-memory keyword
+  retriever compared a metadata entry of that name instead. A chunk indexed without a metadata copy of its document id
+  was therefore invisible to document-scoped search and `DeleteByFilterAsync` — in a hybrid search, one leg found it and
+  the other never could. The key is now reserved as `FilterKeys.DocumentId`; a metadata entry named `document_id` is no
+  longer consulted by filters.
 
 ### Changed
+- **Breaking: in-memory filter matching takes the chunk's document id.** `MetadataFilterMatcher.Matches(documentId,
+  metadata)`, `VectorStoreBase.MatchesMetadataFilter(documentId, metadata, filters)` and
+  `KeywordMetadataFilter.Matches(documentId, metadata, expanded)` gained a leading `documentId` parameter; pass the
+  chunk's `DocumentId`. A filter with no entries now matches a chunk without metadata.
 - **Breaking: the EF-backed stores take an `IDbContextFactory<TContext>` instead of a context.** Changed constructors:
   `PostgreSQLVectorStore`, `PostgreSQLQuantizedVectorStore`, `PostgresGraphStore`, `PostgresEntityGraphStore`,
   `PostgresSemanticCache`, `SQLiteVectorStore`, `SQLiteVecVectorStore`, `SQLiteQuantizedVectorStore`, `SQLiteGraphStore`,

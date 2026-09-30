@@ -984,15 +984,34 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         for (var i = 0; i < expanded.Count; i++)
         {
             var (key, accepted) = expanded[i];
-            var keyParam = $"@mfKey{i}";
-            AddParameter(command, keyParam, key);
-
             var valueParams = new string[accepted.Count];
             for (var v = 0; v < accepted.Count; v++)
             {
                 valueParams[v] = $"@mfVal{i}_{v}";
                 AddParameter(command, valueParams[v], accepted[v]);
             }
+
+            // The document scope reads the chunk's own document_id column, never the metadata table:
+            // a chunk indexed without a metadata copy of its document id must stay inside its
+            // document's scope, exactly as the vector stores resolve the same key.
+            if (string.Equals(key, FilterKeys.DocumentId, StringComparison.Ordinal))
+            {
+                builder.Append(" AND ")
+                       .Append(chunkIdColumnRef)
+                       .Append(" IN (SELECT dc")
+                       .Append(i)
+                       .Append(".chunk_id FROM bm25_chunks dc")
+                       .Append(i)
+                       .Append(" WHERE dc")
+                       .Append(i)
+                       .Append(".document_id IN (")
+                       .Append(string.Join(", ", valueParams))
+                       .Append("))");
+                continue;
+            }
+
+            var keyParam = $"@mfKey{i}";
+            AddParameter(command, keyParam, key);
 
             // An uncorrelated membership test, not EXISTS correlated on the chunk: the set of chunks the
             // filter accepts is the same for every posting row, so it is resolved once per statement

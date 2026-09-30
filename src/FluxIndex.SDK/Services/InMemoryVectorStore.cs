@@ -164,7 +164,7 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore, IDisposab
         var matcher = MetadataFilterMatcher.Compile(filters);
         var results = _chunks.Values
             .Where(item => item.embedding != null && item.embedding.Length > 0)
-            .Where(item => matcher.Matches(item.chunk.Metadata))
+            .Where(item => matcher.Matches(item.chunk.DocumentId, item.chunk.Metadata))
             .Select(item => new VectorSearchResult(
                 item.chunk,
                 ComputeCosineSimilarity(queryEmbedding, item.embedding)))
@@ -274,7 +274,7 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore, IDisposab
 
         var deleteMatcher = MetadataFilterMatcher.Compile(filters);
         var matchedIds = _chunks
-            .Where(kvp => deleteMatcher.Matches(kvp.Value.chunk.Metadata))
+            .Where(kvp => deleteMatcher.Matches(kvp.Value.chunk.DocumentId, kvp.Value.chunk.Metadata))
             .Select(kvp => kvp.Key)
             .ToList();
 

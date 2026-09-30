@@ -621,7 +621,7 @@ public partial class BM25SparseRetriever : IKeywordSearchService, IPersistableSp
                 projected = projected.Where(r => r.Chunk?.DocumentId == documentScope);
 
             if (metadataFilter is not null)
-                projected = projected.Where(r => KeywordMetadataFilter.Matches(r.Chunk?.Metadata, metadataFilter));
+                projected = projected.Where(r => KeywordMetadataFilter.Matches(r.Chunk?.DocumentId, r.Chunk?.Metadata, metadataFilter));
 
             projected = projected.Take(options!.MaxResults);
         }
@@ -647,7 +647,7 @@ public partial class BM25SparseRetriever : IKeywordSearchService, IPersistableSp
         lock (_lockObject)
         {
             var chunkIds = defaultIndex.DocumentIndex
-                .Where(kvp => KeywordMetadataFilter.Matches(kvp.Value?.Metadata, expanded))
+                .Where(kvp => KeywordMetadataFilter.Matches(kvp.Value?.DocumentId, kvp.Value?.Metadata, expanded))
                 .Select(kvp => kvp.Key)
                 .ToList();
 

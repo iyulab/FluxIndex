@@ -800,7 +800,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
 
                 // Metadata filter — without this the native path leaks chunks across filter
                 // scope (e.g. other tenants). Same match semantics as VectorStoreBase.
-                if (!matcher.Matches(metadata))
+                if (!matcher.Matches(meta.DocId, metadata))
                     continue;
 
                 results.Add(new DocumentChunk
@@ -1081,7 +1081,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 var metadata = JsonSerializer.Deserialize<Dictionary<string, object>>(metadataJson)
                     ?? new Dictionary<string, object>();
 
-                if (hasFilter && !ftsMatcher.Matches(metadata))
+                if (hasFilter && !ftsMatcher.Matches(reader.GetString(1), metadata))
                     continue;
 
                 var chunk = new DocumentChunk
@@ -1369,7 +1369,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 var deleteMatcher = MetadataFilterMatcher.Compile(filters);
                 var all = await context.VectorChunks.AsTracking().ToListAsync(cancellationToken);
                 var matched = all
-                    .Where(e => deleteMatcher.Matches(e.Metadata))
+                    .Where(e => deleteMatcher.Matches(e.DocumentId, e.Metadata))
                     .ToList();
 
                 if (matched.Count == 0)

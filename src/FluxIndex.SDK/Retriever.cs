@@ -1141,7 +1141,7 @@ public partial class Retriever
     private static List<VectorSearchResult> ApplyFilter(List<VectorSearchResult> results, Dictionary<string, object> filter)
     {
         var matcher = MetadataFilterMatcher.Compile(filter);
-        return results.Where(r => matcher.Matches(r.Metadata)).ToList();
+        return results.Where(r => matcher.Matches(r.DocumentChunk.DocumentId, r.Metadata)).ToList();
     }
 
     private static IEnumerable<VectorSearchResult> CombineResults(

@@ -87,6 +87,49 @@ public abstract class VectorStoreFilterContractSuite
     }
 
     [Fact]
+    public async Task DocumentIdFilter_MatchesTheChunkDocumentId_WithoutAMetadataCopy()
+    {
+        // document_id is reserved: it names the chunk's own DocumentId in every store. CreateChunk
+        // never copies the document id into metadata — a store that read metadata would return none.
+        var store = await CreateStoreAsync();
+        await store.StoreAsync(CreateChunk("doc-1", "ws-a"), TestContext.Current.CancellationToken);
+        await store.StoreAsync(CreateChunk("doc-2", "ws-a"), TestContext.Current.CancellationToken);
+        await store.StoreAsync(CreateChunk("doc-3", "ws-a"), TestContext.Current.CancellationToken);
+
+        var results = await store.SearchAsync(QueryVector(), topK: 10, minScore: -1f, filters: new Dictionary<string, object>
+            {
+                [FilterKeys.DocumentId] = new List<string> { "doc-1", "doc-3" }
+            }, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(["doc-1", "doc-3"], results.Select(r => r.DocumentId).OrderBy(x => x).ToList());
+    }
+
+    [Fact]
+    public async Task DeleteByFilter_OnDocumentId_RemovesTheDocumentsChunks_WhenSupported()
+    {
+        var store = await CreateStoreAsync();
+        await store.StoreAsync(CreateChunk("doc-1", "ws-a", 0), TestContext.Current.CancellationToken);
+        await store.StoreAsync(CreateChunk("doc-1", "ws-a", 1), TestContext.Current.CancellationToken);
+        await store.StoreAsync(CreateChunk("doc-2", "ws-a"), TestContext.Current.CancellationToken);
+
+        int deleted;
+        try
+        {
+            deleted = await store.DeleteByFilterAsync(
+                new Dictionary<string, object> { [FilterKeys.DocumentId] = "doc-1" }, TestContext.Current.CancellationToken);
+        }
+        catch (NotSupportedException)
+        {
+            // Contract-permitted opt-out — store declares no metadata-scoped deletion.
+            return;
+        }
+
+        Assert.Equal(2, deleted);
+        var left = await store.SearchAsync(QueryVector(), topK: 10, minScore: -1f, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal("doc-2", Assert.Single(left).DocumentId);
+    }
+
+    [Fact]
     public async Task UnsupportedFilterValue_Throws_InsteadOfSilentZeroResults()
     {
         var store = await CreateStoreAsync();

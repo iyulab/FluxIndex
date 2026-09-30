@@ -717,7 +717,7 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable, IDispos
         {
             var payloadKey = key switch
             {
-                "document_id" or "content" or "chunk_index" or "total_chunks"
+                FilterKeys.DocumentId or "content" or "chunk_index" or "total_chunks"
                     or "token_count" or "created_at" => key,
                 _ when key.StartsWith("prop_", StringComparison.Ordinal) => key,
                 _ when key.StartsWith("meta_", StringComparison.Ordinal) => key,

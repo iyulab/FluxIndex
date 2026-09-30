@@ -169,7 +169,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
         var query = context.Vectors.AsQueryable();
         if (filters is { Count: > 0 })
         {
-            query = query.Where(MetadataPredicateBuilder.Build<QuantizedVectorEntity>(filters, v => v.Metadata));
+            query = query.Where(MetadataPredicateBuilder.Build<QuantizedVectorEntity>(filters, v => v.Metadata, v => v.DocumentId));
         }
 
         // Over-fetch so the minScore cut below still has candidates to work with.

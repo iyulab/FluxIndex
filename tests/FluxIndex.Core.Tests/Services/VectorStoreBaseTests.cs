@@ -1,3 +1,4 @@
+using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services.Base;
 using FluxIndex.Core.Application.Utilities;
 using FluxIndex.Core.Domain.Entities;
@@ -250,7 +251,7 @@ public class VectorStoreBaseTests
         var filters = new Dictionary<string, object> { ["flag"] = true };
 
         // Act & Assert
-        Assert.True(VectorStoreBase.MatchesMetadataFilter(metadata, filters));
+        Assert.True(VectorStoreBase.MatchesMetadataFilter(null, metadata, filters));
     }
 
     [Fact]
@@ -258,9 +259,9 @@ public class VectorStoreBaseTests
     {
         var metadata = new Dictionary<string, object> { ["workspace_id"] = "WS-1" };
 
-        Assert.True(VectorStoreBase.MatchesMetadataFilter(
+        Assert.True(VectorStoreBase.MatchesMetadataFilter(null, 
             metadata, new Dictionary<string, object> { ["workspace_id"] = "WS-1" }));
-        Assert.False(VectorStoreBase.MatchesMetadataFilter(
+        Assert.False(VectorStoreBase.MatchesMetadataFilter(null, 
             metadata, new Dictionary<string, object> { ["workspace_id"] = "ws-1" }));
     }
 
@@ -277,17 +278,32 @@ public class VectorStoreBaseTests
     [Fact]
     public void MatchesMetadataFilter_CollectionValue_MatchesAnyElement()
     {
-        // MatchAny: filter value document_id ∈ {hash1, hash2}
-        var metadata = new Dictionary<string, object> { ["document_id"] = "hash2" };
+        // MatchAny: filter value source ∈ {hash1, hash2, hash3}
+        var metadata = new Dictionary<string, object> { ["source"] = "hash2" };
         var filters = new Dictionary<string, object>
         {
-            ["document_id"] = new List<string> { "hash1", "hash2", "hash3" }
+            ["source"] = new List<string> { "hash1", "hash2", "hash3" }
         };
 
-        Assert.True(VectorStoreBase.MatchesMetadataFilter(metadata, filters));
+        Assert.True(VectorStoreBase.MatchesMetadataFilter(null, metadata, filters));
 
-        var nonMatching = new Dictionary<string, object> { ["document_id"] = "hash9" };
-        Assert.False(VectorStoreBase.MatchesMetadataFilter(nonMatching, filters));
+        var nonMatching = new Dictionary<string, object> { ["source"] = "hash9" };
+        Assert.False(VectorStoreBase.MatchesMetadataFilter(null, nonMatching, filters));
+    }
+
+    [Fact]
+    public void MatchesMetadataFilter_DocumentIdCollection_MatchesTheChunkDocumentId()
+    {
+        // document_id is reserved: it names the chunk's DocumentId, so a chunk whose metadata never
+        // copied its document id is still inside a document scope.
+        var filters = new Dictionary<string, object>
+        {
+            [FilterKeys.DocumentId] = new List<string> { "hash1", "hash2", "hash3" }
+        };
+        var noCopy = new Dictionary<string, object> { ["file_name"] = "a.txt" };
+
+        Assert.True(VectorStoreBase.MatchesMetadataFilter("hash2", noCopy, filters));
+        Assert.False(VectorStoreBase.MatchesMetadataFilter("hash9", noCopy, filters));
     }
 
     [Fact]
@@ -297,7 +313,7 @@ public class VectorStoreBaseTests
         var metadata = new Dictionary<string, object> { ["tag"] = "b" };
         var filters = new Dictionary<string, object> { ["tag"] = doc.RootElement.Clone() };
 
-        Assert.True(VectorStoreBase.MatchesMetadataFilter(metadata, filters));
+        Assert.True(VectorStoreBase.MatchesMetadataFilter(null, metadata, filters));
     }
 
     [Fact]
@@ -311,7 +327,7 @@ public class VectorStoreBaseTests
         };
         var filters = new Dictionary<string, object> { ["chunk_index"] = new[] { 1, 2 } };
 
-        Assert.True(VectorStoreBase.MatchesMetadataFilter(metadata, filters));
+        Assert.True(VectorStoreBase.MatchesMetadataFilter(null, metadata, filters));
     }
 
     [Fact]

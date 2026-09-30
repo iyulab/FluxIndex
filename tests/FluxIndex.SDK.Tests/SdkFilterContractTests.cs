@@ -45,7 +45,7 @@ public class SdkFilterContractTests
         {
             IEnumerable<DocumentChunkEntity> hits = _chunks;
             if (filters is { Count: > 0 })
-                hits = hits.Where(c => VectorStoreBase.MatchesMetadataFilter(c.Metadata, filters));
+                hits = hits.Where(c => VectorStoreBase.MatchesMetadataFilter(c.DocumentId, c.Metadata, filters));
 
             return Task.FromResult(hits.Take(topK).ToList().AsEnumerable());
         }

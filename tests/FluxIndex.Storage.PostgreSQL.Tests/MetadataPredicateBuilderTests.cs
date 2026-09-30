@@ -31,7 +31,7 @@ public class MetadataPredicateBuilderTests
     {
         var predicate = PostgreSQLVectorStore.BuildMetadataPredicate(new Dictionary<string, object>
         {
-            ["document_id"] = new List<string> { "h1", "h2", "h3" }
+            ["tag"] = new List<string> { "h1", "h2", "h3" }
         });
 
         // 3 alternatives → 2 OrElse nodes, 3 containment calls.
@@ -44,13 +44,41 @@ public class MetadataPredicateBuilderTests
     {
         var predicate = PostgreSQLVectorStore.BuildMetadataPredicate(new Dictionary<string, object>
         {
-            ["document_id"] = new[] { "h1", "h2" },
+            ["tag"] = new[] { "h1", "h2" },
             ["workspace_id"] = "ws-1"
         });
 
         CountNodes(predicate.Body, ExpressionType.AndAlso).Should().Be(1);
         CountNodes(predicate.Body, ExpressionType.OrElse).Should().Be(1);
         CountNodes(predicate.Body, ExpressionType.Call).Should().Be(3);
+    }
+
+    [Fact]
+    public void DocumentIdFilter_ComparesTheDocumentIdColumn_NotTheMetadata()
+    {
+        // No JsonContains in the tree, so the predicate evaluates client-side: the entity with no
+        // metadata copy of its document id is in scope, the one whose metadata claims it is not.
+        var predicate = PostgreSQLVectorStore.BuildMetadataPredicate(new Dictionary<string, object>
+        {
+            ["document_id"] = new[] { "h1", "h2" }
+        }).Compile();
+
+        predicate(new VectorEntity { DocumentId = "h2" }).Should().BeTrue();
+        predicate(new VectorEntity { DocumentId = "h9", Metadata = new() { ["document_id"] = "h1" } }).Should().BeFalse();
+    }
+
+    [Fact]
+    public void DocumentIdFilterWithMetadataFilter_AndCombinesColumnAndContainment()
+    {
+        var predicate = PostgreSQLVectorStore.BuildMetadataPredicate(new Dictionary<string, object>
+        {
+            ["document_id"] = "h1",
+            ["workspace_id"] = "ws-1"
+        });
+
+        CountNodes(predicate.Body, ExpressionType.AndAlso).Should().Be(1);
+        CountNodes(predicate.Body, ExpressionType.OrElse).Should().Be(0);
+        CountNodes(predicate.Body, ExpressionType.Call).Should().Be(2, "one column membership test and one jsonb containment");
     }
 
     [Fact]

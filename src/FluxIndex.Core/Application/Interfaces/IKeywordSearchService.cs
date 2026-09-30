@@ -269,6 +269,9 @@ public class KeywordSearchOptions
     /// Restricts the search to chunks whose metadata matches every entry here. A collection value
     /// matches any of its elements, mirroring the vector store's payload filter, so a caller can hand
     /// the same filter object to both legs of a hybrid search. Default: null (no filter).
+    /// An entry under <see cref="FilterKeys.DocumentId"/> matches the chunk's own document id — as it
+    /// does in every vector store — so a chunk indexed without a metadata copy of its document id is
+    /// still inside its document's scope.
     /// </summary>
     /// <remarks>
     /// <para>

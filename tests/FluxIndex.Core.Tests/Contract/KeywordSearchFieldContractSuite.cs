@@ -130,6 +130,74 @@ public abstract class KeywordSearchFieldContractSuite
     }
 
     [Fact]
+    public async Task ADocumentIdFilter_MatchesTheChunksDocument_EvenWithoutAMetadataCopy()
+    {
+        // The hybrid search hands its filter to both legs. The vector stores resolve document_id to
+        // the chunk's own DocumentId; the keyword leg must too, or a chunk indexed without a metadata
+        // copy of its document id is invisible to every document-scoped keyword search.
+        var ct = TestContext.Current.CancellationToken;
+        var service = await CreateServiceAsync(fields: null);
+
+        await service.IndexChunksAsync([
+            ChunkOf("doc-a", "a-body", "budget in the body", ("file_name", "a.txt")),
+            ChunkOf("doc-b", "b-title", "body of b", ("title", "budget review")),
+            ChunkOf("doc-c", "c-body", "budget outside the scope"),
+        ], ct);
+
+        var hits = await service.SearchAsync(
+            "budget",
+            new KeywordSearchOptions
+            {
+                MetadataFilter = new Dictionary<string, object> { [FilterKeys.DocumentId] = new[] { "doc-a", "doc-b" } }
+            },
+            ct);
+
+        Assert.Equal(["a-body", "b-title"], hits.Select(h => h.Chunk.Id).Order());
+    }
+
+    [Fact]
+    public async Task ADocumentIdFilter_IgnoresAMetadataEntryOfTheSameName()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var service = await CreateServiceAsync(fields: null);
+
+        await service.IndexChunksAsync([
+            ChunkOf("doc-a", "stale-copy", "budget text", (FilterKeys.DocumentId, "doc-b")),
+        ], ct);
+
+        var inB = await service.SearchAsync(
+            "budget",
+            new KeywordSearchOptions { MetadataFilter = new Dictionary<string, object> { [FilterKeys.DocumentId] = "doc-b" } },
+            ct);
+        var inA = await service.SearchAsync(
+            "budget",
+            new KeywordSearchOptions { MetadataFilter = new Dictionary<string, object> { [FilterKeys.DocumentId] = "doc-a" } },
+            ct);
+
+        Assert.Empty(inB);
+        Assert.Equal("stale-copy", Assert.Single(inA).Chunk.Id);
+    }
+
+    [Fact]
+    public async Task DeleteByFilter_OnDocumentId_RemovesTheDocumentsChunks_EvenWithoutAMetadataCopy()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var service = await CreateServiceAsync(fields: null);
+
+        await service.IndexChunksAsync([
+            ChunkOf("doc-a", "a1", "budget one"),
+            ChunkOf("doc-a", "a2", "budget two", ("tenant", "t")),
+            ChunkOf("doc-b", "b1", "budget three"),
+        ], ct);
+
+        var deleted = await service.DeleteByFilterAsync(
+            new Dictionary<string, object> { [FilterKeys.DocumentId] = "doc-a" }, ct);
+
+        Assert.Equal(2, deleted);
+        Assert.Equal("b1", Assert.Single(await service.SearchAsync("budget", cancellationToken: ct)).Chunk.Id);
+    }
+
+    [Fact]
     public async Task ATermInTheTitleAndTheBody_CountsAsOneDocumentForIdf()
     {
         // Two chunks; the term is in one of them, in both its title and its body. Document frequency

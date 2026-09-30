@@ -120,6 +120,21 @@ public class BM25SparseRetrieverTests
         results.Should().ContainSingle().Which.Chunk.DocumentId.Should().Be("doc-a");
     }
 
+    [Fact]
+    public async Task Search_DocumentIdFilter_MatchesTheChunkDocumentId_NotAMetadataCopy()
+    {
+        using var retriever = await IndexedWith(
+            Tagged("doc-a", "provisioning schema", "alpha"),
+            Tagged("doc-b", "provisioning schema", "alpha"));
+
+        var results = await retriever.SearchAsync("provisioning", new KeywordSearchOptions
+        {
+            MetadataFilter = new Dictionary<string, object> { [FilterKeys.DocumentId] = "doc-b" }
+        }, TestContext.Current.CancellationToken);
+
+        results.Should().ContainSingle().Which.Chunk.DocumentId.Should().Be("doc-b");
+    }
+
     /// <summary>
     /// The same claim the SQL backends make: the restriction is applied before truncation. Here the
     /// wanted document is deliberately the weakest match and MaxResults excludes it globally.

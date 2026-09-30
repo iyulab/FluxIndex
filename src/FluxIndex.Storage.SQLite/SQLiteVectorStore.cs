@@ -142,7 +142,7 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
             if (entity.Embedding == null) continue;
 
             var chunk = MapToChunk(entity);
-            if (!matcher.Matches(chunk.Metadata))
+            if (!matcher.Matches(chunk.DocumentId, chunk.Metadata))
                 continue;
 
             var score = ComputeFastCosineSimilarity(queryEmbedding, entity.Embedding, queryMagnitude);
@@ -272,7 +272,7 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
         var entities = await context.Vectors.AsTracking().ToListAsync(cancellationToken);
         var deleteMatcher = MetadataFilterMatcher.Compile(filters);
         var matched = entities
-            .Where(v => deleteMatcher.Matches(MapToChunk(v).Metadata))
+            .Where(v => deleteMatcher.Matches(v.DocumentId, MapToChunk(v).Metadata))
             .ToList();
 
         if (matched.Count == 0)

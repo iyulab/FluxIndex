@@ -203,7 +203,7 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
         var matcher = Core.Application.Services.Base.MetadataFilterMatcher.Compile(filters);
         var results = entities
             .Select(e => new { Chunk = MapToChunk(e), Score = FastCosineSimilarity(queryEmbedding, e.Embedding!, queryMagnitude) })
-            .Where(x => matcher.Matches(x.Chunk.Metadata))
+            .Where(x => matcher.Matches(x.Chunk.DocumentId, x.Chunk.Metadata))
             .Where(x => x.Score >= minScore)
             .OrderByDescending(x => x.Score)
             .Take(topK)

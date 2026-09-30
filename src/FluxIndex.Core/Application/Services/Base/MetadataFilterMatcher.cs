@@ -1,3 +1,5 @@
+using FluxIndex.Core.Application.Interfaces;
+
 namespace FluxIndex.Core.Application.Services.Base;
 
 /// <summary>
@@ -70,23 +72,32 @@ public sealed class MetadataFilterMatcher
     }
 
     /// <summary>
-    /// Returns true if <paramref name="metadata"/> satisfies every entry of the compiled filter.
-    /// Null metadata matches only an empty filter, matching <see cref="VectorStoreBase.MatchesMetadataFilter"/>.
+    /// Returns true if a chunk with <paramref name="documentId"/> and <paramref name="metadata"/>
+    /// satisfies every entry of the compiled filter. An entry under
+    /// <see cref="FilterKeys.DocumentId"/> matches <paramref name="documentId"/>; every other entry
+    /// matches a metadata value. Null metadata fails any metadata entry.
     /// </summary>
-    public bool Matches(IReadOnlyDictionary<string, object>? metadata)
+    /// <remarks>
+    /// The document id is a parameter rather than something read from the metadata so no store can
+    /// answer a document scope from a metadata copy that a chunk may or may not carry.
+    /// </remarks>
+    public bool Matches(string? documentId, IReadOnlyDictionary<string, object>? metadata)
     {
-        if (_entries.Length == 0)
-            return metadata is not null;
-
-        if (metadata is null)
-            return false;
-
         foreach (var (key, alternatives, allowsNull) in _entries)
         {
-            if (!metadata.TryGetValue(key, out var metaValue))
-                return false;
+            string? normalized;
+            if (string.Equals(key, FilterKeys.DocumentId, StringComparison.Ordinal))
+            {
+                normalized = string.IsNullOrEmpty(documentId) ? null : documentId;
+            }
+            else
+            {
+                if (metadata is null || !metadata.TryGetValue(key, out var metaValue))
+                    return false;
 
-            var normalized = VectorStoreBase.NormalizeFilterValue(metaValue);
+                normalized = VectorStoreBase.NormalizeFilterValue(metaValue);
+            }
+
             if (normalized is null ? !allowsNull : !alternatives.Contains(normalized))
                 return false;
         }

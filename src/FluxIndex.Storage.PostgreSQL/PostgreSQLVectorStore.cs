@@ -164,7 +164,7 @@ public class PostgreSQLVectorStore : VectorStoreBase
     /// </summary>
     internal static System.Linq.Expressions.Expression<Func<VectorEntity, bool>> BuildMetadataPredicate(
         Dictionary<string, object> filters)
-        => MetadataPredicateBuilder.Build<VectorEntity>(filters, v => v.Metadata);
+        => MetadataPredicateBuilder.Build<VectorEntity>(filters, v => v.Metadata, v => v.DocumentId);
 
     protected override async Task<bool> DeleteCoreAsync(string id, CancellationToken cancellationToken)
     {

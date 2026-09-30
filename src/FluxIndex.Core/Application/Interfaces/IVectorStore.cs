@@ -54,6 +54,8 @@ public interface IVectorStore
     /// Metadata filter conditions. Semantics are identical across every store implementation:
     /// <list type="bullet">
     /// <item><description><b>Keys combine with AND</b> — a chunk must satisfy every entry.</description></item>
+    /// <item><description><b><see cref="FilterKeys.DocumentId"/></b> (<c>document_id</c>) matches the
+    /// chunk's own <c>DocumentId</c>, not a metadata entry — every other key is a metadata key.</description></item>
     /// <item><description><b>Scalar value</b> (string / number / bool / scalar JsonElement) — the
     /// chunk's metadata value must equal it (ordinal, JSON-normalized comparison).</description></item>
     /// <item><description><b>Collection value</b> (any non-string <c>IEnumerable</c> of scalars, or a

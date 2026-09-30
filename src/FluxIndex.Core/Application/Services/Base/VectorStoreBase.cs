@@ -209,16 +209,18 @@ public abstract partial class VectorStoreBase : IVectorStore
         if (filters != null && filters.Count > 0)
         {
             var matcher = MetadataFilterMatcher.Compile(filters);
-            results = results.Where(r => matcher.Matches(r.Chunk.Metadata));
+            results = results.Where(r => matcher.Matches(r.Chunk.DocumentId, r.Chunk.Metadata));
         }
 
         return SearchResultProcessor.FilterAndSort(results, minScore, topK);
     }
 
     /// <summary>
-    /// Returns true if <paramref name="metadata"/> contains every key in <paramref name="filters"/>
-    /// with an equal (ordinal string, JSON-normalized) value. A collection-valued filter entry
-    /// matches when the metadata value equals ANY of its elements (see
+    /// Returns true if a chunk with <paramref name="documentId"/> and <paramref name="metadata"/>
+    /// satisfies every entry in <paramref name="filters"/>: an entry under
+    /// <see cref="FilterKeys.DocumentId"/> compares the document id, every other entry an equal
+    /// (ordinal string, JSON-normalized) metadata value. A collection-valued filter entry
+    /// matches when the value equals ANY of its elements (see
     /// <see cref="ExpandFilterValue"/>). Shared by search post-filtering and
     /// <see cref="DeleteByFilterAsync"/> so both agree on match semantics.
     /// <para>
@@ -228,9 +230,10 @@ public abstract partial class VectorStoreBase : IVectorStore
     /// </para>
     /// </summary>
     public static bool MatchesMetadataFilter(
+        string? documentId,
         IReadOnlyDictionary<string, object>? metadata,
         IReadOnlyDictionary<string, object> filters)
-        => MetadataFilterMatcher.Compile(filters).Matches(metadata);
+        => MetadataFilterMatcher.Compile(filters).Matches(documentId, metadata);
 
     /// <summary>
     /// Expands a filter value into its normalized match alternatives, enforcing the

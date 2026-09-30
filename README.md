@@ -252,6 +252,9 @@ serialize calls into the context.
 Filter semantics (identical across every store):
 
 - **Keys combine with AND** — a chunk must satisfy every filter entry.
+- **`document_id`** (`FilterKeys.DocumentId`) matches the chunk's own document id — in every vector
+  store and in the keyword leg — so a chunk is inside its document's scope whether or not its metadata
+  repeats the id. Every other key is a metadata key.
 - **Scalar value** → equality. Values compare by their JSON text representation (`"true"`,
   invariant-culture numbers, ordinal strings), so a value that round-trips through a JSON column
   still matches the raw value you filter on. The same semantics apply in the SDK's `Retriever`.
