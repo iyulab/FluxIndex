@@ -609,7 +609,37 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             .ToList();
 
         await RunWithConcurrencyRetryAsync(
-            () => IndexTokenizedChunksAsync(tokenized, cancellationToken), cancellationToken).ConfigureAwait(false);
+            () => IndexTokenizedChunksAsync(tokenized, [], cancellationToken), cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// One transaction: the listed documents' previous chunks are removed and the new ones indexed together, with
+    /// every term row both sides touch acquired in the same sorted pass as indexing and deletion.
+    /// </remarks>
+    public async Task ReplaceDocumentsAsync(
+        IReadOnlyCollection<string> documentIds,
+        IReadOnlyList<DocumentChunk> chunks,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(documentIds);
+        ArgumentNullException.ThrowIfNull(chunks);
+
+        var replaced = documentIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        var tokenized = chunks
+            .Where(c => c is not null)
+            .Select(c => (Chunk: c, Terms: Tokenize(c.Content).ToList(), FieldTerms: TokenizeFields(c)))
+            .ToList();
+        if (replaced.Count == 0 && tokenized.Count == 0)
+            return;
+
+        await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
+
+        await RunWithConcurrencyRetryAsync(
+            () => IndexTokenizedChunksAsync(tokenized, replaced, cancellationToken), cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -672,6 +702,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     /// <summary>Attempts one transaction. Retried as a whole by the caller on a serialization failure.</summary>
     private async Task IndexTokenizedChunksAsync(
         IReadOnlyList<(DocumentChunk Chunk, List<string> Terms, List<(string Field, List<string> Terms)> FieldTerms)> tokenized,
+        IReadOnlyList<string> replacedDocumentIds,
         CancellationToken cancellationToken)
     {
         await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
@@ -688,8 +719,17 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             // and two transactions could still interleave between chunks.
             // Terms the replaced chunks held are written too - their document frequency drops - so they
             // are acquired in the same pass rather than left for the recompute to lock in executor order.
+            // Chunks of a replaced document that this batch does not write again are removed in the same transaction.
+            var written = new HashSet<string>(tokenized.Select(t => t.Chunk.Id), StringComparer.Ordinal);
+            var stale = new List<string>();
+            foreach (var documentId in replacedDocumentIds)
+            {
+                stale.AddRange((await ReadChunkIdsForDocumentAsync(connection, documentId, cancellationToken).ConfigureAwait(false))
+                    .Where(id => !written.Contains(id)));
+            }
+
             var storedTerms = await ReadStoredTermsAsync(
-                connection, tokenized.Select(t => t.Chunk.Id), cancellationToken).ConfigureAwait(false);
+                connection, tokenized.Select(t => t.Chunk.Id).Concat(stale), cancellationToken).ConfigureAwait(false);
             // Field terms are part of the same sorted pass: they are term rows like any other, and a
             // second acquisition order for them would reopen the cycle the sort removes.
             var termIds = await AcquireTermIdsAsync(
@@ -702,6 +742,8 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
 
             foreach (var id in termIds.Values)
                 affectedTermIds.Add(id);
+
+            await DeleteChunkRowsAsync(connection, stale, affectedTermIds, statistics, cancellationToken).ConfigureAwait(false);
 
             var indexedChunks = 0;
             foreach (var (chunk, terms, fieldTerms) in tokenized)
@@ -1160,21 +1202,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             var affectedTermIds = new HashSet<long>(termIds.Values);
             var statistics = new StatisticsDelta();
 
-            foreach (var chunkId in oldIds)
-            {
-                await CollectTermIdsForChunkAsync(connection, chunkId, affectedTermIds, cancellationToken).ConfigureAwait(false);
-                await SubtractStoredLengthsAsync(connection, chunkId, statistics, cancellationToken).ConfigureAwait(false);
-
-                await using var deleteCmd = connection.CreateCommand();
-                deleteCmd.CommandText = """
-                    DELETE FROM bm25_postings WHERE chunk_id = @chunkId;
-                    DELETE FROM bm25_field_postings WHERE chunk_id = @chunkId;
-                    DELETE FROM bm25_chunk_metadata WHERE chunk_id = @chunkId;
-                    DELETE FROM bm25_chunks WHERE chunk_id = @chunkId;
-                    """;
-                AddParameter(deleteCmd, "@chunkId", chunkId);
-                await deleteCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
+            await DeleteChunkRowsAsync(connection, oldIds, affectedTermIds, statistics, cancellationToken).ConfigureAwait(false);
 
             var reindexed = 0;
             foreach (var (chunk, terms, fieldTerms) in tokenized)
@@ -1275,21 +1303,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             var affectedTermIds = new HashSet<long>(termIds.Values);
             var statistics = new StatisticsDelta();
 
-            foreach (var chunkId in chunkIds)
-            {
-                await CollectTermIdsForChunkAsync(connection, chunkId, affectedTermIds, cancellationToken).ConfigureAwait(false);
-                await SubtractStoredLengthsAsync(connection, chunkId, statistics, cancellationToken).ConfigureAwait(false);
-
-                await using var deleteCmd = connection.CreateCommand();
-                deleteCmd.CommandText = """
-                    DELETE FROM bm25_postings WHERE chunk_id = @chunkId;
-                    DELETE FROM bm25_field_postings WHERE chunk_id = @chunkId;
-                    DELETE FROM bm25_chunk_metadata WHERE chunk_id = @chunkId;
-                    DELETE FROM bm25_chunks WHERE chunk_id = @chunkId;
-                    """;
-                AddParameter(deleteCmd, "@chunkId", chunkId);
-                await deleteCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
+            await DeleteChunkRowsAsync(connection, chunkIds, affectedTermIds, statistics, cancellationToken).ConfigureAwait(false);
 
             await RecomputeDocumentFrequenciesAsync(connection, affectedTermIds, cancellationToken).ConfigureAwait(false);
             await ApplyStatisticsDeltaAsync(connection, statistics, cancellationToken).ConfigureAwait(false);
@@ -1304,6 +1318,34 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         {
             await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Deletes the rows of <paramref name="chunkIds"/> on the open transaction, recording the terms whose document
+    /// frequency changes and the lengths the statistics lose. The caller has already acquired those term rows.
+    /// </summary>
+    private static async Task DeleteChunkRowsAsync(
+        DbConnection connection,
+        IEnumerable<string> chunkIds,
+        HashSet<long> affectedTermIds,
+        StatisticsDelta statistics,
+        CancellationToken cancellationToken)
+    {
+        foreach (var chunkId in chunkIds)
+        {
+            await CollectTermIdsForChunkAsync(connection, chunkId, affectedTermIds, cancellationToken).ConfigureAwait(false);
+            await SubtractStoredLengthsAsync(connection, chunkId, statistics, cancellationToken).ConfigureAwait(false);
+
+            await using var deleteCmd = connection.CreateCommand();
+            deleteCmd.CommandText = """
+                DELETE FROM bm25_postings WHERE chunk_id = @chunkId;
+                DELETE FROM bm25_field_postings WHERE chunk_id = @chunkId;
+                DELETE FROM bm25_chunk_metadata WHERE chunk_id = @chunkId;
+                DELETE FROM bm25_chunks WHERE chunk_id = @chunkId;
+                """;
+            AddParameter(deleteCmd, "@chunkId", chunkId);
+            await deleteCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
     }
 

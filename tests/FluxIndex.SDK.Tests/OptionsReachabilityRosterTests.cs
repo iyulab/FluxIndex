@@ -83,7 +83,6 @@ public class OptionsReachabilityRosterTests
         ["FluxIndex.SDK.Configuration.EmbeddingOptions"] = ["ApiKey", "BatchSize", "EnableCache", "MaxRetries", "ModelName", "ProviderSpecificOptions", "RetryDelay"],
         ["FluxIndex.SDK.Configuration.SemanticCacheOptions"] = ["SimilarityThreshold"],
         ["FluxIndex.SDK.Configuration.VectorStoreOptions"] = ["ConnectionTimeout", "MaxConnections", "ProviderSpecificOptions", "QdrantHttpPort", "QdrantUseHttps"],
-        ["FluxIndex.SDK.IndexingOptions"] = ["ExtractMetadata", "GenerateEmbeddings"],
         ["FluxIndex.SDK.SearchOptions"] = ["GraphRAGOptions", "IncludeVectors"],
         ["FluxIndex.Storage.Neo4j.Neo4jOptions"] = ["Encrypted", "NodeLabelPrefix"],
         ["FluxIndex.Storage.PostgreSQL.Cache.PostgresCacheOptions"] = ["SimilarityThreshold"],

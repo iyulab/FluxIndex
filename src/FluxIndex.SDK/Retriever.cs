@@ -1025,11 +1025,27 @@ public partial class Retriever
                 return cachedDoc;
         }
 
-        var document = await _documentRepository.GetByIdAsync(documentId, cancellationToken);
+        var stored = await _documentRepository.GetByIdAsync(documentId, cancellationToken);
+        Document? document = null;
 
-        if (document != null)
+        if (stored != null)
         {
-            // Get chunks
+            // The repository hands out the record it holds, which may still carry the chunks it was indexed with. The
+            // chunks come from the store instead, onto a copy: adding them to the record returned every chunk twice and
+            // grew the stored record on each read.
+            document = new Document
+            {
+                Id = stored.Id,
+                FileName = stored.FileName,
+                FilePath = stored.FilePath,
+                Content = stored.Content,
+                ContentHash = stored.ContentHash,
+                Status = stored.Status,
+                CreatedAt = stored.CreatedAt,
+                UpdatedAt = stored.UpdatedAt,
+                Metadata = new Dictionary<string, object>(stored.Metadata),
+            };
+
             var chunks = await _vectorStore.GetByDocumentIdAsync(documentId, cancellationToken);
             foreach (var chunk in chunks.OrderBy(c => c.ChunkIndex))
             {

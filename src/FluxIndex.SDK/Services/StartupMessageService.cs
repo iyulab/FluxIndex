@@ -1,145 +1,66 @@
 using Flux.Abstractions;
 using FluxIndex.Core.Application.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace FluxIndex.SDK.Services;
 
 /// <summary>
-/// Displays startup guidance for FluxIndex AI service configuration.
-/// Shows which AI services are active and suggests LMSupply options for enhanced RAG capabilities.
+/// Reports, once per process, which AI services a built context has and how to add the missing ones.
 /// </summary>
-public static class StartupMessageService
+/// <remarks>
+/// The report goes to the context's <see cref="ILogger"/> (category <c>FluxIndex.SDK.Services.StartupMessageService</c>)
+/// — never to the console. Before 0.66.0 it was written to standard output, which corrupts the output of a host that
+/// uses standard output as its protocol (a sidecar announcing readiness on stdout, an MCP stdio server).
+/// Turn it off with <see cref="FluxIndexContextBuilder.SuppressStartupMessages"/> or a log filter on the category.
+/// </remarks>
+public static partial class StartupMessageService
 {
     private static bool _messageDisplayed;
 
     /// <summary>
-    /// Display AI service configuration status and LMSupply guidance.
-    /// Only displays once per application lifecycle.
+    /// Logs the AI service status of the built context and the LMSupply registrations that would add what is missing.
+    /// Only the first call in a process logs.
     /// </summary>
     /// <param name="serviceProvider">The built service provider to check registrations</param>
     /// <param name="embeddingProvider">The configured embedding provider name</param>
-    /// <param name="vectorStoreProvider">The configured vector store provider name (optional)</param>
+    /// <param name="vectorStoreProvider">The vector store provider in effect; "InMemory" logs the data-loss warning</param>
     public static void DisplayAIServiceGuidance(IServiceProvider serviceProvider, string? embeddingProvider, string? vectorStoreProvider = null)
     {
+        ArgumentNullException.ThrowIfNull(serviceProvider);
         if (_messageDisplayed) return;
         _messageDisplayed = true;
 
-        // ⚠️ Vector store 경고 (in-memory 사용 시)
-        DisplayVectorStoreWarning(vectorStoreProvider);
+        var logger = serviceProvider.GetService<ILoggerFactory>()?.CreateLogger(typeof(StartupMessageService).FullName!)
+            ?? NullLogger.Instance;
+
+        if (string.Equals(vectorStoreProvider, "InMemory", StringComparison.OrdinalIgnoreCase))
+            LogInMemoryStorage(logger);
 
         var hasEmbedding = serviceProvider.GetService<IEmbeddingService>() != null;
         var hasTextCompletion = serviceProvider.GetService<ITextCompletionService>() != null;
         var hasReranker = serviceProvider.GetService<IReranker>() != null;
         var hasContextualEnrichment = serviceProvider.GetService<IContextualEnrichmentService>() != null;
 
-        var isLMSupplyEmbedding = embeddingProvider?.ToLowerInvariant() is "lmsupply" or "localembedder" or null;
-        var isInMemoryEmbedding = embeddingProvider?.ToLowerInvariant() == "inmemory";
+        var embedding = hasEmbedding ? GetEmbeddingDescription(embeddingProvider) : "none";
+        var textCompletion = Status(hasTextCompletion);
+        var reranking = Status(hasReranker);
+        var contextualEnrichment = Status(hasContextualEnrichment);
+        LogServiceStatus(logger, embedding, textCompletion, reranking, contextualEnrichment);
 
-        // Count active AI services
-        var activeCount = (hasEmbedding ? 1 : 0) + (hasTextCompletion ? 1 : 0) + (hasReranker ? 1 : 0);
-        var missingServices = new List<string>();
-
-        if (!hasTextCompletion) missingServices.Add("Text Completion");
-        if (!hasReranker) missingServices.Add("Reranking");
-        if (!hasContextualEnrichment) missingServices.Add("Contextual Enrichment");
-
-        // If all services are configured, show summary with available options
-        if (missingServices.Count == 0)
+        var isInMemoryEmbedding = string.Equals(embeddingProvider, "InMemory", StringComparison.OrdinalIgnoreCase);
+        if (!isInMemoryEmbedding && (!hasTextCompletion || !hasReranker))
         {
-            Console.WriteLine();
-            WriteColored(ConsoleColor.DarkCyan, "FluxIndex: ");
-            WriteColored(ConsoleColor.Green, "✓ ");
-            WriteColored(ConsoleColor.White, "Production-ready AI stack enabled");
-            Console.WriteLine();
-            WriteColored(ConsoleColor.DarkGray, "  Embedding + TextCompletion + Reranker (LMSupply, no API key)");
-            Console.WriteLine();
-            WriteColored(ConsoleColor.DarkGray, "  Tip: Use .MinimalAI() or .WithoutTextCompletion() to reduce resource usage");
-            Console.WriteLine();
-            Console.WriteLine();
-            return;
+            var registrations = string.Join(
+                ", ",
+                new[]
+                {
+                    hasTextCompletion ? null : "services.AddLMSupplyTextCompletion() (HyDE query expansion, metadata enrichment)",
+                    hasReranker ? null : "services.AddLMSupplyReranker() (cross-encoder reranking)",
+                }.Where(s => s is not null));
+            LogLocalServicesHint(logger, registrations);
         }
-
-        // Show guidance for missing services
-        Console.WriteLine();
-        WriteBoxTop();
-
-        // Title
-        WriteBoxLine("FluxIndex - AI Service Status", ConsoleColor.Cyan);
-        WriteBoxSeparator();
-
-        // Current status
-        WriteServiceStatus("Embedding", hasEmbedding, GetEmbeddingDescription(embeddingProvider));
-        WriteServiceStatus("Text Completion", hasTextCompletion, hasTextCompletion ? "Active" : "Not configured");
-        WriteServiceStatus("Reranking", hasReranker, hasReranker ? "Active" : "Not configured");
-        WriteServiceStatus("Contextual Enrichment", hasContextualEnrichment, hasContextualEnrichment ? "Active" : "Not configured");
-
-        // Show LMSupply suggestion if services are missing
-        if (missingServices.Count > 0 && !isInMemoryEmbedding)
-        {
-            WriteBoxSeparator();
-            WriteBoxLine("Enable additional AI features with LMSupply (no API key required):", ConsoleColor.Yellow);
-            WriteBoxEmpty();
-
-            // Show code example
-            WriteBoxLine("  builder.ConfigureServices(services => {", ConsoleColor.Gray);
-
-            if (!hasTextCompletion)
-            {
-                WriteBoxLine("      services.AddLMSupplyTextCompletion();  // HyDE, metadata enrichment", ConsoleColor.White);
-            }
-            if (!hasReranker)
-            {
-                WriteBoxLine("      services.AddLMSupplyReranker();        // Semantic reranking", ConsoleColor.White);
-            }
-            if (!hasContextualEnrichment && hasTextCompletion)
-            {
-                WriteBoxLine("      // Contextual Enrichment available via WithContextualEmbedding()", ConsoleColor.DarkGray);
-            }
-
-            WriteBoxLine("  });", ConsoleColor.Gray);
-        }
-
-        // Show benefit hints
-        if (!hasTextCompletion || !hasReranker)
-        {
-            WriteBoxSeparator();
-            WriteBoxLine("Benefits:", ConsoleColor.DarkCyan);
-
-            if (!hasTextCompletion)
-            {
-                WriteBoxLine("  - Text Completion: Enables HyDE query expansion (+20-30% recall)", ConsoleColor.DarkGray);
-                WriteBoxLine("                     Metadata enrichment, contextual headers", ConsoleColor.DarkGray);
-            }
-            if (!hasReranker)
-            {
-                WriteBoxLine("  - Reranking: Cross-encoder semantic scoring (+15-25% precision)", ConsoleColor.DarkGray);
-            }
-        }
-
-        WriteBoxBottom();
-        Console.WriteLine();
-    }
-
-    /// <summary>
-    /// Display warning if using in-memory vector store.
-    /// </summary>
-    private static void DisplayVectorStoreWarning(string? vectorStoreProvider)
-    {
-        var provider = vectorStoreProvider?.ToLowerInvariant();
-
-        // 명시적으로 SQLite나 PostgreSQL을 설정한 경우 경고 없음
-        if (provider is "sqlite" or "postgresql")
-        {
-            return;
-        }
-
-        // In-memory 또는 미설정인 경우 경고 표시
-        Console.WriteLine();
-        WriteColored(ConsoleColor.Yellow, "⚠ FluxIndex: ");
-        WriteColored(ConsoleColor.White, "Using in-memory storage (data will be lost on restart)");
-        Console.WriteLine();
-        WriteColored(ConsoleColor.DarkGray, "  Use .UseSQLite(\"data.db\") or .UsePostgreSQL(connectionString) for persistence");
-        Console.WriteLine();
     }
 
     /// <summary>
@@ -158,84 +79,26 @@ public static class StartupMessageService
         _messageDisplayed = false;
     }
 
+    private static string Status(bool active) => active ? "active" : "not configured";
+
     private static string GetEmbeddingDescription(string? provider)
     {
         return provider?.ToLowerInvariant() switch
         {
-            "LMSupply" or "localembedder" => "LMSupply (ONNX)",
-            "inmemory" => "InMemory (Test)",
-            "custom" => "Custom Provider",
-            null => "LMSupply (Default)",
+            "lmsupply" or "localembedder" => "LMSupply (ONNX)",
+            "inmemory" => "InMemory (test vectors)",
+            "custom" => "custom provider",
+            null => "LMSupply (default)",
             _ => provider
         };
     }
 
-    private static void WriteServiceStatus(string name, bool isActive, string description)
-    {
-        var status = isActive ? "\u2713" : "\u25cb"; // ✓ or ○
-        var statusColor = isActive ? ConsoleColor.Green : ConsoleColor.DarkGray;
+    [LoggerMessage(Level = LogLevel.Warning, Message = "FluxIndex is using in-memory storage: indexed data is lost on restart. Use UseSQLite(path) or UsePostgreSQL(connectionString) to persist it.")]
+    private static partial void LogInMemoryStorage(ILogger logger);
 
-        Console.Write("\u2502  ");
-        WriteColored(statusColor, status);
-        Console.Write($" {name,-22}");
-        WriteColored(isActive ? ConsoleColor.White : ConsoleColor.DarkGray, description);
-        PadToBoxEnd(name.Length + description.Length + 25);
-        Console.WriteLine("\u2502");
-    }
+    [LoggerMessage(Level = LogLevel.Information, Message = "FluxIndex AI services: embedding {Embedding}, text completion {TextCompletion}, reranking {Reranking}, contextual enrichment {ContextualEnrichment}")]
+    private static partial void LogServiceStatus(ILogger logger, string embedding, string textCompletion, string reranking, string contextualEnrichment);
 
-    private static void WriteBoxTop()
-    {
-        WriteColored(ConsoleColor.DarkGray, "\u256d" + new string('\u2500', 68) + "\u256e");
-        Console.WriteLine();
-    }
-
-    private static void WriteBoxBottom()
-    {
-        WriteColored(ConsoleColor.DarkGray, "\u2570" + new string('\u2500', 68) + "\u256f");
-        Console.WriteLine();
-    }
-
-    private static void WriteBoxSeparator()
-    {
-        WriteColored(ConsoleColor.DarkGray, "\u251c" + new string('\u2500', 68) + "\u2524");
-        Console.WriteLine();
-    }
-
-    private static void WriteBoxLine(string text, ConsoleColor color)
-    {
-        Console.Write("\u2502  ");
-        WriteColored(color, text);
-        PadToBoxEnd(text.Length + 2);
-        Console.WriteLine("\u2502");
-    }
-
-    private static void WriteBoxEmpty()
-    {
-        Console.Write("\u2502");
-        Console.Write(new string(' ', 68));
-        Console.WriteLine("\u2502");
-    }
-
-    private static void PadToBoxEnd(int currentLength)
-    {
-        var padding = 68 - currentLength;
-        if (padding > 0)
-        {
-            Console.Write(new string(' ', padding));
-        }
-    }
-
-    private static void WriteColored(ConsoleColor color, string text)
-    {
-        var originalColor = Console.ForegroundColor;
-        try
-        {
-            Console.ForegroundColor = color;
-            Console.Write(text);
-        }
-        finally
-        {
-            Console.ForegroundColor = originalColor;
-        }
-    }
+    [LoggerMessage(Level = LogLevel.Information, Message = "FluxIndex: these run locally with LMSupply, no API key required - register them through ConfigureServices: {Registrations}")]
+    private static partial void LogLocalServicesHint(ILogger logger, string registrations);
 }

@@ -221,8 +221,8 @@ path on which the SDK splits text: it uses the builder's `IndexerOptions.ChunkSi
 (`WithChunking(...)` or `WithIndexerOptions(...)`; characters at the nearest sentence/paragraph/word
 boundary, overlap must be smaller than the size). The `Document` overloads index the chunks you pass. The
 per-call `IndexingOptions` is read for `EnableGraphRAG`, `GraphRAGOptions` and `CustomOptions` (AI metadata
-extraction via `WithAIMetadataExtraction(...)`, overlaid on `IndexerOptions.CustomOptions`); its
-`GenerateEmbeddings`/`ExtractMetadata` are not read. On the search side `SearchOptions.UseHybridSearch` auto-detects, `UseGraphRAG = true` throws (see
+extraction via `WithAIMetadataExtraction(...)`, overlaid on `IndexerOptions.CustomOptions`) — those are all
+its fields (the unread `GenerateEmbeddings`/`ExtractMetadata` were removed in 0.66.0). On the search side `SearchOptions.UseHybridSearch` auto-detects, `UseGraphRAG = true` throws (see
 *Full GraphRAG*), and `IncludeVectors` is not read — `SearchResult` has no vector field. When a search
 method's `maxResults`/`minScore` argument is omitted, `RetrieverOptions.DefaultMaxResults`/`DefaultMinScore`
 (set by `WithSearchOptions(...)`; 10 / 0.2 by default) apply — `FindSimilarAsync` (0.5) and the quantized

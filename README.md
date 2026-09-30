@@ -126,7 +126,9 @@ await using var context = FluxIndexContext.CreateBuilder()
 
 // 2. Index — the string overload splits the text into chunks of IndexerOptions.ChunkSize
 //    characters (default 512, at sentence/paragraph/word boundaries); pass a pre-chunked
-//    Document instead when FileFlux/FluxCurator already did the splitting
+//    Document instead when FileFlux/FluxCurator already did the splitting.
+//    Indexing the same id again replaces the document (old chunks leave both indexes);
+//    AddChunksAsync appends instead.
 await context.Indexer.IndexDocumentAsync(
     "FluxIndex is a RAG library for .NET", "doc-001");
 

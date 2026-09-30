@@ -106,6 +106,40 @@ public interface IKeywordSearchService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Replaces every chunk this index holds for <paramref name="documentIds"/> with <paramref name="chunks"/> — the
+    /// keyword-index counterpart of <see cref="IVectorStore.ReplaceDocumentsAsync"/>. A listed document with no chunk in
+    /// <paramref name="chunks"/> is removed.
+    /// </summary>
+    /// <remarks>
+    /// The relational backends do it in one transaction. The default implementation indexes the new chunks first and
+    /// then removes the previous chunks that were not written again, so an interrupted call leaves a document duplicated
+    /// rather than missing.
+    /// </remarks>
+    /// <param name="documentIds">The documents to replace. Blank ids are ignored.</param>
+    /// <param name="chunks">The chunks the documents consist of from now on (may be empty).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    async Task ReplaceDocumentsAsync(
+        IReadOnlyCollection<string> documentIds,
+        IReadOnlyList<DocumentChunk> chunks,
+        CancellationToken cancellationToken = default)
+    {
+        System.ArgumentNullException.ThrowIfNull(documentIds);
+        System.ArgumentNullException.ThrowIfNull(chunks);
+
+        var previous = new List<string>();
+        foreach (var documentId in documentIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(System.StringComparer.Ordinal))
+            previous.AddRange(await GetChunkIdsByDocumentIdAsync(documentId, cancellationToken));
+
+        if (chunks.Count > 0)
+            await IndexChunksAsync(chunks, cancellationToken);
+
+        var written = new HashSet<string>(chunks.Select(c => c.Id), System.StringComparer.Ordinal);
+        var stale = previous.Where(id => !written.Contains(id)).ToList();
+        if (stale.Count > 0)
+            await DeleteChunksAsync(stale, cancellationToken);
+    }
+
+    /// <summary>
     /// Removes every chunk whose metadata matches <paramref name="filter"/>, and returns how many
     /// were removed. The filter uses the same vocabulary and match-any semantics as
     /// <c>IVectorStore.DeleteByFilterAsync</c>, so one filter object cleans both legs of a hybrid

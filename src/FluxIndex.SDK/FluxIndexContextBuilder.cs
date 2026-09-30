@@ -616,8 +616,8 @@ public class FluxIndexContextBuilder
     }
 
     /// <summary>
-    /// Suppress startup messages (AI service guidance).
-    /// Use this in production environments or when console output is not desired.
+    /// Suppress the startup report (which AI services are active, which LMSupply registrations would add the rest).
+    /// The report is logged through the context's <c>ILogger</c> at Information level, never written to the console.
     /// </summary>
     public FluxIndexContextBuilder SuppressStartupMessages()
     {
@@ -811,10 +811,15 @@ public class FluxIndexContextBuilder
                 InMemoryEmbeddingService => "InMemory",
                 _ => _options.Embedding.Provider is { } p && !p.Equals("InMemory", StringComparison.OrdinalIgnoreCase) ? p : "Custom",
             };
+            // Likewise the store: the options name a provider even when nothing registered it and the in-memory
+            // fallback is what runs, which is exactly when the "data is lost on restart" warning matters.
+            var effectiveStoreProvider = _services.LastOrDefault(d => d.ServiceType == typeof(IVectorStore))?.ImplementationType == typeof(InMemoryVectorStore)
+                ? "InMemory"
+                : _options.VectorStore.Provider;
             StartupMessageService.DisplayAIServiceGuidance(
                 serviceProvider,
                 effectiveEmbeddingProvider,
-                _options.VectorStore.Provider);
+                effectiveStoreProvider);
         }
 
         // Get Retriever and Indexer from DI

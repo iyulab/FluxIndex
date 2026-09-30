@@ -5,6 +5,40 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.66.0] - Unreleased
+
+### Changed
+- **Breaking: indexing a document id that is already indexed replaces the document.** `Indexer.IndexDocumentAsync`
+  (every overload, and `IndexChunksAsync(..., documentId)`) used to store the new chunks beside the old ones, so the old
+  text kept matching searches. Now the previous version's chunks leave the vector store and the keyword index (a shorter
+  version drops the old tail too), and the stored document record is the new version. `UpdateDocumentAsync` and
+  `ReindexDocumentAsync` go through the same replacement. Appending chunks is `AddChunksAsync`.
+  - The sqlite-vec store and the relational keyword indexes replace in one transaction each; other stores write the new
+    chunks before removing the old, so an interrupted call leaves a document duplicated, never missing, and calling it
+    again repairs it.
+  - **Migration:** code that indexed several parts under one document id to accumulate them should index them under
+    ids of their own (as FileFlux's streaming path does) or use `AddChunksAsync`.
+- **`Build()` no longer writes to standard output.** The AI-service report goes to the context's `ILogger`
+  (category `FluxIndex.SDK.Services.StartupMessageService`, Information; the in-memory storage warning at Warning).
+  `SuppressStartupMessages()` still turns it off. The in-memory warning now follows the store that is actually
+  registered: it used to be keyed on the provider name, so the builder's in-memory fallback never warned and Qdrant
+  did.
+
+### Added
+- **`IVectorStore.ReplaceDocumentsAsync` / `IKeywordSearchService.ReplaceDocumentsAsync`**: replace every chunk of a
+  set of documents with a given chunk list. Both have default implementations, so custom stores keep compiling.
+
+### Fixed
+- **`Retriever.GetDocumentAsync` returned every chunk twice** (the record's own chunks plus the store's) and grew the
+  stored record on each call. It now returns a copy carrying the store's chunks.
+
+### Removed
+- **Breaking:** `IndexingOptions.GenerateEmbeddings` and `IndexingOptions.ExtractMetadata`, which were never read.
+  Keyword-only indexing follows from registering no embedding service; AI metadata extraction is
+  `WithAIMetadataExtraction(...)`.
+
+---
+
 ## [0.65.1] - 2026-10-01
 
 ### Changed

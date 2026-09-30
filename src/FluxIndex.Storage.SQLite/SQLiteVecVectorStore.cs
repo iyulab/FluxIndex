@@ -307,125 +307,8 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
 
             try
             {
-                // Materialize once so we can iterate twice (id assignment + INSERT building)
-                var chunkList = chunks as IList<DocumentChunk> ?? chunks.ToList();
-                var ids = new List<string>(chunkList.Count);
-                var entities = new List<VectorChunkEntity>(chunkList.Count);
-                var vectorBatch = new List<(string Id, float[] Embedding)>();
-
-                // 1단계: 메타데이터 엔티티 준비 (메모리 작업) + ID 할당 — the caller's id is kept (see
-                // StoreCoreAsync). Within one batch the last chunk carrying an id wins, the same way
-                // two sequential stores of that id would resolve.
-                var vectorById = new Dictionary<string, float[]>(StringComparer.Ordinal);
-                foreach (var chunk in chunkList)
-                {
-                    var id = chunk.EnsureId();
-                    ids.Add(id);
-
-                    var entity = new VectorChunkEntity
-                    {
-                        Id = id,
-                        DocumentId = chunk.DocumentId,
-                        ChunkIndex = chunk.ChunkIndex,
-                        TotalChunks = chunk.TotalChunks,
-                        Content = chunk.Content,
-                        TokenCount = chunk.TokenCount,
-                        Metadata = MetadataHelper.ForStorage(chunk),
-                        CreatedAt = DateTime.UtcNow
-                    };
-                    entities.Add(entity);
-
-                    if (chunk.Embedding != null && VecTableActive)
-                    {
-                        vectorById[id] = chunk.Embedding;
-                    }
-                    else
-                    {
-                        vectorById.Remove(id);
-                    }
-                }
-
-                // Ids already stored: their vector rows must go before the batch insert below, because
-                // the vec0 table has no upsert and a second row for one chunk_id would be either a
-                // constraint failure or a duplicate hit in every search.
-                if (VecTableActive && entities.Count > 0)
-                {
-                    var alreadyStored = await FindStoredIdsAsync(context, ids, cancellationToken);
-                    foreach (var storedId in alreadyStored)
-                    {
-                        await context.DeleteVectorFromVecTableAsync(storedId, cancellationToken);
-                    }
-                }
-
-                foreach (var (id, embedding) in vectorById)
-                {
-                    vectorBatch.Add((id, embedding));
-                }
-
-                // 2단계: vector_chunks 일괄 삽입 (단일 raw SQL multi-row INSERT, upsert on Id)
-                // EF Core의 Add() × N + SaveChangesAsync()는 N개의 개별 INSERT를 발생시킨다.
-                // sqlite-vec의 chunk_embeddings 테이블이 이미 사용하는 multi-row VALUES 패턴을 적용.
-                if (entities.Count > 0)
-                {
-                    // 7 columns × N rows: SQLite parameter limit is 32766. 7×4000 = 28000 < limit.
-                    // 보수적으로 500 rows/batch로 제한하여 SQL 길이/파서 부담을 줄인다.
-                    const int rowsPerStatement = 500;
-                    for (int offset = 0; offset < entities.Count; offset += rowsPerStatement)
-                    {
-                        var batchSize = Math.Min(rowsPerStatement, entities.Count - offset);
-                        var valueClauses = new List<string>(batchSize);
-                        var parameters = new List<object>(batchSize * 8);
-                        int p = 0;
-
-                        for (int j = 0; j < batchSize; j++)
-                        {
-                            var e = entities[offset + j];
-                            // Metadata JSON: match EF Core's value converter (default JsonSerializerOptions)
-                            var metaJson = System.Text.Json.JsonSerializer.Serialize(
-                                e.Metadata,
-                                (System.Text.Json.JsonSerializerOptions?)null);
-
-                            valueClauses.Add($"({{{p}}},{{{p + 1}}},{{{p + 2}}},{{{p + 3}}},{{{p + 4}}},{{{p + 5}}},{{{p + 6}}},{{{p + 7}}})");
-                            parameters.Add(e.Id);
-                            parameters.Add(e.DocumentId);
-                            parameters.Add(e.ChunkIndex);
-                            parameters.Add((object?)e.TotalChunks ?? DBNull.Value);
-                            parameters.Add(e.Content);
-                            parameters.Add(e.TokenCount);
-                            parameters.Add(metaJson);
-                            // Pass DateTime as parameter so Microsoft.Data.Sqlite serializes it
-                            // in the same TEXT format EF Core uses (ISO 8601 with fractional seconds).
-                            parameters.Add(e.CreatedAt);
-                            p += 8;
-                        }
-
-                        // Table name set via entity.ToTable("vector_chunks").
-                        // Column names: PascalCase per EF Core convention (no explicit HasColumnName).
-                        // ON CONFLICT DO UPDATE keeps re-storing an id an update: the row's content follows
-                        // the new write while CreatedAt stays. The FTS5 UPDATE trigger fires for the DO
-                        // UPDATE branch, so the keyword index follows too.
-                        var sql = "INSERT INTO \"vector_chunks\" " +
-                                  "(\"Id\", \"DocumentId\", \"ChunkIndex\", \"TotalChunks\", \"Content\", \"TokenCount\", \"Metadata\", \"CreatedAt\") " +
-                                  $"VALUES {string.Join(",", valueClauses)} " +
-                                  "ON CONFLICT(\"Id\") DO UPDATE SET " +
-                                  "\"DocumentId\" = excluded.\"DocumentId\", \"ChunkIndex\" = excluded.\"ChunkIndex\", " +
-                                  "\"TotalChunks\" = excluded.\"TotalChunks\", " +
-                                  "\"Content\" = excluded.\"Content\", \"TokenCount\" = excluded.\"TokenCount\", " +
-                                  "\"Metadata\" = excluded.\"Metadata\"";
-
-                        await context.Database.ExecuteSqlRawAsync(sql, parameters.ToArray(), cancellationToken);
-                        LogVectorChunksBatchInserted(_logger, batchSize);
-                    }
-                }
-
-                // 3단계: 벡터 배치 삽입 (단일 SQL 문으로 최적화)
-                if (vectorBatch.Count != 0)
-                {
-                    await StoreBatchVectorsAsync(context, vectorBatch, cancellationToken);
-                }
-
+                var ids = await WriteChunksAsync(context, chunks as IReadOnlyList<DocumentChunk> ?? chunks.ToList(), cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
-
                 return ids;
             }
             catch
@@ -438,6 +321,206 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         {
             _writeLock.Release();
         }
+    }
+
+    /// <summary>
+    /// Replaces the chunks of <paramref name="documentIds"/> in one transaction: the old rows (and their vectors) are
+    /// deleted and the new ones written together, so a reader never sees the document half-replaced and an interrupted
+    /// call changes nothing.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> ReplaceDocumentsAsync(
+        IReadOnlyCollection<string> documentIds,
+        IReadOnlyList<DocumentChunk> chunks,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(documentIds);
+        ArgumentNullException.ThrowIfNull(chunks);
+
+        await EnsureInitializedAsync(cancellationToken);
+
+        if (!_sqliteVecAvailable)
+        {
+            if (_options.FallbackToInMemoryOnError)
+                return await ((IVectorStore)_fallbackStore.Value).ReplaceDocumentsAsync(documentIds, chunks, cancellationToken);
+
+            throw new InvalidOperationException(
+                "The sqlite-vec extension is not loaded. " +
+                "Check that the extension is installed, or enable FallbackToInMemoryOnError.");
+        }
+
+        var replaced = documentIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        await _writeLock.WaitAsync(cancellationToken);
+        try
+        {
+            await using var context = await OpenContextAsync(cancellationToken);
+            using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
+
+            try
+            {
+                const int idsPerQuery = 500;
+                for (var offset = 0; offset < replaced.Count; offset += idsPerQuery)
+                {
+                    var slice = replaced.Skip(offset).Take(idsPerQuery).ToList();
+                    if (VecTableActive)
+                    {
+                        var oldIds = await context.VectorChunks
+                            .Where(c => slice.Contains(c.DocumentId))
+                            .Select(c => c.Id)
+                            .ToListAsync(cancellationToken);
+                        foreach (var oldId in oldIds)
+                            await context.DeleteVectorFromVecTableAsync(oldId, cancellationToken);
+                    }
+
+                    await context.VectorChunks
+                        .Where(c => slice.Contains(c.DocumentId))
+                        .ExecuteDeleteAsync(cancellationToken);
+                }
+
+                var ids = chunks.Count == 0
+                    ? new List<string>()
+                    : await WriteChunksAsync(context, chunks, cancellationToken);
+
+                await transaction.CommitAsync(cancellationToken);
+                return ids;
+            }
+            catch
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                throw;
+            }
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Writes <paramref name="chunkList"/> on <paramref name="context"/>'s open transaction: rows upserted by id, vectors
+    /// replaced. The caller holds the write lock and commits.
+    /// </summary>
+    private async Task<List<string>> WriteChunksAsync(SQLiteVecDbContext context, IReadOnlyList<DocumentChunk> chunkList, CancellationToken cancellationToken)
+    {
+        var ids = new List<string>(chunkList.Count);
+        var entities = new List<VectorChunkEntity>(chunkList.Count);
+        var vectorBatch = new List<(string Id, float[] Embedding)>();
+
+        // 1단계: 메타데이터 엔티티 준비 (메모리 작업) + ID 할당 — the caller's id is kept (see
+        // StoreCoreAsync). Within one batch the last chunk carrying an id wins, the same way
+        // two sequential stores of that id would resolve.
+        var vectorById = new Dictionary<string, float[]>(StringComparer.Ordinal);
+        foreach (var chunk in chunkList)
+        {
+            var id = chunk.EnsureId();
+            ids.Add(id);
+
+            var entity = new VectorChunkEntity
+            {
+                Id = id,
+                DocumentId = chunk.DocumentId,
+                ChunkIndex = chunk.ChunkIndex,
+                TotalChunks = chunk.TotalChunks,
+                Content = chunk.Content,
+                TokenCount = chunk.TokenCount,
+                Metadata = MetadataHelper.ForStorage(chunk),
+                CreatedAt = DateTime.UtcNow
+            };
+            entities.Add(entity);
+
+            if (chunk.Embedding != null && VecTableActive)
+            {
+                vectorById[id] = chunk.Embedding;
+            }
+            else
+            {
+                vectorById.Remove(id);
+            }
+        }
+
+        // Ids already stored: their vector rows must go before the batch insert below, because
+        // the vec0 table has no upsert and a second row for one chunk_id would be either a
+        // constraint failure or a duplicate hit in every search.
+        if (VecTableActive && entities.Count > 0)
+        {
+            var alreadyStored = await FindStoredIdsAsync(context, ids, cancellationToken);
+            foreach (var storedId in alreadyStored)
+            {
+                await context.DeleteVectorFromVecTableAsync(storedId, cancellationToken);
+            }
+        }
+
+        foreach (var (id, embedding) in vectorById)
+        {
+            vectorBatch.Add((id, embedding));
+        }
+
+        // 2단계: vector_chunks 일괄 삽입 (단일 raw SQL multi-row INSERT, upsert on Id)
+        // EF Core의 Add() × N + SaveChangesAsync()는 N개의 개별 INSERT를 발생시킨다.
+        // sqlite-vec의 chunk_embeddings 테이블이 이미 사용하는 multi-row VALUES 패턴을 적용.
+        if (entities.Count > 0)
+        {
+            // 7 columns × N rows: SQLite parameter limit is 32766. 7×4000 = 28000 < limit.
+            // 보수적으로 500 rows/batch로 제한하여 SQL 길이/파서 부담을 줄인다.
+            const int rowsPerStatement = 500;
+            for (int offset = 0; offset < entities.Count; offset += rowsPerStatement)
+            {
+                var batchSize = Math.Min(rowsPerStatement, entities.Count - offset);
+                var valueClauses = new List<string>(batchSize);
+                var parameters = new List<object>(batchSize * 8);
+                int p = 0;
+
+                for (int j = 0; j < batchSize; j++)
+                {
+                    var e = entities[offset + j];
+                    // Metadata JSON: match EF Core's value converter (default JsonSerializerOptions)
+                    var metaJson = System.Text.Json.JsonSerializer.Serialize(
+                        e.Metadata,
+                        (System.Text.Json.JsonSerializerOptions?)null);
+
+                    valueClauses.Add($"({{{p}}},{{{p + 1}}},{{{p + 2}}},{{{p + 3}}},{{{p + 4}}},{{{p + 5}}},{{{p + 6}}},{{{p + 7}}})");
+                    parameters.Add(e.Id);
+                    parameters.Add(e.DocumentId);
+                    parameters.Add(e.ChunkIndex);
+                    parameters.Add((object?)e.TotalChunks ?? DBNull.Value);
+                    parameters.Add(e.Content);
+                    parameters.Add(e.TokenCount);
+                    parameters.Add(metaJson);
+                    // Pass DateTime as parameter so Microsoft.Data.Sqlite serializes it
+                    // in the same TEXT format EF Core uses (ISO 8601 with fractional seconds).
+                    parameters.Add(e.CreatedAt);
+                    p += 8;
+                }
+
+                // Table name set via entity.ToTable("vector_chunks").
+                // Column names: PascalCase per EF Core convention (no explicit HasColumnName).
+                // ON CONFLICT DO UPDATE keeps re-storing an id an update: the row's content follows
+                // the new write while CreatedAt stays. The FTS5 UPDATE trigger fires for the DO
+                // UPDATE branch, so the keyword index follows too.
+                var sql = "INSERT INTO \"vector_chunks\" " +
+                          "(\"Id\", \"DocumentId\", \"ChunkIndex\", \"TotalChunks\", \"Content\", \"TokenCount\", \"Metadata\", \"CreatedAt\") " +
+                          $"VALUES {string.Join(",", valueClauses)} " +
+                          "ON CONFLICT(\"Id\") DO UPDATE SET " +
+                          "\"DocumentId\" = excluded.\"DocumentId\", \"ChunkIndex\" = excluded.\"ChunkIndex\", " +
+                          "\"TotalChunks\" = excluded.\"TotalChunks\", " +
+                          "\"Content\" = excluded.\"Content\", \"TokenCount\" = excluded.\"TokenCount\", " +
+                          "\"Metadata\" = excluded.\"Metadata\"";
+
+                await context.Database.ExecuteSqlRawAsync(sql, parameters.ToArray(), cancellationToken);
+                LogVectorChunksBatchInserted(_logger, batchSize);
+            }
+        }
+
+        // 3단계: 벡터 배치 삽입 (단일 SQL 문으로 최적화)
+        if (vectorBatch.Count != 0)
+        {
+            await StoreBatchVectorsAsync(context, vectorBatch, cancellationToken);
+        }
+
+        return ids;
     }
 
     /// <summary>

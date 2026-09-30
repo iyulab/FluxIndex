@@ -64,7 +64,36 @@ public partial class QuantizedVectorStoreDecorator : IQuantizedVectorStore
         var chunkList = chunks.ToList();
         var ids = await _innerStore.StoreBatchAsync(chunkList, cancellationToken);
         var idList = ids.ToList();
+        await QuantizeStoredAsync(chunkList, idList, cancellationToken);
+        return idList;
+    }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// Delegates to the wrapped store, so its atomic replacement is kept; the quantized copies of the replaced chunks are
+    /// dropped and the new chunks are quantized as <see cref="StoreBatchAsync"/> would.
+    /// </remarks>
+    public async Task<IReadOnlyList<string>> ReplaceDocumentsAsync(
+        IReadOnlyCollection<string> documentIds,
+        IReadOnlyList<DocumentChunk> chunks,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(documentIds);
+        ArgumentNullException.ThrowIfNull(chunks);
+
+        foreach (var documentId in documentIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.Ordinal))
+        {
+            foreach (var chunkId in await _innerStore.GetChunkIdsByDocumentIdAsync(documentId, cancellationToken))
+                _quantizedEmbeddings.TryRemove(chunkId, out _);
+        }
+
+        var ids = await _innerStore.ReplaceDocumentsAsync(documentIds, chunks, cancellationToken);
+        await QuantizeStoredAsync(chunks, ids, cancellationToken);
+        return ids;
+    }
+
+    private async Task QuantizeStoredAsync(IReadOnlyList<DocumentChunk> chunkList, IReadOnlyList<string> idList, CancellationToken cancellationToken)
+    {
         // Auto-quantize if enabled
         if (_options.AutoQuantizeOnStore)
         {
@@ -97,8 +126,6 @@ public partial class QuantizedVectorStoreDecorator : IQuantizedVectorStore
                 }
             }
         }
-
-        return idList;
     }
 
     public Task<DocumentChunk?> GetAsync(string id, CancellationToken cancellationToken = default)

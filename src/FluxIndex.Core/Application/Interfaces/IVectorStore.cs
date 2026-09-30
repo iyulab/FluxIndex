@@ -76,6 +76,50 @@ public interface IVectorStore
     Task<bool> DeleteByDocumentIdAsync(string documentId, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Replaces every chunk the store holds for <paramref name="documentIds"/> with <paramref name="chunks"/>: afterwards
+    /// those documents consist of exactly the given chunks. A document id with no chunk in <paramref name="chunks"/> is
+    /// removed; a chunk whose document id is not listed is stored beside what the store already holds.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is what indexing a document under an id that is already indexed means: the new version takes the place of
+    /// the old one instead of joining it. Storing new chunks without it leaves the old chunks searchable, because chunk
+    /// ids are not derived from the document.
+    /// </para>
+    /// <para>
+    /// The write is atomic where the backend offers a transaction (the sqlite-vec store). The default implementation
+    /// stores the new chunks first and then deletes the old ones that are not among them, so an interrupted call leaves
+    /// a document duplicated rather than missing — calling it again repairs it.
+    /// </para>
+    /// </remarks>
+    /// <param name="documentIds">The documents to replace. Blank ids are ignored.</param>
+    /// <param name="chunks">The chunks the documents consist of from now on (may be empty).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The ids of the stored chunks, in input order.</returns>
+    async Task<IReadOnlyList<string>> ReplaceDocumentsAsync(
+        IReadOnlyCollection<string> documentIds,
+        IReadOnlyList<DocumentChunk> chunks,
+        CancellationToken cancellationToken = default)
+    {
+        System.ArgumentNullException.ThrowIfNull(documentIds);
+        System.ArgumentNullException.ThrowIfNull(chunks);
+
+        var previous = new List<string>();
+        foreach (var documentId in documentIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(System.StringComparer.Ordinal))
+            previous.AddRange(await GetChunkIdsByDocumentIdAsync(documentId, cancellationToken));
+
+        var stored = chunks.Count == 0
+            ? new List<string>()
+            : (await StoreBatchAsync(chunks, cancellationToken)).ToList();
+
+        var kept = new HashSet<string>(stored, System.StringComparer.Ordinal);
+        foreach (var id in previous.Where(id => !kept.Contains(id)))
+            await DeleteAsync(id, cancellationToken);
+
+        return stored;
+    }
+
+    /// <summary>
     /// Deletes every chunk whose metadata matches ALL of the given key/value filters.
     /// Returns the number of chunks deleted. Enables a bulk tenant/source purge in one call
     /// instead of a per-document delete loop. An empty filter is rejected — use

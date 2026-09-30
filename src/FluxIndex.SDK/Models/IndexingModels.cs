@@ -15,12 +15,6 @@ namespace FluxIndex.SDK;
 /// </remarks>
 public class IndexingOptions
 {
-    /// <summary>읽히지 않는다 — 인덱서는 항상 임베딩을 만든다. 임베딩 없는 청크는 벡터 저장소가 저장하지 않으므로
-    /// <c>false</c> 를 존중하려면 키워드 전용 적재 경로가 먼저 필요하다.</summary>
-    public bool GenerateEmbeddings { get; set; } = true;
-    /// <summary>읽히지 않는다 — AI 메타데이터 추출은 <c>IMetadataExtractor</c> 등록 +
-    /// <see cref="IndexingOptionsExtensions.WithAIMetadataExtraction"/>(= <see cref="CustomOptions"/> 의 키)로 켠다.</summary>
-    public bool ExtractMetadata { get; set; } = true;
     /// <summary>
     /// 호출 단위 추가 설정. AI 메타데이터 추출 키(<see cref="IndexingOptionsExtensions"/>)가 여기 실린다.
     /// 빌더 수준 <see cref="IndexerOptions.CustomOptions"/> 위에 덧씌워지며 같은 키는 이쪽이 이긴다.

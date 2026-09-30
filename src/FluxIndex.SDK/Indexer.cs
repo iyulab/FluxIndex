@@ -139,6 +139,12 @@ public partial class Indexer
     /// <see cref="IndexerOptions.ChunkOverlap"/>(문자 수, 단어 경계) 기준으로 나눠 청크마다 한 행을 만든다.
     /// <see cref="Document"/> 를 받는 오버로드는 호출자가 이미 나눈 <see cref="Document.Chunks"/> 를 그대로 쓴다.
     /// 나뉜 청크는 전부 같은 <paramref name="metadata"/> 를 실으므로 필터는 어느 청크에나 매치된다.
+    /// <para>
+    /// 같은 <paramref name="documentId"/> 로 다시 부르면 그 문서를 <b>교체</b>한다 — 이전 판의 청크는 벡터 저장소와
+    /// 키워드 색인에서 지워지고(청크 수가 줄면 남는 꼬리도), 문서 레코드도 새 판이 된다. 청크를 덧붙이려면
+    /// <see cref="AddChunksAsync"/> 를 쓴다. 저장소마다 가능한 곳에서는 원자적이다(sqlite-vec 저장소와 관계형 키워드 색인은
+    /// 각각 한 트랜잭션); 둘 사이가 끊기면 같은 호출을 다시 하면 복구된다.
+    /// </para>
     /// </remarks>
     /// <param name="content">인덱싱할 문서 내용</param>
     /// <param name="documentId">문서 ID</param>
@@ -196,7 +202,8 @@ public partial class Indexer
     }
 
     /// <summary>
-    /// 문서 인덱싱
+    /// 문서 인덱싱. 이미 색인된 <see cref="Document.Id"/> 면 그 문서를 교체한다
+    /// (<see cref="IndexDocumentAsync(string, string, Dictionary{string, object}?, CancellationToken)"/> 참조).
     /// </summary>
     public async Task<string> IndexDocumentAsync(
         Document document,
@@ -206,7 +213,7 @@ public partial class Indexer
     }
 
     /// <summary>
-    /// 문서 인덱싱 (진행률 모니터링 지원)
+    /// 문서 인덱싱 (진행률 모니터링 지원). 이미 색인된 <see cref="Document.Id"/> 면 그 문서를 교체한다.
     /// </summary>
     /// <param name="document">인덱싱할 문서</param>
     /// <param name="progress">진행률 보고 객체</param>
@@ -220,7 +227,7 @@ public partial class Indexer
     }
 
     /// <summary>
-    /// 문서 인덱싱 (IndexingOptions 지원)
+    /// 문서 인덱싱 (IndexingOptions 지원). 이미 색인된 <see cref="Document.Id"/> 면 그 문서를 교체한다.
     /// </summary>
     /// <param name="document">인덱싱할 문서</param>
     /// <param name="options">인덱싱 옵션. null이면 등록된 서비스에 따라 자동 설정</param>
@@ -234,17 +241,34 @@ public partial class Indexer
     }
 
     /// <summary>
-    /// 문서 인덱싱 (Phase 3: 진행률 모니터링 지원)
+    /// 문서 인덱싱 (진행률 모니터링 지원). 이미 색인된 <see cref="Document.Id"/> 면 그 문서를 교체한다 — 이전 판의 청크는
+    /// 벡터 저장소와 키워드 색인에서 지워지고 문서 레코드도 새 판이 된다. 청크의 <c>DocumentId</c> 가 아니라 문서의 id 로
+    /// 교체하므로, 다른 문서 id 의 청크를 싣는 문서(예: FileFlux 스트리밍의 부분 문서)는 그 id 의 청크를 지우지 않는다.
     /// </summary>
     /// <param name="document">인덱싱할 문서</param>
     /// <param name="options">인덱싱 옵션. null이면 등록된 서비스에 따라 자동 설정</param>
     /// <param name="progress">진행률 보고 객체 (선택)</param>
     /// <param name="cancellationToken">취소 토큰</param>
-    public async Task<string> IndexDocumentAsync(
+    public Task<string> IndexDocumentAsync(
         Document document,
         IndexingOptions? options,
         IProgress<IndexingProgress>? progress,
         CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        return IndexDocumentCoreAsync(document, options, progress, [document.Id], cancellationToken);
+    }
+
+    /// <summary>
+    /// Indexes <paramref name="document"/> as the new version of <paramref name="replacedDocumentIds"/>: whatever the
+    /// store and the keyword index hold for those ids is replaced by the document's chunks.
+    /// </summary>
+    private async Task<string> IndexDocumentCoreAsync(
+        Document document,
+        IndexingOptions? options,
+        IProgress<IndexingProgress>? progress,
+        IReadOnlyCollection<string> replacedDocumentIds,
+        CancellationToken cancellationToken)
     {
         var jobId = Guid.NewGuid().ToString();
         var startTime = DateTime.UtcNow;
@@ -336,14 +360,18 @@ public partial class Indexer
                 }
             }
 
-            // Save document metadata
-            await _documentRepository.AddAsync(document, cancellationToken);
+            // Save document metadata. An upsert: indexing an id again stores the new version of the record too.
+            await _documentRepository.UpdateAsync(document, cancellationToken);
             await InvalidateReadCachesAsync(document.Id, cancellationToken);
 
             // Process chunks
             if (chunks.Count == 0)
             {
                 LogDocumentHasNoChunks(_logger, document.Id);
+
+                // A version with no chunks still replaces the previous one.
+                await ReplaceChunksAsync(replacedDocumentIds, [], cancellationToken);
+                await InvalidateReadCachesAsync(document.Id, cancellationToken);
 
                 IndexingCompleted?.Invoke(this, new IndexingCompletedEventArgs
                 {
@@ -469,13 +497,10 @@ public partial class Indexer
                 Message = "Storing in vector store"
             });
 
-            // Store in vector store
-            await _vectorStore.StoreBatchAsync(embeddedEntityChunks, cancellationToken);
-
-            // Keep the keyword index in step with the vector store. Without this the hybrid keyword
-            // leg is only ever populated by whatever searched in this process, so it is empty after a
-            // restart and hybrid silently degrades to vector-only.
-            await IndexKeywordAsync(embeddedEntityChunks, cancellationToken);
+            // Store in vector store, replacing the previous version of the document. The keyword index follows in
+            // step: without it the hybrid keyword leg is only ever populated by whatever searched in this process,
+            // so it is empty after a restart and hybrid silently degrades to vector-only.
+            await ReplaceChunksAsync(replacedDocumentIds, embeddedEntityChunks, cancellationToken);
             await InvalidateReadCachesAsync(document.Id, cancellationToken);
 
             // GraphRAG 인덱싱 (자동 감지)
@@ -750,32 +775,28 @@ public partial class Indexer
     }
 
     /// <summary>
-    /// 문서 업데이트
+    /// Replaces document <paramref name="documentId"/> with <paramref name="updatedDocument"/>. The same as indexing
+    /// <paramref name="updatedDocument"/> (see <see cref="IndexDocumentAsync(Document, IndexingOptions?, IProgress{IndexingProgress}?, CancellationToken)"/>),
+    /// except that the chunks of <paramref name="documentId"/> are replaced too when the updated document carries a
+    /// different id — the old id's record is then removed.
     /// </summary>
     public async Task UpdateDocumentAsync(
         string documentId,
         Document updatedDocument,
         CancellationToken cancellationToken = default)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(documentId);
+        ArgumentNullException.ThrowIfNull(updatedDocument);
         LogUpdatingDocument(_logger, documentId);
 
-        // Delete existing chunks
-        await _vectorStore.DeleteByDocumentIdAsync(documentId, cancellationToken);
-        await DeleteKeywordByDocumentIdAsync(documentId, cancellationToken);
+        await IndexDocumentCoreAsync(updatedDocument, null, null, [documentId, updatedDocument.Id], cancellationToken);
 
-        // Update document (Id should already match documentId)
-        await _documentRepository.UpdateAsync(updatedDocument, cancellationToken);
-
-        // Process new chunks
-        var chunks = updatedDocument.Chunks.ToList();
-        if (chunks.Count != 0)
+        if (!string.Equals(documentId, updatedDocument.Id, StringComparison.Ordinal))
         {
-            chunks = await GenerateEmbeddingsAsync(chunks, cancellationToken);
-            await _vectorStore.StoreBatchAsync(chunks, cancellationToken);
-            await IndexKeywordAsync(chunks, cancellationToken);
+            await _documentRepository.DeleteAsync(documentId, cancellationToken);
+            await InvalidateReadCachesAsync(documentId, cancellationToken);
         }
 
-        await InvalidateReadCachesAsync(documentId, cancellationToken);
         LogSuccessfullyUpdatedDocument(_logger, documentId);
     }
 
@@ -926,11 +947,8 @@ public partial class Indexer
         var chunksList = chunks.ToList();
         chunksList = await GenerateEmbeddingsAsync(chunksList, cancellationToken);
 
-        // Update chunks in vector store by re-storing them
-        await DeleteKeywordByDocumentIdAsync(documentId, cancellationToken);
-        await _vectorStore.DeleteByDocumentIdAsync(documentId, cancellationToken);
-        await _vectorStore.StoreBatchAsync(chunksList, cancellationToken);
-        await IndexKeywordAsync(chunksList, cancellationToken);
+        // Re-store the chunks as the document's new version
+        await ReplaceChunksAsync([documentId], chunksList, cancellationToken);
         await InvalidateReadCachesAsync(documentId, cancellationToken);
 
         LogSuccessfullyReindexedDocument(_logger, documentId, chunksList.Count);
@@ -1047,6 +1065,53 @@ public partial class Indexer
     /// already succeeded and rolling it back would lose the document — but it is logged as an error
     /// because the document is now searchable by vector only.
     /// </summary>
+    /// <summary>
+    /// Replaces the chunks of <paramref name="documentIds"/> with <paramref name="chunks"/> in the vector store and then
+    /// in the keyword index. Each store replaces atomically where it can; if the keyword write fails after the vector
+    /// write succeeded (keyword-only, where it throws), calling the same operation again replaces both.
+    /// </summary>
+    private async Task ReplaceChunksAsync(
+        IReadOnlyCollection<string> documentIds,
+        List<DocumentChunkEntity> chunks,
+        CancellationToken cancellationToken)
+    {
+        await _vectorStore.ReplaceDocumentsAsync(documentIds, chunks, cancellationToken);
+        await ReplaceKeywordAsync(documentIds, chunks, cancellationToken);
+    }
+
+    private async Task ReplaceKeywordAsync(
+        IReadOnlyCollection<string> documentIds,
+        List<DocumentChunkEntity> chunks,
+        CancellationToken cancellationToken)
+    {
+        if (!MaintainsKeywordIndex)
+        {
+            if (chunks.Count > 0 && IsKeywordOnly)
+                throw new InvalidOperationException(NoKeywordIndexMessage);
+
+            // An index kept while IndexKeyword is off still holds the previous version, which would go on matching.
+            foreach (var documentId in documentIds)
+                await DeleteKeywordByDocumentIdAsync(documentId, cancellationToken);
+            return;
+        }
+
+        try
+        {
+            await _keywordSearchService!.ReplaceDocumentsAsync(documentIds, chunks, cancellationToken);
+            LogKeywordIndexUpdated(_logger, chunks.Count);
+        }
+        catch (Exception ex) when (!IsKeywordOnly)
+        {
+            // Same policy as IndexKeywordAsync: with vectors the keyword leg is a best effort.
+            LogKeywordIndexUpdateFailed(_logger, ex, chunks.Count);
+        }
+    }
+
+    private const string NoKeywordIndexMessage =
+        "This FluxIndex context has no embedding service and no keyword index to write (none registered, or " +
+        "IndexerOptions.IndexKeyword is false), so the indexed chunks could not be found by any search. " +
+        "Register an embedding service or keep keyword indexing on.";
+
     private async Task IndexKeywordAsync(
         List<DocumentChunkEntity> chunks,
         CancellationToken cancellationToken)
@@ -1059,10 +1124,7 @@ public partial class Indexer
             // Without vectors the keyword index is the only search index: skipping it would store chunks nothing finds.
             if (IsKeywordOnly)
             {
-                throw new InvalidOperationException(
-                    "This FluxIndex context has no embedding service and no keyword index to write (none registered, or " +
-                    "IndexerOptions.IndexKeyword is false), so the indexed chunks could not be found by any search. " +
-                    "Register an embedding service or keep keyword indexing on.");
+                throw new InvalidOperationException(NoKeywordIndexMessage);
             }
             return;
         }
