@@ -30,6 +30,11 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 - The new interface members have a default implementation that throws `NotSupportedException`, so existing
   implementations outside FluxIndex keep compiling.
 
+### Fixed
+- **Two PostgreSQL stores with different `EmbeddingDimensions` in one process each get their own vector column.** The
+  EF Core model was cached per context type, so the first store's dimension was used for every later one: the second
+  store's table was created as the wrong `vector(N)` and every write to it failed.
+
 ---
 
 ## [0.63.0] - 2026-09-30

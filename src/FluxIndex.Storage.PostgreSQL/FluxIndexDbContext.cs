@@ -7,7 +7,7 @@ namespace FluxIndex.Storage.PostgreSQL;
 /// <summary>
 /// PostgreSQL database context for FluxIndex
 /// </summary>
-public class FluxIndexDbContext : DbContext
+public class FluxIndexDbContext : DbContext, IEmbeddingDimensionsModel
 {
     private readonly PostgreSQLOptions _options;
 
@@ -18,6 +18,16 @@ public class FluxIndexDbContext : DbContext
     }
 
     public DbSet<VectorEntity> Vectors { get; set; }
+
+    int IEmbeddingDimensionsModel.EmbeddingDimensions => _options.EmbeddingDimensions;
+
+    /// <inheritdoc />
+    /// <remarks>The model depends on <c>EmbeddingDimensions</c>, so the model cache is keyed on it too.</remarks>
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        base.OnConfiguring(optionsBuilder);
+        optionsBuilder.ReplaceService<Microsoft.EntityFrameworkCore.Infrastructure.IModelCacheKeyFactory, EmbeddingDimensionsModelCacheKeyFactory>();
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

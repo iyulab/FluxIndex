@@ -8,7 +8,7 @@ namespace FluxIndex.Storage.PostgreSQL;
 /// <summary>
 /// EF Core DbContext for PostgreSQL storage with quantized vector support.
 /// </summary>
-public class FluxIndexQuantizedDbContext : DbContext
+public class FluxIndexQuantizedDbContext : DbContext, IEmbeddingDimensionsModel
 {
     private readonly PostgreSQLQuantizedOptions _options;
 
@@ -22,6 +22,16 @@ public class FluxIndexQuantizedDbContext : DbContext
 
     public DbSet<QuantizedVectorEntity> Vectors { get; set; }
     public DbSet<PostgresQuantizedEmbeddingEntity> QuantizedVectors { get; set; }
+
+    int IEmbeddingDimensionsModel.EmbeddingDimensions => _options.EmbeddingDimensions;
+
+    /// <inheritdoc />
+    /// <remarks>The model depends on <c>EmbeddingDimensions</c>, so the model cache is keyed on it too.</remarks>
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        base.OnConfiguring(optionsBuilder);
+        optionsBuilder.ReplaceService<Microsoft.EntityFrameworkCore.Infrastructure.IModelCacheKeyFactory, EmbeddingDimensionsModelCacheKeyFactory>();
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
