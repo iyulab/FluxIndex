@@ -9,7 +9,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.64.0] - Unreleased
+## [0.64.0] - 2026-09-30
 
 ### Added
 - **A document can be moved to a new id without re-embedding it.** `IVectorStore.ReassignDocumentAsync(oldDocumentId,
