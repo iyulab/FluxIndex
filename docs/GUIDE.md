@@ -416,8 +416,11 @@ When multiple providers support the same capability:
 ### AI Services
 
 ```csharp
-// InMemory embedding (default, for testing)
-.Build()  // Uses InMemoryEmbeddingService automatically
+// No embedder registered: a keyword-only context (no vectors stored; vector search throws)
+.Build()
+
+// Deterministic test vectors (not semantically meaningful)
+.UseInMemoryEmbedding()
 
 // Custom embedding (production)
 .ConfigureServices(s => s.AddSingleton<IEmbeddingService>(myEmbedder))

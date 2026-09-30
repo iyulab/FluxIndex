@@ -123,9 +123,9 @@ public class FluxIndexContextBuilder
         _services.AddLogging();
         _services.AddMemoryCache();
 
-        // Default: InMemory embedding (for testing), registered only if nothing else is — a real embedding
-        // service registered through ConfigureServices() or a provider package wins.
-        _options.Embedding.Provider = "InMemory";
+        // No embedding service by default: unless one is registered (UseEmbeddingService, ConfigureServices, a
+        // provider package, or UseInMemoryEmbedding for tests) the context is keyword-only — see NoEmbeddingService.
+        _options.Embedding.Provider = "None";
     }
 
     /// <summary>
@@ -803,11 +803,14 @@ public class FluxIndexContextBuilder
         // Display AI service guidance (shows LMSupply options for missing services)
         if (!_suppressStartupMessages)
         {
-            // Describe the embedding service that was actually resolved: the default "InMemory" provider name
-            // is only true when nothing else was registered.
-            var effectiveEmbeddingProvider = serviceProvider.GetService<IEmbeddingService>() is InMemoryEmbeddingService
-                ? "InMemory"
-                : _options.Embedding.Provider is { } p && !p.Equals("InMemory", StringComparison.OrdinalIgnoreCase) ? p : "Custom";
+            // Describe the embedding service that was actually resolved: the provider name on the options
+            // is only accurate when nothing else was registered through ConfigureServices().
+            var effectiveEmbeddingProvider = serviceProvider.GetService<IEmbeddingService>() switch
+            {
+                NoEmbeddingService => "None (keyword-only)",
+                InMemoryEmbeddingService => "InMemory",
+                _ => _options.Embedding.Provider is { } p && !p.Equals("InMemory", StringComparison.OrdinalIgnoreCase) ? p : "Custom",
+            };
             StartupMessageService.DisplayAIServiceGuidance(
                 serviceProvider,
                 effectiveEmbeddingProvider,
@@ -852,9 +855,10 @@ public class FluxIndexContextBuilder
                 _services.AddSingleton<IEmbeddingService, InMemoryEmbeddingService>();
                 break;
             default:
-                // The unselected default (random embeddings, for tests). TryAdd, so a real service registered
-                // through ConfigureServices() — e.g. AddOpenAICompatibleEmbedding — is the one resolved.
-                _services.TryAddSingleton<IEmbeddingService, InMemoryEmbeddingService>();
+                // Nothing selected: keyword-only unless a real service was registered through ConfigureServices()
+                // (e.g. AddOpenAICompatibleEmbedding), which TryAdd lets win. Never a placeholder vector: the
+                // random InMemory default this replaced filled stores with vectors that mean nothing.
+                _services.TryAddSingleton<IEmbeddingService>(NoEmbeddingService.Instance);
                 break;
         }
     }

@@ -359,12 +359,18 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable, IDispos
         var chunkList = chunks.ToList();
         if (chunkList.Count == 0) return [];
 
-        var validChunks = chunkList.Where(c => c.Embedding != null && c.Embedding.Length > 0).ToList();
-        if (validChunks.Count == 0)
+        // A Qdrant point is a vector: a chunk without one cannot be stored here. Dropping it (as this used to) returned
+        // fewer ids than chunks with no error, and the indexer carried on as if the document were stored.
+        var missing = chunkList.Count(c => c.Embedding is not { Length: > 0 });
+        if (missing > 0)
         {
-            LogNoChunksToStore(_logger);
-            return [];
+            throw new ArgumentException(
+                $"{missing} of {chunkList.Count} chunk(s) have no embedding; the Qdrant store keeps vectors only. " +
+                "Register an embedding service (a keyword-only context needs a store that keeps chunks without vectors, " +
+                "such as SQLite).", nameof(chunks));
         }
+
+        var validChunks = chunkList;
 
         // Dynamic dimension detection: use dimension from first valid chunk
         var dimension = validChunks[0].Embedding!.Length;
@@ -1167,9 +1173,6 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable, IDispos
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Stored chunk {ChunkId} for document {DocumentId}")]
     private static partial void LogChunkStored(ILogger logger, string chunkId, string documentId);
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "No chunks with embeddings to store")]
-    private static partial void LogNoChunksToStore(ILogger logger);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Stored {Count} chunks in batch (dim={Dimension})")]
     private static partial void LogBatchStored(ILogger logger, int count, int dimension);

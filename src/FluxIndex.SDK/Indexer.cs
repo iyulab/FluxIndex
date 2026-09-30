@@ -15,6 +15,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using FluxIndex.SDK.Services;
+using FluxIndex.Core.Application.Services;
 
 namespace FluxIndex.SDK;
 
@@ -117,9 +118,17 @@ public partial class Indexer
         _options = options;
         _logger = logger ?? NullLogger<Indexer>.Instance;
 
-        // Bind embedding identity to vector store for correct collection resolution
-        _vectorStore.BindIdentity(_embeddingService.GetIdentity());
+        // Bind embedding identity to vector store for correct collection resolution. A keyword-only context has no
+        // vector space, so nothing is bound: the store keeps chunks and writes no vector table.
+        if (!IsKeywordOnly)
+            _vectorStore.BindIdentity(_embeddingService.GetIdentity());
     }
+
+    /// <summary>
+    /// Whether this indexer runs without an embedding service (<see cref="NoEmbeddingService"/>): chunks are stored
+    /// without vectors and the keyword index is what makes them searchable.
+    /// </summary>
+    public bool IsKeywordOnly => NoEmbeddingService.IsKeywordOnly(_embeddingService);
 
     /// <summary>
     /// 간편 API: 문자열 콘텐츠로 직접 문서 인덱싱
@@ -925,7 +934,7 @@ public partial class Indexer
             AverageChunksPerDocument = docCount > 0 ? (double)chunkCount / docCount : 0,
             DefaultChunkSize = _options.ChunkSize,
             DefaultChunkOverlap = _options.ChunkOverlap,
-            EmbeddingModel = _embeddingService.GetType().Name
+            EmbeddingModel = IsKeywordOnly ? "none (keyword-only)" : _embeddingService.GetType().Name
         };
     }
 
@@ -939,7 +948,8 @@ public partial class Indexer
         List<DocumentChunkEntity> chunks,
         CancellationToken cancellationToken)
     {
-        if (chunks.Count == 0) return chunks;
+        // Keyword-only: the chunks are stored without vectors; nothing writes a placeholder.
+        if (chunks.Count == 0 || IsKeywordOnly) return chunks;
 
         // 배치 임베딩 API 사용 (성능 최적화)
         try
@@ -1013,16 +1023,31 @@ public partial class Indexer
         List<DocumentChunkEntity> chunks,
         CancellationToken cancellationToken)
     {
-        if (!MaintainsKeywordIndex || chunks.Count == 0)
+        if (chunks.Count == 0)
             return;
+
+        if (!MaintainsKeywordIndex)
+        {
+            // Without vectors the keyword index is the only search index: skipping it would store chunks nothing finds.
+            if (IsKeywordOnly)
+            {
+                throw new InvalidOperationException(
+                    "This FluxIndex context has no embedding service and no keyword index to write (none registered, or " +
+                    "IndexerOptions.IndexKeyword is false), so the indexed chunks could not be found by any search. " +
+                    "Register an embedding service or keep keyword indexing on.");
+            }
+            return;
+        }
 
         try
         {
             await _keywordSearchService!.IndexChunksAsync(chunks, cancellationToken);
             LogKeywordIndexUpdated(_logger, chunks.Count);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!IsKeywordOnly)
         {
+            // With vectors the chunk is already searchable through the vector store; the keyword leg is a best effort.
+            // Keyword-only, this index is the document's only way to be found, so its failure is the caller's to see.
             LogKeywordIndexUpdateFailed(_logger, ex, chunks.Count);
         }
     }

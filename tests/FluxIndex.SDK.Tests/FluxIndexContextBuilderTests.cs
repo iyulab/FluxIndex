@@ -30,7 +30,7 @@ public class FluxIndexContextBuilderTests : IDisposable
     }
 
     [Fact]
-    public void Builder_DefaultEmbedding_ShouldBeInMemory()
+    public void Builder_WithoutAnEmbedder_BuildsAKeywordOnlyContext()
     {
         // Act
         var builder = FluxIndexContext.CreateBuilder()
@@ -41,10 +41,10 @@ public class FluxIndexContextBuilderTests : IDisposable
         var context = builder.Build();
         try
         {
-            // Assert - Context should be created successfully with InMemory embedding (default)
+            // Assert - with no embedder registered the context builds keyword-only (no placeholder vectors)
             Assert.NotNull(context);
-            Assert.NotNull(context.Indexer);
-            Assert.NotNull(context.Retriever);
+            Assert.True(context.Indexer.IsKeywordOnly);
+            Assert.True(context.Retriever.IsKeywordOnly);
         }
         finally
         {

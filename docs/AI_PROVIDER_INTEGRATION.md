@@ -547,10 +547,11 @@ public static class ServiceCollectionExtensions
 ### FluxIndexContext에서 사용
 
 ```csharp
-// 테스트 환경: InMemory embedding (기본값)
+// 테스트 환경: InMemory embedding (명시적으로 선택 — 임베더를 등록하지 않으면 키워드 전용 컨텍스트)
 var testContext = FluxIndexContext.CreateBuilder()
     .UseSQLite("test.db")
     .AddSQLiteStorage()
+    .UseInMemoryEmbedding()
     .Build();
 
 // 프로덕션 환경: OpenAI
@@ -685,7 +686,7 @@ var app = builder.Build();
 ## FAQ
 
 ### Q: InMemory embedding은 언제 사용하나요?
-A: 테스트 환경에서 사용합니다. 실제 임베딩을 생성하지 않고 랜덤 벡터를 반환하므로 검색 품질은 없지만 API 호출 없이 빠르게 테스트할 수 있습니다.
+A: 테스트 환경에서 `UseInMemoryEmbedding()`으로 명시해 사용합니다. 실제 임베딩을 생성하지 않고 결정적 랜덤 벡터를 반환하므로 검색 품질은 없지만 API 호출 없이 빠르게 테스트할 수 있습니다. 0.65.0부터 기본값이 아닙니다 — 임베더를 등록하지 않은 컨텍스트는 키워드 전용이 됩니다(README «Keyword-only by default»).
 
 ### Q: 여러 Embedding 모델을 동시에 사용할 수 있나요?
 A: 네, 키 기반 등록으로 가능합니다:

@@ -111,7 +111,7 @@ dotnet add package FluxIndex.Storage.SQLite
 using FluxIndex.SDK;
 using FluxIndex.Storage.SQLite;
 
-// 1. Setup (InMemory embedding for testing)
+// 1. Setup. With no embedding service registered the context is keyword-only (see below).
 // UseSQLite() selects the provider; AddSQLiteStorage() registers it. Both are required —
 // Build() throws if you name a store without registering it.
 // Build() also creates the schema for every component it enables (vector store, graph store,
@@ -130,15 +130,22 @@ await using var context = FluxIndexContext.CreateBuilder()
 await context.Indexer.IndexDocumentAsync(
     "FluxIndex is a RAG library for .NET", "doc-001");
 
-// 3. Search
-var results = await context.Retriever.SearchAsync("RAG library", maxResults: 5);
+// 3. Search. Keyword (BM25) search needs no model; vector and hybrid search need an embedder (below)
+var results = await context.Retriever.KeywordSearchAsync("RAG library", maxResults: 5);
 ```
 
-> **Note (testing embedder)**: without a registered `IEmbeddingService` the builder falls
-> back to `InMemoryEmbeddingService`, whose vectors are deterministic but **not semantically
-> meaningful** — similarity scores cluster near 0, so with the default `minScore` a search
-> typically returns **no results**. Pass `minScore: 0` while smoke-testing, and register a
-> real embedding service (below) for meaningful retrieval.
+### Keyword-only by default
+
+Without a registered `IEmbeddingService` the context is **keyword-only** (`context.Indexer.IsKeywordOnly`):
+
+- Chunks are stored without vectors. Nothing writes a placeholder vector.
+- The keyword index is the search index. `KeywordSearchAsync` and filters work as usual, and hybrid search runs its
+  keyword leg alone.
+- Vector search (`SearchAsync`) throws `InvalidOperationException` and names how to add an embedder.
+- A keyword-only context needs a store that keeps chunks without vectors: SQLite or sqlite-vec (no vector table is
+  created until an embedder is bound), or in-memory. Qdrant and PostgreSQL keep vectors only and refuse such chunks.
+- Register an embedder with `UseEmbeddingService(...)`, a provider package, or `ConfigureServices`. For tests,
+  `UseInMemoryEmbedding()` gives deterministic vectors that are **not semantically meaningful**.
 
 ### Using Custom Embedding Service
 

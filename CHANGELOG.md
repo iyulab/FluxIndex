@@ -7,7 +7,33 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [Unreleased]
 
+### Changed
+- **Breaking: with no embedding service registered, the context is keyword-only instead of indexing random vectors.**
+  The builder used to register `InMemoryEmbeddingService` silently, so a context without an embedder stored
+  meaningless vectors, and a real embedder added later needed a full re-index. Now `NoEmbeddingService` stands in:
+  - chunks are stored without vectors;
+  - the keyword index is the search index, and hybrid search runs its keyword leg alone;
+  - `Retriever.SearchAsync` (vector) throws `InvalidOperationException` naming how to add an embedder.
+  - With keyword-only indexing, a keyword-index write failure is thrown instead of logged, because it is the
+    document's only index. Indexing with no keyword index at all throws too.
+  - **Migration:** register an embedder (`UseEmbeddingService`, a provider package or `ConfigureServices`). For
+    tests, call `UseInMemoryEmbedding()` explicitly.
+- **Qdrant `StoreBatchAsync` throws for chunks without an embedding** instead of dropping them and returning fewer
+  ids.
+
+### Added
+- **Keyword-only indexing** (`NoEmbeddingService`, `Indexer.IsKeywordOnly`, `Retriever.IsKeywordOnly`). SQLite,
+  sqlite-vec and the in-memory store keep chunks without vectors. sqlite-vec creates no vector table until an
+  embedding identity is bound, and a vector search on an unbound sqlite-vec store says it is keyword-only rather
+  than returning nothing.
+- **`MetadataValues`** (`FluxIndex.Core.Application.Utilities`): `Deserialize(json)` and `ToPlain(...)`, the conversion
+  every store read uses; for a custom store or keyword index that keeps metadata as JSON.
+- **`MetadataHelper.ForStorage(chunk)` and `MetadataHelper.RestoreRichMetadata(chunk)`**: the write and read halves of a
+  chunk's rich state, for a custom `IVectorStore` that does not derive from `VectorStoreBase`.
+
 ### Fixed
+- **`Retriever.KeywordSearchAsync` pushes its metadata filter into the keyword query.** It used to filter the top
+  `maxResults` of the whole index, so a scope whose chunks ranked below other scopes got nothing back.
 - **Chunk metadata reads back as plain values on every store and every hybrid leg.** SQLite, sqlite-vec, the SQLite
   and PostgreSQL quantized stores, PostgreSQL and the relational keyword index returned `JsonElement` values, so
   `Metadata["file_name"] is string` was false for a keyword-only hybrid hit (and on those stores generally) while the
@@ -18,11 +44,6 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   SQLite and PostgreSQL quantized stores and Qdrant never wrote them, and the SQLite and PostgreSQL stores wrote them
   but dropped them on read (their restore accepted only `string` values). New contract facts run on every store.
 
-### Added
-- **`MetadataValues`** (`FluxIndex.Core.Application.Utilities`): `Deserialize(json)` and `ToPlain(...)`, the conversion
-  every store read uses; for a custom store or keyword index that keeps metadata as JSON.
-- **`MetadataHelper.ForStorage(chunk)` and `MetadataHelper.RestoreRichMetadata(chunk)`**: the write and read halves of a
-  chunk's rich state, for a custom `IVectorStore` that does not derive from `VectorStoreBase`.
 
 ---
 

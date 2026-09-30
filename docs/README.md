@@ -52,7 +52,7 @@ See [GUIDE.md](GUIDE.md) for detailed setup instructions.
 using FluxIndex.SDK;
 using FluxIndex.Storage.SQLite;
 
-// 1. Setup (InMemory embedding for testing)
+// 1. Setup. With no embedding service registered the context is keyword-only
 var context = FluxIndexContext.CreateBuilder()
     .UseLocalStorage("fluxindex.db")
     .AddSQLiteStorage()
@@ -64,8 +64,8 @@ await context.Indexer.IndexDocumentAsync(
     documentId: "doc-001"
 );
 
-// 3. Search
-var results = await context.Retriever.SearchAsync("RAG library", maxResults: 5);
+// 3. Search. Keyword search needs no model; vector and hybrid search need a registered embedder
+var results = await context.Retriever.KeywordSearchAsync("RAG library", maxResults: 5);
 ```
 
 ---

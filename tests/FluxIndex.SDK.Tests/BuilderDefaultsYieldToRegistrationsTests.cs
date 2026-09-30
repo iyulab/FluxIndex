@@ -1,3 +1,4 @@
+using FluxIndex.Core.Application.Services;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Providers.OpenAI.Extensions;
 using FluxIndex.Providers.OpenAI.Services;
@@ -41,10 +42,11 @@ public class BuilderDefaultsYieldToRegistrationsTests
     }
 
     [Fact]
-    public void Without_a_registration_the_default_is_the_in_memory_embedder()
+    public void Without_a_registration_the_context_is_keyword_only_not_random_vectors()
     {
-        // Control for the fact above: the default still applies when nothing else is registered.
-        Assert.IsType<InMemoryEmbeddingService>(Resolve<IEmbeddingService>(FluxIndexContext.CreateBuilder()));
+        // Control for the fact above: with nothing registered there is no embedder at all (0.65.0). The random
+        // InMemory vectors this used to default to are only ever an explicit UseInMemoryEmbedding().
+        Assert.Same(NoEmbeddingService.Instance, Resolve<IEmbeddingService>(FluxIndexContext.CreateBuilder()));
     }
 
     [Fact]

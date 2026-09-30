@@ -30,6 +30,17 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
     // 폴백용 in-memory 벡터 저장소 (sqlite-vec 실패 시 사용)
     private readonly Lazy<SQLiteVectorStore> _fallbackStore;
     private bool _sqliteVecAvailable;
+
+    /// <summary>
+    /// Whether vec0 rows are read and written: the extension is loaded AND an embedding identity is bound. A keyword-only
+    /// context (no embedding service) binds none, so the store keeps chunks in <c>vector_chunks</c> and creates no vec0
+    /// table; binding an identity later (an embedding backfill) creates that identity's table on the next operation.
+    /// </summary>
+    private bool VecTableActive => _sqliteVecAvailable && _options.EmbeddingFingerprint is not null;
+
+    /// <summary>The vec0 table the current binding targets, or null when vec0 is off or no identity is bound.</summary>
+    private string? CurrentVecTableName() =>
+        _options.UseSQLiteVec && _options.EmbeddingFingerprint is not null ? _options.GetVecTableName() : null;
     private bool _initialized;
     // The effective vec0 table name captured at the last successful init. When the bound
     // fingerprint drifts on the shared options, the current name diverges from this and
@@ -170,11 +181,11 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                     // 2. 벡터 저장 (sqlite-vec 사용) — delete + insert, so an update replaces the vector.
                     // A re-store without an embedding drops the stale vector rather than leaving one that
                     // no longer describes the row's content.
-                    if (chunk.Embedding != null && _sqliteVecAvailable)
+                    if (chunk.Embedding != null && VecTableActive)
                     {
                         await context.StoreVectorInVecTableAsync(id, chunk.Embedding, cancellationToken);
                     }
-                    else if (existing != null && _sqliteVecAvailable)
+                    else if (existing != null && VecTableActive)
                     {
                         await context.DeleteVectorFromVecTableAsync(id, cancellationToken);
                     }
@@ -324,7 +335,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                     };
                     entities.Add(entity);
 
-                    if (chunk.Embedding != null && _sqliteVecAvailable)
+                    if (chunk.Embedding != null && VecTableActive)
                     {
                         vectorById[id] = chunk.Embedding;
                     }
@@ -337,7 +348,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 // Ids already stored: their vector rows must go before the batch insert below, because
                 // the vec0 table has no upsert and a second row for one chunk_id would be either a
                 // constraint failure or a duplicate hit in every search.
-                if (_sqliteVecAvailable && entities.Count > 0)
+                if (VecTableActive && entities.Count > 0)
                 {
                     var alreadyStored = await FindStoredIdsAsync(context, ids, cancellationToken);
                     foreach (var storedId in alreadyStored)
@@ -582,6 +593,15 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         // Fail-loud contract validation BEFORE the try — an unsupported filter value must throw,
         // not trigger the in-memory fallback path.
         VectorStoreBase.ValidateFilters(filters);
+
+        // No identity bound = no vector space (a keyword-only context): there is no vec0 table to search, and an
+        // empty result would read as "nothing matched". Say what is missing instead.
+        if (_options.UseSQLiteVec && _options.EmbeddingFingerprint is null)
+        {
+            throw new InvalidOperationException(
+                "No embedding identity is bound to this sqlite-vec store, so it holds no vectors to search (a " +
+                "keyword-only context). Register an embedding service, or search the keyword index.");
+        }
 
         try
         {
@@ -929,7 +949,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
 
             // 1. 벡터 검색 수행
             var vectorResults = new Dictionary<string, (int Rank, DocumentChunk Chunk, float VectorScore)>();
-            if (_sqliteVecAvailable && queryEmbedding != null && queryEmbedding.Length > 0)
+            if (VecTableActive && queryEmbedding != null && queryEmbedding.Length > 0)
             {
                 var vectorChunks = await SearchWithSQLiteVecAsync(context, queryEmbedding, topK * 2, minScore, filters, cancellationToken);
                 int rank = 1;
@@ -1237,7 +1257,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                     context.VectorChunks.Remove(entity);
 
                     // vec0 테이블에서도 삭제
-                    if (_sqliteVecAvailable)
+                    if (VecTableActive)
                     {
                         await context.DeleteVectorFromVecTableAsync(id, cancellationToken);
                     }
@@ -1294,7 +1314,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                         return false;
 
                     // vec0 테이블에서 벡터들 삭제
-                    if (_sqliteVecAvailable)
+                    if (VecTableActive)
                     {
                         foreach (var entity in entities)
                         {
@@ -1378,7 +1398,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 }
 
                 // vec0 테이블에서 매칭된 벡터들 삭제
-                if (_sqliteVecAvailable)
+                if (VecTableActive)
                 {
                     foreach (var entity in matched)
                     {
@@ -1471,7 +1491,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                         new object[] { newId, newDocumentId, metadataJson, row.Id },
                         cancellationToken);
 
-                    if (_sqliteVecAvailable)
+                    if (VecTableActive)
                         await context.MoveVectorInVecTablesAsync(row.Id, newId, cancellationToken);
                 }
 
@@ -1559,7 +1579,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                     entity.Metadata = MetadataHelper.ForStorage(chunk);
 
                     // 벡터 업데이트
-                    if (chunk.Embedding != null && _sqliteVecAvailable)
+                    if (chunk.Embedding != null && VecTableActive)
                     {
                         await context.StoreVectorInVecTableAsync(chunk.Id, chunk.Embedding, cancellationToken);
                     }
@@ -1652,7 +1672,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 try
                 {
                     // vec0 테이블 클리어
-                    if (_sqliteVecAvailable)
+                    if (VecTableActive)
                     {
                         var clearSql = $"DELETE FROM {_options.GetVecTableName()}";
                         await context.Database.ExecuteSqlRawAsync(clearSql, cancellationToken);
@@ -1698,13 +1718,13 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         // fingerprint drifts on the shared options (a later BindIdentity in another scope), the
         // effective table name changes and we must re-initialize so the new vec0 table exists —
         // otherwise writes target a table that was never created ("no such table").
-        if (_initialized && (!_options.UseSQLiteVec || _options.GetVecTableName() == _initializedTableName))
+        if (_initialized && CurrentVecTableName() == _initializedTableName)
             return;
 
         await _initLock.WaitAsync(cancellationToken);
         try
         {
-            if (_initialized && (!_options.UseSQLiteVec || _options.GetVecTableName() == _initializedTableName))
+            if (_initialized && CurrentVecTableName() == _initializedTableName)
                 return;
 
             // Model tables first, unconditionally. EF's EnsureCreated is a no-op on a database that
@@ -1731,7 +1751,9 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 _sqliteVecAvailable = await _extensionLoader.LoadExtensionAsync(
                     (Microsoft.Data.Sqlite.SqliteConnection)connection, cancellationToken);
 
-                if (_sqliteVecAvailable)
+                // Everything below needs a bound identity (the vec0 table is named after its fingerprint). Keyword-only,
+                // there is none: the model tables above are the whole store.
+                if (_sqliteVecAvailable && _options.EmbeddingFingerprint is not null)
                 {
                     // Identity-dependent legacy migration runs here, at first bound access, because
                     // the hosted startup initializer defers it when no identity was bound yet.
@@ -1787,7 +1809,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 _sqliteVecAvailable = false;
             }
 
-            _initializedTableName = _options.UseSQLiteVec ? _options.GetVecTableName() : null;
+            _initializedTableName = CurrentVecTableName();
             _initialized = true;
         }
         finally

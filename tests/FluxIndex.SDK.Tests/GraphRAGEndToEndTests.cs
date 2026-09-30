@@ -264,6 +264,7 @@ public class GraphRAGEndToEndTests : IAsyncLifetime
 
         // Arrange & Act - Build context with both Neo4j and Qdrant (Fixed strategy)
         var builder = FluxIndexContext.CreateBuilder()
+            .UseInMemoryEmbedding() // a vector store; with no embedder the context would be keyword-only
             .AddQdrantStorage(options =>
             {
                 options.Host = _qdrantContainer.Hostname;

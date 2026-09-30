@@ -16,6 +16,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using FluxIndex.SDK.Services;
+using FluxIndex.Core.Application.Services;
 
 namespace FluxIndex.SDK;
 
@@ -27,6 +28,12 @@ public partial class Retriever
     private readonly IVectorStore _vectorStore;
     private readonly IDocumentRepository _documentRepository;
     private readonly IEmbeddingService _embeddingService;
+
+    /// <summary>
+    /// Whether this retriever runs without an embedding service (<see cref="NoEmbeddingService"/>): keyword search
+    /// works, hybrid search runs its keyword leg alone, and vector or similarity search throws.
+    /// </summary>
+    public bool IsKeywordOnly => NoEmbeddingService.IsKeywordOnly(_embeddingService);
     private readonly ICacheService? _cacheService;
     private readonly IRankFusionService? _rankFusionService;
     private readonly IVectorQuantizer? _vectorQuantizer;
@@ -102,7 +109,8 @@ public partial class Retriever
         _ragSecurityPipeline = ragSecurityPipeline;
 
         // Bind embedding identity to vector store for correct collection resolution
-        _vectorStore.BindIdentity(_embeddingService.GetIdentity());
+        if (!IsKeywordOnly)
+            _vectorStore.BindIdentity(_embeddingService.GetIdentity());
 
         // Check if vector store supports quantization
         _quantizedVectorStore = vectorStore as IQuantizedVectorStore;
@@ -706,7 +714,10 @@ public partial class Retriever
 
             // Perform vector search
             // Unguarded legs: the fused result is guarded once by the public overload.
-            var vectorResults = await SearchResolvedAsync(query, progress: null, maxResults * 2, 0, filter, cancellationToken);
+            // Keyword-only: there is no vector leg, so the keyword leg alone ranks (explicitly, not by catching a failure).
+            var vectorResults = IsKeywordOnly
+                ? []
+                : await SearchResolvedAsync(query, progress: null, maxResults * 2, 0, filter, cancellationToken);
 
             // Phase 3: 진행률 보고 - 키워드 검색 (50%)
             progress?.Report(new SearchProgress
@@ -904,7 +915,13 @@ public partial class Retriever
                 ? []
                 : await _keywordSearchService.SearchAsync(
                     keyword,
-                    new Core.Application.Interfaces.KeywordSearchOptions { MaxResults = maxResults },
+                    new Core.Application.Interfaces.KeywordSearchOptions
+                    {
+                        MaxResults = maxResults,
+                        // Pushed into the query: filtering the global top N afterwards returns nothing for a scope
+                        // whose chunks lose the global ranking (the interface's own remark).
+                        MetadataFilter = filter is { Count: > 0 } ? filter : null,
+                    },
                     cancellationToken);
 
             // Phase 3: 진행률 보고 - 청크 처리 (50%)

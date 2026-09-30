@@ -278,6 +278,11 @@ public partial class HybridSearchService : IHybridSearchService
         HybridSearchOptions options,
         CancellationToken cancellationToken)
     {
+        // Keyword-only context: no vector leg to run. Skipped explicitly rather than through the failure handler below,
+        // which exists for a vector backend that errors, not for one that was never configured.
+        if (FluxIndex.Core.Application.Services.NoEmbeddingService.IsKeywordOnly(_embeddingService))
+            return [];
+
         try
         {
             // 쿼리 임베딩 생성
