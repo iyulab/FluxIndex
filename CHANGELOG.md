@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.67.0] - Unreleased
+## [0.67.0] - 2026-10-01
 
 ### Fixed
 - **Indexing one document per transaction no longer slows down as the keyword index grows.** Document frequency is
