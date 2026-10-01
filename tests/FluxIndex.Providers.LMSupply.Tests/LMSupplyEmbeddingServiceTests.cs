@@ -76,13 +76,13 @@ public class LMSupplyEmbeddingServiceTests : IAsyncDisposable
     [Fact]
     public async Task GenerateEmbeddingAsync_ValidText_DelegatesToModel()
     {
-        _mockModel.EmbedAsync("test text", Arg.Any<CancellationToken>())
+        _mockModel.EmbedPassageAsync("test text", Arg.Any<CancellationToken>())
             .Returns(new ValueTask<float[]>(s_singleEmbedding));
 
         var result = await _service.GenerateEmbeddingAsync("test text", TestContext.Current.CancellationToken);
 
         result.Should().BeEquivalentTo(s_singleEmbedding);
-        await _mockModel.Received(1).EmbedAsync("test text", Arg.Any<CancellationToken>());
+        await _mockModel.Received(1).EmbedPassageAsync("test text", Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -91,7 +91,7 @@ public class LMSupplyEmbeddingServiceTests : IAsyncDisposable
         var result = await _service.GenerateEmbeddingAsync("", TestContext.Current.CancellationToken);
 
         result.Should().BeEmpty();
-        await _mockModel.DidNotReceive().EmbedAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _mockModel.DidNotReceive().EmbedPassageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -100,7 +100,7 @@ public class LMSupplyEmbeddingServiceTests : IAsyncDisposable
         var result = await _service.GenerateEmbeddingAsync("   ", TestContext.Current.CancellationToken);
 
         result.Should().BeEmpty();
-        await _mockModel.DidNotReceive().EmbedAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _mockModel.DidNotReceive().EmbedPassageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -119,7 +119,7 @@ public class LMSupplyEmbeddingServiceTests : IAsyncDisposable
     public async Task GenerateEmbeddingsBatchAsync_MultipleTexts_DelegatesToModelBatch()
     {
         var texts = new List<string> { "text1", "text2", "text3" };
-        _mockModel.EmbedAsync(Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>())
+        _mockModel.EmbedPassageAsync(Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>())
             .Returns(new ValueTask<float[][]>(s_batchEmbeddings));
 
         var result = (await _service.GenerateEmbeddingsBatchAsync(texts, TestContext.Current.CancellationToken)).ToList();
@@ -132,7 +132,7 @@ public class LMSupplyEmbeddingServiceTests : IAsyncDisposable
     [Fact]
     public async Task GenerateEmbeddingsBatchAsync_EmptyList_DelegatesToModel()
     {
-        _mockModel.EmbedAsync(Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>())
+        _mockModel.EmbedPassageAsync(Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>())
             .Returns(new ValueTask<float[][]>(Array.Empty<float[]>()));
 
         var result = (await _service.GenerateEmbeddingsBatchAsync(Enumerable.Empty<string>(), TestContext.Current.CancellationToken)).ToList();
@@ -143,7 +143,7 @@ public class LMSupplyEmbeddingServiceTests : IAsyncDisposable
     [Fact]
     public async Task GenerateEmbeddingsBatchAsync_SingleText_ReturnsOneResult()
     {
-        _mockModel.EmbedAsync(Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>())
+        _mockModel.EmbedPassageAsync(Arg.Any<IReadOnlyList<string>>(), Arg.Any<CancellationToken>())
             .Returns(new ValueTask<float[][]>(s_singleBatchResult));
 
         var result = (await _service.GenerateEmbeddingsBatchAsync(s_singleTextArg, TestContext.Current.CancellationToken)).ToList();
@@ -194,6 +194,81 @@ public class LMSupplyEmbeddingServiceTests : IAsyncDisposable
         var count = await _service.CountTokensAsync("Hello 세계", TestContext.Current.CancellationToken);
 
         count.Should().BeGreaterThan(0);
+    }
+
+    #endregion
+
+    #region Query/passage roles and prefixes (0.69.0)
+
+    private static IEmbeddingModel ModelWithPrefixes(string? query, string? passage)
+    {
+        var model = Substitute.For<IEmbeddingModel>();
+        model.Dimensions.Returns(384);
+        model.ModelId.Returns("intfloat/multilingual-e5-small");
+        model.GetModelInfo().Returns(new global::LMSupply.Embedder.Utils.ModelInfo
+        {
+            RepoId = "intfloat/multilingual-e5-small", Dimensions = 384, MaxSequenceLength = 512, DoLowerCase = false,
+            PoolingMode = global::LMSupply.Embedder.PoolingMode.Mean, QueryPrefix = query, PassagePrefix = passage
+        });
+        return model;
+    }
+
+    [Fact]
+    public async Task GenerateQueryEmbeddingAsync_DelegatesToTheModelsQueryRole()
+    {
+        _mockModel.EmbedQueryAsync("what is it", Arg.Any<CancellationToken>()).Returns(s_singleEmbedding);
+
+        var result = await _service.GenerateQueryEmbeddingAsync("what is it", TestContext.Current.CancellationToken);
+
+        result.Should().BeEquivalentTo(s_singleEmbedding);
+        await _mockModel.DidNotReceive().EmbedPassageAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public void GetIdentity_AModelWithPrefixes_CarriesThePrefixedMarker_SoItsCollectionDoesNotMixWithUnprefixedVectors()
+    {
+        var unprefixed = new LMSupplyEmbeddingService(ModelWithPrefixes(null, null));
+        var prefixed = new LMSupplyEmbeddingService(ModelWithPrefixes("query: ", "passage: "));
+        var handRevision = new LMSupplyEmbeddingService(ModelWithPrefixes("query: ", "passage: ")) { Revision = "r2" };
+
+        unprefixed.GetIdentity().Revision.Should().BeNull("a model without prefixes keeps its fingerprint");
+        prefixed.GetIdentity().Revision.Should().Be(LMSupplyEmbeddingService.PrefixedRevisionMarker);
+        prefixed.GetIdentity().Fingerprint.Should().NotBe(unprefixed.GetIdentity().Fingerprint);
+        handRevision.GetIdentity().Revision.Should().Be("r2+" + LMSupplyEmbeddingService.PrefixedRevisionMarker);
+    }
+
+    [Theory]
+    [InlineData("fast", true)]
+    [InlineData("default", false)]
+    [InlineData("someone/not-in-the-catalog", null)]
+    public void AnnouncePrefixes_ReadsTheCatalog_AndKnowsNothingOfOtherModels(string modelId, bool? expected)
+    {
+        LMSupplyEmbeddingService.AnnouncePrefixes(modelId).Should().Be(expected);
+    }
+
+    [Fact]
+    public async Task Lazy_CatalogModelWithPrefixes_AnnouncesTheMarkerBeforeTheLoad()
+    {
+        await using var lazy = new LMSupplyEmbeddingService(new LMSupplyEmbeddingOptions { ModelId = "fast" });
+
+        lazy.IsLoaded.Should().BeFalse();
+        lazy.GetIdentity().Revision.Should().Be(LMSupplyEmbeddingService.PrefixedRevisionMarker,
+            "the collection is named before the load, so the catalog's declaration must already be in it");
+    }
+
+    [Fact]
+    public async Task Lazy_UnknownModel_IdentityReadBeforeTheLoad_FailsTheLoadWhenTheModelTurnsOutPrefixed()
+    {
+        await using var lazy = new LMSupplyEmbeddingService(new LMSupplyEmbeddingOptions
+        {
+            ModelId = "someone/not-in-the-catalog", ModelName = "intfloat/multilingual-e5-small", Dimensions = 384
+        });
+        lazy.GetIdentity().Revision.Should().BeNull();
+
+        var act = () => lazy.VerifyAnnouncedPrefixes(ModelWithPrefixes("query: ", "passage: "));
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*WarmUpOnStart*");
+        lazy.VerifyAnnouncedPrefixes(ModelWithPrefixes(null, null));
     }
 
     #endregion
@@ -278,7 +353,7 @@ public class LMSupplyEmbeddingServiceTests : IAsyncDisposable
         (await lazy.PreReadVectorSpaceRevisionAsync(TestContext.Current.CancellationToken)).Should().Be("3f2a9c1b");
 
         var identity = lazy.GetIdentity();
-        identity.Revision.Should().Be("3f2a9c1b");
+        identity.Revision.Should().Be("3f2a9c1b+" + LMSupplyEmbeddingService.PrefixedRevisionMarker, "\"fast\" (E5) declares prefixes, so its revision carries the marker");
         identity.VectorSpaceRevision.Should().Be("3f2a9c1b");
         lazy.IsLoaded.Should().BeFalse("the point of the pre-read is that the identity no longer needs the load");
 

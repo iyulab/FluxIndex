@@ -142,7 +142,7 @@ public sealed class ServiceCollectionExtensionsTests : IDisposable
         await hosted.StartAsync(TestContext.Current.CancellationToken);
 
         service.IsLoaded.Should().BeFalse();
-        service.GetIdentity().Revision.Should().Be("3f2a9c1b");
+        service.GetIdentity().Revision.Should().Be("3f2a9c1b+" + LMSupplyEmbeddingService.PrefixedRevisionMarker);
     }
 
     [Fact]

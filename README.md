@@ -103,6 +103,10 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   (store it next to your vectors, compare on the next load; informational by default); opt in with
   `LMSupplyEmbeddingOptions.UseVectorSpaceRevision` to fold it into the fingerprint that names the collection — the
   value is read from the cached model files at host start, so the model still loads lazily.
+- **Query and passage prefixes (LMSupply)** — a model that declares them (E5 `fast`/`large`: `query: `/`passage: `;
+  nomic: `search_query: `/`search_document: `) gets its passage prefix on stored text and its query prefix on searches.
+  Such a model's identity revision carries `prefixed` (`LMSupplyEmbeddingService.PrefixedRevisionMarker`), so its
+  vectors go to a new collection rather than mixing with unprefixed ones written before 0.69.0 — re-index once.
 
 ## Quick Start
 

@@ -5,6 +5,20 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.69.0] - Unreleased
+
+### Changed
+- **Breaking**: **`FluxIndex.Providers.LMSupply` now embeds with the model's query and passage prefixes.** Stored text
+  uses `EmbedPassageAsync` and search queries `EmbedQueryAsync`, so E5 (`fast`, `large`: `query: `/`passage: `) and nomic
+  (`search_query: `/`search_document: `) are used as they were trained; before, both sides were embedded without the
+  prefixes. Because the stored vectors change, a model that declares prefixes gets `prefixed` in its identity revision
+  (`LMSupplyEmbeddingService.PrefixedRevisionMarker`, combined as `<revision>+prefixed` with a revision you set): its
+  fingerprint — and the collection named after it — changes, so a store written by an earlier version starts empty
+  instead of mixing two vector spaces. **Re-index (re-memorize) once** after upgrading if you use such a model. A model
+  without prefixes (`default`, BGE-M3; MiniLM) keeps its fingerprint and vectors. For a model the LMSupply catalog does
+  not know, whether it has prefixes is learned at the load: if its identity was read before the load and the model turns
+  out to have prefixes, the load fails and says to set `WarmUpOnStart`.
+
 ## [0.68.0] - 2026-10-01
 
 ### Added

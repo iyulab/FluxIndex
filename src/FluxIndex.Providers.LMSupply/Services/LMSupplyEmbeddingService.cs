@@ -31,6 +31,15 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
     private readonly int? _announcedDimension;
     private readonly Func<CancellationToken, Task<string?>>? _preRead;
     private string? _preReadRevision;
+    private readonly bool? _announcedPrefixed;
+    private int _identityReadWithoutPrefixKnowledge;
+
+    /// <summary>
+    /// Folded into the embedding revision of a model that declares a query or passage prefix (E5, nomic): its vectors are
+    /// embedded with those prefixes (0.69.0), which makes them incomparable with vectors this provider wrote before — so the
+    /// fingerprint, and the collection named after it, changes instead of mixing the two.
+    /// </summary>
+    public const string PrefixedRevisionMarker = "prefixed";
 
     /// <summary>
     /// Initializes a new instance wrapping the given, already loaded <paramref name="model"/>.
@@ -68,6 +77,7 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
         var (name, dimension) = AnnounceIdentity(options.ModelId);
         _announcedName = options.ModelName ?? name;
         _announcedDimension = options.Dimensions ?? dimension;
+        _announcedPrefixed = AnnouncePrefixes(options.ModelId);
 
         _handle = new LazyModelHandle<IEmbeddingModel>(
             async (progress, ct) =>
@@ -75,6 +85,7 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
                 var model = await LocalEmbedder.LoadAsync(options.ModelId, options.Embedder, progress, ct).ConfigureAwait(false);
                 VerifyAnnouncedIdentity(model);
                 VerifyPreReadRevision(model);
+                VerifyAnnouncedPrefixes(model);
                 return model;
             },
             options.Progress,
@@ -156,7 +167,9 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
     /// derived from what the loader did, so an identity read now would name a different collection than the one after
     /// the load.
     /// </exception>
-    protected override string? GetRevision()
+    protected override string? GetRevision() => WithPrefixMarker(GetBaseRevision());
+
+    private string? GetBaseRevision()
     {
         if (Revision is not null || !UseVectorSpaceRevision)
             return Revision;
@@ -188,10 +201,19 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
             : new ValueTask<IEmbeddingModel>(_handle!.GetAsync(cancellationToken));
 
     /// <inheritdoc />
+    /// <remarks>Stored text: the model's passage prefix is applied when it declares one (<c>EmbedPassageAsync</c>).</remarks>
     protected override async Task<float[]> EmbedCoreAsync(string text, CancellationToken cancellationToken)
     {
         var model = await GetModelAsync(cancellationToken).ConfigureAwait(false);
-        return await model.EmbedAsync(text, cancellationToken).ConfigureAwait(false);
+        return await model.EmbedPassageAsync(text, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    /// <remarks>A search query: the model's query prefix is applied when it declares one (<c>EmbedQueryAsync</c>).</remarks>
+    protected override async Task<float[]> EmbedQueryCoreAsync(string query, CancellationToken cancellationToken)
+    {
+        var model = await GetModelAsync(cancellationToken).ConfigureAwait(false);
+        return await model.EmbedQueryAsync(query, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -203,7 +225,7 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
         IEnumerable<string> texts, CancellationToken cancellationToken = default)
     {
         var model = await GetModelAsync(cancellationToken).ConfigureAwait(false);
-        return await model.EmbedAsync(texts.ToList(), cancellationToken).ConfigureAwait(false);
+        return await model.EmbedPassageAsync(texts.ToList(), cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -265,6 +287,46 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
             : null;
 
         return (name, dimension);
+    }
+
+    /// <summary>
+    /// Whether the model applies a query or passage prefix: the loaded model's own declaration; before the load, the
+    /// catalog's (<c>null</c> for a model the catalog does not know — that is only learned at the load).
+    /// </summary>
+    private bool? AppliesPrefixes => LoadedModel is { } model ? HasPrefixes(model.GetModelInfo()) : _announcedPrefixed;
+
+    private static bool HasPrefixes(ModelInfo? info) =>
+        !string.IsNullOrEmpty(info?.QueryPrefix) || !string.IsNullOrEmpty(info?.PassagePrefix);
+
+    private string? WithPrefixMarker(string? revision)
+    {
+        var applies = AppliesPrefixes;
+        if (applies is null)
+            Interlocked.Exchange(ref _identityReadWithoutPrefixKnowledge, 1);
+        if (applies != true)
+            return revision;
+        return revision is null ? PrefixedRevisionMarker : $"{revision}+{PrefixedRevisionMarker}";
+    }
+
+    /// <summary>The catalog's prefix declaration for <paramref name="modelId"/>, or <c>null</c> when the catalog does not know it.</summary>
+    internal static bool? AnnouncePrefixes(string modelId) =>
+        EmbedderModelRegistry.Default.TryResolveCatalog(modelId, out var info, out _) && info is not null
+            ? HasPrefixes(info)
+            : null;
+
+    /// <summary>
+    /// Fails the load when the identity was read before it, for a model the catalog does not know, and the loaded model
+    /// turns out to apply prefixes: the collection was named without <see cref="PrefixedRevisionMarker"/>.
+    /// </summary>
+    internal void VerifyAnnouncedPrefixes(IEmbeddingModel model)
+    {
+        if (Volatile.Read(ref _identityReadWithoutPrefixKnowledge) == 0 || !HasPrefixes(model.GetModelInfo()))
+            return;
+
+        throw new InvalidOperationException(
+            $"The loaded model '{model.ModelId}' applies query/passage prefixes, but the embedding identity was read before the load without knowing that " +
+            "(the model is not in the LMSupply catalog), so the collection was named for unprefixed vectors. " +
+            "Set LMSupplyEmbeddingOptions.WarmUpOnStart = true so the identity is read from the loaded model.");
     }
 
     /// <summary>

@@ -80,4 +80,32 @@ public sealed class LMSupplyEmbeddingServiceIntegrationTests
             batch[i].Should().BeEquivalentTo(individual[i], options => options.WithStrictOrdering());
         }
     }
+
+    /// <summary>
+    /// "fast" is multilingual-e5-small, which expects <c>query: </c> on a search query and <c>passage: </c> on stored text
+    /// (0.69.0). The same string therefore embeds differently in the two roles, and the identity carries the marker that
+    /// keeps these vectors out of a collection written without the prefixes.
+    /// </summary>
+    [Fact]
+    public async Task RealE5Model_QueryAndStoredRolesApplyTheirPrefixes()
+    {
+        var service = await _fixture.GetServiceAsync();
+        const string text = "How do cats behave at home?";
+
+        var asQuery = await service.GenerateQueryEmbeddingAsync(text, TestContext.Current.CancellationToken);
+        var asStored = await service.GenerateEmbeddingAsync(text, TestContext.Current.CancellationToken);
+        var catPassage = await service.GenerateEmbeddingAsync("Cats are independent household pets that sleep much of the day.", TestContext.Current.CancellationToken);
+        var revenuePassage = await service.GenerateEmbeddingAsync("Quarterly revenue exceeded analyst expectations.", TestContext.Current.CancellationToken);
+
+        asQuery.Should().NotBeEquivalentTo(asStored, options => options.WithStrictOrdering(), "the query role adds \"query: \", the stored role \"passage: \"");
+        Cosine(asQuery, catPassage).Should().BeGreaterThan(Cosine(asQuery, revenuePassage));
+        service.GetIdentity().Revision.Should().Be(LMSupplyEmbeddingService.PrefixedRevisionMarker);
+    }
+
+    private static double Cosine(float[] a, float[] b)
+    {
+        double dot = 0, na = 0, nb = 0;
+        for (var i = 0; i < a.Length; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+        return dot / (Math.Sqrt(na) * Math.Sqrt(nb));
+    }
 }
