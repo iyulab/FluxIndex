@@ -5,6 +5,18 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.67.2] - Unreleased
+
+### Fixed
+- **A large keyword write on PostgreSQL no longer times out maintaining document frequency.** Every term a write
+  touched used to go into one `UPDATE … WHERE id = ANY(…)`; on a large index (1.5 M postings) a rebuild of one entry ran
+  that single statement past the 30 s command timeout and failed. Term ids now go in batches of 2,000 per statement, in
+  the same transaction — same result.
+- **`PostgreSQLOptions.CommandTimeout` now applies to the keyword index too** (it reached the vector store only). With
+  an explicit connection string, its `Command Timeout` applies as before.
+- **Every package now carries the `LICENSE` text**, not only the MIT expression — MIT asks that the copyright and
+  permission notice travel with each copy.
+
 ## [0.67.1] - 2026-10-01
 
 ### Fixed

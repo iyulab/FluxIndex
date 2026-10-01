@@ -71,6 +71,28 @@ public abstract class KeywordSearchDocumentFrequencyContractSuite
     }
 
     [Fact]
+    public async Task AChunkWithMoreDistinctTermsThanOneStatementHolds_KeepsEveryTermsCount()
+    {
+        // Document frequency is maintained in batches of term ids (a backend caps how many one statement names); a
+        // chunk past that size must come out exactly as a small one does, in every batch, on index and on delete.
+        var ct = TestContext.Current.CancellationToken;
+        var service = await CreateServiceAsync();
+        var words = Enumerable.Range(0, 6_000).Select(i => $"w{i:D5}x").ToArray();
+        await service.IndexChunksAsync([Chunk("big", string.Join(' ', words)), Chunk("small", "w00000x w05999x")], ct);
+
+        var df = await service.GetDocumentFrequenciesAsync([words[0], words[2_500], words[5_999]], ct);
+        Assert.Equal(2, df[words[0]]);
+        Assert.Equal(1, df[words[2_500]]);
+        Assert.Equal(2, df[words[5_999]]);
+
+        await service.DeleteChunkAsync("big", ct);
+
+        df = await service.GetDocumentFrequenciesAsync([words[0], words[2_500]], ct);
+        Assert.Equal(1, df[words[0]]);
+        Assert.Equal(0, df[words[2_500]]);
+    }
+
+    [Fact]
     public async Task NoTerms_ReturnsAnEmptyMap()
     {
         var service = await CreateServiceAsync();

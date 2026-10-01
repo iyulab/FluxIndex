@@ -31,10 +31,18 @@ public sealed class PostgresKeywordSearchService : RelationalKeywordSearchServic
         : base(logger, analyzer, fields)
     {
         ArgumentNullException.ThrowIfNull(options);
-        _connectionString = options.Value.ConnectionString;
+        // PostgreSQLOptions.CommandTimeout reaches the keyword index too, not only the vector store: a full keyword
+        // rebuild on a large index needs the operator to be able to raise it.
+        _connectionString = new NpgsqlConnectionStringBuilder(options.Value.ConnectionString)
+        {
+            CommandTimeout = options.Value.CommandTimeout,
+        }.ConnectionString;
     }
 
-    /// <summary>Creates the service against an explicit connection string.</summary>
+    /// <summary>
+    /// Creates the service against an explicit connection string. Its <c>Command Timeout</c> (Npgsql default 30 s)
+    /// applies to every statement, including document-frequency maintenance during a rebuild.
+    /// </summary>
     public PostgresKeywordSearchService(
         string connectionString,
         ILogger<PostgresKeywordSearchService> logger,
@@ -47,6 +55,14 @@ public sealed class PostgresKeywordSearchService : RelationalKeywordSearchServic
 
     /// <inheritdoc />
     protected override string BackendName => "PostgreSQL";
+
+    /// <summary>
+    /// Term ids per document-frequency statement. Each statement costs about the number of terms it names, and a
+    /// rebuild of one large entry touches tens of thousands — sent as one statement it ran past the command timeout
+    /// (measured: ~68 µs per term on a 1.5 M-posting index). Batches stay inside the caller's transaction, so the
+    /// result is the same.
+    /// </summary>
+    protected override int TermIdBatchSize => 2_000;
 
     /// <summary>
     /// A plain connection is enough here: the keyword index stores no vector-typed columns, so it
