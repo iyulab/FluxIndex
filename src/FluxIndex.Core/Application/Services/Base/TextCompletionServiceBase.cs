@@ -91,6 +91,7 @@ public abstract class TextCompletionServiceBase : ITextCompletionService
             ResponseFormat = "json",
             ResponseSchema = options?.ResponseSchema,
             ThrowOnTruncation = options?.ThrowOnTruncation ?? false,
+            EnableThinking = options?.EnableThinking,
         };
         var result = await CompleteCoreAsync(jsonPrompt, jsonOptions, cancellationToken);
 

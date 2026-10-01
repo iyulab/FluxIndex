@@ -5,6 +5,20 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.70.0] - Unreleased
+
+### Fixed
+- **`FluxIndex.Providers.LMSupply` completions end where the answer ends.** A request without a system prompt was sent as a
+  raw text completion, which an instruction-tuned model continues until the token limit — every such call came back cut
+  off at `MaxTokens`. All requests are now chat requests (the model's chat template applies). This is the path FluxImprover
+  enrichment through `AddFluxIndexFluxImprover` used: chunk summaries came back empty.
+
+### Added
+- **The reasoning switch reaches the generator.** `TextCompletionOptions.EnableThinking` (Flux.Abstractions 0.27.0) is
+  honoured by `LMSupplyTextCompletionService` (`true` on, `false` off, `null` the model's default), kept by
+  `CompleteJsonAsync`, and FluxImprover's `CompletionOptions.Thinking` is passed through by the FluxImprover adapter — so
+  FluxImprover 0.15.0's `EnrichmentOptions.Thinking = Off` keeps a reasoning model from spending the summary budget thinking.
+
 ## [0.69.1] - 2026-10-01
 
 ### Changed

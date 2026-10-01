@@ -54,8 +54,8 @@ public class LMSupplyTextCompletionServiceTests
     [Fact]
     public async Task CompleteAsync_ValidPrompt_DelegatesToGenerator()
     {
-        _mockGenerator.GenerateCompleteResultAsync(
-                "test prompt",
+        _mockGenerator.GenerateChatCompleteResultAsync(
+                UserOnly("test prompt"),
                 Arg.Any<GenerationOptions>(),
                 Arg.Any<CancellationToken>())
             .Returns(R("generated text"));
@@ -63,8 +63,8 @@ public class LMSupplyTextCompletionServiceTests
         var result = await _service.CompleteAsync("test prompt", new TextCompletionOptions { MaxTokens = 100, Temperature = 0.5f }, TestContext.Current.CancellationToken);
 
         result.Should().Be("generated text");
-        await _mockGenerator.Received(1).GenerateCompleteResultAsync(
-            "test prompt",
+        await _mockGenerator.Received(1).GenerateChatCompleteResultAsync(
+            UserOnly("test prompt"),
             Arg.Is<GenerationOptions>(o => o.MaxTokens == 100 && Math.Abs(o.Temperature - 0.5f) < 0.001f),
             Arg.Any<CancellationToken>());
     }
@@ -75,7 +75,7 @@ public class LMSupplyTextCompletionServiceTests
     public async Task CompleteAsync_ForwardsEveryOptionTheGeneratorSupports()
     {
         const string schema = "{\"type\":\"object\",\"properties\":{\"answer\":{\"type\":\"string\"}}}";
-        _mockGenerator.GenerateCompleteResultAsync(Arg.Any<string>(), Arg.Any<GenerationOptions>(), Arg.Any<CancellationToken>())
+        _mockGenerator.GenerateChatCompleteResultAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<GenerationOptions>(), Arg.Any<CancellationToken>())
             .Returns(R("{}"));
 
         await _service.CompleteAsync("prompt", new TextCompletionOptions
@@ -89,8 +89,8 @@ public class LMSupplyTextCompletionServiceTests
             ResponseSchema = schema,
         }, TestContext.Current.CancellationToken);
 
-        await _mockGenerator.Received(1).GenerateCompleteResultAsync(
-            "prompt",
+        await _mockGenerator.Received(1).GenerateChatCompleteResultAsync(
+            UserOnly("prompt"),
             Arg.Is<GenerationOptions>(o =>
                 o.MaxTokens == 64
                 && Math.Abs(o.Temperature - 0.2f) < 0.001f
@@ -106,13 +106,13 @@ public class LMSupplyTextCompletionServiceTests
     public async Task CompleteAsync_OptionsLeftUnset_KeepTheGeneratorsOwnDefaults()
     {
         var defaults = new GenerationOptions();
-        _mockGenerator.GenerateCompleteResultAsync(Arg.Any<string>(), Arg.Any<GenerationOptions>(), Arg.Any<CancellationToken>())
+        _mockGenerator.GenerateChatCompleteResultAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<GenerationOptions>(), Arg.Any<CancellationToken>())
             .Returns(R("text"));
 
         await _service.CompleteAsync("prompt", new TextCompletionOptions(), TestContext.Current.CancellationToken);
 
-        await _mockGenerator.Received(1).GenerateCompleteResultAsync(
-            "prompt",
+        await _mockGenerator.Received(1).GenerateChatCompleteResultAsync(
+            UserOnly("prompt"),
             Arg.Is<GenerationOptions>(o =>
                 Math.Abs(o.TopP - defaults.TopP) < 0.001f
                 && o.StopSequences == null
@@ -123,17 +123,16 @@ public class LMSupplyTextCompletionServiceTests
     [Fact]
     public async Task CompleteAsync_WithASystemPrompt_SendsItAsTheSystemMessage()
     {
-        _mockGenerator.GenerateChatStreamAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<GenerationOptions>(), Arg.Any<CancellationToken>())
-            .Returns(Stream("ans", "wer", finishReason: "stop"));
+        _mockGenerator.GenerateChatCompleteResultAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<GenerationOptions>(), Arg.Any<CancellationToken>())
+            .Returns(R("answer", "stop"));
 
         var result = await _service.CompleteAsync("the question", new TextCompletionOptions { SystemPrompt = "You are terse." }, TestContext.Current.CancellationToken);
 
         result.Should().Be("answer");
-        _mockGenerator.Received(1).GenerateChatStreamAsync(
+        await _mockGenerator.Received(1).GenerateChatCompleteResultAsync(
             Arg.Is<IEnumerable<ChatMessage>>(m => m.SequenceEqual(new[] { ChatMessage.System("You are terse."), ChatMessage.User("the question") })),
             Arg.Any<GenerationOptions>(),
             Arg.Any<CancellationToken>());
-        await _mockGenerator.DidNotReceive().GenerateCompleteResultAsync(Arg.Any<string>(), Arg.Any<GenerationOptions>(), Arg.Any<CancellationToken>());
     }
 
     #endregion
@@ -143,7 +142,7 @@ public class LMSupplyTextCompletionServiceTests
     [Fact]
     public async Task CompleteAsync_ThrowOnTruncation_AndTheModelStoppedAtMaxTokens_Throws()
     {
-        _mockGenerator.GenerateCompleteResultAsync(Arg.Any<string>(), Arg.Any<GenerationOptions>(), Arg.Any<CancellationToken>())
+        _mockGenerator.GenerateChatCompleteResultAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<GenerationOptions>(), Arg.Any<CancellationToken>())
             .Returns(R("half an ans", "length"));
 
         var act = () => _service.CompleteAsync("q", new TextCompletionOptions { MaxTokens = 16, ThrowOnTruncation = true }, TestContext.Current.CancellationToken);
@@ -154,7 +153,7 @@ public class LMSupplyTextCompletionServiceTests
     [Fact]
     public async Task CompleteAsync_WithoutThrowOnTruncation_ReturnsACutOffAnswerAsBefore()
     {
-        _mockGenerator.GenerateCompleteResultAsync(Arg.Any<string>(), Arg.Any<GenerationOptions>(), Arg.Any<CancellationToken>())
+        _mockGenerator.GenerateChatCompleteResultAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<GenerationOptions>(), Arg.Any<CancellationToken>())
             .Returns(R("half an ans", "length"));
 
         var result = await _service.CompleteAsync("q", new TextCompletionOptions { MaxTokens = 16 }, TestContext.Current.CancellationToken);
@@ -165,7 +164,7 @@ public class LMSupplyTextCompletionServiceTests
     [Fact]
     public async Task CompleteAsync_ThrowOnTruncation_AndAFinishedAnswer_ReturnsIt()
     {
-        _mockGenerator.GenerateCompleteResultAsync(Arg.Any<string>(), Arg.Any<GenerationOptions>(), Arg.Any<CancellationToken>())
+        _mockGenerator.GenerateChatCompleteResultAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<GenerationOptions>(), Arg.Any<CancellationToken>())
             .Returns(R("whole", "stop"));
 
         var result = await _service.CompleteAsync("q", new TextCompletionOptions { ThrowOnTruncation = true }, TestContext.Current.CancellationToken);
@@ -174,10 +173,10 @@ public class LMSupplyTextCompletionServiceTests
     }
 
     [Fact]
-    public async Task CompleteAsync_WithASystemPrompt_ThrowOnTruncation_ReadsTheLastChunksReason()
+    public async Task CompleteAsync_WithASystemPrompt_ThrowOnTruncation_ReadsTheFinishReason()
     {
-        _mockGenerator.GenerateChatStreamAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<GenerationOptions>(), Arg.Any<CancellationToken>())
-            .Returns(Stream("half", " an", finishReason: "length"));
+        _mockGenerator.GenerateChatCompleteResultAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<GenerationOptions>(), Arg.Any<CancellationToken>())
+            .Returns(R("half an", "length"));
 
         var act = () => _service.CompleteAsync("q", new TextCompletionOptions { SystemPrompt = "s", ThrowOnTruncation = true }, TestContext.Current.CancellationToken);
 
@@ -187,7 +186,7 @@ public class LMSupplyTextCompletionServiceTests
     [Fact]
     public async Task CompleteJsonAsync_ThrowOnTruncation_IsHonouredToo()
     {
-        _mockGenerator.GenerateCompleteResultAsync(Arg.Any<string>(), Arg.Any<GenerationOptions>(), Arg.Any<CancellationToken>())
+        _mockGenerator.GenerateChatCompleteResultAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<GenerationOptions>(), Arg.Any<CancellationToken>())
             .Returns(R("{\"a\":", "length"));
 
         var act = () => _service.CompleteJsonAsync("q", new TextCompletionOptions { ThrowOnTruncation = true }, TestContext.Current.CancellationToken);
@@ -197,26 +196,64 @@ public class LMSupplyTextCompletionServiceTests
 
     private static GenerationResult R(string text, string? finishReason = null) => new(text, TokenUsage.Empty, finishReason);
 
-    private static async IAsyncEnumerable<ChatStreamChunk> Stream(string first, string second, string finishReason)
+    /// <summary>A chat request that is only the user's prompt — what a request without a system prompt sends.</summary>
+    private static IEnumerable<ChatMessage> UserOnly(string prompt) =>
+        Arg.Is<IEnumerable<ChatMessage>>(m => m.SequenceEqual(new[] { ChatMessage.User(prompt) }));
+
+    // A request without a system prompt is still a chat request. It used to be a raw completion of the prompt text, which
+    // an instruction-tuned model does not end where its answer ends: it ran to the token limit.
+    [Fact]
+    public async Task CompleteAsync_WithoutASystemPrompt_IsAChatRequest_NotARawCompletion()
     {
-        yield return new ChatStreamChunk { Text = first };
-        yield return new ChatStreamChunk { Text = second };
-        yield return new ChatStreamChunk { FinishReason = finishReason };
-        await Task.CompletedTask;
+        _mockGenerator.GenerateChatCompleteResultAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<GenerationOptions>(), Arg.Any<CancellationToken>())
+            .Returns(R("hi", "stop"));
+
+        await _service.CompleteAsync("say hi", new TextCompletionOptions(), TestContext.Current.CancellationToken);
+
+        await _mockGenerator.Received(1).GenerateChatCompleteResultAsync(UserOnly("say hi"), Arg.Any<GenerationOptions>(), Arg.Any<CancellationToken>());
+        await _mockGenerator.DidNotReceiveWithAnyArgs().GenerateCompleteResultAsync(default!, default, default);
+    }
+
+    // The JSON path rebuilds the options field by field; the switch must survive that copy.
+    [Fact]
+    public async Task CompleteJsonAsync_KeepsTheThinkingSwitch()
+    {
+        _mockGenerator.GenerateChatCompleteResultAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<GenerationOptions>(), Arg.Any<CancellationToken>())
+            .Returns(R("{}", "stop"));
+
+        await _service.CompleteJsonAsync("q", new TextCompletionOptions { EnableThinking = false }, TestContext.Current.CancellationToken);
+
+        await _mockGenerator.Received(1).GenerateChatCompleteResultAsync(
+            Arg.Any<IEnumerable<ChatMessage>>(), Arg.Is<GenerationOptions>(o => o.Thinking == ThinkingMode.Off), Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData(true, ThinkingMode.On)]
+    [InlineData(false, ThinkingMode.Off)]
+    [InlineData(null, ThinkingMode.Auto)]
+    public async Task EnableThinking_ReachesTheGeneratorsThinkingMode(bool? enableThinking, ThinkingMode expected)
+    {
+        _mockGenerator.GenerateChatCompleteResultAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<GenerationOptions>(), Arg.Any<CancellationToken>())
+            .Returns(R("ok", "stop"));
+
+        await _service.CompleteAsync("q", new TextCompletionOptions { EnableThinking = enableThinking }, TestContext.Current.CancellationToken);
+
+        await _mockGenerator.Received(1).GenerateChatCompleteResultAsync(
+            Arg.Any<IEnumerable<ChatMessage>>(), Arg.Is<GenerationOptions>(o => o.Thinking == expected), Arg.Any<CancellationToken>());
     }
 
     [Fact]
     public async Task CompleteJsonAsync_PassesTheCallersResponseSchemaThrough()
     {
         const string schema = "{\"type\":\"array\"}";
-        _mockGenerator.GenerateCompleteResultAsync(Arg.Any<string>(), Arg.Any<GenerationOptions>(), Arg.Any<CancellationToken>())
+        _mockGenerator.GenerateChatCompleteResultAsync(Arg.Any<IEnumerable<ChatMessage>>(), Arg.Any<GenerationOptions>(), Arg.Any<CancellationToken>())
             .Returns(R("[1,2]"));
 
         var json = await _service.CompleteJsonAsync("list numbers", new TextCompletionOptions { ResponseSchema = schema }, TestContext.Current.CancellationToken);
 
         json.Should().Be("[1,2]");
-        await _mockGenerator.Received(1).GenerateCompleteResultAsync(
-            Arg.Any<string>(),
+        await _mockGenerator.Received(1).GenerateChatCompleteResultAsync(
+            Arg.Any<IEnumerable<ChatMessage>>(),
             Arg.Is<GenerationOptions>(o => o.JsonSchema == schema),
             Arg.Any<CancellationToken>());
     }
@@ -227,8 +264,8 @@ public class LMSupplyTextCompletionServiceTests
         var result = await _service.CompleteAsync("", cancellationToken: TestContext.Current.CancellationToken);
 
         result.Should().BeEmpty();
-        await _mockGenerator.DidNotReceive().GenerateCompleteResultAsync(
-            Arg.Any<string>(),
+        await _mockGenerator.DidNotReceive().GenerateChatCompleteResultAsync(
+            Arg.Any<IEnumerable<ChatMessage>>(),
             Arg.Any<GenerationOptions>(),
             Arg.Any<CancellationToken>());
     }
@@ -252,16 +289,16 @@ public class LMSupplyTextCompletionServiceTests
     [Fact]
     public async Task CompleteAsync_UsesDefaultParameters()
     {
-        _mockGenerator.GenerateCompleteResultAsync(
-                Arg.Any<string>(),
+        _mockGenerator.GenerateChatCompleteResultAsync(
+                Arg.Any<IEnumerable<ChatMessage>>(),
                 Arg.Any<GenerationOptions>(),
                 Arg.Any<CancellationToken>())
             .Returns(R("result"));
 
         await _service.CompleteAsync("prompt", cancellationToken: TestContext.Current.CancellationToken);
 
-        await _mockGenerator.Received(1).GenerateCompleteResultAsync(
-            "prompt",
+        await _mockGenerator.Received(1).GenerateChatCompleteResultAsync(
+            UserOnly("prompt"),
             Arg.Is<GenerationOptions>(o => o.MaxTokens == 500 && Math.Abs(o.Temperature - 0.7f) < 0.001f),
             Arg.Any<CancellationToken>());
     }
@@ -273,8 +310,8 @@ public class LMSupplyTextCompletionServiceTests
     [Fact]
     public async Task CompleteJsonAsync_ValidPrompt_AppendsJsonInstruction()
     {
-        _mockGenerator.GenerateCompleteResultAsync(
-                Arg.Any<string>(),
+        _mockGenerator.GenerateChatCompleteResultAsync(
+                Arg.Any<IEnumerable<ChatMessage>>(),
                 Arg.Any<GenerationOptions>(),
                 Arg.Any<CancellationToken>())
             .Returns(R("{\"key\": \"value\"}"));
@@ -282,8 +319,8 @@ public class LMSupplyTextCompletionServiceTests
         var result = await _service.CompleteJsonAsync("generate JSON", cancellationToken: TestContext.Current.CancellationToken);
 
         result.Should().Be("{\"key\": \"value\"}");
-        await _mockGenerator.Received(1).GenerateCompleteResultAsync(
-            Arg.Is<string>(s => s.Contains("generate JSON") && s.Contains("JSON")),
+        await _mockGenerator.Received(1).GenerateChatCompleteResultAsync(
+            Arg.Is<IEnumerable<ChatMessage>>(m => m.Single().Content.Contains("generate JSON") && m.Single().Content.Contains("JSON")),
             Arg.Any<GenerationOptions>(),
             Arg.Any<CancellationToken>());
     }
@@ -299,8 +336,8 @@ public class LMSupplyTextCompletionServiceTests
     [Fact]
     public async Task CompleteJsonAsync_ResponseWithExtraText_ExtractsJson()
     {
-        _mockGenerator.GenerateCompleteResultAsync(
-                Arg.Any<string>(),
+        _mockGenerator.GenerateChatCompleteResultAsync(
+                Arg.Any<IEnumerable<ChatMessage>>(),
                 Arg.Any<GenerationOptions>(),
                 Arg.Any<CancellationToken>())
             .Returns(R("Here is the JSON: {\"result\": 42} Hope that helps!"));

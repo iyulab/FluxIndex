@@ -103,28 +103,20 @@ public sealed partial class LMSupplyTextCompletionService : TextCompletionServic
             genOptions.StopSequences = stops;
         if (!string.IsNullOrWhiteSpace(options.ResponseSchema))
             genOptions.JsonSchema = options.ResponseSchema;
+        if (options.EnableThinking is { } thinking)
+            genOptions.Thinking = thinking ? ThinkingMode.On : ThinkingMode.Off;
 
         var generator = await GetGeneratorAsync(cancellationToken).ConfigureAwait(false);
-        string text;
-        string? finishReason;
-        if (string.IsNullOrWhiteSpace(options.SystemPrompt))
-        {
-            var result = await generator.GenerateCompleteResultAsync(prompt, genOptions, cancellationToken).ConfigureAwait(false);
-            text = result.Content;
-            finishReason = result.FinishReason;
-        }
-        else
-        {
-            ChatMessage[] messages = [ChatMessage.System(options.SystemPrompt), ChatMessage.User(prompt)];
-            var sb = new System.Text.StringBuilder();
-            finishReason = null;
-            await foreach (var chunk in generator.GenerateChatStreamAsync(messages, genOptions, cancellationToken).ConfigureAwait(false))
-            {
-                sb.Append(chunk.Text);
-                finishReason = chunk.FinishReason ?? finishReason;
-            }
-            text = sb.ToString();
-        }
+
+        // Always a chat request: the prompt is an instruction to answer, and the model's chat template is what tells an
+        // instruction-tuned model where its answer ends (and is where the reasoning switch applies). A raw completion of the
+        // same text — what a request without a system prompt used to be — continues the text until the token limit.
+        ChatMessage[] messages = string.IsNullOrWhiteSpace(options.SystemPrompt)
+            ? [ChatMessage.User(prompt)]
+            : [ChatMessage.System(options.SystemPrompt), ChatMessage.User(prompt)];
+        var result = await generator.GenerateChatCompleteResultAsync(messages, genOptions, cancellationToken).ConfigureAwait(false);
+        var text = result.Content;
+        var finishReason = result.FinishReason;
 
         if (options.ThrowOnTruncation && finishReason == "length")
             throw new TextCompletionTruncatedException(options.MaxTokens);

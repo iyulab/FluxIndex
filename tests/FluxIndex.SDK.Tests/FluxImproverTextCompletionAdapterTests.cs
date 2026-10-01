@@ -50,4 +50,25 @@ public class FluxImproverTextCompletionAdapterTests
 
         await act.Should().ThrowAsync<TextCompletionTruncatedException>();
     }
+
+    [Theory]
+    [InlineData(false, ThinkingMode.Off, false)]
+    [InlineData(false, ThinkingMode.On, true)]
+    [InlineData(false, ThinkingMode.Auto, null)]
+    [InlineData(true, ThinkingMode.Off, false)]
+    public async Task CompleteAsync_PassesTheThinkingSwitch_ToThePort(bool jsonMode, ThinkingMode thinking, bool? expected)
+    {
+        var port = Substitute.For<ITextCompletionService>();
+        TextCompletionOptions? sent = null;
+        port.CompleteAsync(Arg.Any<string>(), Arg.Do<TextCompletionOptions>(o => sent = o), Arg.Any<CancellationToken>())
+            .Returns("text");
+        port.CompleteJsonAsync(Arg.Any<string>(), Arg.Do<TextCompletionOptions>(o => sent = o), Arg.Any<CancellationToken>())
+            .Returns("{}");
+        var adapter = new TextCompletionServiceAdapter(port);
+
+        await adapter.CompleteAsync(
+            "prompt", new CompletionOptions { JsonMode = jsonMode, Thinking = thinking }, TestContext.Current.CancellationToken);
+
+        sent!.EnableThinking.Should().Be(expected, "FluxImprover asks a reasoning model not to think for short extractions");
+    }
 }

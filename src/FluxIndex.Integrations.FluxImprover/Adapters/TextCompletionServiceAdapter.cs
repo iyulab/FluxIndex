@@ -35,6 +35,13 @@ public sealed class TextCompletionServiceAdapter : ITextGenerationService
         var temperature = options?.Temperature ?? DefaultTemperature;
         // Same meaning and exception type on both contracts: the port reports a cut-off answer when asked.
         var throwOnTruncation = options?.ThrowOnTruncation ?? false;
+        // FluxImprover's reasoning switch reaches the port: Auto leaves the model's default.
+        var enableThinking = options?.Thinking switch
+        {
+            ThinkingMode.On => true,
+            ThinkingMode.Off => false,
+            _ => (bool?)null,
+        };
 
         // Build the effective prompt with system prompt if provided
         var effectivePrompt = BuildEffectivePrompt(prompt, options);
@@ -43,11 +50,11 @@ public sealed class TextCompletionServiceAdapter : ITextGenerationService
         if (options?.JsonMode == true)
         {
             return await _fluxIndexService.CompleteJsonAsync(
-                effectivePrompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = maxTokens, ThrowOnTruncation = throwOnTruncation }, cancellationToken);
+                effectivePrompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = maxTokens, ThrowOnTruncation = throwOnTruncation, EnableThinking = enableThinking }, cancellationToken);
         }
 
         return await _fluxIndexService.CompleteAsync(
-            effectivePrompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = maxTokens, Temperature = temperature, ThrowOnTruncation = throwOnTruncation }, cancellationToken);
+            effectivePrompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = maxTokens, Temperature = temperature, ThrowOnTruncation = throwOnTruncation, EnableThinking = enableThinking }, cancellationToken);
     }
 
     /// <inheritdoc />
