@@ -127,6 +127,18 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     /// </summary>
     protected virtual Task OnInitializingAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
+    /// <summary>
+    /// Runs <see cref="SchemaDdl"/> on <paramref name="connection"/>. A dialect overrides this to serialize schema
+    /// creation across processes that start against the same database at once — "if not exists" DDL is not safe to
+    /// run concurrently on every backend.
+    /// </summary>
+    protected virtual async Task ExecuteSchemaDdlAsync(DbConnection connection, CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = SchemaDdl;
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     #endregion
 
     #region Initialization
@@ -151,10 +163,8 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             await OnInitializingAsync(cancellationToken).ConfigureAwait(false);
 
             await using (var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false))
-            await using (var command = connection.CreateCommand())
             {
-                command.CommandText = SchemaDdl;
-                await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                await ExecuteSchemaDdlAsync(connection, cancellationToken).ConfigureAwait(false);
             }
 
             await RunWithConcurrencyRetryAsync(

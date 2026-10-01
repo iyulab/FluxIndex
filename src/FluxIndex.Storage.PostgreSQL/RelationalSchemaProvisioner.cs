@@ -45,6 +45,10 @@ internal enum SchemaInitializationPlan
 /// does not, and columns whose type differs from the model, are left alone: they are not evidence of
 /// a wrong schema and this provisioner does not rewrite tables.
 /// </para>
+/// <para>
+/// Table and extension creation run under <see cref="PostgresSchemaLock"/>, so components started at the same moment
+/// against the same database take turns instead of failing on each other's catalogue rows.
+/// </para>
 /// </remarks>
 internal static class RelationalSchemaProvisioner
 {
@@ -72,7 +76,15 @@ internal static class RelationalSchemaProvisioner
 
         if (!creator.Exists())
         {
-            creator.Create();
+            try
+            {
+                creator.Create();
+            }
+            catch (Npgsql.PostgresException ex) when (ex.SqlState == Npgsql.PostgresErrorCodes.DuplicateDatabase)
+            {
+                // Another starter created it between the check and the create — the database exists, which is all
+                // this step promises. (No advisory lock can cover this: those live inside a database.)
+            }
         }
     }
 
@@ -85,7 +97,10 @@ internal static class RelationalSchemaProvisioner
         ProvisionTables(context, context.Database.GetService<IRelationalDatabaseCreator>());
     }
 
-    private static void ProvisionTables(DbContext context, IRelationalDatabaseCreator creator)
+    private static void ProvisionTables(DbContext context, IRelationalDatabaseCreator creator) =>
+        PostgresSchemaLock.Run(context.Database.GetDbConnection(), () => ProvisionTablesLocked(context, creator));
+
+    private static void ProvisionTablesLocked(DbContext context, IRelationalDatabaseCreator creator)
     {
         var owned = GetOwnedRelations(context);
         var existing = GetExistingRelations(context, owned);
@@ -415,11 +430,12 @@ internal static class RelationalSchemaProvisioner
     {
         WithOpenConnection(context, connection =>
         {
-            using (var command = connection.CreateCommand())
+            PostgresSchemaLock.Run(connection, () =>
             {
+                using var command = connection.CreateCommand();
                 command.CommandText = "CREATE EXTENSION IF NOT EXISTS vector";
                 command.ExecuteNonQuery();
-            }
+            });
 
             ((Npgsql.NpgsqlConnection)connection).ReloadTypes();
         });

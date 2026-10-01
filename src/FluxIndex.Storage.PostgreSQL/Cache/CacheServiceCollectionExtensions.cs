@@ -122,7 +122,7 @@ internal sealed partial class PostgresCacheSchemaInitializer : IStorageInitializ
             // 테이블 생성 (UNLOGGED 옵션 적용)
             if (options.UseUnloggedTable)
             {
-                CreateUnloggedTables(context, options);
+                PostgresSchemaLock.Run(context.Database.GetDbConnection(), () => CreateUnloggedTables(context, options));
             }
             else
             {
@@ -130,7 +130,7 @@ internal sealed partial class PostgresCacheSchemaInitializer : IStorageInitializ
             }
 
             // 인덱스 생성
-            CreateIndexes(context, options);
+            PostgresSchemaLock.Run(context.Database.GetDbConnection(), () => CreateIndexes(context, options));
 
             LogMigrationCompleted(_logger);
         }

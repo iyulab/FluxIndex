@@ -5,6 +5,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.67.1] - Unreleased
+
+### Fixed
+- **Several processes or workers starting against the same PostgreSQL database at the same moment now all start.**
+  Schema creation (vector store, keyword index, graph, cache, and the pgvector extension) is serialized with a
+  database-wide advisory lock; before, concurrent "if not exists" DDL failed one starter with a catalogue unique
+  violation (23505) or a deadlock (40P01). Two starters creating the database itself no longer fail on 42P04.
+
 ## [0.67.0] - 2026-10-01
 
 ### Fixed

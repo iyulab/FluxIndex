@@ -119,9 +119,8 @@ public sealed class PostgresKeywordSearchConcurrencyTests : IAsyncLifetime
         var ct = TestContext.Current.CancellationToken;
         using var first = new PostgresKeywordSearchService(_container.GetConnectionString(), _logger);
         using var second = new PostgresKeywordSearchService(_container.GetConnectionString(), _logger);
-        // Initialized one after the other: this fact is about concurrent writes, not concurrent schema creation.
-        await first.EnsureSchemaAsync(ct);
-        await second.EnsureSchemaAsync(ct);
+        // Initialized at the same time, as two workers starting together do (schema creation is serialized).
+        await Task.WhenAll(first.EnsureSchemaAsync(ct), second.EnsureSchemaAsync(ct));
         var random = new Random(3);
 
         string Words(int from, int count) => string.Join(' ', Vocabulary.Skip(from).Take(count));

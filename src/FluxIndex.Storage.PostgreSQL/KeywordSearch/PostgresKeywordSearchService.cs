@@ -172,6 +172,11 @@ public sealed class PostgresKeywordSearchService : RelationalKeywordSearchServic
     /// </summary>
     protected override string? CompactSql => null;
 
+    /// <inheritdoc />
+    /// <remarks>Under <see cref="PostgresSchemaLock"/>: keyword indexes started at the same moment take turns.</remarks>
+    protected override Task ExecuteSchemaDdlAsync(DbConnection connection, CancellationToken cancellationToken) =>
+        PostgresSchemaLock.RunAsync(connection, () => base.ExecuteSchemaDdlAsync(connection, cancellationToken), cancellationToken);
+
     /// <summary>
     /// PostgreSQL has a real array type, so the ids travel as one parameter. The statement stays a
     /// fixed size no matter how many terms a batch touched, which is why

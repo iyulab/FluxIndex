@@ -108,7 +108,7 @@ internal sealed partial class PostgresGraphSchemaInitializer : IStorageInitializ
 
             if (options.UseJsonbIndex)
             {
-                CreateGinIndexes(context);
+                PostgresSchemaLock.Run(context.Database.GetDbConnection(), () => CreateGinIndexes(context));
             }
 
             LogGraphMigrationCompleted(_logger);
