@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.70.0] - Unreleased
+## [0.70.0] - 2026-10-01
 
 ### Fixed
 - **`FluxIndex.Providers.LMSupply` completions end where the answer ends.** A request without a system prompt was sent as a
