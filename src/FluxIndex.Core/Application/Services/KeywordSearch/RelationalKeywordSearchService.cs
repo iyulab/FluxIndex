@@ -90,8 +90,61 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     /// <summary>Upsert for a row of <c>bm25_chunks</c>, keyed on <c>chunk_id</c>.</summary>
     protected abstract string UpsertChunkSql { get; }
 
-    /// <summary>Upsert for a row of <c>bm25_terms</c> that returns the term's id.</summary>
-    protected abstract string UpsertTermReturningIdSql { get; }
+    /// <summary>
+    /// Inserts a row of <c>bm25_terms</c> (<c>@term</c>, document frequency 0) unless the term already has one,
+    /// without locking the existing row: a term row is shared by every writer whose text contains the word.
+    /// </summary>
+    protected abstract string InsertTermIfAbsentSql { get; }
+
+    /// <summary>
+    /// Builds the predicate selecting the rows of <paramref name="terms"/> by their text, adding any parameters it
+    /// needs to <paramref name="command"/>. Called with at most <see cref="TermIdBatchSize"/> terms.
+    /// </summary>
+    protected abstract string BuildTermTextPredicate(DbCommand command, string columnRef, IReadOnlyCollection<string> terms);
+
+    /// <summary>
+    /// Whether new terms are registered in a short transaction of their own, committed before the write transaction
+    /// starts. False by default: the backend runs one writer at a time, so a second commit would only cost an fsync.
+    /// </summary>
+    /// <remarks>
+    /// Where writers run concurrently it must be true. A term inserted inside the write transaction is invisible
+    /// until that transaction commits, and every other writer inserting the same word waits on it for that long -
+    /// for a large document, the whole document.
+    /// </remarks>
+    protected virtual bool RegistersTermsInOwnTransaction => false;
+
+    /// <summary>
+    /// Row-lock clause appended to the statement that takes a write transaction's term rows, in id order, just
+    /// before their document frequency is updated, or null where the backend has no row locks. It must not conflict
+    /// with the lock a posting's foreign key takes on its term row, which other writers hold to their commit.
+    /// </summary>
+    protected virtual string? TermRowLockClause => null;
+
+    /// <summary>
+    /// Row-lock clause for selecting the zero-frequency term rows a write removes, or null to delete them directly.
+    /// Where writers run concurrently it should skip rows another writer holds: a term row is held only by a writer
+    /// that is about to give it a posting, so waiting for it would only find a row to keep.
+    /// </summary>
+    protected virtual string? TermCleanupLockClause => null;
+
+    /// <summary>
+    /// Serializes write transactions that write or delete the same chunks, taking a transaction-scoped lock per
+    /// chunk id in one fixed order. Does nothing by default, for a backend that runs one writer at a time.
+    /// </summary>
+    /// <remarks>
+    /// Document frequency moves by the postings a transaction deleted and wrote, which is exact only if no other
+    /// transaction is writing the same chunk at the same time: otherwise both see the chunk empty, both count its
+    /// terms as new, and the frequency is counted twice.
+    /// </remarks>
+    protected virtual Task LockChunksAsync(DbConnection connection, IReadOnlyCollection<string> chunkIds, CancellationToken cancellationToken)
+        => Task.CompletedTask;
+
+    /// <summary>
+    /// Whether a failure means a term row this transaction wrote a posting for was removed by another writer's
+    /// cleanup (for example a foreign-key violation on the posting). The transaction is then retried, which registers
+    /// the term again. False by default.
+    /// </summary>
+    protected virtual bool IsTermRowRemovedFailure(DbException exception) => false;
 
     /// <summary>Upsert for a row of <c>bm25_postings</c>, keyed on (<c>term_id</c>, <c>chunk_id</c>).</summary>
     protected abstract string UpsertPostingSql { get; }
@@ -688,6 +741,10 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     /// used to run without it, so a re-index that removed a document's previous chunks while another
     /// document was being indexed failed its caller outright.
     /// </remarks>
+    private bool IsRetryableWriteFailure(Exception exception)
+        => exception is TermRowRemovedException
+            || (exception is DbException db && (IsTransientConcurrencyFailure(db) || IsTermRowRemovedFailure(db)));
+
     private async Task RunWithConcurrencyRetryAsync(Func<Task> transaction, CancellationToken cancellationToken)
     {
         var attempt = 0;
@@ -698,10 +755,13 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
                 await transaction().ConfigureAwait(false);
                 return;
             }
-            catch (DbException ex) when (IsTransientConcurrencyFailure(ex) && attempt < MaxConcurrencyRetries)
+            catch (Exception ex) when (IsRetryableWriteFailure(ex) && attempt < MaxConcurrencyRetries)
             {
                 attempt++;
-                LogConcurrencyRetry(Logger, attempt, ex.SqlState ?? "unknown");
+                if (ex is DbException db && IsTransientConcurrencyFailure(db))
+                    LogConcurrencyRetry(Logger, attempt, db.SqlState ?? "unknown");
+                else
+                    LogTermRowRemovedRetry(Logger, attempt);
                 await Task.Delay(ConcurrencyRetryDelay(attempt), cancellationToken).ConfigureAwait(false);
             }
         }
@@ -750,12 +810,6 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             var statistics = new StatisticsDelta();
             var frequencies = new DocumentFrequencyDelta();
 
-            // Every term row this transaction will touch is acquired HERE, in one globally sorted
-            // pass, before any chunk is written. See TermAcquisitionOrder for why the sort is the
-            // fix; doing it per chunk would not be enough, because the transaction spans the batch
-            // and two transactions could still interleave between chunks.
-            // Terms the replaced chunks held are written too - their document frequency drops - so they
-            // are acquired in the same pass rather than left for the frequency update to lock in executor order.
             // Chunks of a replaced document that this batch does not write again are removed in the same transaction.
             var written = new HashSet<string>(tokenized.Select(t => t.Chunk.Id), StringComparer.Ordinal);
             var stale = new List<string>();
@@ -765,16 +819,16 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
                     .Where(id => !written.Contains(id)));
             }
 
-            var storedTerms = await ReadStoredTermsAsync(
-                connection, tokenized.Select(t => t.Chunk.Id).Concat(stale), cancellationToken).ConfigureAwait(false);
-            // Field terms are part of the same sorted pass: they are term rows like any other, and a
-            // second acquisition order for them would reopen the cycle the sort removes.
+            await LockChunksAsync(connection, [.. written, .. stale], cancellationToken).ConfigureAwait(false);
+
+            // Ids for every term the batch writes, body and fields alike, taken without locking a term row. The rows
+            // the replaced chunks held are learned from the postings their deletion removes; all of them are locked
+            // only at the end, just before their document frequency moves (ApplyDocumentFrequencyDeltaAsync).
             var termIds = await AcquireTermIdsAsync(
                 connection,
                 TermAcquisitionOrder(tokenized
                     .Select(t => (IEnumerable<string>)t.Terms)
-                    .Concat(tokenized.SelectMany(t => t.FieldTerms.Select(f => (IEnumerable<string>)f.Terms)))
-                    .Append(storedTerms)),
+                    .Concat(tokenized.SelectMany(t => t.FieldTerms.Select(f => (IEnumerable<string>)f.Terms)))),
                 cancellationToken).ConfigureAwait(false);
 
             foreach (var id in termIds.Values)
@@ -803,24 +857,21 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     }
 
     /// <summary>
-    /// The order in which a transaction must acquire term rows: every distinct normalized term of the
-    /// batch, sorted ordinally.
+    /// The order in which a transaction registers its terms: every distinct normalized term of the batch,
+    /// sorted ordinally.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Upserting a term row takes a lock on it that is held to the end of the transaction. Terms used
-    /// to be upserted in whatever order a chunk's token stream produced them, so two transactions
-    /// indexing different documents that share vocabulary acquired the same rows in different orders
-    /// - the textbook deadlock, and one that needs no unusual input: any two documents in the same
-    /// language share common words, so the probability approaches 1 as concurrency grows. Observed
-    /// continuously against a deployment running four indexing workers.
+    /// Inserting a term row another writer has inserted but not yet committed waits for that writer, so two
+    /// registrations inserting shared new words in different orders could wait on each other in both
+    /// directions. One total order removes the cycle. This is a pure function so the rule is held by tests that
+    /// need no database.
     /// </para>
     /// <para>
-    /// A total order over the rows removes the cycle: transactions can still wait on each other, but
-    /// they can no longer wait in both directions. It holds only if <b>every</b> transaction that writes
-    /// term rows acquires them this way — indexing, including the terms of chunks it replaces, and
-    /// deletion. One writer taking rows in any other order reopens the cycle against all the others. This is a pure function so the rule is held by
-    /// tests that need no database - the backend where it matters cannot be run in CI here.
+    /// Term rows are not locked here. A transaction used to take every term row it would write at its start
+    /// and hold the locks to commit; any other writer sharing a word then waited for the whole batch - with a
+    /// few large documents in flight, longer than the command timeout. The rows are now locked only at the end,
+    /// in id order, just before document frequency moves (<see cref="ApplyDocumentFrequencyDeltaAsync"/>).
     /// </para>
     /// </remarks>
     internal static IReadOnlyList<string> TermAcquisitionOrder(IEnumerable<IEnumerable<string>> perChunkTerms)
@@ -831,24 +882,112 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             .Order(StringComparer.Ordinal)
             .ToList();
 
-    /// <summary>Upserts every term in the given order and returns their ids by normalized term.</summary>
+    /// <summary>
+    /// Makes sure every term in <paramref name="orderedTerms"/> has a row and returns the ids by normalized
+    /// term, without locking any term row.
+    /// </summary>
+    /// <remarks>
+    /// Where <see cref="RegistersTermsInOwnTransaction"/> holds, new rows are committed before this returns, so a
+    /// writer sharing a new word waits for this short registration at most, never for the caller's transaction.
+    /// A term row can be removed by another writer's zero-frequency cleanup between registration and the end of
+    /// the caller's transaction; <see cref="LockTermRowsAsync"/> detects that and the transaction is retried.
+    /// </remarks>
     private async Task<Dictionary<string, long>> AcquireTermIdsAsync(
         DbConnection connection,
         IReadOnlyList<string> orderedTerms,
         CancellationToken cancellationToken)
     {
         var ids = new Dictionary<string, long>(orderedTerms.Count, StringComparer.Ordinal);
+        if (orderedTerms.Count == 0)
+            return ids;
 
+        if (RegistersTermsInOwnTransaction)
+        {
+            await using var registration = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+            await using var transaction = await registration.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+            await InsertTermsAsync(registration, orderedTerms, cancellationToken).ConfigureAwait(false);
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            await InsertTermsAsync(connection, orderedTerms, cancellationToken).ConfigureAwait(false);
+        }
+
+        foreach (var batch in orderedTerms.Chunk(LookupBatchSize))
+        {
+            await using var command = connection.CreateCommand();
+            var predicate = BuildTermTextPredicate(command, "term", batch);
+            command.CommandText = $"SELECT term, id FROM bm25_terms WHERE {predicate}";
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                ids[reader.GetString(0)] = reader.GetInt64(1);
+        }
+
+        // Registered a moment ago and gone already: a concurrent cleanup removed a row no chunk held yet.
+        if (ids.Count != orderedTerms.Count)
+            throw new TermRowRemovedException();
+
+        return ids;
+    }
+
+    /// <summary>
+    /// Inserts the terms that have no row yet, in the given order, without locking existing rows. The default runs
+    /// <see cref="InsertTermIfAbsentSql"/> once per term; a dialect that can insert a whole ordered set in one
+    /// statement overrides this, which keeps a registration short enough that a writer waiting on it barely waits.
+    /// </summary>
+    protected virtual async Task InsertTermsAsync(DbConnection connection, IReadOnlyList<string> orderedTerms, CancellationToken cancellationToken)
+    {
         foreach (var term in orderedTerms)
         {
             await using var termCmd = connection.CreateCommand();
-            termCmd.CommandText = UpsertTermReturningIdSql;
+            termCmd.CommandText = InsertTermIfAbsentSql;
             AddParameter(termCmd, "@term", term);
-            var scalar = await termCmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-            ids[term] = Convert.ToInt64(scalar, CultureInfo.InvariantCulture);
+            await termCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Takes the term rows a transaction is about to update, in id order, and checks that every term it wrote a
+    /// posting for still has its row.
+    /// </summary>
+    /// <remarks>
+    /// Every writer locks its term rows here and nowhere else, all in one order, so writers sharing vocabulary
+    /// wait for each other only for the few statements between this and commit, and never in a cycle.
+    /// </remarks>
+    private async Task LockTermRowsAsync(
+        DbConnection connection,
+        HashSet<long> affectedTermIds,
+        DocumentFrequencyDelta frequencies,
+        CancellationToken cancellationToken)
+    {
+        var present = new HashSet<long>();
+        foreach (var batch in affectedTermIds.Order().Chunk(LookupBatchSize))
+        {
+            await using var command = connection.CreateCommand();
+            var predicate = BuildTermIdPredicate(command, "bm25_terms.id", batch);
+            command.CommandText = $"SELECT id FROM bm25_terms WHERE {predicate} ORDER BY id {TermRowLockClause}";
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                present.Add(reader.GetInt64(0));
         }
 
-        return ids;
+        if (frequencies.WrittenTermIds().Any(id => !present.Contains(id)))
+            throw new TermRowRemovedException();
+    }
+
+    /// <summary>Largest batch of terms or ids a lookup statement carries.</summary>
+    private int LookupBatchSize => Math.Min(TermIdBatchSize, 10_000);
+
+    /// <summary>
+    /// A term row the transaction depends on was removed by a concurrent writer's zero-frequency cleanup. The
+    /// transaction is retried, which registers the term again.
+    /// </summary>
+    private sealed class TermRowRemovedException : Exception
+    {
+        public TermRowRemovedException()
+            : base("A keyword index term row was removed by a concurrent writer before this transaction used it.")
+        {
+        }
     }
 
     /// <summary>Attempts allowed after the first, when a transaction loses a lock cycle.</summary>
@@ -1213,15 +1352,15 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
                 })
                 .ToList();
 
-            // Same acquisition discipline as indexing and deletion: every term row the transaction writes, the old
-            // chunks' and the new chunks', taken first in one sorted pass.
-            var storedTerms = await ReadStoredTermsAsync(connection, oldIds, cancellationToken).ConfigureAwait(false);
+            await LockChunksAsync(connection, [.. oldIds, .. tokenized.Select(t => t.Chunk.Id)], cancellationToken).ConfigureAwait(false);
+
+            // Same discipline as indexing: ids for the new chunks' terms without locking, the old chunks' terms from
+            // the postings their deletion removes, every term row locked only at the end.
             var termIds = await AcquireTermIdsAsync(
                 connection,
                 TermAcquisitionOrder(tokenized
                     .Select(t => (IEnumerable<string>)t.Terms)
-                    .Concat(tokenized.SelectMany(t => t.FieldTerms.Select(f => (IEnumerable<string>)f.Terms)))
-                    .Append(storedTerms)),
+                    .Concat(tokenized.SelectMany(t => t.FieldTerms.Select(f => (IEnumerable<string>)f.Terms)))),
                 cancellationToken).ConfigureAwait(false);
             var affectedTermIds = new HashSet<long>(termIds.Values);
             var statistics = new StatisticsDelta();
@@ -1318,14 +1457,10 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
 
         try
         {
-            // Deletion rewrites the document frequency of every term the chunks held, so it takes those
-            // rows exactly the way indexing does: all of them, first, in TermAcquisitionOrder. Updating
-            // them in whatever order the executor chose is a cycle against any indexing transaction
-            // sharing vocabulary.
-            var storedTerms = await ReadStoredTermsAsync(connection, chunkIds, cancellationToken).ConfigureAwait(false);
-            var termIds = await AcquireTermIdsAsync(
-                connection, TermAcquisitionOrder([storedTerms]), cancellationToken).ConfigureAwait(false);
-            var affectedTermIds = new HashSet<long>(termIds.Values);
+            // The term rows whose document frequency drops are the ones the deleted postings pointed at; the
+            // deletion reports them, and they are locked with every other writer's at the end, in id order.
+            await LockChunksAsync(connection, chunkIds, cancellationToken).ConfigureAwait(false);
+            var affectedTermIds = new HashSet<long>();
             var statistics = new StatisticsDelta();
             var frequencies = new DocumentFrequencyDelta();
 
@@ -1442,40 +1577,6 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     }
 
     /// <summary>
-    /// The terms the given chunks currently have postings for - the rows a transaction replacing or
-    /// deleting those chunks will rewrite.
-    /// </summary>
-    private static async Task<List<string>> ReadStoredTermsAsync(
-        DbConnection connection,
-        IEnumerable<string> chunkIds,
-        CancellationToken cancellationToken)
-    {
-        var terms = new List<string>();
-        foreach (var chunkId in chunkIds)
-        {
-            await using var command = connection.CreateCommand();
-            command.CommandText = """
-                SELECT t.term FROM bm25_postings p
-                JOIN bm25_terms t ON t.id = p.term_id
-                WHERE p.chunk_id = @chunkId
-                UNION
-                SELECT t.term FROM bm25_field_postings f
-                JOIN bm25_terms t ON t.id = f.term_id
-                WHERE f.chunk_id = @chunkId
-                """;
-            AddParameter(command, "@chunkId", chunkId);
-
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-            {
-                terms.Add(reader.GetString(0));
-            }
-        }
-
-        return terms;
-    }
-
-    /// <summary>
     /// What one write transaction changes about document frequency: for every (term, chunk) pair it deleted or
     /// wrote, whether the chunk held the term before the transaction and whether it holds it now.
     /// </summary>
@@ -1502,6 +1603,10 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             var key = (termId, chunkId);
             _pairs[key] = _pairs.TryGetValue(key, out var state) ? (state.Before, true) : (false, true);
         }
+
+        /// <summary>The terms the transaction wrote a posting for.</summary>
+        public IEnumerable<long> WrittenTermIds()
+            => _pairs.Where(pair => pair.Value.After).Select(pair => pair.Key.TermId).Distinct();
 
         /// <summary>The terms whose document frequency moves, grouped by how much it moves.</summary>
         public SortedDictionary<int, HashSet<long>> TermsByChange()
@@ -1545,6 +1650,8 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         HashSet<long> affectedTermIds,
         CancellationToken cancellationToken)
     {
+        await LockTermRowsAsync(connection, affectedTermIds, frequencies, cancellationToken).ConfigureAwait(false);
+
         // One statement per distinct change rather than per term: a write moves most of its terms by the
         // same amount (+1 for a new chunk, -1 for a deleted one).
         foreach (var (change, termIds) in frequencies.TermsByChange())
@@ -1569,7 +1676,9 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         {
             await using var cleanupCmd = connection.CreateCommand();
             var predicate = BuildTermIdPredicate(cleanupCmd, "bm25_terms.id", batch);
-            cleanupCmd.CommandText = $"DELETE FROM bm25_terms WHERE {predicate} AND document_frequency <= 0";
+            cleanupCmd.CommandText = TermCleanupLockClause is { } clause
+                ? $"DELETE FROM bm25_terms WHERE id IN (SELECT id FROM bm25_terms WHERE {predicate} AND document_frequency <= 0 {clause})"
+                : $"DELETE FROM bm25_terms WHERE {predicate} AND document_frequency <= 0";
             await cleanupCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
     }
@@ -2246,6 +2355,11 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         Level = LogLevel.Warning,
         Message = "Keyword index transaction hit a concurrency conflict (SQLSTATE {SqlState}); retry {Attempt}")]
     private static partial void LogConcurrencyRetry(ILogger logger, int attempt, string sqlState);
+
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "Keyword index transaction lost a term row to a concurrent writer's cleanup; retry {Attempt}")]
+    private static partial void LogTermRowRemovedRetry(ILogger logger, int attempt);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Reassigned {ChunkCount} keyword-index chunks from document {OldDocumentId} to {NewDocumentId}")]
     private static partial void LogDocumentReassigned(ILogger logger, int chunkCount, string oldDocumentId, string newDocumentId);

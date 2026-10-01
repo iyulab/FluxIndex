@@ -45,6 +45,9 @@ public class RedisSemanticCacheServiceTests : RedisTestBase
 
         embeddingService.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(callInfo => CreateMockEmbedding(callInfo.ArgAt<string>(0)));
+        // The cache embeds lookups in the query role (FluxIndex 0.68.0); this symmetric double answers both alike.
+        embeddingService.GenerateQueryEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo => CreateMockEmbedding(callInfo.ArgAt<string>(0)));
 
         _cacheService = new RedisSemanticCacheService(
             redis,

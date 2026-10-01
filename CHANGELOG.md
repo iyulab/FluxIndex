@@ -5,6 +5,26 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.71.0] - Unreleased
+
+### Fixed
+- **Concurrent keyword writes on PostgreSQL no longer wait for each other's whole batch.** A write locked every term row
+  it would touch when it started and held the locks until it committed, so any other writer sharing one word - in one
+  language, nearly every pair of documents - waited for the whole document. With a few large documents indexed at once
+  the wait passed the command timeout (`57014`) and indexing failed, which no retry covered. Term rows are now locked only
+  at the end of the write, in one order, just before document frequency is updated; new terms are registered in a short
+  transaction of their own, so a writer that needs a word another writer has just added waits for that registration, not
+  for the other document. Two writers of the same chunk still take turns (a lock per chunk id), which keeps document
+  frequency exact.
+
+### Changed
+- **Breaking (custom keyword backends)**: `RelationalKeywordSearchService.UpsertTermReturningIdSql` is replaced by
+  `InsertTermIfAbsentSql` (an insert that leaves an existing row unlocked) and `BuildTermTextPredicate` (selects terms by
+  their text). New optional members for a backend with concurrent writers: `RegistersTermsInOwnTransaction`,
+  `InsertTermsAsync` (register a sorted set in one statement), `TermRowLockClause`, `TermCleanupLockClause`,
+  `LockChunksAsync` (serialize writers of the same chunk) and `IsTermRowRemovedFailure`. Only a subclass of
+  `RelationalKeywordSearchService` is affected.
+
 ## [0.70.0] - 2026-10-01
 
 ### Fixed
@@ -57,6 +77,10 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 - **Breaking (test doubles)**: a mock of `IEmbeddingService` that stubs only `GenerateEmbeddingAsync` (for example an
   NSubstitute substitute) no longer feeds a search — stub `GenerateQueryEmbeddingAsync` for the query. A hand-written
   implementation needs no change. A service that wraps another `IEmbeddingService` should forward both methods.
+- **If you wrote your own asymmetric adapter** (an `EmbeddingServiceBase` subclass or an `IEmbeddingService`) and mapped
+  the single-text `GenerateEmbeddingAsync` to the query role, move it to the document role: stored text arrives through
+  `GenerateEmbeddingAsync` one chunk at a time on some paths (FluxFeed's resumed ingest, for example), and queries now
+  arrive through `GenerateQueryEmbeddingAsync`.
 
 ### Removed
 - **Breaking**: `FluxIndex.SDK.Interfaces.IEmbeddingService`, `FluxIndex.SDK.Interfaces.IIndexingService` and the

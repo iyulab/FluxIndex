@@ -185,11 +185,24 @@ public sealed class SQLiteKeywordSearchService : RelationalKeywordSearchService
         """;
 
     /// <inheritdoc />
-    protected override string UpsertTermReturningIdSql => """
+    protected override string InsertTermIfAbsentSql => """
         INSERT INTO bm25_terms (term, document_frequency) VALUES (@term, 0)
-        ON CONFLICT(term) DO UPDATE SET term = excluded.term
-        RETURNING id;
+        ON CONFLICT(term) DO NOTHING;
         """;
+
+    /// <summary>One parameter per term: term text is not safe to inline the way ids are.</summary>
+    protected override string BuildTermTextPredicate(DbCommand command, string columnRef, IReadOnlyCollection<string> terms)
+    {
+        var names = new List<string>(terms.Count);
+        foreach (var term in terms)
+        {
+            var name = "@t" + names.Count.ToString(CultureInfo.InvariantCulture);
+            AddParameter(command, name, term);
+            names.Add(name);
+        }
+
+        return $"{columnRef} IN ({string.Join(",", names)})";
+    }
 
     /// <inheritdoc />
     protected override string UpsertPostingSql => """

@@ -30,6 +30,9 @@ public sealed class PostgresSemanticCacheStatisticsTests : IAsyncLifetime
         var embeddings = Substitute.For<IEmbeddingService>();
         embeddings.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new[] { 1f, 0f, 0f, 0f }));
+        // The cache embeds lookups in the query role (FluxIndex 0.68.0); this symmetric double answers both alike.
+        embeddings.GenerateQueryEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new[] { 1f, 0f, 0f, 0f }));
 
         var services = new ServiceCollection();
         services.AddLogging();

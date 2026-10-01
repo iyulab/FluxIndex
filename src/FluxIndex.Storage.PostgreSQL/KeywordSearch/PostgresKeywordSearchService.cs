@@ -147,14 +147,89 @@ public sealed class PostgresKeywordSearchService : RelationalKeywordSearchServic
         """;
 
     /// <summary>
-    /// The no-op update is what makes the statement return an id for an existing term as well —
-    /// <c>ON CONFLICT DO NOTHING</c> would return no row at all.
+    /// <c>DO NOTHING</c> leaves an existing row unlocked. The no-op <c>DO UPDATE</c> this replaced returned the id in
+    /// one statement but locked the row to the end of the transaction, so every writer sharing the word waited for
+    /// the whole batch.
     /// </summary>
-    protected override string UpsertTermReturningIdSql => """
+    protected override string InsertTermIfAbsentSql => """
         INSERT INTO bm25_terms (term, document_frequency) VALUES (@term, 0)
-        ON CONFLICT (term) DO UPDATE SET term = excluded.term
-        RETURNING id;
+        ON CONFLICT (term) DO NOTHING;
         """;
+
+    /// <summary>
+    /// One statement for the whole set, in the given order (the rows are inserted in the order the sorted select
+    /// produces them), so a registration costs one round trip rather than one per term.
+    /// </summary>
+    protected override async Task InsertTermsAsync(DbConnection connection, IReadOnlyList<string> orderedTerms, CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO bm25_terms (term, document_frequency)
+            SELECT t, 0 FROM unnest(@terms) AS t ORDER BY t COLLATE "C"
+            ON CONFLICT (term) DO NOTHING;
+            """;
+        AddParameter(command, "@terms", orderedTerms.ToArray());
+        await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Writers run concurrently here, so new terms are committed before the write transaction starts.</summary>
+    protected override bool RegistersTermsInOwnTransaction => true;
+
+    /// <summary>
+    /// <c>NO KEY UPDATE</c>, not <c>UPDATE</c>: every posting insert takes a key-share lock on its term row through
+    /// the foreign key and holds it to commit, and <c>FOR UPDATE</c> would wait for every such writer's whole batch.
+    /// </summary>
+    protected override string? TermRowLockClause => "FOR NO KEY UPDATE";
+
+    /// <summary>
+    /// A zero-frequency row another writer holds is one that writer is giving a posting; it is skipped rather than
+    /// waited for (and would be kept anyway).
+    /// </summary>
+    protected override string? TermCleanupLockClause => "FOR UPDATE SKIP LOCKED";
+
+    /// <summary>
+    /// One transaction-scoped advisory lock per chunk id, in ascending key order so two writers cannot wait on each
+    /// other in both directions. Keys are a hash of the chunk id under a fixed class id; a collision only makes two
+    /// unrelated chunks take turns.
+    /// </summary>
+    protected override async Task LockChunksAsync(DbConnection connection, IReadOnlyCollection<string> chunkIds, CancellationToken cancellationToken)
+    {
+        foreach (var key in chunkIds.Select(ChunkLockKey).Distinct().Order())
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT pg_advisory_xact_lock(@lockClass, @lockKey)";
+            AddParameter(command, "@lockClass", ChunkLockClass);
+            AddParameter(command, "@lockKey", key);
+            await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>The advisory-lock class id of keyword-index chunk locks (ASCII "FXKC").</summary>
+    private const int ChunkLockClass = 0x46584B43;
+
+    /// <summary>FNV-1a over the UTF-16 code units of the chunk id - stable across processes, unlike string.GetHashCode.</summary>
+    private static int ChunkLockKey(string chunkId)
+    {
+        var hash = 2166136261u;
+        foreach (var c in chunkId)
+        {
+            hash ^= c;
+            hash *= 16777619u;
+        }
+
+        return unchecked((int)hash);
+    }
+
+    /// <summary>A posting whose term row a concurrent cleanup removed fails its foreign key (<c>23503</c>).</summary>
+    protected override bool IsTermRowRemovedFailure(DbException exception)
+        => exception is PostgresException { SqlState: PostgresErrorCodes.ForeignKeyViolation, TableName: "bm25_postings" or "bm25_field_postings" };
+
+    /// <inheritdoc />
+    protected override string BuildTermTextPredicate(DbCommand command, string columnRef, IReadOnlyCollection<string> terms)
+    {
+        AddParameter(command, "@terms", terms.ToArray());
+        return $"{columnRef} = ANY(@terms)";
+    }
 
     /// <inheritdoc />
     protected override string UpsertPostingSql => """
