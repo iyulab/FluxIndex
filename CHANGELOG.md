@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.67.1] - Unreleased
+## [0.67.1] - 2026-10-01
 
 ### Fixed
 - **Several processes or workers starting against the same PostgreSQL database at the same moment now all start.**
