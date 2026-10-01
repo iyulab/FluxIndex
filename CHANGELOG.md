@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.69.0] - Unreleased
+## [0.69.0] - 2026-10-01
 
 ### Changed
 - **Breaking**: **`FluxIndex.Providers.LMSupply` now embeds with the model's query and passage prefixes.** Stored text
