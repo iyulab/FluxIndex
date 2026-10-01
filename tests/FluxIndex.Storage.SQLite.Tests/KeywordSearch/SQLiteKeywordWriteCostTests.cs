@@ -168,6 +168,76 @@ public sealed class SQLiteKeywordWriteCostTests : IDisposable
         last.Should().BeLessThan(first * 3, $"per-entry cost must not grow with the index (first {first.TotalMilliseconds / window:F2} ms, last {last.TotalMilliseconds / window:F2} ms)");
     }
 
+    /// <summary>
+    /// The same shape on a corpus whose vocabulary is dominated by common terms: CJK bigrams over a small,
+    /// skewed syllable set, so the most frequent terms have postings in a large share of the chunks. A write
+    /// that rederives document frequency by counting each touched term's postings costs the corpus size here,
+    /// so committing one document at a time grows quadratically; a write that moves the count by what it
+    /// changed costs about the same at 6,000 documents as at 500.
+    /// </summary>
+    /// <remarks>
+    /// In memory the measurement is the index's own work, and the bound is tight. On a WAL file it also
+    /// includes the checkpoints that copy committed pages back into the database, whose cost grows with the
+    /// posting trees whatever the index does (measured 1.5-2x from 500 to 6,000 documents with either way of
+    /// maintaining document frequency), so the bound there only catches gross growth beyond that.
+    /// </remarks>
+    [Theory]
+    [Trait("Category", "Performance")]
+    [InlineData(false, 1.5)]
+    [InlineData(true, 3.0)]
+    public async Task CommittingOneDocumentAtATime_OverCommonCjkTerms_CostsTheSamePerDocument_AsTheIndexGrows(bool onFile, double maxGrowth)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        string connectionString;
+        if (onFile)
+        {
+            var path = NewPath();
+            await ExecuteAsync(path, "PRAGMA journal_mode=WAL", ct);
+            connectionString = $"Data Source={path}";
+        }
+        else
+        {
+            connectionString = $"Data Source=kw-cost-{Guid.NewGuid():N};Mode=Memory;Cache=Shared";
+        }
+
+        using var service = new SQLiteKeywordSearchService(
+            connectionString, NullLogger<SQLiteKeywordSearchService>.Instance, CjkBigramTextAnalyzer.Instance, KeywordFieldOptions.None);
+        const int window = 200;
+        int[] checkpoints = [500, 2_000, 6_000];
+        var random = new Random(11);
+        var syllables = Enumerable.Range(0, 60).Select(i => (char)(0xAC00 + i * 28)).ToArray();
+
+        string Body() => string.Join(' ', Enumerable.Range(0, 40).Select(_ =>
+            new string(Enumerable.Range(0, 2 + random.Next(4))
+                .Select(_ => syllables[(int)(syllables.Length * Math.Pow(random.NextDouble(), 3))]).ToArray())));
+
+        var perDocument = new Dictionary<int, double>();
+        var windowElapsed = TimeSpan.Zero;
+        for (var i = 1; i <= checkpoints[^1]; i++)
+        {
+            var chunk = DocumentChunk.Create("doc-" + i, Body(), 0, 1);
+            chunk.Id = "c" + i;
+            var started = System.Diagnostics.Stopwatch.GetTimestamp();
+            await service.IndexChunkAsync(chunk, ct);
+            var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(started);
+
+            var checkpoint = checkpoints.FirstOrDefault(c => i > c - window && i <= c);
+            if (checkpoint == 0)
+                continue;
+            windowElapsed += elapsed;
+            if (i == checkpoint)
+            {
+                perDocument[checkpoint] = windowElapsed.TotalMilliseconds / window;
+                windowElapsed = TimeSpan.Zero;
+            }
+        }
+
+        var report = (onFile ? "WAL file: " : "in memory: ")
+            + string.Join(", ", perDocument.Select(p => $"{p.Key}: {p.Value:F2} ms/doc"));
+        TestContext.Current.TestOutputHelper?.WriteLine(report);
+        perDocument[6_000].Should().BeLessThan(perDocument[500] * maxGrowth, $"per-document cost must not grow with the index ({report})");
+    }
+
     private static async Task<List<string>> PlanAsync(string path, string sql, CancellationToken ct)
     {
         await using var connection = new SqliteConnection($"Data Source={path}");

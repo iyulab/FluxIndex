@@ -110,6 +110,98 @@ public sealed class PostgresKeywordSearchConcurrencyTests : IAsyncLifetime
         (await CountAsync("SELECT COUNT(*) FROM bm25_terms")).Should().Be(0);
     }
 
+    [Fact]
+    public async Task Concurrent_writes_of_the_same_chunk_leave_document_frequency_equal_to_a_recount()
+    {
+        // Document frequency moves by what each transaction deleted and wrote. Two transactions writing the same
+        // chunk id at once must not both count the rows the earlier one replaced, nor miss the rows the earlier
+        // one committed: the delta is taken from the rows each DELETE actually removed.
+        var ct = TestContext.Current.CancellationToken;
+        using var first = new PostgresKeywordSearchService(_container.GetConnectionString(), _logger);
+        using var second = new PostgresKeywordSearchService(_container.GetConnectionString(), _logger);
+        // Initialized one after the other: this fact is about concurrent writes, not concurrent schema creation.
+        await first.EnsureSchemaAsync(ct);
+        await second.EnsureSchemaAsync(ct);
+        var random = new Random(3);
+
+        string Words(int from, int count) => string.Join(' ', Vocabulary.Skip(from).Take(count));
+        DocumentChunk Chunk(string id, string content)
+        {
+            var chunk = DocumentChunk.Create("doc-" + id, content, 0, 1);
+            chunk.Id = id;
+            return chunk;
+        }
+
+        async Task RaceAsync(Func<Task> left, Func<Task> right)
+        {
+            using var start = new SemaphoreSlim(0, 2);
+            var tasks = new[] { left, right }.Select(write => Task.Run(async () =>
+            {
+                await start.WaitAsync(ct);
+                await write();
+            }, ct)).ToArray();
+            start.Release(2);
+            await Task.WhenAll(tasks);
+        }
+
+        await _service.IndexChunksAsync([Chunk("bystander", Words(0, 120))], ct);
+
+        for (var round = 0; round < 20; round++)
+        {
+            var id = $"shared-{round % 4}";
+
+            // Overlapping terms: both replace the chunk, sharing part of the vocabulary.
+            var offset = random.Next(0, 100);
+            await RaceAsync(
+                () => first.IndexChunkAsync(Chunk(id, Words(offset, 150)), ct),
+                () => second.IndexChunkAsync(Chunk(id, Words(offset + 75, 150)), ct));
+
+            // A chunk id neither has seen, written with disjoint terms.
+            await RaceAsync(
+                () => first.IndexChunkAsync(Chunk($"fresh-{round}", Words(0, 40)), ct),
+                () => second.IndexChunkAsync(Chunk($"fresh-{round}", Words(200, 40)), ct));
+
+            // Both delete the same chunk; then both bring it back.
+            if (round % 5 == 4)
+            {
+                await RaceAsync(() => first.DeleteChunkAsync(id, ct), () => second.DeleteChunkAsync(id, ct));
+                await RaceAsync(
+                    () => first.IndexChunkAsync(Chunk(id, Words(10, 60)), ct),
+                    () => second.IndexChunkAsync(Chunk(id, Words(40, 60)), ct));
+            }
+        }
+
+        var mismatches = await MismatchedDocumentFrequenciesAsync();
+        mismatches.Should().BeEmpty("the maintained document frequency must equal the count of chunks holding the term");
+        (await CountAsync("SELECT COUNT(*) FROM bm25_terms")).Should().BeGreaterThan(0);
+
+        // And the repair path agrees with both.
+        var vocabulary = Vocabulary.ToList();
+        var maintained = await _service.GetDocumentFrequenciesAsync(vocabulary, ct);
+        await _service.OptimizeIndexAsync(ct);
+        (await _service.GetDocumentFrequenciesAsync(vocabulary, ct)).Should().BeEquivalentTo(maintained);
+    }
+
+    /// <summary>Terms whose stored document frequency differs from the distinct chunks holding them, or that no chunk holds.</summary>
+    private async Task<List<string>> MismatchedDocumentFrequenciesAsync()
+    {
+        await using var connection = new NpgsqlConnection(_container.GetConnectionString());
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
+        await using var command = new NpgsqlCommand("""
+            SELECT t.term, t.document_frequency, COUNT(DISTINCT c.chunk_id)
+            FROM bm25_terms t
+            LEFT JOIN (SELECT term_id, chunk_id FROM bm25_postings
+                       UNION SELECT term_id, chunk_id FROM bm25_field_postings) c ON c.term_id = t.id
+            GROUP BY t.id, t.term, t.document_frequency
+            HAVING t.document_frequency <> COUNT(DISTINCT c.chunk_id) OR COUNT(DISTINCT c.chunk_id) = 0
+            """, connection);
+        var mismatches = new List<string>();
+        await using var reader = await command.ExecuteReaderAsync(TestContext.Current.CancellationToken);
+        while (await reader.ReadAsync(TestContext.Current.CancellationToken))
+            mismatches.Add($"{reader.GetString(0)}: stored {reader.GetInt32(1)}, chunks {reader.GetInt64(2)}");
+        return mismatches;
+    }
+
     private sealed class RetryCountingLogger : ILogger<PostgresKeywordSearchService>
     {
         private int _retries;

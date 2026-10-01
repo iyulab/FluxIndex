@@ -5,6 +5,21 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.67.0] - Unreleased
+
+### Fixed
+- **Indexing one document per transaction no longer slows down as the keyword index grows.** Document frequency is
+  updated from the rows each write actually deleted and wrote (`DELETE ... RETURNING`), instead of recounting every
+  touched term's postings — a commit used to cost time in proportion to the corpus for every common term. Measured
+  (SQLite, CJK bigrams, one transaction per document, 500 -> 6,000 documents): the document-frequency step went from
+  0.37 -> 2.94 ms to 0.27 -> 0.38 ms per document. Correct under concurrent writers of the same chunk on PostgreSQL.
+
+### Changed
+- **`OptimizeIndexAsync` also recounts document frequency from the posting rows** — the repair path for the
+  incrementally maintained counts; it retries on lock conflicts. On PostgreSQL it locks all term rows while it runs.
+- **The first open of a keyword index written by an earlier release, or under a different set of keyword fields,
+  recounts document frequency once** (time in proportion to the index size; logged).
+
 ## [0.66.1] - 2026-10-01
 
 ### Changed

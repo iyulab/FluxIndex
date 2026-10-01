@@ -266,6 +266,100 @@ public abstract class KeywordSearchFieldContractSuite
         Assert.Equal(plain.Select(r => r.Score), fielded.Select(r => r.Score));
     }
 
+    public static TheoryData<string> FieldConfigurations => ["default", "none", "title"];
+
+    private static KeywordFieldOptions? FieldsFor(string configuration) => configuration switch
+    {
+        "none" => KeywordFieldOptions.None,
+        "title" => new KeywordFieldOptions { Fields = [new KeywordField("title")] },
+        _ => null,
+    };
+
+    [Theory]
+    [MemberData(nameof(FieldConfigurations))]
+    public async Task MaintainedDocumentFrequency_EqualsAFullRecount_AfterEveryKindOfWrite(string configuration)
+    {
+        // Document frequency is moved by what each write deleted and wrote. After every step below the
+        // maintained value of every term ever written must equal what a recount from the posting rows
+        // produces (OptimizeIndexAsync), whatever fields are configured.
+        var ct = TestContext.Current.CancellationToken;
+        var service = await CreateServiceAsync(FieldsFor(configuration));
+        var vocabulary = new HashSet<string>(StringComparer.Ordinal);
+
+        DocumentChunk Track(DocumentChunk chunk)
+        {
+            vocabulary.UnionWith(service.Tokenize(chunk.Content));
+            foreach (var value in chunk.Metadata?.Values.AsEnumerable() ?? [])
+                vocabulary.UnionWith(service.Tokenize(value?.ToString() ?? string.Empty));
+            return chunk;
+        }
+
+        async Task AssertMatchesRecountAsync(string step)
+        {
+            var maintained = await service.GetDocumentFrequenciesAsync(vocabulary, ct);
+            await service.OptimizeIndexAsync(ct);
+            var recounted = await service.GetDocumentFrequenciesAsync(vocabulary, ct);
+            Assert.True(
+                recounted.OrderBy(p => p.Key, StringComparer.Ordinal).SequenceEqual(maintained.OrderBy(p => p.Key, StringComparer.Ordinal)),
+                $"after {step}: " + string.Join(", ", recounted
+                    .Where(p => maintained[p.Key] != p.Value)
+                    .Select(p => $"{p.Key} maintained {maintained[p.Key]} recounted {p.Value}")));
+        }
+
+        // A batch: body and field terms overlapping, the same chunk id twice (the later write wins), and a chunk
+        // whose body has no terms, so its title is never indexed.
+        await service.IndexChunksAsync([
+            Track(ChunkOf("doc-a", "a1", "river delta survey", ("title", "river survey"), ("file_name", "delta.txt"))),
+            Track(ChunkOf("doc-a", "a2", "harbor river crane")),
+            Track(ChunkOf("doc-a", "a2", "harbor dredge", ("title", "crane log"))),
+            Track(ChunkOf("doc-b", "b1", "crane river ledger", ("title", "ledger"))),
+            Track(ChunkOf("doc-b", "b2", "silt ledger survey", ("file_name", "silt.md"))),
+            Track(ChunkOf("doc-b", "b3", "ledger survey", ("title", "survey notes"))),
+            Track(ChunkOf("doc-c", "c1", "--- !!!", ("title", "phantom"))),
+            Track(ChunkOf("doc-c", "c2", "phantom river")),
+        ], ct);
+        await AssertMatchesRecountAsync("the first batch");
+
+        // Replace one chunk: some terms kept, some dropped, some new, one moving from the title to the body.
+        await service.IndexChunkAsync(Track(ChunkOf("doc-a", "a1", "river survey estuary", ("title", "delta estuary"))), ct);
+        await AssertMatchesRecountAsync("a single-chunk replace");
+
+        // Re-index a chunk to content with no terms: every term it held loses it.
+        await service.IndexChunkAsync(Track(ChunkOf("doc-b", "b2", "... ???", ("title", "silt"))), ct);
+        await AssertMatchesRecountAsync("a re-index to no terms");
+
+        // Replace a document: one chunk rewritten, one stale chunk removed, one new chunk.
+        await service.ReplaceDocumentsAsync(["doc-a"], [
+            Track(ChunkOf("doc-a", "a1", "estuary dredge", ("title", "river"))),
+            Track(ChunkOf("doc-a", "a3", "harbor crane river", ("file_name", "harbor.pdf"))),
+        ], ct);
+        await AssertMatchesRecountAsync("a document replace");
+
+        // Move a document under new ids with a changed title.
+        vocabulary.UnionWith(service.Tokenize("ledger archive"));
+        await service.ReassignDocumentAsync(
+            "doc-b",
+            "doc-d",
+            new Dictionary<string, string> { ["b1"] = "d1", ["b2"] = "d2", ["b3"] = "d3" },
+            new Dictionary<string, object?> { ["title"] = "ledger archive" },
+            ct);
+        await AssertMatchesRecountAsync("a reassignment");
+
+        await service.DeleteChunkAsync("a3", ct);
+        await service.DeleteByDocumentIdAsync("doc-c", ct);
+        await AssertMatchesRecountAsync("deletions");
+
+        // The control: concrete counts, so a store that maintained and recounted nothing could not pass.
+        // a1 holds "river" in its title only and d1 in its body; "archive" is only ever in the titles of d1 and d3.
+        var final = await service.GetDocumentFrequenciesAsync(["river", "crane", "ledger", "archive", "phantom"], ct);
+        var titled = configuration != "none";
+        Assert.Equal(titled ? 2 : 1, final["river"]);
+        Assert.Equal(1, final["crane"]);
+        Assert.Equal(2, final["ledger"]);
+        Assert.Equal(titled ? 2 : 0, final["archive"]);
+        Assert.Equal(0, final["phantom"]);
+    }
+
     [Fact]
     public async Task AHeavierFieldWeight_RanksTheTitleMatchAboveABodyMatch()
     {

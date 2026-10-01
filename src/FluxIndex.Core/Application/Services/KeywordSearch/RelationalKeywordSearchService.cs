@@ -57,7 +57,21 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         Logger = logger ?? throw new ArgumentNullException(nameof(logger));
         Analyzer = analyzer ?? DefaultTextAnalyzer.Instance;
         Fields = fields ?? new KeywordFieldOptions();
+        _configuredFields = new HashSet<string>(Fields.Fields.Select(f => f.MetadataKey), StringComparer.Ordinal);
+        _documentFrequencyFieldsKey = DocumentFrequencyFieldsKeyPrefix
+            + JsonSerializer.Serialize(_configuredFields.Order(StringComparer.Ordinal).ToArray());
     }
+
+    /// <summary>The metadata keys of <see cref="Fields"/>: the field rows that count toward document frequency.</summary>
+    private readonly HashSet<string> _configuredFields;
+
+    /// <summary>
+    /// The statistics key recording which field set the stored document frequencies count. Document frequency is
+    /// maintained by deltas, so a store opened under a different field set has to be recounted once.
+    /// </summary>
+    private readonly string _documentFrequencyFieldsKey;
+
+    private const string DocumentFrequencyFieldsKeyPrefix = "df_fields:";
 
     #region Dialect surface
 
@@ -136,10 +150,15 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
 
             await OnInitializingAsync(cancellationToken).ConfigureAwait(false);
 
-            await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-            await using var command = connection.CreateCommand();
-            command.CommandText = SchemaDdl;
-            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            await using (var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false))
+            await using (var command = connection.CreateCommand())
+            {
+                command.CommandText = SchemaDdl;
+                await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            await RunWithConcurrencyRetryAsync(
+                () => ReconcileDocumentFrequencyFieldsAsync(cancellationToken), cancellationToken).ConfigureAwait(false);
 
             _initialized = true;
             LogServiceInitialized(Logger, BackendName);
@@ -719,13 +738,14 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         {
             var affectedTermIds = new HashSet<long>();
             var statistics = new StatisticsDelta();
+            var frequencies = new DocumentFrequencyDelta();
 
             // Every term row this transaction will touch is acquired HERE, in one globally sorted
             // pass, before any chunk is written. See TermAcquisitionOrder for why the sort is the
             // fix; doing it per chunk would not be enough, because the transaction spans the batch
             // and two transactions could still interleave between chunks.
             // Terms the replaced chunks held are written too - their document frequency drops - so they
-            // are acquired in the same pass rather than left for the recompute to lock in executor order.
+            // are acquired in the same pass rather than left for the frequency update to lock in executor order.
             // Chunks of a replaced document that this batch does not write again are removed in the same transaction.
             var written = new HashSet<string>(tokenized.Select(t => t.Chunk.Id), StringComparer.Ordinal);
             var stale = new List<string>();
@@ -750,16 +770,16 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             foreach (var id in termIds.Values)
                 affectedTermIds.Add(id);
 
-            await DeleteChunkRowsAsync(connection, stale, affectedTermIds, statistics, cancellationToken).ConfigureAwait(false);
+            await DeleteChunkRowsAsync(connection, stale, affectedTermIds, statistics, frequencies, cancellationToken).ConfigureAwait(false);
 
             var indexedChunks = 0;
             foreach (var (chunk, terms, fieldTerms) in tokenized)
             {
-                if (await IndexChunkCoreAsync(connection, chunk, terms, fieldTerms, termIds, affectedTermIds, statistics, cancellationToken).ConfigureAwait(false))
+                if (await IndexChunkCoreAsync(connection, chunk, terms, fieldTerms, termIds, affectedTermIds, statistics, frequencies, cancellationToken).ConfigureAwait(false))
                     indexedChunks++;
             }
 
-            await RecomputeDocumentFrequenciesAsync(connection, affectedTermIds, cancellationToken).ConfigureAwait(false);
+            await ApplyDocumentFrequencyDeltaAsync(connection, frequencies, affectedTermIds, cancellationToken).ConfigureAwait(false);
             await ApplyStatisticsDeltaAsync(connection, statistics, cancellationToken).ConfigureAwait(false);
 
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
@@ -853,34 +873,19 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         Dictionary<string, long> termIds,
         HashSet<long> affectedTermIds,
         StatisticsDelta statistics,
+        DocumentFrequencyDelta frequencies,
         CancellationToken cancellationToken)
     {
-        // Terms that lose a posting when this chunk is replaced still need their df recomputed.
-        await CollectTermIdsForChunkAsync(connection, chunk.Id, affectedTermIds, cancellationToken).ConfigureAwait(false);
-        await SubtractStoredLengthsAsync(connection, chunk.Id, statistics, cancellationToken).ConfigureAwait(false);
-
         // The previous rows go whatever the new content is. Returning before this when the new content
         // analyzes to no terms left the old postings in place, so text the chunk no longer holds kept
         // matching.
-        await using (var deleteCmd = connection.CreateCommand())
-        {
-            deleteCmd.CommandText = terms.Count == 0
-                ? """
-                  DELETE FROM bm25_postings WHERE chunk_id = @chunkId;
-                  DELETE FROM bm25_field_postings WHERE chunk_id = @chunkId;
-                  DELETE FROM bm25_chunk_metadata WHERE chunk_id = @chunkId;
-                  DELETE FROM bm25_chunks WHERE chunk_id = @chunkId;
-                  """
-                : """
-                  DELETE FROM bm25_postings WHERE chunk_id = @chunkId;
-                  DELETE FROM bm25_field_postings WHERE chunk_id = @chunkId;
-                  """;
-            AddParameter(deleteCmd, "@chunkId", chunk.Id);
-            await deleteCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-        }
+        await DeletePostingsAsync(connection, chunk.Id, affectedTermIds, statistics, frequencies, cancellationToken).ConfigureAwait(false);
 
         if (terms.Count == 0)
+        {
+            await DeleteChunkPayloadAsync(connection, chunk.Id, cancellationToken).ConfigureAwait(false);
             return false;
+        }
 
         statistics.AddDocument(terms.Count);
 
@@ -913,6 +918,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             var termId = termIds[NormalizeTerm(term)];
 
             affectedTermIds.Add(termId);
+            frequencies.Written(termId, chunk.Id);
 
             await using var postingCmd = connection.CreateCommand();
             postingCmd.CommandText = UpsertPostingSql;
@@ -935,6 +941,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             {
                 var termId = termIds[NormalizeTerm(term)];
                 affectedTermIds.Add(termId);
+                frequencies.Written(termId, chunk.Id);
 
                 await using var fieldCmd = connection.CreateCommand();
                 fieldCmd.CommandText = UpsertFieldPostingSql;
@@ -1208,17 +1215,18 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
                 cancellationToken).ConfigureAwait(false);
             var affectedTermIds = new HashSet<long>(termIds.Values);
             var statistics = new StatisticsDelta();
+            var frequencies = new DocumentFrequencyDelta();
 
-            await DeleteChunkRowsAsync(connection, oldIds, affectedTermIds, statistics, cancellationToken).ConfigureAwait(false);
+            await DeleteChunkRowsAsync(connection, oldIds, affectedTermIds, statistics, frequencies, cancellationToken).ConfigureAwait(false);
 
             var reindexed = 0;
             foreach (var (chunk, terms, fieldTerms) in tokenized)
             {
-                if (await IndexChunkCoreAsync(connection, chunk, terms, fieldTerms, termIds, affectedTermIds, statistics, cancellationToken).ConfigureAwait(false))
+                if (await IndexChunkCoreAsync(connection, chunk, terms, fieldTerms, termIds, affectedTermIds, statistics, frequencies, cancellationToken).ConfigureAwait(false))
                     reindexed++;
             }
 
-            await RecomputeDocumentFrequenciesAsync(connection, affectedTermIds, cancellationToken).ConfigureAwait(false);
+            await ApplyDocumentFrequencyDeltaAsync(connection, frequencies, affectedTermIds, cancellationToken).ConfigureAwait(false);
             await ApplyStatisticsDeltaAsync(connection, statistics, cancellationToken).ConfigureAwait(false);
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
 
@@ -1301,18 +1309,19 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         try
         {
             // Deletion rewrites the document frequency of every term the chunks held, so it takes those
-            // rows exactly the way indexing does: all of them, first, in TermAcquisitionOrder. The
-            // recompute used to lock them in whatever order the executor chose, which is a cycle against
-            // any indexing transaction sharing vocabulary.
+            // rows exactly the way indexing does: all of them, first, in TermAcquisitionOrder. Updating
+            // them in whatever order the executor chose is a cycle against any indexing transaction
+            // sharing vocabulary.
             var storedTerms = await ReadStoredTermsAsync(connection, chunkIds, cancellationToken).ConfigureAwait(false);
             var termIds = await AcquireTermIdsAsync(
                 connection, TermAcquisitionOrder([storedTerms]), cancellationToken).ConfigureAwait(false);
             var affectedTermIds = new HashSet<long>(termIds.Values);
             var statistics = new StatisticsDelta();
+            var frequencies = new DocumentFrequencyDelta();
 
-            await DeleteChunkRowsAsync(connection, chunkIds, affectedTermIds, statistics, cancellationToken).ConfigureAwait(false);
+            await DeleteChunkRowsAsync(connection, chunkIds, affectedTermIds, statistics, frequencies, cancellationToken).ConfigureAwait(false);
 
-            await RecomputeDocumentFrequenciesAsync(connection, affectedTermIds, cancellationToken).ConfigureAwait(false);
+            await ApplyDocumentFrequencyDeltaAsync(connection, frequencies, affectedTermIds, cancellationToken).ConfigureAwait(false);
             await ApplyStatisticsDeltaAsync(connection, statistics, cancellationToken).ConfigureAwait(false);
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
 
@@ -1329,31 +1338,97 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     }
 
     /// <summary>
-    /// Deletes the rows of <paramref name="chunkIds"/> on the open transaction, recording the terms whose document
-    /// frequency changes and the lengths the statistics lose. The caller has already acquired those term rows.
+    /// Deletes the rows of <paramref name="chunkIds"/> on the open transaction, recording the postings removed and
+    /// the lengths the statistics lose. The caller has already acquired the term rows those chunks held.
     /// </summary>
-    private static async Task DeleteChunkRowsAsync(
+    private async Task DeleteChunkRowsAsync(
         DbConnection connection,
         IEnumerable<string> chunkIds,
         HashSet<long> affectedTermIds,
         StatisticsDelta statistics,
+        DocumentFrequencyDelta frequencies,
         CancellationToken cancellationToken)
     {
         foreach (var chunkId in chunkIds)
         {
-            await CollectTermIdsForChunkAsync(connection, chunkId, affectedTermIds, cancellationToken).ConfigureAwait(false);
-            await SubtractStoredLengthsAsync(connection, chunkId, statistics, cancellationToken).ConfigureAwait(false);
-
-            await using var deleteCmd = connection.CreateCommand();
-            deleteCmd.CommandText = """
-                DELETE FROM bm25_postings WHERE chunk_id = @chunkId;
-                DELETE FROM bm25_field_postings WHERE chunk_id = @chunkId;
-                DELETE FROM bm25_chunk_metadata WHERE chunk_id = @chunkId;
-                DELETE FROM bm25_chunks WHERE chunk_id = @chunkId;
-                """;
-            AddParameter(deleteCmd, "@chunkId", chunkId);
-            await deleteCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            await DeletePostingsAsync(connection, chunkId, affectedTermIds, statistics, frequencies, cancellationToken).ConfigureAwait(false);
+            await DeleteChunkPayloadAsync(connection, chunkId, cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// Deletes a chunk's body and field postings, recording what the deletion actually removed: each
+    /// (term, chunk) pair for document frequency, the term ids for the zero-frequency cleanup, and the
+    /// stored lengths for the statistics.
+    /// </summary>
+    /// <remarks>
+    /// The removed rows come from the deletion itself (<c>DELETE … RETURNING</c>), not from a read before it. Under
+    /// concurrent writers of the same chunk a prior read can see rows another transaction is about to delete, or miss
+    /// rows it has just committed; the rows a <c>DELETE</c> reports are the ones it removed once it held their locks,
+    /// so the delta built from them is exact.
+    /// </remarks>
+    private async Task DeletePostingsAsync(
+        DbConnection connection,
+        string chunkId,
+        HashSet<long> affectedTermIds,
+        StatisticsDelta statistics,
+        DocumentFrequencyDelta frequencies,
+        CancellationToken cancellationToken)
+    {
+        long? documentLength = null;
+        await using (var bodyCmd = connection.CreateCommand())
+        {
+            bodyCmd.CommandText = "DELETE FROM bm25_postings WHERE chunk_id = @chunkId RETURNING term_id, document_length";
+            AddParameter(bodyCmd, "@chunkId", chunkId);
+            await using var reader = await bodyCmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                var termId = reader.GetInt64(0);
+                affectedTermIds.Add(termId);
+                frequencies.Removed(termId, chunkId);
+                var length = Convert.ToInt64(reader.GetValue(1), CultureInfo.InvariantCulture);
+                documentLength = documentLength is null ? length : Math.Max(documentLength.Value, length);
+            }
+        }
+
+        if (documentLength is not null)
+            statistics.RemoveDocument(documentLength.Value);
+
+        // Field rows count toward document frequency only for the fields configured now, the same rows the full
+        // recount reads. Rows left behind by a field dropped from the configuration are deleted all the same, and
+        // still take their lengths out of that field's statistics.
+        var fieldLengths = new SortedDictionary<string, long>(StringComparer.Ordinal);
+        await using (var fieldCmd = connection.CreateCommand())
+        {
+            fieldCmd.CommandText = "DELETE FROM bm25_field_postings WHERE chunk_id = @chunkId RETURNING term_id, field, field_length";
+            AddParameter(fieldCmd, "@chunkId", chunkId);
+            await using var reader = await fieldCmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                var termId = reader.GetInt64(0);
+                var field = reader.GetString(1);
+                affectedTermIds.Add(termId);
+                if (_configuredFields.Contains(field))
+                    frequencies.Removed(termId, chunkId);
+                var length = Convert.ToInt64(reader.GetValue(2), CultureInfo.InvariantCulture);
+                fieldLengths[field] = fieldLengths.TryGetValue(field, out var current) ? Math.Max(current, length) : length;
+            }
+        }
+
+        foreach (var (field, length) in fieldLengths)
+            statistics.RemoveField(field, length);
+    }
+
+    /// <summary>Deletes a chunk's payload row and its filterable metadata rows.</summary>
+    private static async Task DeleteChunkPayloadAsync(DbConnection connection, string chunkId, CancellationToken cancellationToken)
+    {
+        await using var deleteCmd = connection.CreateCommand();
+        deleteCmd.CommandText = """
+            DELETE FROM bm25_chunk_metadata WHERE chunk_id = @chunkId;
+            DELETE FROM bm25_chunks WHERE chunk_id = @chunkId;
+            """;
+        AddParameter(deleteCmd, "@chunkId", chunkId);
+        await deleteCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -1390,56 +1465,97 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         return terms;
     }
 
-    private static async Task CollectTermIdsForChunkAsync(
-        DbConnection connection,
-        string chunkId,
-        HashSet<long> affectedTermIds,
-        CancellationToken cancellationToken)
+    /// <summary>
+    /// What one write transaction changes about document frequency: for every (term, chunk) pair it deleted or
+    /// wrote, whether the chunk held the term before the transaction and whether it holds it now.
+    /// </summary>
+    /// <remarks>
+    /// Document frequency counts distinct chunks that hold a term in the body or in a configured field, so the
+    /// unit is the pair, not the posting row: a chunk with the term in its body and two fields is one document.
+    /// A pair first seen as deleted existed before the transaction (every write deletes a chunk's rows before it
+    /// writes them); a pair first seen as written did not. A chunk replaced with a term it already held nets to
+    /// zero, one that lost the term to minus one, one that gained it to plus one - also when the same chunk is
+    /// written more than once in a transaction.
+    /// </remarks>
+    private sealed class DocumentFrequencyDelta
     {
-        await using var command = connection.CreateCommand();
-        command.CommandText =
-            "SELECT term_id FROM bm25_postings WHERE chunk_id = @chunkId " +
-            "UNION SELECT term_id FROM bm25_field_postings WHERE chunk_id = @chunkId";
-        AddParameter(command, "@chunkId", chunkId);
+        private readonly Dictionary<(long TermId, string ChunkId), (bool Before, bool After)> _pairs = [];
 
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        public void Removed(long termId, string chunkId)
         {
-            affectedTermIds.Add(reader.GetInt64(0));
+            var key = (termId, chunkId);
+            _pairs[key] = _pairs.TryGetValue(key, out var state) ? (state.Before, false) : (true, false);
+        }
+
+        public void Written(long termId, string chunkId)
+        {
+            var key = (termId, chunkId);
+            _pairs[key] = _pairs.TryGetValue(key, out var state) ? (state.Before, true) : (false, true);
+        }
+
+        /// <summary>The terms whose document frequency moves, grouped by how much it moves.</summary>
+        public SortedDictionary<int, HashSet<long>> TermsByChange()
+        {
+            var perTerm = new Dictionary<long, int>();
+            foreach (var ((termId, _), (before, after)) in _pairs)
+            {
+                var change = (after ? 1 : 0) - (before ? 1 : 0);
+                if (change != 0)
+                    perTerm[termId] = perTerm.GetValueOrDefault(termId) + change;
+            }
+
+            var grouped = new SortedDictionary<int, HashSet<long>>();
+            foreach (var (termId, change) in perTerm)
+            {
+                if (change == 0)
+                    continue;
+                if (!grouped.TryGetValue(change, out var termIds))
+                    grouped[change] = termIds = [];
+                termIds.Add(termId);
+            }
+
+            return grouped;
         }
     }
 
     /// <summary>
-    /// Derives document frequency from the postings rather than incrementing and decrementing it.
-    /// Counter arithmetic drifts the moment a chunk is indexed twice — the value here is always a
-    /// function of the postings that actually exist.
+    /// Moves document frequency by what the transaction changed, then removes the term rows it touched that no
+    /// chunk holds any more.
     /// </summary>
-    private async Task RecomputeDocumentFrequenciesAsync(
+    /// <remarks>
+    /// Document frequency used to be rederived on every write by counting each touched term's postings. A common
+    /// term has postings in a share of every chunk, so a write cost the size of the index and indexing a corpus one
+    /// document at a time cost its square. The delta costs what the transaction wrote. The full recount
+    /// (<see cref="BuildDocumentFrequencyUpdateSql"/>) remains the repair path: <see cref="OptimizeIndexAsync"/>
+    /// runs it, and so does the first open under a different field set.
+    /// </remarks>
+    private async Task ApplyDocumentFrequencyDeltaAsync(
         DbConnection connection,
-        HashSet<long> termIds,
+        DocumentFrequencyDelta frequencies,
+        HashSet<long> affectedTermIds,
         CancellationToken cancellationToken)
     {
-        if (termIds.Count == 0)
-            return;
-
-        foreach (var batch in Batch(termIds, TermIdBatchSize))
+        // One statement per distinct change rather than per term: a write moves most of its terms by the
+        // same amount (+1 for a new chunk, -1 for a deleted one).
+        foreach (var (change, termIds) in frequencies.TermsByChange())
         {
-            await using var updateCmd = connection.CreateCommand();
-            var predicate = BuildTermIdPredicate(updateCmd, "bm25_terms.id", batch);
-            // A chunk that holds the term in its body and in a field is one document for IDF: the
-            // count is over distinct chunks across both posting relations, never a sum of rows. Only
-            // the fields currently configured count — the same rows the query reads — so rows left
-            // behind by a field dropped from the configuration cannot inflate IDF until the chunk is
-            // re-indexed.
-            updateCmd.CommandText = BuildDocumentFrequencyUpdateSql(
-                Fields.Fields.Count == 0 ? null : BuildFieldPredicate(updateCmd, "f.field"),
-                predicate);
-            await updateCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            foreach (var batch in Batch(termIds, TermIdBatchSize))
+            {
+                await using var updateCmd = connection.CreateCommand();
+                var predicate = BuildTermIdPredicate(updateCmd, "bm25_terms.id", batch);
+                updateCmd.CommandText = $"UPDATE bm25_terms SET document_frequency = document_frequency + @change WHERE {predicate}";
+                AddParameter(updateCmd, "@change", change);
+                await updateCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
         }
 
-        // Scoped to the rows this transaction recomputed. The unscoped form scanned every term on every
-        // write and could wait on rows other transactions hold for reasons unrelated to this one.
-        foreach (var batch in Batch(termIds, TermIdBatchSize))
+        if (affectedTermIds.Count == 0)
+            return;
+
+        // Scoped to the rows this transaction touched, including terms it acquired but wrote no posting for.
+        // The unscoped form scanned every term on every write and could wait on rows other transactions hold
+        // for reasons unrelated to this one.
+        foreach (var batch in Batch(affectedTermIds, TermIdBatchSize))
         {
             await using var cleanupCmd = connection.CreateCommand();
             var predicate = BuildTermIdPredicate(cleanupCmd, "bm25_terms.id", batch);
@@ -1449,8 +1565,99 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     }
 
     /// <summary>
-    /// The statement that rederives document frequency for the terms <paramref name="termPredicate"/>
-    /// selects.
+    /// Rederives every term's document frequency from the posting rows, removes the terms no chunk holds, and
+    /// records the field set the counts were taken under. Costs the size of the index.
+    /// </summary>
+    private async Task RecountDocumentFrequenciesAsync(DbConnection connection, CancellationToken cancellationToken)
+    {
+        await using (var updateCmd = connection.CreateCommand())
+        {
+            // A chunk that holds the term in its body and in a field is one document for IDF: the count is over
+            // distinct chunks across both posting relations, never a sum of rows. Only the fields currently
+            // configured count - the same rows the query reads.
+            updateCmd.CommandText = BuildDocumentFrequencyUpdateSql(
+                Fields.Fields.Count == 0 ? null : BuildFieldPredicate(updateCmd, "f.field"),
+                "1 = 1");
+            await updateCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await using (var cleanupCmd = connection.CreateCommand())
+        {
+            cleanupCmd.CommandText = "DELETE FROM bm25_terms WHERE document_frequency <= 0";
+            await cleanupCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await WriteDocumentFrequencyFieldsKeyAsync(connection, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Recounts document frequency once when the stored counts were taken under a different field set than the
+    /// one configured now - or the store does not say, as an index written by an earlier release does not.
+    /// </summary>
+    /// <remarks>
+    /// A delta counts a field row only if its field is configured, so it is exact only against counts taken under
+    /// the same configuration. A store indexed with the title field and opened without it would otherwise keep
+    /// counting title-only chunks for as long as the terms live.
+    /// </remarks>
+    private async Task ReconcileDocumentFrequencyFieldsAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        var stored = await ReadDocumentFrequencyFieldsKeysAsync(connection, cancellationToken).ConfigureAwait(false);
+        if (stored.Count == 1 && string.Equals(stored[0], _documentFrequencyFieldsKey, StringComparison.Ordinal))
+            return;
+
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await RecountDocumentFrequenciesAsync(connection, cancellationToken).ConfigureAwait(false);
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            LogDocumentFrequenciesRecounted(Logger, BackendName);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    private static async Task<List<string>> ReadDocumentFrequencyFieldsKeysAsync(DbConnection connection, CancellationToken cancellationToken)
+    {
+        var keys = new List<string>();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT key FROM bm25_statistics WHERE key LIKE 'df%'";
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            var key = reader.GetString(0);
+            if (key.StartsWith(DocumentFrequencyFieldsKeyPrefix, StringComparison.Ordinal))
+                keys.Add(key);
+        }
+
+        return keys;
+    }
+
+    /// <summary>Replaces the recorded field set with the one configured now.</summary>
+    private async Task WriteDocumentFrequencyFieldsKeyAsync(DbConnection connection, CancellationToken cancellationToken)
+    {
+        foreach (var key in await ReadDocumentFrequencyFieldsKeysAsync(connection, cancellationToken).ConfigureAwait(false))
+        {
+            if (string.Equals(key, _documentFrequencyFieldsKey, StringComparison.Ordinal))
+                continue;
+
+            await using var deleteCmd = connection.CreateCommand();
+            deleteCmd.CommandText = "DELETE FROM bm25_statistics WHERE key = @key";
+            AddParameter(deleteCmd, "@key", key);
+            await deleteCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        await UpsertStatisticAsync(connection, _documentFrequencyFieldsKey, 1, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The statement that rederives document frequency from the posting rows for the terms
+    /// <paramref name="termPredicate"/> selects: the distinct chunks holding the term in the body or in a
+    /// configured field. Writes move the stored value by a delta of the same quantity; this is the recount
+    /// that repairs it.
     /// </summary>
     /// <remarks>
     /// Every subquery is correlated on <c>term_id</c> directly, the leading column of both posting
@@ -1521,6 +1728,10 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
             """;
         await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
 
+        // An empty index counts nothing under any field set; recording the current one keeps the next open from
+        // recounting it.
+        await WriteDocumentFrequencyFieldsKeyAsync(connection, cancellationToken).ConfigureAwait(false);
+
         LogIndexCleared(Logger);
     }
 
@@ -1586,25 +1797,19 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// The repair path for the counts every write maintains by deltas: document frequency and the corpus statistics
+    /// are rederived from the posting rows in one transaction, terms no chunk holds are removed, and the store is
+    /// then compacted where the backend supports it. Costs the size of the index.
+    /// </remarks>
     public async Task OptimizeIndexAsync(CancellationToken cancellationToken = default)
     {
         await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
 
+        await RunWithConcurrencyRetryAsync(
+            () => RecountOnceAsync(cancellationToken), cancellationToken).ConfigureAwait(false);
+
         await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-
-        await using (var cleanupCmd = connection.CreateCommand())
-        {
-            cleanupCmd.CommandText = "DELETE FROM bm25_terms WHERE document_frequency <= 0";
-            await cleanupCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-        }
-
-        // The statistics move by deltas on every write; this is where they are rederived from the rows.
-        await using (var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false))
-        {
-            await RecountStatisticsAsync(connection, cancellationToken).ConfigureAwait(false);
-            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-        }
-
         if (CompactSql is { Length: > 0 } compactSql)
         {
             await using var compactCmd = connection.CreateCommand();
@@ -1613,6 +1818,24 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         }
 
         LogIndexOptimized(Logger);
+    }
+
+    /// <summary>Attempts one recount transaction. Retried as a whole on a serialization failure.</summary>
+    private async Task RecountOnceAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await RecountDocumentFrequenciesAsync(connection, cancellationToken).ConfigureAwait(false);
+            await RecountStatisticsAsync(connection, cancellationToken).ConfigureAwait(false);
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            throw;
+        }
     }
 
     /// <inheritdoc />
@@ -1816,36 +2039,6 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         {
             Fields.TryGetValue(field, out var current);
             Fields[field] = (current.Documents + documents, current.Length + length);
-        }
-    }
-
-    /// <summary>
-    /// Takes the lengths the chunk's stored rows hold out of <paramref name="statistics"/>. Called
-    /// before those rows are deleted or replaced; a chunk with no rows changes nothing.
-    /// </summary>
-    private static async Task SubtractStoredLengthsAsync(
-        DbConnection connection,
-        string chunkId,
-        StatisticsDelta statistics,
-        CancellationToken cancellationToken)
-    {
-        await using (var bodyCmd = connection.CreateCommand())
-        {
-            bodyCmd.CommandText = "SELECT MAX(document_length) FROM bm25_postings WHERE chunk_id = @chunkId";
-            AddParameter(bodyCmd, "@chunkId", chunkId);
-            var stored = await bodyCmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-            if (stored is not null && stored != DBNull.Value)
-                statistics.RemoveDocument(Convert.ToInt64(stored, CultureInfo.InvariantCulture));
-        }
-
-        await using var fieldCmd = connection.CreateCommand();
-        fieldCmd.CommandText =
-            "SELECT field, MAX(field_length) FROM bm25_field_postings WHERE chunk_id = @chunkId GROUP BY field";
-        AddParameter(fieldCmd, "@chunkId", chunkId);
-        await using var reader = await fieldCmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-        {
-            statistics.RemoveField(reader.GetString(0), Convert.ToInt64(reader.GetValue(1), CultureInfo.InvariantCulture));
         }
     }
 
@@ -2055,6 +2248,9 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Keyword index cleared")]
     private static partial void LogIndexCleared(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Keyword index document frequencies recounted for the configured field set ({Backend})")]
+    private static partial void LogDocumentFrequenciesRecounted(ILogger logger, string backend);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Keyword index optimized")]
     private static partial void LogIndexOptimized(ILogger logger);
