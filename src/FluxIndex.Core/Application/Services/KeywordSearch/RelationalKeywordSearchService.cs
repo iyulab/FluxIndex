@@ -891,6 +891,8 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     /// writer sharing a new word waits for this short registration at most, never for the caller's transaction.
     /// A term row can be removed by another writer's zero-frequency cleanup between registration and the end of
     /// the caller's transaction; <see cref="LockTermRowsAsync"/> detects that and the transaction is retried.
+    /// The ids are read on the caller's transaction, which must see rows committed after it began (READ COMMITTED, the
+    /// default): under REPEATABLE READ the new rows would stay invisible and every attempt would be retried away.
     /// </remarks>
     private async Task<Dictionary<string, long>> AcquireTermIdsAsync(
         DbConnection connection,
