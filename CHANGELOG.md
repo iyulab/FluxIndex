@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.67.2] - Unreleased
+## [0.67.2] - 2026-10-01
 
 ### Fixed
 - **A large keyword write on PostgreSQL no longer times out maintaining document frequency.** Every term a write
