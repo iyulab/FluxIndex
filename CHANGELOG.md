@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.68.0] - Unreleased
+## [0.68.0] - 2026-10-01
 
 ### Added
 - **Search queries now reach the embedder in their own role, so an asymmetric embedding model can apply its query
