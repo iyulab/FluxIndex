@@ -42,7 +42,7 @@ public partial class SQLiteSemanticCache : ISemanticCache, IDisposable
         await CleanupExpiredIfNeededAsync(cancellationToken);
 
         // 쿼리 임베딩 생성
-        var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
+        var queryEmbedding = await _embeddingService.GenerateQueryEmbeddingAsync(query, cancellationToken);
 
         // 만료되지 않은 캐시 항목 조회
         var cacheEntries = await context.SemanticCache
@@ -112,7 +112,7 @@ public partial class SQLiteSemanticCache : ISemanticCache, IDisposable
     {
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         var queryHash = ComputeHash(query);
-        var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
+        var queryEmbedding = await _embeddingService.GenerateQueryEmbeddingAsync(query, cancellationToken);
         var expiresAt = DateTime.UtcNow + (expiry ?? _options.DefaultExpiry);
 
         // 기존 항목 확인
@@ -169,7 +169,7 @@ public partial class SQLiteSemanticCache : ISemanticCache, IDisposable
         CancellationToken cancellationToken = default)
     {
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
-        var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
+        var queryEmbedding = await _embeddingService.GenerateQueryEmbeddingAsync(query, cancellationToken);
 
         var cacheEntries = await context.SemanticCache
             .Where(c => c.ExpiresAt > DateTime.UtcNow)

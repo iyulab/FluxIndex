@@ -52,6 +52,23 @@ public abstract class EmbeddingServiceBase : IEmbeddingService
         return await EmbedCoreAsync(text, cancellationToken);
     }
 
+    /// <summary>
+    /// Embeds a search query. Called by <see cref="GenerateQueryEmbeddingAsync"/> after validation.
+    /// Default: <see cref="EmbedCoreAsync"/> (a symmetric model). Override to apply an asymmetric model's query
+    /// convention — together with its document convention in <see cref="EmbedCoreAsync"/>.
+    /// </summary>
+    protected virtual Task<float[]> EmbedQueryCoreAsync(string query, CancellationToken cancellationToken) =>
+        EmbedCoreAsync(query, cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<float[]> GenerateQueryEmbeddingAsync(string query, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            return [];
+
+        return await EmbedQueryCoreAsync(query, cancellationToken);
+    }
+
     /// <inheritdoc />
     /// <remarks>
     /// Default implementation processes texts sequentially.

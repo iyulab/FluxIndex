@@ -48,7 +48,7 @@ public partial class SearchService
             LogSearch9(_logger, query);
 
         // Generate embedding for query
-        var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
+        var queryEmbedding = await _embeddingService.GenerateQueryEmbeddingAsync(query, cancellationToken);
 
         // Search in vector store
         var searchResults = await _vectorStore.SearchAsync(queryEmbedding, topK, minScore, filters: null, cancellationToken);

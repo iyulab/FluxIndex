@@ -43,7 +43,7 @@ public partial class QdrantHybridSearchService : IHybridSearchService
         LogHybridSearch(_logger, query);
 
         // Execute vector and BM25 searches in parallel
-        var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
+        var queryEmbedding = await _embeddingService.GenerateQueryEmbeddingAsync(query, cancellationToken);
 
         // Both legs take the query's scope. Passing filters: null here meant that configuring Qdrant
         // for hybrid search silently dropped every metadata condition the caller set — the same

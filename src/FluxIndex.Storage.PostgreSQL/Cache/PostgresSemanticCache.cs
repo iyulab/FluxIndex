@@ -43,7 +43,7 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
         await CleanupExpiredIfNeededAsync(cancellationToken);
 
         // 쿼리 임베딩 생성
-        var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
+        var queryEmbedding = await _embeddingService.GenerateQueryEmbeddingAsync(query, cancellationToken);
         var queryVector = new Vector(queryEmbedding);
 
         // pgvector 코사인 유사도 검색 (1 - distance = similarity)
@@ -103,7 +103,7 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
     {
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         var queryHash = ComputeHash(query);
-        var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
+        var queryEmbedding = await _embeddingService.GenerateQueryEmbeddingAsync(query, cancellationToken);
         var expiresAt = DateTime.UtcNow + (expiry ?? _options.DefaultExpiry);
 
         // 기존 항목 확인
@@ -173,7 +173,7 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
         CancellationToken cancellationToken = default)
     {
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
-        var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
+        var queryEmbedding = await _embeddingService.GenerateQueryEmbeddingAsync(query, cancellationToken);
         var queryVector = new Vector(queryEmbedding);
 
         var results = await context.SemanticCache

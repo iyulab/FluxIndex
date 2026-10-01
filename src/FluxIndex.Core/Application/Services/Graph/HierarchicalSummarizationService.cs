@@ -160,7 +160,7 @@ public partial class HierarchicalSummarizationService : IHierarchicalSummarizati
         EmbeddingVector? queryEmbedding = null;
         if (_embeddingService != null)
         {
-            var embedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
+            var embedding = await _embeddingService.GenerateQueryEmbeddingAsync(query, cancellationToken);
             if (embedding != null && embedding.Length > 0)
             {
                 queryEmbedding = new EmbeddingVector(embedding, "query");

@@ -336,7 +336,7 @@ public partial class CorrectiveRAGService : ICorrectiveRAGService
         }
 
         // Generate query embedding for semantic similarity
-        var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
+        var queryEmbedding = await _embeddingService.GenerateQueryEmbeddingAsync(query, cancellationToken);
         var queryTerms = ExtractQueryTerms(query);
 
         foreach (var doc in documentList)

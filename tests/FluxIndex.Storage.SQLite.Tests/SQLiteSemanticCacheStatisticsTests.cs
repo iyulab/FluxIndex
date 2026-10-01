@@ -21,7 +21,7 @@ public sealed class SQLiteSemanticCacheStatisticsTests : IAsyncDisposable
     public SQLiteSemanticCacheStatisticsTests()
     {
         var embeddings = Substitute.For<IEmbeddingService>();
-        embeddings.GenerateEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+        embeddings.GenerateQueryEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(new[] { 1f, 0f, 0f, 0f }));
 
         var services = new ServiceCollection();

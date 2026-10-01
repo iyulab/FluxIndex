@@ -287,7 +287,7 @@ public partial class Retriever
             // Generate embedding for query if not cached
             if (queryEmbedding == null)
             {
-                queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
+                queryEmbedding = await _embeddingService.GenerateQueryEmbeddingAsync(query, cancellationToken);
 
                 // Phase 7.3: Cache the embedding
                 lock (_embeddingCacheLock)

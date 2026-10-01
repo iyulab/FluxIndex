@@ -5,6 +5,29 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.68.0] - Unreleased
+
+### Added
+- **Search queries now reach the embedder in their own role, so an asymmetric embedding model can apply its query
+  convention.** `IEmbeddingService.GenerateQueryEmbeddingAsync` embeds a query that is compared against stored vectors;
+  `GenerateEmbeddingAsync` stays the role for stored text. Every search path calls the query method — hybrid search
+  (`IHybridSearchService` and `Retriever.HybridSearchAsync`), vector search, quantized search, the Qdrant hybrid
+  service, the semantic caches, community (global) search and the verification/reranking services. The method
+  defaults to `GenerateEmbeddingAsync`, so a symmetric model changes nothing; an asymmetric one (E5
+  `query: `/`passage: `, Qwen3-Embedding or BGE query instructions) overrides it — on `EmbeddingServiceBase`,
+  `EmbedQueryCoreAsync` — and applies its document convention in `EmbedCoreAsync`. The stored side is unchanged, so no
+  re-index is needed.
+
+### Changed
+- **Breaking (test doubles)**: a mock of `IEmbeddingService` that stubs only `GenerateEmbeddingAsync` (for example an
+  NSubstitute substitute) no longer feeds a search — stub `GenerateQueryEmbeddingAsync` for the query. A hand-written
+  implementation needs no change. A service that wraps another `IEmbeddingService` should forward both methods.
+
+### Removed
+- **Breaking**: `FluxIndex.SDK.Interfaces.IEmbeddingService`, `FluxIndex.SDK.Interfaces.IIndexingService` and the
+  `FluxIndex.SDK` types `EmbeddingModelInfo`, `EmbeddingVector` and `VectorStoreStats` — nothing implemented or read
+  them; the embedding contract is `FluxIndex.Core.Application.Interfaces.IEmbeddingService`.
+
 ## [0.67.2] - 2026-10-01
 
 ### Fixed

@@ -69,7 +69,7 @@ public partial class RedisSemanticCacheService : ISemanticCacheService, IDisposa
             LogSearchingCache(_logger, query);
 
             // 1. 쿼리 임베딩 생성
-            var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
+            var queryEmbedding = await _embeddingService.GenerateQueryEmbeddingAsync(query, cancellationToken);
 
             // 2. 캐시된 쿼리들의 임베딩과 유사도 계산
             var bestMatch = await FindBestMatchAsync(queryEmbedding, similarityThreshold, cancellationToken);
@@ -136,7 +136,7 @@ public partial class RedisSemanticCacheService : ISemanticCacheService, IDisposa
             LogCachingResults(_logger, query);
 
             // 1. 쿼리 임베딩 생성
-            var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
+            var queryEmbedding = await _embeddingService.GenerateQueryEmbeddingAsync(query, cancellationToken);
 
             // 2. 캐시 결과 객체 생성
             var cachedResult = new CachedSearchResult
@@ -303,7 +303,7 @@ public partial class RedisSemanticCacheService : ISemanticCacheService, IDisposa
                     return;
 
                 // 임베딩만 미리 계산해서 저장 (실제 검색 결과는 없음)
-                var embedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
+                var embedding = await _embeddingService.GenerateQueryEmbeddingAsync(query, cancellationToken);
                 var embeddingKey = EMBEDDING_KEY_PREFIX + query;
                 var embeddingBytes = SerializeEmbedding(embedding);
 

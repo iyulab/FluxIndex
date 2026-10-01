@@ -155,7 +155,7 @@ public class HybridSearchQuantizationTests
             (CreateTestChunk("chunk2", "Content 2"), 0.85f)
         };
 
-        _mockEmbeddingService.GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
+        _mockEmbeddingService.GenerateQueryEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
 
         _mockQuantizer.QuantizeAsync(embedding, Arg.Any<CancellationToken>()).Returns(quantizedVector);
 
@@ -215,7 +215,7 @@ public class HybridSearchQuantizationTests
             CreateTestChunk("chunk2", "Content 2", 0.8f)
         };
 
-        _mockEmbeddingService.GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
+        _mockEmbeddingService.GenerateQueryEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
 
         ((IVectorStore)mockQuantizedStore).SearchAsync(embedding, Arg.Any<int>(), Arg.Any<float>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>())
             .Returns(vectorResults);
@@ -275,7 +275,7 @@ public class HybridSearchQuantizationTests
             CreateTestChunk("chunk1", "Content 1", 0.9f)
         };
 
-        _mockEmbeddingService.GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
+        _mockEmbeddingService.GenerateQueryEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
 
         _mockQuantizer.QuantizeAsync(embedding, Arg.Any<CancellationToken>()).Throws(new InvalidOperationException("Quantization failed"));
 
@@ -327,7 +327,7 @@ public class HybridSearchQuantizationTests
             OriginalDimension = 3
         };
 
-        _mockEmbeddingService.GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
+        _mockEmbeddingService.GenerateQueryEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
 
         _mockQuantizer.QuantizeAsync(embedding, Arg.Any<CancellationToken>()).Returns(quantizedVector);
 
@@ -383,7 +383,7 @@ public class HybridSearchQuantizationTests
             OriginalDimension = 3
         };
 
-        _mockEmbeddingService.GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
+        _mockEmbeddingService.GenerateQueryEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
 
         _mockQuantizer.QuantizeAsync(embedding, Arg.Any<CancellationToken>()).Returns(quantizedVector);
 

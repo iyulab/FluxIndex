@@ -427,7 +427,7 @@ public partial class SelfRAGService : ISelfRAGService
 
         try
         {
-            var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
+            var queryEmbedding = await _embeddingService.GenerateQueryEmbeddingAsync(query, cancellationToken);
             var scores = new List<double>();
 
             foreach (var doc in results.Take(10)) // Sample first 10 for efficiency

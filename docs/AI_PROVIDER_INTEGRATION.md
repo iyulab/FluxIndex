@@ -76,12 +76,21 @@ public interface IEmbeddingService
 {
     Task<float[]> GenerateEmbeddingAsync(string text, CancellationToken ct = default);
     Task<IEnumerable<float[]>> GenerateEmbeddingsBatchAsync(IEnumerable<string> texts, CancellationToken ct = default);
+    // 검색 질의 역할. 기본 구현은 GenerateEmbeddingAsync — 대칭 모델은 아무것도 하지 않아도 된다.
+    Task<float[]> GenerateQueryEmbeddingAsync(string query, CancellationToken ct = default);
     int GetEmbeddingDimension();
     string GetModelName();
     int GetMaxTokens();
     Task<int> CountTokensAsync(string text, CancellationToken ct = default);
 }
 ```
+
+### 질의/문서 역할
+
+FluxIndex 는 저장하는 텍스트(문서·청크·요약)를 `GenerateEmbeddingAsync` 로, 저장된 벡터와 비교할 검색 질의를
+`GenerateQueryEmbeddingAsync` 로 임베딩한다. 비대칭 모델(E5 `query: `/`passage: `, Qwen3-Embedding·BGE 의 질의 지시문)은
+`EmbeddingServiceBase` 에서 `EmbedQueryCoreAsync` 를 override 해 질의 규약을 적용한다 — 문서 쪽 규약(`EmbedCoreAsync`)도
+함께 맞춰야 한다(한쪽만 바꾸면 두 규약이 섞인다). 다른 `IEmbeddingService` 를 감싸는 구현은 두 메서드를 모두 전달한다.
 
 ### 추상 클래스 사용
 

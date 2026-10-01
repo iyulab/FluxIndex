@@ -85,7 +85,9 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   drops documents it blocks and hands out sanitized content for ones it sanitizes — cache hits included. Lookups by id
   (`GetDocumentAsync`, `GetChunkAsync`) are not searches and are not guarded.
 - **Bring your own models** — `IEmbeddingService` / `ITextCompletionService` ports; `FluxIndex.Providers.LMSupply`
-  (local) and `FluxIndex.Providers.OpenAI` (OpenAI-compatible) implement them. Local embedding, no API key:
+  (local) and `FluxIndex.Providers.OpenAI` (OpenAI-compatible) implement them. Searches embed their query with
+  `GenerateQueryEmbeddingAsync` and stored text with `GenerateEmbeddingAsync`, so an asymmetric model can apply its query
+  convention (see «Using Custom Embedding Service»). Local embedding, no API key:
 
   ```csharp
   using FluxIndex.Providers.LMSupply.Extensions;
@@ -160,7 +162,9 @@ frequent terms, ranked by BM25. `filter` scopes the candidates the way it scopes
 
 ### Using Custom Embedding Service
 
-FluxIndex is AI provider-agnostic. Extend `EmbeddingServiceBase` for your preferred provider:
+FluxIndex is AI provider-agnostic. Extend `EmbeddingServiceBase` for your preferred provider. FluxIndex embeds stored
+text with `GenerateEmbeddingAsync` and every search query with `GenerateQueryEmbeddingAsync` (defaults to the former), so
+an asymmetric model can apply its query convention — on the stored side too, or the two conventions mix:
 
 ```csharp
 // Example: LMSupply embedding (local ONNX-based, no API key)
@@ -175,8 +179,13 @@ public class LMSupplyEmbedder : EmbeddingServiceBase, IAsyncDisposable
         return new LMSupplyEmbedder(model);
     }
 
+    // Stored text and search queries are two roles. An asymmetric model (E5 "query: "/"passage: ",
+    // Qwen3-Embedding's query instruction) applies its convention on both sides; a symmetric model
+    // overrides only EmbedCoreAsync and the query role falls back to it.
     protected override async Task<float[]> EmbedCoreAsync(string text, CancellationToken ct)
-        => await _model.EmbedAsync(text, ct);
+        => await _model.EmbedPassageAsync(text, ct);
+    protected override async Task<float[]> EmbedQueryCoreAsync(string query, CancellationToken ct)
+        => await _model.EmbedQueryAsync(query, ct);
 
     public override int GetEmbeddingDimension() => _model.Dimensions;
     public override string GetModelName() => _model.ModelId;

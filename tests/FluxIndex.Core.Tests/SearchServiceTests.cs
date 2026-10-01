@@ -60,7 +60,7 @@ public class SearchServiceTests
         document.FileName = "test.txt";
         document.SetMetadata("title", "Test Document");
 
-        _mockEmbeddingService.GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
+        _mockEmbeddingService.GenerateQueryEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
 
         _mockVectorStore.SearchAsync(embedding, topK, 0.0f, Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>()).Returns(chunks);
 
@@ -78,7 +78,7 @@ public class SearchServiceTests
         Assert.Equal(0.9f, result.Score);
         Assert.Equal("test.txt", result.FileName);
 
-        await _mockEmbeddingService.Received(1).GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>());
+        await _mockEmbeddingService.Received(1).GenerateQueryEmbeddingAsync(query, Arg.Any<CancellationToken>());
         await _mockVectorStore.Received(1).SearchAsync(embedding, topK, 0.0f, Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>());
     }
 
@@ -89,7 +89,7 @@ public class SearchServiceTests
         var query = "non-existent query";
         var embedding = new float[] { 0.1f, 0.2f, 0.3f };
 
-        _mockEmbeddingService.GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
+        _mockEmbeddingService.GenerateQueryEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
 
         _mockVectorStore.SearchAsync(embedding, Arg.Any<int>(), Arg.Any<float>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>()).Returns(Enumerable.Empty<DocumentChunk>());
 
@@ -111,7 +111,7 @@ public class SearchServiceTests
         var query = "test query";
         var embedding = new float[] { 0.1f, 0.2f, 0.3f };
 
-        _mockEmbeddingService.GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
+        _mockEmbeddingService.GenerateQueryEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
 
         _mockVectorStore.SearchAsync(embedding, topK, minScore, Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>()).Returns(Enumerable.Empty<DocumentChunk>());
 
@@ -222,7 +222,7 @@ public class SearchServiceTests
             }
         };
 
-        _mockEmbeddingService.GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
+        _mockEmbeddingService.GenerateQueryEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
 
         _mockVectorStore.SearchAsync(embedding, Arg.Any<int>(), Arg.Any<float>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>()).Returns(chunks);
 
@@ -276,7 +276,7 @@ public class SearchServiceTests
         var document = Document.Create("doc1");
         document.FileName = "test.txt";
 
-        _mockEmbeddingService.GenerateEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
+        _mockEmbeddingService.GenerateQueryEmbeddingAsync(query, Arg.Any<CancellationToken>()).Returns(embedding);
 
         _mockVectorStore.SearchAsync(embedding, Arg.Any<int>(), Arg.Any<float>(), Arg.Any<Dictionary<string, object>?>(), Arg.Any<CancellationToken>()).Returns(chunks);
 

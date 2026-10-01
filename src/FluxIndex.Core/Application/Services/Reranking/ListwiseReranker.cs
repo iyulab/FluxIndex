@@ -572,7 +572,7 @@ public partial class ListwiseReranker : IListwiseReranker
         {
             try
             {
-                queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
+                queryEmbedding = await _embeddingService.GenerateQueryEmbeddingAsync(query, cancellationToken);
             }
             catch (Exception ex)
             {
@@ -832,7 +832,7 @@ public partial class ListwiseReranker : IListwiseReranker
     {
         try
         {
-            var queryEmb = await _embeddingService!.GenerateEmbeddingAsync(query, cancellationToken);
+            var queryEmb = await _embeddingService!.GenerateQueryEmbeddingAsync(query, cancellationToken);
             var docAEmb = await _embeddingService.GenerateEmbeddingAsync(docA, cancellationToken);
             var docBEmb = await _embeddingService.GenerateEmbeddingAsync(docB, cancellationToken);
 

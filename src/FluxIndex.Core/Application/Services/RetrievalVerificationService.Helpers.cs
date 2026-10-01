@@ -99,15 +99,19 @@ public partial class RetrievalVerificationService
         return gradedDocuments;
     }
 
-    private async Task<float[]> GetOrCreateEmbeddingAsync(string text, CancellationToken cancellationToken)
+    // A query or claim is embedded in the query role, stored content in the document role: an asymmetric model gives
+    // the same text different vectors in each, so the cache keys on the role too.
+    private async Task<float[]> GetOrCreateEmbeddingAsync(string text, CancellationToken cancellationToken, bool isQuery = false)
     {
-        var key = ComputeHash(text);
+        var key = (isQuery ? "q:" : "d:") + ComputeHash(text);
         if (_embeddingCache.TryGetValue(key, out var cached))
         {
             return cached;
         }
 
-        var embedding = await _embeddingService.GenerateEmbeddingAsync(text, cancellationToken);
+        var embedding = isQuery
+            ? await _embeddingService.GenerateQueryEmbeddingAsync(text, cancellationToken)
+            : await _embeddingService.GenerateEmbeddingAsync(text, cancellationToken);
         _embeddingCache.TryAdd(key, embedding);
         return embedding;
     }
@@ -524,7 +528,7 @@ public partial class RetrievalVerificationService
         string query, DocumentChunk document,
         CancellationToken cancellationToken)
     {
-        var queryEmbedding = await GetOrCreateEmbeddingAsync(query, cancellationToken);
+        var queryEmbedding = await GetOrCreateEmbeddingAsync(query, cancellationToken, isQuery: true);
         var docEmbedding = await GetDocumentEmbeddingAsync(document, cancellationToken);
         var similarity = CalculateCosineSimilarity(queryEmbedding, docEmbedding);
 
@@ -610,7 +614,7 @@ public partial class RetrievalVerificationService
         List<DocumentChunk> documents,
         CancellationToken cancellationToken)
     {
-        var claimEmbedding = await GetOrCreateEmbeddingAsync(claim, cancellationToken);
+        var claimEmbedding = await GetOrCreateEmbeddingAsync(claim, cancellationToken, isQuery: true);
         var supportingDocs = new List<string>();
         var evidenceExcerpts = new List<string>();
         var maxSimilarity = 0.0;
@@ -697,7 +701,7 @@ public partial class RetrievalVerificationService
         List<DocumentChunk> documents,
         CancellationToken cancellationToken)
     {
-        var queryEmbedding = await GetOrCreateEmbeddingAsync(query, cancellationToken);
+        var queryEmbedding = await GetOrCreateEmbeddingAsync(query, cancellationToken, isQuery: true);
         var similarities = new List<double>();
 
         foreach (var doc in documents)
@@ -762,7 +766,7 @@ public partial class RetrievalVerificationService
         List<DocumentChunk> documents,
         CancellationToken cancellationToken)
     {
-        var claimEmbedding = await GetOrCreateEmbeddingAsync(claim, cancellationToken);
+        var claimEmbedding = await GetOrCreateEmbeddingAsync(claim, cancellationToken, isQuery: true);
         var documentSupports = new List<DocumentSupport>();
         var maxScore = 0.0;
 

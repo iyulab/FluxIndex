@@ -286,7 +286,7 @@ public partial class HybridSearchService : IHybridSearchService
         try
         {
             // 쿼리 임베딩 생성
-            var embedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
+            var embedding = await _embeddingService.GenerateQueryEmbeddingAsync(query, cancellationToken);
 
             IEnumerable<(Domain.Entities.DocumentChunk Chunk, float Score)>? searchResults = null;
 

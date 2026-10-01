@@ -98,7 +98,7 @@ public partial class TokenAwareSearchService : ITokenAwareSearchService
         CancellationToken cancellationToken)
     {
         // 임베딩 생성
-        var embedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
+        var embedding = await _embeddingService.GenerateQueryEmbeddingAsync(query, cancellationToken);
 
         // TopK 결정 (충분한 후보 확보)
         var topK = Math.Max(analysis.RecommendedTopK * 3, 50);

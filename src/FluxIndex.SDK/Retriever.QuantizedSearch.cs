@@ -380,7 +380,7 @@ public partial class Retriever
             }
         }
 
-        var embedding = await _embeddingService.GenerateEmbeddingAsync(query, cancellationToken);
+        var embedding = await _embeddingService.GenerateQueryEmbeddingAsync(query, cancellationToken);
 
         lock (_embeddingCacheLock)
         {
