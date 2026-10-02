@@ -21,6 +21,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   it passed the command timeout and the host failed to start. It now walks the term table in id ranges of at most
   `TermIdBatchSize` rows (PostgreSQL 2 000, SQLite 5 000), each its own statement, inside the same transaction, so the
   counts and the recorded field set still commit together. `OptimizeIndexAsync` uses the same recount.
+- **A long metadata value no longer fails PostgreSQL keyword indexing.** Every metadata value is stored for filtering, in
+  a B-tree key that holds about 2.7 KB, so a chunk carrying a longer value (a summary, a keyword list) failed the write
+  with `54000` and rolled back the whole batch. Values over 1 KB are now stored as their SHA-256 digest and filter values
+  are compared the same way; a filter still matches whole values only. SQLite stores values as before.
+- **A document scope wider than 256 ids reads the chunk's own document id in the keyword leg.** A wide filter is resolved
+  to a chunk set once, and that path still looked `document_id` up in the metadata copy, so a chunk indexed without one
+  dropped out of a large scope while a narrow scope found it (0.63.0 fixed only the narrow path).
 - **`GetDocumentFrequenciesAsync` initializes the index like every other operation.** Called first in a process, it read
   the table before the schema check and the field-set recount, so it returned the counts of the previous field set (or
   failed on an empty database).

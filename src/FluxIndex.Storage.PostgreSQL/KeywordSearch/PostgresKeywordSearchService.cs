@@ -65,6 +65,13 @@ public sealed class PostgresKeywordSearchService : RelationalKeywordSearchServic
     protected override int TermIdBatchSize => 2_000;
 
     /// <summary>
+    /// A B-tree entry holds at most about a third of an 8 KB page (2 704 bytes), and <c>meta_value</c> is in both the
+    /// primary key and the lookup index of <c>bm25_chunk_metadata</c>, so a longer value failed the write
+    /// (<c>54000</c>). Values above 1 KB are stored as their digest, which leaves room for the chunk id and key.
+    /// </summary>
+    protected override int? MaxStoredMetadataValueBytes => 1_024;
+
+    /// <summary>
     /// A plain connection is enough here: the keyword index stores no vector-typed columns, so it
     /// needs neither the pgvector plugin nor the dynamic-JSON data source the vector store builds.
     /// </summary>

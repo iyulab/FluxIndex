@@ -177,6 +177,27 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     protected virtual int TermIdBatchSize => int.MaxValue;
 
     /// <summary>
+    /// The longest metadata value, in UTF-8 bytes, the filter relation (<c>bm25_chunk_metadata</c>) stores as
+    /// itself; a longer value is stored, and a filter value compared, as its SHA-256 digest. Null (the default)
+    /// stores every value as itself. A backend whose index entries have a size limit sets this below it: a filter
+    /// matches whole values only, so the digest answers the same question, and a value that does not fit would
+    /// otherwise fail the whole write.
+    /// </summary>
+    protected virtual int? MaxStoredMetadataValueBytes => null;
+
+    private const string MetadataValueDigestPrefix = "sha256:";
+
+    /// <summary>The form <paramref name="value"/> takes in the filter relation - see <see cref="MaxStoredMetadataValueBytes"/>.</summary>
+    private string StoredMetadataValue(string value)
+    {
+        if (MaxStoredMetadataValueBytes is not { } max || Encoding.UTF8.GetByteCount(value) <= max)
+            return value;
+
+        return MetadataValueDigestPrefix
+            + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(value)));
+    }
+
+    /// <summary>
     /// Hook for backend setup that must happen once, inside the initialization lock, before the
     /// schema is created. Does nothing by default.
     /// </summary>
@@ -552,9 +573,10 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
 
     /// <summary>
     /// The chunks a metadata filter accepts: for each key, the chunks carrying any accepted value;
-    /// across keys, the intersection.
+    /// across keys, the intersection. <see cref="FilterKeys.DocumentId"/> reads the chunk's own document id,
+    /// as <see cref="BuildMetadataPredicate"/> does for a narrow filter.
     /// </summary>
-    private static async Task<HashSet<string>> ResolveAcceptedChunksAsync(
+    private async Task<HashSet<string>> ResolveAcceptedChunksAsync(
         DbConnection connection,
         IReadOnlyList<(string Key, IReadOnlyList<string> Accepted)> metadataFilter,
         CancellationToken cancellationToken)
@@ -562,6 +584,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         HashSet<string>? accepted = null;
         foreach (var (key, values) in metadataFilter)
         {
+            var documentScope = string.Equals(key, FilterKeys.DocumentId, StringComparison.Ordinal);
             var forKey = new HashSet<string>(StringComparer.Ordinal);
             foreach (var batch in values.Chunk(FilterValueBatchSize))
             {
@@ -570,12 +593,20 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
                 for (var v = 0; v < batch.Length; v++)
                 {
                     parameters[v] = $"@mfVal{v}";
-                    AddParameter(command, parameters[v], batch[v]);
+                    AddParameter(command, parameters[v], documentScope ? batch[v] : StoredMetadataValue(batch[v]));
                 }
 
-                AddParameter(command, "@mfKey", key);
-                command.CommandText =
-                    $"SELECT chunk_id FROM bm25_chunk_metadata WHERE meta_key = @mfKey AND meta_value IN ({string.Join(", ", parameters)})";
+                if (documentScope)
+                {
+                    command.CommandText =
+                        $"SELECT chunk_id FROM bm25_chunks WHERE document_id IN ({string.Join(", ", parameters)})";
+                }
+                else
+                {
+                    AddParameter(command, "@mfKey", key);
+                    command.CommandText =
+                        $"SELECT chunk_id FROM bm25_chunk_metadata WHERE meta_key = @mfKey AND meta_value IN ({string.Join(", ", parameters)})";
+                }
                 await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
                 while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                 {
@@ -600,7 +631,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     /// predicate fragment against the given table alias. Both the body read and the field read go
     /// through here: a scoped query must not surface a title hit from another document.
     /// </summary>
-    private static (string ScopeJoin, string MetadataPredicate) BuildScope(
+    private (string ScopeJoin, string MetadataPredicate) BuildScope(
         DbCommand command,
         string alias,
         KeywordSearchOptions options,
@@ -1143,7 +1174,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     /// on the rows present would leave the removed one behind — the chunk would keep matching a
     /// filter it no longer satisfies.
     /// </summary>
-    private static async Task WriteFilterableMetadataAsync(
+    private async Task WriteFilterableMetadataAsync(
         DbConnection connection,
         DocumentChunk chunk,
         CancellationToken cancellationToken)
@@ -1157,7 +1188,10 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
 
         // Distinct because a collection may repeat a value, and the row set is a membership fact -
         // "this chunk has this value for this key" is true once however many times it was written.
-        var rows = KeywordMetadataFilter.Project(chunk.Metadata).Distinct().ToList();
+        var rows = KeywordMetadataFilter.Project(chunk.Metadata)
+            .Select(row => (row.Key, Value: StoredMetadataValue(row.Value)))
+            .Distinct()
+            .ToList();
         if (rows.Count == 0)
             return;
 
@@ -1184,7 +1218,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     /// return it once per matching value, multiplying postings rows and with them the BM25 score.
     /// Scoring must not depend on how many metadata values a chunk happens to carry.
     /// </remarks>
-    private static string BuildMetadataPredicate(
+    private string BuildMetadataPredicate(
         DbCommand command,
         string chunkIdColumnRef,
         IReadOnlyList<(string Key, IReadOnlyList<string> Accepted)> expanded)
@@ -1194,17 +1228,18 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
         for (var i = 0; i < expanded.Count; i++)
         {
             var (key, accepted) = expanded[i];
+            var documentScope = string.Equals(key, FilterKeys.DocumentId, StringComparison.Ordinal);
             var valueParams = new string[accepted.Count];
             for (var v = 0; v < accepted.Count; v++)
             {
                 valueParams[v] = $"@mfVal{i}_{v}";
-                AddParameter(command, valueParams[v], accepted[v]);
+                AddParameter(command, valueParams[v], documentScope ? accepted[v] : StoredMetadataValue(accepted[v]));
             }
 
             // The document scope reads the chunk's own document_id column, never the metadata table:
             // a chunk indexed without a metadata copy of its document id must stay inside its
             // document's scope, exactly as the vector stores resolve the same key.
-            if (string.Equals(key, FilterKeys.DocumentId, StringComparison.Ordinal))
+            if (documentScope)
             {
                 builder.Append(" AND ")
                        .Append(chunkIdColumnRef)

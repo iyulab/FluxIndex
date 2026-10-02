@@ -184,6 +184,61 @@ public abstract class KeywordSearchFieldContractSuite
     }
 
     [Fact]
+    public async Task AWideDocumentIdFilter_MatchesTheChunksDocument_EvenWithoutAMetadataCopy()
+    {
+        // Past a few hundred accepted values the filter is resolved to a chunk set once instead of carried in SQL.
+        // That path must resolve document_id the way the narrow one does - from the chunk's own document id.
+        var ct = TestContext.Current.CancellationToken;
+        var service = await CreateServiceAsync(fields: null);
+
+        await service.IndexChunksAsync([
+            ChunkOf("doc-0", "in-scope", "budget in the body"),
+            ChunkOf("doc-x", "outside", "budget outside the scope"),
+        ], ct);
+
+        var scope = Enumerable.Range(0, 400).Select(i => $"doc-{i}").ToArray();
+        var hits = await service.SearchAsync(
+            "budget",
+            new KeywordSearchOptions { MetadataFilter = new Dictionary<string, object> { [FilterKeys.DocumentId] = scope } },
+            ct);
+
+        Assert.Equal("in-scope", Assert.Single(hits).Chunk.Id);
+    }
+
+    [Theory]
+    [InlineData(10)]
+    [InlineData(400)]
+    public async Task AVeryLongMetadataValue_IsIndexed_AndAFilterMatchesTheWholeValue(int filterWidth)
+    {
+        // A metadata value is consumer data of any length. A long one must not fail the write, and a filter on it
+        // must match the whole value - two values that share a long prefix stay distinct. The filter width puts
+        // the value through both the narrow (in SQL) and the wide (resolved once) path.
+        var ct = TestContext.Current.CancellationToken;
+        var service = await CreateServiceAsync(fields: null);
+        var words = Enumerable.Range(0, 3_000).Select(i => $"w{i * 7919 % 100_003}").ToArray();
+        var longValue = string.Join(' ', words);
+        var nearValue = longValue + " tail";
+
+        await service.IndexChunksAsync([
+            Chunk("long", "budget one", ("summary", longValue)),
+            Chunk("near", "budget two", ("summary", nearValue)),
+        ], ct);
+
+        object Accepting(string value) =>
+            new[] { value }.Concat(Enumerable.Range(0, filterWidth - 1).Select(i => $"other-{i}")).ToArray();
+
+        var hits = await service.SearchAsync(
+            "budget",
+            new KeywordSearchOptions { MetadataFilter = new Dictionary<string, object> { ["summary"] = Accepting(longValue) } },
+            ct);
+        Assert.Equal("long", Assert.Single(hits).Chunk.Id);
+
+        var deleted = await service.DeleteByFilterAsync(new Dictionary<string, object> { ["summary"] = nearValue }, ct);
+        Assert.Equal(1, deleted);
+        Assert.Equal("long", Assert.Single(await service.SearchAsync("budget", cancellationToken: ct)).Chunk.Id);
+    }
+
+    [Fact]
     public async Task DeleteByFilter_OnDocumentId_RemovesTheDocumentsChunks_EvenWithoutAMetadataCopy()
     {
         var ct = TestContext.Current.CancellationToken;
