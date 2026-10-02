@@ -38,6 +38,17 @@ public sealed class PostgresKeywordSearchFieldContractTests : KeywordSearchField
         return service;
     }
 
+    protected override Task<IKeywordSearchService> ReopenAsync(KeywordFieldOptions? fields)
+    {
+        var service = new PostgresKeywordSearchService(
+            _container.GetConnectionString(),
+            NullLogger<PostgresKeywordSearchService>.Instance,
+            analyzer: null,
+            fields);
+        _services.Add(service);
+        return Task.FromResult<IKeywordSearchService>(service);
+    }
+
     public async ValueTask DisposeAsync()
     {
         foreach (var service in _services)

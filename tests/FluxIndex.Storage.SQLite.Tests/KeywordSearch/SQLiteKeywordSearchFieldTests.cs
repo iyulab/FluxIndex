@@ -37,6 +37,9 @@ public sealed class SQLiteKeywordSearchFieldTests : KeywordSearchFieldContractSu
     protected override Task<IKeywordSearchService> CreateServiceAsync(KeywordFieldOptions? fields)
         => Task.FromResult<IKeywordSearchService>(Create(NewPath(), fields));
 
+    protected override Task<IKeywordSearchService> ReopenAsync(KeywordFieldOptions? fields)
+        => Task.FromResult<IKeywordSearchService>(Create(_paths[^1], fields));
+
     private static DocumentChunk Chunk(string id, string content, params (string Key, object Value)[] metadata)
     {
         var chunk = DocumentChunk.Create("doc-1", content, 0, 1);

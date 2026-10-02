@@ -16,6 +16,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   transaction of their own, so a writer that needs a word another writer has just added waits for that registration, not
   for the other document. Two writers of the same chunk still take turns (a lock per chunk id), which keeps document
   frequency exact.
+- **The first open under a different keyword field set no longer fails on a large index.** That open recounts every
+  term's document frequency, and the recount was one statement over the whole term table - on a production-sized index
+  it passed the command timeout and the host failed to start. It now walks the term table in id ranges of at most
+  `TermIdBatchSize` rows (PostgreSQL 2 000, SQLite 5 000), each its own statement, inside the same transaction, so the
+  counts and the recorded field set still commit together. `OptimizeIndexAsync` uses the same recount.
+- **`GetDocumentFrequenciesAsync` initializes the index like every other operation.** Called first in a process, it read
+  the table before the schema check and the field-set recount, so it returned the counts of the previous field set (or
+  failed on an empty database).
 
 ### Changed
 - **Breaking (custom keyword backends)**: `RelationalKeywordSearchService.UpsertTermReturningIdSql` is replaced by

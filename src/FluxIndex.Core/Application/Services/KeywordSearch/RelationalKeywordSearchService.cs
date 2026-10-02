@@ -170,7 +170,9 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
 
     /// <summary>
     /// Largest number of term ids handed to <see cref="BuildTermIdPredicate"/> at once. Dialects that
-    /// inline the ids override this to keep the statement under their maximum length.
+    /// inline the ids override this to keep the statement under their maximum length. Also the most
+    /// term rows one statement of the full document-frequency recount covers, so an override keeps that
+    /// recount's statements bounded too; the unbounded default recounts in one statement.
     /// </summary>
     protected virtual int TermIdBatchSize => int.MaxValue;
 
@@ -1689,26 +1691,64 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
     /// Rederives every term's document frequency from the posting rows, removes the terms no chunk holds, and
     /// records the field set the counts were taken under. Costs the size of the index.
     /// </summary>
+    /// <remarks>
+    /// The work is split into consecutive term-id ranges of at most <see cref="TermIdBatchSize"/> rows, walked by
+    /// key, so no single statement grows with the table. One statement over every term ran past a command timeout
+    /// on a production-sized index, and since the first open under a different field set runs this recount, that
+    /// failed the host's startup. The ranges stay inside the caller's transaction: the counts and the recorded
+    /// field set still commit together.
+    /// </remarks>
     private async Task RecountDocumentFrequenciesAsync(DbConnection connection, CancellationToken cancellationToken)
     {
-        await using (var updateCmd = connection.CreateCommand())
+        var lowerExclusive = long.MinValue;
+        while (await ReadTermRangeUpperBoundAsync(connection, lowerExclusive, cancellationToken).ConfigureAwait(false) is { } upperInclusive)
         {
-            // A chunk that holds the term in its body and in a field is one document for IDF: the count is over
-            // distinct chunks across both posting relations, never a sum of rows. Only the fields currently
-            // configured count - the same rows the query reads.
-            updateCmd.CommandText = BuildDocumentFrequencyUpdateSql(
-                Fields.Fields.Count == 0 ? null : BuildFieldPredicate(updateCmd, "f.field"),
-                "1 = 1");
-            await updateCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-        }
+            await using (var updateCmd = connection.CreateCommand())
+            {
+                // A chunk that holds the term in its body and in a field is one document for IDF: the count is over
+                // distinct chunks across both posting relations, never a sum of rows. Only the fields currently
+                // configured count - the same rows the query reads.
+                updateCmd.CommandText = BuildDocumentFrequencyUpdateSql(
+                    Fields.Fields.Count == 0 ? null : BuildFieldPredicate(updateCmd, "f.field"),
+                    TermRangePredicate);
+                AddTermRangeParameters(updateCmd, lowerExclusive, upperInclusive);
+                await updateCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
 
-        await using (var cleanupCmd = connection.CreateCommand())
-        {
-            cleanupCmd.CommandText = "DELETE FROM bm25_terms WHERE document_frequency <= 0";
-            await cleanupCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            await using (var cleanupCmd = connection.CreateCommand())
+            {
+                cleanupCmd.CommandText = $"DELETE FROM bm25_terms WHERE {TermRangePredicate} AND document_frequency <= 0";
+                AddTermRangeParameters(cleanupCmd, lowerExclusive, upperInclusive);
+                await cleanupCmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            lowerExclusive = upperInclusive;
         }
 
         await WriteDocumentFrequencyFieldsKeyAsync(connection, cancellationToken).ConfigureAwait(false);
+    }
+
+    private const string TermRangePredicate = "bm25_terms.id > @rangeLower AND bm25_terms.id <= @rangeUpper";
+
+    private static void AddTermRangeParameters(DbCommand command, long lowerExclusive, long upperInclusive)
+    {
+        AddParameter(command, "@rangeLower", lowerExclusive);
+        AddParameter(command, "@rangeUpper", upperInclusive);
+    }
+
+    /// <summary>
+    /// The largest term id among the next <see cref="TermIdBatchSize"/> ids above <paramref name="lowerExclusive"/>,
+    /// or <see langword="null"/> when no term lies above it. Reads the primary key only.
+    /// </summary>
+    private async Task<long?> ReadTermRangeUpperBoundAsync(DbConnection connection, long lowerExclusive, CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT MAX(id) FROM (SELECT id FROM bm25_terms WHERE id > @rangeLower ORDER BY id LIMIT @rangeSize) AS term_range";
+        AddParameter(command, "@rangeLower", lowerExclusive);
+        AddParameter(command, "@rangeSize", TermIdBatchSize);
+        var value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        return value is null or DBNull ? null : Convert.ToInt64(value, System.Globalization.CultureInfo.InvariantCulture);
     }
 
     /// <summary>
@@ -2025,6 +2065,11 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
 
         if (spellingsByTerm.Count == 0)
             return result;
+
+        // Like every other operation: the schema exists and the counts were taken under the configured field set
+        // before they are read. Without it the first read of a process reopened under different fields returned
+        // the counts of the old ones.
+        await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
 
         await using var connection = CreateConnection();
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);

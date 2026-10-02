@@ -17,6 +17,12 @@ public abstract class KeywordSearchFieldContractSuite
     /// <summary>Creates a fresh, empty keyword index configured with the given fields (default when null).</summary>
     protected abstract Task<IKeywordSearchService> CreateServiceAsync(KeywordFieldOptions? fields);
 
+    /// <summary>
+    /// Opens a second service over the store the last <see cref="CreateServiceAsync"/> call created, without
+    /// clearing it, as a host restarted under a different configuration would.
+    /// </summary>
+    protected abstract Task<IKeywordSearchService> ReopenAsync(KeywordFieldOptions? fields);
+
     private static DocumentChunk Chunk(string id, string content, params (string Key, object Value)[] metadata)
         => ChunkOf("doc-1", id, content, metadata);
 
@@ -358,6 +364,43 @@ public abstract class KeywordSearchFieldContractSuite
         Assert.Equal(2, final["ledger"]);
         Assert.Equal(titled ? 2 : 0, final["archive"]);
         Assert.Equal(0, final["phantom"]);
+    }
+
+    [Fact]
+    public async Task OpeningUnderADifferentFieldSet_RecountsEveryTerm_AcrossManyTermIdRanges()
+    {
+        // The first open under a different field set recounts every term. The recount walks term ids in ranges
+        // (so no single statement grows with the table); enough terms to span several ranges on every backend,
+        // with terms whose count changes and terms that disappear interleaved in id order, so a range edge that
+        // skipped or repeated a row would show here.
+        var ct = TestContext.Current.CancellationToken;
+        const int Codes = 5_500;
+        var shared = new List<string>(Codes);
+        var titleOnly = new List<string>(Codes);
+        for (var i = 0; i < Codes; i++)
+        {
+            var code = string.Concat(Enumerable.Range(0, 4).Select(p => (char)('a' + i / (int)Math.Pow(26, 3 - p) % 26)));
+            shared.Add(code + "q");
+            titleOnly.Add(code + "x");
+        }
+
+        // Titles are split over many chunks: one title holding every term would be a single filterable metadata
+        // value of ~66 KB, which is a different limit than the one under test.
+        var fielded = await CreateServiceAsync(fields: null);
+        await fielded.IndexChunksAsync([
+            Chunk("body", string.Join(' ', shared)),
+            .. shared.Zip(titleOnly, (s, t) => $"{s} {t}").Chunk(50).Select((pairs, k) =>
+                Chunk($"titled-{k}", "plain", ("title", string.Join(' ', pairs)))),
+        ], ct);
+        var before = await fielded.GetDocumentFrequenciesAsync([shared[0], shared[^1], titleOnly[0], titleOnly[^1]], ct);
+        Assert.Equal([2, 2, 1, 1], new[] { before[shared[0]], before[shared[^1]], before[titleOnly[0]], before[titleOnly[^1]] });
+
+        var bodyOnly = await ReopenAsync(KeywordFieldOptions.None);
+        var after = await bodyOnly.GetDocumentFrequenciesAsync([.. shared, .. titleOnly], ct);
+
+        Assert.Empty(shared.Where(term => after[term] != 1));
+        Assert.Empty(titleOnly.Where(term => after[term] != 0));
+        Assert.Equal((Codes + 49) / 50, (await bodyOnly.GetDocumentFrequenciesAsync(["plain"], ct))["plain"]);
     }
 
     [Fact]
