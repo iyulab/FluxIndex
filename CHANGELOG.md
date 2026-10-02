@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.71.0] - Unreleased
+## [0.71.0] - 2026-10-02
 
 ### Fixed
 - **Concurrent keyword writes on PostgreSQL no longer wait for each other's whole batch.** A write locked every term row
