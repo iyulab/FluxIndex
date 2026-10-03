@@ -54,11 +54,6 @@ public class SQLiteVecOptions : SQLiteOptions
     public string VecTableOptions { get; set; } = "distance_metric=cosine";
 
     /// <summary>
-    /// 벡터 검색 시 기본 최소 유사도 점수
-    /// </summary>
-    public float DefaultMinScore { get; set; }
-
-    /// <summary>
     /// At host startup, run a one-time sweep that removes orphan vec0 rows
     /// (rows whose chunk_id has no matching row in vector_chunks) across every
     /// fingerprint vec0 table. Default: true.
@@ -446,11 +441,6 @@ public class SQLiteVecOptions : SQLiteOptions
         if (MaxBatchSize <= 0)
         {
             throw new ArgumentException("The batch size must be greater than 0.", nameof(MaxBatchSize));
-        }
-
-        if (DefaultMinScore < -1.0f || DefaultMinScore > 1.0f)
-        {
-            throw new ArgumentException("The minimum similarity score must be between -1.0 and 1.0.", nameof(DefaultMinScore));
         }
 
         if (UseSQLiteVec && !string.IsNullOrEmpty(CustomExtensionPath) && !File.Exists(CustomExtensionPath))

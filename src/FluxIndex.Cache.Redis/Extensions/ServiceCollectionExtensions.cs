@@ -184,7 +184,6 @@ public static class ServiceCollectionExtensions
             opt.MaxParallelism = options.MaxParallelism;
             opt.ConnectionTimeoutSeconds = options.ConnectionTimeoutSeconds;
             opt.CommandTimeoutSeconds = options.CommandTimeoutSeconds;
-            opt.EnableDetailedLogging = options.EnableDetailedLogging;
         });
 
         // Register Redis connection

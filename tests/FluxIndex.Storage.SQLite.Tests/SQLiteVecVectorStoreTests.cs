@@ -632,8 +632,7 @@ public class SQLiteVecOptionsTests
         var options = new SQLiteVecOptions
         {
             VectorDimension = 1536,
-            MaxBatchSize = 1000,
-            DefaultMinScore = 0.0f
+            MaxBatchSize = 1000
         };
 
         // Act & Assert
@@ -663,20 +662,6 @@ public class SQLiteVecOptionsTests
 
         // Arrange
         var options = new SQLiteVecOptions { MaxBatchSize = batchSize };
-
-        // Act & Assert
-        options.Invoking(o => o.Validate()).Should().Throw<ArgumentException>();
-    }
-
-    [Theory]
-    [InlineData(-1.1f)]
-    [InlineData(1.1f)]
-    public void Validate_WithInvalidMinScore_ShouldThrow(float minScore)
-    {
-        CITestHelper.SkipIfSqliteVecNotAvailable();
-
-        // Arrange
-        var options = new SQLiteVecOptions { DefaultMinScore = minScore };
 
         // Act & Assert
         options.Invoking(o => o.Validate()).Should().Throw<ArgumentException>();

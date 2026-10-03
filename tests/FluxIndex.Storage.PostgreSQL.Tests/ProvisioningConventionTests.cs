@@ -39,6 +39,9 @@ public class ProvisioningConventionTests
         ("PostgresCacheMigrationService", "PostgresCacheSchemaInitializer", null),
         ("PostgresGraphMigrationService", "PostgresGraphSchemaInitializer", null),
         ("PostgreSQLQuantizedMigrationService", "PostgreSQLQuantizedStorageInitializer", null),
+        // The entity graph is registered directly (AddPostgresEntityGraph); no builder option reaches it, so its
+        // initializer runs from the hosted service only. Paired anyway, so a builder path added later has one to register.
+        ("PostgresEntityGraphMigrationService", "PostgresEntityGraphSchemaInitializer", null),
 
         // Exemption: the SQLite quantized store has no initializer. Unlike its PostgreSQL counterpart
         // it is not reachable from any builder path (no UseSQLite option registers it), so only a

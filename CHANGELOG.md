@@ -5,6 +5,22 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.72.0] - Unreleased
+
+### Changed
+- **`AddPostgresEntityGraph` now provisions the entity graph schema at host start when `EntityGraphOptions.AutoMigrate`
+  is on (the default).** Before, the option was copied by the registration and read by nothing: no schema was created
+  unless the application called `EnsureEntityGraphSchemaAsync`. **Breaking (behaviour)**: an application on a database
+  where it may not run `CREATE EXTENSION`, or that manages the schema itself, sets `o.AutoMigrate = false`. Same shape
+  as the PostgreSQL graph store and the SQLite entity graph.
+
+### Removed
+- **Breaking: options that nothing read are removed** — setting them never had an effect.
+  - `EntityGraphOptions.IvfflatLists` (obsolete since 0.20.1; the entity graph uses HNSW). Migration: delete the assignment.
+  - `RedisCacheStoreOptions.EnableDetailedLogging`. Migration: set the `FluxIndex.Cache.Redis` log category's level instead.
+  - `SQLiteVecOptions.DefaultMinScore`. Migration: `RetrieverOptions.DefaultMinScore` (or `minScore` per search) is the
+    default minimum score; the SQLite store applies the score each search passes.
+
 ## [0.71.3] - 2026-10-03
 
 ### Changed

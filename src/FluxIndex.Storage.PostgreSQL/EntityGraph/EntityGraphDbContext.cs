@@ -195,14 +195,6 @@ public class EntityGraphOptions
     public int EmbeddingDimension { get; set; } = 384;
 
     /// <summary>
-    /// Number of lists for IVFFlat index.
-    /// </summary>
-    [Obsolete("Unused: EntityGraph vector indexes use HNSW (no training-time parameter) since 0.20.1 — " +
-        "ivfflat trained on an empty table silently lost recall for later inserts. " +
-        "Setting this has no effect; the property will be removed in a future minor.")]
-    public int IvfflatLists { get; set; } = 100;
-
-    /// <summary>
     /// Maximum traversal depth for recursive queries.
     /// </summary>
     public int MaxTraversalDepth { get; set; } = 10;
@@ -213,7 +205,9 @@ public class EntityGraphOptions
     public int DefaultPageSize { get; set; } = 100;
 
     /// <summary>
-    /// Enable automatic migration.
+    /// Provision the entity graph schema (the pgvector extension and the tables) when the application host
+    /// starts. Off for a schema managed outside the application, or a managed PostgreSQL without the
+    /// CREATE EXTENSION privilege — then call <c>EnsureEntityGraphSchemaAsync</c> yourself, or provision it externally.
     /// </summary>
     public bool AutoMigrate { get; set; } = true;
 }

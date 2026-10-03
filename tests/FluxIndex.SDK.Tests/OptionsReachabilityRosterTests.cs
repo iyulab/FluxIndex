@@ -88,13 +88,12 @@ public class OptionsReachabilityRosterTests
         ["FluxIndex.Storage.Neo4j.Neo4jOptions"] = ["Encrypted", "NodeLabelPrefix"],
         ["FluxIndex.Storage.PostgreSQL.Cache.PostgresCacheOptions"] = ["SimilarityThreshold"],
         ["FluxIndex.Storage.SQLite.Cache.SQLiteCacheOptions"] = ["SimilarityThreshold"],
-        ["FluxIndex.Storage.SQLite.SQLiteVecOptions"] = ["BatchTransactionCommitInterval", "DefaultMinScore", "Fts5Bm25Weights", "IndexType"],
-        // Moving to Iyu.Conventions.Testing 0.3.0 (2026-10-03) added these and the HnswBenchmarkOptions / SQLiteVecOptions
-        // members above: their only reads copied the value into the same property of another instance (a registration
-        // helper re-configuring the options, a benchmark deriving per-run options) — carried, never honoured. It also
-        // moved TestQueryCount and HybridSearchOptions.Filters to read (reached through a computed member read outside).
-        ["FluxIndex.Cache.Redis.Configuration.RedisCacheStoreOptions"] = ["EnableDetailedLogging"],
-        ["FluxIndex.Storage.PostgreSQL.EntityGraph.EntityGraphOptions"] = ["AutoMigrate", "IvfflatLists"],
+        ["FluxIndex.Storage.SQLite.SQLiteVecOptions"] = ["BatchTransactionCommitInterval", "Fts5Bm25Weights", "IndexType"],
+        // Moving to Iyu.Conventions.Testing 0.3.0 (2026-10-03) found options whose only reads copied the value into the
+        // same property of another instance. EntityGraphOptions.AutoMigrate is now honoured (0.72.0); IvfflatLists,
+        // RedisCacheStoreOptions.EnableDetailedLogging and SQLiteVecOptions.DefaultMinScore were removed. The
+        // HnswBenchmarkOptions members above stay: the options are handed to IVectorIndexBenchmark, which the library
+        // does not implement — a consumer's benchmark reads them (contract members, not unhonoured promises).
     };
 
     private static readonly Lazy<OptionsReachabilityReport> Result = new(() =>

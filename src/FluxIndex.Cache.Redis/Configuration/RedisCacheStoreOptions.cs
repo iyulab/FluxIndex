@@ -64,9 +64,4 @@ public class RedisCacheStoreOptions
     /// Command timeout in seconds.
     /// </summary>
     public int CommandTimeoutSeconds { get; set; } = 30;
-
-    /// <summary>
-    /// Enable detailed logging.
-    /// </summary>
-    public bool EnableDetailedLogging { get; set; }
 }
