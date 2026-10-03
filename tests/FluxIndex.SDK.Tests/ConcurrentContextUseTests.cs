@@ -125,7 +125,7 @@ public class ConcurrentContextUseTests : IDisposable
 
     public void Dispose()
     {
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        FluxIndex.Tests.Shared.SqliteTestPools.Release(_dbPath);
         foreach (var path in Directory.GetFiles(Path.GetDirectoryName(_dbPath)!, Path.GetFileName(_dbPath) + "*"))
         {
             try { File.Delete(path); } catch (IOException) { }

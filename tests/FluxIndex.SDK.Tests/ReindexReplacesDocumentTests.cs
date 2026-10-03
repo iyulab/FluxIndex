@@ -22,7 +22,7 @@ public sealed class ReindexReplacesDocumentTests : IDisposable
 
     public void Dispose()
     {
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        FluxIndex.Tests.Shared.SqliteTestPools.Release(_dbPath);
         foreach (var path in new[] { _dbPath, _dbPath + "-wal", _dbPath + "-shm" })
         {
             try { File.Delete(path); } catch (IOException) { }

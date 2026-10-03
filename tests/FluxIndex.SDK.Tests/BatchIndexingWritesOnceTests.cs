@@ -22,7 +22,7 @@ public sealed class BatchIndexingWritesOnceTests : IDisposable
 
     public void Dispose()
     {
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        FluxIndex.Tests.Shared.SqliteTestPools.Release(_paths);
         foreach (var path in _paths.SelectMany(p => new[] { p, p + "-wal", p + "-shm" }))
         {
             try { File.Delete(path); } catch (IOException) { }

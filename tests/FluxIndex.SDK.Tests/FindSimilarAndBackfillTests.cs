@@ -109,7 +109,7 @@ public class FindSimilarAndBackfillTests
         }
         finally
         {
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            FluxIndex.Tests.Shared.SqliteTestPools.Release(path);
             try { if (File.Exists(path)) File.Delete(path); } catch (IOException) { }
         }
     }
@@ -140,7 +140,7 @@ public class FindSimilarAndBackfillTests
         }
         finally
         {
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            FluxIndex.Tests.Shared.SqliteTestPools.Release(path);
             try { if (File.Exists(path)) File.Delete(path); } catch (IOException) { }
         }
     }

@@ -26,4 +26,8 @@
     <ProjectReference Include="..\FluxIndex.Core.Tests\FluxIndex.Core.Tests.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\Shared\SqliteTestPools.cs" Link="Shared\SqliteTestPools.cs" />
+  </ItemGroup>
+
 </Project>

@@ -127,7 +127,7 @@ public sealed class SQLiteKeywordWideFilterTests : IDisposable
 
     public void Dispose()
     {
-        SqliteConnection.ClearAllPools();
+        FluxIndex.Tests.Shared.SqliteTestPools.Release(_paths);
         foreach (var path in _paths)
         {
             try { File.Delete(path); } catch (IOException) { } catch (UnauthorizedAccessException) { }

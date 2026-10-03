@@ -95,7 +95,7 @@ public class EmbeddingRoleContractTests : IDisposable
 
     public void Dispose()
     {
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        FluxIndex.Tests.Shared.SqliteTestPools.Release(_dbPath);
         try { File.Delete(_dbPath); } catch (IOException) { }
     }
 

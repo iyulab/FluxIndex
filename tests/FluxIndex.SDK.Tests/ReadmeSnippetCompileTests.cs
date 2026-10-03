@@ -121,7 +121,7 @@ public class ReadmeSnippetCompileTests
         }
         finally
         {
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            FluxIndex.Tests.Shared.SqliteTestPools.Release(path);
             foreach (var file in new[] { path, path + "-wal", path + "-shm" })
             {
                 try { File.Delete(file); } catch (IOException) { }

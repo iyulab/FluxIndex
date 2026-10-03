@@ -92,7 +92,7 @@ public sealed class AddSQLiteKeywordSearchTests : IDisposable
 
     public void Dispose()
     {
-        SqliteConnection.ClearAllPools();
+        FluxIndex.Tests.Shared.SqliteTestPools.Release(_path);
         try { File.Delete(_path); } catch (IOException) { } catch (UnauthorizedAccessException) { }
     }
 }

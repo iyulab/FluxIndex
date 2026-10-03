@@ -62,7 +62,7 @@ public sealed class GraphAutoMigrateTests : IDisposable
 
     public void Dispose()
     {
-        SqliteConnection.ClearAllPools();
+        FluxIndex.Tests.Shared.SqliteTestPools.Release(_entityDb, _graphDb);
         foreach (var path in new[] { _entityDb, _graphDb })
         {
             try { File.Delete(path); } catch (IOException) { }

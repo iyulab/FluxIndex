@@ -48,4 +48,8 @@
     <PackageReference Include="LMSupply.Embedder" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\Shared\SqliteTestPools.cs" Link="Shared\SqliteTestPools.cs" />
+  </ItemGroup>
+
 </Project>

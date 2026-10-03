@@ -107,7 +107,7 @@ public sealed class SQLiteEntityGraphPartitionMergeTests : IAsyncDisposable
         }
         finally
         {
-            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            FluxIndex.Tests.Shared.SqliteTestPools.Release(path);
             try { File.Delete(path); } catch (IOException) { }
         }
     }
