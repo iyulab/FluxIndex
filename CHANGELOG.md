@@ -5,6 +5,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.71.3] - 2026-10-03
+
+### Changed
+- Re-pinned sibling package(s) `FluxGuard.Remote` 0.18.2 -> 0.19.0. No source changes.
+
+---
+
 ## [0.71.2] - 2026-10-02
 
 ### Changed
