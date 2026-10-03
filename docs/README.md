@@ -12,7 +12,6 @@ RAG infrastructure library for .NET - Simple, fast, and local-first.
 | [**ADVANCED_RAG.md**](ADVANCED_RAG.md) | GraphRAG, Self-RAG, Corrective RAG |
 | [**FILEVAULT_GUIDE.md**](FILEVAULT_GUIDE.md) | FileVault file-to-vector sync, folder watching |
 | [**FLUXINDEX_PHILOSOPHY.md**](FLUXINDEX_PHILOSOPHY.md) | Core philosophy, role, and scope |
-| [**MIGRATION.md**](MIGRATION.md) | Upgrade checklists (0.2.x → 0.13.x) |
 
 ---
 
