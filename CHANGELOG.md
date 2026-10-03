@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.72.0] - Unreleased
+## [0.72.0] - 2026-10-03
 
 ### Changed
 - **`AddPostgresEntityGraph` now provisions the entity graph schema at host start when `EntityGraphOptions.AutoMigrate`
