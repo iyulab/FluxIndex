@@ -9,6 +9,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ### Changed
 - Re-pinned sibling package(s) `LMSupply.Embedder` 0.99.0 -> 0.100.0, `LMSupply.Generator` 0.99.0 -> 0.100.0, `LMSupply.Reranker` 0.99.0 -> 0.100.0.
+- Re-pinned sibling package(s) `FluxImprover` 0.15.4 -> 0.15.5.
 
 ### Removed
 - **Breaking: the HNSW auto-tuning surface is removed** — `IVectorIndexBenchmark`, `VectorIndexAutoTuner`,
