@@ -5,6 +5,15 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.73.0] - Unreleased
+
+### Removed
+- **Breaking: the HNSW auto-tuning surface is removed** — `IVectorIndexBenchmark`, `VectorIndexAutoTuner`,
+  `VectorIndexPerformanceMonitor` and their models (`HnswParameters`, `HnswBenchmarkOptions`, `HnswBenchmarkResult`,
+  `HnswAutoTuningOptions`, `TuningStrategy`, `IndexPerformanceMetrics`). The library never implemented the benchmark
+  the tuner and monitor require and never registered either, so none of it could run. Migration: delete references;
+  HNSW parameters of a vector store are set on that store's options (for example `QdrantOptions.HnswM`).
+
 ## [0.72.1] - 2026-10-03
 
 ### Changed

@@ -73,8 +73,6 @@ public class OptionsReachabilityRosterTests
         ["FluxIndex.Core.Application.Services.QuantizedVectorStoreOptions"] = ["DefaultCandidateMultiplier", "StoreOriginalEmbeddings"],
         ["FluxIndex.Core.Application.Services.SelfRAGServiceOptions"] = ["DefaultMaxIterations", "DefaultQualityThreshold"],
         ["FluxIndex.Core.Domain.Models.BatchProcessingOptions"] = ["BatchSize", "MaxRetries", "ReportProgress", "RetryDelay", "StopOnError"],
-        ["FluxIndex.Core.Domain.Models.HnswAutoTuningOptions"] = ["MaxIterations", "MaxMemoryUsageBytes", "MaxTuningTimeMs"],
-        ["FluxIndex.Core.Domain.Models.HnswBenchmarkOptions"] = ["AccuracyK", "MaxTestTimeMs", "MeasureAccuracy", "MonitorMemoryUsage", "ParameterSets", "RandomSeed", "RecreateIndex", "TopK", "VectorDimensions"],
         ["FluxIndex.Core.Domain.Models.HybridSearchOptions"] = ["DiversityThreshold", "EnableDiversity", "TimeoutMs"],
         ["FluxIndex.Core.Domain.Models.SmallToBigOptions"] = ["MaxWindowSize", "TimeoutMs"],
         ["FluxIndex.Core.Domain.Models.VectorSearchOptions"] = ["BooleanOperator", "EnablePhraseSearch", "EnableTermExpansion", "SimilarityMetric"],
@@ -91,9 +89,9 @@ public class OptionsReachabilityRosterTests
         ["FluxIndex.Storage.SQLite.SQLiteVecOptions"] = ["BatchTransactionCommitInterval", "Fts5Bm25Weights", "IndexType"],
         // Moving to Iyu.Conventions.Testing 0.3.0 (2026-10-03) found options whose only reads copied the value into the
         // same property of another instance. EntityGraphOptions.AutoMigrate is now honoured (0.72.0); IvfflatLists,
-        // RedisCacheStoreOptions.EnableDetailedLogging and SQLiteVecOptions.DefaultMinScore were removed. The
-        // HnswBenchmarkOptions members above stay: the options are handed to IVectorIndexBenchmark, which the library
-        // does not implement — a consumer's benchmark reads them (contract members, not unhonoured promises).
+        // RedisCacheStoreOptions.EnableDetailedLogging and SQLiteVecOptions.DefaultMinScore were removed. The HNSW
+        // auto-tuning surface (IVectorIndexBenchmark and the tuner/monitor built on it, with HnswBenchmarkOptions and
+        // HnswAutoTuningOptions) was removed in 0.73.0: nothing implemented the benchmark, so none of it could run.
     };
 
     private static readonly Lazy<OptionsReachabilityReport> Result = new(() =>
