@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <PackageReference Include="NSubstitute" />
+    <PackageReference Include="Iyu.Conventions.Testing" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
     <PackageReference Include="Microsoft.Extensions.Configuration" />
     <PackageReference Include="Microsoft.Extensions.Options" />

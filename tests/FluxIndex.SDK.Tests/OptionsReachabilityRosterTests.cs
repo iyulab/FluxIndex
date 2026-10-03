@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Runtime.Loader;
+using Iyu.Conventions.Testing;
 using Xunit;
 
 namespace FluxIndex.SDK.Tests;
@@ -73,8 +74,8 @@ public class OptionsReachabilityRosterTests
         ["FluxIndex.Core.Application.Services.SelfRAGServiceOptions"] = ["DefaultMaxIterations", "DefaultQualityThreshold"],
         ["FluxIndex.Core.Domain.Models.BatchProcessingOptions"] = ["BatchSize", "MaxRetries", "ReportProgress", "RetryDelay", "StopOnError"],
         ["FluxIndex.Core.Domain.Models.HnswAutoTuningOptions"] = ["MaxIterations", "MaxMemoryUsageBytes", "MaxTuningTimeMs"],
-        ["FluxIndex.Core.Domain.Models.HnswBenchmarkOptions"] = ["AccuracyK", "MaxTestTimeMs", "ParameterSets", "TestQueryCount"],
-        ["FluxIndex.Core.Domain.Models.HybridSearchOptions"] = ["DiversityThreshold", "EnableDiversity", "Filters", "TimeoutMs"],
+        ["FluxIndex.Core.Domain.Models.HnswBenchmarkOptions"] = ["AccuracyK", "MaxTestTimeMs", "MeasureAccuracy", "MonitorMemoryUsage", "ParameterSets", "RandomSeed", "RecreateIndex", "TopK", "VectorDimensions"],
+        ["FluxIndex.Core.Domain.Models.HybridSearchOptions"] = ["DiversityThreshold", "EnableDiversity", "TimeoutMs"],
         ["FluxIndex.Core.Domain.Models.SmallToBigOptions"] = ["MaxWindowSize", "TimeoutMs"],
         ["FluxIndex.Core.Domain.Models.VectorSearchOptions"] = ["BooleanOperator", "EnablePhraseSearch", "EnableTermExpansion", "SimilarityMetric"],
         ["FluxIndex.Core.Models.AIMetadataExtractionOptions"] = ["CacheTTL", "ContinueOnFailure", "CustomPrompt", "EnableAdaptiveSampling", "EnableCaching", "MaxRetries", "MaxTokens", "MinConfidence", "RetryDelayMs", "Strategy", "TimeoutMs"],
@@ -87,30 +88,23 @@ public class OptionsReachabilityRosterTests
         ["FluxIndex.Storage.Neo4j.Neo4jOptions"] = ["Encrypted", "NodeLabelPrefix"],
         ["FluxIndex.Storage.PostgreSQL.Cache.PostgresCacheOptions"] = ["SimilarityThreshold"],
         ["FluxIndex.Storage.SQLite.Cache.SQLiteCacheOptions"] = ["SimilarityThreshold"],
-        ["FluxIndex.Storage.SQLite.SQLiteVecOptions"] = ["BatchTransactionCommitInterval", "Fts5Bm25Weights", "IndexType"],
+        ["FluxIndex.Storage.SQLite.SQLiteVecOptions"] = ["BatchTransactionCommitInterval", "DefaultMinScore", "Fts5Bm25Weights", "IndexType"],
+        // Moving to Iyu.Conventions.Testing 0.3.0 (2026-10-03) added these and the HnswBenchmarkOptions / SQLiteVecOptions
+        // members above: their only reads copied the value into the same property of another instance (a registration
+        // helper re-configuring the options, a benchmark deriving per-run options) — carried, never honoured. It also
+        // moved TestQueryCount and HybridSearchOptions.Filters to read (reached through a computed member read outside).
+        ["FluxIndex.Cache.Redis.Configuration.RedisCacheStoreOptions"] = ["EnableDetailedLogging"],
+        ["FluxIndex.Storage.PostgreSQL.EntityGraph.EntityGraphOptions"] = ["AutoMigrate", "IvfflatLists"],
     };
 
-    private static readonly Lazy<Scan> Result = new(Run);
+    private static readonly Lazy<OptionsReachabilityReport> Result = new(() =>
+        // Option-shaped types are named three ways in this tree: *Options, the builder's *Configuration blocks, and
+        // *Defaults (ChunkingDefaults). The scan itself is Iyu.Conventions.Testing's, shared with the other repositories.
+        OptionsReachability.Scan(LibraryAssemblies(), OptionsTypes.NamedWith("Options", "Configuration", "Defaults")));
 
     [Fact]
-    public void EveryPublicOption_IsReadByTheLibrary_ExceptTheKnownRoster()
-    {
-        // One line per type, so a failure prints the whole roster it found — not just which keys differ.
-        var unread = Result.Value.Unread
-            .Where(kv => kv.Value.Length > 0)
-            .Select(kv => $"{kv.Key}: {string.Join(",", kv.Value)}")
-            .Order(StringComparer.Ordinal)
-            .ToList();
-        var expected = KnownUnread
-            .Select(kv => $"{kv.Key}: {string.Join(",", kv.Value.Order(StringComparer.Ordinal))}")
-            .Order(StringComparer.Ordinal)
-            .ToList();
-
-        Assert.True(expected.SequenceEqual(unread),
-            "a public option nothing in the library reads is a promise it does not keep. Wire it, or change " +
-            "this roster as a deliberate decision and keep the option's documentation honest about it.\n" +
-            "found:\n  " + string.Join("\n  ", unread) + "\nexpected:\n  " + string.Join("\n  ", expected));
-    }
+    public void EveryPublicOption_IsReadByTheLibrary_ExceptTheKnownRoster() =>
+        Result.Value.ShouldMatchRoster(KnownUnread);
 
     // Positive controls: the scan must see reads it is known to have — a same-assembly read, a read
     // through the options merge introduced in 0.37.2, and a read from another assembly — or an empty
@@ -126,166 +120,6 @@ public class OptionsReachabilityRosterTests
         Assert.Contains("FluxIndex.Core.Application.Interfaces.EntityExtractionOptions.Language", scan.Read);
         Assert.Contains("FluxIndex.Core.Application.Interfaces.GraphRAGQueryOptions.IncludeContext", scan.Read);
         Assert.NotEmpty(scan.CrossAssemblyReads);
-    }
-
-    private sealed record Scan(
-        IReadOnlyList<Type> OptionTypes,
-        IReadOnlyDictionary<string, string[]> Unread,
-        IReadOnlySet<string> Read,
-        IReadOnlySet<string> CrossAssemblyReads);
-
-    private static Scan Run()
-    {
-        var assemblies = LibraryAssemblies();
-        var optionTypes = assemblies
-            .SelectMany(SafeTypes)
-            .Where(t => t is { IsPublic: true, IsClass: true, IsAbstract: false } || t is { IsNestedPublic: true, IsClass: true, IsAbstract: false })
-            // Option-shaped types are named three ways in this tree: *Options, the builder's
-            // *Configuration blocks, and *Defaults (ChunkingDefaults). A name rule that stops at
-            // "Options" left the builder's public configuration surface unscanned.
-            .Where(t => t.Name.EndsWith("Options", StringComparison.Ordinal)
-                     || t.Name.EndsWith("Configuration", StringComparison.Ordinal)
-                     || t.Name.EndsWith("Defaults", StringComparison.Ordinal))
-            .OrderBy(t => t.FullName, StringComparer.Ordinal)
-            .ToList();
-
-        // (module, getter token) -> "Type.Property", for properties each type declares itself.
-        var getters = new Dictionary<(Module, int), (Type Type, string Name)>();
-        foreach (var type in optionTypes)
-        {
-            foreach (var property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
-            {
-                if (property.GetMethod is { IsPublic: true } getter)
-                {
-                    getters[(getter.Module, getter.MetadataToken)] = (type, property.Name);
-                }
-            }
-        }
-
-        var read = new HashSet<string>(StringComparer.Ordinal);
-        var crossAssembly = new HashSet<string>(StringComparer.Ordinal);
-        const BindingFlags all = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance |
-                                 BindingFlags.Static | BindingFlags.DeclaredOnly;
-
-        // Reads inside an options type count only through a member the library calls from outside it —
-        // a Validate() or a computed property the library consults is how such an option is honoured.
-        // Copies and constructors are the exception: a copy is not a use.
-        var readsInside = new Dictionary<(Module, int), List<string>>();
-        var calledFromOutside = new HashSet<(Module, int)>();
-        foreach (var assembly in assemblies)
-        {
-            foreach (var type in SafeTypes(assembly))
-            {
-                var owner = optionTypes.FirstOrDefault(o => IsWithin(type, o));
-                IEnumerable<MethodBase> bodies = type.GetMethods(all).Cast<MethodBase>().Concat(type.GetConstructors(all));
-                foreach (var method in bodies)
-                {
-                    foreach (var target in Calls(method, type.Module))
-                    {
-                        var targetKey = (target.Module, target.MetadataToken);
-                        if (getters.TryGetValue(targetKey, out var option))
-                        {
-                            var key = $"{option.Type.FullName}.{option.Name}";
-                            if (owner == option.Type)
-                            {
-                                if (method is MethodInfo && !IsCopy(method) && owner == method.DeclaringType)
-                                {
-                                    var methodKey = (method.Module, method.MetadataToken);
-                                    if (!readsInside.TryGetValue(methodKey, out var list))
-                                        readsInside[methodKey] = list = [];
-                                    list.Add(key);
-                                }
-                                continue;
-                            }
-                            read.Add(key);
-                            if (type.Assembly != option.Type.Assembly)
-                                crossAssembly.Add(key);
-                        }
-                        else if (target.DeclaringType is { } declaring
-                                 && optionTypes.Contains(declaring)
-                                 && !IsWithin(type, declaring))
-                        {
-                            calledFromOutside.Add(targetKey);
-                        }
-                    }
-                }
-            }
-        }
-        foreach (var (method, keys) in readsInside)
-        {
-            if (calledFromOutside.Contains(method))
-                read.UnionWith(keys);
-        }
-
-        var unread = optionTypes.ToDictionary(
-            t => t.FullName!,
-            t => t.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
-                .Where(p => p.GetMethod is { IsPublic: true })
-                .Select(p => p.Name)
-                .Where(name => !read.Contains($"{t.FullName}.{name}"))
-                .Order(StringComparer.Ordinal)
-                .ToArray(),
-            StringComparer.Ordinal);
-        return new Scan(optionTypes, unread, read, crossAssembly);
-    }
-
-    /// <summary>
-    /// A method that exists to produce another instance of the type it lives on — a clone, a copy, a
-    /// <c>With…</c> derivation, or the compiler's own record copy constructor. Reading a property in
-    /// order to carry it into a new instance is not consuming it, so those reads must not count; the
-    /// record copy constructor is the sharpest case, since it reads *every* property and would mark a
-    /// whole options record as read on its own.
-    /// <para>
-    /// Judged by what the method returns rather than by its name: a <c>WithRetries</c> that actually
-    /// applies the option (returning void, or something else) is a real read and stays counted, while a
-    /// differently-named copy helper is still excluded. Naming alone decided this before, and it was the
-    /// one rule the two copies of this scanner disagreed on.
-    /// </para>
-    /// <para>
-    /// Known limit: a fluent <c>Validate()</c> that returns <c>this</c> is indistinguishable by signature
-    /// from a copy, so its reads would not count. No options type here has one — if that changes, the
-    /// distinction has to come from the body rather than the signature.
-    /// </para>
-    /// </summary>
-    private static bool IsCopy(MethodBase method) =>
-        method.Name == "<Clone>$"
-        || (method is MethodInfo { ReturnType: { } returned } && returned == method.DeclaringType);
-
-    // Every method a body calls: call (0x28) / callvirt (0x6F) followed by a MethodDef (0x06) or
-    // MemberRef (0x0A) token. A byte that merely looks like the opcode inside another operand yields a
-    // token that resolves to something else, or to nothing; callers match exact methods only.
-    private static IEnumerable<MethodBase> Calls(MethodBase method, Module module)
-    {
-        byte[]? il;
-        try { il = method.GetMethodBody()?.GetILAsByteArray(); }
-        catch (Exception) { yield break; }
-        if (il is null) yield break;
-        for (var i = 0; i + 4 < il.Length; i++)
-        {
-            if (il[i] is not (0x28 or 0x6F)) continue;
-            var token = BitConverter.ToInt32(il, i + 1);
-            if ((token >> 24) is not (0x06 or 0x0A)) continue;
-            MethodBase? target;
-            try { target = module.ResolveMethod(token); }
-            catch (Exception) { continue; }
-            if (target is not null)
-                yield return target;
-        }
-    }
-
-    private static bool IsWithin(Type type, Type container)
-    {
-        for (var t = type; t is not null; t = t.DeclaringType)
-        {
-            if (t == container) return true;
-        }
-        return false;
-    }
-
-    private static IEnumerable<Type> SafeTypes(Assembly assembly)
-    {
-        try { return assembly.GetTypes(); }
-        catch (ReflectionTypeLoadException ex) { return ex.Types.Where(t => t is not null)!; }
     }
 
     // Every FluxIndex library assembly copied next to the tests — not the tests themselves. Loaded by
