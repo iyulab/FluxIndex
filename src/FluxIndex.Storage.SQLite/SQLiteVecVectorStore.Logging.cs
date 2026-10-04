@@ -29,7 +29,7 @@ public partial class SQLiteVecVectorStore
     [LoggerMessage(Level = LogLevel.Error, Message = "Batch vector insert failed")]
     private static partial void LogBatchVectorInsertFailed(ILogger logger, Exception exception);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "vec0 table recovered — retry completed")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "vec0 table recovered - retry completed")]
     private static partial void LogVecTableRecovered(ILogger logger);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Cross-fingerprint orphan scan failed during init (non-fatal); unreachable vec tables will not be reported this run")]

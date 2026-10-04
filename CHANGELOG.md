@@ -5,6 +5,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.73.7] - Unreleased
+
+### Changed
+- **Log templates and exception messages are plain ASCII.** Seven of them carried an em dash or an arrow (the listwise
+  rerank summary, the GraphRAG global-search warning, the sqlite-vec recovery warning, the empty-filter exception and
+  three LMSupply embedding-identity exceptions); they now use `-` and `->`, so they grep and tokenize like the rest.
+  A convention test covering every FluxIndex assembly — log templates and exception messages — keeps it that way.
+
 ## [0.73.6] - 2026-10-05
 
 ### Changed

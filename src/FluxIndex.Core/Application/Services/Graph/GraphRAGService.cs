@@ -1895,7 +1895,7 @@ Provide a comprehensive answer that integrates both perspectives:";
     private static partial void LogGraphRAGIndexLoaded(ILogger logger, int entities, int relations, int communities, int chunks, double timeMs);
     [LoggerMessage(Level = LogLevel.Warning, Message = "Loaded GraphRAG index has entities but no communities for its chunks; global search on it finds nothing until the index is (re)built with community detection")]
     private static partial void LogGraphRAGLoadedWithoutCommunities(ILogger logger);
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Global search on a GraphRAG index with no community summaries — nothing to rank; build the index in-process or wait for community round-trip support")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Global search on a GraphRAG index with no community summaries - nothing to rank; build the index in-process or wait for community round-trip support")]
     private static partial void LogGraphRAGGlobalSearchWithoutSummaries(ILogger logger);
     [LoggerMessage(Level = LogLevel.Information, Message = "GraphRAG index built: {Entities} entities, {Communities} communities, {Summaries} summaries in {TimeMs:F0}ms")]
     private static partial void LogGraphRAG12(ILogger logger, int entities, int communities, int summaries, double timeMs);

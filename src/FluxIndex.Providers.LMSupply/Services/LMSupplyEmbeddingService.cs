@@ -181,7 +181,7 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
 
         throw new InvalidOperationException(
             $"UseVectorSpaceRevision is set for '{_configuredModelId}' but the vector-space revision is not known yet: the model is not loaded and its revision was not read from the cached files. " +
-            "Read it first (await PreReadVectorSpaceRevisionAsync — AddLMSupplyEmbedding does this at host start) or load the model (await EnsureLoadedAsync, or LMSupplyEmbeddingOptions.WarmUpOnStart) " +
+            "Read it first (await PreReadVectorSpaceRevisionAsync - AddLMSupplyEmbedding does this at host start) or load the model (await EnsureLoadedAsync, or LMSupplyEmbeddingOptions.WarmUpOnStart) " +
             "before anything asks for the embedding identity: an identity announced without the revision would name a different collection than the identity after the load.");
     }
 
@@ -344,7 +344,7 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
 
         throw new InvalidOperationException(
             $"The loaded model '{model.ModelId}' reports vector-space revision '{model.VectorSpaceRevision ?? "(none)"}' but '{preRead}' was read from its cached files before the load " +
-            "and the embedding identity — and the collection named after it — was announced with that value. Embedding now would put a different vector space into that collection. " +
+            "and the embedding identity - and the collection named after it - was announced with that value. Embedding now would put a different vector space into that collection. " +
             "Set LMSupplyEmbeddingOptions.WarmUpOnStart = true so the identity is read from the loaded model instead, and report the mismatch to LMSupply (the files-only read and the load disagree).");
     }
 
@@ -354,7 +354,7 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
         {
             throw new InvalidOperationException(
                 $"The loaded model reports the name '{model.ModelId}' but '{_announcedName}' was announced for '{_configuredModelId}' before the load. " +
-                "The embedding identity — and the vector collection named after it — would change once the model is loaded. " +
+                "The embedding identity - and the vector collection named after it - would change once the model is loaded. " +
                 $"Set LMSupplyEmbeddingOptions.ModelName = \"{model.ModelId}\" so the announced identity matches.");
         }
 

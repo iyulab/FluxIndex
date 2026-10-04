@@ -933,7 +933,7 @@ public partial class ListwiseReranker : IListwiseReranker
     private static partial void LogListwiseReranker11(ILogger logger);
     [LoggerMessage(Level = LogLevel.Information, Message = "Listwise reranking {Count} candidates using {Method}")]
     private static partial void LogListwiseReranker10(ILogger logger, int count, ListwiseMethod method);
-    [LoggerMessage(Level = LogLevel.Information, Message = "Listwise reranking complete: {Input} → {Output} results")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Listwise reranking complete: {Input} -> {Output} results")]
     private static partial void LogListwiseReranker9(ILogger logger, int input, int output);
     [LoggerMessage(Level = LogLevel.Warning, Message = "LLM not available for sliding window, falling back to attention-based")]
     private static partial void LogListwiseReranker8(ILogger logger);

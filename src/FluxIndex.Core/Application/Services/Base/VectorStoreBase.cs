@@ -322,7 +322,7 @@ public abstract partial class VectorStoreBase : IVectorStore
         "for multi-value OR (MatchAny) matching.");
 
     private static ArgumentException EmptyFilterCollection(string key) => new(
-        $"Filter '{key}' is an empty collection — its match semantics are ambiguous. " +
+        $"Filter '{key}' is an empty collection - its match semantics are ambiguous. " +
         "Pass at least one value, or omit the key to not filter on it.");
 
     /// <summary>
