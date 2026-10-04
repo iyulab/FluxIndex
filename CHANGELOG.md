@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.73.7] - Unreleased
+## [0.73.7] - 2026-10-05
 
 ### Changed
 - **Log templates and exception messages are plain ASCII.** Seven of them carried an em dash or an arrow (the listwise
