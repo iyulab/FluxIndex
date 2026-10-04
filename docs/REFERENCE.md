@@ -737,5 +737,4 @@ Based on .NET 10.0, Intel i7-1360P:
 
 - [Guide](GUIDE.md) - Quick start and examples
 - [Samples](../samples/) - Working code
-- [Benchmarks](../benchmarks/FluxIndex.Benchmarks/BENCHMARK_RESULTS.md) - Full metrics
 - [GitHub](https://github.com/iyulab/FluxIndex) - Issues & contributions

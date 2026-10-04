@@ -693,4 +693,3 @@ Console.WriteLine($"Type: {analysis.Type}, Complexity: {analysis.Complexity}");
 
 - [GUIDE.md](./GUIDE.md) - Basic FluxIndex usage
 - [REFERENCE.md](./REFERENCE.md) - API reference
-- [RAG_ENHANCEMENT_ROADMAP.md](./archive/RAG_ENHANCEMENT_ROADMAP_COMPLETED.md) - Implementation details
