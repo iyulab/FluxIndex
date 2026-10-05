@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.76.0] - Unreleased
+## [0.76.0] - 2026-10-05
 
 ### Fixed
 - **Forgetting or reassigning chunks no longer drops chunks a concurrent build adds to the same entity.**
