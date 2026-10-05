@@ -7,6 +7,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [0.76.1] - Unreleased
 
+### Changed
+- Re-pinned sibling package(s) `FileFlux` 0.38.3 -> 0.39.0.
+
 ### Fixed
 - **Building or updating a GraphRAG index no longer fails intermittently with "FOREIGN KEY constraint failed"**
   (SQLite and PostgreSQL entity graph stores). Communities were written level by level, children (level 0) before
