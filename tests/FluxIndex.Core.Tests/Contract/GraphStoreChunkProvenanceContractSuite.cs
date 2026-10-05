@@ -47,8 +47,11 @@ public abstract class GraphStoreChunkProvenanceContractSuite
         EvidenceChunkIds = []
     };
 
+    // A store merges into the stored row of the same id: two builds of one partition running at once write the same
+    // entity (its id is derived from its identity), and the second must not erase the first one's chunks. Taking a
+    // chunk away is UpdateEntityAsync's job.
     [Fact]
-    public async Task StoreEntitiesBatchAsync_SameIdTwice_UpdatesTheEntity_AndReplacesItsProvenance()
+    public async Task StoreEntitiesBatchAsync_SameIdTwice_UpdatesTheEntity_AndMergesItsProvenance()
     {
         var ct = TestContext.Current.CancellationToken;
         var store = await CreateStoreAsync();
@@ -62,12 +65,16 @@ public abstract class GraphStoreChunkProvenanceContractSuite
         Assert.NotNull(stored);
         Assert.Equal("Globex Corp", stored.Name);
         Assert.Equal(0.9, stored.Confidence, precision: 6);
-        Assert.Equal(new[] { c2, c3 }.Order(), stored.ChunkIds.Order());
-        Assert.Equal(["doc-b"], stored.DocumentIds);
+        Assert.Equal(new[] { c1, c2, c3 }.Order(), stored.ChunkIds.Order());
+        Assert.Equal(new[] { "doc-a", "doc-b" }, stored.DocumentIds.Order());
 
-        Assert.Empty(await store.GetEntitiesByChunkIdsAsync([c1], ct: ct));
+        Assert.Equal(id, Assert.Single(await store.GetEntitiesByChunkIdsAsync([c1], ct: ct)).Id);
         var byNewChunk = await store.GetEntitiesByChunkIdsAsync([c3], ct: ct);
         Assert.Equal(id, Assert.Single(byNewChunk).Id);
+
+        // Replacing the provenance is UpdateEntityAsync.
+        Assert.True(await store.UpdateEntityAsync(stored with { ChunkIds = [c2, c3], DocumentIds = ["doc-b"] }, ct));
+        Assert.Empty(await store.GetEntitiesByChunkIdsAsync([c1], ct: ct));
     }
 
     // Community ids are derived from level and member chunks, so a rebuilt document re-stores the same ids. That must

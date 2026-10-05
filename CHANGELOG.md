@@ -5,6 +5,20 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.75.0] - Unreleased
+
+### Fixed
+- **Two documents of one partition indexed at the same time no longer split one entity into two nodes.** A new entity
+  node got a random id, so two entity graph builds that both looked up the stored entities before either wrote missed
+  each other and stored the same entity twice (seen about once in four concurrent memorizes of related documents). A
+  new node's id is now derived from its partition and identity (normalized name, type family, subtype), so both builds
+  write the same node. Nodes already stored keep their ids: a build joins them by identity as before.
+- **Writing an entity that is already stored adds to its chunks, documents and surface forms instead of replacing
+  them** (SQLite, PostgreSQL and Neo4j entity graph stores), so the second of two concurrent builds does not erase the
+  first one's provenance; the SQLite and PostgreSQL stores retry a write whose insert lost the race to the same id.
+  **Breaking** for a caller that used `StoreEntityAsync` / `StoreEntitiesBatchAsync` to shrink an entity's provenance:
+  that is `UpdateEntityAsync`, which still replaces every field.
+
 ## [0.74.2] - 2026-10-05
 
 ### Changed

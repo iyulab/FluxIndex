@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using FluxIndex.Core.Application.Interfaces;
@@ -121,7 +123,7 @@ public partial class EntityGraphService : IEntityGraphService
 
         if (options.LinkEntitiesAcrossChunks)
         {
-            var (linkedNodes, updatedMappings, linkedIds) = LinkEntitiesAcrossChunks(allEntities, chunkMappings);
+            var (linkedNodes, updatedMappings, linkedIds) = LinkEntitiesAcrossChunks(allEntities, chunkMappings, options.Partition);
             entityNodes = linkedNodes;
             chunkMappings = updatedMappings;
 
@@ -1094,7 +1096,8 @@ public partial class EntityGraphService : IEntityGraphService
 
     private static (List<EntityNode> Nodes, List<EntityChunkMapping> Mappings, Dictionary<string, string> LinkedIds) LinkEntitiesAcrossChunks(
         List<ExtractedEntity> entities,
-        List<EntityChunkMapping> mappings)
+        List<EntityChunkMapping> mappings,
+        string partition)
     {
         // Group entities by normalized text for linking
         var entityGroups = entities
@@ -1109,7 +1112,7 @@ public partial class EntityGraphService : IEntityGraphService
         {
             var groupList = group.ToList();
             var canonicalEntity = groupList.OrderByDescending(e => e.Confidence).First();
-            var newId = Guid.NewGuid().ToString();
+            var newId = NodeIdOf(partition, group.Key);
 
             // Map all old IDs to new ID
             foreach (var entity in groupList)
@@ -1231,6 +1234,20 @@ public partial class EntityGraphService : IEntityGraphService
 
     private static string? SubtypeOf(string? declared) =>
         string.IsNullOrWhiteSpace(declared) ? null : declared.Trim();
+
+    /// <summary>
+    /// The id a new node of <paramref name="identity"/> gets in <paramref name="partition"/>: the same for every build.
+    /// Two builds of one partition that run at the same time each look the identity up before either writes; with a
+    /// fresh id per build both missed the other and stored two nodes of one entity. With this id both write the same
+    /// node. A node already stored keeps the id it has — the join adopts the stored id, so graphs written with random
+    /// ids are unchanged. The family and subtype are hashed by name (not the enum's number), so reordering
+    /// <see cref="NamedEntityType"/> does not move ids.
+    /// </summary>
+    private static string NodeIdOf(string partition, EntityIdentity identity)
+    {
+        var key = string.Join('\u001f', partition, identity.NormalizedName, identity.Family.ToString(), identity.Subtype ?? string.Empty);
+        return new Guid(SHA256.HashData(Encoding.UTF8.GetBytes(key)).AsSpan(0, 16)).ToString();
+    }
 
     /// <summary>
     /// The normalized name a node carries, whichever path builds it. The extractor's own

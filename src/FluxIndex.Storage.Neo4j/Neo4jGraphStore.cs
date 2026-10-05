@@ -103,21 +103,24 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable, IDisposabl
 
     // One upsert for the single and the batch write. The batch used to carry its own copy that set neither
     // properties, embedding nor externalLinks, so every entity the entity graph build persisted lost them — including
-    // the "subtype" its identity is keyed on.
+    // the "subtype" its identity is keyed on. Surface forms, chunk ids and document ids are added to what the node
+    // already lists, not replaced: two builds of one partition running at once write the same node (the build derives
+    // the id from the identity), and the second must not erase the first one's provenance. Removing a chunk from an
+    // entity is UpdateEntityAsync's job.
     private static readonly string EntityUpsertCypher = $@"
         MERGE (e:{EntityLabel} {{id: $id}})
         SET e.name = $name,
             e.normalizedName = $normalizedName,
             e.partition = $partition,
             e.type = $type,
-            e.surfaceForms = $surfaceForms,
+            e.surfaceForms = $surfaceForms + [x IN coalesce(e.surfaceForms, []) WHERE NOT x IN $surfaceForms],
             e.description = $description,
             e.embedding = $embedding,
             e.confidence = $confidence,
             e.importanceScore = $importanceScore,
             e.mentionCount = $mentionCount,
-            e.chunkIds = $chunkIds,
-            e.documentIds = $documentIds,
+            e.chunkIds = $chunkIds + [x IN coalesce(e.chunkIds, []) WHERE NOT x IN $chunkIds],
+            e.documentIds = $documentIds + [x IN coalesce(e.documentIds, []) WHERE NOT x IN $documentIds],
             e.externalLinks = $externalLinks,
             e.properties = $properties,
             e.createdAt = $createdAt,

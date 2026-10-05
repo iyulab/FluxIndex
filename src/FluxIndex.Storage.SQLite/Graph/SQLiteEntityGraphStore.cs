@@ -36,53 +36,70 @@ public partial class SQLiteEntityGraphStore : IGraphStore
 
     public async Task<string> StoreEntityAsync(GraphEntity entity, CancellationToken ct = default)
     {
-        await using var context = await _contextFactory.CreateDbContextAsync(ct);
-        var dbEntity = MapToDbEntity(entity);
-
-        var existing = await context.Entities.AsTracking().FirstOrDefaultAsync(e => e.Id == entity.Id, ct);
-        if (existing != null)
-        {
-            context.Entry(existing).CurrentValues.SetValues(dbEntity);
-            existing.UpdatedAt = DateTimeOffset.UtcNow;
-        }
-        else
-        {
-            context.Entities.Add(dbEntity);
-        }
-
-        await context.SaveChangesAsync(ct);
+        await StoreEntitiesBatchAsync([entity], ct);
         return entity.Id;
     }
 
+    /// <remarks>
+    /// A write merges into a stored row of the same id: the row keeps every chunk, document and surface form it already
+    /// lists and gains the written ones (the other fields are replaced). The entity graph build derives a node's id from
+    /// its identity, so two builds of one partition running at once write the same row; without the merge the second
+    /// would erase the first one's provenance, and without the retry below its insert would fail on the key. Removing a
+    /// chunk from an entity is <see cref="UpdateEntityAsync"/>'s job.
+    /// </remarks>
     public async Task<IReadOnlyList<string>> StoreEntitiesBatchAsync(
         IEnumerable<GraphEntity> entities,
         CancellationToken ct = default)
     {
+        var list = entities.ToList();
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await StoreEntitiesOnceAsync(list, ct);
+            }
+            catch (DbUpdateException) when (attempt < MaxStoreAttempts)
+            {
+                // Another writer inserted one of these ids between our read and our insert: read again and merge.
+            }
+        }
+    }
+
+    private const int MaxStoreAttempts = 3;
+
+    private async Task<IReadOnlyList<string>> StoreEntitiesOnceAsync(IReadOnlyList<GraphEntity> entities, CancellationToken ct)
+    {
         await using var context = await _contextFactory.CreateDbContextAsync(ct);
         var ids = new List<string>();
-        var dbEntities = entities.Select(MapToDbEntity).ToList();
 
-        foreach (var dbEntity in dbEntities)
+        foreach (var entity in entities)
         {
             // AsTracking is load-bearing here and at every SetValues below: the context is registered NoTracking, and
             // SetValues on a detached instance changes nothing SaveChanges writes — an update of an existing row would be
             // dropped without an error while inserts still land.
-            var existing = await context.Entities.AsTracking().FirstOrDefaultAsync(e => e.Id == dbEntity.Id, ct);
+            var existing = await context.Entities.AsTracking().FirstOrDefaultAsync(e => e.Id == entity.Id, ct);
             if (existing != null)
             {
-                context.Entry(existing).CurrentValues.SetValues(dbEntity);
+                context.Entry(existing).CurrentValues.SetValues(MapToDbEntity(WithStoredLists(entity, MapToGraphEntity(existing))));
                 existing.UpdatedAt = DateTimeOffset.UtcNow;
             }
             else
             {
-                context.Entities.Add(dbEntity);
+                context.Entities.Add(MapToDbEntity(entity));
             }
-            ids.Add(dbEntity.Id);
+            ids.Add(entity.Id);
         }
 
         await context.SaveChangesAsync(ct);
         return ids;
     }
+
+    private static GraphEntity WithStoredLists(GraphEntity written, GraphEntity stored) => written with
+    {
+        ChunkIds = stored.ChunkIds.Union(written.ChunkIds).ToList(),
+        DocumentIds = stored.DocumentIds.Union(written.DocumentIds).ToList(),
+        SurfaceForms = stored.SurfaceForms.Union(written.SurfaceForms).ToList(),
+    };
 
     public async Task<GraphEntity?> GetEntityByIdAsync(string id, CancellationToken ct = default)
     {

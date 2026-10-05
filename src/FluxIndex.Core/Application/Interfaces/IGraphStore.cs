@@ -12,12 +12,17 @@ public interface IGraphStore
     #region Entity Operations
 
     /// <summary>
-    /// Stores an entity in the graph store.
+    /// Stores an entity in the graph store. An entity already stored under the same id is updated, and its chunk ids,
+    /// document ids and surface forms are merged with the written ones rather than replaced (see
+    /// <see cref="StoreEntitiesBatchAsync"/>); <see cref="UpdateEntityAsync"/> replaces them.
     /// </summary>
     Task<string> StoreEntityAsync(GraphEntity entity, CancellationToken ct = default);
 
     /// <summary>
-    /// Stores multiple entities in batch for efficiency.
+    /// Stores multiple entities in batch for efficiency. An entity already stored under the same id is updated, and its
+    /// chunk ids, document ids and surface forms are merged with the written ones rather than replaced: the entity graph
+    /// build derives an entity's id from its identity, so two builds of one partition running at once write the same
+    /// entity, and the second must not erase the first one's provenance. <see cref="UpdateEntityAsync"/> replaces them.
     /// </summary>
     Task<IReadOnlyList<string>> StoreEntitiesBatchAsync(
         IEnumerable<GraphEntity> entities,
@@ -68,7 +73,8 @@ public interface IGraphStore
         CancellationToken ct = default);
 
     /// <summary>
-    /// Updates an existing entity.
+    /// Updates an existing entity, replacing every field — chunk ids, document ids and surface forms included (the way
+    /// to take a chunk away from an entity).
     /// </summary>
     Task<bool> UpdateEntityAsync(GraphEntity entity, CancellationToken ct = default);
 
