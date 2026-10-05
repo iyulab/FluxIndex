@@ -10,6 +10,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ### Changed
 - Re-pinned sibling package(s) `LMSupply.Embedder` 0.106.0 -> 0.106.1, `LMSupply.Generator` 0.106.0 -> 0.106.1, `LMSupply.Reranker` 0.106.0 -> 0.106.1, `WebFlux` 0.21.0 -> 0.21.1.
 - Re-pinned sibling package(s) `FluxImprover` 0.16.1 -> 0.16.2.
+- Re-pinned sibling package(s) `FileFlux` 0.39.0 -> 0.39.1.
 
 ### Fixed
 - **Cancelling a call now cancels it.** 108 method(s) that take a `CancellationToken` caught every exception to
