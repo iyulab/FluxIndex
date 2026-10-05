@@ -5,6 +5,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.76.1] - Unreleased
+
+### Fixed
+- **Building or updating a GraphRAG index no longer fails intermittently with "FOREIGN KEY constraint failed"**
+  (SQLite and PostgreSQL entity graph stores). Communities were written level by level, children (level 0) before
+  their parents, and an incremental update gives a parent that gained chunks a new id — so a child could reference a
+  parent row not written yet. Seen on re-memorizing an edited document. Communities are now written parents first.
+
 ## [0.76.0] - 2026-10-05
 
 ### Fixed

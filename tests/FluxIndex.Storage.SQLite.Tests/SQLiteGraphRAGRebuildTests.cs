@@ -85,6 +85,49 @@ public sealed class SQLiteGraphRAGRebuildTests : IAsyncDisposable
         return service.BuildIndexAsync(chunks, cancellationToken: Ct);
     }
 
+    // The SQL stores hold a community's parent as a foreign key. A hierarchy lists level 0 first and level 0 points at
+    // level 1, and an incremental update gives a parent that gained chunks a new id — so writing level by level put a
+    // child before a parent row that did not exist yet ("FOREIGN KEY constraint failed", seen intermittently on
+    // re-memorize of an edited document). Parents are written first.
+    [Fact]
+    public async Task ABuildWhoseLevelZeroNamesANewParent_StoresBoth()
+    {
+        var extractor = Substitute.For<IAdvancedEntityExtractionService>();
+        extractor.ExtractBatchAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EntityExtractionOptions>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ci.Arg<IEnumerable<string>>().Select(_ => new EntityGraph { Entities = [], Relations = [] }).ToList());
+        var leiden = Substitute.For<ILeidenCommunityService>();
+        leiden.DetectHierarchicalCommunitiesAsync(Arg.Any<IEnumerable<LeidenChunk>>(), Arg.Any<LeidenOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new CommunityHierarchy
+            {
+                Levels =
+                [
+                    new CommunityLevel
+                    {
+                        LevelIndex = 0,
+                        Communities = [new LeidenCommunity { Id = "child", ChunkIds = ["p1"], Cohesion = 0.8, ParentCommunityId = "parent" }]
+                    },
+                    new CommunityLevel
+                    {
+                        LevelIndex = 1,
+                        Communities = [new LeidenCommunity { Id = "parent", ChunkIds = ["p1"], Cohesion = 0.7, ChildCommunityIds = ["child"] }]
+                    }
+                ]
+            });
+        var summaries = Substitute.For<IHierarchicalSummarizationService>();
+        summaries.GenerateHierarchicalSummariesAsync(Arg.Any<CommunityHierarchy>(), Arg.Any<IEnumerable<DocumentChunk>>(), Arg.Any<HierarchicalSummarizationOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(new HierarchicalSummaryResult { SummariesByLevel = new Dictionary<int, IReadOnlyList<CommunitySummary>>(), TotalCommunitiesSummarized = 0 });
+        var service = new GraphRAGService(
+            new EntityGraphService(extractor, null, _store, NullLogger<EntityGraphService>.Instance),
+            leiden, summaries, graphStore: _store, logger: NullLogger<GraphRAGService>.Instance);
+
+        await service.BuildIndexAsync([Chunk("p1", "doc-p")], cancellationToken: Ct);
+
+        var child = await _store.GetCommunityByIdAsync("child", Ct);
+        Assert.NotNull(child);
+        Assert.Equal("parent", child.ParentCommunityId);
+        Assert.NotNull(await _store.GetCommunityByIdAsync("parent", Ct));
+    }
+
     private Task<GraphRAGIndex> LoadAsync(params DocumentChunk[] chunks)
     {
         var reader = new GraphRAGService(

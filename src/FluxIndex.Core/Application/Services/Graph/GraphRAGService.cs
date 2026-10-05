@@ -159,6 +159,36 @@ public partial class GraphRAGService : IGraphRAGService
     }
 
     /// <summary>
+    /// <paramref name="communities"/> ordered so that a community comes after its parent whenever the parent is among
+    /// them (by depth below the topmost ancestor in the set; a parent outside the set counts as already stored).
+    /// </summary>
+    internal static IEnumerable<GraphCommunity> ParentsFirst(IReadOnlyList<GraphCommunity> communities)
+    {
+        var byId = new Dictionary<string, GraphCommunity>(StringComparer.Ordinal);
+        foreach (var community in communities)
+            byId.TryAdd(community.Id, community);
+
+        int Depth(GraphCommunity community)
+        {
+            var depth = 0;
+            var seen = new HashSet<string>(StringComparer.Ordinal) { community.Id };
+            for (var parentId = community.ParentCommunityId;
+                 parentId != null && byId.TryGetValue(parentId, out var parent) && seen.Add(parentId);
+                 parentId = parent.ParentCommunityId)
+            {
+                depth++;
+            }
+
+            return depth;
+        }
+
+        return communities.Select((c, i) => (Community: c, Depth: Depth(c), Index: i))
+            .OrderBy(x => x.Depth)
+            .ThenBy(x => x.Index)
+            .Select(x => x.Community);
+    }
+
+    /// <summary>
     /// Persists community information to the graph store for later traversal queries.
     /// </summary>
     private async Task PersistCommunitiesToGraphStoreAsync(GraphRAGIndex index, CancellationToken cancellationToken)
@@ -175,6 +205,7 @@ public partial class GraphRAGService : IGraphRAGService
             .GroupBy(m => m.ChunkId)
             .ToDictionary(g => g.Key, g => g.Select(m => m.EntityId).Distinct().ToList());
 
+        var toStore = new List<GraphCommunity>();
         foreach (var level in index.CommunityHierarchy.Levels)
         {
             foreach (var community in level.Communities)
@@ -205,9 +236,17 @@ public partial class GraphRAGService : IGraphRAGService
                     Embedding = communitySummary?.Embedding?.Values
                 };
 
-                await _graphStore.StoreCommunityAsync(graphCommunity, cancellationToken);
-                persistedCount++;
+                toStore.Add(graphCommunity);
             }
+        }
+
+        // A community row references its parent (a foreign key in the SQL stores), so parents are written first. Level
+        // order does not give that: an incremental update renames a community that gained chunks and every ancestor
+        // with it, so a child's parent can be a new row that a level-by-level loop has not written yet.
+        foreach (var graphCommunity in ParentsFirst(toStore))
+        {
+            await _graphStore.StoreCommunityAsync(graphCommunity, cancellationToken);
+            persistedCount++;
         }
 
         if (_logger.IsEnabled(LogLevel.Information))
