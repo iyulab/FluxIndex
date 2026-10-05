@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.77.1] - Unreleased
+## [0.77.1] - 2026-10-06
 
 ### Changed
 - Re-pinned sibling package(s) `LMSupply.Embedder` 0.106.0 -> 0.106.1, `LMSupply.Generator` 0.106.0 -> 0.106.1, `LMSupply.Reranker` 0.106.0 -> 0.106.1, `WebFlux` 0.21.0 -> 0.21.1.
