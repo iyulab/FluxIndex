@@ -5,6 +5,18 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.74.0] - Unreleased
+
+### Changed
+- **One name typed differently across documents is one graph node when the types are of one family.** An extractor
+  types one thing differently when documents frame it differently — a product in one, a technology described as an
+  architecture in another — and the graph used to keep one node per exact type, so the same thing became two nodes of
+  one partition. Entity identity is now (normalized name, type **family**, declared subtype): `Product`, `Technology`,
+  `Software` and `TechnicalConcept` are one family; `Location`, `GeopoliticalEntity` and `Facility` another; every other
+  type is its own. The node keeps the type of its most confident mention, or the stored node's type when it joins one.
+  Same-name entities of different families (a company and a river, a person and a brand) stay separate. Query matching
+  uses the same identity. Nodes already split stay split until re-indexed.
+
 ## [0.73.8] - 2026-10-05
 
 ### Changed

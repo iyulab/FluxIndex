@@ -294,4 +294,78 @@ public class EntityIdentityConsistencyTests
         Assert.Single(second.Entities);
         Assert.Single(_storedEntities);
     }
+
+    [Fact]
+    public async Task OneThingTypedAsProductHereAndTechnologyThere_IsOneNode_WithTheMostConfidentType()
+    {
+        // Measured on a consumer's model: a product described as an architecture in one document came
+        // back as Technology there and Product everywhere else, and keyed on the exact type it became
+        // two nodes of one partition. Product, Technology, Software and TechnicalConcept are one family.
+        _extractionByContent["CloudGate 9 pricing."] = [Entity("CloudGate 9", NamedEntityType.Product, 0.9)];
+        _extractionByContent["CloudGate 9 is an architecture."] = [Entity("CloudGate 9", NamedEntityType.Technology, 0.7)];
+        var service = CreateService(store: null);
+
+        var graph = await service.BuildEntityGraphAsync(
+            [Chunk("c1", "CloudGate 9 pricing."), Chunk("c2", "CloudGate 9 is an architecture.")],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var node = Assert.Single(graph.Entities);
+        Assert.Equal(NamedEntityType.Product, node.Type);
+    }
+
+    [Fact]
+    public async Task ATypeOfTheSameFamily_JoinsTheStoredNode_WhichKeepsItsType()
+    {
+        _extractionByContent["CloudGate 9 pricing."] = [Entity("CloudGate 9", NamedEntityType.Product, 0.6)];
+        var service = CreateService(_store);
+        await service.BuildEntityGraphAsync([Chunk("c1", "CloudGate 9 pricing.")], cancellationToken: TestContext.Current.CancellationToken);
+
+        // The second build carries c1 so the chunk-scoped lookup reaches the stored node (see the
+        // re-index fact above); the new mention is typed Software with a higher confidence.
+        _extractionByContent["CloudGate 9 SDK."] = [Entity("CloudGate 9", NamedEntityType.Software, 0.95)];
+        var second = await service.BuildEntityGraphAsync(
+            [Chunk("c1", "CloudGate 9 pricing."), Chunk("c2", "CloudGate 9 SDK.")],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var node = Assert.Single(second.Entities);
+        Assert.Single(_storedEntities);
+        Assert.Equal(NamedEntityType.Product, node.Type);
+    }
+
+    [Fact]
+    public async Task AQueryTypedDifferentlyWithinTheFamily_FindsTheNode()
+    {
+        // The query text does not spell the name, so the name-in-query fallback cannot find the node:
+        // only the identity match can (the extractor resolved "CG9" to the entity's name).
+        _extractionByContent["CloudGate 9 pricing."] = [Entity("CloudGate 9", NamedEntityType.Product, 0.9)];
+        _extractor.ExtractEntitiesAsync("how does CG9 work", Arg.Any<EntityExtractionOptions>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IReadOnlyList<ExtractedEntity>>([Entity("CloudGate 9", NamedEntityType.Technology, 0.8)]));
+        var service = CreateService(store: null);
+        var graph = await service.BuildEntityGraphAsync(
+            [Chunk("c1", "CloudGate 9 pricing.")],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        var result = await service.SearchByEntitiesAsync("how does CG9 work", graph, cancellationToken: TestContext.Current.CancellationToken);
+
+        var found = Assert.Single(result.QueryEntities);
+        Assert.Equal(NamedEntityType.Product, found.Type);
+    }
+
+    [Fact]
+    public async Task OneNameOfTwoFamilies_StaysTwoNodes()
+    {
+        // The homonyms measured beside the wavering came out under types of different families -
+        // the company and the river. Merging on the name alone would have joined them every time.
+        _extractionByContent["Amazon runs a cloud."] = [Entity("Amazon", NamedEntityType.Organization, 0.9)];
+        _extractionByContent["The Amazon floods the forest."] = [Entity("Amazon", NamedEntityType.Location, 0.9)];
+        var service = CreateService(store: null);
+
+        var graph = await service.BuildEntityGraphAsync(
+            [Chunk("c1", "Amazon runs a cloud."), Chunk("c2", "The Amazon floods the forest.")],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, graph.Entities.Count);
+        Assert.Contains(graph.Entities, e => e.Type == NamedEntityType.Organization);
+        Assert.Contains(graph.Entities, e => e.Type == NamedEntityType.Location);
+    }
 }

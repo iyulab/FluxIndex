@@ -902,8 +902,8 @@ public partial class EntityGraphService : IEntityGraphService
     }
 
     /// <summary>
-    /// Joins the freshly built graph to the reconstituted one. A new node whose normalized name and
-    /// type match a stored node takes the stored id (its mappings and edges follow); every other node
+    /// Joins the freshly built graph to the reconstituted one. A new node whose identity (normalized
+    /// name, type family, subtype) matches a stored node takes the stored id (its mappings and edges follow); every other node
     /// is kept as built. Returns the ids of the nodes this build created or changed — what has to be
     /// written back.
     /// </summary>
@@ -1123,7 +1123,8 @@ public partial class EntityGraphService : IEntityGraphService
                 Id = newId,
                 Name = canonicalEntity.Text,
                 NormalizedName = group.Key.NormalizedName,
-                Type = group.Key.Type,
+                // The family keyed the group; the node carries the type its most confident mention gave.
+                Type = canonicalEntity.Type,
                 SurfaceForms = groupList.Select(e => e.Text).Distinct().ToList(),
                 Confidence = groupList.Average(e => e.Confidence),
                 MentionCount = groupList.Sum(e => e.OccurrenceCount),
@@ -1169,7 +1170,15 @@ public partial class EntityGraphService : IEntityGraphService
     /// rather than three that must not be forgotten - which is how <see cref="Subtype"/> joined it.
     /// </remarks>
     /// <param name="NormalizedName">The name as <see cref="NormalizedNameOf"/> spells it.</param>
-    /// <param name="Type">The extractor's type for the entity.</param>
+    /// <param name="Family">
+    /// The type family of the extractor's type (<see cref="FamilyOf"/>), not the type itself. A model
+    /// types one thing differently when two documents frame it differently - a product in one, a
+    /// technology in the other described as an architecture - and keyed on the exact type the same
+    /// thing became two nodes of one partition. Measured on the model a consumer runs, two homonyms
+    /// (a company and a river, a person and a car brand) came out under types of different families,
+    /// so the family keeps true homonyms apart where the name alone would merge them. A node still
+    /// carries one <see cref="EntityNode.Type"/>.
+    /// </param>
     /// <param name="Subtype">
     /// The extractor's declared subtype, or null when it declared none. A consumer that extracts with
     /// a domain vocabulary (two <see cref="NamedEntityType.Custom"/> subtypes sharing a name, say)
@@ -1178,22 +1187,37 @@ public partial class EntityGraphService : IEntityGraphService
     /// key as written - trimmed, compared ordinally, never lower-cased - because it is a vocabulary
     /// term the consumer chose, not free text this class knows how to normalize.
     /// </param>
-    private readonly record struct EntityIdentity(string NormalizedName, NamedEntityType Type, string? Subtype)
+    private readonly record struct EntityIdentity(string NormalizedName, NamedEntityType Family, string? Subtype)
     {
         /// <summary>
         /// Whether a node of this identity answers a query entity of <paramref name="query"/>'s. A
         /// query entity is extracted from a few words without the vocabulary the index was built with,
-        /// so a query that declares no subtype matches every subtype of that name and type; a query
-        /// that does declare one matches only its own.
+        /// so a query that declares no subtype matches every subtype of that name and type family; a
+        /// query that does declare one matches only its own.
         /// </summary>
         public bool Answers(EntityIdentity query) =>
             NormalizedName == query.NormalizedName
-            && Type == query.Type
+            && Family == query.Family
             && (query.Subtype is null || Subtype == query.Subtype);
     }
 
+    /// <summary>
+    /// The type family a type keys under: <see cref="NamedEntityType.Product"/>,
+    /// <see cref="NamedEntityType.Technology"/>, <see cref="NamedEntityType.Software"/> and
+    /// <see cref="NamedEntityType.TechnicalConcept"/> are one (keyed as <c>Product</c>);
+    /// <see cref="NamedEntityType.Location"/>, <see cref="NamedEntityType.GeopoliticalEntity"/> and
+    /// <see cref="NamedEntityType.Facility"/> are one (keyed as <c>Location</c>); every other type is its own.
+    /// </summary>
+    private static NamedEntityType FamilyOf(NamedEntityType type) => type switch
+    {
+        NamedEntityType.Product or NamedEntityType.Technology or NamedEntityType.Software
+            or NamedEntityType.TechnicalConcept => NamedEntityType.Product,
+        NamedEntityType.Location or NamedEntityType.GeopoliticalEntity or NamedEntityType.Facility => NamedEntityType.Location,
+        _ => type,
+    };
+
     private static EntityIdentity IdentityOf(ExtractedEntity entity) =>
-        new(NormalizedNameOf(entity), entity.Type, SubtypeOf(entity.Subtype));
+        new(NormalizedNameOf(entity), FamilyOf(entity.Type), SubtypeOf(entity.Subtype));
 
     /// <remarks>
     /// Reads the subtype the build stored under <c>"subtype"</c> (<see cref="ToNodeProperties"/>). A
@@ -1202,7 +1226,7 @@ public partial class EntityGraphService : IEntityGraphService
     /// build wrote, and a stored node keys the same as the build that wrote it.
     /// </remarks>
     private static EntityIdentity IdentityOf(EntityNode node) =>
-        new(node.NormalizedName, node.Type,
+        new(node.NormalizedName, FamilyOf(node.Type),
             SubtypeOf(node.Properties.TryGetValue("subtype", out var subtype) ? subtype as string : null));
 
     private static string? SubtypeOf(string? declared) =>
@@ -1407,13 +1431,13 @@ public partial class EntityGraphService : IEntityGraphService
                 // Matched through the same identity the index was built with: a query entity that
                 // resolves to a different key than the stored one would search for something the
                 // writer never wrote. A query entity carries no subtype unless the extractor declared
-                // one, and then it answers every subtype of that name and type - the index may hold
+                // one, and then it answers every subtype of that name and type family - the index may hold
                 // several, and picking the first would drop the rest. Surface forms stay a secondary,
                 // name-only fallback - they are aliases of a node whose type is already known.
                 var identity = IdentityOf(entity);
                 var matches = entityGraph.Entities.Where(e =>
                     IdentityOf(e).Answers(identity) ||
-                    (e.Type == identity.Type &&
+                    (FamilyOf(e.Type) == identity.Family &&
                      e.SurfaceForms.Any(sf => NormalizeEntityText(sf, e.Type) == identity.NormalizedName)));
 
                 foreach (var match in matches)

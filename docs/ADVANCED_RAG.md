@@ -260,8 +260,15 @@ var scoped = await graphStore.GetEntitiesByChunkIdsAsync(documentChunkIds, ct: c
 
 An entity linked across chunks keeps every source, so a document that mentions an entity also
 mentioned elsewhere still finds it under its own scope. A build joins a freshly extracted entity to
-the stored entity of the same identity (normalized name, type, declared subtype) even when the two
+the stored entity of the same identity (normalized name, type family, declared subtype) even when the two
 documents share no chunk, so the graph holds one node per entity, not one per document.
+
+The identity keys on the type **family**, not the exact type: `Product`, `Technology`, `Software` and
+`TechnicalConcept` are one family, `Location`, `GeopoliticalEntity` and `Facility` another, and every other type is its
+own. A model types one thing differently when documents frame it differently (a product in one, a technology described
+as an architecture in another); within a family those mentions stay one node, which keeps the type of its most confident
+mention (or the stored node's type when it joins one). Same-name entities of different families — a company and a river,
+a person and a brand — stay separate.
 
 ### Partitions — several tenants in one graph store
 
