@@ -22,14 +22,6 @@ public class PublicApiConventionTests
         // A report: one entry per image that could not be stored (the document keeps its base64 there); the call itself
         // throws when it cannot run, and the caller's cancellation propagates.
         "FluxIndex.Core.Application.Interfaces.IImageExtractionService.ExtractAndStoreAsync(String, String, IImageStore, String, CancellationToken)",
-        "FluxIndex.Integrations.FileFlux.Processing.DocumentProcessingPipeline.ExtractOnlyAsync(String, Boolean, CancellationToken)",
-        "FluxIndex.Integrations.FileFlux.Processing.DocumentProcessingPipeline.ExtractOnlyAsync(String, ExtractionOptions, CancellationToken)",
-        "FluxIndex.Integrations.FileFlux.Processing.DocumentProcessingPipeline.ProcessAndSaveAsync(String, String, DocumentProcessingOptions, CancellationToken)",
-        "FluxIndex.Integrations.FileFlux.Processing.DocumentProcessingPipeline.ProcessAsync(String, DocumentProcessingOptions, CancellationToken)",
-        "FluxIndex.Integrations.FileFlux.Processing.DocumentProcessingPipeline.ProcessFromContentAsync(String, ContentProcessingOptions, CancellationToken)",
-        "FluxIndex.Integrations.FileFlux.Processing.DocumentProcessingPipeline.ProcessFromExtractionAsync(ExtractionResult, String, ContentProcessingOptions, CancellationToken)",
-        "FluxIndex.Integrations.FluxImprover.FluxIndexContextExtensions.RunPipelineAsync(FluxIndexContext, IEnrichedChunk, PipelineOptions, CancellationToken)",
-        "FluxIndex.Integrations.FluxImprover.Services.FluxImproverPipeline.ProcessChunkAsync(IEnrichedChunk, PipelineOptions, CancellationToken)",
     ];
 
     [Fact]

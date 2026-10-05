@@ -35,10 +35,27 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   low-result-count warning; only a failed search raises the availability alert, with its message.
 - `IImageExtractionService.ExtractAndStoreAsync` lets the caller's cancellation propagate; before, a cancellation while
   storing an image was recorded as that image's error.
+- **`DocumentProcessingPipeline` (FluxIndex.Integrations.FileFlux) throws when a document cannot be processed.**
+  `ProcessAsync`, `ProcessAndSaveAsync`, `ProcessFromContentAsync` and `ExtractOnlyAsync` caught every exception and
+  returned a result with `Success = false`; the progress callback still reports the `Failed` stage before the exception
+  propagates. The optional stages (image extraction, text cleaning, metadata enrichment, the PDF reader's fallback) still
+  fall back when they fail, but no longer treat the caller's cancellation as such a failure.
+  **Breaking**: `DocumentProcessingResult.Success`/`ErrorMessage` and `ExtractionResult.Success`/`ErrorMessage` are removed
+  (an `ExtractionResult` exists only for an extraction that ran; a persisted one with a `success` field still loads).
+  `ProcessFromExtractionAsync` no longer returns a failed result for a failed extraction.
 
 ### Removed
 - **Breaking:** `IImageDescriptionService` with `ImageDescriptionResult`, `ImageDataExtractionResult` and
   `ImageDataExtractionType`. Nothing implemented or registered it.
+- **Breaking:** the FluxImprover orchestration executors in FluxIndex.Integrations.FluxImprover — `FluxImproverPipeline`,
+  `ParallelPipelineExecutor`, `CachedPipelineExecutor` (with `PipelineOptions`, `PipelineResult`, `BatchPipelineResult`,
+  their option and result types), `AddFluxImproverPipeline`, `AddParallelPipelineExecutor`, `AddCachedPipelineExecutor`,
+  `AddFluxImproverIntegration`, `AddFluxImproverFullIntegration`, the cache-options overload of `AddFluxIndexFluxImprover`,
+  and `FluxIndexContext.GetPipeline`/`RunPipelineAsync`/`RunBatchPipelineAsync`. Nothing used them, and the documented
+  entry point `AddFluxImproverIntegration` registered a pipeline without any of the services it runs, so it did nothing.
+  Use `AddFluxIndexFluxImprover()` and the services it registers (`ChunkEnrichmentServiceWrapper`, `QAGenerationService`,
+  `RAGEvaluationService`, `ChunkFilteringServiceWrapper`, the contextual enrichment wrapper), or FluxImprover's own
+  `QAPipeline`.
 
 ---
 

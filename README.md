@@ -73,8 +73,8 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   metadata (see «AI metadata on indexing») to each indexed file — `AddDocumentProcessingPipeline` for the
   document processing pipeline (no-op enrichment/QA defaults until you register real services), `AddWebFluxIntegration`
   (builder `UseWebFlux`) for web pages. Text preprocessing: `AddFluxIndexFluxCurator` (registers `IFluxCurator` over your
-  `IEmbeddingService`); LLM chunk enhancement: `AddFluxImproverIntegration` (FluxImprover over your
-  `ITextCompletionService`).
+  `IEmbeddingService`); LLM chunk enhancement: `AddFluxIndexFluxImprover` (FluxImprover over your
+  `ITextCompletionService`: enrichment, contextual enrichment, QA generation, RAG evaluation and chunk filtering).
 - **MCP server** — `FluxIndex.MCP` is a library: host it with `FluxIndexMcpServer.RunAsync(workspacePath)` or
   `services.AddFluxIndexMcp(...)` (stdio). Tools: `memorize`, `search` (`strategy`: `hybrid` default · `vector` ·
   `keyword`), `status`, `unmemorize`. Embedding is local LMSupply (`.vault/config.json` `embedding.model`).
@@ -259,7 +259,7 @@ for the tool parameters and embedding configuration.
 | **FluxIndex.Integrations.FluxCurator** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Integrations.FluxCurator.svg)](https://www.nuget.org/packages/FluxIndex.Integrations.FluxCurator/) | Text preprocessing (PII detection, intelligent splitting) (`AddFluxIndexFluxCurator`) |
 | **FluxIndex.Providers.LMSupply** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Providers.LMSupply.svg)](https://www.nuget.org/packages/FluxIndex.Providers.LMSupply/) | Local embedding, reranking and text completion (LMSupply — no API key) |
 | **FluxIndex.Providers.OpenAI** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Providers.OpenAI.svg)](https://www.nuget.org/packages/FluxIndex.Providers.OpenAI/) | OpenAI-compatible embedding and reranking |
-| **FluxIndex.Integrations.FluxImprover** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Integrations.FluxImprover.svg)](https://www.nuget.org/packages/FluxIndex.Integrations.FluxImprover/) | LLM-based chunk quality enhancement (`AddFluxImproverIntegration`) |
+| **FluxIndex.Integrations.FluxImprover** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Integrations.FluxImprover.svg)](https://www.nuget.org/packages/FluxIndex.Integrations.FluxImprover/) | LLM-based chunk quality enhancement (`AddFluxIndexFluxImprover`) |
 | **FluxIndex.Integrations.FluxGuard** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.Integrations.FluxGuard.svg)](https://www.nuget.org/packages/FluxIndex.Integrations.FluxGuard/) | RAG security — search results checked by a FluxGuard `IRAGSecurityPipeline` (`AddFluxGuardRetrievalGuard`) |
 | **FluxIndex.MCP** | [![NuGet](https://img.shields.io/nuget/v/FluxIndex.MCP.svg)](https://www.nuget.org/packages/FluxIndex.MCP/) | Model Context Protocol server library (`FluxIndexMcpServer.RunAsync`, `AddFluxIndexMcp`) — see [MCP Server](#mcp-server) |
 

@@ -136,7 +136,7 @@ public partial class DocumentProcessingPipeline
                         result.Stats.TotalImages = result.Images.Count;
                     }
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
                 {
                     LogImageExtractionFailed(_logger, ex);
                 }
@@ -303,23 +303,17 @@ public partial class DocumentProcessingPipeline
             await SaveOutputFilesAsync(result, options, cancellationToken);
 
             result.Stats.EndTime = DateTime.UtcNow;
-            result.Success = true;
 
             ReportProgress(options, ProcessingStage.Complete, 100, "Processing complete!");
             LogDocumentProcessingCompleted(_logger, result.Stats.Duration.TotalMilliseconds);
 
             return result;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogDocumentProcessingFailed(_logger, ex, filePath);
-
-            result.Success = false;
-            result.ErrorMessage = ex.Message;
-            result.Stats.EndTime = DateTime.UtcNow;
-
             ReportProgress(options, ProcessingStage.Failed, 0, $"Processing failed: {ex.Message}");
-            return result;
+            throw;
         }
     }
 
@@ -384,9 +378,10 @@ public partial class DocumentProcessingPipeline
                 rawContent = extractProcessor.Result.Raw;
                 result.ExtractedText = rawContent?.Text ?? string.Empty;
             }
-            catch
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
                 // Fallback to ProcessAsync for text extraction
+                LogExtractFallback(_logger, ex, filePath);
                 var rawText = await ExtractRawTextAsync(filePath, cancellationToken);
                 result.ExtractedText = rawText;
             }
@@ -435,16 +430,13 @@ public partial class DocumentProcessingPipeline
             }
 
             result.ExtractedAt = DateTime.UtcNow;
-            result.Success = true;
 
             return result;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogExtractionFailed(_logger, ex, filePath);
-            result.Success = false;
-            result.ErrorMessage = ex.Message;
-            return result;
+            throw;
         }
     }
 
@@ -684,22 +676,17 @@ public partial class DocumentProcessingPipeline
             }
 
             result.Stats.EndTime = DateTime.UtcNow;
-            result.Success = true;
 
             ReportContentProgress(options, ProcessingStage.Complete, 100, "Processing complete!");
             LogContentProcessingCompleted(_logger, result.Stats.Duration.TotalMilliseconds);
 
             return result;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogContentProcessingFailed(_logger, ex);
-            result.Success = false;
-            result.ErrorMessage = ex.Message;
-            result.Stats.EndTime = DateTime.UtcNow;
-
             ReportContentProgress(options, ProcessingStage.Failed, 0, $"Processing failed: {ex.Message}");
-            return result;
+            throw;
         }
     }
 
@@ -717,19 +704,7 @@ public partial class DocumentProcessingPipeline
         ContentProcessingOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        // Validate extraction result
-        if (!extractionResult.Success)
-        {
-            LogCannotProcessFromFailedExtraction(_logger, extractionResult.ErrorMessage);
-            return new DocumentProcessingResult
-            {
-                DocumentId = extractionResult.DocumentId,
-                SourcePath = extractionResult.SourcePath,
-                Success = false,
-                ErrorMessage = $"Cannot process from failed extraction: {extractionResult.ErrorMessage}",
-                Stats = { StartTime = DateTime.UtcNow, EndTime = DateTime.UtcNow }
-            };
-        }
+        ArgumentNullException.ThrowIfNull(extractionResult);
 
         options ??= new ContentProcessingOptions();
         options.DocumentId ??= extractionResult.DocumentId;
@@ -823,7 +798,7 @@ public partial class DocumentProcessingPipeline
 
             return rawContent.Text ?? string.Empty;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogPdfQualityCheckFailed(_logger, ex, filePath);
 
@@ -887,7 +862,7 @@ public partial class DocumentProcessingPipeline
                 LogExtractedImages(_logger, images.Count, filePath);
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogFailedToExtractImages(_logger, ex, filePath);
         }
@@ -917,7 +892,7 @@ Cleaned text:";
             var cleaned = await _textCompletionService.CompleteAsync(prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 4000, Temperature = 0.1f }, cancellationToken);
             return string.IsNullOrWhiteSpace(cleaned) ? text : cleaned;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogTextCleaningFailed(_logger, ex);
             return text;
@@ -975,7 +950,7 @@ JSON response:";
                 }
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogMetadataEnrichmentFailed(_logger, ex);
         }
@@ -1155,6 +1130,9 @@ JSON response:";
     [LoggerMessage(Level = LogLevel.Error, Message = "Extraction failed for {FilePath}")]
     private static partial void LogExtractionFailed(ILogger logger, Exception exception, string filePath);
 
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Raw extraction failed for {FilePath}; falling back to text extraction")]
+    private static partial void LogExtractFallback(ILogger logger, Exception exception, string filePath);
+
     [LoggerMessage(Level = LogLevel.Information, Message = "Created {ChunkCount} chunks from content")]
     private static partial void LogCreatedChunksFromContent(ILogger logger, int chunkCount);
 
@@ -1164,8 +1142,6 @@ JSON response:";
     [LoggerMessage(Level = LogLevel.Error, Message = "Content processing failed")]
     private static partial void LogContentProcessingFailed(ILogger logger, Exception exception);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Cannot process from failed extraction: {ErrorMessage}")]
-    private static partial void LogCannotProcessFromFailedExtraction(ILogger logger, string? errorMessage);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "PDF quality check failed for {FilePath}, falling back to standard extraction")]
     private static partial void LogPdfQualityCheckFailed(ILogger logger, Exception exception, string filePath);

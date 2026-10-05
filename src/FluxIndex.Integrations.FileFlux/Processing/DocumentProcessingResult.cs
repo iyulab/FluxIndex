@@ -44,16 +44,6 @@ public class ExtractionResult
     public DateTime ExtractedAt { get; set; } = DateTime.UtcNow;
 
     /// <summary>
-    /// Whether extraction was successful
-    /// </summary>
-    public bool Success { get; set; }
-
-    /// <summary>
-    /// Error message if extraction failed
-    /// </summary>
-    public string? ErrorMessage { get; set; }
-
-    /// <summary>
     /// Markdown-converted text (if ConvertToMarkdown was enabled)
     /// </summary>
     public string? MarkdownText { get; set; }
@@ -190,16 +180,6 @@ public class DocumentProcessingResult
     /// Processing statistics
     /// </summary>
     public ProcessingStats Stats { get; set; } = new();
-
-    /// <summary>
-    /// Whether processing was successful
-    /// </summary>
-    public bool Success { get; set; }
-
-    /// <summary>
-    /// Error message if processing failed
-    /// </summary>
-    public string? ErrorMessage { get; set; }
 }
 
 /// <summary>

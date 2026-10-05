@@ -96,7 +96,6 @@ public class DocumentProcessingPipelineImageTests : IDisposable
         var result = await _pipeline.ProcessAsync(testFile, options, TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.True(result.Success);
         Assert.Equal(2, result.Images.Count);
         Assert.True(result.Images.ContainsKey("img_000.png"));
         Assert.True(result.Images.ContainsKey("img_001.jpg"));
@@ -129,7 +128,6 @@ public class DocumentProcessingPipelineImageTests : IDisposable
         var result = await _pipeline.ProcessAsync(testFile, options, TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.True(result.Success);
         Assert.Empty(result.Images);
     }
 
@@ -164,7 +162,6 @@ public class DocumentProcessingPipelineImageTests : IDisposable
         var result = await _pipeline.ProcessAsync(testFile, options, TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.True(result.Success);
         Assert.Equal(2, result.Images.Count); // Only 2 valid images
         Assert.True(result.Images.ContainsKey("img_000.png"));
         Assert.True(result.Images.ContainsKey("img_003.jpg"));
@@ -203,7 +200,6 @@ public class DocumentProcessingPipelineImageTests : IDisposable
         var result = await _pipeline.ProcessAsync(testFile, options, TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.True(result.Success);
         Assert.Equal(6, result.Images.Count);
         Assert.True(result.Images.ContainsKey("img_png.png"));
         Assert.True(result.Images.ContainsKey("img_jpeg.jpg"));
@@ -236,7 +232,6 @@ public class DocumentProcessingPipelineImageTests : IDisposable
         var result = await _pipeline.ProcessAsync(testFile, options, TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.True(result.Success);
         Assert.Empty(result.Images);
     }
 
@@ -268,7 +263,6 @@ public class DocumentProcessingPipelineImageTests : IDisposable
         var result = await _pipeline.ProcessAsync(testFile, options, TestContext.Current.CancellationToken);
 
         // Assert - Pipeline should still succeed, just with empty images
-        Assert.True(result.Success);
         Assert.Empty(result.Images);
     }
 

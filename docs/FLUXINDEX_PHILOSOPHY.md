@@ -144,14 +144,8 @@ FluxImprover is a **quality enhancement library** that complements FluxIndex's i
 
 **Integration Pattern**:
 ```csharp
-// FluxIndex.Extensions.FluxImprover bridges the two libraries
-services.AddFluxImproverIntegration();  // Adapters + Pipeline
-services.AddFluxImproverFullIntegration();  // + Parallel + Cached executors
-```
-
-**FluxImprover Pipeline**:
-```
-Chunk → [Enrichment] → [QA Generation] → [Evaluation] → Enhanced Chunk + QA Dataset
+// FluxIndex.Integrations.FluxImprover bridges the two libraries
+services.AddFluxIndexFluxImprover();  // FluxImprover services + the FluxIndex wrappers above
 ```
 
 ### 2.4 Core Responsibilities

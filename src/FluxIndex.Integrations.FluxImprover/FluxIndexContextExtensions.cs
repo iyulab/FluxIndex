@@ -333,62 +333,6 @@ public static class FluxIndexContextExtensions
 
         return await filteringService.AssessAsync(chunk, query, options, cancellationToken);
     }
-
-    /// <summary>
-    /// FluxIndexContext에서 FluxImproverPipeline을 가져옵니다.
-    /// </summary>
-    /// <param name="context">FluxIndex 컨텍스트</param>
-    /// <returns>FluxImprover 파이프라인 (등록되지 않은 경우 null)</returns>
-    public static FluxImproverPipeline? GetPipeline(this FluxIndexContext context)
-    {
-        return context.ServiceProvider.GetService<FluxImproverPipeline>();
-    }
-
-    /// <summary>
-    /// 단일 청크에 대한 전체 FluxImprover 파이프라인을 실행합니다.
-    /// </summary>
-    /// <param name="context">FluxIndex 컨텍스트</param>
-    /// <param name="chunk">처리할 청크</param>
-    /// <param name="options">파이프라인 옵션</param>
-    /// <param name="cancellationToken">취소 토큰</param>
-    /// <returns>파이프라인 실행 결과</returns>
-    public static async Task<PipelineResult> RunPipelineAsync(
-        this FluxIndexContext context,
-        FluxIndexChunk chunk,
-        PipelineOptions? options = null,
-        CancellationToken cancellationToken = default)
-    {
-        var pipeline = context.GetPipeline()
-            ?? throw new InvalidOperationException(
-                "FluxImproverPipeline is not registered. " +
-                "Please call AddFluxImproverPipeline() during service configuration.");
-
-        return await pipeline.ProcessChunkAsync(chunk, options, cancellationToken);
-    }
-
-    /// <summary>
-    /// 여러 청크에 대한 배치 FluxImprover 파이프라인을 실행합니다.
-    /// </summary>
-    /// <param name="context">FluxIndex 컨텍스트</param>
-    /// <param name="chunks">처리할 청크들</param>
-    /// <param name="options">파이프라인 옵션</param>
-    /// <param name="progressCallback">진행 상황 콜백</param>
-    /// <param name="cancellationToken">취소 토큰</param>
-    /// <returns>배치 파이프라인 결과</returns>
-    public static async Task<BatchPipelineResult> RunBatchPipelineAsync(
-        this FluxIndexContext context,
-        IEnumerable<FluxIndexChunk> chunks,
-        PipelineOptions? options = null,
-        Action<int, int>? progressCallback = null,
-        CancellationToken cancellationToken = default)
-    {
-        var pipeline = context.GetPipeline()
-            ?? throw new InvalidOperationException(
-                "FluxImproverPipeline is not registered. " +
-                "Please call AddFluxImproverPipeline() during service configuration.");
-
-        return await pipeline.ProcessBatchAsync(chunks, options, progressCallback, cancellationToken);
-    }
 }
 
 /// <summary>

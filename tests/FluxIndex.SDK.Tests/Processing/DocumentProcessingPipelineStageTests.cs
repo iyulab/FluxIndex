@@ -103,7 +103,6 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         var result = await _pipeline.ExtractOnlyAsync(testFile, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.True(result.Success);
         Assert.Equal("Sample document content for extraction.", result.ExtractedText);
         Assert.Equal(testFile, result.SourcePath);
         Assert.NotEmpty(result.SourceHash);
@@ -134,7 +133,6 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         var result = await _pipeline.ExtractOnlyAsync(testFile, extractImages: true, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.True(result.Success);
         Assert.Equal(2, result.Images.Count);
         Assert.True(result.Images.ContainsKey("img_000.png"));
         Assert.True(result.Images.ContainsKey("img_001.jpg"));
@@ -153,12 +151,11 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         var result = await _pipeline.ExtractOnlyAsync(testFile, extractImages: false, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.True(result.Success);
         Assert.Empty(result.Images);
     }
 
     [Fact]
-    public async Task ExtractOnlyAsync_WhenExtractionFails_ShouldReturnFailedResult()
+    public async Task ExtractOnlyAsync_WhenExtractionFails_Throws()
     {
         // Arrange
         var testFile = CreateTestFile(".pdf", "Test");
@@ -169,12 +166,10 @@ public class DocumentProcessingPipelineStageTests : IDisposable
 
         _mockProcessorFactory.Create(testFile).Returns(mockProcessor);
 
-        // Act
-        var result = await _pipeline.ExtractOnlyAsync(testFile, cancellationToken: TestContext.Current.CancellationToken);
-
-        // Assert
-        Assert.False(result.Success);
-        Assert.Contains("Extraction failed", result.ErrorMessage);
+        // Act / Assert - the failure reaches the caller; there is no "failed" extraction result to persist
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _pipeline.ExtractOnlyAsync(testFile, cancellationToken: TestContext.Current.CancellationToken));
+        Assert.Contains("Extraction failed", ex.Message);
     }
 
     [Fact]
@@ -190,7 +185,6 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         var result = await _pipeline.ExtractOnlyAsync(testFile, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.True(result.Success);
         Assert.NotEmpty(result.SourceHash);
         Assert.Equal(64, result.SourceHash.Length); // SHA-256 hex string
     }
@@ -224,7 +218,6 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         var result = await _pipeline.ProcessFromContentAsync(content, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.True(result.Success);
         Assert.Equal(2, result.Chunks.Count);
         Assert.Equal("This is test content.", result.Chunks[0].Content);
         Assert.Equal(content, result.ExtractedText);
@@ -259,7 +252,6 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         var result = await _pipeline.ProcessFromContentAsync(content, options, TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.True(result.Success);
         Assert.Equal("custom-doc-id", result.DocumentId);
         Assert.Single(result.Chunks);
     }
@@ -282,7 +274,6 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         var result = await _pipeline.ProcessFromContentAsync(content, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.True(result.Success);
         Assert.Empty(result.Chunks);
     }
 
@@ -311,7 +302,6 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         var result = await _pipeline.ProcessFromContentAsync(content, options, TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.True(result.Success);
         Assert.NotEmpty(progressReports);
         Assert.Contains(progressReports, p => p.Stage == ProcessingStage.Initializing);
         Assert.Contains(progressReports, p => p.Stage == ProcessingStage.Chunking);
@@ -331,7 +321,6 @@ public class DocumentProcessingPipelineStageTests : IDisposable
             SourcePath = "/path/to/original.pdf",
             SourceHash = "abc123hash",
             ExtractedText = "Original extracted text",
-            Success = true,
             ExtractedAt = DateTime.UtcNow.AddMinutes(-5)
         };
 
@@ -349,7 +338,6 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         var result = await _pipeline.ProcessFromExtractionAsync(extractionResult, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.True(result.Success);
         Assert.Equal("doc-123", result.DocumentId);
         Assert.Equal("/path/to/original.pdf", result.SourcePath);
         Assert.Single(result.Chunks);
@@ -363,8 +351,7 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         {
             DocumentId = "doc-123",
             SourcePath = "/path/to/original.pdf",
-            ExtractedText = "Original text",
-            Success = true
+            ExtractedText = "Original text"
         };
 
         var modifiedContent = "User edited and modified text";
@@ -383,7 +370,6 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         var result = await _pipeline.ProcessFromExtractionAsync(extractionResult, modifiedContent, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.True(result.Success);
         Assert.Equal(modifiedContent, result.ExtractedText);
         Assert.Single(result.Chunks);
         Assert.Equal(modifiedContent, result.Chunks[0].Content);
@@ -402,8 +388,7 @@ public class DocumentProcessingPipelineStageTests : IDisposable
             {
                 ["img_000.png"] = testImageData,
                 ["img_001.jpg"] = testImageData
-            },
-            Success = true
+            }
         };
 
         var mockProcessor = Substitute.For<IDocumentProcessor>();
@@ -420,29 +405,9 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         var result = await _pipeline.ProcessFromExtractionAsync(extractionResult, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.True(result.Success);
         Assert.Equal(2, result.Images.Count);
         Assert.True(result.Images.ContainsKey("img_000.png"));
         Assert.True(result.Images.ContainsKey("img_001.jpg"));
-    }
-
-    [Fact]
-    public async Task ProcessFromExtractionAsync_WithFailedExtraction_ShouldReturnError()
-    {
-        // Arrange
-        var extractionResult = new ExtractionResult
-        {
-            DocumentId = "failed-doc",
-            Success = false,
-            ErrorMessage = "Original extraction failed"
-        };
-
-        // Act
-        var result = await _pipeline.ProcessFromExtractionAsync(extractionResult, cancellationToken: TestContext.Current.CancellationToken);
-
-        // Assert
-        Assert.False(result.Success);
-        Assert.Contains("Original extraction failed", result.ErrorMessage);
     }
 
     #endregion
@@ -582,7 +547,6 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         var result = await _pipeline.ExtractOnlyAsync(testFile, options, TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.True(result.Success);
         Assert.NotNull(result.MarkdownText);
         Assert.NotNull(result.MarkdownStatistics);
         Assert.True(result.MarkdownStatistics!.HeadingCount >= 1);
@@ -611,7 +575,6 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         var result = await _pipeline.ExtractOnlyAsync(testFile, options, TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.True(result.Success);
         Assert.NotNull(result.MarkdownStatistics);
         Assert.True(result.MarkdownStatistics!.ListCount >= 3);
     }
@@ -644,7 +607,6 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         var result = await _pipeline.ExtractOnlyAsync(testFile, options, TestContext.Current.CancellationToken);
 
         // Assert
-        Assert.True(result.Success);
         Assert.NotNull(result.MarkdownText);
         Assert.Equal("Heuristic", result.MarkdownStatistics?.Method);
     }

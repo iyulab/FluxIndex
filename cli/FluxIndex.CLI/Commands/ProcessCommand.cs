@@ -208,15 +208,8 @@ public static class ProcessCommand
             // Display results
             AnsiConsole.WriteLine();
 
-            if (result.Success)
-            {
-                DisplaySuccessResult(result, outputDir, verbose);
-                return 0;
-            }
-
-            AnsiConsole.MarkupLine($"[red]✗[/] Processing failed: {Markup.Escape(result.ErrorMessage ?? "unknown error")}");
-            PrintFailureHint(result.ErrorMessage, noEmbeddings);
-            return 1;
+            DisplaySuccessResult(result, outputDir, verbose);
+            return 0;
         }
         catch (Exception ex)
         {
