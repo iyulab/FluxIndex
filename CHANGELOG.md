@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.77.0] - Unreleased
+## [0.77.0] - 2026-10-06
 
 ### Changed
 - **Retrieval services report a failure by throwing instead of returning a result that says it failed.** Each of these
