@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.74.0] - Unreleased
+## [0.74.0] - 2026-10-05
 
 ### Changed
 - **One name typed differently across documents is one graph node when the types are of one family.** An extractor
