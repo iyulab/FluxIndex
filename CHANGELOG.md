@@ -8,6 +8,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.75.1] - Unreleased
 
 ### Fixed
+- **Neo4j: concurrent writes of one new entity id leave one node.** The store created only a plain index on `id`, and
+  a single-node `MERGE` takes no lock when nothing matches unless a uniqueness constraint covers the property, so two
+  builds writing the same new entity (ids are derived since 0.75.0) each created a node — eight concurrent writes made
+  eight nodes. The store now provisions uniqueness constraints on `Entity.id` and `Community.id` at first connection,
+  dropping the plain `id` index an earlier version created. If nodes already share an id, the constraint is not
+  created: the store logs an error naming the label and the number of duplicated ids, keeps the plain index, and
+  creates the constraint on the next start after the duplicates are merged. With `CreateIndexesOnStartup = false`,
+  create both constraints yourself.
 - **Two builds that add chunks to the same already-stored entity at the same time keep both builds' chunks** (SQLite and
   PostgreSQL entity graph stores). Each write read the stored row and wrote it back, so the later write dropped the
   chunks, documents and surface forms the earlier one had just added. The row's `UpdatedAt` is now an optimistic

@@ -36,8 +36,14 @@ public class Neo4jOptions
     public int MaxConnectionPoolSize { get; set; } = 100;
 
     /// <summary>
-    /// Whether to create indexes on first connection.
+    /// Whether to provision the schema on first connection: uniqueness constraints on <c>Entity.id</c> and
+    /// <c>Community.id</c> (replacing a plain <c>id</c> index from an earlier version) plus lookup indexes.
     /// </summary>
+    /// <remarks>
+    /// Turn it off only when the schema is managed elsewhere, and then create both uniqueness constraints there:
+    /// entities and communities are written with <c>MERGE</c> on derived ids, and without the constraint concurrent
+    /// writes of one new id create one node per writer.
+    /// </remarks>
     public bool CreateIndexesOnStartup { get; set; } = true;
 
     /// <summary>

@@ -14,7 +14,8 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable, IDisposabl
     private readonly IDriver _driver;
     private readonly Neo4jOptions _options;
     private readonly ILogger<Neo4jGraphStore> _logger;
-    private bool _indexesCreated;
+    private readonly SemaphoreSlim _schemaGate = new(1, 1);
+    private volatile bool _indexesCreated;
 
     private const string EntityLabel = "Entity";
     private const string CommunityLabel = "Community";
@@ -48,8 +49,21 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable, IDisposabl
 
         if (_options.CreateIndexesOnStartup && !_indexesCreated)
         {
-            await EnsureIndexesAsync(session);
-            _indexesCreated = true;
+            // One provisioning per store, and no write before it finishes: a MERGE that runs before the uniqueness
+            // constraints exist is exactly the write that can duplicate a node.
+            await _schemaGate.WaitAsync();
+            try
+            {
+                if (!_indexesCreated)
+                {
+                    await EnsureIndexesAsync(session);
+                    _indexesCreated = true;
+                }
+            }
+            finally
+            {
+                _schemaGate.Release();
+            }
         }
 
         return session;
@@ -59,12 +73,13 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable, IDisposabl
     {
         try
         {
+            await EnsureUniqueIdAsync(session, EntityLabel, EntityIdConstraint);
+            await EnsureUniqueIdAsync(session, CommunityLabel, CommunityIdConstraint);
+
             var indexQueries = new[]
             {
-                $"CREATE INDEX IF NOT EXISTS FOR (e:{EntityLabel}) ON (e.id)",
                 $"CREATE INDEX IF NOT EXISTS FOR (e:{EntityLabel}) ON (e.normalizedName)",
                 $"CREATE INDEX IF NOT EXISTS FOR (e:{EntityLabel}) ON (e.type)",
-                $"CREATE INDEX IF NOT EXISTS FOR (c:{CommunityLabel}) ON (c.id)",
                 $"CREATE INDEX IF NOT EXISTS FOR (c:{CommunityLabel}) ON (c.level)",
             };
 
@@ -83,6 +98,71 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable, IDisposabl
             LogIndexCreationFailed(_logger, ex);
         }
     }
+
+    private const string EntityIdConstraint = "fluxindex_entity_id_unique";
+    private const string CommunityIdConstraint = "fluxindex_community_id_unique";
+
+    /// <summary>
+    /// Makes <c>id</c> unique on a label. Entities and communities are written with <c>MERGE</c> on their id, and ids are
+    /// derived (an entity's from its partition and identity, a community's from its level and chunks), so two concurrent
+    /// writers routinely merge the same new id. A single-node <c>MERGE</c> takes no lock when nothing matches unless a
+    /// uniqueness constraint covers the merged property — without one both transactions find no node and both create
+    /// it. The constraint's own index replaces the plain <c>id</c> index earlier versions created (Neo4j refuses a
+    /// constraint while an equivalent index exists). Nodes that already share an id block the constraint: that is logged
+    /// as an error and the plain index is kept, so reads stay indexed while the duplicates wait to be merged.
+    /// </summary>
+    private async Task EnsureUniqueIdAsync(IAsyncSession session, string label, string constraintName)
+    {
+        var constrained = await ScalarAsync(session,
+            $"SHOW CONSTRAINTS YIELD labelsOrTypes, properties, type " +
+            $"WHERE labelsOrTypes = ['{label}'] AND properties = ['id'] AND (type CONTAINS 'UNIQUENESS' OR type CONTAINS 'KEY') " +
+            "RETURN count(*) AS n");
+        if (constrained > 0) return;
+
+        var duplicateIds = await ScalarAsync(session,
+            $"MATCH (n:{label}) WITH n.id AS id, count(*) AS copies WHERE id IS NOT NULL AND copies > 1 RETURN count(id) AS n");
+        if (duplicateIds > 0)
+        {
+            await RunSchemaAsync(session, $"CREATE INDEX IF NOT EXISTS FOR (n:{label}) ON (n.id)");
+            LogUniqueIdBlockedByDuplicates(_logger, label, duplicateIds);
+            return;
+        }
+
+        var plainIndexes = await session.ExecuteReadAsync(async tx =>
+        {
+            var cursor = await tx.RunAsync(
+                "SHOW INDEXES YIELD name, labelsOrTypes, properties, owningConstraint, type " +
+                $"WHERE labelsOrTypes = ['{label}'] AND properties = ['id'] AND owningConstraint IS NULL AND type = 'RANGE' " +
+                "RETURN name");
+            var names = new List<string>();
+            while (await cursor.FetchAsync())
+            {
+                names.Add(cursor.Current["name"].As<string>());
+            }
+            return names;
+        });
+        foreach (var name in plainIndexes)
+        {
+            await RunSchemaAsync(session, $"DROP INDEX `{name.Replace("`", "``", StringComparison.Ordinal)}` IF EXISTS");
+        }
+
+        await RunSchemaAsync(session, $"CREATE CONSTRAINT {constraintName} IF NOT EXISTS FOR (n:{label}) REQUIRE n.id IS UNIQUE");
+    }
+
+    private static Task<long> ScalarAsync(IAsyncSession session, string query) =>
+        session.ExecuteReadAsync(async tx =>
+        {
+            var cursor = await tx.RunAsync(query);
+            var record = await cursor.SingleAsync();
+            return record["n"].As<long>();
+        });
+
+    private static Task RunSchemaAsync(IAsyncSession session, string query) =>
+        session.ExecuteWriteAsync(async tx =>
+        {
+            var cursor = await tx.RunAsync(query);
+            await cursor.ConsumeAsync();
+        });
 
     #region Entity Operations
 
@@ -1242,6 +1322,7 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable, IDisposabl
     public async ValueTask DisposeAsync()
     {
         await _driver.DisposeAsync();
+        _schemaGate.Dispose();
         GC.SuppressFinalize(this);
     }
 
@@ -1252,6 +1333,9 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable, IDisposabl
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to create Neo4j indexes (may already exist)")]
     private static partial void LogIndexCreationFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Neo4j {Label} ids are not unique: {DuplicateIds} id(s) are on more than one node, so the uniqueness constraint on id was not created and concurrent writes of one id can still create duplicate nodes. Merge or delete the duplicate nodes; the constraint is created on the next start")]
+    private static partial void LogUniqueIdBlockedByDuplicates(ILogger logger, string label, long duplicateIds);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Stored entity {EntityId} ({EntityName})")]
     private static partial void LogEntityStored(ILogger logger, string entityId, string entityName);
