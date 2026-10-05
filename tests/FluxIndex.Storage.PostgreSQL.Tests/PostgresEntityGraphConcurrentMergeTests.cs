@@ -105,6 +105,41 @@ public sealed class PostgresEntityGraphConcurrentMergeTests : IAsyncLifetime
         Assert.Equal(new[] { "c9" }, stored.ChunkIds);
     }
 
+    // Forgetting a chunk while a build adds another to the same entity keeps the added one: the removal is one write
+    // against what is stored, retried when the build's write lands first.
+    [Fact]
+    public async Task A_removal_racing_a_merge_keeps_the_merged_chunk()
+    {
+        await _store.StoreEntityAsync(Entity("c0", "doc-0") with { ChunkIds = ["c0", "c1"] }, Ct);
+
+        _gate.Arm(2);
+        await Task.WhenAll(
+            Task.Run(() => _store.StoreEntityAsync(Entity("c2", "doc-2"), Ct), Ct),
+            Task.Run(() => _store.RemoveEntityChunksAsync(["c1"], ct: Ct), Ct));
+
+        Assert.Equal(2, _gate.Passed);
+        var stored = await _store.GetEntityByIdAsync("entity-1", Ct);
+        Assert.NotNull(stored);
+        Assert.Equal(new[] { "c0", "c2" }, stored.ChunkIds.Order());
+    }
+
+    // An entity whose last chunk is forgotten while a build gives it a new one ends up holding the new one.
+    [Fact]
+    public async Task An_entity_emptied_while_a_build_adds_a_chunk_survives_with_that_chunk()
+    {
+        await _store.StoreEntityAsync(Entity("c1", "doc-1"), Ct);
+
+        _gate.Arm(2);
+        await Task.WhenAll(
+            Task.Run(() => _store.StoreEntityAsync(Entity("c2", "doc-2"), Ct), Ct),
+            Task.Run(() => _store.RemoveEntityChunksAsync(["c1"], ct: Ct), Ct));
+
+        Assert.Equal(2, _gate.Passed);
+        var stored = await _store.GetEntityByIdAsync("entity-1", Ct);
+        Assert.NotNull(stored);
+        Assert.Equal(new[] { "c2" }, stored.ChunkIds);
+    }
+
     public async ValueTask DisposeAsync()
     {
         _gate.Dispose();

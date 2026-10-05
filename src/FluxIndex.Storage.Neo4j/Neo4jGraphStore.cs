@@ -31,14 +31,28 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable, IDisposabl
 
     private IDriver CreateDriver()
     {
+        // A "+s" / "+ssc" scheme already encrypts, and the driver refuses an encryption setting next to it; Encrypted
+        // turns encryption on for a plain bolt:// or neo4j:// address.
+        var encryptByConfig = _options.Encrypted && !UriSchemeEncrypts(_options.Uri);
         var builder = GraphDatabase.Driver(
             _options.Uri,
             AuthTokens.Basic(_options.Username, _options.Password),
-            config => config
-                .WithConnectionTimeout(TimeSpan.FromSeconds(_options.ConnectionTimeoutSeconds))
-                .WithMaxConnectionPoolSize(_options.MaxConnectionPoolSize));
+            config =>
+            {
+                config
+                    .WithConnectionTimeout(TimeSpan.FromSeconds(_options.ConnectionTimeoutSeconds))
+                    .WithMaxConnectionPoolSize(_options.MaxConnectionPoolSize);
+                if (encryptByConfig)
+                    config.WithEncryptionLevel(EncryptionLevel.Encrypted);
+            });
 
         return builder;
+    }
+
+    private static bool UriSchemeEncrypts(string uri)
+    {
+        var colon = uri.IndexOf("://", StringComparison.Ordinal);
+        return colon > 0 && uri.AsSpan(0, colon).Contains('+');
     }
 
     private async Task<IAsyncSession> GetSessionAsync()
@@ -430,6 +444,102 @@ public partial class Neo4jGraphStore : IGraphStore, IAsyncDisposable, IDisposabl
         });
 
         return updated;
+    }
+
+    // Each SET below reads the list it rewrites (e.chunkIds = [... e.chunkIds ...]), which makes Cypher take the node's
+    // write lock before the read: a concurrent upsert adding a chunk to the same node either lands before this
+    // statement reads the list (and is kept) or waits for it (and appends after). Emptied nodes go with their
+    // relationships and community memberships.
+    private static readonly string RemoveEntityChunksCypher = $@"
+        MATCH (e:{EntityLabel})
+        WHERE coalesce(e.partition, '') = $partition AND any(c IN coalesce(e.chunkIds, []) WHERE c IN $chunkIds)
+        SET e.chunkIds = [c IN coalesce(e.chunkIds, []) WHERE NOT c IN $chunkIds],
+            e.updatedAt = $updatedAt
+        WITH e, e.id AS id, size(e.chunkIds) = 0 AS emptied
+        FOREACH (_ IN CASE WHEN emptied THEN [1] ELSE [] END | DETACH DELETE e)
+        RETURN id, emptied";
+
+    /// <remarks>One Cypher statement; see <see cref="RemoveEntityChunksCypher"/> for why it is safe against a concurrent upsert.</remarks>
+    public async Task<GraphEntityChunkRemoval> RemoveEntityChunksAsync(
+        IReadOnlyCollection<string> chunkIds,
+        string partition = GraphPartition.Default,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(chunkIds);
+        ArgumentNullException.ThrowIfNull(partition);
+        var removed = chunkIds.Distinct(StringComparer.Ordinal).ToList();
+        if (removed.Count == 0) return new GraphEntityChunkRemoval();
+
+        await using var session = await GetSessionAsync();
+        return await session.ExecuteWriteAsync(async tx =>
+        {
+            var cursor = await tx.RunAsync(RemoveEntityChunksCypher, new
+            {
+                chunkIds = removed,
+                partition,
+                updatedAt = DateTimeOffset.UtcNow.ToString("O")
+            });
+
+            var trimmed = new List<string>();
+            var deleted = new List<string>();
+            while (await cursor.FetchAsync())
+            {
+                var id = cursor.Current["id"].As<string>();
+                (cursor.Current["emptied"].As<bool>() ? deleted : trimmed).Add(id);
+            }
+
+            return new GraphEntityChunkRemoval { TrimmedEntityIds = trimmed, DeletedEntityIds = deleted };
+        });
+    }
+
+    // The same lock-before-read shape as RemoveEntityChunksCypher. The reduce drops duplicates a rename can produce
+    // (two old chunk ids mapped to one new id), keeping first occurrences in order.
+    private static readonly string RemapEntityChunksCypher = $@"
+        MATCH (e:{EntityLabel})
+        WHERE coalesce(e.partition, '') = $partition AND any(c IN coalesce(e.chunkIds, []) WHERE c IN $oldChunkIds)
+        SET e.chunkIds = reduce(acc = [], c IN [x IN coalesce(e.chunkIds, []) | coalesce($chunkIdMap[x], x)] |
+                CASE WHEN c IN acc THEN acc ELSE acc + c END),
+            e.documentIds = reduce(acc = [], d IN [x IN coalesce(e.documentIds, []) |
+                CASE WHEN x = $oldDocumentId THEN $newDocumentId ELSE x END] |
+                CASE WHEN d IN acc THEN acc ELSE acc + d END),
+            e.updatedAt = $updatedAt
+        RETURN e.id AS id";
+
+    /// <remarks>One Cypher statement, safe against a concurrent upsert as <see cref="RemoveEntityChunksAsync"/> is.</remarks>
+    public async Task<IReadOnlyList<string>> RemapEntityChunksAsync(
+        IReadOnlyDictionary<string, string> chunkIdMap,
+        string oldDocumentId,
+        string newDocumentId,
+        string partition = GraphPartition.Default,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(chunkIdMap);
+        ArgumentException.ThrowIfNullOrWhiteSpace(oldDocumentId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(newDocumentId);
+        ArgumentNullException.ThrowIfNull(partition);
+        if (chunkIdMap.Count == 0) return [];
+
+        await using var session = await GetSessionAsync();
+        return await session.ExecuteWriteAsync(async tx =>
+        {
+            var cursor = await tx.RunAsync(RemapEntityChunksCypher, new
+            {
+                oldChunkIds = chunkIdMap.Keys.ToList(),
+                chunkIdMap = chunkIdMap.ToDictionary(kv => kv.Key, kv => (object)kv.Value),
+                oldDocumentId,
+                newDocumentId,
+                partition,
+                updatedAt = DateTimeOffset.UtcNow.ToString("O")
+            });
+
+            var changed = new List<string>();
+            while (await cursor.FetchAsync())
+            {
+                changed.Add(cursor.Current["id"].As<string>());
+            }
+
+            return (IReadOnlyList<string>)changed;
+        });
     }
 
     public async Task<bool> DeleteEntityAsync(string id, CancellationToken ct = default)

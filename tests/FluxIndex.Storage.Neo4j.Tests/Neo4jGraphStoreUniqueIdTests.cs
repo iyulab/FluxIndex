@@ -129,6 +129,38 @@ public sealed class Neo4jGraphStoreUniqueIdTests : IAsyncLifetime
         Assert.NotNull(await store.GetEntityByIdAsync("other", Ct));
     }
 
+    // Encrypted asks for TLS on a plain bolt:// address: the test server speaks none, so the first operation fails —
+    // the option reaches the driver. Before 0.76.0 nothing read it and the connection stayed unencrypted.
+    [Fact]
+    public async Task Encrypted_requests_tls_on_a_plain_address()
+    {
+        await using var plain = NewStore();
+        Assert.Null(await plain.GetEntityByIdAsync("missing", Ct));
+
+        await using var encrypted = new Neo4jGraphStore(
+            Options.Create(new Neo4jOptions
+            {
+                Uri = _container.GetConnectionString(),
+                Username = "neo4j",
+                Password = "neo4j",
+                Database = "neo4j",
+                Encrypted = true,
+                ConnectionTimeoutSeconds = 5
+            }),
+            NullLogger<Neo4jGraphStore>.Instance);
+        await Assert.ThrowsAnyAsync<Exception>(() => encrypted.GetEntityByIdAsync("missing", Ct));
+    }
+
+    // A "+s" scheme already encrypts; Encrypted next to it must not become a second, conflicting driver setting.
+    [Fact]
+    public async Task Encrypted_with_an_encrypting_scheme_builds_a_driver()
+    {
+        await using var store = new Neo4jGraphStore(
+            Options.Create(new Neo4jOptions { Uri = "neo4j+s://localhost:7687", Encrypted = true }),
+            NullLogger<Neo4jGraphStore>.Instance);
+        Assert.NotNull(store);
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_driver is not null) await _driver.DisposeAsync();

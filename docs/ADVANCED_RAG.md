@@ -338,6 +338,11 @@ var forgot = await graphRag.ForgetChunksAsync(removedChunkIds, partition, ct);
 
 FluxFeed's vault pipeline calls it for superseded chunks and for removed documents.
 
+Both run while other documents of the same partition are being built: the store changes each entity as one write against
+what is stored (`IGraphStore.RemoveEntityChunksAsync` / `RemapEntityChunksAsync`, 0.76.0+), so a chunk a concurrent build
+adds to the same entity is kept — and an entity it has just given a chunk is trimmed rather than deleted. A custom
+`IGraphStore` inherits defaults that read and write back (correct only without concurrent writers); override them.
+
 When chunks are renamed rather than removed — their document moved to a new id with its content unchanged — call
 `ReassignChunksAsync(chunkIdMap, oldDocumentId, newDocumentId, partition)` (0.64.0+) instead: entities, relationship
 evidence and communities point at the new chunk ids, and nothing is extracted or summarized again.

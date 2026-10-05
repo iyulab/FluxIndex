@@ -83,6 +83,86 @@ public interface IGraphStore
     /// </summary>
     Task<bool> DeleteEntityAsync(string id, CancellationToken ct = default);
 
+    /// <summary>
+    /// Takes chunk ids away from every entity of a partition that lists them. An entity left with no chunk is deleted,
+    /// and its relationships and community memberships with it.
+    /// </summary>
+    /// <remarks>
+    /// Each entity changes as one write against what is stored at that moment, so a build running at the same time that
+    /// adds a chunk to one of these entities keeps it — and an entity it has just given a chunk is trimmed, not deleted.
+    /// Reading the entities and writing them back with <see cref="UpdateEntityAsync"/> would replace over such a chunk.
+    /// This default does exactly that (correct only without concurrent writers); the stores FluxIndex ships override it.
+    /// </remarks>
+    /// <param name="chunkIds">The chunk ids to take away.</param>
+    /// <param name="partition">The partition whose entities are changed — see <see cref="GraphEntity.Partition"/>.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The entities that kept at least one chunk and those deleted.</returns>
+    async Task<GraphEntityChunkRemoval> RemoveEntityChunksAsync(
+        IReadOnlyCollection<string> chunkIds,
+        string partition = GraphPartition.Default,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(chunkIds);
+        ArgumentNullException.ThrowIfNull(partition);
+        var forgotten = chunkIds.ToHashSet(StringComparer.Ordinal);
+        if (forgotten.Count == 0) return new GraphEntityChunkRemoval();
+
+        var trimmed = new List<string>();
+        var deleted = new List<string>();
+        foreach (var entity in await GetEntitiesByChunkIdsAsync(forgotten, partition, ct))
+        {
+            var remaining = GraphEntityChunks.Without(entity.ChunkIds, forgotten);
+            if (remaining.Count == 0)
+            {
+                if (await DeleteEntityAsync(entity.Id, ct)) deleted.Add(entity.Id);
+            }
+            else if (await UpdateEntityAsync(entity with { ChunkIds = remaining }, ct))
+            {
+                trimmed.Add(entity.Id);
+            }
+        }
+
+        return new GraphEntityChunkRemoval { TrimmedEntityIds = trimmed, DeletedEntityIds = deleted };
+    }
+
+    /// <summary>
+    /// Renames chunk ids on every entity of a partition that lists a renamed chunk, and replaces one document id with
+    /// another on those entities — what moving a document to a new id does to the graph.
+    /// </summary>
+    /// <remarks>
+    /// Each entity changes as one write against what is stored at that moment, as in
+    /// <see cref="RemoveEntityChunksAsync"/>; this default reads and writes back (correct only without concurrent
+    /// writers), and the stores FluxIndex ships override it.
+    /// </remarks>
+    /// <param name="chunkIdMap">Old chunk id to new chunk id. Chunk ids not in the map are kept.</param>
+    /// <param name="oldDocumentId">The document id to replace on the changed entities.</param>
+    /// <param name="newDocumentId">The document id that replaces it.</param>
+    /// <param name="partition">The partition whose entities are changed — see <see cref="GraphEntity.Partition"/>.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The ids of the entities changed.</returns>
+    async Task<IReadOnlyList<string>> RemapEntityChunksAsync(
+        IReadOnlyDictionary<string, string> chunkIdMap,
+        string oldDocumentId,
+        string newDocumentId,
+        string partition = GraphPartition.Default,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(chunkIdMap);
+        ArgumentException.ThrowIfNullOrWhiteSpace(oldDocumentId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(newDocumentId);
+        ArgumentNullException.ThrowIfNull(partition);
+        if (chunkIdMap.Count == 0) return [];
+
+        var changed = new List<string>();
+        foreach (var entity in await GetEntitiesByChunkIdsAsync(chunkIdMap.Keys, partition, ct))
+        {
+            if (await UpdateEntityAsync(GraphEntityChunks.Remapped(entity, chunkIdMap, oldDocumentId, newDocumentId), ct))
+                changed.Add(entity.Id);
+        }
+
+        return changed;
+    }
+
     #endregion
 
     #region Relationship Operations
@@ -251,6 +331,57 @@ public interface IGraphStore
 }
 
 #region Supporting Types
+
+/// <summary>What <see cref="IGraphStore.RemoveEntityChunksAsync"/> changed.</summary>
+public record GraphEntityChunkRemoval
+{
+    /// <summary>Entities that lost chunks and kept at least one.</summary>
+    public IReadOnlyList<string> TrimmedEntityIds { get; init; } = [];
+
+    /// <summary>Entities deleted because no chunk was left.</summary>
+    public IReadOnlyList<string> DeletedEntityIds { get; init; } = [];
+}
+
+/// <summary>
+/// The chunk-list arithmetic of <see cref="IGraphStore.RemoveEntityChunksAsync"/> and
+/// <see cref="IGraphStore.RemapEntityChunksAsync"/>, shared by the default implementations and the stores that override
+/// them so every store computes the same lists.
+/// </summary>
+public static class GraphEntityChunks
+{
+    /// <summary>The chunk ids of <paramref name="chunkIds"/> that are not in <paramref name="removed"/>, in order.</summary>
+    public static List<string> Without(IEnumerable<string> chunkIds, IReadOnlySet<string> removed)
+    {
+        ArgumentNullException.ThrowIfNull(chunkIds);
+        ArgumentNullException.ThrowIfNull(removed);
+        return chunkIds.Where(id => !removed.Contains(id)).ToList();
+    }
+
+    /// <summary>
+    /// <paramref name="entity"/> with each chunk id renamed through <paramref name="chunkIdMap"/> and
+    /// <paramref name="oldDocumentId"/> replaced by <paramref name="newDocumentId"/>, both lists without duplicates.
+    /// </summary>
+    public static GraphEntity Remapped(
+        GraphEntity entity,
+        IReadOnlyDictionary<string, string> chunkIdMap,
+        string oldDocumentId,
+        string newDocumentId)
+    {
+        ArgumentNullException.ThrowIfNull(entity);
+        ArgumentNullException.ThrowIfNull(chunkIdMap);
+        return entity with
+        {
+            ChunkIds = entity.ChunkIds
+                .Select(id => chunkIdMap.TryGetValue(id, out var mapped) ? mapped : id)
+                .Distinct(StringComparer.Ordinal)
+                .ToList(),
+            DocumentIds = entity.DocumentIds
+                .Select(id => string.Equals(id, oldDocumentId, StringComparison.Ordinal) ? newDocumentId : id)
+                .Distinct(StringComparer.Ordinal)
+                .ToList()
+        };
+    }
+}
 
 /// <summary>
 /// Names the partition a graph store read or write belongs to.

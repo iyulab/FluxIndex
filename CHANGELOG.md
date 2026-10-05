@@ -5,6 +5,29 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.76.0] - Unreleased
+
+### Fixed
+- **Forgetting or reassigning chunks no longer drops chunks a concurrent build adds to the same entity.**
+  `IGraphRAGService.ForgetChunksAsync` and `ReassignChunksAsync` read the entities, computed the new chunk lists and
+  wrote them back with `UpdateEntityAsync`, which replaces every field — a chunk another build of the same partition
+  merged in between was lost, and an entity it had just given a chunk could be deleted. The store now changes each
+  entity as one write against what is stored: the SQLite and PostgreSQL stores under the row's concurrency token
+  (retried over a fresh read), Neo4j in one statement that locks the node before reading its list.
+- **Neo4j: `Neo4jOptions.Encrypted = true` encrypts the connection.** Nothing read the option, so a plain `bolt://` or
+  `neo4j://` address stayed unencrypted whatever it said. It now sets the driver's encryption level; a `+s` / `+ssc`
+  address encrypts on its own and is used as given.
+
+### Removed
+- **Breaking**: `Neo4jOptions.NodeLabelPrefix` (default `"FluxIndex_"`). Nothing read it — the store's labels have
+  always been `Entity` and `Community` — and honouring it now would relabel every existing graph. Remove the setting.
+
+### Added
+- `IGraphStore.RemoveEntityChunksAsync(chunkIds, partition)` → `GraphEntityChunkRemoval` (trimmed and deleted entity
+  ids) and `IGraphStore.RemapEntityChunksAsync(chunkIdMap, oldDocumentId, newDocumentId, partition)` → changed entity
+  ids, with `GraphEntityChunks` holding the list arithmetic. Both have default implementations that read and write back
+  (correct without concurrent writers), so a custom `IGraphStore` keeps compiling; override them for concurrency.
+
 ## [0.75.1] - 2026-10-05
 
 ### Fixed

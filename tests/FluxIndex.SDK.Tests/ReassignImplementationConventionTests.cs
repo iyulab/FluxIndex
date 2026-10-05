@@ -87,6 +87,20 @@ public class ReassignImplementationConventionTests
             typeof(IKeywordSearchService), nameof(IKeywordSearchService.ReassignDocumentAsync)));
     }
 
+    // The defaults read entities and write them back, which replaces over a chunk a concurrent build adds; every shipped
+    // graph store must do it as one write against what is stored.
+    [Theory]
+    [InlineData(nameof(IGraphStore.RemoveEntityChunksAsync))]
+    [InlineData(nameof(IGraphStore.RemapEntityChunksAsync))]
+    public void EveryShippedGraphStore_OverridesTheReadThenWriteDefault(string method)
+    {
+        var scanned = ConcreteImplementations(typeof(IGraphStore)).Select(t => t.Name).ToList();
+        Assert.Contains("SQLiteEntityGraphStore", scanned);
+        Assert.Contains("PostgresEntityGraphStore", scanned);
+        Assert.Contains("Neo4jGraphStore", scanned);
+        Assert.Empty(TypesFallingBackToTheDefault(typeof(IGraphStore), method));
+    }
+
     [Fact]
     public void EveryShippedGraphRagService_ImplementsReassignChunks()
     {

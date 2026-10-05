@@ -208,4 +208,56 @@ public abstract class GraphStoreChunkProvenanceContractSuite
         Assert.Null(await store.GetEntityByIdAsync(id, ct));
         Assert.Empty(await store.GetEntitiesByChunkIdsAsync([c1], ct: ct));
     }
+
+    // Forgetting chunks trims the entities that list them; one left without chunks is deleted. Other partitions are not
+    // touched.
+    [Fact]
+    public async Task RemoveEntityChunksAsync_TrimsListingEntities_AndDeletesEmptiedOnes()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var store = await CreateStoreAsync();
+        var (kept, emptied, elsewhere) = (Fresh("entity"), Fresh("entity"), Fresh("entity"));
+        var (c1, c2) = (Fresh("chunk"), Fresh("chunk"));
+        await store.StoreEntitiesBatchAsync(
+        [
+            Entity(kept, "Globex", [c1, c2], ["doc-a"]),
+            Entity(emptied, "Initech", [c1], ["doc-a"]),
+            Entity(elsewhere, "Umbrella", [c1], ["doc-a"]) with { Partition = "other-desk" }
+        ], ct);
+
+        var removal = await store.RemoveEntityChunksAsync([c1], ct: ct);
+
+        Assert.Equal(new[] { kept }, removal.TrimmedEntityIds);
+        Assert.Equal(new[] { emptied }, removal.DeletedEntityIds);
+        Assert.Equal(new[] { c2 }, (await store.GetEntityByIdAsync(kept, ct))!.ChunkIds);
+        Assert.Null(await store.GetEntityByIdAsync(emptied, ct));
+        Assert.Equal(new[] { c1 }, (await store.GetEntityByIdAsync(elsewhere, ct))!.ChunkIds);
+        Assert.Empty(await store.GetEntitiesByChunkIdsAsync([c1], ct: ct));
+    }
+
+    // Moving a document renames its chunk ids and its document id on every entity that lists one of its chunks; two old
+    // ids renamed to one new id leave it once.
+    [Fact]
+    public async Task RemapEntityChunksAsync_RenamesChunks_AndReplacesTheDocument()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var store = await CreateStoreAsync();
+        var (moved, untouched) = (Fresh("entity"), Fresh("entity"));
+        var (c1, c2, other, n1) = (Fresh("chunk"), Fresh("chunk"), Fresh("chunk"), Fresh("chunk"));
+        await store.StoreEntitiesBatchAsync(
+        [
+            Entity(moved, "Globex", [c1, other, c2], ["doc-old", "doc-b"]),
+            Entity(untouched, "Initech", [other], ["doc-b"])
+        ], ct);
+
+        var changed = await store.RemapEntityChunksAsync(
+            new Dictionary<string, string> { [c1] = n1, [c2] = n1 }, "doc-old", "doc-new", ct: ct);
+
+        Assert.Equal(new[] { moved }, changed);
+        var stored = await store.GetEntityByIdAsync(moved, ct);
+        Assert.NotNull(stored);
+        Assert.Equal(new[] { n1, other }, stored.ChunkIds);
+        Assert.Equal(new[] { "doc-new", "doc-b" }, stored.DocumentIds);
+        Assert.Equal(new[] { "doc-b" }, (await store.GetEntityByIdAsync(untouched, ct))!.DocumentIds);
+    }
 }

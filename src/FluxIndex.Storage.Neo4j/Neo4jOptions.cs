@@ -47,12 +47,8 @@ public class Neo4jOptions
     public bool CreateIndexesOnStartup { get; set; } = true;
 
     /// <summary>
-    /// Prefix for node labels to namespace entities.
-    /// </summary>
-    public string NodeLabelPrefix { get; set; } = "FluxIndex_";
-
-    /// <summary>
-    /// Whether to encrypt connections (for production environments).
+    /// Whether to encrypt the connection when <see cref="Uri"/> uses a plain <c>bolt://</c> or <c>neo4j://</c> scheme.
+    /// A <c>bolt+s://</c> / <c>neo4j+s://</c> (or <c>+ssc</c>) address encrypts on its own and is used as given.
     /// </summary>
     public bool Encrypted { get; set; }
 }

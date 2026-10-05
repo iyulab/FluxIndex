@@ -210,6 +210,87 @@ public partial class PostgresEntityGraphStore : IGraphStore
             return true;
         }, insertsRace: false);
 
+    /// <remarks>
+    /// One read and one save under the rows' <c>UpdatedAt</c> tokens, retried over a fresh read when a concurrent write
+    /// changed a row in between — a chunk a build adds meanwhile is kept, and its entity trimmed rather than deleted.
+    /// </remarks>
+    public Task<GraphEntityChunkRemoval> RemoveEntityChunksAsync(
+        IReadOnlyCollection<string> chunkIds,
+        string partition = GraphPartition.Default,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(chunkIds);
+        ArgumentNullException.ThrowIfNull(partition);
+        var removed = chunkIds.ToHashSet(StringComparer.Ordinal);
+        if (removed.Count == 0) return Task.FromResult(new GraphEntityChunkRemoval());
+
+        return RetryLostRaceAsync(async () =>
+        {
+            await using var context = await _contextFactory.CreateDbContextAsync(ct);
+            var trimmed = new List<string>();
+            var deleted = new List<string>();
+            foreach (var row in await RowsListingAnyAsync(context, removed, partition, ct))
+            {
+                var entity = MapToGraphEntity(row);
+                var remaining = GraphEntityChunks.Without(entity.ChunkIds, removed);
+                if (remaining.Count == 0)
+                {
+                    context.Entities.Remove(row);
+                    deleted.Add(row.Id);
+                    continue;
+                }
+
+                context.Entry(row).CurrentValues.SetValues(MapToDbEntity(entity with { ChunkIds = remaining }));
+                row.UpdatedAt = DateTimeOffset.UtcNow;
+                trimmed.Add(row.Id);
+            }
+
+            await context.SaveChangesAsync(ct);
+            return new GraphEntityChunkRemoval { TrimmedEntityIds = trimmed, DeletedEntityIds = deleted };
+        }, insertsRace: false);
+    }
+
+    /// <remarks>One read and one save under the rows' <c>UpdatedAt</c> tokens, as <see cref="RemoveEntityChunksAsync"/>.</remarks>
+    public Task<IReadOnlyList<string>> RemapEntityChunksAsync(
+        IReadOnlyDictionary<string, string> chunkIdMap,
+        string oldDocumentId,
+        string newDocumentId,
+        string partition = GraphPartition.Default,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(chunkIdMap);
+        ArgumentException.ThrowIfNullOrWhiteSpace(oldDocumentId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(newDocumentId);
+        ArgumentNullException.ThrowIfNull(partition);
+        if (chunkIdMap.Count == 0) return Task.FromResult<IReadOnlyList<string>>([]);
+
+        return RetryLostRaceAsync<IReadOnlyList<string>>(async () =>
+        {
+            await using var context = await _contextFactory.CreateDbContextAsync(ct);
+            var changed = new List<string>();
+            foreach (var row in await RowsListingAnyAsync(context, chunkIdMap.Keys.ToHashSet(StringComparer.Ordinal), partition, ct))
+            {
+                var remapped = GraphEntityChunks.Remapped(MapToGraphEntity(row), chunkIdMap, oldDocumentId, newDocumentId);
+                context.Entry(row).CurrentValues.SetValues(MapToDbEntity(remapped));
+                row.UpdatedAt = DateTimeOffset.UtcNow;
+                changed.Add(row.Id);
+            }
+
+            await context.SaveChangesAsync(ct);
+            return changed;
+        }, insertsRace: false);
+    }
+
+    // Tracked: the rows are changed and saved under their UpdatedAt tokens.
+    private static Task<List<EntityGraphEntity>> RowsListingAnyAsync(
+        EntityGraphDbContext context, IReadOnlySet<string> chunkIds, string partition, CancellationToken ct)
+    {
+        var array = chunkIds.ToArray();
+        return context.Entities.AsTracking()
+            .Where(e => e.Partition == partition && EF.Functions.JsonExistAny(e.ChunkIdsJson, array))
+            .ToListAsync(ct);
+    }
+
     #endregion
 
     #region Relationship Operations

@@ -43,7 +43,9 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   `IGraphRAGService.QueryAsync(query, index)` takes a `GraphRAGIndex`: build one with `BuildIndexAsync(chunks)` or
   read one back with `LoadIndexAsync(chunks)` (needs a registered `IGraphStore`). `Retriever.SearchAsync` does not run
   GraphRAG (`SearchOptions.UseGraphRAG = true` throws). A re-build replaces the communities the last build of those chunks persisted
-  (`IGraphStore.DeleteCommunitiesAsync`); `IGraphRAGService.ForgetChunksAsync` removes what replaced or deleted chunks left in the graph.
+  (`IGraphStore.DeleteCommunitiesAsync`); `IGraphRAGService.ForgetChunksAsync` removes what replaced or deleted chunks left in the graph. Both it and `ReassignChunksAsync` are
+  safe beside a concurrent build of the same partition (the store's `RemoveEntityChunksAsync` / `RemapEntityChunksAsync`
+  change each entity as one write).
 - **Moving a document without re-embedding** — `IVectorStore.ReassignDocumentAsync(oldDocumentId, newDocumentId,
   chunkIdMap, metadataUpdates)`, `IKeywordSearchService.ReassignDocumentAsync` (same arguments) and
   `IGraphRAGService.ReassignChunksAsync` move a document's chunks to a new document id and new chunk ids, keeping the

@@ -252,24 +252,12 @@ public partial class GraphRAGService : IGraphRAGService
             ? 0
             : await _graphStore.DeleteCommunitiesAsync(communities.Select(c => c.Id), cancellationToken);
 
-        var entitiesDeleted = 0;
-        var entitiesTrimmed = 0;
-        var survivors = new List<string>();
-        foreach (var entity in await _graphStore.GetEntitiesByChunkIdsAsync(forgotten, partition, cancellationToken))
-        {
-            var remaining = entity.ChunkIds.Where(id => !forgotten.Contains(id)).ToList();
-            if (remaining.Count == 0)
-            {
-                // Deleting the entity removes its relationships and memberships with it (every store cascades).
-                if (await _graphStore.DeleteEntityAsync(entity.Id, cancellationToken))
-                    entitiesDeleted++;
-                continue;
-            }
-
-            await _graphStore.UpdateEntityAsync(entity with { ChunkIds = remaining }, cancellationToken);
-            entitiesTrimmed++;
-            survivors.Add(entity.Id);
-        }
+        // The store trims each entity against what is stored when it writes, so a build of the same partition running
+        // now keeps the chunks it adds; an entity left without chunks goes with its relationships and memberships.
+        var removal = await _graphStore.RemoveEntityChunksAsync(forgotten, partition, cancellationToken);
+        var entitiesDeleted = removal.DeletedEntityIds.Count;
+        var entitiesTrimmed = removal.TrimmedEntityIds.Count;
+        var survivors = removal.TrimmedEntityIds;
 
         // A relationship's evidence came from chunks both its entities were extracted from, so every relationship with
         // forgotten evidence touches a surviving (trimmed) entity or was deleted with a deleted one.
@@ -337,24 +325,9 @@ public partial class GraphRAGService : IGraphRAGService
             communitiesUpdated++;
         }
 
-        var entitiesUpdated = 0;
-        var entityIds = new List<string>();
-        foreach (var entity in await _graphStore.GetEntitiesByChunkIdsAsync(mappedIds, partition, cancellationToken))
-        {
-            var documentIds = entity.DocumentIds
-                .Select(id => string.Equals(id, oldDocumentId, StringComparison.Ordinal) ? newDocumentId : id)
-                .Distinct(StringComparer.Ordinal)
-                .ToList();
-            await _graphStore.UpdateEntityAsync(
-                entity with
-                {
-                    ChunkIds = entity.ChunkIds.Select(Map).Distinct(StringComparer.Ordinal).ToList(),
-                    DocumentIds = documentIds
-                },
-                cancellationToken);
-            entitiesUpdated++;
-            entityIds.Add(entity.Id);
-        }
+        // Remapped by the store against what is stored when it writes, as in ForgetChunksAsync.
+        var entityIds = await _graphStore.RemapEntityChunksAsync(chunkIdMap, oldDocumentId, newDocumentId, partition, cancellationToken);
+        var entitiesUpdated = entityIds.Count;
 
         // A relationship's evidence came from chunks both its entities were extracted from, so every relationship
         // evidenced by a mapped chunk touches one of the entities just rewritten.
