@@ -70,7 +70,8 @@ public partial class QualityMonitoringService : IQualityMonitoringService, IDisp
             Query = query,
             ResponseTimeMs = responseTime.TotalMilliseconds,
             ResultCount = results.Count,
-            IsSuccessful = results.Count != 0,
+            HasResults = results.Count != 0,
+            SearchError = metadata?.GetValueOrDefault("error")?.ToString(),
             Metadata = metadata ?? new Dictionary<string, object>()
         };
 
@@ -112,7 +113,7 @@ public partial class QualityMonitoringService : IQualityMonitoringService, IDisp
             return new QualityDashboard { TimeWindow = timeWindow };
         }
 
-        var successfulMetrics = relevantMetrics.Where(m => m.IsSuccessful).ToList();
+        var successfulMetrics = relevantMetrics.Where(m => m.HasResults).ToList();
         var responseTimes = relevantMetrics.Select(m => m.ResponseTimeMs).ToList();
 
         var dashboard = new QualityDashboard
@@ -203,7 +204,7 @@ public partial class QualityMonitoringService : IQualityMonitoringService, IDisp
 
             if (periodMetrics.Count != 0)
             {
-                var successfulMetrics = periodMetrics.Where(m => m.IsSuccessful).ToList();
+                var successfulMetrics = periodMetrics.Where(m => m.HasResults).ToList();
                 dataPoints.Add(new QualityDataPoint
                 {
                     Timestamp = startTime,
@@ -344,7 +345,7 @@ public partial class QualityMonitoringService : IQualityMonitoringService, IDisp
         }
 
         // 결과 수 검사
-        if (metrics.IsSuccessful && metrics.ResultCount < _thresholds.MinResultCount)
+        if (metrics.SearchError is null && metrics.ResultCount < _thresholds.MinResultCount)
         {
             alerts.Add(CreateAlert(AlertType.Quality, AlertSeverity.Warning,
                 "낮은 결과 수 감지",
@@ -353,7 +354,7 @@ public partial class QualityMonitoringService : IQualityMonitoringService, IDisp
         }
 
         // 품질 점수 검사
-        if (metrics.IsSuccessful && metrics.QualityScore < _thresholds.MinQualityScore)
+        if (metrics.HasResults && metrics.QualityScore < _thresholds.MinQualityScore)
         {
             alerts.Add(CreateAlert(AlertType.Quality, AlertSeverity.Critical,
                 "낮은 품질 점수 감지",
@@ -362,11 +363,11 @@ public partial class QualityMonitoringService : IQualityMonitoringService, IDisp
         }
 
         // 검색 실패 검사
-        if (!metrics.IsSuccessful)
+        if (metrics.SearchError is not null)
         {
             alerts.Add(CreateAlert(AlertType.Availability, AlertSeverity.Critical,
                 "검색 실패 감지",
-                $"검색이 실패했습니다: {metrics.ErrorMessage ?? "알 수 없는 오류"}",
+                $"검색이 실패했습니다: {metrics.SearchError}",
                 "Success", 0, 1));
         }
 
@@ -436,7 +437,7 @@ public partial class QualityMonitoringService : IQualityMonitoringService, IDisp
     private static List<QueryFrequency> GetTopQueries(List<QualityMetrics> metrics, int count)
     {
         return metrics
-            .Where(m => m.IsSuccessful)
+            .Where(m => m.HasResults)
             .GroupBy(m => m.Query)
             .Select(g => new QueryFrequency
             {

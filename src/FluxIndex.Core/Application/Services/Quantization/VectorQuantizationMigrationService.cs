@@ -38,89 +38,77 @@ public partial class VectorQuantizationMigrationService
 
         LogVectorQuantizationMigration11(_logger, options.BatchSize);
 
-        try
+        // Product Quantization인 경우 먼저 학습이 필요
+        if (_quantizer.QuantizationType == QuantizationType.ProductQuantization)
         {
-            // Product Quantization인 경우 먼저 학습이 필요
-            if (_quantizer.QuantizationType == QuantizationType.ProductQuantization)
+            LogVectorQuantizationMigration10(_logger);
+            var trainingVectors = await CollectTrainingVectorsAsync(options.TrainingSampleSize, cancellationToken);
+
+            if (trainingVectors.Count > 0)
             {
-                LogVectorQuantizationMigration10(_logger);
-                var trainingVectors = await CollectTrainingVectorsAsync(options.TrainingSampleSize, cancellationToken);
-
-                if (trainingVectors.Count > 0)
-                {
-                    LogVectorQuantizationMigration9(_logger, trainingVectors.Count);
-                    await _quantizer.TrainAsync(trainingVectors, cancellationToken);
-                }
+                LogVectorQuantizationMigration9(_logger, trainingVectors.Count);
+                await _quantizer.TrainAsync(trainingVectors, cancellationToken);
             }
+        }
 
-            // 배치 단위로 마이그레이션
-            var offset = 0;
-            var totalProcessed = 0;
-            var batchNumber = 0;
+        // 배치 단위로 마이그레이션
+        var offset = 0;
+        var totalProcessed = 0;
+        var batchNumber = 0;
 
-            while (!cancellationToken.IsCancellationRequested)
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var chunks = await GetChunkBatchAsync(offset, options.BatchSize, cancellationToken);
+
+            if (!chunks.Any())
+                break;
+
+            batchNumber++;
+            var batchResult = await ProcessBatchAsync(chunks, options, cancellationToken);
+
+            result.SuccessCount += batchResult.SuccessCount;
+            result.FailureCount += batchResult.FailureCount;
+            result.SkippedCount += batchResult.SkippedCount;
+            result.TotalBytesOriginal += batchResult.TotalBytesOriginal;
+            result.TotalBytesQuantized += batchResult.TotalBytesQuantized;
+
+            totalProcessed += chunks.Count();
+            offset += options.BatchSize;
+
+            progress?.Report(new MigrationProgress
             {
-                var chunks = await GetChunkBatchAsync(offset, options.BatchSize, cancellationToken);
+                ProcessedCount = totalProcessed,
+                CurrentBatch = batchNumber,
+                SuccessCount = result.SuccessCount,
+                FailureCount = result.FailureCount,
+                SkippedCount = result.SkippedCount
+            });
 
-                if (!chunks.Any())
-                    break;
+            var chunkCount = chunks.Count();
+            LogVectorQuantizationMigration8(_logger, batchNumber, chunkCount, batchResult.SuccessCount, batchResult.FailureCount, batchResult.SkippedCount);
 
-                batchNumber++;
-                var batchResult = await ProcessBatchAsync(chunks, options, cancellationToken);
-
-                result.SuccessCount += batchResult.SuccessCount;
-                result.FailureCount += batchResult.FailureCount;
-                result.SkippedCount += batchResult.SkippedCount;
-                result.TotalBytesOriginal += batchResult.TotalBytesOriginal;
-                result.TotalBytesQuantized += batchResult.TotalBytesQuantized;
-
-                totalProcessed += chunks.Count();
-                offset += options.BatchSize;
-
-                progress?.Report(new MigrationProgress
-                {
-                    ProcessedCount = totalProcessed,
-                    CurrentBatch = batchNumber,
-                    SuccessCount = result.SuccessCount,
-                    FailureCount = result.FailureCount,
-                    SkippedCount = result.SkippedCount
-                });
-
-                var chunkCount = chunks.Count();
-                LogVectorQuantizationMigration8(_logger, batchNumber, chunkCount, batchResult.SuccessCount, batchResult.FailureCount, batchResult.SkippedCount);
-
-                // 배치 간 지연
-                if (options.BatchDelayMs > 0)
-                {
-                    await Task.Delay(options.BatchDelayMs, cancellationToken);
-                }
+            // 배치 간 지연
+            if (options.BatchDelayMs > 0)
+            {
+                await Task.Delay(options.BatchDelayMs, cancellationToken);
             }
+        }
 
-            sw.Stop();
-            result.ElapsedTime = sw.Elapsed;
-            result.IsSuccess = result.FailureCount == 0;
+        sw.Stop();
+        result.ElapsedTime = sw.Elapsed;
 
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogVectorQuantizationMigration7(_logger, sw.ElapsedMilliseconds, totalProcessed, result.SuccessCount, result.FailureCount, result.SkippedCount);
+
+        if (result.TotalBytesOriginal > 0)
+        {
+            var compressionRatio = (double)result.TotalBytesQuantized / result.TotalBytesOriginal;
             if (_logger.IsEnabled(LogLevel.Information))
-                LogVectorQuantizationMigration7(_logger, sw.ElapsedMilliseconds, totalProcessed, result.SuccessCount, result.FailureCount, result.SkippedCount);
-
-            if (result.TotalBytesOriginal > 0)
-            {
-                var compressionRatio = (double)result.TotalBytesQuantized / result.TotalBytesOriginal;
-                if (_logger.IsEnabled(LogLevel.Information))
-                    LogVectorQuantizationMigration6(_logger, result.TotalBytesOriginal, result.TotalBytesQuantized, compressionRatio);
-            }
-
-            return result;
+                LogVectorQuantizationMigration6(_logger, result.TotalBytesOriginal, result.TotalBytesQuantized, compressionRatio);
         }
-        catch (Exception ex)
-        {
-            LogVectorQuantizationMigration5(_logger, ex);
-            sw.Stop();
-            result.ElapsedTime = sw.Elapsed;
-            result.IsSuccess = false;
-            result.ErrorMessage = ex.Message;
-            return result;
-        }
+
+        return result;
     }
 
     /// <summary>
@@ -139,57 +127,43 @@ public partial class VectorQuantizationMigrationService
         var documentIdList = documentIds.ToList();
         LogVectorQuantizationMigration4(_logger, documentIdList.Count);
 
-        try
+        var processedCount = 0;
+
+        foreach (var documentId in documentIdList)
         {
-            var processedCount = 0;
+            cancellationToken.ThrowIfCancellationRequested();
 
-            foreach (var documentId in documentIdList)
+            var chunks = await GetChunksByDocumentIdAsync(documentId, cancellationToken);
+
+            if (chunks.Any())
             {
-                if (cancellationToken.IsCancellationRequested)
-                    break;
-
-                var chunks = await GetChunksByDocumentIdAsync(documentId, cancellationToken);
-
-                if (chunks.Any())
-                {
-                    var batchResult = await ProcessBatchAsync(chunks, options, cancellationToken);
-                    result.SuccessCount += batchResult.SuccessCount;
-                    result.FailureCount += batchResult.FailureCount;
-                    result.SkippedCount += batchResult.SkippedCount;
-                    result.TotalBytesOriginal += batchResult.TotalBytesOriginal;
-                    result.TotalBytesQuantized += batchResult.TotalBytesQuantized;
-                }
-
-                processedCount++;
-                progress?.Report(new MigrationProgress
-                {
-                    ProcessedCount = processedCount,
-                    TotalCount = documentIdList.Count,
-                    CurrentBatch = processedCount,
-                    SuccessCount = result.SuccessCount,
-                    FailureCount = result.FailureCount,
-                    SkippedCount = result.SkippedCount
-                });
+                var batchResult = await ProcessBatchAsync(chunks, options, cancellationToken);
+                result.SuccessCount += batchResult.SuccessCount;
+                result.FailureCount += batchResult.FailureCount;
+                result.SkippedCount += batchResult.SkippedCount;
+                result.TotalBytesOriginal += batchResult.TotalBytesOriginal;
+                result.TotalBytesQuantized += batchResult.TotalBytesQuantized;
             }
 
-            sw.Stop();
-            result.ElapsedTime = sw.Elapsed;
-            result.IsSuccess = result.FailureCount == 0;
-
-            if (_logger.IsEnabled(LogLevel.Information))
-                LogVectorQuantizationMigration3(_logger, documentIdList.Count, result.SuccessCount, result.FailureCount);
-
-            return result;
+            processedCount++;
+            progress?.Report(new MigrationProgress
+            {
+                ProcessedCount = processedCount,
+                TotalCount = documentIdList.Count,
+                CurrentBatch = processedCount,
+                SuccessCount = result.SuccessCount,
+                FailureCount = result.FailureCount,
+                SkippedCount = result.SkippedCount
+            });
         }
-        catch (Exception ex)
-        {
-            LogVectorQuantizationMigration2(_logger, ex);
-            sw.Stop();
-            result.ElapsedTime = sw.Elapsed;
-            result.IsSuccess = false;
-            result.ErrorMessage = ex.Message;
-            return result;
-        }
+
+        sw.Stop();
+        result.ElapsedTime = sw.Elapsed;
+
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogVectorQuantizationMigration3(_logger, documentIdList.Count, result.SuccessCount, result.FailureCount);
+
+        return result;
     }
 
     /// <summary>
@@ -214,8 +188,7 @@ public partial class VectorQuantizationMigrationService
 
         foreach (var vector in vectorList)
         {
-            if (cancellationToken.IsCancellationRequested)
-                break;
+            cancellationToken.ThrowIfCancellationRequested();
 
             var quantized = await _quantizer.QuantizeAsync(vector, cancellationToken);
             var dequantized = await _quantizer.DequantizeAsync(quantized, cancellationToken);
@@ -310,8 +283,7 @@ public partial class VectorQuantizationMigrationService
 
         foreach (var chunk in chunks)
         {
-            if (cancellationToken.IsCancellationRequested)
-                break;
+            cancellationToken.ThrowIfCancellationRequested();
 
             if (chunk.Embedding == null)
             {
@@ -345,7 +317,7 @@ public partial class VectorQuantizationMigrationService
 
                 result.SuccessCount++;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
                 LogVectorQuantizationMigration1(_logger, ex, chunk.Id);
                 result.FailureCount++;
@@ -372,14 +344,10 @@ public partial class VectorQuantizationMigrationService
     private static partial void LogVectorQuantizationMigration7(ILogger logger, long elapsed, int total, int success, int failed, int skipped);
     [LoggerMessage(Level = LogLevel.Information, Message = "Compression: {Original:N0} bytes -> {Quantized:N0} bytes ({Ratio:P2})")]
     private static partial void LogVectorQuantizationMigration6(ILogger logger, long original, long quantized, double ratio);
-    [LoggerMessage(Level = LogLevel.Error, Message = "Migration failed")]
-    private static partial void LogVectorQuantizationMigration5(ILogger logger, Exception exception);
     [LoggerMessage(Level = LogLevel.Information, Message = "Starting selective migration for {Count} documents")]
     private static partial void LogVectorQuantizationMigration4(ILogger logger, int count);
     [LoggerMessage(Level = LogLevel.Information, Message = "Selective migration completed. Documents: {Total}, Success: {Success}, Failed: {Failed}")]
     private static partial void LogVectorQuantizationMigration3(ILogger logger, int total, int success, int failed);
-    [LoggerMessage(Level = LogLevel.Error, Message = "Selective migration failed")]
-    private static partial void LogVectorQuantizationMigration2(ILogger logger, Exception exception);
     [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to quantize chunk {ChunkId}")]
     private static partial void LogVectorQuantizationMigration1(ILogger logger, Exception exception, string chunkId);
 
@@ -422,14 +390,14 @@ public partial class MigrationOptions
 /// </summary>
 public partial class MigrationResult
 {
-    public bool IsSuccess { get; set; }
+    /// <summary>Every chunk was migrated or skipped; none failed. A migration that could not run throws instead.</summary>
+    public bool IsSuccess => FailureCount == 0;
     public int SuccessCount { get; set; }
     public int FailureCount { get; set; }
     public int SkippedCount { get; set; }
     public long TotalBytesOriginal { get; set; }
     public long TotalBytesQuantized { get; set; }
     public TimeSpan ElapsedTime { get; set; }
-    public string? ErrorMessage { get; set; }
 
     public double CompressionRatio => TotalBytesOriginal > 0
         ? (double)TotalBytesQuantized / TotalBytesOriginal

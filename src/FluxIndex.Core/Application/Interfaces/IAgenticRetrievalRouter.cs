@@ -299,16 +299,6 @@ public class RoutingResult
     public double QualityScore { get; init; }
 
     /// <summary>
-    /// Whether the retrieval was successful.
-    /// </summary>
-    public bool IsSuccessful { get; init; }
-
-    /// <summary>
-    /// Error message if retrieval failed.
-    /// </summary>
-    public string? ErrorMessage { get; init; }
-
-    /// <summary>
     /// Routing explanation for debugging/transparency.
     /// </summary>
     public string? RoutingExplanation { get; init; }
@@ -759,16 +749,6 @@ public class MultiStepRetrievalResult
     /// Number of steps that failed.
     /// </summary>
     public int FailedSteps { get; init; }
-
-    /// <summary>
-    /// Overall success status.
-    /// </summary>
-    public bool IsSuccessful { get; init; }
-
-    /// <summary>
-    /// Error message if failed.
-    /// </summary>
-    public string? ErrorMessage { get; init; }
 }
 
 /// <summary>

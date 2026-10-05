@@ -19,17 +19,9 @@ public class PublicApiConventionTests
 
     private static readonly string[] KnownResultReturns =
     [
-        "FluxIndex.Core.Application.Interfaces.IAgenticRetrievalRouter.ExecuteRetrievalPlanAsync(String, RetrievalPlan, CancellationToken)",
-        "FluxIndex.Core.Application.Interfaces.IAgenticRetrievalRouter.RouteAndRetrieveAsync(String, RoutingContext, CancellationToken)",
-        "FluxIndex.Core.Application.Interfaces.ICorrectiveRAGService.PerformAlternativeRetrievalAsync(String, IEnumerable<DocumentChunk>, CancellationToken)",
-        "FluxIndex.Core.Application.Interfaces.ICorrectiveRAGService.RetrieveWithCorrectionAsync(String, CorrectiveRAGOptions, CancellationToken)",
-        "FluxIndex.Core.Application.Interfaces.IImageDescriptionService.DescribeImageAsync(Byte[], String, String, CancellationToken)",
-        "FluxIndex.Core.Application.Interfaces.IImageDescriptionService.DescribeImageFromUrlAsync(String, String, CancellationToken)",
-        "FluxIndex.Core.Application.Interfaces.IImageDescriptionService.ExtractDataFromImageAsync(Byte[], String, ImageDataExtractionType, CancellationToken)",
+        // A report: one entry per image that could not be stored (the document keeps its base64 there); the call itself
+        // throws when it cannot run, and the caller's cancellation propagates.
         "FluxIndex.Core.Application.Interfaces.IImageExtractionService.ExtractAndStoreAsync(String, String, IImageStore, String, CancellationToken)",
-        "FluxIndex.Core.Application.Interfaces.IQualityMonitoringService.EvaluateSearchQualityAsync(String, IReadOnlyList<SearchResult>, TimeSpan, Dictionary<String, Object>, CancellationToken)",
-        "FluxIndex.Core.Application.Services.Quantization.VectorQuantizationMigrationService.MigrateAllAsync(MigrationOptions, IProgress<MigrationProgress>, CancellationToken)",
-        "FluxIndex.Core.Application.Services.Quantization.VectorQuantizationMigrationService.MigrateByDocumentIdsAsync(IEnumerable<String>, MigrationOptions, IProgress<MigrationProgress>, CancellationToken)",
         "FluxIndex.Integrations.FileFlux.Processing.DocumentProcessingPipeline.ExtractOnlyAsync(String, Boolean, CancellationToken)",
         "FluxIndex.Integrations.FileFlux.Processing.DocumentProcessingPipeline.ExtractOnlyAsync(String, ExtractionOptions, CancellationToken)",
         "FluxIndex.Integrations.FileFlux.Processing.DocumentProcessingPipeline.ProcessAndSaveAsync(String, String, DocumentProcessingOptions, CancellationToken)",

@@ -122,96 +122,80 @@ public partial class AgenticRetrievalRouter : IAgenticRetrievalRouter
         var totalStopwatch = Stopwatch.StartNew();
         var routingStopwatch = Stopwatch.StartNew();
 
+        LogRoutingQuery(_logger, query);
+
+        // Step 1: Analyze query and make routing decision
+        var decision = await AnalyzeQueryAsync(query, context, cancellationToken);
+        routingStopwatch.Stop();
+
+        // Step 2: Execute retrieval with the selected strategy
+        var retrievalStopwatch = Stopwatch.StartNew();
+        var documents = new List<RoutedDocument>();
+        var usedFallback = false;
+        var fallbacksTried = new List<RetrievalStrategy>();
+        var executedStrategy = decision.PrimaryStrategy;
+
         try
         {
-            LogRoutingQuery(_logger, query);
-
-            // Step 1: Analyze query and make routing decision
-            var decision = await AnalyzeQueryAsync(query, context, cancellationToken);
-            routingStopwatch.Stop();
-
-            // Step 2: Execute retrieval with the selected strategy
-            var retrievalStopwatch = Stopwatch.StartNew();
-            var documents = new List<RoutedDocument>();
-            var usedFallback = false;
-            var fallbacksTried = new List<RetrievalStrategy>();
-            var executedStrategy = decision.PrimaryStrategy;
-            string? errorMessage = null;
-
-            try
-            {
-                documents = await ExecuteStrategyAsync(
-                    decision.PrimaryStrategy, query, context, cancellationToken);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                LogPrimaryStrategyFailed(_logger, ex, decision.PrimaryStrategy);
-
-                // Try fallback strategies
-                foreach (var fallback in decision.FallbackStrategies)
-                {
-                    try
-                    {
-                        fallbacksTried.Add(fallback);
-                        documents = await ExecuteStrategyAsync(fallback, query, context, cancellationToken);
-                        executedStrategy = fallback;
-                        usedFallback = true;
-                        break;
-                    }
-                    catch (Exception fallbackEx) when (fallbackEx is not OperationCanceledException)
-                    {
-                        LogFallbackStrategyFailed(_logger, fallbackEx, fallback);
-                    }
-                }
-
-                if (documents.Count == 0)
-                {
-                    errorMessage = ex.Message;
-                }
-            }
-
-            retrievalStopwatch.Stop();
-            totalStopwatch.Stop();
-
-            // Calculate quality score
-            var qualityScore = CalculateQualityScore(documents);
-
-            // Update strategy performance metrics
-            UpdateStrategyPerformance(executedStrategy, retrievalStopwatch.Elapsed, qualityScore, documents.Count > 0);
-
-            var result = new RoutingResult
-            {
-                RoutingId = Guid.NewGuid().ToString(),
-                Documents = documents,
-                Decision = decision,
-                ExecutedStrategy = executedStrategy,
-                UsedFallback = usedFallback,
-                FallbacksTriedList = fallbacksTried,
-                TotalTime = totalStopwatch.Elapsed,
-                RoutingTime = routingStopwatch.Elapsed,
-                RetrievalTime = retrievalStopwatch.Elapsed,
-                QualityScore = qualityScore,
-                IsSuccessful = documents.Count > 0,
-                ErrorMessage = errorMessage,
-                RoutingExplanation = decision.Explanation
-            };
-
-            LogRoutingCompleted(_logger, executedStrategy, documents.Count, qualityScore, totalStopwatch.ElapsedMilliseconds);
-
-            return result;
+            documents = await ExecuteStrategyAsync(
+                decision.PrimaryStrategy, query, context, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            totalStopwatch.Stop();
-            LogRoutingFailed(_logger, ex, query);
+            LogPrimaryStrategyFailed(_logger, ex, decision.PrimaryStrategy);
 
-            return new RoutingResult
+            // Try fallback strategies
+            foreach (var fallback in decision.FallbackStrategies)
             {
-                IsSuccessful = false,
-                ErrorMessage = ex.Message,
-                TotalTime = totalStopwatch.Elapsed
-            };
+                try
+                {
+                    fallbacksTried.Add(fallback);
+                    documents = await ExecuteStrategyAsync(fallback, query, context, cancellationToken);
+                    executedStrategy = fallback;
+                    usedFallback = true;
+                    break;
+                }
+                catch (Exception fallbackEx) when (fallbackEx is not OperationCanceledException)
+                {
+                    LogFallbackStrategyFailed(_logger, fallbackEx, fallback);
+                }
+            }
+
+            // A fallback that ran and found nothing is an answer; no strategy running at all is a failure.
+            if (!usedFallback)
+            {
+                LogRoutingFailed(_logger, ex, query);
+                throw;
+            }
         }
+
+        retrievalStopwatch.Stop();
+        totalStopwatch.Stop();
+
+        // Calculate quality score
+        var qualityScore = CalculateQualityScore(documents);
+
+        // Update strategy performance metrics
+        UpdateStrategyPerformance(executedStrategy, retrievalStopwatch.Elapsed, qualityScore, documents.Count > 0);
+
+        var result = new RoutingResult
+        {
+            RoutingId = Guid.NewGuid().ToString(),
+            Documents = documents,
+            Decision = decision,
+            ExecutedStrategy = executedStrategy,
+            UsedFallback = usedFallback,
+            FallbacksTriedList = fallbacksTried,
+            TotalTime = totalStopwatch.Elapsed,
+            RoutingTime = routingStopwatch.Elapsed,
+            RetrievalTime = retrievalStopwatch.Elapsed,
+            QualityScore = qualityScore,
+            RoutingExplanation = decision.Explanation
+        };
+
+        LogRoutingCompleted(_logger, executedStrategy, documents.Count, qualityScore, totalStopwatch.ElapsedMilliseconds);
+
+        return result;
     }
 
     /// <inheritdoc />
@@ -388,101 +372,92 @@ public partial class AgenticRetrievalRouter : IAgenticRetrievalRouter
         var stepResults = new List<StepResult>();
         var stepDocuments = new Dictionary<string, IReadOnlyList<RoutedDocument>>();
 
-        try
+        // Sort steps by dependencies
+        var orderedSteps = TopologicalSort(plan.Steps, plan.Dependencies);
+
+        foreach (var step in orderedSteps)
         {
-            // Sort steps by dependencies
-            var orderedSteps = TopologicalSort(plan.Steps, plan.Dependencies);
+            cancellationToken.ThrowIfCancellationRequested();
 
-            foreach (var step in orderedSteps)
+            var stepStopwatch = Stopwatch.StartNew();
+            try
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                // Check if prerequisites are completed
+                var prerequisites = plan.Dependencies
+                    .Where(d => d.DependentStepId == step.StepId)
+                    .Select(d => d.PrerequisiteStepId)
+                    .ToList();
 
-                var stepStopwatch = Stopwatch.StartNew();
-                try
+                var allPrerequisitesComplete = prerequisites.All(p =>
+                    stepResults.Any(r => r.StepId == p && r.IsSuccessful));
+
+                if (!allPrerequisitesComplete && prerequisites.Count != 0)
                 {
-                    // Check if prerequisites are completed
-                    var prerequisites = plan.Dependencies
-                        .Where(d => d.DependentStepId == step.StepId)
-                        .Select(d => d.PrerequisiteStepId)
-                        .ToList();
-
-                    var allPrerequisitesComplete = prerequisites.All(p =>
-                        stepResults.Any(r => r.StepId == p && r.IsSuccessful));
-
-                    if (!allPrerequisitesComplete && prerequisites.Count != 0)
-                    {
-                        throw new InvalidOperationException(
-                            $"Prerequisites for step {step.StepNumber} not completed");
-                    }
-
-                    // Execute the step
-                    var documents = await ExecuteStrategyAsync(
-                        step.Strategy, step.Query, null, cancellationToken);
-
-                    // Limit results
-                    documents = documents.Take(step.MaxResults).ToList();
-
-                    stepStopwatch.Stop();
-                    stepDocuments[step.StepId] = documents;
-
-                    stepResults.Add(new StepResult
-                    {
-                        StepId = step.StepId,
-                        StepNumber = step.StepNumber,
-                        Documents = documents,
-                        ExecutionTime = stepStopwatch.Elapsed,
-                        IsSuccessful = true
-                    });
+                    throw new InvalidOperationException(
+                        $"Prerequisites for step {step.StepNumber} not completed");
                 }
-                catch (Exception ex) when (ex is not OperationCanceledException)
+
+                // Execute the step
+                var documents = await ExecuteStrategyAsync(
+                    step.Strategy, step.Query, null, cancellationToken);
+
+                // Limit results
+                documents = documents.Take(step.MaxResults).ToList();
+
+                stepStopwatch.Stop();
+                stepDocuments[step.StepId] = documents;
+
+                stepResults.Add(new StepResult
                 {
-                    stepStopwatch.Stop();
-                    LogStepFailed(_logger, ex, step.StepNumber);
-
-                    stepResults.Add(new StepResult
-                    {
-                        StepId = step.StepId,
-                        StepNumber = step.StepNumber,
-                        Documents = Array.Empty<RoutedDocument>(),
-                        ExecutionTime = stepStopwatch.Elapsed,
-                        IsSuccessful = false,
-                        ErrorMessage = ex.Message
-                    });
-                }
+                    StepId = step.StepId,
+                    StepNumber = step.StepNumber,
+                    Documents = documents,
+                    ExecutionTime = stepStopwatch.Elapsed,
+                    IsSuccessful = true
+                });
             }
-
-            stopwatch.Stop();
-
-            // Merge all documents
-            var mergedDocuments = MergeStepResults(stepDocuments.Values);
-            var completedSteps = stepResults.Count(r => r.IsSuccessful);
-            var failedSteps = stepResults.Count(r => !r.IsSuccessful);
-
-            return new MultiStepRetrievalResult
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                Plan = plan,
-                StepResults = stepResults,
-                MergedDocuments = mergedDocuments,
-                TotalTime = stopwatch.Elapsed,
-                CompletedSteps = completedSteps,
-                FailedSteps = failedSteps,
-                IsSuccessful = completedSteps > 0
-            };
+                stepStopwatch.Stop();
+                LogStepFailed(_logger, ex, step.StepNumber);
+
+                stepResults.Add(new StepResult
+                {
+                    StepId = step.StepId,
+                    StepNumber = step.StepNumber,
+                    Documents = Array.Empty<RoutedDocument>(),
+                    ExecutionTime = stepStopwatch.Elapsed,
+                    IsSuccessful = false,
+                    ErrorMessage = ex.Message
+                });
+            }
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+
+        stopwatch.Stop();
+
+        // Merge all documents
+        var mergedDocuments = MergeStepResults(stepDocuments.Values);
+        var completedSteps = stepResults.Count(r => r.IsSuccessful);
+        var failedSteps = stepResults.Count(r => !r.IsSuccessful);
+
+        // Some steps failing is a partial result (each step reports its own error); every step failing is a failure.
+        if (completedSteps == 0 && failedSteps > 0)
         {
-            stopwatch.Stop();
-            LogPlanExecutionFailed(_logger, ex);
-
-            return new MultiStepRetrievalResult
-            {
-                Plan = plan,
-                StepResults = stepResults,
-                TotalTime = stopwatch.Elapsed,
-                IsSuccessful = false,
-                ErrorMessage = ex.Message
-            };
+            var failure = new InvalidOperationException(
+                $"Every step of the retrieval plan failed ({failedSteps}); first: {stepResults[0].ErrorMessage}");
+            LogPlanExecutionFailed(_logger, failure);
+            throw failure;
         }
+
+        return new MultiStepRetrievalResult
+        {
+            Plan = plan,
+            StepResults = stepResults,
+            MergedDocuments = mergedDocuments,
+            TotalTime = stopwatch.Elapsed,
+            CompletedSteps = completedSteps,
+            FailedSteps = failedSteps
+        };
     }
 
     /// <inheritdoc />

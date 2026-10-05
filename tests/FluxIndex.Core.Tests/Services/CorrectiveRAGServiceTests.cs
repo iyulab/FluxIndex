@@ -111,7 +111,6 @@ public class CorrectiveRAGServiceTests
 
         // Assert
         Assert.NotNull(result);
-        Assert.True(result.IsSuccessful);
     }
 
     [Fact]
@@ -190,7 +189,6 @@ public class CorrectiveRAGServiceTests
 
         // Assert
         Assert.NotNull(result);
-        Assert.True(result.IsSuccessful);
     }
 
     [Fact]
@@ -495,6 +493,29 @@ public class CorrectiveRAGServiceTests
     }
 
     [Fact]
+    public async Task PerformAlternativeRetrievalAsync_SearchFails_Throws()
+    {
+        _mockSearchService.SearchAsync(Arg.Any<string>(), Arg.Any<HybridSearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns<IReadOnlyList<HybridSearchResult>>(_ => throw new InvalidOperationException("index offline"));
+
+        var act = () => _service.PerformAlternativeRetrievalAsync(
+            "test query", [CreateDocumentChunk("doc-1", "content")], TestContext.Current.CancellationToken);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(act);
+        Assert.Equal("index offline", ex.Message);
+    }
+
+    [Fact]
+    public async Task RetrieveWithCorrectionAsync_SearchFails_Throws()
+    {
+        _mockSearchService.SearchAsync(Arg.Any<string>(), Arg.Any<HybridSearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns<IReadOnlyList<HybridSearchResult>>(_ => throw new InvalidOperationException("index offline"));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _service.RetrieveWithCorrectionAsync("test query", cancellationToken: TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task PerformAlternativeRetrievalAsync_NullQuery_ThrowsArgumentNullException()
     {
         // Arrange
@@ -601,7 +622,6 @@ public class CorrectiveRAGServiceTests
         // Assert
         // With highly relevant docs, should take minimal correction action
         Assert.NotNull(result);
-        Assert.True(result.IsSuccessful);
     }
 
     [Fact]
@@ -687,7 +707,6 @@ public class CorrectiveRAGServiceTests
 
         // Assert
         Assert.NotNull(result);
-        Assert.True(result.IsSuccessful);
         Assert.NotEmpty(result.CorrectionSteps);
         Assert.Contains(result.CorrectionSteps, s => s.Type == CorrectionStepType.InitialRetrieval);
         Assert.Contains(result.CorrectionSteps, s => s.Type == CorrectionStepType.Grading);

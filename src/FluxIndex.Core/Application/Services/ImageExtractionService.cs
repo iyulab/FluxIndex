@@ -248,7 +248,7 @@ public partial class ImageExtractionService : IImageExtractionService
 
                 if (_logger is not null) LogStoredImage(_logger, extractedImage.Id, documentId, storagePath);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
                 result.Errors.Add(new ImageProcessingError
                 {

@@ -129,14 +129,14 @@ public class QualityMetrics
     public double QualityScore { get; set; }
 
     /// <summary>
-    /// 성공 여부
+    /// 검색이 결과를 하나 이상 돌려줬는지 (<see cref="ResultCount"/> &gt; 0)
     /// </summary>
-    public bool IsSuccessful { get; set; }
+    public bool HasResults { get; set; }
 
     /// <summary>
-    /// 오류 메시지 (있을 경우)
+    /// 관측한 검색이 실패했을 때 그 오류 (메타데이터 <c>"error"</c>). 이 레코드는 관측값이다 — 평가 자체의 실패는 예외로 전달된다.
     /// </summary>
-    public string? ErrorMessage { get; set; }
+    public string? SearchError { get; set; }
 
     /// <summary>
     /// 추가 메타데이터

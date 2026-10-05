@@ -56,7 +56,7 @@ public interface ICorrectiveRAGService
     /// <param name="query">The search query</param>
     /// <param name="originalDocuments">Original (irrelevant) documents for context</param>
     /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>Alternative retrieval result</returns>
+    /// <returns>Alternative retrieval result. No alternative found is an empty result; a search that fails throws.</returns>
     Task<AlternativeRetrievalResult> PerformAlternativeRetrievalAsync(
         string query,
         IEnumerable<DocumentChunk> originalDocuments,
@@ -160,16 +160,6 @@ public class CorrectiveRAGResult
     /// Confidence score for the final result (0.0-1.0).
     /// </summary>
     public double ConfidenceScore { get; init; }
-
-    /// <summary>
-    /// Whether the correction process was successful.
-    /// </summary>
-    public bool IsSuccessful { get; init; }
-
-    /// <summary>
-    /// Error message if the process failed.
-    /// </summary>
-    public string? ErrorMessage { get; init; }
 
     /// <summary>
     /// Detailed correction steps performed.
@@ -486,15 +476,6 @@ public class AlternativeRetrievalResult
     /// </summary>
     public TimeSpan ProcessingTime { get; init; }
 
-    /// <summary>
-    /// Whether alternative retrieval was successful.
-    /// </summary>
-    public bool IsSuccessful { get; init; }
-
-    /// <summary>
-    /// Error message if failed.
-    /// </summary>
-    public string? ErrorMessage { get; init; }
 }
 
 /// <summary>

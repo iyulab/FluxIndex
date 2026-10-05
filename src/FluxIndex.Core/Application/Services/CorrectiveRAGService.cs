@@ -58,256 +58,230 @@ public partial class CorrectiveRAGService : ICorrectiveRAGService
         var correctionSteps = new List<CorrectionStep>();
         var stepNumber = 0;
 
-        try
+        if (_logger.IsEnabled(LogLevel.Debug))
+            LogCorrectiveRAG6(_logger, query);
+
+        // Step 1: Initial Retrieval
+        var retrievalStopwatch = Stopwatch.StartNew();
+        var initialDocuments = await PerformInitialRetrievalAsync(query, opts, cancellationToken);
+        retrievalStopwatch.Stop();
+
+        correctionSteps.Add(new CorrectionStep
+        {
+            StepNumber = ++stepNumber,
+            Type = CorrectionStepType.InitialRetrieval,
+            Description = $"Retrieved {initialDocuments.Count} initial documents",
+            InputCount = 0,
+            OutputCount = initialDocuments.Count,
+            Duration = retrievalStopwatch.Elapsed,
+            IsSuccessful = initialDocuments.Count > 0
+        });
+
+        if (initialDocuments.Count == 0)
         {
             if (_logger.IsEnabled(LogLevel.Debug))
-                LogCorrectiveRAG6(_logger, query);
+                LogCorrectiveRAG5(_logger, query);
+            return CreateEmptyResult(stopwatch.Elapsed, correctionSteps);
+        }
 
-            // Step 1: Initial Retrieval
-            var retrievalStopwatch = Stopwatch.StartNew();
-            var initialDocuments = await PerformInitialRetrievalAsync(query, opts, cancellationToken);
-            retrievalStopwatch.Stop();
+        // Step 2: Grade Documents
+        var gradingStopwatch = Stopwatch.StartNew();
+        var gradingResult = await GradeDocumentsAsync(query, initialDocuments, cancellationToken);
+        gradingStopwatch.Stop();
 
-            correctionSteps.Add(new CorrectionStep
-            {
-                StepNumber = ++stepNumber,
-                Type = CorrectionStepType.InitialRetrieval,
-                Description = $"Retrieved {initialDocuments.Count} initial documents",
-                InputCount = 0,
-                OutputCount = initialDocuments.Count,
-                Duration = retrievalStopwatch.Elapsed,
-                IsSuccessful = initialDocuments.Count > 0
-            });
+        correctionSteps.Add(new CorrectionStep
+        {
+            StepNumber = ++stepNumber,
+            Type = CorrectionStepType.Grading,
+            Description = $"Graded {gradingResult.GradedDocuments.Count} documents: {gradingResult.CorrectCount} correct, {gradingResult.AmbiguousCount} ambiguous, {gradingResult.IncorrectCount} incorrect",
+            InputCount = initialDocuments.Count,
+            OutputCount = gradingResult.GradedDocuments.Count,
+            Duration = gradingStopwatch.Elapsed,
+            IsSuccessful = true
+        });
 
-            if (initialDocuments.Count == 0)
-            {
-                if (_logger.IsEnabled(LogLevel.Debug))
-                    LogCorrectiveRAG5(_logger, query);
-                return CreateEmptyResult(stopwatch.Elapsed, correctionSteps);
-            }
+        // Step 3: Determine Correction Action
+        var action = DetermineAction(gradingResult);
+        if (_logger.IsEnabled(LogLevel.Debug))
+            LogCorrectiveRAG4(_logger, action);
 
-            // Step 2: Grade Documents
-            var gradingStopwatch = Stopwatch.StartNew();
-            var gradingResult = await GradeDocumentsAsync(query, initialDocuments, cancellationToken);
-            gradingStopwatch.Stop();
+        var correctedDocuments = new List<CorrectedDocument>();
+        bool usedAlternativeRetrieval = false;
+        bool appliedKnowledgeRefinement = false;
 
-            correctionSteps.Add(new CorrectionStep
-            {
-                StepNumber = ++stepNumber,
-                Type = CorrectionStepType.Grading,
-                Description = $"Graded {gradingResult.GradedDocuments.Count} documents: {gradingResult.CorrectCount} correct, {gradingResult.AmbiguousCount} ambiguous, {gradingResult.IncorrectCount} incorrect",
-                InputCount = initialDocuments.Count,
-                OutputCount = gradingResult.GradedDocuments.Count,
-                Duration = gradingStopwatch.Elapsed,
-                IsSuccessful = true
-            });
+        // Step 4: Execute Correction Based on Assessment
+        switch (gradingResult.Assessment)
+        {
+            case OverallAssessment.Correct:
+                // Use correct documents directly
+                correctedDocuments.AddRange(
+                    gradingResult.GradedDocuments
+                        .Where(d => d.Grade == DocumentRelevanceGrade.Correct)
+                        .Select(d => CreateCorrectedDocument(d, DocumentSource.OriginalRetrieval)));
+                break;
 
-            // Step 3: Determine Correction Action
-            var action = DetermineAction(gradingResult);
-            if (_logger.IsEnabled(LogLevel.Debug))
-                LogCorrectiveRAG4(_logger, action);
+            case OverallAssessment.Ambiguous:
+                // Use correct documents and supplement with alternative retrieval
+                correctedDocuments.AddRange(
+                    gradingResult.GradedDocuments
+                        .Where(d => d.Grade != DocumentRelevanceGrade.Incorrect)
+                        .Select(d => CreateCorrectedDocument(d, DocumentSource.OriginalRetrieval)));
 
-            var correctedDocuments = new List<CorrectedDocument>();
-            bool usedAlternativeRetrieval = false;
-            bool appliedKnowledgeRefinement = false;
-
-            // Step 4: Execute Correction Based on Assessment
-            switch (gradingResult.Assessment)
-            {
-                case OverallAssessment.Correct:
-                    // Use correct documents directly
-                    correctedDocuments.AddRange(
-                        gradingResult.GradedDocuments
-                            .Where(d => d.Grade == DocumentRelevanceGrade.Correct)
-                            .Select(d => CreateCorrectedDocument(d, DocumentSource.OriginalRetrieval)));
-                    break;
-
-                case OverallAssessment.Ambiguous:
-                    // Use correct documents and supplement with alternative retrieval
-                    correctedDocuments.AddRange(
-                        gradingResult.GradedDocuments
-                            .Where(d => d.Grade != DocumentRelevanceGrade.Incorrect)
-                            .Select(d => CreateCorrectedDocument(d, DocumentSource.OriginalRetrieval)));
-
-                    if (opts.EnableQueryTransformation)
-                    {
-                        var altStopwatch = Stopwatch.StartNew();
-                        var alternativeResult = await PerformAlternativeRetrievalAsync(
-                            query, initialDocuments, cancellationToken);
-                        altStopwatch.Stop();
-
-                        if (alternativeResult.IsSuccessful && alternativeResult.Documents.Count > 0)
-                        {
-                            usedAlternativeRetrieval = true;
-                            var altDocuments = alternativeResult.Documents.Take(opts.MaxAlternativeDocuments);
-
-                            foreach (var doc in altDocuments)
-                            {
-                                if (!correctedDocuments.Any(cd => cd.Chunk.Id == doc.Id))
-                                {
-                                    correctedDocuments.Add(new CorrectedDocument
-                                    {
-                                        Chunk = doc,
-                                        Grade = DocumentRelevanceGrade.Ambiguous,
-                                        RelevanceScore = 0.5,
-                                        Source = DocumentSource.AlternativeRetrieval,
-                                        InclusionReason = "Added from alternative retrieval to supplement ambiguous results"
-                                    });
-                                }
-                            }
-
-                            correctionSteps.Add(new CorrectionStep
-                            {
-                                StepNumber = ++stepNumber,
-                                Type = CorrectionStepType.AlternativeRetrieval,
-                                Description = $"Supplemented with {alternativeResult.Documents.Count} alternative documents using {alternativeResult.Strategy}",
-                                InputCount = gradingResult.AmbiguousCount,
-                                OutputCount = alternativeResult.Documents.Count,
-                                Duration = altStopwatch.Elapsed,
-                                IsSuccessful = true
-                            });
-                        }
-                    }
-                    break;
-
-                case OverallAssessment.Incorrect:
-                    // Discard original documents and use alternative retrieval
-                    var replaceStopwatch = Stopwatch.StartNew();
-                    var replacementResult = await PerformAlternativeRetrievalAsync(
+                if (opts.EnableQueryTransformation)
+                {
+                    var altStopwatch = Stopwatch.StartNew();
+                    var alternativeResult = await PerformAlternativeRetrievalAsync(
                         query, initialDocuments, cancellationToken);
-                    replaceStopwatch.Stop();
+                    altStopwatch.Stop();
 
-                    if (replacementResult.IsSuccessful && replacementResult.Documents.Count > 0)
+                    if (alternativeResult.Documents.Count > 0)
                     {
                         usedAlternativeRetrieval = true;
-                        correctedDocuments.AddRange(
-                            replacementResult.Documents.Select(doc => new CorrectedDocument
+                        var altDocuments = alternativeResult.Documents.Take(opts.MaxAlternativeDocuments);
+
+                        foreach (var doc in altDocuments)
+                        {
+                            if (!correctedDocuments.Any(cd => cd.Chunk.Id == doc.Id))
                             {
-                                Chunk = doc,
-                                Grade = DocumentRelevanceGrade.Ambiguous,
-                                RelevanceScore = 0.6,
-                                Source = DocumentSource.AlternativeRetrieval,
-                                InclusionReason = "Replacement document from alternative retrieval"
-                            }));
+                                correctedDocuments.Add(new CorrectedDocument
+                                {
+                                    Chunk = doc,
+                                    Grade = DocumentRelevanceGrade.Ambiguous,
+                                    RelevanceScore = 0.5,
+                                    Source = DocumentSource.AlternativeRetrieval,
+                                    InclusionReason = "Added from alternative retrieval to supplement ambiguous results"
+                                });
+                            }
+                        }
 
                         correctionSteps.Add(new CorrectionStep
                         {
                             StepNumber = ++stepNumber,
                             Type = CorrectionStepType.AlternativeRetrieval,
-                            Description = $"Replaced incorrect documents with {replacementResult.Documents.Count} alternatives",
-                            InputCount = gradingResult.IncorrectCount,
-                            OutputCount = replacementResult.Documents.Count,
-                            Duration = replaceStopwatch.Elapsed,
+                            Description = $"Supplemented with {alternativeResult.Documents.Count} alternative documents using {alternativeResult.Strategy}",
+                            InputCount = gradingResult.AmbiguousCount,
+                            OutputCount = alternativeResult.Documents.Count,
+                            Duration = altStopwatch.Elapsed,
                             IsSuccessful = true
                         });
                     }
-                    else
-                    {
-                        // Fallback: use best available from original even if not ideal
-                        correctedDocuments.AddRange(
-                            gradingResult.GradedDocuments
-                                .OrderByDescending(d => d.RelevanceScore)
-                                .Take(opts.MaxAlternativeDocuments)
-                                .Select(d => CreateCorrectedDocument(d, DocumentSource.OriginalRetrieval)));
-                    }
-                    break;
-            }
+                }
+                break;
 
-            // Step 5: Knowledge Refinement (if enabled)
-            if (opts.EnableKnowledgeRefinement && correctedDocuments.Count > 0)
-            {
-                var refineStopwatch = Stopwatch.StartNew();
-                var refinementResult = await RefineKnowledgeAsync(
-                    query,
-                    correctedDocuments.Select(d => d.Chunk),
-                    cancellationToken);
-                refineStopwatch.Stop();
+            case OverallAssessment.Incorrect:
+                // Discard original documents and use alternative retrieval
+                var replaceStopwatch = Stopwatch.StartNew();
+                var replacementResult = await PerformAlternativeRetrievalAsync(
+                    query, initialDocuments, cancellationToken);
+                replaceStopwatch.Stop();
 
-                if (refinementResult.IsSuccessful)
+                if (replacementResult.Documents.Count > 0)
                 {
-                    appliedKnowledgeRefinement = true;
-
-                    // Update corrected documents with refined content
-                    foreach (var refinedDoc in refinementResult.RefinedDocuments)
-                    {
-                        var correctedDoc = correctedDocuments.FirstOrDefault(
-                            d => d.Chunk.Id == refinedDoc.DocumentId);
-                        if (correctedDoc != null)
+                    usedAlternativeRetrieval = true;
+                    correctedDocuments.AddRange(
+                        replacementResult.Documents.Select(doc => new CorrectedDocument
                         {
-                            var index = correctedDocuments.IndexOf(correctedDoc);
-                            correctedDocuments[index] = new CorrectedDocument
-                            {
-                                Chunk = correctedDoc.Chunk,
-                                Grade = correctedDoc.Grade,
-                                RelevanceScore = correctedDoc.RelevanceScore,
-                                Source = correctedDoc.Source,
-                                RefinedContent = refinedDoc.RefinedContent,
-                                KeyConcepts = refinedDoc.KeyConcepts,
-                                InclusionReason = correctedDoc.InclusionReason
-                            };
-                        }
-                    }
+                            Chunk = doc,
+                            Grade = DocumentRelevanceGrade.Ambiguous,
+                            RelevanceScore = 0.6,
+                            Source = DocumentSource.AlternativeRetrieval,
+                            InclusionReason = "Replacement document from alternative retrieval"
+                        }));
 
                     correctionSteps.Add(new CorrectionStep
                     {
                         StepNumber = ++stepNumber,
-                        Type = CorrectionStepType.KnowledgeRefinement,
-                        Description = $"Refined knowledge from {refinementResult.RefinedDocuments.Count} documents",
-                        InputCount = correctedDocuments.Count,
-                        OutputCount = refinementResult.RefinedDocuments.Count,
-                        Duration = refineStopwatch.Elapsed,
+                        Type = CorrectionStepType.AlternativeRetrieval,
+                        Description = $"Replaced incorrect documents with {replacementResult.Documents.Count} alternatives",
+                        InputCount = gradingResult.IncorrectCount,
+                        OutputCount = replacementResult.Documents.Count,
+                        Duration = replaceStopwatch.Elapsed,
                         IsSuccessful = true
                     });
                 }
-            }
-
-            stopwatch.Stop();
-
-            // Calculate confidence score
-            var confidenceScore = CalculateConfidenceScore(correctedDocuments, gradingResult, action);
-
-            return new CorrectiveRAGResult
-            {
-                Documents = correctedDocuments.AsReadOnly(),
-                ActionTaken = action,
-                GradingResult = gradingResult,
-                UsedAlternativeRetrieval = usedAlternativeRetrieval,
-                AppliedKnowledgeRefinement = appliedKnowledgeRefinement,
-                ProcessingTime = stopwatch.Elapsed,
-                ConfidenceScore = confidenceScore,
-                IsSuccessful = true,
-                CorrectionSteps = correctionSteps.AsReadOnly(),
-                Metadata = new Dictionary<string, object>
+                else
                 {
-                    ["query"] = query,
-                    ["initialDocumentCount"] = initialDocuments.Count,
-                    ["finalDocumentCount"] = correctedDocuments.Count,
-                    ["overallAssessment"] = gradingResult.Assessment.ToString()
+                    // Fallback: use best available from original even if not ideal
+                    correctedDocuments.AddRange(
+                        gradingResult.GradedDocuments
+                            .OrderByDescending(d => d.RelevanceScore)
+                            .Take(opts.MaxAlternativeDocuments)
+                            .Select(d => CreateCorrectedDocument(d, DocumentSource.OriginalRetrieval)));
                 }
-            };
+                break;
         }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            if (_logger.IsEnabled(LogLevel.Debug))
-                LogCorrectiveRAG3(_logger, ex, query);
-            stopwatch.Stop();
 
-            return new CorrectiveRAGResult
+        // Step 5: Knowledge Refinement (if enabled)
+        if (opts.EnableKnowledgeRefinement && correctedDocuments.Count > 0)
+        {
+            var refineStopwatch = Stopwatch.StartNew();
+            var refinementResult = await RefineKnowledgeAsync(
+                query,
+                correctedDocuments.Select(d => d.Chunk),
+                cancellationToken);
+            refineStopwatch.Stop();
+
+            if (refinementResult.IsSuccessful)
             {
-                Documents = Array.Empty<CorrectedDocument>(),
-                ActionTaken = CorrectionAction.None,
-                GradingResult = new DocumentGradingResult(),
-                ProcessingTime = stopwatch.Elapsed,
-                ConfidenceScore = 0,
-                IsSuccessful = false,
-                ErrorMessage = ex.Message,
-                CorrectionSteps = correctionSteps.AsReadOnly()
-            };
+                appliedKnowledgeRefinement = true;
+
+                // Update corrected documents with refined content
+                foreach (var refinedDoc in refinementResult.RefinedDocuments)
+                {
+                    var correctedDoc = correctedDocuments.FirstOrDefault(
+                        d => d.Chunk.Id == refinedDoc.DocumentId);
+                    if (correctedDoc != null)
+                    {
+                        var index = correctedDocuments.IndexOf(correctedDoc);
+                        correctedDocuments[index] = new CorrectedDocument
+                        {
+                            Chunk = correctedDoc.Chunk,
+                            Grade = correctedDoc.Grade,
+                            RelevanceScore = correctedDoc.RelevanceScore,
+                            Source = correctedDoc.Source,
+                            RefinedContent = refinedDoc.RefinedContent,
+                            KeyConcepts = refinedDoc.KeyConcepts,
+                            InclusionReason = correctedDoc.InclusionReason
+                        };
+                    }
+                }
+
+                correctionSteps.Add(new CorrectionStep
+                {
+                    StepNumber = ++stepNumber,
+                    Type = CorrectionStepType.KnowledgeRefinement,
+                    Description = $"Refined knowledge from {refinementResult.RefinedDocuments.Count} documents",
+                    InputCount = correctedDocuments.Count,
+                    OutputCount = refinementResult.RefinedDocuments.Count,
+                    Duration = refineStopwatch.Elapsed,
+                    IsSuccessful = true
+                });
+            }
         }
+
+        stopwatch.Stop();
+
+        // Calculate confidence score
+        var confidenceScore = CalculateConfidenceScore(correctedDocuments, gradingResult, action);
+
+        return new CorrectiveRAGResult
+        {
+            Documents = correctedDocuments.AsReadOnly(),
+            ActionTaken = action,
+            GradingResult = gradingResult,
+            UsedAlternativeRetrieval = usedAlternativeRetrieval,
+            AppliedKnowledgeRefinement = appliedKnowledgeRefinement,
+            ProcessingTime = stopwatch.Elapsed,
+            ConfidenceScore = confidenceScore,
+            CorrectionSteps = correctionSteps.AsReadOnly(),
+            Metadata = new Dictionary<string, object>
+            {
+                ["query"] = query,
+                ["initialDocumentCount"] = initialDocuments.Count,
+                ["finalDocumentCount"] = correctedDocuments.Count,
+                ["overallAssessment"] = gradingResult.Assessment.ToString()
+            }
+        };
     }
 
     /// <inheritdoc />
@@ -482,54 +456,35 @@ public partial class CorrectiveRAGService : ICorrectiveRAGService
 
         var stopwatch = Stopwatch.StartNew();
 
-        try
+        // Strategy 1: Query Transformation
+        var transformedQuery = TransformQuery(query, originalDocuments);
+
+        // Perform search with transformed query
+        var searchOptions = new HybridSearchOptions
         {
-            // Strategy 1: Query Transformation
-            var transformedQuery = TransformQuery(query, originalDocuments);
+            MaxResults = 10,
+            FusionMethod = FusionMethod.RelativeScoreFusion
+        };
 
-            // Perform search with transformed query
-            var searchOptions = new HybridSearchOptions
-            {
-                MaxResults = 10,
-                FusionMethod = FusionMethod.RelativeScoreFusion
-            };
+        var results = await _searchService.SearchAsync(
+            transformedQuery,
+            searchOptions,
+            cancellationToken);
 
-            var results = await _searchService.SearchAsync(
-                transformedQuery,
-                searchOptions,
-                cancellationToken);
+        stopwatch.Stop();
 
-            stopwatch.Stop();
+        var documents = results
+            .Select(r => r.Chunk)
+            .Where(c => !originalDocuments.Any(od => od.Id == c.Id))
+            .ToList();
 
-            var documents = results
-                .Select(r => r.Chunk)
-                .Where(c => !originalDocuments.Any(od => od.Id == c.Id))
-                .ToList();
-
-            return new AlternativeRetrievalResult
-            {
-                Documents = documents.AsReadOnly(),
-                Strategy = AlternativeRetrievalStrategy.QueryTransformation,
-                TransformedQuery = transformedQuery,
-                ProcessingTime = stopwatch.Elapsed,
-                IsSuccessful = true
-            };
-        }
-        catch (Exception ex)
+        return new AlternativeRetrievalResult
         {
-            stopwatch.Stop();
-            if (_logger.IsEnabled(LogLevel.Debug))
-                LogCorrectiveRAG2(_logger, ex, query);
-
-            return new AlternativeRetrievalResult
-            {
-                Documents = Array.Empty<DocumentChunk>(),
-                Strategy = AlternativeRetrievalStrategy.QueryTransformation,
-                ProcessingTime = stopwatch.Elapsed,
-                IsSuccessful = false,
-                ErrorMessage = ex.Message
-            };
-        }
+            Documents = documents.AsReadOnly(),
+            Strategy = AlternativeRetrievalStrategy.QueryTransformation,
+            TransformedQuery = transformedQuery,
+            ProcessingTime = stopwatch.Elapsed
+        };
     }
 
     #region Private Helper Methods
@@ -804,8 +759,6 @@ public partial class CorrectiveRAGService : ICorrectiveRAGService
             },
             ProcessingTime = processingTime,
             ConfidenceScore = 0,
-            IsSuccessful = false,
-            ErrorMessage = "No documents retrieved",
             CorrectionSteps = steps.AsReadOnly()
         };
     }
@@ -820,10 +773,6 @@ public partial class CorrectiveRAGService : ICorrectiveRAGService
     private static partial void LogCorrectiveRAG5(ILogger logger, string query);
     [LoggerMessage(Level = LogLevel.Debug, Message = "Correction action determined: {Action}")]
     private static partial void LogCorrectiveRAG4(ILogger logger, CorrectionAction action);
-    [LoggerMessage(Level = LogLevel.Error, Message = "Error during corrective RAG for query: {Query}")]
-    private static partial void LogCorrectiveRAG3(ILogger logger, Exception exception, string query);
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Alternative retrieval failed for query: {Query}")]
-    private static partial void LogCorrectiveRAG2(ILogger logger, Exception exception, string query);
     [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to generate summary")]
     private static partial void LogCorrectiveRAG1(ILogger logger, Exception exception);
 

@@ -5,6 +5,43 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.77.0] - Unreleased
+
+### Changed
+- **Retrieval services report a failure by throwing instead of returning a result that says it failed.** Each of these
+  caught every exception and returned an object with `IsSuccessful = false` and an `ErrorMessage`, which a caller that read
+  only the documents saw as "nothing found":
+  - `IAgenticRetrievalRouter.RouteAndRetrieveAsync` throws when the primary strategy fails and no fallback runs. A
+    fallback that runs and finds nothing is still an empty result. **Fixed with it:** the Corrective RAG strategy returned
+    an empty result on failure, so the router never tried its fallbacks for it; now the failure reaches the router and
+    the fallbacks run.
+  - `IAgenticRetrievalRouter.ExecuteRetrievalPlanAsync` throws when every step fails; a partial run still returns, and
+    each failed step keeps its own error in `StepResults`.
+  - `ICorrectiveRAGService.RetrieveWithCorrectionAsync` and `PerformAlternativeRetrievalAsync` throw. "No documents
+    retrieved" is an empty result, no longer an error.
+  - `VectorQuantizationMigrationService.MigrateAllAsync` / `MigrateByDocumentIdsAsync` throw when the migration cannot
+    run, and **a cancelled migration now throws `OperationCanceledException`** (before, it stopped quietly and could report
+    `IsSuccess = true`). Per-chunk failures are still counted in `FailureCount` when `ContinueOnError` is set; with
+    `ContinueOnError = false` the first failure now reaches the caller (it was caught and returned). `AnalyzeQuantizationAsync`
+    throws on cancellation instead of returning a partial analysis.
+  **Breaking**: `RoutingResult.IsSuccessful`/`ErrorMessage`, `MultiStepRetrievalResult.IsSuccessful`/`ErrorMessage`,
+  `CorrectiveRAGResult.IsSuccessful`/`ErrorMessage`, `AlternativeRetrievalResult.IsSuccessful`/`ErrorMessage` and
+  `MigrationResult.ErrorMessage` are removed; `MigrationResult.IsSuccess` is now read-only (`FailureCount == 0`).
+  Replace the flag checks with a `try`/`catch` around the call.
+- **Search quality monitoring no longer reports a search with no results as a failed search.** `QualityMetrics.IsSuccessful`
+  was `ResultCount > 0`, so every empty search raised a critical availability alert, while a search that really failed
+  showed "unknown error" (its message was in the metadata). **Breaking**: `IsSuccessful` is now `HasResults`, and the
+  never-assigned `ErrorMessage` is replaced by `SearchError`, read from the `"error"` metadata. An empty search raises the
+  low-result-count warning; only a failed search raises the availability alert, with its message.
+- `IImageExtractionService.ExtractAndStoreAsync` lets the caller's cancellation propagate; before, a cancellation while
+  storing an image was recorded as that image's error.
+
+### Removed
+- **Breaking:** `IImageDescriptionService` with `ImageDescriptionResult`, `ImageDataExtractionResult` and
+  `ImageDataExtractionType`. Nothing implemented or registered it.
+
+---
+
 ## [0.76.1] - 2026-10-06
 
 ### Changed

@@ -149,7 +149,6 @@ public class AgenticRetrievalRouterTests
 
         // Assert
         Assert.NotNull(result);
-        Assert.True(result.IsSuccessful);
         Assert.NotEmpty(result.Documents);
         Assert.NotNull(result.Decision);
     }
@@ -372,7 +371,6 @@ public class AgenticRetrievalRouterTests
 
         // Assert
         Assert.NotNull(result);
-        Assert.True(result.IsSuccessful);
     }
 
     [Fact]
@@ -497,7 +495,6 @@ public class AgenticRetrievalRouterTests
 
         // Assert
         Assert.NotNull(result);
-        Assert.True(result.IsSuccessful);
     }
 
     [Fact]
@@ -511,7 +508,6 @@ public class AgenticRetrievalRouterTests
 
         // Assert
         Assert.NotNull(result);
-        Assert.True(result.IsSuccessful);
     }
 
     #endregion
@@ -533,7 +529,23 @@ public class AgenticRetrievalRouterTests
 
         // Assert - Should still succeed using fallback
         Assert.NotNull(result);
-        Assert.True(result.IsSuccessful);
+    }
+
+    [Fact]
+    public async Task RouteAndRetrieveAsync_WhenEveryStrategyFails_Throws()
+    {
+        // Arrange - every retrieval service fails
+        var unavailable = new InvalidOperationException("Service unavailable");
+        _mockHybridSearchService.SearchAsync(Arg.Any<string>(), Arg.Any<HybridSearchOptions>(), Arg.Any<CancellationToken>()).Throws(unavailable);
+        _mockSelfRAGService.SearchAsync(Arg.Any<string>(), Arg.Any<SelfRAGOptions>(), Arg.Any<CancellationToken>()).Throws(unavailable);
+        _mockCorrectiveRAGService.RetrieveWithCorrectionAsync(Arg.Any<string>(), Arg.Any<CorrectiveRAGOptions>(), Arg.Any<CancellationToken>()).Throws(unavailable);
+        _mockSmallToBigRetriever.SearchAsync(Arg.Any<string>(), Arg.Any<SmallToBigOptions>(), Arg.Any<CancellationToken>()).Throws(unavailable);
+        _mockIterativeRetrievalService.RetrieveWithReasoningAsync(Arg.Any<string>(), Arg.Any<IterativeRetrievalOptions>(), Arg.Any<CancellationToken>()).Throws(unavailable);
+
+        // Act / Assert - no strategy ran, so the failure reaches the caller instead of an empty "result"
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _router.RouteAndRetrieveAsync("What is machine learning?", cancellationToken: TestContext.Current.CancellationToken));
+        Assert.Equal("Service unavailable", ex.Message);
     }
 
     #endregion
@@ -682,8 +694,7 @@ public class AgenticRetrievalRouterTests
                     Source = DocumentSource.OriginalRetrieval,
                     InclusionReason = "Highly relevant to query"
                 }
-            },
-            IsSuccessful = true
+            }
         };
     }
 

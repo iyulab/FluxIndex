@@ -434,7 +434,7 @@ public class VectorQuantizationMigrationServiceTests
     #region CancellationToken Tests
 
     [Fact]
-    public async Task MigrateAllAsync_WithCancellation_StopsEarly()
+    public async Task MigrateAllAsync_WithCancellation_Throws()
     {
         // Arrange
         var service = CreateService();
@@ -463,11 +463,9 @@ public class VectorQuantizationMigrationServiceTests
                 return quantizedVector;
             });
 
-        // Act
-        var result = await service.MigrateAllAsync(cancellationToken: cts.Token);
-
-        // Assert - 취소 전에 처리된 양만 확인
-        Assert.True(result.SuccessCount <= quantizeCallCount);
+        // Act / Assert - a cancelled migration stops and says so; it does not return a partial "success"
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.MigrateAllAsync(cancellationToken: cts.Token));
+        Assert.Equal(10, quantizeCallCount);
     }
 
     #endregion
