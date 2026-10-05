@@ -185,4 +185,17 @@ public class HybridSearchServiceTests
 
         Assert.Equal(expected, strategy.RecommendedFusion);
     }
+
+    // A search the caller cancelled is not an empty result: the vector leg used to log the cancellation as a backend
+    // failure and degrade to «no matches», so a cancelled caller read an empty answer as the truth.
+    [Fact]
+    public async Task SearchAsync_CallerCancelsDuringTheVectorLeg_Throws()
+    {
+        using var cts = new CancellationTokenSource();
+        _mockEmbeddingService.GenerateQueryEmbeddingAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns<Task<float[]>>(_ => { cts.Cancel(); throw new OperationCanceledException(cts.Token); });
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => _service.SearchAsync("test query", new HybridSearchOptions { MaxResults = 5 }, cts.Token));
+    }
 }

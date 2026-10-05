@@ -958,7 +958,7 @@ public partial class LeidenCommunityService : ILeidenCommunityService
                 Confidence = 0.8
             };
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogLeidenCommunity1(_logger, ex, community.Id);
             return null;

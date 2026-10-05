@@ -5,6 +5,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.77.1] - Unreleased
+
+### Fixed
+- **Cancelling a call now cancels it.** 108 method(s) that take a `CancellationToken` caught every exception to
+  return a fallback (`null`, an empty result, a failure value) or to log and continue, and treated the caller's own
+  cancellation the same way. They now let the caller's `OperationCanceledException` through; other failures behave
+  as before. For example, hybrid search degraded a cancelled vector or keyword leg to «no matches», so a cancelled caller received an empty result; the RAG services, rerankers, SDK context and indexer, storage providers and MCP tools did the same.
+
 ## [0.77.0] - 2026-10-06
 
 ### Changed

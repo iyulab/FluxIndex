@@ -246,7 +246,7 @@ public partial class ListwiseReranker : IListwiseReranker
 
             return ParseRankingResponse(response, window);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogListwiseReranker7(_logger, ex);
             return window.Select(c => c.Id).ToList();
@@ -574,7 +574,7 @@ public partial class ListwiseReranker : IListwiseReranker
             {
                 queryEmbedding = await _embeddingService.GenerateQueryEmbeddingAsync(query, cancellationToken);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
                 LogListwiseReranker4(_logger, ex);
             }
@@ -641,7 +641,7 @@ public partial class ListwiseReranker : IListwiseReranker
             // Cosine similarity as attention score
             return CalculateCosineSimilarity(queryEmbedding, contentEmbedding);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogListwiseReranker3(_logger, ex);
             return 0.5f;
@@ -817,7 +817,7 @@ public partial class ListwiseReranker : IListwiseReranker
                 Reason = $"LLM preference: {choice}"
             };
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogListwiseReranker2(_logger, ex);
             return new PairwisePreference { Preference = 0, Confidence = 0.0f };
@@ -848,7 +848,7 @@ public partial class ListwiseReranker : IListwiseReranker
                 Reason = $"Embedding similarity: A={simA:F3}, B={simB:F3}"
             };
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogListwiseReranker1(_logger, ex);
             return new PairwisePreference { Preference = 0, Confidence = 0.0f };

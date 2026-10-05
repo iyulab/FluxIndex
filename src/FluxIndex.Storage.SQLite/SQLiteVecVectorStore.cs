@@ -609,7 +609,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                     LogVecTableRecovered(_logger);
                     return; // Recovery succeeded
                 }
-                catch (Exception retryEx)
+                catch (Exception retryEx) when (retryEx is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
                 {
                     LogVecTableRecoveryFailed(_logger, retryEx);
                 }
@@ -1206,7 +1206,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             LogFts5SearchCompleted(_logger, results.Count, escapedQuery);
             return results;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogFts5SearchFailed(_logger, ex);
             return Enumerable.Empty<(DocumentChunk, float)>();
@@ -1261,7 +1261,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             return await context.VectorChunks
                 .AnyAsync(c => c.DocumentId == documentId, cancellationToken);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogGetByDocumentFailed(_logger, ex, documentId);
             return false;
@@ -1863,7 +1863,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                         await context.Database.ExecuteSqlRawAsync(warmupSql, cancellationToken);
                         LogVecJitWarmupCompleted(_logger);
                     }
-                    catch (Exception warmupEx)
+                    catch (Exception warmupEx) when (warmupEx is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
                     {
                         // Warmup failure is non-fatal; first batch will pay the cold-start cost as before.
                         LogVecJitWarmupFailed(_logger, warmupEx);
@@ -1879,7 +1879,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                         {
                             await context.DetectCrossFingerprintOrphanTablesAsync(cancellationToken);
                         }
-                        catch (Exception scanEx)
+                        catch (Exception scanEx) when (scanEx is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
                         {
                             // Diagnostic is best-effort; failure must not block initialization.
                             LogCrossFingerprintScanFailed(_logger, scanEx);
@@ -1928,7 +1928,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             LogHealthCheckPassed(_logger);
             return true;
         }
-        catch (Exception ex) when (IsSqliteVecError(ex))
+        catch (Exception ex) when ((ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested) && (IsSqliteVecError(ex)))
         {
             LogHealthCheckFailed(_logger, ex);
 
@@ -1943,7 +1943,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             _sqliteVecAvailable = false;
             return false;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogHealthCheckFailed(_logger, ex);
             return false;
@@ -2014,7 +2014,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 _options.VecTableOptions,
                 cancellationToken);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogVecTableRecoveryFailed(_logger, ex);
             return false;

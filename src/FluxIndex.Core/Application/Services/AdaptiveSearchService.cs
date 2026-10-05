@@ -165,7 +165,7 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
                     var missRate = 1.0 - ((double)_cacheHits / _totalSearches);
                     LogSemanticCacheMiss(_logger, query, 1.0 - missRate);
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
                 {
                     LogSemanticCacheLookupFailed(_logger, ex, query);
                 }
@@ -295,7 +295,7 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
 
                         LogSemanticCacheSaved(_logger, query, result.Performance.ResultCount);
                     }
-                    catch (Exception ex)
+                    catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
                     {
                         LogSemanticCacheSaveFailed(_logger, ex, query);
                     }
@@ -416,7 +416,7 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
                 var redisCacheStats = await _semanticCache.GetCacheStatisticsAsync(cancellationToken);
                 stats["redis_cache_statistics"] = redisCacheStats;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
                 LogRedisCacheStatsFailed(_logger, ex);
                 stats["redis_cache_error"] = ex.Message;
@@ -515,7 +515,7 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
                     return fallbackResults;
                 }
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
                 LogFallbackStrategyFailed(_logger, ex, fallbackStrategy);
             }
@@ -665,7 +665,7 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
                 if (_logger.IsEnabled(LogLevel.Debug))
                     LogDatApplied(_logger, datConfig.VectorWeight, datConfig.SparseWeight, datConfig.RecommendedFusion);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
                 LogDatCalculationFailed(_logger, ex);
             }
@@ -799,7 +799,7 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
                 }
             };
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogABTestError(_logger, ex, testId);
             return null;

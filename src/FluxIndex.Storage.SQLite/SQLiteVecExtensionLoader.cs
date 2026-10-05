@@ -138,7 +138,7 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
             var result = await command.ExecuteScalarAsync(cancellationToken);
             return Convert.ToInt32(result, CultureInfo.InvariantCulture) > 0;
         }
-        catch
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             return false;
         }
@@ -205,7 +205,7 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
 
             return true;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogVecTableCreateFailed(_logger, ex, tableName);
             return false;
@@ -228,7 +228,7 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
                 dropCmd.CommandText = $"DROP TABLE IF EXISTS {tableName}";
                 await dropCmd.ExecuteNonQueryAsync(cancellationToken);
             }
-            catch
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
                 // DROP TABLE on corrupted vec0 fails because xDestroy cannot access
                 // broken shadow tables. Force-remove by dropping shadow tables first,
@@ -240,7 +240,7 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
 
             return await CreateVecTableAsync(connection, tableName, vectorDimension, options, cancellationToken);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogVecTableRecreateFailed(_logger, ex, tableName);
             return false;
@@ -304,7 +304,7 @@ public partial class SQLiteVecExtensionLoader : ISQLiteVecExtensionLoader
             var result = await command.ExecuteScalarAsync(cancellationToken);
             return result?.ToString();
         }
-        catch
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             // 버전 함수가 없거나 확장이 로드되지 않은 경우
             return null;

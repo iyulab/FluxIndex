@@ -305,7 +305,7 @@ public partial class FileFluxIntegration
             await _indexer.IndexDocumentAsync(partialDocument, indexingOptions, cancellationToken);
             LogBatchIndexedChunks(_logger, chunks.Count, documentId);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogFailedToBatchIndexChunks(_logger, ex, documentId);
             // Don't throw - continue processing

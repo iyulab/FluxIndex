@@ -473,7 +473,7 @@ public partial class PostgresEntityGraphStore : IGraphStore
                 }
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             LogTraversalCteFailed(_logger, ex);
             // Fallback to iterative BFS
@@ -564,7 +564,7 @@ LIMIT 1";
                 TotalWeight = result.TotalWeight
             };
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             LogShortestPathCteFailed(_logger, ex);
             return null;

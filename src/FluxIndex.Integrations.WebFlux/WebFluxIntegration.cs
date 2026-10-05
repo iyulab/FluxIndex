@@ -151,7 +151,7 @@ public partial class WebFluxIntegration
             hasNetworkError = true;
             processingException = httpEx;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             processingException = ex;
         }
@@ -249,7 +249,7 @@ public partial class WebFluxIntegration
 
                     LogSuccessfullyIndexedUrlChunks(_logger, webChunks.Count, url, documentId);
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
                 {
                     LogFailedToIndexUrl(_logger, ex, url);
                     result.FailedUrls.Add(url, ex.Message);

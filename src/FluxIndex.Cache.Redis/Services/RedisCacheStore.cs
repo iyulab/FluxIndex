@@ -636,7 +636,7 @@ public partial class RedisCacheStore : ICacheStore, IDisposable
                 Messages = messages
             };
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             LogMaintenanceFailed(_logger, ex);
             return new CacheMaintenanceResult

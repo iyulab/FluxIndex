@@ -719,7 +719,7 @@ public partial class CorrectiveRAGService : ICorrectiveRAGService
 
             return await _completionService.CompleteAsync(prompt, cancellationToken: cancellationToken);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogCorrectiveRAG1(_logger, ex);
             return null;

@@ -349,7 +349,7 @@ public partial class HierarchicalSummarizationService : IHierarchicalSummarizati
 
             return ParseSynthesizedAnswer(response, summaryList, options);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             if (_logger is not null) LogSynthesizeFailed(_logger, ex);
             return CreateFallbackAnswer(query, summaryList, options);
@@ -636,7 +636,7 @@ public partial class HierarchicalSummarizationService : IHierarchicalSummarizati
             return await _llmService.CompleteAsync(
                 prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = options.MaxSummaryTokens, Temperature = options.Temperature }, cancellationToken);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             if (_logger is not null) LogMapPhaseFailed(_logger, ex);
             return GenerateFallbackSummary(contents, keywords);
@@ -666,7 +666,7 @@ public partial class HierarchicalSummarizationService : IHierarchicalSummarizati
             return await _llmService.CompleteAsync(
                 prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = options.MaxSummaryTokens, Temperature = options.Temperature }, cancellationToken);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             if (_logger is not null) LogReducePhaseFailed(_logger, ex);
             return string.Join(" ", childSummaries.Select(s => s.Summary));

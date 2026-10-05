@@ -189,7 +189,7 @@ public partial class RetrievalVerificationService : Interfaces.IRetrievalVerific
                 LlmExplanation = llmExplanation
             };
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogRetrievalVerification1(_logger, ex, document.Id);
             return new DocumentGrade

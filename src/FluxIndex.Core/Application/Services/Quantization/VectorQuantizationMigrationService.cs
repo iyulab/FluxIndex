@@ -250,7 +250,7 @@ public partial class VectorQuantizationMigrationService
                 filters: null,
                 cancellationToken);
         }
-        catch
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             return Enumerable.Empty<DocumentChunk>();
         }

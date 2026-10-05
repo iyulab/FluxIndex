@@ -101,7 +101,7 @@ public partial class RedisSemanticCacheService : ISemanticCacheService, IDisposa
 
             return cachedResult;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogRetrieveError(_logger, ex, query);
             await RecordCacheMissAsync();
@@ -276,7 +276,7 @@ public partial class RedisSemanticCacheService : ISemanticCacheService, IDisposa
 
             return stats;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogStatisticsError(_logger, ex);
             return new SemanticCacheStatistics { CollectedAt = DateTime.UtcNow };
@@ -310,7 +310,7 @@ public partial class RedisSemanticCacheService : ISemanticCacheService, IDisposa
                 await _database.StringSetAsync(embeddingKey, embeddingBytes, _options.DefaultTtl);
                 await _database.SetAddAsync(QUERY_INDEX_KEY, query);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
                 LogWarmupQueryFailed(_logger, ex, query);
             }
@@ -559,7 +559,7 @@ public partial class RedisSemanticCacheService : ISemanticCacheService, IDisposa
 
             await Task.WhenAll(removeTasks);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogEnforceSizeLimitFailed(_logger, ex);
         }

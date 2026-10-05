@@ -612,7 +612,7 @@ internal sealed partial class SQLiteVecMigrationService : IHostedService
                     var vectorStore = scope.ServiceProvider.GetRequiredService<IVectorStore>();
                     await vectorStore.VerifyHealthAsync(cancellationToken);
                 }
-                catch (Exception warmupEx)
+                catch (Exception warmupEx) when (warmupEx is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
                 {
                     // Warmup is best-effort; failure is non-fatal — first user batch will pay cold-start cost.
                     LogVecWarmupFailed(_logger, warmupEx);
@@ -628,7 +628,7 @@ internal sealed partial class SQLiteVecMigrationService : IHostedService
                 {
                     await context.SweepOrphanVectorsAsync(cancellationToken);
                 }
-                catch (Exception sweepEx)
+                catch (Exception sweepEx) when (sweepEx is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
                 {
                     LogOrphanSweepFailed(_logger, sweepEx);
                 }

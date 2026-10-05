@@ -256,7 +256,7 @@ public partial class SelfRAGService : ISelfRAGService
 
             return assessment;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogSelfRAG2(_logger, ex);
             return assessment;
@@ -319,7 +319,7 @@ public partial class SelfRAGService : ISelfRAGService
 
             return suggestions;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogSelfRAG1(_logger, ex);
             return suggestions;
@@ -440,7 +440,7 @@ public partial class SelfRAGService : ISelfRAGService
 
             return scores.Count != 0 ? scores.Average() : 0.0;
         }
-        catch
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             return 0.5; // Default score on error
         }
@@ -496,7 +496,7 @@ public partial class SelfRAGService : ISelfRAGService
 
             return count > 0 ? totalDistance / count : 1.0;
         }
-        catch
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             return 0.5; // Default on error
         }
@@ -766,7 +766,7 @@ public partial class SelfRAGService : ISelfRAGService
                 }
             };
         }
-        catch
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             return new List<RefinedQuery>();
         }

@@ -391,7 +391,7 @@ public partial class PostgresGraphStore : IChunkHierarchyRepository
 
             return path;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogShortestPathFailed(_logger, ex, sourceChunkId, targetChunkId);
             return Array.Empty<string>();

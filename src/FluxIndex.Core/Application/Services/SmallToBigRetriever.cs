@@ -262,7 +262,7 @@ public partial class SmallToBigRetriever : ISmallToBigRetriever
 
             return result;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogSmallToBig9(_logger, ex);
             errors.Add(ex.Message);
@@ -909,7 +909,7 @@ public partial class SmallToBigRetriever : ISmallToBigRetriever
                 }
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogSmallToBig3(_logger, ex, primaryChunk.Id);
         }
@@ -982,7 +982,7 @@ public partial class SmallToBigRetriever : ISmallToBigRetriever
                     expandedChunks.Add(chunk);
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogSmallToBig1(_logger, ex, primaryChunk.Id);
         }

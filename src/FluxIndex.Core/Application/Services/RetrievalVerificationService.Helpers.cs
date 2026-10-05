@@ -333,7 +333,7 @@ public partial class RetrievalVerificationService
             return await _completionService.CompleteAsync(
                 prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 100, Temperature = 0.3f }, cancellationToken);
         }
-        catch
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             return null;
         }

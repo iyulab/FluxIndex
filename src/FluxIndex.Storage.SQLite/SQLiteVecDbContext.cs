@@ -243,7 +243,7 @@ public partial class SQLiteVecDbContext : DbContext
                 LogFts5AlreadyExists(_logger);
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogFts5InitFailed(_logger, ex);
             // FTS5 실패는 치명적이지 않음 - 벡터 검색은 계속 작동
@@ -575,7 +575,7 @@ public partial class SQLiteVecDbContext : DbContext
                     LogVecChunkDeleted(_logger, tableName, chunkId, affected);
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogVecDeleteError(_logger, ex, chunkId);
             // 벡터 삭제 실패는 치명적이지 않으므로 로그만 남김
@@ -732,7 +732,7 @@ public partial class SQLiteVecDbContext : DbContext
                 else
                     LogOrphanSweepTableEmpty(_logger, tableName);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
                 anyTableFailed = true;
                 LogOrphanSweepTableFailed(_logger, ex, tableName);
@@ -922,7 +922,7 @@ public partial class SQLiteVecDbContext : DbContext
             var connection = Database.GetDbConnection();
             return await _extensionLoader.IsExtensionLoadedAsync((Microsoft.Data.Sqlite.SqliteConnection)connection, cancellationToken);
         }
-        catch
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             return false;
         }

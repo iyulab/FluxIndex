@@ -94,7 +94,7 @@ public partial class MemorizeTool
                 message = $"Successfully memorized '{Path.GetFileName(path)}'"
             }, s_indentedJsonOptions);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogMemorizeFailed(_logger, ex, path);
             return JsonSerializer.Serialize(new

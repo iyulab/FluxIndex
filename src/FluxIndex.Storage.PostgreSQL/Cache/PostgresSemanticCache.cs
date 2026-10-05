@@ -287,7 +287,7 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
             await context.Database.ExecuteSqlRawAsync("VACUUM ANALYZE semantic_cache", cancellationToken);
             messages.Add("VACUUM ANALYZE completed");
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogVacuumAnalyzeFailed(_logger, ex);
             messages.Add("VACUUM ANALYZE skipped");

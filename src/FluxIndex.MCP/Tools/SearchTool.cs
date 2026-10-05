@@ -89,7 +89,7 @@ public partial class SearchTool
                 results = response
             }, s_indentedJsonOptions);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogSearchFailed(_logger, ex, query);
             return JsonSerializer.Serialize(new

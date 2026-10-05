@@ -645,7 +645,7 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDi
                 AverageSimilarityScore = 0.0f // Application interface doesn't expose this
             };
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogFailedToGetCacheStatistics(_logger, ex);
             return null;
@@ -670,7 +670,7 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDi
             await _cacheService.WarmupCacheAsync(commonQueries.ToList(), cancellationToken);
             return true;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogCacheWarmupFailed(_logger, ex);
             return false;
@@ -693,7 +693,7 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDi
             await _cacheService.CompactCacheAsync(cancellationToken);
             LogCacheOptimizationCompleted(_logger);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogCacheOptimizationFailed(_logger, ex);
         }
@@ -819,7 +819,7 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDi
                 AnalysisConfidence = analysis.AnalysisConfidence
             };
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogQueryComplexityAnalysisFailed(_logger, ex, query);
             return null;

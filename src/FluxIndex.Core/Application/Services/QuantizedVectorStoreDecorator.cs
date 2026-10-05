@@ -48,7 +48,7 @@ public partial class QuantizedVectorStoreDecorator : IQuantizedVectorStore
                 var quantized = await _quantizer.QuantizeAsync(chunk.Embedding, cancellationToken);
                 _quantizedEmbeddings[id] = quantized;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
                 LogAutoQuantizeFailed(_logger, ex, id);
             }
@@ -120,7 +120,7 @@ public partial class QuantizedVectorStoreDecorator : IQuantizedVectorStore
                         }
                     }
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
                 {
                     LogAutoQuantizeBatchFailed(_logger, ex);
                 }

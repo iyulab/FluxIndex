@@ -155,7 +155,7 @@ Respond with a JSON object in this exact format:
 
             return result;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogFailedToAnalyzeDocumentStructure(_logger, ex);
 
@@ -204,7 +204,7 @@ Keep the summary under {maxLength} characters.";
 
             return result;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogFailedToSummarizeContent(_logger, ex);
 
@@ -260,7 +260,7 @@ Respond with a JSON object in this exact format:
 
             return result;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogFailedToExtractMetadata(_logger, ex);
 
@@ -318,7 +318,7 @@ Respond with a JSON object in this exact format:
 
             return result;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogFailedToAssessQuality(_logger, ex);
 

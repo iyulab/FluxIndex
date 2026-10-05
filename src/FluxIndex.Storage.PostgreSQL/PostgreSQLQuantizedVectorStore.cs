@@ -54,7 +54,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
                 var quantizedEntity = CreateQuantizedEntity(chunkId, quantized);
                 context.QuantizedVectors.Add(quantizedEntity);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
                 LogAutoQuantizeFailed(_logger, ex, id);
             }
@@ -103,7 +103,7 @@ public partial class PostgreSQLQuantizedVectorStore : IQuantizedVectorStore
                         context.QuantizedVectors.Add(quantizedEntity);
                     }
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
                 {
                     LogBatchQuantizeFailed(_logger, ex);
                 }

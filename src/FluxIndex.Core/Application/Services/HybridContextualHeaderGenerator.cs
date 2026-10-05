@@ -161,7 +161,7 @@ public partial class HybridContextualHeaderGenerator : IContextualHeaderGenerato
 
             return header;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogHybridContextualHeader1(_logger, ex, chunk.ChunkId);
             return GenerateRuleBased(chunk);

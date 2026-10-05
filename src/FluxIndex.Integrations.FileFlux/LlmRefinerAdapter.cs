@@ -131,7 +131,7 @@ public partial class LlmRefinerAdapter : ILlmRefiner
                 Status = ProcessingStatus.Completed
             };
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogRefinementFailed(_logger, ex);
             warnings.Add($"LLM refinement failed: {ex.Message}");

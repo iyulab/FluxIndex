@@ -63,7 +63,7 @@ public partial class UnmemorizeTool
                 });
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogUnmemorizeFailed(_logger, ex, path);
             return JsonSerializer.Serialize(new

@@ -326,7 +326,7 @@ public partial class HybridSearchService : IHybridSearchService
 
             return results;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogHybridSearch5(_logger, ex);
             return Array.Empty<VectorSearchResult>();
@@ -366,7 +366,7 @@ public partial class HybridSearchService : IHybridSearchService
 
             return results;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogHybridSearch3(_logger, ex);
             return null;
@@ -401,7 +401,7 @@ public partial class HybridSearchService : IHybridSearchService
             // this one has to reach the caller.
             throw;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogHybridSearch2(_logger, ex);
             return Array.Empty<SparseSearchResult>();
@@ -1046,7 +1046,7 @@ public partial class HybridSearchService : IHybridSearchService
             var chunks = await _vectorStore.GetChunksByIdsAsync(new[] { chunkId }, cancellationToken);
             return chunks.FirstOrDefault();
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             if (_logger.IsEnabled(LogLevel.Information))
                 LogHybridSearch1(_logger, ex, chunkId);

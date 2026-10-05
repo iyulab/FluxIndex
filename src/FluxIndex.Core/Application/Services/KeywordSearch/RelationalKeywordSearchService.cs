@@ -788,7 +788,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
                 await transaction().ConfigureAwait(false);
                 return;
             }
-            catch (Exception ex) when (IsRetryableWriteFailure(ex) && attempt < MaxConcurrencyRetries)
+            catch (Exception ex) when ((ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested) && (IsRetryableWriteFailure(ex) && attempt < MaxConcurrencyRetries))
             {
                 attempt++;
                 if (ex is DbException db && IsTransientConcurrencyFailure(db))

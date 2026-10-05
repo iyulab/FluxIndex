@@ -412,7 +412,7 @@ public partial class Indexer
                     LogAIMetadataExtracted(_logger, extractedMetadata.OverallConfidence, extractedMetadata.Topics.Length);
                 }
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
                 LogFailedToExtractAIMetadata(_logger, ex, document.Id);
                 // Continue indexing without AI metadata
@@ -1122,7 +1122,7 @@ public partial class Indexer
             LogBatchEmbeddingCompleted(_logger, chunks.Count);
             return chunks;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogBatchEmbeddingFailed(_logger, ex);
 
@@ -1196,7 +1196,7 @@ public partial class Indexer
             await _keywordSearchService!.ReplaceDocumentsAsync(documentIds, chunks, cancellationToken);
             LogKeywordIndexUpdated(_logger, chunks.Count);
         }
-        catch (Exception ex) when (!IsKeywordOnly)
+        catch (Exception ex) when ((ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested) && (!IsKeywordOnly))
         {
             // Same policy as IndexKeywordAsync: with vectors the keyword leg is a best effort.
             LogKeywordIndexUpdateFailed(_logger, ex, chunks.Count);
@@ -1230,7 +1230,7 @@ public partial class Indexer
             await _keywordSearchService!.IndexChunksAsync(chunks, cancellationToken);
             LogKeywordIndexUpdated(_logger, chunks.Count);
         }
-        catch (Exception ex) when (!IsKeywordOnly)
+        catch (Exception ex) when ((ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested) && (!IsKeywordOnly))
         {
             // With vectors the chunk is already searchable through the vector store; the keyword leg is a best effort.
             // Keyword-only, this index is the document's only way to be found, so its failure is the caller's to see.
@@ -1255,7 +1255,7 @@ public partial class Indexer
         {
             await _keywordSearchService!.DeleteByDocumentIdAsync(documentId, cancellationToken);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogKeywordIndexDeleteFailed(_logger, ex, documentId);
         }

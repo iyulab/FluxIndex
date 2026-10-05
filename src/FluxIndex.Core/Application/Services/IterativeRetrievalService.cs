@@ -223,7 +223,7 @@ public partial class IterativeRetrievalService : IIterativeRetrievalService
 
             return ParseReasoningResponse(response);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogIterativeRetrieval6(_logger, ex);
             return ("LLM reasoning failed, continuing with search", "retrieve", currentQuery);
@@ -339,7 +339,7 @@ public partial class IterativeRetrievalService : IIterativeRetrievalService
 
             return answer;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogIterativeRetrieval5(_logger, ex);
             return SummarizeDocuments(docs.Take(5).ToList());
@@ -472,7 +472,7 @@ public partial class IterativeRetrievalService : IIterativeRetrievalService
 
             return ParseSubQuestions(response);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogIterativeRetrieval3(_logger, ex);
             return new List<SubQuestion>
@@ -549,7 +549,7 @@ public partial class IterativeRetrievalService : IIterativeRetrievalService
             var confidence = answer.Contains("Not found", StringComparison.OrdinalIgnoreCase) ? 0.2f : 0.8f;
             return (answer, confidence);
         }
-        catch
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             return ("Unable to answer", 0.0f);
         }
@@ -584,7 +584,7 @@ public partial class IterativeRetrievalService : IIterativeRetrievalService
             var avgConfidence = answeredQuestions.Count != 0 ? answeredQuestions.Average(q => q.Confidence) : 0f;
             return (answer, (float)avgConfidence);
         }
-        catch
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             return ("Unable to compose answer", 0.0f);
         }
@@ -774,7 +774,7 @@ public partial class IterativeRetrievalService : IIterativeRetrievalService
 
             return response.Trim().Contains("YES", StringComparison.OrdinalIgnoreCase);
         }
-        catch
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             return false;
         }
@@ -915,7 +915,7 @@ public partial class IterativeRetrievalService : IIterativeRetrievalService
 
             return ParseAgentPlan(response, availableTools, query);
         }
-        catch
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             return (RetrievalTool.HybridSearch, "Fallback to search", new Dictionary<string, object> { ["query"] = query });
         }
@@ -998,7 +998,7 @@ public partial class IterativeRetrievalService : IIterativeRetrievalService
                     return (new List<IterativeSearchResult>(), $"Tool {tool} not fully implemented", false);
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             return (new List<IterativeSearchResult>(), $"Error: {ex.Message}", false);
         }
@@ -1016,7 +1016,7 @@ public partial class IterativeRetrievalService : IIterativeRetrievalService
                 prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 100, Temperature = 0.3f }, cancellationToken);
             return response.Trim();
         }
-        catch
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             return query;
         }
@@ -1062,7 +1062,7 @@ public partial class IterativeRetrievalService : IIterativeRetrievalService
 
             return (achieved, reflectionText);
         }
-        catch
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             return (false, "Reflection failed");
         }

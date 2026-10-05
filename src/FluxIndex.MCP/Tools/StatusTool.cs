@@ -62,7 +62,7 @@ public partial class StatusTool
                 }
             }, s_indentedJsonOptions);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogStatusFailed(_logger, ex);
             return JsonSerializer.Serialize(new

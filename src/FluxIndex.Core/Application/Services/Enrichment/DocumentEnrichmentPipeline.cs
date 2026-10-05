@@ -318,7 +318,7 @@ public partial class DocumentEnrichmentPipeline : IDocumentEnrichmentPipeline
                 ProcessingTimeMs = sw.ElapsedMilliseconds
             };
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             LogDocumentEnrichment2(_logger, ex);
             return new EntityExtractionResult();
@@ -363,7 +363,7 @@ public partial class DocumentEnrichmentPipeline : IDocumentEnrichmentPipeline
                 Confidence = 0.9
             };
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             LogDocumentEnrichment1(_logger, ex);
             var combined = BuildCombinedText(chunkContent, documentContext);
@@ -559,7 +559,7 @@ Keywords:";
                 .Take(10)
                 .ToList();
         }
-        catch
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             return ExtractKeywordsSimple(content);
         }

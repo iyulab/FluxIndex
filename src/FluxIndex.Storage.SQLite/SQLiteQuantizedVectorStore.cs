@@ -75,7 +75,7 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
                 var quantizedEntity = CreateQuantizedEntity(id, quantized);
                 context.QuantizedVectors.Add(quantizedEntity);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
                 LogAutoQuantizeFailed(_logger, ex, id);
             }
@@ -125,7 +125,7 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
                         context.QuantizedVectors.Add(quantizedEntity);
                     }
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
                 {
                     LogBatchQuantizeFailed(_logger, ex);
                 }

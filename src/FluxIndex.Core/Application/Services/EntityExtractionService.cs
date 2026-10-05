@@ -419,7 +419,7 @@ public partial class EntityExtractionService : IAdvancedEntityExtractionService
                 prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 2000, Temperature = 0.1f }, cancellationToken);
             return ParseLlmEntityResponse(response, content, options);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogEntityExtraction4(_logger, ex);
             return new List<ExtractedEntity>();
@@ -487,7 +487,7 @@ public partial class EntityExtractionService : IAdvancedEntityExtractionService
                 prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 1500, Temperature = 0.1f }, cancellationToken);
             return ParseLlmRelationResponse(response, entities);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogEntityExtraction3(_logger, ex);
             return new List<EntityRelation>();

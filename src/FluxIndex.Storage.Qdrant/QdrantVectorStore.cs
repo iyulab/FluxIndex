@@ -200,7 +200,7 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable, IDispos
             if (await _client.CountAsync(collectionName, cancellationToken: ct) > 0)
                 return;   // Serving real data; whatever the siblings hold is not this store's problem.
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             // Cannot tell whether we are empty. Saying nothing would be the silent failure this
             // check exists to prevent, so fall through and report what the siblings hold.
@@ -214,7 +214,7 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable, IDispos
             {
                 counted.Add((sibling, (long)await _client.CountAsync(sibling, cancellationToken: ct)));
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
             {
                 // A sibling can be mid-deletion, or unreadable with these credentials. An
                 // incomplete warning is worth more than none, so record it as unknown and continue.
@@ -472,7 +472,7 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable, IDispos
 
             return MapPointToChunk(point);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogRetrieveChunkFailed(_logger, ex, id);
             return null;
@@ -678,7 +678,7 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable, IDispos
                 return [];
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogCollectionCheckFailed(_logger, ex, _resolvedCollectionName);
             return [];
@@ -1081,7 +1081,7 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable, IDispos
 #pragma warning restore CA2016
                 LogCollectionCleared(_logger, collectionToClear);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
                 LogDeleteCollectionFailed(_logger, ex, collectionToClear);
             }
