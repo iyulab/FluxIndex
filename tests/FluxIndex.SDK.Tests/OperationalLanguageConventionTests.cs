@@ -39,7 +39,7 @@ public class OperationalLanguageConventionTests
     }
 
     // Every FluxIndex library assembly copied next to the tests — not the tests themselves.
-    private static List<Assembly> LibraryAssemblies()
+    internal static List<Assembly> LibraryAssemblies()
         => [.. Directory.EnumerateFiles(AppContext.BaseDirectory, "FluxIndex.*.dll")
             .Select(Path.GetFileNameWithoutExtension)
             .Where(name => name is not null && !name.EndsWith(".Tests", StringComparison.Ordinal))
