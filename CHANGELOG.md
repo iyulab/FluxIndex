@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.75.1] - Unreleased
+## [0.75.1] - 2026-10-05
 
 ### Fixed
 - **Neo4j: concurrent writes of one new entity id leave one node.** The store created only a plain index on `id`, and
