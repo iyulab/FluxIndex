@@ -55,6 +55,12 @@ public class EntityGraphDbContext : DbContext, IEmbeddingDimensionsModel
         // A database default, not only a CLR one: it is what lets the provisioner add the column to an existing table.
         entity.Property(e => e.Partition).HasDefaultValue(string.Empty);
 
+        // The row's version for optimistic concurrency: every write stamps UpdatedAt, so an UPDATE or DELETE that read the row
+        // before another writer changed it matches no row and fails with DbUpdateConcurrencyException; the store re-reads
+        // and applies its write again. Without it two merges into one stored entity both read the same chunk list and the
+        // later write drops the earlier one's new chunks. An existing column, so no schema change.
+        entity.Property(e => e.UpdatedAt).IsConcurrencyToken();
+
         // Index for name lookups
         entity.HasIndex(e => e.NormalizedName);
 

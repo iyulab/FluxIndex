@@ -5,6 +5,18 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.75.1] - Unreleased
+
+### Fixed
+- **Two builds that add chunks to the same already-stored entity at the same time keep both builds' chunks** (SQLite and
+  PostgreSQL entity graph stores). Each write read the stored row and wrote it back, so the later write dropped the
+  chunks, documents and surface forms the earlier one had just added. The row's `UpdatedAt` is now an optimistic
+  concurrency token: a write whose row changed after its read is retried over a fresh read (up to ten attempts). No
+  schema change. `UpdateEntityAsync` and `DeleteEntityAsync` retry the same way instead of surfacing the conflict, and
+  still replace / delete: an entity computed from an earlier read can replace over chunks a concurrent build added.
+- The SQLite entity graph store's `ClearAsync` deletes set-based, as the PostgreSQL store does, so a concurrent write no
+  longer makes it fail.
+
 ## [0.75.0] - 2026-10-05
 
 ### Fixed

@@ -28,6 +28,7 @@
 
   <ItemGroup>
     <Compile Include="..\Shared\SqliteTestPools.cs" Link="Shared\SqliteTestPools.cs" />
+    <Compile Include="..\Shared\SaveBarrierInterceptor.cs" Link="Shared\SaveBarrierInterceptor.cs" />
   </ItemGroup>
 
 </Project>

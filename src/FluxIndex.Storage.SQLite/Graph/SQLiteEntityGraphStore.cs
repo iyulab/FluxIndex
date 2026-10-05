@@ -44,28 +44,41 @@ public partial class SQLiteEntityGraphStore : IGraphStore
     /// A write merges into a stored row of the same id: the row keeps every chunk, document and surface form it already
     /// lists and gains the written ones (the other fields are replaced). The entity graph build derives a node's id from
     /// its identity, so two builds of one partition running at once write the same row; without the merge the second
-    /// would erase the first one's provenance, and without the retry below its insert would fail on the key. Removing a
-    /// chunk from an entity is <see cref="UpdateEntityAsync"/>'s job.
+    /// would erase the first one's provenance, and without the retry below its insert would fail on the key. The merge reads
+    /// the stored row and writes it back; a concurrent write between the two moves the row's <c>UpdatedAt</c> token, so this
+    /// write fails and is retried over a fresh read instead of dropping what the other writer added. Removing a chunk from an
+    /// entity is <see cref="UpdateEntityAsync"/>'s job.
     /// </remarks>
     public async Task<IReadOnlyList<string>> StoreEntitiesBatchAsync(
         IEnumerable<GraphEntity> entities,
         CancellationToken ct = default)
     {
         var list = entities.ToList();
+        return await RetryLostRaceAsync(() => StoreEntitiesOnceAsync(list, ct), insertsRace: true);
+    }
+
+    /// <summary>
+    /// Attempts per entity write. A write retries when it lost a race - another writer changed a row between this write's
+    /// read and its save, or inserted the same id first - so the last of N writers converging on one row needs N attempts.
+    /// Ten covers the concurrent builds of one partition a host runs; a conflict on any row of a batch retries the whole
+    /// batch over a fresh context.
+    /// </summary>
+    private const int MaxWriteAttempts = 10;
+
+    private static async Task<T> RetryLostRaceAsync<T>(Func<Task<T>> write, bool insertsRace)
+    {
         for (var attempt = 1; ; attempt++)
         {
             try
             {
-                return await StoreEntitiesOnceAsync(list, ct);
+                return await write();
             }
-            catch (DbUpdateException) when (attempt < MaxStoreAttempts)
+            catch (DbUpdateException ex) when (attempt < MaxWriteAttempts && (insertsRace || ex is DbUpdateConcurrencyException))
             {
-                // Another writer inserted one of these ids between our read and our insert: read again and merge.
+                // Read again and apply the write over what the other writer left.
             }
         }
     }
-
-    private const int MaxStoreAttempts = 3;
 
     private async Task<IReadOnlyList<string>> StoreEntitiesOnceAsync(IReadOnlyList<GraphEntity> entities, CancellationToken ct)
     {
@@ -166,30 +179,37 @@ public partial class SQLiteEntityGraphStore : IGraphStore
         return dbEntities.Select(MapToGraphEntity).ToList();
     }
 
-    public async Task<bool> UpdateEntityAsync(GraphEntity entity, CancellationToken ct = default)
-    {
-        await using var context = await _contextFactory.CreateDbContextAsync(ct);
-        var existing = await context.Entities.AsTracking().FirstOrDefaultAsync(e => e.Id == entity.Id, ct);
-        if (existing == null) return false;
+    /// <remarks>
+    /// Replaces every field, so it is how a chunk is taken away from an entity. A write that lands between this call's read
+    /// and its save is retried over, not merged: the caller's entity wins. A caller that computed the entity from an earlier
+    /// read (as forgetting and reassigning chunks do) can therefore replace over chunks a concurrent build added since.
+    /// </remarks>
+    public Task<bool> UpdateEntityAsync(GraphEntity entity, CancellationToken ct = default) =>
+        RetryLostRaceAsync(async () =>
+        {
+            await using var context = await _contextFactory.CreateDbContextAsync(ct);
+            var existing = await context.Entities.AsTracking().FirstOrDefaultAsync(e => e.Id == entity.Id, ct);
+            if (existing == null) return false;
 
-        var dbEntity = MapToDbEntity(entity);
-        context.Entry(existing).CurrentValues.SetValues(dbEntity);
-        existing.UpdatedAt = DateTimeOffset.UtcNow;
+            var dbEntity = MapToDbEntity(entity);
+            context.Entry(existing).CurrentValues.SetValues(dbEntity);
+            existing.UpdatedAt = DateTimeOffset.UtcNow;
 
-        await context.SaveChangesAsync(ct);
-        return true;
-    }
+            await context.SaveChangesAsync(ct);
+            return true;
+        }, insertsRace: false);
 
-    public async Task<bool> DeleteEntityAsync(string id, CancellationToken ct = default)
-    {
-        await using var context = await _contextFactory.CreateDbContextAsync(ct);
-        var entity = await context.Entities.FindAsync([id], ct);
-        if (entity == null) return false;
+    public Task<bool> DeleteEntityAsync(string id, CancellationToken ct = default) =>
+        RetryLostRaceAsync(async () =>
+        {
+            await using var context = await _contextFactory.CreateDbContextAsync(ct);
+            var entity = await context.Entities.FindAsync([id], ct);
+            if (entity == null) return false;
 
-        context.Entities.Remove(entity);
-        await context.SaveChangesAsync(ct);
-        return true;
-    }
+            context.Entities.Remove(entity);
+            await context.SaveChangesAsync(ct);
+            return true;
+        }, insertsRace: false);
 
     #endregion
 
@@ -714,13 +734,13 @@ public partial class SQLiteEntityGraphStore : IGraphStore
 
     public async Task ClearAsync(CancellationToken ct = default)
     {
+        // Set-based deletes (the PostgreSQL store's shape): a per-row DELETE would carry the entity's UpdatedAt token and
+        // fail when a build wrote a row while the store was being cleared.
         await using var context = await _contextFactory.CreateDbContextAsync(ct);
-        context.CommunityMembers.RemoveRange(context.CommunityMembers);
-        context.Communities.RemoveRange(context.Communities);
-        context.Relationships.RemoveRange(context.Relationships);
-        context.Entities.RemoveRange(context.Entities);
-
-        await context.SaveChangesAsync(ct);
+        await context.CommunityMembers.ExecuteDeleteAsync(ct);
+        await context.Communities.ExecuteDeleteAsync(ct);
+        await context.Relationships.ExecuteDeleteAsync(ct);
+        await context.Entities.ExecuteDeleteAsync(ct);
         LogStoreCleared(_logger);
     }
 

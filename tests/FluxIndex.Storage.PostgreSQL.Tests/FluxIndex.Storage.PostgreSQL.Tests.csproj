@@ -27,4 +27,8 @@
     <ProjectReference Include="..\FluxIndex.Core.Tests\FluxIndex.Core.Tests.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\Shared\SaveBarrierInterceptor.cs" Link="Shared\SaveBarrierInterceptor.cs" />
+  </ItemGroup>
+
 </Project>
