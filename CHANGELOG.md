@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.75.0] - Unreleased
+## [0.75.0] - 2026-10-05
 
 ### Fixed
 - **Two documents of one partition indexed at the same time no longer split one entity into two nodes.** A new entity
