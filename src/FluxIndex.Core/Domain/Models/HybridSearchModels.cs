@@ -43,9 +43,11 @@ public record HybridSearchResult
     public int FusedRank { get; init; }
 
     /// <summary>
-    /// 사용된 융합 방법
+    /// The fusion that actually produced <see cref="FusedScore"/>: method, effective weights, and whether the caller
+    /// chose them or the service filled them in. Assert on this, not on the options object you passed — the options
+    /// say what you asked for, this says what ran.
     /// </summary>
-    public FusionMethod FusionMethod { get; init; }
+    public AppliedFusion Fusion { get; init; } = AppliedFusion.Unspecified;
 
     /// <summary>
     /// 매칭된 키워드
@@ -112,9 +114,11 @@ public record HybridSearchOptions
     public int MaxResults { get; set; } = 10;
 
     /// <summary>
-    /// 융합 방법 (기본값: RelativeScoreFusion - 점수 크기 정보 보존으로 리랭킹 성능 향상)
+    /// How the two legs are fused. Null (the default) lets the service choose per query — Dynamic Alpha Tuning when
+    /// <see cref="EnableDynamicAlphaTuning"/> is on, otherwise its query heuristic. A value you set is used as is;
+    /// the service never replaces it.
     /// </summary>
-    public FusionMethod FusionMethod { get; set; } = FusionMethod.RelativeScoreFusion;
+    public FusionMethod? FusionMethod { get; set; }
 
     /// <summary>
     /// RRF k 매개변수
@@ -122,14 +126,17 @@ public record HybridSearchOptions
     public double RrfK { get; set; } = 60.0;
 
     /// <summary>
-    /// 벡터 검색 가중치 (0.0 - 1.0)
+    /// Weight of the vector leg (0.0 - 1.0). Null (the default) lets the service choose per query, like
+    /// <see cref="FusionMethod"/>; a value you set is used as is. Set it together with <see cref="SparseWeight"/> —
+    /// each is filled independently, so setting one leaves the other to the service.
     /// </summary>
-    public double VectorWeight { get; set; } = 0.7;
+    public double? VectorWeight { get; set; }
 
     /// <summary>
-    /// 키워드 검색 가중치 (0.0 - 1.0)
+    /// Weight of the keyword leg (0.0 - 1.0). Null (the default) lets the service choose per query; a value you set
+    /// is used as is.
     /// </summary>
-    public double SparseWeight { get; set; } = 0.3;
+    public double? SparseWeight { get; set; }
 
     /// <summary>
     /// Metadata conditions applied to <b>both</b> legs of the search.
@@ -174,11 +181,6 @@ public record HybridSearchOptions
         SparseOptions.Filters is { Count: > 0 } ? SparseOptions.Filters : Filters;
 
     /// <summary>
-    /// 자동 전략 선택 사용 여부
-    /// </summary>
-    public bool EnableAutoStrategy { get; set; } = true;
-
-    /// <summary>
     /// 최소 융합 점수
     /// </summary>
     public double MinFusedScore { get; set; }
@@ -215,7 +217,7 @@ public record HybridSearchOptions
 
     /// <summary>
     /// Dynamic Alpha Tuning (DAT) 활성화 여부.
-    /// 활성화 시 쿼리 유형에 따라 최적의 융합 가중치를 자동 결정합니다.
+    /// 활성화 시 쿼리 유형에 따라 융합 방법·가중치 중 <b>지정하지 않은 값</b>을 결정합니다(지정한 값은 그대로).
     /// 연구 결과 6.6% 검색 품질 향상이 확인되었습니다.
     /// </summary>
     public bool EnableDynamicAlphaTuning { get; set; }
@@ -337,6 +339,49 @@ public class QueryCharacteristics
     /// 감정 극성
     /// </summary>
     public SentimentPolarity Sentiment { get; init; }
+}
+
+/// <summary>
+/// The fusion a hybrid search actually applied — reported on every <see cref="HybridSearchResult"/>.
+/// </summary>
+/// <param name="Method">The fusion method that ran.</param>
+/// <param name="VectorWeight">The effective vector-leg weight.</param>
+/// <param name="SparseWeight">The effective keyword-leg weight.</param>
+/// <param name="RrfK">The reciprocal-rank constant in effect (read only by <see cref="FusionMethod.RRF"/>).</param>
+/// <param name="SelectedBy">Who chose the values that were not set on the options.</param>
+public sealed record AppliedFusion(
+    FusionMethod Method,
+    double VectorWeight,
+    double SparseWeight,
+    double RrfK,
+    FusionSelection SelectedBy)
+{
+    /// <summary>
+    /// Placeholder for a result built outside a hybrid search service.
+    /// </summary>
+    public static AppliedFusion Unspecified { get; } =
+        new(FusionMethod.RelativeScoreFusion, 0, 0, 0, FusionSelection.Unspecified);
+}
+
+/// <summary>
+/// Who chose the fusion values a hybrid search applied.
+/// </summary>
+public enum FusionSelection
+{
+    /// <summary>Not produced by a hybrid search service.</summary>
+    Unspecified = 0,
+
+    /// <summary>The caller set the method and both weights; the service chose nothing.</summary>
+    Caller = 1,
+
+    /// <summary>Dynamic Alpha Tuning filled the values the caller left unset.</summary>
+    DynamicAlphaTuning = 2,
+
+    /// <summary>The service's per-query heuristic filled the values the caller left unset.</summary>
+    QueryHeuristic = 3,
+
+    /// <summary>The service's fixed defaults filled the values the caller left unset.</summary>
+    ServiceDefault = 4,
 }
 
 /// <summary>

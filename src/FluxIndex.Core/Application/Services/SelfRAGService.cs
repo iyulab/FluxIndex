@@ -395,7 +395,7 @@ public partial class SelfRAGService : ISelfRAGService
                 searchOptions.SparseWeight = 0.4;
                 break;
             case SearchStrategy.Adaptive:
-                searchOptions.EnableAutoStrategy = true;
+                // Fusion method and weights stay unset, so the hybrid service chooses them per query.
                 break;
             case SearchStrategy.Hybrid:
             default:

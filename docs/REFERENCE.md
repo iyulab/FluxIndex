@@ -207,14 +207,21 @@ FinalScore = α × vectorScore + (1-α) × sparseScore
 ### Configuration
 
 ```csharp
-// Hybrid search with custom weights
+// Hybrid search with custom weights — values you set are used as given
 var options = new HybridSearchOptions
 {
     FusionMethod = FusionMethod.WeightedSum,
     VectorWeight = 0.7,
     SparseWeight = 0.3
 };
+var results = await hybridSearch.SearchAsync(query, options);
+// results[0].Fusion == AppliedFusion(WeightedSum, 0.7, 0.3, RrfK: 60, SelectedBy: Caller)
 ```
+
+Leave any of the three unset (null) and the service chooses it per query — Dynamic Alpha Tuning when
+`EnableDynamicAlphaTuning` is on and an `IDynamicFusionService` is registered, otherwise a query-length/term
+heuristic. `AppliedFusion.SelectedBy` says which: `Caller`, `DynamicAlphaTuning`, `QueryHeuristic`, or
+`ServiceDefault` (Qdrant's native hybrid fills unset values with RRF 0.7 / 0.3).
 
 **SDK options that are read, and where.** `Indexer.IndexDocumentAsync(string content, …)` is the only
 path on which the SDK splits text: it uses the builder's `IndexerOptions.ChunkSize`/`ChunkOverlap`

@@ -5,6 +5,23 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.80.0] - Unreleased
+
+### Changed
+- **Breaking — a fusion method or weight you set on `HybridSearchOptions` is now used as given.** `FusionMethod`,
+  `VectorWeight` and `SparseWeight` are nullable: a value you set reaches the fusion unchanged, and only the ones you
+  leave unset (null, the new default) are chosen per query — by Dynamic Alpha Tuning when `EnableDynamicAlphaTuning` is
+  on, otherwise by the query heuristic. `EnableAutoStrategy` is removed: it defaulted to on and replaced all three with
+  the heuristic's picks, so configured relative-score fusion silently ran as rank-sized RRF. The same override had been
+  discarding the weights FluxIndex's own Self-RAG, Corrective RAG, agentic router (keyword-only routing) and adaptive
+  search (its Dynamic Alpha Tuning weights) set. Migration: delete `EnableAutoStrategy = false` — what you set now
+  sticks; to keep per-query choice, leave the three values unset rather than setting `EnableAutoStrategy = true`.
+- **Breaking — every hybrid result reports the fusion that ran.** `HybridSearchResult.Fusion` (`AppliedFusion`: method,
+  effective weights, RRF k, and `SelectedBy` = `Caller` / `DynamicAlphaTuning` / `QueryHeuristic` / `ServiceDefault`)
+  replaces `HybridSearchResult.FusionMethod`. Migration: read `result.Fusion.Method`.
+- With Dynamic Alpha Tuning on and all three values set, the tuning service is no longer called (it has nothing left to
+  choose).
+
 ## [0.79.1] - 2026-10-06
 
 ### Fixed

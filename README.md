@@ -12,9 +12,11 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
 
 - **Hybrid search** (vector + BM25) — `IHybridSearchService`; `SearchOptions.UseHybridSearch` (unset = on whenever the
   service is registered). The builder registers `HybridSearchService` by default; a storage package's persistent keyword
-  index replaces the in-memory BM25 leg. Qdrant's native hybrid: `AddQdrantWithHybridSearch`. Query-driven strategy
-  choice: `HybridSearchOptions.EnableAutoStrategy` (default on) and `context.AdaptiveSearchAsync(query)` (registered by
-  the builder; `AdaptiveSearchWithStrategyAsync` forces a strategy).
+  index replaces the in-memory BM25 leg. Qdrant's native hybrid: `AddQdrantWithHybridSearch`. Fusion: set
+  `HybridSearchOptions.FusionMethod`/`VectorWeight`/`SparseWeight` and they are used as given; leave any unset and the
+  service chooses it per query (Dynamic Alpha Tuning with `EnableDynamicAlphaTuning`, otherwise a query heuristic).
+  Each result's `Fusion` reports the method, weights and who chose them. Whole-strategy choice:
+  `context.AdaptiveSearchAsync(query)` (registered by the builder; `AdaptiveSearchWithStrategyAsync` forces a strategy).
 - **Batch indexing** — `Indexer.IndexBatchAsync(documents, progress, parallelism)`; chunk embeddings go through
   `IEmbeddingService.GenerateEmbeddingsBatchAsync`. Always available. Query embeddings are cached per `Retriever`
   (in-process, not configurable).

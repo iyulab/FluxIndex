@@ -526,8 +526,7 @@ public partial class SmallToBigRetriever : ISmallToBigRetriever
             MaxResults = Math.Max(options.MaxResults * 2, 20), // 확장을 위해 더 많은 결과 요청
             FusionMethod = FusionMethod.RRF,
             VectorWeight = 0.7,
-            SparseWeight = 0.3,
-            EnableAutoStrategy = true
+            SparseWeight = 0.3
         };
 
         var hybridResults = await _hybridSearchService.SearchAsync(query, hybridOptions, cancellationToken);

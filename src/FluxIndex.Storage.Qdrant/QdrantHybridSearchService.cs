@@ -38,6 +38,7 @@ public partial class QdrantHybridSearchService : IHybridSearchService
         CancellationToken cancellationToken = default)
     {
         options ??= new HybridSearchOptions();
+        var fusion = ResolveFusion(options);
         var candidateCount = options.MaxResults * 3; // Fetch more candidates for fusion
 
         LogHybridSearch(_logger, query);
@@ -69,7 +70,7 @@ public partial class QdrantHybridSearchService : IHybridSearchService
         LogSearchResults(_logger, vectorResults.Count, bm25Results.Count);
 
         // Fuse results using RRF
-        var fusedResults = FuseResultsRRF(vectorResults, bm25Results, options);
+        var fusedResults = FuseResultsRRF(vectorResults, bm25Results, fusion);
 
         return fusedResults.Take(options.MaxResults).ToList();
     }
@@ -202,12 +203,29 @@ public partial class QdrantHybridSearchService : IHybridSearchService
     /// <summary>
     /// Fuses vector and BM25 results using Reciprocal Rank Fusion (RRF).
     /// </summary>
+    /// <summary>
+    /// Fills the fusion values the caller left unset with this service's fixed defaults (RRF, 0.7 / 0.3).
+    /// </summary>
+    private static AppliedFusion ResolveFusion(HybridSearchOptions options)
+    {
+        var method = options.FusionMethod ?? FusionMethod.RRF;
+        // TODO(FluxIndex 0.80.0): fuse with the shared implementation so every method is honoured here too.
+        if (method != FusionMethod.RRF)
+            throw new NotSupportedException(
+                $"QdrantHybridSearchService fuses with RRF only; FusionMethod.{method} was requested.");
+
+        var selectedBy = options.FusionMethod is null || options.VectorWeight is null || options.SparseWeight is null
+            ? FusionSelection.ServiceDefault
+            : FusionSelection.Caller;
+        return new AppliedFusion(method, options.VectorWeight ?? 0.7, options.SparseWeight ?? 0.3, options.RrfK, selectedBy);
+    }
+
     private static List<HybridSearchResult> FuseResultsRRF(
         List<DocumentChunk> vectorResults,
         List<KeywordSearchResult> bm25Results,
-        HybridSearchOptions options)
+        AppliedFusion fusion)
     {
-        var k = options.RrfK;
+        var k = fusion.RrfK;
         var scoreMap = new Dictionary<string, (double vectorScore, double bm25Score, int vectorRank, int bm25Rank, DocumentChunk chunk, IReadOnlyList<string> matchedTerms)>();
 
         // Add vector results
@@ -239,7 +257,7 @@ public partial class QdrantHybridSearchService : IHybridSearchService
             {
                 var vectorRrfScore = kv.Value.vectorRank > 0 ? 1.0 / (k + kv.Value.vectorRank) : 0;
                 var bm25RrfScore = kv.Value.bm25Rank > 0 ? 1.0 / (k + kv.Value.bm25Rank) : 0;
-                var fusedScore = options.VectorWeight * vectorRrfScore + options.SparseWeight * bm25RrfScore;
+                var fusedScore = fusion.VectorWeight * vectorRrfScore + fusion.SparseWeight * bm25RrfScore;
 
                 var source = (kv.Value.vectorRank > 0, kv.Value.bm25Rank > 0) switch
                 {
@@ -262,7 +280,7 @@ public partial class QdrantHybridSearchService : IHybridSearchService
                     SparseScore = kv.Value.bm25Score,
                     VectorRank = kv.Value.vectorRank,
                     SparseRank = kv.Value.bm25Rank,
-                    FusionMethod = FusionMethod.RRF,
+                    Fusion = fusion,
                     Source = source,
                     Confidence = confidence,
                     MatchedTerms = kv.Value.matchedTerms

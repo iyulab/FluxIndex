@@ -181,7 +181,10 @@ public class HybridSearchQuantizationTests
             UseQuantizedSearch = true,
             QuantizedCandidateMultiplier = 3,
             QuantizedMinScore = 0.0f,
-            EnableAutoStrategy = false
+            // Fix the fusion so these tests measure quantization, not the per-query heuristic.
+            FusionMethod = FusionMethod.RelativeScoreFusion,
+            VectorWeight = 0.7,
+            SparseWeight = 0.3
         };
 
         // Act
@@ -232,7 +235,10 @@ public class HybridSearchQuantizationTests
         var options = new HybridSearchOptions
         {
             UseQuantizedSearch = false, // Disabled
-            EnableAutoStrategy = false
+            // Fix the fusion so these tests measure quantization, not the per-query heuristic.
+            FusionMethod = FusionMethod.RelativeScoreFusion,
+            VectorWeight = 0.7,
+            SparseWeight = 0.3
         };
 
         // Act
@@ -294,7 +300,10 @@ public class HybridSearchQuantizationTests
         var options = new HybridSearchOptions
         {
             UseQuantizedSearch = true,
-            EnableAutoStrategy = false
+            // Fix the fusion so these tests measure quantization, not the per-query heuristic.
+            FusionMethod = FusionMethod.RelativeScoreFusion,
+            VectorWeight = 0.7,
+            SparseWeight = 0.3
         };
 
         // Act
@@ -352,7 +361,10 @@ public class HybridSearchQuantizationTests
         {
             UseQuantizedSearch = true,
             QuantizedCandidateMultiplier = 5, // Custom multiplier
-            EnableAutoStrategy = false
+            // Fix the fusion so these tests measure quantization, not the per-query heuristic.
+            FusionMethod = FusionMethod.RelativeScoreFusion,
+            VectorWeight = 0.7,
+            SparseWeight = 0.3
         };
 
         // Act
@@ -408,7 +420,10 @@ public class HybridSearchQuantizationTests
         {
             UseQuantizedSearch = true,
             QuantizedMinScore = 0.5f, // Custom min score
-            EnableAutoStrategy = false
+            // Fix the fusion so these tests measure quantization, not the per-query heuristic.
+            FusionMethod = FusionMethod.RelativeScoreFusion,
+            VectorWeight = 0.7,
+            SparseWeight = 0.3
         };
 
         // Act

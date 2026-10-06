@@ -30,20 +30,20 @@ public class HybridSearchOptionsMapperTests
         core.MaxResults.Should().Be(25);
         core.VectorOptions.MinScore.Should().BeApproximately(0.15, 0.0001, "MinSimilarity is a floor on the vector leg");
         core.MinFusedScore.Should().Be(0, "a similarity-sized value compared with the fused score drops every result");
-        core.EnableAutoStrategy.Should().BeFalse("the caller named the weights, so the service must not replace them");
+        core.FusionMethod.Should().NotBeNull("the caller named the weights and the fusion, so nothing is left for the service to replace");
     }
 
     [Fact]
-    public void FromSearchOptions_WithPlainSearchOptions_UsesDefaultWeights()
+    public void FromSearchOptions_WithPlainSearchOptions_LeavesFusionToTheService()
     {
         var options = new SearchOptions { TopK = 10, MinSimilarity = 0.0f };
 
         var core = HybridSearchOptionsMapper.FromSearchOptions(options);
 
-        core.VectorWeight.Should().BeApproximately(HybridSearchOptionsMapper.DefaultVectorWeight, 0.0001);
-        core.SparseWeight.Should().BeApproximately(HybridSearchOptionsMapper.DefaultSparseWeight, 0.0001);
+        core.VectorWeight.Should().BeNull("plain options name no weights, so the service chooses them per query");
+        core.SparseWeight.Should().BeNull();
+        core.FusionMethod.Should().BeNull();
         core.MaxResults.Should().Be(10);
-        core.EnableAutoStrategy.Should().BeTrue("plain options name no weights, so the service may choose them per query");
     }
 
     [Fact]

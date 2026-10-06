@@ -95,22 +95,8 @@ public partial class HybridSearchService : IHybridSearchService
 
         try
         {
-            // 1. Dynamic Alpha Tuning (DAT) 적용 (우선)
-            if (options.EnableDynamicAlphaTuning && _dynamicFusion != null)
-            {
-                var datConfig = await _dynamicFusion.CalculateDynamicWeightsAsync(query, cancellationToken);
-                options = ApplyDynamicFusionConfiguration(options, datConfig);
-                if (_logger.IsEnabled(LogLevel.Information))
-                    LogHybridSearch15(_logger, datConfig.VectorWeight, datConfig.SparseWeight, datConfig.RecommendedFusion, datConfig.QueryType);
-            }
-            // 2. 검색 전략 자동 선택 (DAT 미적용 시 폴백)
-            else if (options.EnableAutoStrategy)
-            {
-                var strategy = await RecommendSearchStrategyAsync(query, cancellationToken);
-                options = ApplySearchStrategy(options, strategy);
-                if (_logger.IsEnabled(LogLevel.Information))
-                    LogHybridSearch14(_logger, strategy.Type);
-            }
+            // 1. 융합 결정 — 호출자가 지정한 값은 그대로, 비운 값만 DAT 또는 쿼리 휴리스틱이 채운다
+            (options, var fusion) = await ResolveFusionAsync(query, options, cancellationToken);
 
             // 2. 병렬로 벡터 검색과 키워드 검색 실행
             var vectorTask = ExecuteVectorSearchAsync(query, options, cancellationToken);
@@ -124,7 +110,7 @@ public partial class HybridSearchService : IHybridSearchService
             LogHybridSearch13(_logger, vectorResults.Count, sparseResults.Count);
 
             // 3. 결과 융합
-            var fusedResults = await FuseSearchResultsAsync(vectorResults, sparseResults, options, cancellationToken);
+            var fusedResults = FuseSearchResults(vectorResults, sparseResults, options, fusion);
 
             stopwatch.Stop();
             LogHybridSearch12(_logger, fusedResults.Count, stopwatch.ElapsedMilliseconds);
@@ -165,7 +151,7 @@ public partial class HybridSearchService : IHybridSearchService
             {
                 var stopwatch = Stopwatch.StartNew();
                 var results = await SearchAsync(query, options, cancellationToken);
-                var strategy = options.EnableAutoStrategy
+                var strategy = LeavesFusionToService(options)
                     ? await RecommendSearchStrategyAsync(query, cancellationToken)
                     : new SearchStrategy { Type = SearchStrategyType.Balanced };
 
@@ -442,33 +428,32 @@ public partial class HybridSearchService : IHybridSearchService
         };
     }
 
-    private static async Task<IReadOnlyList<HybridSearchResult>> FuseSearchResultsAsync(
+    private static ReadOnlyCollection<HybridSearchResult> FuseSearchResults(
         IReadOnlyList<VectorSearchResult> vectorResults,
         IReadOnlyList<SparseSearchResult> sparseResults,
         HybridSearchOptions options,
-        CancellationToken cancellationToken)
+        AppliedFusion fusion)
     {
-        await Task.CompletedTask; // 비동기 인터페이스 준수
-
-        return options.FusionMethod switch
+        return fusion.Method switch
         {
-            FusionMethod.RRF => FuseWithRRF(vectorResults, sparseResults, options),
-            FusionMethod.WeightedSum => FuseWithWeightedSum(vectorResults, sparseResults, options),
-            FusionMethod.Product => FuseWithProduct(vectorResults, sparseResults, options),
-            FusionMethod.Maximum => FuseWithMaximum(vectorResults, sparseResults, options),
-            FusionMethod.HarmonicMean => FuseWithHarmonicMean(vectorResults, sparseResults, options),
-            FusionMethod.RelativeScoreFusion => FuseWithRelativeScoreFusion(vectorResults, sparseResults, options),
-            _ => FuseWithRelativeScoreFusion(vectorResults, sparseResults, options) // Default to RSF for better reranking
+            FusionMethod.RRF => FuseWithRRF(vectorResults, sparseResults, options, fusion),
+            FusionMethod.WeightedSum => FuseWithWeightedSum(vectorResults, sparseResults, options, fusion),
+            FusionMethod.Product => FuseWithProduct(vectorResults, sparseResults, options, fusion),
+            FusionMethod.Maximum => FuseWithMaximum(vectorResults, sparseResults, options, fusion),
+            FusionMethod.HarmonicMean => FuseWithHarmonicMean(vectorResults, sparseResults, options, fusion),
+            FusionMethod.RelativeScoreFusion => FuseWithRelativeScoreFusion(vectorResults, sparseResults, options, fusion),
+            _ => FuseWithRelativeScoreFusion(vectorResults, sparseResults, options, fusion) // Default to RSF for better reranking
         };
     }
 
     private static ReadOnlyCollection<HybridSearchResult> FuseWithRRF(
         IReadOnlyList<VectorSearchResult> vectorResults,
         IReadOnlyList<SparseSearchResult> sparseResults,
-        HybridSearchOptions options)
+        HybridSearchOptions options,
+        AppliedFusion fusion)
     {
         var fusedResults = new Dictionary<string, HybridSearchResult>();
-        var k = options.RrfK;
+        var k = fusion.RrfK;
 
         // 벡터 결과 처리
         for (int i = 0; i < vectorResults.Count; i++)
@@ -479,12 +464,12 @@ public partial class HybridSearchService : IHybridSearchService
             fusedResults[result.DocumentChunk.Id] = new HybridSearchResult
             {
                 Chunk = result.DocumentChunk,
-                FusedScore = rrfScore * options.VectorWeight,
+                FusedScore = rrfScore * fusion.VectorWeight,
                 VectorScore = result.Score,
                 SparseScore = 0.0,
                 VectorRank = i + 1,
                 SparseRank = int.MaxValue,
-                FusionMethod = FusionMethod.RRF,
+                Fusion = fusion,
                 Source = SearchSource.Vector,
                 MatchedTerms = Array.Empty<string>()
             };
@@ -501,7 +486,7 @@ public partial class HybridSearchService : IHybridSearchService
                 // 기존 결과에 융합
                 fusedResults[result.Chunk.Id] = existing with
                 {
-                    FusedScore = existing.FusedScore + (rrfScore * options.SparseWeight),
+                    FusedScore = existing.FusedScore + (rrfScore * fusion.SparseWeight),
                     SparseScore = result.Score,
                     SparseRank = i + 1,
                     Source = SearchSource.Both,
@@ -514,12 +499,12 @@ public partial class HybridSearchService : IHybridSearchService
                 fusedResults[result.Chunk.Id] = new HybridSearchResult
                 {
                     Chunk = result.Chunk,
-                    FusedScore = rrfScore * options.SparseWeight,
+                    FusedScore = rrfScore * fusion.SparseWeight,
                     VectorScore = 0.0,
                     SparseScore = result.Score,
                     VectorRank = int.MaxValue,
                     SparseRank = i + 1,
-                    FusionMethod = FusionMethod.RRF,
+                    Fusion = fusion,
                     Source = SearchSource.Sparse,
                     MatchedTerms = result.MatchedTerms
                 };
@@ -540,7 +525,8 @@ public partial class HybridSearchService : IHybridSearchService
     private static ReadOnlyCollection<HybridSearchResult> FuseWithWeightedSum(
         IReadOnlyList<VectorSearchResult> vectorResults,
         IReadOnlyList<SparseSearchResult> sparseResults,
-        HybridSearchOptions options)
+        HybridSearchOptions options,
+        AppliedFusion fusion)
     {
         var fusedResults = new Dictionary<string, HybridSearchResult>();
 
@@ -553,7 +539,7 @@ public partial class HybridSearchService : IHybridSearchService
         {
             var result = vectorResults[i];
             var normalizedScore = result.Score / maxVectorScore;
-            var weightedScore = normalizedScore * options.VectorWeight;
+            var weightedScore = normalizedScore * fusion.VectorWeight;
 
             fusedResults[result.DocumentChunk.Id] = new HybridSearchResult
             {
@@ -563,7 +549,7 @@ public partial class HybridSearchService : IHybridSearchService
                 SparseScore = 0.0,
                 VectorRank = i + 1,
                 SparseRank = int.MaxValue,
-                FusionMethod = FusionMethod.WeightedSum,
+                Fusion = fusion,
                 Source = SearchSource.Vector,
                 MatchedTerms = Array.Empty<string>()
             };
@@ -574,7 +560,7 @@ public partial class HybridSearchService : IHybridSearchService
         {
             var result = sparseResults[i];
             var normalizedScore = result.Score / maxSparseScore;
-            var weightedScore = normalizedScore * options.SparseWeight;
+            var weightedScore = normalizedScore * fusion.SparseWeight;
 
             if (fusedResults.TryGetValue(result.Chunk.Id, out var existing))
             {
@@ -597,7 +583,7 @@ public partial class HybridSearchService : IHybridSearchService
                     SparseScore = result.Score,
                     VectorRank = int.MaxValue,
                     SparseRank = i + 1,
-                    FusionMethod = FusionMethod.WeightedSum,
+                    Fusion = fusion,
                     Source = SearchSource.Sparse,
                     MatchedTerms = result.MatchedTerms
                 };
@@ -610,7 +596,8 @@ public partial class HybridSearchService : IHybridSearchService
     private static ReadOnlyCollection<HybridSearchResult> FuseWithProduct(
         IReadOnlyList<VectorSearchResult> vectorResults,
         IReadOnlyList<SparseSearchResult> sparseResults,
-        HybridSearchOptions options)
+        HybridSearchOptions options,
+        AppliedFusion fusion)
     {
         // 곱셈 융합은 양쪽 모두에서 매칭된 결과만 유지
         var fusedResults = new List<HybridSearchResult>();
@@ -634,7 +621,7 @@ public partial class HybridSearchService : IHybridSearchService
                 SparseScore = sparseResult.Score,
                 VectorRank = vectorResults.ToList().IndexOf(vectorResult) + 1,
                 SparseRank = sparseResults.ToList().IndexOf(sparseResult) + 1,
-                FusionMethod = FusionMethod.Product,
+                Fusion = fusion,
                 Source = SearchSource.Both,
                 MatchedTerms = sparseResult.MatchedTerms
             });
@@ -646,7 +633,8 @@ public partial class HybridSearchService : IHybridSearchService
     private static ReadOnlyCollection<HybridSearchResult> FuseWithMaximum(
         IReadOnlyList<VectorSearchResult> vectorResults,
         IReadOnlyList<SparseSearchResult> sparseResults,
-        HybridSearchOptions options)
+        HybridSearchOptions options,
+        AppliedFusion fusion)
     {
         var fusedResults = new Dictionary<string, HybridSearchResult>();
 
@@ -662,7 +650,7 @@ public partial class HybridSearchService : IHybridSearchService
 
             var vectorScore = vectorResult?.Score ?? 0.0;
             var sparseScore = sparseResult?.Score ?? 0.0;
-            var maxScore = Math.Max(vectorScore * options.VectorWeight, sparseScore * options.SparseWeight);
+            var maxScore = Math.Max(vectorScore * fusion.VectorWeight, sparseScore * fusion.SparseWeight);
 
             var chunk = vectorResult?.DocumentChunk ?? sparseResult!.Chunk;
             var source = (vectorResult != null && sparseResult != null) ? SearchSource.Both :
@@ -676,7 +664,7 @@ public partial class HybridSearchService : IHybridSearchService
                 SparseScore = sparseScore,
                 VectorRank = vectorResult != null ? vectorResults.ToList().IndexOf(vectorResult) + 1 : int.MaxValue,
                 SparseRank = sparseResult != null ? sparseResults.ToList().IndexOf(sparseResult) + 1 : int.MaxValue,
-                FusionMethod = FusionMethod.Maximum,
+                Fusion = fusion,
                 Source = source,
                 MatchedTerms = sparseResult?.MatchedTerms ?? Array.Empty<string>()
             };
@@ -688,7 +676,8 @@ public partial class HybridSearchService : IHybridSearchService
     private static ReadOnlyCollection<HybridSearchResult> FuseWithHarmonicMean(
         IReadOnlyList<VectorSearchResult> vectorResults,
         IReadOnlyList<SparseSearchResult> sparseResults,
-        HybridSearchOptions options)
+        HybridSearchOptions options,
+        AppliedFusion fusion)
     {
         // 조화평균은 양쪽 모두에서 매칭된 결과만 유지
         var fusedResults = new List<HybridSearchResult>();
@@ -700,8 +689,8 @@ public partial class HybridSearchService : IHybridSearchService
             var vectorResult = vectorDict[chunkId];
             var sparseResult = sparseDict[chunkId];
 
-            var vectorWeighted = vectorResult.Score * options.VectorWeight;
-            var sparseWeighted = sparseResult.Score * options.SparseWeight;
+            var vectorWeighted = vectorResult.Score * fusion.VectorWeight;
+            var sparseWeighted = sparseResult.Score * fusion.SparseWeight;
 
             // 조화평균 계산
             var harmonicMean = (vectorWeighted + sparseWeighted) > 0
@@ -716,7 +705,7 @@ public partial class HybridSearchService : IHybridSearchService
                 SparseScore = sparseResult.Score,
                 VectorRank = vectorResults.ToList().IndexOf(vectorResult) + 1,
                 SparseRank = sparseResults.ToList().IndexOf(sparseResult) + 1,
-                FusionMethod = FusionMethod.HarmonicMean,
+                Fusion = fusion,
                 Source = SearchSource.Both,
                 MatchedTerms = sparseResult.MatchedTerms
             });
@@ -728,7 +717,8 @@ public partial class HybridSearchService : IHybridSearchService
     private static ReadOnlyCollection<HybridSearchResult> FuseWithRelativeScoreFusion(
         IReadOnlyList<VectorSearchResult> vectorResults,
         IReadOnlyList<SparseSearchResult> sparseResults,
-        HybridSearchOptions options)
+        HybridSearchOptions options,
+        AppliedFusion fusion)
     {
         // Relative Score Fusion (RSF) preserves score magnitude information
         // by normalizing scores within each retriever before fusion
@@ -757,7 +747,7 @@ public partial class HybridSearchService : IHybridSearchService
         {
             var result = vectorResults[i];
             var normalizedScore = (result.Score - vectorMin) / vectorRange;
-            var weightedScore = normalizedScore * options.VectorWeight;
+            var weightedScore = normalizedScore * fusion.VectorWeight;
 
             fusedResults[result.DocumentChunk.Id] = new HybridSearchResult
             {
@@ -767,7 +757,7 @@ public partial class HybridSearchService : IHybridSearchService
                 SparseScore = 0.0,
                 VectorRank = i + 1,
                 SparseRank = int.MaxValue,
-                FusionMethod = FusionMethod.RelativeScoreFusion,
+                Fusion = fusion,
                 Source = SearchSource.Vector,
                 MatchedTerms = Array.Empty<string>(),
                 Confidence = CalculateConfidence(normalizedScore, 0.0, SearchSource.Vector)
@@ -779,13 +769,13 @@ public partial class HybridSearchService : IHybridSearchService
         {
             var result = sparseResults[i];
             var normalizedScore = (result.Score - sparseMin) / sparseRange;
-            var weightedScore = normalizedScore * options.SparseWeight;
+            var weightedScore = normalizedScore * fusion.SparseWeight;
 
             if (fusedResults.TryGetValue(result.Chunk.Id, out var existing))
             {
                 // Combine scores for results found in both
                 var vectorNormalized = (existing.VectorScore - vectorMin) / vectorRange;
-                var combinedScore = vectorNormalized * options.VectorWeight + weightedScore;
+                var combinedScore = vectorNormalized * fusion.VectorWeight + weightedScore;
 
                 fusedResults[result.Chunk.Id] = existing with
                 {
@@ -807,7 +797,7 @@ public partial class HybridSearchService : IHybridSearchService
                     SparseScore = result.Score,
                     VectorRank = int.MaxValue,
                     SparseRank = i + 1,
-                    FusionMethod = FusionMethod.RelativeScoreFusion,
+                    Fusion = fusion,
                     Source = SearchSource.Sparse,
                     MatchedTerms = result.MatchedTerms,
                     Confidence = CalculateConfidence(0.0, normalizedScore, SearchSource.Sparse)
@@ -913,30 +903,55 @@ public partial class HybridSearchService : IHybridSearchService
         };
     }
 
-    private static HybridSearchOptions ApplySearchStrategy(HybridSearchOptions options, SearchStrategy strategy)
-    {
-        return options with
-        {
-            FusionMethod = strategy.RecommendedFusion,
-            VectorWeight = strategy.RecommendedWeights.VectorWeight,
-            SparseWeight = strategy.RecommendedWeights.SparseWeight
-        };
-    }
+    /// <summary>
+    /// True when the caller left any of the fusion method or the two weights for the service to choose.
+    /// </summary>
+    private static bool LeavesFusionToService(HybridSearchOptions options) =>
+        options.FusionMethod is null || options.VectorWeight is null || options.SparseWeight is null;
 
     /// <summary>
-    /// Applies Dynamic Alpha Tuning (DAT) configuration to search options.
+    /// Decides the fusion for one query. A value the caller set is used as is; only the unset ones are filled — by
+    /// Dynamic Alpha Tuning when it is enabled and registered, otherwise by the query heuristic. The returned options
+    /// carry the DAT quantization recommendation, if any.
     /// </summary>
-    private static HybridSearchOptions ApplyDynamicFusionConfiguration(
+    private async Task<(HybridSearchOptions Options, AppliedFusion Fusion)> ResolveFusionAsync(
+        string query,
         HybridSearchOptions options,
-        DynamicFusionConfiguration datConfig)
+        CancellationToken cancellationToken)
     {
-        return options with
+        if (!LeavesFusionToService(options))
         {
-            VectorWeight = datConfig.VectorWeight,
-            SparseWeight = datConfig.SparseWeight,
-            FusionMethod = datConfig.RecommendedFusion,
-            UseQuantizedSearch = datConfig.UseQuantizedSearch || options.UseQuantizedSearch
-        };
+            return (options, new AppliedFusion(
+                options.FusionMethod!.Value, options.VectorWeight!.Value, options.SparseWeight!.Value, options.RrfK,
+                FusionSelection.Caller));
+        }
+
+        if (options.EnableDynamicAlphaTuning && _dynamicFusion != null)
+        {
+            var datConfig = await _dynamicFusion.CalculateDynamicWeightsAsync(query, cancellationToken);
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogHybridSearch15(_logger, datConfig.VectorWeight, datConfig.SparseWeight, datConfig.RecommendedFusion, datConfig.QueryType);
+
+            return (
+                options with { UseQuantizedSearch = datConfig.UseQuantizedSearch || options.UseQuantizedSearch },
+                new AppliedFusion(
+                    options.FusionMethod ?? datConfig.RecommendedFusion,
+                    options.VectorWeight ?? datConfig.VectorWeight,
+                    options.SparseWeight ?? datConfig.SparseWeight,
+                    options.RrfK,
+                    FusionSelection.DynamicAlphaTuning));
+        }
+
+        var strategy = await RecommendSearchStrategyAsync(query, cancellationToken);
+        if (_logger.IsEnabled(LogLevel.Information))
+            LogHybridSearch14(_logger, strategy.Type);
+
+        return (options, new AppliedFusion(
+            options.FusionMethod ?? strategy.RecommendedFusion,
+            options.VectorWeight ?? strategy.RecommendedWeights.VectorWeight,
+            options.SparseWeight ?? strategy.RecommendedWeights.SparseWeight,
+            options.RrfK,
+            FusionSelection.QueryHeuristic));
     }
 
     private static FluxIndex.Core.Domain.Models.QueryType DetermineQueryType(string query)

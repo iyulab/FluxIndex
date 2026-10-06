@@ -52,8 +52,7 @@ public class IterativeRetrievalServiceTests
             },
             FusedScore = score,
             VectorScore = score * 0.7,
-            SparseScore = score * 0.3,
-            FusionMethod = FusionMethod.RelativeScoreFusion
+            SparseScore = score * 0.3
         };
     }
 

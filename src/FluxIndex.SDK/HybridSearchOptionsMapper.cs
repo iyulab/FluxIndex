@@ -7,11 +7,6 @@ namespace FluxIndex.SDK;
 /// </summary>
 internal static class HybridSearchOptionsMapper
 {
-    /// <summary>Weights used when the caller passes plain <see cref="SearchOptions"/>.</summary>
-    internal const double DefaultVectorWeight = 0.7;
-
-    internal const double DefaultSparseWeight = 0.3;
-
     public static Core.Domain.Models.HybridSearchOptions ToCore(HybridSearchOptions sdkOptions)
     {
         var coreOptions = new Core.Domain.Models.HybridSearchOptions
@@ -20,10 +15,8 @@ internal static class HybridSearchOptionsMapper
             VectorWeight = sdkOptions.VectorWeight,
             SparseWeight = sdkOptions.KeywordWeight,
             Filters = ToCoreFilters(sdkOptions),
-            // The caller named the weights and the fusion, so the service must not re-derive them from the
-            // query: with auto strategy on (its default) it replaces all three and these settings are dead.
-            EnableAutoStrategy = false,
-            // An explicit fusion method wins over the two-value strategy, which cannot name the others.
+            // The SDK options always name the weights and the fusion, so all three are set and the service uses
+            // them as given. An explicit fusion method wins over the two-value strategy, which cannot name the others.
             FusionMethod = sdkOptions.FusionMethod ?? sdkOptions.RerankingStrategy switch
             {
                 RerankingStrategy.WeightedAverage => Core.Domain.Models.FusionMethod.WeightedSum,
@@ -53,8 +46,8 @@ internal static class HybridSearchOptionsMapper
 
     /// <summary>
     /// Core options for a search driven by <see cref="SearchOptions"/>. When the caller actually
-    /// passed a <see cref="HybridSearchOptions"/>, its weights and fusion strategy are honoured —
-    /// they used to be discarded in favour of hardcoded 0.7/0.3.
+    /// passed a <see cref="HybridSearchOptions"/>, its weights and fusion strategy are honoured;
+    /// plain options name neither, so both stay unset and the service chooses them per query.
     /// </summary>
     public static Core.Domain.Models.HybridSearchOptions FromSearchOptions(SearchOptions options)
     {
@@ -63,8 +56,6 @@ internal static class HybridSearchOptionsMapper
             : new Core.Domain.Models.HybridSearchOptions
             {
                 MaxResults = options.TopK,
-                VectorWeight = DefaultVectorWeight,
-                SparseWeight = DefaultSparseWeight,
                 Filters = ToCoreFilters(options)
             };
 
