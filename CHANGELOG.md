@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.80.0] - Unreleased
+## [0.80.0] - 2026-10-06
 
 ### Changed
 - **Breaking — a fusion method or weight you set on `HybridSearchOptions` is now used as given.** `FusionMethod`,
