@@ -64,10 +64,12 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 - Re-pinned sibling package(s) `FileFlux` 0.39.0 -> 0.39.1.
 
 ### Fixed
-- **Cancelling a call now cancels it.** 108 method(s) that take a `CancellationToken` caught every exception to
+- **Breaking** (released as a patch) — **cancelling a call now cancels it.** 108 method(s) that take a `CancellationToken` caught every exception to
   return a fallback (`null`, an empty result, a failure value) or to log and continue, and treated the caller's own
   cancellation the same way. They now let the caller's `OperationCanceledException` through; other failures behave
   as before. For example, hybrid search degraded a cancelled vector or keyword leg to «no matches», so a cancelled caller received an empty result; the RAG services, rerankers, SDK context and indexer, storage providers and MCP tools did the same.
+  Migration: code that relied on a cancelled call returning `null`, an empty result or a failure value now
+  receives `OperationCanceledException` — catch it where a cancellation is expected.
 
 ## [0.77.0] - 2026-10-06
 
