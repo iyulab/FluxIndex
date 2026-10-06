@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.79.0] - Unreleased
+## [0.79.0] - 2026-10-06
 
 ### Fixed
 - **A self-hosted Qdrant set up through the SDK builder gets `QdrantUseHttps` and `QdrantApiKey`.** Only the Qdrant Cloud
