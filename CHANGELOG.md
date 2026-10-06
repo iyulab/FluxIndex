@@ -22,6 +22,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 - With Dynamic Alpha Tuning on and all three values set, the tuning service is no longer called (it has nothing left to
   choose).
 
+### Fixed
+- **Qdrant's native hybrid search applies the fusion method you set.** `QdrantHybridSearchService` fused with RRF
+  whatever `FusionMethod` said; it now fuses through the same implementation as the in-process hybrid service (new public
+  `HybridFusion.Fuse`), so every method means the same thing whichever service is registered. Values you leave unset are
+  filled with its defaults (RRF, 0.7 / 0.3) and reported as `SelectedBy = ServiceDefault`.
+- **Every fused row carries a confidence.** Only relative-score fusion set `HybridSearchResult.Confidence` (so
+  `IsHighConfidence` was always false under the other methods); it is now derived the same way for every method.
+
 ## [0.79.1] - 2026-10-06
 
 ### Fixed

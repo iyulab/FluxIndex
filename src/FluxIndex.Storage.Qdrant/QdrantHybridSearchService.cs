@@ -69,10 +69,13 @@ public partial class QdrantHybridSearchService : IHybridSearchService
 
         LogSearchResults(_logger, vectorResults.Count, bm25Results.Count);
 
-        // Fuse results using RRF
-        var fusedResults = FuseResultsRRF(vectorResults, bm25Results, fusion);
-
-        return fusedResults.Take(options.MaxResults).ToList();
+        // Same fusion as the in-process hybrid service, so a FusionMethod means the same thing whichever is registered.
+        return HybridFusion.Fuse(
+            vectorResults.Select((chunk, i) => new VectorSearchResult { DocumentChunk = chunk, Score = chunk.Score ?? 0, Rank = i + 1 }).ToList(),
+            bm25Results.Select(r => new SparseSearchResult { Chunk = r.Chunk, Score = r.Score, MatchedTerms = r.MatchedTerms }).ToList(),
+            fusion,
+            options.MaxResults,
+            options.MinFusedScore);
     }
 
     /// <inheritdoc/>
@@ -201,101 +204,15 @@ public partial class QdrantHybridSearchService : IHybridSearchService
     }
 
     /// <summary>
-    /// Fuses vector and BM25 results using Reciprocal Rank Fusion (RRF).
-    /// </summary>
-    /// <summary>
     /// Fills the fusion values the caller left unset with this service's fixed defaults (RRF, 0.7 / 0.3).
     /// </summary>
-    private static AppliedFusion ResolveFusion(HybridSearchOptions options)
+    internal static AppliedFusion ResolveFusion(HybridSearchOptions options)
     {
         var method = options.FusionMethod ?? FusionMethod.RRF;
-        // TODO(FluxIndex 0.80.0): fuse with the shared implementation so every method is honoured here too.
-        if (method != FusionMethod.RRF)
-            throw new NotSupportedException(
-                $"QdrantHybridSearchService fuses with RRF only; FusionMethod.{method} was requested.");
-
         var selectedBy = options.FusionMethod is null || options.VectorWeight is null || options.SparseWeight is null
             ? FusionSelection.ServiceDefault
             : FusionSelection.Caller;
         return new AppliedFusion(method, options.VectorWeight ?? 0.7, options.SparseWeight ?? 0.3, options.RrfK, selectedBy);
-    }
-
-    private static List<HybridSearchResult> FuseResultsRRF(
-        List<DocumentChunk> vectorResults,
-        List<KeywordSearchResult> bm25Results,
-        AppliedFusion fusion)
-    {
-        var k = fusion.RrfK;
-        var scoreMap = new Dictionary<string, (double vectorScore, double bm25Score, int vectorRank, int bm25Rank, DocumentChunk chunk, IReadOnlyList<string> matchedTerms)>();
-
-        // Add vector results
-        for (int i = 0; i < vectorResults.Count; i++)
-        {
-            var chunk = vectorResults[i];
-            scoreMap[chunk.Id] = (chunk.Score ?? 0, 0, i + 1, 0, chunk, Array.Empty<string>());
-        }
-
-        // Merge BM25 results
-        for (int i = 0; i < bm25Results.Count; i++)
-        {
-            var result = bm25Results[i];
-            var chunk = result.Chunk;
-
-            if (scoreMap.TryGetValue(chunk.Id, out var existing))
-            {
-                scoreMap[chunk.Id] = (existing.vectorScore, result.Score, existing.vectorRank, i + 1, existing.chunk, result.MatchedTerms);
-            }
-            else
-            {
-                scoreMap[chunk.Id] = (0, result.Score, 0, i + 1, chunk, result.MatchedTerms);
-            }
-        }
-
-        // Calculate final RRF scores
-        var fusedResults = scoreMap
-            .Select(kv =>
-            {
-                var vectorRrfScore = kv.Value.vectorRank > 0 ? 1.0 / (k + kv.Value.vectorRank) : 0;
-                var bm25RrfScore = kv.Value.bm25Rank > 0 ? 1.0 / (k + kv.Value.bm25Rank) : 0;
-                var fusedScore = fusion.VectorWeight * vectorRrfScore + fusion.SparseWeight * bm25RrfScore;
-
-                var source = (kv.Value.vectorRank > 0, kv.Value.bm25Rank > 0) switch
-                {
-                    (true, true) => SearchSource.Both,
-                    (true, false) => SearchSource.Vector,
-                    (false, true) => SearchSource.Sparse,
-                    _ => SearchSource.Vector
-                };
-
-                // Calculate confidence based on source agreement and score quality
-                var confidence = source == SearchSource.Both
-                    ? Math.Min(1.0, (kv.Value.vectorScore + kv.Value.bm25Score) / 2)
-                    : Math.Min(1.0, Math.Max(kv.Value.vectorScore, kv.Value.bm25Score) * 0.8);
-
-                return new HybridSearchResult
-                {
-                    Chunk = kv.Value.chunk,
-                    FusedScore = fusedScore,
-                    VectorScore = kv.Value.vectorScore,
-                    SparseScore = kv.Value.bm25Score,
-                    VectorRank = kv.Value.vectorRank,
-                    SparseRank = kv.Value.bm25Rank,
-                    Fusion = fusion,
-                    Source = source,
-                    Confidence = confidence,
-                    MatchedTerms = kv.Value.matchedTerms
-                };
-            })
-            .OrderByDescending(r => r.FusedScore)
-            .ToList();
-
-        // Assign final ranks
-        for (int i = 0; i < fusedResults.Count; i++)
-        {
-            fusedResults[i] = fusedResults[i] with { FusedRank = i + 1 };
-        }
-
-        return fusedResults;
     }
 
     #region LoggerMessage Definitions
