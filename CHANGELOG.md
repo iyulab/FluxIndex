@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.78.0] - Unreleased
+## [0.78.0] - 2026-10-06
 
 ### Changed
 - Re-pinned sibling package(s) `FluxGuard.Remote` 0.20.0 -> 0.21.0, `LMSupply.Embedder` 0.106.1 -> 0.107.0, `LMSupply.Generator` 0.106.1 -> 0.107.0, `LMSupply.Reranker` 0.106.1 -> 0.107.0, `WebFlux` 0.21.1 -> 0.22.0.
