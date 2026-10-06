@@ -5,6 +5,20 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.79.0] - Unreleased
+
+### Fixed
+- **A self-hosted Qdrant set up through the SDK builder gets `QdrantUseHttps` and `QdrantApiKey`.** Only the Qdrant Cloud
+  methods passed them on; a self-hosted server behind TLS or an API key was reached over plaintext gRPC without the key.
+  `AddQdrantStorage()` now copies every Qdrant setting from the builder options to the store.
+
+### Removed
+- **Breaking: SDK option members that nothing read are removed.** `EmbeddingOptions.ApiKey`, `ModelName`, `BatchSize`,
+  `MaxRetries`, `RetryDelay`, `EnableCache` and `ProviderSpecificOptions` (the SDK has no built-in OpenAI embedding provider -
+  register an `IEmbeddingService`, e.g. through the LMSupply or OpenAI-compatible integrations), and
+  `VectorStoreOptions.MaxConnections`, `ConnectionTimeout`, `ProviderSpecificOptions` and `QdrantHttpPort` (Qdrant is reached
+  over gRPC: `QdrantGrpcPort`). Setting them never changed anything; delete the assignments.
+
 ## [0.78.0] - 2026-10-06
 
 ### Changed

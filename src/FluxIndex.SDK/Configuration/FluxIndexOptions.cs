@@ -55,8 +55,6 @@ public class VectorStoreOptions
 {
     public string Provider { get; set; } = "PostgreSQL";
     public string ConnectionString { get; set; } = string.Empty;
-    public int MaxConnections { get; set; } = 10;
-    public TimeSpan ConnectionTimeout { get; set; } = TimeSpan.FromSeconds(30);
 
     /// <summary>
     /// Whether the storage package auto-initializes the vector store schema on Build()
@@ -67,12 +65,10 @@ public class VectorStoreOptions
     /// Currently honored by the PostgreSQL storage provider.
     /// </summary>
     public bool EnableAutoMigration { get; set; } = true;
-    public Dictionary<string, object> ProviderSpecificOptions { get; set; } = new();
 
     // Qdrant-specific options
     public string QdrantHost { get; set; } = "localhost";
     public int QdrantGrpcPort { get; set; } = 6334;
-    public int QdrantHttpPort { get; set; } = 6333;
     public string QdrantCollectionName { get; set; } = "fluxindex_chunks";
     public int QdrantVectorSize { get; set; } = EmbeddingDefaults.DefaultVectorDimension;
     public string? QdrantApiKey { get; set; }
@@ -92,13 +88,6 @@ public class VectorStoreOptions
 public class EmbeddingOptions
 {
     public string Provider { get; set; } = "OpenAI";
-    public string ApiKey { get; set; } = string.Empty;
-    public string ModelName { get; set; } = "text-embedding-3-small";
-    public int BatchSize { get; set; } = 100;
-    public int MaxRetries { get; set; } = 3;
-    public TimeSpan RetryDelay { get; set; } = TimeSpan.FromSeconds(1);
-    public bool EnableCache { get; set; } = true;
-    public Dictionary<string, object> ProviderSpecificOptions { get; set; } = new();
 }
 
 /// <summary>

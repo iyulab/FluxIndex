@@ -1,5 +1,6 @@
 using FluxIndex.Core.Constants;
 using FluxIndex.SDK;
+using FluxIndex.SDK.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace FluxIndex.Storage.Qdrant;
@@ -24,47 +25,31 @@ public static class FluxIndexContextBuilderExtensions
             if (vectorProvider != "qdrant")
                 return;
 
-            if (!string.IsNullOrEmpty(options.VectorStore.QdrantApiKey))
-            {
-                // Qdrant Cloud
-                if (options.VectorStore.QdrantNamingStrategy != "Fixed")
-                {
-                    services.AddQdrantCloudVectorStore(
-                        options.VectorStore.QdrantHost,
-                        options.VectorStore.QdrantApiKey,
-                        options.VectorStore.QdrantCollectionName);
-                }
-                else
-                {
-                    services.AddQdrantCloudVectorStore(
-                        options.VectorStore.QdrantHost,
-                        options.VectorStore.QdrantApiKey,
-                        options.VectorStore.QdrantCollectionName,
-                        options.VectorStore.QdrantVectorSize);
-                }
-            }
-            else
-            {
-                // Local Qdrant
-                if (options.VectorStore.QdrantNamingStrategy != "Fixed")
-                {
-                    services.AddQdrantVectorStore(
-                        options.VectorStore.QdrantHost,
-                        options.VectorStore.QdrantGrpcPort,
-                        options.VectorStore.QdrantCollectionName);
-                }
-                else
-                {
-                    services.AddQdrantVectorStore(
-                        options.VectorStore.QdrantHost,
-                        options.VectorStore.QdrantGrpcPort,
-                        options.VectorStore.QdrantCollectionName,
-                        options.VectorStore.QdrantVectorSize);
-                }
-            }
+            // Every Qdrant setting on the builder reaches the store: a self-hosted Qdrant behind TLS (QdrantUseHttps) or
+            // with an API key is configured the same way as Qdrant Cloud, whose builder methods set both.
+            services.AddQdrantVectorStore(qdrant => ApplyBuilderOptions(qdrant, options.VectorStore));
         });
 
         return builder;
+    }
+
+    /// <summary>Copies the builder's Qdrant settings onto the store options.</summary>
+    internal static void ApplyBuilderOptions(QdrantOptions qdrant, VectorStoreOptions store)
+    {
+        qdrant.Host = store.QdrantHost;
+        qdrant.GrpcPort = store.QdrantGrpcPort;
+        qdrant.ApiKey = string.IsNullOrEmpty(store.QdrantApiKey) ? null : store.QdrantApiKey;
+        qdrant.UseHttps = store.QdrantUseHttps;
+        qdrant.BaseCollectionName = store.QdrantCollectionName;
+        if (store.QdrantNamingStrategy == "Fixed")
+        {
+            qdrant.NamingStrategy = CollectionNamingStrategy.Fixed;
+            qdrant.VectorSize = store.QdrantVectorSize;
+        }
+        else
+        {
+            qdrant.NamingStrategy = CollectionNamingStrategy.ModelFingerprint;
+        }
     }
 
     /// <summary>
