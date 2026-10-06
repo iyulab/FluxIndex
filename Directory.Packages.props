@@ -73,7 +73,7 @@
   <ItemGroup>
     <PackageVersion Include="FileFlux" Version="0.39.1" />
     <PackageVersion Include="FluxCurator" Version="0.10.4" />
-    <PackageVersion Include="FluxImprover" Version="0.16.2" />
+    <PackageVersion Include="FluxImprover" Version="0.16.3" />
     <PackageVersion Include="WebFlux" Version="0.22.0" />
   </ItemGroup>
   <!-- Testing Packages (xUnit v3 / Microsoft.Testing.Platform) -->
