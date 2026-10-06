@@ -5,6 +5,15 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.79.1] - Unreleased
+
+### Fixed
+- **An API key set through the SDK builder always goes over TLS again.** 0.79.0 made `QdrantUseHttps` reach a self-hosted
+  Qdrant, but read it alone: a key set without `QdrantUseHttps = true` (which before 0.79.0 selected the Cloud registration
+  and forced https) went out over plaintext gRPC. A key now implies https; `QdrantUseHttps` adds https without a key.
+  (The 0.79.0 entry below says a key was sent in plaintext before 0.79.0 - it was not; only a key-less TLS server was
+  reached in plaintext.)
+
 ## [0.79.0] - 2026-10-06
 
 ### Fixed

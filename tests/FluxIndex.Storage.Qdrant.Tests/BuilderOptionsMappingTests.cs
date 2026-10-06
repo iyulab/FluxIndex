@@ -6,7 +6,7 @@ namespace FluxIndex.Storage.Qdrant.Tests;
 
 /// <summary>
 /// The builder's Qdrant settings reach the store options. A self-hosted Qdrant behind TLS used to get plaintext gRPC:
-/// <see cref="VectorStoreOptions.QdrantUseHttps"/> and an API key were honoured only on the Qdrant Cloud path.
+/// <see cref="VectorStoreOptions.QdrantUseHttps"/> was honoured only on the Qdrant Cloud path (which an API key selected).
 /// </summary>
 public class BuilderOptionsMappingTests
 {
@@ -37,5 +37,17 @@ public class BuilderOptionsMappingTests
         Assert.Equal(1024, qdrant.VectorSize);
         Assert.Null(qdrant.ApiKey);
         Assert.False(qdrant.UseHttps);
+    }
+
+    // A key selected the Cloud registration (https forced) before 0.79.0; it must not start going out in plaintext.
+    [Fact]
+    public void An_api_key_keeps_https_even_when_QdrantUseHttps_is_left_false()
+    {
+        var store = new VectorStoreOptions { QdrantApiKey = "k", QdrantUseHttps = false };
+        var qdrant = new QdrantOptions();
+
+        FluxIndexContextBuilderExtensions.ApplyBuilderOptions(qdrant, store);
+
+        Assert.True(qdrant.UseHttps);
     }
 }

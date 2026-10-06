@@ -39,7 +39,9 @@ public static class FluxIndexContextBuilderExtensions
         qdrant.Host = store.QdrantHost;
         qdrant.GrpcPort = store.QdrantGrpcPort;
         qdrant.ApiKey = string.IsNullOrEmpty(store.QdrantApiKey) ? null : store.QdrantApiKey;
-        qdrant.UseHttps = store.QdrantUseHttps;
+        // An API key always travels over TLS: before 0.79.0 a key selected the Cloud registration, which forces https,
+        // and a key must not start going out in plaintext because QdrantUseHttps was left at its default.
+        qdrant.UseHttps = store.QdrantUseHttps || qdrant.ApiKey is not null;
         qdrant.BaseCollectionName = store.QdrantCollectionName;
         if (store.QdrantNamingStrategy == "Fixed")
         {
