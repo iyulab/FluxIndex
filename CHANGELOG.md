@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.79.1] - Unreleased
+## [0.79.1] - 2026-10-06
 
 ### Fixed
 - **An API key set through the SDK builder always goes over TLS again.** 0.79.0 made `QdrantUseHttps` reach a self-hosted
