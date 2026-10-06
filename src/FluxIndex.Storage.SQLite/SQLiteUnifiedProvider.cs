@@ -79,25 +79,3 @@ public partial class SQLiteUnifiedProvider : IStorageProvider, IVectorCapable, I
 
     #endregion
 }
-
-/// <summary>
-/// Factory for creating SQLite unified provider with all available services.
-/// </summary>
-public static class SQLiteUnifiedProviderFactory
-{
-    /// <summary>
-    /// Creates a SQLite unified provider from the service provider.
-    /// </summary>
-    /// <param name="serviceProvider">The service provider.</param>
-    /// <returns>A configured SQLite unified provider.</returns>
-    public static SQLiteUnifiedProvider Create(IServiceProvider serviceProvider)
-    {
-        var vectorStore = serviceProvider.GetService(typeof(IVectorStore)) as IVectorStore
-            ?? throw new InvalidOperationException("No IVectorStore registered for SQLite.");
-
-        var semanticCache = serviceProvider.GetService(typeof(ISemanticCacheService)) as ISemanticCacheService;
-        var logger = serviceProvider.GetService(typeof(ILogger<SQLiteUnifiedProvider>)) as ILogger<SQLiteUnifiedProvider>;
-
-        return new SQLiteUnifiedProvider(vectorStore, semanticCache, logger);
-    }
-}

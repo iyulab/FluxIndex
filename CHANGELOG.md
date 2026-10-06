@@ -5,6 +5,12 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.78.0] - Unreleased
+
+### Removed
+- **Breaking: public types that nothing used are removed.** No code path in this library constructed, returned or accepted them, and no implementation existed where they were interfaces. Code that never named them is unaffected; code that did can delete the reference - there was no behaviour behind it.
+  Removed: `IExtractedImageRepository`, `ITextAnalysisService`, `CacheEvictionPolicy`, `EnrichmentRelationship`, `DetectedCommunity`; in the SDK `IndexedDocument`, `IndexingStatus`, `IndexingState`, `QualityAnalysisCompletedEventArgs`; and the static `Neo4jProviderFactory`, `PostgreSQLUnifiedProviderFactory`, `QdrantProviderFactory`, `SQLiteUnifiedProviderFactory` (register the providers through the `Add…` extensions).
+
 ## [0.77.1] - 2026-10-06
 
 ### Changed

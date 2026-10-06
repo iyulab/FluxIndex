@@ -482,60 +482,6 @@ public record ExtractedRelationship
 }
 
 /// <summary>
-/// Relationship with entity IDs (used during graph building).
-/// </summary>
-public record EnrichmentRelationship
-{
-    /// <summary>Temporary ID</summary>
-    public string Id { get; init; } = Guid.NewGuid().ToString();
-
-    /// <summary>Source entity ID</summary>
-    public required string SourceEntityId { get; init; }
-
-    /// <summary>Target entity ID</summary>
-    public required string TargetEntityId { get; init; }
-
-    /// <summary>Relationship type</summary>
-    public RelationType Type { get; init; }
-
-    /// <summary>Relationship label</summary>
-    public string Label { get; init; } = string.Empty;
-
-    /// <summary>Confidence score</summary>
-    public double Confidence { get; init; }
-
-    /// <summary>Evidence text</summary>
-    public string? Evidence { get; init; }
-
-    /// <summary>Source chunk IDs</summary>
-    public IReadOnlyList<string> ChunkIds { get; init; } = [];
-}
-
-/// <summary>
-/// Detected community from graph analysis (intermediate type before GraphCommunity).
-/// </summary>
-public record DetectedCommunity
-{
-    /// <summary>Temporary community ID</summary>
-    public required string Id { get; init; }
-
-    /// <summary>Community name/label</summary>
-    public required string Name { get; init; }
-
-    /// <summary>Entity IDs in this community</summary>
-    public IReadOnlyList<string> EntityIds { get; init; } = [];
-
-    /// <summary>Number of entities</summary>
-    public int Size { get; init; }
-
-    /// <summary>Hierarchy level (0 = top)</summary>
-    public int Level { get; init; }
-
-    /// <summary>Importance score</summary>
-    public double ImportanceScore { get; init; }
-}
-
-/// <summary>
 /// Result of entity extraction.
 /// </summary>
 public record EntityExtractionResult

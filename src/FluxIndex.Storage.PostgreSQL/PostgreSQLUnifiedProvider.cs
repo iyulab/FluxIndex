@@ -76,25 +76,3 @@ public partial class PostgreSQLUnifiedProvider : IStorageProvider, IVectorCapabl
 
     #endregion
 }
-
-/// <summary>
-/// Factory for creating PostgreSQL unified provider with all available services.
-/// </summary>
-public static class PostgreSQLUnifiedProviderFactory
-{
-    /// <summary>
-    /// Creates a PostgreSQL unified provider from the service provider.
-    /// </summary>
-    /// <param name="serviceProvider">The service provider.</param>
-    /// <returns>A configured PostgreSQL unified provider.</returns>
-    public static PostgreSQLUnifiedProvider Create(IServiceProvider serviceProvider)
-    {
-        var vectorStore = serviceProvider.GetService(typeof(IVectorStore)) as IVectorStore
-            ?? throw new InvalidOperationException("No IVectorStore registered for PostgreSQL.");
-
-        var semanticCache = serviceProvider.GetService(typeof(ISemanticCacheService)) as ISemanticCacheService;
-        var logger = serviceProvider.GetService(typeof(ILogger<PostgreSQLUnifiedProvider>)) as ILogger<PostgreSQLUnifiedProvider>;
-
-        return new PostgreSQLUnifiedProvider(vectorStore, semanticCache, logger);
-    }
-}

@@ -320,34 +320,3 @@ public class CacheOptimizationResult
     /// </summary>
     public List<string> Messages { get; set; } = new();
 }
-
-/// <summary>
-/// Cache eviction policies
-/// </summary>
-public enum CacheEvictionPolicy
-{
-    /// <summary>
-    /// Least Recently Used - evict oldest accessed entries
-    /// </summary>
-    LRU,
-
-    /// <summary>
-    /// Least Frequently Used - evict least accessed entries
-    /// </summary>
-    LFU,
-
-    /// <summary>
-    /// Time-based - evict based on expiration time
-    /// </summary>
-    TTL,
-
-    /// <summary>
-    /// Similarity-based - evict entries with lowest average similarity
-    /// </summary>
-    SimilarityBased,
-
-    /// <summary>
-    /// Custom eviction logic
-    /// </summary>
-    Custom
-}

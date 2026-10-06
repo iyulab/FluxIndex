@@ -81,22 +81,6 @@ public class IndexingProgress
 }
 
 /// <summary>
-/// 인덱싱 상태
-/// </summary>
-public class IndexingStatus
-{
-    public string JobId { get; set; } = string.Empty;
-    public IndexingState State { get; set; }
-    public float ProgressPercentage { get; set; }
-    public int ChunksProcessed { get; set; }
-    public int TotalChunks { get; set; }
-    public DateTime StartedAt { get; set; }
-    public DateTime? CompletedAt { get; set; }
-    public TimeSpan? EstimatedTimeRemaining { get; set; }
-    public List<IndexingError> Errors { get; set; } = new();
-}
-
-/// <summary>
 /// 인덱싱 오류
 /// </summary>
 public class IndexingError
@@ -106,19 +90,6 @@ public class IndexingError
     public int? ChunkIndex { get; set; }
     public DateTime OccurredAt { get; set; } = DateTime.UtcNow;
     public Dictionary<string, object> Details { get; set; } = new();
-}
-
-/// <summary>
-/// 인덱싱 상태 열거형
-/// </summary>
-public enum IndexingState
-{
-    Pending,
-    Processing,
-    Completed,
-    Failed,
-    Cancelled,
-    Paused
 }
 
 /// <summary>

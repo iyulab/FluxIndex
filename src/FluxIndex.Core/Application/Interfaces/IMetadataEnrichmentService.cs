@@ -39,16 +39,6 @@ public interface IMetadataEnrichmentService
 }
 
 /// <summary>
-/// 텍스트 분석 서비스 인터페이스
-/// </summary>
-public interface ITextAnalysisService
-{
-    Task<double> CalculateSimilarityAsync(string text1, string text2, CancellationToken cancellationToken = default);
-    Task<double> EvaluateCoherenceAsync(string content, CancellationToken cancellationToken = default);
-    Task<double> CalculateRelevanceAsync(string content, string query, CancellationToken cancellationToken = default);
-}
-
-/// <summary>
 /// 엔터티 추출 서비스 인터페이스
 /// </summary>
 public interface IEntityExtractionService

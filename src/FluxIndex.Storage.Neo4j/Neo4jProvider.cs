@@ -60,24 +60,3 @@ public partial class Neo4jProvider : IStorageProvider, IGraphCapable
 
     #endregion
 }
-
-/// <summary>
-/// Factory for creating Neo4j provider from service provider.
-/// </summary>
-public static class Neo4jProviderFactory
-{
-    /// <summary>
-    /// Creates a Neo4j provider from the service provider.
-    /// </summary>
-    /// <param name="serviceProvider">The service provider.</param>
-    /// <returns>A configured Neo4j provider.</returns>
-    public static Neo4jProvider Create(IServiceProvider serviceProvider)
-    {
-        var graphStore = serviceProvider.GetService(typeof(Neo4jGraphStore)) as Neo4jGraphStore
-            ?? throw new InvalidOperationException("Neo4jGraphStore is not registered.");
-
-        var logger = serviceProvider.GetService(typeof(ILogger<Neo4jProvider>)) as ILogger<Neo4jProvider>;
-
-        return new Neo4jProvider(graphStore, logger);
-    }
-}

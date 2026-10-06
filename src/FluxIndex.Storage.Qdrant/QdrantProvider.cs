@@ -59,24 +59,3 @@ public partial class QdrantProvider : IStorageProvider, IVectorCapable
 
     #endregion
 }
-
-/// <summary>
-/// Factory for creating Qdrant provider from service provider.
-/// </summary>
-public static class QdrantProviderFactory
-{
-    /// <summary>
-    /// Creates a Qdrant provider from the service provider.
-    /// </summary>
-    /// <param name="serviceProvider">The service provider.</param>
-    /// <returns>A configured Qdrant provider.</returns>
-    public static QdrantProvider Create(IServiceProvider serviceProvider)
-    {
-        var vectorStore = serviceProvider.GetService(typeof(QdrantVectorStore)) as QdrantVectorStore
-            ?? throw new InvalidOperationException("QdrantVectorStore is not registered.");
-
-        var logger = serviceProvider.GetService(typeof(ILogger<QdrantProvider>)) as ILogger<QdrantProvider>;
-
-        return new QdrantProvider(vectorStore, logger);
-    }
-}

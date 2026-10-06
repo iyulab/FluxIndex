@@ -109,17 +109,3 @@ public class BatchCompletedEventArgs : EventArgs
     public DateTime CompletedAt { get; set; } = DateTime.UtcNow;
     public Dictionary<string, object> Metadata { get; set; } = new();
 }
-
-/// <summary>
-/// 품질 분석 완료 이벤트 아규먼트 (Phase 3: DX 개선)
-/// </summary>
-public class QualityAnalysisCompletedEventArgs : EventArgs
-{
-    public string DocumentId { get; set; } = string.Empty;
-    public double OverallQualityScore { get; set; }
-    public int QuestionsGenerated { get; set; }
-    public double AnswerabilityScore { get; set; }
-    public TimeSpan ProcessingTime { get; set; }
-    public DateTime CompletedAt { get; set; } = DateTime.UtcNow;
-    public Dictionary<string, object> Metrics { get; set; } = new();
-}
