@@ -10,6 +10,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ### Changed
 - Re-pinned sibling package(s) `FluxGuard.Remote` 0.20.0 -> 0.21.0, `LMSupply.Embedder` 0.106.1 -> 0.107.0, `LMSupply.Generator` 0.106.1 -> 0.107.0, `LMSupply.Reranker` 0.106.1 -> 0.107.0, `WebFlux` 0.21.1 -> 0.22.0.
 - Re-pinned sibling package(s) `FluxImprover` 0.16.2 -> 0.16.3.
+- Re-pinned sibling package(s) `FileFlux` 0.39.1 -> 0.40.0.
 
 ### Removed
 - **Breaking: public types that nothing used are removed.** No code path in this library constructed, returned or accepted them, and no implementation existed where they were interfaces. Code that never named them is unaffected; code that did can delete the reference - there was no behaviour behind it.
