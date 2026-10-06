@@ -71,10 +71,10 @@
   </ItemGroup>
   <!-- Document Processing & Quality -->
   <ItemGroup>
-    <PackageVersion Include="FileFlux" Version="0.43.0" />
-    <PackageVersion Include="FluxCurator" Version="0.11.0" />
+    <PackageVersion Include="FileFlux" Version="0.44.0" />
+    <PackageVersion Include="FluxCurator" Version="0.12.0" />
     <PackageVersion Include="FluxImprover" Version="0.17.0" />
-    <PackageVersion Include="WebFlux" Version="0.22.1" />
+    <PackageVersion Include="WebFlux" Version="0.22.2" />
   </ItemGroup>
   <!-- Testing Packages (xUnit v3 / Microsoft.Testing.Platform) -->
   <ItemGroup>
