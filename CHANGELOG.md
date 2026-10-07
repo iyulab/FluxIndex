@@ -5,6 +5,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.80.13] - 2026-10-07
+
+### Changed
+- Re-pinned sibling package(s) `FileFlux` 0.49.0 -> 0.49.1, `FluxImprover` 0.18.1 -> 0.18.2, `LMSupply.Embedder` 0.109.0 -> 0.110.0, `LMSupply.Generator` 0.109.0 -> 0.110.0, `LMSupply.Reranker` 0.109.0 -> 0.110.0. No source changes.
+
+---
+
 ## [0.80.12] - 2026-10-07
 
 ### Changed
