@@ -118,7 +118,7 @@ public partial class DocumentProcessingPipeline
                 try
                 {
                     await using var extractProcessor = _processorFactory.Create(filePath);
-                    await extractProcessor.ExtractAsync(cancellationToken);
+                    await extractProcessor.ExtractAsync(cancellationToken: cancellationToken);
                     rawContent = extractProcessor.Result.Raw;
                     if (rawContent?.Images?.Count > 0)
                     {
@@ -374,7 +374,7 @@ public partial class DocumentProcessingPipeline
             try
             {
                 await using var extractProcessor = _processorFactory.Create(filePath);
-                await extractProcessor.ExtractAsync(cancellationToken);
+                await extractProcessor.ExtractAsync(cancellationToken: cancellationToken);
                 rawContent = extractProcessor.Result.Raw;
                 result.ExtractedText = rawContent?.Text ?? string.Empty;
             }
@@ -841,7 +841,7 @@ public partial class DocumentProcessingPipeline
         {
             // Use IDocumentProcessorFactory.ExtractAsync for unified image extraction
             await using var imageProcessor = _processorFactory.Create(filePath);
-            await imageProcessor.ExtractAsync(cancellationToken);
+            await imageProcessor.ExtractAsync(cancellationToken: cancellationToken);
             var rawContent = imageProcessor.Result.Raw;
 
             if (rawContent?.Images != null && rawContent.Images.Count > 0)

@@ -248,7 +248,7 @@ public class DocumentProcessingPipelineImageTests : IDisposable
         var failResult = new ProcessingResult { Chunks = chunks.ToList(), Raw = null };
         mockProcessor.Result.Returns(failResult);
         mockProcessor.ProcessAsync(Arg.Any<global::FileFlux.Core.ProcessingOptions>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
-        mockProcessor.ExtractAsync(Arg.Any<CancellationToken>()).Throws(new InvalidOperationException("Extraction failed"));
+        mockProcessor.ExtractAsync(cancellationToken: Arg.Any<CancellationToken>()).Throws(new InvalidOperationException("Extraction failed"));
         mockProcessor.DisposeAsync().Returns(ValueTask.CompletedTask);
 
         _mockProcessorFactory.Create(testFile).Returns(mockProcessor);
@@ -311,7 +311,7 @@ public class DocumentProcessingPipelineImageTests : IDisposable
         mockProcessor.Result.Returns(result);
 
         // Setup async methods
-        mockProcessor.ExtractAsync(Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+        mockProcessor.ExtractAsync(cancellationToken: Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
         mockProcessor.ProcessAsync(Arg.Any<global::FileFlux.Core.ProcessingOptions>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
 
         // Setup IAsyncDisposable

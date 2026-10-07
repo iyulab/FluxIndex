@@ -5,6 +5,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.80.9] - Unreleased
+
+### Changed
+- The FileFlux integration calls the processor's extraction with a named cancellation token, so it builds against
+  FileFlux 0.47's `ExtractAsync(ExtractOptions?, CancellationToken)` as well as earlier versions. No behaviour change.
+
+---
+
 ## [0.80.8] - 2026-10-07
 
 ### Changed

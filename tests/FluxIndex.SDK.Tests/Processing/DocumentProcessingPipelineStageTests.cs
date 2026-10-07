@@ -73,7 +73,7 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         mockProcessor.Result.Returns(result);
 
         // Setup async methods
-        mockProcessor.ExtractAsync(Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
+        mockProcessor.ExtractAsync(cancellationToken: Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
         mockProcessor.ProcessAsync(Arg.Any<global::FileFlux.Core.ProcessingOptions>(), Arg.Any<CancellationToken>()).Returns(Task.CompletedTask);
 
         // Setup IAsyncDisposable
