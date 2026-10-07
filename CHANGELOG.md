@@ -10,6 +10,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ### Changed
 - The FileFlux integration calls the processor's extraction with a named cancellation token, so it builds against
   FileFlux 0.47's `ExtractAsync(ExtractOptions?, CancellationToken)` as well as earlier versions. No behaviour change.
+- Re-pinned sibling package(s) `FileFlux` 0.46.1 -> 0.47.0.
 
 ### Fixed
 - **A failed LLM refinement keeps the page spans.** When the completion service fails, `LlmRefinerAdapter` returns the
