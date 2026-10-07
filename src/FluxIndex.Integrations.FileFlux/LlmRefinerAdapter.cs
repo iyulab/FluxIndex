@@ -142,6 +142,8 @@ public partial class LlmRefinerAdapter : ILlmRefiner
                 RawId = refined.RawId,
                 Text = refined.Text,
                 Sections = refined.Sections,
+                // The text is the input's, so its spans (pages, time ranges) still index it.
+                Spans = refined.Spans,
                 Structures = refined.Structures,
                 Metadata = refined.Metadata,
                 Quality = new LlmRefinementQuality
