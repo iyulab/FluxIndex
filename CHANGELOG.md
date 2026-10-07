@@ -7,6 +7,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [0.80.15] - Unreleased
 
+### Changed
+- Re-pinned sibling package(s) `FileFlux` 0.49.2 -> 0.50.0.
+
 ### Fixed
 - **A document without images is extracted once, not twice, when `ExtractImages` is on.** The pipeline extracted the file
   again to look for images whenever the first extraction found none — through the same reader, so it could not find any —
