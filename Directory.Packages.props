@@ -46,9 +46,9 @@
   <!-- AI/ML Packages -->
   <ItemGroup>
     <!-- LMSupply: Full AI stack (Embedder + Generator + Reranker) -->
-    <PackageVersion Include="LMSupply.Embedder" Version="0.110.0" />
-    <PackageVersion Include="LMSupply.Generator" Version="0.110.0" />
-    <PackageVersion Include="LMSupply.Reranker" Version="0.110.0" />
+    <PackageVersion Include="LMSupply.Embedder" Version="0.111.0" />
+    <PackageVersion Include="LMSupply.Generator" Version="0.111.0" />
+    <PackageVersion Include="LMSupply.Reranker" Version="0.111.0" />
   </ItemGroup>
   <!-- Storage/Cache Packages -->
   <ItemGroup>
@@ -71,10 +71,10 @@
   </ItemGroup>
   <!-- Document Processing & Quality -->
   <ItemGroup>
-    <PackageVersion Include="FileFlux" Version="0.49.1" />
-    <PackageVersion Include="FluxCurator" Version="0.13.0" />
-    <PackageVersion Include="FluxImprover" Version="0.18.2" />
-    <PackageVersion Include="WebFlux" Version="0.22.3" />
+    <PackageVersion Include="FileFlux" Version="0.49.2" />
+    <PackageVersion Include="FluxCurator" Version="0.14.0" />
+    <PackageVersion Include="FluxImprover" Version="0.18.3" />
+    <PackageVersion Include="WebFlux" Version="0.22.4" />
   </ItemGroup>
   <!-- Testing Packages (xUnit v3 / Microsoft.Testing.Platform) -->
   <ItemGroup>
@@ -92,7 +92,7 @@
     <PackageVersion Include="Testcontainers.PostgreSql" Version="4.14.0" />
     <PackageVersion Include="Testcontainers.Redis" Version="4.14.0" />
     <PackageVersion Include="xunit.v3" Version="4.0.0" />
-    <PackageVersion Include="Iyu.Conventions.Testing" Version="0.4.0" />
+    <PackageVersion Include="Iyu.Conventions.Testing" Version="0.5.0" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
   </ItemGroup>
   <!-- MCP/CLI Packages -->
