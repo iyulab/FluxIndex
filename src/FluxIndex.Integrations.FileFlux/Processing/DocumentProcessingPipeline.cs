@@ -391,26 +391,19 @@ public partial class DocumentProcessingPipeline
 
             LogExtractedCharacters(_logger, result.Metadata.CharacterCount, filePath);
 
-            // Extract images if enabled
+            // Extract images if enabled — the reader's own images. Extracting the same file again cannot find
+            // others, so a document without images, or one whose extraction failed, has none.
             if (options.ExtractImages)
             {
-                if (rawContent?.Images != null && rawContent.Images.Count > 0)
+                foreach (var image in rawContent?.Images.Where(i => i.Data != null && i.Data.Length > 0) ?? [])
                 {
-                    // Use images from rawContent if available
-                    foreach (var image in rawContent.Images.Where(i => i.Data != null && i.Data.Length > 0))
+                    var imageId = image.Id ?? $"img_{result.Images.Count:D3}";
+                    var imageExtension = GetImageExtension(image.MimeType);
+                    var fileName = $"{imageId}{imageExtension}";
+                    if (!result.Images.ContainsKey(fileName))
                     {
-                        var imageId = image.Id ?? $"img_{result.Images.Count:D3}";
-                        var imageExtension = GetImageExtension(image.MimeType);
-                        var fileName = $"{imageId}{imageExtension}";
-                        if (!result.Images.ContainsKey(fileName))
-                        {
-                            result.Images[fileName] = image.Data!;
-                        }
+                        result.Images[fileName] = image.Data!;
                     }
-                }
-                else
-                {
-                    result.Images = await ExtractImagesAsync(filePath, cancellationToken);
                 }
                 result.Metadata.ImageCount = result.Images.Count;
             }
@@ -819,57 +812,6 @@ public partial class DocumentProcessingPipeline
     }
 
 
-    /// <summary>
-    /// Extract images from document using FileFlux's IDocumentProcessor.
-    /// Supported formats (FileFlux v0.8.5+): HTML, DOCX, PDF, PPTX, XLSX
-    /// </summary>
-    private async Task<Dictionary<string, byte[]>> ExtractImagesAsync(string filePath, CancellationToken cancellationToken)
-    {
-        var images = new Dictionary<string, byte[]>();
-        var extension = Path.GetExtension(filePath).ToLowerInvariant();
-
-        // Formats with image extraction support in FileFlux v0.8.5+
-        var supportedFormats = new[] { ".html", ".htm", ".docx", ".pdf", ".pptx", ".xlsx" };
-
-        if (!supportedFormats.Contains(extension))
-        {
-            LogImageExtractionNotSupported(_logger, extension);
-            return images;
-        }
-
-        try
-        {
-            // Use IDocumentProcessorFactory.ExtractAsync for unified image extraction
-            await using var imageProcessor = _processorFactory.Create(filePath);
-            await imageProcessor.ExtractAsync(cancellationToken: cancellationToken);
-            var rawContent = imageProcessor.Result.Raw;
-
-            if (rawContent?.Images != null && rawContent.Images.Count > 0)
-            {
-                foreach (var image in rawContent.Images.Where(i => i.Data != null && i.Data.Length > 0))
-                {
-                    var imageId = image.Id ?? $"img_{images.Count:D3}";
-                    var imageExtension = GetImageExtension(image.MimeType);
-                    var fileName = $"{imageId}{imageExtension}";
-
-                    // Avoid duplicate keys
-                    if (!images.ContainsKey(fileName))
-                    {
-                        images[fileName] = image.Data!;
-                    }
-                }
-
-                LogExtractedImages(_logger, images.Count, filePath);
-            }
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
-        {
-            LogFailedToExtractImages(_logger, ex, filePath);
-        }
-
-        return images;
-    }
-
     private async Task<string> CleanTextAsync(string text, CancellationToken cancellationToken)
     {
         if (_textCompletionService == null || string.IsNullOrWhiteSpace(text))
@@ -1146,14 +1088,8 @@ JSON response:";
     [LoggerMessage(Level = LogLevel.Warning, Message = "PDF quality check failed for {FilePath}, falling back to standard extraction")]
     private static partial void LogPdfQualityCheckFailed(ILogger logger, Exception exception, string filePath);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "Image extraction not supported for format: {Extension}")]
-    private static partial void LogImageExtractionNotSupported(ILogger logger, string extension);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "Extracted {Count} images from {FilePath}")]
-    private static partial void LogExtractedImages(ILogger logger, int count, string filePath);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to extract images from {FilePath}")]
-    private static partial void LogFailedToExtractImages(ILogger logger, Exception exception, string filePath);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Text cleaning failed, using original text")]
     private static partial void LogTextCleaningFailed(ILogger logger, Exception exception);

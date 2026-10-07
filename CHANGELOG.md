@@ -5,6 +5,16 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.80.15] - Unreleased
+
+### Fixed
+- **A document without images is extracted once, not twice, when `ExtractImages` is on.** The pipeline extracted the file
+  again to look for images whenever the first extraction found none — through the same reader, so it could not find any —
+  and that second pass only ran for a fixed list of formats (`.html`, `.docx`, `.pdf`, `.pptx`, `.xlsx`). Images now come
+  from the one extraction for every format the reader returns them for.
+
+---
+
 ## [0.80.14] - 2026-10-07
 
 ### Changed
