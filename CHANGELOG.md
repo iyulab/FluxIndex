@@ -5,6 +5,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [0.80.7] - 2026-10-07
+
+### Changed
+- Re-pinned sibling package(s) `FileFlux` 0.45.0 -> 0.46.0. No source changes.
+
+---
+
 ## [0.80.6] - 2026-10-06
 
 ### Changed
