@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.80.9] - Unreleased
+## [0.80.9] - 2026-10-07
 
 ### Changed
 - The FileFlux integration calls the processor's extraction with a named cancellation token, so it builds against
