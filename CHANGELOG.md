@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [Unreleased]
+## [0.80.17] - Unreleased
 
 ### Fixed
 - **The SQLite stores apply `BusyTimeout`, `CacheSize`, `MmapSize`, `TempStore`, `Synchronous` and `WalAutocheckpoint` to
