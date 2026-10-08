@@ -8,38 +8,21 @@ namespace FluxIndex.Core.Application.Services.Base;
 /// Consumers implementing AI providers (LMSupply, Cohere, etc.) should extend this class.
 /// </summary>
 /// <example>
-/// // LMSupply implementation (~20 lines):
-/// public class LMSupplyReranker : RerankerBase
+/// Implement <see cref="RerankCoreAsync"/> (original index and score, best first) and <see cref="GetModelInfo"/>.
+/// <code>
+/// public sealed class MyReranker(MyClient client) : RerankerBase
 /// {
-///     private readonly IRerankerModel _model;
-///     public LMSupplyReranker(IRerankerModel model) => _model = model;
-///
 ///     protected override async Task&lt;IEnumerable&lt;(int Index, float Score)&gt;&gt; RerankCoreAsync(
-///         string query, IReadOnlyList&lt;string&gt; documents, int topN, CancellationToken ct)
+///         string query, IReadOnlyList&lt;string&gt; documents, int topN, CancellationToken cancellationToken)
 ///     {
-///         var results = await _model.RerankAsync(query, documents.ToList(), topN, ct);
-///         return results.Select(r => (r.OriginalIndex, r.Score));
+///         var scores = await client.ScoreAsync(query, documents, cancellationToken);
+///         return scores.Select((score, index) =&gt; (index, score)).OrderByDescending(r =&gt; r.score).Take(topN);
 ///     }
-///
-///     public override RerankModelInfo GetModelInfo() => new()
-///     {
-///         Name = _model.ModelId, Type = RerankModel.Local, RequiresApiKey = false
-///     };
+///     public override RerankModelInfo GetModelInfo() =&gt; new() { Name = "my-reranker", Type = RerankModel.Local };
 /// }
-///
-/// // Cohere implementation (~15 lines):
-/// public class CohereReranker : RerankerBase
-/// {
-///     private readonly CohereClient _client;
-///     public CohereReranker(CohereClient client) => _client = client;
-///
-///     protected override async Task&lt;IEnumerable&lt;(int Index, float Score)&gt;&gt; RerankCoreAsync(
-///         string query, IReadOnlyList&lt;string&gt; documents, int topN, CancellationToken ct)
-///     {
-///         var response = await _client.RerankAsync(query, documents.ToList(), topN, ct);
-///         return response.Results.Select(r => (r.Index, r.RelevanceScore));
-///     }
-/// }
+/// </code>
+/// <para>Complete samples for a Cohere API reranker, compiled against this version, are in the repository's
+/// <c>docs/AI_PROVIDER_INTEGRATION.md</c>.</para>
 /// </example>
 public abstract class RerankerBase : IReranker
 {

@@ -7,6 +7,15 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [Unreleased]
 
+### Fixed
+- **The provider integration guide's samples compile against this version.** `docs/AI_PROVIDER_INTEGRATION.md` showed the
+  Azure.AI.OpenAI 1.x beta API (`OpenAIClient.GetEmbeddingsAsync`, `GetChatCompletionsAsync`), overrode members the base
+  classes do not have (`GenerateCoreAsync`) and omitted ones they require (`GetProviderName`); its `ITextCompletionService`
+  and `RerankModelInfo` listings did not match the types. The OpenAI samples now use the `OpenAI` 2.x package
+  (`EmbeddingClient`, `ChatClient`), every sample overrides the real members, and the LMSupply sample embeds stored text as
+  passages and queries as queries. The `<example>` blocks of `EmbeddingServiceBase`, `TextCompletionServiceBase` and
+  `RerankerBase` had the same stale calls; they now show the members to implement and point to the guide.
+
 ### Dependencies
 - Re-pinned sibling package(s) `FileFlux` 0.51.0 -> 0.52.0, `LMSupply.Embedder` 0.114.0 -> 0.115.1, `LMSupply.Generator` 0.114.0 -> 0.115.1, `LMSupply.Reranker` 0.114.0 -> 0.115.1, `WebFlux` 0.22.4 -> 0.23.0.
 

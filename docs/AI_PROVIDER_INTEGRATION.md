@@ -59,11 +59,11 @@ FluxIndex Core는 AI 관련 **인터페이스와 추상 클래스**만 제공합
 
 Core는 세 가지 추상 클래스를 제공합니다. 각 추상 클래스는 핵심 메서드만 구현하면 나머지 기능을 자동으로 제공합니다.
 
-| Abstract Class | 핵심 구현 메서드 | 기본 제공 기능 |
+| Abstract Class | 반드시 구현할 멤버 | 기본 제공 기능 |
 |----------------|-----------------|---------------|
-| `EmbeddingServiceBase` | `EmbedCoreAsync()` | null 체크, 배치 처리 fallback, 토큰 추정 |
-| `TextCompletionServiceBase` | `GenerateCoreAsync()` | JSON 추출, 토큰 카운트 |
-| `RerankerBase` | `RerankCoreAsync()` | RerankResult 변환, 필터링, content 길이 제한 |
+| `EmbeddingServiceBase` | `EmbedCoreAsync()`, `GetEmbeddingDimension()`, `GetModelName()`, `GetProviderName()` | 빈 텍스트 처리, 질의 임베딩 기본 경로, 순차 배치 fallback, 토큰 추정, `GetIdentity()` |
+| `TextCompletionServiceBase` | `CompleteCoreAsync()` | 빈 프롬프트 처리, `CompleteJsonAsync()` (JSON 지시문 추가 + 응답에서 JSON 추출) |
+| `RerankerBase` | `RerankCoreAsync()`, `GetModelInfo()` | RerankResult 변환, 점수 임계값 필터링, content 길이 제한 |
 
 ---
 
@@ -72,16 +72,24 @@ Core는 세 가지 추상 클래스를 제공합니다. 각 추상 클래스는 
 ### 인터페이스
 
 ```csharp
+namespace FluxIndex.Core.Application.Interfaces;
+
 public interface IEmbeddingService
 {
-    Task<float[]> GenerateEmbeddingAsync(string text, CancellationToken ct = default);
-    Task<IEnumerable<float[]>> GenerateEmbeddingsBatchAsync(IEnumerable<string> texts, CancellationToken ct = default);
+    Task<float[]> GenerateEmbeddingAsync(string text, CancellationToken cancellationToken = default);
+    Task<IEnumerable<float[]>> GenerateEmbeddingsBatchAsync(IEnumerable<string> texts, CancellationToken cancellationToken = default);
+
     // 검색 질의 역할. 기본 구현은 GenerateEmbeddingAsync — 대칭 모델은 아무것도 하지 않아도 된다.
-    Task<float[]> GenerateQueryEmbeddingAsync(string query, CancellationToken ct = default);
+    Task<float[]> GenerateQueryEmbeddingAsync(string query, CancellationToken cancellationToken = default) =>
+        GenerateEmbeddingAsync(query, cancellationToken);
+
     int GetEmbeddingDimension();
     string GetModelName();
     int GetMaxTokens();
-    Task<int> CountTokensAsync(string text, CancellationToken ct = default);
+    Task<int> CountTokensAsync(string text, CancellationToken cancellationToken = default);
+
+    // Provider + Model + Dimension (+ Revision) — 벡터 공간을 식별한다.
+    EmbeddingIdentity GetIdentity();
 }
 ```
 
@@ -94,7 +102,9 @@ FluxIndex 는 저장하는 텍스트(문서·청크·요약)를 `GenerateEmbeddi
 
 ### 추상 클래스 사용
 
-`EmbeddingServiceBase`를 상속하면 `EmbedCoreAsync()`만 구현하면 됩니다:
+`EmbeddingServiceBase`를 상속하면 임베딩 로직(`EmbedCoreAsync()`)과 벡터 공간을 밝히는 세 멤버
+(`GetEmbeddingDimension()`, `GetModelName()`, `GetProviderName()`)만 구현하면 됩니다. 빈 입력 처리,
+질의 경로, 배치 fallback, 토큰 추정, `GetIdentity()`는 기반 클래스가 제공합니다:
 
 ```csharp
 using FluxIndex.Core.Application.Services.Base;
@@ -110,7 +120,7 @@ public class MyEmbeddingService : EmbeddingServiceBase
         _modelName = modelName;
     }
 
-    // 핵심 구현: 이 메서드만 구현하면 됩니다
+    // 핵심 구현: 저장할 텍스트(문서·청크)의 임베딩
     protected override async Task<float[]> EmbedCoreAsync(
         string text,
         CancellationToken cancellationToken)
@@ -120,13 +130,16 @@ public class MyEmbeddingService : EmbeddingServiceBase
         return await YourEmbeddingProvider.EmbedAsync(text, cancellationToken);
     }
 
-    // 필수 구현
+    // 필수 구현 — Provider + Model + Dimension 이 벡터 공간의 Identity 가 된다
     public override int GetEmbeddingDimension() => _dimension;
     public override string GetModelName() => _modelName;
+    protected override string GetProviderName() => "MyProvider";
 
     // 선택적 오버라이드 (기본값 제공됨)
-    // public override int GetMaxTokens() => 8192;
-    // public override Task<int> CountTokensAsync(...) => ...;
+    // protected override Task<float[]> EmbedQueryCoreAsync(string query, CancellationToken cancellationToken) => ...; // 비대칭 모델의 질의 규약
+    // public override Task<IEnumerable<float[]>> GenerateEmbeddingsBatchAsync(IEnumerable<string> texts, CancellationToken cancellationToken = default) => ...; // 네이티브 배치
+    // public override int GetMaxTokens() => 8192;                                       // 기본 512
+    // public override Task<int> CountTokensAsync(string text, CancellationToken cancellationToken = default) => ...; // 기본은 근사치
 }
 ```
 
@@ -165,7 +178,9 @@ services.AddOpenAICompatibleReranker(
 
 ```csharp
 using FluxIndex.Providers.OpenAI.Services;
+using FluxIndex.SDK;
 using FluxIndex.Storage.SQLite;
+using Microsoft.Extensions.Logging;
 
 var embeddingService = new OpenAICompatibleEmbeddingService(
     endpoint: "https://api.openai.com/v1",
@@ -200,29 +215,30 @@ https://{resource}.openai.azure.com/openai/deployments/{deployment}/v1
 
 ### OpenAI 직접 구현 예제 (커스텀 SDK 필요 시)
 
-Azure.AI.OpenAI SDK를 사용하는 경우의 커스텀 구현 예제입니다.
+공식 `OpenAI` NuGet 패키지(2.x)를 직접 사용하는 커스텀 구현 예제입니다(`dotnet add package OpenAI`).
+Azure OpenAI는 `Azure.AI.OpenAI` 2.x의 `AzureOpenAIClient.GetEmbeddingClient(deployment)`가 같은 `EmbeddingClient`를 돌려주므로 생성 부분만 바꾸면 됩니다.
 일반적인 경우 위의 `FluxIndex.Providers.OpenAI` 패키지 사용을 권장합니다.
 
 ```csharp
-using Azure.AI.OpenAI;
 using FluxIndex.Core.Application.Services.Base;
+using OpenAI.Embeddings;
 
-public sealed class OpenAIEmbeddingService : EmbeddingServiceBase, IAsyncDisposable
+public sealed class OpenAIEmbeddingService : EmbeddingServiceBase
 {
-    private readonly OpenAIClient _client;
+    private readonly EmbeddingClient _client;
     private readonly string _model;
     private readonly int _dimension;
 
     public OpenAIEmbeddingService(string apiKey, string model = "text-embedding-3-small")
     {
-        _client = new OpenAIClient(apiKey);
+        _client = new EmbeddingClient(model, apiKey);
         _model = model;
         _dimension = model switch
         {
             "text-embedding-3-small" => 1536,
             "text-embedding-3-large" => 3072,
             "text-embedding-ada-002" => 1536,
-            _ => 1536
+            _ => throw new ArgumentException($"Unknown embedding dimension for model '{model}'.", nameof(model))
         };
     }
 
@@ -230,26 +246,30 @@ public sealed class OpenAIEmbeddingService : EmbeddingServiceBase, IAsyncDisposa
         string text,
         CancellationToken cancellationToken)
     {
-        var response = await _client.GetEmbeddingsAsync(
-            new EmbeddingsOptions(_model, new[] { text }),
-            cancellationToken);
+        var response = await _client.GenerateEmbeddingAsync(
+            text,
+            cancellationToken: cancellationToken);
 
-        return response.Value.Data[0].Embedding.ToArray();
+        return response.Value.ToFloats().ToArray();
     }
 
     public override int GetEmbeddingDimension() => _dimension;
     public override string GetModelName() => _model;
+    protected override string GetProviderName() => "OpenAI";
     public override int GetMaxTokens() => 8191;
-
-    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }
 ```
 
 ### LMSupply 구현 예제
 
+LMSupply 로컬 모델은 `FluxIndex.Providers.LMSupply`의 `services.AddLMSupplyEmbedding(...)`이 지연 로드·진행률·취소까지
+처리하므로 그쪽을 권장합니다(아래 [DI 등록](#di-등록)). 직접 감싸야 한다면 질의/문서 역할을 모델의 규약에 맞춰
+나눕니다 — `EmbedPassageAsync`/`EmbedQueryAsync`는 E5처럼 접두어가 있는 모델에 그 규약을 적용하고, 접두어가 없는
+모델에서는 원문 그대로 임베딩합니다:
+
 ```csharp
-using LMSupply.Embedder;
 using FluxIndex.Core.Application.Services.Base;
+using LMSupply.Embedder;
 
 public sealed class LMSupplyEmbedder : EmbeddingServiceBase, IAsyncDisposable
 {
@@ -258,31 +278,40 @@ public sealed class LMSupplyEmbedder : EmbeddingServiceBase, IAsyncDisposable
     private LMSupplyEmbedder(IEmbeddingModel model) => _model = model;
 
     public static async Task<LMSupplyEmbedder> CreateAsync(
-        string modelId = "all-MiniLM-L6-v2",
+        string modelId = "default",
         CancellationToken cancellationToken = default)
     {
         var model = await LocalEmbedder.LoadAsync(modelId, cancellationToken: cancellationToken);
         return new LMSupplyEmbedder(model);
     }
 
+    // 저장할 텍스트: 모델의 passage 규약
     protected override async Task<float[]> EmbedCoreAsync(
         string text,
         CancellationToken cancellationToken)
     {
-        return await _model.EmbedAsync(text, cancellationToken);
+        return await _model.EmbedPassageAsync(text, cancellationToken);
     }
 
-    // 배치 처리 최적화 (선택적)
+    // 검색 질의: 모델의 query 규약 (비대칭 모델)
+    protected override async Task<float[]> EmbedQueryCoreAsync(
+        string query,
+        CancellationToken cancellationToken)
+    {
+        return await _model.EmbedQueryAsync(query, cancellationToken);
+    }
+
+    // 배치 처리 최적화 (선택적) — LMSupply는 네이티브 배치 지원
     public override async Task<IEnumerable<float[]>> GenerateEmbeddingsBatchAsync(
         IEnumerable<string> texts,
         CancellationToken cancellationToken = default)
     {
-        // LMSupply는 네이티브 배치 지원
-        return await _model.EmbedBatchAsync(texts.ToList(), cancellationToken);
+        return await _model.EmbedPassageAsync(texts.ToList(), cancellationToken);
     }
 
     public override int GetEmbeddingDimension() => _model.Dimensions;
     public override string GetModelName() => _model.ModelId;
+    protected override string GetProviderName() => "LMSupply";
 
     public ValueTask DisposeAsync() => _model.DisposeAsync();
 }
@@ -294,96 +323,119 @@ public sealed class LMSupplyEmbedder : EmbeddingServiceBase, IAsyncDisposable
 
 ### 인터페이스
 
+`ITextCompletionService`와 `TextCompletionOptions`는 Flux 생태계 공유 계약 패키지 `Flux.Abstractions`에 있습니다
+(`using Flux.Abstractions;`). 필수 멤버는 `CompleteAsync` 하나이고 나머지는 기본 구현(DIM)이 있습니다:
+
 ```csharp
+namespace Flux.Abstractions;
+
 public interface ITextCompletionService
 {
-    Task<string> GenerateCompletionAsync(
+    Task<string> CompleteAsync(
         string prompt,
-        int maxTokens = 500,
-        float temperature = 0.7f,
+        TextCompletionOptions? options = null,
         CancellationToken cancellationToken = default);
 
-    Task<string> GenerateJsonCompletionAsync(
+    // 기본 구현: CompleteAsync 에 위임
+    Task<string> CompleteJsonAsync(
         string prompt,
-        int maxTokens = 500,
+        TextCompletionOptions? options = null,
         CancellationToken cancellationToken = default);
 
-    int CountTokens(string text);
+    // 기본 구현: 순차 실행
+    Task<IReadOnlyList<string>> CompleteBatchAsync(
+        IEnumerable<string> prompts,
+        TextCompletionOptions? options = null,
+        CancellationToken cancellationToken = default);
+
+    // 기본 구현: CompleteAsync 결과를 한 번에 yield
+    IAsyncEnumerable<string> CompleteStreamAsync(
+        string prompt,
+        TextCompletionOptions? options = null,
+        CancellationToken cancellationToken = default);
 }
 ```
 
+`TextCompletionOptions`는 `MaxTokens`(기본 500), `Temperature`(기본 0.7), `TopP`, `FrequencyPenalty`, `PresencePenalty`,
+`StopSequences`, `SystemPrompt`, `ResponseFormat`(`"json"`이면 JSON 모드), `ResponseSchema`, `ThrowOnTruncation`,
+`EnableThinking`을 나릅니다. provider가 지원하지 않는 항목은 무시해도 됩니다.
+
 ### 추상 클래스 사용
 
+`TextCompletionServiceBase`를 상속하면 `CompleteCoreAsync()`만 구현하면 됩니다. 빈 프롬프트는 기반 클래스가 걸러내고,
+`CompleteJsonAsync()`는 JSON 지시문을 붙이고 `ResponseFormat = "json"`으로 `CompleteCoreAsync()`를 부른 뒤 응답에서
+JSON을 추출합니다:
+
 ```csharp
+using Flux.Abstractions;
 using FluxIndex.Core.Application.Services.Base;
 
 public class MyTextCompletionService : TextCompletionServiceBase
 {
     // 핵심 구현
-    protected override async Task<string> GenerateCoreAsync(
+    protected override async Task<string> CompleteCoreAsync(
         string prompt,
-        int maxTokens,
-        float temperature,
+        TextCompletionOptions options,
         CancellationToken cancellationToken)
     {
         // 실제 LLM 호출
-        return await YourLLMProvider.GenerateAsync(prompt, maxTokens, temperature, cancellationToken);
+        return await YourLLMProvider.GenerateAsync(prompt, options.MaxTokens, options.Temperature, cancellationToken);
     }
 }
 ```
 
 ### OpenAI 구현 예제
 
+공식 `OpenAI` NuGet 패키지(2.x)의 `ChatClient`를 사용합니다. Azure OpenAI는 `Azure.AI.OpenAI` 2.x의
+`AzureOpenAIClient.GetChatClient(deployment)`가 같은 `ChatClient`를 돌려줍니다. `options.ResponseFormat == "json"`을
+provider의 JSON 모드로 옮기면 기반 클래스의 `CompleteJsonAsync()`가 그대로 네이티브 JSON 모드를 쓰게 됩니다:
+
 ```csharp
-using Azure.AI.OpenAI;
+using Flux.Abstractions;
 using FluxIndex.Core.Application.Services.Base;
+using OpenAI.Chat;
 
 public sealed class OpenAICompletionService : TextCompletionServiceBase
 {
-    private readonly OpenAIClient _client;
-    private readonly string _model;
+    private readonly ChatClient _client;
 
     public OpenAICompletionService(string apiKey, string model = "gpt-4o-mini")
     {
-        _client = new OpenAIClient(apiKey);
-        _model = model;
+        _client = new ChatClient(model, apiKey);
     }
 
-    protected override async Task<string> GenerateCoreAsync(
+    protected override async Task<string> CompleteCoreAsync(
         string prompt,
-        int maxTokens,
-        float temperature,
+        TextCompletionOptions options,
         CancellationToken cancellationToken)
     {
-        var options = new ChatCompletionsOptions
+        var messages = new List<ChatMessage>();
+        if (!string.IsNullOrEmpty(options.SystemPrompt))
+            messages.Add(ChatMessage.CreateSystemMessage(options.SystemPrompt));
+        messages.Add(ChatMessage.CreateUserMessage(prompt));
+
+        var chatOptions = new ChatCompletionOptions
         {
-            DeploymentName = _model,
-            Temperature = temperature,
-            MaxTokens = maxTokens,
-            Messages = { new ChatRequestUserMessage(prompt) }
+            MaxOutputTokenCount = options.MaxTokens,
+            Temperature = options.Temperature,
+            TopP = options.TopP,
+            FrequencyPenalty = options.FrequencyPenalty,
+            PresencePenalty = options.PresencePenalty,
         };
+        foreach (var stop in options.StopSequences ?? [])
+            chatOptions.StopSequences.Add(stop);
 
-        var response = await _client.GetChatCompletionsAsync(options, cancellationToken);
-        return response.Value.Choices[0].Message.Content;
-    }
+        // CompleteJsonAsync 는 ResponseFormat = "json" 으로 이 메서드를 부른다
+        if (options.ResponseFormat == "json")
+            chatOptions.ResponseFormat = ChatResponseFormat.CreateJsonObjectFormat();
 
-    // JSON 모드 지원 시 오버라이드
-    public override async Task<string> GenerateJsonCompletionAsync(
-        string prompt,
-        int maxTokens = 500,
-        CancellationToken cancellationToken = default)
-    {
-        var options = new ChatCompletionsOptions
-        {
-            DeploymentName = _model,
-            Temperature = 0.1f,
-            MaxTokens = maxTokens,
-            ResponseFormat = ChatCompletionsResponseFormat.JsonObject,
-            Messages = { new ChatRequestUserMessage(prompt) }
-        };
+        var response = await _client.CompleteChatAsync(messages, chatOptions, cancellationToken);
+        var completion = response.Value;
 
-        var response = await _client.GetChatCompletionsAsync(options, cancellationToken);
-        return response.Value.Choices[0].Message.Content;
+        if (options.ThrowOnTruncation && completion.FinishReason == ChatFinishReason.Length)
+            throw new TextCompletionTruncatedException(options.MaxTokens);
+
+        return string.Concat(completion.Content.Select(part => part.Text));
     }
 }
 ```
@@ -395,6 +447,8 @@ public sealed class OpenAICompletionService : TextCompletionServiceBase
 ### 인터페이스
 
 ```csharp
+namespace FluxIndex.Core.Application.Interfaces;
+
 public interface IReranker
 {
     Task<IEnumerable<RerankResult>> RerankAsync(
@@ -407,14 +461,21 @@ public interface IReranker
 }
 ```
 
+`RetrievalCandidate`·`RerankResult`·`RerankOptions`(`TopN`, `ScoreThreshold`, `MaxContentLength` 등)·`RerankModelInfo`·
+`RerankModel`(`Local`, `Cohere`, `Custom`)은 같은 네임스페이스에 있습니다.
+
 ### 추상 클래스 사용
 
+`RerankerBase`를 상속하면 `RerankCoreAsync()`와 `GetModelInfo()`만 구현하면 됩니다. 후보 content 자르기,
+`RerankResult` 변환, `ScoreThreshold` 필터링은 기반 클래스가 합니다:
+
 ```csharp
+using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services.Base;
 
 public class MyReranker : RerankerBase
 {
-    // 핵심 구현: (index, score) 튜플 반환
+    // 핵심 구현: 관련도 순으로 정렬한 (원래 index, score) 튜플 반환
     protected override async Task<IEnumerable<(int Index, float Score)>> RerankCoreAsync(
         string query,
         IReadOnlyList<string> documents,
@@ -425,16 +486,16 @@ public class MyReranker : RerankerBase
         var scores = await YourRerankerProvider.ScoreAsync(query, documents, cancellationToken);
 
         return scores
-            .Select((score, index) => (index, score))
-            .OrderByDescending(x => x.score)
+            .Select((score, index) => (Index: index, Score: score))
+            .OrderByDescending(x => x.Score)
             .Take(topN);
     }
 
     public override RerankModelInfo GetModelInfo() => new()
     {
-        Model = RerankModel.Custom,
-        ModelName = "my-reranker-v1",
-        MaxDocuments = 100
+        Name = "my-reranker-v1",
+        Type = RerankModel.Custom,
+        RequiresApiKey = false
     };
 }
 ```
@@ -442,6 +503,9 @@ public class MyReranker : RerankerBase
 ### Cohere Reranker 예제
 
 ```csharp
+using System.Net.Http.Json;
+using System.Text.Json.Serialization;
+using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services.Base;
 
 public sealed class CohereReranker : RerankerBase
@@ -470,10 +534,11 @@ public sealed class CohereReranker : RerankerBase
             top_n = topN
         };
 
-        var response = await _httpClient.PostAsJsonAsync(
+        using var response = await _httpClient.PostAsJsonAsync(
             "https://api.cohere.ai/v1/rerank",
             request,
             cancellationToken);
+        response.EnsureSuccessStatusCode();
 
         var result = await response.Content.ReadFromJsonAsync<CohereRerankResponse>(
             cancellationToken: cancellationToken);
@@ -483,13 +548,17 @@ public sealed class CohereReranker : RerankerBase
 
     public override RerankModelInfo GetModelInfo() => new()
     {
-        Model = RerankModel.CohereRerank,
-        ModelName = _model,
-        MaxDocuments = 1000
+        Name = _model,
+        Type = RerankModel.Cohere,
+        RequiresApiKey = true
     };
 
-    private record CohereRerankResponse(CohereRerankResult[] Results);
-    private record CohereRerankResult(int Index, double RelevanceScore);
+    private sealed record CohereRerankResponse(
+        [property: JsonPropertyName("results")] CohereRerankResult[] Results);
+
+    private sealed record CohereRerankResult(
+        [property: JsonPropertyName("index")] int Index,
+        [property: JsonPropertyName("relevance_score")] double RelevanceScore);
 }
 ```
 
@@ -500,6 +569,8 @@ public sealed class CohereReranker : RerankerBase
 ### 기본 패턴
 
 ```csharp
+using Flux.Abstractions;
+using FluxIndex.Core.Application.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 
 public static class ServiceCollectionExtensions
@@ -516,7 +587,8 @@ public static class ServiceCollectionExtensions
     }
 
     // LMSupply Embedding 등록 — 직접 쓰지 말고 FluxIndex.Providers.LMSupply의
-    // services.AddLMSupplyEmbedding(...)을 쓴다. 모델 로드는 컨테이너 해석 시점이 아니라
+    // services.AddLMSupplyEmbedding(...)을 쓴다(using FluxIndex.Providers.LMSupply.Extensions;).
+    // 모델 로드는 컨테이너 해석 시점이 아니라
     // 첫 사용(또는 WarmUpOnStart로 호스트 기동) 시점에 비동기로 일어나며, 진행률·취소·타임아웃이
     // 옵션으로 통과된다. DI 팩토리 안에서 CreateAsync(...).GetAwaiter().GetResult()로 막는 형태는
     // 진행률·취소가 없고 SynchronizationContext가 있는 호스트에서 교착 후보라 채택하지 않는다.
@@ -556,6 +628,11 @@ public static class ServiceCollectionExtensions
 ### FluxIndexContext에서 사용
 
 ```csharp
+using FluxIndex.Providers.LMSupply.Extensions;    // AddLMSupplyEmbedding
+using FluxIndex.SDK;
+using FluxIndex.Storage.PostgreSQL;
+using FluxIndex.Storage.SQLite;
+
 // 테스트 환경: InMemory embedding (명시적으로 선택 — 임베더를 등록하지 않으면 키워드 전용 컨텍스트)
 var testContext = FluxIndexContext.CreateBuilder()
     .UseSQLite("test.db")
@@ -581,7 +658,7 @@ var localContext = FluxIndexContext.CreateBuilder()
     .AddSQLiteStorage()
     .ConfigureServices(services =>
     {
-        services.AddLMSupplyEmbedding("bge-small-en-v1.5");
+        services.AddLMSupplyEmbedding("default");
     })
     .Build();
 ```
@@ -594,24 +671,24 @@ var localContext = FluxIndexContext.CreateBuilder()
 
 ```csharp
 // 1. 패키지 참조 (소비 앱의 .csproj)
-// <PackageReference Include="Azure.AI.OpenAI" Version="2.0.0" />
+// <PackageReference Include="OpenAI" Version="2.14.0" />
+// + 위의 OpenAIEmbeddingService / OpenAICompletionService 예제 클래스
+
+using Flux.Abstractions;
+using FluxIndex.Core.Application.Interfaces;
+using Microsoft.Extensions.DependencyInjection;
 
 // 2. 래퍼 클래스 정의
-public sealed class OpenAIServices : IAsyncDisposable
+public sealed class OpenAIServices
 {
-    private readonly OpenAIEmbeddingService _embedding;
-    private readonly OpenAICompletionService _completion;
-
     public OpenAIServices(string apiKey)
     {
-        _embedding = new OpenAIEmbeddingService(apiKey, "text-embedding-3-small");
-        _completion = new OpenAICompletionService(apiKey, "gpt-4o-mini");
+        Embedding = new OpenAIEmbeddingService(apiKey, "text-embedding-3-small");
+        Completion = new OpenAICompletionService(apiKey, "gpt-4o-mini");
     }
 
-    public IEmbeddingService Embedding => _embedding;
-    public ITextCompletionService Completion => _completion;
-
-    public ValueTask DisposeAsync() => _embedding.DisposeAsync();
+    public IEmbeddingService Embedding { get; }
+    public ITextCompletionService Completion { get; }
 }
 
 // 3. DI 확장 메서드
@@ -627,8 +704,16 @@ public static class OpenAIExtensions
         return services;
     }
 }
+```
 
-// 4. 사용
+```csharp
+// 4. 사용 (Program.cs — 최상위 문은 형식 선언과 다른 파일에 둔다)
+using FluxIndex.Cache.Redis;
+using FluxIndex.SDK;
+using FluxIndex.Storage.PostgreSQL;
+
+var connectionString = "Host=localhost;Database=fluxindex;Username=postgres;Password=...";
+
 var context = FluxIndexContext.CreateBuilder()
     .UsePostgreSQL(connectionString)
     .AddPostgreSQLStorage()
@@ -650,6 +735,9 @@ var results = await context.Retriever.SearchAsync("RAG library", maxResults: 5);
 
 ```csharp
 // Program.cs
+using FluxIndex.SDK;
+using FluxIndex.Storage.PostgreSQL;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // AI 서비스 설정 로드
@@ -659,7 +747,7 @@ var apiKey = aiConfig["OpenAI:ApiKey"]!;
 // FluxIndex 설정 — 벡터 스토어/AI Provider 배선은 빌더에 있으므로(옵션 객체가 아니라)
 // 컨텍스트를 빌드해 싱글턴으로 등록한다. AI Provider 도 빌더의 ConfigureServices 로 넣어야
 // 컨텍스트 자체 컨테이너에 도달한다(앱 서비스에 등록하면 컨텍스트가 보지 못함).
-builder.Services.AddSingleton(_ =>
+builder.Services.AddSingleton<IFluxIndexContext>(_ =>
     FluxIndexContext.CreateBuilder()
         .UsePostgreSQL(builder.Configuration.GetConnectionString("Default")!)
         .AddPostgreSQLStorage()
@@ -705,14 +793,21 @@ services.AddKeyedSingleton<IEmbeddingService>("local", await LMSupplyEmbedder.Cr
 ```
 
 ### Q: 비동기 초기화가 필요한 서비스는 어떻게 등록하나요?
-A: `GetAwaiter().GetResult()` 또는 Factory 패턴을 사용합니다:
+A: DI 팩토리 안에서 `GetAwaiter().GetResult()`로 막지 않습니다 — 진행률·취소가 없고 `SynchronizationContext`가 있는
+호스트에서 교착 후보입니다([DI 등록](#di-등록)). 두 가지 방법이 있습니다:
+
+- **로드를 첫 사용으로 미룬다** — LMSupply 로컬 모델은 `FluxIndex.Providers.LMSupply`의 `AddLMSupplyEmbedding`이 이렇게
+  동작합니다(Generic Host에서는 `WarmUpOnStart`로 기동 시 로드). 직접 구현한 서비스라면 `EmbedCoreAsync()` 안에서
+  모델 로드 `Task`를 한 번만 만들어 기다립니다.
+- **컨테이너를 만들기 전에 기다린다** — 앱 시작 코드가 이미 비동기라면 먼저 생성해 인스턴스로 등록합니다:
+
 ```csharp
-services.AddSingleton<IEmbeddingService>(sp =>
-    LMSupplyEmbedder.CreateAsync().GetAwaiter().GetResult());
+var localEmbedder = await LMSupplyEmbedder.CreateAsync("default", cancellationToken);
+services.AddSingleton<IEmbeddingService>(localEmbedder);
 ```
 
 ### Q: Anthropic Claude를 Text Completion에 사용하려면?
-A: `TextCompletionServiceBase`를 상속하여 Claude API를 호출하는 래퍼를 작성합니다. `GenerateCoreAsync()` 메서드만 구현하면 됩니다.
+A: `TextCompletionServiceBase`를 상속하여 Claude API를 호출하는 래퍼를 작성합니다. `CompleteCoreAsync()` 메서드만 구현하면 됩니다.
 
 ---
 

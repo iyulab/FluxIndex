@@ -8,33 +8,18 @@ namespace FluxIndex.Core.Application.Services.Base;
 /// Consumers implementing AI providers (LMSupply, OpenAI, etc.) should extend this class.
 /// </summary>
 /// <example>
-/// // LMSupply implementation (~15 lines):
-/// public class LMSupplyGenerator : TextCompletionServiceBase
+/// Implement <see cref="CompleteCoreAsync"/>; empty prompts and <see cref="CompleteJsonAsync"/> have defaults
+/// (the JSON path calls it with <c>ResponseFormat = "json"</c>).
+/// <code>
+/// public sealed class MyCompletion(MyClient client) : TextCompletionServiceBase
 /// {
-///     private readonly ITextGenerator _model;
-///     public LMSupplyGenerator(ITextGenerator model) => _model = model;
-///
-///     protected override async Task&lt;string&gt; CompleteCoreAsync(string prompt, TextCompletionOptions options, CancellationToken ct)
-///     {
-///         var sb = new StringBuilder();
-///         await foreach (var token in _model.GenerateAsync(prompt, new() { MaxTokens = options.MaxTokens, Temperature = options.Temperature }, ct))
-///             sb.Append(token);
-///         return sb.ToString();
-///     }
+///     protected override Task&lt;string&gt; CompleteCoreAsync(
+///         string prompt, TextCompletionOptions options, CancellationToken cancellationToken)
+///         =&gt; client.CompleteAsync(prompt, options.MaxTokens, options.Temperature, cancellationToken);
 /// }
-///
-/// // OpenAI implementation (~10 lines):
-/// public class OpenAIGenerator : TextCompletionServiceBase
-/// {
-///     private readonly OpenAIClient _client;
-///     public OpenAIGenerator(OpenAIClient client) => _client = client;
-///
-///     protected override async Task&lt;string&gt; CompleteCoreAsync(string prompt, TextCompletionOptions options, CancellationToken ct)
-///     {
-///         var response = await _client.GetChatCompletionsAsync(prompt, ct);
-///         return response.Value.Choices[0].Message.Content;
-///     }
-/// }
+/// </code>
+/// <para>Complete samples for OpenAI, compiled against this version, are in the repository's
+/// <c>docs/AI_PROVIDER_INTEGRATION.md</c>.</para>
 /// </example>
 public abstract class TextCompletionServiceBase : ITextCompletionService
 {

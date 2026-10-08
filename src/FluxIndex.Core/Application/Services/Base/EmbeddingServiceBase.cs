@@ -9,32 +9,19 @@ namespace FluxIndex.Core.Application.Services.Base;
 /// Consumers implementing AI providers (LMSupply, OpenAI, etc.) should extend this class.
 /// </summary>
 /// <example>
-/// // LMSupply implementation (~10 lines):
-/// public class LMSupplyEmbedder : EmbeddingServiceBase
+/// Implement the four abstract members; empty input, the query path, batching and identity have defaults.
+/// <code>
+/// public sealed class MyEmbedder(MyClient client) : EmbeddingServiceBase
 /// {
-///     private readonly IEmbeddingModel _model;
-///     public LMSupplyEmbedder(IEmbeddingModel model) => _model = model;
-///
-///     protected override Task&lt;float[]&gt; EmbedCoreAsync(string text, CancellationToken ct)
-///         => _model.EmbedAsync(text, ct);
-///     public override int GetEmbeddingDimension() => _model.Dimensions;
-///     public override string GetModelName() => _model.ModelId;
+///     protected override Task&lt;float[]&gt; EmbedCoreAsync(string text, CancellationToken cancellationToken)
+///         =&gt; client.EmbedAsync(text, cancellationToken);
+///     public override int GetEmbeddingDimension() =&gt; 768;
+///     public override string GetModelName() =&gt; "my-embedding-model";
+///     protected override string GetProviderName() =&gt; "MyProvider";
 /// }
-///
-/// // OpenAI implementation (~15 lines):
-/// public class OpenAIEmbedder : EmbeddingServiceBase
-/// {
-///     private readonly OpenAIClient _client;
-///     public OpenAIEmbedder(OpenAIClient client) => _client = client;
-///
-///     protected override async Task&lt;float[]&gt; EmbedCoreAsync(string text, CancellationToken ct)
-///     {
-///         var response = await _client.GetEmbeddingsAsync(text, ct);
-///         return response.Value.Data[0].Embedding.ToArray();
-///     }
-///     public override int GetEmbeddingDimension() => 1536; // text-embedding-3-small
-///     public override string GetModelName() => "text-embedding-3-small";
-/// }
+/// </code>
+/// <para>Complete samples for OpenAI and LMSupply, compiled against this version, are in the repository's
+/// <c>docs/AI_PROVIDER_INTEGRATION.md</c>.</para>
 /// </example>
 public abstract class EmbeddingServiceBase : IEmbeddingService
 {

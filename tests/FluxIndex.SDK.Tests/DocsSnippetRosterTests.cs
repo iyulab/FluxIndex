@@ -36,7 +36,11 @@ public class DocsSnippetRosterTests
     {
         "AddConsole",              // Microsoft.Extensions.Logging.Console
         "PostAsJsonAsync",         // System.Net.Http.Json
-        "GetChatCompletionsAsync", // Azure.AI.OpenAI, in the provider-integration guide's own-provider sample
+        "CompleteChatAsync",       // OpenAI, in the provider-integration guide's own-provider sample
+        "CreateJsonObjectFormat",  // OpenAI, in the provider-integration guide's own-provider sample
+        "CreateSystemMessage",     // OpenAI, in the provider-integration guide's own-provider sample
+        "CreateUserMessage",       // OpenAI, in the provider-integration guide's own-provider sample
+        "ToFloats",                // OpenAI, in the provider-integration guide's own-provider sample
     };
 
     /// <summary>
@@ -50,7 +54,7 @@ public class DocsSnippetRosterTests
     /// <summary>Option-shaped types from other SDKs that a document legitimately shows (not ours to declare).</summary>
     private static readonly HashSet<string> KnownExternalTypes = new(StringComparer.Ordinal)
     {
-        "ChatCompletionsOptions", // Azure.AI.OpenAI, in the provider-integration guide's own-provider sample
+        "ChatCompletionOptions", // OpenAI, in the provider-integration guide's own-provider sample
     };
 
     [Fact]
