@@ -7,6 +7,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [Unreleased]
 
+### Changed
+- **With `UseVectorSpaceRevision` and an E5 or Nomic model, the stored embedding identity changes once and the store
+  re-embeds.** LMSupply 0.112.0 moved the `VectorSpaceRevision` of those models, because its `EmbedAsync` now applies a
+  default prefix. This library embeds through `EmbedPassageAsync`/`EmbedQueryAsync`, whose vectors did not change (measured
+  identical on multilingual-e5-small), so the re-embed is a cost, not a correction. Models without a prefix convention
+  (the default BGE-M3) keep their revision.
+
 ### Dependencies
 - Re-pinned sibling package(s) `FileFlux` 0.50.1 -> 0.51.0, `LMSupply.Embedder` 0.111.0 -> 0.113.0, `LMSupply.Generator` 0.111.0 -> 0.113.0, `LMSupply.Reranker` 0.111.0 -> 0.113.0.
 
