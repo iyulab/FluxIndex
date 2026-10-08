@@ -12,9 +12,6 @@
     <PackageReference Include="NSubstitute" />
     <PackageReference Include="Iyu.Conventions.Testing" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
-    <PackageReference Include="Microsoft.Extensions.Configuration" />
-    <PackageReference Include="Microsoft.Extensions.Options" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <!-- Testcontainers for integration tests -->
     <PackageReference Include="Testcontainers.Neo4j" />
     <PackageReference Include="Testcontainers.Qdrant" />
@@ -46,6 +43,13 @@
   <ItemGroup>
     <!-- LMSupply for local AI (direct reference) -->
     <PackageReference Include="LMSupply.Embedder" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- What docs/AI_PROVIDER_INTEGRATION.md's samples compile against (ProviderGuideSnippetCompileTests): the OpenAI SDK
+         for the own-implementation samples and ASP.NET Core for the web host sample. -->
+    <PackageReference Include="OpenAI" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
   <ItemGroup>
