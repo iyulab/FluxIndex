@@ -86,15 +86,15 @@
     <PackageDescription>$(Description)</PackageDescription>
   </PropertyGroup>
 
-  <!-- Include README.md in packages if it exists (for src projects only) -->
-  <ItemGroup Condition="($(MSBuildProjectDirectory.Contains('\src\')) OR $(MSBuildProjectDirectory.Contains('/src/'))) AND Exists('$(MSBuildThisFileDirectory)README.md')">
+  <!-- Include README.md (and the LICENSE text) in packages if it exists: src projects and the published CLI tool under cli/ -->
+  <ItemGroup Condition="($(MSBuildProjectDirectory.Contains('\src\')) OR $(MSBuildProjectDirectory.Contains('/src/')) OR $(MSBuildProjectDirectory.Contains('\cli\')) OR $(MSBuildProjectDirectory.Contains('/cli/'))) AND Exists('$(MSBuildThisFileDirectory)README.md')">
     <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="\" />
     <!-- MIT asks that the copyright and permission notice travel with every copy: ship the text, not only the SPDX id -->
     <None Include="$(MSBuildThisFileDirectory)LICENSE" Pack="true" PackagePath="\" Visible="false" Condition="Exists('$(MSBuildThisFileDirectory)LICENSE')" />
   </ItemGroup>
 
-  <!-- Set PackageReadmeFile for src projects if README exists -->
-  <PropertyGroup Condition="($(MSBuildProjectDirectory.Contains('\src\')) OR $(MSBuildProjectDirectory.Contains('/src/'))) AND Exists('$(MSBuildThisFileDirectory)README.md')">
+  <!-- Set PackageReadmeFile for src projects and the cli/ tool if README exists -->
+  <PropertyGroup Condition="($(MSBuildProjectDirectory.Contains('\src\')) OR $(MSBuildProjectDirectory.Contains('/src/')) OR $(MSBuildProjectDirectory.Contains('\cli\')) OR $(MSBuildProjectDirectory.Contains('/cli/'))) AND Exists('$(MSBuildThisFileDirectory)README.md')">
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 

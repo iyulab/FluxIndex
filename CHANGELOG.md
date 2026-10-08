@@ -8,6 +8,8 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [0.80.17] - Unreleased
 
 ### Fixed
+- **The `FluxIndex.CLI` tool package (0.4.2) carries the README and the LICENSE text.** The packaging block named `src/` projects
+  only, so the tool's gallery page showed just its one-line description.
 - **The SQLite stores apply `BusyTimeout`, `CacheSize`, `MmapSize`, `TempStore`, `Synchronous` and `WalAutocheckpoint` to
   every connection.** SQLite keeps these per connection, and they were set once on the startup migration's connection
   only, so every connection a store opened afterwards ran on SQLite's defaults (no busy timeout, a 2 MB cache, no memory
