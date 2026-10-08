@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.80.17] - Unreleased
+## [0.80.17] - 2026-10-09
 
 ### Fixed
 - **The `FluxIndex.CLI` tool package (0.4.2) carries the README and the LICENSE text.** The packaging block named `src/` projects
