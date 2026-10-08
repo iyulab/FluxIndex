@@ -21,7 +21,8 @@ public static class SQLiteKeywordSearchServiceCollectionExtensions
     /// <param name="connectionString">
     /// The database to keep the index in. Null uses the database of the SQLite vector store registered in the
     /// same container (<c>AddSQLiteVecVectorStore</c> or <c>AddSQLiteVectorStore</c>), so both legs of a
-    /// hybrid search live in one file.
+    /// hybrid search live in one file, and the index connections get that store's per-connection PRAGMAs
+    /// (<c>BusyTimeout</c>, <c>Synchronous</c>, ...).
     /// </param>
     /// <remarks>
     /// A registered <see cref="ITextAnalyzer"/> and <see cref="KeywordFieldOptions"/> are picked up from the
@@ -35,23 +36,29 @@ public static class SQLiteKeywordSearchServiceCollectionExtensions
         if (connectionString is not null)
             ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
 
-        services.TryAddSingleton(sp => new SQLiteKeywordSearchService(
-            connectionString ?? ResolveVectorStoreConnectionString(sp),
-            sp.GetRequiredService<ILogger<SQLiteKeywordSearchService>>(),
-            sp.GetService<ITextAnalyzer>(),
-            sp.GetService<KeywordFieldOptions>()));
+        services.TryAddSingleton(sp => connectionString is not null
+            ? new SQLiteKeywordSearchService(
+                connectionString,
+                sp.GetRequiredService<ILogger<SQLiteKeywordSearchService>>(),
+                sp.GetService<ITextAnalyzer>(),
+                sp.GetService<KeywordFieldOptions>())
+            : new SQLiteKeywordSearchService(
+                ResolveVectorStoreOptions(sp),
+                sp.GetRequiredService<ILogger<SQLiteKeywordSearchService>>(),
+                sp.GetService<ITextAnalyzer>(),
+                sp.GetService<KeywordFieldOptions>()));
         services.TryAddSingleton<IKeywordSearchService>(sp => sp.GetRequiredService<SQLiteKeywordSearchService>());
         return services;
     }
 
-    private static string ResolveVectorStoreConnectionString(IServiceProvider services)
+    private static SQLiteOptions ResolveVectorStoreOptions(IServiceProvider services)
     {
         // IOptions<T> always resolves, configured or not, so "was a store registered" is read from the
         // configure actions rather than from the options value.
         if (services.GetServices<IConfigureOptions<SQLiteVecOptions>>().Any())
-            return services.GetRequiredService<IOptions<SQLiteVecOptions>>().Value.GetConnectionString();
+            return services.GetRequiredService<IOptions<SQLiteVecOptions>>().Value;
         if (services.GetServices<IConfigureOptions<SQLiteOptions>>().Any())
-            return services.GetRequiredService<IOptions<SQLiteOptions>>().Value.GetConnectionString();
+            return services.GetRequiredService<IOptions<SQLiteOptions>>().Value;
 
         throw new InvalidOperationException(
             "AddSQLiteKeywordSearch was called without a connection string and no SQLite vector store is registered " +

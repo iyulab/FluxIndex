@@ -7,6 +7,15 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [Unreleased]
 
+### Fixed
+- **The SQLite stores apply `BusyTimeout`, `CacheSize`, `MmapSize`, `TempStore`, `Synchronous` and `WalAutocheckpoint` to
+  every connection.** SQLite keeps these per connection, and they were set once on the startup migration's connection
+  only, so every connection a store opened afterwards ran on SQLite's defaults (no busy timeout, a 2 MB cache, no memory
+  map). The vector stores (`AddSQLiteVectorStore`, `AddSQLiteVecVectorStore`, `AddSQLiteQuantizedVectorStore`), the
+  graph and semantic-cache stores, and a keyword index registered without its own connection string
+  (`AddSQLiteKeywordSearch()`) now apply them each time a connection opens. The keyword index used to force
+  `synchronous=NORMAL`; it now follows the store's `Synchronous` (default `Normal`).
+
 ### Changed
 - **The LMSupply embedding identity follows the revision of the paths this library embeds through.** With
   `UseVectorSpaceRevision`, the stored identity (and `EmbeddingIdentity.VectorSpaceRevision`) is now the model's

@@ -27,6 +27,8 @@ public static class CacheServiceCollectionExtensions
         services.AddDbContextFactory<SQLiteCacheDbContext>((serviceProvider, dbOptions) =>
         {
             var options = serviceProvider.GetRequiredService<IOptions<SQLiteCacheOptions>>().Value;
+            // Per-connection PRAGMAs (busy_timeout, cache_size, ...) on every connection, not only the migration's.
+            dbOptions.AddInterceptors(new SQLiteConnectionPragmaInterceptor(options));
             dbOptions.UseSqlite(options.GetCacheConnectionString(), sqliteOptions =>
             {
                 sqliteOptions.CommandTimeout(options.CommandTimeout);
@@ -101,7 +103,7 @@ internal sealed partial class SQLiteCacheSchemaInitializer : IStorageInitializer
             var options = scope.ServiceProvider.GetRequiredService<IOptions<SQLiteCacheOptions>>().Value;
             if (!options.UseInMemory)
             {
-                ApplyCachePragmas(context, options);
+                ApplyCachePragmas(context);
             }
 
             LogMigrationCompleted(_logger);
@@ -113,18 +115,11 @@ internal sealed partial class SQLiteCacheSchemaInitializer : IStorageInitializer
         }
     }
 
-    private void ApplyCachePragmas(
-        SQLiteCacheDbContext context,
-        SQLiteCacheOptions options)
+    private void ApplyCachePragmas(SQLiteCacheDbContext context)
     {
+        // WAL is stored in the file; the per-connection settings (synchronous, cache_size, ...) are applied on every
+        // connection by SQLiteConnectionPragmaInterceptor.
         context.Database.ExecuteSqlRaw("PRAGMA journal_mode=WAL");
-
-#pragma warning disable EF1002
-        context.Database.ExecuteSqlRaw(
-            $"PRAGMA synchronous={options.Synchronous.ToString().ToUpperInvariant()}");
-        context.Database.ExecuteSqlRaw(
-            $"PRAGMA cache_size={options.CacheSize}");
-#pragma warning restore EF1002
 
         LogPragmaApplied(_logger);
     }

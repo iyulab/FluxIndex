@@ -22,6 +22,9 @@ public sealed class SQLiteKeywordSearchService : RelationalKeywordSearchService
 {
     private readonly string _connectionString;
 
+    /// <summary>The store options' per-connection PRAGMAs, when the service was built from them; <c>null</c> for an explicit connection string.</summary>
+    private readonly string? _connectionPragmas;
+
     /// <summary>
     /// An in-memory SQLite database exists only while a connection to it is open — the moment the
     /// last one closes, the schema and every row go with it. Every operation here opens and closes
@@ -47,6 +50,18 @@ public sealed class SQLiteKeywordSearchService : RelationalKeywordSearchService
         _connectionString = opts.UseInMemory
             ? "Data Source=:memory:;Mode=Memory;Cache=Shared"
             : $"Data Source={opts.DatabasePath}";
+        _connectionPragmas = SQLiteConnectionPragmas.For(opts);
+    }
+
+    /// <summary>Shares a vector store's database and applies that store's per-connection PRAGMAs.</summary>
+    internal SQLiteKeywordSearchService(
+        SQLiteOptions storeOptions,
+        ILogger<SQLiteKeywordSearchService> logger,
+        ITextAnalyzer? analyzer,
+        KeywordFieldOptions? fields)
+        : this(storeOptions.GetConnectionString(), logger, analyzer, fields)
+    {
+        _connectionPragmas = SQLiteConnectionPragmas.For(storeOptions);
     }
 
     /// <summary>Creates the service against an explicit connection string.</summary>
@@ -71,7 +86,8 @@ public sealed class SQLiteKeywordSearchService : RelationalKeywordSearchService
 
     /// <inheritdoc />
     /// <remarks>
-    /// A file in WAL mode gets <c>synchronous=NORMAL</c> on each connection — the setting the sqlite-vec store applies to
+    /// Built from store options, every connection gets their per-connection PRAGMAs (<c>busy_timeout</c>, <c>synchronous</c>,
+    /// ...). Built from a bare connection string, a file in WAL mode gets <c>synchronous=NORMAL</c> on each connection — the setting the sqlite-vec store applies to
     /// the same file. With the default (<c>FULL</c>) every commit waits for a sync of the log, which made indexing one
     /// document at a time cost about 2 ms per document in this index alone. In WAL mode <c>NORMAL</c> keeps the database
     /// consistent through a crash of the application; a power loss can drop the last commits. A file in another journal
@@ -79,6 +95,12 @@ public sealed class SQLiteKeywordSearchService : RelationalKeywordSearchService
     /// </remarks>
     protected override async Task OnConnectionOpenedAsync(DbConnection connection, CancellationToken cancellationToken)
     {
+        if (_connectionPragmas is not null)
+        {
+            await SQLiteConnectionPragmas.ApplyAsync(connection, _connectionPragmas, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         if (IsInMemory)
             return;
 

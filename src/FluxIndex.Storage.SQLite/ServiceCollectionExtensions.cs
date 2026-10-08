@@ -1,3 +1,4 @@
+using System.Globalization;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services;
 using System.Linq;
@@ -40,6 +41,8 @@ public static class ServiceCollectionExtensions
         services.AddDbContextFactory<SQLiteVecDbContext>((serviceProvider, dbOptions) =>
         {
             var options = serviceProvider.GetRequiredService<IOptions<SQLiteVecOptions>>().Value;
+            // Per-connection PRAGMAs (busy_timeout, cache_size, ...) on every connection, not only the migration's.
+            dbOptions.AddInterceptors(new SQLiteConnectionPragmaInterceptor(options));
             dbOptions.UseSqlite(options.GetConnectionString(), sqliteOptions =>
             {
                 // CommandTimeout 설정 (장시간 쿼리 대비)
@@ -65,6 +68,7 @@ public static class ServiceCollectionExtensions
             var options = serviceProvider.GetRequiredService<IOptions<SQLiteVecOptions>>().Value;
             var dbOptions = new DbContextOptionsBuilder<SQLiteDbContext>()
                 .UseSqlite(options.GetConnectionString())
+                .AddInterceptors(new SQLiteConnectionPragmaInterceptor(options))
                 .Options;
 
             return new SQLiteDbContext(dbOptions, Options.Create((SQLiteOptions)options));
@@ -167,6 +171,8 @@ public static class ServiceCollectionExtensions
         // instance is safe for concurrent callers. The context type itself stays resolvable (scoped).
         services.AddDbContextFactory<SQLiteDbContext>(dbOptions =>
         {
+            // Per-connection PRAGMAs (busy_timeout, cache_size, ...) on every connection, not only the migration's.
+            dbOptions.AddInterceptors(new SQLiteConnectionPragmaInterceptor(options));
             dbOptions.UseSqlite(options.GetConnectionString(), sqliteOptions =>
             {
                 sqliteOptions.CommandTimeout(options.CommandTimeout);
@@ -231,6 +237,8 @@ public static class ServiceCollectionExtensions
         services.AddDbContextFactory<SQLiteDbContext>((serviceProvider, dbOptions) =>
         {
             var options = serviceProvider.GetRequiredService<IOptions<SQLiteOptions>>().Value;
+            // Per-connection PRAGMAs (busy_timeout, cache_size, ...) on every connection, not only the migration's.
+            dbOptions.AddInterceptors(new SQLiteConnectionPragmaInterceptor(options));
             dbOptions.UseSqlite(options.GetConnectionString(), sqliteOptions =>
             {
                 sqliteOptions.CommandTimeout(options.CommandTimeout);
@@ -263,6 +271,8 @@ public static class ServiceCollectionExtensions
         services.AddDbContextFactory<SQLiteQuantizedDbContext>((serviceProvider, dbOptions) =>
         {
             var options = serviceProvider.GetRequiredService<IOptions<SQLiteQuantizedOptions>>().Value;
+            // Per-connection PRAGMAs (busy_timeout, cache_size, ...) on every connection, not only the migration's.
+            dbOptions.AddInterceptors(new SQLiteConnectionPragmaInterceptor(options));
             dbOptions.UseSqlite(options.GetConnectionString(), sqliteOptions =>
             {
                 sqliteOptions.CommandTimeout(options.CommandTimeout);
@@ -408,7 +418,10 @@ internal sealed partial class SQLiteQuantizedMigrationService : IHostedService
 internal static partial class SQLitePragmaHelper
 {
     /// <summary>
-    /// 공통 PRAGMA 최적화 설정을 적용합니다.
+    /// Applies the settings SQLite stores in the database file: WAL journal mode, page size (new databases only) and auto
+    /// vacuum. The per-connection settings (busy_timeout, cache_size, mmap_size, temp_store, synchronous,
+    /// wal_autocheckpoint) are applied on every connection by <see cref="SQLiteConnectionPragmaInterceptor"/>, including the
+    /// one this method runs on.
     /// </summary>
     public static async Task ApplyPragmaOptimizationsAsync<TContext>(
         TContext context,
@@ -416,67 +429,15 @@ internal static partial class SQLitePragmaHelper
         ILogger logger,
         CancellationToken cancellationToken) where TContext : DbContext
     {
-        // WAL 모드 활성화 (성능 향상)
+        await context.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL", cancellationToken);
+
+        // Internally controlled numeric/enum values - not user text.
+#pragma warning disable EF1002
         await context.Database.ExecuteSqlRawAsync(
-            "PRAGMA journal_mode=WAL",
+            string.Create(CultureInfo.InvariantCulture, $"PRAGMA page_size={options.PageSize}"),
             cancellationToken);
-
-        // 동기화 모드 설정 (내부적으로 제어되는 enum 값 - SQL injection 안전)
-#pragma warning disable EF1002
         await context.Database.ExecuteSqlRawAsync(
-            $"PRAGMA synchronous={options.Synchronous.ToString().ToUpperInvariant()}",
-            cancellationToken);
-#pragma warning restore EF1002
-
-        // 메모리 맵 크기 설정
-        if (options.MmapSize > 0)
-        {
-#pragma warning disable EF1002
-            await context.Database.ExecuteSqlRawAsync(
-                $"PRAGMA mmap_size={options.MmapSize}",
-                cancellationToken);
-#pragma warning restore EF1002
-        }
-
-        // 캐시 크기 설정
-#pragma warning disable EF1002
-        await context.Database.ExecuteSqlRawAsync(
-            $"PRAGMA cache_size={options.CacheSize}",
-            cancellationToken);
-#pragma warning restore EF1002
-
-        // 임시 저장소 설정
-#pragma warning disable EF1002
-        await context.Database.ExecuteSqlRawAsync(
-            $"PRAGMA temp_store={options.TempStore.ToString().ToUpperInvariant()}",
-            cancellationToken);
-#pragma warning restore EF1002
-
-        // 페이지 크기 (새 DB 생성 시에만 적용됨)
-#pragma warning disable EF1002
-        await context.Database.ExecuteSqlRawAsync(
-            $"PRAGMA page_size={options.PageSize}",
-            cancellationToken);
-#pragma warning restore EF1002
-
-        // Busy timeout 설정
-#pragma warning disable EF1002
-        await context.Database.ExecuteSqlRawAsync(
-            $"PRAGMA busy_timeout={options.BusyTimeout}",
-            cancellationToken);
-#pragma warning restore EF1002
-
-        // WAL auto-checkpoint threshold
-#pragma warning disable EF1002
-        await context.Database.ExecuteSqlRawAsync(
-            $"PRAGMA wal_autocheckpoint={options.WalAutocheckpoint}",
-            cancellationToken);
-#pragma warning restore EF1002
-
-        // Auto vacuum 설정
-#pragma warning disable EF1002
-        await context.Database.ExecuteSqlRawAsync(
-            $"PRAGMA auto_vacuum={(int)options.AutoVacuum}",
+            string.Create(CultureInfo.InvariantCulture, $"PRAGMA auto_vacuum={(int)options.AutoVacuum}"),
             cancellationToken);
 #pragma warning restore EF1002
 
