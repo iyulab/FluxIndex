@@ -42,8 +42,9 @@ public sealed class LMSupplyEmbeddingOptions : LMSupplyServiceOptionsBase
     public string? Revision { get; set; }
 
     /// <summary>
-    /// Fold the loaded model's <c>IEmbeddingModel.VectorSpaceRevision</c> (LMSupply 0.71.0+ — derived from what the
-    /// loader actually did: tokenizer, pooling, normalization, sequence length, model file) into
+    /// Fold the loaded model's <c>IEmbeddingModel.RetrievalVectorSpaceRevision</c> (LMSupply 0.114.0+ — derived from what the
+    /// loader actually did for the query and passage paths: tokenizer, pooling, normalization, sequence length, model file,
+    /// query/passage prefixes; the prefix <c>EmbedAsync</c> applies is left out because this service never calls it) into
     /// <see cref="Revision"/> and so into the <c>EmbeddingIdentity.Fingerprint</c>, when <see cref="Revision"/> is not
     /// set by hand. Default: false — the fingerprint stays what it was, and the value is only reported on
     /// <c>EmbeddingIdentity.VectorSpaceRevision</c> for you to store and compare.

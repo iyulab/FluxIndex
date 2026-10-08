@@ -280,8 +280,21 @@ public class LMSupplyEmbeddingServiceTests : IAsyncDisposable
         var model = Substitute.For<IEmbeddingModel>();
         model.Dimensions.Returns(384);
         model.ModelId.Returns("all-MiniLM-L6-v2");
-        model.VectorSpaceRevision.Returns(vectorSpace);
+        // The service embeds through EmbedQueryAsync/EmbedPassageAsync only, so it reads the retrieval revision (LMSupply 0.114.0).
+        // The all-paths value differs on purpose: a fact that passes on it would be reading the wrong one.
+        model.RetrievalVectorSpaceRevision.Returns(vectorSpace);
+        model.VectorSpaceRevision.Returns(vectorSpace is null ? null : "all-paths-" + vectorSpace);
         return model;
+    }
+
+    [Fact]
+    public void GetIdentity_ReportsAndFoldsTheRetrievalRevision_NotTheAllPathsOne()
+    {
+        var folded = new LMSupplyEmbeddingService(ModelWithVectorSpace("3f2a9c1b")) { UseVectorSpaceRevision = true };
+
+        folded.GetIdentity().VectorSpaceRevision.Should().Be("3f2a9c1b",
+            "a change to EmbedAsync's default prefix does not touch the vectors this service stores, so it must not rename the collection");
+        folded.GetIdentity().Revision.Should().Be("3f2a9c1b");
     }
 
     [Fact]

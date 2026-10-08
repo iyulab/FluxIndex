@@ -46,9 +46,9 @@
   <!-- AI/ML Packages -->
   <ItemGroup>
     <!-- LMSupply: Full AI stack (Embedder + Generator + Reranker) -->
-    <PackageVersion Include="LMSupply.Embedder" Version="0.113.0" />
-    <PackageVersion Include="LMSupply.Generator" Version="0.113.0" />
-    <PackageVersion Include="LMSupply.Reranker" Version="0.113.0" />
+    <PackageVersion Include="LMSupply.Embedder" Version="0.114.0" />
+    <PackageVersion Include="LMSupply.Generator" Version="0.114.0" />
+    <PackageVersion Include="LMSupply.Reranker" Version="0.114.0" />
   </ItemGroup>
   <!-- Storage/Cache Packages -->
   <ItemGroup>

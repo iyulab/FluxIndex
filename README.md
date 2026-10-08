@@ -104,6 +104,7 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   }));
   ```
 - **Vector-space revision** — `EmbeddingIdentity.VectorSpaceRevision` reports what the LMSupply loader actually did
+  for the query and passage paths (`RetrievalVectorSpaceRevision`; a change to `EmbedAsync` alone does not move it)
   (store it next to your vectors, compare on the next load; informational by default); opt in with
   `LMSupplyEmbeddingOptions.UseVectorSpaceRevision` to fold it into the fingerprint that names the collection — the
   value is read from the cached model files at host start, so the model still loads lazily.

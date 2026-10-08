@@ -12,7 +12,9 @@ namespace FluxIndex.Providers.LMSupply.Services;
 /// </summary>
 /// <remarks>
 /// <para>Uses ONNX runtime for local inference — no API key required.
-/// Native batch embedding via <see cref="IEmbeddingModel.EmbedAsync(IReadOnlyList{string}, CancellationToken)"/>.</para>
+/// Native batch embedding via <see cref="IEmbeddingModel.EmbedPassageAsync(IReadOnlyList{string}, CancellationToken)"/>; queries through
+/// <see cref="IEmbeddingModel.EmbedQueryAsync(string, CancellationToken)"/>. The service embeds through those two retrieval paths only, so its
+/// vector-space revision is the model's <see cref="IEmbeddingModel.RetrievalVectorSpaceRevision"/> (LMSupply 0.114.0).</para>
 /// <para>
 /// Two construction modes. <see cref="LMSupplyEmbeddingService(IEmbeddingModel)"/> (and
 /// <see cref="CreateAsync"/>) wrap an already loaded model. <see cref="LMSupplyEmbeddingService(LMSupplyEmbeddingOptions)"/>
@@ -64,7 +66,7 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
     }
 
     /// <param name="options">See the public constructor.</param>
-    /// <param name="preRead">Replaces the files-only read (<c>LocalEmbedder.GetVectorSpaceRevisionAsync</c>) — tests only.</param>
+    /// <param name="preRead">Replaces the files-only read (<c>LocalEmbedder.GetRetrievalVectorSpaceRevisionAsync</c>) — tests only.</param>
     internal LMSupplyEmbeddingService(LMSupplyEmbeddingOptions options, Func<CancellationToken, Task<string?>>? preRead)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -90,7 +92,7 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
             },
             options.Progress,
             options.LoadTimeout);
-        _preRead = preRead ?? (ct => LocalEmbedder.GetVectorSpaceRevisionAsync(options.ModelId, options.Embedder, ct));
+        _preRead = preRead ?? (ct => LocalEmbedder.GetRetrievalVectorSpaceRevisionAsync(options.ModelId, options.Embedder, ct));
     }
 
     /// <summary>
@@ -117,7 +119,7 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
     }
 
     /// <summary>
-    /// Fold the loaded model's <c>VectorSpaceRevision</c> into <see cref="EmbeddingServiceBase.Revision"/> — and so into
+    /// Fold the loaded model's <c>RetrievalVectorSpaceRevision</c> into <see cref="EmbeddingServiceBase.Revision"/> — and so into
     /// the fingerprint — when no revision is set by hand. See <see cref="LMSupplyEmbeddingOptions.UseVectorSpaceRevision"/>
     /// for what that moves. Default: false (the value is reported on <c>EmbeddingIdentity.VectorSpaceRevision</c> only).
     /// </summary>
@@ -130,11 +132,11 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
     /// The loaded model's value; before the load, the value <see cref="PreReadVectorSpaceRevisionAsync"/> read from the
     /// cached files, if it was called. <c>null</c> otherwise and for a model that computes none — never throws.
     /// </remarks>
-    protected override string? GetVectorSpaceRevision() => LoadedModel?.VectorSpaceRevision ?? Volatile.Read(ref _preReadRevision);
+    protected override string? GetVectorSpaceRevision() => LoadedModel?.RetrievalVectorSpaceRevision ?? Volatile.Read(ref _preReadRevision);
 
     /// <summary>
     /// Reads the vector-space revision from the cached model files, without loading the model (LMSupply 0.72.0
-    /// <c>LocalEmbedder.GetVectorSpaceRevisionAsync</c>) — no inference session, no download, no request. Once it has
+    /// <c>LocalEmbedder.GetRetrievalVectorSpaceRevisionAsync</c>, 0.114.0) — no inference session, no download, no request. Once it has
     /// a value, <see cref="UseVectorSpaceRevision"/> no longer needs the model loaded before the identity is read, so a
     /// lazily loaded service can announce its final identity at start and load on first use.
     /// </summary>
@@ -151,7 +153,7 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
     public async Task<string?> PreReadVectorSpaceRevisionAsync(CancellationToken cancellationToken = default)
     {
         if (LoadedModel is { } loaded)
-            return loaded.VectorSpaceRevision;
+            return loaded.RetrievalVectorSpaceRevision;
         if (Volatile.Read(ref _preReadRevision) is not null || _preRead is null)
             return Volatile.Read(ref _preReadRevision);
 
@@ -175,7 +177,7 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
             return Revision;
 
         if (LoadedModel is { } model)
-            return model.VectorSpaceRevision;
+            return model.RetrievalVectorSpaceRevision;
         if (Volatile.Read(ref _preReadRevision) is { } preRead)
             return preRead;
 
@@ -339,11 +341,11 @@ public sealed class LMSupplyEmbeddingService : EmbeddingServiceBase, IAsyncDispo
             return;
         if (Volatile.Read(ref _preReadRevision) is not { } preRead)
             return;
-        if (string.Equals(model.VectorSpaceRevision, preRead, StringComparison.Ordinal))
+        if (string.Equals(model.RetrievalVectorSpaceRevision, preRead, StringComparison.Ordinal))
             return;
 
         throw new InvalidOperationException(
-            $"The loaded model '{model.ModelId}' reports vector-space revision '{model.VectorSpaceRevision ?? "(none)"}' but '{preRead}' was read from its cached files before the load " +
+            $"The loaded model '{model.ModelId}' reports vector-space revision '{model.RetrievalVectorSpaceRevision ?? "(none)"}' but '{preRead}' was read from its cached files before the load " +
             "and the embedding identity - and the collection named after it - was announced with that value. Embedding now would put a different vector space into that collection. " +
             "Set LMSupplyEmbeddingOptions.WarmUpOnStart = true so the identity is read from the loaded model instead, and report the mismatch to LMSupply (the files-only read and the load disagree).");
     }
