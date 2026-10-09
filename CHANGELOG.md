@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [Unreleased]
+## [0.81.0] - 2026-10-09
 
 ### Changed
 - **Breaking** — **The document processing pipeline runs a requested stage on a real service or refuses it.**
