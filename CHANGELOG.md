@@ -19,7 +19,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   constructor takes every service but `IDocumentProcessorFactory` as optional.
 - **`AddFluxIndexFluxImprover()` / `AddQAGeneration()` also register FluxIndex.Core's `IQAGenerationService`**, so the
   pipeline's QA stage generates pairs through FluxImprover (contextual enrichment already did this).
-- FluxIndex.CLI: `process --contextual-enrich` and `--generate-qa` run through FluxImprover over the CLI's local text
+- FluxIndex.CLI 0.5.0: `process --contextual-enrich` and `--generate-qa` run through FluxImprover over the CLI's local text
   completion; before, they returned nothing.
 
 - **Breaking** — **`VectorStoreBase.SearchCoreAsync` returns `ScoredChunk`** (was the `FluxIndex.Core.Application.Utilities`
@@ -53,7 +53,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   last one answered every prompt with `Mock response for: …`), and `AddDocumentProcessingPipelineWithFallback()` (now
   identical to `AddDocumentProcessingPipeline()`).
 - **Breaking** — `DocumentProcessingOptions.EnableTextCleaning`, which nothing read (FileFlux's refining stage cleans the
-  text), and FluxIndex.CLI's `process --clean` flag and `ENABLE_TEXT_CLEANING` setting. `--clean` also shared `-c` with
+  text), and FluxIndex.CLI 0.5.0's `process --clean` flag and `ENABLE_TEXT_CLEANING` setting. `--clean` also shared `-c` with
   `--chunk-size`.
 - **Breaking** — **The storage-provider layer is gone**: `IStorageProvider`, `IVectorCapable`, `IGraphCapable`,
   `IRdbCapable`, `ISemanticCacheCapable`, `StorageCapabilities`, `StorageConfiguration`, `IStorageOrchestrator`,
