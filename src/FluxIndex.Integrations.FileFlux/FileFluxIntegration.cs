@@ -144,7 +144,7 @@ public partial class FileFluxIntegration
             LogAccessDenied(_logger, ex, filePath);
             throw;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogUnexpectedErrorProcessingFile(_logger, ex, filePath);
             throw new InvalidOperationException($"Failed to process file: {filePath}", ex);
@@ -275,7 +275,7 @@ public partial class FileFluxIntegration
             LogAccessDenied(_logger, ex, filePath);
             throw;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogUnexpectedErrorProcessingFile(_logger, ex, filePath);
             throw new InvalidOperationException($"Failed to process file: {filePath}", ex);

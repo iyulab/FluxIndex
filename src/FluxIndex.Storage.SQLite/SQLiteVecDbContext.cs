@@ -335,7 +335,7 @@ public partial class SQLiteVecDbContext : DbContext
                 LogVecExtensionFallback(_logger);
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogVecExtensionInitError(_logger, ex);
 

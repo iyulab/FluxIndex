@@ -257,6 +257,33 @@ public class ChunkClassificationServiceTests
     }
 
     [Fact]
+    public async Task ClassifyAsync_CallerCancelsDuringLlmCall_DoesNotRetry()
+    {
+        // The caller's cancel is not a failed attempt: it surfaces at once instead of being retried MaxRetries times.
+        _options.MaxRetries = 2;
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var textCompletionMock = Substitute.For<ITextCompletionService>();
+        textCompletionMock.CompleteAsync(
+                Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                cts.Cancel();
+                return Task.FromException<string>(new OperationCanceledException(cts.Token));
+            });
+
+        var classificationService = new LlmChunkClassificationService(
+            MsOptions.Create(_options),
+            CreateValidationService(),
+            _classificationLoggerMock,
+            textCompletionMock);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => classificationService.ClassifyAsync(CreateTestChunk(), cancellationToken: cts.Token));
+        await textCompletionMock.Received(1).CompleteAsync(
+            Arg.Any<string>(), Arg.Any<Flux.Abstractions.TextCompletionOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task ClassifyAsync_WithLlm_ReturnsClassification()
     {
         // Arrange

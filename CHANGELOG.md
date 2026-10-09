@@ -8,6 +8,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [Unreleased]
 
 ### Fixed
+- **LLM chunk classification stops at the caller's cancel instead of retrying it.** `LlmChunkClassificationService`
+  (`IChunkClassificationService`) counted a cancelled completion call as a failed attempt and called the model again up to `MaxRetries` times before the
+  cancel came through. It now surfaces on the first call.
 - **`QueryAnalysis.Entities` lists the names a query mentions, so Dynamic Alpha Tuning's «two or more names → more keyword
   weight» rule applies.** The analyzer looked for capitalised words after lower-casing the query, so every query had zero
   entities and the documented rule never fired. Entities now come from the query as written; the first word counts only if
@@ -15,6 +18,16 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   toward keyword search for queries naming two or more things, and no others.
 
 ### Changed
+- **Breaking** — **a caller's cancellation reaches the caller as `OperationCanceledException`.** Old → new, when the
+  caller cancels:
+  - `FileFluxIntegration.ProcessAndIndexAsync` / `ProcessAndIndexStreamingAsync`: `InvalidOperationException`
+    («Failed to process file») → `OperationCanceledException`. (A cancel that FileFlux itself reports as its own exception
+    still arrives wrapped until FileFlux passes cancellation through.)
+  - SQLite vector storage start-up (`SQLiteVecMigrationService` and the `sqlite-vec` initialisation) with
+    `FallbackToInMemoryOnError = true`: a cancelled start-up fell back to in-memory mode and carried on → it throws
+    `OperationCanceledException`. Real initialisation failures still fall back.
+  Migration: handle `OperationCanceledException` where you handle cancellation.
+
 - **Breaking** — **`QueryAnalysis.ContainsTechnicalTerms` is true only when the query names a term from a technical
   domain** (`TechnicalDomains` is non-empty). Any word longer than six characters used to make it true, so almost every
   prose query counted as technical. `Concepts` is unchanged and stays a separate signal. Retrieval does not move:

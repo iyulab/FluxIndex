@@ -152,7 +152,7 @@ public partial class LlmChunkClassificationService : IChunkClassificationService
                 if (_logger.IsEnabled(LogLevel.Debug))
                     LogLlmChunkClassification4(_logger, chunk.ChunkId, retry + 1, _options.MaxRetries);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
                 if (_logger.IsEnabled(LogLevel.Debug))
                     LogLlmChunkClassification3(_logger, ex, chunk.ChunkId, retry + 1, _options.MaxRetries);

@@ -584,7 +584,7 @@ internal sealed partial class SQLiteVecMigrationService : IHostedService
 
             LogVecInitCompleted(_logger);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogVecInitFailed(_logger, ex);
 
