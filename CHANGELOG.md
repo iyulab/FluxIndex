@@ -28,6 +28,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   `ScoredChunk(DocumentChunk Chunk, float Score)`. Migration: in a custom store, rename `VectorSearchResult` to
   `ScoredChunk` in `SearchCoreAsync`.
 
+- **Breaking** — **The SDK's hybrid knobs are on `SearchOptions`**: `VectorWeight`, `KeywordWeight`, `FusionMethod` and
+  `RrfK` (all nullable; unset = the hybrid search service chooses per query). The `FluxIndex.SDK.HybridSearchOptions`
+  subclass, which shared its name with `FluxIndex.Core.Domain.Models.HybridSearchOptions`, is removed, and with it the SDK
+  `RerankingStrategy` enum (same name as Core's; `CrossEncoder` and `Custom` mapped to nothing) and the unused `SearchType`
+  enum. `new HybridSearchOptions()` used to mean weighted sum at 0.7/0.3; unset knobs now leave the choice to the service.
+  Migration: `new HybridSearchOptions { … }` → `new SearchOptions { … }`; `RerankingStrategy.WeightedAverage` →
+  `FusionMethod = FusionMethod.WeightedSum`, `ReciprocalRankFusion` → `FusionMethod.RRF`; set the weights you relied on.
+
 ### Removed
 - **Breaking** — `NoOpContextualEnrichmentService`, `NoOpQAGenerationService` and `NoOpTextCompletionService` (the
   last one answered every prompt with `Mock response for: …`), and `AddDocumentProcessingPipelineWithFallback()` (now

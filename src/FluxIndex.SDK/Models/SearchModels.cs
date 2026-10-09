@@ -91,48 +91,24 @@ public class SearchOptions
     /// would leave it nothing to promote. Read only when <see cref="UseReranker"/> is set.
     /// </summary>
     public int? RerankCandidateCount { get; set; }
-}
-
-/// <summary>
-/// 하이브리드 검색 옵션
-/// </summary>
-public class HybridSearchOptions : SearchOptions
-{
-    public float VectorWeight { get; set; } = 0.7f;
-    public float KeywordWeight { get; set; } = 0.3f;
-    public RerankingStrategy RerankingStrategy { get; set; } = RerankingStrategy.WeightedAverage;
 
     /// <summary>
-    /// The fusion method the hybrid search service uses to merge the vector and keyword legs. Null
-    /// (the default) derives it from <see cref="RerankingStrategy"/>: <c>WeightedAverage</c> maps to
-    /// <c>WeightedSum</c>, <c>ReciprocalRankFusion</c> to <c>RRF</c>. Set it to reach the methods the
-    /// two-value strategy cannot name (relative-score fusion, product, maximum, harmonic mean).
+    /// Weight of the vector leg when the search runs hybrid. Unset: the hybrid search service chooses it per query.
+    /// </summary>
+    public float? VectorWeight { get; set; }
+
+    /// <summary>
+    /// Weight of the keyword leg when the search runs hybrid. Unset: the hybrid search service chooses it per query.
+    /// </summary>
+    public float? KeywordWeight { get; set; }
+
+    /// <summary>
+    /// How a hybrid search fuses the vector and keyword legs. Unset: the hybrid search service chooses it per query.
     /// </summary>
     public Core.Domain.Models.FusionMethod? FusionMethod { get; set; }
 
     /// <summary>
-    /// The <c>k</c> constant of reciprocal rank fusion. Null keeps the service default (60).
+    /// The <c>k</c> constant of reciprocal rank fusion. Unset keeps the service default (60).
     /// </summary>
     public double? RrfK { get; set; }
-}
-
-/// <summary>
-/// 검색 타입
-/// </summary>
-public enum SearchType
-{
-    Semantic,
-    Keyword,
-    Hybrid
-}
-
-/// <summary>
-/// 리랭킹 전략
-/// </summary>
-public enum RerankingStrategy
-{
-    WeightedAverage,
-    CrossEncoder,
-    ReciprocalRankFusion,
-    Custom
 }

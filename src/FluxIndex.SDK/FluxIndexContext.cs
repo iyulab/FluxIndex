@@ -971,12 +971,6 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDi
     }
 
     /// <summary>
-    /// SDK HybridSearchOptions를 Core HybridSearchOptions로 변환.
-    /// 매핑 정본은 <see cref="HybridSearchOptionsMapper"/> — Retriever 경로와 갈라지지 않게 공유한다.
-    /// </summary>
-    private static FluxIndex.Core.Domain.Models.HybridSearchOptions ConvertToCore(HybridSearchOptions sdkOptions)
-        => HybridSearchOptionsMapper.ToCore(sdkOptions);
-    /// <summary>
     /// SDK SearchResult를 Core SearchResult로 변환
     /// </summary>
     private static Core.Application.Interfaces.SearchResult ConvertToCore(SearchResult sdkResult)

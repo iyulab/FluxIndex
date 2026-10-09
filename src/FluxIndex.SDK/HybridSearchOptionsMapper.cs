@@ -1,33 +1,31 @@
 namespace FluxIndex.SDK;
 
 /// <summary>
-/// Maps the SDK's <see cref="HybridSearchOptions"/> onto the Core options the hybrid search service
-/// consumes. Single-sourced so the two SDK entry points — <c>FluxIndexContext.HybridSearchV2Async</c>
-/// and <c>Retriever.SearchAsync</c> — cannot drift in how they translate weights.
+/// Maps <see cref="SearchOptions"/> onto the Core options the hybrid search service consumes. Every hybrid knob passes
+/// through as given; one left unset is chosen by the service per query.
 /// </summary>
 internal static class HybridSearchOptionsMapper
 {
-    public static Core.Domain.Models.HybridSearchOptions ToCore(HybridSearchOptions sdkOptions)
+    /// <summary>
+    /// Core options for a search driven by <see cref="SearchOptions"/>.
+    /// </summary>
+    public static Core.Domain.Models.HybridSearchOptions FromSearchOptions(SearchOptions options)
     {
         var coreOptions = new Core.Domain.Models.HybridSearchOptions
         {
-            MaxResults = sdkOptions.TopK,
-            VectorWeight = sdkOptions.VectorWeight,
-            SparseWeight = sdkOptions.KeywordWeight,
-            Filters = ToCoreFilters(sdkOptions),
-            // The SDK options always name the weights and the fusion, so all three are set and the service uses
-            // them as given. An explicit fusion method wins over the two-value strategy, which cannot name the others.
-            FusionMethod = sdkOptions.FusionMethod ?? sdkOptions.RerankingStrategy switch
-            {
-                RerankingStrategy.WeightedAverage => Core.Domain.Models.FusionMethod.WeightedSum,
-                RerankingStrategy.ReciprocalRankFusion => Core.Domain.Models.FusionMethod.RRF,
-                _ => Core.Domain.Models.FusionMethod.RRF
-            }
+            MaxResults = options.TopK,
+            VectorWeight = options.VectorWeight,
+            SparseWeight = options.KeywordWeight,
+            FusionMethod = options.FusionMethod,
+            Filters = ToCoreFilters(options)
         };
 
-        if (sdkOptions.RrfK is { } rrfK)
+        if (options.RrfK is { } rrfK)
             coreOptions.RrfK = rrfK;
 
+        // A similarity floor belongs on the vector leg. Compared with the fused score — rank-sized under
+        // reciprocal rank fusion, about 0.016 at best — a similarity-sized threshold drops every result.
+        coreOptions.VectorOptions.MinScore = options.MinSimilarity;
         return coreOptions;
     }
 
@@ -43,25 +41,4 @@ internal static class HybridSearchOptionsMapper
         => options.MetadataFilters?.Count > 0
             ? options.MetadataFilters.ToDictionary(kvp => kvp.Key, kvp => (object)kvp.Value)
             : [];
-
-    /// <summary>
-    /// Core options for a search driven by <see cref="SearchOptions"/>. When the caller actually
-    /// passed a <see cref="HybridSearchOptions"/>, its weights and fusion strategy are honoured;
-    /// plain options name neither, so both stay unset and the service chooses them per query.
-    /// </summary>
-    public static Core.Domain.Models.HybridSearchOptions FromSearchOptions(SearchOptions options)
-    {
-        var coreOptions = options is HybridSearchOptions hybridOptions
-            ? ToCore(hybridOptions)
-            : new Core.Domain.Models.HybridSearchOptions
-            {
-                MaxResults = options.TopK,
-                Filters = ToCoreFilters(options)
-            };
-
-        // A similarity floor belongs on the vector leg. Compared with the fused score — rank-sized under
-        // reciprocal rank fusion, about 0.016 at best — a similarity-sized threshold drops every result.
-        coreOptions.VectorOptions.MinScore = options.MinSimilarity;
-        return coreOptions;
-    }
 }

@@ -5,21 +5,21 @@ using Xunit;
 namespace FluxIndex.SDK.Tests;
 
 /// <summary>
-/// <c>Retriever.SearchAsync</c> used to build its Core options inline with hardcoded 0.7/0.3, so a
-/// caller passing <see cref="HybridSearchOptions"/> had its weights silently discarded — the SDK type
-/// exposed knobs that only <c>FluxIndexContext.HybridSearchV2Async</c> honoured. Both entry points now
-/// map through <see cref="HybridSearchOptionsMapper"/>; these pin that contract.
+/// <c>Retriever.SearchAsync</c> used to build its Core options inline with hardcoded 0.7/0.3, so a caller's weights
+/// were silently discarded. The hybrid knobs now live on <see cref="SearchOptions"/> and pass through
+/// <see cref="HybridSearchOptionsMapper"/> as given; these pin that contract.
 /// </summary>
 public class HybridSearchOptionsMapperTests
 {
     [Fact]
-    public void FromSearchOptions_WithHybridOptions_HonoursCallerWeights()
+    public void FromSearchOptions_HonoursCallerWeights()
     {
-        var options = new HybridSearchOptions
+        var options = new SearchOptions
         {
             TopK = 25,
             VectorWeight = 0.2f,
             KeywordWeight = 0.8f,
+            FusionMethod = Core.Domain.Models.FusionMethod.WeightedSum,
             MinSimilarity = 0.15f
         };
 
@@ -27,72 +27,43 @@ public class HybridSearchOptionsMapperTests
 
         core.VectorWeight.Should().BeApproximately(0.2, 0.0001);
         core.SparseWeight.Should().BeApproximately(0.8, 0.0001);
+        core.FusionMethod.Should().Be(Core.Domain.Models.FusionMethod.WeightedSum);
         core.MaxResults.Should().Be(25);
         core.VectorOptions.MinScore.Should().BeApproximately(0.15, 0.0001, "MinSimilarity is a floor on the vector leg");
         core.MinFusedScore.Should().Be(0, "a similarity-sized value compared with the fused score drops every result");
-        core.FusionMethod.Should().NotBeNull("the caller named the weights and the fusion, so nothing is left for the service to replace");
     }
 
     [Fact]
-    public void FromSearchOptions_WithPlainSearchOptions_LeavesFusionToTheService()
+    public void FromSearchOptions_UnsetKnobs_LeaveFusionToTheService()
     {
         var options = new SearchOptions { TopK = 10, MinSimilarity = 0.0f };
 
         var core = HybridSearchOptionsMapper.FromSearchOptions(options);
 
-        core.VectorWeight.Should().BeNull("plain options name no weights, so the service chooses them per query");
+        core.VectorWeight.Should().BeNull("no weights named, so the service chooses them per query");
         core.SparseWeight.Should().BeNull();
         core.FusionMethod.Should().BeNull();
         core.MaxResults.Should().Be(10);
     }
 
     [Fact]
-    public void FromSearchOptions_MapsRerankingStrategyToFusionMethod()
+    public void FromSearchOptions_PassesAPartialChoiceThrough()
     {
-        var weighted = HybridSearchOptionsMapper.FromSearchOptions(
-            new HybridSearchOptions { RerankingStrategy = RerankingStrategy.WeightedAverage });
-        var rrf = HybridSearchOptionsMapper.FromSearchOptions(
-            new HybridSearchOptions { RerankingStrategy = RerankingStrategy.ReciprocalRankFusion });
+        var core = HybridSearchOptionsMapper.FromSearchOptions(
+            new SearchOptions { FusionMethod = Core.Domain.Models.FusionMethod.RelativeScoreFusion });
 
-        weighted.FusionMethod.Should().Be(Core.Domain.Models.FusionMethod.WeightedSum);
-        rrf.FusionMethod.Should().Be(Core.Domain.Models.FusionMethod.RRF);
+        core.FusionMethod.Should().Be(Core.Domain.Models.FusionMethod.RelativeScoreFusion);
+        core.VectorWeight.Should().BeNull("the service fills the knobs the caller left unset");
     }
 
     [Fact]
-    public void ToCore_AnExplicitFusionMethod_WinsOverTheRerankingStrategy()
+    public void FromSearchOptions_CarriesRrfK_AndKeepsTheServiceDefaultWhenUnset()
     {
-        var core = HybridSearchOptionsMapper.ToCore(new HybridSearchOptions
-        {
-            RerankingStrategy = RerankingStrategy.WeightedAverage,
-            FusionMethod = Core.Domain.Models.FusionMethod.RelativeScoreFusion,
-        });
-
-        core.FusionMethod.Should().Be(Core.Domain.Models.FusionMethod.RelativeScoreFusion,
-            "the two-value strategy cannot name RSF, product, maximum or harmonic mean; the explicit method is how the SDK reaches them");
-    }
-
-    [Fact]
-    public void ToCore_CarriesRrfK_AndKeepsTheServiceDefaultWhenUnset()
-    {
-        var explicitK = HybridSearchOptionsMapper.ToCore(new HybridSearchOptions { RrfK = 20 });
-        var defaultK = HybridSearchOptionsMapper.ToCore(new HybridSearchOptions());
+        var explicitK = HybridSearchOptionsMapper.FromSearchOptions(new SearchOptions { RrfK = 20 });
+        var defaultK = HybridSearchOptionsMapper.FromSearchOptions(new SearchOptions());
 
         explicitK.RrfK.Should().Be(20);
         defaultK.RrfK.Should().Be(new Core.Domain.Models.HybridSearchOptions().RrfK);
-    }
-
-    [Fact]
-    public void ToCore_KeepsSdkAndContextPathsOnOneMapping()
-    {
-        // FluxIndexContext.ConvertToCore delegates here; this pins the shared shape so the two
-        // entry points cannot drift apart again.
-        var sdk = new HybridSearchOptions { TopK = 7, VectorWeight = 0.4f, KeywordWeight = 0.6f };
-
-        var core = HybridSearchOptionsMapper.ToCore(sdk);
-
-        core.MaxResults.Should().Be(7);
-        core.VectorWeight.Should().BeApproximately(0.4, 0.0001);
-        core.SparseWeight.Should().BeApproximately(0.6, 0.0001);
     }
 
     // === Metadata filters ===
@@ -116,21 +87,6 @@ public class HybridSearchOptionsMapperTests
         core.EffectiveVectorFilters.Should().ContainKey("workspace_id");
         core.EffectiveSparseFilters.Should().ContainKey("workspace_id",
             "the keyword leg had no filter at all, so a scoped hybrid query mixed in other scopes");
-    }
-
-    [Fact]
-    public void ToCore_WithHybridOptions_CarriesMetadataFilters()
-    {
-        var sdk = new HybridSearchOptions
-        {
-            TopK = 7,
-            MetadataFilters = new Dictionary<string, string> { ["tenant"] = "alpha" }
-        };
-
-        var core = HybridSearchOptionsMapper.ToCore(sdk);
-
-        core.EffectiveVectorFilters.Should().ContainKey("tenant");
-        core.EffectiveSparseFilters.Should().ContainKey("tenant");
     }
 
     [Fact]
