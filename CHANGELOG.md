@@ -24,7 +24,18 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   `BatchIndexingResult`, the name the SDK's document batch result also uses — the two are different results, URLs vs
   documents). Migration: rename the type in code that names it; its members are unchanged.
 
+- **Breaking** — **`IHybridSearchService.RecommendSearchStrategyAsync` returns `HybridSearchStrategy`** (was
+  `FluxIndex.Core.Domain.Models.SearchStrategy`, the name adaptive search's strategy enum also uses — one is a retrieval
+  pipeline, the other how a hybrid search weighs its two legs). `BatchHybridSearchResult.Strategy` is the same type.
+  `QueryCharacteristics` keeps what the hybrid heuristic decides from — `Length`, `ContainsTechnicalTerms`; `Type`,
+  `Complexity`, `ContainsNamedEntities` and `Sentiment` are removed (nothing read them; `Sentiment` was always `Neutral`),
+  with `Domain.Models.QueryType` and `SentimentPolarity`. Query classification is `IQueryComplexityAnalyzer`'s
+  (`Application.Interfaces.QueryType`). Migration: rename the type; read the analyzer for a query's type.
+
 ### Fixed
+- **The Qdrant hybrid service's recommendation is what it applies.** `RecommendSearchStrategyAsync` answered keyword-first
+  for a quoted query and vector-first for a short one, while a search with fusion left unset always used the service's
+  fixed RRF 0.7 / 0.3. It now reports those defaults. Search results are unchanged.
 - **The SQLite store's native hybrid search scores the vector leg 1/rank.** It scored the first vector hit 0.5, the second
   0.33, … (1/(rank+1)); `VectorScore` of a native hybrid result now reads 1 for the top vector hit.
 

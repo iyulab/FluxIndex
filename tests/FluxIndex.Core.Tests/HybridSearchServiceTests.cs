@@ -184,6 +184,20 @@ public class HybridSearchServiceTests
         var strategy = await _service.RecommendSearchStrategyAsync(query, TestContext.Current.CancellationToken);
 
         Assert.Equal(expected, strategy.RecommendedFusion);
+        Assert.Equal(expected == FusionMethod.WeightedSum, strategy.QueryCharacteristics.ContainsTechnicalTerms);
+    }
+
+    // The characteristics carry what the strategy is chosen from — the token count — and the strategy follows it.
+    [Theory]
+    [InlineData("invoice", 1, SearchStrategyType.SparseFirst)]
+    [InlineData("archived invoice retention policy", 4, SearchStrategyType.Balanced)]
+    [InlineData("how long do we keep archived invoices after a customer leaves", 11, SearchStrategyType.VectorFirst)]
+    public async Task RecommendSearchStrategy_ChoosesTheStrategyFromTheQueryLength(string query, int length, SearchStrategyType expected)
+    {
+        var strategy = await _service.RecommendSearchStrategyAsync(query, TestContext.Current.CancellationToken);
+
+        Assert.Equal(length, strategy.QueryCharacteristics.Length);
+        Assert.Equal(expected, strategy.Type);
     }
 
     // A search the caller cancelled is not an empty result: the vector leg used to log the cancellation as a backend

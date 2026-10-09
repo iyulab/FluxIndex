@@ -3,7 +3,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using SearchStrategy = FluxIndex.Core.Domain.Models.SearchStrategy;
 
 namespace FluxIndex.Core.Application.Interfaces;
 
@@ -42,7 +41,7 @@ public interface IHybridSearchService
     /// <param name="query">검색 쿼리</param>
     /// <param name="cancellationToken">취소 토큰</param>
     /// <returns>추천 검색 전략</returns>
-    Task<FluxIndex.Core.Domain.Models.SearchStrategy> RecommendSearchStrategyAsync(
+    Task<HybridSearchStrategy> RecommendSearchStrategyAsync(
         string query,
         CancellationToken cancellationToken = default);
 

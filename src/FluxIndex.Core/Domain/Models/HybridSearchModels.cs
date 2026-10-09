@@ -100,7 +100,7 @@ public class BatchHybridSearchResult
     /// <summary>
     /// 사용된 검색 전략
     /// </summary>
-    public SearchStrategy Strategy { get; init; } = new();
+    public HybridSearchStrategy Strategy { get; init; } = new();
 }
 
 /// <summary>
@@ -224,9 +224,12 @@ public record HybridSearchOptions
 }
 
 /// <summary>
-/// 검색 전략
+/// How a hybrid search would weigh its two legs for a query: the strategy, fusion method and weights a hybrid search
+/// service applies when the caller leaves fusion unset (<see cref="FusionSelection.QueryHeuristic"/> or
+/// <see cref="FusionSelection.ServiceDefault"/>). Not the adaptive search's retrieval strategy
+/// (<c>FluxIndex.Core.Application.Interfaces.SearchStrategy</c>).
 /// </summary>
-public class SearchStrategy
+public class HybridSearchStrategy
 {
     /// <summary>
     /// 전략 유형
@@ -306,39 +309,20 @@ public class FusionPerformanceMetrics
 }
 
 /// <summary>
-/// 쿼리 특성
+/// What the hybrid search's query heuristic reads from a query to choose its strategy and fusion — and nothing else.
+/// Query classification (type, complexity, intent) is <c>IQueryComplexityAnalyzer</c>'s.
 /// </summary>
 public class QueryCharacteristics
 {
     /// <summary>
-    /// 쿼리 길이 (토큰 수)
+    /// 쿼리 길이 (토큰 수) — picks the strategy (≤ 2 sparse first, ≤ 5 balanced, longer vector first).
     /// </summary>
     public int Length { get; init; }
 
     /// <summary>
-    /// 키워드 유형 (Boolean, Natural, Phrase)
-    /// </summary>
-    public QueryType Type { get; init; }
-
-    /// <summary>
-    /// 복잡도 점수 (0.0 - 1.0)
-    /// </summary>
-    public double Complexity { get; init; }
-
-    /// <summary>
-    /// 개체명 포함 여부
-    /// </summary>
-    public bool ContainsNamedEntities { get; init; }
-
-    /// <summary>
-    /// 전문 용어 포함 여부
+    /// 전문 용어 포함 여부 — picks weighted-sum fusion instead of RRF.
     /// </summary>
     public bool ContainsTechnicalTerms { get; init; }
-
-    /// <summary>
-    /// 감정 극성
-    /// </summary>
-    public SentimentPolarity Sentiment { get; init; }
 }
 
 /// <summary>
@@ -474,23 +458,3 @@ public enum SearchStrategyType
     Adaptive
 }
 
-/// <summary>
-/// 감정 극성
-/// </summary>
-public enum SentimentPolarity
-{
-    /// <summary>
-    /// 중립
-    /// </summary>
-    Neutral,
-
-    /// <summary>
-    /// 긍정
-    /// </summary>
-    Positive,
-
-    /// <summary>
-    /// 부정
-    /// </summary>
-    Negative
-}

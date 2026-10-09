@@ -11,7 +11,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using DomainHybridSearchResult = FluxIndex.Core.Domain.Models.HybridSearchResult;
 using DomainHybridSearchOptions = FluxIndex.Core.Domain.Models.HybridSearchOptions;
-using SearchStrategy = FluxIndex.Core.Domain.Models.SearchStrategy;
 
 namespace FluxIndex.Core.Application.Services;
 
@@ -153,7 +152,7 @@ public partial class HybridSearchService : IHybridSearchService
                 var results = await SearchAsync(query, options, cancellationToken);
                 var strategy = LeavesFusionToService(options)
                     ? await RecommendSearchStrategyAsync(query, cancellationToken)
-                    : new SearchStrategy { Type = SearchStrategyType.Balanced };
+                    : new HybridSearchStrategy { Type = SearchStrategyType.Balanced };
 
                 stopwatch.Stop();
 
@@ -180,7 +179,7 @@ public partial class HybridSearchService : IHybridSearchService
     /// <summary>
     /// 검색 전략 추천
     /// </summary>
-    public async Task<FluxIndex.Core.Domain.Models.SearchStrategy> RecommendSearchStrategyAsync(
+    public async Task<HybridSearchStrategy> RecommendSearchStrategyAsync(
         string query,
         CancellationToken cancellationToken = default)
     {
@@ -433,24 +432,14 @@ public partial class HybridSearchService : IHybridSearchService
         var tokens = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var length = tokens.Length;
 
-        // 간단한 쿼리 유형 분석
-        var queryType = DetermineQueryType(query);
-        var complexity = CalculateComplexity(query, tokens);
-        var containsEntities = ContainsNamedEntities(query);
-        var containsTechnical = ContainsTechnicalTerms(tokens);
-
         return new QueryCharacteristics
         {
             Length = length,
-            Type = queryType,
-            Complexity = complexity,
-            ContainsNamedEntities = containsEntities,
-            ContainsTechnicalTerms = containsTechnical,
-            Sentiment = SentimentPolarity.Neutral // 기본값
+            ContainsTechnicalTerms = ContainsTechnicalTerms(tokens),
         };
     }
 
-    private static SearchStrategy DetermineOptimalStrategy(QueryCharacteristics characteristics)
+    private static HybridSearchStrategy DetermineOptimalStrategy(QueryCharacteristics characteristics)
     {
         var strategyType = characteristics.Length switch
         {
@@ -471,13 +460,13 @@ public partial class HybridSearchService : IHybridSearchService
             _ => (0.7, 0.3)
         };
 
-        return new SearchStrategy
+        return new HybridSearchStrategy
         {
             Type = strategyType,
             RecommendedFusion = fusionMethod,
             RecommendedWeights = weights,
             Confidence = 0.8,
-            Reasoning = $"쿼리 길이: {characteristics.Length}, 유형: {characteristics.Type}",
+            Reasoning = $"{characteristics.Length} token(s){(characteristics.ContainsTechnicalTerms ? ", technical terms" : "")}",
             QueryCharacteristics = characteristics
         };
     }
@@ -531,31 +520,6 @@ public partial class HybridSearchService : IHybridSearchService
             options.SparseWeight ?? strategy.RecommendedWeights.SparseWeight,
             options.RrfK,
             FusionSelection.QueryHeuristic));
-    }
-
-    private static FluxIndex.Core.Domain.Models.QueryType DetermineQueryType(string query)
-    {
-        if (query.Contains('"'))
-            return FluxIndex.Core.Domain.Models.QueryType.Phrase;
-        if (query.Contains(" AND ") || query.Contains(" OR "))
-            return FluxIndex.Core.Domain.Models.QueryType.Boolean;
-        if (query.Split(' ').Length <= 3)
-            return FluxIndex.Core.Domain.Models.QueryType.Keyword;
-        return FluxIndex.Core.Domain.Models.QueryType.Natural;
-    }
-
-    private static double CalculateComplexity(string query, string[] tokens)
-    {
-        var complexity = 0.0;
-        complexity += Math.Min(tokens.Length / 10.0, 1.0); // 길이 기준
-        complexity += query.Count(c => char.IsPunctuation(c)) / 10.0; // 구두점 기준
-        return Math.Min(complexity, 1.0);
-    }
-
-    private static bool ContainsNamedEntities(string query)
-    {
-        // 간단한 대문자 패턴 검사
-        return query.Split(' ').Any(token => char.IsUpper(token.FirstOrDefault()));
     }
 
     private static readonly char[] TokenPunctuation = ['.', ',', ';', ':', '!', '?', '(', ')', '[', ']', '"', '\''];

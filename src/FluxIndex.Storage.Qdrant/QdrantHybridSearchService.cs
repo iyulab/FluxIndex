@@ -3,7 +3,6 @@ using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Core.Domain.Models;
 using FluxIndex.Core.Application.Services;
 using Microsoft.Extensions.Logging;
-using DomainSearchStrategy = FluxIndex.Core.Domain.Models.SearchStrategy;
 
 namespace FluxIndex.Storage.Qdrant;
 
@@ -99,53 +98,28 @@ public partial class QdrantHybridSearchService : IHybridSearchService
         return results;
     }
 
-    /// <inheritdoc/>
-    public Task<DomainSearchStrategy> RecommendSearchStrategyAsync(
+    /// <summary>
+    /// What this service applies when the caller leaves fusion unset: its fixed defaults (RRF, 0.7 / 0.3,
+    /// <see cref="FusionSelection.ServiceDefault"/>), whatever the query — it has no per-query heuristic. It used to answer
+    /// per-query recommendations it never applied.
+    /// </summary>
+    public Task<HybridSearchStrategy> RecommendSearchStrategyAsync(
         string query,
         CancellationToken cancellationToken = default)
+        => Task.FromResult(Recommend(query));
+
+    internal static HybridSearchStrategy Recommend(string query)
     {
-        // Analyze query characteristics
-        var words = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        var hasSpecificTerms = words.Any(w => w.Length > 8 || (w.Length > 0 && char.IsUpper(w[0])));
-        var isShortQuery = words.Length <= 3;
-        var hasQuotes = query.Contains('"') || query.Contains('\'');
-
-        // Recommend strategy based on query analysis
-        if (hasQuotes || hasSpecificTerms)
-        {
-            // Exact terms suggest keyword-heavy search
-            return Task.FromResult(new DomainSearchStrategy
-            {
-                Type = SearchStrategyType.SparseFirst,
-                RecommendedFusion = FusionMethod.RRF,
-                RecommendedWeights = (0.4, 0.6),
-                Confidence = 0.8,
-                Reasoning = "Query contains specific terms or quoted phrases, favoring keyword matching"
-            });
-        }
-
-        if (isShortQuery)
-        {
-            // Short queries often need semantic expansion
-            return Task.FromResult(new DomainSearchStrategy
-            {
-                Type = SearchStrategyType.VectorFirst,
-                RecommendedFusion = FusionMethod.RRF,
-                RecommendedWeights = (0.8, 0.2),
-                Confidence = 0.7,
-                Reasoning = "Short query benefits from semantic expansion via vector search"
-            });
-        }
-
-        // Default balanced approach
-        return Task.FromResult(new DomainSearchStrategy
+        var applied = ResolveFusion(new HybridSearchOptions());
+        return new HybridSearchStrategy
         {
             Type = SearchStrategyType.Balanced,
-            RecommendedFusion = FusionMethod.RRF,
-            RecommendedWeights = (0.7, 0.3),
-            Confidence = 0.75,
-            Reasoning = "Balanced hybrid search for general queries"
-        });
+            RecommendedFusion = applied.Method,
+            RecommendedWeights = (applied.VectorWeight, applied.SparseWeight),
+            Confidence = 1.0,
+            Reasoning = "fixed defaults: this service does not adapt fusion to the query",
+            QueryCharacteristics = new QueryCharacteristics { Length = query.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length },
+        };
     }
 
     /// <inheritdoc/>

@@ -37,6 +37,20 @@ public class QdrantHybridFusionResolutionTests
         Assert.Equal(new AppliedFusion(FusionMethod.RRF, 0.7, 0.3, 60, FusionSelection.ServiceDefault), fusion);
     }
 
+    // It used to recommend keyword-first for a quoted query and vector-first for a short one, and apply neither.
+    [Theory]
+    [InlineData("\"exact phrase\"")]
+    [InlineData("API")]
+    [InlineData("how does the retention policy apply to archived invoices")]
+    public void Recommend_ReportsTheFusionThisServiceApplies_WhateverTheQuery(string query)
+    {
+        var recommended = QdrantHybridSearchService.Recommend(query);
+        var applied = QdrantHybridSearchService.ResolveFusion(new HybridSearchOptions());
+
+        Assert.Equal(applied.Method, recommended.RecommendedFusion);
+        Assert.Equal((applied.VectorWeight, applied.SparseWeight), recommended.RecommendedWeights);
+    }
+
     [Fact]
     public void ResolveFusion_OnlyTheMethodSet_KeepsItAndFillsTheWeights()
     {

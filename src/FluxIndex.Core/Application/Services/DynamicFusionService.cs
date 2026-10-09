@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
-// Alias to avoid ambiguity with Domain.Models.QueryType
+// Alias for the analyzer's query type (Application.Interfaces)
 using AppQueryType = FluxIndex.Core.Application.Interfaces.QueryType;
 
 namespace FluxIndex.Core.Application.Services;
