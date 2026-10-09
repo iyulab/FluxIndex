@@ -125,24 +125,11 @@ public partial class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
             Entities = ExtractEntities(tokens),
             Concepts = ExtractConcepts(tokens),
             Keywords = ExtractKeywords(tokens),
-            Intent = DetermineIntent(query, tokens),
-            Language = DetectLanguage(query),
             TechnicalDomains = technicalDomains,
             RequiresReasoning = RequiresReasoning(query, tokens),
-            HasTemporalContext = HasTemporalContext(tokens),
             HasComparativeContext = HasComparativeContext(tokens),
             IsMultiHop = IsMultiHop(query, tokens),
-            EstimatedProcessingTime = EstimateProcessingTime(query, tokens),
-            ConfidenceScore = CalculateConfidenceScore(query, tokens),
-            Metadata = new Dictionary<string, object>
-            {
-                ["token_count"] = tokens.Length,
-                ["char_count"] = query.Length,
-                ["question_words"] = tokens.Count(t => QuestionWords.Contains(t)),
-                ["technical_terms"] = tokens.Count(t => TechnicalTerms.Contains(t)),
-                ["technical_domains"] = technicalDomains,
-                ["analyzed_at"] = DateTime.UtcNow
-            }
+            ConfidenceScore = CalculateConfidenceScore(query, tokens)
         };
 
         if (_logger.IsEnabled(LogLevel.Debug))
@@ -165,22 +152,6 @@ public partial class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
             ComplexityLevel.VeryComplex => RecommendVeryComplexStrategy(analysis),
             _ => SearchStrategy.Hybrid
         };
-    }
-
-    /// <summary>
-    /// 쿼리 유형별 성능 통계 업데이트
-    /// </summary>
-    public async Task UpdatePerformanceAsync(
-        string query,
-        QueryAnalysis analysis,
-        QueryAnalysisResult result,
-        CancellationToken cancellationToken = default)
-    {
-        // 실제 구현에서는 성능 데이터베이스에 저장
-        if (_logger.IsEnabled(LogLevel.Debug))
-            LogQueryComplexity1(_logger, analysis.Type, result.ResultCount);
-
-        await Task.CompletedTask;
     }
 
     #region Private Methods
@@ -342,38 +313,6 @@ public partial class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
         return tokens.Where(t => !stopWords.Contains(t) && t.Length > 2).ToList();
     }
 
-    private static QueryIntent DetermineIntent(string query, string[] tokens)
-    {
-        // "how to", "what is" → 정보적
-        if (tokens.Any(t => QuestionWords.Contains(t)))
-            return QueryIntent.Informational;
-
-        // "compare", "analyze" → 분석적
-        if (HasComparativeContext(tokens) || tokens.Any(t => t.Contains("analyz")))
-            return QueryIntent.Analytical;
-
-        // "find", "search" → 탐색적
-        if (tokens.Any(t => t.Contains("find") || t.Contains("search")))
-            return QueryIntent.Exploratory;
-
-        return QueryIntent.Informational;
-    }
-
-    private static Language DetectLanguage(string query)
-    {
-        var koreanPattern = @"[가-힣]";
-        var englishPattern = @"[a-zA-Z]";
-
-        var hasKorean = Regex.IsMatch(query, koreanPattern);
-        var hasEnglish = Regex.IsMatch(query, englishPattern);
-
-        if (hasKorean && hasEnglish) return Language.Mixed;
-        if (hasKorean) return Language.Korean;
-        if (hasEnglish) return Language.English;
-
-        return Language.Other;
-    }
-
     private static bool RequiresReasoning(string query, string[] tokens)
     {
         var reasoningPatterns = new[]
@@ -408,21 +347,6 @@ public partial class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
                tokens.Count(t => LogicalOperators.Contains(t)) > 1;
     }
 
-    private static TimeSpan EstimateProcessingTime(string query, string[] tokens)
-    {
-        var baseTimeMs = 500; // 기본 500ms
-
-        // 토큰 수에 따른 추가 시간
-        baseTimeMs += tokens.Length * 10;
-
-        // 복잡도에 따른 추가 시간
-        if (RequiresReasoning(query, tokens)) baseTimeMs += 1000;
-        if (IsMultiHop(query, tokens)) baseTimeMs += 1500;
-        if (HasComparativeContext(tokens)) baseTimeMs += 500;
-
-        return TimeSpan.FromMilliseconds(Math.Min(baseTimeMs, 10000)); // 최대 10초
-    }
-
     private static double CalculateConfidenceScore(string query, string[] tokens)
     {
         var confidence = 0.5; // 기본 신뢰도
@@ -443,19 +367,17 @@ public partial class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
 
     private static SearchStrategy RecommendSimpleStrategy(QueryAnalysis analysis)
     {
-        // Technical domain queries benefit from keyword matching
-        if (analysis.ContainsTechnicalTerms)
-            return SearchStrategy.Hybrid;
-
-        // Simple queries work well with vector search
-        return SearchStrategy.DirectVector;
+        // A short query needs its keyword half most: an exact term ("invoices", a product code) is what vector search
+        // matches worst. Vector-only stays a strategy a caller can force. Until the technical flag was corrected almost every
+        // query counted as technical, so Simple queries ran Hybrid; this keeps that and does not move ranking unmeasured.
+        _ = analysis;
+        return SearchStrategy.Hybrid;
     }
 
     private static SearchStrategy RecommendModerateStrategy(QueryAnalysis analysis)
     {
-        // AI/ML domain queries benefit from HyDE
-        if (analysis.TechnicalDomains.Contains("ai_ml"))
-            return SearchStrategy.HyDE;
+        // An AI/ML-domain query was recommended HyDE here, which adaptive search does not execute: it ran
+        // as Hybrid. The recommendation now names the strategy that runs (DAT already shifts ai_ml toward vector).
 
         // Comparative queries need multi-query
         if (analysis.HasComparativeContext)
@@ -481,125 +403,13 @@ public partial class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
 
     private static SearchStrategy RecommendVeryComplexStrategy(QueryAnalysis analysis)
     {
-        if (analysis.IsMultiHop && analysis.RequiresReasoning)
-            return SearchStrategy.SelfRAG;
-
-        if (analysis.RequiresReasoning && analysis.TechnicalDomains.Count > 0)
-            return SearchStrategy.SelfRAG;
-
-        if (analysis.RequiresReasoning)
+        // Multi-hop reasoning and reasoning over a technical domain were recommended SelfRAG, and anything else
+        // Adaptive; adaptive search executes neither, and both ran as Hybrid. The recommendation now names the
+        // strategy that runs, so the retrieval these queries get is unchanged.
+        if (analysis.RequiresReasoning && !analysis.IsMultiHop && analysis.TechnicalDomains.Count == 0)
             return SearchStrategy.TwoStage;
 
-        return SearchStrategy.Adaptive;
-    }
-
-    /// <summary>
-    /// Maps QueryAnalysis to HybridSearchOptions for integration with HybridSearchService
-    /// </summary>
-    public HybridSearchRecommendation GetHybridSearchRecommendation(QueryAnalysis analysis)
-    {
-        var strategy = RecommendStrategy(analysis);
-
-        // Calculate optimal weights based on query characteristics
-        var (vectorWeight, sparseWeight) = CalculateOptimalWeights(analysis);
-
-        // Select fusion method
-        var fusionMethod = SelectFusionMethod(analysis, strategy);
-
-        return new HybridSearchRecommendation
-        {
-            Strategy = strategy,
-            VectorWeight = vectorWeight,
-            SparseWeight = sparseWeight,
-            FusionMethod = fusionMethod,
-            UseQuantizedSearch = analysis.Complexity >= ComplexityLevel.Complex,
-            Confidence = analysis.ConfidenceScore,
-            Reasoning = GenerateReasoning(analysis, strategy, fusionMethod)
-        };
-    }
-
-    private static (double VectorWeight, double SparseWeight) CalculateOptimalWeights(QueryAnalysis analysis)
-    {
-        // Base weights
-        double vectorWeight = 0.6;
-        double sparseWeight = 0.4;
-
-        // Technical terms favor keyword matching
-        if (analysis.ContainsTechnicalTerms)
-        {
-            sparseWeight += 0.1;
-            vectorWeight -= 0.1;
-        }
-
-        // Reasoning queries favor semantic understanding
-        if (analysis.RequiresReasoning)
-        {
-            vectorWeight += 0.15;
-            sparseWeight -= 0.15;
-        }
-
-        // High specificity favors keyword matching
-        if (analysis.Specificity > 0.6)
-        {
-            sparseWeight += 0.1;
-            vectorWeight -= 0.1;
-        }
-
-        // Long queries favor semantic search
-        if (analysis.Keywords.Count > 8)
-        {
-            vectorWeight += 0.1;
-            sparseWeight -= 0.1;
-        }
-
-        // Ensure valid range and normalize
-        vectorWeight = Math.Clamp(vectorWeight, 0.2, 0.9);
-        sparseWeight = Math.Clamp(sparseWeight, 0.1, 0.8);
-
-        var total = vectorWeight + sparseWeight;
-        return (vectorWeight / total, sparseWeight / total);
-    }
-
-    private static string SelectFusionMethod(QueryAnalysis analysis, SearchStrategy strategy)
-    {
-        // Technical queries benefit from weighted sum
-        if (analysis.ContainsTechnicalTerms && analysis.Specificity > 0.5)
-            return "WeightedSum";
-
-        // Complex queries benefit from RSF
-        if (analysis.Complexity >= ComplexityLevel.Complex)
-            return "RelativeScoreFusion";
-
-        // Multi-hop needs exact matches - use product fusion
-        if (analysis.IsMultiHop)
-            return "Product";
-
-        // Default to RRF for robustness
-        return "RRF";
-    }
-
-    private static string GenerateReasoning(QueryAnalysis analysis, SearchStrategy strategy, string fusionMethod)
-    {
-        var parts = new List<string>
-        {
-            $"Tokens: {analysis.Keywords.Count}",
-            $"Complexity: {analysis.Complexity}",
-            $"Intent: {analysis.Intent}",
-            $"Specificity: {analysis.Specificity:F2}"
-        };
-
-        if (analysis.TechnicalDomains.Count > 0)
-            parts.Add($"Domains: {string.Join(", ", analysis.TechnicalDomains)}");
-
-        if (analysis.RequiresReasoning)
-            parts.Add("RequiresReasoning");
-
-        if (analysis.IsMultiHop)
-            parts.Add("MultiHop");
-
-        parts.Add($"→ {strategy}, {fusionMethod}");
-
-        return string.Join("; ", parts);
+        return SearchStrategy.Hybrid;
     }
 
     #endregion
@@ -608,49 +418,6 @@ public partial class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Query analysis completed: {Query} -> {Type}, {Complexity}")]
     private static partial void LogQueryComplexity2(ILogger logger, string query, QueryType type, ComplexityLevel complexity);
-    [LoggerMessage(Level = LogLevel.Debug, Message = "Performance statistics updated: {QueryType}, result count: {ResultCount}")]
-    private static partial void LogQueryComplexity1(ILogger logger, QueryType queryType, int resultCount);
 
     #endregion
-}
-
-/// <summary>
-/// Recommendation for hybrid search configuration
-/// </summary>
-public partial class HybridSearchRecommendation
-{
-    /// <summary>
-    /// Recommended search strategy
-    /// </summary>
-    public SearchStrategy Strategy { get; init; }
-
-    /// <summary>
-    /// Recommended vector search weight (0.0 - 1.0)
-    /// </summary>
-    public double VectorWeight { get; init; }
-
-    /// <summary>
-    /// Recommended sparse/keyword search weight (0.0 - 1.0)
-    /// </summary>
-    public double SparseWeight { get; init; }
-
-    /// <summary>
-    /// Recommended fusion method name
-    /// </summary>
-    public string FusionMethod { get; init; } = "RRF";
-
-    /// <summary>
-    /// Whether to use quantized search for performance
-    /// </summary>
-    public bool UseQuantizedSearch { get; init; }
-
-    /// <summary>
-    /// Confidence in the recommendation (0.0 - 1.0)
-    /// </summary>
-    public double Confidence { get; init; }
-
-    /// <summary>
-    /// Reasoning explanation for the recommendation
-    /// </summary>
-    public string Reasoning { get; init; } = string.Empty;
 }

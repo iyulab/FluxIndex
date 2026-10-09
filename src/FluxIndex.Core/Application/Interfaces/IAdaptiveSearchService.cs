@@ -58,7 +58,11 @@ public class AdaptiveSearchOptions
     /// <summary>검색 타임아웃</summary>
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(30);
 
-    /// <summary>강제 전략 지정</summary>
+    /// <summary>
+    /// 강제 전략 지정. Adaptive search executes DirectVector, KeywordOnly, Hybrid, MultiQuery and TwoStage; any other
+    /// strategy runs as Hybrid (<see cref="AdaptiveSearchResult.UsedStrategy"/> reports Hybrid,
+    /// <see cref="AdaptiveSearchResult.SelectedStrategy"/> the forced value).
+    /// </summary>
     public SearchStrategy? ForceStrategy { get; set; }
 
     /// <summary>A/B 테스트 모드</summary>
@@ -82,8 +86,19 @@ public class AdaptiveSearchResult
     /// <summary>검색 결과 문서들</summary>
     public IEnumerable<Document> Documents { get; set; } = Enumerable.Empty<Document>();
 
-    /// <summary>사용된 검색 전략</summary>
+    /// <summary>
+    /// The strategy that produced <see cref="Documents"/>: the selected strategy, or the fallback that replaced it when
+    /// the selected one returned too few results. A selected strategy adaptive search does not execute runs as
+    /// <see cref="SearchStrategy.Hybrid"/> and is reported as such.
+    /// </summary>
     public SearchStrategy UsedStrategy { get; set; }
+
+    /// <summary>
+    /// The strategy chosen for this search before it ran: <see cref="AdaptiveSearchOptions.ForceStrategy"/>, or the one
+    /// selected from the query analysis. Differs from <see cref="UsedStrategy"/> when a fallback ran or the chosen
+    /// strategy is not one adaptive search executes.
+    /// </summary>
+    public SearchStrategy SelectedStrategy { get; set; }
 
     /// <summary>쿼리 분석 결과</summary>
     public QueryAnalysis QueryAnalysis { get; set; } = new();

@@ -731,7 +731,7 @@ public class FluxIndexContextBuilder
         _services.AddMemoryCache(); // For query complexity caching
 
         // Register Adaptive Search services
-        _services.TryAddScoped<IQueryComplexityAnalyzer, QueryComplexityAnalyzer>();
+        _services.TryAddSingleton<IQueryComplexityAnalyzer, QueryComplexityAnalyzer>(); // stateless
         _services.TryAddScoped<IAdaptiveSearchService, AdaptiveSearchService>();
 
         // Register Graph Traversal service for local graph search support

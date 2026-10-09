@@ -107,7 +107,7 @@ are used as given (see [REFERENCE.md](./REFERENCE.md#configuration)).
 |--------|-----------------|
 | Short query (1-3 words) | ↑ Keyword weight |
 | Long query (10+ words) | ↑ Vector weight |
-| Technical terms present | ↑ Keyword weight |
+| Technical terms present (a term from a known technical domain; a long word alone is not one) | ↑ Keyword weight |
 | Question format | ↑ Vector weight |
 | Named entities detected | ↑ Keyword weight |
 

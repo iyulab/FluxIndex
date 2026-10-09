@@ -161,23 +161,6 @@ public partial class DynamicFusionService : IDynamicFusionService
         return config;
     }
 
-    /// <inheritdoc />
-    public Task UpdatePerformanceFeedbackAsync(
-        DynamicFusionConfiguration configuration,
-        FusionPerformanceFeedback metrics,
-        CancellationToken cancellationToken = default)
-    {
-        // Log performance feedback for potential weight tuning
-        LogDatFeedback(_logger, configuration.QueryType, configuration.VectorWeight,
-            configuration.SparseWeight, metrics.RelevantResults, metrics.TotalResults,
-            metrics.MRR, metrics.LatencyMs);
-
-        // Future: Implement online learning to adjust weights based on feedback
-        // For now, just log for analysis
-
-        return Task.CompletedTask;
-    }
-
     #region Private Methods
 
     private static (double Vector, double Sparse) GetBaseWeights(AppQueryType queryType)
@@ -373,9 +356,6 @@ public partial class DynamicFusionService : IDynamicFusionService
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "DAT calculated: Vector={VectorWeight}, Sparse={SparseWeight}, Type={QueryType}, Fusion={Fusion}, Confidence={Confidence}")]
     private static partial void LogDatCalculated(ILogger logger, double vectorWeight, double sparseWeight, AppQueryType queryType, FusionMethod fusion, double confidence);
-
-    [LoggerMessage(Level = LogLevel.Information, Message = "DAT performance feedback: QueryType={QueryType}, Weights=({Vector}/{Sparse}), Results={Results}/{Total}, MRR={MRR}, Latency={Latency}ms")]
-    private static partial void LogDatFeedback(ILogger logger, AppQueryType queryType, double vector, double sparse, int results, int total, double? mrr, double latency);
 
     #endregion
 }

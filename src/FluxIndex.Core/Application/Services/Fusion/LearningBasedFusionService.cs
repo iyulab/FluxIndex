@@ -14,15 +14,22 @@ namespace FluxIndex.Core.Application.Services.Fusion;
 /// to predict optimal fusion weights based on query characteristics.
 /// Implements online learning for continuous improvement.
 /// </summary>
+/// <remarks>
+/// The query's type, complexity and technical-term flag come from <see cref="IQueryComplexityAnalyzer"/>, the same
+/// classifier Dynamic Alpha Tuning uses, so both fusion paths classify a query the same way. Both use
+/// <see cref="QueryType"/> directly; learned models stay keyed by its member names.
+/// </remarks>
 public partial class LearningBasedFusionService : ILearningBasedFusionService
 {
+    private readonly IQueryComplexityAnalyzer _queryAnalyzer;
     private readonly ILogger<LearningBasedFusionService> _logger;
 
     // Learned parameters per query type
     private readonly ConcurrentDictionary<QueryType, LearnedQueryTypeModel> _queryTypeModels;
 
-    // Training data storage for online learning
-    private readonly ConcurrentDictionary<string, FusionTrainingExample> _trainingBuffer;
+    // Training data storage for online learning, with the query type and features each example was classified with
+    // (GetModelStatistics is synchronous and must not classify again).
+    private readonly ConcurrentDictionary<string, BufferedExample> _trainingBuffer;
 
     // Feedback storage for relevance tracking
     private readonly ConcurrentDictionary<string, List<(string resultId, double relevance)>> _feedbackBuffer;
@@ -43,11 +50,14 @@ public partial class LearningBasedFusionService : ILearningBasedFusionService
     private double[] _featureMeans;
     private double[] _featureStdDevs;
 
-    public LearningBasedFusionService(ILogger<LearningBasedFusionService> logger)
+    public LearningBasedFusionService(
+        IQueryComplexityAnalyzer queryAnalyzer,
+        ILogger<LearningBasedFusionService> logger)
     {
+        _queryAnalyzer = queryAnalyzer ?? throw new ArgumentNullException(nameof(queryAnalyzer));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _queryTypeModels = new ConcurrentDictionary<QueryType, LearnedQueryTypeModel>();
-        _trainingBuffer = new ConcurrentDictionary<string, FusionTrainingExample>();
+        _trainingBuffer = new ConcurrentDictionary<string, BufferedExample>();
         _feedbackBuffer = new ConcurrentDictionary<string, List<(string, double)>>();
         _featureMeans = new double[11];  // Feature vector size
         _featureStdDevs = Enumerable.Repeat(1.0, 11).ToArray();
@@ -73,17 +83,22 @@ public partial class LearningBasedFusionService : ILearningBasedFusionService
 
         try
         {
-            // 1. Extract and normalize features
-            var featuresAndLabels = ExtractFeaturesAndLabels(examplesList);
+            // 1. Classify each example once and extract its features
+            var classified = new List<BufferedExample>(examplesList.Count);
+            foreach (var example in examplesList)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var analysis = await _queryAnalyzer.AnalyzeAsync(example.Query, cancellationToken);
+                var features = example.QueryFeatures ?? ExtractQueryFeaturesFromExample(example, analysis).ToFeatureVector();
+                classified.Add(new BufferedExample(example, analysis.Type, features));
+            }
 
             // 2. Update feature normalization parameters
-            UpdateNormalizationParameters(featuresAndLabels.features);
+            UpdateNormalizationParameters(classified.Select(c => c.Features).ToList());
 
-            // 3. Group examples by query type
-            var groupedByType = examplesList.GroupBy(e => DetectQueryType(e.Query));
-
-            // 4. Train model for each query type
-            foreach (var group in groupedByType)
+            // 3. Group examples by query type, 4. train model for each query type
+            foreach (var group in classified.GroupBy(c => c.QueryType))
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
@@ -91,10 +106,10 @@ public partial class LearningBasedFusionService : ILearningBasedFusionService
             }
 
             // 5. Store examples in training buffer (bounded)
-            foreach (var example in examplesList.TakeLast(MaxTrainingBufferSize))
+            foreach (var buffered in classified.TakeLast(MaxTrainingBufferSize))
             {
-                var key = GenerateExampleKey(example);
-                _trainingBuffer[key] = example;
+                var key = GenerateExampleKey(buffered.Example);
+                _trainingBuffer[key] = buffered;
             }
 
             _trainingCount += examplesList.Count;
@@ -131,7 +146,8 @@ public partial class LearningBasedFusionService : ILearningBasedFusionService
         var sparseList = sparseResults.ToList();
 
         // Extract features
-        var features = ExtractQueryFeatures(query, vectorList, sparseList);
+        var analysis = await _queryAnalyzer.AnalyzeAsync(query, cancellationToken);
+        var features = ExtractQueryFeatures(query, analysis, vectorList, sparseList);
         var queryType = features.QueryType;
 
         // Check if we have a trained model for this query type
@@ -149,7 +165,7 @@ public partial class LearningBasedFusionService : ILearningBasedFusionService
             if (_logger.IsEnabled(LogLevel.Warning))
                 LogLearningBasedFusion9(_logger, queryType, prediction.Weights.VectorWeight, prediction.Weights.SparseWeight);
 
-            return await Task.FromResult(prediction);
+            return prediction;
         }
 
         // Fall back to heuristic-based prediction
@@ -158,7 +174,7 @@ public partial class LearningBasedFusionService : ILearningBasedFusionService
         if (_logger.IsEnabled(LogLevel.Warning))
             LogLearningBasedFusion8(_logger, queryType, heuristicPrediction.Weights.VectorWeight, heuristicPrediction.Weights.SparseWeight);
 
-        return await Task.FromResult(heuristicPrediction);
+        return heuristicPrediction;
     }
 
     /// <inheritdoc />
@@ -206,10 +222,11 @@ public partial class LearningBasedFusionService : ILearningBasedFusionService
             _onlineUpdateCount++;
             _lastUpdatedAt = DateTimeOffset.UtcNow;
 
-            // Create training example from feedback for future batch training
+            // Create training example from feedback for future batch training; the features carry the
+            // classification made at prediction time.
             var example = CreateExampleFromFeedback(feedback, relevanceScore);
             var key = GenerateExampleKey(example);
-            _trainingBuffer[key] = example;
+            _trainingBuffer[key] = new BufferedExample(example, queryType, example.QueryFeatures!);
 
             // Trim buffer if too large
             while (_trainingBuffer.Count > MaxTrainingBufferSize)
@@ -452,13 +469,12 @@ public partial class LearningBasedFusionService : ILearningBasedFusionService
 
     private static QueryPredictionFeatures ExtractQueryFeatures(
         string query,
+        QueryAnalysis analysis,
         List<RankedResult> vectorResults,
         List<RankedResult> sparseResults)
     {
         var words = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var uniqueTerms = words.Distinct(StringComparer.OrdinalIgnoreCase).Count();
-        var queryType = DetectQueryType(query);
-        var complexity = DetectComplexity(query);
 
         var vectorScores = vectorResults.Select(r => (double)r.Score).ToList();
         var sparseScores = sparseResults.Select(r => (double)r.Score).ToList();
@@ -474,63 +490,20 @@ public partial class LearningBasedFusionService : ILearningBasedFusionService
         {
             QueryLength = words.Length,
             UniqueTermCount = uniqueTerms,
-            QueryType = queryType,
-            Complexity = complexity,
+            QueryType = analysis.Type,
+            Complexity = analysis.Complexity,
             VectorAvgScore = vectorScores.Count != 0 ? vectorScores.Average() : 0,
             VectorScoreVariance = CalculateVariance(vectorScores),
             SparseAvgScore = sparseScores.Count != 0 ? sparseScores.Average() : 0,
             SparseScoreVariance = CalculateVariance(sparseScores),
             ResultOverlapRatio = overlapRatio,
-            ContainsTechnicalTerms = ContainsTechnicalTerms(query),
+            ContainsTechnicalTerms = analysis.ContainsTechnicalTerms,
             IsNaturalLanguageQuestion = IsNaturalLanguageQuestion(query)
         };
     }
 
-    private static QueryType DetectQueryType(string query)
-    {
-        var lowerQuery = query.ToLowerInvariant();
-
-        // Check for multi-hop indicators first
-        if (ContainsMultiHopIndicators(lowerQuery))
-            return QueryType.MultiHopQuery;
-
-        // Check for reasoning indicators
-        if (ContainsReasoningIndicators(lowerQuery))
-            return QueryType.ReasoningQuery;
-
-        // Check for comparison indicators
-        if (ContainsComparisonIndicators(lowerQuery))
-            return QueryType.ComparisonQuery;
-
-        // Check for temporal indicators
-        if (ContainsTemporalIndicators(lowerQuery))
-            return QueryType.TemporalQuery;
-
-        // Check if it's a natural language question
-        if (IsNaturalLanguageQuestion(query))
-            return QueryType.NaturalQuestion;
-
-        // Check for complex search indicators
-        if (ContainsSemanticIndicators(lowerQuery))
-            return QueryType.ComplexSearch;
-
-        // Default to simple keyword
-        return QueryType.SimpleKeyword;
-    }
-
-    private static ComplexityLevel DetectComplexity(string query)
-    {
-        var words = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-
-        if (words.Length <= 2)
-            return ComplexityLevel.Simple;
-        if (words.Length <= 5)
-            return ComplexityLevel.Moderate;
-        if (words.Length <= 10)
-            return ComplexityLevel.Complex;
-        return ComplexityLevel.VeryComplex;
-    }
-
+    // A feature slot, not the query's classification: whether it reads as a question (a '?' or a question opener).
+    // The classification (type, complexity, technical terms) is the analyzer's.
     private static bool IsNaturalLanguageQuestion(string query)
     {
         var questionStarters = new[] { "what", "how", "why", "when", "where", "who", "which", "can", "could", "would", "should", "is", "are", "does", "do" };
@@ -538,68 +511,7 @@ public partial class LearningBasedFusionService : ILearningBasedFusionService
         return query.Contains('?') || questionStarters.Any(qs => lowerQuery.StartsWith(qs + " ", StringComparison.Ordinal));
     }
 
-    private static bool ContainsSemanticIndicators(string query)
-    {
-        var indicators = new[] { "similar to", "like", "related to", "meaning", "concept", "explain", "describe" };
-        return indicators.Any(ind => query.Contains(ind));
-    }
-
-    private static bool ContainsMultiHopIndicators(string query)
-    {
-        var indicators = new[] { "and then", "after that", "which leads to", "in order to", "step by step", "first...then" };
-        return indicators.Any(ind => query.Contains(ind));
-    }
-
-    private static bool ContainsReasoningIndicators(string query)
-    {
-        var indicators = new[] { "why", "because", "reason", "cause", "explain why", "how come" };
-        return indicators.Any(ind => query.Contains(ind));
-    }
-
-    private static bool ContainsComparisonIndicators(string query)
-    {
-        var indicators = new[] { "compare", "versus", "vs", "difference between", "better", "worse", "or" };
-        return indicators.Any(ind => query.Contains(ind));
-    }
-
-    private static bool ContainsTemporalIndicators(string query)
-    {
-        var indicators = new[] { "when", "before", "after", "during", "since", "until", "latest", "recent", "history" };
-        return indicators.Any(ind => query.Contains(ind));
-    }
-
-    private static bool ContainsTechnicalTerms(string query)
-    {
-        var technicalPatterns = new[]
-        {
-            @"\b(API|SDK|HTTP|REST|JSON|XML|SQL|NoSQL)\b",
-            @"\b(async|await|thread|process|memory)\b",
-            @"\b(function|method|class|interface|enum)\b",
-            @"\b[A-Z][a-z]+[A-Z]",  // CamelCase
-            @"[a-z]+_[a-z]+"        // snake_case
-        };
-
-        return technicalPatterns.Any(pattern =>
-            System.Text.RegularExpressions.Regex.IsMatch(query, pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase));
-    }
-
-    private static (List<double[]> features, List<double> labels) ExtractFeaturesAndLabels(List<FusionTrainingExample> examples)
-    {
-        var features = new List<double[]>();
-        var labels = new List<double>();
-
-        foreach (var example in examples)
-        {
-            var featureVector = example.QueryFeatures ??
-                ExtractQueryFeaturesFromExample(example).ToFeatureVector();
-            features.Add(featureVector);
-            labels.Add(example.RelevanceScore);
-        }
-
-        return (features, labels);
-    }
-
-    private static QueryPredictionFeatures ExtractQueryFeaturesFromExample(FusionTrainingExample example)
+    private static QueryPredictionFeatures ExtractQueryFeaturesFromExample(FusionTrainingExample example, QueryAnalysis analysis)
     {
         var vectorScores = example.VectorResults.Select(r => r.Score).ToList();
         var sparseScores = example.SparseResults.Select(r => r.Score).ToList();
@@ -616,14 +528,14 @@ public partial class LearningBasedFusionService : ILearningBasedFusionService
         {
             QueryLength = words.Length,
             UniqueTermCount = words.Distinct(StringComparer.OrdinalIgnoreCase).Count(),
-            QueryType = DetectQueryType(example.Query),
-            Complexity = DetectComplexity(example.Query),
+            QueryType = analysis.Type,
+            Complexity = analysis.Complexity,
             VectorAvgScore = vectorScores.Count != 0 ? vectorScores.Average() : 0,
             VectorScoreVariance = CalculateVariance(vectorScores),
             SparseAvgScore = sparseScores.Count != 0 ? sparseScores.Average() : 0,
             SparseScoreVariance = CalculateVariance(sparseScores),
             ResultOverlapRatio = overlapRatio,
-            ContainsTechnicalTerms = ContainsTechnicalTerms(example.Query),
+            ContainsTechnicalTerms = analysis.ContainsTechnicalTerms,
             IsNaturalLanguageQuestion = IsNaturalLanguageQuestion(example.Query)
         };
     }
@@ -664,13 +576,14 @@ public partial class LearningBasedFusionService : ILearningBasedFusionService
 
     private async Task TrainQueryTypeModelAsync(
         QueryType queryType,
-        List<FusionTrainingExample> examples,
+        List<BufferedExample> classified,
         CancellationToken cancellationToken)
     {
         var model = _queryTypeModels.GetOrAdd(queryType, _ => CreateDefaultModel(queryType));
+        var examples = classified.Select(c => c.Example).ToList();
 
         // Calculate centroid and optimal weights
-        var features = examples.Select(e => e.QueryFeatures ?? ExtractQueryFeaturesFromExample(e).ToFeatureVector()).ToList();
+        var features = classified.Select(c => c.Features).ToList();
         var optimalVectorWeights = examples.Select(e => e.OptimalWeights.VectorWeight * e.RelevanceScore).ToList();
         var optimalSparseWeights = examples.Select(e => e.OptimalWeights.SparseWeight * e.RelevanceScore).ToList();
 
@@ -902,15 +815,13 @@ public partial class LearningBasedFusionService : ILearningBasedFusionService
         double totalError = 0;
         int count = 0;
 
-        foreach (var example in _trainingBuffer.Values)
+        foreach (var buffered in _trainingBuffer.Values)
         {
-            var queryType = DetectQueryType(example.Query);
-            if (_queryTypeModels.TryGetValue(queryType, out var model))
+            if (_queryTypeModels.TryGetValue(buffered.QueryType, out var model))
             {
-                var features = NormalizeFeatures(example.QueryFeatures ??
-                    ExtractQueryFeaturesFromExample(example).ToFeatureVector());
+                var features = NormalizeFeatures(buffered.Features);
                 var predicted = ComputePredictedScore(features, model);
-                totalError += Math.Abs(example.RelevanceScore - predicted);
+                totalError += Math.Abs(buffered.Example.RelevanceScore - predicted);
                 count++;
             }
         }
@@ -964,6 +875,8 @@ public partial class LearningBasedFusionService : ILearningBasedFusionService
     #endregion
 
     #region Internal Types
+
+    private sealed record BufferedExample(FusionTrainingExample Example, QueryType QueryType, double[] Features);
 
     private sealed class LearnedQueryTypeModel
     {

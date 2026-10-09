@@ -5,6 +5,54 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [Unreleased]
+
+### Changed
+- **Breaking** — **`QueryAnalysis.ContainsTechnicalTerms` is true only when the query names a term from a technical
+  domain** (`TechnicalDomains` is non-empty). Any word longer than six characters used to make it true, so almost every
+  prose query counted as technical. `Concepts` is unchanged and stays a separate signal. Retrieval does not move:
+  a simple query is still recommended `Hybrid` whether or not it is technical, and Dynamic Alpha Tuning's weights and fusion
+  are unchanged (it reads the flag only together with a specificity above 0.5, which already takes a technical term).
+  Migration: a caller that relied on the old flag can test `Concepts.Count > 0`.
+
+- **Breaking** — **`IQueryComplexityAnalyzer.RecommendStrategy` recommends only strategies adaptive search executes:**
+  `DirectVector`, `KeywordOnly`, `Hybrid`, `MultiQuery`, `TwoStage`. It used to recommend `HyDE`, `SelfRAG` and `Adaptive`,
+  which adaptive search ran as `Hybrid`; those queries now get `Hybrid` by name, so their retrieval is unchanged. The
+  per-query-type defaults for reasoning and multi-hop queries (`Adaptive`, `SelfRAG`) are `Hybrid` for the same reason.
+  Migration: code that compared a recommendation or `UsedStrategy` against `HyDE`, `SelfRAG` or `Adaptive` compares
+  against `Hybrid`.
+
+- **Breaking** — **`AdaptiveSearchResult.UsedStrategy` is the strategy that produced the results.** It used to be the
+  selected strategy even when a fallback replaced it or when the selected strategy is one adaptive search does not
+  execute (which runs as `Hybrid`). The new `AdaptiveSearchResult.SelectedStrategy` is the strategy chosen before the
+  search ran (the forced one or the one selected from the query analysis). Strategy statistics, feedback and the
+  semantic cache's recorded algorithm now follow the strategy that ran. Migration: read `SelectedStrategy` where you
+  need the choice rather than the outcome.
+
+- **Breaking** — **`LearningBasedFusionService` classifies queries with `IQueryComplexityAnalyzer`, the classifier Dynamic
+  Alpha Tuning uses**, instead of its own rules, so both fusion paths give a query the same type, complexity and
+  technical-term flag. Its own rules disagreed, e.g. "for" matched the comparison word "or". The constructor takes the
+  analyzer: `LearningBasedFusionService(IQueryComplexityAnalyzer, ILogger<LearningBasedFusionService>)`, and
+  `AddLearningBasedFusion` registers the analyzer when it is missing. Learned models stay keyed by `QueryType` names, so
+  an exported model still imports; examples may now fall under a different type than they were trained under.
+  Migration: pass an `IQueryComplexityAnalyzer` when constructing the service yourself; retrain a persisted model if its
+  examples were classified by the old rules.
+
+- **`IQueryComplexityAnalyzer` is registered as a singleton** by `AddDynamicAlphaTuning`, `AddQueryComplexityAnalyzer`,
+  `AddLearningBasedFusion` and the context builder (it was scoped). The analyzer holds no state, and the singleton
+  learning-based fusion service depends on it.
+
+### Removed
+- **Breaking** — **unread query-analysis members are removed:** `QueryAnalysis.Intent`, `Language`, `HasTemporalContext`,
+  `EstimatedProcessingTime` and `Metadata`, with the `QueryIntent` and `Language` enums. No decision read them (temporal words
+  still raise the complexity and, in a question, make the type `QueryType.TemporalQuery`). Migration: none expected.
+
+- **Breaking** — **never-called feedback and recommendation members are removed:**
+  `IQueryComplexityAnalyzer.UpdatePerformanceAsync` with `QueryAnalysisResult`,
+  `QueryComplexityAnalyzer.GetHybridSearchRecommendation` with `HybridSearchRecommendation`, and
+  `IDynamicFusionService.UpdatePerformanceFeedbackAsync` with `FusionPerformanceFeedback`. Each only logged or returned
+  values nothing used. Migration: drop the calls; adaptive-search feedback goes through `IAdaptiveSearchService.UpdateFeedbackAsync`.
+
 ## [0.83.0] - 2026-10-09
 
 ### Removed

@@ -29,18 +29,6 @@ public interface IDynamicFusionService
     /// <param name="analysis">Pre-computed query analysis</param>
     /// <returns>Dynamic fusion configuration with optimized weights</returns>
     DynamicFusionConfiguration CalculateDynamicWeights(QueryAnalysis analysis);
-
-    /// <summary>
-    /// Updates performance feedback for continuous optimization.
-    /// Enables learning from retrieval outcomes to refine weight mappings.
-    /// </summary>
-    /// <param name="configuration">Configuration that was used</param>
-    /// <param name="metrics">Observed performance metrics</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    Task UpdatePerformanceFeedbackAsync(
-        DynamicFusionConfiguration configuration,
-        FusionPerformanceFeedback metrics,
-        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -92,35 +80,4 @@ public class DynamicFusionConfiguration
     /// Detected technical domains in the query
     /// </summary>
     public IReadOnlyList<string> TechnicalDomains { get; init; } = Array.Empty<string>();
-}
-
-/// <summary>
-/// Performance feedback for DAT learning.
-/// </summary>
-public class FusionPerformanceFeedback
-{
-    /// <summary>
-    /// Number of relevant results found
-    /// </summary>
-    public int RelevantResults { get; init; }
-
-    /// <summary>
-    /// Total results returned
-    /// </summary>
-    public int TotalResults { get; init; }
-
-    /// <summary>
-    /// User satisfaction indicator (if available)
-    /// </summary>
-    public bool? UserSatisfied { get; init; }
-
-    /// <summary>
-    /// Mean Reciprocal Rank
-    /// </summary>
-    public double? MRR { get; init; }
-
-    /// <summary>
-    /// Search latency in milliseconds
-    /// </summary>
-    public double LatencyMs { get; init; }
 }

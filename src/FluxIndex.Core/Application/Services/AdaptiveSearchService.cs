@@ -33,6 +33,19 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
     private long _totalSearches;
     private long _cacheHits;
 
+    /// <summary>
+    /// The strategies <see cref="ExecuteSearchWithStrategy"/> runs. Any other <see cref="SearchStrategy"/> member
+    /// (HyDE, StepBack, Adaptive, SelfRAG — strategies other services implement) runs here as Hybrid.
+    /// </summary>
+    internal static readonly IReadOnlySet<SearchStrategy> ExecutableStrategies = new HashSet<SearchStrategy>
+    {
+        SearchStrategy.DirectVector,
+        SearchStrategy.KeywordOnly,
+        SearchStrategy.Hybrid,
+        SearchStrategy.MultiQuery,
+        SearchStrategy.TwoStage,
+    };
+
     public AdaptiveSearchService(
         IHybridSearchService hybridSearchService,
         ISmallToBigRetriever smallToBigRetriever,
@@ -111,20 +124,17 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
                             .Select(chunk => CreateDocumentFromChunk(chunk))
                             .ToList();
 
-                        // 전략 결정 (메타데이터에서 가져오거나 기본값 사용)
-                        var cachedStrategy = cachedResult.Metadata?.SearchAlgorithm switch
-                        {
-                            "DirectVector" => SearchStrategy.DirectVector,
-                            "KeywordOnly" => SearchStrategy.KeywordOnly,
-                            "Hybrid" => SearchStrategy.Hybrid,
-                            "TwoStage" => SearchStrategy.TwoStage,
-                            _ => SearchStrategy.Hybrid
-                        };
+                        // The cached entry records the strategy that produced it (SearchAlgorithm).
+                        var cachedStrategy = Enum.TryParse<SearchStrategy>(cachedResult.Metadata?.SearchAlgorithm, out var parsed)
+                            && ExecutableStrategies.Contains(parsed)
+                            ? parsed
+                            : SearchStrategy.Hybrid;
 
                         return new AdaptiveSearchResult
                         {
                             Documents = documents,
                             UsedStrategy = cachedStrategy,
+                            SelectedStrategy = cachedStrategy,
                             QueryAnalysis = new QueryAnalysis
                             {
                                 Type = QueryType.SimpleKeyword,
@@ -191,18 +201,27 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
             LogQueryAnalysisCompleted(_logger, queryAnalysis.Type, queryAnalysis.Complexity, queryAnalysis.ConfidenceScore);
 
             // 3. 검색 전략 결정
-            var strategy = options.ForceStrategy ?? DetermineOptimalStrategy(queryAnalysis);
+            var selectedStrategy = options.ForceStrategy ?? DetermineOptimalStrategy(queryAnalysis);
             var strategyReasons = new List<string>();
 
             if (options.ForceStrategy.HasValue)
             {
-                strategyReasons.Add($"강제 지정된 전략: {strategy}");
+                strategyReasons.Add($"강제 지정된 전략: {selectedStrategy}");
             }
             else
             {
-                strategyReasons.Add($"복잡도 {queryAnalysis.Complexity}에 따른 자동 선택: {strategy}");
+                strategyReasons.Add($"복잡도 {queryAnalysis.Complexity}에 따른 자동 선택: {selectedStrategy}");
                 strategyReasons.Add($"쿼리 유형: {queryAnalysis.Type}");
                 strategyReasons.Add($"분석 신뢰도: {queryAnalysis.ConfidenceScore:F3}");
+            }
+
+            // A strategy this service does not execute (forced, or recommended by a custom analyzer) runs as Hybrid,
+            // and the result says so: UsedStrategy is the strategy that ran, SelectedStrategy the one chosen.
+            var strategy = selectedStrategy;
+            if (!ExecutableStrategies.Contains(strategy))
+            {
+                strategy = SearchStrategy.Hybrid;
+                strategyReasons.Add($"{selectedStrategy} is not executed by adaptive search; ran {strategy}");
             }
 
             var reasonsText = string.Join(", ", strategyReasons);
@@ -210,14 +229,14 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
 
             // 4. 검색 실행 (Fallback 전략 포함)
             var searchStopwatch = Stopwatch.StartNew();
-            var searchResults = await ExecuteSearchWithFallback(query, strategy, options, strategyReasons, searchToken);
+            var (searchResults, executedStrategy) = await ExecuteSearchWithFallback(query, strategy, options, strategyReasons, searchToken);
             searchStopwatch.Stop();
 
             // 5. A/B 테스트 처리
             ABTestInfo? abTestInfo = null;
             if (options.EnableABTest)
             {
-                abTestInfo = await PerformABTest(query, strategy, queryAnalysis, options, searchToken);
+                abTestInfo = await PerformABTest(query, executedStrategy, options, searchToken);
             }
 
             // 6. 결과 구성
@@ -226,7 +245,8 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
             var result = new AdaptiveSearchResult
             {
                 Documents = searchResults,
-                UsedStrategy = strategy,
+                UsedStrategy = executedStrategy,
+                SelectedStrategy = selectedStrategy,
                 QueryAnalysis = queryAnalysis,
                 Performance = new SearchPerformanceMetrics
                 {
@@ -240,7 +260,7 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
                     ResourceUsage = new Dictionary<string, object>
                     {
                         ["memory_usage"] = GC.GetTotalMemory(false),
-                        ["strategy"] = strategy.ToString()
+                        ["strategy"] = executedStrategy.ToString()
                     }
                 },
                 StrategyReasons = strategyReasons,
@@ -287,7 +307,7 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
                             {
                                 SearchTimeMs = (long)result.Performance.SearchTime.TotalMilliseconds,
                                 TotalDocuments = result.Performance.ResultCount,
-                                SearchAlgorithm = strategy.ToString(),
+                                SearchAlgorithm = executedStrategy.ToString(),
                                 QualityScore = (float)result.Performance.AverageRelevanceScore
                             },
                             TimeSpan.FromHours(1),
@@ -309,9 +329,9 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
             }
 
             // 8. 성능 통계 업데이트
-            await UpdateStrategyMetricsAsync(strategy, result);
+            await UpdateStrategyMetricsAsync(executedStrategy, result);
 
-            LogAdaptiveSearchCompleted(_logger, strategy, result.Performance.ResultCount, totalStopwatch.ElapsedMilliseconds);
+            LogAdaptiveSearchCompleted(_logger, executedStrategy, result.Performance.ResultCount, totalStopwatch.ElapsedMilliseconds);
 
             return result;
         }
@@ -434,10 +454,11 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
         _optimalStrategies[QueryType.SimpleKeyword] = SearchStrategy.DirectVector;
         _optimalStrategies[QueryType.NaturalQuestion] = SearchStrategy.DirectVector;
         _optimalStrategies[QueryType.ComplexSearch] = SearchStrategy.Hybrid;
-        _optimalStrategies[QueryType.ReasoningQuery] = SearchStrategy.Adaptive;
+        // Reasoning and multi-hop were Adaptive and SelfRAG, which this service does not execute; both ran as Hybrid.
+        _optimalStrategies[QueryType.ReasoningQuery] = SearchStrategy.Hybrid;
         _optimalStrategies[QueryType.ComparisonQuery] = SearchStrategy.MultiQuery;
         _optimalStrategies[QueryType.TemporalQuery] = SearchStrategy.TwoStage;
-        _optimalStrategies[QueryType.MultiHopQuery] = SearchStrategy.SelfRAG;
+        _optimalStrategies[QueryType.MultiHopQuery] = SearchStrategy.Hybrid;
 
         // 전략별 기본 통계 초기화
         foreach (SearchStrategy strategy in Enum.GetValues<SearchStrategy>())
@@ -472,9 +493,10 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
 
     /// <summary>
     /// Fallback 전략을 적용한 검색 실행
-    /// Vector → Hybrid → Keyword 순차 시도로 Zero-Result 방지
+    /// Vector → Hybrid → Keyword 순차 시도로 Zero-Result 방지.
+    /// Returns the documents and the strategy that produced them.
     /// </summary>
-    private async Task<IEnumerable<Document>> ExecuteSearchWithFallback(
+    private async Task<(IEnumerable<Document> Documents, SearchStrategy Executed)> ExecuteSearchWithFallback(
         string query,
         SearchStrategy primaryStrategy,
         AdaptiveSearchOptions options,
@@ -490,7 +512,7 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
         if (resultCount >= minResults)
         {
             LogPrimaryStrategySuccess(_logger, primaryStrategy, resultCount);
-            return results;
+            return (results, primaryStrategy);
         }
 
         LogPrimaryStrategyInsufficient(_logger, primaryStrategy, resultCount, minResults);
@@ -512,7 +534,7 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
                     LogFallbackSuccess(_logger, fallbackStrategy, fallbackCount);
 
                     strategyReasons.Add($"Fallback 적용: {primaryStrategy} → {fallbackStrategy} ({resultCount} → {fallbackCount}개)");
-                    return fallbackResults;
+                    return (fallbackResults, fallbackStrategy);
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
@@ -541,14 +563,14 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
                 var relaxedCount = relaxedResults.Count();
                 if (_logger.IsEnabled(LogLevel.Information))
                     LogZeroResultPrevented(_logger, relaxedCount);
-                return relaxedResults;
+                return (relaxedResults, SearchStrategy.Hybrid);
             }
         }
 
         // 모든 시도 실패: 원본 결과 반환 (빈 결과 포함)
         LogAllFallbacksFailed(_logger, resultCount);
         strategyReasons.Add($"Fallback 실패: {resultCount}개 결과만 반환");
-        return results;
+        return (results, primaryStrategy);
     }
 
     /// <summary>
@@ -603,8 +625,8 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
             SearchStrategy.Hybrid => await ExecuteHybridSearch(query, options, cancellationToken),
             SearchStrategy.MultiQuery => await ExecuteMultiQuerySearch(query, options, cancellationToken),
             SearchStrategy.TwoStage => await ExecuteTwoStageSearch(query, options, cancellationToken),
-            SearchStrategy.Adaptive => await ExecuteAdaptiveSearch(query, options, cancellationToken),
-            _ => await ExecuteHybridSearch(query, options, cancellationToken)
+            // SearchAsync maps every strategy outside ExecutableStrategies to Hybrid before it gets here.
+            _ => throw new ArgumentOutOfRangeException(nameof(strategy), strategy, "Adaptive search does not execute this strategy")
         };
     }
 
@@ -716,15 +738,6 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
         return smallToBigResults.Select(r => CreateDocumentFromChunk(r.PrimaryChunk)).Take(options.MaxResults);
     }
 
-    private async Task<IEnumerable<Document>> ExecuteAdaptiveSearch(
-        string query,
-        AdaptiveSearchOptions options,
-        CancellationToken cancellationToken)
-    {
-        // 재귀 방지를 위해 하이브리드 검색으로 폴백
-        return await ExecuteHybridSearch(query, options, cancellationToken);
-    }
-
     private static Document CreateDocumentFromChunk(FluxIndex.Core.Domain.Models.CacheDocumentChunk chunk)
     {
         var document = Document.Create(chunk.DocumentId);
@@ -773,7 +786,6 @@ public partial class AdaptiveSearchService : IAdaptiveSearchService
     private async Task<ABTestInfo?> PerformABTest(
         string query,
         SearchStrategy primaryStrategy,
-        QueryAnalysis analysis,
         AdaptiveSearchOptions options,
         CancellationToken cancellationToken)
     {

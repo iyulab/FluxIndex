@@ -20,15 +20,23 @@ public class LearningBasedFusionServiceTests
     public LearningBasedFusionServiceTests()
     {
         _loggerMock = Substitute.For<ILogger<LearningBasedFusionService>>();
-        _sut = new LearningBasedFusionService(_loggerMock);
+        _sut = new LearningBasedFusionService(Analyzer(), _loggerMock);
     }
+
+    private static QueryComplexityAnalyzer Analyzer() => new(NullLogger<QueryComplexityAnalyzer>.Instance);
 
     #region Constructor Tests
 
     [Fact]
     public void Constructor_WithNullLogger_ThrowsArgumentNullException()
     {
-        Assert.Throws<ArgumentNullException>(() => new LearningBasedFusionService(null!));
+        Assert.Throws<ArgumentNullException>(() => new LearningBasedFusionService(Analyzer(), null!));
+    }
+
+    [Fact]
+    public void Constructor_WithNullQueryAnalyzer_ThrowsArgumentNullException()
+    {
+        Assert.Throws<ArgumentNullException>(() => new LearningBasedFusionService(null!, _loggerMock));
     }
 
     [Fact]
@@ -552,6 +560,34 @@ public class LearningBasedFusionServiceTests
         var descriptor = services.FirstOrDefault(d => d.ServiceType == typeof(ILearningBasedFusionService));
         Assert.NotNull(descriptor);
         Assert.Equal(ServiceLifetime.Singleton, descriptor.Lifetime);
+    }
+
+    [Fact]
+    public void AddLearningBasedFusion_Alone_ResolvesUnderScopeValidation()
+    {
+        // The service is a singleton and takes the query analyzer: AddLearningBasedFusion must register the analyzer
+        // itself, with a lifetime a singleton may capture.
+        var services = new ServiceCollection();
+        services.AddSingleton(typeof(ILogger<>), typeof(NullLogger<>));
+        services.AddLearningBasedFusion();
+
+        using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
+
+        Assert.IsType<LearningBasedFusionService>(provider.GetRequiredService<ILearningBasedFusionService>());
+    }
+
+    [Fact]
+    public void AddAdvancedHybridSearch_ResolvesBothFusionServicesUnderScopeValidation()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(typeof(ILogger<>), typeof(NullLogger<>));
+        services.AddAdvancedHybridSearch();
+
+        using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
+        using var scope = provider.CreateScope();
+
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<ILearningBasedFusionService>());
+        Assert.NotNull(scope.ServiceProvider.GetRequiredService<IDynamicFusionService>());
     }
 
     [Fact]

@@ -119,8 +119,9 @@ public static class MetadataAugmentationServiceExtensions
     /// <returns>서비스 컬렉션</returns>
     public static IServiceCollection AddDynamicAlphaTuning(this IServiceCollection services)
     {
-        // QueryComplexityAnalyzer 등록 (없으면)
-        services.TryAddScoped<IQueryComplexityAnalyzer, QueryComplexityAnalyzer>();
+        // QueryComplexityAnalyzer 등록 (없으면). Singleton: it is stateless, and the singleton learning-based
+        // fusion service depends on it.
+        services.TryAddSingleton<IQueryComplexityAnalyzer, QueryComplexityAnalyzer>();
 
         // DynamicFusionService 등록
         services.TryAddScoped<IDynamicFusionService, DynamicFusionService>();
@@ -135,7 +136,7 @@ public static class MetadataAugmentationServiceExtensions
     /// <returns>서비스 컬렉션</returns>
     public static IServiceCollection AddQueryComplexityAnalyzer(this IServiceCollection services)
     {
-        services.TryAddScoped<IQueryComplexityAnalyzer, QueryComplexityAnalyzer>();
+        services.TryAddSingleton<IQueryComplexityAnalyzer, QueryComplexityAnalyzer>();
 
         return services;
     }
@@ -736,6 +737,8 @@ public static class MetadataAugmentationServiceExtensions
     /// <returns>Service collection</returns>
     public static IServiceCollection AddLearningBasedFusion(this IServiceCollection services)
     {
+        // The query classification comes from the analyzer Dynamic Alpha Tuning uses.
+        services.TryAddSingleton<IQueryComplexityAnalyzer, QueryComplexityAnalyzer>();
         services.TryAddSingleton<ILearningBasedFusionService, Fusion.LearningBasedFusionService>();
         return services;
     }

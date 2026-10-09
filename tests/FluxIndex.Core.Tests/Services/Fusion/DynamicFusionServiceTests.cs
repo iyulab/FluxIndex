@@ -481,49 +481,6 @@ public class DynamicFusionServiceTests
 
     #endregion
 
-    #region UpdatePerformanceFeedbackAsync Tests
-
-    [Fact]
-    public async Task UpdatePerformanceFeedbackAsync_LogsFeedback()
-    {
-        // Arrange — LoggerMessage source generators check IsEnabled before calling Log
-        _mockLogger.IsEnabled(Arg.Any<LogLevel>()).Returns(true);
-        var config = new DynamicFusionConfiguration
-        {
-            VectorWeight = 0.6,
-            SparseWeight = 0.4,
-            QueryType = AppQueryType.NaturalQuestion
-        };
-        var feedback = new FusionPerformanceFeedback
-        {
-            RelevantResults = 8,
-            TotalResults = 10,
-            MRR = 0.75,
-            LatencyMs = 150
-        };
-
-        // Act
-        await _service.UpdatePerformanceFeedbackAsync(config, feedback, TestContext.Current.CancellationToken);
-
-        // Assert - Verify logging occurred (source-generated LoggerMessage uses internal TState types)
-        var logCalls = _mockLogger.ReceivedCalls()
-            .Where(c => c.GetMethodInfo().Name == "Log");
-        Assert.NotEmpty(logCalls);
-    }
-
-    [Fact]
-    public async Task UpdatePerformanceFeedbackAsync_CompletesSuccessfully()
-    {
-        // Arrange
-        var config = new DynamicFusionConfiguration();
-        var feedback = new FusionPerformanceFeedback();
-
-        // Act & Assert - Should not throw
-        await _service.UpdatePerformanceFeedbackAsync(config, feedback, TestContext.Current.CancellationToken);
-    }
-
-    #endregion
-
     #region Cancellation Tests
 
     [Fact]

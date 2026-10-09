@@ -16,14 +16,11 @@ public interface IQueryComplexityAnalyzer
     Task<QueryAnalysis> AnalyzeAsync(string query, CancellationToken cancellationToken = default);
     
     /// <summary>
-    /// 분석 결과 기반 검색 전략 추천
+    /// 분석 결과 기반 검색 전략 추천. Only strategies adaptive search executes are recommended:
+    /// <see cref="SearchStrategy.DirectVector"/>, <see cref="SearchStrategy.KeywordOnly"/>,
+    /// <see cref="SearchStrategy.Hybrid"/>, <see cref="SearchStrategy.MultiQuery"/> and <see cref="SearchStrategy.TwoStage"/>.
     /// </summary>
     SearchStrategy RecommendStrategy(QueryAnalysis analysis);
-    
-    /// <summary>
-    /// 쿼리 유형별 성능 통계 업데이트
-    /// </summary>
-    Task UpdatePerformanceAsync(string query, QueryAnalysis analysis, QueryAnalysisResult result, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -37,22 +34,21 @@ public class QueryAnalysis
     public List<string> Entities { get; set; } = new();
     public List<string> Concepts { get; set; } = new();
     public List<string> Keywords { get; set; } = new();
-    public QueryIntent Intent { get; set; }
-    public Language Language { get; set; }
-    public Dictionary<string, object> Metadata { get; set; } = new();
-    
+
     // Technical domain analysis
     public List<string> TechnicalDomains { get; set; } = new();
-    public bool ContainsTechnicalTerms => TechnicalDomains.Count > 0 || Concepts.Count != 0;
+
+    /// <summary>
+    /// Whether the query names a term from a technical domain (<see cref="TechnicalDomains"/> is non-empty).
+    /// <see cref="Concepts"/> is a separate signal: a long word is not a technical term.
+    /// </summary>
+    public bool ContainsTechnicalTerms => TechnicalDomains.Count > 0;
 
     // 추론형 쿼리 특성
     public bool RequiresReasoning { get; set; }
-    public bool HasTemporalContext { get; set; }
     public bool HasComparativeContext { get; set; }
     public bool IsMultiHop { get; set; }
-    
-    // 성능 예측
-    public TimeSpan EstimatedProcessingTime { get; set; }
+
     public double ConfidenceScore { get; set; } // 분석 신뢰도
 }
 
@@ -102,38 +98,6 @@ public enum ComplexityLevel
 }
 
 /// <summary>
-/// 쿼리 의도
-/// </summary>
-public enum QueryIntent
-{
-    /// <summary>정보 검색</summary>
-    Informational,
-    
-    /// <summary>내비게이셀</summary>
-    Navigational,
-    
-    /// <summary>트랜잭셔널</summary>
-    Transactional,
-    
-    /// <summary>분석적</summary>
-    Analytical,
-    
-    /// <summary>탐색적</summary>
-    Exploratory
-}
-
-/// <summary>
-/// 언어 정보
-/// </summary>
-public enum Language
-{
-    Korean,
-    English,
-    Mixed,
-    Other
-}
-
-/// <summary>
 /// 검색 전략
 /// </summary>
 public enum SearchStrategy
@@ -164,16 +128,4 @@ public enum SearchStrategy
     
     /// <summary>Self-RAG</summary>
     SelfRAG
-}
-
-/// <summary>
-/// 검색 결과 (성능 피드백용)
-/// </summary>
-public class QueryAnalysisResult
-{
-    public int ResultCount { get; set; }
-    public double RelevanceScore { get; set; }
-    public TimeSpan ProcessingTime { get; set; }
-    public bool UserSatisfied { get; set; }
-    public Dictionary<string, object> Metrics { get; set; } = new();
 }

@@ -17,6 +17,9 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   `KeywordWeight`/`RrfK` on `Retriever.SearchAsync`) and they are used as given; leave any unset and the service chooses it per query (Dynamic Alpha Tuning with `EnableDynamicAlphaTuning`, otherwise a query heuristic).
   Each result's `Fusion` reports the method, weights and who chose them. Whole-strategy choice:
   `context.AdaptiveSearchAsync(query)` (registered by the builder; `AdaptiveSearchWithStrategyAsync` forces a strategy).
+  It runs `DirectVector`, `KeywordOnly`, `Hybrid`, `MultiQuery` or `TwoStage`; a forced strategy outside that set runs as
+  `Hybrid`. `AdaptiveSearchResult.UsedStrategy` is the strategy that produced the results (after any fallback),
+  `SelectedStrategy` the one chosen before it ran.
 - **Batch indexing** — `Indexer.IndexBatchAsync(documents, progress, parallelism)`; chunk embeddings go through
   `IEmbeddingService.GenerateEmbeddingsBatchAsync`. Always available. Query embeddings are cached per `Retriever`
   (in-process, not configurable).
