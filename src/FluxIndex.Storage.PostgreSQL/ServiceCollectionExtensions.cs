@@ -178,25 +178,6 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    /// PostgreSQL 통합 Provider 등록.
-    /// IStorageProvider로 등록되어 StorageOrchestrator에서 자동 인식.
-    /// </summary>
-    /// <param name="services">서비스 컬렉션</param>
-    /// <returns>서비스 컬렉션</returns>
-    public static IServiceCollection AddPostgreSQLUnifiedProvider(this IServiceCollection services)
-    {
-        services.AddScoped<IStorageProvider>(sp =>
-        {
-            var vectorStore = sp.GetRequiredService<IVectorStore>();
-            var semanticCache = sp.GetService<ISemanticCacheService>();
-            var logger = sp.GetService<Microsoft.Extensions.Logging.ILogger<PostgreSQLUnifiedProvider>>();
-            return new PostgreSQLUnifiedProvider(vectorStore, semanticCache, logger);
-        });
-
-        return services;
-    }
-
-    /// <summary>
     /// Registers the PostgreSQL-backed keyword (sparse) search index directly on a service
     /// collection, without going through <c>FluxIndexContextBuilder</c>.
     /// </summary>

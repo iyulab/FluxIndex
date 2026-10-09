@@ -955,28 +955,4 @@ public static class MetadataAugmentationServiceExtensions
             options.DocumentContextWeight = documentContextWeight;
         });
     }
-
-    /// <summary>
-    /// Storage Orchestrator registration.
-    /// Automatically resolves the best storage provider for each capability
-    /// (Vector, Graph, RDB, SemanticCache) based on registered providers.
-    /// </summary>
-    /// <param name="services">Service collection</param>
-    /// <returns>Service collection</returns>
-    /// <remarks>
-    /// Priority rules:
-    /// 1. Specialized providers take priority over general-purpose providers
-    /// 2. When multiple specialized providers exist, the last registered one wins
-    /// 3. General-purpose providers fill in for missing capabilities
-    /// 
-    /// Example usage:
-    /// - UseLocalStorage() registers SQLite as general-purpose (Vector, Graph, RDB, Cache)
-    /// - UseQdrant() adds Qdrant as specialized Vector provider (overrides SQLite's Vector)
-    /// - UseNeo4j() adds Neo4j as specialized Graph provider (overrides SQLite's Graph)
-    /// </remarks>
-    public static IServiceCollection AddStorageOrchestrator(this IServiceCollection services)
-    {
-        services.TryAddSingleton<IStorageOrchestrator, Storage.StorageOrchestrator>();
-        return services;
-    }
 }

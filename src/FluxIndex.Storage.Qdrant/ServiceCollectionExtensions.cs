@@ -205,23 +205,4 @@ public static class ServiceCollectionExtensions
             options.NamingStrategy = CollectionNamingStrategy.Fixed;
         }, bm25PersistencePath);
     }
-
-    /// <summary>
-    /// Adds Qdrant as a specialized vector provider.
-    /// Registers IStorageProvider for auto-detection by StorageOrchestrator.
-    /// Qdrant takes priority over general-purpose providers for vector operations.
-    /// </summary>
-    /// <param name="services">The service collection.</param>
-    /// <returns>The service collection for chaining.</returns>
-    public static IServiceCollection AddQdrantProvider(this IServiceCollection services)
-    {
-        services.AddSingleton<IStorageProvider>(sp =>
-        {
-            var vectorStore = sp.GetRequiredService<QdrantVectorStore>();
-            var logger = sp.GetService<ILogger<QdrantProvider>>();
-            return new QdrantProvider(vectorStore, logger);
-        });
-
-        return services;
-    }
 }

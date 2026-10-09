@@ -29,6 +29,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 - **Breaking** — `DocumentProcessingOptions.EnableTextCleaning`, which nothing read (FileFlux's refining stage cleans the
   text), and FluxIndex.CLI's `process --clean` flag and `ENABLE_TEXT_CLEANING` setting. `--clean` also shared `-c` with
   `--chunk-size`.
+- **Breaking** — **The storage-provider layer is gone**: `IStorageProvider`, `IVectorCapable`, `IGraphCapable`,
+  `IRdbCapable`, `ISemanticCacheCapable`, `StorageCapabilities`, `StorageConfiguration`, `IStorageOrchestrator`,
+  `StorageOrchestrator`, `AddStorageOrchestrator()`, the `SQLiteUnifiedProvider` / `PostgreSQLUnifiedProvider` /
+  `QdrantProvider` / `Neo4jProvider` classes and their `Add…Provider()` methods. The builder never consulted them — a
+  registered provider changed nothing. Stores are chosen by the `Add*Storage()` registrations (the last one to register
+  a store serves it, as `docs/GUIDE.md` now says). Migration: delete calls to the removed methods; register a custom
+  store as the service itself (`IVectorStore`, `IGraphStore`).
 - **Breaking** — **`IEntityExtractionService` is gone.** Nothing in FluxIndex registered, implemented or read it; entity and
   relation extraction is `IAdvancedEntityExtractionService`. Migration: implement or depend on `IAdvancedEntityExtractionService`.
 

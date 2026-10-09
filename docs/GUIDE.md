@@ -327,17 +327,13 @@ var context = FluxIndexContext.CreateBuilder()
     .Build();
 ```
 
-The store is registered as the service itself. `IStorageProvider` and its capability interfaces
-(`IVectorCapable`, `IGraphCapable`) describe the bundled providers; the builder does not consult them,
-so implementing them adds nothing to a custom store.
+The store is registered as the service itself; nothing else is needed for a custom store.
 
-### Priority Rules
+### Which store serves what
 
-When multiple providers support the same capability:
-
-1. **Specialized provider wins**: Qdrant (vector-only) > PostgreSQL (multi-purpose)
-2. **Last registration wins**: Among same-tier providers
-3. **Fallback fills gaps**: Unregistered capabilities use available multi-purpose provider
+Each `Add*Storage()` registers the stores it implements. When two of them register the same store — PostgreSQL and
+Qdrant both register `IVectorStore` — the one added **last** serves it, so add the specialized store after the
+general-purpose one:
 
 ```csharp
 // Example: Qdrant handles Vector, PostgreSQL handles everything else
@@ -347,7 +343,7 @@ var context = FluxIndexContext.CreateBuilder()
     .AddPostgreSQLStorage()
     .AddQdrantStorage()
     .Build();
-// Result: Qdrant(Vector), PostgreSQL(RDB, Cache, Graph)
+// Result: Qdrant serves IVectorStore; PostgreSQL serves the rest it registers
 ```
 
 ---

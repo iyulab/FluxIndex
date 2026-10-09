@@ -64,7 +64,6 @@ public class OptionsReachabilityRosterTests
         // MinResults · EnableDetailedLogging · UserContext were read only by a second, never-registered
         // SelfRAGService removed in 0.38.0 — the registered service never honoured them (roster blind spot ④).
         ["FluxIndex.Core.Application.Interfaces.SelfRAGOptions"] = ["EnableContextExpansion", "EnableMultiPerspectiveSearch", "MinResults"],
-        ["FluxIndex.Core.Application.Interfaces.StorageConfiguration"] = ["GraphProvider", "HasGraph", "HasRdb", "HasSemanticCache", "HasVector", "RdbProvider", "SemanticCacheProvider", "VectorProvider"],
         ["FluxIndex.Core.Application.Interfaces.VerificationOptions"] = ["CustomCriteria", "IncludeDetailedReasoning", "MaxHallucinationRisk"],
         ["FluxIndex.Core.Application.Models.ClassificationOptions"] = ["CacheExpirationHours", "Enabled"],
         ["FluxIndex.Core.Application.Models.ClassificationValidationOptions"] = ["DuplicateThreshold"],
