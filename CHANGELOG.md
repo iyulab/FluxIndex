@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [Unreleased]
+## [0.84.0] - 2026-10-10
 
 ### Fixed
 - **LLM chunk classification stops at the caller's cancel instead of retrying it.** `LlmChunkClassificationService`
@@ -75,6 +75,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ### Dependencies
 - Re-pinned sibling package(s) `FileFlux` 0.55.0 -> 0.56.0, `WebFlux` 0.23.0 -> 0.24.0.
+- Re-pinned sibling package(s) `FileFlux` 0.56.0 -> 0.57.0.
 
 ## [0.83.0] - 2026-10-09
 
