@@ -98,17 +98,6 @@ public static class MetadataAugmentationServiceExtensions
         return services;
     }
 
-    /// <summary>
-    /// 토큰 예산 기반 검색 서비스 등록
-    /// </summary>
-    public static IServiceCollection AddTokenAwareSearch(this IServiceCollection services)
-    {
-        services.AddSingleton<ITokenCounter, SimpleTokenCounter>();
-        services.AddScoped<IQueryAnalysisService, QueryAnalysisService>();
-        services.AddScoped<ITokenAwareSearchService, TokenAwareSearchService>();
-
-        return services;
-    }
 
     /// <summary>
     /// 그래프 탐색 서비스 등록
@@ -282,7 +271,7 @@ public static class MetadataAugmentationServiceExtensions
         Action<ClassificationOptions>? classificationOptions = null)
     {
         services.AddFullAugmentation(headerOptions, classificationOptions);
-        services.AddTokenAwareSearch();
+        services.TryAddSingleton<ITokenCounter, SimpleTokenCounter>();
         services.AddGraphTraversal();
         services.AddImageExtraction();
         services.AddMetadataEnrichment(); // Rule-based ChunkMetadata/Quality enrichment

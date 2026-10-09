@@ -27,10 +27,8 @@ public class SharedTypeNameConventionTests
 
         // To fix: two or three types for one concept, in namespaces a consumer imports together.
         ["SearchResult"] = "to fix: Core.Application.Interfaces / Core.Domain.Entities / SDK",
-        ["QueryAnalysis"] = "to fix: Core.Application.Interfaces / Core.Application.Models",
-        ["QueryIntent"] = "to fix: Core.Application.Interfaces / Core.Application.Models",
         ["QueryType"] = "to fix: Core.Application.Interfaces / Core.Domain.Models",
-        ["SearchStrategy"] = "to fix: Core.Application.Interfaces / Core.Application.Models / Core.Domain.Models",
+        ["SearchStrategy"] = "to fix: Core.Application.Interfaces / Core.Domain.Models",
         ["RelationshipType"] = "to fix: Core.Domain.Entities / Core.Domain.Models",
         ["DocumentMetadata"] = "to fix: Core.Domain.ValueObjects / SDK",
     };

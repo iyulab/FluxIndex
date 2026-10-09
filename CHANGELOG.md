@@ -34,6 +34,15 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   (`ISemanticCache`) and `SemanticCacheStatistics` (`ISemanticCacheService`). Migration: a `using` of
   `FluxIndex.Core.Domain.ValueObjects` for these names moves to `FluxIndex.Core.Application.Interfaces`.
 
+- **Breaking** — the token-aware search system: `ITokenAwareSearchService` / `TokenAwareSearchService`,
+  `IQueryAnalysisService` / `QueryAnalysisService`, `AddTokenAwareSearch`, and `FluxIndex.Core.Application.Models`'
+  `QueryAnalysis`, `QueryIntent`, `QueryComplexityLevel`, `QueryEntity`, `EntityType`, `TokenAwareSearchRequest`,
+  `TokenAwareSearchResult`, `SelectedChunk` and `SearchStrategy`. The SDK never registered it, and its search ignored the
+  recommended strategy and every filter (always a vector search without filters). Query analysis is
+  `IQueryComplexityAnalyzer` (adaptive search, dynamic fusion). `AddFluxIndexCore` still registers `ITokenCounter`.
+  Migration: none expected — a direct `AddTokenAwareSearch()` caller searches through `IFluxIndexContext` or
+  `IAdaptiveSearchService` instead.
+
 ### Dependencies
 - Re-pinned sibling package(s) `FileFlux` 0.53.0 -> 0.54.0.
 - Re-pinned sibling package(s) `FileFlux` 0.54.0 -> 0.55.0.
