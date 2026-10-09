@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.83.0] - Unreleased
+## [0.83.0] - 2026-10-09
 
 ### Removed
 - **Breaking** — **`IndexingService`, `EnrichedChunkIndexingService`, `Domain.ValueObjects.DocumentMetadata` and
