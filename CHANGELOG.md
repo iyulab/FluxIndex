@@ -63,6 +63,10 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   learning-based fusion service depends on it.
 
 ### Removed
+- **Breaking** — **`FluxIndexTextCompletionAdapter` no longer has `AnalyzeStructureAsync`, `SummarizeContentAsync`,
+  `ExtractMetadataAsync` and `AssessQualityAsync`.** FileFlux 0.57.0 removed them from `IDocumentAnalysisService` (nothing
+  in FileFlux called them), together with their result types. Migration: none for FileFlux; a caller that used the
+  adapter's own methods directly calls `GenerateAsync` with its own prompt.
 - **Breaking** — **unread query-analysis members are removed:** `QueryAnalysis.Intent`, `Language`, `HasTemporalContext`,
   `EstimatedProcessingTime` and `Metadata`, with the `QueryIntent` and `Language` enums. No decision read them (temporal words
   still raise the complexity and, in a question, make the type `QueryType.TemporalQuery`). Migration: none expected.
