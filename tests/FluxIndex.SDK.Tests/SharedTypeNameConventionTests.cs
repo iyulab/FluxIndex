@@ -25,8 +25,8 @@ public class SharedTypeNameConventionTests
         ["SemanticCacheEntity"] = "storage entity (PostgreSQL, SQLite)",
         ["VectorEntity"] = "storage entity (PostgreSQL, SQLite)",
 
-        // To fix: two or three types for one concept, in namespaces a consumer imports together.
-        ["DocumentMetadata"] = "to fix: Core.Domain.ValueObjects / SDK",
+        // Nothing left to fix (run 130 emptied the list): a new name shared by two public types is a defect to fix, not a
+        // roster entry — unless it is one of the deliberate shares above.
     };
 
     private static Dictionary<string, List<string>> SharedNames()

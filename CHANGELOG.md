@@ -38,6 +38,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   unchanged and `Contrastive` / `Complementary` are 8 / 9. Stored data reads back as before: chunk metadata keeps its numbers,
   the graph stores keep member names. Migration: `Domain.Models.RelationshipType` → `Domain.Entities.RelationshipType`.
 
+- **Breaking** — `FluxIndex.SDK.DocumentMetadata`: nothing took or returned it (the SDK indexes with per-document and
+  per-chunk metadata dictionaries). `DocumentMetadata` is now only Core's (`Domain.ValueObjects`). Migration: none expected.
+
 ### Fixed
 - **The Qdrant hybrid service's recommendation is what it applies.** `RecommendSearchStrategyAsync` answered keyword-first
   for a quoted query and vector-first for a short one, while a search with fusion left unset always used the service's
