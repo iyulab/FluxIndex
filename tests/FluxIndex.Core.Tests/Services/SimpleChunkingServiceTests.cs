@@ -1,4 +1,4 @@
-using FluxIndex.Core.Services;
+using FluxIndex.Core.Application.Services;
 using Xunit;
 
 namespace FluxIndex.Core.Tests.Services;

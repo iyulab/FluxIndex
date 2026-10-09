@@ -36,6 +36,18 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   Migration: `new HybridSearchOptions { … }` → `new SearchOptions { … }`; `RerankingStrategy.WeightedAverage` →
   `FusionMethod = FusionMethod.WeightedSum`, `ReciprocalRankFusion` → `FusionMethod.RRF`; set the weights you relied on.
 
+- **Breaking** — **One namespace per folder in FluxIndex.Core's services**: the eleven files under `Application/Services` that
+  declared `FluxIndex.Core.Services` (`HybridSearchService`, `BM25SparseRetriever`, `SearchService`, `IndexingService`,
+  `AdaptiveSearchService`, `DynamicFusionService`, `QueryComplexityAnalyzer`, `RankFusionService`, `HybridFusion`,
+  `SimpleChunkingService`, `SmallToBigRetriever`) now declare `FluxIndex.Core.Application.Services`, like the other 25.
+  Migration: `using FluxIndex.Core.Services;` → `using FluxIndex.Core.Application.Services;`. Likewise `IMetadataExtractor`
+  moves from `FluxIndex.Core.Interfaces` to `FluxIndex.Core.Application.Interfaces`, and `ExtractedMetadata`,
+  `MetadataSchema`, `AIMetadataExtractionOptions` and the batch metadata types from `FluxIndex.Core.Models` to
+  `FluxIndex.Core.Application.Models` (the folders they live in).
+- **Breaking** — Two more shared names resolved: late chunking's `ChunkBoundary` (`FluxIndex.Core.Application.Services`) is
+  `ChunkSpan`, distinct from the hierarchy's `FluxIndex.Core.Domain.Models.ChunkBoundary`; FluxIndex.Integrations.FluxImprover's
+  `ChunkQAPairs` is `ChunkQAGenerationResult`, distinct from FluxIndex.Core's `ChunkQAPairs`.
+
 ### Removed
 - **Breaking** — `NoOpContextualEnrichmentService`, `NoOpQAGenerationService` and `NoOpTextCompletionService` (the
   last one answered every prompt with `Mock response for: …`), and `AddDocumentProcessingPipelineWithFallback()` (now

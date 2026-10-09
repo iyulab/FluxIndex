@@ -68,19 +68,19 @@ public sealed class QAGenerationService : FluxIndexQAGeneration
     /// <param name="options">생성 옵션</param>
     /// <param name="cancellationToken">취소 토큰</param>
     /// <returns>청크별 생성된 QA 쌍 목록</returns>
-    public async Task<IReadOnlyList<ChunkQAPairs>> GenerateFromChunksAsync(
+    public async Task<IReadOnlyList<ChunkQAGenerationResult>> GenerateFromChunksAsync(
         IEnumerable<FluxIndexChunk> chunks,
         QAGenerationOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        var results = new List<ChunkQAPairs>();
+        var results = new List<ChunkQAGenerationResult>();
 
         foreach (var chunk in chunks)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
             var qaPairs = await GenerateFromChunkAsync(chunk, options, cancellationToken);
-            results.Add(new ChunkQAPairs
+            results.Add(new ChunkQAGenerationResult
             {
                 ChunkId = chunk.ChunkId,
                 SourceId = chunk.Source.SourceId,
@@ -243,7 +243,7 @@ public sealed class QAGenerationService : FluxIndexQAGeneration
 /// <summary>
 /// 청크별 QA 쌍 결과
 /// </summary>
-public sealed class ChunkQAPairs
+public sealed class ChunkQAGenerationResult
 {
     /// <summary>
     /// 청크 ID

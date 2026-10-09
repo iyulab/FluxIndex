@@ -10,7 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Globalization;
 
-namespace FluxIndex.Core.Services;
+namespace FluxIndex.Core.Application.Services;
 
 /// <summary>
 /// 적응형 검색 서비스 구현체 - 쿼리 복잡도에 따른 동적 전략 선택

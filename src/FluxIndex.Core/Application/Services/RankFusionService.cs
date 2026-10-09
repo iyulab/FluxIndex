@@ -3,7 +3,7 @@ using FluxIndex.Core.Domain.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
-namespace FluxIndex.Core.Services;
+namespace FluxIndex.Core.Application.Services;
 
 /// <summary>
 /// Implementation of rank fusion algorithms for combining multiple search result sets.

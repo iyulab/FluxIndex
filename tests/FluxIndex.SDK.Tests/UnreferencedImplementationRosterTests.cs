@@ -68,7 +68,7 @@ public class UnreferencedImplementationRosterTests
         // Registered through a generic DI call in the SDK builder.
         Assert.Contains("FluxIndex.Core.Application.Services.SelfRAGService", scan.Referenced);
         // Constructed with `new` inside the library.
-        Assert.Contains("FluxIndex.Core.Services.SimpleChunkingService", scan.Referenced);
+        Assert.Contains("FluxIndex.Core.Application.Services.SimpleChunkingService", scan.Referenced);
     }
 
     private sealed record Scan(IReadOnlyList<Type> Implementations, IReadOnlySet<string> Referenced, IReadOnlyList<string> Unreferenced);

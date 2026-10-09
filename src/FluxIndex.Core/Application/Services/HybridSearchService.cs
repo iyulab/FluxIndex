@@ -13,7 +13,7 @@ using DomainHybridSearchResult = FluxIndex.Core.Domain.Models.HybridSearchResult
 using DomainHybridSearchOptions = FluxIndex.Core.Domain.Models.HybridSearchOptions;
 using SearchStrategy = FluxIndex.Core.Domain.Models.SearchStrategy;
 
-namespace FluxIndex.Core.Services;
+namespace FluxIndex.Core.Application.Services;
 
 /// <summary>
 /// 하이브리드 검색 서비스 - 벡터 + 키워드 융합 검색

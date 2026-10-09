@@ -1,8 +1,8 @@
 using FileFlux;
 using FileFlux.Core;
 using FileFlux.Domain;
-using FluxIndex.Core.Interfaces;
-using MetadataSchema = FluxIndex.Core.Models.MetadataSchema;
+using FluxIndex.Core.Application.Interfaces;
+using MetadataSchema = FluxIndex.Core.Application.Models.MetadataSchema;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using IFileFluxDocumentAnalysisService = FileFlux.IDocumentAnalysisService;

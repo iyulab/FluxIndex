@@ -7,7 +7,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace FluxIndex.Core.Services;
+namespace FluxIndex.Core.Application.Services;
 
 /// <summary>
 /// 쿼리 복잡도 분석기 구현체

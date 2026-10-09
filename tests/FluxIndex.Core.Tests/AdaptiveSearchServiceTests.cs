@@ -1,5 +1,5 @@
 using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Core.Services;
+using FluxIndex.Core.Application.Services;
 using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;

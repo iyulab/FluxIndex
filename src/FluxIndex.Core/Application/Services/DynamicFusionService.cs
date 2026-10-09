@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 // Alias to avoid ambiguity with Domain.Models.QueryType
 using AppQueryType = FluxIndex.Core.Application.Interfaces.QueryType;
 
-namespace FluxIndex.Core.Services;
+namespace FluxIndex.Core.Application.Services;
 
 /// <summary>
 /// Dynamic Alpha Tuning (DAT) service implementation.

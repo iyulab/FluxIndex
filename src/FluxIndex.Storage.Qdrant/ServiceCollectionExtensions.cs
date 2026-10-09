@@ -1,6 +1,6 @@
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Constants;
-using FluxIndex.Core.Services;
+using FluxIndex.Core.Application.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;

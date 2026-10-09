@@ -2,7 +2,7 @@ using DocumentChunkEntity = FluxIndex.Core.Domain.Entities.DocumentChunk;
 using FluxGuard.Remote.RAG;
 using FluxIndex.Integrations.FluxGuard;
 using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Core.Services;
+using FluxIndex.Core.Application.Services;
 using FluxIndex.Core.Domain.Models;
 using FluxIndex.SDK;
 using FluxIndex.SDK.Services;

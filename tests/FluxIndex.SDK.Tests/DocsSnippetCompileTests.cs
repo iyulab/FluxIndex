@@ -178,7 +178,6 @@ public class DocsSnippetCompileTests
             using FluxIndex.Core.Application.Interfaces;
             using FluxIndex.Core.Application.Services;
             using FluxIndex.Core.Application.Services.Reranking;
-            using FluxIndex.Core.Services;
             using FluxIndex.Core.Domain.Entities;
             using Microsoft.Extensions.DependencyInjection;
             using Microsoft.Extensions.Logging;

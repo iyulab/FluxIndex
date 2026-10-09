@@ -42,16 +42,16 @@ public class LateChunkingEmbeddingServiceTests
             _logger);
     }
 
-    private List<ChunkBoundary> CreateChunkBoundaries(string document, int chunkSize = 100)
+    private List<ChunkSpan> CreateChunkBoundaries(string document, int chunkSize = 100)
     {
-        var boundaries = new List<ChunkBoundary>();
+        var boundaries = new List<ChunkSpan>();
         int index = 0;
         int position = 0;
 
         while (position < document.Length)
         {
             var length = Math.Min(chunkSize, document.Length - position);
-            boundaries.Add(new ChunkBoundary
+            boundaries.Add(new ChunkSpan
             {
                 ChunkId = $"chunk_{index}",
                 Index = index,
@@ -244,9 +244,9 @@ public class LateChunkingEmbeddingServiceTests
             _logger);
 
         var document = "Before context. Main chunk content here. After context.";
-        var boundaries = new List<ChunkBoundary>
+        var boundaries = new List<ChunkSpan>
         {
-            new ChunkBoundary
+            new ChunkSpan
             {
                 ChunkId = "chunk_0",
                 Index = 0,
@@ -304,7 +304,7 @@ public class LateChunkingEmbeddingServiceTests
         // Arrange
         var service = CreateService();
         var document = "Some document content.";
-        var boundaries = new List<ChunkBoundary>();
+        var boundaries = new List<ChunkSpan>();
 
         // Act
         var result = await service.GenerateLateChunkingEmbeddingsAsync(document, boundaries, TestContext.Current.CancellationToken);

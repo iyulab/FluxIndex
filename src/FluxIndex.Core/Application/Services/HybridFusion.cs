@@ -1,7 +1,7 @@
 using System.Collections.ObjectModel;
 using FluxIndex.Core.Domain.Models;
 
-namespace FluxIndex.Core.Services;
+namespace FluxIndex.Core.Application.Services;
 
 /// <summary>
 /// Fuses a vector leg and a keyword leg into one ranked list. Shared by every <c>IHybridSearchService</c> so that a

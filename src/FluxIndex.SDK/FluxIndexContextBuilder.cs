@@ -2,8 +2,7 @@ using Flux.Abstractions;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services;
 using FluxIndex.Core.Constants;
-using FluxIndex.Core.Models;
-using FluxIndex.Core.Services;
+using FluxIndex.Core.Application.Models;
 using CoreServiceExtensions = FluxIndex.Core.Application.Services.MetadataAugmentationServiceExtensions;
 using FluxIndex.SDK.Configuration;
 using FluxIndex.SDK.Services;
@@ -786,7 +785,7 @@ public class FluxIndexContextBuilder
             var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
 
             // Get optional IMetadataExtractor if registered
-            var metadataExtractor = serviceProvider.GetService<FluxIndex.Core.Interfaces.IMetadataExtractor>();
+            var metadataExtractor = serviceProvider.GetService<FluxIndex.Core.Application.Interfaces.IMetadataExtractor>();
 
             // Auto-detection services (optional - null if not registered)
             var graphRAGService = serviceProvider.GetService<IGraphRAGService>();
@@ -896,7 +895,7 @@ public class FluxIndexContextBuilder
         // character overlap. (An SDK-local copy that normalised whitespace and overlapped by
         // `overlap / 10` words was removed in 0.38.0 — one implementation, in the layer that owns it.)
         _services.TryAddSingleton<IChunkingService>(sp =>
-            new Core.Services.SimpleChunkingService(
+            new Core.Application.Services.SimpleChunkingService(
                 _indexerOptions.ChunkSize,
                 _indexerOptions.ChunkOverlap
             )

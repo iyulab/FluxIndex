@@ -1,7 +1,6 @@
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.ValueObjects;
-using FluxIndex.Core.Interfaces;
-using FluxIndex.Core.Models;
+using FluxIndex.Core.Application.Models;
 using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Core.Domain.Models;
 using DocumentChunkEntity = FluxIndex.Core.Domain.Entities.DocumentChunk;

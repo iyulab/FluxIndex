@@ -1,4 +1,4 @@
-using FluxIndex.Core.Models;
+using FluxIndex.Core.Application.Models;
 
 namespace FluxIndex.SDK;
 

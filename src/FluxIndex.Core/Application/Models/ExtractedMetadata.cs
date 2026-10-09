@@ -1,4 +1,4 @@
-namespace FluxIndex.Core.Models;
+namespace FluxIndex.Core.Application.Models;
 
 /// <summary>
 /// AI 추출 메타데이터 모델

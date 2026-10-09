@@ -8,7 +8,7 @@ using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Core.Domain.ValueObjects;
 using Microsoft.Extensions.Logging;
 
-namespace FluxIndex.Core.Services;
+namespace FluxIndex.Core.Application.Services;
 
 /// <summary>
 /// 문서 인덱싱 서비스 - 고도화된 메타데이터 처리 및 키워드 인덱싱 포함

@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace FluxIndex.Core.Models;
+namespace FluxIndex.Core.Application.Models;
 
 /// <summary>
 /// 배치 메타데이터 추출 요청

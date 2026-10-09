@@ -1,6 +1,6 @@
-using FluxIndex.Core.Models;
+using FluxIndex.Core.Application.Models;
 
-namespace FluxIndex.Core.Interfaces;
+namespace FluxIndex.Core.Application.Interfaces;
 
 /// <summary>
 /// AI 기반 메타데이터 추출 서비스 인터페이스

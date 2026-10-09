@@ -75,7 +75,7 @@ public class OptionsReachabilityRosterTests
         ["FluxIndex.Core.Domain.Models.HybridSearchOptions"] = ["DiversityThreshold", "EnableDiversity", "TimeoutMs"],
         ["FluxIndex.Core.Domain.Models.SmallToBigOptions"] = ["MaxWindowSize", "TimeoutMs"],
         ["FluxIndex.Core.Domain.Models.VectorSearchOptions"] = ["BooleanOperator", "EnablePhraseSearch", "EnableTermExpansion", "SimilarityMetric"],
-        ["FluxIndex.Core.Models.AIMetadataExtractionOptions"] = ["CacheTTL", "ContinueOnFailure", "CustomPrompt", "EnableAdaptiveSampling", "EnableCaching", "MaxRetries", "MaxTokens", "MinConfidence", "RetryDelayMs", "Strategy", "TimeoutMs"],
+        ["FluxIndex.Core.Application.Models.AIMetadataExtractionOptions"] = ["CacheTTL", "ContinueOnFailure", "CustomPrompt", "EnableAdaptiveSampling", "EnableCaching", "MaxRetries", "MaxTokens", "MinConfidence", "RetryDelayMs", "Strategy", "TimeoutMs"],
         ["FluxIndex.Integrations.FileFlux.FileFluxOptions"] = ["EnableLlmRefine", "LlmRefineOptions"],
         ["FluxIndex.SDK.Configuration.SemanticCacheOptions"] = ["SimilarityThreshold"],
         ["FluxIndex.SDK.SearchOptions"] = ["GraphRAGOptions", "IncludeVectors"],

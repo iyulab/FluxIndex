@@ -1,8 +1,8 @@
 using AwesomeAssertions;
 using FileFlux;
 using FileFlux.Core;
-using FluxIndex.Core.Interfaces;
-using FluxIndex.Core.Models;
+using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Models;
 using FluxIndex.Integrations.FileFlux;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -10,7 +10,7 @@ using Microsoft.Extensions.Options;
 using NSubstitute;
 using Xunit;
 using FileFluxChunk = FileFlux.Core.DocumentChunk;
-using MetadataSchema = FluxIndex.Core.Models.MetadataSchema;
+using MetadataSchema = FluxIndex.Core.Application.Models.MetadataSchema;
 
 namespace FluxIndex.SDK.Tests.Processing;
 

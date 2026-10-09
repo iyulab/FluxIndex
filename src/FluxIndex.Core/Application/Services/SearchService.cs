@@ -8,7 +8,7 @@ using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Logging;
 using DomainSearchResult = FluxIndex.Core.Domain.Entities.SearchResult;
 
-namespace FluxIndex.Core.Services;
+namespace FluxIndex.Core.Application.Services;
 
 /// <summary>
 /// 검색 서비스 - 고급 재순위화 및 메타데이터 활용 포함

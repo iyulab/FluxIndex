@@ -3,7 +3,6 @@ using FluxIndex.Core.Application.Models;
 using FluxIndex.Core.Application.Services.Enrichment;
 using FluxIndex.Core.Application.Services.Quantization;
 using FluxIndex.Core.Constants;
-using FluxIndex.Core.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;

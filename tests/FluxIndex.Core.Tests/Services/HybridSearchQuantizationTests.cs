@@ -2,7 +2,7 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Models;
 using FluxIndex.Core.Domain.Entities;
 using FluxIndex.Core.Domain.Models;
-using FluxIndex.Core.Services;
+using FluxIndex.Core.Application.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;

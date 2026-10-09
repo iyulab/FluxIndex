@@ -23,7 +23,7 @@ Advanced RAG features include:
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services;
 using FluxIndex.Core.Application.Services.Reranking;  // ListwiseReranker
-using FluxIndex.Core.Services;                        // QueryComplexityAnalyzer, DynamicFusionService
+using FluxIndex.Core.Application.Services;                        // QueryComplexityAnalyzer, DynamicFusionService
 using Microsoft.Extensions.DependencyInjection;
 
 var services = new ServiceCollection();

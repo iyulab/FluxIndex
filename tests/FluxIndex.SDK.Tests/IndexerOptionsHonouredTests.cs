@@ -1,8 +1,7 @@
 using AwesomeAssertions;
 using FluxIndex.Core.Application.Interfaces;
-using FluxIndex.Core.Models;
+using FluxIndex.Core.Application.Models;
 using FluxIndex.Core.Domain.Entities;
-using FluxIndex.Core.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using Xunit;

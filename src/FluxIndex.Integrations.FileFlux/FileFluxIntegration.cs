@@ -1,8 +1,8 @@
 using FileFlux;
 using FileFlux.Core;
 using FluxIndex.Core.Domain.Entities;
-using FluxIndex.Core.Interfaces;
-using MetadataSchema = FluxIndex.Core.Models.MetadataSchema;
+using FluxIndex.Core.Application.Interfaces;
+using MetadataSchema = FluxIndex.Core.Application.Models.MetadataSchema;
 using FluxIndex.SDK;
 using Microsoft.Extensions.Logging;
 using FluxIndexDocumentChunk = FluxIndex.Core.Domain.Entities.DocumentChunk;

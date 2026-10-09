@@ -30,7 +30,7 @@ public partial class LateChunkingEmbeddingService : ILateChunkingEmbeddingServic
     /// <inheritdoc />
     public async Task<LateChunkingResult> GenerateLateChunkingEmbeddingsAsync(
         string documentContent,
-        IReadOnlyList<ChunkBoundary> chunkBoundaries,
+        IReadOnlyList<ChunkSpan> chunkBoundaries,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(documentContent);
@@ -109,7 +109,7 @@ public partial class LateChunkingEmbeddingService : ILateChunkingEmbeddingServic
     /// </summary>
     private async Task<LateChunkingResult> GenerateWithFullDocumentAsync(
         string documentContent,
-        IReadOnlyList<ChunkBoundary> chunkBoundaries,
+        IReadOnlyList<ChunkSpan> chunkBoundaries,
         CancellationToken cancellationToken)
     {
         LogLateChunkingEmbedding2(_logger);
@@ -170,7 +170,7 @@ public partial class LateChunkingEmbeddingService : ILateChunkingEmbeddingServic
     /// </summary>
     private async Task<LateChunkingResult> GenerateWithSlidingWindowAsync(
         string documentContent,
-        IReadOnlyList<ChunkBoundary> chunkBoundaries,
+        IReadOnlyList<ChunkSpan> chunkBoundaries,
         CancellationToken cancellationToken)
     {
         LogLateChunkingEmbedding1(_logger);
@@ -216,7 +216,7 @@ public partial class LateChunkingEmbeddingService : ILateChunkingEmbeddingServic
         };
     }
 
-    private string GetSurroundingContext(string documentContent, ChunkBoundary boundary)
+    private string GetSurroundingContext(string documentContent, ChunkSpan boundary)
     {
         var contextStart = Math.Max(0, boundary.StartPosition - _options.SurroundingContextSize);
         var contextEnd = Math.Min(documentContent.Length, boundary.EndPosition + _options.SurroundingContextSize);
@@ -336,7 +336,7 @@ public interface ILateChunkingEmbeddingService
     /// </summary>
     Task<LateChunkingResult> GenerateLateChunkingEmbeddingsAsync(
         string documentContent,
-        IReadOnlyList<ChunkBoundary> chunkBoundaries,
+        IReadOnlyList<ChunkSpan> chunkBoundaries,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -416,9 +416,9 @@ public partial class ChunkEmbeddingInfo
 }
 
 /// <summary>
-/// Represents chunk boundaries in a document
+/// Where one chunk sits in its document (late chunking input)
 /// </summary>
-public partial class ChunkBoundary
+public partial class ChunkSpan
 {
     /// <summary>
     /// Chunk identifier
