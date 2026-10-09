@@ -9,6 +9,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ### Dependencies
 - Re-pinned sibling package(s) `FileFlux` 0.53.0 -> 0.54.0.
+- Re-pinned sibling package(s) `FileFlux` 0.54.0 -> 0.55.0.
 
 ---
 
