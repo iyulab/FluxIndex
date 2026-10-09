@@ -290,7 +290,7 @@ public class SQLiteVecScopedSearchTests : IAsyncLifetime
             cancellationToken: TestContext.Current.CancellationToken);
 
         var wanted = results.Should().ContainSingle(r => r.Chunk.DocumentId == "wanted").Subject;
-        wanted.FoundInTextSearch.Should().BeTrue("the text leg must not drop an in-scope match ranked past its limit");
+        wanted.Source.Should().NotBe(FluxIndex.Core.Domain.Models.SearchSource.Vector, "the text leg must not drop an in-scope match ranked past its limit");
     }
 
     private static DocumentChunk Chunk(string documentId, string tenant, float[] embedding, string? content = null) => new()

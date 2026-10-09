@@ -1010,7 +1010,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
     /// </param>
     /// <param name="cancellationToken">취소 토큰</param>
     /// <returns>RRF로 결합된 검색 결과</returns>
-    public async Task<IEnumerable<HybridSearchResult>> HybridSearchAsync(
+    public async Task<IEnumerable<FluxIndex.Core.Domain.Models.HybridSearchResult>> HybridSearchAsync(
         float[] queryEmbedding,
         string textQuery,
         int topK = 10,
@@ -1038,7 +1038,8 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 int rank = 1;
                 foreach (var chunk in vectorChunks)
                 {
-                    vectorResults[chunk.Id] = (rank++, chunk, 1.0f / rank); // 순위 기반 점수
+                    vectorResults[chunk.Id] = (rank, chunk, 1.0f / rank); // 순위 기반 점수
+                    rank++;
                 }
             }
 
@@ -1056,7 +1057,10 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
 
             // 3. RRF (Reciprocal Rank Fusion) 결합
             var allIds = vectorResults.Keys.Union(ftsResults.Keys).ToHashSet();
-            var combinedResults = new List<HybridSearchResult>();
+            var combinedResults = new List<FluxIndex.Core.Domain.Models.HybridSearchResult>();
+            var fusion = new FluxIndex.Core.Domain.Models.AppliedFusion(
+                FluxIndex.Core.Domain.Models.FusionMethod.RRF, weight, textWeight, k,
+                vectorWeight.HasValue ? FluxIndex.Core.Domain.Models.FusionSelection.Caller : FluxIndex.Core.Domain.Models.FusionSelection.ServiceDefault);
 
             foreach (var id in allIds)
             {
@@ -1071,22 +1075,27 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
 
                 if (chunk != null)
                 {
-                    combinedResults.Add(new HybridSearchResult
+                    var inVector = vectorRank != int.MaxValue;
+                    var inText = ftsRank != int.MaxValue;
+                    combinedResults.Add(new FluxIndex.Core.Domain.Models.HybridSearchResult
                     {
                         Chunk = chunk,
-                        RrfScore = (float)rrfScore,
-                        VectorRank = vectorRank == int.MaxValue ? null : vectorRank,
-                        FtsRank = ftsRank == int.MaxValue ? null : ftsRank,
-                        VectorScore = vectorResults.TryGetValue(id, out var vs) ? vs.VectorScore : null,
-                        Bm25Score = ftsResults.TryGetValue(id, out var fs) ? fs.BM25Score : null
+                        FusedScore = rrfScore,
+                        VectorRank = inVector ? vectorRank : 0,
+                        SparseRank = inText ? ftsRank : 0,
+                        VectorScore = vectorResults.TryGetValue(id, out var vs) ? vs.VectorScore : 0,
+                        SparseScore = ftsResults.TryGetValue(id, out var fs) ? fs.BM25Score : 0,
+                        Source = inVector && inText ? FluxIndex.Core.Domain.Models.SearchSource.Both : inVector ? FluxIndex.Core.Domain.Models.SearchSource.Vector : FluxIndex.Core.Domain.Models.SearchSource.Sparse,
+                        Fusion = fusion,
                     });
                 }
             }
 
             // 4. RRF 점수로 정렬하여 반환
             var finalResults = combinedResults
-                .OrderByDescending(r => r.RrfScore)
+                .OrderByDescending(r => r.FusedScore)
                 .Take(topK)
+                .Select((r, index) => r with { FusedRank = index + 1 })
                 .ToList();
 
             LogHybridSearchCompleted(_logger, vectorResults.Count, ftsResults.Count, finalResults.Count);
@@ -1101,13 +1110,11 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
     }
 
     /// <summary>
-    /// <see cref="INativeHybridSearch"/> — exposes this store's native vec + <c>chunk_fts</c> fusion under
-    /// the Core <see cref="FluxIndex.Core.Domain.Models.HybridSearchResult"/> type, so a hybrid
-    /// route can prefer it over a separately-registered <c>IHybridSearchService</c> whose sparse index is
-    /// not populated by ingestion-only pipelines. Maps the store-local result (RrfScore/Bm25Score) onto the
-    /// Core model (FusedScore/SparseScore).
+    /// <see cref="INativeHybridSearch"/> — this store's native vec + <c>chunk_fts</c> fusion, so a hybrid route can prefer
+    /// it over a separately-registered <c>IHybridSearchService</c> whose sparse index is not populated by ingestion-only
+    /// pipelines.
     /// </summary>
-    async Task<IEnumerable<FluxIndex.Core.Domain.Models.HybridSearchResult>> INativeHybridSearch.HybridSearchAsync(
+    Task<IEnumerable<FluxIndex.Core.Domain.Models.HybridSearchResult>> INativeHybridSearch.HybridSearchAsync(
         float[] queryEmbedding,
         string textQuery,
         int topK,
@@ -1115,18 +1122,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         float? vectorWeight,
         Dictionary<string, object>? filters,
         CancellationToken cancellationToken)
-    {
-        var local = await HybridSearchAsync(queryEmbedding, textQuery, topK, minScore, vectorWeight, filters, cancellationToken);
-        return local.Select(r => new FluxIndex.Core.Domain.Models.HybridSearchResult
-        {
-            Chunk = r.Chunk,
-            FusedScore = r.RrfScore,
-            VectorScore = r.VectorScore ?? 0,
-            SparseScore = r.Bm25Score ?? 0,
-            VectorRank = r.VectorRank ?? 0,
-            SparseRank = r.FtsRank ?? 0,
-        }).ToList();
-    }
+        => HybridSearchAsync(queryEmbedding, textQuery, topK, minScore, vectorWeight, filters, cancellationToken);
 
     /// <summary>
     /// FTS5 전문 검색 수행

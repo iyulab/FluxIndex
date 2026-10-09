@@ -102,6 +102,13 @@ public class SQLiteVecNativeHybridScopeTests : IAsyncLifetime
         var results = (await ((INativeHybridSearch)store).HybridSearchAsync(Query, "budget", topK: 10, cancellationToken: ct)).ToList();
 
         results.Select(r => r.Chunk.DocumentId).Distinct().Should().BeEquivalentTo(["keep", "drop"]);
+        // The store reports its fusion the way the hybrid service does: RRF, ranks in order, which leg found each chunk.
+        results.Select(r => r.FusedRank).Should().Equal(Enumerable.Range(1, results.Count));
+        results.Should().OnlyContain(r => r.Fusion.Method == FluxIndex.Core.Domain.Models.FusionMethod.RRF
+            && r.Fusion.SelectedBy == FluxIndex.Core.Domain.Models.FusionSelection.ServiceDefault);
+        results.Should().OnlyContain(r => (r.Source == FluxIndex.Core.Domain.Models.SearchSource.Sparse) == (r.VectorRank == 0)
+            && (r.Source == FluxIndex.Core.Domain.Models.SearchSource.Vector) == (r.SparseRank == 0));
+        results.Where(r => r.VectorRank == 1).Should().OnlyContain(r => r.VectorScore == 1.0, "the top vector hit scores 1/rank = 1");
     }
 
     [Fact]

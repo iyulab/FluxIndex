@@ -33,7 +33,6 @@ public class SharedTypeNameConventionTests
         ["SearchStrategy"] = "to fix: Core.Application.Interfaces / Core.Application.Models / Core.Domain.Models",
         ["RelationshipType"] = "to fix: Core.Domain.Entities / Core.Domain.Models",
         ["DocumentMetadata"] = "to fix: Core.Domain.ValueObjects / SDK",
-        ["HybridSearchResult"] = "to fix: Core.Domain.Models / Storage.SQLite",
         ["BatchIndexingResult"] = "to fix: SDK / Integrations.WebFlux",
     };
 

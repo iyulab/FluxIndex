@@ -14,6 +14,16 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   Migration: read `TotalEntries`, `CacheHits`, `CacheMisses`, `HitRate`, `AverageResponseTimeMs`, `CacheSizeBytes`,
   `ExpiredEntries`.
 
+- **Breaking** — **`SQLiteVecVectorStore.HybridSearchAsync` returns Core's `HybridSearchResult`**, the type its
+  `INativeHybridSearch` implementation already reported, now with `FusedRank`, `Source` (which leg found the chunk) and
+  `Fusion` (RRF, the effective weights, `Caller` or `ServiceDefault`). The store-local `HybridSearchResult` is removed.
+  Migration: `RrfScore` → `FusedScore`, `FtsRank`/`Bm25Score` → `SparseRank`/`SparseScore` (0 when the leg did not find
+  the chunk), `FoundInTextSearch`/`FoundInVectorSearch`/`FoundInBoth` → `Source`.
+
+### Fixed
+- **The SQLite store's native hybrid search scores the vector leg 1/rank.** It scored the first vector hit 0.5, the second
+  0.33, … (1/(rank+1)); `VectorScore` of a native hybrid result now reads 1 for the top vector hit.
+
 ### Removed
 - **Breaking** — `FluxIndex.Core.Domain.ValueObjects` `CacheResult`, `CacheMetadata`, `CacheStatistics` and
   `CacheHitType`: no cache produced or read them. The semantic cache models are `FluxIndex.Core.Application.Interfaces`'
