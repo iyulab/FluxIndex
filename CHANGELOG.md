@@ -53,6 +53,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   `IDynamicFusionService.UpdatePerformanceFeedbackAsync` with `FusionPerformanceFeedback`. Each only logged or returned
   values nothing used. Migration: drop the calls; adaptive-search feedback goes through `IAdaptiveSearchService.UpdateFeedbackAsync`.
 
+### Dependencies
+- Re-pinned sibling package(s) `FileFlux` 0.55.0 -> 0.56.0, `WebFlux` 0.23.0 -> 0.24.0.
+
 ## [0.83.0] - 2026-10-09
 
 ### Removed
