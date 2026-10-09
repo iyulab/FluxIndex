@@ -316,7 +316,7 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
                 Embedding = row.Embedding,
                 TokenCount = row.TokenCount,
                 Metadata = DocumentReassignment.RewriteMetadata(
-                    row.Metadata, oldDocumentId, newDocumentId, newId, chunkIdMap, metadataUpdates)
+                    row.Metadata, oldDocumentId, newDocumentId, newId, metadataUpdates)
             });
         }
 

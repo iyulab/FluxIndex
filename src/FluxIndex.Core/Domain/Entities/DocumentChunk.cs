@@ -41,7 +41,6 @@ public class DocumentChunk
 
     // Modern RAG 메타데이터
     public ChunkMetadata ChunkMetadata { get; private set; }
-    public List<ChunkRelationship> Relationships { get; private set; }
     public ChunkQuality Quality { get; private set; }
 
     public DocumentChunk()
@@ -50,7 +49,6 @@ public class DocumentChunk
         DocumentId = string.Empty;
         Content = string.Empty;
         Properties = new Dictionary<string, object>();
-        Relationships = new List<ChunkRelationship>();
         ChunkMetadata = new ChunkMetadata();
         Quality = new ChunkQuality();
         Metadata = new Dictionary<string, object>();
@@ -95,7 +93,7 @@ public class DocumentChunk
     /// A copy of this chunk carrying <paramref name="content"/> in place of its own — every other field,
     /// the id included, is the same. For a caller that must hand out rewritten text (a sanitized search
     /// result) without rewriting the instance a store or cache still holds. Collections are copied, not
-    /// shared; the value objects they hold (relationships, chunk metadata, quality) are shared.
+    /// shared; the value objects it holds (chunk metadata, quality) are shared.
     /// </summary>
     public DocumentChunk WithContent(string content)
     {
@@ -115,7 +113,6 @@ public class DocumentChunk
             Score = Score,
             Metadata = Metadata is null ? null : new Dictionary<string, object>(Metadata),
             ChunkMetadata = ChunkMetadata,
-            Relationships = new List<ChunkRelationship>(Relationships),
             Quality = Quality,
         };
         return copy;
@@ -143,12 +140,6 @@ public class DocumentChunk
     public void SetMetadata(ChunkMetadata metadata)
     {
         ChunkMetadata = metadata ?? throw new ArgumentNullException(nameof(metadata));
-    }
-
-    public void AddRelationship(ChunkRelationship relationship)
-    {
-        ArgumentNullException.ThrowIfNull(relationship);
-        Relationships.Add(relationship);
     }
 
     public void SetQuality(ChunkQuality quality)
@@ -189,26 +180,11 @@ public class ChunkMetadata
 }
 
 /// <summary>
-/// 청크 간 관계 - 그래프 기반 검색을 위한 관계 정보
-/// </summary>
-public class ChunkRelationship
-{
-    public string Id { get; set; } = Guid.NewGuid().ToString();
-    public string SourceChunkId { get; set; } = string.Empty;
-    public string TargetChunkId { get; set; } = string.Empty;
-    public RelationshipType Type { get; set; }
-    public double Strength { get; set; } // 0.0-1.0
-    public string Description { get; set; } = string.Empty;
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-}
-
-/// <summary>
-/// How two chunks relate — the one vocabulary for chunk relationships: the enrichment's <see cref="ChunkRelationship"/> and
-/// the hierarchy graph's <c>ChunkRelationshipExtended</c>.
+/// How two chunks relate — the type of a hierarchy graph's <see cref="Models.ChunkRelationship"/>.
 /// </summary>
 /// <remarks>
-/// The values are fixed. A <see cref="ChunkRelationship"/> list is stored in chunk metadata as JSON numbers, so a value must
-/// never move; the graph stores keep the member name. Add new members at the end with the next value.
+/// The names and values are fixed. The graph stores keep the member name, and earlier releases stored the numeric value in
+/// chunk metadata, so neither may change meaning. Add new members at the end with the next value.
 /// </remarks>
 public enum RelationshipType
 {

@@ -802,11 +802,11 @@ public partial class SmallToBigRetriever : ISmallToBigRetriever
         }
     }
 
-    private static async Task<List<ChunkRelationshipExtended>> AnalyzeSemanticRelationshipsAsync(
+    private static async Task<List<ChunkRelationship>> AnalyzeSemanticRelationshipsAsync(
         List<DocumentChunk> chunks,
         CancellationToken cancellationToken)
     {
-        var relationships = new List<ChunkRelationshipExtended>();
+        var relationships = new List<ChunkRelationship>();
 
         for (int i = 0; i < chunks.Count; i++)
         {
@@ -816,7 +816,7 @@ public partial class SmallToBigRetriever : ISmallToBigRetriever
 
                 if (similarity > 0.7) // 임계값
                 {
-                    relationships.Add(new ChunkRelationshipExtended
+                    relationships.Add(new ChunkRelationship
                     {
                         SourceChunkId = chunks[i].Id,
                         TargetChunkId = chunks[j].Id,

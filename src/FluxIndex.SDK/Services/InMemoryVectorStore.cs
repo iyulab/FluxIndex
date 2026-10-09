@@ -335,28 +335,9 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore, IDisposab
                 var newId = chunkIdMap[oldId];
                 var chunk = item.chunk.WithContent(item.chunk.Content);
                 chunk.Id = newId;
-                for (var i = 0; i < chunk.Relationships.Count; i++)
-                {
-                    var relationship = chunk.Relationships[i];
-                    var source = chunkIdMap.GetValueOrDefault(relationship.SourceChunkId, relationship.SourceChunkId);
-                    var target = chunkIdMap.GetValueOrDefault(relationship.TargetChunkId, relationship.TargetChunkId);
-                    if (source == relationship.SourceChunkId && target == relationship.TargetChunkId)
-                        continue;
-
-                    chunk.Relationships[i] = new ChunkRelationship
-                    {
-                        Id = relationship.Id,
-                        SourceChunkId = source,
-                        TargetChunkId = target,
-                        Type = relationship.Type,
-                        Strength = relationship.Strength,
-                        Description = relationship.Description,
-                        CreatedAt = relationship.CreatedAt
-                    };
-                }
                 chunk.DocumentId = newDocumentId;
                 chunk.Metadata = DocumentReassignment.RewriteMetadata(
-                    item.chunk.Metadata, oldDocumentId, newDocumentId, newId, chunkIdMap, metadataUpdates);
+                    item.chunk.Metadata, oldDocumentId, newDocumentId, newId, metadataUpdates);
                 _chunks[newId] = (chunk, item.embedding);
                 newIds.Add(newId);
             }

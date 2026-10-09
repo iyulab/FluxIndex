@@ -302,7 +302,7 @@ public class PostgreSQLVectorStore : VectorStoreBase
             var row = rows[i];
             var newId = chunkIdMap[chunkIds[i]];
             var metadata = DocumentReassignment.RewriteMetadata(
-                row.Metadata, oldDocumentId, newDocumentId, newId, chunkIdMap, metadataUpdates);
+                row.Metadata, oldDocumentId, newDocumentId, newId, metadataUpdates);
             metadata[ChunkStorageId.OriginalIdKey] = newId;
             context.Vectors.Add(new VectorEntity
             {

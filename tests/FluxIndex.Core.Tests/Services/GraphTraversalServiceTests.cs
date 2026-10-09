@@ -42,7 +42,7 @@ public class GraphTraversalServiceTests
     public async Task TraverseBfsAsync_LinearPath_TraversesInOrder()
     {
         // Arrange: chunk1 -> chunk2 -> chunk3
-        var relationships = new Dictionary<string, List<ChunkRelationshipExtended>>
+        var relationships = new Dictionary<string, List<ChunkRelationship>>
         {
             ["chunk1"] = new() { CreateRelationship("chunk1", "chunk2") },
             ["chunk2"] = new() { CreateRelationship("chunk2", "chunk3") },
@@ -69,7 +69,7 @@ public class GraphTraversalServiceTests
     public async Task TraverseBfsAsync_RespectsMaxDepth()
     {
         // Arrange: chunk1 -> chunk2 -> chunk3 -> chunk4
-        var relationships = new Dictionary<string, List<ChunkRelationshipExtended>>
+        var relationships = new Dictionary<string, List<ChunkRelationship>>
         {
             ["chunk1"] = new() { CreateRelationship("chunk1", "chunk2") },
             ["chunk2"] = new() { CreateRelationship("chunk2", "chunk3") },
@@ -99,12 +99,12 @@ public class GraphTraversalServiceTests
         _hierarchyRepositoryMock.GetRelationshipsAsync(
             "chunk1",
             Arg.Is<IEnumerable<RelationshipType>?>(types => types != null && types.Contains(RelationshipType.Sequential)),
-            Arg.Any<CancellationToken>()).Returns(new List<ChunkRelationshipExtended> { sequentialRel });
+            Arg.Any<CancellationToken>()).Returns(new List<ChunkRelationship> { sequentialRel });
 
         _hierarchyRepositoryMock.GetRelationshipsAsync(
             "chunk2",
             Arg.Any<IEnumerable<RelationshipType>?>(),
-            Arg.Any<CancellationToken>()).Returns(new List<ChunkRelationshipExtended>());
+            Arg.Any<CancellationToken>()).Returns(new List<ChunkRelationship>());
 
         var options = new GraphTraversalOptions
         {
@@ -124,7 +124,7 @@ public class GraphTraversalServiceTests
     public async Task TraverseBfsAsync_RespectsMaxNodes()
     {
         // Arrange: Star topology with many nodes
-        var relationships = new Dictionary<string, List<ChunkRelationshipExtended>>
+        var relationships = new Dictionary<string, List<ChunkRelationship>>
         {
             ["center"] = new()
             {
@@ -160,7 +160,7 @@ public class GraphTraversalServiceTests
     public async Task TraverseDfsAsync_LinearPath_TraversesDeepFirst()
     {
         // Arrange: chunk1 -> chunk2 -> chunk3
-        var relationships = new Dictionary<string, List<ChunkRelationshipExtended>>
+        var relationships = new Dictionary<string, List<ChunkRelationship>>
         {
             ["chunk1"] = new() { CreateRelationship("chunk1", "chunk2") },
             ["chunk2"] = new() { CreateRelationship("chunk2", "chunk3") },
@@ -181,7 +181,7 @@ public class GraphTraversalServiceTests
     public async Task TraverseDfsAsync_RespectsMaxDepth()
     {
         // Arrange
-        var relationships = new Dictionary<string, List<ChunkRelationshipExtended>>
+        var relationships = new Dictionary<string, List<ChunkRelationship>>
         {
             ["a"] = new() { CreateRelationship("a", "b") },
             ["b"] = new() { CreateRelationship("b", "c") },
@@ -209,7 +209,7 @@ public class GraphTraversalServiceTests
     public async Task FindShortestPathAsync_DirectConnection_ReturnsPath()
     {
         // Arrange: chunk1 -> chunk2
-        var relationships = new Dictionary<string, List<ChunkRelationshipExtended>>
+        var relationships = new Dictionary<string, List<ChunkRelationship>>
         {
             ["chunk1"] = new() { CreateRelationship("chunk1", "chunk2") },
             ["chunk2"] = new()
@@ -261,7 +261,7 @@ public class GraphTraversalServiceTests
     {
         // Arrange: chunk1 -> chunk2 -> chunk4 (short path, 2 hops)
         //          chunk1 -> chunk3 -> chunk5 -> chunk4 (long path, 3 hops)
-        var relationships = new Dictionary<string, List<ChunkRelationshipExtended>>
+        var relationships = new Dictionary<string, List<ChunkRelationship>>
         {
             ["chunk1"] = new()
             {
@@ -295,7 +295,7 @@ public class GraphTraversalServiceTests
     public async Task GetNeighborhoodAsync_SingleHop_ReturnsDirectNeighbors()
     {
         // Arrange: chunk1 -> chunk2, chunk3
-        var relationships = new Dictionary<string, List<ChunkRelationshipExtended>>
+        var relationships = new Dictionary<string, List<ChunkRelationship>>
         {
             ["chunk1"] = new()
             {
@@ -321,7 +321,7 @@ public class GraphTraversalServiceTests
     public async Task GetNeighborhoodAsync_MultipleHops_ReturnsAllWithinRange()
     {
         // Arrange: A -> B -> C
-        var relationships = new Dictionary<string, List<ChunkRelationshipExtended>>
+        var relationships = new Dictionary<string, List<ChunkRelationship>>
         {
             ["A"] = new() { CreateRelationship("A", "B") },
             ["B"] = new() { CreateRelationship("B", "C") },
@@ -349,7 +349,7 @@ public class GraphTraversalServiceTests
         // Arrange: All chunks connected
         SetupChunksByLevel(new List<string> { "chunk1", "chunk2", "chunk3" });
 
-        var relationships = new Dictionary<string, List<ChunkRelationshipExtended>>
+        var relationships = new Dictionary<string, List<ChunkRelationship>>
         {
             ["chunk1"] = new() { CreateRelationship("chunk1", "chunk2") },
             ["chunk2"] = new() { CreateRelationship("chunk2", "chunk3") },
@@ -372,7 +372,7 @@ public class GraphTraversalServiceTests
         // Arrange: chunk1-chunk2 and chunk3-chunk4 are separate components
         SetupChunksByLevel(new List<string> { "chunk1", "chunk2", "chunk3", "chunk4" });
 
-        var relationships = new Dictionary<string, List<ChunkRelationshipExtended>>
+        var relationships = new Dictionary<string, List<ChunkRelationship>>
         {
             ["chunk1"] = new() { CreateRelationship("chunk1", "chunk2") },
             ["chunk2"] = new(),
@@ -399,7 +399,7 @@ public class GraphTraversalServiceTests
         // Arrange: Linear path, no cycle
         SetupChunksByLevel(new List<string> { "chunk1", "chunk2", "chunk3" });
 
-        var relationships = new Dictionary<string, List<ChunkRelationshipExtended>>
+        var relationships = new Dictionary<string, List<ChunkRelationship>>
         {
             ["chunk1"] = new() { CreateRelationship("chunk1", "chunk2", direction: RelationshipDirection.Unidirectional) },
             ["chunk2"] = new() { CreateRelationship("chunk2", "chunk3", direction: RelationshipDirection.Unidirectional) },
@@ -421,7 +421,7 @@ public class GraphTraversalServiceTests
         // Arrange: chunk1 -> chunk2 -> chunk3 -> chunk1 (cycle)
         SetupChunksByLevel(new List<string> { "chunk1", "chunk2", "chunk3" });
 
-        var relationships = new Dictionary<string, List<ChunkRelationshipExtended>>
+        var relationships = new Dictionary<string, List<ChunkRelationship>>
         {
             ["chunk1"] = new() { CreateRelationship("chunk1", "chunk2", direction: RelationshipDirection.Unidirectional) },
             ["chunk2"] = new() { CreateRelationship("chunk2", "chunk3", direction: RelationshipDirection.Unidirectional) },
@@ -476,7 +476,7 @@ public class GraphTraversalServiceTests
         // Arrange: hub is connected to many chunks
         SetupChunksByLevel(new List<string> { "hub", "leaf1", "leaf2", "leaf3" });
 
-        var relationships = new Dictionary<string, List<ChunkRelationshipExtended>>
+        var relationships = new Dictionary<string, List<ChunkRelationship>>
         {
             ["hub"] = new()
             {
@@ -509,7 +509,7 @@ public class GraphTraversalServiceTests
         // Arrange
         SetupChunksByLevel(new List<string> { "chunk1", "chunk2" });
 
-        var relationships = new Dictionary<string, List<ChunkRelationshipExtended>>
+        var relationships = new Dictionary<string, List<ChunkRelationship>>
         {
             ["chunk1"] = new() { CreateRelationship("chunk1", "chunk2") },
             ["chunk2"] = new()
@@ -532,7 +532,7 @@ public class GraphTraversalServiceTests
     public async Task ComputeTransitiveClosureAsync_LinearPath_ComputesAllReachable()
     {
         // Arrange: A -> B -> C
-        var relationships = new Dictionary<string, List<ChunkRelationshipExtended>>
+        var relationships = new Dictionary<string, List<ChunkRelationship>>
         {
             ["A"] = new() { CreateRelationship("A", "B") },
             ["B"] = new() { CreateRelationship("B", "C") },
@@ -559,16 +559,16 @@ public class GraphTraversalServiceTests
         _hierarchyRepositoryMock.GetRelationshipsAsync(
             Arg.Any<string>(),
             Arg.Any<IEnumerable<RelationshipType>?>(),
-            Arg.Any<CancellationToken>()).Returns(new List<ChunkRelationshipExtended>());
+            Arg.Any<CancellationToken>()).Returns(new List<ChunkRelationship>());
     }
 
-    private void SetupRelationships(Dictionary<string, List<ChunkRelationshipExtended>> relationships)
+    private void SetupRelationships(Dictionary<string, List<ChunkRelationship>> relationships)
     {
         _hierarchyRepositoryMock.GetRelationshipsAsync(
             Arg.Any<string>(),
             Arg.Any<IEnumerable<RelationshipType>?>(),
-            Arg.Any<CancellationToken>()).Returns(callInfo => { var chunkId = callInfo.ArgAt<string>(0); return Task.FromResult<IReadOnlyList<ChunkRelationshipExtended>>(
-                    relationships.GetValueOrDefault(chunkId) ?? new List<ChunkRelationshipExtended>()); });
+            Arg.Any<CancellationToken>()).Returns(callInfo => { var chunkId = callInfo.ArgAt<string>(0); return Task.FromResult<IReadOnlyList<ChunkRelationship>>(
+                    relationships.GetValueOrDefault(chunkId) ?? new List<ChunkRelationship>()); });
     }
 
     private void SetupChunksByLevel(List<string> chunkIds)
@@ -584,14 +584,14 @@ public class GraphTraversalServiceTests
             Arg.Any<string>(), Arg.Is<int>(level => level > 0), Arg.Any<CancellationToken>()).Returns(new List<ChunkHierarchy>());
     }
 
-    private static ChunkRelationshipExtended CreateRelationship(
+    private static ChunkRelationship CreateRelationship(
         string sourceId,
         string targetId,
         RelationshipType type = RelationshipType.Sequential,
         RelationshipDirection direction = RelationshipDirection.Bidirectional,
         double strength = 0.8)
     {
-        return new ChunkRelationshipExtended
+        return new ChunkRelationship
         {
             SourceChunkId = sourceId,
             TargetChunkId = targetId,

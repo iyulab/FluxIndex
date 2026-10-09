@@ -1385,7 +1385,7 @@ public abstract partial class RelationalKeywordSearchService : IKeywordSearchSer
                         Content = chunk.Content,
                         TokenCount = chunk.TokenCount,
                         Metadata = DocumentReassignment.RewriteMetadata(
-                            chunk.Metadata, oldDocumentId, newDocumentId, newId, chunkIdMap, metadataUpdates)
+                            chunk.Metadata, oldDocumentId, newDocumentId, newId, metadataUpdates)
                     };
                     return (Chunk: moved, Terms: Tokenize(moved.Content).ToList(), FieldTerms: TokenizeFields(moved));
                 })

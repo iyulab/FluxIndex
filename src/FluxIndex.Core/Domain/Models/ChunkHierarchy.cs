@@ -154,9 +154,9 @@ public enum BoundaryType
 }
 
 /// <summary>
-/// 청크 관계 확장 모델
+/// 청크 간 관계 - 계층 그래프의 엣지 (그래프 저장소가 영속화)
 /// </summary>
-public class ChunkRelationshipExtended
+public class ChunkRelationship
 {
     /// <summary>
     /// 관계 ID

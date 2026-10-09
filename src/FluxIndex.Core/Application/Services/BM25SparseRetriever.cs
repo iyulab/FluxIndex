@@ -837,7 +837,7 @@ public partial class BM25SparseRetriever : IKeywordSearchService, IPersistableSp
                 chunk.Id = newId;
                 chunk.DocumentId = newDocumentId;
                 chunk.Metadata = DocumentReassignment.RewriteMetadata(
-                    previous.Metadata, oldDocumentId, newDocumentId, newId, chunkIdMap, metadataUpdates);
+                    previous.Metadata, oldDocumentId, newDocumentId, newId, metadataUpdates);
 
                 RemoveChunkFromIndex(defaultIndex, oldId);
                 AddChunkToIndex(defaultIndex, chunk);

@@ -51,7 +51,7 @@ public partial class InMemoryChunkHierarchyRepository : IChunkHierarchyRepositor
     };
 
     private readonly ConcurrentDictionary<string, ChunkHierarchy> _hierarchies = new();
-    private readonly ConcurrentDictionary<string, ChunkRelationshipExtended> _relationships = new();
+    private readonly ConcurrentDictionary<string, ChunkRelationship> _relationships = new();
     private readonly ILogger<InMemoryChunkHierarchyRepository> _logger;
     private readonly string? _persistencePath;
     private readonly bool _autoSave;
@@ -173,7 +173,7 @@ public partial class InMemoryChunkHierarchyRepository : IChunkHierarchyRepositor
     /// <summary>
     /// Save chunk relationship
     /// </summary>
-    public async Task SaveRelationshipAsync(ChunkRelationshipExtended relationship, CancellationToken cancellationToken = default)
+    public async Task SaveRelationshipAsync(ChunkRelationship relationship, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(relationship);
 
@@ -198,7 +198,7 @@ public partial class InMemoryChunkHierarchyRepository : IChunkHierarchyRepositor
     /// <summary>
     /// Get chunk relationships
     /// </summary>
-    public Task<IReadOnlyList<ChunkRelationshipExtended>> GetRelationshipsAsync(
+    public Task<IReadOnlyList<ChunkRelationship>> GetRelationshipsAsync(
         string chunkId,
         IEnumerable<RelationshipType>? relationshipTypes = null,
         CancellationToken cancellationToken = default)
@@ -222,7 +222,7 @@ public partial class InMemoryChunkHierarchyRepository : IChunkHierarchyRepositor
             .OrderByDescending(r => r.Strength)
             .ToList();
 
-        return Task.FromResult<IReadOnlyList<ChunkRelationshipExtended>>(relationships);
+        return Task.FromResult<IReadOnlyList<ChunkRelationship>>(relationships);
     }
 
     /// <summary>
@@ -421,7 +421,7 @@ public partial class InMemoryChunkHierarchyRepository : IChunkHierarchyRepositor
                 var relType = Enum.TryParse<RelationshipType>(r.Type, out var rt) ? rt : RelationshipType.Semantic;
                 var direction = Enum.TryParse<RelationshipDirection>(r.Direction, out var rd) ? rd : RelationshipDirection.Bidirectional;
 
-                var relationship = new ChunkRelationshipExtended
+                var relationship = new ChunkRelationship
                 {
                     Id = r.Id,
                     SourceChunkId = r.SourceChunkId,

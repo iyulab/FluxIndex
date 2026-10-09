@@ -366,8 +366,8 @@ public class GraphTraversalResult
     /// <summary>
     /// 탐색된 관계 목록
     /// </summary>
-    public IReadOnlyList<ChunkRelationshipExtended> TraversedRelationships { get; init; }
-        = Array.Empty<ChunkRelationshipExtended>();
+    public IReadOnlyList<ChunkRelationship> TraversedRelationships { get; init; }
+        = Array.Empty<ChunkRelationship>();
 
     /// <summary>
     /// 탐색 통계
@@ -439,8 +439,8 @@ public class PathFindingResult
     /// <summary>
     /// 경로상의 관계 목록
     /// </summary>
-    public IReadOnlyList<ChunkRelationshipExtended> Relationships { get; init; }
-        = Array.Empty<ChunkRelationshipExtended>();
+    public IReadOnlyList<ChunkRelationship> Relationships { get; init; }
+        = Array.Empty<ChunkRelationship>();
 
     /// <summary>
     /// 경로 길이 (홉 수)

@@ -112,8 +112,6 @@ public static class DocumentReassignment
     /// <item><description>Each key of <paramref name="metadataUpdates"/> is set to its value, or removed when the value is null.</description></item>
     /// <item><description>Keys a store writes itself follow the move: <see cref="ChunkStorageId.OriginalIdKey"/> becomes the new chunk
     /// id, and <see cref="MetadataHelper.StandardKeys.DocumentId"/> becomes the new document id when it held the old one.</description></item>
-    /// <item><description>Serialized chunk relationships (<see cref="MetadataHelper.ReservedKeys.ChunkRelationships"/>) that point at
-    /// a moved chunk point at its new id.</description></item>
     /// </list>
     /// Updates are applied last, so a caller can still set any of those keys explicitly.
     /// </remarks>
@@ -121,18 +119,14 @@ public static class DocumentReassignment
     /// <param name="oldDocumentId">The document the chunk leaves.</param>
     /// <param name="newDocumentId">The document the chunk joins.</param>
     /// <param name="newChunkId">The chunk's new id.</param>
-    /// <param name="chunkIdMap">The full id map, for relationships between moved chunks.</param>
     /// <param name="metadataUpdates">Keys to set (or, with a null value, remove).</param>
     public static Dictionary<string, object> RewriteMetadata(
         IReadOnlyDictionary<string, object>? metadata,
         string oldDocumentId,
         string newDocumentId,
         string newChunkId,
-        IReadOnlyDictionary<string, string> chunkIdMap,
         IReadOnlyDictionary<string, object?>? metadataUpdates)
     {
-        ArgumentNullException.ThrowIfNull(chunkIdMap);
-
         var result = metadata == null
             ? new Dictionary<string, object>()
             : new Dictionary<string, object>(metadata);
@@ -144,29 +138,6 @@ public static class DocumentReassignment
             && string.Equals(MetadataValueAsString(storedDocumentId), oldDocumentId, StringComparison.Ordinal))
         {
             result[MetadataHelper.StandardKeys.DocumentId] = newDocumentId;
-        }
-
-        var relationships = MetadataHelper.DeserializeRelationships(result);
-        if (relationships != null && relationships.Count > 0)
-        {
-            var changed = false;
-            foreach (var relationship in relationships)
-            {
-                if (chunkIdMap.TryGetValue(relationship.SourceChunkId, out var source))
-                {
-                    relationship.SourceChunkId = source;
-                    changed = true;
-                }
-
-                if (chunkIdMap.TryGetValue(relationship.TargetChunkId, out var target))
-                {
-                    relationship.TargetChunkId = target;
-                    changed = true;
-                }
-            }
-
-            if (changed)
-                MetadataHelper.SerializeRelationships(result, relationships);
         }
 
         if (metadataUpdates != null)

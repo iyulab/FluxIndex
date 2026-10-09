@@ -1,16 +1,15 @@
-using FluxIndex.Core.Application.Utilities;
 using FluxIndex.Core.Domain.Entities;
 using Xunit;
 
 namespace FluxIndex.Core.Tests.Domain;
 
 /// <summary>
-/// One <see cref="RelationshipType"/> serves the enrichment's relationships (stored in chunk metadata as JSON numbers) and
-/// the hierarchy graph (stored by member name). Neither stored form may change meaning.
+/// <see cref="RelationshipType"/> is stored in two forms: the graph stores write the member name, and earlier releases wrote
+/// the numeric value into chunk metadata. Neither stored form may change meaning.
 /// </summary>
 public class RelationshipTypeStorageTests
 {
-    // The values chunk metadata already holds. Moving one re-labels every stored relationship.
+    // The values earlier releases stored. Moving one re-labels every relationship stored by number.
     [Theory]
     [InlineData(RelationshipType.Sequential, 0)]
     [InlineData(RelationshipType.Semantic, 1)]
@@ -25,22 +24,6 @@ public class RelationshipTypeStorageTests
     public void EachMemberKeepsItsStoredValue(RelationshipType type, int stored)
     {
         Assert.Equal(stored, (int)type);
-    }
-
-    [Fact]
-    public void AStoredRelationshipListReadsBackAsTheSameTypes()
-    {
-        var metadata = new Dictionary<string, object>();
-        MetadataHelper.SerializeRelationships(metadata,
-        [
-            new ChunkRelationship { SourceChunkId = "a", TargetChunkId = "b", Type = RelationshipType.Similarity },
-            new ChunkRelationship { SourceChunkId = "a", TargetChunkId = "c", Type = RelationshipType.Reference },
-        ]);
-
-        var read = MetadataHelper.DeserializeRelationships(metadata);
-
-        Assert.NotNull(read);
-        Assert.Equal([RelationshipType.Similarity, RelationshipType.Reference], read!.Select(r => r.Type));
     }
 
     // The graph stores write the member name; every name the hierarchy model used before the merge still parses.

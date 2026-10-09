@@ -28,7 +28,7 @@ public static class MetadataHelper
 
     /// <summary>
     /// Reserved metadata keys for internal FluxIndex use.
-    /// These keys store serialized rich metadata (ChunkMetadata, ChunkQuality, ChunkRelationships).
+    /// These keys store serialized rich metadata (ChunkMetadata, ChunkQuality).
     /// </summary>
     public static class ReservedKeys
     {
@@ -37,9 +37,6 @@ public static class MetadataHelper
         
         /// <summary>Serialized ChunkQuality JSON</summary>
         public const string ChunkQuality = "_cq";
-        
-        /// <summary>Serialized ChunkRelationships JSON array</summary>
-        public const string ChunkRelationships = "_cr";
     }
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
@@ -60,7 +57,7 @@ public static class MetadataHelper
 
     /// <summary>
     /// The metadata dictionary a store persists for <paramref name="chunk"/>: initialized, with the chunk's rich state
-    /// (<see cref="DocumentChunk.ChunkMetadata"/>, <see cref="DocumentChunk.Quality"/>, <see cref="DocumentChunk.Relationships"/>)
+    /// (<see cref="DocumentChunk.ChunkMetadata"/>, <see cref="DocumentChunk.Quality"/>)
     /// serialized into the reserved keys, where <see cref="RestoreRichMetadata"/> reads it back. Every store's write path
     /// goes through here; a store that skipped it lost that state on every round trip while its read path looked for it.
     /// </summary>
@@ -70,12 +67,11 @@ public static class MetadataHelper
         chunk.Metadata = EnsureInitialized(chunk.Metadata);
         SerializeChunkMetadata(chunk.Metadata, chunk.ChunkMetadata);
         SerializeChunkQuality(chunk.Metadata, chunk.Quality);
-        SerializeRelationships(chunk.Metadata, chunk.Relationships);
         return chunk.Metadata;
     }
 
     /// <summary>
-    /// Restores the rich state <see cref="ForStorage"/> wrote (ChunkMetadata, ChunkQuality, ChunkRelationships) onto a
+    /// Restores the rich state <see cref="ForStorage"/> wrote (ChunkMetadata, ChunkQuality) onto a
     /// chunk a store has just materialized.
     /// </summary>
     public static void RestoreRichMetadata(DocumentChunk chunk)
@@ -91,13 +87,6 @@ public static class MetadataHelper
         var quality = DeserializeChunkQuality(chunk.Metadata);
         if (quality != null)
             chunk.SetQuality(quality);
-
-        var relationships = DeserializeRelationships(chunk.Metadata);
-        if (relationships != null)
-        {
-            foreach (var rel in relationships)
-                chunk.AddRelationship(rel);
-        }
     }
 
     /// <summary>
@@ -283,46 +272,6 @@ public static class MetadataHelper
             try
             {
                 return JsonSerializer.Deserialize<ChunkQuality>(json, _jsonOptions);
-            }
-            catch (JsonException)
-            {
-                return null;
-            }
-        }
-
-        return null;
-    }
-
-    #endregion
-
-    #region ChunkRelationships Serialization
-
-    /// <summary>
-    /// Serializes ChunkRelationships to JSON and stores it in metadata dictionary.
-    /// </summary>
-    public static void SerializeRelationships(Dictionary<string, object> metadata, List<ChunkRelationship>? relationships)
-    {
-        ArgumentNullException.ThrowIfNull(metadata);
-        
-        if (relationships == null || relationships.Count == 0)
-            return;
-
-        metadata[ReservedKeys.ChunkRelationships] = JsonSerializer.Serialize(relationships, _jsonOptions);
-    }
-
-    /// <summary>
-    /// Deserializes ChunkRelationships from metadata dictionary.
-    /// </summary>
-    public static List<ChunkRelationship>? DeserializeRelationships(Dictionary<string, object>? metadata)
-    {
-        if (metadata == null || !metadata.TryGetValue(ReservedKeys.ChunkRelationships, out var value))
-            return null;
-
-        if (MetadataValues.ToPlain(value) is string json && !string.IsNullOrEmpty(json))
-        {
-            try
-            {
-                return JsonSerializer.Deserialize<List<ChunkRelationship>>(json, _jsonOptions);
             }
             catch (JsonException)
             {

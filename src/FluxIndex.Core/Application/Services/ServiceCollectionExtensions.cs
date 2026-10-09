@@ -1,6 +1,5 @@
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Models;
-using FluxIndex.Core.Application.Services.Enrichment;
 using FluxIndex.Core.Application.Services.Quantization;
 using FluxIndex.Core.Constants;
 using Microsoft.Extensions.DependencyInjection;
@@ -247,18 +246,6 @@ public static class MetadataAugmentationServiceExtensions
     }
 
     /// <summary>
-    /// 규칙 기반 메타데이터 증강 서비스 등록.
-    /// ChunkMetadata, ChunkQuality, ChunkRelationship를 휴리스틱 규칙으로 생성합니다.
-    /// </summary>
-    /// <param name="services">서비스 컬렉션</param>
-    /// <returns>서비스 컬렉션</returns>
-    public static IServiceCollection AddMetadataEnrichment(this IServiceCollection services)
-    {
-        services.TryAddScoped<IMetadataEnrichmentService, RuleBasedMetadataEnrichmentService>();
-        return services;
-    }
-
-    /// <summary>
     /// FluxIndex Core 전체 서비스 등록
     /// </summary>
     /// <param name="services">서비스 컬렉션</param>
@@ -274,7 +261,6 @@ public static class MetadataAugmentationServiceExtensions
         services.TryAddSingleton<ITokenCounter, SimpleTokenCounter>();
         services.AddGraphTraversal();
         services.AddImageExtraction();
-        services.AddMetadataEnrichment(); // Rule-based ChunkMetadata/Quality enrichment
         services.AddDynamicAlphaTuning(); // DAT for query-adaptive fusion weights
 
         return services;

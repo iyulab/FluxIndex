@@ -71,7 +71,6 @@ public class OptionsReachabilityRosterTests
         ["FluxIndex.Core.Application.Services.CorrectiveRAGServiceOptions"] = ["MaxRetries"],
         ["FluxIndex.Core.Application.Services.QuantizedVectorStoreOptions"] = ["DefaultCandidateMultiplier", "StoreOriginalEmbeddings"],
         ["FluxIndex.Core.Application.Services.SelfRAGServiceOptions"] = ["DefaultMaxIterations", "DefaultQualityThreshold"],
-        ["FluxIndex.Core.Domain.Models.BatchProcessingOptions"] = ["BatchSize", "MaxRetries", "ReportProgress", "RetryDelay", "StopOnError"],
         ["FluxIndex.Core.Domain.Models.HybridSearchOptions"] = ["DiversityThreshold", "EnableDiversity", "TimeoutMs"],
         ["FluxIndex.Core.Domain.Models.SmallToBigOptions"] = ["MaxWindowSize", "TimeoutMs"],
         ["FluxIndex.Core.Domain.Models.VectorSearchOptions"] = ["BooleanOperator", "EnablePhraseSearch", "EnableTermExpansion", "SimilarityMetric"],

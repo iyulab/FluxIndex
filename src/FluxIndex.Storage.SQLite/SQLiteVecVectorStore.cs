@@ -1560,7 +1560,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 {
                     var newId = chunkIdMap[row.Id];
                     var metadata = DocumentReassignment.RewriteMetadata(
-                        row.Metadata, oldDocumentId, newDocumentId, newId, chunkIdMap, metadataUpdates);
+                        row.Metadata, oldDocumentId, newDocumentId, newId, metadataUpdates);
                     // Same serialization as the EF Core value converter on the Metadata column.
                     var metadataJson = System.Text.Json.JsonSerializer.Serialize(
                         metadata, (System.Text.Json.JsonSerializerOptions?)null);

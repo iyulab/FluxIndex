@@ -95,7 +95,7 @@ public partial class PostgresGraphStore : IChunkHierarchyRepository
     #region Relationship Operations
 
     public async Task SaveRelationshipAsync(
-        ChunkRelationshipExtended relationship,
+        ChunkRelationship relationship,
         CancellationToken cancellationToken = default)
     {
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
@@ -117,7 +117,7 @@ public partial class PostgresGraphStore : IChunkHierarchyRepository
         LogRelationshipSaved(_logger, relationship.Id);
     }
 
-    public async Task<IReadOnlyList<ChunkRelationshipExtended>> GetRelationshipsAsync(
+    public async Task<IReadOnlyList<ChunkRelationship>> GetRelationshipsAsync(
         string chunkId,
         IEnumerable<RelationshipType>? relationshipTypes = null,
         CancellationToken cancellationToken = default)
@@ -468,9 +468,9 @@ public partial class PostgresGraphStore : IChunkHierarchyRepository
         entity.UpdatedAt = DateTime.UtcNow;
     }
 
-    private static ChunkRelationshipExtended MapToRelationship(ChunkRelationshipEntity entity)
+    private static ChunkRelationship MapToRelationship(ChunkRelationshipEntity entity)
     {
-        return new ChunkRelationshipExtended
+        return new ChunkRelationship
         {
             Id = entity.Id,
             SourceChunkId = entity.SourceChunkId,
@@ -486,7 +486,7 @@ public partial class PostgresGraphStore : IChunkHierarchyRepository
         };
     }
 
-    private static ChunkRelationshipEntity MapToEntity(ChunkRelationshipExtended relationship)
+    private static ChunkRelationshipEntity MapToEntity(ChunkRelationship relationship)
     {
         return new ChunkRelationshipEntity
         {
@@ -504,7 +504,7 @@ public partial class PostgresGraphStore : IChunkHierarchyRepository
 
     private static void UpdateRelationshipEntity(
         ChunkRelationshipEntity entity,
-        ChunkRelationshipExtended relationship)
+        ChunkRelationship relationship)
     {
         entity.SourceChunkId = relationship.SourceChunkId;
         entity.TargetChunkId = relationship.TargetChunkId;

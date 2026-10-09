@@ -75,7 +75,6 @@ public class DocumentChunkWithContentTests
         chunk.AddProperty("p", 3);
         chunk.SetMetadata(new ChunkMetadata { TokenCount = 7 });
         chunk.SetQuality(new ChunkQuality());
-        chunk.AddRelationship(new ChunkRelationship());
         return chunk;
     }
 }

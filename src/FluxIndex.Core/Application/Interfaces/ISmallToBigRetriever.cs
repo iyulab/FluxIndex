@@ -138,7 +138,7 @@ public interface IChunkHierarchyRepository
     /// </summary>
     /// <param name="relationship">청크 관계</param>
     /// <param name="cancellationToken">취소 토큰</param>
-    Task SaveRelationshipAsync(ChunkRelationshipExtended relationship, CancellationToken cancellationToken = default);
+    Task SaveRelationshipAsync(ChunkRelationship relationship, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// 청크 관계 조회
@@ -147,7 +147,7 @@ public interface IChunkHierarchyRepository
     /// <param name="relationshipTypes">관계 유형 필터</param>
     /// <param name="cancellationToken">취소 토큰</param>
     /// <returns>관련 청크 관계 목록</returns>
-    Task<IReadOnlyList<ChunkRelationshipExtended>> GetRelationshipsAsync(
+    Task<IReadOnlyList<ChunkRelationship>> GetRelationshipsAsync(
         string chunkId,
         IEnumerable<RelationshipType>? relationshipTypes = null,
         CancellationToken cancellationToken = default);

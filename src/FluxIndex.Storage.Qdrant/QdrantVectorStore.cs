@@ -635,7 +635,7 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable, IDispos
         chunk.Metadata["totalChunks"] = chunk.TotalChunks;
         chunk.Metadata["tokenCount"] = chunk.TokenCount;
 
-        // Restore rich metadata (ChunkMetadata, ChunkQuality, ChunkRelationships)
+        // Restore rich metadata (ChunkMetadata, ChunkQuality)
         MetadataHelper.RestoreRichMetadata(chunk);
 
         return chunk;
@@ -798,7 +798,7 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable, IDispos
         chunk.Metadata["totalChunks"] = chunk.TotalChunks;
         chunk.Metadata["tokenCount"] = chunk.TokenCount;
 
-        // Restore rich metadata (ChunkMetadata, ChunkQuality, ChunkRelationships)
+        // Restore rich metadata (ChunkMetadata, ChunkQuality)
         MetadataHelper.RestoreRichMetadata(chunk);
 
         return chunk;
@@ -986,7 +986,7 @@ public partial class QdrantVectorStore : IVectorStore, IAsyncDisposable, IDispos
                 .Where(kv => kv.Key.StartsWith("meta_", StringComparison.Ordinal))
                 .ToDictionary(kv => kv.Key[5..], kv => (object)GetPayloadString(point.Payload, kv.Key));
             var rewritten = DocumentReassignment.RewriteMetadata(
-                metadata, oldDocumentId, newDocumentId, newId, chunkIdMap, metadataUpdates);
+                metadata, oldDocumentId, newDocumentId, newId, metadataUpdates);
             foreach (var key in metadata.Keys)
                 payload.Remove($"meta_{key}");
             foreach (var (key, value) in rewritten)

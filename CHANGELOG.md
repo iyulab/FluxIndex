@@ -5,6 +5,36 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [Unreleased]
+
+### Removed
+- **Breaking** — **`IndexingService`, `EnrichedChunkIndexingService`, `Domain.ValueObjects.DocumentMetadata` and
+  `Document.UpdateMetadata` are removed.** No registration or SDK path used them; they were a second indexing pipeline
+  beside `Indexer`. Migration: index through `Indexer` (`FluxIndexContext`); set document metadata with `Document.Metadata`
+  or `Document.SetMetadata`.
+
+- **Breaking** — **`IMetadataEnrichmentService`, `RuleBasedMetadataEnrichmentService` and `AddMetadataEnrichment` are
+  removed**, and `AddFluxIndexCore` no longer registers the service. Only the removed `IndexingService` consumed it.
+  `DocumentChunk.ChunkMetadata` and `Quality` stay and are still stored. Migration: drop the `AddMetadataEnrichment` call.
+
+- **Breaking** — **the chunk-level relationship record is removed**: `DocumentChunk.Relationships`,
+  `DocumentChunk.AddRelationship`, `Domain.Entities.ChunkRelationship`, `MetadataHelper.SerializeRelationships` /
+  `DeserializeRelationships` and `MetadataHelper.ReservedKeys.ChunkRelationships`. Nothing wrote it. Stores no longer
+  write or read the `_cr` metadata key; a value stored by an earlier release stays an ordinary metadata entry.
+  `DocumentReassignment.RewriteMetadata` loses its `chunkIdMap` parameter, which only served that record. Migration: model
+  chunk relationships with the hierarchy graph (`IChunkHierarchyRepository`, `IGraphTraversalService`); drop the
+  `chunkIdMap` argument.
+
+- **Breaking** — **the hierarchy graph's `ChunkRelationshipExtended` is renamed `ChunkRelationship`**
+  (`FluxIndex.Core.Domain.Models`), now the only chunk relationship type. Members, graph store tables and columns are
+  unchanged. Migration: rename the type.
+
+- **Breaking** — `Domain.Models.BatchProcessingOptions`: nothing read it. Migration: none expected.
+
+- **Breaking** — **Core's `EnrichedChunkAdapter` / `EnrichedChunkExtensions` (`IEnrichedChunk` → `AugmentedChunk`) and
+  `IKeywordExtractionService` are removed, with the adapter's `Application.Models.AugmentedChunk` and `SourceMetadata`.**
+  No code called the adapter or used its two types, and the interface had no implementation. Migration: none expected.
+
 ## [0.82.0] - 2026-10-09
 
 ### Changed

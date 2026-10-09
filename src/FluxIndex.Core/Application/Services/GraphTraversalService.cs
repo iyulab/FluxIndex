@@ -42,7 +42,7 @@ public partial class GraphTraversalService : IGraphTraversalService
 
         var visited = new HashSet<string>();
         var chunksByLevel = new Dictionary<int, List<string>>();
-        var traversedRelationships = new List<ChunkRelationshipExtended>();
+        var traversedRelationships = new List<ChunkRelationship>();
         var queue = new Queue<(string ChunkId, int Level)>();
 
         queue.Enqueue((startChunkId, 0));
@@ -145,7 +145,7 @@ public partial class GraphTraversalService : IGraphTraversalService
 
         var visited = new HashSet<string>();
         var chunksByLevel = new Dictionary<int, List<string>>();
-        var traversedRelationships = new List<ChunkRelationshipExtended>();
+        var traversedRelationships = new List<ChunkRelationship>();
         var stack = new Stack<(string ChunkId, int Level)>();
 
         stack.Push((startChunkId, 0));
@@ -237,7 +237,7 @@ public partial class GraphTraversalService : IGraphTraversalService
         var stopwatch = Stopwatch.StartNew();
 
         // BFS 기반 최단 경로 탐색
-        var visited = new Dictionary<string, (string? Parent, ChunkRelationshipExtended? Relationship)>();
+        var visited = new Dictionary<string, (string? Parent, ChunkRelationship? Relationship)>();
         var queue = new Queue<string>();
 
         queue.Enqueue(sourceChunkId);
@@ -283,7 +283,7 @@ public partial class GraphTraversalService : IGraphTraversalService
             SourceChunkId = sourceChunkId,
             TargetChunkId = targetChunkId,
             Path = Array.Empty<string>(),
-            Relationships = Array.Empty<ChunkRelationshipExtended>(),
+            Relationships = Array.Empty<ChunkRelationship>(),
             ExecutionTimeMs = stopwatch.Elapsed.TotalMilliseconds
         };
     }
@@ -309,8 +309,8 @@ public partial class GraphTraversalService : IGraphTraversalService
 
         results.Add(firstPath);
 
-        var potentialPaths = new SortedSet<(int Length, List<string> Path, List<ChunkRelationshipExtended> Rels)>(
-            Comparer<(int Length, List<string> Path, List<ChunkRelationshipExtended> Rels)>.Create(
+        var potentialPaths = new SortedSet<(int Length, List<string> Path, List<ChunkRelationship> Rels)>(
+            Comparer<(int Length, List<string> Path, List<ChunkRelationship> Rels)>.Create(
                 (a, b) => a.Length.CompareTo(b.Length)));
 
         var excludedEdges = new HashSet<(string, string)>();
@@ -377,7 +377,7 @@ public partial class GraphTraversalService : IGraphTraversalService
 
         // Dijkstra 변형 - 관계 강도 최대화 (강도 역수를 비용으로 사용)
         var distances = new Dictionary<string, double> { [sourceChunkId] = 0 };
-        var parents = new Dictionary<string, (string? Parent, ChunkRelationshipExtended? Relationship)>
+        var parents = new Dictionary<string, (string? Parent, ChunkRelationship? Relationship)>
         {
             [sourceChunkId] = (null, null)
         };
@@ -434,7 +434,7 @@ public partial class GraphTraversalService : IGraphTraversalService
             SourceChunkId = sourceChunkId,
             TargetChunkId = targetChunkId,
             Path = Array.Empty<string>(),
-            Relationships = Array.Empty<ChunkRelationshipExtended>(),
+            Relationships = Array.Empty<ChunkRelationship>(),
             ExecutionTimeMs = stopwatch.Elapsed.TotalMilliseconds
         };
     }
@@ -453,7 +453,7 @@ public partial class GraphTraversalService : IGraphTraversalService
 
         // DFS 기반 모든 경로 탐색
         var currentPath = new List<string> { sourceChunkId };
-        var currentRels = new List<ChunkRelationshipExtended>();
+        var currentRels = new List<ChunkRelationship>();
         var visited = new HashSet<string> { sourceChunkId };
 
         await FindAllPathsDfsAsync(
@@ -468,7 +468,7 @@ public partial class GraphTraversalService : IGraphTraversalService
         string targetChunkId,
         HashSet<string> visited,
         List<string> currentPath,
-        List<ChunkRelationshipExtended> currentRels,
+        List<ChunkRelationship> currentRels,
         List<PathFindingResult> allPaths,
         PathFindingOptions options,
         Stopwatch stopwatch,
@@ -1202,7 +1202,7 @@ public partial class GraphTraversalService : IGraphTraversalService
     // 헬퍼 메서드
     // ============================================================
 
-    private async Task<IEnumerable<ChunkRelationshipExtended>> GetFilteredRelationshipsAsync(
+    private async Task<IEnumerable<ChunkRelationship>> GetFilteredRelationshipsAsync(
         string chunkId,
         GraphTraversalOptions options,
         CancellationToken cancellationToken)
@@ -1215,7 +1215,7 @@ public partial class GraphTraversalService : IGraphTraversalService
             .Where(r => !options.HierarchicalOnly || r.Type == RelationshipType.Hierarchical);
     }
 
-    private async Task<IEnumerable<ChunkRelationshipExtended>> GetFilteredRelationshipsForPathAsync(
+    private async Task<IEnumerable<ChunkRelationship>> GetFilteredRelationshipsForPathAsync(
         string chunkId,
         PathFindingOptions options,
         CancellationToken cancellationToken)
@@ -1233,7 +1233,7 @@ public partial class GraphTraversalService : IGraphTraversalService
         PathFindingOptions options,
         CancellationToken cancellationToken)
     {
-        var visited = new Dictionary<string, (string? Parent, ChunkRelationshipExtended? Relationship)>();
+        var visited = new Dictionary<string, (string? Parent, ChunkRelationship? Relationship)>();
         var queue = new Queue<string>();
 
         queue.Enqueue(sourceChunkId);
@@ -1275,11 +1275,11 @@ public partial class GraphTraversalService : IGraphTraversalService
     private static PathFindingResult BuildPathResult(
         string sourceChunkId,
         string targetChunkId,
-        Dictionary<string, (string? Parent, ChunkRelationshipExtended? Relationship)> visited,
+        Dictionary<string, (string? Parent, ChunkRelationship? Relationship)> visited,
         Stopwatch stopwatch)
     {
         var path = new List<string>();
-        var relationships = new List<ChunkRelationshipExtended>();
+        var relationships = new List<ChunkRelationship>();
         var current = targetChunkId;
 
         while (current != null)
@@ -1313,14 +1313,14 @@ public partial class GraphTraversalService : IGraphTraversalService
     private static PathFindingResult BuildPathResultFromParents(
         string sourceChunkId,
         string targetChunkId,
-        Dictionary<string, (string? Parent, ChunkRelationshipExtended? Relationship)> parents,
+        Dictionary<string, (string? Parent, ChunkRelationship? Relationship)> parents,
         Stopwatch stopwatch)
     {
         return BuildPathResult(sourceChunkId, targetChunkId, parents, stopwatch);
     }
 
     private static List<string> ReconstructPath(
-        Dictionary<string, (string? Parent, ChunkRelationshipExtended? Relationship)> visited,
+        Dictionary<string, (string? Parent, ChunkRelationship? Relationship)> visited,
         string chunkId)
     {
         var path = new List<string>();

@@ -461,7 +461,7 @@ public abstract partial class VectorStoreBase : IVectorStore
     }
 
     /// <summary>
-    /// Restores rich metadata (ChunkMetadata, ChunkQuality, ChunkRelationships) from stored metadata.
+    /// Restores rich metadata (ChunkMetadata, ChunkQuality) from stored metadata.
     /// Call this in GetCoreAsync and SearchCoreAsync implementations to restore full chunk state.
     /// </summary>
     protected virtual void RestoreRichMetadata(DocumentChunk chunk) => MetadataHelper.RestoreRichMetadata(chunk);

@@ -1,5 +1,3 @@
-using FluxIndex.Core.Domain.ValueObjects;
-
 namespace FluxIndex.Core.Domain.Entities;
 
 /// <summary>
@@ -32,31 +30,6 @@ public class Document
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
-    }
-
-    /// <summary>
-    /// 메타데이터 업데이트
-    /// </summary>
-    public void UpdateMetadata(DocumentMetadata metadata)
-    {
-        ArgumentNullException.ThrowIfNull(metadata);
-
-        // DocumentMetadata의 속성들을 Dictionary로 변환
-        Metadata["Brand"] = metadata.Brand;
-        Metadata["Model"] = metadata.Model;
-        Metadata["Category"] = metadata.Category;
-        Metadata["Language"] = metadata.Language;
-        Metadata["Version"] = metadata.Version;
-        if (metadata.PublishedDate.HasValue)
-            Metadata["PublishedDate"] = metadata.PublishedDate.Value;
-
-        // CustomFields 추가
-        foreach (var field in metadata.CustomFields)
-        {
-            Metadata[field.Key] = field.Value;
-        }
-
-        UpdatedAt = DateTime.UtcNow;
     }
 
     /// <summary>
