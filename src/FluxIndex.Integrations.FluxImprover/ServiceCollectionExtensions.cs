@@ -147,6 +147,10 @@ public static class ServiceCollectionExtensions
             var pipeline = provider.GetRequiredService<QAPipeline>();
             return new QAGenerationService(generatorService, filterService, pipeline);
         });
+        // The same instance also serves FluxIndex.Core's port, so the FileFlux integration's document processing
+        // pipeline (EnableQAGeneration) can generate QA pairs without referencing FluxImprover types.
+        services.AddScoped<FluxIndex.Core.Application.Interfaces.IQAGenerationService>(
+            provider => provider.GetRequiredService<QAGenerationService>());
 
         return services;
     }

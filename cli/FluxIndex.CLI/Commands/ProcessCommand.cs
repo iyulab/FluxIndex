@@ -3,6 +3,7 @@ using FileFlux;
 using FluxIndex.Providers.LMSupply.Extensions;
 using FluxIndex.CLI.Configuration;
 using FluxIndex.Integrations.FileFlux;
+using FluxIndex.Integrations.FluxImprover;
 using FluxIndex.Integrations.FileFlux.Processing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -43,11 +44,6 @@ public static class ProcessCommand
             Description = "Skip embedding generation"
         };
 
-        var cleanOption = new Option<bool>("--clean", "-c")
-        {
-            Description = "Enable text cleaning/preprocessing before chunking"
-        };
-
         var contextualEnrichOption = new Option<bool>("--contextual-enrich")
         {
             Description = "Enable contextual enrichment (Anthropic Contextual Retrieval) for 49-67% better retrieval"
@@ -80,7 +76,6 @@ public static class ProcessCommand
             languageOption,
             chunkSizeOption,
             noEmbeddingsOption,
-            cleanOption,
             contextualEnrichOption,
             generateQaOption,
             maxQaPairsOption,
@@ -96,14 +91,13 @@ public static class ProcessCommand
             var language = parseResult.GetValue(languageOption);
             var chunkSize = parseResult.GetValue(chunkSizeOption);
             var noEmbeddings = parseResult.GetValue(noEmbeddingsOption);
-            var clean = parseResult.GetValue(cleanOption);
             var contextualEnrich = parseResult.GetValue(contextualEnrichOption);
             var generateQa = parseResult.GetValue(generateQaOption);
             var maxQaPairs = parseResult.GetValue(maxQaPairsOption);
             var enrich = parseResult.GetValue(enrichOption);
             var verbose = parseResult.GetValue(verboseOption);
 
-            return await ExecuteAsync(file, output, language, chunkSize, noEmbeddings, clean, contextualEnrich, generateQa, maxQaPairs, enrich, verbose);
+            return await ExecuteAsync(file, output, language, chunkSize, noEmbeddings, contextualEnrich, generateQa, maxQaPairs, enrich, verbose);
         });
 
         return command;
@@ -119,7 +113,6 @@ public static class ProcessCommand
         string? language,
         int? chunkSize,
         bool noEmbeddings,
-        bool clean,
         bool contextualEnrich,
         bool generateQa,
         int maxQaPairs,
@@ -158,8 +151,7 @@ public static class ProcessCommand
                 ChunkingStrategy = settings.ChunkingStrategy,
                 MaxChunkSize = chunkSize ?? settings.MaxChunkSize,
                 OverlapSize = settings.OverlapSize,
-                GenerateEmbeddings = !noEmbeddings,
-                EnableTextCleaning = clean || settings.EnableTextCleaning,
+                GenerateEmbeddings = noEmbeddings ? false : null,
                 EnableContextualEnrichment = contextualEnrich || settings.EnableContextualEnrichment,
                 EnableQAGeneration = generateQa,
                 MaxQAPairsPerChunk = maxQaPairs > 0 ? maxQaPairs : 3,
@@ -268,9 +260,11 @@ public static class ProcessCommand
         // Text completion service (for enrichment features)
         ConfigureTextCompletionService(services, settings);
 
-        // Document processing pipeline with fallback to mock services
-        // SDK provides the extension method that registers pipeline + mock services if not already registered
-        services.AddDocumentProcessingPipelineWithFallback();
+        // Contextual enrichment and QA generation through FluxImprover, over the same text completion service
+        services.AddFluxIndexFluxImprover();
+
+        // Document processing pipeline over the services registered above
+        services.AddDocumentProcessingPipeline();
 
         return services.BuildServiceProvider();
     }

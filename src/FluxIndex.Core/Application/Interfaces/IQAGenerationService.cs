@@ -88,34 +88,3 @@ public class ChunkQAPairs
     /// </summary>
     public required IReadOnlyList<GeneratedQAPair> QAPairs { get; init; }
 }
-
-/// <summary>
-/// No-op implementation of QA generation service.
-/// Returns empty results when no LLM service is available.
-/// </summary>
-public class NoOpQAGenerationService : IQAGenerationService
-{
-    public Task<IReadOnlyList<GeneratedQAPair>> GenerateFromChunkAsync(
-        string chunkContent,
-        int maxPairs = 3,
-        CancellationToken cancellationToken = default)
-    {
-        // Return empty list - no QA pairs generated without LLM
-        return Task.FromResult<IReadOnlyList<GeneratedQAPair>>(Array.Empty<GeneratedQAPair>());
-    }
-
-    public Task<IReadOnlyList<ChunkQAPairs>> GenerateFromChunksBatchAsync(
-        IReadOnlyList<ChunkInput> chunks,
-        int maxPairsPerChunk = 3,
-        CancellationToken cancellationToken = default)
-    {
-        // Return empty QA pairs for all chunks
-        var results = chunks.Select(c => new ChunkQAPairs
-        {
-            ChunkId = c.ChunkId,
-            QAPairs = Array.Empty<GeneratedQAPair>()
-        }).ToList();
-
-        return Task.FromResult<IReadOnlyList<ChunkQAPairs>>(results);
-    }
-}

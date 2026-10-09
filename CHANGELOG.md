@@ -7,7 +7,28 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [Unreleased]
 
+### Changed
+- **Breaking** — **The document processing pipeline runs a requested stage on a real service or refuses it.**
+  `AddDocumentProcessingPipeline()` no longer registers placeholder contextual enrichment, QA generation and text
+  completion services, so `EnableContextualEnrichment`, `EnableQAGeneration` or `EnableMetadataEnrichment` without the
+  matching service threw nothing and returned chunks without context, QA pairs or metadata. Now `ProcessAsync` and
+  `ProcessFromContentAsync` throw `InvalidOperationException` naming the option before the document is read.
+  `GenerateEmbeddings` is `bool?`: unset embeds when an embedding service is configured (keyword-only otherwise), `true`
+  requires one. Migration: register the services (`AddFluxIndexFluxImprover()` provides contextual enrichment and QA
+  generation), turn the options off, or set `GenerateEmbeddings = true` where vectors are required. The pipeline's
+  constructor takes every service but `IDocumentProcessorFactory` as optional.
+- **`AddFluxIndexFluxImprover()` / `AddQAGeneration()` also register FluxIndex.Core's `IQAGenerationService`**, so the
+  pipeline's QA stage generates pairs through FluxImprover (contextual enrichment already did this).
+- FluxIndex.CLI: `process --contextual-enrich` and `--generate-qa` run through FluxImprover over the CLI's local text
+  completion; before, they returned nothing.
+
 ### Removed
+- **Breaking** — `NoOpContextualEnrichmentService`, `NoOpQAGenerationService` and `NoOpTextCompletionService` (the
+  last one answered every prompt with `Mock response for: …`), and `AddDocumentProcessingPipelineWithFallback()` (now
+  identical to `AddDocumentProcessingPipeline()`).
+- **Breaking** — `DocumentProcessingOptions.EnableTextCleaning`, which nothing read (FileFlux's refining stage cleans the
+  text), and FluxIndex.CLI's `process --clean` flag and `ENABLE_TEXT_CLEANING` setting. `--clean` also shared `-c` with
+  `--chunk-size`.
 - **Breaking** — **`IEntityExtractionService` is gone.** Nothing in FluxIndex registered, implemented or read it; entity and
   relation extraction is `IAdvancedEntityExtractionService`. Migration: implement or depend on `IAdvancedEntityExtractionService`.
 

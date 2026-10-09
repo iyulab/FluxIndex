@@ -712,7 +712,7 @@ public class DocumentProcessingPipelineStageTests : IDisposable
         Assert.Equal("Auto", options.ChunkingStrategy);
         Assert.Equal(1024, options.MaxChunkSize);
         Assert.Equal(128, options.OverlapSize);
-        Assert.True(options.GenerateEmbeddings);
+        Assert.Null(options.GenerateEmbeddings);
         Assert.False(options.EnableContextualEnrichment);
         Assert.False(options.EnableQAGeneration);
         Assert.Equal(3, options.MaxQAPairsPerChunk);

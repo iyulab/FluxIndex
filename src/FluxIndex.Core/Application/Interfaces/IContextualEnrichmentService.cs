@@ -37,32 +37,3 @@ public interface IContextualEnrichmentService
         string fullDocumentText,
         CancellationToken cancellationToken = default);
 }
-
-/// <summary>
-/// No-op implementation of contextual enrichment service.
-/// Returns empty context when no LLM service is available.
-/// </summary>
-public class NoOpContextualEnrichmentService : IContextualEnrichmentService
-{
-    public Task<string> GenerateContextAsync(
-        string chunkContent,
-        string fullDocumentText,
-        int chunkIndex,
-        int totalChunks,
-        CancellationToken cancellationToken = default)
-    {
-        // Return empty context - chunk will be embedded without additional context
-        return Task.FromResult(string.Empty);
-    }
-
-    public Task<IReadOnlyList<string>> GenerateContextBatchAsync(
-        IReadOnlyList<string> chunks,
-        string fullDocumentText,
-        CancellationToken cancellationToken = default)
-    {
-        // Return empty contexts for all chunks
-        var emptyContexts = new string[chunks.Count];
-        Array.Fill(emptyContexts, string.Empty);
-        return Task.FromResult<IReadOnlyList<string>>(emptyContexts);
-    }
-}

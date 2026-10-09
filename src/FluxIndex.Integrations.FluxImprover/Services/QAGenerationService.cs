@@ -2,14 +2,20 @@ using FluxIndex.Integrations.FluxImprover.Adapters;
 using FluxImprover.Options;
 using FluxImprover.QAGeneration;
 using FluxIndexChunk = Flux.Abstractions.IEnrichedChunk;
+using FluxIndexQAGeneration = FluxIndex.Core.Application.Interfaces.IQAGenerationService;
+using FluxIndexQAPair = FluxIndex.Core.Application.Interfaces.GeneratedQAPair;
+using FluxIndexChunkQAPairs = FluxIndex.Core.Application.Interfaces.ChunkQAPairs;
+using FluxIndexChunkInput = FluxIndex.Core.Application.Interfaces.ChunkInput;
 
 namespace FluxIndex.Integrations.FluxImprover.Services;
 
 /// <summary>
 /// QA (Question-Answer) 생성 서비스 - FluxIndex 청크에서 Q&amp;A 쌍을 자동 생성합니다.
 /// FluxImprover의 QAGeneratorService와 QAFilterService를 래핑합니다.
+/// FluxIndex.Core 의 <see cref="FluxIndexQAGeneration"/> 포트도 구현해, FluxImprover 타입을 모르는 소비자
+/// (FileFlux 통합의 문서 처리 파이프라인)가 QA 생성을 쓸 수 있게 합니다.
 /// </summary>
-public sealed class QAGenerationService
+public sealed class QAGenerationService : FluxIndexQAGeneration
 {
     private readonly QAGeneratorService _generatorService;
     private readonly QAFilterService _filterService;
@@ -187,6 +193,51 @@ public sealed class QAGenerationService
             ChunkCount = chunkResults.Count
         };
     }
+
+    async Task<IReadOnlyList<FluxIndexQAPair>> FluxIndexQAGeneration.GenerateFromChunkAsync(
+        string chunkContent,
+        int maxPairs,
+        CancellationToken cancellationToken)
+    {
+        var pairs = await _generatorService.GenerateAsync(
+            chunkContent,
+            new QAGenerationOptions { PairsPerChunk = maxPairs },
+            sourceId: null,
+            cancellationToken).ConfigureAwait(false);
+
+        return [.. pairs.Select(pair => ToFluxIndexPair(pair, chunkContent))];
+    }
+
+    async Task<IReadOnlyList<FluxIndexChunkQAPairs>> FluxIndexQAGeneration.GenerateFromChunksBatchAsync(
+        IReadOnlyList<FluxIndexChunkInput> chunks,
+        int maxPairsPerChunk,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(chunks);
+
+        var port = (FluxIndexQAGeneration)this;
+        var results = new List<FluxIndexChunkQAPairs>(chunks.Count);
+        foreach (var chunk in chunks)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            results.Add(new FluxIndexChunkQAPairs
+            {
+                ChunkId = chunk.ChunkId,
+                QAPairs = await port.GenerateFromChunkAsync(chunk.Content, maxPairsPerChunk, cancellationToken).ConfigureAwait(false)
+            });
+        }
+
+        return results;
+    }
+
+    private static FluxIndexQAPair ToFluxIndexPair(GeneratedQAPair pair, string chunkContent) => new()
+    {
+        Question = pair.Question,
+        Answer = pair.Answer,
+        Context = string.IsNullOrEmpty(pair.Context) ? chunkContent : pair.Context,
+        QualityScore = pair.Evaluation?.OverallScore
+    };
 }
 
 /// <summary>

@@ -103,11 +103,6 @@ public class CliSettings
     public bool EnableMetadataEnrichment { get; set; }
 
     /// <summary>
-    /// Enable text cleaning/preprocessing before chunking
-    /// </summary>
-    public bool EnableTextCleaning { get; set; }
-
-    /// <summary>
     /// Enable contextual enrichment (Anthropic Contextual Retrieval)
     /// </summary>
     public bool EnableContextualEnrichment { get; set; }
@@ -211,9 +206,6 @@ public class CliSettings
             case "ENABLE_METADATA_ENRICHMENT":
                 EnableMetadataEnrichment = value.ToLowerInvariant() is "true" or "1" or "yes";
                 break;
-            case "ENABLE_TEXT_CLEANING":
-                EnableTextCleaning = value.ToLowerInvariant() is "true" or "1" or "yes";
-                break;
             case "ENABLE_CONTEXTUAL_ENRICHMENT":
                 EnableContextualEnrichment = value.ToLowerInvariant() is "true" or "1" or "yes";
                 break;
@@ -249,7 +241,6 @@ public class CliSettings
             "MAX_CHUNK_SIZE" => MaxChunkSize.ToString(CultureInfo.InvariantCulture),
             "OVERLAP_SIZE" => OverlapSize.ToString(CultureInfo.InvariantCulture),
             "ENABLE_METADATA_ENRICHMENT" => EnableMetadataEnrichment.ToString().ToLowerInvariant(),
-            "ENABLE_TEXT_CLEANING" => EnableTextCleaning.ToString().ToLowerInvariant(),
             "ENABLE_CONTEXTUAL_ENRICHMENT" => EnableContextualEnrichment.ToString().ToLowerInvariant(),
             _ => null
         };
@@ -277,7 +268,6 @@ public class CliSettings
             ["MAX_CHUNK_SIZE"] = MaxChunkSize.ToString(CultureInfo.InvariantCulture),
             ["OVERLAP_SIZE"] = OverlapSize.ToString(CultureInfo.InvariantCulture),
             ["ENABLE_METADATA_ENRICHMENT"] = EnableMetadataEnrichment.ToString().ToLowerInvariant(),
-            ["ENABLE_TEXT_CLEANING"] = EnableTextCleaning.ToString().ToLowerInvariant(),
             ["ENABLE_CONTEXTUAL_ENRICHMENT"] = EnableContextualEnrichment.ToString().ToLowerInvariant()
         };
     }

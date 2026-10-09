@@ -4,6 +4,7 @@ using global::FileFlux.Core;
 using global::FileFlux.Core.Infrastructure.Readers;
 using global::FileFlux.Infrastructure.Conversion;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using IFluxIndexEmbeddingService = FluxIndex.Core.Application.Interfaces.IEmbeddingService;
 using IFluxIndexTextCompletionService = Flux.Abstractions.ITextCompletionService;
 using IFluxIndexContextualEnrichmentService = FluxIndex.Core.Application.Interfaces.IContextualEnrichmentService;
@@ -42,13 +43,20 @@ public partial class DocumentProcessingPipeline
     private readonly IMarkdownConverter? _markdownConverter;
     private readonly ILogger<DocumentProcessingPipeline> _logger;
 
+    /// <summary>
+    /// Creates the pipeline. Every service but the processor factory is optional: a stage whose service is absent can
+    /// only be left off — asking for it (<see cref="DocumentProcessingOptions.EnableContextualEnrichment"/>,
+    /// <see cref="DocumentProcessingOptions.GenerateEmbeddings"/>, <see cref="DocumentProcessingOptions.EnableMetadataEnrichment"/>,
+    /// <see cref="DocumentProcessingOptions.EnableQAGeneration"/>) throws <see cref="InvalidOperationException"/> before any
+    /// work starts.
+    /// </summary>
     public DocumentProcessingPipeline(
         IDocumentProcessorFactory processorFactory,
-        IFluxIndexEmbeddingService? embeddingService,
-        IFluxIndexTextCompletionService? textCompletionService,
-        IFluxIndexContextualEnrichmentService? contextualEnrichmentService,
-        IFluxIndexQAGenerationService? qaGenerationService,
-        ILogger<DocumentProcessingPipeline> logger,
+        IFluxIndexEmbeddingService? embeddingService = null,
+        IFluxIndexTextCompletionService? textCompletionService = null,
+        IFluxIndexContextualEnrichmentService? contextualEnrichmentService = null,
+        IFluxIndexQAGenerationService? qaGenerationService = null,
+        ILogger<DocumentProcessingPipeline>? logger = null,
         IMarkdownConverter? markdownConverter = null)
     {
         _processorFactory = processorFactory ?? throw new ArgumentNullException(nameof(processorFactory));
@@ -57,7 +65,43 @@ public partial class DocumentProcessingPipeline
         _contextualEnrichmentService = contextualEnrichmentService;
         _qaGenerationService = qaGenerationService;
         _markdownConverter = markdownConverter;
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _logger = logger ?? NullLogger<DocumentProcessingPipeline>.Instance;
+    }
+
+    /// <summary>
+    /// Refuses a requested stage whose service is not available, before the document is read: a stage that ran with
+    /// nothing behind it would hand back chunks without the context, vectors, metadata or QA pairs the caller asked for.
+    /// </summary>
+    private void EnsureRequestedStagesAvailable(
+        bool contextualEnrichment, bool? embeddings, bool metadataEnrichment, bool qaGeneration, string optionsType)
+    {
+        if (contextualEnrichment && _contextualEnrichmentService is null)
+        {
+            throw new InvalidOperationException(
+                $"{optionsType}.EnableContextualEnrichment is set, but no IContextualEnrichmentService is registered. " +
+                "Register one (AddContextualEnrichmentWrapper() from FluxIndex.Integrations.FluxImprover provides it) or turn the option off.");
+        }
+
+        if (embeddings == true && Core.Application.Services.NoEmbeddingService.IsKeywordOnly(_embeddingService))
+        {
+            throw new InvalidOperationException(
+                $"{optionsType}.GenerateEmbeddings is true, but no embedding service is registered. " +
+                "Register one (for example AddLMSupplyEmbedding()), or leave GenerateEmbeddings unset or false for keyword-only output.");
+        }
+
+        if (metadataEnrichment && _textCompletionService is null)
+        {
+            throw new InvalidOperationException(
+                $"{optionsType}.EnableMetadataEnrichment is set, but no ITextCompletionService is registered. " +
+                "Register one (for example AddLMSupplyTextCompletion()) or turn the option off.");
+        }
+
+        if (qaGeneration && _qaGenerationService is null)
+        {
+            throw new InvalidOperationException(
+                $"{optionsType}.EnableQAGeneration is set, but no IQAGenerationService is registered. " +
+                "Register one (AddQAGeneration() from FluxIndex.Integrations.FluxImprover provides it) or turn the option off.");
+        }
     }
 
     /// <summary>
@@ -69,6 +113,10 @@ public partial class DocumentProcessingPipeline
         CancellationToken cancellationToken = default)
     {
         options ??= new DocumentProcessingOptions();
+        EnsureRequestedStagesAvailable(
+            options.EnableContextualEnrichment, options.GenerateEmbeddings, options.EnableMetadataEnrichment,
+            options.EnableQAGeneration, nameof(DocumentProcessingOptions));
+
         var result = new DocumentProcessingResult
         {
             SourcePath = filePath,
@@ -233,7 +281,8 @@ public partial class DocumentProcessingPipeline
             }
 
             // Stage 6: Generate embeddings (uses contextualized text if available)
-            if (options.GenerateEmbeddings && _embeddingService != null)
+            if ((options.GenerateEmbeddings ?? true) && _embeddingService is { } embeddingService
+                && !Core.Application.Services.NoEmbeddingService.IsKeywordOnly(embeddingService))
             {
                 ReportProgress(options, ProcessingStage.GeneratingEmbeddings, 55, "Generating embeddings...");
                 var embedStart = DateTime.UtcNow;
@@ -243,7 +292,7 @@ public partial class DocumentProcessingPipeline
                     .Select(c => c.GetContextualizedText())
                     .ToList();
 
-                var embeddings = (await _embeddingService.GenerateEmbeddingsBatchAsync(
+                var embeddings = (await embeddingService.GenerateEmbeddingsBatchAsync(
                     textsForEmbedding, cancellationToken)).ToList();
 
                 for (int i = 0; i < result.Chunks.Count && i < embeddings.Count; i++)
@@ -501,6 +550,10 @@ public partial class DocumentProcessingPipeline
         CancellationToken cancellationToken = default)
     {
         options ??= new ContentProcessingOptions();
+        EnsureRequestedStagesAvailable(
+            options.EnableContextualEnrichment, options.GenerateEmbeddings, metadataEnrichment: false,
+            options.EnableQAGeneration, nameof(ContentProcessingOptions));
+
         var result = new DocumentProcessingResult
         {
             DocumentId = options.DocumentId ?? $"content_{DateTime.UtcNow:yyyyMMddHHmmss}",
@@ -613,7 +666,8 @@ public partial class DocumentProcessingPipeline
             }
 
             // Stage: Generate embeddings
-            if (options.GenerateEmbeddings && _embeddingService != null)
+            if ((options.GenerateEmbeddings ?? true) && _embeddingService is { } embeddingService
+                && !Core.Application.Services.NoEmbeddingService.IsKeywordOnly(embeddingService))
             {
                 ReportContentProgress(options, ProcessingStage.GeneratingEmbeddings, 60, "Generating embeddings...");
                 var embedStart = DateTime.UtcNow;
@@ -622,7 +676,7 @@ public partial class DocumentProcessingPipeline
                     .Select(c => c.GetContextualizedText())
                     .ToList();
 
-                var embeddings = (await _embeddingService.GenerateEmbeddingsBatchAsync(
+                var embeddings = (await embeddingService.GenerateEmbeddingsBatchAsync(
                     textsForEmbedding, cancellationToken)).ToList();
 
                 for (int i = 0; i < result.Chunks.Count && i < embeddings.Count; i++)
@@ -811,35 +865,6 @@ public partial class DocumentProcessingPipeline
         }
     }
 
-
-    private async Task<string> CleanTextAsync(string text, CancellationToken cancellationToken)
-    {
-        if (_textCompletionService == null || string.IsNullOrWhiteSpace(text))
-            return text;
-
-        try
-        {
-            var prompt = $@"Clean and preprocess the following extracted text:
-1. Remove unnecessary whitespace, line breaks, and formatting artifacts
-2. Fix obvious OCR errors if present
-3. Normalize punctuation and spacing
-4. Remove header/footer noise if detected
-5. Keep all original information intact - do not summarize or modify meaning
-
-Text to clean:
-{text}
-
-Cleaned text:";
-
-            var cleaned = await _textCompletionService.CompleteAsync(prompt, new Flux.Abstractions.TextCompletionOptions { MaxTokens = 4000, Temperature = 0.1f }, cancellationToken);
-            return string.IsNullOrWhiteSpace(cleaned) ? text : cleaned;
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
-        {
-            LogTextCleaningFailed(_logger, ex);
-            return text;
-        }
-    }
 
     private async Task EnrichMetadataAsync(DocumentProcessingResult result, CancellationToken cancellationToken)
     {
@@ -1090,9 +1115,6 @@ JSON response:";
 
 
 
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Text cleaning failed, using original text")]
-    private static partial void LogTextCleaningFailed(ILogger logger, Exception exception);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Metadata enrichment failed")]
     private static partial void LogMetadataEnrichmentFailed(ILogger logger, Exception exception);

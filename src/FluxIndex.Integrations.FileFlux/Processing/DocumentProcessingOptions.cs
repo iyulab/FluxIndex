@@ -32,20 +32,16 @@ public class DocumentProcessingOptions
     public int OverlapSize { get; set; } = 128;
 
     /// <summary>
-    /// Generate embeddings for chunks
+    /// Whether chunks get embeddings. <see langword="null"/> (the default) embeds when an embedding service is configured
+    /// and leaves the chunks without vectors when FluxIndex is keyword-only; <see langword="true"/> requires an embedding
+    /// service and fails before processing without one; <see langword="false"/> never embeds.
     /// </summary>
-    public bool GenerateEmbeddings { get; set; } = true;
+    public bool? GenerateEmbeddings { get; set; }
 
     /// <summary>
     /// Enable metadata enrichment via LLM
     /// </summary>
     public bool EnableMetadataEnrichment { get; set; }
-
-    /// <summary>
-    /// Enable text cleaning/preprocessing (noise removal, OCR fixes).
-    /// Applied to full text BEFORE chunking.
-    /// </summary>
-    public bool EnableTextCleaning { get; set; }
 
     /// <summary>
     /// Enable contextual enrichment for chunks (Anthropic Contextual Retrieval).

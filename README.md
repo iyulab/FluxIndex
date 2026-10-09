@@ -73,7 +73,9 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
 - **Document processing** — PDF/DOCX/TXT via FileFlux, web pages via WebFlux (`FluxIndex.Integrations.*`, opt-in):
   `AddFileFluxIntegration` (builder `UseFileFlux`) for parsing and chunking — `FileFluxOptions.EnableMetadataEnrichment` adds AI
   metadata (see «AI metadata on indexing») to each indexed file — `AddDocumentProcessingPipeline` for the
-  document processing pipeline (no-op enrichment/QA defaults until you register real services), `AddWebFluxIntegration`
+  document processing pipeline — contextual enrichment, QA generation and metadata enrichment run on the services you
+  register (`AddFluxIndexFluxImprover` provides the first two); asking for one whose service is missing throws before
+  processing, and `GenerateEmbeddings` left unset embeds only when an embedder is configured — `AddWebFluxIntegration`
   (builder `UseWebFlux`) for web pages. Text preprocessing: `AddFluxIndexFluxCurator` (registers `IFluxCurator` over your
   `IEmbeddingService`); LLM chunk enhancement: `AddFluxIndexFluxImprover` (FluxImprover over your
   `ITextCompletionService`: enrichment, contextual enrichment, QA generation, RAG evaluation and chunk filtering).
