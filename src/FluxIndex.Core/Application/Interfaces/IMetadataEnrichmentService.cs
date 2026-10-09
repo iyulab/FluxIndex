@@ -39,14 +39,6 @@ public interface IMetadataEnrichmentService
 }
 
 /// <summary>
-/// 엔터티 추출 서비스 인터페이스
-/// </summary>
-public interface IEntityExtractionService
-{
-    Task<List<string>> ExtractEntitiesAsync(string content, CancellationToken cancellationToken = default);
-}
-
-/// <summary>
 /// 키워드 추출 서비스 인터페이스
 /// </summary>
 public interface IKeywordExtractionService

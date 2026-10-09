@@ -7,6 +7,10 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [Unreleased]
 
+### Removed
+- **Breaking** — **`IEntityExtractionService` is gone.** Nothing in FluxIndex registered, implemented or read it; entity and
+  relation extraction is `IAdvancedEntityExtractionService`. Migration: implement or depend on `IAdvancedEntityExtractionService`.
+
 ### Fixed
 - **The provider integration guide's samples compile against this version.** `docs/AI_PROVIDER_INTEGRATION.md` showed the
   Azure.AI.OpenAI 1.x beta API (`OpenAIClient.GetEmbeddingsAsync`, `GetChatCompletionsAsync`), overrode members the base
