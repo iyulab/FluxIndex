@@ -651,14 +651,14 @@ public class VectorStoreBaseTests
         /// Simulates a store WITHOUT native filter pushdown: records the filters but does not
         /// apply them, so tests can verify the base-class backstop ordering.
         /// </summary>
-        protected override Task<IEnumerable<VectorSearchResult>> SearchCoreAsync(
+        protected override Task<IEnumerable<ScoredChunk>> SearchCoreAsync(
             float[] queryEmbedding, int topK, Dictionary<string, object>? filters, CancellationToken cancellationToken)
         {
             LastSearchFilters = filters;
 
             var results = _storage.Values
                 .Where(c => c.Embedding != null)
-                .Select(c => new VectorSearchResult(c, ComputeCosineSimilarity(queryEmbedding, c.Embedding)))
+                .Select(c => new ScoredChunk(c, ComputeCosineSimilarity(queryEmbedding, c.Embedding)))
                 .OrderByDescending(r => r.Score)
                 .Take(topK * 2); // Get more to allow filtering
 

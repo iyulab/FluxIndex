@@ -12,7 +12,7 @@ public class SearchResultProcessorTests
     public void FilterAndSort_FiltersAndSortsByScore()
     {
         // Arrange
-        var results = new List<VectorSearchResult>
+        var results = new List<ScoredChunk>
         {
             CreateResult("chunk-1", 0.9f),
             CreateResult("chunk-2", 0.5f),
@@ -58,11 +58,11 @@ public class SearchResultProcessorTests
     [Fact]
     public void FilterAndSort_StampsScoreOntoChunk()
     {
-        // Regression lock: FilterAndSort previously discarded VectorSearchResult.Score when projecting
+        // Regression lock: FilterAndSort previously discarded ScoredChunk.Score when projecting
         // to DocumentChunk, forcing Retriever to stamp a misleading default. The fix
         // assigns Score onto the chunk before the wrapper is dropped, so downstream
         // consumers reading chunk.Score get the real similarity value.
-        var results = new List<VectorSearchResult>
+        var results = new List<ScoredChunk>
         {
             CreateResult("chunk-1", 0.91f),
             CreateResult("chunk-2", 0.42f),
@@ -83,7 +83,7 @@ public class SearchResultProcessorTests
         // Acceptance #1: top hit's score must be measurably higher than the bottom hit's.
         // This exercises the regression at the unit-test level; an integration-level
         // counterpart with a real embedder lives in FluxIndex.SDK.Tests.
-        var results = new List<VectorSearchResult>
+        var results = new List<ScoredChunk>
         {
             CreateResult("low", 0.30f),
             CreateResult("high", 0.95f),
@@ -107,7 +107,7 @@ public class SearchResultProcessorTests
     public void FilterAndSortWithScores_ReturnsResultsWithScores()
     {
         // Arrange
-        var results = new List<VectorSearchResult>
+        var results = new List<ScoredChunk>
         {
             CreateResult("chunk-1", 0.9f),
             CreateResult("chunk-2", 0.7f)
@@ -130,12 +130,12 @@ public class SearchResultProcessorTests
     public void ApplyRRF_MergesResultSets()
     {
         // Arrange
-        var set1 = new List<VectorSearchResult>
+        var set1 = new List<ScoredChunk>
         {
             CreateResult("chunk-a", 0.9f),
             CreateResult("chunk-b", 0.8f)
         };
-        var set2 = new List<VectorSearchResult>
+        var set2 = new List<ScoredChunk>
         {
             CreateResult("chunk-a", 0.85f),
             CreateResult("chunk-c", 0.7f)
@@ -155,7 +155,7 @@ public class SearchResultProcessorTests
     {
         // Arrange
         var results = Enumerable.Range(1, 10)
-            .Select(i => new List<VectorSearchResult> { CreateResult($"chunk-{i}", 0.9f) })
+            .Select(i => new List<ScoredChunk> { CreateResult($"chunk-{i}", 0.9f) })
             .ToList();
 
         // Act
@@ -218,7 +218,7 @@ public class SearchResultProcessorTests
     public void GetDynamicThreshold_ReturnsLowestScoreInTopK()
     {
         // Arrange
-        var candidates = new List<VectorSearchResult>
+        var candidates = new List<ScoredChunk>
         {
             CreateResult("a", 0.9f),
             CreateResult("b", 0.8f),
@@ -237,7 +237,7 @@ public class SearchResultProcessorTests
     public void GetDynamicThreshold_ReturnsFallback_WhenNotEnoughCandidates()
     {
         // Arrange
-        var candidates = new List<VectorSearchResult>
+        var candidates = new List<ScoredChunk>
         {
             CreateResult("a", 0.9f)
         };
@@ -257,7 +257,7 @@ public class SearchResultProcessorTests
     public void DeduplicateByDocument_KeepsHighestScorePerDocument()
     {
         // Arrange
-        var results = new List<VectorSearchResult>
+        var results = new List<ScoredChunk>
         {
             CreateResultWithDocId("chunk-1", "doc-a", 0.9f),
             CreateResultWithDocId("chunk-2", "doc-a", 0.8f),
@@ -281,7 +281,7 @@ public class SearchResultProcessorTests
     public void SetChunkScores_SetsScoreOnChunks()
     {
         // Arrange
-        var results = new List<VectorSearchResult>
+        var results = new List<ScoredChunk>
         {
             CreateResult("chunk-1", 0.9f),
             CreateResult("chunk-2", 0.7f)
@@ -299,16 +299,16 @@ public class SearchResultProcessorTests
 
     #region Helper Methods
 
-    private static VectorSearchResult CreateResult(string id, float score)
+    private static ScoredChunk CreateResult(string id, float score)
     {
-        return new VectorSearchResult(
+        return new ScoredChunk(
             new DocumentChunk { Id = id, DocumentId = "doc", Content = "content" },
             score);
     }
 
-    private static VectorSearchResult CreateResultWithDocId(string id, string documentId, float score)
+    private static ScoredChunk CreateResultWithDocId(string id, string documentId, float score)
     {
-        return new VectorSearchResult(
+        return new ScoredChunk(
             new DocumentChunk { Id = id, DocumentId = documentId, Content = "content" },
             score);
     }

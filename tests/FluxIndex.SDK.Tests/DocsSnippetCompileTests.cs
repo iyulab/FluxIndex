@@ -91,8 +91,8 @@ public class DocsSnippetCompileTests
             public YourVectorStore(string endpoint) => _ = endpoint;
             protected override Task<string> StoreCoreAsync(FluxIndex.Core.Domain.Entities.DocumentChunk chunk, CancellationToken cancellationToken) => Task.FromResult(chunk.Id);
             protected override Task<FluxIndex.Core.Domain.Entities.DocumentChunk?> GetCoreAsync(string id, CancellationToken cancellationToken) => YourVectorDatabase.GetAsync(id, cancellationToken);
-            protected override Task<IEnumerable<FluxIndex.Core.Application.Utilities.VectorSearchResult>> SearchCoreAsync(float[] queryEmbedding, int topK, Dictionary<string, object>? filters, CancellationToken cancellationToken)
-                => Task.FromResult<IEnumerable<FluxIndex.Core.Application.Utilities.VectorSearchResult>>([]);
+            protected override Task<IEnumerable<FluxIndex.Core.Application.Utilities.ScoredChunk>> SearchCoreAsync(float[] queryEmbedding, int topK, Dictionary<string, object>? filters, CancellationToken cancellationToken)
+                => Task.FromResult<IEnumerable<FluxIndex.Core.Application.Utilities.ScoredChunk>>([]);
             protected override Task<bool> DeleteCoreAsync(string id, CancellationToken cancellationToken) => Task.FromResult(false);
             protected override Task<bool> UpdateCoreAsync(FluxIndex.Core.Domain.Entities.DocumentChunk chunk, CancellationToken cancellationToken) => Task.FromResult(false);
             protected override Task<IEnumerable<FluxIndex.Core.Domain.Entities.DocumentChunk>> GetByDocumentIdCoreAsync(string documentId, CancellationToken cancellationToken) => YourVectorDatabase.GetByDocumentIdAsync(documentId, cancellationToken);

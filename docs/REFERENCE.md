@@ -651,7 +651,7 @@ metadata filters, and implements the rest of `IVectorStore` on top of these core
 
 ```csharp
 using FluxIndex.Core.Application.Services.Base;
-using FluxIndex.Core.Application.Utilities;  // VectorSearchResult
+using FluxIndex.Core.Application.Utilities;  // ScoredChunk
 
 public class CustomVectorStore : VectorStoreBase
 {
@@ -664,12 +664,12 @@ public class CustomVectorStore : VectorStoreBase
         return chunk.Id;
     }
 
-    protected override async Task<IEnumerable<VectorSearchResult>> SearchCoreAsync(
+    protected override async Task<IEnumerable<ScoredChunk>> SearchCoreAsync(
         float[] queryEmbedding, int topK, Dictionary<string, object>? filters, CancellationToken cancellationToken)
     {
         // Apply the filters in the database when it can, so matches are not crowded out of the top K
         var hits = await YourVectorDatabase.QueryAsync(queryEmbedding, topK, filters, cancellationToken);
-        return hits.Select(h => new VectorSearchResult(h.Chunk, h.Score));
+        return hits.Select(h => new ScoredChunk(h.Chunk, h.Score));
     }
 
     protected override Task<DocumentChunk?> GetCoreAsync(string id, CancellationToken cancellationToken)

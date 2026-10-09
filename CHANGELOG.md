@@ -22,6 +22,12 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 - FluxIndex.CLI: `process --contextual-enrich` and `--generate-qa` run through FluxImprover over the CLI's local text
   completion; before, they returned nothing.
 
+- **Breaking** — **`VectorStoreBase.SearchCoreAsync` returns `ScoredChunk`** (was the `FluxIndex.Core.Application.Utilities`
+  record struct `VectorSearchResult`, which shared its name with the search result class `FluxIndex.Core.Domain.Models.
+  VectorSearchResult` that `Retriever` returns — a file importing both namespaces could name neither). Same shape:
+  `ScoredChunk(DocumentChunk Chunk, float Score)`. Migration: in a custom store, rename `VectorSearchResult` to
+  `ScoredChunk` in `SearchCoreAsync`.
+
 ### Removed
 - **Breaking** — `NoOpContextualEnrichmentService`, `NoOpQAGenerationService` and `NoOpTextCompletionService` (the
   last one answered every prompt with `Mock response for: …`), and `AddDocumentProcessingPipelineWithFallback()` (now

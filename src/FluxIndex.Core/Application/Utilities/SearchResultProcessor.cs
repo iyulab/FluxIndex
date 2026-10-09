@@ -14,7 +14,7 @@ public static class SearchResultProcessor
     /// so downstream consumers can read it after the wrapper is discarded.
     /// </summary>
     public static IEnumerable<DocumentChunk> FilterAndSort(
-        IEnumerable<VectorSearchResult> results,
+        IEnumerable<ScoredChunk> results,
         float minScore,
         int topK)
     {
@@ -34,8 +34,8 @@ public static class SearchResultProcessor
     /// <summary>
     /// Filters and sorts search results, returning results with scores.
     /// </summary>
-    public static IEnumerable<VectorSearchResult> FilterAndSortWithScores(
-        IEnumerable<VectorSearchResult> results,
+    public static IEnumerable<ScoredChunk> FilterAndSortWithScores(
+        IEnumerable<ScoredChunk> results,
         float minScore,
         int topK)
     {
@@ -54,8 +54,8 @@ public static class SearchResultProcessor
     /// <param name="resultSets">Multiple result sets to fuse.</param>
     /// <param name="topK">Maximum results to return.</param>
     /// <param name="k">RRF constant (default: 60).</param>
-    public static IEnumerable<VectorSearchResult> ApplyRRF(
-        IEnumerable<IEnumerable<VectorSearchResult>> resultSets,
+    public static IEnumerable<ScoredChunk> ApplyRRF(
+        IEnumerable<IEnumerable<ScoredChunk>> resultSets,
         int topK,
         int k = 60)
     {
@@ -86,7 +86,7 @@ public static class SearchResultProcessor
         return scores.Values
             .OrderByDescending(x => x.RRFScore)
             .Take(topK)
-            .Select(x => new VectorSearchResult(x.Chunk, (float)x.RRFScore));
+            .Select(x => new ScoredChunk(x.Chunk, (float)x.RRFScore));
     }
 
     /// <summary>
@@ -104,8 +104,8 @@ public static class SearchResultProcessor
     /// <summary>
     /// Trims candidate list to maintain efficient processing.
     /// </summary>
-    public static List<VectorSearchResult> TrimCandidates(
-        List<VectorSearchResult> candidates,
+    public static List<ScoredChunk> TrimCandidates(
+        List<ScoredChunk> candidates,
         int targetTopK)
     {
         if (candidates.Count <= targetTopK)
@@ -119,7 +119,7 @@ public static class SearchResultProcessor
     /// Gets the minimum score from current candidate set for dynamic threshold.
     /// </summary>
     public static float GetDynamicThreshold(
-        List<VectorSearchResult> candidates,
+        List<ScoredChunk> candidates,
         int targetTopK,
         float fallbackMinScore)
     {
@@ -135,8 +135,8 @@ public static class SearchResultProcessor
     /// <summary>
     /// Deduplicates results by document ID, keeping the highest-scoring chunk per document.
     /// </summary>
-    public static IEnumerable<VectorSearchResult> DeduplicateByDocument(
-        IEnumerable<VectorSearchResult> results)
+    public static IEnumerable<ScoredChunk> DeduplicateByDocument(
+        IEnumerable<ScoredChunk> results)
     {
         return results
             .GroupBy(r => r.Chunk.DocumentId)
@@ -146,7 +146,7 @@ public static class SearchResultProcessor
     /// <summary>
     /// Sets the Score property on each chunk based on search result scores.
     /// </summary>
-    public static void SetChunkScores(IEnumerable<VectorSearchResult> results)
+    public static void SetChunkScores(IEnumerable<ScoredChunk> results)
     {
         foreach (var result in results)
         {
@@ -160,4 +160,4 @@ public static class SearchResultProcessor
 /// </summary>
 /// <param name="Chunk">The document chunk.</param>
 /// <param name="Score">Similarity score (typically 0-1 for cosine similarity).</param>
-public readonly record struct VectorSearchResult(DocumentChunk Chunk, float Score);
+public readonly record struct ScoredChunk(DocumentChunk Chunk, float Score);

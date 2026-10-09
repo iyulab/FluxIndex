@@ -93,7 +93,7 @@ public class PostgreSQLVectorStore : VectorStoreBase
         return entity == null ? null : MapToChunk(entity);
     }
 
-    protected override async Task<IEnumerable<VectorSearchResult>> SearchCoreAsync(
+    protected override async Task<IEnumerable<ScoredChunk>> SearchCoreAsync(
         float[] queryEmbedding,
         int topK,
         Dictionary<string, object>? filters,
@@ -123,7 +123,7 @@ public class PostgreSQLVectorStore : VectorStoreBase
             .ToListAsync(cancellationToken);
 
         // Convert cosine distance (0-2) to cosine similarity (1 to -1)
-        return candidates.Select(c => new VectorSearchResult(
+        return candidates.Select(c => new ScoredChunk(
             MapToChunk(c.Entity),
             VectorMathUtilities.DistanceToSimilarity((float)c.Distance, DistanceType.Cosine)));
     }

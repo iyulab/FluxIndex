@@ -153,7 +153,7 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore, IDisposab
         return Task.FromResult<DocumentChunk?>(item.chunk);
     }
 
-    protected override Task<IEnumerable<VectorSearchResult>> SearchCoreAsync(
+    protected override Task<IEnumerable<ScoredChunk>> SearchCoreAsync(
         float[] queryEmbedding,
         int topK,
         Dictionary<string, object>? filters,
@@ -165,7 +165,7 @@ public class InMemoryVectorStore : VectorStoreBase, IPersistableStore, IDisposab
         var results = _chunks.Values
             .Where(item => item.embedding != null && item.embedding.Length > 0)
             .Where(item => matcher.Matches(item.chunk.DocumentId, item.chunk.Metadata))
-            .Select(item => new VectorSearchResult(
+            .Select(item => new ScoredChunk(
                 item.chunk,
                 ComputeCosineSimilarity(queryEmbedding, item.embedding)))
             .OrderByDescending(r => r.Score)

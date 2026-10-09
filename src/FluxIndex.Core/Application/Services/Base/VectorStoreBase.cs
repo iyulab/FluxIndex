@@ -18,7 +18,7 @@ namespace FluxIndex.Core.Application.Services.Base;
 ///     {
 ///         // SQLite-specific storage logic
 ///     }
-///     protected override Task&lt;IEnumerable&lt;VectorSearchResult&gt;&gt; SearchCoreAsync(
+///     protected override Task&lt;IEnumerable&lt;ScoredChunk&gt;&gt; SearchCoreAsync(
 ///         float[] queryEmbedding, int topK, Dictionary&lt;string, object&gt;? filters, CancellationToken ct)
 ///     {
 ///         // In-memory cosine similarity search; apply filters before any candidate trimming
@@ -68,7 +68,7 @@ public abstract partial class VectorStoreBase : IVectorStore
     /// never correctness.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Search results with scores (no minScore filtering needed).</returns>
-    protected abstract Task<IEnumerable<VectorSearchResult>> SearchCoreAsync(
+    protected abstract Task<IEnumerable<ScoredChunk>> SearchCoreAsync(
         float[] queryEmbedding,
         int topK,
         Dictionary<string, object>? filters,

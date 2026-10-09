@@ -57,7 +57,7 @@ public class ReassignImplementationConventionTests
     {
         protected override Task<string> StoreCoreAsync(Core.Domain.Entities.DocumentChunk chunk, CancellationToken cancellationToken) => throw new NotSupportedException();
         protected override Task<Core.Domain.Entities.DocumentChunk?> GetCoreAsync(string id, CancellationToken cancellationToken) => throw new NotSupportedException();
-        protected override Task<IEnumerable<Core.Application.Utilities.VectorSearchResult>> SearchCoreAsync(float[] queryEmbedding, int topK, Dictionary<string, object>? filters, CancellationToken cancellationToken) => throw new NotSupportedException();
+        protected override Task<IEnumerable<Core.Application.Utilities.ScoredChunk>> SearchCoreAsync(float[] queryEmbedding, int topK, Dictionary<string, object>? filters, CancellationToken cancellationToken) => throw new NotSupportedException();
         protected override Task<bool> DeleteCoreAsync(string id, CancellationToken cancellationToken) => throw new NotSupportedException();
         protected override Task<bool> UpdateCoreAsync(Core.Domain.Entities.DocumentChunk chunk, CancellationToken cancellationToken) => throw new NotSupportedException();
         protected override Task<IEnumerable<Core.Domain.Entities.DocumentChunk>> GetByDocumentIdCoreAsync(string documentId, CancellationToken cancellationToken) => throw new NotSupportedException();
