@@ -188,7 +188,7 @@ public partial class WebFluxIntegration
     /// <summary>
     /// Batch process multiple URLs using WebFlux batch API (5-10x faster than sequential processing)
     /// </summary>
-    public async Task<BatchIndexingResult> IndexMultipleUrlsBatchAsync(
+    public async Task<UrlBatchIndexingResult> IndexMultipleUrlsBatchAsync(
         IEnumerable<string> urls,
         WebFluxProcessingOptions? options = null,
         CancellationToken cancellationToken = default)
@@ -197,7 +197,7 @@ public partial class WebFluxIntegration
     /// <summary>
     /// Batch process multiple URLs with progress reporting (WebFlux 0.1.6+)
     /// </summary>
-    public async Task<BatchIndexingResult> IndexMultipleUrlsBatchAsync(
+    public async Task<UrlBatchIndexingResult> IndexMultipleUrlsBatchAsync(
         IEnumerable<string> urls,
         WebFluxProcessingOptions? options,
         IProgress<WebFluxCrawlProgress>? progress,
@@ -206,7 +206,7 @@ public partial class WebFluxIntegration
         var urlList = urls.ToList();
         LogBatchProcessingUrls(_logger, urlList.Count);
 
-        var result = new BatchIndexingResult
+        var result = new UrlBatchIndexingResult
         {
             TotalUrls = urlList.Count,
             StartTime = DateTime.UtcNow
@@ -614,7 +614,7 @@ public class WebFluxProcessingOptions
 /// <summary>
 /// Result of batch indexing operation
 /// </summary>
-public class BatchIndexingResult
+public class UrlBatchIndexingResult
 {
     /// <summary>
     /// Total number of URLs processed

@@ -20,6 +20,10 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   Migration: `RrfScore` → `FusedScore`, `FtsRank`/`Bm25Score` → `SparseRank`/`SparseScore` (0 when the leg did not find
   the chunk), `FoundInTextSearch`/`FoundInVectorSearch`/`FoundInBoth` → `Source`.
 
+- **Breaking** — **`WebFluxIntegration.IndexMultipleUrlsBatchAsync` returns `UrlBatchIndexingResult`** (was
+  `BatchIndexingResult`, the name the SDK's document batch result also uses — the two are different results, URLs vs
+  documents). Migration: rename the type in code that names it; its members are unchanged.
+
 ### Fixed
 - **The SQLite store's native hybrid search scores the vector leg 1/rank.** It scored the first vector hit 0.5, the second
   0.33, … (1/(rank+1)); `VectorScore` of a native hybrid result now reads 1 for the top vector hit.
