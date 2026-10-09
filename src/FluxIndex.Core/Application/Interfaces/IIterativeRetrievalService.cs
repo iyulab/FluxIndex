@@ -260,9 +260,7 @@ public enum RetrievalTool
 #region Result Classes
 
 /// <summary>
-/// Search result for iterative retrieval operations.
-/// This is a dedicated type to avoid conflicts with Domain.Entities.SearchResult
-/// and Application.Interfaces.SearchResult.
+/// Search result for iterative retrieval operations: a hit plus the iteration and query that found it.
 /// </summary>
 public class IterativeSearchResult
 {

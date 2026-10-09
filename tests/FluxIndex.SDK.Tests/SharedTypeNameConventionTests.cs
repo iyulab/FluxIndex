@@ -26,7 +26,6 @@ public class SharedTypeNameConventionTests
         ["VectorEntity"] = "storage entity (PostgreSQL, SQLite)",
 
         // To fix: two or three types for one concept, in namespaces a consumer imports together.
-        ["SearchResult"] = "to fix: Core.Application.Interfaces / Core.Domain.Entities / SDK",
         ["RelationshipType"] = "to fix: Core.Domain.Entities / Core.Domain.Models",
         ["DocumentMetadata"] = "to fix: Core.Domain.ValueObjects / SDK",
     };
@@ -65,6 +64,6 @@ public class SharedTypeNameConventionTests
         var exported = OperationalLanguageConventionTests.LibraryAssemblies().Sum(assembly => assembly.GetExportedTypes().Length);
 
         Assert.True(exported > 300, $"exported types seen: {exported}");
-        Assert.Contains("SearchResult", SharedNames().Keys);
+        Assert.Contains("VectorEntity", SharedNames().Keys); // a deliberate share (one storage entity per backend)
     }
 }

@@ -1,4 +1,5 @@
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Domain.Models;
 using FluxIndex.Core.Domain.ValueObjects;
 using Microsoft.Extensions.Logging;
 using System;
@@ -60,7 +61,7 @@ public partial class QualityMonitoringService : IQualityMonitoringService, IDisp
 
     public async Task<QualityMetrics> EvaluateSearchQualityAsync(
         string query,
-        IReadOnlyList<SearchResult> results,
+        IReadOnlyList<VectorSearchResult> results,
         TimeSpan responseTime,
         Dictionary<string, object>? metadata = null,
         CancellationToken cancellationToken = default)
@@ -394,11 +395,11 @@ public partial class QualityMonitoringService : IQualityMonitoringService, IDisp
         };
     }
 
-    private static double CalculateDiversityScore(IReadOnlyList<SearchResult> results)
+    private static double CalculateDiversityScore(IReadOnlyList<VectorSearchResult> results)
     {
         if (results.Count <= 1) return 1.0;
 
-        var uniqueSources = results.Select(r => r.DocumentId).Distinct().Count();
+        var uniqueSources = results.Select(r => r.DocumentChunk.DocumentId).Distinct().Count();
         return (double)uniqueSources / results.Count;
     }
 

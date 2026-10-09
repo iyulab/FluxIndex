@@ -245,18 +245,3 @@ public class ChunkQuality
     public DateTime LastAccessed { get; set; } = DateTime.UtcNow;
 }
 
-/// <summary>
-/// 검색 결과 - 고도화된 메타데이터 포함
-/// </summary>
-public class EnhancedSearchResult
-{
-    public DocumentChunk? Chunk { get; set; }
-    public double SimilarityScore { get; set; }
-    public double BM25Score { get; set; }
-    public double HybridScore { get; set; }
-    public double RerankedScore { get; set; }
-    public List<string> MatchedTerms { get; set; } = new();
-    public List<ChunkRelationship> RelatedChunks { get; set; } = new();
-    public string HighlightedContent { get; set; } = string.Empty;
-    public Dictionary<string, object> ExplanationMetadata { get; set; } = new();
-}

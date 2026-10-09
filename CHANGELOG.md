@@ -54,6 +54,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   Migration: none expected — a direct `AddTokenAwareSearch()` caller searches through `IFluxIndexContext` or
   `IAdaptiveSearchService` instead.
 
+- **Breaking** — Core's `SearchService`, `IAdvancedRerankingService`, `EnhancedSearchResult`, and both Core `SearchResult`
+  types (`Application.Interfaces`, `Domain.Entities`). Nothing registered `SearchService`, and nothing implemented the
+  reranking interface it required; the `Domain.Entities` result was referenced nowhere. `SearchResult` is now only the
+  SDK's. `IQualityMonitoringService.EvaluateSearchQualityAsync` takes the scored chunks a search returned
+  (`VectorSearchResult`). Migration: an `IQualityMonitoringService` implementation reads `DocumentChunk.DocumentId` and
+  `Score` from `VectorSearchResult`.
+
 ### Dependencies
 - Re-pinned sibling package(s) `FileFlux` 0.53.0 -> 0.54.0.
 - Re-pinned sibling package(s) `FileFlux` 0.54.0 -> 0.55.0.

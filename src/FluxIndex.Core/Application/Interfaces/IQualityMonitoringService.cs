@@ -1,4 +1,5 @@
-﻿using FluxIndex.Core.Domain.ValueObjects;
+﻿using FluxIndex.Core.Domain.Models;
+using FluxIndex.Core.Domain.ValueObjects;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -16,13 +17,13 @@ public interface IQualityMonitoringService
     /// 검색 결과의 품질을 실시간으로 평가
     /// </summary>
     /// <param name="query">검색 쿼리</param>
-    /// <param name="results">검색 결과</param>
+    /// <param name="results">검색 결과 — the scored chunks the search returned (score and document are what is measured)</param>
     /// <param name="responseTime">응답 시간</param>
     /// <param name="metadata">추가 메타데이터</param>
     /// <param name="cancellationToken">취소 토큰</param>
     Task<QualityMetrics> EvaluateSearchQualityAsync(
         string query,
-        IReadOnlyList<SearchResult> results,
+        IReadOnlyList<VectorSearchResult> results,
         TimeSpan responseTime,
         Dictionary<string, object>? metadata = null,
         CancellationToken cancellationToken = default);

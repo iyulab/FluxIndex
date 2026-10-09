@@ -963,27 +963,19 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDi
     /// <summary>
     /// SDK SearchResult를 Core SearchResult로 변환
     /// </summary>
-    private static Core.Application.Interfaces.SearchResult ConvertToCore(SearchResult sdkResult)
+    // The quality monitor measures the scored chunks a search returned (score, document). The SDK result keeps both.
+    private static VectorSearchResult ConvertToCore(SearchResult sdkResult) => new()
     {
-        // SDK SearchResult lacks the DocumentChunk object needed for Core SearchResult
-        // For now, create a basic conversion that maintains compatibility
-        var documentChunk = new DocumentChunkEntity
+        DocumentChunk = new DocumentChunkEntity
         {
             Id = sdkResult.Id,
             DocumentId = sdkResult.DocumentId,
             Content = sdkResult.Content,
             ChunkIndex = sdkResult.ChunkIndex,
-            TotalChunks = 1 // Default value since SDK doesn't track this
-        };
-
-        return new Core.Application.Interfaces.SearchResult
-        {
-            Chunk = documentChunk,
-            Score = sdkResult.Score,
-            FileName = string.Empty, // Default value since SDK doesn't track this
-            Metadata = sdkResult.Metadata
-        };
-    }
+        },
+        Score = sdkResult.Score,
+        Metadata = sdkResult.Metadata,
+    };
 
     /// <summary>
     /// Asynchronous dispose. Disposes the service provider with <c>DisposeAsync</c>, so a service that implements only
