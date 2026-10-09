@@ -32,6 +32,12 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   with `Domain.Models.QueryType` and `SentimentPolarity`. Query classification is `IQueryComplexityAnalyzer`'s
   (`Application.Interfaces.QueryType`). Migration: rename the type; read the analyzer for a query's type.
 
+- **Breaking** — **one `RelationshipType`, in `FluxIndex.Core.Domain.Entities`.** The hierarchy graph's copy in
+  `Domain.Models` (`ChunkRelationshipExtended`, graph traversal, small-to-big, the graph stores) is removed; the merged enum
+  holds both member sets with fixed values — the enrichment's stored numbers (`Sequential` 0 … `Elaboration` 7) are
+  unchanged and `Contrastive` / `Complementary` are 8 / 9. Stored data reads back as before: chunk metadata keeps its numbers,
+  the graph stores keep member names. Migration: `Domain.Models.RelationshipType` → `Domain.Entities.RelationshipType`.
+
 ### Fixed
 - **The Qdrant hybrid service's recommendation is what it applies.** `RecommendSearchStrategyAsync` answered keyword-first
   for a quoted query and vector-first for a short one, while a search with fusion left unset always used the service's

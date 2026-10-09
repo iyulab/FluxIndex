@@ -1,3 +1,4 @@
+using FluxIndex.Core.Domain.Entities;
 using System;
 using System.Collections.Generic;
 
@@ -201,47 +202,6 @@ public class ChunkRelationshipExtended
     /// 생성 시간
     /// </summary>
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-}
-
-/// <summary>
-/// 관계 타입 열거형 (확장)
-/// </summary>
-public enum RelationshipType
-{
-    /// <summary>
-    /// 순차적 관계 (시간/공간적 순서)
-    /// </summary>
-    Sequential,
-
-    /// <summary>
-    /// 계층적 관계 (부모-자식)
-    /// </summary>
-    Hierarchical,
-
-    /// <summary>
-    /// 의미적 관계 (주제/개념 유사성)
-    /// </summary>
-    Semantic,
-
-    /// <summary>
-    /// 참조 관계 (명시적 언급)
-    /// </summary>
-    Reference,
-
-    /// <summary>
-    /// 인과 관계 (원인-결과)
-    /// </summary>
-    Causal,
-
-    /// <summary>
-    /// 대비 관계 (비교/대조)
-    /// </summary>
-    Contrastive,
-
-    /// <summary>
-    /// 보완 관계 (상호 보완)
-    /// </summary>
-    Complementary
 }
 
 /// <summary>

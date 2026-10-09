@@ -7,7 +7,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using RelationshipType = FluxIndex.Core.Domain.Models.RelationshipType;
+using RelationshipType = FluxIndex.Core.Domain.Entities.RelationshipType;
 
 namespace FluxIndex.Core.Application.Services;
 

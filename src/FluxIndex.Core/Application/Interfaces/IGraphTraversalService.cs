@@ -3,7 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using RelationshipType = FluxIndex.Core.Domain.Models.RelationshipType;
+using RelationshipType = FluxIndex.Core.Domain.Entities.RelationshipType;
 
 namespace FluxIndex.Core.Application.Interfaces;
 

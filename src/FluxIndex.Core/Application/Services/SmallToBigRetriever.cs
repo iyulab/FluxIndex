@@ -1,6 +1,7 @@
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.Models;
 using DocumentChunkEntity = FluxIndex.Core.Domain.Entities.DocumentChunk;
+using RelationshipType = FluxIndex.Core.Domain.Entities.RelationshipType;
 using DocumentChunk = FluxIndex.Core.Domain.Models.CacheDocumentChunk;
 // IMemoryCache는 Core 프로젝트에서 사용하지 않음
 using Microsoft.Extensions.Logging;

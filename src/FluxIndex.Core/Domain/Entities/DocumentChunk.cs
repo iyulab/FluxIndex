@@ -203,18 +203,44 @@ public class ChunkRelationship
 }
 
 /// <summary>
-/// 관계 유형
+/// How two chunks relate — the one vocabulary for chunk relationships: the enrichment's <see cref="ChunkRelationship"/> and
+/// the hierarchy graph's <c>ChunkRelationshipExtended</c>.
 /// </summary>
+/// <remarks>
+/// The values are fixed. A <see cref="ChunkRelationship"/> list is stored in chunk metadata as JSON numbers, so a value must
+/// never move; the graph stores keep the member name. Add new members at the end with the next value.
+/// </remarks>
 public enum RelationshipType
 {
-    Sequential,     // 순차적 관계 (이전/다음 청크)
-    Semantic,       // 의미적 유사성
-    Reference,      // 참조 관계
-    Causal,         // 인과 관계
-    Hierarchical,   // 계층 관계 (부모/자식)
-    Similarity,     // 내용 유사성
-    Contradiction,  // 상반된 내용
-    Elaboration    // 보충 설명
+    /// <summary>순차적 관계 (이전/다음 청크)</summary>
+    Sequential = 0,
+
+    /// <summary>의미적 관계 (주제/개념 유사성)</summary>
+    Semantic = 1,
+
+    /// <summary>참조 관계 (명시적 언급)</summary>
+    Reference = 2,
+
+    /// <summary>인과 관계 (원인-결과)</summary>
+    Causal = 3,
+
+    /// <summary>계층 관계 (부모/자식)</summary>
+    Hierarchical = 4,
+
+    /// <summary>내용 유사성</summary>
+    Similarity = 5,
+
+    /// <summary>상반된 내용</summary>
+    Contradiction = 6,
+
+    /// <summary>보충 설명</summary>
+    Elaboration = 7,
+
+    /// <summary>대비 관계 (비교/대조)</summary>
+    Contrastive = 8,
+
+    /// <summary>보완 관계 (상호 보완)</summary>
+    Complementary = 9,
 }
 
 /// <summary>

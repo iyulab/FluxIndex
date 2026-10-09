@@ -1,3 +1,4 @@
+using RelationshipType = FluxIndex.Core.Domain.Entities.RelationshipType;
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Domain.Models;
 using Microsoft.Extensions.Logging;

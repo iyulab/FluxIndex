@@ -26,7 +26,6 @@ public class SharedTypeNameConventionTests
         ["VectorEntity"] = "storage entity (PostgreSQL, SQLite)",
 
         // To fix: two or three types for one concept, in namespaces a consumer imports together.
-        ["RelationshipType"] = "to fix: Core.Domain.Entities / Core.Domain.Models",
         ["DocumentMetadata"] = "to fix: Core.Domain.ValueObjects / SDK",
     };
 
