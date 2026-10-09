@@ -7,6 +7,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [Unreleased]
 
+### Fixed
+- **`QueryAnalysis.Entities` lists the names a query mentions, so Dynamic Alpha Tuning's «two or more names → more keyword
+  weight» rule applies.** The analyzer looked for capitalised words after lower-casing the query, so every query had zero
+  entities and the documented rule never fired. Entities now come from the query as written; the first word counts only if
+  it is an acronym or has an inner capital (`SQL`, `GitHub`), since its capital is otherwise sentence case. DAT weights move
+  toward keyword search for queries naming two or more things, and no others.
+
 ### Changed
 - **Breaking** — **`QueryAnalysis.ContainsTechnicalTerms` is true only when the query names a term from a technical
   domain** (`TechnicalDomains` is non-empty). Any word longer than six characters used to make it true, so almost every

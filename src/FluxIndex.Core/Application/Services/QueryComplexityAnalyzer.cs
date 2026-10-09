@@ -122,7 +122,7 @@ public partial class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
             Type = DetermineQueryType(query, tokens),
             Complexity = DetermineComplexityLevel(query, tokens),
             Specificity = CalculateSpecificity(tokens),
-            Entities = ExtractEntities(tokens),
+            Entities = ExtractEntities(query),
             Concepts = ExtractConcepts(tokens),
             Keywords = ExtractKeywords(tokens),
             TechnicalDomains = technicalDomains,
@@ -294,10 +294,30 @@ public partial class QueryComplexityAnalyzer : IQueryComplexityAnalyzer
         return Math.Min(1.0, (uniquenessRatio + technicalRatio) / 2.0);
     }
 
-    private static List<string> ExtractEntities(string[] tokens)
+    /// <summary>
+    /// The names a query mentions: capitalised words of the query as written (the analysis tokens are lower-cased, so they
+    /// cannot show a capital). The first word's capital is sentence case, not a name, unless the word is an acronym or has an
+    /// inner capital (<c>SQL</c>, <c>GitHub</c>). So a plain name that opens the query («Kubernetes vs Nomad») is not counted —
+    /// it cannot be told from sentence case without a dictionary.
+    /// </summary>
+    private static List<string> ExtractEntities(string query)
     {
-        // 대문자로 시작하는 단어를 개체명으로 간주
-        return tokens.Where(t => t.Length > 1 && char.IsUpper(t[0])).ToList();
+        var words = Regex.Split(query, @"\s+|[.,;:!?()""']")
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .ToArray();
+        var entities = new List<string>();
+        for (var i = 0; i < words.Length; i++)
+        {
+            var word = words[i];
+            if (word.Length < 2 || !char.IsUpper(word[0]))
+                continue;
+            var innerCapital = word.Skip(1).Any(char.IsUpper);
+            if (i == 0 && !innerCapital)
+                continue;
+            entities.Add(word);
+        }
+
+        return entities;
     }
 
     private static List<string> ExtractConcepts(string[] tokens)
