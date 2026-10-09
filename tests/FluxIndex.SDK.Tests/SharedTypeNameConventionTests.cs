@@ -1,0 +1,79 @@
+using System.Reflection;
+using Xunit;
+
+namespace FluxIndex.SDK.Tests;
+
+/// <summary>
+/// No two public top-level types in the FluxIndex libraries share a simple name. A consumer importing both namespaces
+/// cannot name either (CS0104), and a type moved between namespaces silently binds to its twin — the namespace merge of
+/// <c>FluxIndex.Core.Services</c> made <c>SmallToBigRetriever</c> pick late chunking's <c>ChunkBoundary</c> over the
+/// hierarchy's. Static classes (extension-method holders) are exempt: nothing names them.
+/// </summary>
+/// <remarks>
+/// The roster is the set shared today, each with why it stays or what fixing it means. Shrink it; a new entry is a
+/// roster change on purpose.
+/// </remarks>
+public class SharedTypeNameConventionTests
+{
+    private static readonly Dictionary<string, string> KnownSharedNames = new(StringComparer.Ordinal)
+    {
+        // Per-provider EF entities: each lives in its own storage package, never imported together.
+        ["CacheStatsEntity"] = "storage entity (PostgreSQL, SQLite)",
+        ["ChunkHierarchyEntity"] = "storage entity (PostgreSQL, SQLite)",
+        ["ChunkRelationshipEntity"] = "storage entity (PostgreSQL, SQLite)",
+        ["QuantizedVectorEntity"] = "storage entity (PostgreSQL, SQLite)",
+        ["SemanticCacheEntity"] = "storage entity (PostgreSQL, SQLite)",
+        ["VectorEntity"] = "storage entity (PostgreSQL, SQLite)",
+
+        // To fix: two or three types for one concept, in namespaces a consumer imports together.
+        ["SearchResult"] = "to fix: Core.Application.Interfaces / Core.Domain.Entities / SDK",
+        ["QueryAnalysis"] = "to fix: Core.Application.Interfaces / Core.Application.Models",
+        ["QueryIntent"] = "to fix: Core.Application.Interfaces / Core.Application.Models",
+        ["QueryType"] = "to fix: Core.Application.Interfaces / Core.Domain.Models",
+        ["SearchStrategy"] = "to fix: Core.Application.Interfaces / Core.Application.Models / Core.Domain.Models",
+        ["CacheMetadata"] = "to fix: Core.Application.Interfaces / Core.Domain.ValueObjects",
+        ["CacheResult"] = "to fix: Core.Application.Interfaces / Core.Domain.ValueObjects",
+        ["CacheStatistics"] = "to fix: Core.Application.Interfaces / Core.Domain.ValueObjects",
+        ["RelationshipType"] = "to fix: Core.Domain.Entities / Core.Domain.Models",
+        ["DocumentMetadata"] = "to fix: Core.Domain.ValueObjects / SDK",
+        ["HybridSearchResult"] = "to fix: Core.Domain.Models / Storage.SQLite",
+        ["BatchIndexingResult"] = "to fix: SDK / Integrations.WebFlux",
+    };
+
+    private static Dictionary<string, List<string>> SharedNames()
+        => OperationalLanguageConventionTests.LibraryAssemblies()
+            .SelectMany(assembly => assembly.GetExportedTypes())
+            .Where(type => !type.IsNested && !(type.IsAbstract && type.IsSealed))
+            .GroupBy(type => type.IsGenericType ? type.Name[..type.Name.IndexOf('`')] : type.Name, StringComparer.Ordinal)
+            .Where(group => group.Select(type => type.Namespace).Distinct().Count() > 1)
+            .ToDictionary(group => group.Key, group => group.Select(type => type.FullName!).Order().ToList(), StringComparer.Ordinal);
+
+    [Fact]
+    public void NoNewPublicTypeSharesAName()
+    {
+        var unlisted = SharedNames().Where(pair => !KnownSharedNames.ContainsKey(pair.Key)).ToList();
+
+        Assert.True(unlisted.Count == 0,
+            "Public types sharing a simple name (rename one, or list it with a reason):\n"
+            + string.Join("\n", unlisted.Select(pair => $"  {pair.Key}: {string.Join(", ", pair.Value)}")));
+    }
+
+    [Fact]
+    public void RosterHoldsOnlyNamesStillShared()
+    {
+        var shared = SharedNames();
+        var stale = KnownSharedNames.Keys.Where(name => !shared.ContainsKey(name)).Order().ToList();
+
+        Assert.True(stale.Count == 0, "No longer shared — remove from the roster: " + string.Join(", ", stale));
+    }
+
+    // Positive control: the scan must see the exported surface, or an empty result would pass for the wrong reason.
+    [Fact]
+    public void Scan_SeesTheExportedSurface()
+    {
+        var exported = OperationalLanguageConventionTests.LibraryAssemblies().Sum(assembly => assembly.GetExportedTypes().Length);
+
+        Assert.True(exported > 300, $"exported types seen: {exported}");
+        Assert.Contains("SearchResult", SharedNames().Keys);
+    }
+}
