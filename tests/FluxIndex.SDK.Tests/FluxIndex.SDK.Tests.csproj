@@ -46,7 +46,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- What docs/AI_PROVIDER_INTEGRATION.md's samples compile against (ProviderGuideSnippetCompileTests): the OpenAI SDK
+    <!-- What the docs' samples compile against (DocsSnippetCompileTests): the OpenAI SDK
          for the own-implementation samples and ASP.NET Core for the web host sample. -->
     <PackageReference Include="OpenAI" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />

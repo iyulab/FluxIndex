@@ -43,20 +43,21 @@ Provider Priority (same capability):
 ### Core Interfaces
 
 ```csharp
-// Vector storage
+// Vector storage (excerpt: also get, update, delete, count and document reassignment)
 public interface IVectorStore
 {
-    Task StoreAsync(DocumentChunk chunk, CancellationToken ct);
+    Task<string> StoreAsync(DocumentChunk chunk, CancellationToken cancellationToken = default);
     Task<IEnumerable<DocumentChunk>> SearchAsync(
-        EmbeddingVector queryVector, int topK, CancellationToken ct);
+        float[] queryEmbedding, int topK = 10, float minScore = 0.0f,
+        Dictionary<string, object>? filters = null, CancellationToken cancellationToken = default);
 }
 
-// Embedding generation
+// Embedding generation (excerpt: also the query role, dimension, model name, identity)
 public interface IEmbeddingService
 {
-    Task<EmbeddingVector> GenerateEmbeddingAsync(string text, CancellationToken ct);
-    Task<IEnumerable<EmbeddingVector>> GenerateBatchEmbeddingsAsync(
-        IEnumerable<string> texts, CancellationToken ct);
+    Task<float[]> GenerateEmbeddingAsync(string text, CancellationToken cancellationToken = default);
+    Task<IEnumerable<float[]>> GenerateEmbeddingsBatchAsync(
+        IEnumerable<string> texts, CancellationToken cancellationToken = default);
 }
 
 // Reranking
@@ -64,7 +65,8 @@ public interface IReranker
 {
     Task<IEnumerable<RerankResult>> RerankAsync(
         string query, IEnumerable<RetrievalCandidate> candidates,
-        RerankOptions? options = null, CancellationToken ct = default);
+        RerankOptions? options = null, CancellationToken cancellationToken = default);
+    RerankModelInfo GetModelInfo();
 }
 ```
 
@@ -207,6 +209,8 @@ FinalScore = α × vectorScore + (1-α) × sparseScore
 ### Configuration
 
 ```csharp
+using FluxIndex.Core.Domain.Models;  // HybridSearchOptions, FusionMethod (IHybridSearchService)
+
 // Hybrid search with custom weights — values you set are used as given
 var options = new HybridSearchOptions
 {
@@ -246,6 +250,10 @@ or at host start when `WarmUpOnStart` is set; building the container never block
 ### Setup
 
 ```csharp
+using FluxIndex.Providers.LMSupply.Extensions;
+using FluxIndex.SDK;
+using FluxIndex.Storage.SQLite;
+
 var context = FluxIndexContext.CreateBuilder()
     .UseSQLite("fluxindex.db")
     .AddSQLiteStorage()
@@ -266,6 +274,9 @@ machine, name `quality` explicitly.
 ### Configuration
 
 ```csharp
+using FluxIndex.Providers.LMSupply.Extensions;
+using LMSupply.Reranker;  // RerankerOptions
+
 services.AddLMSupplyReranker(options =>
 {
     options.ModelId = "quality";
@@ -300,6 +311,8 @@ Memory optimization through vector compression.
 ### Setup
 
 ```csharp
+using FluxIndex.Core.Application.Services;
+
 // Scalar quantization (recommended start)
 services.AddScalarQuantization(dimension: 1536);
 
@@ -318,6 +331,8 @@ services.AddQuantizedVectorStoreDecorator(autoQuantize: true);
 ### Two-Stage Search
 
 ```csharp
+using FluxIndex.Core.Domain.Models;
+
 var options = new HybridSearchOptions
 {
     UseQuantizedSearch = true,
@@ -331,6 +346,8 @@ var options = new HybridSearchOptions
 ### Migration
 
 ```csharp
+using FluxIndex.Core.Application.Services.Quantization;
+
 var migrationService = serviceProvider.GetRequiredService<VectorQuantizationMigrationService>();
 
 var result = await migrationService.MigrateAllAsync(
@@ -348,11 +365,12 @@ Document relationship navigation for multi-hop reasoning.
 ### Algorithms
 
 ```csharp
+var graphService = serviceProvider.GetRequiredService<IGraphTraversalService>();
+
 // BFS traversal
 var neighbors = await graphService.TraverseBfsAsync(
     startChunkId: "chunk-123",
-    maxDepth: 3,
-    maxNodes: 100);
+    new GraphTraversalOptions { MaxDepth = 3, MaxNodes = 100 });
 
 // Shortest path
 var path = await graphService.FindShortestPathAsync(startId, endId);
@@ -444,10 +462,11 @@ Entity-centric retrieval and hierarchical summarization.
 ### Entity Extraction
 
 ```csharp
-var extractor = serviceProvider.GetRequiredService<IEntityExtractionService>();
+var extractor = serviceProvider.GetRequiredService<IAdvancedEntityExtractionService>();
 
 var entities = await extractor.ExtractEntitiesAsync(content);
 var relations = await extractor.ExtractRelationsAsync(content, entities);
+// or both at once: await extractor.ExtractEntityGraphAsync(content)
 ```
 
 ### Entity Graph Service
@@ -534,11 +553,12 @@ returned in `GraphRAGQueryResult.Relationships` (local and hybrid scope; global 
 ```csharp
 var summarizer = serviceProvider.GetRequiredService<IHierarchicalSummarizationService>();
 
-// Generate community summaries
-var summaries = await summarizer.GenerateSummariesAsync(communities, level: 1);
+// Generate community summaries for a hierarchy from ILeidenCommunityService and the chunks it grouped
+var summaries = await summarizer.GenerateHierarchicalSummariesAsync(hierarchy, chunks,
+    new HierarchicalSummarizationOptions { LevelsToSummarize = [1] });
 
 // Global search using community summaries
-var answer = await summarizer.GlobalSearchAsync(query, new GlobalSearchOptions
+var answer = await summarizer.GlobalSearchAsync(query, summaries, new GlobalSearchOptions
 {
     MaxCommunities = 5,
     SearchLevel = 1
@@ -584,13 +604,16 @@ var fusion = await dynamicFusion.CalculateDynamicWeightsAsync(query);
 // DynamicFusionConfiguration: VectorWeight and SparseWeight chosen from the query's type
 ```
 
-**Default Weights by Query Type**:
+**Base Weights by Query Type** (then shifted for detected technical domains and complexity, and normalized):
 | Query Type | Vector Weight | Sparse Weight |
 |------------|---------------|---------------|
-| Factual | 0.3 | 0.7 |
-| Analytical | 0.7 | 0.3 |
-| Exploratory | 0.8 | 0.2 |
-| Procedural | 0.5 | 0.5 |
+| SimpleKeyword | 0.35 | 0.65 |
+| NaturalQuestion | 0.70 | 0.30 |
+| ComplexSearch | 0.45 | 0.55 |
+| ReasoningQuery | 0.80 | 0.20 |
+| ComparisonQuery | 0.55 | 0.45 |
+| TemporalQuery | 0.60 | 0.40 |
+| MultiHopQuery | 0.75 | 0.25 |
 
 ---
 
@@ -598,53 +621,110 @@ var fusion = await dynamicFusion.CalculateDynamicWeightsAsync(query);
 
 ### Custom Embedding Service
 
-```csharp
-public class CustomEmbeddingService : IEmbeddingService
-{
-    public async Task<EmbeddingVector> GenerateEmbeddingAsync(
-        string text, CancellationToken ct)
-    {
-        var values = await YourModel.EmbedAsync(text);
-        return new EmbeddingVector(values);
-    }
+Derive from `EmbeddingServiceBase`: it handles empty input, the query path, batch fallback, token
+estimates and `GetIdentity()`, leaving the embedding call and the three members that identify the vector
+space ([AI Provider Integration](./AI_PROVIDER_INTEGRATION.md) has complete provider examples).
 
-    public async Task<IEnumerable<EmbeddingVector>> GenerateBatchEmbeddingsAsync(
-        IEnumerable<string> texts, CancellationToken ct)
-    {
-        // Batch embedding for better performance
-    }
+```csharp
+using FluxIndex.Core.Application.Services.Base;
+
+public class CustomEmbeddingService : EmbeddingServiceBase
+{
+    // Embedding of stored text (documents, chunks)
+    protected override Task<float[]> EmbedCoreAsync(string text, CancellationToken cancellationToken)
+        => YourEmbeddingProvider.EmbedAsync(text, cancellationToken);
+
+    // Provider + model + dimension identify the vector space
+    public override int GetEmbeddingDimension() => 1024;
+    public override string GetModelName() => "your-model";
+    protected override string GetProviderName() => "YourProvider";
+
+    // Optional: EmbedQueryCoreAsync for an asymmetric model's query convention,
+    // GenerateEmbeddingsBatchAsync for a native batch call
 }
 ```
 
 ### Custom Vector Store
 
+Derive from `VectorStoreBase`: it validates chunks, applies `minScore`, sorts results and re-checks
+metadata filters, and implements the rest of `IVectorStore` on top of these core calls.
+
 ```csharp
-public class CustomVectorStore : IVectorStore
+using FluxIndex.Core.Application.Services.Base;
+using FluxIndex.Core.Application.Utilities;  // VectorSearchResult
+
+public class CustomVectorStore : VectorStoreBase
 {
-    public async Task StoreAsync(DocumentChunk chunk, CancellationToken ct)
+    protected override async Task<string> StoreCoreAsync(DocumentChunk chunk, CancellationToken cancellationToken)
     {
-        // Pinecone, Qdrant, etc.
+        // Chunk identity: keep the caller's id; generate one only when it is empty, and write it back
+        if (string.IsNullOrEmpty(chunk.Id))
+            chunk.Id = Guid.NewGuid().ToString();
+        await YourVectorDatabase.UpsertAsync(chunk, cancellationToken);  // Pinecone, Chroma, etc.
+        return chunk.Id;
     }
 
-    public async Task<IEnumerable<DocumentChunk>> SearchAsync(
-        EmbeddingVector queryVector, int topK, CancellationToken ct)
+    protected override async Task<IEnumerable<VectorSearchResult>> SearchCoreAsync(
+        float[] queryEmbedding, int topK, Dictionary<string, object>? filters, CancellationToken cancellationToken)
     {
-        // Your vector search
+        // Apply the filters in the database when it can, so matches are not crowded out of the top K
+        var hits = await YourVectorDatabase.QueryAsync(queryEmbedding, topK, filters, cancellationToken);
+        return hits.Select(h => new VectorSearchResult(h.Chunk, h.Score));
     }
+
+    protected override Task<DocumentChunk?> GetCoreAsync(string id, CancellationToken cancellationToken)
+        => YourVectorDatabase.GetAsync(id, cancellationToken);
+
+    protected override async Task<bool> UpdateCoreAsync(DocumentChunk chunk, CancellationToken cancellationToken)
+    {
+        await YourVectorDatabase.UpsertAsync(chunk, cancellationToken);
+        return true;
+    }
+
+    protected override Task<bool> DeleteCoreAsync(string id, CancellationToken cancellationToken)
+        => YourVectorDatabase.DeleteAsync(id, cancellationToken);
+
+    protected override Task<IEnumerable<DocumentChunk>> GetByDocumentIdCoreAsync(string documentId, CancellationToken cancellationToken)
+        => YourVectorDatabase.GetByDocumentIdAsync(documentId, cancellationToken);
+
+    protected override Task<bool> DeleteByDocumentIdCoreAsync(string documentId, CancellationToken cancellationToken)
+        => YourVectorDatabase.DeleteByDocumentIdAsync(documentId, cancellationToken);
+
+    protected override Task<int> CountCoreAsync(CancellationToken cancellationToken)
+        => YourVectorDatabase.CountAsync(cancellationToken);
+
+    protected override Task ClearCoreAsync(CancellationToken cancellationToken)
+        => YourVectorDatabase.ClearAsync(cancellationToken);
 }
 ```
 
 ### Custom Reranker
 
+Derive from `RerankerBase`: it trims candidate content, maps scores back to `RerankResult` and applies
+`ScoreThreshold`, leaving the scoring call and the model description.
+
 ```csharp
-public class CustomRerankerService : IReranker
+using FluxIndex.Core.Application.Services.Base;
+
+public class CustomRerankerService : RerankerBase
 {
-    public async Task<IEnumerable<RerankResult>> RerankAsync(
-        string query, IEnumerable<RetrievalCandidate> candidates,
-        RerankOptions? options = null, CancellationToken ct = default)
+    // (original index, score) pairs, most relevant first
+    protected override async Task<IEnumerable<(int Index, float Score)>> RerankCoreAsync(
+        string query, IReadOnlyList<string> documents, int topN, CancellationToken cancellationToken)
     {
-        // Your reranking logic
+        var scores = await YourRerankerProvider.ScoreAsync(query, documents, cancellationToken);
+        return scores
+            .Select((score, index) => (Index: index, Score: score))
+            .OrderByDescending(x => x.Score)
+            .Take(topN);
     }
+
+    public override RerankModelInfo GetModelInfo() => new()
+    {
+        Name = "your-reranker",
+        Type = RerankModel.Custom,
+        RequiresApiKey = false
+    };
 }
 ```
 
@@ -701,16 +781,21 @@ dotnet test --filter "Category=Performance"
 ### Test Fixture Pattern
 
 ```csharp
+using FluxIndex.SDK;
+using FluxIndex.Storage.SQLite;
+using Xunit;
+
 [Fact]
-public async Task SearchAsync_ValidQuery_ReturnsResults()
+public async Task KeywordSearchAsync_ValidQuery_ReturnsResults()
 {
-    var context = FluxIndexContext.CreateBuilder()
+    // No embedder: a keyword-only context, which is all this test needs
+    await using var context = FluxIndexContext.CreateBuilder()
         .UseSQLiteInMemory()
         .AddSQLiteStorage()
         .Build();
 
     await context.Indexer.IndexDocumentAsync("test content", "doc-1");
-    var results = await context.Retriever.SearchAsync("test");
+    var results = await context.Retriever.KeywordSearchAsync("test");
 
     Assert.Single(results);
 }

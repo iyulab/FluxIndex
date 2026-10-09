@@ -15,6 +15,12 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   (`EmbeddingClient`, `ChatClient`), every sample overrides the real members, and the LMSupply sample embeds stored text as
   passages and queries as queries. The `<example>` blocks of `EmbeddingServiceBase`, `TextCompletionServiceBase` and
   `RerankerBase` had the same stale calls; they now show the members to implement and point to the guide.
+- **The samples in `docs/GUIDE.md`, `docs/ADVANCED_RAG.md` and `docs/REFERENCE.md` compile against this version.** They used
+  calls the library no longer has (`IndexRequest`/`IndexBatchAsync`, `ChunkingStrategies.Intelligent`, fusion result members
+  `KeywordWeight`/`Method`/`TuningReason`, `TraverseBfsAsync(maxDepth:, maxNodes:)`, `GenerateSummariesAsync`), listed interfaces with
+  members they do not declare, and described options that do not exist (`DynamicFusionOptions` — Dynamic Alpha Tuning uses a fixed
+  weight table, now shown; the query types of that table). The quick start and the test fixture searched without an embedder, which
+  throws; they now use keyword search. Every C# block of the four guides is compiled in CI, one compilation per document.
 
 ### Dependencies
 - Re-pinned sibling package(s) `FileFlux` 0.51.0 -> 0.52.0, `LMSupply.Embedder` 0.114.0 -> 0.115.1, `LMSupply.Generator` 0.114.0 -> 0.115.1, `LMSupply.Reranker` 0.114.0 -> 0.115.1, `WebFlux` 0.22.4 -> 0.23.0.

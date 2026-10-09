@@ -22,6 +22,8 @@ Advanced RAG features include:
 ```csharp
 using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.Core.Application.Services;
+using FluxIndex.Core.Application.Services.Reranking;  // ListwiseReranker
+using FluxIndex.Core.Services;                        // QueryComplexityAnalyzer, DynamicFusionService
 using Microsoft.Extensions.DependencyInjection;
 
 var services = new ServiceCollection();
@@ -57,10 +59,10 @@ DAT automatically adjusts the balance between keyword (BM25) and vector search b
 
 ```
 Simple Query: "machine learning"
-→ Keyword-biased: α = 0.35 (35% keyword, 65% vector)
+→ Keyword-biased: base weights 65% keyword, 35% vector
 
 Complex Query: "How does transformer attention mechanism work in NLP?"
-→ Semantic-biased: α = 0.65 (65% keyword, 35% vector)
+→ Semantic-biased: base weights 30% keyword, 70% vector (natural-language question)
 ```
 
 ### Usage
@@ -73,28 +75,31 @@ var config = await fusionService.CalculateDynamicWeightsAsync(
     query: "What are the benefits of microservices architecture?",
     cancellationToken: ct);
 
-Console.WriteLine($"Keyword Weight: {config.KeywordWeight:P1}");
+Console.WriteLine($"Keyword Weight: {config.SparseWeight:P1}");
 Console.WriteLine($"Vector Weight: {config.VectorWeight:P1}");
-Console.WriteLine($"Fusion Method: {config.Method}");
-Console.WriteLine($"Reason: {config.TuningReason}");
+Console.WriteLine($"Fusion Method: {config.RecommendedFusion}");
+Console.WriteLine($"Reason: {config.Reasoning}");
 ```
 
 ### Configuration Options
 
-```csharp
-public class DynamicFusionOptions
-{
-    // Base alpha when no adjustments needed
-    public float BaseAlpha { get; set; } = 0.5f;
+DAT has no options of its own. `IQueryComplexityAnalyzer` classifies the query, and the service starts
+from the base weights of that query type, shifts them for the technical domains the analyzer detects
+(programming, database and DevOps toward keyword; AI/ML and Korean toward vector) and for the query's complexity,
+then normalizes the pair to sum to 1:
 
-    // Maximum alpha adjustment range
-    public float MaxAdjustment { get; set; } = 0.2f;
+| Query type | Vector | Keyword |
+|------------|--------|---------|
+| `SimpleKeyword` | 0.35 | 0.65 |
+| `NaturalQuestion` | 0.70 | 0.30 |
+| `ComplexSearch` | 0.45 | 0.55 |
+| `ReasoningQuery` | 0.80 | 0.20 |
+| `ComparisonQuery` | 0.55 | 0.45 |
+| `TemporalQuery` | 0.60 | 0.40 |
+| `MultiHopQuery` | 0.75 | 0.25 |
 
-    // Query length threshold for adjustment
-    public int ShortQueryThreshold { get; set; } = 3;
-    public int LongQueryThreshold { get; set; } = 10;
-}
-```
+To fix the weights instead, set `VectorWeight`/`SparseWeight` on the hybrid search options — values you set
+are used as given (see [REFERENCE.md](./REFERENCE.md#configuration)).
 
 ### Query Analysis Factors
 
@@ -153,7 +158,7 @@ foreach (var result in reranked)
 
 ```csharp
 // For high-throughput scenarios
-var options = new ListwiseRerankOptions
+var throughputOptions = new ListwiseRerankOptions
 {
     Method = ListwiseMethod.SlidingWindow,
     WindowSize = 10,
@@ -162,7 +167,7 @@ var options = new ListwiseRerankOptions
 };
 
 // For maximum quality
-var options = new ListwiseRerankOptions
+var qualityOptions = new ListwiseRerankOptions
 {
     Method = ListwiseMethod.Hybrid,
     TopN = 10,
@@ -369,22 +374,26 @@ The Leiden algorithm is a graph-based community detection method that:
 ### Basic Usage
 
 ```csharp
+using FluxIndex.Core.Domain.ValueObjects;  // EmbeddingVector
+
 var communityService = serviceProvider.GetRequiredService<ILeidenCommunityService>();
 
-// Prepare chunks with embeddings
-var chunks = documents.SelectMany(d => d.Chunks)
+// Prepare chunks with embeddings (the vectors your embedding service produced for them)
+var modelName = embeddingService.GetModelName();
+var leidenChunks = documents.SelectMany(d => d.Chunks)
+    .Where(c => c.Embedding is not null)
     .Select(c => new LeidenChunk
     {
-        Id = c.Id.ToString(),
+        Id = c.Id,
         Content = c.Content,
-        Embedding = c.Embedding,
-        DocumentId = c.DocumentId.ToString()
+        Embedding = new EmbeddingVector(c.Embedding!, modelName),
+        DocumentId = c.DocumentId
     })
     .ToList();
 
 // Detect communities
 var hierarchy = await communityService.DetectHierarchicalCommunitiesAsync(
-    chunks,
+    leidenChunks,
     options: new LeidenOptions
     {
         Resolution = 1.0,           // Higher = more communities
@@ -429,8 +438,12 @@ foreach (var level in hierarchy.Levels)
 ### Community-Based Search
 
 ```csharp
-// Find relevant communities for a query
-var queryEmbedding = await embeddingService.GenerateEmbeddingAsync(query);
+using FluxIndex.Core.Domain.ValueObjects;  // EmbeddingVector
+
+// Find relevant communities for a query (embedded in the query role, in the chunks' vector space)
+var queryEmbedding = new EmbeddingVector(
+    await embeddingService.GenerateQueryEmbeddingAsync(query, ct),
+    embeddingService.GetModelName());
 
 var matches = await communityService.FindRelevantCommunitiesAsync(
     queryEmbedding: queryEmbedding,
@@ -453,7 +466,7 @@ var relevantChunkIds = matches
     .ToHashSet();
 
 var filteredResults = searchResults
-    .Where(r => relevantChunkIds.Contains(r.ChunkId.ToString()))
+    .Where(r => relevantChunkIds.Contains(r.ChunkId))
     .ToList();
 ```
 
@@ -629,9 +642,12 @@ services.AddSingleton<IListwiseReranker, ListwiseReranker>();
 ### 3. Entity Extraction for Semantic Enrichment
 
 ```csharp
-// Extract entities during indexing
-var entities = await extractor.ExtractEntitiesAsync(doc.Content);
-doc.Metadata["entities"] = entities.Select(e => e.NormalizedText).ToList();
+// Extract entities while preparing documents for indexing
+foreach (var doc in documents)
+{
+    var entities = await extractor.ExtractEntitiesAsync(doc.Content, cancellationToken: ct);
+    doc.Metadata["entities"] = entities.Select(e => e.NormalizedText).ToList();
+}
 
 // Use for faceted search / filtering
 ```
@@ -639,10 +655,10 @@ doc.Metadata["entities"] = entities.Select(e => e.NormalizedText).ToList();
 ### 4. Community Detection for Large Collections
 
 ```csharp
-// Build communities for collections with 100+ documents
-if (collection.DocumentCount >= 100)
+// Build communities once a corpus has 100+ documents
+if (documents.Count() >= 100)
 {
-    var hierarchy = await communityService.DetectHierarchicalCommunitiesAsync(chunks);
+    var hierarchy = await communityService.DetectHierarchicalCommunitiesAsync(leidenChunks, cancellationToken: ct);
     // Store hierarchy for navigation
 }
 ```
@@ -653,11 +669,11 @@ if (collection.DocumentCount >= 100)
 // Log fusion decisions
 _logger.LogInformation(
     "Query: {Query}, Alpha: {Alpha}, Reason: {Reason}",
-    query, config.KeywordWeight, config.TuningReason);
+    query, config.SparseWeight, config.Reasoning);
 
 // Track reranking impact
-var deltaSum = results.Sum(r => Math.Abs(r.OriginalRank - r.NewRank));
-_logger.LogInformation("rerank_delta_avg {Value}", deltaSum / (double)results.Count);
+var deltaSum = reranked.Sum(r => Math.Abs(r.InitialRank - r.NewRank));
+_logger.LogInformation("rerank_delta_avg {Value}", deltaSum / (double)reranked.Count);
 ```
 
 ---

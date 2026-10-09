@@ -78,8 +78,9 @@ await context.Indexer.IndexDocumentAsync(
     documentId: "doc-001"
 );
 
-// Search (hybrid search enabled automatically)
-var results = await context.Retriever.SearchAsync("RAG library", maxResults: 5);
+// Search — keyword search needs no model; SearchAsync/HybridSearchAsync need an embedder
+// (see "With Production Embedding" below), and without one they throw
+var results = await context.Retriever.KeywordSearchAsync("RAG library", maxResults: 5);
 ```
 
 > **Select the provider, then register it.** `Use*` only sets options — the matching `Add*Storage()`
@@ -200,11 +201,13 @@ var context = FluxIndexContext.CreateBuilder()
 ### With Production Embedding
 
 ```csharp
-// Local storage + LMSupply (consumer app implements wrapper)
+using FluxIndex.Providers.LMSupply.Extensions;  // package FluxIndex.Providers.LMSupply
+
+// Local storage + local embedding model (downloaded on first use)
 var context = FluxIndexContext.CreateBuilder()
     .UseLocalStorage("fluxindex.db")
     .AddSQLiteStorage()
-    .ConfigureServices(s => s.AddLMSupplyEmbedding())  // Your extension method
+    .ConfigureServices(s => s.AddLMSupplyEmbedding())  // model alias or id; "default" when omitted
     .Build();
 ```
 
@@ -223,6 +226,8 @@ Best for:
 ### Quick Start
 
 ```csharp
+using FluxIndex.Providers.OpenAI.Extensions;  // package FluxIndex.Providers.OpenAI
+
 var context = FluxIndexContext.CreateBuilder()
     .UseBestInClass(
         postgresConnectionString: "Host=localhost;Database=fluxindex;...",
@@ -311,26 +316,20 @@ var context = FluxIndexContext.CreateBuilder()
 ### Custom Provider Implementation
 
 ```csharp
-// 1. Implement IStorageProvider with capability interfaces
-public class ChromaProvider : IStorageProvider, IVectorCapable
-{
-    public string ProviderName => "Chroma";
-    public StorageCapabilities Capabilities => StorageCapabilities.Vector;
-    public IVectorStore VectorStore { get; }
+// 1. Your IVectorStore implementation — deriving from VectorStoreBase leaves nine core methods
+//    (see REFERENCE.md «Custom Vector Store»)
+var chroma = new YourVectorStore("http://localhost:8000");
 
-    public ChromaProvider(string endpoint)
-    {
-        VectorStore = new ChromaVectorStore(endpoint);
-    }
-}
-
-// 2. Register via ConfigureServices
+// 2. Register it via ConfigureServices — the builder falls back to its in-memory store
+//    only when no IVectorStore is registered
 var context = FluxIndexContext.CreateBuilder()
-    .UsePostgreSQL(connStr)  // RDB + Cache
-    .ConfigureServices(s =>
-        s.AddSingleton<IVectorStore>(new ChromaProvider("http://localhost:8000").VectorStore))
+    .ConfigureServices(s => s.AddSingleton<IVectorStore>(chroma))
     .Build();
 ```
+
+The store is registered as the service itself. `IStorageProvider` and its capability interfaces
+(`IVectorCapable`, `IGraphCapable`) describe the bundled providers; the builder does not consult them,
+so implementing them adds nothing to a custom store.
 
 ### Priority Rules
 
@@ -342,10 +341,12 @@ When multiple providers support the same capability:
 
 ```csharp
 // Example: Qdrant handles Vector, PostgreSQL handles everything else
-.UsePostgreSQL(connStr)   // RDB + Cache + Vector + Graph
-.UseQdrant(...)           // Takes over Vector
-.AddPostgreSQLStorage()
-.AddQdrantStorage()
+var context = FluxIndexContext.CreateBuilder()
+    .UsePostgreSQL(connStr)                  // RDB + Cache + Vector + Graph
+    .UseQdrant("localhost", 6334, "chunks")  // Takes over Vector
+    .AddPostgreSQLStorage()
+    .AddQdrantStorage()
+    .Build();
 // Result: Qdrant(Vector), PostgreSQL(RDB, Cache, Graph)
 ```
 
@@ -418,48 +419,50 @@ When multiple providers support the same capability:
 ### AI Services
 
 ```csharp
+// Choose one, on the builder from FluxIndexContext.CreateBuilder():
+
 // No embedder registered: a keyword-only context (no vectors stored; vector search throws)
-.Build()
+builder.Build();
 
 // Deterministic test vectors (not semantically meaningful)
-.UseInMemoryEmbedding()
+builder.UseInMemoryEmbedding();
 
 // Custom embedding (production)
-.ConfigureServices(s => s.AddSingleton<IEmbeddingService>(myEmbedder))
+builder.ConfigureServices(s => s.AddSingleton<IEmbeddingService>(myEmbedder));
 
 // Direct instance
-.UseEmbeddingService(myEmbeddingInstance)
+builder.UseEmbeddingService(myEmbeddingInstance);
 ```
 
 ### Caching
 
 ```csharp
 // In-memory embedding cache (always enabled)
-.Build()
+builder.Build();
 
-// Redis for distributed cache
-.UseRedisCache("localhost:6379")
+// Redis for distributed cache (package FluxIndex.Cache.Redis registers it)
+builder.UseRedisCache("localhost:6379").AddRedisStorage();
 
 // Memory cache with custom size
-.UseMemoryCache(maxCacheSize: 5000)
+builder.UseMemoryCache(maxCacheSize: 5000);
 ```
 
 ### Search Options
 
 ```csharp
-.WithSearchOptions(
+builder.WithSearchOptions(
     defaultMaxResults: 10,     // used by SearchAsync/HybridSearchAsync/KeywordSearchAsync/FindSimilarAsync
-    defaultMinScore: 0.5f)     // when the call omits maxResults / minScore (SearchAsync only for minScore;
+    defaultMinScore: 0.5f);    // when the call omits maxResults / minScore (SearchAsync only for minScore;
                                // default without this call: 10 / 0.2)
 
-.WithChunking(
+builder.WithChunking(
     chunkSize: 512,        // characters, not tokens — applies to Indexer.IndexDocumentAsync(string content, ...)
-    chunkOverlap: 64)      // must be smaller than chunkSize
+    chunkOverlap: 64);     // must be smaller than chunkSize
 // The SDK splitter has one algorithm (fixed size at the nearest sentence/paragraph/word boundary).
 // Documents split by FileFlux/FluxCurator are indexed as given — pass them as a pre-chunked Document,
 // or use UseFileFlux() / AddFileFluxIntegration().
 
-.WithCacheDuration(TimeSpan.FromHours(1))
+builder.WithCacheDuration(TimeSpan.FromHours(1));
 ```
 
 ---
@@ -484,24 +487,26 @@ await context.Indexer.IndexDocumentAsync(
 ### Batch Indexing
 
 ```csharp
-var documents = files.Select(f => new IndexRequest
-{
-    DocumentId = Path.GetFileNameWithoutExtension(f),
-    Content = File.ReadAllText(f),
-    Metadata = new Dictionary<string, object> { ["file"] = f }
-});
+var documents = files.Select(f => (
+    DocumentId: Path.GetFileNameWithoutExtension(f),
+    Content: File.ReadAllText(f),
+    Metadata: new Dictionary<string, object> { ["file"] = f }));
 
-await context.Indexer.IndexBatchAsync(documents, parallelism: 8);
-// Performance: ~50K chunks/second with optimal parallelism
+// Each document is split and embedded on its own, then the batch is written once per store
+var result = await context.Indexer.IndexDocumentsBatchAsync(documents);
+Console.WriteLine($"{result.SuccessfulDocuments}/{result.TotalDocuments} indexed");
 ```
 
 ### File Processing (PDF, DOCX)
 
 ```csharp
+using FileFlux.Core;                         // ChunkingStrategies
+using FluxIndex.Integrations.FileFlux;       // package FluxIndex.Integrations.FileFlux
+
 // Register FileFlux integration
 services.AddFileFluxIntegration(options =>
 {
-    options.DefaultChunkingStrategy = ChunkingStrategies.Intelligent;
+    options.DefaultChunkingStrategy = ChunkingStrategies.Auto;  // or Semantic, Paragraph, Sentence, Hierarchical, Token
     options.DefaultMaxChunkSize = 1024;
     options.DefaultOverlapSize = 128;
     options.DefaultLanguage = "en";
@@ -603,13 +608,13 @@ GraphRAG enables entity-aware retrieval for relational queries.
 
 ```csharp
 // Local mode - SQLite handles entity graph
-var context = FluxIndexContext.CreateBuilder()
+var localContext = FluxIndexContext.CreateBuilder()
     .UseLocalStorage("fluxindex.db")  // Includes SQLiteEntityGraphStore
     .AddSQLiteStorage()
     .Build();
 
 // Full mode - Neo4j for optimal graph performance
-var context = FluxIndexContext.CreateBuilder()
+var fullContext = FluxIndexContext.CreateBuilder()
     .UseBestInClass(pgConn, qdrantHost, 6334, "chunks", 1536, neo4jUri, neo4jUser, neo4jPassword)
     .AddQdrantStorage()
     .AddPostgreSQLStorage()
@@ -684,6 +689,8 @@ IReadOnlyDictionary<string, double> importance =
 ### Enable Caching
 
 ```csharp
+using FluxIndex.Providers.LMSupply.Extensions;
+
 var context = FluxIndexContext.CreateBuilder()
     .UseLocalStorage("fluxindex.db")
     .AddSQLiteStorage()
@@ -700,6 +707,8 @@ var context = FluxIndexContext.CreateBuilder()
 ### Enable Quantization
 
 ```csharp
+using FluxIndex.Core.Application.Services;
+
 // 4x compression with Int8 quantization
 services.AddScalarQuantization(dimension: 1536);
 services.AddQuantizedVectorStoreDecorator(autoQuantize: true);
@@ -722,6 +731,8 @@ services.AddQuantizedVectorStoreDecorator(autoQuantize: true);
 ## Example: Complete RAG Pipeline
 
 ```csharp
+using Flux.Abstractions;  // ITextCompletionService
+
 public class RAGService
 {
     private readonly IFluxIndexContext _context;
