@@ -623,27 +623,17 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDi
     }
 
     /// <summary>
-    /// 시맨틱 캐시 통계 조회
+    /// The registered semantic cache's statistics, as the cache reports them; null when no
+    /// <see cref="ISemanticCacheService"/> is registered or the cache could not answer.
     /// </summary>
-    public async Task<FluxIndex.Core.Domain.ValueObjects.CacheStatistics?> GetCacheStatisticsAsync(CancellationToken cancellationToken = default)
+    public async Task<SemanticCacheStatistics?> GetCacheStatisticsAsync(CancellationToken cancellationToken = default)
     {
         if (_cacheService == null)
             return null;
 
         try
         {
-            var stats = await _cacheService.GetCacheStatisticsAsync(cancellationToken);
-            return new FluxIndex.Core.Domain.ValueObjects.CacheStatistics
-            {
-                TotalQueries = stats.TotalEntries,
-                CacheHits = stats.CacheHits,
-                CacheMisses = stats.CacheMisses,
-                CachedItemsCount = stats.TotalEntries,
-                MemoryUsageBytes = 0, // Application interface doesn't expose this
-                AverageResponseTime = TimeSpan.Zero, // Application interface doesn't expose this
-                CacheResponseTime = TimeSpan.Zero, // Application interface doesn't expose this
-                AverageSimilarityScore = 0.0f // Application interface doesn't expose this
-            };
+            return await _cacheService.GetCacheStatisticsAsync(cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
@@ -1040,31 +1030,56 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDi
 
     private void ReleaseStorage()
     {
-        // 2. Dispose VectorStore (DbContext) to close DB connections
-        if (ServiceProvider.GetService(typeof(IVectorStore)) is IDisposable vectorStore)
-        {
-            vectorStore.Dispose();
-        }
-
-        // 3. Dispose SQLite DbContext explicitly (via reflection to avoid storage dependency)
-        var dbContextType = Type.GetType("FluxIndex.Storage.SQLite.SQLiteDbContext, FluxIndex.Storage.SQLite");
-        if (dbContextType != null)
-        {
-            var dbContextObj = ServiceProvider.GetService(dbContextType);
-            if (dbContextObj != null)
-            {
-                // Close connection explicitly before disposing
-                // DbContext.Database.CloseConnection() via reflection
-                var databaseProp = dbContextObj.GetType().GetProperty("Database");
-                var database = databaseProp?.GetValue(dbContextObj);
-                if (database != null)
-                {
-                    var closeMethod = database.GetType().GetMethod("CloseConnection", BindingFlags.Public | BindingFlags.Instance);
-                    closeMethod?.Invoke(database, null);
-                }
-
-                (dbContextObj as IDisposable)?.Dispose();
-            }
+        // 2. Dispose VectorStore (DbContext) to close DB connections
+
+        if (ServiceProvider.GetService(typeof(IVectorStore)) is IDisposable vectorStore)
+
+        {
+
+            vectorStore.Dispose();
+
+        }
+
+
+
+        // 3. Dispose SQLite DbContext explicitly (via reflection to avoid storage dependency)
+
+        var dbContextType = Type.GetType("FluxIndex.Storage.SQLite.SQLiteDbContext, FluxIndex.Storage.SQLite");
+
+        if (dbContextType != null)
+
+        {
+
+            var dbContextObj = ServiceProvider.GetService(dbContextType);
+
+            if (dbContextObj != null)
+
+            {
+
+                // Close connection explicitly before disposing
+
+                // DbContext.Database.CloseConnection() via reflection
+
+                var databaseProp = dbContextObj.GetType().GetProperty("Database");
+
+                var database = databaseProp?.GetValue(dbContextObj);
+
+                if (database != null)
+
+                {
+
+                    var closeMethod = database.GetType().GetMethod("CloseConnection", BindingFlags.Public | BindingFlags.Instance);
+
+                    closeMethod?.Invoke(database, null);
+
+                }
+
+
+
+                (dbContextObj as IDisposable)?.Dispose();
+
+            }
+
         }
     }
 
@@ -1273,7 +1288,7 @@ public interface IFluxIndexContext : IDisposable, IAsyncDisposable
 
     // Semantic Cache APIs — null / false / no-op when no ISemanticCacheService is registered
     /// <summary>Semantic cache statistics.</summary>
-    Task<FluxIndex.Core.Domain.ValueObjects.CacheStatistics?> GetCacheStatisticsAsync(CancellationToken cancellationToken = default);
+    Task<SemanticCacheStatistics?> GetCacheStatisticsAsync(CancellationToken cancellationToken = default);
     /// <summary>Pre-loads the semantic cache with the given queries.</summary>
     Task<bool> WarmupCacheAsync(IEnumerable<string> commonQueries, CancellationToken cancellationToken = default);
     /// <summary>Runs semantic cache maintenance.</summary>

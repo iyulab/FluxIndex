@@ -7,6 +7,19 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [Unreleased]
 
+### Changed
+- **Breaking** — **`IFluxIndexContext.GetCacheStatisticsAsync` returns the cache's own `SemanticCacheStatistics`.** It
+  copied them into `Domain.ValueObjects.CacheStatistics`, where `TotalQueries` held the number of cached entries and the
+  memory size, response times and similarity were always 0 although the cache reports size and response time.
+  Migration: read `TotalEntries`, `CacheHits`, `CacheMisses`, `HitRate`, `AverageResponseTimeMs`, `CacheSizeBytes`,
+  `ExpiredEntries`.
+
+### Removed
+- **Breaking** — `FluxIndex.Core.Domain.ValueObjects` `CacheResult`, `CacheMetadata`, `CacheStatistics` and
+  `CacheHitType`: no cache produced or read them. The semantic cache models are `FluxIndex.Core.Application.Interfaces`'
+  (`ISemanticCache`) and `SemanticCacheStatistics` (`ISemanticCacheService`). Migration: a `using` of
+  `FluxIndex.Core.Domain.ValueObjects` for these names moves to `FluxIndex.Core.Application.Interfaces`.
+
 ### Dependencies
 - Re-pinned sibling package(s) `FileFlux` 0.53.0 -> 0.54.0.
 - Re-pinned sibling package(s) `FileFlux` 0.54.0 -> 0.55.0.
