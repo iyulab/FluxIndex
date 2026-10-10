@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [Unreleased]
+## [0.86.0] - 2026-10-10
 
 ### Fixed
 - **Breaking: the enrichment presets take effect.** `AddDocumentEnrichmentPipelineBasic` and
