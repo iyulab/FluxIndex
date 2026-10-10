@@ -5,6 +5,20 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **`CorrectiveRAGOptions.Timeout` limits the correction.** It was never read; it is now `TimeSpan?`, null by default (no
+  limit, as before), and when set an over-long correction throws `TimeoutException` (the caller's cancellation still
+  throws `OperationCanceledException`).
+
+### Removed
+- **Breaking: settings Corrective RAG never read.** `CorrectiveRAGOptions.CorrectThreshold` and `AmbiguousThreshold`
+  (grading always used the service's `CorrectiveRAGServiceOptions` thresholds — set them there, with
+  `AddCorrectiveRAGService(o => …)`), `EnableWebSearch` (there is no web retrieval), `EnableDetailedLogging` (use the log
+  level), `RetryCount`, and `CorrectiveRAGServiceOptions.MaxRetries` (nothing retried). Migration: delete the
+  assignments; move threshold values to the service options.
+
 ## [0.85.0] - 2026-10-10
 
 ### Fixed

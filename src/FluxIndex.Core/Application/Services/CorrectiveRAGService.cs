@@ -54,6 +54,27 @@ public partial class CorrectiveRAGService : ICorrectiveRAGService
         cancellationToken.ThrowIfCancellationRequested();
 
         var opts = options ?? new CorrectiveRAGOptions();
+        if (opts.Timeout is not { } timeout)
+            return await RetrieveWithCorrectionCoreAsync(query, opts, cancellationToken);
+
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(timeout, TimeSpan.Zero, nameof(CorrectiveRAGOptions.Timeout));
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        limit.CancelAfter(timeout);
+        try
+        {
+            return await RetrieveWithCorrectionCoreAsync(query, opts, limit.Token);
+        }
+        catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested && limit.IsCancellationRequested)
+        {
+            throw new TimeoutException($"Corrective retrieval did not finish within {timeout}.", ex);
+        }
+    }
+
+    private async Task<CorrectiveRAGResult> RetrieveWithCorrectionCoreAsync(
+        string query,
+        CorrectiveRAGOptions opts,
+        CancellationToken cancellationToken)
+    {
         var stopwatch = Stopwatch.StartNew();
         var correctionSteps = new List<CorrectionStep>();
         var stepNumber = 0;
@@ -809,8 +830,4 @@ public partial class CorrectiveRAGServiceOptions
     /// </summary>
     public bool UseLlmForRefinement { get; set; } = true;
 
-    /// <summary>
-    /// Maximum retries for alternative retrieval.
-    /// </summary>
-    public int MaxRetries { get; set; } = 2;
 }

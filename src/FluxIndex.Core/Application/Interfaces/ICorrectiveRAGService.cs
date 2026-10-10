@@ -74,23 +74,6 @@ public class CorrectiveRAGOptions
     public int MaxInitialDocuments { get; set; } = 10;
 
     /// <summary>
-    /// Threshold for considering a document as "correct" (relevant).
-    /// Documents with relevance score above this are used directly.
-    /// </summary>
-    public double CorrectThreshold { get; set; } = 0.7;
-
-    /// <summary>
-    /// Threshold for considering a document as "ambiguous".
-    /// Documents between this and CorrectThreshold need supplementation.
-    /// </summary>
-    public double AmbiguousThreshold { get; set; } = 0.4;
-
-    /// <summary>
-    /// Enable web search as alternative retrieval source.
-    /// </summary>
-    public bool EnableWebSearch { get; set; }
-
-    /// <summary>
     /// Enable query transformation for alternative retrieval.
     /// </summary>
     public bool EnableQueryTransformation { get; set; } = true;
@@ -106,19 +89,15 @@ public class CorrectiveRAGOptions
     public int MaxAlternativeDocuments { get; set; } = 5;
 
     /// <summary>
-    /// Timeout for the entire corrective process.
+    /// A limit on the whole correction (retrieval, grading, alternative retrieval, refinement). When it elapses the call
+    /// throws <see cref="TimeoutException"/>; the caller's own cancellation still throws
+    /// <see cref="OperationCanceledException"/>. Null (the default) sets no limit.
     /// </summary>
-    public TimeSpan Timeout { get; set; } = TimeSpan.FromMinutes(2);
-
-    /// <summary>
-    /// Enable detailed logging of the correction process.
-    /// </summary>
-    public bool EnableDetailedLogging { get; set; }
-
-    /// <summary>
-    /// Retry count for failed retrievals.
-    /// </summary>
-    public int RetryCount { get; set; } = 2;
+    /// <remarks>
+    /// The grading thresholds are the service's (<c>CorrectiveRAGServiceOptions.CorrectThreshold</c> /
+    /// <c>AmbiguousThreshold</c>) — they calibrate the relevance score, which does not change per query.
+    /// </remarks>
+    public TimeSpan? Timeout { get; set; }
 }
 
 /// <summary>

@@ -437,20 +437,19 @@ var result = await selfRag.SearchAsync(query, new SelfRAGOptions
 
 ### Corrective RAG
 
-Document grading and knowledge refinement with web augmentation.
+Document grading, alternative retrieval over the index and knowledge refinement.
 
 ```csharp
 var crag = serviceProvider.GetRequiredService<ICorrectiveRAGService>();
 
 var result = await crag.RetrieveWithCorrectionAsync(query, new CorrectiveRAGOptions
 {
-    EnableWebSearch = true,
-    CorrectThreshold = 0.7f,
-    AmbiguousThreshold = 0.4f,
-    RetryCount = 2
+    MaxInitialDocuments = 10,
+    Timeout = TimeSpan.FromSeconds(30),   // null (default) = no limit; elapsed -> TimeoutException
 });
 
-// Documents are graded as Correct, Ambiguous, or Incorrect
+// Documents are graded as Correct, Ambiguous, or Incorrect against the service's thresholds
+// (AddCorrectiveRAGService(o => { o.CorrectThreshold = 0.7; o.AmbiguousThreshold = 0.4; }))
 ```
 
 ### Agentic Retrieval Router

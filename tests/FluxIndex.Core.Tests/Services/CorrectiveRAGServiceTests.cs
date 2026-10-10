@@ -181,13 +181,56 @@ public class CorrectiveRAGServiceTests
         var options = new CorrectiveRAGOptions
         {
             MaxInitialDocuments = 3,
-            CorrectThreshold = 0.8
         };
 
         // Act
         var result = await _service.RetrieveWithCorrectionAsync(query, options, TestContext.Current.CancellationToken);
 
-        // Assert
+        // Assert — the initial retrieval asked for MaxInitialDocuments
+        Assert.NotNull(result);
+        await _mockSearchService.Received().SearchAsync(
+            query, Arg.Is<HybridSearchOptions>(o => o.MaxResults == 3), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RetrieveWithCorrectionAsync_Timeout_ThrowsTimeoutException_WhenTheCorrectionRunsLonger()
+    {
+        // A search that only ends when it is cancelled: the timeout is what ends it.
+        _mockSearchService.SearchAsync(Arg.Any<string>(), Arg.Any<HybridSearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                await Task.Delay(Timeout.Infinite, call.Arg<CancellationToken>());
+                return (IReadOnlyList<HybridSearchResult>)[];
+            });
+
+        var act = () => _service.RetrieveWithCorrectionAsync(
+            "q", new CorrectiveRAGOptions { Timeout = TimeSpan.FromMilliseconds(50) }, TestContext.Current.CancellationToken);
+
+        await Assert.ThrowsAsync<TimeoutException>(act);
+    }
+
+    [Fact]
+    public async Task RetrieveWithCorrectionAsync_CallerCancellation_StaysCancellation_EvenWithATimeout()
+    {
+        _mockSearchService.SearchAsync(Arg.Any<string>(), Arg.Any<HybridSearchOptions>(), Arg.Any<CancellationToken>())
+            .Returns(async call =>
+            {
+                await Task.Delay(Timeout.Infinite, call.Arg<CancellationToken>());
+                return (IReadOnlyList<HybridSearchResult>)[];
+            });
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        cts.CancelAfter(TimeSpan.FromMilliseconds(50));
+
+        var act = () => _service.RetrieveWithCorrectionAsync("q", new CorrectiveRAGOptions { Timeout = TimeSpan.FromMinutes(5) }, cts.Token);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(act);
+    }
+
+    [Fact]
+    public async Task RetrieveWithCorrectionAsync_NoTimeout_ByDefault()
+    {
+        Assert.Null(new CorrectiveRAGOptions().Timeout);
+        var result = await _service.RetrieveWithCorrectionAsync("q", cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotNull(result);
     }
 
@@ -699,7 +742,6 @@ public class CorrectiveRAGServiceTests
         {
             EnableKnowledgeRefinement = true,
             EnableQueryTransformation = true,
-            EnableDetailedLogging = true
         };
 
         // Act
