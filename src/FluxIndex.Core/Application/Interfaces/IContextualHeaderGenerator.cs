@@ -63,8 +63,4 @@ public class ContextualHeaderOptions
     /// </summary>
     public bool IncludeHeadingPath { get; set; } = true;
 
-    /// <summary>
-    /// 프롬프트 캐싱 사용 여부
-    /// </summary>
-    public bool UsePromptCaching { get; set; } = true;
 }

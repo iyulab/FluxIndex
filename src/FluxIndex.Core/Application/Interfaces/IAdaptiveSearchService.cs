@@ -68,14 +68,9 @@ public class AdaptiveSearchOptions
     /// <summary>A/B 테스트 모드</summary>
     public bool EnableABTest { get; set; }
 
-    /// <summary>상세 분석 로깅</summary>
-    public bool EnableDetailedLogging { get; set; }
-
     /// <summary>캐싱 사용</summary>
     public bool UseCache { get; set; } = true;
 
-    /// <summary>사용자 컨텍스트</summary>
-    public Dictionary<string, object> UserContext { get; set; } = new();
 }
 
 /// <summary>

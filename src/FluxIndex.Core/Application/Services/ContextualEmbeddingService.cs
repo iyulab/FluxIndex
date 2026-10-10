@@ -335,13 +335,4 @@ public partial class ContextualEmbeddingOptions
     /// </summary>
     public ContextPosition ContextPosition { get; set; } = ContextPosition.Prepend;
 
-    /// <summary>
-    /// Whether to generate dual embeddings (contextual + standard)
-    /// </summary>
-    public bool GenerateDualEmbeddings { get; set; }
-
-    /// <summary>
-    /// Maximum combined content length before truncation
-    /// </summary>
-    public int MaxCombinedLength { get; set; } = 8192;
 }

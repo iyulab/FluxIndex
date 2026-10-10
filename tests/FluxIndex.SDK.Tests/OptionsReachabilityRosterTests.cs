@@ -37,15 +37,10 @@ public class OptionsReachabilityRosterTests
         // CustomPatterns and GraphRAGQueryOptions.Include* (81 types remain). Each line is a set of promises the
         // library does not keep today; the issue draft that introduced this roster lists them by type
         // with a wire-or-remove call for each. Shrink this list, never grow it silently.
-        ["FluxIndex.Core.Application.Interfaces.AdaptiveSearchOptions"] = ["EnableDetailedLogging", "UserContext"],
-        ["FluxIndex.Core.Application.Interfaces.AgenticRetrievalOptions"] = ["EnableAdaptivePlanning"],
-        ["FluxIndex.Core.Application.Interfaces.ContextualHeaderOptions"] = ["UsePromptCaching"],
         ["FluxIndex.Core.Application.Interfaces.DynamicFusionConfiguration"] = ["Complexity", "Reasoning", "TechnicalDomains"],
-        ["FluxIndex.Core.Application.Interfaces.GlobalSearchOptions"] = ["ScoreConfidence"],
         // MinResults · EnableDetailedLogging · UserContext were read only by a second, never-registered
         // SelfRAGService removed in 0.38.0 — the registered service never honoured them (roster blind spot ④).
         ["FluxIndex.Core.Application.Interfaces.SelfRAGOptions"] = ["MinResults"],
-        ["FluxIndex.Core.Application.Services.ContextualEmbeddingOptions"] = ["GenerateDualEmbeddings", "MaxCombinedLength"],
         // Contract members: Indexer copies IndexingOptions' strategy / confidence / prompt into these and hands them to the
         // consumer's IMetadataExtractor (FluxIndex has no implementation), which reads them. The eight members no knob reached
         // (timeouts, retries, caching, sampling, max tokens, continue-on-failure) were removed on 2026-10-11.

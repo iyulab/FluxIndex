@@ -207,11 +207,6 @@ public class AgenticRetrievalOptions
     public bool EnableReflection { get; set; } = true;
 
     /// <summary>
-    /// Whether to adapt plan based on results
-    /// </summary>
-    public bool EnableAdaptivePlanning { get; set; } = true;
-
-    /// <summary>
     /// Maximum documents total
     /// </summary>
     public int MaxTotalDocs { get; set; } = 30;

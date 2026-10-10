@@ -14,6 +14,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   setting reached them on the indexing path, and FluxIndex ships no extractor that read them. Timeouts, retries and caching
   belong to your implementation; a failed extraction is logged and indexing continues, as before. Migration: if your extractor
   read one of them, take the value from your own configuration.
+- **Breaking: more settings nothing read** — `AdaptiveSearchOptions.EnableDetailedLogging` (the log level decides) and
+  `UserContext` (no personalisation step), `AgenticRetrievalOptions.EnableAdaptivePlanning` (the loop always re-plans from the
+  previous actions), `ContextualHeaderOptions.UsePromptCaching` (no completion option carries it), `GlobalSearchOptions.ScoreConfidence`
+  (the answer's confidence is always the average of the summaries used), and `ContextualEmbeddingOptions.GenerateDualEmbeddings`
+  (call `GenerateDualEmbeddingAsync` for both embeddings) / `MaxCombinedLength` (nothing truncates the combined text). The
+  `generateDualEmbeddings` parameter of `WithContextualEmbedding` and `AddContextualEmbedding(llmThreshold, …)` goes with it.
+  Migration: delete the assignments and the second argument.
 
 ### Dependencies
 - Re-pinned sibling package(s) `WebFlux` 0.24.0 -> 0.25.0.

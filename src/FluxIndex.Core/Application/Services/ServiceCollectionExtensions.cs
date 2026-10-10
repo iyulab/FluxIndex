@@ -409,18 +409,12 @@ public static class MetadataAugmentationServiceExtensions
     /// </summary>
     /// <param name="services">Service collection</param>
     /// <param name="llmThreshold">LLM usage threshold (0.0-1.0, default 0.7)</param>
-    /// <param name="generateDualEmbeddings">Whether to generate both contextual and standard embeddings</param>
     /// <returns>Service collection</returns>
     public static IServiceCollection AddContextualEmbedding(
         this IServiceCollection services,
-        double llmThreshold = 0.7,
-        bool generateDualEmbeddings = false)
+        double llmThreshold = 0.7)
     {
-        return services.AddContextualEmbedding(options =>
-        {
-            options.LlmThreshold = llmThreshold;
-            options.GenerateDualEmbeddings = generateDualEmbeddings;
-        });
+        return services.AddContextualEmbedding(options => options.LlmThreshold = llmThreshold);
     }
 
     /// <summary>

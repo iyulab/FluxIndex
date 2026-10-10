@@ -34,9 +34,7 @@ public class ContextualEmbeddingServiceTests
         var options = new ContextualEmbeddingOptions
         {
             LlmThreshold = 0.7,
-            ContextPosition = ContextPosition.Prepend,
-            GenerateDualEmbeddings = false,
-            MaxCombinedLength = 8192
+            ContextPosition = ContextPosition.Prepend
         };
 
         return new ContextualEmbeddingService(

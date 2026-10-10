@@ -545,17 +545,10 @@ public class FluxIndexContextBuilder
     /// Research shows combining with BM25 reduces retrieval failures by 49%.
     /// </summary>
     /// <param name="llmThreshold">LLM usage threshold based on ContextDependency (default 0.7)</param>
-    /// <param name="generateDualEmbeddings">Generate both contextual and standard embeddings for hybrid retrieval</param>
     /// <returns>Builder instance for chaining</returns>
-    public FluxIndexContextBuilder WithContextualEmbedding(
-        double llmThreshold = 0.7,
-        bool generateDualEmbeddings = false)
+    public FluxIndexContextBuilder WithContextualEmbedding(double llmThreshold = 0.7)
     {
-        CoreServiceExtensions.AddContextualEmbedding(_services, options =>
-        {
-            options.LlmThreshold = llmThreshold;
-            options.GenerateDualEmbeddings = generateDualEmbeddings;
-        });
+        CoreServiceExtensions.AddContextualEmbedding(_services, options => options.LlmThreshold = llmThreshold);
 
         return this;
     }

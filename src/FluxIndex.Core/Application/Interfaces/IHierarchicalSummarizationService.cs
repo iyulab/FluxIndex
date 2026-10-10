@@ -225,12 +225,6 @@ public class GlobalSearchOptions
     public bool IncludeSources { get; set; } = true;
 
     /// <summary>
-    /// Whether to score answer confidence.
-    /// Default: true
-    /// </summary>
-    public bool ScoreConfidence { get; set; } = true;
-
-    /// <summary>
     /// Temperature for answer synthesis.
     /// Default: 0.3
     /// </summary>
