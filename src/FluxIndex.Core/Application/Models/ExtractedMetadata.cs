@@ -248,89 +248,26 @@ public class BatchMetadataRequest
 }
 
 /// <summary>
-/// 메타데이터 추출 옵션
-/// FileFlux 패턴 + FluxIndex 확장
+/// What <c>Indexer</c> hands your <see cref="FluxIndex.Core.Application.Interfaces.IMetadataExtractor"/> for one document: the
+/// strategy, minimum confidence and custom prompt set through <c>IndexingOptions.WithAIMetadataExtraction</c>. FluxIndex has no
+/// extractor of its own, so these are read by your implementation. Timeouts, retries and caching are the implementation's to
+/// decide (the indexer calls <c>ExtractWithCacheAsync</c>); a failed extraction is logged and indexing continues without AI metadata.
 /// </summary>
 public class AIMetadataExtractionOptions
 {
-    // ===================================================================
-    // 추출 전략 (FileFlux 패턴)
-    // ===================================================================
-
     /// <summary>
     /// 추출 전략 (토큰 예산 제어)
     /// </summary>
     public MetadataExtractionStrategy Strategy { get; set; } = MetadataExtractionStrategy.Smart;
 
     /// <summary>
-    /// 문서 타입별 적응형 샘플링 활성화
-    /// </summary>
-    public bool EnableAdaptiveSampling { get; set; } = true;
-
-    /// <summary>
-    /// 최대 토큰 수 (null = 전략에 따라 자동 설정)
-    /// Fast: 2000, Smart: 4000, Deep: 8000
-    /// </summary>
-    public int? MaxTokens { get; set; }
-
-    // ===================================================================
-    // 신뢰도 및 품질
-    // ===================================================================
-
-    /// <summary>
     /// 최소 신뢰도 임계값 (0.0 - 1.0)
-    /// 이 값보다 낮으면 RuleBased와 병합
     /// </summary>
     public float MinConfidence { get; set; } = 0.6f;
-
-    /// <summary>
-    /// 메타데이터 추출 실패 시 문서 처리 계속 진행 여부
-    /// true: 추출 실패 시에도 문서 인덱싱 계속
-    /// false: 추출 실패 시 예외 발생
-    /// </summary>
-    public bool ContinueOnFailure { get; set; } = true;
-
-    // ===================================================================
-    // 재시도 및 타임아웃 (FileFlux 패턴)
-    // ===================================================================
-
-    /// <summary>
-    /// 최대 재시도 횟수
-    /// </summary>
-    public int MaxRetries { get; set; } = 2;
-
-    /// <summary>
-    /// 재시도 지연 시간 (밀리초)
-    /// 지수 백오프 적용됨
-    /// </summary>
-    public int RetryDelayMs { get; set; } = 1000;
-
-    /// <summary>
-    /// 타임아웃 (밀리초)
-    /// </summary>
-    public int TimeoutMs { get; set; } = 30000;
-
-    // ===================================================================
-    // 커스텀 프롬프트
-    // ===================================================================
 
     /// <summary>
     /// 커스텀 추출 프롬프트 (스키마 프롬프트 오버라이드)
     /// MetadataSchema.Custom 사용 시 필수
     /// </summary>
     public string? CustomPrompt { get; set; }
-
-    // ===================================================================
-    // 캐싱 설정
-    // ===================================================================
-
-    /// <summary>
-    /// 캐싱 활성화 여부
-    /// </summary>
-    public bool EnableCaching { get; set; } = true;
-
-    /// <summary>
-    /// 캐시 TTL (Time To Live)
-    /// </summary>
-    public TimeSpan CacheTTL { get; set; } = TimeSpan.FromHours(1);
 }

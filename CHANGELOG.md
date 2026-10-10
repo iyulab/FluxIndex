@@ -7,6 +7,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [Unreleased]
 
+### Removed
+- **Breaking: `AIMetadataExtractionOptions` keeps only what the indexer hands your `IMetadataExtractor`** — `Strategy`,
+  `MinConfidence` and `CustomPrompt` (set through `IndexingOptions.WithAIMetadataExtraction`). `EnableAdaptiveSampling`,
+  `MaxTokens`, `ContinueOnFailure`, `MaxRetries`, `RetryDelayMs`, `TimeoutMs`, `EnableCaching` and `CacheTTL` are removed: no
+  setting reached them on the indexing path, and FluxIndex ships no extractor that read them. Timeouts, retries and caching
+  belong to your implementation; a failed extraction is logged and indexing continues, as before. Migration: if your extractor
+  read one of them, take the value from your own configuration.
+
 ### Dependencies
 - Re-pinned sibling package(s) `WebFlux` 0.24.0 -> 0.25.0.
 

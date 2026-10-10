@@ -46,7 +46,10 @@ public class OptionsReachabilityRosterTests
         // SelfRAGService removed in 0.38.0 — the registered service never honoured them (roster blind spot ④).
         ["FluxIndex.Core.Application.Interfaces.SelfRAGOptions"] = ["MinResults"],
         ["FluxIndex.Core.Application.Services.ContextualEmbeddingOptions"] = ["GenerateDualEmbeddings", "MaxCombinedLength"],
-        ["FluxIndex.Core.Application.Models.AIMetadataExtractionOptions"] = ["CacheTTL", "ContinueOnFailure", "CustomPrompt", "EnableAdaptiveSampling", "EnableCaching", "MaxRetries", "MaxTokens", "MinConfidence", "RetryDelayMs", "Strategy", "TimeoutMs"],
+        // Contract members: Indexer copies IndexingOptions' strategy / confidence / prompt into these and hands them to the
+        // consumer's IMetadataExtractor (FluxIndex has no implementation), which reads them. The eight members no knob reached
+        // (timeouts, retries, caching, sampling, max tokens, continue-on-failure) were removed on 2026-10-11.
+        ["FluxIndex.Core.Application.Models.AIMetadataExtractionOptions"] = ["CustomPrompt", "MinConfidence", "Strategy"],
         ["FluxIndex.SDK.SearchOptions"] = ["IncludeVectors"],
         // Moving to Iyu.Conventions.Testing 0.3.0 (2026-10-03) found options whose only reads copied the value into the
         // same property of another instance. EntityGraphOptions.AutoMigrate is now honoured (0.72.0); IvfflatLists,
