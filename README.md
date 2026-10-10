@@ -83,7 +83,8 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   refuses an opted-in provider nobody registered or two registered caches.
 - **Document processing** — PDF/DOCX/TXT via FileFlux, web pages via WebFlux (`FluxIndex.Integrations.*`, opt-in):
   `AddFileFluxIntegration` (builder `UseFileFlux`) for parsing and chunking — `FileFluxOptions.EnableMetadataEnrichment` adds AI
-  metadata (see «AI metadata on indexing») to each indexed file — `AddDocumentProcessingPipeline` for the
+  metadata (see «AI metadata on indexing») to each indexed file, and `FileFluxOptions.EnableLlmRefine` (off by default) lets
+  FileFlux's LLM refine stage rewrite the text before chunking, here and in the pipeline — `AddDocumentProcessingPipeline` for the
   document processing pipeline — contextual enrichment, QA generation and metadata enrichment run on the services you
   register (`AddFluxIndexFluxImprover` provides the first two); asking for one whose service is missing throws before
   processing, and `GenerateEmbeddings` left unset embeds only when an embedder is configured — `AddWebFluxIntegration`

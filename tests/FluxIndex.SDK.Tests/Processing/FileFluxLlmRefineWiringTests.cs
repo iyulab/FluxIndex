@@ -6,6 +6,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
 using Xunit;
+using ContentProcessingOptions = FluxIndex.Integrations.FileFlux.Processing.ContentProcessingOptions;
+using DocumentProcessingOptions = FluxIndex.Integrations.FileFlux.Processing.DocumentProcessingOptions;
+using DocumentProcessingPipeline = FluxIndex.Integrations.FileFlux.Processing.DocumentProcessingPipeline;
 using FileFluxChunk = FileFlux.Core.DocumentChunk;
 
 namespace FluxIndex.SDK.Tests.Processing;
@@ -74,6 +77,74 @@ public class FileFluxLlmRefineWiringTests
         });
 
         await integration.ProcessAndIndexAsync("report.pdf", cancellationToken: TestContext.Current.CancellationToken);
+
+        var passed = seen.Should().ContainSingle().Subject;
+        passed.IncludeLlmRefine.Should().BeTrue();
+        passed.LlmRefine.Should().BeSameAs(refine);
+    }
+
+    // DocumentProcessingPipeline made the same call with only chunking set, so it kept refining every document by default
+    // after FileFluxIntegration had been fixed; it now reads the same switch, on the file and the content path.
+    private static (DocumentProcessingPipeline Pipeline, List<FileFlux.Core.ProcessingOptions> Seen) CreatePipeline(
+        FileFluxOptions? options)
+    {
+        var seen = new List<FileFlux.Core.ProcessingOptions>();
+        var processor = Substitute.For<IDocumentProcessor>();
+        processor.Result.Returns(new ProcessingResult { Chunks = Chunks });
+        processor.ProcessAsync(Arg.Do<FileFlux.Core.ProcessingOptions?>(o => seen.Add(o!)), Arg.Any<CancellationToken>())
+            .Returns(Task.CompletedTask);
+        var factory = Substitute.For<IDocumentProcessorFactory>();
+        factory.Create(Arg.Any<string>()).Returns(processor);
+        var pipeline = new DocumentProcessingPipeline(
+            factory, fileFluxOptions: options is null ? null : Options.Create(options));
+        return (pipeline, seen);
+    }
+
+    private static async Task RunPipelineAsync(DocumentProcessingPipeline pipeline, bool fromContent)
+    {
+        var noStages = new DocumentProcessingOptions { GenerateEmbeddings = false, ExtractImages = false };
+        if (fromContent)
+        {
+            await pipeline.ProcessFromContentAsync(
+                "Quarterly revenue grew twelve percent.",
+                new ContentProcessingOptions { GenerateEmbeddings = false },
+                TestContext.Current.CancellationToken);
+            return;
+        }
+
+        var path = Path.Combine(Path.GetTempPath(), $"fluxindex_refine_{Guid.NewGuid():N}.txt");
+        await File.WriteAllTextAsync(path, "Quarterly revenue grew twelve percent.", TestContext.Current.CancellationToken);
+        try
+        {
+            await pipeline.ProcessAsync(path, noStages, TestContext.Current.CancellationToken);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Pipeline_ByDefault_TheLlmRefineStageDoesNotRun(bool fromContent)
+    {
+        var (pipeline, seen) = CreatePipeline(options: null);
+
+        await RunPipelineAsync(pipeline, fromContent);
+
+        seen.Should().NotBeEmpty().And.OnlyContain(o => !o.IncludeLlmRefine);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Pipeline_Enabled_RunsTheStageWithTheConfiguredSettings(bool fromContent)
+    {
+        var refine = new LlmRefineOptions { RemoveNoise = false, CustomInstructions = "Keep tables." };
+        var (pipeline, seen) = CreatePipeline(new FileFluxOptions { EnableLlmRefine = true, LlmRefineOptions = refine });
+
+        await RunPipelineAsync(pipeline, fromContent);
 
         var passed = seen.Should().ContainSingle().Subject;
         passed.IncludeLlmRefine.Should().BeTrue();

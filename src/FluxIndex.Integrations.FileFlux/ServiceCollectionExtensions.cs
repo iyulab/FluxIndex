@@ -127,5 +127,14 @@ public class FileFluxOptions
     /// FileFlux's defaults.
     /// </summary>
     public LlmRefineOptions? LlmRefineOptions { get; set; }
+
+    // FileFlux runs its LLM refine stage unless told not to, so every chunking call the integration makes
+    // (FileFluxIntegration and DocumentProcessingPipeline) takes its processing options from here: this switch decides.
+    internal global::FileFlux.Core.ProcessingOptions ToProcessingOptions(ChunkingOptions chunking) => new()
+    {
+        Chunking = chunking,
+        IncludeLlmRefine = EnableLlmRefine,
+        LlmRefine = LlmRefineOptions,
+    };
 }
 

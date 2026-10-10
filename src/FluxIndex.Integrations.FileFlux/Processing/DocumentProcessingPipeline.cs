@@ -41,6 +41,7 @@ public partial class DocumentProcessingPipeline
     private readonly IFluxIndexContextualEnrichmentService? _contextualEnrichmentService;
     private readonly IFluxIndexQAGenerationService? _qaGenerationService;
     private readonly IMarkdownConverter? _markdownConverter;
+    private readonly FileFluxOptions _fileFluxOptions;
     private readonly ILogger<DocumentProcessingPipeline> _logger;
 
     /// <summary>
@@ -48,7 +49,8 @@ public partial class DocumentProcessingPipeline
     /// only be left off — asking for it (<see cref="DocumentProcessingOptions.EnableContextualEnrichment"/>,
     /// <see cref="DocumentProcessingOptions.GenerateEmbeddings"/>, <see cref="DocumentProcessingOptions.EnableMetadataEnrichment"/>,
     /// <see cref="DocumentProcessingOptions.EnableQAGeneration"/>) throws <see cref="InvalidOperationException"/> before any
-    /// work starts.
+    /// work starts. FileFlux's LLM refine stage follows <see cref="FileFluxOptions.EnableLlmRefine"/> (off unless
+    /// <paramref name="fileFluxOptions"/> turns it on), as it does for <see cref="FileFluxIntegration"/>.
     /// </summary>
     public DocumentProcessingPipeline(
         IDocumentProcessorFactory processorFactory,
@@ -57,7 +59,8 @@ public partial class DocumentProcessingPipeline
         IFluxIndexContextualEnrichmentService? contextualEnrichmentService = null,
         IFluxIndexQAGenerationService? qaGenerationService = null,
         ILogger<DocumentProcessingPipeline>? logger = null,
-        IMarkdownConverter? markdownConverter = null)
+        IMarkdownConverter? markdownConverter = null,
+        Microsoft.Extensions.Options.IOptions<FileFluxOptions>? fileFluxOptions = null)
     {
         _processorFactory = processorFactory ?? throw new ArgumentNullException(nameof(processorFactory));
         _embeddingService = embeddingService;
@@ -65,6 +68,7 @@ public partial class DocumentProcessingPipeline
         _contextualEnrichmentService = contextualEnrichmentService;
         _qaGenerationService = qaGenerationService;
         _markdownConverter = markdownConverter;
+        _fileFluxOptions = fileFluxOptions?.Value ?? new FileFluxOptions();
         _logger = logger ?? NullLogger<DocumentProcessingPipeline>.Instance;
     }
 
@@ -196,7 +200,7 @@ public partial class DocumentProcessingPipeline
             var chunkStart = DateTime.UtcNow;
 
             await using var chunkProcessor = _processorFactory.Create(filePath);
-            var processingOptions = new global::FileFlux.Core.ProcessingOptions { Chunking = chunkingOptions };
+            var processingOptions = _fileFluxOptions.ToProcessingOptions(chunkingOptions);
             await chunkProcessor.ProcessAsync(processingOptions, cancellationToken);
             var chunkList = (chunkProcessor.Result.Chunks ?? []).ToList();
 
@@ -591,7 +595,7 @@ public partial class DocumentProcessingPipeline
             {
                 await File.WriteAllTextAsync(tempFilePath, content, cancellationToken);
                 await using var tempProcessor = _processorFactory.Create(tempFilePath);
-                var tempProcessingOptions = new global::FileFlux.Core.ProcessingOptions { Chunking = chunkingOptions };
+                var tempProcessingOptions = _fileFluxOptions.ToProcessingOptions(chunkingOptions);
                 await tempProcessor.ProcessAsync(tempProcessingOptions, cancellationToken);
                 chunkList = (tempProcessor.Result.Chunks ?? []).ToList();
             }
@@ -819,6 +823,7 @@ public partial class DocumentProcessingPipeline
         await using var fullDocProcessor = _processorFactory.Create(filePath);
         var fullDocOptions = new global::FileFlux.Core.ProcessingOptions
         {
+            IncludeLlmRefine = false, // raw text: FileFlux would otherwise rewrite it when a refiner is available
             Chunking = new ChunkingOptions
             {
                 Strategy = "FullDocument", // Get full text first
@@ -853,6 +858,7 @@ public partial class DocumentProcessingPipeline
             await using var fallbackProcessor = _processorFactory.Create(filePath);
             var fallbackOptions = new global::FileFlux.Core.ProcessingOptions
             {
+                IncludeLlmRefine = false,
                 Chunking = new ChunkingOptions
                 {
                     Strategy = "FullDocument",
