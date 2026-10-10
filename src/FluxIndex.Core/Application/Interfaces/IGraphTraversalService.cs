@@ -112,8 +112,8 @@ public interface IGraphTraversalService
     /// 특정 청크로부터 N-hop 내의 모든 관련 청크 탐색
     /// </summary>
     /// <param name="chunkId">중심 청크 ID</param>
-    /// <param name="maxHops">최대 홉 수</param>
-    /// <param name="options">탐색 옵션</param>
+    /// <param name="maxHops">최대 홉 수 — 이 호출의 깊이(<paramref name="options"/>의 <c>MaxDepth</c>보다 우선)</param>
+    /// <param name="options">탐색 옵션 — 관계 유형·강도·방향·문서 필터 등 (<c>MaxDepth</c>는 <paramref name="maxHops"/>가 정한다)</param>
     /// <param name="cancellationToken">취소 토큰</param>
     /// <returns>거리별 관련 청크 목록</returns>
     Task<NeighborhoodResult> GetNeighborhoodAsync(

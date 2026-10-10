@@ -5,6 +5,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [Unreleased]
+
+### Fixed
+- **Breaking: `GetNeighborhoodAsync(chunkId, maxHops, options)` stops at `maxHops` when options are given.** It walked to the
+  options' `MaxDepth` (5 by default) instead; the options still contribute their relationship, strength, direction and
+  document filters, and the caller's object is not changed. Migration: pass the depth you want as `maxHops`.
+
 ## [0.86.0] - 2026-10-10
 
 ### Fixed

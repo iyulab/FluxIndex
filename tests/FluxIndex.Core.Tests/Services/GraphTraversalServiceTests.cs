@@ -369,6 +369,25 @@ public class GraphTraversalServiceTests
         Assert.True(result.NeighborsByHop.ContainsKey(2)); // C at hop 2
     }
 
+    [Fact]
+    public async Task GetNeighborhoodAsync_WithOptions_StillStopsAtMaxHops_AndKeepsTheCallersOptions()
+    {
+        // A -> B -> C -> D; options carry a deeper MaxDepth and a strength filter.
+        SetupRelationships(new Dictionary<string, List<ChunkRelationship>>
+        {
+            ["A"] = new() { CreateRelationship("A", "B") },
+            ["B"] = new() { CreateRelationship("B", "C") },
+            ["C"] = new() { CreateRelationship("C", "D") },
+            ["D"] = new(),
+        });
+        var options = new GraphTraversalOptions { MaxDepth = 10, MinRelationshipStrength = 0.5 };
+
+        var result = await _service.GetNeighborhoodAsync("A", 1, options, TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.TotalNeighbors); // B only — maxHops wins over options.MaxDepth
+        Assert.Equal(10, options.MaxDepth);     // the caller's object is untouched
+    }
+
     #endregion
 
     #region Connected Components Tests

@@ -536,10 +536,22 @@ public partial class GraphTraversalService : IGraphTraversalService
         GraphTraversalOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        options ??= new GraphTraversalOptions { MaxDepth = maxHops };
+        // maxHops is this call's depth; the options contribute their filters. Copied, so the caller's object is not changed.
+        var traversal = options is null
+            ? new GraphTraversalOptions { MaxDepth = maxHops }
+            : new GraphTraversalOptions
+            {
+                MaxDepth = maxHops,
+                MaxNodes = options.MaxNodes,
+                RelationshipTypes = options.RelationshipTypes,
+                MinRelationshipStrength = options.MinRelationshipStrength,
+                DirectedOnly = options.DirectedOnly,
+                HierarchicalOnly = options.HierarchicalOnly,
+                DocumentIdFilter = options.DocumentIdFilter,
+            };
         var stopwatch = Stopwatch.StartNew();
 
-        var traversalResult = await TraverseBfsAsync(chunkId, options, cancellationToken);
+        var traversalResult = await TraverseBfsAsync(chunkId, traversal, cancellationToken);
 
         var neighborsByHop = new Dictionary<int, List<NeighborInfo>>();
 
