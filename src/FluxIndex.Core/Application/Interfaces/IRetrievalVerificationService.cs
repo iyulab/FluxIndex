@@ -166,16 +166,6 @@ public class GradingCriteria
     /// Weight for contextual fit (0.0-1.0).
     /// </summary>
     public double ContextualFitWeight { get; init; } = 0.2;
-
-    /// <summary>
-    /// Required entities that must be present.
-    /// </summary>
-    public IReadOnlyList<string> RequiredEntities { get; init; } = Array.Empty<string>();
-
-    /// <summary>
-    /// Prohibited content patterns.
-    /// </summary>
-    public IReadOnlyList<string> ProhibitedPatterns { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>

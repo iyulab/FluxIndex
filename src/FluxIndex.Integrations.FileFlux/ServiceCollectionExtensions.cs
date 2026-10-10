@@ -117,75 +117,15 @@ public class FileFluxOptions
     public bool IncludeLanguageProfileMetadata { get; set; } = true;
 
     /// <summary>
-    /// Enable LLM-based content refinement in the FileFlux 5-stage pipeline.
-    /// When enabled, content is refined using ITextCompletionService before chunking.
-    /// Requires ITextCompletionService to be registered in DI.
+    /// Run FileFlux's LLM refine stage (noise removal, sentence restoration, …) before chunking. Off by default: it costs
+    /// a model call per document and rewrites the text. Needs an <c>ITextCompletionService</c> on the FluxIndex builder.
     /// </summary>
     public bool EnableLlmRefine { get; set; }
 
     /// <summary>
-    /// LLM refinement options when EnableLlmRefine is true.
-    /// Controls what improvements the LLM should make (noise removal, sentence restoration, etc.)
+    /// The refine settings FileFlux uses when <see cref="EnableLlmRefine"/> is on; <c>null</c> (the default) uses
+    /// FileFlux's defaults.
     /// </summary>
-    public LlmRefineOptionsConfig LlmRefineOptions { get; set; } = new();
-}
-
-/// <summary>
-/// Configuration for LLM refinement options (mirrors FileFlux.Core.LlmRefineOptions)
-/// </summary>
-public class LlmRefineOptionsConfig
-{
-    /// <summary>
-    /// Enable noise removal (ads, legal notices, irrelevant content).
-    /// Default: true
-    /// </summary>
-    public bool RemoveNoise { get; set; } = true;
-
-    /// <summary>
-    /// Restore broken sentences (PDF line breaks).
-    /// Default: true
-    /// </summary>
-    public bool RestoreSentences { get; set; } = true;
-
-    /// <summary>
-    /// Restructure document sections (merge/split, fix heading levels).
-    /// Default: true
-    /// </summary>
-    public bool RestructureSections { get; set; } = true;
-
-    /// <summary>
-    /// Correct OCR errors.
-    /// Default: true
-    /// </summary>
-    public bool CorrectOcrErrors { get; set; } = true;
-
-    /// <summary>
-    /// Merge semantically duplicate content.
-    /// Default: true
-    /// </summary>
-    public bool MergeDuplicates { get; set; } = true;
-
-    /// <summary>
-    /// Preserve original formatting where possible.
-    /// Default: true
-    /// </summary>
-    public bool PreserveFormatting { get; set; } = true;
-
-    /// <summary>
-    /// Maximum tokens to use for LLM (0 = no limit).
-    /// Default: 0
-    /// </summary>
-    public int MaxTokens { get; set; }
-
-    /// <summary>
-    /// LLM temperature (0.0 - 1.0). Lower = more deterministic.
-    /// Default: 0.3
-    /// </summary>
-    public double Temperature { get; set; } = 0.3;
-
-    /// <summary>
-    /// Custom instructions for LLM.
-    /// </summary>
-    public string? CustomInstructions { get; set; }
+    public LlmRefineOptions? LlmRefineOptions { get; set; }
 }
 

@@ -85,7 +85,7 @@ public partial class FileFluxIntegration
 
             // Use FileFlux 0.10.x factory pattern to process document
             await using var processor = _processorFactory.Create(filePath);
-            var processingOpts = new global::FileFlux.Core.ProcessingOptions { Chunking = chunkingOptions };
+            var processingOpts = CreateFileFluxOptions(chunkingOptions);
             await processor.ProcessAsync(processingOpts, cancellationToken);
             var fileFluxChunks = processor.Result?.Chunks;
 
@@ -192,7 +192,7 @@ public partial class FileFluxIntegration
 
             // Use FileFlux 0.10.x factory pattern with streaming API for memory-efficient processing
             await using var processor = _processorFactory.Create(filePath);
-            var processingOpts = new global::FileFlux.Core.ProcessingOptions { Chunking = chunkingOptions };
+            var processingOpts = CreateFileFluxOptions(chunkingOptions);
             await foreach (var fileFluxChunk in processor.ProcessStreamAsync(processingOpts, cancellationToken))
             {
                 var fluxChunk = ConvertToFluxIndexChunk(fileFluxChunk, chunkIndex++, filePath);
@@ -567,6 +567,14 @@ public partial class FileFluxIntegration
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to add language profile metadata for {LanguageCode}")]
     private static partial void LogFailedToAddLanguageProfileMetadata(ILogger logger, Exception exception, string languageCode);
+
+    // FileFlux runs its LLM refine stage unless told not to; the integration's switch decides (off by default).
+    private global::FileFlux.Core.ProcessingOptions CreateFileFluxOptions(ChunkingOptions chunking) => new()
+    {
+        Chunking = chunking,
+        IncludeLlmRefine = _options.EnableLlmRefine,
+        LlmRefine = _options.LlmRefineOptions,
+    };
 
     #endregion
 }

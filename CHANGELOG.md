@@ -5,6 +5,21 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [Unreleased]
+
+### Changed
+- **Breaking: the FileFlux integration runs the LLM refine stage only when `FileFluxOptions.EnableLlmRefine` is on.** The
+  switch (off by default) and `LlmRefineOptions` were read by nothing: the integration handed FileFlux processing options
+  with only chunking set, and FileFlux runs its refine stage by default — so with a text completion service registered,
+  every processed file was rewritten by an LLM with FileFlux's default settings whatever the switch said. Now the switch
+  decides on both the whole-document and streaming paths, and `LlmRefineOptions` is FileFlux's own `LlmRefineOptions`
+  (`null` = FileFlux defaults) instead of the mirror `LlmRefineOptionsConfig`, which is removed. Migration: set
+  `EnableLlmRefine = true` to keep refining; replace `LlmRefineOptionsConfig` with `FileFlux.Core.LlmRefineOptions`.
+
+### Removed
+- **Breaking: `GradingCriteria.RequiredEntities` and `ProhibitedPatterns`** — nothing read them. Migration: delete the
+  assignments.
+
 ## [0.87.0] - 2026-10-10
 
 ### Fixed
