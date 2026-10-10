@@ -566,20 +566,11 @@ public record GraphStoreTraversalOptions
     /// <summary>Relationship types to follow (empty = all)</summary>
     public IReadOnlyList<RelationType> RelationTypes { get; init; } = [];
 
-    /// <summary>Entity types to include (empty = all)</summary>
-    public IReadOnlyList<NamedEntityType> EntityTypes { get; init; } = [];
-
     /// <summary>Minimum relationship weight to traverse</summary>
     public double MinWeight { get; init; }
 
     /// <summary>Direction to traverse</summary>
     public TraversalDirection Direction { get; init; } = TraversalDirection.Outgoing;
-
-    /// <summary>Include entity embeddings in results</summary>
-    public bool IncludeEmbeddings { get; init; }
-
-    /// <summary>Include relationship evidence</summary>
-    public bool IncludeEvidence { get; init; } = true;
 }
 
 /// <summary>

@@ -258,7 +258,7 @@ public class GraphTraversalOptions
     public bool HierarchicalOnly { get; set; }
 
     /// <summary>
-    /// 문서 ID 필터 (null이면 모든 문서)
+    /// 문서 ID 필터 (null이면 모든 문서) — 지정하면 BFS/DFS 탐색이 그 문서의 청크로만 넘어간다(시작 청크는 그대로)
     /// </summary>
     public string? DocumentIdFilter { get; set; }
 }

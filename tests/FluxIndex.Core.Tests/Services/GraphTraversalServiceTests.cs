@@ -21,6 +21,36 @@ public class GraphTraversalServiceTests
         _service = new GraphTraversalService(_hierarchyRepositoryMock, _loggerMock);
     }
 
+    #region DocumentIdFilter
+
+    [Fact]
+    public async Task Traverse_WithDocumentIdFilter_StaysInsideThatDocument()
+    {
+        // chunk1 (doc-a) -> chunk2 (doc-a) -> chunk3 (doc-b): with the filter the walk does not cross into doc-b.
+        SetupRelationships(new Dictionary<string, List<ChunkRelationship>>
+        {
+            ["chunk1"] = new() { CreateRelationship("chunk1", "chunk2"), CreateRelationship("chunk1", "chunk3") },
+            ["chunk2"] = new() { CreateRelationship("chunk2", "chunk3") },
+            ["chunk3"] = new(),
+        });
+        _hierarchyRepositoryMock.GetChunksByLevelAsync("doc-a", 0, Arg.Any<CancellationToken>())
+            .Returns(new List<ChunkHierarchy> { new() { ChunkId = "chunk1" }, new() { ChunkId = "chunk2" } });
+        _hierarchyRepositoryMock.GetChunksByLevelAsync("doc-a", Arg.Is<int>(level => level > 0), Arg.Any<CancellationToken>())
+            .Returns(new List<ChunkHierarchy>());
+        var options = new GraphTraversalOptions { DocumentIdFilter = "doc-a" };
+        var ct = TestContext.Current.CancellationToken;
+
+        var bfs = await _service.TraverseBfsAsync("chunk1", options, ct);
+        var dfs = await _service.TraverseDfsAsync("chunk1", options, ct);
+        var unfiltered = await _service.TraverseBfsAsync("chunk1", new GraphTraversalOptions(), ct);
+
+        Assert.Equal(["chunk1", "chunk2"], bfs.VisitedChunkIds.Order());
+        Assert.Equal(["chunk1", "chunk2"], dfs.VisitedChunkIds.Order());
+        Assert.Equal(["chunk1", "chunk2", "chunk3"], unfiltered.VisitedChunkIds.Order());
+    }
+
+    #endregion
+
     #region BFS Tests
 
     [Fact]

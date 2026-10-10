@@ -56,7 +56,6 @@ public static class EnrichmentServiceCollectionExtensions
                 ExtractEntities = true,
                 GenerateContextualSummary = true,
                 ExtractKeywords = true,
-                GenerateHypotheticalQuestions = true
             };
             configure?.Invoke(config);
         });
@@ -79,7 +78,6 @@ public static class EnrichmentServiceCollectionExtensions
                 ExtractEntities = false,
                 GenerateContextualSummary = false,
                 ExtractKeywords = false,
-                GenerateHypotheticalQuestions = false
             };
         });
     }

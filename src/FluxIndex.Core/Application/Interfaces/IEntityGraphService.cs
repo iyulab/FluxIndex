@@ -242,11 +242,6 @@ public class EntitySearchOptions
     /// Whether to include entity explanations
     /// </summary>
     public bool IncludeExplanation { get; set; } = true;
-
-    /// <summary>
-    /// Entity types to prioritize in search
-    /// </summary>
-    public IReadOnlyList<NamedEntityType>? PriorityEntityTypes { get; set; }
 }
 
 /// <summary>
@@ -337,7 +332,8 @@ public class EntityGraphMergeOptions
     public bool MergeRelationEvidence { get; set; } = true;
 
     /// <summary>
-    /// Whether to use embeddings for entity matching
+    /// Whether two entities of the same type whose embeddings are both present also match when their cosine similarity
+    /// reaches <see cref="EntitySimilarityThreshold"/>. Entities without embeddings fall back to the name rules.
     /// </summary>
     public bool UseEmbeddingsForMatching { get; set; }
 }

@@ -517,7 +517,7 @@ IReadOnlyDictionary<string, double> importance =
 | Method | Options | Returns |
 |---|---|---|
 | `BuildEntityGraphAsync(chunks, EntityGraphBuildOptions?)` | extraction and mapping settings | `EntityGraphResult` — entities, relations, entity→chunk mappings |
-| `SearchByEntitiesAsync(query, graph, EntitySearchOptions?)` | `TopK`, `DampingFactor`, `MaxIterations`, `MinScore`, `PriorityEntityTypes` | `EntitySearchResult` — `Hits` (chunk, `Score`, `PprScore`), `QueryEntities`, `RelatedEntities` |
+| `SearchByEntitiesAsync(query, graph, EntitySearchOptions?)` | `TopK`, `DampingFactor`, `MaxIterations`, `MinScore` | `EntitySearchResult` — `Hits` (chunk, `Score`, `PprScore`), `QueryEntities`, `RelatedEntities` |
 | `TraverseEntityRelationsAsync(startEntities, graph, EntityTraversalOptions?)` | `MaxHops`, `MaxEntitiesPerHop`, `RelationTypes`, `MinRelationStrength` | `EntityTraversalResult` — `EntitiesByHop`, paths |
 | `ComputeEntityImportanceAsync(graph, seedEntities?, PersonalizedPageRankOptions?)` | `DampingFactor`, `MaxIterations`, `ConvergenceThreshold` | entity id → score |
 

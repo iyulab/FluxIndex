@@ -60,7 +60,6 @@ public partial class DocumentEnrichmentPipeline : IDocumentEnrichmentPipeline
                     GenerateContentEmbedding = options.GenerateContentEmbedding,
                     GenerateSummaryEmbedding = options.GenerateSummaryEmbedding,
                     GenerateHypotheticalEmbedding = options.GenerateHypotheticalEmbedding,
-                    GenerateQuestionEmbeddings = options.GenerateHypotheticalQuestions
                 };
 
                 embeddings = await GenerateEmbeddingsAsync(input.Content, embeddingOptions, ct);

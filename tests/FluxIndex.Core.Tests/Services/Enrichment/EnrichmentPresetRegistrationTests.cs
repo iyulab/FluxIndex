@@ -37,7 +37,6 @@ public class EnrichmentPresetRegistrationTests
         var config = Registered(s => s.AddDocumentEnrichmentPipelineWithAI(c => c.MaxEmbeddingBatchSize = 8));
 
         Assert.True(config.DefaultOptions.GenerateHypotheticalEmbedding);
-        Assert.True(config.DefaultOptions.GenerateHypotheticalQuestions);
         Assert.True(config.DefaultOptions.GenerateSummaryEmbedding);
         Assert.Equal(8, config.MaxEmbeddingBatchSize);
     }

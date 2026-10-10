@@ -401,6 +401,35 @@ public class EntityGraphServiceTests
     }
 
     [Fact]
+    public async Task MergeEntityGraphsAsync_UseEmbeddingsForMatching_MergesNamesThatDifferButMeanTheSame()
+    {
+        var service = CreateService();
+        static EntityGraphResult Graph(string id, string name, float[] embedding) => new()
+        {
+            Entities = new List<EntityNode>
+            {
+                new() { Id = id, Name = name, NormalizedName = name.ToLowerInvariant(), Type = NamedEntityType.Organization, MentionCount = 1, Embedding = embedding },
+            },
+            Relations = new List<EntityEdge>(),
+            ChunkMappings = new List<EntityChunkMapping>(),
+            SourceChunkIds = new List<string>(),
+        };
+        var graphs = new[]
+        {
+            Graph("a", "IBM", [1f, 0f, 0f]),
+            Graph("b", "International Business Machines", [0.99f, 0.1f, 0f]),
+        };
+        var ct = TestContext.Current.CancellationToken;
+
+        var byName = await service.MergeEntityGraphsAsync(graphs, new EntityGraphMergeOptions { UseFuzzyMatching = false }, ct);
+        var byEmbedding = await service.MergeEntityGraphsAsync(
+            graphs, new EntityGraphMergeOptions { UseFuzzyMatching = false, UseEmbeddingsForMatching = true }, ct);
+
+        Assert.Equal(2, byName.Entities.Count);
+        Assert.Single(byEmbedding.Entities);
+    }
+
+    [Fact]
     public async Task MergeEntityGraphsAsync_WithEmptyGraphs_ReturnsEmptyResult()
     {
         // Arrange

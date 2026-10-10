@@ -39,6 +39,7 @@ public partial class GraphTraversalService : IGraphTraversalService
     {
         options ??= new GraphTraversalOptions();
         var stopwatch = Stopwatch.StartNew();
+        var documentChunks = await GetDocumentChunksAsync(options, cancellationToken);
 
         var visited = new HashSet<string>();
         var chunksByLevel = new Dictionary<int, List<string>>();
@@ -69,7 +70,7 @@ public partial class GraphTraversalService : IGraphTraversalService
             }
 
             var relationships = await GetFilteredRelationshipsAsync(
-                currentChunkId, options, cancellationToken);
+                currentChunkId, options, documentChunks, cancellationToken);
 
             foreach (var rel in relationships)
             {
@@ -142,6 +143,7 @@ public partial class GraphTraversalService : IGraphTraversalService
     {
         options ??= new GraphTraversalOptions();
         var stopwatch = Stopwatch.StartNew();
+        var documentChunks = await GetDocumentChunksAsync(options, cancellationToken);
 
         var visited = new HashSet<string>();
         var chunksByLevel = new Dictionary<int, List<string>>();
@@ -180,7 +182,7 @@ public partial class GraphTraversalService : IGraphTraversalService
                 continue;
 
             var relationships = await GetFilteredRelationshipsAsync(
-                currentChunkId, options, cancellationToken);
+                currentChunkId, options, documentChunks, cancellationToken);
 
             foreach (var rel in relationships)
             {
@@ -1205,6 +1207,7 @@ public partial class GraphTraversalService : IGraphTraversalService
     private async Task<IEnumerable<ChunkRelationship>> GetFilteredRelationshipsAsync(
         string chunkId,
         GraphTraversalOptions options,
+        HashSet<string>? documentChunks,
         CancellationToken cancellationToken)
     {
         var relationships = await _hierarchyRepository.GetRelationshipsAsync(
@@ -1212,8 +1215,16 @@ public partial class GraphTraversalService : IGraphTraversalService
 
         return relationships
             .Where(r => r.Strength >= options.MinRelationshipStrength)
-            .Where(r => !options.HierarchicalOnly || r.Type == RelationshipType.Hierarchical);
+            .Where(r => !options.HierarchicalOnly || r.Type == RelationshipType.Hierarchical)
+            .Where(r => documentChunks is null
+                || documentChunks.Contains(r.SourceChunkId == chunkId ? r.TargetChunkId : r.SourceChunkId));
     }
+
+    // The chunks of GraphTraversalOptions.DocumentIdFilter's document, or null when the walk may cross documents.
+    private async Task<HashSet<string>?> GetDocumentChunksAsync(GraphTraversalOptions options, CancellationToken cancellationToken)
+        => options.DocumentIdFilter is { } documentId
+            ? await GetAllChunkIdsAsync(documentId, cancellationToken)
+            : null;
 
     private async Task<IEnumerable<ChunkRelationship>> GetFilteredRelationshipsForPathAsync(
         string chunkId,

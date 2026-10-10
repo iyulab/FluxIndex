@@ -160,9 +160,6 @@ public record EnrichmentOptions
     /// <summary>Extract keywords</summary>
     public bool ExtractKeywords { get; init; } = true;
 
-    /// <summary>Generate hypothetical questions for Q&amp;A retrieval</summary>
-    public bool GenerateHypotheticalQuestions { get; init; }
-
     /// <summary>Maximum concurrent operations</summary>
     public int MaxConcurrency { get; init; } = 4;
 
@@ -187,23 +184,6 @@ public record EmbeddingGenerationOptions
     /// <summary>Generate hypothetical embeddings (HyDE)</summary>
     public bool GenerateHypotheticalEmbedding { get; init; }
 
-    /// <summary>Generate question embeddings for Q&amp;A retrieval</summary>
-    public bool GenerateQuestionEmbeddings { get; init; }
-
-    /// <summary>Maximum questions for question embedding</summary>
-    public int MaxQuestions { get; init; } = 5;
-
-    /// <summary>Embedding types to generate</summary>
-    public IReadOnlyList<EmbeddingType> Types { get; init; } = [EmbeddingType.Content];
-
-    /// <summary>Number of hypothetical documents for HyDE</summary>
-    public int HyDEDocumentCount { get; init; } = 3;
-
-    /// <summary>Use cached embeddings if available</summary>
-    public bool UseCache { get; init; } = true;
-
-    /// <summary>Custom model ID (null for default)</summary>
-    public string? ModelId { get; init; }
 }
 
 /// <summary>
@@ -232,20 +212,11 @@ public record GraphBuildOptions
     /// <summary>Merge duplicate entities</summary>
     public bool MergeEntities { get; init; } = true;
 
-    /// <summary>Similarity threshold for entity merging (0-1)</summary>
-    public double MergeThreshold { get; init; } = 0.85;
-
     /// <summary>Generate entity embeddings</summary>
     public bool GenerateEntityEmbeddings { get; init; } = true;
 
-    /// <summary>Calculate importance scores</summary>
-    public bool CalculateImportanceScores { get; init; } = true;
-
     /// <summary>Detect communities</summary>
     public bool DetectCommunities { get; init; }
-
-    /// <summary>Maximum community detection iterations</summary>
-    public int MaxCommunityIterations { get; init; } = 100;
 
     /// <summary>Minimum community size</summary>
     public int MinCommunitySize { get; init; } = 3;

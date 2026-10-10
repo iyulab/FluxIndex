@@ -7,6 +7,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Utilities;
 using FluxIndex.Core.Domain.Entities;
 using Microsoft.Extensions.Logging;
 
@@ -1776,6 +1777,14 @@ public partial class EntityGraphService : IEntityGraphService
                 if (similarity >= options.EntitySimilarityThreshold)
                     return existing;
             }
+
+            // Embedding match
+            if (options.UseEmbeddingsForMatching
+                && existing.Embedding is { Length: > 0 } existingEmbedding
+                && entity.Embedding is { Length: > 0 } entityEmbedding
+                && existingEmbedding.Length == entityEmbedding.Length
+                && VectorMathUtilities.CosineSimilarity(existingEmbedding, entityEmbedding) >= options.EntitySimilarityThreshold)
+                return existing;
         }
 
         return null;

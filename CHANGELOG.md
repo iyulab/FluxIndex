@@ -18,6 +18,12 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 - **`CorrectiveRAGOptions.Timeout` limits the correction.** It was never read; it is now `TimeSpan?`, null by default (no
   limit, as before), and when set an over-long correction throws `TimeoutException` (the caller's cancellation still
   throws `OperationCanceledException`).
+- **`GraphTraversalOptions.DocumentIdFilter` keeps a chunk-graph walk inside one document.** `TraverseBfsAsync`,
+  `TraverseDfsAsync` and `GetNeighborhoodAsync` ignored it; with it set they now only step to chunks of that document (null,
+  the default, walks across documents as before).
+- **`EntityGraphMergeOptions.UseEmbeddingsForMatching` merges entities by embedding.** When set, two entities of the same
+  type whose embeddings are both present also match at cosine similarity ≥ `EntitySimilarityThreshold`; off by default, as
+  before.
 
 ### Removed
 - **Breaking: settings Corrective RAG never read.** `CorrectiveRAGOptions.CorrectThreshold` and `AmbiguousThreshold`
@@ -30,6 +36,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   `CacheEmbeddings`, `GenerateEntityEmbedding`, `GraphBuildOptions` (enrichment builds no graph), and
   `EnrichmentEntityOptions.ResolveCoreferences` / `LinkExternalKnowledge` (no such step exists). Migration: delete the
   assignments; set the entity values on `EntityExtractionOptions`.
+- **Breaking: graph and embedding settings nothing read.** `EnrichmentOptions.GenerateHypotheticalQuestions` and
+  `EmbeddingGenerationOptions.GenerateQuestionEmbeddings` / `MaxQuestions` (no question embeddings are produced — the
+  «WithAI» preset no longer sets it), `EmbeddingGenerationOptions.Types` (duplicated the `Generate*` switches),
+  `HyDEDocumentCount` (one hypothetical document is generated), `UseCache` and `ModelId` (no cache, no per-call model);
+  `GraphBuildOptions.MergeThreshold` (merging is by normalized name), `CalculateImportanceScores` and
+  `MaxCommunityIterations` (communities are connected components); `GraphStoreTraversalOptions.EntityTypes`,
+  `IncludeEmbeddings` and `IncludeEvidence` (stores return every entity they reach with what they hold — filter
+  `result.Entities` by `Type`); `EntitySearchOptions.PriorityEntityTypes`. Migration: delete the assignments.
 
 ## [0.85.0] - 2026-10-10
 

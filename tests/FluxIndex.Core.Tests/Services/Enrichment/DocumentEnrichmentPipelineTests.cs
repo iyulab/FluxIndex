@@ -399,8 +399,7 @@ public class DocumentEnrichmentPipelineTests
         {
             GenerateContentEmbedding = true,
             GenerateSummaryEmbedding = false,
-            GenerateHypotheticalEmbedding = false,
-            GenerateQuestionEmbeddings = false
+            GenerateHypotheticalEmbedding = false
         };
 
         // Act
@@ -420,8 +419,7 @@ public class DocumentEnrichmentPipelineTests
         {
             GenerateContentEmbedding = true,
             GenerateSummaryEmbedding = true,
-            GenerateHypotheticalEmbedding = true,
-            GenerateQuestionEmbeddings = false
+            GenerateHypotheticalEmbedding = true
         };
 
         // Act
