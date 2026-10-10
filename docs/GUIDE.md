@@ -52,7 +52,7 @@ FluxIndex automatically uses all available capabilities from your configured sto
 
 ## Local Mode (SQLite)
 
-**SQLite handles everything**: Vector search, keyword search, graph relations, semantic cache.
+**SQLite handles everything**: Vector search, keyword search, graph relations, and — when you opt in — the semantic cache.
 
 Best for:
 - Development and testing
@@ -89,15 +89,15 @@ var results = await context.Retriever.KeywordSearchAsync("RAG library", maxResul
 
 ### Local Mode Storage Structure
 
-`UseSQLite("fluxindex.db")` points the vector store, the chunk hierarchy and the semantic cache at
-the **same** database file; only the entity graph gets a file of its own, derived from the path you
+`UseSQLite("fluxindex.db")` points the vector store, the chunk hierarchy and (when opted into with
+`WithSemanticCacheOptions(o => o.Provider = "SQLite")`) the semantic cache at the **same** database file; only the entity graph gets a file of its own, derived from the path you
 passed:
 
 ```
 fluxindex.db              # Vector store (vectors) + metadata
                           #   + bm25_terms / bm25_postings / bm25_chunks (keyword index)
                           #   + chunk_hierarchies / chunk_relationships (Small-to-Big)
-                          #   + semantic_cache (semantic cache)
+                          #   + semantic_cache (semantic cache, when opted into)
 fluxindex-entitygraph.db  # Entity graph (GraphRAG)
 ```
 
@@ -254,7 +254,7 @@ var context = FluxIndexContext.CreateBuilder()
 | **Keyword Search** | in-process BM25 | Populated by indexing; **not persisted** here because the vectors live in Qdrant — the persistent backends follow the vector store's database. See [The keyword (BM25) index](#the-keyword-bm25-index) |
 | **Graph Relations** | Neo4j | Entity graph, community detection |
 | **Metadata** | PostgreSQL | Document and chunk metadata |
-| **Semantic Cache** | PostgreSQL | Query result caching |
+| **Semantic Cache** | PostgreSQL | Query result caching (opt-in: `WithSemanticCacheOptions(o => o.Provider = "PostgreSQL")`) |
 
 ### Docker Compose for Full Mode
 
@@ -677,7 +677,7 @@ IReadOnlyDictionary<string, double> importance =
 | Optimization | Benefit |
 |-------------|---------|
 | Embedding cache (built-in) | 100% improvement for repeated queries |
-| Semantic cache (Redis/SQLite) | ~95% improvement for similar queries |
+| Semantic cache (SQLite/PostgreSQL/Redis) | ~95% improvement for similar queries |
 | Batch indexing (8 threads) | 50K chunks/second throughput |
 | Vector quantization | 4-32x memory reduction |
 | LocalReranker | +15-25% precision improvement |
@@ -691,9 +691,13 @@ var context = FluxIndexContext.CreateBuilder()
     .UseLocalStorage("fluxindex.db")
     .AddSQLiteStorage()
     .ConfigureServices(s => s.AddLMSupplyEmbedding())
-    .UseRedisCache("localhost:6379")  // Distributed semantic cache
+    .WithSemanticCacheOptions(o => o.Provider = "SQLite")  // Semantic cache: opt-in
+    .UseRedisCache("localhost:6379")  // Distributed result cache (Redis)
     .AddRedisStorage()
     .Build();
+// The semantic cache is approximate: a query at least 0.95 similar (SimilarityThreshold) to an earlier one gets that
+// query's results, so two different questions can share an answer. For a Redis semantic cache, register
+// AddRedisSemanticCache through ConfigureServices and set Provider = "Redis" instead.
 
 // First query: ~50ms (embedding + search)
 // Same query: <1ms (embedding cache hit)

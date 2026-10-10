@@ -1,5 +1,6 @@
 using AwesomeAssertions;
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Domain.Models;
 using FluxIndex.SDK.Configuration;
 using FluxIndex.Storage.PostgreSQL.Cache;
 using Microsoft.Extensions.DependencyInjection;
@@ -12,8 +13,8 @@ namespace FluxIndex.Storage.PostgreSQL.Tests;
 
 /// <summary>
 /// <see cref="PostgresCacheOptions.SimilarityThreshold"/> is the hit threshold of a lookup that passes none; a threshold
-/// passed per call still wins. The stored query and the near one are 0.9 similar, between the default (0.85) and the
-/// configured 0.95. Same contract as the SQLite cache's threshold tests, against a real server.
+/// passed per call still wins. The stored query and the near one are 0.9 similar, between the configured 0.85 and the
+/// default 0.95. Same contract as the SQLite cache's threshold tests, against a real server.
 /// </summary>
 [Collection("PostgreSQL")]
 [Trait("Category", "Integration")]
@@ -25,7 +26,7 @@ public sealed class PostgresSemanticCacheThresholdTests : IAsyncLifetime
 
     private readonly PostgreSqlContainer _container = PostgreSqlTestContainer.Create();
     private ServiceProvider _provider = null!;
-    private ISemanticCache _cache = null!;
+    private ISemanticCacheService _cache = null!;
 
     public async ValueTask InitializeAsync()
     {
@@ -47,11 +48,11 @@ public sealed class PostgresSemanticCacheThresholdTests : IAsyncLifetime
             o.ConnectionString = _container.GetConnectionString();
             o.EmbeddingDimensions = Dimensions;
             o.EnableAutoCleanup = false;
-            o.SimilarityThreshold = 0.95f;
+            o.SimilarityThreshold = 0.85f;
         });
         _provider = services.BuildServiceProvider();
         _provider.GetRequiredService<PostgresCacheSchemaInitializer>().InitializeSync(_provider);
-        _cache = _provider.GetRequiredService<ISemanticCache>();
+        _cache = _provider.GetRequiredService<ISemanticCacheService>();
     }
 
     public async ValueTask DisposeAsync()
@@ -64,12 +65,13 @@ public sealed class PostgresSemanticCacheThresholdTests : IAsyncLifetime
     public async Task ConfiguredThreshold_DecidesALookupThatPassesNone()
     {
         var ct = TestContext.Current.CancellationToken;
-        await _cache.SetAsync(Stored, ["a relational database"], cancellationToken: ct);
+        await _cache.SetCachedResultAsync(
+            Stored, [new CacheDocumentChunk { Id = "c1", DocumentId = "d1", Content = "a relational database" }],
+            cancellationToken: ct);
 
-        (await _cache.GetAsync(Near, cancellationToken: ct)).Should().BeNull("0.9 is below the configured 0.95");
-        (await _cache.FindSimilarQueriesAsync(Near, cancellationToken: ct)).Should().BeEmpty();
+        (await _cache.GetCachedResultAsync(Near, cancellationToken: ct)).Should().NotBeNull("0.9 clears the configured 0.85");
 
-        (await _cache.GetAsync(Near, similarityThreshold: 0.85f, cancellationToken: ct)).Should().NotBeNull(
+        (await _cache.GetCachedResultAsync(Near, similarityThreshold: 0.95f, cancellationToken: ct)).Should().BeNull(
             "a threshold passed with the call overrides the configured one");
     }
 }
@@ -87,7 +89,7 @@ public class PostgresSemanticCacheThresholdRegistrationTests
         configured.GetRequiredService<IOptions<PostgresCacheOptions>>().Value.SimilarityThreshold.Should().Be(0.97f);
 
         using var unset = BuilderProvider(_ => { });
-        unset.GetRequiredService<IOptions<PostgresCacheOptions>>().Value.SimilarityThreshold.Should().Be(0.85f);
+        unset.GetRequiredService<IOptions<PostgresCacheOptions>>().Value.SimilarityThreshold.Should().Be(0.95f);
     }
 
     private static ServiceProvider BuilderProvider(Action<SemanticCacheOptions> configure)

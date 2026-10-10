@@ -68,7 +68,7 @@ public static class ServiceCollectionExtensions
         services.Configure(configureOptions);
 
         // 시맨틱 캐시 서비스 등록
-        services.TryAddSingleton<ISemanticCacheService, RedisSemanticCacheService>();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<ISemanticCacheService, RedisSemanticCacheService>());
 
         return services;
     }
@@ -91,7 +91,7 @@ public static class ServiceCollectionExtensions
         services.Configure(configureOptions);
 
         // 시맨틱 캐시 서비스 등록
-        services.TryAddSingleton<ISemanticCacheService, RedisSemanticCacheService>();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<ISemanticCacheService, RedisSemanticCacheService>());
 
         return services;
     }

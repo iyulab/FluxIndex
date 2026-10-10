@@ -34,6 +34,7 @@ public partial class Indexer
     private readonly ILogger<Indexer> _logger;
     private readonly IndexerOptions _options;
     private readonly ICacheService? _cacheService;
+    private readonly ISemanticCacheService? _semanticCache;
 
     /// <summary>
     /// GraphRAG 서비스 사용 가능 여부
@@ -103,7 +104,8 @@ public partial class Indexer
         IGraphRAGService? graphRAGService = null,
         IHybridSearchService? hybridSearchService = null,
         IKeywordSearchService? keywordSearchService = null,
-        ICacheService? cacheService = null)
+        ICacheService? cacheService = null,
+        ISemanticCacheService? semanticCache = null)
     {
         _vectorStore = vectorStore;
         _documentRepository = documentRepository;
@@ -114,6 +116,7 @@ public partial class Indexer
         _hybridSearchService = hybridSearchService;
         _keywordSearchService = keywordSearchService;
         _cacheService = cacheService;
+        _semanticCache = semanticCache;
         _options = options;
         _logger = logger ?? NullLogger<Indexer>.Instance;
 
@@ -1050,14 +1053,17 @@ public partial class Indexer
     }
 
     /// <summary>
-    /// Makes the retriever's cached reads unable to outlive this write: every cached search result (they are keyed
-    /// under a generation this replaces) and the cached copy of <paramref name="documentId"/>. Runs after the write
-    /// has completed, so a search that starts afterwards cannot be answered from before it.
+    /// Makes cached reads unable to outlive this write: every search result the retriever cached (they are keyed
+    /// under a generation this replaces), the cached copy of <paramref name="documentId"/>, and every entry of the
+    /// semantic cache <c>FluxIndexContext.SearchAsync</c> reads (emptied — its entries are not keyed by document).
+    /// Runs after the write has completed, so a search that starts afterwards cannot be answered from before it.
     /// </summary>
     private async Task InvalidateReadCachesAsync(string? documentId, CancellationToken cancellationToken)
     {
         if (_cacheService != null)
             await SearchCacheKeys.InvalidateAsync(_cacheService, documentId, cancellationToken);
+        if (_semanticCache != null)
+            await _semanticCache.ClearCacheAsync(cancellationToken);
     }
 
     /// <summary>

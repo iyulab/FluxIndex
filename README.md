@@ -73,6 +73,14 @@ Each line: what it does · the entry point · how to turn it on. "Builder" is `F
   `AddPostgreSQLVectorStore`, `AddQdrantVectorStore`, `AddNeo4jGraphStore`.
 - **Redis cache** — builder `UseRedisCache(connection)` **plus** `AddRedisStorage()`; plain DI `AddRedisCacheStore` /
   `AddRedisSemanticCache`.
+- **Semantic cache** (opt-in) — `FluxIndexContext.SearchAsync` answers a query similar to an earlier one from an
+  `ISemanticCacheService` without reaching the store. Off unless you turn it on — no storage selector does:
+  `WithSemanticCacheOptions(o => o.Provider = "SQLite")` (or `"PostgreSQL"`) with `AddSQLiteStorage()` /
+  `AddPostgreSQLStorage()` puts it on the selected store's database; for Redis, `ConfigureServices(s =>
+  s.AddRedisSemanticCache(...))` (Provider `"Redis"`, or `"None"` to use whatever is registered). Matching is approximate:
+  a query at cosine similarity ≥ `SimilarityThreshold` (0.95 by default) to an earlier one gets that query's results, so
+  two different questions can share an answer. Filtered searches bypass it, every indexer write empties it, and `Build()`
+  refuses an opted-in provider nobody registered or two registered caches.
 - **Document processing** — PDF/DOCX/TXT via FileFlux, web pages via WebFlux (`FluxIndex.Integrations.*`, opt-in):
   `AddFileFluxIntegration` (builder `UseFileFlux`) for parsing and chunking — `FileFluxOptions.EnableMetadataEnrichment` adds AI
   metadata (see «AI metadata on indexing») to each indexed file — `AddDocumentProcessingPipeline` for the

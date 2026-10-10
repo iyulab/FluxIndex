@@ -1,19 +1,28 @@
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Services;
+using FluxIndex.Core.Application.Utilities;
+using FluxIndex.Core.Domain.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Pgvector;
 using Pgvector.EntityFrameworkCore;
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 
 namespace FluxIndex.Storage.PostgreSQL.Cache;
 
 /// <summary>
-/// PostgreSQL 기반 시맨틱 캐시 구현 (pgvector + UNLOGGED 테이블)
+/// PostgreSQL 기반 시맨틱 캐시 구현 (pgvector + UNLOGGED 테이블) — the <see cref="ISemanticCacheService"/> registered
+/// for <c>SemanticCacheOptions.Provider = "PostgreSQL"</c> (opt-in), so <c>FluxIndexContext.SearchAsync</c> reads and
+/// fills it. Similarity is pgvector's cosine distance.
 /// </summary>
-public partial class PostgresSemanticCache : ISemanticCache, IDisposable
+public partial class PostgresSemanticCache : ISemanticCacheService, IDisposable
 {
+    // How many entries above the threshold a lookup reads, so an unreadable best match falls through to the next one.
+    private const int LookupCandidates = 5;
+
     private readonly IDbContextFactory<PostgresCacheDbContext> _contextFactory;
     private readonly IEmbeddingService _embeddingService;
     private readonly PostgresCacheOptions _options;
@@ -33,103 +42,123 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
         _logger = logger;
     }
 
-    public async Task<CacheResult?> GetAsync(
+    /// <inheritdoc />
+    /// <remarks>
+    /// Null <paramref name="similarityThreshold"/> uses <see cref="PostgresCacheOptions.SimilarityThreshold"/>. An entry
+    /// whose stored results cannot be read (written by an earlier release, or by something else) is removed and the
+    /// next most similar entry is tried.
+    /// </remarks>
+    public async Task<CachedSearchResult?> GetCachedResultAsync(
         string query,
         float? similarityThreshold = null,
-        int maxResults = 10,
         CancellationToken cancellationToken = default)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(query);
+        if (NoEmbeddingService.IsKeywordOnly(_embeddingService))
+            return null;
+
         var threshold = similarityThreshold ?? _options.SimilarityThreshold;
-        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
-        await CleanupExpiredIfNeededAsync(cancellationToken);
 
-        // 쿼리 임베딩 생성
-        var queryEmbedding = await _embeddingService.GenerateQueryEmbeddingAsync(query, cancellationToken);
-        var queryVector = new Vector(queryEmbedding);
-
-        // pgvector 코사인 유사도 검색 (1 - distance = similarity)
-        var result = await context.SemanticCache
-            .Where(c => c.ExpiresAt > DateTime.UtcNow)
-            .Where(c => c.Embedding != null)
-            .Select(c => new
-            {
-                Entry = c,
-                Distance = c.Embedding!.CosineDistance(queryVector)
-            })
-            .Where(x => (1 - x.Distance) >= threshold)
-            .OrderBy(x => x.Distance)
-            .Take(maxResults)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        if (result == null)
+        try
         {
+            await CleanupExpiredIfNeededAsync(cancellationToken);
+            await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+            var queryEmbedding = await _embeddingService.GenerateQueryEmbeddingAsync(query, cancellationToken);
+            var queryVector = new Vector(queryEmbedding);
+
+            // pgvector 코사인 유사도 검색 (1 - distance = similarity)
+            var candidates = await context.SemanticCache
+                .Where(c => c.ExpiresAt > DateTime.UtcNow)
+                .Where(c => c.Embedding != null)
+                .Select(c => new
+                {
+                    Entry = c,
+                    Distance = c.Embedding!.CosineDistance(queryVector)
+                })
+                .Where(x => (1 - x.Distance) >= threshold)
+                .OrderBy(x => x.Distance)
+                .Take(LookupCandidates)
+                .ToListAsync(cancellationToken);
+
+            foreach (var candidate in candidates)
+            {
+                var entry = candidate.Entry;
+                if (!SemanticCacheJson.TryDeserializeResults(entry.ResultsJson, out var results) || results.Count == 0)
+                {
+                    await RemoveUnreadableAsync(context, entry, cancellationToken);
+                    continue;
+                }
+
+                var similarity = (float)(1 - candidate.Distance);
+                var accessedAt = DateTime.UtcNow;
+
+                // An increment in SQL: overlapping hits on one entry each count, and nothing else in the row is rewritten.
+                await context.Database.ExecuteSqlInterpolatedAsync(
+                    $@"UPDATE semantic_cache SET ""HitCount"" = ""HitCount"" + 1, ""LastAccessedAt"" = {accessedAt} WHERE ""Id"" = {entry.Id}",
+                    cancellationToken);
+                await UpdateStatsAsync(context, true, cancellationToken);
+
+                LogCacheHit(_logger, similarity);
+
+                return new CachedSearchResult
+                {
+                    OriginalQuery = query,
+                    CachedQuery = entry.Query,
+                    SimilarityScore = similarity,
+                    Results = results,
+                    Metadata = SemanticCacheJson.DeserializeMetadata(entry.MetadataJson),
+                    CachedAt = entry.CreatedAt,
+                    HitCount = entry.HitCount + 1,
+                    LastAccessedAt = accessedAt
+                };
+            }
+
             await UpdateStatsAsync(context, false, cancellationToken);
             return null;
         }
-
-        var similarity = (float)(1 - result.Distance);
-
-        // 히트 카운트 및 접근 시간 업데이트
-        result.Entry.HitCount++;
-        result.Entry.LastAccessedAt = DateTime.UtcNow;
-        context.SemanticCache.Update(result.Entry);
-        await context.SaveChangesAsync(cancellationToken);
-        await UpdateStatsAsync(context, true, cancellationToken);
-
-        LogCacheHit(_logger, similarity);
-
-        return new CacheResult
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
-            OriginalQuery = result.Entry.Query,
-            SimilarityScore = similarity,
-            Results = result.Entry.Results?.Cast<object>() ?? Enumerable.Empty<object>(),
-            CachedAt = result.Entry.CreatedAt,
-            ExpiresAt = result.Entry.ExpiresAt,
-            HitCount = result.Entry.HitCount,
-            LastAccessedAt = result.Entry.LastAccessedAt,
-            Metadata = new CacheMetadata
-            {
-                Query = result.Entry.Query,
-                ResultCount = result.Entry.Results?.Count ?? 0
-            }
-        };
+            LogLookupFailed(_logger, ex);
+            return null;
+        }
     }
 
-    public async Task SetAsync(
+    /// <inheritdoc />
+    /// <remarks>Null <paramref name="ttl"/> uses <see cref="PostgresCacheOptions.DefaultExpiry"/>.</remarks>
+    public async Task SetCachedResultAsync(
         string query,
-        IEnumerable<object> results,
-        CacheMetadata? metadata = null,
-        TimeSpan? expiry = null,
+        IReadOnlyList<CacheDocumentChunk> results,
+        SearchMetadata? metadata = null,
+        TimeSpan? ttl = null,
         CancellationToken cancellationToken = default)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(query);
+        ArgumentNullException.ThrowIfNull(results);
+        if (NoEmbeddingService.IsKeywordOnly(_embeddingService))
+            return;
+
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         var queryHash = ComputeHash(query);
         var queryEmbedding = await _embeddingService.GenerateQueryEmbeddingAsync(query, cancellationToken);
-        var expiresAt = DateTime.UtcNow + (expiry ?? _options.DefaultExpiry);
+        var expiresAt = DateTime.UtcNow + (ttl ?? _options.DefaultExpiry);
+        var resultsJson = SemanticCacheJson.SerializeResults(results);
+        var metadataJson = SemanticCacheJson.SerializeMetadata(metadata);
 
-        // 기존 항목 확인
         var existing = await context.SemanticCache
             .FirstOrDefaultAsync(c => c.QueryHash == queryHash, cancellationToken);
 
         if (existing != null)
         {
-            existing.Results = results.ToList();
+            existing.ResultsJson = resultsJson;
+            existing.MetadataJson = metadataJson;
             existing.Embedding = new Vector(queryEmbedding);
             existing.ExpiresAt = expiresAt;
             existing.LastAccessedAt = DateTime.UtcNow;
-            if (metadata != null)
-            {
-                existing.Metadata = new Dictionary<string, object>
-                {
-                    ["Query"] = metadata.Query ?? query,
-                    ["ResultCount"] = metadata.ResultCount
-                };
-            }
             context.SemanticCache.Update(existing);
         }
         else
         {
-            // 최대 항목 수 체크
             await EnsureCapacityAsync(context, cancellationToken);
 
             var entity = new SemanticCacheEntity
@@ -138,18 +167,10 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
                 QueryHash = queryHash,
                 Query = query,
                 Embedding = new Vector(queryEmbedding),
-                Results = results.ToList(),
+                ResultsJson = resultsJson,
+                MetadataJson = metadataJson,
                 ExpiresAt = expiresAt
             };
-
-            if (metadata != null)
-            {
-                entity.Metadata = new Dictionary<string, object>
-                {
-                    ["Query"] = metadata.Query ?? query,
-                    ["ResultCount"] = metadata.ResultCount
-                };
-            }
 
             await context.SemanticCache.AddAsync(entity, cancellationToken);
         }
@@ -158,53 +179,14 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
         LogCacheSet(_logger, queryHash);
     }
 
-    public async Task<bool> HasSimilarQueryAsync(
-        string query,
-        float? threshold = null,
-        CancellationToken cancellationToken = default)
+    /// <inheritdoc />
+    /// <remarks>Removes the entries whose query contains <paramref name="pattern"/> (case-insensitive); a blank pattern
+    /// removes nothing.</remarks>
+    public async Task InvalidateCacheAsync(string pattern, CancellationToken cancellationToken = default)
     {
-        var result = await GetAsync(query, threshold, 1, cancellationToken);
-        return result != null;
-    }
+        if (string.IsNullOrWhiteSpace(pattern))
+            return;
 
-    public async Task<IEnumerable<SimilarQuery>> FindSimilarQueriesAsync(
-        string query,
-        float? threshold = null,
-        int maxSimilar = 5,
-        CancellationToken cancellationToken = default)
-    {
-        var minSimilarity = threshold ?? _options.SimilarityThreshold;
-        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
-        var queryEmbedding = await _embeddingService.GenerateQueryEmbeddingAsync(query, cancellationToken);
-        var queryVector = new Vector(queryEmbedding);
-
-        var results = await context.SemanticCache
-            .Where(c => c.ExpiresAt > DateTime.UtcNow)
-            .Where(c => c.Embedding != null)
-            .Select(c => new
-            {
-                Entry = c,
-                Distance = c.Embedding!.CosineDistance(queryVector)
-            })
-            .Where(x => (1 - x.Distance) >= minSimilarity)
-            .OrderBy(x => x.Distance)
-            .Take(maxSimilar)
-            .ToListAsync(cancellationToken);
-
-        return results.Select(r => new SimilarQuery
-        {
-            Query = r.Entry.Query,
-            SimilarityScore = (float)(1 - r.Distance),
-            CachedAt = r.Entry.CreatedAt,
-            ResultCount = r.Entry.Results?.Count ?? 0,
-            CacheKey = r.Entry.QueryHash
-        });
-    }
-
-    public async Task<int> InvalidateAsync(
-        string pattern,
-        CancellationToken cancellationToken = default)
-    {
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         var toDelete = await context.SemanticCache
             .Where(c => EF.Functions.ILike(c.Query, $"%{pattern}%"))
@@ -213,23 +195,21 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
         context.SemanticCache.RemoveRange(toDelete);
         await context.SaveChangesAsync(cancellationToken);
 
-        LogCacheInvalidated(_logger, toDelete.Count, pattern);
-
-        return toDelete.Count;
+        LogCacheInvalidated(_logger, toDelete.Count);
     }
 
-    public async Task ClearAsync(CancellationToken cancellationToken = default)
+    /// <inheritdoc />
+    public async Task ClearCacheAsync(CancellationToken cancellationToken = default)
     {
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         // TRUNCATE는 UNLOGGED 테이블에서 더 효율적
-        await context.Database.ExecuteSqlRawAsync(
-            "TRUNCATE TABLE semantic_cache", cancellationToken);
+        await context.Database.ExecuteSqlRawAsync("TRUNCATE TABLE semantic_cache", cancellationToken);
 
         LogCacheCleared(_logger);
     }
 
-    public async Task<CacheStatistics> GetStatisticsAsync(
-        CancellationToken cancellationToken = default)
+    /// <inheritdoc />
+    public async Task<SemanticCacheStatistics> GetCacheStatisticsAsync(CancellationToken cancellationToken = default)
     {
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         var stats = await context.CacheStats
@@ -239,9 +219,9 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
         var expiredCount = await context.SemanticCache
             .CountAsync(c => c.ExpiresAt <= DateTime.UtcNow, cancellationToken);
 
-        return new CacheStatistics
+        return new SemanticCacheStatistics
         {
-            TotalQueries = entryCount,
+            TotalEntries = entryCount,
             CacheHits = stats?.TotalHits ?? 0,
             CacheMisses = stats?.TotalMisses ?? 0,
             ExpiredEntries = expiredCount,
@@ -249,21 +229,26 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
         };
     }
 
-    public async Task<CacheOptimizationResult> OptimizeAsync(
-        CancellationToken cancellationToken = default)
+    /// <inheritdoc />
+    /// <remarks>Stores nothing: an entry without results could never be a hit, and the embedding is computed when a
+    /// search stores its results.</remarks>
+    public Task WarmupCacheAsync(IReadOnlyList<string> popularQueries, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>Removes expired entries, evicts the least recently used beyond <see cref="PostgresCacheOptions.MaxEntries"/>,
+    /// and runs VACUUM ANALYZE (skipped with a warning when the server refuses it).</remarks>
+    public async Task CompactCacheAsync(CancellationToken cancellationToken = default)
     {
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
-        var startTime = DateTime.UtcNow;
-        var messages = new List<string>();
+        var stopwatch = Stopwatch.StartNew();
 
-        // 만료된 항목 삭제
-        var expiredCount = await context.Database.ExecuteSqlRawAsync(
-            "DELETE FROM semantic_cache WHERE \"ExpiresAt\" < {0}",
-            DateTime.UtcNow);
+        var expiredCount = await context.Database.ExecuteSqlInterpolatedAsync(
+            $@"DELETE FROM semantic_cache WHERE ""ExpiresAt"" < {DateTime.UtcNow}", cancellationToken);
 
-        messages.Add($"Removed {expiredCount} expired entries");
-
-        // LRU 기반 정리 (최대 항목 수 초과 시)
         var currentCount = await context.SemanticCache.CountAsync(cancellationToken);
         var lruRemoved = 0;
 
@@ -272,40 +257,26 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
             var excessCount = currentCount - _options.MaxEntries;
 
             // PostgreSQL에서 효율적인 LRU 삭제
-            lruRemoved = await context.Database.ExecuteSqlRawAsync($@"
+            lruRemoved = await context.Database.ExecuteSqlInterpolatedAsync($@"
                 DELETE FROM semantic_cache
                 WHERE ""Id"" IN (
                     SELECT ""Id"" FROM semantic_cache
                     ORDER BY ""LastAccessedAt"" ASC
-                    LIMIT {{0}}
-                )", excessCount);
-
-            messages.Add($"LRU evicted {lruRemoved} entries");
+                    LIMIT {excessCount}
+                )", cancellationToken);
         }
 
         // VACUUM ANALYZE로 통계 업데이트 (UNLOGGED 테이블이라 빠름)
         try
         {
             await context.Database.ExecuteSqlRawAsync("VACUUM ANALYZE semantic_cache", cancellationToken);
-            messages.Add("VACUUM ANALYZE completed");
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             LogVacuumAnalyzeFailed(_logger, ex);
-            messages.Add("VACUUM ANALYZE skipped");
         }
 
-        var duration = DateTime.UtcNow - startTime;
-
-        LogCacheOptimizationCompleted(_logger, expiredCount, lruRemoved, duration.TotalMilliseconds);
-
-        return new CacheOptimizationResult
-        {
-            RemovedEntries = expiredCount + lruRemoved,
-            OptimizationTimeMs = duration.TotalMilliseconds,
-            Success = true,
-            Messages = messages
-        };
+        LogCacheOptimizationCompleted(_logger, expiredCount, lruRemoved, stopwatch.Elapsed.TotalMilliseconds);
     }
 
     /// <summary>
@@ -318,6 +289,13 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
     }
 
     #region Private Methods
+
+    private async Task RemoveUnreadableAsync(PostgresCacheDbContext context, SemanticCacheEntity entry, CancellationToken cancellationToken)
+    {
+        await context.Database.ExecuteSqlInterpolatedAsync(
+            $@"DELETE FROM semantic_cache WHERE ""Id"" = {entry.Id}", cancellationToken);
+        LogUnreadableEntryRemoved(_logger, entry.QueryHash);
+    }
 
     private static string ComputeHash(string input)
     {
@@ -352,13 +330,13 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
             // LRU 방식으로 10% 삭제
             var removeCount = Math.Max(1, _options.MaxEntries / 10);
 
-            await context.Database.ExecuteSqlRawAsync($@"
+            await context.Database.ExecuteSqlInterpolatedAsync($@"
                 DELETE FROM semantic_cache
                 WHERE ""Id"" IN (
                     SELECT ""Id"" FROM semantic_cache
                     ORDER BY ""LastAccessedAt"" ASC
-                    LIMIT {{0}}
-                )", removeCount);
+                    LIMIT {removeCount}
+                )", cancellationToken);
 
             // 통계 업데이트 — an increment in SQL: the context is NoTracking, so an edit to a queried
             // statistics row would never be written.
@@ -372,7 +350,6 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
 
     private async Task CleanupExpiredIfNeededAsync(CancellationToken cancellationToken)
     {
-        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         if (!_options.EnableAutoCleanup)
             return;
 
@@ -384,9 +361,9 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
 
         try
         {
-            var deleted = await context.Database.ExecuteSqlRawAsync(
-                "DELETE FROM semantic_cache WHERE \"ExpiresAt\" < {0}",
-                DateTime.UtcNow);
+            await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+            var deleted = await context.Database.ExecuteSqlInterpolatedAsync(
+                $@"DELETE FROM semantic_cache WHERE ""ExpiresAt"" < {DateTime.UtcNow}", cancellationToken);
 
             _lastCleanup = DateTime.UtcNow;
 
@@ -411,8 +388,14 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
     [LoggerMessage(Level = LogLevel.Debug, Message = "Cache set for query hash: {Hash}")]
     private static partial void LogCacheSet(ILogger logger, string hash);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Invalidated {Count} cache entries matching pattern: {Pattern}")]
-    private static partial void LogCacheInvalidated(ILogger logger, int count, string pattern);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Semantic cache lookup failed; answering as a miss")]
+    private static partial void LogLookupFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Removed a semantic cache entry whose results could not be read: {Hash}")]
+    private static partial void LogUnreadableEntryRemoved(ILogger logger, string hash);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Invalidated {Count} semantic cache entries")]
+    private static partial void LogCacheInvalidated(ILogger logger, int count);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Cache cleared")]
     private static partial void LogCacheCleared(ILogger logger);

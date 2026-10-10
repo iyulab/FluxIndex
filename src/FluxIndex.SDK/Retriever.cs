@@ -39,6 +39,9 @@ public partial class Retriever
     private readonly ILogger<Retriever> _logger;
     private readonly RetrieverOptions _options;
 
+    /// <summary>The defaults this retriever applies to an omitted <c>maxResults</c>/<c>minScore</c>.</summary>
+    internal RetrieverOptions Options => _options;
+
     // GraphRAG & Hybrid Search auto-detection support
     private readonly IHybridSearchService? _hybridSearchService;
     private readonly IGraphRAGService? _graphRAGService;

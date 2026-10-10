@@ -2,6 +2,7 @@ using FluxIndex.Core.Application.Interfaces;
 using FluxIndex.SDK;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -36,9 +37,13 @@ public static class CacheServiceCollectionExtensions
             dbOptions.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
         });
 
-        // Cache 서비스 등록
-        services.AddScoped<ISemanticCache, SQLiteSemanticCache>();
-        services.AddScoped<SQLiteSemanticCache>();
+        // The semantic cache search consults. Singleton: it opens a context per operation (the factory above), so one
+        // instance serves every caller. TryAddEnumerable keeps a repeated call idempotent while leaving a different
+        // ISemanticCacheService visible next to this one, so the SDK builder can refuse the ambiguity instead of
+        // letting registration order pick.
+        services.TryAddSingleton<SQLiteSemanticCache>();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<ISemanticCacheService, SQLiteSemanticCache>(
+            sp => sp.GetRequiredService<SQLiteSemanticCache>()));
 
         // 마이그레이션 — 두 경로(SDK 빌더 Build(), 앱 호스트 시작)가 같은 루틴을 공유한다.
         services.AddSingleton<SQLiteCacheSchemaInitializer>();

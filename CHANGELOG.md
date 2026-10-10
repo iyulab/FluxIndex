@@ -8,14 +8,42 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [Unreleased]
 
 ### Changed
-- **Semantic cache thresholds take effect.** `SemanticCacheOptions.SimilarityThreshold` reaches the cache lookup in
-  `FluxIndexContext.SearchAsync`, which passed a fixed 0.95, and the SQLite/PostgreSQL caches' own
-  `SimilarityThreshold` decides a lookup made without one (it was never read; 0.85 was hard-coded). Unset, the
-  thresholds are unchanged (0.95 on the context path, 0.85 in the storage caches).
-  - **Breaking:** `SemanticCacheOptions.SimilarityThreshold` is `float?` (null keeps the defaults).
-  - **Breaking:** the threshold parameters of `ISemanticCache` (`GetAsync`, `HasSimilarQueryAsync`,
-    `FindSimilarQueriesAsync`) are `float? = null`. Implementers update the signature; compiled callers must rebuild.
-  - **Breaking:** `FluxIndexContext` takes an optional trailing `SemanticCacheOptions?`.
+- **Breaking** — **one semantic cache contract, and the SQLite/PostgreSQL caches now serve search.** Search reads
+  `ISemanticCacheService`, which only Redis implemented. The SQLite and PostgreSQL caches implemented a second
+  interface, `ISemanticCache`, that nothing on the search path consumed, so with those providers no search ever read
+  from or wrote to the cache. Old → new:
+  - **Storage selectors no longer pick a cache.** `UseSQLite`, `UseSQLiteInMemory`, `UsePostgreSQL`, `UseLocalStorage`
+    and `UseBestInClass` set `SemanticCache.Provider` (inert); they leave it at `"None"`, and `UseSQLite` alone no
+    longer creates a `semantic_cache` table. Caching is **opt-in**:
+    `WithSemanticCacheOptions(o => o.Provider = "SQLite" | "PostgreSQL" | "Redis")`. It answers *similar* queries
+    (cosine ≥ the threshold, 0.95 by default), so two different questions can share an answer. Turn it on where that is
+    acceptable.
+  - With a provider opted in, `FluxIndexContext.SearchAsync` answers similar unfiltered queries from the cache, at one
+    query embedding per search.
+    - A hit is used only if the stored request asked for at least as many results with a minimum score no higher, and
+      it is trimmed to the current request.
+    - Filtered searches neither read nor fill the cache.
+    - Every indexer write empties it.
+    - A failing lookup or store is logged and the search continues.
+    - An unreadable stored row is a miss.
+  - **Thresholds:** `SemanticCacheOptions.SimilarityThreshold` (now `float?`) reaches the lookup; null lets the cache's
+    own `SimilarityThreshold` decide. SQLite, PostgreSQL and Redis (new `RedisSemanticCacheOptions.SimilarityThreshold`)
+    all default to 0.95. Before, the context asked for a fixed 0.95, and the storage caches' unread option said 0.85.
+  - **Build errors:** two registered caches, or a provider opted into without its storage package (`AddSQLiteStorage()`
+    / `AddPostgreSQLStorage()`), fail at `Build()` and name the fix. A cache registered through `ConfigureServices`
+    with `Provider = "None"` keeps working.
+  - **Removed:** `ISemanticCache`, `CacheResult`, `CacheMetadata`, `SimilarQuery`, `CacheStatistics`,
+    `CacheOptimizationResult`, and the caches' `GetAsync`/`SetAsync`/`HasSimilarQueryAsync`/`FindSimilarQueriesAsync`/
+    `InvalidateAsync`/`ClearAsync`/`GetStatisticsAsync`/`OptimizeAsync`. The caches expose the `ISemanticCacheService`
+    members.
+  - **Changed:**
+    - `ISemanticCacheService.GetCachedResultAsync` takes `float? similarityThreshold = null` (was `float = 0.95f`) and
+      gains `ClearCacheAsync`, which implementers add.
+    - The SQLite/PostgreSQL caches are singletons.
+    - PostgreSQL `SemanticCacheEntity.Results`/`Metadata` → `ResultsJson`/`MetadataJson` (the columns are unchanged);
+      the SQLite entity's `GetResults`/`SetResults` are gone.
+    - `FluxIndexContext` and `Indexer` take an optional trailing cache argument.
+  - Redis entries stored before this version are misses (no stored request), so a Redis cache starts cold once.
 - **`HybridSearchOptions.TimeoutMs` is enforced.** A hybrid search that outlives it throws `TimeoutException`, not a
   shorter result; the caller's own cancellation still throws `OperationCanceledException`. The default is now 0 (no
   limit). It was declared as 30000 but never applied, so an unset option behaves as before. In a batch, the limit

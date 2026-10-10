@@ -28,10 +28,11 @@ public class PostgresCacheOptions
     public TimeSpan DefaultExpiry { get; set; } = TimeSpan.FromHours(1);
 
     /// <summary>
-    /// Minimum similarity (0.0 to 1.0) for a cache hit when a lookup (<c>GetAsync</c>, <c>HasSimilarQueryAsync</c>,
-    /// <c>FindSimilarQueriesAsync</c>) passes no threshold of its own. Default: 0.85.
+    /// Minimum similarity (0.0 to 1.0) for a cache hit when a lookup (<c>GetCachedResultAsync</c>) passes no threshold
+    /// of its own — which <c>FluxIndexContext.SearchAsync</c> does unless <c>SemanticCacheOptions.SimilarityThreshold</c>
+    /// is set. Default: 0.95, the threshold the search path has always used.
     /// </summary>
-    public float SimilarityThreshold { get; set; } = 0.85f;
+    public float SimilarityThreshold { get; set; } = 0.95f;
 
     /// <summary>
     /// 최대 캐시 항목 수 (기본: 50000)

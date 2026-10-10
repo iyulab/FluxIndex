@@ -1,5 +1,6 @@
 using AwesomeAssertions;
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Domain.Models;
 using FluxIndex.Storage.PostgreSQL.Cache;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
@@ -21,7 +22,7 @@ public sealed class PostgresSemanticCacheStatisticsTests : IAsyncLifetime
 
     private readonly PostgreSqlContainer _container = PostgreSqlTestContainer.Create();
     private ServiceProvider _provider = null!;
-    private ISemanticCache _cache = null!;
+    private ISemanticCacheService _cache = null!;
 
     public async ValueTask InitializeAsync()
     {
@@ -45,8 +46,11 @@ public sealed class PostgresSemanticCacheStatisticsTests : IAsyncLifetime
         });
         _provider = services.BuildServiceProvider();
         _provider.GetRequiredService<PostgresCacheSchemaInitializer>().InitializeSync(_provider);
-        _cache = _provider.GetRequiredService<ISemanticCache>();
+        _cache = _provider.GetRequiredService<ISemanticCacheService>();
     }
+
+    private static CacheDocumentChunk[] Answer(string content) =>
+        [new CacheDocumentChunk { Id = "c1", DocumentId = "d1", Content = content }];
 
     public async ValueTask DisposeAsync()
     {
@@ -59,16 +63,16 @@ public sealed class PostgresSemanticCacheStatisticsTests : IAsyncLifetime
     {
         var ct = TestContext.Current.CancellationToken;
 
-        (await _cache.GetAsync("what is postgres", cancellationToken: ct)).Should().BeNull();
-        await _cache.SetAsync("what is postgres", ["a relational database"], cancellationToken: ct);
+        (await _cache.GetCachedResultAsync("what is postgres", cancellationToken: ct)).Should().BeNull();
+        await _cache.SetCachedResultAsync("what is postgres", Answer("a relational database"), cancellationToken: ct);
 
-        var first = await _cache.GetAsync("what is postgres", cancellationToken: ct);
-        var second = await _cache.GetAsync("what is postgres", cancellationToken: ct);
+        var first = await _cache.GetCachedResultAsync("what is postgres", cancellationToken: ct);
+        var second = await _cache.GetCachedResultAsync("what is postgres", cancellationToken: ct);
 
         first!.HitCount.Should().Be(1);
         second!.HitCount.Should().Be(2, "the first hit's count was written, not only incremented in memory");
 
-        var stats = await _cache.GetStatisticsAsync(ct);
+        var stats = await _cache.GetCacheStatisticsAsync(ct);
         stats.CacheMisses.Should().Be(1);
         stats.CacheHits.Should().Be(2, "every hit counts, not only the one that created the statistics row");
     }
@@ -94,23 +98,23 @@ public sealed class PostgresSemanticCacheStatisticsTests : IAsyncLifetime
         }
 
         _provider.GetRequiredService<PostgresCacheSchemaInitializer>().InitializeSync(_provider);
-        await _cache.SetAsync("legacy table", ["still served"], cancellationToken: ct);
+        await _cache.SetCachedResultAsync("legacy table", Answer("still served"), cancellationToken: ct);
 
-        (await _cache.GetAsync("legacy table", cancellationToken: ct))!.HitCount.Should().Be(1);
+        (await _cache.GetCachedResultAsync("legacy table", cancellationToken: ct))!.HitCount.Should().Be(1);
     }
 
     [Fact]
     public async Task ConcurrentLookups_CountEveryHitAndMiss()
     {
         var ct = TestContext.Current.CancellationToken;
-        await _cache.SetAsync("cached question", ["cached answer"], cancellationToken: ct);
+        await _cache.SetCachedResultAsync("cached question", Answer("cached answer"), cancellationToken: ct);
 
         // 16 overlapping callers on one cache instance, half hitting and half missing (the miss path embeds a
         // different vector so the similarity search finds nothing).
         await Task.WhenAll(Enumerable.Range(0, 16).Select(i => Task.Run(
-            () => _cache.GetAsync("cached question", cancellationToken: ct), ct)));
+            () => _cache.GetCachedResultAsync("cached question", cancellationToken: ct), ct)));
 
-        (await _cache.GetStatisticsAsync(ct)).CacheHits.Should().Be(16,
+        (await _cache.GetCacheStatisticsAsync(ct)).CacheHits.Should().Be(16,
             "the statistics row is updated atomically, so no concurrent increment is lost");
     }
 }

@@ -7,8 +7,8 @@ using Xunit;
 namespace FluxIndex.SDK.Tests;
 
 /// <summary>
-/// <c>UseSQLite(path)</c> enables the vector store, the graph store and the semantic cache on one
-/// database file. Build() provisions storage by running the registered <see cref="IStorageInitializer"/>
+/// <c>UseSQLite(path)</c> enables the vector store and the graph store on one database file, and the semantic cache
+/// when it is opted into (<c>WithSemanticCacheOptions(o => o.Provider = "SQLite")</c>). Build() provisions storage by running the registered <see cref="IStorageInitializer"/>
 /// instances against its own service provider — it never starts a host, so any component that migrates
 /// from an <c>IHostedService</c> would never be provisioned on this path. This pins that every
 /// component the builder enables actually gets its schema.
@@ -44,6 +44,7 @@ public class SQLiteBuilderPathProvisioningTests : IDisposable
         FluxIndexContext.CreateBuilder()
             .UseSQLite(_dbPath)
             .UseInMemoryEmbedding()
+            .WithSemanticCacheOptions(o => o.Provider = "SQLite")
             .AddSQLiteStorage()
             .Build();
 
@@ -56,8 +57,22 @@ public class SQLiteBuilderPathProvisioningTests : IDisposable
         tables.Should().Contain("chunk_hierarchies");
         tables.Should().Contain("chunk_relationships");
 
-        // Semantic cache — likewise enabled by UseSQLite.
+        // Semantic cache — opted into on the same file.
         tables.Should().Contain("semantic_cache");
+    }
+
+    [Fact]
+    public void Build_WithSQLiteStackAlone_LeavesTheSemanticCacheOff()
+    {
+        FluxIndexContext.CreateBuilder()
+            .UseSQLite(_dbPath)
+            .UseInMemoryEmbedding()
+            .AddSQLiteStorage()
+            .Build();
+
+        var tables = TablesIn(_dbPath);
+        tables.Should().Contain("vectors", "positive control: the store was provisioned");
+        tables.Should().NotContain("semantic_cache", "the semantic cache is opt-in; selecting the store does not turn it on");
     }
 
     [Fact]
@@ -106,6 +121,7 @@ public class SQLiteBuilderPathProvisioningTests : IDisposable
         FluxIndexContext.CreateBuilder()
             .UseSQLite(_dbPath)
             .UseInMemoryEmbedding()
+            .WithSemanticCacheOptions(o => o.Provider = "SQLite")
             .AddSQLiteStorage()
             .Build();
 

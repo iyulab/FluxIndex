@@ -19,6 +19,13 @@ public class RedisSemanticCacheOptions
     public TimeSpan DefaultTtl { get; set; } = TimeSpan.FromHours(1);
 
     /// <summary>
+    /// Minimum similarity (0.0 to 1.0) for a cache hit when a lookup (<c>GetCachedResultAsync</c>) passes no threshold
+    /// of its own — which <c>FluxIndexContext.SearchAsync</c> does unless <c>SemanticCacheOptions.SimilarityThreshold</c>
+    /// is set. Default: 0.95.
+    /// </summary>
+    public float SimilarityThreshold { get; set; } = 0.95f;
+
+    /// <summary>
     /// 최대 캐시 엔트리 수 (0은 무제한)
     /// </summary>
     public long MaxCacheEntries { get; set; } = 10000;

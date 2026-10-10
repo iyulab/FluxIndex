@@ -11,7 +11,11 @@ public class SemanticCacheEntity
     public string QueryHash { get; set; } = string.Empty;
     public string Query { get; set; } = string.Empty;
     public string EmbeddingJson { get; set; } = "[]";
+
+    /// <summary>The cached results in the form <c>SemanticCacheJson</c> writes; a row it cannot read is a miss.</summary>
     public string ResultsJson { get; set; } = "[]";
+
+    /// <summary>The <c>SearchMetadata</c> stored with the results, in the form <c>SemanticCacheJson</c> writes.</summary>
     public string MetadataJson { get; set; } = "{}";
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime ExpiresAt { get; set; }
@@ -23,12 +27,6 @@ public class SemanticCacheEntity
 
     public void SetEmbedding(float[] embedding) =>
         EmbeddingJson = JsonSerializer.Serialize(embedding);
-
-    public List<object> GetResults() =>
-        JsonSerializer.Deserialize<List<object>>(ResultsJson) ?? new List<object>();
-
-    public void SetResults(IEnumerable<object> results) =>
-        ResultsJson = JsonSerializer.Serialize(results.ToList());
 }
 
 /// <summary>

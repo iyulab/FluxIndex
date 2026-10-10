@@ -34,11 +34,14 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDi
     private readonly IQualityMonitoringService? _qualityMonitor;
     private readonly IAdaptiveSearchService? _adaptiveSearchService;
     private readonly ILogger<FluxIndexContext> _logger;
-    private readonly float _cacheSimilarityThreshold;
+    // Null: the cache's own configured threshold decides (SemanticCacheOptions.SimilarityThreshold unset).
+    private readonly float? _cacheSimilarityThreshold;
     private bool _disposed;
 
-    // What SearchAsync has always asked the semantic cache for when SemanticCacheOptions.SimilarityThreshold is unset.
-    private const float DefaultCacheSimilarityThreshold = 0.95f;
+    // The request a semantic cache entry answered, stored with it (SearchMetadata.AdditionalProperties) so a later hit
+    // is used only for a request those results can answer.
+    private const string CachedMaxResultsKey = "fluxindex.maxResults";
+    private const string CachedMinScoreKey = "fluxindex.minScore";
 
     public FluxIndexContext(
         Retriever retriever,
@@ -60,7 +63,7 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDi
         _smallToBigRetriever = smallToBigRetriever;
         _qualityMonitor = qualityMonitor;
         _adaptiveSearchService = adaptiveSearchService;
-        _cacheSimilarityThreshold = semanticCacheOptions?.SimilarityThreshold ?? DefaultCacheSimilarityThreshold;
+        _cacheSimilarityThreshold = semanticCacheOptions?.SimilarityThreshold;
         _logger = logger ?? NullLogger<FluxIndexContext>.Instance;
 
         if (_cacheService != null)
@@ -118,6 +121,15 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDi
     /// <summary>
     /// 벡터 검색 - 시맨틱 캐싱 지원
     /// </summary>
+    /// <remarks>
+    /// With a semantic cache registered (<see cref="ISemanticCacheService"/> — opt-in through
+    /// <c>SemanticCacheOptions.Provider</c> or <c>ConfigureServices</c>), a search without a <paramref name="filter"/> is
+    /// first looked up there: the results stored for the most
+    /// similar earlier query answer it when that query asked for at least as many results with a minimum score no
+    /// higher, trimmed to this request. Otherwise the search runs and its results are stored. A filtered search
+    /// neither reads nor fills the cache, every indexer write empties it, and a cache that fails is skipped, never the
+    /// search. Cached results carry no vector/keyword sub-scores or highlights.
+    /// </remarks>
     public async Task<IEnumerable<SearchResult>> SearchAsync(
         string query,
         int? maxResults = null,
@@ -130,17 +142,27 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDi
 
         var startTime = DateTime.UtcNow;
 
+        // The cache entry records neither the filter nor anything that could check it, so filtered searches bypass it.
+        var semanticCache = filter is { Count: > 0 } ? null : _cacheService;
+        var effectiveMaxResults = maxResults ?? _retriever.Options.DefaultMaxResults;
+        var effectiveMinScore = minScore ?? _retriever.Options.DefaultMinScore;
+
         try
         {
             // 1. 시맨틱 캐시 확인
-            if (_cacheService != null)
+            if (semanticCache != null)
             {
-                var cachedResult = await _cacheService.GetCachedResultAsync(query, _cacheSimilarityThreshold, cancellationToken);
-                if (cachedResult != null)
+                var cachedResult = await LookUpSemanticCacheAsync(semanticCache, query, cancellationToken);
+                var usable = cachedResult is not null
+                    && CanAnswer(cachedResult, effectiveMaxResults, effectiveMinScore);
+                if (cachedResult != null && usable)
                 {
                     LogCacheHit(_logger, query, cachedResult.SimilarityScore);
 
-                    var cachedResults = ConvertCachedToSDKSearchResults(cachedResult.Results);
+                    var cachedResults = ConvertCachedToSDKSearchResults(cachedResult.Results)
+                        .Where(r => r.Score >= effectiveMinScore)
+                        .Take(effectiveMaxResults)
+                        .ToList();
 
                     // 품질 모니터링 (캐시 히트)
                     if (_qualityMonitor != null)
@@ -167,27 +189,10 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDi
             var sdkResults = ConvertToSDKSearchResults(coreResults).ToList();
 
             // 3. 결과 캐싱 (검색 결과가 있는 경우만)
-            if (_cacheService != null && sdkResults.Count != 0)
+            if (semanticCache != null && sdkResults.Count != 0)
             {
-                var searchResultsForCache = sdkResults.Select(r => new DocumentChunkModel
-                {
-                    Id = r.Id,
-                    DocumentId = r.DocumentId,
-                    Content = r.Content,
-                    ChunkIndex = r.ChunkIndex,
-                    TokenCount = 0,
-                    Metadata = new Dictionary<string, object>(),
-                    Score = r.Score
-                }).ToList();
-
-                await _cacheService.SetCachedResultAsync(
-                    query,
-                    searchResultsForCache,
-                    null, // 기본 메타데이터
-                    null, // 기본 만료 시간 사용
-                    cancellationToken);
-
-                LogCachedSearchResults(_logger, query, sdkResults.Count);
+                await StoreInSemanticCacheAsync(
+                    semanticCache, query, sdkResults, effectiveMaxResults, effectiveMinScore, cancellationToken);
             }
 
             var duration = DateTime.UtcNow - startTime;
@@ -825,6 +830,101 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDi
     /// <summary>
     /// Convert cached SearchResult to SDK SearchResult
     /// </summary>
+    /// <summary>A semantic cache lookup that cannot fail the search: an error is logged and answered as a miss.</summary>
+    private async Task<CachedSearchResult?> LookUpSemanticCacheAsync(
+        ISemanticCacheService cache, string query, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await cache.GetCachedResultAsync(query, _cacheSimilarityThreshold, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            LogSemanticCacheLookupFailed(_logger, ex);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Stores a search's results with the request they answered (<see cref="CanAnswer"/> reads it back). A failure is
+    /// logged; the search has its results either way.
+    /// </summary>
+    private async Task StoreInSemanticCacheAsync(
+        ISemanticCacheService cache,
+        string query,
+        IReadOnlyList<SearchResult> results,
+        int maxResults,
+        float minScore,
+        CancellationToken cancellationToken)
+    {
+        var chunks = results.Select(r => new DocumentChunkModel
+        {
+            Id = r.Id,
+            DocumentId = r.DocumentId,
+            Content = r.Content,
+            ChunkIndex = r.ChunkIndex,
+            Metadata = new Dictionary<string, object>(r.Metadata),
+            Score = r.Score
+        }).ToList();
+
+        var metadata = new SearchMetadata
+        {
+            TotalDocuments = chunks.Count,
+            SearchAlgorithm = "vector",
+            AdditionalProperties = new Dictionary<string, object>
+            {
+                [CachedMaxResultsKey] = maxResults,
+                [CachedMinScoreKey] = minScore
+            }
+        };
+
+        try
+        {
+            await cache.SetCachedResultAsync(query, chunks, metadata, ttl: null, cancellationToken);
+            LogCachedSearchResults(_logger, query, chunks.Count);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            LogSemanticCacheStoreFailed(_logger, ex);
+        }
+    }
+
+    /// <summary>
+    /// Whether a cache entry answers a request for <paramref name="maxResults"/> results scoring at least
+    /// <paramref name="minScore"/>: it was stored by this method's counterpart for a request with a minimum score no
+    /// higher, and either asked for at least as many results or held fewer than it asked for (so it had them all).
+    /// An entry without that record (stored by another caller) answers nothing here.
+    /// </summary>
+    private static bool CanAnswer(CachedSearchResult cached, int maxResults, float minScore)
+    {
+        var recorded = cached.Metadata?.AdditionalProperties;
+        if (recorded is null
+            || !TryReadNumber(recorded.GetValueOrDefault(CachedMaxResultsKey), out var storedMaxResults)
+            || !TryReadNumber(recorded.GetValueOrDefault(CachedMinScoreKey), out var storedMinScore))
+        {
+            return false;
+        }
+
+        // Compared as float, the type it was recorded in: a JSON round trip reads 0.7f back as the double 0.7, which
+        // is above (double)0.7f.
+        if (minScore < (float)storedMinScore)
+            return false;
+
+        return maxResults <= storedMaxResults || cached.Results.Count < storedMaxResults;
+    }
+
+    private static bool TryReadNumber(object? value, out double number)
+    {
+        switch (Core.Application.Utilities.MetadataValues.ToPlain(value))
+        {
+            case int i: number = i; return true;
+            case long l: number = l; return true;
+            case float f: number = f; return true;
+            case double d: number = d; return true;
+            default: number = 0; return false;
+        }
+    }
+
     private static IEnumerable<SearchResult> ConvertCachedToSDKSearchResults(IReadOnlyList<DocumentChunkModel> cachedResults)
     {
         return cachedResults.Select(cr => new SearchResult
@@ -1158,6 +1258,12 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDi
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Cached search results for query: '{Query}' ({Count} results)")]
     private static partial void LogCachedSearchResults(ILogger logger, string query, int count);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Semantic cache lookup failed; searching without it")]
+    private static partial void LogSemanticCacheLookupFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Storing search results in the semantic cache failed")]
+    private static partial void LogSemanticCacheStoreFailed(ILogger logger, Exception exception);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Search completed: query='{Query}', results={Count}, duration={Duration}ms")]
     private static partial void LogSearchCompleted(ILogger logger, string query, int count, double duration);

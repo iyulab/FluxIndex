@@ -56,11 +56,14 @@ public class PostgresCacheDbContext : DbContext, IEmbeddingDimensionsModel
             entity.Property(e => e.Embedding)
                 .HasColumnType($"vector({_options.EmbeddingDimensions})");
 
-            // JSONB for results and metadata
-            entity.Property(e => e.Results)
+            // JSONB for results and metadata, read as text: the cache decodes them itself, so a row in a form it cannot
+            // read is one miss rather than a materialization failure of the whole lookup query.
+            entity.Property(e => e.ResultsJson)
+                .HasColumnName("Results")
                 .HasColumnType("jsonb");
 
-            entity.Property(e => e.Metadata)
+            entity.Property(e => e.MetadataJson)
+                .HasColumnName("Metadata")
                 .HasColumnType("jsonb");
 
             // 인덱스

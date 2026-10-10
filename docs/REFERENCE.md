@@ -246,10 +246,23 @@ method's `maxResults`/`minScore` argument is omitted, `RetrieverOptions.DefaultM
 (set by `WithSearchOptions(...)`; 10 / 0.2 by default) apply — `FindSimilarAsync` (0.5) and the quantized
 searches (0.0) keep their own threshold defaults.
 
+**Semantic cache (opt-in).** `FluxIndexContext.SearchAsync` consults the registered `ISemanticCacheService`, and none is
+registered unless you opt in — `UseSQLite`/`UsePostgreSQL`/`UseLocalStorage`/`UseBestInClass` do not. Opt in with
+`WithSemanticCacheOptions(o => o.Provider = "SQLite")` or `"PostgreSQL"` (the storage package's `Add*Storage()` then
+registers its cache on the selected store's database); Redis (`AddRedisSemanticCache`) or your own implementation is
+registered through `ConfigureServices`, with `Provider` `"Redis"` or `"None"`. `Build()` throws for an opted-in provider
+nobody registered and for two registrations. Matching is approximate: a query at least `SimilarityThreshold` (0.95)
+similar to an earlier one gets that query's results, so two different questions can share an answer. A search without a filter is answered from the results
+stored for the most similar earlier query when that query asked for at least as many results with a minimum score no
+higher (the hit is trimmed to the request); otherwise it searches and stores its results. Filtered searches neither read
+nor fill the cache, every indexer write empties it (`ClearCacheAsync`), a failing cache is skipped rather than failing
+the search, and a keyword-only context (no embedder) never caches. Cached results keep chunk metadata (as plain values)
+but carry no vector/keyword sub-scores or highlights.
+
 **Semantic cache threshold.** `SemanticCacheOptions.SimilarityThreshold` (`WithSemanticCacheOptions(...)`) is the minimum
-query similarity for a cache hit: `FluxIndexContext.SearchAsync` asks its `ISemanticCacheService` for it, and the builder
-copies it into the SQLite/PostgreSQL cache options. Unset, the context asks for 0.95 and those caches keep their own
-`SimilarityThreshold` (0.85), which an `ISemanticCache` lookup uses whenever it passes no threshold of its own.
+query similarity for a cache hit: `FluxIndexContext.SearchAsync` passes it to the cache, and the builder copies it into the
+SQLite/PostgreSQL cache options. Unset, the context passes none and the cache's own `SimilarityThreshold` decides — 0.95
+for the SQLite, PostgreSQL and Redis caches.
 
 ---
 

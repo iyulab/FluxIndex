@@ -1,5 +1,7 @@
 ﻿using FluxIndex.Cache.Redis.Configuration;
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Application.Services;
+using FluxIndex.Core.Application.Utilities;
 using FluxIndex.Core.Domain.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -52,14 +54,19 @@ public partial class RedisSemanticCacheService : ISemanticCacheService, IDisposa
     /// <summary>
     /// 캐시에서 유사한 쿼리의 결과 검색
     /// </summary>
+    /// <remarks>Null <paramref name="similarityThreshold"/> uses <see cref="RedisSemanticCacheOptions.SimilarityThreshold"/>.</remarks>
     public async Task<CachedSearchResult?> GetCachedResultAsync(
         string query,
-        float similarityThreshold = 0.95f,
+        float? similarityThreshold = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(query))
             throw new ArgumentException("Query cannot be empty", nameof(query));
 
+        if (NoEmbeddingService.IsKeywordOnly(_embeddingService))
+            return null;
+
+        var threshold = similarityThreshold ?? _options.SimilarityThreshold;
         var stopwatch = Stopwatch.StartNew();
 
         try
@@ -72,7 +79,7 @@ public partial class RedisSemanticCacheService : ISemanticCacheService, IDisposa
             var queryEmbedding = await _embeddingService.GenerateQueryEmbeddingAsync(query, cancellationToken);
 
             // 2. 캐시된 쿼리들의 임베딩과 유사도 계산
-            var bestMatch = await FindBestMatchAsync(queryEmbedding, similarityThreshold, cancellationToken);
+            var bestMatch = await FindBestMatchAsync(queryEmbedding, threshold, cancellationToken);
 
             if (bestMatch == null)
             {
@@ -128,6 +135,9 @@ public partial class RedisSemanticCacheService : ISemanticCacheService, IDisposa
             throw new ArgumentException("Query cannot be empty", nameof(query));
 
         ArgumentNullException.ThrowIfNull(results);
+
+        if (NoEmbeddingService.IsKeywordOnly(_embeddingService))
+            return;
 
         try
         {
@@ -223,6 +233,22 @@ public partial class RedisSemanticCacheService : ISemanticCacheService, IDisposa
             LogInvalidateError(_logger, ex, pattern);
             throw;
         }
+    }
+
+    /// <inheritdoc />
+    /// <remarks>Removes every indexed query's result and embedding keys and the index itself; the statistics stay.</remarks>
+    public async Task ClearCacheAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var queries = await _database.SetMembersAsync(QUERY_INDEX_KEY);
+
+        var keys = queries
+            .SelectMany(query => new RedisKey[] { CACHE_KEY_PREFIX + query, EMBEDDING_KEY_PREFIX + query })
+            .Append(QUERY_INDEX_KEY)
+            .ToArray();
+        await _database.KeyDeleteAsync(keys);
+
+        LogCleared(_logger, queries.Length);
     }
 
     /// <summary>
@@ -436,7 +462,18 @@ public partial class RedisSemanticCacheService : ISemanticCacheService, IDisposa
 
         try
         {
-            return JsonSerializer.Deserialize<CachedSearchResult>((string)resultJson!, GetJsonOptions());
+            var cached = JsonSerializer.Deserialize<CachedSearchResult>((string)resultJson!, GetJsonOptions());
+
+            // Metadata values come back as JsonElement; a hit reads like a miss, so they are plain values again.
+            if (cached is not null)
+            {
+                foreach (var chunk in cached.Results)
+                    MetadataValues.ToPlain(chunk.Metadata);
+                if (cached.Metadata is not null)
+                    MetadataValues.ToPlain(cached.Metadata.AdditionalProperties);
+            }
+
+            return cached;
         }
         catch (Exception ex)
         {
@@ -626,6 +663,9 @@ public partial class RedisSemanticCacheService : ISemanticCacheService, IDisposa
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Error invalidating cache pattern: {Pattern}")]
     private static partial void LogInvalidateError(ILogger logger, Exception exception, string pattern);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Cleared the semantic cache ({Count} entries)")]
+    private static partial void LogCleared(ILogger logger, int count);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Error collecting cache statistics")]
     private static partial void LogStatisticsError(ILogger logger, Exception exception);

@@ -227,8 +227,18 @@ public class KeywordSearchStoreOptions
 public class SemanticCacheOptions
 {
     /// <summary>
-    /// 시맨틱 캐시 프로바이더 ("None", "SQLite", "PostgreSQL", "Redis")
+    /// 시맨틱 캐시 프로바이더 ("None", "SQLite", "PostgreSQL", "Redis"). Default "None": semantic caching is opt-in, and
+    /// no storage selector (<c>UseSQLite</c>, <c>UsePostgreSQL</c>, ...) turns it on. "SQLite" and "PostgreSQL" make that
+    /// storage package (<c>AddSQLiteStorage</c>/<c>AddPostgreSQLStorage</c>) register its cache, on the selected store's
+    /// database when <see cref="UseVectorStoreConnection"/> is set, as the <c>ISemanticCacheService</c>
+    /// <c>FluxIndexContext.SearchAsync</c> consults; "Redis" expects <c>AddRedisSemanticCache</c> through
+    /// <c>ConfigureServices</c>. With "None", a cache registered through <c>ConfigureServices</c> is still used. Build()
+    /// refuses an opted-in provider nobody registered, and two registrations.
     /// </summary>
+    /// <remarks>
+    /// The cache is approximate: a query at least <see cref="SimilarityThreshold"/> (0.95 by default) similar to an
+    /// earlier one is answered with that query's results, so two different questions can share an answer.
+    /// </remarks>
     public string Provider { get; set; } = "None";
 
     /// <summary>
@@ -242,14 +252,13 @@ public class SemanticCacheOptions
     public bool AutoMigrate { get; set; } = true;
 
     /// <summary>
-    /// Minimum query similarity (0.0 to 1.0) for a semantic cache hit. Applied to the cache
-    /// <c>FluxIndexContext.SearchAsync</c> consults (an <c>ISemanticCacheService</c>) and copied into the SQLite /
-    /// PostgreSQL semantic cache the builder registers for <see cref="Provider"/>, where it is the threshold a lookup
-    /// uses when it passes none.
+    /// Minimum query similarity (0.0 to 1.0) for a semantic cache hit. <c>FluxIndexContext.SearchAsync</c> passes it to
+    /// the <c>ISemanticCacheService</c> it consults, and the builder copies it into the SQLite / PostgreSQL semantic
+    /// cache it registers for <see cref="Provider"/>.
     /// </summary>
     /// <remarks>
-    /// Null (the default) leaves each cache at its own default: 0.95 on the context's search path, and the
-    /// SQLite/PostgreSQL cache options' <c>SimilarityThreshold</c> (0.85).
+    /// Null (the default) lets the cache's own options decide: their <c>SimilarityThreshold</c> is 0.95 for the
+    /// SQLite, PostgreSQL and Redis caches.
     /// </remarks>
     public float? SimilarityThreshold { get; set; }
 

@@ -7,21 +7,29 @@ using System.Threading.Tasks;
 namespace FluxIndex.Core.Application.Interfaces;
 
 /// <summary>
-/// 시맨틱 캐싱 서비스 인터페이스
-/// 쿼리 유사도 기반으로 검색 결과를 캐싱하여 성능 향상
+/// The semantic cache: search results stored under the query that produced them and served to a later query whose
+/// embedding is similar enough. This is the cache <c>FluxIndexContext.SearchAsync</c> and <c>AdaptiveSearchService</c>
+/// consult; the Redis, SQLite and PostgreSQL packages implement it.
 /// </summary>
+/// <remarks>
+/// A lookup or write on a keyword-only context (<see cref="FluxIndex.Core.Application.Services.NoEmbeddingService"/>)
+/// has no vector to compare, so implementations answer every lookup with a miss and store nothing.
+/// </remarks>
 public interface ISemanticCacheService
 {
     /// <summary>
-    /// 캐시에서 유사한 쿼리의 결과 검색
+    /// The cached results of the stored query most similar to <paramref name="query"/>, or null when none is similar
+    /// enough. A failure to read the cache is a miss, not an exception.
     /// </summary>
-    /// <param name="query">검색 쿼리</param>
-    /// <param name="similarityThreshold">유사도 임계값 (기본값: 0.95)</param>
-    /// <param name="cancellationToken">취소 토큰</param>
-    /// <returns>캐시된 검색 결과 또는 null</returns>
+    /// <param name="query">The search query.</param>
+    /// <param name="similarityThreshold">
+    /// Minimum cosine similarity (0.0 to 1.0) for a hit. Null uses the cache's configured threshold (its options'
+    /// <c>SimilarityThreshold</c>).
+    /// </param>
+    /// <param name="cancellationToken">Cancels the lookup.</param>
     Task<CachedSearchResult?> GetCachedResultAsync(
         string query,
-        float similarityThreshold = 0.95f,
+        float? similarityThreshold = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -49,6 +57,14 @@ public interface ISemanticCacheService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Removes every cached entry. The SDK indexer calls this after each write, so a search that starts afterwards is
+    /// never answered from before the write (the same rule as the retriever's own result cache).
+    /// </summary>
+    /// <param name="cancellationToken">Cancels the clear.</param>
+    Task ClearCacheAsync(
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// 캐시 통계 조회
     /// </summary>
     /// <param name="cancellationToken">취소 토큰</param>
@@ -57,7 +73,10 @@ public interface ISemanticCacheService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// 캐시 워밍업 (사전에 인기 있는 쿼리들을 캐시에 로드)
+    /// Prepares the cache for <paramref name="popularQueries"/> without searching: there are no results to store, so
+    /// no lookup hits until a search has stored its results. What is prepared depends on the implementation: Redis
+    /// pre-computes and stores the query embeddings; the SQLite and PostgreSQL caches store nothing, since an entry
+    /// without results could never be a hit.
     /// </summary>
     /// <param name="popularQueries">인기 쿼리 목록</param>
     /// <param name="cancellationToken">취소 토큰</param>

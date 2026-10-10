@@ -1,5 +1,6 @@
 using AwesomeAssertions;
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Domain.Models;
 using FluxIndex.Storage.SQLite.Cache;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
@@ -16,7 +17,7 @@ namespace FluxIndex.Storage.SQLite.Tests;
 public sealed class SQLiteSemanticCacheStatisticsTests : IAsyncDisposable
 {
     private readonly ServiceProvider _provider;
-    private readonly ISemanticCache _cache;
+    private readonly ISemanticCacheService _cache;
 
     public SQLiteSemanticCacheStatisticsTests()
     {
@@ -35,27 +36,30 @@ public sealed class SQLiteSemanticCacheStatisticsTests : IAsyncDisposable
         });
         _provider = services.BuildServiceProvider();
         _provider.GetRequiredService<SQLiteCacheSchemaInitializer>().InitializeSync(_provider);
-        _cache = _provider.GetRequiredService<ISemanticCache>();
+        _cache = _provider.GetRequiredService<ISemanticCacheService>();
     }
+
+    private static CacheDocumentChunk[] Answer(string content) =>
+        [new CacheDocumentChunk { Id = "c1", DocumentId = "d1", Content = content, Score = 0.9f }];
 
     [Fact]
     public async Task HitsMissesAndHitCounts_PersistAcrossOperations()
     {
         var ct = TestContext.Current.CancellationToken;
 
-        (await _cache.GetAsync("what is sqlite", cancellationToken: ct)).Should().BeNull();
-        await _cache.SetAsync("what is sqlite", ["an embedded database"], cancellationToken: ct);
+        (await _cache.GetCachedResultAsync("what is sqlite", cancellationToken: ct)).Should().BeNull();
+        await _cache.SetCachedResultAsync("what is sqlite", Answer("an embedded database"), cancellationToken: ct);
 
-        var first = await _cache.GetAsync("what is sqlite", cancellationToken: ct);
-        var second = await _cache.GetAsync("what is sqlite", cancellationToken: ct);
+        var first = await _cache.GetCachedResultAsync("what is sqlite", cancellationToken: ct);
+        var second = await _cache.GetCachedResultAsync("what is sqlite", cancellationToken: ct);
 
         first!.HitCount.Should().Be(1);
         second!.HitCount.Should().Be(2, "the first hit's count was written, not only incremented in memory");
 
-        var stats = await _cache.GetStatisticsAsync(ct);
+        var stats = await _cache.GetCacheStatisticsAsync(ct);
         stats.CacheMisses.Should().Be(1);
         stats.CacheHits.Should().Be(2, "every hit counts, not only the one that created the statistics row");
-        stats.TotalQueries.Should().Be(1);
+        stats.TotalEntries.Should().Be(1);
     }
 
     public ValueTask DisposeAsync() => _provider.DisposeAsync();

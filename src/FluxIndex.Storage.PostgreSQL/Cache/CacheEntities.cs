@@ -17,14 +17,16 @@ public class SemanticCacheEntity
     public Vector? Embedding { get; set; }
 
     /// <summary>
-    /// 캐시된 결과 (JSONB)
+    /// The cached results (JSONB column <c>Results</c>) in the form <c>SemanticCacheJson</c> writes; a row it cannot
+    /// read is a miss.
     /// </summary>
-    public List<object>? Results { get; set; }
+    public string? ResultsJson { get; set; }
 
     /// <summary>
-    /// 메타데이터 (JSONB)
+    /// The <c>SearchMetadata</c> stored with the results (JSONB column <c>Metadata</c>), in the form
+    /// <c>SemanticCacheJson</c> writes.
     /// </summary>
-    public Dictionary<string, object>? Metadata { get; set; }
+    public string? MetadataJson { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime ExpiresAt { get; set; }

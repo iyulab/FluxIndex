@@ -1,5 +1,6 @@
 using AwesomeAssertions;
 using FluxIndex.Core.Application.Interfaces;
+using FluxIndex.Core.Domain.Models;
 using FluxIndex.SDK.Configuration;
 using FluxIndex.Storage.SQLite.Cache;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,14 +12,17 @@ namespace FluxIndex.Storage.SQLite.Tests;
 
 /// <summary>
 /// <see cref="SQLiteCacheOptions.SimilarityThreshold"/> is the hit threshold of a lookup that passes none; a threshold
-/// passed per call still wins. The stored query and the near one are 0.9 similar, between the default (0.85) and the
-/// configured 0.95, so the two answers differ only by which threshold applied.
+/// passed per call still wins. The stored query and the near one are 0.9 similar, between the configured 0.85 and the
+/// default 0.95, so the two answers differ only by which threshold applied.
 /// </summary>
 [Collection("SQLite Tests")]
 public sealed class SQLiteSemanticCacheThresholdTests
 {
     private const string Stored = "what is sqlite";
     private const string Near = "what's sqlite";
+
+    private static readonly CacheDocumentChunk[] Answer =
+        [new CacheDocumentChunk { Id = "c1", DocumentId = "d1", Content = "an embedded database" }];
 
     private static ServiceProvider CacheProvider(float? similarityThreshold)
     {
@@ -50,28 +54,27 @@ public sealed class SQLiteSemanticCacheThresholdTests
     public async Task ConfiguredThreshold_DecidesALookupThatPassesNone()
     {
         var ct = TestContext.Current.CancellationToken;
-        await using var provider = CacheProvider(similarityThreshold: 0.95f);
-        var cache = provider.GetRequiredService<ISemanticCache>();
-        await cache.SetAsync(Stored, ["an embedded database"], cancellationToken: ct);
+        await using var provider = CacheProvider(similarityThreshold: 0.85f);
+        var cache = provider.GetRequiredService<ISemanticCacheService>();
+        await cache.SetCachedResultAsync(Stored, Answer, cancellationToken: ct);
 
-        (await cache.GetAsync(Near, cancellationToken: ct)).Should().BeNull("0.9 is below the configured 0.95");
-        (await cache.HasSimilarQueryAsync(Near, cancellationToken: ct)).Should().BeFalse();
-        (await cache.FindSimilarQueriesAsync(Near, cancellationToken: ct)).Should().BeEmpty();
+        (await cache.GetCachedResultAsync(Near, cancellationToken: ct)).Should().NotBeNull("0.9 clears the configured 0.85");
 
-        (await cache.GetAsync(Near, similarityThreshold: 0.85f, cancellationToken: ct)).Should().NotBeNull(
+        (await cache.GetCachedResultAsync(Near, similarityThreshold: 0.95f, cancellationToken: ct)).Should().BeNull(
             "a threshold passed with the call overrides the configured one");
     }
 
     [Fact]
-    public async Task UnsetThreshold_KeepsTheDefaultOf085()
+    public async Task UnsetThreshold_IsThe095TheSearchPathAlwaysUsed()
     {
         var ct = TestContext.Current.CancellationToken;
         await using var provider = CacheProvider(similarityThreshold: null);
-        provider.GetRequiredService<IOptions<SQLiteCacheOptions>>().Value.SimilarityThreshold.Should().Be(0.85f);
-        var cache = provider.GetRequiredService<ISemanticCache>();
-        await cache.SetAsync(Stored, ["an embedded database"], cancellationToken: ct);
+        provider.GetRequiredService<IOptions<SQLiteCacheOptions>>().Value.SimilarityThreshold.Should().Be(0.95f);
+        var cache = provider.GetRequiredService<ISemanticCacheService>();
+        await cache.SetCachedResultAsync(Stored, Answer, cancellationToken: ct);
 
-        (await cache.GetAsync(Near, cancellationToken: ct)).Should().NotBeNull("0.9 clears the default 0.85");
+        (await cache.GetCachedResultAsync(Near, cancellationToken: ct)).Should().BeNull("0.9 is below the default 0.95");
+        (await cache.GetCachedResultAsync(Stored, cancellationToken: ct)).Should().NotBeNull("positive control: the same query hits");
     }
 
     [Fact]
@@ -81,7 +84,7 @@ public sealed class SQLiteSemanticCacheThresholdTests
         configured.GetRequiredService<IOptions<SQLiteCacheOptions>>().Value.SimilarityThreshold.Should().Be(0.97f);
 
         using var unset = BuilderProvider(_ => { });
-        unset.GetRequiredService<IOptions<SQLiteCacheOptions>>().Value.SimilarityThreshold.Should().Be(0.85f,
+        unset.GetRequiredService<IOptions<SQLiteCacheOptions>>().Value.SimilarityThreshold.Should().Be(0.95f,
             "an unset SDK threshold leaves the cache at its own default");
     }
 

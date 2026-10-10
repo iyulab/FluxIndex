@@ -148,7 +148,8 @@ public class FluxIndexContextBuilder
     }
 
     /// <summary>
-    /// PostgreSQL 사용 - Fullstack RAG (Vector + Graph + SemanticCache 모두 활성화)
+    /// PostgreSQL 사용 - Fullstack RAG (Vector + Graph). The semantic cache stays off unless opted into with
+    /// <c>WithSemanticCacheOptions(o => o.Provider = "PostgreSQL")</c>, which then uses this connection.
     /// 개별 구성요소는 이후 오버라이드 가능.
     /// NOTE: Requires FluxIndex.Storage.PostgreSQL package reference.
     /// </summary>
@@ -162,15 +163,12 @@ public class FluxIndexContextBuilder
         _options.GraphStore.Provider = "PostgreSQL";
         _options.GraphStore.UseVectorStoreConnection = true;
 
-        // Semantic Cache (동일 연결 사용)
-        _options.SemanticCache.Provider = "PostgreSQL";
-        _options.SemanticCache.UseVectorStoreConnection = true;
-
         return this;
     }
 
     /// <summary>
-    /// SQLite 사용 - Fullstack RAG (Vector + Graph + SemanticCache 모두 활성화)
+    /// SQLite 사용 - Fullstack RAG (Vector + Graph). The semantic cache stays off unless opted into with
+    /// <c>WithSemanticCacheOptions(o => o.Provider = "SQLite")</c>, which then uses this database.
     /// 개별 구성요소는 이후 오버라이드 가능.
     /// NOTE: Requires FluxIndex.Storage.SQLite package reference.
     /// </summary>
@@ -183,10 +181,6 @@ public class FluxIndexContextBuilder
         // Graph Store (동일 연결 사용)
         _options.GraphStore.Provider = "SQLite";
         _options.GraphStore.UseVectorStoreConnection = true;
-
-        // Semantic Cache (동일 연결 사용)
-        _options.SemanticCache.Provider = "SQLite";
-        _options.SemanticCache.UseVectorStoreConnection = true;
 
         return this;
     }
@@ -211,10 +205,6 @@ public class FluxIndexContextBuilder
         // Graph Store (동일 연결 사용)
         _options.GraphStore.Provider = "SQLite";
         _options.GraphStore.UseVectorStoreConnection = true;
-
-        // Semantic Cache (동일 연결 사용)
-        _options.SemanticCache.Provider = "SQLite";
-        _options.SemanticCache.UseVectorStoreConnection = true;
 
         return this;
     }
@@ -306,7 +296,7 @@ public class FluxIndexContextBuilder
 
     /// <summary>
     /// Local 모드: SQLite가 모든 역할 수행 (기본값).
-    /// Vector + Graph + RDB + SemanticCache 모두 SQLite에서 처리.
+    /// Vector + Graph + RDB 모두 SQLite에서 처리 (the semantic cache is opt-in: <c>WithSemanticCacheOptions(o => o.Provider = "SQLite")</c>).
     /// 개발/테스트 환경에 적합.
     /// NOTE: Requires FluxIndex.Storage.SQLite package reference.
     /// </summary>
@@ -320,15 +310,12 @@ public class FluxIndexContextBuilder
         _options.GraphStore.Provider = "SQLite";
         _options.GraphStore.UseVectorStoreConnection = true;
 
-        // Semantic Cache (동일 연결 사용)
-        _options.SemanticCache.Provider = "SQLite";
-        _options.SemanticCache.UseVectorStoreConnection = true;
-
         return this;
     }
 
     /// <summary>
-    /// Best-in-class 프리셋: PostgreSQL(RDB/Cache) + Qdrant(Vector) + Neo4j(Graph).
+    /// Best-in-class 프리셋: PostgreSQL(RDB) + Qdrant(Vector) + Neo4j(Graph). A PostgreSQL semantic cache on the same
+    /// connection is opt-in: <c>WithSemanticCacheOptions(o => o.Provider = "PostgreSQL")</c>.
     /// 대규모 프로덕션 환경에 적합한 최고 성능 조합.
     /// NOTE: Requires FluxIndex.Storage.PostgreSQL, FluxIndex.Storage.Qdrant,
     /// and FluxIndex.Storage.Neo4j package references.
@@ -339,11 +326,9 @@ public class FluxIndexContextBuilder
         string qdrantHost, int qdrantPort, string qdrantCollection, int vectorSize,
         string neo4jUri, string neo4jUsername, string neo4jPassword)
     {
-        // PostgreSQL for RDB and Cache
+        // PostgreSQL for RDB (and the semantic cache, when opted into)
         SelectStoreProvider("PostgreSQL");
         _options.VectorStore.ConnectionString = postgresConnectionString;
-        _options.SemanticCache.Provider = "PostgreSQL";
-        _options.SemanticCache.UseVectorStoreConnection = true;
 
         // Qdrant for Vector (takes priority over PostgreSQL)
         SelectStoreProvider("Qdrant");
@@ -476,10 +461,15 @@ public class FluxIndexContextBuilder
     #region Semantic Cache Options
 
     /// <summary>
-    /// 시맨틱 캐시 고급 설정.
-    /// SemanticCache는 UseLocalStorage/UsePostgreSQL/UseBestInClass에서 자동 활성화됨.
-    /// 이 메서드는 추가 설정이 필요한 경우에만 사용.
+    /// Configures the semantic cache — and is how it is turned on: no storage selector enables it. Set
+    /// <see cref="Configuration.SemanticCacheOptions.Provider"/> to "SQLite" or "PostgreSQL" (the storage package then
+    /// registers its cache on the selected store's database) or "Redis" (with <c>AddRedisSemanticCache</c> registered
+    /// through <see cref="ConfigureServices"/>).
     /// </summary>
+    /// <remarks>
+    /// The cache is approximate: a query whose embedding is at least <c>SimilarityThreshold</c> (0.95 by default)
+    /// similar to an earlier one gets that query's results, so two different questions can share an answer.
+    /// </remarks>
     public FluxIndexContextBuilder WithSemanticCacheOptions(Action<Configuration.SemanticCacheOptions> configure)
     {
         configure?.Invoke(_options.SemanticCache);
@@ -669,6 +659,8 @@ public class FluxIndexContextBuilder
 
         EnsureRetrievalGuardIsNotLostOnUpgrade();
 
+        EnsureOneSemanticCache();
+
         // Fallback: if no IVectorStore was registered by storage packages, use InMemory
         if (!_services.Any(d => d.ServiceType == typeof(IVectorStore)))
         {
@@ -807,7 +799,9 @@ public class FluxIndexContextBuilder
                 hybridSearchService,
                 keywordSearchService,
                 // Every write invalidates what the retriever cached, whether or not this context's retriever caches.
-                serviceProvider.GetService<ICacheService>()
+                serviceProvider.GetService<ICacheService>(),
+                // ...and empties the semantic cache SearchAsync reads (the same singleton the context gets).
+                serviceProvider.GetService<ISemanticCacheService>()
             );
         });
 
@@ -868,6 +862,52 @@ public class FluxIndexContextBuilder
             adaptiveSearchService,
             _options.SemanticCache
         );
+    }
+
+    /// <summary>
+    /// The semantic cache is opt-in (<see cref="Configuration.SemanticCacheOptions.Provider"/>), and the context consults
+    /// one. An opted-in provider whose cache nobody registered would leave caching silently off; two registrations (a
+    /// storage package's cache next to one added through <see cref="ConfigureServices"/>) would leave the choice to
+    /// registration order. Build() refuses both. With "None", a cache registered through ConfigureServices is used.
+    /// </summary>
+    private void EnsureOneSemanticCache()
+    {
+        var provider = _options.SemanticCache.Provider;
+        var caches = _services.Where(d => d.ServiceType == typeof(ISemanticCacheService) && !d.IsKeyedService).ToList();
+
+        if (caches.Count == 0 && !string.IsNullOrWhiteSpace(provider)
+            && !string.Equals(provider, "None", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"SemanticCacheOptions.Provider is '{provider}' but no ISemanticCacheService is registered, so search would " +
+                $"run uncached. {SemanticCacheRegistrationHint(provider)}");
+        }
+
+        if (caches.Count <= 1)
+            return;
+
+        var names = string.Join(", ", caches.Select(DescribeImplementation));
+        throw new InvalidOperationException(
+            $"{caches.Count} ISemanticCacheService registrations were found ({names}), and the context consults one. " +
+            $"SemanticCacheOptions.Provider is '{provider}'. A storage package registers its cache only when Provider names " +
+            "it (\"SQLite\", \"PostgreSQL\"); to use a cache registered through ConfigureServices, set Provider to \"None\" " +
+            "or \"Redis\" with WithSemanticCacheOptions(...), or remove the other registration.");
+    }
+
+    private static string SemanticCacheRegistrationHint(string provider) => provider.ToLowerInvariant() switch
+    {
+        "sqlite" => "Reference the FluxIndex.Storage.SQLite package and call AddSQLiteStorage() on the builder.",
+        "postgresql" => "Reference the FluxIndex.Storage.PostgreSQL package and call AddPostgreSQLStorage() on the builder.",
+        "redis" => "Reference the FluxIndex.Cache.Redis package and register it with ConfigureServices(s => s.AddRedisSemanticCache(...)).",
+        _ => "Register an ISemanticCacheService through ConfigureServices, or set Provider to \"None\"."
+    };
+
+    private static string DescribeImplementation(ServiceDescriptor descriptor)
+    {
+        var type = descriptor.ImplementationType
+            ?? descriptor.ImplementationInstance?.GetType()
+            ?? descriptor.ImplementationFactory?.GetType().GenericTypeArguments.LastOrDefault();
+        return type?.Name ?? "unknown";
     }
 
     private void ConfigureEmbeddingService()
