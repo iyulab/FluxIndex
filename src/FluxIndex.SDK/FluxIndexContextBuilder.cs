@@ -865,7 +865,8 @@ public class FluxIndexContextBuilder
             hybridSearchService,
             smallToBigRetriever,
             qualityMonitoringService,
-            adaptiveSearchService
+            adaptiveSearchService,
+            _options.SemanticCache
         );
     }
 

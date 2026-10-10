@@ -35,10 +35,11 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
 
     public async Task<CacheResult?> GetAsync(
         string query,
-        float similarityThreshold = 0.85f,
+        float? similarityThreshold = null,
         int maxResults = 10,
         CancellationToken cancellationToken = default)
     {
+        var threshold = similarityThreshold ?? _options.SimilarityThreshold;
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         await CleanupExpiredIfNeededAsync(cancellationToken);
 
@@ -55,7 +56,7 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
                 Entry = c,
                 Distance = c.Embedding!.CosineDistance(queryVector)
             })
-            .Where(x => (1 - x.Distance) >= similarityThreshold)
+            .Where(x => (1 - x.Distance) >= threshold)
             .OrderBy(x => x.Distance)
             .Take(maxResults)
             .FirstOrDefaultAsync(cancellationToken);
@@ -159,7 +160,7 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
 
     public async Task<bool> HasSimilarQueryAsync(
         string query,
-        float threshold = 0.85f,
+        float? threshold = null,
         CancellationToken cancellationToken = default)
     {
         var result = await GetAsync(query, threshold, 1, cancellationToken);
@@ -168,10 +169,11 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
 
     public async Task<IEnumerable<SimilarQuery>> FindSimilarQueriesAsync(
         string query,
-        float threshold = 0.85f,
+        float? threshold = null,
         int maxSimilar = 5,
         CancellationToken cancellationToken = default)
     {
+        var minSimilarity = threshold ?? _options.SimilarityThreshold;
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         var queryEmbedding = await _embeddingService.GenerateQueryEmbeddingAsync(query, cancellationToken);
         var queryVector = new Vector(queryEmbedding);
@@ -184,7 +186,7 @@ public partial class PostgresSemanticCache : ISemanticCache, IDisposable
                 Entry = c,
                 Distance = c.Embedding!.CosineDistance(queryVector)
             })
-            .Where(x => (1 - x.Distance) >= threshold)
+            .Where(x => (1 - x.Distance) >= minSimilarity)
             .OrderBy(x => x.Distance)
             .Take(maxSimilar)
             .ToListAsync(cancellationToken);

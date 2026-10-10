@@ -242,9 +242,16 @@ public class SemanticCacheOptions
     public bool AutoMigrate { get; set; } = true;
 
     /// <summary>
-    /// 유사도 임계값 (이 값 이상의 유사도일 때 캐시 히트)
+    /// Minimum query similarity (0.0 to 1.0) for a semantic cache hit. Applied to the cache
+    /// <c>FluxIndexContext.SearchAsync</c> consults (an <c>ISemanticCacheService</c>) and copied into the SQLite /
+    /// PostgreSQL semantic cache the builder registers for <see cref="Provider"/>, where it is the threshold a lookup
+    /// uses when it passes none.
     /// </summary>
-    public float SimilarityThreshold { get; set; } = 0.85f;
+    /// <remarks>
+    /// Null (the default) leaves each cache at its own default: 0.95 on the context's search path, and the
+    /// SQLite/PostgreSQL cache options' <c>SimilarityThreshold</c> (0.85).
+    /// </remarks>
+    public float? SimilarityThreshold { get; set; }
 
     /// <summary>
     /// 기본 캐시 만료 시간

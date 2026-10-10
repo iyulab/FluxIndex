@@ -104,6 +104,8 @@ public static class FluxIndexContextBuilderExtensions
                 cacheOptions.EnableAutoCleanup = options.SemanticCache.EnableAutoCleanup;
                 cacheOptions.CleanupInterval = options.SemanticCache.CleanupInterval;
                 cacheOptions.UseUnloggedTable = options.SemanticCache.UseUnloggedTable;
+                if (options.SemanticCache.SimilarityThreshold is { } similarityThreshold)
+                    cacheOptions.SimilarityThreshold = similarityThreshold;
             });
 
             // Same reason as the graph store above: the cache migrates from a hosted service that

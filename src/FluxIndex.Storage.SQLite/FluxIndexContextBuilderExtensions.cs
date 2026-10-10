@@ -182,6 +182,8 @@ public static class FluxIndexContextBuilderExtensions
             cacheOptions.MaxEntries = options.SemanticCache.MaxEntries;
             cacheOptions.EnableAutoCleanup = options.SemanticCache.EnableAutoCleanup;
             cacheOptions.CleanupInterval = options.SemanticCache.CleanupInterval;
+            if (options.SemanticCache.SimilarityThreshold is { } similarityThreshold)
+                cacheOptions.SimilarityThreshold = similarityThreshold;
         });
     }
 

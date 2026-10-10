@@ -92,19 +92,31 @@ public partial class HybridSearchService : IHybridSearchService
             LogHybridSearch16(_logger, query);
         var stopwatch = Stopwatch.StartNew();
 
+        // HybridSearchOptions.TimeoutMs bounds the whole search. The legs run on the linked token, so their
+        // catch-alls (which let only the token they are given through) pass a timeout up instead of turning it
+        // into an empty leg, and the expiry below becomes a TimeoutException rather than a short result.
+        var timeoutMs = options.TimeoutMs;
+        using var timeout = timeoutMs > 0 ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken) : null;
+        timeout?.CancelAfter(timeoutMs);
+        var searchToken = timeout?.Token ?? cancellationToken;
+
         try
         {
             // 1. 융합 결정 — 호출자가 지정한 값은 그대로, 비운 값만 DAT 또는 쿼리 휴리스틱이 채운다
-            (options, var fusion) = await ResolveFusionAsync(query, options, cancellationToken);
+            (options, var fusion) = await ResolveFusionAsync(query, options, searchToken);
 
             // 2. 병렬로 벡터 검색과 키워드 검색 실행
-            var vectorTask = ExecuteVectorSearchAsync(query, options, cancellationToken);
-            var sparseTask = ExecuteSparseSearchAsync(query, options, cancellationToken);
+            var vectorTask = ExecuteVectorSearchAsync(query, options, searchToken);
+            var sparseTask = ExecuteSparseSearchAsync(query, options, searchToken);
 
             await Task.WhenAll(vectorTask, sparseTask);
 
             var vectorResults = await vectorTask;
             var sparseResults = await sparseTask;
+
+            // A leg whose backend ignored the token and failed some other way after the deadline was degraded to
+            // empty by its catch-all; past the limit the answer is a timeout, not that partial result.
+            searchToken.ThrowIfCancellationRequested();
 
             LogHybridSearch13(_logger, vectorResults.Count, sparseResults.Count);
 
@@ -115,6 +127,12 @@ public partial class HybridSearchService : IHybridSearchService
             LogHybridSearch12(_logger, fusedResults.Count, stopwatch.ElapsedMilliseconds);
 
             return fusedResults;
+        }
+        catch (OperationCanceledException ex) when (timeout is { IsCancellationRequested: true } && !cancellationToken.IsCancellationRequested)
+        {
+            if (_logger.IsEnabled(LogLevel.Information))
+                LogHybridSearch11(_logger, ex, query);
+            throw new TimeoutException($"The hybrid search did not complete within {timeoutMs} ms (HybridSearchOptions.TimeoutMs).", ex);
         }
         catch (Exception ex)
         {

@@ -34,7 +34,11 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDi
     private readonly IQualityMonitoringService? _qualityMonitor;
     private readonly IAdaptiveSearchService? _adaptiveSearchService;
     private readonly ILogger<FluxIndexContext> _logger;
+    private readonly float _cacheSimilarityThreshold;
     private bool _disposed;
+
+    // What SearchAsync has always asked the semantic cache for when SemanticCacheOptions.SimilarityThreshold is unset.
+    private const float DefaultCacheSimilarityThreshold = 0.95f;
 
     public FluxIndexContext(
         Retriever retriever,
@@ -45,7 +49,8 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDi
         IHybridSearchService? hybridSearchService = null,
         ISmallToBigRetriever? smallToBigRetriever = null,
         IQualityMonitoringService? qualityMonitor = null,
-        IAdaptiveSearchService? adaptiveSearchService = null)
+        IAdaptiveSearchService? adaptiveSearchService = null,
+        Configuration.SemanticCacheOptions? semanticCacheOptions = null)
     {
         _retriever = retriever;
         _indexer = indexer;
@@ -55,6 +60,7 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDi
         _smallToBigRetriever = smallToBigRetriever;
         _qualityMonitor = qualityMonitor;
         _adaptiveSearchService = adaptiveSearchService;
+        _cacheSimilarityThreshold = semanticCacheOptions?.SimilarityThreshold ?? DefaultCacheSimilarityThreshold;
         _logger = logger ?? NullLogger<FluxIndexContext>.Instance;
 
         if (_cacheService != null)
@@ -129,7 +135,7 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDi
             // 1. 시맨틱 캐시 확인
             if (_cacheService != null)
             {
-                var cachedResult = await _cacheService.GetCachedResultAsync(query, 0.95f, cancellationToken);
+                var cachedResult = await _cacheService.GetCachedResultAsync(query, _cacheSimilarityThreshold, cancellationToken);
                 if (cachedResult != null)
                 {
                     LogCacheHit(_logger, query, cachedResult.SimilarityScore);

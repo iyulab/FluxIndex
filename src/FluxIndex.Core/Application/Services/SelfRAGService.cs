@@ -367,8 +367,7 @@ public partial class SelfRAGService : ISelfRAGService
         // Configure search options based on strategy
         var searchOptions = new HybridSearchOptions
         {
-            MaxResults = opts.MaxResults * 2, // Get more results for filtering
-            EnableDiversity = true
+            MaxResults = opts.MaxResults * 2 // Get more results for filtering
         };
 
         // Adjust weights based on strategy

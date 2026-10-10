@@ -227,6 +227,12 @@ Leave any of the three unset (null) and the service chooses it per query — Dyn
 heuristic. `AppliedFusion.SelectedBy` says which: `Caller`, `DynamicAlphaTuning`, `QueryHeuristic`, or
 `ServiceDefault` (Qdrant's native hybrid fills unset values with RRF 0.7 / 0.3).
 
+`HybridSearchOptions.TimeoutMs` bounds the whole search (fusion selection, both legs, fusion): past it the call throws
+`TimeoutException` instead of returning what an interrupted leg left behind. Zero or less (the default) sets no limit;
+cancelling your own token still throws `OperationCanceledException`. The vector leg's similarity metric is the store's,
+fixed when its table or collection is created; keyword knobs (term expansion, phrase search, BM25 `K1`/`B`) live on
+`SparseOptions`.
+
 **SDK options that are read, and where.** `Indexer.IndexDocumentAsync(string content, …)` is the only
 path on which the SDK splits text: it uses the builder's `IndexerOptions.ChunkSize`/`ChunkOverlap`
 (`WithChunking(...)` or `WithIndexerOptions(...)`; characters at the nearest sentence/paragraph/word
@@ -234,10 +240,16 @@ boundary, overlap must be smaller than the size). The `Document` overloads index
 per-call `IndexingOptions` is read for `EnableGraphRAG`, `GraphRAGOptions` and `CustomOptions` (AI metadata
 extraction via `WithAIMetadataExtraction(...)`, overlaid on `IndexerOptions.CustomOptions`) — those are all
 its fields (the unread `GenerateEmbeddings`/`ExtractMetadata` were removed in 0.66.0). On the search side `SearchOptions.UseHybridSearch` auto-detects, `UseGraphRAG = true` throws (see
-*Full GraphRAG*), and `IncludeVectors` is not read — `SearchResult` has no vector field. When a search
+*Full GraphRAG*; graph query options go to `IGraphRAGService.QueryAsync`), and `IncludeVectors` is not read —
+`SearchResult` has no vector field. When a search
 method's `maxResults`/`minScore` argument is omitted, `RetrieverOptions.DefaultMaxResults`/`DefaultMinScore`
 (set by `WithSearchOptions(...)`; 10 / 0.2 by default) apply — `FindSimilarAsync` (0.5) and the quantized
 searches (0.0) keep their own threshold defaults.
+
+**Semantic cache threshold.** `SemanticCacheOptions.SimilarityThreshold` (`WithSemanticCacheOptions(...)`) is the minimum
+query similarity for a cache hit: `FluxIndexContext.SearchAsync` asks its `ISemanticCacheService` for it, and the builder
+copies it into the SQLite/PostgreSQL cache options. Unset, the context asks for 0.95 and those caches keep their own
+`SimilarityThreshold` (0.85), which an `ISemanticCache` lookup uses whenever it passes no threshold of its own.
 
 ---
 

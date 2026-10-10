@@ -83,7 +83,8 @@ public class SQLiteCacheOptions : SQLiteOptions
     public TimeSpan DefaultExpiry { get; set; } = TimeSpan.FromHours(1);
 
     /// <summary>
-    /// 유사도 검색 임계값 (기본: 0.85)
+    /// Minimum similarity (0.0 to 1.0) for a cache hit when a lookup (<c>GetAsync</c>, <c>HasSimilarQueryAsync</c>,
+    /// <c>FindSimilarQueriesAsync</c>) passes no threshold of its own. Default: 0.85.
     /// </summary>
     public float SimilarityThreshold { get; set; } = 0.85f;
 

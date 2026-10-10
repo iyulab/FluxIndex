@@ -7,6 +7,32 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [Unreleased]
 
+### Changed
+- **Semantic cache thresholds take effect.** `SemanticCacheOptions.SimilarityThreshold` reaches the cache lookup in
+  `FluxIndexContext.SearchAsync`, which passed a fixed 0.95, and the SQLite/PostgreSQL caches' own
+  `SimilarityThreshold` decides a lookup made without one (it was never read; 0.85 was hard-coded). Unset, the
+  thresholds are unchanged (0.95 on the context path, 0.85 in the storage caches).
+  - **Breaking:** `SemanticCacheOptions.SimilarityThreshold` is `float?` (null keeps the defaults).
+  - **Breaking:** the threshold parameters of `ISemanticCache` (`GetAsync`, `HasSimilarQueryAsync`,
+    `FindSimilarQueriesAsync`) are `float? = null`. Implementers update the signature; compiled callers must rebuild.
+  - **Breaking:** `FluxIndexContext` takes an optional trailing `SemanticCacheOptions?`.
+- **`HybridSearchOptions.TimeoutMs` is enforced.** A hybrid search that outlives it throws `TimeoutException`, not a
+  shorter result; the caller's own cancellation still throws `OperationCanceledException`. The default is now 0 (no
+  limit). It was declared as 30000 but never applied, so an unset option behaves as before. In a batch, the limit
+  applies to each query.
+
+### Removed
+- **Breaking** — **search and storage options nothing could honour:**
+  - `HybridSearchOptions.EnableDiversity`/`DiversityThreshold`: there is no diversity step.
+  - `VectorSearchOptions.SimilarityMetric`: the metric is fixed when the store is created.
+  - `VectorSearchOptions.BooleanOperator`/`EnablePhraseSearch`/`EnableTermExpansion` and the `BooleanOperator` enum:
+    keyword settings on the vector leg; the keyword leg reads `SparseSearchOptions`.
+  - `SearchOptions.GraphRAGOptions`: this path does no graph search; graph options go to `IGraphRAGService.QueryAsync`.
+  - `SQLiteVecOptions.IndexType`: sqlite-vec only searches flat.
+  - `SQLiteVecOptions.Fts5Bm25Weights`: FTS5 `bm25()` takes column weights, not k1/b.
+  - `SQLiteVecOptions.BatchTransactionCommitInterval`: batches already commit per `MaxBatchSize`.
+  Migration: delete the assignments.
+
 ### Dependencies
 - Re-pinned sibling package(s) `FluxImprover` 0.18.3 -> 0.19.0.
 

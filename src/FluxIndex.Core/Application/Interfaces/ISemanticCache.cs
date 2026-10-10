@@ -15,13 +15,16 @@ public interface ISemanticCache
     /// Retrieves cached results for semantically similar queries
     /// </summary>
     /// <param name="query">The search query</param>
-    /// <param name="similarityThreshold">Minimum similarity threshold (0.0 to 1.0)</param>
+    /// <param name="similarityThreshold">
+    /// Minimum similarity for a hit (0.0 to 1.0). Null uses the cache's configured threshold (its options'
+    /// <c>SimilarityThreshold</c>, 0.85 unless set).
+    /// </param>
     /// <param name="maxResults">Maximum number of cached results to return</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Cached results if found, null otherwise</returns>
     Task<CacheResult?> GetAsync(
         string query, 
-        float similarityThreshold = 0.85f,
+        float? similarityThreshold = null,
         int maxResults = 10,
         CancellationToken cancellationToken = default);
 
@@ -44,25 +47,25 @@ public interface ISemanticCache
     /// Checks if there are semantically similar queries in the cache
     /// </summary>
     /// <param name="query">Query to check</param>
-    /// <param name="threshold">Similarity threshold</param>
+    /// <param name="threshold">Minimum similarity (0.0 to 1.0). Null uses the cache's configured threshold.</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>True if similar queries exist</returns>
     Task<bool> HasSimilarQueryAsync(
         string query, 
-        float threshold = 0.85f, 
+        float? threshold = null,
         CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Finds the most similar queries in the cache
     /// </summary>
     /// <param name="query">Query to find similarities for</param>
-    /// <param name="threshold">Minimum similarity threshold</param>
+    /// <param name="threshold">Minimum similarity (0.0 to 1.0). Null uses the cache's configured threshold.</param>
     /// <param name="maxSimilar">Maximum number of similar queries to return</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>List of similar cached queries with their similarity scores</returns>
     Task<IEnumerable<SimilarQuery>> FindSimilarQueriesAsync(
         string query,
-        float threshold = 0.85f,
+        float? threshold = null,
         int maxSimilar = 5,
         CancellationToken cancellationToken = default);
 

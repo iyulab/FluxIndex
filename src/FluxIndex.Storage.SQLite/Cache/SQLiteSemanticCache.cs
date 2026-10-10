@@ -34,10 +34,11 @@ public partial class SQLiteSemanticCache : ISemanticCache, IDisposable
 
     public async Task<CacheResult?> GetAsync(
         string query,
-        float similarityThreshold = 0.85f,
+        float? similarityThreshold = null,
         int maxResults = 10,
         CancellationToken cancellationToken = default)
     {
+        var threshold = similarityThreshold ?? _options.SimilarityThreshold;
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         await CleanupExpiredIfNeededAsync(cancellationToken);
 
@@ -63,7 +64,7 @@ public partial class SQLiteSemanticCache : ISemanticCache, IDisposable
                 var similarity = CalculateCosineSimilarity(queryEmbedding, entryEmbedding);
                 return (Entry: entry, Similarity: similarity);
             })
-            .Where(x => x.Similarity >= similarityThreshold)
+            .Where(x => x.Similarity >= threshold)
             .OrderByDescending(x => x.Similarity)
             .Take(maxResults)
             .ToList();
@@ -155,7 +156,7 @@ public partial class SQLiteSemanticCache : ISemanticCache, IDisposable
 
     public async Task<bool> HasSimilarQueryAsync(
         string query,
-        float threshold = 0.85f,
+        float? threshold = null,
         CancellationToken cancellationToken = default)
     {
         var result = await GetAsync(query, threshold, 1, cancellationToken);
@@ -164,10 +165,11 @@ public partial class SQLiteSemanticCache : ISemanticCache, IDisposable
 
     public async Task<IEnumerable<SimilarQuery>> FindSimilarQueriesAsync(
         string query,
-        float threshold = 0.85f,
+        float? threshold = null,
         int maxSimilar = 5,
         CancellationToken cancellationToken = default)
     {
+        var minSimilarity = threshold ?? _options.SimilarityThreshold;
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
         var queryEmbedding = await _embeddingService.GenerateQueryEmbeddingAsync(query, cancellationToken);
 
@@ -189,7 +191,7 @@ public partial class SQLiteSemanticCache : ISemanticCache, IDisposable
                     CacheKey = entry.QueryHash
                 };
             })
-            .Where(x => x.SimilarityScore >= threshold)
+            .Where(x => x.SimilarityScore >= minSimilarity)
             .OrderByDescending(x => x.SimilarityScore)
             .Take(maxSimilar);
     }

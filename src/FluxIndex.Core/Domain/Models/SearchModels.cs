@@ -192,6 +192,11 @@ public class SparseIndexStatistics
 /// <summary>
 /// 벡터 검색 옵션
 /// </summary>
+/// <remarks>
+/// The similarity metric is the vector store's, fixed when its table or collection is created (for SQLite,
+/// <c>SQLiteVecOptions.VecTableOptions</c>); a search cannot switch it. Keyword knobs — term expansion, phrase
+/// search — belong to the keyword leg, <see cref="SparseSearchOptions"/>.
+/// </remarks>
 public class VectorSearchOptions
 {
     /// <summary>
@@ -205,44 +210,7 @@ public class VectorSearchOptions
     public double MinScore { get; set; }
 
     /// <summary>
-    /// 유사도 메트릭
-    /// </summary>
-    public string SimilarityMetric { get; set; } = "cosine";
-
-    /// <summary>
     /// 필터 조건
     /// </summary>
     public Dictionary<string, object> Filters { get; set; } = new();
-
-    /// <summary>
-    /// 부울 연산자 (AND, OR)
-    /// </summary>
-    public BooleanOperator BooleanOperator { get; set; } = BooleanOperator.OR;
-
-    /// <summary>
-    /// 용어 확장 사용 여부 (스테밍, 동의어)
-    /// </summary>
-    public bool EnableTermExpansion { get; set; } = true;
-
-    /// <summary>
-    /// 구문 검색 사용 여부
-    /// </summary>
-    public bool EnablePhraseSearch { get; set; } = true;
-}
-
-
-/// <summary>
-/// 부울 연산자
-/// </summary>
-public enum BooleanOperator
-{
-    /// <summary>
-    /// OR 연산 (기본값)
-    /// </summary>
-    OR,
-
-    /// <summary>
-    /// AND 연산
-    /// </summary>
-    AND
 }

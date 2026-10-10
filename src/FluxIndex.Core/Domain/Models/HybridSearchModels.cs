@@ -186,19 +186,12 @@ public record HybridSearchOptions
     public double MinFusedScore { get; set; }
 
     /// <summary>
-    /// 검색 타임아웃 (밀리초)
+    /// Time limit for the whole search in milliseconds — fusion selection, both legs and fusion. A search that does not
+    /// finish within it throws <see cref="TimeoutException"/>; it does not return the partial or empty result of a
+    /// leg that was cut off. Zero or less (the default) sets no limit. Cancelling the caller's token still surfaces as
+    /// <see cref="OperationCanceledException"/>. A batch search applies it to each query, not to the batch.
     /// </summary>
-    public int TimeoutMs { get; set; } = 30000;
-
-    /// <summary>
-    /// 결과 다양성 활성화
-    /// </summary>
-    public bool EnableDiversity { get; set; }
-
-    /// <summary>
-    /// 다양성 임계값
-    /// </summary>
-    public double DiversityThreshold { get; set; } = 0.8;
+    public int TimeoutMs { get; set; }
 
     /// <summary>
     /// 양자화 검색 사용 여부 (Two-Stage 검색)

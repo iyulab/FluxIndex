@@ -28,11 +28,6 @@ public class SQLiteVecOptions : SQLiteOptions
     public string? EmbeddingFingerprint { get; set; }
 
     /// <summary>
-    /// 벡터 인덱스 타입 (현재는 'flat'만 지원)
-    /// </summary>
-    public string IndexType { get; set; } = "flat";
-
-    /// <summary>
     /// 기존 JSON 저장 방식에서 sqlite-vec로 자동 마이그레이션 여부
     /// </summary>
     public bool AutoMigrateFromLegacy { get; set; } = true;
@@ -85,6 +80,10 @@ public class SQLiteVecOptions : SQLiteOptions
     /// 배치 삽입 시 최대 배치 크기.
     /// 1K-10K 범위 권장. 너무 크면 메모리 사용 증가, 너무 작으면 성능 저하.
     /// </summary>
+    /// <remarks>
+    /// Also the commit interval: <c>StoreBatchAsync</c> writes each batch of this many chunks in its own transaction.
+    /// Use <c>ReplaceDocumentsAsync</c> when a set of chunks must land atomically.
+    /// </remarks>
     public int MaxBatchSize { get; set; } = 1000;
 
     /// <summary>
@@ -92,13 +91,6 @@ public class SQLiteVecOptions : SQLiteOptions
     /// 0이면 진행 로깅 비활성화.
     /// </summary>
     public int BatchProgressLogInterval { get; set; } = 1000;
-
-    /// <summary>
-    /// 배치 작업 중 명시적 트랜잭션 커밋 간격 (청크 수).
-    /// 0이면 전체 배치를 단일 트랜잭션으로 처리.
-    /// 대용량 작업 시 5000-10000 권장 (메모리 효율성).
-    /// </summary>
-    public int BatchTransactionCommitInterval { get; set; } = 5000;
 
     // ============================================================
     // FTS5 하이브리드 검색 옵션
@@ -128,12 +120,6 @@ public class SQLiteVecOptions : SQLiteOptions
     /// 기본값: 60 (일반적으로 좋은 성능)
     /// </summary>
     public int RrfK { get; set; } = 60;
-
-    /// <summary>
-    /// FTS5 검색 시 BM25 가중치 설정.
-    /// 형식: "b, k1" (기본값: "0.75, 1.2")
-    /// </summary>
-    public string Fts5Bm25Weights { get; set; } = "0.75, 1.2";
 
     /// <summary>
     /// 현재 플랫폼에 대한 기본 확장 파일 경로 반환

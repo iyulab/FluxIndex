@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using FluxIndex.Core.Application.Interfaces;
 
 namespace FluxIndex.SDK;
 
@@ -60,14 +59,9 @@ public class SearchOptions
     /// - true: 예외 — 서비스 미등록이면 <see cref="InvalidOperationException"/>, 등록돼 있으면
     ///   <see cref="NotSupportedException"/>(<c>IGraphRAGService.BuildIndexAsync</c>/<c>LoadIndexAsync</c> 뒤
     ///   <c>QueryAsync</c> 를 직접 호출하라는 안내). 요청을 조용히 버리지 않기 위한 동작이다.
+    /// 그래프 질의 옵션(<c>GraphRAGQueryOptions</c>)도 이 검색이 아니라 <c>IGraphRAGService.QueryAsync</c> 에 넘긴다.
     /// </summary>
     public bool? UseGraphRAG { get; set; }
-
-    /// <summary>
-    /// GraphRAG 쿼리 옵션. 위 <see cref="UseGraphRAG"/> 와 같은 이유로 이 검색 경로에서는 읽히지 않는다 —
-    /// <c>IGraphRAGService.QueryAsync</c> 에 직접 넘긴다.
-    /// </summary>
-    public GraphRAGQueryOptions? GraphRAGOptions { get; set; }
 
     /// <summary>
     /// 하이브리드 검색 활성화 (Vector + Keyword).
