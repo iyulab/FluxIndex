@@ -130,11 +130,6 @@ public class QueryDecompositionOptions
     public int MaxSubQuestions { get; set; } = 5;
 
     /// <summary>
-    /// Maximum depth for recursive decomposition
-    /// </summary>
-    public int MaxDecompositionDepth { get; set; } = 2;
-
-    /// <summary>
     /// Whether to retrieve for each sub-question
     /// </summary>
     public bool RetrievePerSubQuestion { get; set; } = true;

@@ -117,11 +117,6 @@ public class SmallToBigOptions
     /// 중복 제거 임계값 (유사도)
     /// </summary>
     public double DeduplicationThreshold { get; set; } = 0.9;
-
-    /// <summary>
-    /// 검색 타임아웃 (밀리초)
-    /// </summary>
-    public int TimeoutMs { get; set; } = 30000;
 }
 
 /// <summary>

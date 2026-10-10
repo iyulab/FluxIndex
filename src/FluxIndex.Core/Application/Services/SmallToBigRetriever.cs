@@ -61,9 +61,7 @@ public partial class SmallToBigRetriever : ISmallToBigRetriever
         {
             // 1. 쿼리 복잡도 분석 및 전략 결정
             var complexityAnalysis = await AnalyzeQueryComplexityAsync(query, cancellationToken);
-            var optimalWindowSize = options.EnableAdaptiveWindowing
-                ? complexityAnalysis.RecommendedWindowSize
-                : options.DefaultWindowSize;
+            var optimalWindowSize = WindowSize(options, complexityAnalysis.RecommendedWindowSize);
 
             if (_logger.IsEnabled(LogLevel.Information))
                 LogSmallToBig18(_logger, complexityAnalysis.OverallComplexity, optimalWindowSize);
@@ -714,6 +712,10 @@ public partial class SmallToBigRetriever : ISmallToBigRetriever
 
         return Math.Min(1.0, complexity / 3.0);
     }
+
+    // The window this search uses: the analysis' recommendation (adaptive) or the default, never above MaxWindowSize.
+    internal static int WindowSize(SmallToBigOptions options, int recommended)
+        => Math.Clamp(options.EnableAdaptiveWindowing ? recommended : options.DefaultWindowSize, 1, Math.Max(1, options.MaxWindowSize));
 
     private static int DetermineWindowSizeFromComplexity(double complexity, ComplexityComponents components)
     {

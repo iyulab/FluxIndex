@@ -115,7 +115,6 @@ public class SmallToBigOptionsTests
         Assert.True(options.EnableSequentialExpansion);
         Assert.Equal(0.5, options.ContextQualityThreshold);
         Assert.Equal(0.9, options.DeduplicationThreshold);
-        Assert.Equal(30000, options.TimeoutMs);
     }
 
     [Fact]
@@ -128,8 +127,7 @@ public class SmallToBigOptionsTests
             DefaultWindowSize = 5,
             MaxWindowSize = 20,
             EnableAdaptiveWindowing = false,
-            EnableSemanticExpansion = false,
-            TimeoutMs = 60000
+            EnableSemanticExpansion = false
         };
 
         Assert.Equal(50, options.MaxResults);
@@ -137,7 +135,6 @@ public class SmallToBigOptionsTests
         Assert.Equal(5, options.DefaultWindowSize);
         Assert.False(options.EnableAdaptiveWindowing);
         Assert.False(options.EnableSemanticExpansion);
-        Assert.Equal(60000, options.TimeoutMs);
     }
 }
 

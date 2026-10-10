@@ -182,11 +182,6 @@ public class ContextExpansionOptions
     public bool EnableSemanticExpansion { get; set; } = true;
 
     /// <summary>
-    /// 최대 확장 거리 (홉 수)
-    /// </summary>
-    public int MaxExpansionDistance { get; set; } = 2;
-
-    /// <summary>
     /// 의미적 유사도 임계값
     /// </summary>
     public double SemanticSimilarityThreshold { get; set; } = 0.7;

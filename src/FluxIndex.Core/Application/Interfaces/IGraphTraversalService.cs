@@ -283,33 +283,6 @@ public class PathFindingOptions
     /// </summary>
     public double MinRelationshipStrength { get; set; }
 
-    /// <summary>
-    /// 가중치 계산 방식
-    /// </summary>
-    public PathWeightType WeightType { get; set; } = PathWeightType.Hop;
-
-    /// <summary>
-    /// 경로 가중치에 관계 강도 반영
-    /// </summary>
-    public bool UseRelationshipStrength { get; set; }
-
-    /// <summary>
-    /// 탐색 타임아웃 (밀리초)
-    /// </summary>
-    public int TimeoutMs { get; set; } = 30000;
-}
-
-/// <summary>
-/// 경로 가중치 유형
-/// </summary>
-public enum PathWeightType
-{
-    /// <summary>홉 수 기반 (단순 거리)</summary>
-    Hop,
-    /// <summary>관계 강도 기반 (강도가 높을수록 가까움)</summary>
-    Strength,
-    /// <summary>관계 강도 역수 기반 (강도가 높을수록 비용 낮음)</summary>
-    InverseStrength
 }
 
 /// <summary>

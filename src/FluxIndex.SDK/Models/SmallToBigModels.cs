@@ -102,11 +102,6 @@ public class SmallToBigSearchOptions
     public double DeduplicationThreshold { get; set; } = 0.9;
 
     /// <summary>
-    /// 검색 타임아웃 (밀리초)
-    /// </summary>
-    public int TimeoutMs { get; set; } = 30000;
-
-    /// <summary>
     /// Core 옵션으로 변환
     /// </summary>
     internal FluxIndex.Core.Domain.Models.SmallToBigOptions ToCoreOptions()
@@ -123,7 +118,6 @@ public class SmallToBigSearchOptions
             EnableSequentialExpansion = EnableSequentialExpansion,
             ContextQualityThreshold = ContextQualityThreshold,
             DeduplicationThreshold = DeduplicationThreshold,
-            TimeoutMs = TimeoutMs
         };
     }
 }

@@ -53,8 +53,9 @@ public partial class GraphTraversalService : IGraphTraversalService
         string? terminationReason = null;
         var wasTerminatedEarly = false;
 
-        while (queue.Count > 0 && !cancellationToken.IsCancellationRequested)
+        while (queue.Count > 0)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var (currentChunkId, currentLevel) = queue.Dequeue();
 
             if (currentLevel >= options.MaxDepth)
@@ -155,8 +156,9 @@ public partial class GraphTraversalService : IGraphTraversalService
         string? terminationReason = null;
         var wasTerminatedEarly = false;
 
-        while (stack.Count > 0 && !cancellationToken.IsCancellationRequested)
+        while (stack.Count > 0)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var (currentChunkId, currentLevel) = stack.Pop();
 
             if (visited.Contains(currentChunkId))
@@ -245,8 +247,9 @@ public partial class GraphTraversalService : IGraphTraversalService
         queue.Enqueue(sourceChunkId);
         visited[sourceChunkId] = (null, null);
 
-        while (queue.Count > 0 && !cancellationToken.IsCancellationRequested)
+        while (queue.Count > 0)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var currentChunkId = queue.Dequeue();
 
             if (currentChunkId == targetChunkId)
@@ -317,8 +320,9 @@ public partial class GraphTraversalService : IGraphTraversalService
 
         var excludedEdges = new HashSet<(string, string)>();
 
-        for (var i = 1; i < k && !cancellationToken.IsCancellationRequested; i++)
+        for (var i = 1; i < k; i++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var previousPath = results[results.Count - 1];
 
             for (var j = 0; j < previousPath.Path.Count - 1; j++)
@@ -374,7 +378,7 @@ public partial class GraphTraversalService : IGraphTraversalService
         PathFindingOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        options ??= new PathFindingOptions { UseRelationshipStrength = true };
+        options ??= new PathFindingOptions();
         var stopwatch = Stopwatch.StartNew();
 
         // Dijkstra 변형 - 관계 강도 최대화 (강도 역수를 비용으로 사용)
@@ -393,8 +397,9 @@ public partial class GraphTraversalService : IGraphTraversalService
             (0.0, sourceChunkId)
         };
 
-        while (priorityQueue.Count > 0 && !cancellationToken.IsCancellationRequested)
+        while (priorityQueue.Count > 0)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var (currentCost, currentChunkId) = priorityQueue.Min;
             priorityQueue.Remove(priorityQueue.Min);
 
@@ -476,8 +481,7 @@ public partial class GraphTraversalService : IGraphTraversalService
         Stopwatch stopwatch,
         CancellationToken cancellationToken)
     {
-        if (cancellationToken.IsCancellationRequested)
-            return;
+        cancellationToken.ThrowIfCancellationRequested();
 
         if (currentChunkId == targetChunkId)
         {
@@ -762,8 +766,9 @@ public partial class GraphTraversalService : IGraphTraversalService
             var edgeCount = 0;
             var degreeMap = new Dictionary<string, int>();
 
-            while (queue.Count > 0 && !cancellationToken.IsCancellationRequested)
+            while (queue.Count > 0)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var current = queue.Dequeue();
                 componentChunks.Add(current);
 
@@ -825,8 +830,7 @@ public partial class GraphTraversalService : IGraphTraversalService
 
         foreach (var chunkId in allChunkIds)
         {
-            if (cancellationToken.IsCancellationRequested)
-                break;
+            cancellationToken.ThrowIfCancellationRequested();
 
             // 이 청크를 제거했을 때 컴포넌트 수 변화 계산
             var remainingChunks = allChunkIds.Where(c => c != chunkId).ToHashSet();
@@ -1262,8 +1266,9 @@ public partial class GraphTraversalService : IGraphTraversalService
         queue.Enqueue(sourceChunkId);
         visited[sourceChunkId] = (null, null);
 
-        while (queue.Count > 0 && !cancellationToken.IsCancellationRequested)
+        while (queue.Count > 0)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var currentChunkId = queue.Dequeue();
 
             if (currentChunkId == targetChunkId)

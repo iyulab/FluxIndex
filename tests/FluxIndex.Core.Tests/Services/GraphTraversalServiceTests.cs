@@ -21,6 +21,27 @@ public class GraphTraversalServiceTests
         _service = new GraphTraversalService(_hierarchyRepositoryMock, _loggerMock);
     }
 
+    #region Cancellation
+
+    [Fact]
+    public async Task Traversals_ACancelledCaller_GetsOperationCanceledException_NotAPartialResult()
+    {
+        // Before: the walk loops stopped on cancellation and returned what they had (a lone start chunk, «no path»).
+        SetupRelationships(new Dictionary<string, List<ChunkRelationship>>
+        {
+            ["chunk1"] = new() { CreateRelationship("chunk1", "chunk2") },
+            ["chunk2"] = new(),
+        });
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => _service.TraverseBfsAsync("chunk1", cancellationToken: cts.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => _service.TraverseDfsAsync("chunk1", cancellationToken: cts.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => _service.FindShortestPathAsync("chunk1", "chunk2", cancellationToken: cts.Token));
+    }
+
+    #endregion
+
     #region DocumentIdFilter
 
     [Fact]

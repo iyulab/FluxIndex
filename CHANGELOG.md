@@ -8,9 +8,22 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [Unreleased]
 
 ### Fixed
+- **Breaking: a cancelled chunk-graph walk throws `OperationCanceledException`.** `TraverseBfsAsync`, `TraverseDfsAsync`,
+  `FindShortestPathAsync`, `FindKShortestPathsAsync`, `FindStrongestPathAsync`, `FindAllPathsAsync`,
+  `FindConnectedComponentsAsync` and `FindBridgeChunksAsync` stopped on cancellation and returned what they had — a lone start chunk, «no path»,
+  a partial list — as if the walk had finished. Migration: catch `OperationCanceledException` where you cancel.
+- **`SmallToBigOptions.MaxWindowSize` caps the window** (adaptive recommendation or `DefaultWindowSize`); it was never read.
+  The default (10) matches the old fixed cap.
 - **Breaking: `GetNeighborhoodAsync(chunkId, maxHops, options)` stops at `maxHops` when options are given.** It walked to the
   options' `MaxDepth` (5 by default) instead; the options still contribute their relationship, strength, direction and
   document filters, and the caller's object is not changed. Migration: pass the depth you want as `maxHops`.
+
+### Removed
+- **Breaking: graph and small-to-big settings nothing read.** `PathFindingOptions.WeightType` (with the `PathWeightType`
+  enum), `UseRelationshipStrength` and `TimeoutMs` (`FindShortestPathAsync` counts hops and `FindStrongestPathAsync`
+  weighs strength — the method chooses, not a setting; use the cancellation token for a time limit), `SmallToBigOptions.TimeoutMs` (Core and SDK), `ContextExpansionOptions.MaxExpansionDistance` (expansion follows the
+  window size) and `QueryDecompositionOptions.MaxDecompositionDepth` (decomposition is one level). Migration: delete the
+  assignments.
 
 ## [0.86.0] - 2026-10-10
 
