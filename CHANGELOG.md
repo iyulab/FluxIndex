@@ -7,6 +7,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [Unreleased]
 
+### Fixed
+- **The sqlite-vec store returns the vectors it stored.** `SQLiteVecVectorStore.GetAsync`, `GetByDocumentIdAsync` and
+  `GetChunksByIdsAsync` read each chunk's vector back from the vec0 table into `DocumentChunk.Embedding`, as every other
+  store does; before, they always returned `Embedding = null`. `Retriever.FindSimilarAsync` on this store therefore fell
+  back to its keyword search without saying so — it now compares the stored vectors. The shared vector-store contract
+  suite holds every store to the round trip.
+
 ### Changed
 - **Breaking** — **one semantic cache contract, and the SQLite/PostgreSQL caches now serve search.** Search reads
   `ISemanticCacheService`, which only Redis implemented. The SQLite and PostgreSQL caches implemented a second

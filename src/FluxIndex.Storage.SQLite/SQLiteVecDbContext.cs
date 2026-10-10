@@ -617,6 +617,39 @@ public partial class SQLiteVecDbContext : DbContext
     }
 
     /// <summary>
+    /// Reads the stored vectors of <paramref name="chunkIds"/> from the vec0 table <paramref name="tableName"/> — the table
+    /// the store's bound embedding identity writes. vec0 keeps each vector as a little-endian float32 blob; a chunk with no
+    /// row (stored without an embedding) is absent from the result. One point lookup per id on the table's primary key,
+    /// on one prepared command.
+    /// </summary>
+    internal async Task<Dictionary<string, float[]>> ReadVectorsAsync(
+        string tableName, IEnumerable<string> chunkIds, CancellationToken cancellationToken = default)
+    {
+        var vectors = new Dictionary<string, float[]>(StringComparer.Ordinal);
+        if (!_options.UseSQLiteVec || !IsValidFingerprintVecTableName(tableName))
+            return vectors;
+
+        var connection = (Microsoft.Data.Sqlite.SqliteConnection)Database.GetDbConnection();
+        if (connection.State != System.Data.ConnectionState.Open)
+            await connection.OpenAsync(cancellationToken);
+        await _extensionLoader.LoadExtensionAsync(connection, cancellationToken);
+
+        using var cmd = connection.CreateCommand();
+        // tableName passed IsValidFingerprintVecTableName above; safe to interpolate.
+        cmd.CommandText = $"SELECT embedding FROM {tableName} WHERE chunk_id = $id";
+        var id = cmd.Parameters.Add("$id", Microsoft.Data.Sqlite.SqliteType.Text);
+
+        foreach (var chunkId in chunkIds)
+        {
+            id.Value = chunkId;
+            if (await cmd.ExecuteScalarAsync(cancellationToken) is byte[] blob && blob.Length % sizeof(float) == 0)
+                vectors[chunkId] = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, float>(blob).ToArray();
+        }
+
+        return vectors;
+    }
+
+    /// <summary>
     /// Enumerate all vec0 virtual tables in the current database whose name follows the
     /// FluxIndex fingerprint convention ("chunk_embeddings_&lt;fingerprint&gt;").
     /// Used by cross-fingerprint cleanup paths (DELETE across legacy fingerprints,

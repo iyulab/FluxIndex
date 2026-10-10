@@ -327,6 +327,45 @@ public abstract class VectorStoreChunkIdentityContractSuite
     }
 
     /// <summary>
+    /// A chunk stored with an embedding reads back with it — the vector a caller needs to compare stored documents with each
+    /// other («more like this»: the centroid of one document's chunk vectors searched against the rest). The sqlite-vec store
+    /// kept the vectors in its vec0 table but returned <c>Embedding = null</c> on every read, so a similarity search over it
+    /// silently had nothing to compare. A store may keep a lossy representation (quantization), so the fact asks for the
+    /// same dimension and the same direction, not the same bytes.
+    /// </summary>
+    [Fact]
+    public async Task StoredVectors_ReadBack_OnEveryReadPath()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var store = await CreateStoreAsync();
+        await store.StoreBatchAsync([CreateChunk("vec-0", "zero", 0), CreateChunk("vec-1", "one", 1)], ct);
+
+        AssertSameDirection(Axis(1), (await store.GetAsync("vec-1", ct))?.Embedding);
+
+        var byDocument = (await store.GetByDocumentIdAsync("doc-1", ct)).OrderBy(c => c.Id, StringComparer.Ordinal).ToList();
+        Assert.Equal(["vec-0", "vec-1"], byDocument.Select(c => c.Id).ToList());
+        AssertSameDirection(Axis(0), byDocument[0].Embedding);
+        AssertSameDirection(Axis(1), byDocument[1].Embedding);
+
+        var byIds = Assert.Single(await store.GetChunksByIdsAsync(["vec-0"], ct));
+        AssertSameDirection(Axis(0), byIds.Embedding);
+    }
+
+    private void AssertSameDirection(float[] expected, float[]? actual)
+    {
+        Assert.NotNull(actual);
+        Assert.Equal(Dimensions, actual.Length);
+        double dot = 0, a2 = 0, b2 = 0;
+        for (var i = 0; i < Dimensions; i++)
+        {
+            dot += expected[i] * actual[i];
+            a2 += expected[i] * expected[i];
+            b2 += actual[i] * actual[i];
+        }
+        Assert.True(dot / Math.Sqrt(a2 * b2) > 0.99, $"stored and read-back vectors point different ways (cosine {dot / Math.Sqrt(a2 * b2):F3})");
+    }
+
+    /// <summary>
     /// Retriever statistics report this as the document total and only fall back to the (restart-volatile)
     /// document repository on 0 — a store holding chunks must count the documents they belong to.
     /// </summary>

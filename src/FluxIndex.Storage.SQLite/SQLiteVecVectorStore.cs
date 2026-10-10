@@ -38,6 +38,17 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
     /// </summary>
     private bool VecTableActive => _sqliteVecAvailable && _options.EmbeddingFingerprint is not null;
 
+    /// <summary>
+    /// The stored vectors of these chunks in the bound identity's vec0 table, so a chunk read back carries the
+    /// <see cref="DocumentChunk.Embedding"/> it was stored with — as every other store returns it. Empty when vec0 is off
+    /// or no identity is bound (a keyword-only context stores no vectors).
+    /// </summary>
+    private async Task<Dictionary<string, float[]>> ReadStoredVectorsAsync(
+        SQLiteVecDbContext context, IEnumerable<string> chunkIds, CancellationToken cancellationToken)
+        => VecTableActive && CurrentVecTableName() is { } table
+            ? await context.ReadVectorsAsync(table, chunkIds, cancellationToken)
+            : new Dictionary<string, float[]>(StringComparer.Ordinal);
+
     /// <summary>The vec0 table the current binding targets, or null when vec0 is off or no identity is bound.</summary>
     private string? CurrentVecTableName() =>
         _options.UseSQLiteVec && _options.EmbeddingFingerprint is not null ? _options.GetVecTableName() : null;
@@ -644,6 +655,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             if (chunkEntity == null)
                 return null;
 
+            var vectors = await ReadStoredVectorsAsync(context, [chunkEntity.Id], cancellationToken);
             var chunk = new DocumentChunk
             {
                 Id = chunkEntity.Id,
@@ -651,7 +663,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 ChunkIndex = chunkEntity.ChunkIndex,
                 TotalChunks = chunkEntity.TotalChunks ?? 0,
                 Content = chunkEntity.Content,
-                Embedding = null, // 필요시 별도 쿼리로 로드
+                Embedding = vectors.GetValueOrDefault(chunkEntity.Id),
                 TokenCount = chunkEntity.TokenCount,
                 Metadata = chunkEntity.Metadata
             };
@@ -1280,6 +1292,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 .Where(c => c.DocumentId == documentId)
                 .OrderBy(c => c.ChunkIndex)
                 .ToListAsync(cancellationToken);
+            var vectors = await ReadStoredVectorsAsync(context, entities.Select(e => e.Id), cancellationToken);
 
             return entities.Select(e => new DocumentChunk
             {
@@ -1290,8 +1303,8 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
                 Content = e.Content,
                 TokenCount = e.TokenCount,
                 Metadata = e.Metadata,
-                Embedding = null
-            });
+                Embedding = vectors.GetValueOrDefault(e.Id)
+            }).ToList();
         }
         catch (Exception ex)
         {
@@ -1607,6 +1620,7 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         var entities = await context.VectorChunks
             .Where(c => ids.Contains(c.Id))
             .ToListAsync(cancellationToken);
+        var vectors = await ReadStoredVectorsAsync(context, entities.Select(e => e.Id), cancellationToken);
 
         return entities.Select(e => new DocumentChunk
         {
@@ -1617,8 +1631,8 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             Content = e.Content,
             TokenCount = e.TokenCount,
             Metadata = e.Metadata,
-            Embedding = null
-        });
+            Embedding = vectors.GetValueOrDefault(e.Id)
+        }).ToList();
     }
 
     public async Task<bool> UpdateAsync(DocumentChunk chunk, CancellationToken cancellationToken = default)
