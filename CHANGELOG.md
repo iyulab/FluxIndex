@@ -5,6 +5,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [Unreleased]
+
+### Dependencies
+- Re-pinned sibling package(s) `WebFlux` 0.24.0 -> 0.25.0.
+
+---
+
 ## [0.88.0] - 2026-10-11
 
 ### Changed
