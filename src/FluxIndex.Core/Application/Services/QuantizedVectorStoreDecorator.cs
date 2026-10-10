@@ -484,18 +484,4 @@ public class QuantizedVectorStoreOptions
     /// Default: true
     /// </summary>
     public bool AutoQuantizeOnStore { get; set; } = true;
-
-    /// <summary>
-    /// Store original embeddings alongside quantized ones.
-    /// Required for reranking operations.
-    /// Default: true
-    /// </summary>
-    public bool StoreOriginalEmbeddings { get; set; } = true;
-
-    /// <summary>
-    /// Default candidate multiplier for rerank search.
-    /// Higher values increase accuracy but reduce performance.
-    /// Default: 3
-    /// </summary>
-    public int DefaultCandidateMultiplier { get; set; } = 3;
 }

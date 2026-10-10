@@ -24,6 +24,19 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ### Removed
 - **Breaking: `GradingCriteria.RequiredEntities` and `ProhibitedPatterns`** — nothing read them. Migration: delete the
   assignments.
+- **Breaking: `ICacheStore.WarmupAsync` with `CacheWarmupOptions` and `CacheWarmupResult`.** The Redis store warmed nothing:
+  it returned the entry counts already in the cache as «warmed up» and ignored every option. Warm a cache by reading
+  through it from the application. Migration: delete the call.
+- **Breaking: options nothing read** — `CacheMaintenanceOptions.TargetMemoryUsagePercent`/`CompactStorage`/`UpdateStatistics`
+  (maintenance removes expired and cold entries only), `QuantizationOptions.TrainingSamples` (the migration's
+  `MigrationOptions.TrainingSampleSize` is the sample size) and `NormalizeVectors` (no quantizer normalizes),
+  `QuantizedVectorStoreOptions.StoreOriginalEmbeddings` (the wrapped store always keeps them) and `DefaultCandidateMultiplier`
+  (`HybridSearchOptions.QuantizedCandidateMultiplier` and the `candidateMultiplier` argument decide), `ClassificationOptions.Enabled`
+  (registering the classifier is the switch) and `CacheExpirationHours` (your `IClassificationCacheService` owns expiry),
+  `ClassificationValidationOptions.DuplicateThreshold` (the duplicate check is an exact content hash),
+  `SelfRAGOptions.EnableContextExpansion`/`EnableMultiPerspectiveSearch` (no such step in the search loop), and
+  `SelfRAGServiceOptions.DefaultMaxIterations`/`DefaultQualityThreshold` (per-call `SelfRAGOptions` carries them).
+  Migration: delete the assignments.
 
 ## [0.87.0] - 2026-10-10
 

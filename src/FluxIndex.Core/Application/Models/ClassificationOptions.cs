@@ -6,11 +6,6 @@ namespace FluxIndex.Core.Application.Models;
 public class ClassificationOptions
 {
     /// <summary>
-    /// LLM 분류 활성화 여부
-    /// </summary>
-    public bool Enabled { get; set; } = true;
-
-    /// <summary>
     /// 분류 범위 (기본: 전체)
     /// </summary>
     public ClassificationScope Scope { get; set; } = ClassificationScope.All;
@@ -49,11 +44,6 @@ public class ClassificationOptions
     /// 캐시 활성화
     /// </summary>
     public bool EnableCache { get; set; } = true;
-
-    /// <summary>
-    /// 캐시 만료 시간 (시간)
-    /// </summary>
-    public int CacheExpirationHours { get; set; } = 24;
 
     /// <summary>
     /// 유사 청크 상속 임계값 (코사인 유사도)
@@ -105,11 +95,6 @@ public class ClassificationValidationOptions
     /// 중복 검사 활성화
     /// </summary>
     public bool EnableDuplicateCheck { get; set; } = true;
-
-    /// <summary>
-    /// 중복 임계값 (해시 유사도)
-    /// </summary>
-    public double DuplicateThreshold { get; set; } = 0.98;
 
     /// <summary>
     /// 출력 검증 활성화

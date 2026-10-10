@@ -766,8 +766,6 @@ public class SelfRAGServiceTests
         Assert.Equal(5, options.MinResults);
         Assert.Equal(TimeSpan.FromMinutes(2), options.SearchTimeout);
         Assert.True(options.EnableAutoRefinement);
-        Assert.True(options.EnableContextExpansion);
-        Assert.True(options.EnableMultiPerspectiveSearch);
     }
 
     [Fact]
@@ -778,8 +776,6 @@ public class SelfRAGServiceTests
 
         // Assert
         Assert.True(options.UseLlmForRefinement);
-        Assert.Equal(3, options.DefaultMaxIterations);
-        Assert.Equal(0.7, options.DefaultQualityThreshold);
         Assert.Equal(0.35, options.RelevanceWeight);
         Assert.Equal(0.25, options.CompletenessWeight);
         Assert.Equal(0.15, options.DiversityWeight);
@@ -793,8 +789,8 @@ public class SelfRAGServiceTests
         // Arrange
         var serviceOptions = new SelfRAGServiceOptions
         {
-            DefaultMaxIterations = 2,
-            DefaultQualityThreshold = 0.8
+            UseLlmForRefinement = false,
+            RelevanceWeight = 0.5
         };
         var service = CreateService(serviceOptions, withLlm: false);
         var searchOptions = new SelfRAGOptions

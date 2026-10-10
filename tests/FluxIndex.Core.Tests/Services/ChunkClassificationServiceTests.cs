@@ -22,7 +22,6 @@ public class ChunkClassificationServiceTests
         _classificationLoggerMock = Substitute.For<ILogger<LlmChunkClassificationService>>();
         _options = new ClassificationOptions
         {
-            Enabled = true,
             MaxTopics = 5,
             MaxCategories = 3,
             MaxTags = 10,

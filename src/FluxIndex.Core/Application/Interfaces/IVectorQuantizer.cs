@@ -230,19 +230,9 @@ public class QuantizationOptions
     public int CodebookSize { get; set; } = 256;
 
     /// <summary>
-    /// 학습용 샘플 수
-    /// </summary>
-    public int TrainingSamples { get; set; } = 10000;
-
-    /// <summary>
     /// K-Means 반복 횟수 (PQ 학습 시)
     /// </summary>
     public int KMeansIterations { get; set; } = 25;
-
-    /// <summary>
-    /// 정규화 적용 여부
-    /// </summary>
-    public bool NormalizeVectors { get; set; } = true;
 
     /// <summary>
     /// 대칭 양자화 사용 여부 (스칼라 양자화 시)

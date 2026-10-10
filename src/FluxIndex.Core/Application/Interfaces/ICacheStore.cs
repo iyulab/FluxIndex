@@ -173,13 +173,6 @@ public interface ICacheStore : ICacheService
         CacheMaintenanceOptions options,
         CancellationToken ct = default);
 
-    /// <summary>
-    /// Warms up cache with frequently accessed data.
-    /// </summary>
-    Task<CacheWarmupResult> WarmupAsync(
-        CacheWarmupOptions options,
-        CancellationToken ct = default);
-
     #endregion
 }
 
@@ -459,15 +452,6 @@ public record CacheMaintenanceOptions
 
     /// <summary>Access threshold for cold data eviction</summary>
     public TimeSpan ColdDataThreshold { get; init; } = TimeSpan.FromDays(7);
-
-    /// <summary>Target memory usage percentage (0-100)</summary>
-    public int TargetMemoryUsagePercent { get; init; } = 80;
-
-    /// <summary>Compact data structures</summary>
-    public bool CompactStorage { get; init; }
-
-    /// <summary>Update statistics</summary>
-    public bool UpdateStatistics { get; init; } = true;
 }
 
 /// <summary>
@@ -489,45 +473,6 @@ public record CacheMaintenanceResult
 
     /// <summary>Messages/warnings</summary>
     public IReadOnlyList<string> Messages { get; init; } = [];
-}
-
-/// <summary>
-/// Options for cache warmup.
-/// </summary>
-public record CacheWarmupOptions
-{
-    /// <summary>Warm up top N hot chunks</summary>
-    public int TopHotChunksCount { get; init; } = 1000;
-
-    /// <summary>Warm up frequently queried embeddings</summary>
-    public bool WarmupEmbeddings { get; init; } = true;
-
-    /// <summary>Warm up entity cache</summary>
-    public bool WarmupEntities { get; init; } = true;
-
-    /// <summary>Maximum warmup duration</summary>
-    public TimeSpan MaxDuration { get; init; } = TimeSpan.FromMinutes(5);
-}
-
-/// <summary>
-/// Result of cache warmup operation.
-/// </summary>
-public record CacheWarmupResult
-{
-    /// <summary>Chunks warmed up</summary>
-    public int ChunksWarmedUp { get; init; }
-
-    /// <summary>Embeddings warmed up</summary>
-    public int EmbeddingsWarmedUp { get; init; }
-
-    /// <summary>Entities warmed up</summary>
-    public int EntitiesWarmedUp { get; init; }
-
-    /// <summary>Duration in milliseconds</summary>
-    public double DurationMs { get; init; }
-
-    /// <summary>Success status</summary>
-    public bool Success { get; init; }
 }
 
 #endregion

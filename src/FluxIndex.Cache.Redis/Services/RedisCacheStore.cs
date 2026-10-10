@@ -648,26 +648,6 @@ public partial class RedisCacheStore : ICacheStore, IDisposable
         }
     }
 
-    public async Task<CacheWarmupResult> WarmupAsync(
-        CacheWarmupOptions options,
-        CancellationToken ct = default)
-    {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-
-        // Warmup is typically done by the application loading frequently accessed data
-        // Here we just report current state
-        var stats = await GetCacheStoreStatisticsAsync(ct);
-
-        return new CacheWarmupResult
-        {
-            ChunksWarmedUp = (int)stats.HotDataCache.EntryCount,
-            EmbeddingsWarmedUp = (int)stats.EmbeddingCache.EntryCount,
-            EntitiesWarmedUp = (int)stats.EntityCache.EntryCount,
-            DurationMs = sw.ElapsedMilliseconds,
-            Success = true
-        };
-    }
-
     #endregion
 
     #region Private Helpers

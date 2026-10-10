@@ -948,16 +948,6 @@ public partial class SelfRAGServiceOptions
     public bool UseLlmForRefinement { get; set; } = true;
 
     /// <summary>
-    /// Default maximum iterations for search.
-    /// </summary>
-    public int DefaultMaxIterations { get; set; } = 3;
-
-    /// <summary>
-    /// Default quality threshold.
-    /// </summary>
-    public double DefaultQualityThreshold { get; set; } = 0.7;
-
-    /// <summary>
     /// Weight for relevance in overall score calculation.
     /// </summary>
     public double RelevanceWeight { get; set; } = 0.35;

@@ -59,12 +59,6 @@ public class SelfRAGOptions
     /// <summary>자동 쿼리 개선 사용</summary>
     public bool EnableAutoRefinement { get; set; } = true;
 
-    /// <summary>컨텍스트 확장 사용. 현재 등록된 Self-RAG 서비스는 이 값을 읽지 않는다 — 연결 또는 제거는 후속 결정.</summary>
-    public bool EnableContextExpansion { get; set; } = true;
-
-    /// <summary>다중 관점 검색 사용. 현재 등록된 Self-RAG 서비스는 이 값을 읽지 않는다 — 연결 또는 제거는 후속 결정.</summary>
-    public bool EnableMultiPerspectiveSearch { get; set; } = true;
-
 }
 
 /// <summary>
