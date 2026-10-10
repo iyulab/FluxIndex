@@ -51,6 +51,34 @@ public class SemanticCacheOnTheSearchPathTests
     }
 
     [Fact]
+    public async Task WarmupCacheAsync_StoresSearchResults_SoTheFirstRealQueryIsAHit()
+    {
+        // Warm-up handed the queries to the cache, which has no search: SQLite/PostgreSQL stored nothing and Redis only
+        // embeddings, while the context reported true. It now searches each query, so the results are cached.
+        var counter = new SearchCounter();
+        using var context = (FluxIndexContext)Build(counter);
+        await context.Indexer.IndexDocumentAsync("FluxIndex is a retrieval library", "doc-a", cancellationToken: Ct);
+
+        (await context.WarmupCacheAsync([Asked, " ", Asked], cancellationToken: Ct)).Should().BeTrue();
+        counter.Searches.Should().Be(1, "one distinct non-blank query was warmed");
+
+        var answered = (await context.SearchAsync(AskedAgain, cancellationToken: Ct)).ToList();
+
+        answered.Should().ContainSingle().Which.DocumentId.Should().Be("doc-a");
+        counter.Searches.Should().Be(1, "the real query is answered from what the warm-up stored");
+    }
+
+    [Fact]
+    public async Task WarmupCacheAsync_WithoutASemanticCache_ReportsFalseAndSearchesNothing()
+    {
+        var counter = new SearchCounter();
+        using var context = (FluxIndexContext)Build(counter, optIn: false);
+
+        (await context.WarmupCacheAsync([Asked], cancellationToken: Ct)).Should().BeFalse();
+        counter.Searches.Should().Be(0);
+    }
+
+    [Fact]
     public async Task SQLitePreset_ASimilarRepeatedQuery_IsAnsweredWithoutTheStore()
     {
         var counter = new SearchCounter();

@@ -654,28 +654,41 @@ public partial class FluxIndexContext : IFluxIndexContext, IDisposable, IAsyncDi
     }
 
     /// <summary>
-    /// 캐시 워밍업 - 자주 사용되는 쿼리들로 캐시 사전 로드
+    /// Pre-loads the semantic cache: runs an unfiltered <see cref="SearchAsync"/> for each query, so its results are
+    /// stored and a later similar query is answered from the cache. Returns true when every query was searched, false
+    /// when no semantic cache is registered or a search failed (the failure is logged and the rest still run).
     /// </summary>
+    /// <param name="commonQueries">Queries to warm; blank ones are skipped, duplicates searched once.</param>
+    /// <param name="maxResults">Results stored per query. A cached entry serves later requests for this many results or
+    /// fewer, so warm with the largest count your searches ask for. Null uses the search default.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<bool> WarmupCacheAsync(
         IEnumerable<string> commonQueries,
+        int? maxResults = null,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(commonQueries);
         if (_cacheService == null)
         {
             LogCacheNotAvailableForWarmup(_logger);
             return false;
         }
 
-        try
+        var warmed = true;
+        foreach (var query in commonQueries.Where(q => !string.IsNullOrWhiteSpace(q)).Distinct(StringComparer.Ordinal))
         {
-            await _cacheService.WarmupCacheAsync(commonQueries.ToList(), cancellationToken);
-            return true;
+            try
+            {
+                await SearchAsync(query, maxResults, cancellationToken: cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            {
+                LogCacheWarmupFailed(_logger, ex);
+                warmed = false;
+            }
         }
-        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
-        {
-            LogCacheWarmupFailed(_logger, ex);
-            return false;
-        }
+
+        return warmed;
     }
 
     /// <summary>
@@ -1393,8 +1406,8 @@ public interface IFluxIndexContext : IDisposable, IAsyncDisposable
     // Semantic Cache APIs — null / false / no-op when no ISemanticCacheService is registered
     /// <summary>Semantic cache statistics.</summary>
     Task<SemanticCacheStatistics?> GetCacheStatisticsAsync(CancellationToken cancellationToken = default);
-    /// <summary>Pre-loads the semantic cache with the given queries.</summary>
-    Task<bool> WarmupCacheAsync(IEnumerable<string> commonQueries, CancellationToken cancellationToken = default);
+    /// <summary>Pre-loads the semantic cache by searching each query once (see <see cref="FluxIndexContext.WarmupCacheAsync"/>).</summary>
+    Task<bool> WarmupCacheAsync(IEnumerable<string> commonQueries, int? maxResults = null, CancellationToken cancellationToken = default);
     /// <summary>Runs semantic cache maintenance.</summary>
     Task OptimizeCacheAsync(CancellationToken cancellationToken = default);
 

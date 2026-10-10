@@ -44,6 +44,12 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
       the SQLite entity's `GetResults`/`SetResults` are gone.
     - `FluxIndexContext` and `Indexer` take an optional trailing cache argument.
   - Redis entries stored before this version are misses (no stored request), so a Redis cache starts cold once.
+- **`FluxIndexContext.WarmupCacheAsync` pre-loads the cache it says it does.** It handed the queries to the cache
+  service, which has no search: the SQLite/PostgreSQL caches stored nothing and Redis only query embeddings, and the
+  call still returned `true`. It now runs one unfiltered search per distinct query, so the results are stored and a later
+  similar query is a hit. It returns `false` when a search failed (logged; the rest still run) or no cache is registered.
+  New optional `maxResults` (results stored per query; a cached entry serves requests for that many or fewer). Breaking
+  only for code that passed the cancellation token positionally (pass it by name).
 - **`HybridSearchOptions.TimeoutMs` is enforced.** A hybrid search that outlives it throws `TimeoutException`, not a
   shorter result; the caller's own cancellation still throws `OperationCanceledException`. The default is now 0 (no
   limit). It was declared as 30000 but never applied, so an unset option behaves as before. In a batch, the limit
