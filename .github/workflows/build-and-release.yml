@@ -8,6 +8,7 @@ on:
       - 'Directory.Build.props'
       # The pins decide what is built and what the nuspec depends on: a re-pin alone has to be built and tested.
       - 'Directory.Packages.props'
+      - 'Directory.Build.targets'
       - 'src/**'
       # tests/ and the workflow itself gate the release, so a change to either has to re-run this
       # job. Without them a test-only or CI-only change never exercised the gate it modified, and
