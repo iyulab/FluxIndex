@@ -8,6 +8,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [Unreleased]
 
 ### Changed
+- **The packages from this repository depend on each other at exactly the same version** (`[x.y.z]`), not a floor.
+  A consumer that moves one of them while another resolves at an older version now gets restore warning NU1608 naming
+  the pair (an error where warnings are errors) — before, the mixed versions restored silently and could fail at run time.
 - **Breaking: the FileFlux integration runs the LLM refine stage only when `FileFluxOptions.EnableLlmRefine` is on.** The
   switch (off by default) and `LlmRefineOptions` were read by nothing: the integration handed FileFlux processing options
   with only chunking set, and FileFlux runs its refine stage by default — so with a text completion service registered,
