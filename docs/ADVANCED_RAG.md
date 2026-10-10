@@ -136,8 +136,7 @@ var options = new ListwiseRerankOptions
 {
     Method = ListwiseMethod.AttentionBased,
     TopN = 10,
-    WindowSize = 5,          // for SlidingWindow
-    IncludeExplanation = true
+    WindowSize = 5           // for SlidingWindow
 };
 
 IReadOnlyList<ListwiseRerankResult> reranked = await reranker.RerankAsync(
@@ -170,8 +169,7 @@ var throughputOptions = new ListwiseRerankOptions
 var qualityOptions = new ListwiseRerankOptions
 {
     Method = ListwiseMethod.Hybrid,
-    TopN = 10,
-    IncludeExplanation = true
+    TopN = 10
 };
 ```
 

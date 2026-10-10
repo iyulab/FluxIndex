@@ -99,11 +99,6 @@ public class IterativeRetrievalOptions
     public float ConfidenceThreshold { get; set; } = 0.8f;
 
     /// <summary>
-    /// Whether to include reasoning trace in results
-    /// </summary>
-    public bool IncludeReasoningTrace { get; set; } = true;
-
-    /// <summary>
     /// Temperature for LLM reasoning
     /// </summary>
     public float ReasoningTemperature { get; set; } = 0.3f;

@@ -26,6 +26,7 @@ public partial class RetrievalVerificationService
     {
         var gradedDocuments = new List<GradedDocument>();
         var rank = 1;
+        var criteria = options.CustomCriteria ?? _options.DefaultCriteria;
 
         if (options.EnableParallelVerification && documents.Count > 1)
         {
@@ -36,10 +37,11 @@ public partial class RetrievalVerificationService
 
                 try
                 {
-                    var grade = await GradeDocumentAsync(query, doc, cts.Token);
+                    var grade = await GradeDocumentAsync(query, doc, criteria, cts.Token);
                     return (Index: index, Document: doc, Grade: grade, Success: true);
                 }
-                catch (OperationCanceledException)
+                // The per-document timeout, not the caller: a cancelled verification throws.
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
                 {
                     return (Index: index, Document: doc, Grade: new DocumentGrade
                     {
@@ -67,7 +69,7 @@ public partial class RetrievalVerificationService
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                var grade = await GradeDocumentAsync(query, doc, cancellationToken);
+                var grade = await GradeDocumentAsync(query, doc, criteria, cancellationToken);
                 gradedDocuments.Add(new GradedDocument
                 {
                     Document = doc,

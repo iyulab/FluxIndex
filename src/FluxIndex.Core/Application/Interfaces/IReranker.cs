@@ -66,11 +66,6 @@ public class RerankOptions
     public int TopN { get; set; } = 10;
 
     /// <summary>
-    /// Model to use for reranking
-    /// </summary>
-    public RerankModel Model { get; set; } = RerankModel.Local;
-
-    /// <summary>
     /// Minimum score a result must reach to be returned. <c>null</c> (the default) applies no
     /// threshold.
     /// </summary>
@@ -91,11 +86,6 @@ public class RerankOptions
     /// Maximum length of content to consider (for performance)
     /// </summary>
     public int MaxContentLength { get; set; } = 512;
-
-    /// <summary>
-    /// Custom model parameters
-    /// </summary>
-    public Dictionary<string, object>? ModelParameters { get; set; }
 }
 
 /// <summary>

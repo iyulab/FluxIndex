@@ -208,6 +208,27 @@ public class RetrievalVerificationServiceTests
     }
 
     [Fact]
+    public async Task VerifyAsync_CustomCriteria_WeighTheGradesOfThatCall()
+    {
+        // CustomCriteria was declared and never read: every call graded with the service's DefaultCriteria.
+        var service = CreateService(withLlm: false);
+        var chunks = CreateTestChunks(4);
+        var semanticOnly = new GradingCriteria
+        {
+            SemanticRelevanceWeight = 1, KeywordMatchWeight = 0, EntityOverlapWeight = 0, ContextualFitWeight = 0,
+        };
+
+        var custom = await service.VerifyAsync("machine learning", chunks,
+            new VerificationOptions { CustomCriteria = semanticOnly }, TestContext.Current.CancellationToken);
+        var byDefault = await service.VerifyAsync("machine learning", chunks,
+            new VerificationOptions(), TestContext.Current.CancellationToken);
+
+        Assert.All(custom.GradedDocuments, d => Assert.Equal(d.Grade.SemanticSimilarity, d.Grade.ConfidenceScore, 6));
+        // Control: the default weights do not reduce to the semantic score.
+        Assert.Contains(byDefault.GradedDocuments, d => Math.Abs(d.Grade.SemanticSimilarity - d.Grade.ConfidenceScore) > 1e-6);
+    }
+
+    [Fact]
     public async Task VerifyAsync_WithCancellation_ThrowsOperationCanceledException()
     {
         // Arrange

@@ -12,6 +12,10 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   `FindShortestPathAsync`, `FindKShortestPathsAsync`, `FindStrongestPathAsync`, `FindAllPathsAsync`,
   `FindConnectedComponentsAsync` and `FindBridgeChunksAsync` stopped on cancellation and returned what they had — a lone start chunk, «no path»,
   a partial list — as if the walk had finished. Migration: catch `OperationCanceledException` where you cancel.
+- **`VerificationOptions.CustomCriteria` weighs that call's grades.** It was never read: every call graded with the
+  service's `DefaultCriteria`, which is still used when it is null (the default).
+- **A verification cancelled during parallel grading throws at once** instead of grading the remaining documents as
+  «Verification timeout» first (the per-document timeout still grades that way).
 - **`SmallToBigOptions.MaxWindowSize` caps the window** (adaptive recommendation or `DefaultWindowSize`); it was never read.
   The default (10) matches the old fixed cap.
 - **Breaking: `GetNeighborhoodAsync(chunkId, maxHops, options)` stops at `maxHops` when options are given.** It walked to the
@@ -24,6 +28,11 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   weighs strength — the method chooses, not a setting; use the cancellation token for a time limit), `SmallToBigOptions.TimeoutMs` (Core and SDK), `ContextExpansionOptions.MaxExpansionDistance` (expansion follows the
   window size) and `QueryDecompositionOptions.MaxDecompositionDepth` (decomposition is one level). Migration: delete the
   assignments.
+- **Breaking: rerank, verification and synthesis settings nothing read.** `ListwiseRerankOptions.UseLlm`,
+  `UseAttentionScoring` (the `Method` decides) and `IncludeExplanation` (no explanation is produced), `RerankOptions.Model`
+  and `ModelParameters` (the registered reranker decides), `VerificationOptions.MaxHallucinationRisk` and
+  `IncludeDetailedReasoning`, `IterativeRetrievalOptions.IncludeReasoningTrace` (the iterations are always returned) and
+  `AnswerSynthesisOptions.StructuredAnswer`. Migration: delete the assignments.
 
 ## [0.86.0] - 2026-10-10
 

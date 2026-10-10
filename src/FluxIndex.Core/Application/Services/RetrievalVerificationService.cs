@@ -131,10 +131,17 @@ public partial class RetrievalVerificationService : Interfaces.IRetrievalVerific
     }
 
     /// <inheritdoc />
-    public async Task<DocumentGrade> GradeDocumentAsync(
+    public Task<DocumentGrade> GradeDocumentAsync(
         string query,
         DocumentChunk document,
         CancellationToken cancellationToken = default)
+        => GradeDocumentAsync(query, document, _options.DefaultCriteria, cancellationToken);
+
+    private async Task<DocumentGrade> GradeDocumentAsync(
+        string query,
+        DocumentChunk document,
+        GradingCriteria criteria,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(query);
         ArgumentNullException.ThrowIfNull(document);
@@ -152,7 +159,6 @@ public partial class RetrievalVerificationService : Interfaces.IRetrievalVerific
             var contextualFit = CalculateContextualFit(query, document.Content);
 
             // Weighted combination
-            var criteria = _options.DefaultCriteria;
             var confidenceScore =
                 (semanticSimilarity * criteria.SemanticRelevanceWeight) +
                 (keywordMatch * criteria.KeywordMatchWeight) +

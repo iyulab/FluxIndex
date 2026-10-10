@@ -95,19 +95,9 @@ public class ListwiseRerankOptions
     public int MaxPairwiseComparisons { get; set; } = 50;
 
     /// <summary>
-    /// Whether to use LLM for ranking (more accurate but slower)
-    /// </summary>
-    public bool UseLlm { get; set; } = true;
-
-    /// <summary>
     /// LLM temperature for ranking decisions
     /// </summary>
     public float LlmTemperature { get; set; }
-
-    /// <summary>
-    /// Whether to use attention-based scoring with embeddings
-    /// </summary>
-    public bool UseAttentionScoring { get; set; } = true;
 
     /// <summary>
     /// Weight for initial retrieval score (0-1).
@@ -115,11 +105,6 @@ public class ListwiseRerankOptions
     /// Default: 0.3
     /// </summary>
     public float InitialScoreWeight { get; set; } = 0.3f;
-
-    /// <summary>
-    /// Whether to include detailed explanations
-    /// </summary>
-    public bool IncludeExplanation { get; set; }
 
     /// <summary>
     /// Maximum content length per document for LLM processing

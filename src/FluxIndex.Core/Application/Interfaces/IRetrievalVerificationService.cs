@@ -106,11 +106,6 @@ public class VerificationOptions
     public double RelevanceThreshold { get; init; } = 0.5;
 
     /// <summary>
-    /// Maximum hallucination risk tolerance (0.0-1.0). Default: 0.3
-    /// </summary>
-    public double MaxHallucinationRisk { get; init; } = 0.3;
-
-    /// <summary>
     /// Minimum factual grounding score (0.0-1.0). Default: 0.6
     /// </summary>
     public double MinFactualGrounding { get; init; } = 0.6;
@@ -136,17 +131,13 @@ public class VerificationOptions
     public TimeSpan PerDocumentTimeout { get; init; } = TimeSpan.FromSeconds(5);
 
     /// <summary>
-    /// Include detailed reasoning in verification results.
-    /// </summary>
-    public bool IncludeDetailedReasoning { get; init; }
-
-    /// <summary>
     /// Strict mode - fail on any verification concern.
     /// </summary>
     public bool StrictMode { get; init; }
 
     /// <summary>
-    /// Custom grading criteria.
+    /// Grading weights for this call. <c>null</c> (the default) uses the service's
+    /// <c>RetrievalVerificationServiceOptions.DefaultCriteria</c>.
     /// </summary>
     public GradingCriteria? CustomCriteria { get; init; }
 }

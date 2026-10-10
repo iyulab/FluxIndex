@@ -39,20 +39,15 @@ public class OptionsReachabilityRosterTests
         // with a wire-or-remove call for each. Shrink this list, never grow it silently.
         ["FluxIndex.Core.Application.Interfaces.AdaptiveSearchOptions"] = ["EnableDetailedLogging", "UserContext"],
         ["FluxIndex.Core.Application.Interfaces.AgenticRetrievalOptions"] = ["EnableAdaptivePlanning"],
-        ["FluxIndex.Core.Application.Interfaces.AnswerSynthesisOptions"] = ["StructuredAnswer"],
         ["FluxIndex.Core.Application.Interfaces.CacheMaintenanceOptions"] = ["CompactStorage", "TargetMemoryUsagePercent", "UpdateStatistics"],
         ["FluxIndex.Core.Application.Interfaces.CacheWarmupOptions"] = ["MaxDuration", "TopHotChunksCount", "WarmupEmbeddings", "WarmupEntities"],
         ["FluxIndex.Core.Application.Interfaces.ContextualHeaderOptions"] = ["UsePromptCaching"],
         ["FluxIndex.Core.Application.Interfaces.DynamicFusionConfiguration"] = ["Complexity", "Reasoning", "TechnicalDomains"],
         ["FluxIndex.Core.Application.Interfaces.GlobalSearchOptions"] = ["ScoreConfidence"],
-        ["FluxIndex.Core.Application.Interfaces.IterativeRetrievalOptions"] = ["IncludeReasoningTrace"],
-        ["FluxIndex.Core.Application.Interfaces.ListwiseRerankOptions"] = ["IncludeExplanation", "UseAttentionScoring", "UseLlm"],
         ["FluxIndex.Core.Application.Interfaces.QuantizationOptions"] = ["NormalizeVectors", "TrainingSamples"],
-        ["FluxIndex.Core.Application.Interfaces.RerankOptions"] = ["Model", "ModelParameters"],
         // MinResults · EnableDetailedLogging · UserContext were read only by a second, never-registered
         // SelfRAGService removed in 0.38.0 — the registered service never honoured them (roster blind spot ④).
         ["FluxIndex.Core.Application.Interfaces.SelfRAGOptions"] = ["EnableContextExpansion", "EnableMultiPerspectiveSearch", "MinResults"],
-        ["FluxIndex.Core.Application.Interfaces.VerificationOptions"] = ["CustomCriteria", "IncludeDetailedReasoning", "MaxHallucinationRisk"],
         ["FluxIndex.Core.Application.Models.ClassificationOptions"] = ["CacheExpirationHours", "Enabled"],
         ["FluxIndex.Core.Application.Models.ClassificationValidationOptions"] = ["DuplicateThreshold"],
         ["FluxIndex.Core.Application.Services.ContextualEmbeddingOptions"] = ["GenerateDualEmbeddings", "MaxCombinedLength"],

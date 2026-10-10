@@ -267,12 +267,6 @@ public class AnswerSynthesisOptions
     public bool IncludeCitations { get; set; } = true;
 
     /// <summary>
-    /// Whether to structure the answer with sections.
-    /// Default: false
-    /// </summary>
-    public bool StructuredAnswer { get; set; }
-
-    /// <summary>
     /// Custom synthesis prompt template.
     /// Placeholders: {query}, {summaries}, {count}
     /// </summary>
