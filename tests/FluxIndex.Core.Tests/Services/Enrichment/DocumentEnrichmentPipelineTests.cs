@@ -95,7 +95,6 @@ public class DocumentEnrichmentPipelineTests
             GenerateHypotheticalEmbedding = false,
             GenerateSummaryEmbedding = false,
             ExtractEntities = false,
-            ExtractRelationships = false,
             GenerateContextualSummary = false
         };
 
@@ -175,7 +174,6 @@ public class DocumentEnrichmentPipelineTests
             GenerateContextualEmbedding = false,
             GenerateHypotheticalEmbedding = false,
             ExtractEntities = true,
-            ExtractRelationships = false
         };
 
         _mockEntityExtractionService.ExtractEntityGraphAsync(
@@ -227,7 +225,6 @@ public class DocumentEnrichmentPipelineTests
         {
             GenerateContentEmbedding = false,
             ExtractEntities = true,
-            ExtractRelationships = true
         };
 
         _mockEntityExtractionService.ExtractEntityGraphAsync(
@@ -359,7 +356,6 @@ public class DocumentEnrichmentPipelineTests
         {
             GenerateContentEmbedding = true,
             ExtractEntities = true,
-            ExtractRelationships = true
         };
 
         // Act
@@ -509,7 +505,6 @@ public class DocumentEnrichmentPipelineTests
                 GenerateContentEmbedding = true,
                 GenerateContextualEmbedding = true,
                 ExtractEntities = true,
-                MinEntityConfidence = 0.8
             }
         };
 
@@ -700,6 +695,23 @@ public class DocumentEnrichmentPipelineTests
                 content,
                 Arg.Is<EntityExtractionOptions>(o => o != null && o.MinConfidence >= 0.9),
                 Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ExtractEntitiesAsync_EntityTypes_ReachTheExtractor_AndEmptyMeansAll()
+    {
+        var pipeline = CreatePipeline();
+        var ct = TestContext.Current.CancellationToken;
+
+        await pipeline.ExtractEntitiesAsync("typed", new EnrichmentEntityOptions { EntityTypes = [NamedEntityType.Person] }, ct);
+        await pipeline.ExtractEntitiesAsync("all", new EnrichmentEntityOptions(), ct);
+
+        await _mockEntityExtractionService.Received(1).ExtractEntityGraphAsync(
+            "typed",
+            Arg.Is<EntityExtractionOptions>(o => o.EntityTypes != null && o.EntityTypes.SequenceEqual(new[] { NamedEntityType.Person })),
+            Arg.Any<CancellationToken>());
+        await _mockEntityExtractionService.Received(1).ExtractEntityGraphAsync(
+            "all", Arg.Is<EntityExtractionOptions>(o => o.EntityTypes == null), Arg.Any<CancellationToken>());
     }
 
     #endregion

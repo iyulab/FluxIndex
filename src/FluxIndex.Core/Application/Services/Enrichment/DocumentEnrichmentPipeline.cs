@@ -277,7 +277,9 @@ public partial class DocumentEnrichmentPipeline : IDocumentEnrichmentPipeline
             {
                 MinConfidence = options.MinConfidence,
                 ExtractRelations = options.ExtractRelationships,
-                MaxEntities = options.MaxEntitiesPerChunk
+                MaxEntities = options.MaxEntitiesPerChunk,
+                // Empty = every type, which is what the extractor reads null as.
+                EntityTypes = options.EntityTypes.Count == 0 ? null : options.EntityTypes,
             };
 
             // Use ExtractEntityGraphAsync which returns both entities and relations

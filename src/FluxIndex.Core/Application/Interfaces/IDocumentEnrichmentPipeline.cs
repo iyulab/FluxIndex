@@ -148,17 +148,11 @@ public record EnrichmentOptions
     /// <summary>Generate hypothetical document embeddings (HyDE)</summary>
     public bool GenerateHypotheticalEmbedding { get; init; }
 
-    /// <summary>Generate entity-based embeddings</summary>
-    public bool GenerateEntityEmbedding { get; init; }
-
     /// <summary>Generate summary embeddings</summary>
     public bool GenerateSummaryEmbedding { get; init; }
 
     /// <summary>Extract named entities</summary>
     public bool ExtractEntities { get; init; } = true;
-
-    /// <summary>Extract relationships between entities</summary>
-    public bool ExtractRelationships { get; init; } = true;
 
     /// <summary>Generate contextual summary</summary>
     public bool GenerateContextualSummary { get; init; } = true;
@@ -166,26 +160,17 @@ public record EnrichmentOptions
     /// <summary>Extract keywords</summary>
     public bool ExtractKeywords { get; init; } = true;
 
-    /// <summary>Analyze chunk quality</summary>
-    public bool AnalyzeQuality { get; init; }
-
     /// <summary>Generate hypothetical questions for Q&amp;A retrieval</summary>
     public bool GenerateHypotheticalQuestions { get; init; }
 
     /// <summary>Maximum concurrent operations</summary>
     public int MaxConcurrency { get; init; } = 4;
 
-    /// <summary>Cache embeddings</summary>
-    public bool CacheEmbeddings { get; init; } = true;
-
-    /// <summary>Minimum confidence for entity extraction</summary>
-    public double MinEntityConfidence { get; init; } = 0.7;
-
-    /// <summary>Entity extraction options</summary>
+    /// <summary>
+    /// Entity extraction options — the minimum confidence, whether relationships are extracted and which entity types
+    /// are kept live here. Null uses <see cref="EnrichmentEntityOptions"/>' defaults.
+    /// </summary>
     public EnrichmentEntityOptions? EntityExtractionOptions { get; init; }
-
-    /// <summary>Graph build options</summary>
-    public GraphBuildOptions? GraphBuildOptions { get; init; }
 }
 
 /// <summary>
@@ -226,7 +211,7 @@ public record EmbeddingGenerationOptions
 /// </summary>
 public record EnrichmentEntityOptions
 {
-    /// <summary>Entity types to extract (empty = all)</summary>
+    /// <summary>Entity types to extract (empty = all), passed to the extractor as <c>EntityExtractionOptions.EntityTypes</c>.</summary>
     public IReadOnlyList<NamedEntityType> EntityTypes { get; init; } = [];
 
     /// <summary>Minimum confidence threshold</summary>
@@ -234,12 +219,6 @@ public record EnrichmentEntityOptions
 
     /// <summary>Extract relationships</summary>
     public bool ExtractRelationships { get; init; } = true;
-
-    /// <summary>Resolve coreferences</summary>
-    public bool ResolveCoreferences { get; init; } = true;
-
-    /// <summary>Link to external knowledge bases</summary>
-    public bool LinkExternalKnowledge { get; init; }
 
     /// <summary>Maximum entities to extract per chunk</summary>
     public int MaxEntitiesPerChunk { get; init; } = 50;
@@ -578,27 +557,27 @@ public record EnrichmentStatistics
 }
 
 /// <summary>
-/// Pipeline configuration.
+/// Pipeline configuration. Settable, so the <c>configure</c> action of <c>AddDocumentEnrichmentPipeline</c> can change it.
 /// </summary>
 public record EnrichmentPipelineConfig
 {
     /// <summary>Default enrichment options</summary>
-    public EnrichmentOptions DefaultOptions { get; init; } = new();
+    public EnrichmentOptions DefaultOptions { get; set; } = new();
 
     /// <summary>Embedding model ID</summary>
-    public string EmbeddingModelId { get; init; } = "default";
+    public string EmbeddingModelId { get; set; } = "default";
 
     /// <summary>Text completion model ID (for HyDE, summaries)</summary>
-    public string TextCompletionModelId { get; init; } = "default";
+    public string TextCompletionModelId { get; set; } = "default";
 
     /// <summary>Maximum batch size for embeddings</summary>
-    public int MaxEmbeddingBatchSize { get; init; } = 32;
+    public int MaxEmbeddingBatchSize { get; set; } = 32;
 
     /// <summary>Enable caching</summary>
-    public bool EnableCaching { get; init; } = true;
+    public bool EnableCaching { get; set; } = true;
 
     /// <summary>Supported embedding types</summary>
-    public IReadOnlyList<EmbeddingType> SupportedEmbeddingTypes { get; init; } = [
+    public IReadOnlyList<EmbeddingType> SupportedEmbeddingTypes { get; set; } = [
         EmbeddingType.Content,
         EmbeddingType.Contextual
     ];

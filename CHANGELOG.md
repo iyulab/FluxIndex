@@ -8,6 +8,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ## [Unreleased]
 
 ### Fixed
+- **Breaking: the enrichment presets take effect.** `AddDocumentEnrichmentPipelineBasic` and
+  `AddDocumentEnrichmentPipelineWithAI` reassigned their lambda's parameter, so the registered configuration was always
+  the plain default: «Basic» still ran entity extraction, keywords and LLM summaries when a completion service was
+  registered, «WithAI» never turned on HyDE, summary embeddings or questions, and its `configure` never applied.
+  `EnrichmentPipelineConfig`'s properties are now settable, so `AddDocumentEnrichmentPipeline(configure)` can change
+  them. Migration: a caller of «Basic» that relied on the extra enrichment registers the plain pipeline instead.
+- **`EnrichmentEntityOptions.EntityTypes` reaches the extractor** (empty = every type, as before).
 - **`CorrectiveRAGOptions.Timeout` limits the correction.** It was never read; it is now `TimeSpan?`, null by default (no
   limit, as before), and when set an over-long correction throws `TimeoutException` (the caller's cancellation still
   throws `OperationCanceledException`).
@@ -18,6 +25,11 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   `AddCorrectiveRAGService(o => …)`), `EnableWebSearch` (there is no web retrieval), `EnableDetailedLogging` (use the log
   level), `RetryCount`, and `CorrectiveRAGServiceOptions.MaxRetries` (nothing retried). Migration: delete the
   assignments; move threshold values to the service options.
+- **Breaking: enrichment settings nothing read.** `EnrichmentOptions.MinEntityConfidence` and `ExtractRelationships`
+  (duplicates — extraction reads `EntityExtractionOptions.MinConfidence` / `ExtractRelationships`), `AnalyzeQuality`,
+  `CacheEmbeddings`, `GenerateEntityEmbedding`, `GraphBuildOptions` (enrichment builds no graph), and
+  `EnrichmentEntityOptions.ResolveCoreferences` / `LinkExternalKnowledge` (no such step exists). Migration: delete the
+  assignments; set the entity values on `EntityExtractionOptions`.
 
 ## [0.85.0] - 2026-10-10
 

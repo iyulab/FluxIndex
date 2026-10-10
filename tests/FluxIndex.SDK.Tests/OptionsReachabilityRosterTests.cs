@@ -46,8 +46,6 @@ public class OptionsReachabilityRosterTests
         ["FluxIndex.Core.Application.Interfaces.ContextualHeaderOptions"] = ["UsePromptCaching"],
         ["FluxIndex.Core.Application.Interfaces.DynamicFusionConfiguration"] = ["Complexity", "Reasoning", "TechnicalDomains"],
         ["FluxIndex.Core.Application.Interfaces.EmbeddingGenerationOptions"] = ["GenerateQuestionEmbeddings", "HyDEDocumentCount", "MaxQuestions", "ModelId", "Types", "UseCache"],
-        ["FluxIndex.Core.Application.Interfaces.EnrichmentEntityOptions"] = ["EntityTypes", "LinkExternalKnowledge", "ResolveCoreferences"],
-        ["FluxIndex.Core.Application.Interfaces.EnrichmentOptions"] = ["AnalyzeQuality", "CacheEmbeddings", "ExtractRelationships", "GenerateEntityEmbedding", "GraphBuildOptions", "MinEntityConfidence"],
         ["FluxIndex.Core.Application.Interfaces.EntityGraphMergeOptions"] = ["UseEmbeddingsForMatching"],
         ["FluxIndex.Core.Application.Interfaces.EntitySearchOptions"] = ["PriorityEntityTypes"],
         ["FluxIndex.Core.Application.Interfaces.GlobalSearchOptions"] = ["ScoreConfidence"],

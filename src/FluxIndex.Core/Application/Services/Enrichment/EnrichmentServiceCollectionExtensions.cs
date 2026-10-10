@@ -44,21 +44,19 @@ public static class EnrichmentServiceCollectionExtensions
     {
         return services.AddDocumentEnrichmentPipeline(config =>
         {
-            // Enable all AI-powered features in default options
-            config = config with
+            // Enable all AI-powered features in default options. Set on the registered object: an earlier version
+            // reassigned the lambda's parameter («config = config with { … }»), so neither these defaults nor the
+            // caller's configure ever reached the pipeline.
+            config.DefaultOptions = new EnrichmentOptions
             {
-                DefaultOptions = new EnrichmentOptions
-                {
-                    GenerateContentEmbedding = true,
-                    GenerateContextualEmbedding = true,
-                    GenerateHypotheticalEmbedding = true,
-                    GenerateSummaryEmbedding = true,
-                    ExtractEntities = true,
-                    ExtractRelationships = true,
-                    GenerateContextualSummary = true,
-                    ExtractKeywords = true,
-                    GenerateHypotheticalQuestions = true
-                }
+                GenerateContentEmbedding = true,
+                GenerateContextualEmbedding = true,
+                GenerateHypotheticalEmbedding = true,
+                GenerateSummaryEmbedding = true,
+                ExtractEntities = true,
+                GenerateContextualSummary = true,
+                ExtractKeywords = true,
+                GenerateHypotheticalQuestions = true
             };
             configure?.Invoke(config);
         });
@@ -72,20 +70,16 @@ public static class EnrichmentServiceCollectionExtensions
     {
         return services.AddDocumentEnrichmentPipeline(config =>
         {
-            config = config with
+            config.DefaultOptions = new EnrichmentOptions
             {
-                DefaultOptions = new EnrichmentOptions
-                {
-                    GenerateContentEmbedding = true,
-                    GenerateContextualEmbedding = false,
-                    GenerateHypotheticalEmbedding = false,
-                    GenerateSummaryEmbedding = false,
-                    ExtractEntities = false,
-                    ExtractRelationships = false,
-                    GenerateContextualSummary = false,
-                    ExtractKeywords = false,
-                    GenerateHypotheticalQuestions = false
-                }
+                GenerateContentEmbedding = true,
+                GenerateContextualEmbedding = false,
+                GenerateHypotheticalEmbedding = false,
+                GenerateSummaryEmbedding = false,
+                ExtractEntities = false,
+                GenerateContextualSummary = false,
+                ExtractKeywords = false,
+                GenerateHypotheticalQuestions = false
             };
         });
     }
