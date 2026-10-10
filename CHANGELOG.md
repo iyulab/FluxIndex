@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [Unreleased]
+## [0.89.0] - 2026-10-11
 
 ### Removed
 - **Breaking: `AIMetadataExtractionOptions` keeps only what the indexer hands your `IMetadataExtractor`** — `Strategy`,
