@@ -54,7 +54,6 @@ public class OptionsReachabilityRosterTests
         ["FluxIndex.Core.Application.Services.QuantizedVectorStoreOptions"] = ["DefaultCandidateMultiplier", "StoreOriginalEmbeddings"],
         ["FluxIndex.Core.Application.Services.SelfRAGServiceOptions"] = ["DefaultMaxIterations", "DefaultQualityThreshold"],
         ["FluxIndex.Core.Application.Models.AIMetadataExtractionOptions"] = ["CacheTTL", "ContinueOnFailure", "CustomPrompt", "EnableAdaptiveSampling", "EnableCaching", "MaxRetries", "MaxTokens", "MinConfidence", "RetryDelayMs", "Strategy", "TimeoutMs"],
-        ["FluxIndex.Integrations.FileFlux.FileFluxOptions"] = ["EnableLlmRefine", "LlmRefineOptions"],
         ["FluxIndex.SDK.SearchOptions"] = ["IncludeVectors"],
         // Moving to Iyu.Conventions.Testing 0.3.0 (2026-10-03) found options whose only reads copied the value into the
         // same property of another instance. EntityGraphOptions.AutoMigrate is now honoured (0.72.0); IvfflatLists,
@@ -71,9 +70,14 @@ public class OptionsReachabilityRosterTests
     };
 
     private static readonly Lazy<OptionsReachabilityReport> Result = new(() =>
+    {
         // Option-shaped types are named three ways in this tree: *Options, the builder's *Configuration blocks, and
-        // *Defaults (ChunkingDefaults). The scan itself is Iyu.Conventions.Testing's, shared with the other repositories.
-        OptionsReachability.Scan(LibraryAssemblies(), OptionsTypes.NamedWith("Options", "Configuration", "Defaults")));
+        // *Defaults (ChunkingDefaults) — plus the settings objects they hold behind a property (GradingCriteria behind
+        // VerificationOptions.CustomCriteria), which no name rule sees (kit 0.6.0). The scan is Iyu.Conventions.Testing's.
+        var libraries = LibraryAssemblies();
+        return OptionsReachability.Scan(libraries,
+            OptionsTypes.WithNestedSettings(libraries, OptionsTypes.NamedWith("Options", "Configuration", "Defaults")));
+    });
 
     [Fact]
     public void EveryPublicOption_IsReadByTheLibrary_ExceptTheKnownRoster() =>
