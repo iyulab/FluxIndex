@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.85.0] - Unreleased
+## [0.85.0] - 2026-10-10
 
 ### Fixed
 - **The sqlite-vec store returns the vectors it stored.** `SQLiteVecVectorStore.GetAsync`, `GetByDocumentIdAsync` and
