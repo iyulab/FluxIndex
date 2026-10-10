@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [Unreleased]
+## [0.87.0] - 2026-10-10
 
 ### Fixed
 - **Breaking: a cancelled chunk-graph walk throws `OperationCanceledException`.** `TraverseBfsAsync`, `TraverseDfsAsync`,
