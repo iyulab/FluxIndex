@@ -38,9 +38,6 @@ public class OptionsReachabilityRosterTests
         // library does not keep today; the issue draft that introduced this roster lists them by type
         // with a wire-or-remove call for each. Shrink this list, never grow it silently.
         ["FluxIndex.Core.Application.Interfaces.DynamicFusionConfiguration"] = ["Complexity", "Reasoning", "TechnicalDomains"],
-        // MinResults · EnableDetailedLogging · UserContext were read only by a second, never-registered
-        // SelfRAGService removed in 0.38.0 — the registered service never honoured them (roster blind spot ④).
-        ["FluxIndex.Core.Application.Interfaces.SelfRAGOptions"] = ["MinResults"],
         // Contract members: Indexer copies IndexingOptions' strategy / confidence / prompt into these and hands them to the
         // consumer's IMetadataExtractor (FluxIndex has no implementation), which reads them. The eight members no knob reached
         // (timeouts, retries, caching, sampling, max tokens, continue-on-failure) were removed on 2026-10-11.

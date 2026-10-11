@@ -366,8 +366,7 @@ public class SelfRAGServiceTests
         var options = new SelfRAGOptions
         {
             MaxIterations = 3,
-            QualityThreshold = 0.95,
-            MinResults = 5
+            QualityThreshold = 0.95
         };
         var service = CreateService(withLlm: false);
 
@@ -763,7 +762,6 @@ public class SelfRAGServiceTests
         Assert.Equal(3, options.MaxIterations);
         Assert.Equal(0.7, options.QualityThreshold);
         Assert.Equal(20, options.MaxResults);
-        Assert.Equal(5, options.MinResults);
         Assert.Equal(TimeSpan.FromMinutes(2), options.SearchTimeout);
         Assert.True(options.EnableAutoRefinement);
     }

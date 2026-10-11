@@ -7,6 +7,11 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [Unreleased]
 
+### Removed
+- **Breaking: `SelfRAGOptions.MinResults` is removed.** Self-RAG never read it: an iteration stops on `QualityThreshold` and
+  returns at most `MaxResults`. Setting it had no effect. Migration: delete the assignment; to require more results, raise
+  `QualityThreshold` or check the count of `SelfRAGResult.FinalResults`.
+
 ### Dependencies
 - Re-pinned sibling package(s) `LMSupply.Embedder` 0.115.1 -> 0.116.0, `LMSupply.Generator` 0.115.1 -> 0.116.0, `LMSupply.Reranker` 0.115.1 -> 0.116.0.
 - Re-pinned sibling package(s) `FileFlux` 0.57.0 -> 0.58.0.

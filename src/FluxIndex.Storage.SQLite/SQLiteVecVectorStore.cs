@@ -758,8 +758,9 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
         // walk that follows does not — it reads every candidate's metadata in pages and matches it in
         // memory. Measured over 6,000 chunks at topK 10 (SQLiteVecWideFilterCostTests): unfiltered
         // 6 ms, a filter allowing every document 6 ms (the window fills, no walk), a filter allowing
-        // 100 of them 277 ms. So a wide scope is free here and a narrow one is not — the opposite of
-        // the keyword leg — and the narrow cost grows with the store, not with the scope.
+        // 100 of them about 63 ms (277 ms before the scan bound the query vector as a float32 BLOB).
+        // So a wide scope is free here and a narrow one is not — the opposite of the keyword leg — and
+        // the narrow cost grows with the store, not with the scope. The rest is the metadata page walk.
         var requestedK = filters is { Count: > 0 } ? (long)topK * 3 : topK;
 
         // vec0 rejects a KNN k above its compile-time ceiling ("k value in knn query too large"), and

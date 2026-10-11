@@ -50,9 +50,6 @@ public class SelfRAGOptions
     /// <summary>최대 결과 개수</summary>
     public int MaxResults { get; set; } = 20;
 
-    /// <summary>최소 결과 개수. 현재 등록된 Self-RAG 서비스는 이 값을 읽지 않는다(성공 판정은 <see cref="QualityThreshold"/>만) — 연결 또는 제거는 후속 결정.</summary>
-    public int MinResults { get; set; } = 5;
-
     /// <summary>검색 타임아웃</summary>
     public TimeSpan SearchTimeout { get; set; } = TimeSpan.FromMinutes(2);
 
