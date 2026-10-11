@@ -14,6 +14,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 - Re-pinned sibling package(s) `FluxImprover` 0.19.0 -> 0.20.0, `LMSupply.Embedder` 0.116.0 -> 0.117.0, `LMSupply.Generator` 0.116.0 -> 0.117.0, `LMSupply.Reranker` 0.116.0 -> 0.117.0, `WebFlux` 0.25.0 -> 0.26.0.
 - Re-pinned sibling package(s) `FileFlux` 0.58.0 -> 0.59.0.
 - Re-pinned sibling package(s) `LMSupply.Embedder` 0.117.0 -> 0.117.1, `LMSupply.Generator` 0.117.0 -> 0.117.1, `LMSupply.Reranker` 0.117.0 -> 0.117.1.
+- Re-pinned sibling package(s) `LMSupply.Embedder` 0.117.1 -> 0.118.0, `LMSupply.Generator` 0.117.1 -> 0.118.0, `LMSupply.Reranker` 0.117.1 -> 0.118.0.
 
 ---
 
