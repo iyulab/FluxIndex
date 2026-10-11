@@ -10,6 +10,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 ### Changed
 - **The nuget.org «Release Notes» of every package link to the GitHub release of its version**, whose notes are this CHANGELOG's section for that version.
 
+### Dependencies
+- Re-pinned sibling package(s) `FluxImprover` 0.19.0 -> 0.20.0, `LMSupply.Embedder` 0.116.0 -> 0.117.0, `LMSupply.Generator` 0.116.0 -> 0.117.0, `LMSupply.Reranker` 0.116.0 -> 0.117.0, `WebFlux` 0.25.0 -> 0.26.0.
+
 ---
 
 ## [0.90.0] - 2026-10-11
