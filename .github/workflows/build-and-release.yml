@@ -45,6 +45,8 @@ concurrency:
 jobs:
   build-test-release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # tag + GitHub release
     timeout-minutes: 30
 
     steps:
@@ -164,6 +166,21 @@ jobs:
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate
         done
+
+    # Release notes = this version's CHANGELOG.md section. Every iyulab publish workflow carries this awk program
+    # verbatim; change it in all of them or in none.
+    - name: GitHub release (notes = this version's CHANGELOG section)
+      if: |
+        steps.changes.outputs.should_run == 'true' &&
+        (steps.version_check.outputs.version_exists == 'false' || github.event.inputs.force_publish == 'true')
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        VERSION=$(grep -oP '<(Version|VersionPrefix)>\K[^<]+' Directory.Build.props | head -1)
+        if gh release view "v$VERSION" >/dev/null 2>&1; then echo "Release v$VERSION already exists"; exit 0; fi
+        awk -v v="$VERSION" '/^## /{if(p)exit;h=$0;sub(/^## +\[?v?/,"",h);c=substr(h,length(v)+1,1);if(index(h,v)==1&&(c==""||c=="]"||c==" "||c=="\t")){p=1;next}}p&&(n||$0!~/^[ \t]*$/){l[++n]=$0}END{while(n&&(l[n]~/^[ \t]*$/||l[n]~/^---+$/))n--;for(i=1;i<=n;i++)print l[i]}' CHANGELOG.md > release-notes.md
+        if [ ! -s release-notes.md ]; then echo "::error::CHANGELOG.md has no section for $VERSION"; exit 1; fi
+        gh release create "v$VERSION" --title "v$VERSION" --notes-file release-notes.md --target "$GITHUB_SHA"
 
     # Build summary
     - name: Summary
