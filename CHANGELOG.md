@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [Unreleased]
+## [0.90.0] - 2026-10-11
 
 ### Removed
 - **Breaking: `SelfRAGOptions.MinResults` is removed.** Self-RAG never read it: an iteration stops on `QualityThreshold` and
