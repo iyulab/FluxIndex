@@ -20,6 +20,9 @@
     <IsPackable>true</IsPackable>
     <PackageId>FluxIndex.CLI</PackageId>
     <Version>0.5.0</Version>
+    <!-- Its own version line, with no GitHub release per version: the release notes are the repository CHANGELOG (the root
+         props link a library version's release). -->
+    <PackageReleaseNotes>https://github.com/iyulab/FluxIndex/blob/main/CHANGELOG.md</PackageReleaseNotes>
     <Description>FluxIndex CLI - Document processing and RAG indexing tool</Description>
     <Authors>FluxIndex</Authors>
   </PropertyGroup>
