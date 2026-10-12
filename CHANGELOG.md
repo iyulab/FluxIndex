@@ -13,6 +13,9 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   index for the scope's rows only. The quantized store also matches the filter before scoring, so it no longer scores
   chunks the filter drops. Answers are unchanged.
 
+### Dependencies
+- Re-pinned sibling package(s) `FileFlux` 0.59.0 -> 0.59.1.
+
 ## [0.91.0] - 2026-10-12
 
 ### Added
