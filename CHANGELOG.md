@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.91.1] - Unreleased
+## [0.91.1] - 2026-10-12
 
 ### Changed
 - **The SQLite vector store (`SQLiteVectorStore`) and the quantized store load only a document scope's vectors.** Both read
