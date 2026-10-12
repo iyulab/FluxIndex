@@ -38,10 +38,6 @@ public class OptionsReachabilityRosterTests
         // library does not keep today; the issue draft that introduced this roster lists them by type
         // with a wire-or-remove call for each. Shrink this list, never grow it silently.
         ["FluxIndex.Core.Application.Interfaces.DynamicFusionConfiguration"] = ["Complexity", "Reasoning", "TechnicalDomains"],
-        // Contract members: Indexer copies IndexingOptions' strategy / confidence / prompt into these and hands them to the
-        // consumer's IMetadataExtractor (FluxIndex has no implementation), which reads them. The eight members no knob reached
-        // (timeouts, retries, caching, sampling, max tokens, continue-on-failure) were removed on 2026-10-11.
-        ["FluxIndex.Core.Application.Models.AIMetadataExtractionOptions"] = ["CustomPrompt", "MinConfidence", "Strategy"],
         ["FluxIndex.SDK.SearchOptions"] = ["IncludeVectors"],
         // Moving to Iyu.Conventions.Testing 0.3.0 (2026-10-03) found options whose only reads copied the value into the
         // same property of another instance. EntityGraphOptions.AutoMigrate is now honoured (0.72.0); IvfflatLists,
@@ -63,13 +59,31 @@ public class OptionsReachabilityRosterTests
         // *Defaults (ChunkingDefaults) — plus the settings objects they hold behind a property (GradingCriteria behind
         // VerificationOptions.CustomCriteria), which no name rule sees (kit 0.6.0). The scan is Iyu.Conventions.Testing's.
         var libraries = LibraryAssemblies();
-        return OptionsReachability.Scan(libraries,
-            OptionsTypes.WithNestedSettings(libraries, OptionsTypes.NamedWith("Options", "Configuration", "Defaults")));
+        var named = OptionsTypes.WithNestedSettings(libraries, OptionsTypes.NamedWith("Options", "Configuration", "Defaults"));
+        return OptionsReachability.Scan(libraries, t => !IsOutboundRequest(t) && named(t));
     });
+
+    // Requests the library fills and hands to code it does not own - judged the other way round (EveryOutboundRequestField_IsSent).
+    // AIMetadataExtractionOptions: Indexer copies IndexingOptions' strategy / confidence / prompt into it for the consumer's
+    // IMetadataExtractor (FluxIndex has no implementation). It sat on the roster above as «read by the implementer» until
+    // kit 0.7.0 could check that the library actually fills it; the eight members no knob reached were removed 2026-10-11.
+    private static bool IsOutboundRequest(Type type) =>
+        type.FullName == "FluxIndex.Core.Application.Models.AIMetadataExtractionOptions";
 
     [Fact]
     public void EveryPublicOption_IsReadByTheLibrary_ExceptTheKnownRoster() =>
         Result.Value.ShouldMatchRoster(KnownUnread);
+
+    [Fact]
+    public void EveryOutboundRequestField_IsSent()
+    {
+        var report = OutboundAssignment.Scan(LibraryAssemblies(), IsOutboundRequest);
+
+        // An empty roster also matches a scan that found no request type.
+        Assert.Single(report.OutboundTypes);
+        Assert.Contains("FluxIndex.Core.Application.Models.AIMetadataExtractionOptions.Strategy", report.Assigned);
+        report.ShouldMatchRoster(new Dictionary<string, string[]>());
+    }
 
     // Positive controls: the scan must see reads it is known to have — a same-assembly read, a read
     // through the options merge introduced in 0.37.2, and a read from another assembly — or an empty
