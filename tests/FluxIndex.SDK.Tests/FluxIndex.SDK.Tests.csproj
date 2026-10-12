@@ -12,6 +12,7 @@
     <PackageReference Include="NSubstitute" />
     <PackageReference Include="Iyu.Conventions.Testing" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+    <PackageReference Include="Iyu.Conventions.Testing.Snippets" />
     <!-- Testcontainers for integration tests -->
     <PackageReference Include="Testcontainers.Neo4j" />
     <PackageReference Include="Testcontainers.Qdrant" />
