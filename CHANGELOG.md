@@ -9,6 +9,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ### Dependencies
 - Re-pinned sibling package(s) `LMSupply.Embedder` 0.118.0 -> 0.119.0, `LMSupply.Generator` 0.118.0 -> 0.119.0, `LMSupply.Reranker` 0.118.0 -> 0.119.0.
+- Re-pinned sibling package(s) `FileFlux` 0.59.2 -> 0.59.3, `Iyu.Conventions.Testing` 0.9.0 -> 0.10.0, `Iyu.Conventions.Testing.Snippets` 0.9.0 -> 0.10.0, `LMSupply.Embedder` 0.119.0 -> 0.120.0, `LMSupply.Generator` 0.119.0 -> 0.120.0, `LMSupply.Reranker` 0.119.0 -> 0.120.0.
 
 ---
 
