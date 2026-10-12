@@ -5,7 +5,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [0.91.0] - Unreleased
+## [0.91.0] - 2026-10-12
 
 ### Added
 - **`MetadataFilterMatcher.DocumentIds`: the document ids a filter's `FilterKeys.DocumentId` entry allows** (null when the
