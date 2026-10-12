@@ -120,10 +120,18 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
         await EnsureInitializedAsync(cancellationToken);
         await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
 
-        // Load all vectors for optimized in-memory search
-        var entities = await context.Vectors
-            .Where(v => v.Embedding != null)
-            .ToListAsync(cancellationToken);
+        var matcher = MetadataFilterMatcher.Compile(filters);
+
+        // Load the vectors for in-memory search: all of them, or only a document scope's (FilterKeys.DocumentId - what
+        // folder and file scopes send), resolved through the DocumentId index so a scoped search reads what the scope holds.
+        var vectors = context.Vectors.Where(v => v.Embedding != null);
+        if (matcher.DocumentIds is { } documentScope)
+        {
+            var scope = documentScope.ToList();
+            vectors = vectors.Where(v => scope.Contains(v.DocumentId));
+        }
+
+        var entities = await vectors.ToListAsync(cancellationToken);
 
         if (entities.Count == 0) return [];
 
@@ -135,7 +143,6 @@ public class SQLiteVectorStore : VectorStoreBase, IDisposable
         // Metadata filters MUST be applied before the topK*2 trim below — otherwise
         // higher-scoring non-matching chunks crowd matching ones out of the window.
         var results = new List<ScoredChunk>();
-        var matcher = MetadataFilterMatcher.Compile(filters);
 
         foreach (var entity in entities)
         {

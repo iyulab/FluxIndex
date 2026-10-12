@@ -17,6 +17,23 @@ public class MetadataFilterMatcherTests
         => pairs.ToDictionary(p => p.Key, p => p.Value);
 
     [Fact]
+    public void DocumentIds_IsTheScopeOfADocumentIdEntry_AndNullOtherwise()
+    {
+        MetadataFilterMatcher.Compile(new Dictionary<string, object> { [FilterKeys.DocumentId] = new[] { "d1", "d2" }, ["tenant"] = "a" })
+            .DocumentIds.Should().BeEquivalentTo(["d1", "d2"]);
+        MetadataFilterMatcher.Compile(new Dictionary<string, object> { [FilterKeys.DocumentId] = "d1" })
+            .DocumentIds.Should().BeEquivalentTo(["d1"]);
+
+        // No document entry: nothing to resolve first.
+        MetadataFilterMatcher.Compile(new Dictionary<string, object> { ["tenant"] = "a" }).DocumentIds.Should().BeNull();
+        MetadataFilterMatcher.Compile(null).DocumentIds.Should().BeNull();
+
+        // An entry that admits a missing document id cannot be answered from an id list.
+        MetadataFilterMatcher.Compile(new Dictionary<string, object> { [FilterKeys.DocumentId] = new object?[] { null, "d1" } })
+            .DocumentIds.Should().BeNull();
+    }
+
+    [Fact]
     public void Compile_AgreesWithTheOneShotOverload_OnEveryDocumentedValueShape()
     {
         var filters = new Dictionary<string, object>

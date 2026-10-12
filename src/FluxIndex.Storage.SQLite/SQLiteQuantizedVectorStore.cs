@@ -188,22 +188,32 @@ public partial class SQLiteQuantizedVectorStore : IQuantizedVectorStore, IDispos
 
         await EnsureInitializedAsync(cancellationToken);
 
-        var entities = await context.Vectors
-            .Where(v => v.Embedding != null)
-            .ToListAsync(cancellationToken);
+        // Apply metadata filters BEFORE the topK trim (IVectorStore filter contract, incl.
+        // collection values = MatchAny) — previously filters were silently ignored, leaking
+        // chunks across filter scope (e.g. other tenants).
+        var matcher = Core.Application.Services.Base.MetadataFilterMatcher.Compile(filters);
+
+        // A document scope (FilterKeys.DocumentId) is resolved through the DocumentId index, so a scoped search loads the
+        // scope's vectors rather than every stored one.
+        var vectors = context.Vectors.Where(v => v.Embedding != null);
+        if (matcher.DocumentIds is { } documentScope)
+        {
+            var scope = documentScope.ToList();
+            vectors = vectors.Where(v => scope.Contains(v.DocumentId));
+        }
+
+        var entities = await vectors.ToListAsync(cancellationToken);
 
         if (entities.Count == 0) return Enumerable.Empty<DocumentChunk>();
 
         var queryMagnitude = ComputeMagnitude(queryEmbedding);
         if (queryMagnitude == 0) return Enumerable.Empty<DocumentChunk>();
 
-        // Apply metadata filters BEFORE the topK trim (IVectorStore filter contract, incl.
-        // collection values = MatchAny) — previously filters were silently ignored, leaking
-        // chunks across filter scope (e.g. other tenants).
-        var matcher = Core.Application.Services.Base.MetadataFilterMatcher.Compile(filters);
+        // Match before scoring: a chunk outside the filter is never scored.
         var results = entities
-            .Select(e => new { Chunk = MapToChunk(e), Score = FastCosineSimilarity(queryEmbedding, e.Embedding!, queryMagnitude) })
-            .Where(x => matcher.Matches(x.Chunk.DocumentId, x.Chunk.Metadata))
+            .Select(MapToChunk)
+            .Where(chunk => matcher.Matches(chunk.DocumentId, chunk.Metadata))
+            .Select(chunk => new { Chunk = chunk, Score = FastCosineSimilarity(queryEmbedding, chunk.Embedding!, queryMagnitude) })
             .Where(x => x.Score >= minScore)
             .OrderByDescending(x => x.Score)
             .Take(topK)

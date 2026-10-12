@@ -5,6 +5,14 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [Unreleased]
+
+### Changed
+- **The SQLite vector store (`SQLiteVectorStore`) and the quantized store load only a document scope's vectors.** Both read
+  every stored vector into memory for each search. Under a `FilterKeys.DocumentId` scope they now ask the `DocumentId`
+  index for the scope's rows only. The quantized store also matches the filter before scoring, so it no longer scores
+  chunks the filter drops. Answers are unchanged.
+
 ## [0.91.0] - 2026-10-12
 
 ### Added

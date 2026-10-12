@@ -105,6 +105,25 @@ public abstract class VectorStoreFilterContractSuite
     }
 
     [Fact]
+    public async Task DocumentIdFilter_AndAMetadataEntry_BothApply()
+    {
+        // A store may resolve the document scope before matching (SQLite stores do, through the DocumentId index); the
+        // filter's other entries must still apply to what the scope returns.
+        var store = await CreateStoreAsync();
+        await store.StoreAsync(CreateChunk("doc-1", "ws-a"), TestContext.Current.CancellationToken);
+        await store.StoreAsync(CreateChunk("doc-2", "ws-b"), TestContext.Current.CancellationToken);
+        await store.StoreAsync(CreateChunk("doc-3", "ws-a"), TestContext.Current.CancellationToken);
+
+        var results = await store.SearchAsync(QueryVector(), topK: 10, minScore: -1f, filters: new Dictionary<string, object>
+            {
+                [FilterKeys.DocumentId] = new List<string> { "doc-1", "doc-2" },
+                ["workspace_id"] = "ws-a"
+            }, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(["doc-1"], results.Select(r => r.DocumentId).ToList());
+    }
+
+    [Fact]
     public async Task DeleteByFilter_OnDocumentId_RemovesTheDocumentsChunks_WhenSupported()
     {
         var store = await CreateStoreAsync();
