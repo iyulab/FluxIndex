@@ -15,6 +15,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ### Dependencies
 - Re-pinned sibling package(s) `FileFlux` 0.59.0 -> 0.59.1.
+- Re-pinned sibling package(s) `FileFlux` 0.59.1 -> 0.59.2.
 
 ## [0.91.0] - 2026-10-12
 
