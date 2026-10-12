@@ -315,7 +315,9 @@ Filter semantics (identical across every store):
 - **Keys combine with AND** — a chunk must satisfy every filter entry.
 - **`document_id`** (`FilterKeys.DocumentId`) matches the chunk's own document id — in every vector
   store and in the keyword leg — so a chunk is inside its document's scope whether or not its metadata
-  repeats the id. Every other key is a metadata key.
+  repeats the id. Every other key is a metadata key. Prefer it for a scope of documents: the SQLite vector store resolves
+  a `document_id` scope through its index before an exact scan, so a narrow scope costs what the scope costs (0.91.0). A
+  custom `IVectorStore` that matches in memory can read the same scope from `MetadataFilterMatcher.Compile(filters).DocumentIds`.
 - **Scalar value** → equality. Values compare by their JSON text representation (`"true"`,
   invariant-culture numbers, ordinal strings), so a value that round-trips through a JSON column
   still matches the raw value you filter on. The same semantics apply in the SDK's `Retriever`.
