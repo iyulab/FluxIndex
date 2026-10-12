@@ -5,6 +5,13 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
+## [Unreleased]
+
+### Dependencies
+- Re-pinned sibling package(s) `LMSupply.Embedder` 0.118.0 -> 0.119.0, `LMSupply.Generator` 0.118.0 -> 0.119.0, `LMSupply.Reranker` 0.118.0 -> 0.119.0.
+
+---
+
 ## [0.91.1] - 2026-10-12
 
 ### Changed
