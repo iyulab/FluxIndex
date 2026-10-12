@@ -293,6 +293,60 @@ public class SQLiteVecScopedSearchTests : IAsyncLifetime
         wanted.Source.Should().NotBe(FluxIndex.Core.Domain.Models.SearchSource.Vector, "the text leg must not drop an in-scope match ranked past its limit");
     }
 
+    [Fact]
+    public async Task ADocumentScope_IsResolvedBeforeTheExactScan_AndAnswersWhatTheFullScanAnswers()
+    {
+        if (CITestHelper.ShouldSkipSqliteVec())
+        {
+            return;
+        }
+
+        var ct = TestContext.Current.CancellationToken;
+        var store = _serviceProvider.GetRequiredService<IVectorStore>();
+        var random = new Random(17);
+
+        // 2,000 documents of two chunks each; the scope is 40 of them (80 chunks). The window (topK*3 = 30) fills with
+        // out-of-scope neighbours, so the store takes the exact path. A document scope (FilterKeys.DocumentId - what folder
+        // and file scopes send) is resolved first, so that scan reads the scope's 80 vectors, not the 4,000 stored.
+        for (var i = 0; i < 2000; i++)
+        {
+            for (var chunk = 0; chunk < 2; chunk++)
+            {
+                var stored = Chunk($"doc{i}", "t", RandomVector(random));
+                stored.ChunkIndex = chunk;
+                stored.Metadata!["doc"] = $"doc{i}";
+                await store.StoreAsync(stored, ct);
+            }
+        }
+
+        var query = RandomVector(random);
+        var scope = Enumerable.Range(0, 40).Select(i => $"doc{i * 50}").ToArray();
+
+        var byDocumentId = (await store.SearchAsync(query, 10, -1f, new Dictionary<string, object> { [FilterKeys.DocumentId] = scope }, ct)).ToList();
+        _logs.Debugs.Last(m => m.Contains("exact scan", StringComparison.Ordinal))
+            .Should().Contain("exact scan of 80 vectors");
+
+        // The same scope as a metadata entry cannot be resolved in SQL, so it walks every vector - and must agree.
+        var byMetadata = (await store.SearchAsync(query, 10, -1f, new Dictionary<string, object> { ["doc"] = scope }, ct)).ToList();
+        _logs.Debugs.Last(m => m.Contains("exact scan", StringComparison.Ordinal))
+            .Should().Contain("exact scan of 4000 vectors");
+
+        byDocumentId.Should().HaveCount(10);
+        byDocumentId.Select(c => c.Id).Should().Equal(byMetadata.Select(c => c.Id), "both paths are exact over the same scope");
+        byDocumentId.Should().OnlyContain(c => scope.Contains(c.DocumentId));
+    }
+
+    private static float[] RandomVector(Random random)
+    {
+        var v = new float[Dimension];
+        for (var i = 0; i < Dimension; i++)
+        {
+            v[i] = (float)(random.NextDouble() * 2 - 1);
+        }
+
+        return v;
+    }
+
     private static DocumentChunk Chunk(string documentId, string tenant, float[] embedding, string? content = null) => new()
     {
         DocumentId = documentId,

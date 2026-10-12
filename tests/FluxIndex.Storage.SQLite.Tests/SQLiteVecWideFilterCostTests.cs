@@ -133,6 +133,9 @@ public class SQLiteVecWideFilterCostTests : IAsyncLifetime
         var unscoped = await MeasureAsync(null);
         var everyDoc = await MeasureAsync(everyDocument);
         var narrow = await MeasureAsync(narrowScope);
+        var narrowById = await MeasureAsync(DocumentScope(Enumerable.Range(0, 100).Select(i => $"doc{i}")));
+        // The test output carries the four timings; the assertions below are structural, not timing ratios.
+        TestContext.Current.TestOutputHelper?.WriteLine($"[cost] unscoped {unscoped.Elapsed.TotalMilliseconds:F1} ms, every doc {everyDoc.Elapsed.TotalMilliseconds:F1} ms, narrow metadata {narrow.Elapsed.TotalMilliseconds:F1} ms, narrow document_id {narrowById.Elapsed.TotalMilliseconds:F1} ms");
 
         unscoped.Count.Should().Be(10);
         everyDoc.Count.Should().Be(10, "a filter that allows every document must not change the answer");
@@ -159,7 +162,16 @@ public class SQLiteVecWideFilterCostTests : IAsyncLifetime
         // it back (it was ~46x), so a return of that defect fails here rather than only showing up
         // as a consumer's latency report.
         narrow.Elapsed.Should().BeLessThan(unscoped.Elapsed * 25, report);
+
+        // A document scope (what folder and file scopes send) is resolved before the exact scan, so the scan reads the
+        // scope's 100 vectors instead of all 6,000. Measured: 65 ms before, 19 ms after (unscoped 6 ms).
+        narrowById.Count.Should().Be(10);
+        narrowById.Scanned.Should().BeTrue();
+        narrowById.Elapsed.Should().BeLessThan(narrow.Elapsed, report + $", scoped by document id {narrowById.Elapsed.TotalMilliseconds:F0} ms");
     }
+
+    private static Dictionary<string, object> DocumentScope(IEnumerable<string> documentIds) =>
+        new() { [FilterKeys.DocumentId] = documentIds.ToArray() };
 
     private static Dictionary<string, object> Filter(IEnumerable<string> documentIds) =>
         new() { ["documentId"] = documentIds.ToArray() };

@@ -41,6 +41,26 @@ public sealed class MetadataFilterMatcher
     public bool IsMatchAll => _entries.Length == 0;
 
     /// <summary>
+    /// The document ids a match must have, when the filter holds a <see cref="FilterKeys.DocumentId"/> entry that does
+    /// not admit a missing id; otherwise null. Every matching row's document id is in this set, so a store that can look
+    /// rows up by document id can resolve the scope first and match only those rows — the cost then follows the scope,
+    /// not the store. The other entries still have to be matched with <see cref="Matches"/>.
+    /// </summary>
+    public IReadOnlyCollection<string>? DocumentIds
+    {
+        get
+        {
+            foreach (var (key, alternatives, allowsNull) in _entries)
+            {
+                if (!allowsNull && string.Equals(key, FilterKeys.DocumentId, StringComparison.Ordinal))
+                    return alternatives;
+            }
+
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Expands and normalizes <paramref name="filters"/> once. Throws the same exceptions
     /// <see cref="VectorStoreBase.ExpandFilterValue"/> throws for an unsupported or empty value.
     /// </summary>

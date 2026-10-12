@@ -825,8 +825,14 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
             // unless the walk stopped at minScore, in which case everything further is farther still.
             if (windowFull && results.Count < topK && !reachedScoreFloor)
             {
-                var all = await ScanAllDistancesAsync(connection, queryEmbedding, cancellationToken);
-                if (all.Count > knnResults.Count)
+                // A document scope (FilterKeys.DocumentId - what folder and file scopes send) is resolved first, so
+                // the exact scan covers the scope's vectors only and its cost follows the scope, not the store. Any
+                // other filter cannot be resolved in SQL without restating the match semantics, so it scans everything.
+                var documentScope = MetadataFilterMatcher.Compile(filters).DocumentIds;
+                var all = documentScope is null
+                    ? await ScanAllDistancesAsync(connection, queryEmbedding, cancellationToken)
+                    : await ScanDocumentScopeDistancesAsync(connection, documentScope, queryEmbedding, cancellationToken);
+                if (documentScope is not null || all.Count > knnResults.Count)
                 {
                     LogVecExactScopedScan(_logger, knnK, results.Count, topK, all.Count);
                     (results, _) = await CollectInDistanceOrderAsync(
@@ -969,6 +975,64 @@ public partial class SQLiteVecVectorStore : IVectorStore, IVectorStoreManager, I
 
         all.Sort((a, b) => a.Distance.CompareTo(b.Distance));
         return all;
+    }
+
+    // Ids bound per statement while resolving a document scope (well under SQLite's variable limit).
+    private const int ScopeBatchSize = 900;
+
+    /// <summary>
+    /// The distances of the vectors whose chunk belongs to one of <paramref name="documentIds"/>, ascending: the scope is
+    /// resolved through the <c>DocumentId</c> index of <c>vector_chunks</c>, then only those vectors are read from the vec0
+    /// table by primary key. Same metric and values as <see cref="ScanAllDistancesAsync"/>.
+    /// </summary>
+    private async Task<List<(string ChunkId, float Distance)>> ScanDocumentScopeDistancesAsync(
+        System.Data.Common.DbConnection connection,
+        IReadOnlyCollection<string> documentIds,
+        float[] queryEmbedding,
+        CancellationToken cancellationToken)
+    {
+        var chunkIds = new List<string>();
+        foreach (var batch in documentIds.Chunk(ScopeBatchSize))
+        {
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = $"SELECT Id FROM vector_chunks WHERE DocumentId IN ({string.Join(",", batch.Select((_, i) => $"@d{i}"))})";
+            for (var i = 0; i < batch.Length; i++)
+            {
+                cmd.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter($"@d{i}", batch[i]));
+            }
+
+            using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                chunkIds.Add(reader.GetString(0));
+            }
+        }
+
+        var distances = new List<(string ChunkId, float Distance)>(chunkIds.Count);
+        var vector = ToVectorBlob(queryEmbedding);
+        var function = VecDistanceFunction(_options.VecTableOptions);
+        foreach (var batch in chunkIds.Chunk(ScopeBatchSize))
+        {
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = $@"
+                SELECT chunk_id, {function}(embedding, @vector)
+                FROM {_options.GetVecTableName()}
+                WHERE chunk_id IN ({string.Join(",", batch.Select((_, i) => $"@c{i}"))})";
+            cmd.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter("@vector", vector));
+            for (var i = 0; i < batch.Length; i++)
+            {
+                cmd.Parameters.Add(new Microsoft.Data.Sqlite.SqliteParameter($"@c{i}", batch[i]));
+            }
+
+            using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                distances.Add((reader.GetString(0), reader.GetFloat(1)));
+            }
+        }
+
+        distances.Sort((a, b) => a.Distance.CompareTo(b.Distance));
+        return distances;
     }
 
     /// <summary>

@@ -5,9 +5,19 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ---
 
-## [Unreleased]
+## [0.91.0] - Unreleased
+
+### Added
+- **`MetadataFilterMatcher.DocumentIds`: the document ids a filter's `FilterKeys.DocumentId` entry allows** (null when the
+  filter has none, or admits a missing id). A store that can look rows up by document id resolves the scope first, so a
+  scoped search costs what the scope costs.
 
 ### Changed
+- **A folder or file scope on the SQLite vector store no longer scans every stored vector.** When the KNN window cannot
+  fill `topK` under a `FilterKeys.DocumentId` scope, the exact scan now reads only the scope's vectors (resolved through
+  the `DocumentId` index) instead of all of them. Measured over 6,000 chunks, `topK` 10: a 100-document scope went from
+  ~65 ms to ~19 ms (unscoped ~6 ms). The answer is unchanged. A scope written as another metadata key still scans
+  everything.
 - **The nuget.org «Release Notes» of every package link to the GitHub release of its version**, whose notes are this CHANGELOG's section for that version.
 
 ### Dependencies
