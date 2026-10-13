@@ -27,13 +27,13 @@ FluxIndex automatically maximizes available capabilities - no feature toggles ne
 
 ```csharp
 // Local mode (development, edge AI)
-var ctx = FluxIndexContext.CreateBuilder()
+var local = FluxIndexContext.CreateBuilder()
     .UseLocalStorage("fluxindex.db")
     .AddSQLiteStorage()
     .Build();
 
 // Full mode (production)
-var ctx = FluxIndexContext.CreateBuilder()
+var production = FluxIndexContext.CreateBuilder()
     .UseBestInClass(pgConn, qdrantHost, 6334, "chunks", 1536, neo4jUri, neo4jUser, neo4jPassword)
     .AddQdrantStorage()
     .AddPostgreSQLStorage()

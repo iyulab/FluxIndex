@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using FluxIndex.Core.Application.Interfaces;
+using Iyu.Conventions.Testing.Snippets;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -12,21 +13,22 @@ namespace FluxIndex.SDK.Tests;
 
 /// <summary>
 /// Compiles the C# blocks of the guides the way a reader assembles them: a guide defines types in some blocks and uses them
-/// in others, so every block of one document goes into one compilation. <see cref="DocsSnippetRosterTests"/> only checks that
-/// a called name exists somewhere — the provider guide once called <c>OpenAIClient.GetEmbeddingsAsync</c> from a retired SDK
-/// and passed, because an unrelated interface in a dependency happened to declare a method of that name.
+/// in others, so every block of one document goes into one compilation (<see cref="SnippetCompiler.CompileDocument"/>).
+/// The provider guide once called <c>OpenAIClient.GetEmbeddingsAsync</c> from a retired SDK; a name-only check passed it,
+/// because an unrelated interface in a dependency happened to declare a method of that name.
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
-/// <item>A block that declares types is one source file, as written.</item>
-/// <item>A block of statements becomes the body of its own method; its <c>using</c> lines are hoisted, and the document's
-/// stand-ins are declared when the block uses the name without declaring it — values the surrounding text gives the
-/// reader. A block that mixes both keeps its types at file level and its statements in the method.</item>
-/// <item>A block of bare members (a test method without its class) is wrapped in a class.</item>
+/// <item>The kit compiles each block as a file of its own: its types shared with the document, its statements in a method
+/// of their own, with the document's stand-ins when a block uses the name without declaring it — values the surrounding
+/// text gives the reader.</item>
+/// <item>Before that, this test adds what a reader of these guides has that the kit cannot know: the document's usings (for
+/// the provider guide, only to blocks with statements — its type blocks carry their own usings and are checked as
+/// written), the ASP.NET usings for a block that builds a <c>WebApplication</c>, and a class around bare members (a test
+/// method shown without its class).</item>
 /// <item>A block that only restates library types is a listing: compiled, it would declare a second type of that name and
-/// check nothing, so each member it lists is looked up on the real type instead — by name, then by signature.</item>
-/// <item>A block that is deliberately not a program is named in its document's <see cref="Document.Fragments"/> with the
-/// reason; that list may only shrink.</item>
+/// check nothing, so each member it lists is looked up on the real type instead — by name, then by signature. That check
+/// is this repository's; the kit compiles a restating block on its own and checks nothing more.</item>
 /// </list>
 /// </remarks>
 public class DocsSnippetCompileTests
@@ -38,77 +40,96 @@ public class DocsSnippetCompileTests
         int MinimumListings,
         // What a reader of the document has from its opening blocks; added to statement blocks, and to type blocks when
         // UsingsForTypeBlocks — the provider guide's type blocks carry their own usings and are checked as written.
-        string Usings,
+        string[] Usings,
         bool UsingsForTypeBlocks,
-        (string Name, string Declaration)[] StandIns,
-        IReadOnlyDictionary<string, string> Fragments);
+        IReadOnlyDictionary<string, string> StandIns,
+        // Blocks deliberately not a program, by heading, with the reason. Shrink it; never grow it silently.
+        SnippetRoster? Fragments = null)
+    {
+        public SnippetRoster Roster => Fragments ?? NoFragments;
+    }
+
+    private static readonly SnippetRoster NoFragments = new(new Dictionary<string, string>(StringComparer.Ordinal));
 
     // What a reader's project has without writing it: the SDK's implicit usings.
-    private const string ImplicitUsings = """
-        global using System;
-        global using System.Collections.Generic;
-        global using System.IO;
-        global using System.Linq;
-        global using System.Net.Http;
-        global using System.Threading;
-        global using System.Threading.Tasks;
-        """;
+    private static readonly string[] ImplicitUsings =
+        ["System", "System.Collections.Generic", "System.IO", "System.Linq", "System.Net.Http", "System.Threading", "System.Threading.Tasks"];
 
-    // The guides' «Your…» names stand for the reader's own client or store, with the shape the guide calls it with; what
-    // the block does with the result is still checked against the real types.
-    private const string Placeholders = """
-        internal static class YourEmbeddingProvider
-        {
-            public static Task<float[]> EmbedAsync(string text, CancellationToken cancellationToken) => Task.FromResult(Array.Empty<float>());
-        }
-        internal static class YourLLMProvider
-        {
-            public static Task<string> GenerateAsync(string prompt, int maxTokens, float temperature, CancellationToken cancellationToken) => Task.FromResult("");
-        }
-        internal static class YourRerankerProvider
-        {
-            public static Task<IReadOnlyList<float>> ScoreAsync(string query, IReadOnlyList<string> documents, CancellationToken cancellationToken)
-                => Task.FromResult<IReadOnlyList<float>>([]);
-        }
-        internal static class YourVectorDatabase
-        {
-            public static Task UpsertAsync(FluxIndex.Core.Domain.Entities.DocumentChunk chunk, CancellationToken cancellationToken) => Task.CompletedTask;
-            public static Task<IReadOnlyList<(FluxIndex.Core.Domain.Entities.DocumentChunk Chunk, float Score)>> QueryAsync(
-                float[] vector, int topK, Dictionary<string, object>? filters, CancellationToken cancellationToken)
-                => Task.FromResult<IReadOnlyList<(FluxIndex.Core.Domain.Entities.DocumentChunk, float)>>([]);
-            public static Task<FluxIndex.Core.Domain.Entities.DocumentChunk?> GetAsync(string id, CancellationToken cancellationToken)
-                => Task.FromResult<FluxIndex.Core.Domain.Entities.DocumentChunk?>(null);
-            public static Task<bool> DeleteAsync(string id, CancellationToken cancellationToken) => Task.FromResult(false);
-            public static Task<IEnumerable<FluxIndex.Core.Domain.Entities.DocumentChunk>> GetByDocumentIdAsync(string documentId, CancellationToken cancellationToken)
-                => Task.FromResult<IEnumerable<FluxIndex.Core.Domain.Entities.DocumentChunk>>([]);
-            public static Task<bool> DeleteByDocumentIdAsync(string documentId, CancellationToken cancellationToken) => Task.FromResult(false);
-            public static Task<int> CountAsync(CancellationToken cancellationToken) => Task.FromResult(0);
-            public static Task ClearAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-        }
-        // A store the reader writes themselves (the reference shows one); here an empty one of that shape.
-        internal sealed class YourVectorStore : FluxIndex.Core.Application.Services.Base.VectorStoreBase
-        {
-            public YourVectorStore(string endpoint) => _ = endpoint;
-            protected override Task<string> StoreCoreAsync(FluxIndex.Core.Domain.Entities.DocumentChunk chunk, CancellationToken cancellationToken) => Task.FromResult(chunk.Id);
-            protected override Task<FluxIndex.Core.Domain.Entities.DocumentChunk?> GetCoreAsync(string id, CancellationToken cancellationToken) => YourVectorDatabase.GetAsync(id, cancellationToken);
-            protected override Task<IEnumerable<FluxIndex.Core.Application.Utilities.ScoredChunk>> SearchCoreAsync(float[] queryEmbedding, int topK, Dictionary<string, object>? filters, CancellationToken cancellationToken)
-                => Task.FromResult<IEnumerable<FluxIndex.Core.Application.Utilities.ScoredChunk>>([]);
-            protected override Task<bool> DeleteCoreAsync(string id, CancellationToken cancellationToken) => Task.FromResult(false);
-            protected override Task<bool> UpdateCoreAsync(FluxIndex.Core.Domain.Entities.DocumentChunk chunk, CancellationToken cancellationToken) => Task.FromResult(false);
-            protected override Task<IEnumerable<FluxIndex.Core.Domain.Entities.DocumentChunk>> GetByDocumentIdCoreAsync(string documentId, CancellationToken cancellationToken) => YourVectorDatabase.GetByDocumentIdAsync(documentId, cancellationToken);
-            protected override Task<bool> DeleteByDocumentIdCoreAsync(string documentId, CancellationToken cancellationToken) => Task.FromResult(false);
-            protected override Task<int> CountCoreAsync(CancellationToken cancellationToken) => Task.FromResult(0);
-            protected override Task ClearCoreAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-        }
-        """;
-
-    private const string WebImplicitUsings = """
+    private const string WebUsings = """
         using Microsoft.AspNetCore.Builder;
         using Microsoft.Extensions.Configuration;
         using Microsoft.Extensions.DependencyInjection;
         using Microsoft.Extensions.Hosting;
         using Microsoft.Extensions.Logging;
+
         """;
+
+    // The guides' «Your…» names stand for the reader's own client or store, with the shape the guide calls it with; what
+    // the block does with the result is still checked against the real types. Type stand-ins: added when a block names them.
+    private static readonly Dictionary<string, string> Placeholders = new(StringComparer.Ordinal)
+    {
+        ["YourEmbeddingProvider"] = """
+            internal static class YourEmbeddingProvider
+            {
+                public static Task<float[]> EmbedAsync(string text, CancellationToken cancellationToken) => Task.FromResult(Array.Empty<float>());
+            }
+            """,
+        ["YourLLMProvider"] = """
+            internal static class YourLLMProvider
+            {
+                public static Task<string> GenerateAsync(string prompt, int maxTokens, float temperature, CancellationToken cancellationToken) => Task.FromResult("");
+            }
+            """,
+        ["YourRerankerProvider"] = """
+            internal static class YourRerankerProvider
+            {
+                public static Task<IReadOnlyList<float>> ScoreAsync(string query, IReadOnlyList<string> documents, CancellationToken cancellationToken)
+                    => Task.FromResult<IReadOnlyList<float>>([]);
+            }
+            """,
+        ["YourVectorDatabase"] = """
+            internal static class YourVectorDatabase
+            {
+                public static Task UpsertAsync(FluxIndex.Core.Domain.Entities.DocumentChunk chunk, CancellationToken cancellationToken) => Task.CompletedTask;
+                public static Task<IReadOnlyList<(FluxIndex.Core.Domain.Entities.DocumentChunk Chunk, float Score)>> QueryAsync(
+                    float[] vector, int topK, Dictionary<string, object>? filters, CancellationToken cancellationToken)
+                    => Task.FromResult<IReadOnlyList<(FluxIndex.Core.Domain.Entities.DocumentChunk, float)>>([]);
+                public static Task<FluxIndex.Core.Domain.Entities.DocumentChunk?> GetAsync(string id, CancellationToken cancellationToken)
+                    => Task.FromResult<FluxIndex.Core.Domain.Entities.DocumentChunk?>(null);
+                public static Task<bool> DeleteAsync(string id, CancellationToken cancellationToken) => Task.FromResult(false);
+                public static Task<IEnumerable<FluxIndex.Core.Domain.Entities.DocumentChunk>> GetByDocumentIdAsync(string documentId, CancellationToken cancellationToken)
+                    => Task.FromResult<IEnumerable<FluxIndex.Core.Domain.Entities.DocumentChunk>>([]);
+                public static Task<bool> DeleteByDocumentIdAsync(string documentId, CancellationToken cancellationToken) => Task.FromResult(false);
+                public static Task<int> CountAsync(CancellationToken cancellationToken) => Task.FromResult(0);
+                public static Task ClearAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+            }
+            """,
+        // A store the reader writes themselves (the reference shows one); here an empty one of that shape.
+        ["YourVectorStore"] = """
+            internal sealed class YourVectorStore : FluxIndex.Core.Application.Services.Base.VectorStoreBase
+            {
+                public YourVectorStore(string endpoint) => _ = endpoint;
+                protected override Task<string> StoreCoreAsync(FluxIndex.Core.Domain.Entities.DocumentChunk chunk, CancellationToken cancellationToken) => Task.FromResult(chunk.Id);
+                protected override Task<FluxIndex.Core.Domain.Entities.DocumentChunk?> GetCoreAsync(string id, CancellationToken cancellationToken) => YourVectorDatabase.GetAsync(id, cancellationToken);
+                protected override Task<IEnumerable<FluxIndex.Core.Application.Utilities.ScoredChunk>> SearchCoreAsync(float[] queryEmbedding, int topK, Dictionary<string, object>? filters, CancellationToken cancellationToken)
+                    => Task.FromResult<IEnumerable<FluxIndex.Core.Application.Utilities.ScoredChunk>>([]);
+                protected override Task<bool> DeleteCoreAsync(string id, CancellationToken cancellationToken) => Task.FromResult(false);
+                protected override Task<bool> UpdateCoreAsync(FluxIndex.Core.Domain.Entities.DocumentChunk chunk, CancellationToken cancellationToken) => Task.FromResult(false);
+                protected override Task<IEnumerable<FluxIndex.Core.Domain.Entities.DocumentChunk>> GetByDocumentIdCoreAsync(string documentId, CancellationToken cancellationToken) => YourVectorDatabase.GetByDocumentIdAsync(documentId, cancellationToken);
+                protected override Task<bool> DeleteByDocumentIdCoreAsync(string documentId, CancellationToken cancellationToken) => Task.FromResult(false);
+                protected override Task<int> CountCoreAsync(CancellationToken cancellationToken) => Task.FromResult(0);
+                protected override Task ClearCoreAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+            }
+            """,
+    };
+
+    // A block's statements run in a method without parameters; a guide's code may read the arguments and the token a
+    // console program or an async method has.
+    private static readonly (string Name, string Declaration)[] ProgramStandIns =
+    [
+        ("args", "string[] args = [];"),
+        ("cancellationToken", "System.Threading.CancellationToken cancellationToken = default;"),
+    ];
 
     private static readonly (string Name, string Declaration)[] CommonStandIns =
     [
@@ -139,52 +160,43 @@ public class DocsSnippetCompileTests
         StandIn("string", "partition"),
     ];
 
+    private static Dictionary<string, string> StandIns(params (string Name, string Declaration)[][] groups) =>
+        groups.SelectMany(g => g).Concat(ProgramStandIns)
+            .ToDictionary(s => s.Name, s => s.Declaration, StringComparer.Ordinal);
+
     private static readonly Document[] Documents =
     [
         new("docs/AI_PROVIDER_INTEGRATION.md", 19, 3,
-            """
-            using FluxIndex.Core.Application.Interfaces;
-            using Microsoft.Extensions.DependencyInjection;
-            """,
-            UsingsForTypeBlocks: false, CommonStandIns, new Dictionary<string, string>(StringComparer.Ordinal)),
+            ["FluxIndex.Core.Application.Interfaces", "Microsoft.Extensions.DependencyInjection"],
+            UsingsForTypeBlocks: false, StandIns(CommonStandIns)),
         // The packages its Installation section adds, and the contracts every block speaks in; a block that needs an
         // extension namespace beyond those says so itself.
         new("docs/GUIDE.md", 26, 0,
-            """
-            using FluxIndex.SDK;
-            using FluxIndex.Storage.SQLite;
-            using FluxIndex.Storage.PostgreSQL;
-            using FluxIndex.Storage.Qdrant;
-            using FluxIndex.Storage.Neo4j;
-            using FluxIndex.Cache.Redis;
-            using FluxIndex.Core.Application.Interfaces;
-            using FluxIndex.Core.Domain.Entities;
-            using Microsoft.Extensions.DependencyInjection;
-            """,
-            UsingsForTypeBlocks: true,
             [
-                .. CommonStandIns, .. ServiceStandIns,
+                "FluxIndex.SDK", "FluxIndex.Storage.SQLite", "FluxIndex.Storage.PostgreSQL", "FluxIndex.Storage.Qdrant",
+                "FluxIndex.Storage.Neo4j", "FluxIndex.Cache.Redis", "FluxIndex.Core.Application.Interfaces",
+                "FluxIndex.Core.Domain.Entities", "Microsoft.Extensions.DependencyInjection",
+            ],
+            UsingsForTypeBlocks: true,
+            StandIns(CommonStandIns, ServiceStandIns,
+            [
                 StandIn("string", "connStr"), StandIn("string", "conn"), StandIn("string", "uri"), StandIn("string", "user"),
                 StandIn("string", "pass"), StandIn("string", "pgConn"), StandIn("string", "qdrantHost"), StandIn("string", "neo4jUri"),
                 StandIn("string", "neo4jUser"), StandIn("string", "neo4jPassword"), StandIn("string", "keyword"), StandIn("string", "documentId"),
                 StandIn("FluxIndex.Core.Application.Interfaces.IEmbeddingService", "myEmbedder"),
                 StandIn("FluxIndex.Core.Application.Interfaces.IEmbeddingService", "myEmbeddingInstance"),
                 StandIn("string[]", "files"), StandIn("System.IServiceProvider", "provider"),
-            ],
-            new Dictionary<string, string>(StringComparer.Ordinal)),
+            ])),
         // What its opening block imports, plus the logging a reader who logs already has.
         new("docs/ADVANCED_RAG.md", 24, 0,
-            """
-            using FluxIndex.Core.Application.Interfaces;
-            using FluxIndex.Core.Application.Services;
-            using FluxIndex.Core.Application.Services.Reranking;
-            using FluxIndex.Core.Domain.Entities;
-            using Microsoft.Extensions.DependencyInjection;
-            using Microsoft.Extensions.Logging;
-            """,
-            UsingsForTypeBlocks: true,
             [
-                .. CommonStandIns, .. ServiceStandIns,
+                "FluxIndex.Core.Application.Interfaces", "FluxIndex.Core.Application.Services",
+                "FluxIndex.Core.Application.Services.Reranking", "FluxIndex.Core.Domain.Entities",
+                "Microsoft.Extensions.DependencyInjection", "Microsoft.Extensions.Logging",
+            ],
+            UsingsForTypeBlocks: true,
+            StandIns(CommonStandIns, ServiceStandIns,
+            [
                 StandIn("FluxIndex.Core.Application.Interfaces.IAdvancedEntityExtractionService", "extractor"),
                 StandIn("FluxIndex.Core.Application.Interfaces.ILeidenCommunityService", "communityService"),
                 StandIn("FluxIndex.Core.Application.Interfaces.CommunityHierarchy", "hierarchy"),
@@ -199,44 +211,71 @@ public class DocsSnippetCompileTests
                 StandIn("System.Collections.Generic.IEnumerable<FluxIndex.Core.Application.Interfaces.LeidenChunk>", "leidenChunks"),
                 StandIn("string", "documentContent"),
                 StandIn("Microsoft.Extensions.Logging.ILogger", "_logger"),
-            ],
-            new Dictionary<string, string>(StringComparer.Ordinal)),
+            ])),
         // The contracts every block speaks in; the SDK's own HybridSearchOptions would collide with the core one the
         // hybrid-search blocks use, so a block that builds a context imports the SDK itself.
         new("docs/REFERENCE.md", 22, 3,
-            """
-            using FluxIndex.Core.Application.Interfaces;
-            using FluxIndex.Core.Domain.Entities;
-            using Microsoft.Extensions.DependencyInjection;
-            """,
+            ["FluxIndex.Core.Application.Interfaces", "FluxIndex.Core.Domain.Entities", "Microsoft.Extensions.DependencyInjection"],
             UsingsForTypeBlocks: true,
+            StandIns(CommonStandIns, ServiceStandIns,
             [
-                .. CommonStandIns, .. ServiceStandIns,
                 StandIn("FluxIndex.Core.Application.Interfaces.IHybridSearchService", "hybridSearch"),
                 StandIn("FluxIndex.Core.Application.Interfaces.CommunityHierarchy", "hierarchy"),
                 StandIn("string", "startId"), StandIn("string", "endId"), StandIn("string", "content"),
                 StandIn("string", "oldDocId"), StandIn("string", "newDocId"), StandIn("string", "newPath"),
                 StandIn("System.Collections.Generic.IReadOnlyDictionary<string, string>", "chunkIdMap"),
                 StandIn("System.Collections.Generic.IReadOnlyDictionary<string, object?>", "sameUpdates"),
+            ])),
+        // The design document: two registration blocks and a sketch of the extension points.
+        new("docs/FLUXINDEX_PHILOSOPHY.md", 3, 0,
+            [
+                "FluxIndex.Core.Application.Interfaces", "FluxIndex.Core.Application.Services",
+                "FluxIndex.Providers.OpenAI.Extensions", "FluxIndex.Providers.LMSupply.Extensions",
+                "FluxIndex.Integrations.FluxImprover", "Microsoft.Extensions.DependencyInjection",
             ],
-            new Dictionary<string, string>(StringComparer.Ordinal)),
+            UsingsForTypeBlocks: true,
+            StandIns(CommonStandIns,
+            [
+                StandIn("string", "endpoint"),
+                ("MyEmbeddingService", """
+                    internal sealed class MyEmbeddingService : FluxIndex.Core.Application.Interfaces.IEmbeddingService
+                    {
+                        public Task<float[]> GenerateEmbeddingAsync(string text, CancellationToken cancellationToken = default) => Task.FromResult(Array.Empty<float>());
+                        public Task<IEnumerable<float[]>> GenerateEmbeddingsBatchAsync(IEnumerable<string> texts, CancellationToken cancellationToken = default) => Task.FromResult(Enumerable.Empty<float[]>());
+                        public int GetEmbeddingDimension() => 0;
+                        public string GetModelName() => "";
+                        public int GetMaxTokens() => 0;
+                        public Task<int> CountTokensAsync(string text, CancellationToken cancellationToken = default) => Task.FromResult(0);
+                        public FluxIndex.Core.Domain.ValueObjects.EmbeddingIdentity GetIdentity() => default!;
+                    }
+                    """),
+            ]),
+            new SnippetRoster(new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["5.2 Extension Points"] = "names the extension interfaces with empty class bodies — a map of the seams, not an implementation",
+            })),
+        // The documentation index: the two modes and a five-line start.
+        new("docs/README.md", 2, 0,
+            [
+                "FluxIndex.SDK", "FluxIndex.Storage.SQLite", "FluxIndex.Storage.PostgreSQL", "FluxIndex.Storage.Qdrant",
+                "FluxIndex.Storage.Neo4j", "Microsoft.Extensions.DependencyInjection",
+            ],
+            UsingsForTypeBlocks: true,
+            StandIns(CommonStandIns,
+            [
+                StandIn("string", "pgConn"), StandIn("string", "qdrantHost"), StandIn("string", "neo4jUri"),
+                StandIn("string", "neo4jUser"), StandIn("string", "neo4jPassword"),
+            ])),
     ];
 
-    private static readonly Dictionary<string, Lazy<DocumentCompilation>> Compiled = Documents.ToDictionary(
+    private static readonly Lazy<IReadOnlyList<MetadataReference>> SharedReferences = new(References);
+
+    private static readonly Dictionary<string, Lazy<GuideCompilation>> Compiled = Documents.ToDictionary(
         d => d.Path,
-        d => new Lazy<DocumentCompilation>(() => CompileDocument(d, ReadBlocks(File.ReadAllText(RepositoryFile(d.Path))))),
+        d => new Lazy<GuideCompilation>(() => CompileGuide(d, Read(d))),
         StringComparer.Ordinal);
 
-    public static TheoryData<string> Blocks()
-    {
-        var data = new TheoryData<string>();
-        foreach (var document in Documents)
-        {
-            foreach (var block in ReadBlocks(File.ReadAllText(RepositoryFile(document.Path))))
-                data.Add($"{document.Path} {block.Key}");
-        }
-        return data;
-    }
+    public static TheoryData<string> Blocks() => new(Documents.SelectMany(Read).Select(s => s.Key));
 
     public static TheoryData<string> DocumentPaths() => new(Documents.Select(d => d.Path));
 
@@ -245,16 +284,16 @@ public class DocsSnippetCompileTests
     public void DocsBlock_Compiles(string key)
     {
         var document = Documents.Single(d => key.StartsWith(d.Path + " ", StringComparison.Ordinal));
-        var blockKey = key[(document.Path.Length + 1)..];
         var compiled = Compiled[document.Path].Value;
-        if (compiled.Fragments.TryGetValue(blockKey, out var reason))
-            Assert.Skip($"not a program: {reason}");
+        var snippet = compiled.Snippets.Single(s => s.Key == key);
+        if (document.Roster.IsFragment(snippet))
+            Assert.Skip($"not a program: listed in {document.Path}'s fragment roster");
 
-        var errors = compiled.Errors.Where(e => e.Location.SourceTree?.FilePath == blockKey).ToList();
+        var errors = compiled.ErrorsOf(snippet);
 
         Assert.True(errors.Count == 0,
-            $"{document.Path} block {blockKey} does not compile against the current API:\n" +
-            string.Join("\n", errors.Select(e => e.ToString())) + "\n--- source ---\n" + compiled.Sources[blockKey]);
+            $"{key} does not compile against the current API:\n" +
+            string.Join("\n", errors.Select(e => e.ToString())) + "\n--- source ---\n" + compiled.SourceOf(snippet));
     }
 
     [Theory]
@@ -264,15 +303,11 @@ public class DocsSnippetCompileTests
         var document = Documents.Single(d => d.Path == path);
         var compiled = Compiled[path].Value;
 
-        Assert.True(compiled.Sources.Count >= document.MinimumBlocks, $"expected {path}'s C# blocks, found {compiled.Sources.Count}");
+        // A floor, and every fragment heading still has a block (a stale entry would excuse whatever lands there next).
+        document.Roster.ShouldMatch(compiled.Snippets, document.MinimumBlocks);
         Assert.True(compiled.Listings >= document.MinimumListings, $"expected {path}'s type listings, found {compiled.Listings}");
-        // A fragment entry must name a heading that still has a block — a stale entry would excuse whatever lands there next.
-        Assert.All(document.Fragments.Keys, heading => Assert.Contains(compiled.Headings, h => h == heading));
-        // Errors not tied to one block (a duplicate type across blocks, a missing reference, a stand-in or placeholder that
-        // no longer matches the API) fail here.
-        Assert.Empty(compiled.Errors
-            .Where(e => e.Location.SourceTree is not { } tree || !compiled.Sources.ContainsKey(tree.FilePath))
-            .Select(e => e.ToString()));
+        // Errors not tied to one block (a type stand-in or placeholder that no longer matches the API) fail here.
+        compiled.Shared.ShouldHaveNoSharedErrors();
     }
 
     /// <summary>Positive control: one compilation of the provider guide rejects a block that calls the retired SDK.</summary>
@@ -280,71 +315,192 @@ public class DocsSnippetCompileTests
     public void Compile_RejectsTheRetiredAzureSdkCall()
     {
         var document = Documents[0];
-        var blocks = ReadBlocks(File.ReadAllText(RepositoryFile(document.Path)));
-        blocks.Add(new Block("control", "control", """
+        var control = new DocSnippet("control", 1, "control", """
             using Azure.AI.OpenAI;
             var client = new OpenAIClient(apiKey);
             var response = await client.GetEmbeddingsAsync(new EmbeddingsOptions("m", new[] { "x" }));
-            """));
+            """);
 
-        var compiled = CompileDocument(document, blocks);
+        var compiled = CompileGuide(document, [.. Read(document), control]);
 
-        Assert.Contains(compiled.Errors, e => e.Location.SourceTree?.FilePath == "control");
+        Assert.NotEmpty(compiled.ErrorsOf(control));
     }
 
     /// <summary>Positive control: a listing that names a member the interface does not have is reported.</summary>
     [Fact]
     public void Listing_ReportsAMemberTheInterfaceDoesNotHave()
     {
-        var compiled = CompileDocument(Documents[0], [new("listing", "listing", """
+        var listing = Listing("""
             public interface IReranker
             {
                 Task<IEnumerable<RerankResult>> RerankAsync(string query, IEnumerable<RetrievalResult> candidates, int topN = 5, CancellationToken cancellationToken = default);
                 Task<float> ScoreEverythingAsync(string query);
             }
-            """)]);
+            """);
 
-        Assert.Contains(compiled.Errors, e => e.Location.SourceTree?.FilePath == "listing" && e.GetMessage(CultureInfo.InvariantCulture).Contains("ScoreEverythingAsync", StringComparison.Ordinal));
+        var compiled = CompileGuide(Documents[0], [listing]);
+
+        Assert.Contains(compiled.ErrorsOf(listing), e => e.GetMessage(CultureInfo.InvariantCulture).Contains("ScoreEverythingAsync", StringComparison.Ordinal));
     }
 
     /// <summary>Positive control: a listing whose member exists under that name with other parameters is reported.</summary>
     [Fact]
     public void Listing_ReportsAMemberWhoseSignatureDiffers()
     {
-        var compiled = CompileDocument(Documents[0], [new("listing", "listing", """
+        var listing = Listing("""
             public interface IReranker
             {
                 Task<IEnumerable<RerankResult>> RerankAsync(string query, IEnumerable<RetrievalResult> candidates, int topN = 5, CancellationToken cancellationToken = default);
             }
-            """)]);
+            """);
 
-        Assert.Contains(compiled.Errors, e => e.Id == "GUIDE002" && e.GetMessage(CultureInfo.InvariantCulture).Contains("RerankAsync", StringComparison.Ordinal));
+        var compiled = CompileGuide(Documents[0], [listing]);
+
+        Assert.Contains(compiled.ErrorsOf(listing), e => e.Id == "GUIDE002" && e.GetMessage(CultureInfo.InvariantCulture).Contains("RerankAsync", StringComparison.Ordinal));
     }
 
     /// <summary>Positive control: a listing of a class (an options type) that names a property it does not have is reported.</summary>
     [Fact]
     public void ClassListing_ReportsAPropertyTheClassDoesNotHave()
     {
-        var compiled = CompileDocument(Documents[0], [new("listing", "listing", """
+        var listing = Listing("""
             public class GraphRAGQueryOptions
             {
                 public bool IncludeRelationships { get; set; }
                 public float NoSuchThreshold { get; set; }
             }
-            """)]);
+            """);
+
+        var compiled = CompileGuide(Documents[0], [listing]);
 
         Assert.Equal(1, compiled.Listings);
-        Assert.Contains(compiled.Errors, e => e.Id == "GUIDE001" && e.GetMessage(CultureInfo.InvariantCulture).Contains("NoSuchThreshold", StringComparison.Ordinal));
+        Assert.Contains(compiled.ErrorsOf(listing), e => e.Id == "GUIDE001" && e.GetMessage(CultureInfo.InvariantCulture).Contains("NoSuchThreshold", StringComparison.Ordinal));
     }
 
-    private sealed record Block(string Key, string Heading, string Code);
+    /// <summary>Positive control: a test method shown without its class compiles once wrapped, and its errors still count.</summary>
+    [Fact]
+    public void BareMembers_AreWrappedAndChecked()
+    {
+        var good = new DocSnippet("members", 1, "members", """
+            public async Task Search_Works()
+            {
+                await Task.CompletedTask;
+            }
+            """);
+        var bad = good with { File = "members-bad", Code = good.Code.Replace("Task.CompletedTask", "Task.NoSuchMember", StringComparison.Ordinal) };
 
-    private sealed record DocumentCompilation(
-        IReadOnlyList<Diagnostic> Errors,
-        IReadOnlyDictionary<string, string> Sources,
-        IReadOnlyDictionary<string, string> Fragments,
-        IReadOnlyList<string> Headings,
-        int Listings);
+        var compiled = CompileGuide(Documents[0], [good, bad]);
+
+        Assert.Empty(compiled.ErrorsOf(good));
+        Assert.NotEmpty(compiled.ErrorsOf(bad));
+    }
+
+    private static DocSnippet Listing(string code) => new("listing", 1, "listing", code);
+
+    /// <summary>One guide's compilation: the kit's for every block but the listings, and this test's listing check.</summary>
+    private sealed class GuideCompilation(
+        IReadOnlyList<DocSnippet> snippets, DocumentCompilation shared, IReadOnlySet<string> compiledKeys,
+        IReadOnlyList<Diagnostic> listingErrors, int listings)
+    {
+        public IReadOnlyList<DocSnippet> Snippets { get; } = snippets;
+
+        public DocumentCompilation Shared { get; } = shared;
+
+        public int Listings { get; } = listings;
+
+        public IReadOnlyList<Diagnostic> ErrorsOf(DocSnippet snippet) =>
+            compiledKeys.Contains(snippet.Key)
+                ? Shared.ErrorsOf(snippet)
+                : [.. listingErrors.Where(e => e.Location.SourceTree?.FilePath == snippet.Key)];
+
+        public string SourceOf(DocSnippet snippet) => compiledKeys.Contains(snippet.Key) ? Shared.SourceOf(snippet) : snippet.Code;
+    }
+
+    private static List<DocSnippet> Read(Document document) => [.. DocSnippets.Read(RepositoryFile(document.Path), document.Path)];
+
+    private static GuideCompilation CompileGuide(Document document, IReadOnlyList<DocSnippet> snippets)
+    {
+        var parse = new CSharpParseOptions(LanguageVersion.Latest);
+        var compiler = new SnippetCompiler(SharedReferences.Value)
+        {
+            Usings = document.UsingsForTypeBlocks ? [.. ImplicitUsings, .. document.Usings] : ImplicitUsings,
+            StandIns = new Dictionary<string, string>(document.StandIns.Concat(Placeholders), StringComparer.Ordinal),
+        };
+
+        var listingErrors = new List<Diagnostic>();
+        var listings = 0;
+        var compiled = new List<DocSnippet>();
+        foreach (var snippet in snippets)
+        {
+            if (document.Roster.IsFragment(snippet))
+                continue;
+
+            var root = CSharpSyntaxTree.ParseText(snippet.Code, parse).GetCompilationUnitRoot();
+            if (ListedTypes(root) is { } listed)
+            {
+                listings += listed.Count;
+                listingErrors.AddRange(CheckListing(CSharpSyntaxTree.ParseText(snippet.Code, parse, path: snippet.Key)));
+                continue;
+            }
+
+            compiled.Add(snippet with { Code = Prepare(document, root, compiled.Count) });
+        }
+
+        return new GuideCompilation(
+            snippets, compiler.CompileDocument(compiled), compiled.Select(s => s.Key).ToHashSet(StringComparer.Ordinal),
+            listingErrors, listings);
+    }
+
+    /// <summary>
+    /// The block as a reader of this guide has it: the document's usings when the kit does not add them (the provider guide's
+    /// statement blocks), the ASP.NET usings for a web host, and bare members inside a class.
+    /// </summary>
+    private static string Prepare(Document document, CompilationUnitSyntax root, int index)
+    {
+        var members = new StringBuilder();
+        var rest = new StringBuilder();
+        var hasStatements = false;
+        foreach (var member in root.Members)
+        {
+            switch (member)
+            {
+                case GlobalStatementSyntax { Statement: LocalFunctionStatementSyntax local } when local.Modifiers.Any(IsAccessModifier) || local.AttributeLists.Count > 0:
+                    members.Append(member.ToFullString());
+                    break;
+                case GlobalStatementSyntax:
+                    hasStatements = true;
+                    rest.Append(member.ToFullString());
+                    break;
+                case BaseTypeDeclarationSyntax or BaseNamespaceDeclarationSyntax or DelegateDeclarationSyntax:
+                    rest.Append(member.ToFullString());
+                    break;
+                default:
+                    members.Append(member.ToFullString());
+                    break;
+            }
+        }
+
+        var source = new StringBuilder();
+        source.Append(string.Concat(root.Externs.Select(e => e.ToFullString())));
+        source.Append(string.Concat(root.Usings.Select(u => u.ToFullString())));
+        if (!document.UsingsForTypeBlocks && (hasStatements || members.Length > 0))
+            source.Append(string.Concat(document.Usings.Select(u => $"using {u};\n")));
+        if (rest.ToString().Contains("WebApplication", StringComparison.Ordinal))
+            source.Append(WebUsings);
+
+        source.Append(rest);
+        if (members.Length > 0)
+        {
+            source.AppendLine().AppendLine(CultureInfo.InvariantCulture, $"public class DocumentMembers{index}")
+                .AppendLine("{").Append(members).AppendLine().AppendLine("}");
+        }
+
+        return source.ToString();
+    }
+
+    private static bool IsAccessModifier(SyntaxToken token) =>
+        token.IsKind(SyntaxKind.PublicKeyword) || token.IsKind(SyntaxKind.PrivateKeyword)
+        || token.IsKind(SyntaxKind.InternalKeyword) || token.IsKind(SyntaxKind.ProtectedKeyword);
 
 #pragma warning disable RS2008 // these label documentation findings in a test; no analyzer ships them
     private static readonly DiagnosticDescriptor MissingMember = new(
@@ -359,144 +515,6 @@ public class DocsSnippetCompileTests
         "GUIDE003", "Listed type is ambiguous",
         "The listing of {0} matches {1}; declare the namespace in the block", "Docs", DiagnosticSeverity.Error, true);
 #pragma warning restore RS2008
-
-    private static DocumentCompilation CompileDocument(Document document, List<Block> blocks)
-    {
-        var parse = new CSharpParseOptions(LanguageVersion.Latest);
-        var trees = new List<SyntaxTree>
-        {
-            CSharpSyntaxTree.ParseText(ImplicitUsings, parse, path: "(implicit usings)"),
-            CSharpSyntaxTree.ParseText(Placeholders, parse, path: "(placeholders)"),
-        };
-        var sources = new Dictionary<string, string>(StringComparer.Ordinal);
-        var fragments = new Dictionary<string, string>(StringComparer.Ordinal);
-        var listingErrors = new List<Diagnostic>();
-        var listings = 0;
-
-        foreach (var block in blocks)
-        {
-            sources[block.Key] = block.Code;
-            if (document.Fragments.TryGetValue(block.Heading, out var reason))
-            {
-                fragments[block.Key] = reason;
-                continue;
-            }
-
-            var root = CSharpSyntaxTree.ParseText(block.Code, parse).GetCompilationUnitRoot();
-            if (ListedTypes(root) is { } listed)
-            {
-                listings += listed.Count;
-                var tree = CSharpSyntaxTree.ParseText(block.Code, parse, path: block.Key);
-                listingErrors.AddRange(CheckListing(tree));
-                continue;
-            }
-
-            var source = Assemble(document, block, root);
-            sources[block.Key] = source;
-            trees.Add(CSharpSyntaxTree.ParseText(source, parse, path: block.Key));
-        }
-
-        var compilation = CSharpCompilation.Create(
-            "DocsSnippets", trees, References(),
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
-        var errors = compilation.GetDiagnostics()
-            .Where(d => d.Severity == DiagnosticSeverity.Error)
-            .Concat(listingErrors)
-            .ToList();
-        return new DocumentCompilation(errors, sources, fragments, blocks.Select(b => b.Heading).Distinct().ToList(), listings);
-    }
-
-    /// <summary>
-    /// One block as a source file: its usings hoisted, its type declarations at file level, bare members in a class, and its
-    /// statements in a method that declares the stand-ins it uses without declaring them.
-    /// </summary>
-    private static string Assemble(Document document, Block block, CompilationUnitSyntax root)
-    {
-        var statements = new StringBuilder();
-        var types = new StringBuilder();
-        var members = new StringBuilder();
-        foreach (var member in root.Members)
-        {
-            switch (member)
-            {
-                case GlobalStatementSyntax { Statement: LocalFunctionStatementSyntax local } when local.Modifiers.Any(IsAccessModifier) || local.AttributeLists.Count > 0:
-                    members.Append(member.ToFullString());
-                    break;
-                case GlobalStatementSyntax:
-                    statements.Append(member.ToFullString());
-                    break;
-                case BaseTypeDeclarationSyntax or BaseNamespaceDeclarationSyntax or DelegateDeclarationSyntax:
-                    types.Append(member.ToFullString());
-                    break;
-                default:
-                    members.Append(member.ToFullString());
-                    break;
-            }
-        }
-
-        var hasStatements = statements.Length > 0;
-        var usings = string.Concat(root.Usings.Select(u => u.ToFullString()))
-                     + string.Concat(root.Externs.Select(e => e.ToFullString()));
-        var code = statements.ToString();
-        var name = Regex.Replace(block.Key, @"\W", "_");
-
-        var source = new StringBuilder()
-            .AppendLine(usings)
-            .AppendLine(hasStatements || members.Length > 0 || document.UsingsForTypeBlocks ? document.Usings : "")
-            .AppendLine(code.Contains("WebApplication", StringComparison.Ordinal) ? WebImplicitUsings : "")
-            .AppendLine(types.ToString());
-        if (members.Length > 0)
-        {
-            source.AppendLine(CultureInfo.InvariantCulture, $"public class Members_{name}")
-                .AppendLine("{")
-                .AppendLine(members.ToString())
-                .AppendLine("}");
-        }
-        if (hasStatements)
-        {
-            var standIns = UndeclaredNames(code, document.StandIns.Select(s => s.Name));
-            source.AppendLine(CultureInfo.InvariantCulture, $"internal static class Block_{name}")
-                .AppendLine("{")
-                .AppendLine("    internal static async Task RunAsync(string[] args, CancellationToken cancellationToken)")
-                .AppendLine("    {")
-                .AppendLine(string.Join("\n", document.StandIns.Where(s => standIns.Contains(s.Name)).Select(s => s.Declaration)))
-                .AppendLine(code)
-                .AppendLine("        await Task.CompletedTask;")
-                .AppendLine("    }")
-                .AppendLine("}");
-        }
-
-        return source.ToString();
-    }
-
-    private static bool IsAccessModifier(SyntaxToken token) =>
-        token.IsKind(SyntaxKind.PublicKeyword) || token.IsKind(SyntaxKind.PrivateKeyword)
-        || token.IsKind(SyntaxKind.InternalKeyword) || token.IsKind(SyntaxKind.ProtectedKeyword);
-
-    /// <summary>The candidate names the statements read as a value without declaring them (a local, a parameter, a loop variable).</summary>
-    private static HashSet<string> UndeclaredNames(string statements, IEnumerable<string> candidates)
-    {
-        var root = CSharpSyntaxTree.ParseText(statements, new CSharpParseOptions(LanguageVersion.Latest, kind: SourceCodeKind.Script)).GetRoot();
-        var declared = root.DescendantNodes().Select(n => n switch
-            {
-                VariableDeclaratorSyntax v => v.Identifier.Text,
-                ForEachStatementSyntax f => f.Identifier.Text,
-                SingleVariableDesignationSyntax s => s.Identifier.Text,
-                ParameterSyntax p => p.Identifier.Text,
-                LocalFunctionStatementSyntax l => l.Identifier.Text,
-                _ => null,
-            })
-            .OfType<string>()
-            .ToHashSet(StringComparer.Ordinal);
-        var used = root.DescendantNodes().OfType<IdentifierNameSyntax>()
-            .Where(i => i.Parent is not NameColonSyntax
-                        && !(i.Parent is MemberAccessExpressionSyntax access && access.Name == i)
-                        && !(i.Parent is AssignmentExpressionSyntax { Parent: InitializerExpressionSyntax } assignment && assignment.Left == i))
-            .Select(i => i.Identifier.Text)
-            .ToHashSet(StringComparer.Ordinal);
-
-        return candidates.Where(c => used.Contains(c) && !declared.Contains(c)).ToHashSet(StringComparer.Ordinal);
-    }
 
     /// <summary>The library types a block restates, when it declares nothing but types named like library types of the same kind.</summary>
     private static List<BaseTypeDeclarationSyntax>? ListedTypes(CompilationUnitSyntax root)
@@ -662,42 +680,6 @@ public class DocsSnippetCompileTests
             })
             .ToList();
     });
-
-    private static List<Block> ReadBlocks(string text)
-    {
-        var lines = text.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
-        var blocks = new List<Block>();
-        var heading = "(top)";
-        for (var i = 0; i < lines.Length; i++)
-        {
-            if (lines[i].StartsWith('#'))
-                heading = lines[i].TrimStart('#').Trim();
-
-            // A block inside a blockquote carries the quote marker on every line.
-            var quoted = lines[i].TrimStart().StartsWith('>');
-            if (!Regex.IsMatch(Unquote(lines[i], quoted).Trim(), @"^```(csharp|cs|c#)$", RegexOptions.IgnoreCase))
-                continue;
-
-            var start = i + 1;
-            var code = new StringBuilder();
-            for (i++; i < lines.Length && Unquote(lines[i], quoted).Trim() != "```"; i++)
-                code.AppendLine(Unquote(lines[i], quoted));
-            blocks.Add(new Block($"line {start}: {heading}", heading, code.ToString()));
-        }
-
-        return blocks;
-    }
-
-    private static string Unquote(string line, bool quoted)
-    {
-        if (!quoted)
-            return line;
-        var t = line.TrimStart();
-        if (!t.StartsWith('>'))
-            return line;
-        t = t[1..];
-        return t.StartsWith(' ') ? t[1..] : t;
-    }
 
     private static List<MetadataReference> References()
     {

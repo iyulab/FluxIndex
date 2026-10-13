@@ -7,6 +7,11 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 
 ## [Unreleased]
 
+### Documentation
+- **Every C# example in `docs/` compiles as its guide assembles it** — the design document and the documentation index
+  are now compiled too. The «Storage Modes» example in `docs/README.md` declared `var ctx` twice in one block, so a reader
+  who copied it got a compile error; the two contexts are now `local` and `production`.
+
 ### Dependencies
 - Re-pinned sibling package(s) `LMSupply.Embedder` 0.118.0 -> 0.119.0, `LMSupply.Generator` 0.118.0 -> 0.119.0, `LMSupply.Reranker` 0.118.0 -> 0.119.0.
 - Re-pinned sibling package(s) `FileFlux` 0.59.2 -> 0.59.3, `Iyu.Conventions.Testing` 0.9.0 -> 0.10.0, `Iyu.Conventions.Testing.Snippets` 0.9.0 -> 0.10.0, `LMSupply.Embedder` 0.119.0 -> 0.120.0, `LMSupply.Generator` 0.119.0 -> 0.120.0, `LMSupply.Reranker` 0.119.0 -> 0.120.0.

@@ -6,9 +6,9 @@ using Xunit;
 namespace FluxIndex.SDK.Tests;
 
 /// <summary>
-/// Compiles every C# block in README.md against the current assemblies. <see cref="DocsSnippetRosterTests"/>
-/// checks that the names a snippet mentions exist somewhere; a compiler also checks the receiver, the arguments, the
-/// members read and the namespaces — what a reader who copies the block actually runs into.
+/// Compiles every C# block in README.md against the current assemblies: the receiver, the arguments, the members read and
+/// the namespaces — what a reader who copies the block actually runs into. The guides under <c>docs/</c> are compiled by
+/// <see cref="DocsSnippetCompileTests"/>.
 /// </summary>
 /// <remarks>
 /// Each block is compiled as a top-level program by <see cref="SnippetCompiler"/>: its own usings, the usings below, and
