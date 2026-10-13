@@ -17,6 +17,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 - Re-pinned sibling package(s) `FileFlux` 0.59.2 -> 0.59.3, `Iyu.Conventions.Testing` 0.9.0 -> 0.10.0, `Iyu.Conventions.Testing.Snippets` 0.9.0 -> 0.10.0, `LMSupply.Embedder` 0.119.0 -> 0.120.0, `LMSupply.Generator` 0.119.0 -> 0.120.0, `LMSupply.Reranker` 0.119.0 -> 0.120.0.
 - Re-pinned sibling package(s) `FileFlux` 0.59.3 -> 0.60.0.
 - Re-pinned sibling package(s) `FileFlux` 0.60.0 -> 0.61.0.
+- Re-pinned sibling package(s) `WebFlux` 0.26.0 -> 0.26.1.
 
 ---
 
