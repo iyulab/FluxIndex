@@ -18,6 +18,7 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
 - Re-pinned sibling package(s) `FileFlux` 0.59.3 -> 0.60.0.
 - Re-pinned sibling package(s) `FileFlux` 0.60.0 -> 0.61.0.
 - Re-pinned sibling package(s) `WebFlux` 0.26.0 -> 0.26.1.
+- Re-pinned sibling package(s) `FileFlux` 0.61.0 -> 0.62.0.
 
 ---
 
