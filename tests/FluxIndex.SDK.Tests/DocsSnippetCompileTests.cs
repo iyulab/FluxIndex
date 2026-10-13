@@ -22,13 +22,11 @@ namespace FluxIndex.SDK.Tests;
 /// <item>The kit compiles each block as a file of its own: its types shared with the document, its statements in a method
 /// of their own, with the document's stand-ins when a block uses the name without declaring it — values the surrounding
 /// text gives the reader.</item>
-/// <item>Before that, this test adds what a reader of these guides has that the kit cannot know: the document's usings (for
-/// the provider guide, only to blocks with statements — its type blocks carry their own usings and are checked as
-/// written), the ASP.NET usings for a block that builds a <c>WebApplication</c>, and a class around bare members (a test
-/// method shown without its class).</item>
+/// <item>Before that, this test adds what a reader of these guides has that the kit cannot know: the ASP.NET usings for a
+/// block that builds a <c>WebApplication</c>, and a class around bare members (a test method shown without its class).</item>
 /// <item>A block that only restates library types is a listing: compiled, it would declare a second type of that name and
-/// check nothing, so each member it lists is looked up on the real type instead — by name, then by signature. That check
-/// is this repository's; the kit compiles a restating block on its own and checks nothing more.</item>
+/// check nothing, so the kit looks each member it lists up on the real type instead — by name, then by signature
+/// (<see cref="SnippetCompiler.CheckListings"/>).</item>
 /// </list>
 /// </remarks>
 public class DocsSnippetCompileTests
@@ -38,10 +36,8 @@ public class DocsSnippetCompileTests
         // The document's C# blocks, at least — a scan that finds fewer has lost the document, and passing then proves nothing.
         int MinimumBlocks,
         int MinimumListings,
-        // What a reader of the document has from its opening blocks; added to statement blocks, and to type blocks when
-        // UsingsForTypeBlocks — the provider guide's type blocks carry their own usings and are checked as written.
+        // What a reader of the document has from its opening blocks.
         string[] Usings,
-        bool UsingsForTypeBlocks,
         IReadOnlyDictionary<string, string> StandIns,
         // Blocks deliberately not a program, by heading, with the reason. Shrink it; never grow it silently.
         SnippetRoster? Fragments = null)
@@ -168,7 +164,7 @@ public class DocsSnippetCompileTests
     [
         new("docs/AI_PROVIDER_INTEGRATION.md", 19, 3,
             ["FluxIndex.Core.Application.Interfaces", "Microsoft.Extensions.DependencyInjection"],
-            UsingsForTypeBlocks: false, StandIns(CommonStandIns)),
+            StandIns(CommonStandIns)),
         // The packages its Installation section adds, and the contracts every block speaks in; a block that needs an
         // extension namespace beyond those says so itself.
         new("docs/GUIDE.md", 26, 0,
@@ -177,7 +173,6 @@ public class DocsSnippetCompileTests
                 "FluxIndex.Storage.Neo4j", "FluxIndex.Cache.Redis", "FluxIndex.Core.Application.Interfaces",
                 "FluxIndex.Core.Domain.Entities", "Microsoft.Extensions.DependencyInjection",
             ],
-            UsingsForTypeBlocks: true,
             StandIns(CommonStandIns, ServiceStandIns,
             [
                 StandIn("string", "connStr"), StandIn("string", "conn"), StandIn("string", "uri"), StandIn("string", "user"),
@@ -194,7 +189,6 @@ public class DocsSnippetCompileTests
                 "FluxIndex.Core.Application.Services.Reranking", "FluxIndex.Core.Domain.Entities",
                 "Microsoft.Extensions.DependencyInjection", "Microsoft.Extensions.Logging",
             ],
-            UsingsForTypeBlocks: true,
             StandIns(CommonStandIns, ServiceStandIns,
             [
                 StandIn("FluxIndex.Core.Application.Interfaces.IAdvancedEntityExtractionService", "extractor"),
@@ -216,7 +210,6 @@ public class DocsSnippetCompileTests
         // hybrid-search blocks use, so a block that builds a context imports the SDK itself.
         new("docs/REFERENCE.md", 22, 3,
             ["FluxIndex.Core.Application.Interfaces", "FluxIndex.Core.Domain.Entities", "Microsoft.Extensions.DependencyInjection"],
-            UsingsForTypeBlocks: true,
             StandIns(CommonStandIns, ServiceStandIns,
             [
                 StandIn("FluxIndex.Core.Application.Interfaces.IHybridSearchService", "hybridSearch"),
@@ -233,7 +226,6 @@ public class DocsSnippetCompileTests
                 "FluxIndex.Providers.OpenAI.Extensions", "FluxIndex.Providers.LMSupply.Extensions",
                 "FluxIndex.Integrations.FluxImprover", "Microsoft.Extensions.DependencyInjection",
             ],
-            UsingsForTypeBlocks: true,
             StandIns(CommonStandIns,
             [
                 StandIn("string", "endpoint"),
@@ -260,7 +252,6 @@ public class DocsSnippetCompileTests
                 "FluxIndex.SDK", "FluxIndex.Storage.SQLite", "FluxIndex.Storage.PostgreSQL", "FluxIndex.Storage.Qdrant",
                 "FluxIndex.Storage.Neo4j", "Microsoft.Extensions.DependencyInjection",
             ],
-            UsingsForTypeBlocks: true,
             StandIns(CommonStandIns,
             [
                 StandIn("string", "pgConn"), StandIn("string", "qdrantHost"), StandIn("string", "neo4jUri"),
@@ -356,7 +347,7 @@ public class DocsSnippetCompileTests
 
         var compiled = CompileGuide(Documents[0], [listing]);
 
-        Assert.Contains(compiled.ErrorsOf(listing), e => e.Id == "GUIDE002" && e.GetMessage(CultureInfo.InvariantCulture).Contains("RerankAsync", StringComparison.Ordinal));
+        Assert.Contains(compiled.ErrorsOf(listing), e => e.Id == "LISTING002" && e.GetMessage(CultureInfo.InvariantCulture).Contains("RerankAsync", StringComparison.Ordinal));
     }
 
     /// <summary>Positive control: a listing of a class (an options type) that names a property it does not have is reported.</summary>
@@ -374,7 +365,7 @@ public class DocsSnippetCompileTests
         var compiled = CompileGuide(Documents[0], [listing]);
 
         Assert.Equal(1, compiled.Listings);
-        Assert.Contains(compiled.ErrorsOf(listing), e => e.Id == "GUIDE001" && e.GetMessage(CultureInfo.InvariantCulture).Contains("NoSuchThreshold", StringComparison.Ordinal));
+        Assert.Contains(compiled.ErrorsOf(listing), e => e.Id == "LISTING001" && e.GetMessage(CultureInfo.InvariantCulture).Contains("NoSuchThreshold", StringComparison.Ordinal));
     }
 
     /// <summary>Positive control: a test method shown without its class compiles once wrapped, and its errors still count.</summary>
@@ -397,21 +388,16 @@ public class DocsSnippetCompileTests
 
     private static DocSnippet Listing(string code) => new("listing", 1, "listing", code);
 
-    /// <summary>One guide's compilation: the kit's for every block but the listings, and this test's listing check.</summary>
-    private sealed class GuideCompilation(
-        IReadOnlyList<DocSnippet> snippets, DocumentCompilation shared, IReadOnlySet<string> compiledKeys,
-        IReadOnlyList<Diagnostic> listingErrors, int listings)
+    /// <summary>One guide's compilation: the kit's, for every block but the fragments.</summary>
+    private sealed class GuideCompilation(IReadOnlyList<DocSnippet> snippets, DocumentCompilation shared, IReadOnlySet<string> compiledKeys)
     {
         public IReadOnlyList<DocSnippet> Snippets { get; } = snippets;
 
         public DocumentCompilation Shared { get; } = shared;
 
-        public int Listings { get; } = listings;
+        public int Listings => Shared.ListedTypes;
 
-        public IReadOnlyList<Diagnostic> ErrorsOf(DocSnippet snippet) =>
-            compiledKeys.Contains(snippet.Key)
-                ? Shared.ErrorsOf(snippet)
-                : [.. listingErrors.Where(e => e.Location.SourceTree?.FilePath == snippet.Key)];
+        public IReadOnlyList<Diagnostic> ErrorsOf(DocSnippet snippet) => compiledKeys.Contains(snippet.Key) ? Shared.ErrorsOf(snippet) : [];
 
         public string SourceOf(DocSnippet snippet) => compiledKeys.Contains(snippet.Key) ? Shared.SourceOf(snippet) : snippet.Code;
     }
@@ -423,43 +409,25 @@ public class DocsSnippetCompileTests
         var parse = new CSharpParseOptions(LanguageVersion.Latest);
         var compiler = new SnippetCompiler(SharedReferences.Value)
         {
-            Usings = document.UsingsForTypeBlocks ? [.. ImplicitUsings, .. document.Usings] : ImplicitUsings,
+            Usings = [.. ImplicitUsings, .. document.Usings],
             StandIns = new Dictionary<string, string>(document.StandIns.Concat(Placeholders), StringComparer.Ordinal),
+            CheckListings = true,
         };
 
-        var listingErrors = new List<Diagnostic>();
-        var listings = 0;
-        var compiled = new List<DocSnippet>();
-        foreach (var snippet in snippets)
-        {
-            if (document.Roster.IsFragment(snippet))
-                continue;
-
-            var root = CSharpSyntaxTree.ParseText(snippet.Code, parse).GetCompilationUnitRoot();
-            if (ListedTypes(root) is { } listed)
-            {
-                listings += listed.Count;
-                listingErrors.AddRange(CheckListing(CSharpSyntaxTree.ParseText(snippet.Code, parse, path: snippet.Key)));
-                continue;
-            }
-
-            compiled.Add(snippet with { Code = Prepare(document, root, compiled.Count) });
-        }
-
-        return new GuideCompilation(
-            snippets, compiler.CompileDocument(compiled), compiled.Select(s => s.Key).ToHashSet(StringComparer.Ordinal),
-            listingErrors, listings);
+        var compiled = snippets
+            .Where(s => !document.Roster.IsFragment(s))
+            .Select((s, i) => s with { Code = Prepare(CSharpSyntaxTree.ParseText(s.Code, parse).GetCompilationUnitRoot(), i) })
+            .ToList();
+        return new GuideCompilation(snippets, compiler.CompileDocument(compiled), compiled.Select(s => s.Key).ToHashSet(StringComparer.Ordinal));
     }
 
     /// <summary>
-    /// The block as a reader of this guide has it: the document's usings when the kit does not add them (the provider guide's
-    /// statement blocks), the ASP.NET usings for a web host, and bare members inside a class.
+    /// The block as a reader of this guide has it: the ASP.NET usings for a web host, and bare members inside a class.
     /// </summary>
-    private static string Prepare(Document document, CompilationUnitSyntax root, int index)
+    private static string Prepare(CompilationUnitSyntax root, int index)
     {
         var members = new StringBuilder();
         var rest = new StringBuilder();
-        var hasStatements = false;
         foreach (var member in root.Members)
         {
             switch (member)
@@ -467,11 +435,7 @@ public class DocsSnippetCompileTests
                 case GlobalStatementSyntax { Statement: LocalFunctionStatementSyntax local } when local.Modifiers.Any(IsAccessModifier) || local.AttributeLists.Count > 0:
                     members.Append(member.ToFullString());
                     break;
-                case GlobalStatementSyntax:
-                    hasStatements = true;
-                    rest.Append(member.ToFullString());
-                    break;
-                case BaseTypeDeclarationSyntax or BaseNamespaceDeclarationSyntax or DelegateDeclarationSyntax:
+                case GlobalStatementSyntax or BaseTypeDeclarationSyntax or BaseNamespaceDeclarationSyntax or DelegateDeclarationSyntax:
                     rest.Append(member.ToFullString());
                     break;
                 default:
@@ -483,8 +447,6 @@ public class DocsSnippetCompileTests
         var source = new StringBuilder();
         source.Append(string.Concat(root.Externs.Select(e => e.ToFullString())));
         source.Append(string.Concat(root.Usings.Select(u => u.ToFullString())));
-        if (!document.UsingsForTypeBlocks && (hasStatements || members.Length > 0))
-            source.Append(string.Concat(document.Usings.Select(u => $"using {u};\n")));
         if (rest.ToString().Contains("WebApplication", StringComparison.Ordinal))
             source.Append(WebUsings);
 
@@ -501,185 +463,6 @@ public class DocsSnippetCompileTests
     private static bool IsAccessModifier(SyntaxToken token) =>
         token.IsKind(SyntaxKind.PublicKeyword) || token.IsKind(SyntaxKind.PrivateKeyword)
         || token.IsKind(SyntaxKind.InternalKeyword) || token.IsKind(SyntaxKind.ProtectedKeyword);
-
-#pragma warning disable RS2008 // these label documentation findings in a test; no analyzer ships them
-    private static readonly DiagnosticDescriptor MissingMember = new(
-        "GUIDE001", "Listed member does not exist",
-        "The listing of {0} names '{1}', which the type does not declare", "Docs", DiagnosticSeverity.Error, true);
-
-    private static readonly DiagnosticDescriptor DifferentSignature = new(
-        "GUIDE002", "Listed member has another signature",
-        "The listing of {0} shows '{1}', but the type declares {2}", "Docs", DiagnosticSeverity.Error, true);
-
-    private static readonly DiagnosticDescriptor AmbiguousListing = new(
-        "GUIDE003", "Listed type is ambiguous",
-        "The listing of {0} matches {1}; declare the namespace in the block", "Docs", DiagnosticSeverity.Error, true);
-#pragma warning restore RS2008
-
-    /// <summary>The library types a block restates, when it declares nothing but types named like library types of the same kind.</summary>
-    private static List<BaseTypeDeclarationSyntax>? ListedTypes(CompilationUnitSyntax root)
-    {
-        var members = root.Members.SelectMany(m => m is BaseNamespaceDeclarationSyntax ns ? ns.Members : [m]).ToList();
-        if (members.Count == 0 || !members.All(m => m is BaseTypeDeclarationSyntax))
-            return null;
-
-        // A class that implements something is a sample, even under a library name; an interface keeps its default members.
-        var declared = members.Cast<BaseTypeDeclarationSyntax>().ToList();
-        if (declared.Any(d => d is not InterfaceDeclarationSyntax && d.DescendantNodes().Any(n => n is BlockSyntax or ArrowExpressionClauseSyntax)))
-            return null;
-        return declared.All(d => LibraryCandidates(d).Count > 0) ? declared : null;
-    }
-
-    private static List<Type> LibraryCandidates(BaseTypeDeclarationSyntax declaration)
-    {
-        var name = declaration.Identifier.Text;
-        var ns = declaration.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().FirstOrDefault()?.Name.ToString();
-        return LibraryTypes.Value
-            .Where(t => t.Name == name && (ns is null || t.Namespace == ns))
-            .Where(t => declaration switch
-            {
-                InterfaceDeclarationSyntax => t.IsInterface,
-                EnumDeclarationSyntax => t.IsEnum,
-                StructDeclarationSyntax => t.IsValueType && !t.IsEnum,
-                RecordDeclarationSyntax r when r.ClassOrStructKeyword.IsKind(SyntaxKind.StructKeyword) => t.IsValueType && !t.IsEnum,
-                _ => t.IsClass,
-            })
-            .ToList();
-    }
-
-    private static IEnumerable<Diagnostic> CheckListing(SyntaxTree tree)
-    {
-        var declarations = tree.GetCompilationUnitRoot().DescendantNodes().OfType<BaseTypeDeclarationSyntax>()
-            .Where(d => d.Parent is CompilationUnitSyntax or BaseNamespaceDeclarationSyntax);
-        foreach (var declaration in declarations)
-        {
-            var candidates = LibraryCandidates(declaration);
-            if (candidates.Count > 1)
-            {
-                yield return Diagnostic.Create(AmbiguousListing, declaration.Identifier.GetLocation(), declaration.Identifier.Text,
-                    string.Join(", ", candidates.Select(c => c.FullName)));
-                continue;
-            }
-
-            var listed = candidates[0];
-            foreach (var member in declaration.ChildNodes().OfType<MemberDeclarationSyntax>())
-            {
-                if (CheckMember(listed, member) is { } diagnostic)
-                    yield return diagnostic;
-            }
-        }
-    }
-
-    private static Diagnostic? CheckMember(Type listed, MemberDeclarationSyntax member)
-    {
-        const BindingFlags Flags = BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static;
-        var lookup = listed.IsInterface ? listed.GetInterfaces().Prepend(listed).ToArray() : [listed];
-
-        switch (member)
-        {
-            case MethodDeclarationSyntax method:
-            {
-                var name = method.Identifier.Text;
-                var real = lookup.SelectMany(t => t.GetMethods(Flags)).Where(m => m.Name == name).ToList();
-                if (real.Count == 0)
-                    return Diagnostic.Create(MissingMember, method.Identifier.GetLocation(), listed.Name, name);
-
-                var shown = Signature(Format(method.ReturnType), name, method.ParameterList.Parameters.Select(p => p.Type is null ? "?" : Format(p.Type)));
-                var declared = real.Select(m => Signature(Format(m.ReturnType), name, m.GetParameters().Select(p => Format(p.ParameterType)))).ToList();
-                return declared.Contains(shown, StringComparer.Ordinal)
-                    ? null
-                    : Diagnostic.Create(DifferentSignature, method.Identifier.GetLocation(), listed.Name, shown, string.Join(" | ", declared));
-            }
-            case PropertyDeclarationSyntax property:
-            {
-                var name = property.Identifier.Text;
-                var real = lookup.Select(t => t.GetProperty(name, Flags)).FirstOrDefault(p => p is not null);
-                if (real is null)
-                    return Diagnostic.Create(MissingMember, property.Identifier.GetLocation(), listed.Name, name);
-
-                var shown = Format(property.Type);
-                var declared = Format(real.PropertyType);
-                return shown == declared
-                    ? null
-                    : Diagnostic.Create(DifferentSignature, property.Identifier.GetLocation(), listed.Name, $"{shown} {name}", $"{declared} {name}");
-            }
-            case EnumMemberDeclarationSyntax enumMember:
-                return Enum.GetNames(listed).Contains(enumMember.Identifier.Text, StringComparer.Ordinal)
-                    ? null
-                    : Diagnostic.Create(MissingMember, enumMember.Identifier.GetLocation(), listed.Name, enumMember.Identifier.Text);
-            case FieldDeclarationSyntax field:
-            {
-                var name = field.Declaration.Variables[0].Identifier.Text;
-                return listed.GetField(name, Flags) is not null || listed.GetProperty(name, Flags) is not null
-                    ? null
-                    : Diagnostic.Create(MissingMember, field.Declaration.Variables[0].Identifier.GetLocation(), listed.Name, name);
-            }
-            default:
-                return null;
-        }
-    }
-
-    private static string Signature(string returnType, string name, IEnumerable<string> parameters) =>
-        $"{returnType} {name}({string.Join(", ", parameters)})";
-
-    /// <summary>A type as a listing writes it: simple names, C# keywords, nullability not distinguished.</summary>
-    private static string Format(TypeSyntax type) => type switch
-    {
-        PredefinedTypeSyntax p => p.Keyword.Text,
-        NullableTypeSyntax n => Format(n.ElementType),
-        ArrayTypeSyntax a => Format(a.ElementType) + string.Concat(a.RankSpecifiers.Select(_ => "[]")),
-        QualifiedNameSyntax q => Format(q.Right),
-        AliasQualifiedNameSyntax a => Format(a.Name),
-        GenericNameSyntax g => $"{g.Identifier.Text}<{string.Join(", ", g.TypeArgumentList.Arguments.Select(Format))}>",
-        IdentifierNameSyntax i => i.Identifier.Text,
-        TupleTypeSyntax t => $"({string.Join(", ", t.Elements.Select(e => Format(e.Type)))})",
-        _ => type.ToString(),
-    };
-
-    private static readonly Dictionary<Type, string> Keywords = new()
-    {
-        [typeof(string)] = "string", [typeof(int)] = "int", [typeof(long)] = "long", [typeof(float)] = "float",
-        [typeof(double)] = "double", [typeof(bool)] = "bool", [typeof(object)] = "object", [typeof(void)] = "void",
-        [typeof(byte)] = "byte", [typeof(char)] = "char", [typeof(decimal)] = "decimal", [typeof(short)] = "short",
-        [typeof(uint)] = "uint", [typeof(ulong)] = "ulong",
-    };
-
-    private static string Format(Type type)
-    {
-        if (type.IsByRef)
-            return Format(type.GetElementType()!);
-        if (type.IsArray)
-            return Format(type.GetElementType()!) + "[]";
-        if (Nullable.GetUnderlyingType(type) is { } underlying)
-            return Format(underlying);
-        if (Keywords.TryGetValue(type, out var keyword))
-            return keyword;
-        if (!type.IsGenericType)
-            return type.Name;
-
-        var arguments = type.GetGenericArguments().Select(Format);
-        if (type.FullName?.StartsWith("System.ValueTuple`", StringComparison.Ordinal) == true)
-            return $"({string.Join(", ", arguments)})";
-        return $"{type.Name[..type.Name.IndexOf('`', StringComparison.Ordinal)]}<{string.Join(", ", arguments)}>";
-    }
-
-    /// <summary>The public types of the FluxIndex packages and the shared contracts they implement.</summary>
-    private static readonly Lazy<List<Type>> LibraryTypes = new(() =>
-    {
-        _ = typeof(IEmbeddingService);
-        _ = typeof(Flux.Abstractions.ITextCompletionService);
-        return Directory.EnumerateFiles(AppContext.BaseDirectory, "*.dll")
-            .Where(p => Path.GetFileName(p) is var f
-                        && (f.StartsWith("FluxIndex.", StringComparison.Ordinal) || f == "Flux.Abstractions.dll")
-                        && !f.EndsWith(".Tests.dll", StringComparison.Ordinal))
-            .Select(p => Assembly.Load(AssemblyName.GetAssemblyName(p)))
-            .SelectMany(a =>
-            {
-                try { return a.GetExportedTypes(); }
-                catch (ReflectionTypeLoadException ex) { return ex.Types.OfType<Type>().Where(t => t.IsPublic).ToArray(); }
-            })
-            .ToList();
-    });
 
     private static List<MetadataReference> References()
     {
