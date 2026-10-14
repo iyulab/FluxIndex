@@ -327,7 +327,8 @@ public partial class Indexer
         IProgress<IndexingProgress>? progress,
         string jobId,
         DateTime startTime,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool embed = true)
     {
         // Phase 3: 이벤트 발생 - 인덱싱 시작
         var chunks = document.Chunks.ToList();
@@ -523,8 +524,8 @@ public partial class Indexer
 
         LogCallingGenerateEmbeddings(_logger, entityChunks.Count);
 
-        // Generate embeddings for entity chunks
-        var embeddedEntityChunks = await GenerateEmbeddingsAsync(entityChunks, cancellationToken);
+        // Generate embeddings for entity chunks. A batch embeds across documents afterwards (EmbedAcrossDocumentsAsync).
+        var embeddedEntityChunks = embed ? await GenerateEmbeddingsAsync(entityChunks, cancellationToken) : entityChunks;
         return new PreparedDocument { Document = document, JobId = jobId, StartTime = startTime, Chunks = embeddedEntityChunks };
     }
 
@@ -649,8 +650,7 @@ public partial class Indexer
             try
             {
                 LogIndexingDocument(_logger, document.Id, jobId);
-                prepared[index] = await PrepareDocumentAsync(document, options, null, jobId, DateTime.UtcNow, cancellationToken);
-                onDocumentDone?.Invoke(document, null);
+                prepared[index] = await PrepareDocumentAsync(document, options, null, jobId, DateTime.UtcNow, cancellationToken, embed: false);
             }
             catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
@@ -669,6 +669,8 @@ public partial class Indexer
                 gate.Release();
             }
         }));
+
+        await EmbedAcrossDocumentsAsync(prepared, parallelism, onDocumentDone, cancellationToken);
 
         // The last occurrence of an id is its version; earlier ones would otherwise be stored beside it.
         var lastIndexById = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -1109,6 +1111,125 @@ public partial class Indexer
     /// each with a different field list, and all of them dropped <see cref="DocumentChunkEntity.TotalChunks"/>
     /// — so every chunk the SDK ever stored had TotalChunks = 0 regardless of what the caller built.
     /// </summary>
+    /// <summary>Chunks embedded per call when a batch embeds across documents.</summary>
+    internal const int CrossDocumentEmbeddingBatchSize = 64;
+
+    /// <summary>
+    /// Embeds the chunks of every prepared document in calls of up to <see cref="CrossDocumentEmbeddingBatchSize"/> chunks,
+    /// whole documents per call, so a batch of one-chunk documents is not one embedding call per document. A call that
+    /// fails falls back to embedding its documents one at a time, so one document an embedder refuses fails alone: it is
+    /// reported through <paramref name="onDocumentDone"/> and removed from <paramref name="prepared"/>. Every other document
+    /// is reported done once its chunks have vectors.
+    /// </summary>
+    private async Task EmbedAcrossDocumentsAsync(
+        PreparedDocument?[] prepared,
+        int parallelism,
+        Action<Document, Exception?>? onDocumentDone,
+        CancellationToken cancellationToken)
+    {
+        // Whole documents per group, in input order; a document larger than a group is a group of its own.
+        var groups = new List<List<int>>();
+        var current = new List<int>();
+        var currentChunks = 0;
+        for (var i = 0; i < prepared.Length; i++)
+        {
+            if (prepared[i] is not { } document)
+                continue;
+            if (current.Count > 0 && currentChunks + document.Chunks.Count > CrossDocumentEmbeddingBatchSize)
+            {
+                groups.Add(current);
+                current = [];
+                currentChunks = 0;
+            }
+
+            current.Add(i);
+            currentChunks += document.Chunks.Count;
+        }
+
+        if (current.Count > 0)
+            groups.Add(current);
+
+        // Groups run concurrently up to the batch's parallelism, as documents did when each embedded on its own.
+        using var gate = new SemaphoreSlim(Math.Max(1, parallelism));
+        await Task.WhenAll(groups.Select(async group =>
+        {
+            await gate.WaitAsync(cancellationToken);
+            try
+            {
+                await EmbedGroupAsync(prepared, group, onDocumentDone, cancellationToken);
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }));
+    }
+
+    private async Task EmbedGroupAsync(
+        PreparedDocument?[] prepared,
+        List<int> group,
+        Action<Document, Exception?>? onDocumentDone,
+        CancellationToken cancellationToken)
+    {
+        var chunks = group.SelectMany(i => prepared[i]!.Chunks).ToList();
+        var embedded = !IsKeywordOnly && chunks.Count > 0 && group.Count > 1
+            && await TryEmbedTogetherAsync(chunks, cancellationToken);
+
+        foreach (var i in group)
+        {
+            var document = prepared[i]!;
+            if (!embedded)
+            {
+                try
+                {
+                    await GenerateEmbeddingsAsync(document.Chunks, cancellationToken);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+                {
+                    LogFailedToIndexDocument(_logger, ex, document.Document.Id);
+                    IndexingFailed?.Invoke(this, new IndexingFailedEventArgs
+                    {
+                        JobId = document.JobId,
+                        DocumentId = document.Document.Id,
+                        ErrorMessage = ex.Message,
+                        Exception = ex
+                    });
+                    onDocumentDone?.Invoke(document.Document, ex);
+                    prepared[i] = null;
+                    continue;
+                }
+            }
+
+            onDocumentDone?.Invoke(document.Document, null);
+        }
+    }
+
+    /// <summary>
+    /// One batch embedding call for <paramref name="chunks"/>; false (nothing assigned) when the call fails or returns
+    /// a vector count that does not match, so the caller can embed document by document instead.
+    /// </summary>
+    private async Task<bool> TryEmbedTogetherAsync(List<DocumentChunkEntity> chunks, CancellationToken cancellationToken)
+    {
+        try
+        {
+            LogCallingGenerateEmbeddingsBatch(_logger, chunks.Count);
+            var embeddings = (await _embeddingService.GenerateEmbeddingsBatchAsync(chunks.Select(c => c.Content).ToList(), cancellationToken)).ToArray();
+            if (embeddings.Length != chunks.Count)
+                return false;
+
+            for (var i = 0; i < chunks.Count; i++)
+                chunks[i].Embedding = embeddings[i];
+
+            LogBatchEmbeddingCompleted(_logger, chunks.Count);
+            return true;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            LogBatchEmbeddingFailed(_logger, ex);
+            return false;
+        }
+    }
+
     private async Task<List<DocumentChunkEntity>> GenerateEmbeddingsAsync(
         List<DocumentChunkEntity> chunks,
         CancellationToken cancellationToken)

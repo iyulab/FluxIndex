@@ -38,6 +38,11 @@ Follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) conventions.
   `Microsoft.Extensions.Logging` does not see. `LMSupplyEmbeddingService.ActiveProviders` gives the same list.
 
 ### Fixed
+- **`Indexer.IndexBatchAsync` embeds across documents.** Each document was embedded in its own call, so a batch of
+  one-chunk documents (passages, messages, records) made one embedding call per document however large the batch. The
+  chunks of a batch now go to the embedder in calls of up to 64, whole documents per call, groups running up to the
+  batch's parallelism. A call the embedder fails falls back to embedding its documents one by one, so a document it
+  refuses still fails alone (`BatchIndexingException`).
 - **`HybridSearchOptions.EnableDynamicAlphaTuning` runs Dynamic Alpha Tuning in an SDK context.** The builder did not
   register the tuning service, and with one constructor per combination of optional collaborators a container picked the
   quantizer-only constructor whenever no tuning service was registered — so the option fell back to the query heuristic,
